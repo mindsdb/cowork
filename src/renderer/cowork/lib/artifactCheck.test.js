@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   _resetArtifactChecks,
+  answerArtifactCheck,
   handleArtifactCheckEvent,
   parseArtifactCheck,
   registerPreviewCheckTarget,
@@ -163,5 +164,37 @@ describe('artifact checks', () => {
 
     expect(older).not.toHaveBeenCalled();
     expect(submit.mock.calls[0][1].status).toBe('passed');
+  });
+
+  // A quick edit's check_request (ENG-4227) arrives on its own stream, with
+  // the same fields and no event type, and is answered by the same viewer.
+  describe('answerArtifactCheck', () => {
+    const request = { check_id: 'acheck:quick', artifact_slug: 'clock', timeout_s: 20 };
+
+    it('runs the open preview and posts what it saw', async () => {
+      const run = vi.fn(async () => ({ status: 'failed', errors: [ERROR] }));
+      registerPreviewCheckTarget('clock', { run });
+
+      await expect(answerArtifactCheck(request, { submit, now })).resolves.toBe(true);
+
+      expect(run).toHaveBeenCalledWith({ deadlineMs: 1000 + 19000 });
+      expect(submit).toHaveBeenCalledWith('acheck:quick', { status: 'failed', errors: [ERROR], ms: 0 });
+    });
+
+    it('answers "unavailable" when no preview of the artifact is open', async () => {
+      await answerArtifactCheck(request, { submit, now });
+
+      expect(submit).toHaveBeenCalledWith('acheck:quick', { status: 'unavailable', errors: [], ms: 0 });
+    });
+
+    it('answers a check once, and ignores one without an id', async () => {
+      registerPreviewCheckTarget('clock', { run: async () => ({ status: 'passed' }) });
+
+      await answerArtifactCheck(request, { submit, now });
+      await expect(answerArtifactCheck(request, { submit, now })).resolves.toBe(false);
+      await expect(answerArtifactCheck({ artifact_slug: 'clock' }, { submit, now })).resolves.toBe(false);
+
+      expect(submit).toHaveBeenCalledTimes(1);
+    });
   });
 });

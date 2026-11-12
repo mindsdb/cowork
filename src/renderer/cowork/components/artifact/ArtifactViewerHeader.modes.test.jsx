@@ -209,7 +209,7 @@ describe('the viewer header controls', () => {
   });
 });
 
-describe.each(cases.reasons)('Edit and Review for $name', (reasonCase) => {
+describe.each(cases.reasons)('Source and Review for $name', (reasonCase) => {
   it('names the reason in each tab', () => {
     useMode(modeNamed('local web'));
     const props = headerProps(modeNamed('local web'), { path: 'model.xlsx' });

@@ -94,7 +94,7 @@ const editor = () => screen.queryByLabelText('Edit notes.md');
 const discardPrompt = () => screen.queryByRole('dialog', { name: 'Discard changes?' });
 
 async function openEditor() {
-  await user.click(await screen.findByRole('tab', { name: 'Edit' }));
+  await user.click(await screen.findByRole('tab', { name: 'Source' }));
   return screen.findByLabelText('Edit notes.md');
 }
 

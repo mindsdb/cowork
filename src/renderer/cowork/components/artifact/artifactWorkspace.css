@@ -287,3 +287,17 @@
   .artifact-html-edit-guidance > span:last-child { display: none; }
   .artifact-html-edit-actions button { padding: 0 8px; }
 }
+
+/* Quick edit bar (ENG-4227): sits under Preview where the review composer
+   sits in the inbox, with its thread growing upward to a short scroll. */
+.artifact-quick-edit { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--line); background: var(--surface); }
+.artifact-quick-edit-thread { max-height: 168px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px 2px 4px; }
+.artifact-quick-edit-msg { max-width: 82%; padding: 6px 10px; border-radius: 12px; font: 13px/1.45 var(--font-body); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.artifact-quick-edit-msg.is-user { align-self: flex-end; background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.artifact-quick-edit-msg.is-reply { align-self: flex-start; background: var(--surface-2); color: var(--ink-2); }
+.artifact-quick-edit-status { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); }
+.artifact-quick-edit-link { color: var(--accent); font: inherit; text-decoration: underline; }
+.artifact-quick-edit-link:disabled { opacity: .55; text-decoration: none; cursor: default; }
+.artifact-quick-edit-muted { color: var(--ink-4); }
+.artifact-quick-edit-error { color: var(--danger); }
+.artifact-quick-edit-hint { font: 12px/1.4 var(--font-body); padding: 0 4px; }

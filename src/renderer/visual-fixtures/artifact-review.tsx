@@ -64,6 +64,11 @@ const IS_DESKTOP = SEARCH_PARAMS.get('deployment') === 'desktop';
 // `?comments=down`: the owner's comments-access answers 503, as a review
 // service that is down does.
 const IS_COMMENTS_DOWN = SEARCH_PARAMS.get('comments') === 'down';
+// `?quickEdit=1`: the server offers quick edits (ENG-4227), and the bar's
+// request streams a direct edit that lands as a new revision.
+const QUICK_EDIT_CAPABILITIES = SEARCH_PARAMS.get('quickEdit') === '1' && !(SEARCH_PARAMS.get('role') === 'reviewer' || SEARCH_PARAMS.get('owner') === 'unknown')
+  ? { canQuickEdit: true }
+  : {};
 const PROJECT_REF = IS_DESKTOP ? 'local' : '11111111-1111-1111-1111-111111111111';
 const INITIAL_CONTENT = IS_HTML_SLIDES ? HTML_SLIDES : MARKDOWN;
 const ARTIFACT_FILENAME = IS_HTML_SLIDES ? 'artifact-collaboration-slides.html' : 'Q3-launch-readiness.md';
@@ -167,9 +172,42 @@ window.fetch = async (input, init) => {
         canAddressWithAgent: !IS_REVIEWER,
         canResolveComments: !IS_REVIEWER,
         ...OWNER_UNKNOWN_CAPABILITIES,
+        ...QUICK_EDIT_CAPABILITIES,
       },
       currentRevision,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  if (url.endsWith(`/api/v1/artifacts/workspace/${PROJECT_REF}/${ARTIFACT_ID}/quick-edits`)) {
+    const previousRevisionId = currentRevision.id;
+    currentContent = IS_HTML_SLIDES
+      ? currentContent.replace('color: #43d8ef', 'color: #f2b84b')
+      : currentContent.replace('# Q3 launch readiness', '# Q3 launch readiness (final)');
+    currentRevision = { ...REVISION, id: 'rev-quick', number: 5, summary: 'Quick edit' };
+    const frames = [
+      ['route', { route: 'edit', confidence: 0.94, ms: 140 }],
+      ['progress', { stage: 'reading' }],
+      ['progress', { stage: 'writing' }],
+      ['done', {
+        status: 'applied',
+        summary: IS_HTML_SLIDES ? 'Made the kicker amber.' : 'Marked the title as final.',
+        revisionId: currentRevision.id,
+        previousRevisionId,
+        changed: [ARTIFACT_FILENAME],
+        check: { status: 'passed', findings: [] },
+        ms: 4200,
+      }],
+    ];
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      async start(controller) {
+        for (const [event, data] of frames) {
+          await new Promise((resolve) => { setTimeout(resolve, 250); });
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
   }
   if (url.endsWith(`/revisions/${PREVIOUS.id}`)) {
     return new Response(JSON.stringify(PREVIOUS), {
@@ -254,6 +292,7 @@ window.fetch = async (input, init) => {
         canAddressWithAgent: !IS_REVIEWER,
         canResolveComments: !IS_REVIEWER,
         ...OWNER_UNKNOWN_CAPABILITIES,
+        ...QUICK_EDIT_CAPABILITIES,
       },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }

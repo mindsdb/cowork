@@ -161,7 +161,7 @@
   "modeTabs": {
     "ariaLabel": "Mode de l’artefact",
     "preview": "Aperçu",
-    "edit": "Modifier",
+    "source": "Source",
     "review": "Relecture",
     "editDisabled": "Seul le propriétaire de l’artefact peut le modifier",
     "reviewDisabled": "La relecture n’est pas disponible pour cet artefact",
@@ -634,6 +634,41 @@
         "hint": "Compare le ton et le respect des consignes",
         "prompt": "Rédigez une annonce de lancement pour un nouveau mode sombre dans une application de prise de notes, en trois versions : un tweet de moins de 280 caractères, un e-mail chaleureux de moins de 120 mots et une entrée de journal des modifications de moins de 50 mots. Chacune doit avoir le ton adapté à son canal."
       }
+    }
+  },
+  "quickEdit": {
+    "ariaLabel": "Modification rapide",
+    "inputLabel": "Demander une modification",
+    "placeholder": "Demander une modification…",
+    "send": "Envoyer",
+    "route": {
+      "edit": "Modification directe…",
+      "agent": "Transmission à l'agent…"
+    },
+    "stage": {
+      "routing": "Recherche de la meilleure approche…",
+      "reading": "Lecture de l'artefact…",
+      "writing": "Écriture de la modification…",
+      "checking": "Vérification de l'aperçu…",
+      "fixing": "Correction des problèmes détectés…"
+    },
+    "handingOff": "Envoi dans le chat…",
+    "applied": "Terminé.",
+    "undo": "Annuler",
+    "undoing": "Annulation…",
+    "undone": "Annulé.",
+    "noop": "Rien n'a changé.",
+    "failed": "Cette modification n'a pas pu être faite ici.",
+    "askAgent": "Demander plutôt à l'agent",
+    "continuedInChat": "Suite dans le chat.",
+    "openChat": "Ouvrir le chat",
+    "unsavedSource": "Enregistrez ou abandonnez vos modifications dans Source pour demander une modification ici.",
+    "errors": {
+      "stale": "Cet artefact a changé depuis son ouverture. Il a été rechargé ; réessayez.",
+      "busy": "Une autre modification de cet artefact est encore en cours. Réessayez une fois terminée.",
+      "failed": "La modification n'a pas pu être faite.",
+      "stopped": "La modification s'est arrêtée avant la fin.",
+      "chatFailed": "Impossible de continuer dans le chat. Réessayez depuis le chat."
     }
   }
 }

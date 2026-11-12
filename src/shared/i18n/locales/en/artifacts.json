@@ -161,7 +161,7 @@
   "modeTabs": {
     "ariaLabel": "Artifact mode",
     "preview": "Preview",
-    "edit": "Edit",
+    "source": "Source",
     "review": "Review",
     "editDisabled": "Only the artifact owner can edit",
     "reviewDisabled": "Review is not available for this artifact",
@@ -634,6 +634,41 @@
         "hint": "Compares tone and following instructions",
         "prompt": "Write a launch announcement for a new dark mode in a note-taking app in three versions: a tweet under 280 characters, a friendly email under 120 words, and a changelog entry under 50 words. Each should sound right for its channel."
       }
+    }
+  },
+  "quickEdit": {
+    "ariaLabel": "Quick edit",
+    "inputLabel": "Ask for a change",
+    "placeholder": "Ask for a change…",
+    "send": "Send",
+    "route": {
+      "edit": "Editing directly…",
+      "agent": "Handing this to the agent…"
+    },
+    "stage": {
+      "routing": "Working out how to do this…",
+      "reading": "Reading the artifact…",
+      "writing": "Writing the change…",
+      "checking": "Checking the preview…",
+      "fixing": "Fixing what the check found…"
+    },
+    "handingOff": "Sending to the chat…",
+    "applied": "Done.",
+    "undo": "Undo",
+    "undoing": "Undoing…",
+    "undone": "Undone.",
+    "noop": "Nothing changed.",
+    "failed": "That change couldn't be made here.",
+    "askAgent": "Ask the agent instead",
+    "continuedInChat": "Continued in chat.",
+    "openChat": "Open chat",
+    "unsavedSource": "Save or discard your Source changes to ask for a change here.",
+    "errors": {
+      "stale": "This artifact changed since you opened it. It has been reloaded; try again.",
+      "busy": "Another change to this artifact is still running. Try again when it finishes.",
+      "failed": "The change could not be made.",
+      "stopped": "The change stopped before it finished.",
+      "chatFailed": "Couldn't continue in the chat. Try again from the chat."
     }
   }
 }

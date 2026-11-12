@@ -161,7 +161,7 @@
   "modeTabs": {
     "ariaLabel": "Modalità artefatto",
     "preview": "Anteprima",
-    "edit": "Modifica",
+    "source": "Sorgente",
     "review": "Revisione",
     "editDisabled": "Solo il proprietario dell’artefatto può modificarlo",
     "reviewDisabled": "La revisione non è disponibile per questo artefatto",
@@ -634,6 +634,41 @@
         "hint": "Confronta il tono e il rispetto delle istruzioni",
         "prompt": "Scrivi l’annuncio del lancio di una nuova modalità scura in un’app per prendere appunti, in tre versioni: un tweet di meno di 280 caratteri, un’email cordiale di meno di 120 parole e una voce di changelog di meno di 50 parole. Ognuna deve avere il tono giusto per il proprio canale."
       }
+    }
+  },
+  "quickEdit": {
+    "ariaLabel": "Modifica rapida",
+    "inputLabel": "Chiedi una modifica",
+    "placeholder": "Chiedi una modifica…",
+    "send": "Invia",
+    "route": {
+      "edit": "Modifica diretta…",
+      "agent": "Passaggio all'agente…"
+    },
+    "stage": {
+      "routing": "Valutazione di come procedere…",
+      "reading": "Lettura dell'artefatto…",
+      "writing": "Scrittura della modifica…",
+      "checking": "Verifica dell'anteprima…",
+      "fixing": "Correzione dei problemi trovati…"
+    },
+    "handingOff": "Invio alla chat…",
+    "applied": "Fatto.",
+    "undo": "Annulla",
+    "undoing": "Annullamento…",
+    "undone": "Annullata.",
+    "noop": "Nessuna modifica.",
+    "failed": "Non è stato possibile fare questa modifica qui.",
+    "askAgent": "Chiedi all'agente",
+    "continuedInChat": "Continua nella chat.",
+    "openChat": "Apri chat",
+    "unsavedSource": "Salva o scarta le modifiche in Sorgente per chiedere una modifica qui.",
+    "errors": {
+      "stale": "Questo artefatto è cambiato da quando l'hai aperto. È stato ricaricato; riprova.",
+      "busy": "Un'altra modifica a questo artefatto è ancora in corso. Riprova quando termina.",
+      "failed": "Non è stato possibile fare la modifica.",
+      "stopped": "La modifica si è interrotta prima di finire.",
+      "chatFailed": "Impossibile continuare nella chat. Riprova dalla chat."
     }
   }
 }

@@ -13,6 +13,7 @@ import {
   loadArtifactDraftDocument,
   requestArtifactExport,
   setArtifactAccess,
+  streamQuickEdit,
 } from './artifactWorkspaceApi';
 import { authFetch } from '../api';
 
@@ -391,5 +392,57 @@ describe('requestArtifactExport', () => {
     await expect(requestArtifactExport(draftUrl, 'docx')).rejects.toThrow();
 
     expect(authFetch).not.toHaveBeenCalled();
+  });
+});
+
+// The viewer's chat bar (ENG-4227) streams one quick edit as named SSE events.
+describe('streamQuickEdit', () => {
+  const artifact = { id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70', projectId: 'proj-1' };
+  const sseResponse = (frames) => new Response(new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      // Split mid-frame so the parser has to carry a partial frame over.
+      const text = frames.join('');
+      controller.enqueue(encoder.encode(text.slice(0, 30)));
+      controller.enqueue(encoder.encode(text.slice(30)));
+      controller.close();
+    },
+  }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  const frame = (event, data) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+
+  afterEach(() => { authFetch.mockReset(); });
+
+  it('posts the request and hands every event over by name', async () => {
+    authFetch.mockResolvedValue(sseResponse([
+      frame('route', { route: 'edit', confidence: 0.93, ms: 120 }),
+      frame('progress', { stage: 'writing' }),
+      frame('done', { status: 'applied', summary: 'Made the title blue.', revisionId: 'r2', previousRevisionId: 'r1', changed: ['index.html'], check: null, ms: 900 }),
+    ]));
+    const events = [];
+    const body = { message: 'Make the title blue', history: [], expectedRevisionId: 'r1', conversationId: null, forceRoute: null };
+
+    await streamQuickEdit(artifact, body, { onEvent: (event) => events.push(event) });
+
+    const [url, init] = authFetch.mock.calls[0];
+    expect(url).toBe('/api/v1/artifacts/workspace/proj-1/7db94eb8f0a54c7e9c1d2b3a4f5e6d70/quick-edits');
+    expect(init.method).toBe('POST');
+    expect(init.headers.Accept).toBe('text/event-stream');
+    expect(JSON.parse(init.body)).toEqual(body);
+    expect(events.map((event) => event.type)).toEqual(['route', 'progress', 'done']);
+    expect(events[2]).toMatchObject({ status: 'applied', revisionId: 'r2', previousRevisionId: 'r1' });
+  });
+
+  it('throws a refusal with its status and detail before any event', async () => {
+    authFetch.mockResolvedValue(new Response(
+      JSON.stringify({ detail: { message: 'stale', currentRevision: { id: 'r3' } } }),
+      { status: 409, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const onEvent = vi.fn();
+
+    await expect(streamQuickEdit(artifact, { message: 'x' }, { onEvent })).rejects.toMatchObject({
+      status: 409,
+      detail: { currentRevision: { id: 'r3' } },
+    });
+    expect(onEvent).not.toHaveBeenCalled();
   });
 });

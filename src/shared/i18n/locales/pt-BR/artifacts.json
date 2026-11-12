@@ -161,7 +161,7 @@
   "modeTabs": {
     "ariaLabel": "Modo do artefato",
     "preview": "Visualizar",
-    "edit": "Editar",
+    "source": "Código-fonte",
     "review": "Revisar",
     "editDisabled": "Só o dono do artefato pode editar",
     "reviewDisabled": "A revisão não está disponível para este artefato",
@@ -634,6 +634,41 @@
         "hint": "Compara o tom e o cumprimento de instruções",
         "prompt": "Escreva um anúncio de lançamento de um novo modo escuro em um app de anotações em três versões: um tuíte com menos de 280 caracteres, um e-mail simpático com menos de 120 palavras e uma entrada no changelog com menos de 50 palavras. Cada uma deve soar adequada ao seu canal."
       }
+    }
+  },
+  "quickEdit": {
+    "ariaLabel": "Edição rápida",
+    "inputLabel": "Peça uma alteração",
+    "placeholder": "Peça uma alteração…",
+    "send": "Enviar",
+    "route": {
+      "edit": "Editando diretamente…",
+      "agent": "Passando para o agente…"
+    },
+    "stage": {
+      "routing": "Decidindo como fazer isso…",
+      "reading": "Lendo o artefato…",
+      "writing": "Escrevendo a alteração…",
+      "checking": "Verificando a prévia…",
+      "fixing": "Corrigindo o que a verificação encontrou…"
+    },
+    "handingOff": "Enviando para o chat…",
+    "applied": "Pronto.",
+    "undo": "Desfazer",
+    "undoing": "Desfazendo…",
+    "undone": "Desfeito.",
+    "noop": "Nada mudou.",
+    "failed": "Não foi possível fazer essa alteração aqui.",
+    "askAgent": "Perguntar ao agente",
+    "continuedInChat": "Continua no chat.",
+    "openChat": "Abrir chat",
+    "unsavedSource": "Salve ou descarte suas alterações em Código-fonte para pedir uma alteração aqui.",
+    "errors": {
+      "stale": "Este artefato mudou desde que você o abriu. Ele foi recarregado; tente novamente.",
+      "busy": "Outra alteração neste artefato ainda está em andamento. Tente novamente quando terminar.",
+      "failed": "Não foi possível fazer a alteração.",
+      "stopped": "A alteração parou antes de terminar.",
+      "chatFailed": "Não foi possível continuar no chat. Tente novamente pelo chat."
     }
   }
 }

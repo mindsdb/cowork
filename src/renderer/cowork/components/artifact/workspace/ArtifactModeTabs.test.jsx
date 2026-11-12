@@ -14,7 +14,7 @@ describe('ArtifactModeTabs permissions', () => {
     );
 
     expect(screen.getByRole('tab', {
-      name: 'Edit unavailable — Only the artifact owner can edit',
+      name: 'Source unavailable — Only the artifact owner can edit',
     })).toBeDisabled();
     expect(screen.getByRole('tab', { name: 'Review' })).toBeEnabled();
   });
@@ -32,7 +32,7 @@ describe('ArtifactModeTabs permissions', () => {
     );
 
     expect(screen.getByRole('tab', {
-      name: 'Edit unavailable — Loading editing tools…',
+      name: 'Source unavailable — Loading editing tools…',
     })).toBeDisabled();
     expect(screen.getByRole('tab', {
       name: 'Review unavailable — Loading review tools…',

@@ -161,7 +161,7 @@
   "modeTabs": {
     "ariaLabel": "Artefakt-Modus",
     "preview": "Vorschau",
-    "edit": "Bearbeiten",
+    "source": "Quelle",
     "review": "Prüfen",
     "editDisabled": "Nur der Inhaber des Artefakts kann es bearbeiten",
     "reviewDisabled": "Für dieses Artefakt ist keine Prüfung verfügbar",
@@ -634,6 +634,41 @@
         "hint": "Vergleicht Tonfall und das Befolgen von Anweisungen",
         "prompt": "Schreiben Sie eine Ankündigung für einen neuen Dunkelmodus in einer Notiz-App in drei Versionen: einen Tweet unter 280 Zeichen, eine freundliche E-Mail unter 120 Wörtern und einen Changelog-Eintrag unter 50 Wörtern. Jede Version soll zu ihrem Kanal passen."
       }
+    }
+  },
+  "quickEdit": {
+    "ariaLabel": "Schnellbearbeitung",
+    "inputLabel": "Um eine Änderung bitten",
+    "placeholder": "Um eine Änderung bitten…",
+    "send": "Senden",
+    "route": {
+      "edit": "Wird direkt bearbeitet…",
+      "agent": "Wird an den Agenten übergeben…"
+    },
+    "stage": {
+      "routing": "Wird geplant…",
+      "reading": "Artefakt wird gelesen…",
+      "writing": "Änderung wird geschrieben…",
+      "checking": "Vorschau wird geprüft…",
+      "fixing": "Gefundene Fehler werden behoben…"
+    },
+    "handingOff": "Wird an den Chat gesendet…",
+    "applied": "Fertig.",
+    "undo": "Rückgängig",
+    "undoing": "Wird rückgängig gemacht…",
+    "undone": "Rückgängig gemacht.",
+    "noop": "Nichts geändert.",
+    "failed": "Diese Änderung konnte hier nicht vorgenommen werden.",
+    "askAgent": "Stattdessen den Agenten fragen",
+    "continuedInChat": "Im Chat fortgesetzt.",
+    "openChat": "Chat öffnen",
+    "unsavedSource": "Speichere oder verwirf deine Änderungen in „Quelle“, um hier eine Änderung anzufragen.",
+    "errors": {
+      "stale": "Dieses Artefakt hat sich geändert, seit du es geöffnet hast. Es wurde neu geladen; versuche es noch einmal.",
+      "busy": "Eine andere Änderung an diesem Artefakt läuft noch. Versuche es erneut, wenn sie fertig ist.",
+      "failed": "Die Änderung konnte nicht vorgenommen werden.",
+      "stopped": "Die Änderung wurde vor dem Abschluss abgebrochen.",
+      "chatFailed": "Im Chat konnte nicht fortgefahren werden. Versuche es im Chat erneut."
     }
   }
 }

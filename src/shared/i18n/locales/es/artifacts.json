@@ -161,7 +161,7 @@
   "modeTabs": {
     "ariaLabel": "Modo del artefacto",
     "preview": "Vista previa",
-    "edit": "Editar",
+    "source": "Código fuente",
     "review": "Revisar",
     "editDisabled": "Solo el dueño del artefacto puede editarlo",
     "reviewDisabled": "La revisión no está disponible para este artefacto",
@@ -634,6 +634,41 @@
         "hint": "Compara el tono y el seguimiento de instrucciones",
         "prompt": "Escribe el anuncio de lanzamiento de un nuevo modo oscuro en una app de notas en tres versiones: un tuit de menos de 280 caracteres, un correo amigable de menos de 120 palabras y una entrada del registro de cambios de menos de 50 palabras. Cada una debe sonar adecuada para su canal."
       }
+    }
+  },
+  "quickEdit": {
+    "ariaLabel": "Edición rápida",
+    "inputLabel": "Pide un cambio",
+    "placeholder": "Pide un cambio…",
+    "send": "Enviar",
+    "route": {
+      "edit": "Editando directamente…",
+      "agent": "Pasando esto al agente…"
+    },
+    "stage": {
+      "routing": "Pensando cómo hacerlo…",
+      "reading": "Leyendo el artefacto…",
+      "writing": "Escribiendo el cambio…",
+      "checking": "Comprobando la vista previa…",
+      "fixing": "Corrigiendo lo que encontró la comprobación…"
+    },
+    "handingOff": "Enviando al chat…",
+    "applied": "Hecho.",
+    "undo": "Deshacer",
+    "undoing": "Deshaciendo…",
+    "undone": "Deshecho.",
+    "noop": "No cambió nada.",
+    "failed": "Ese cambio no se pudo hacer aquí.",
+    "askAgent": "Preguntar al agente",
+    "continuedInChat": "Continúa en el chat.",
+    "openChat": "Abrir chat",
+    "unsavedSource": "Guarda o descarta tus cambios en Código fuente para pedir un cambio aquí.",
+    "errors": {
+      "stale": "Este artefacto cambió desde que lo abriste. Se ha vuelto a cargar; inténtalo de nuevo.",
+      "busy": "Otro cambio en este artefacto sigue en curso. Inténtalo de nuevo cuando termine.",
+      "failed": "No se pudo hacer el cambio.",
+      "stopped": "El cambio se detuvo antes de terminar.",
+      "chatFailed": "No se pudo continuar en el chat. Inténtalo de nuevo desde el chat."
     }
   }
 }

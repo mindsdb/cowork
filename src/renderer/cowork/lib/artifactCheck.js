@@ -108,6 +108,24 @@ export function handleArtifactCheckEvent(ev, { submit = submitArtifactCheck, now
   return true;
 }
 
+/**
+ * Answer a check that arrived on another stream than a conversation's: a
+ * quick edit's `check_request` (ENG-4227) carries the same
+ * `{ check_id, artifact_slug, timeout_s }` and is answered the same way, by
+ * the open viewer for that slug, through the same POST. Resolves once the
+ * answer was sent (or skipped as a duplicate); never rejects.
+ *
+ * @param {{ check_id?: string, artifact_slug?: string, timeout_s?: number }} data
+ * @param {{ submit?: typeof submitArtifactCheck, now?: () => number }} [deps]
+ */
+export async function answerArtifactCheck(data, { submit = submitArtifactCheck, now = Date.now } = {}) {
+  const check = parseArtifactCheck({ ...(data || {}), type: ARTIFACT_CHECK_EVENT });
+  if (!check || taken.has(check.checkId)) return false;
+  remember(check.checkId);
+  await runCheck(check, submit, now);
+  return true;
+}
+
 async function runCheck({ checkId, slug, timeoutS }, submit, now) {
   const startedAt = now();
   const entry = targets.get(slug);

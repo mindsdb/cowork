@@ -216,9 +216,9 @@ describe.each(data.documentArtifacts)('a $type artifact', (artifactData) => {
     expect(review.enabled).toBe(false);
   });
 
-  it(`disables Edit and Review with "${PREVIEW_ONLY}", even with a text sibling to load`, async () => {
+  it(`disables Source and Review with "${PREVIEW_ONLY}", even with a text sibling to load`, async () => {
     renderViewer(artifact);
-    const edit = await screen.findByRole('tab', { name: `Edit unavailable \u2014 ${PREVIEW_ONLY}` });
+    const edit = await screen.findByRole('tab', { name: `Source unavailable \u2014 ${PREVIEW_ONLY}` });
     const review = screen.getByRole('tab', { name: `Review unavailable \u2014 ${PREVIEW_ONLY}` });
     expect(edit).toBeDisabled();
     expect(review).toBeDisabled();

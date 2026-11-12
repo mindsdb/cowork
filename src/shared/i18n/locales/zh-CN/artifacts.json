@@ -161,7 +161,7 @@
   "modeTabs": {
     "ariaLabel": "产物模式",
     "preview": "预览",
-    "edit": "编辑",
+    "source": "源代码",
     "review": "审阅",
     "editDisabled": "只有产物所有者可以编辑",
     "reviewDisabled": "此产物不支持审阅",
@@ -634,6 +634,41 @@
         "hint": "对比语气和遵循指令的能力",
         "prompt": "为一款笔记应用新推出的深色模式撰写发布公告，共三个版本：一条不超过 280 个字符的推文、一封不超过 120 词的友好邮件，以及一条不超过 50 词的更新日志。每个版本都要符合各自渠道的风格。"
       }
+    }
+  },
+  "quickEdit": {
+    "ariaLabel": "快速编辑",
+    "inputLabel": "请求修改",
+    "placeholder": "请求修改…",
+    "send": "发送",
+    "route": {
+      "edit": "正在直接编辑…",
+      "agent": "正在交给智能体…"
+    },
+    "stage": {
+      "routing": "正在确定处理方式…",
+      "reading": "正在读取产物…",
+      "writing": "正在写入修改…",
+      "checking": "正在检查预览…",
+      "fixing": "正在修复检查发现的问题…"
+    },
+    "handingOff": "正在发送到聊天…",
+    "applied": "已完成。",
+    "undo": "撤销",
+    "undoing": "正在撤销…",
+    "undone": "已撤销。",
+    "noop": "没有任何更改。",
+    "failed": "无法在此处完成该修改。",
+    "askAgent": "改为询问智能体",
+    "continuedInChat": "已在聊天中继续。",
+    "openChat": "打开聊天",
+    "unsavedSource": "请先保存或放弃“源代码”中的更改，再在此请求修改。",
+    "errors": {
+      "stale": "你打开此产物后它已被更改。已重新加载，请重试。",
+      "busy": "此产物的另一项修改仍在进行中。完成后请重试。",
+      "failed": "无法完成修改。",
+      "stopped": "修改在完成前停止了。",
+      "chatFailed": "无法在聊天中继续。请在聊天中重试。"
     }
   }
 }

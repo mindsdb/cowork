@@ -1,6 +1,9 @@
 import { useTranslation } from '../../../../lib/i18n';
 
 const MODES = ['preview', 'edit', 'review'];
+// The code editor is the `edit` mode inside, and "Source" on screen: with
+// quick edits, asking for a change in Preview is editing too (ENG-4227).
+const LABEL_KEYS = { preview: 'modeTabs.preview', edit: 'modeTabs.source', review: 'modeTabs.review' };
 
 export function ArtifactModeTabs({
   value,
@@ -20,7 +23,7 @@ export function ArtifactModeTabs({
       className="artifact-mode-tabs"
     >
       {MODES.map((mode) => {
-        const label = t(`modeTabs.${mode}`);
+        const label = t(LABEL_KEYS[mode]);
         const disabled = (mode === 'edit' && !canEdit) || (mode === 'review' && !canReview);
         const disabledReason = mode === 'edit' ? editDisabledReason : reviewDisabledReason;
         return (

@@ -3,8 +3,12 @@
 // bar has three responsive zones:
 //
 //   left   — artifact title (truncated)
-//   middle — Preview / Edit / Review modes
+//   middle — Preview / Source / Review modes
 //   right  — comments · Publish control · ⋯ menu · close
+//
+// With quick edits on (capabilities.canQuickEdit, ENG-4227), Preview carries a
+// chat bar at the bottom: the user asks for a change and the server makes it
+// directly or hands it to the artifact's chat (quickEdit/useQuickEdit).
 //
 // Publish/unpublish/update/change-access all live in the <PublishMenu>
 // popover, backed by the usePublish state machine — so this component is
@@ -61,6 +65,8 @@ import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
+import { QuickEditBar } from './quickEdit/QuickEditBar';
+import { quickEditChatPrompt, useQuickEdit } from './quickEdit/useQuickEdit';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import { useTranslation } from '../../../lib/i18n';
@@ -836,6 +842,41 @@ export function ArtifactViewer({
     errors: diagnostics.errors,
   });
 
+  // Quick edits (ENG-4227): offered in Preview to whoever can edit, when the
+  // server turned them on. A file the viewer only previews has nothing to edit.
+  const canQuickEdit = workspace.capabilities?.canQuickEdit === true
+    && workspace.capabilities?.canEdit !== false
+    && !documentType;
+  // The chat the artifact belongs to, chosen the way a comment repair chooses
+  // it: this chat, else the one that made the artifact.
+  const resolveArtifactConversation = async () => conversationId
+    || (resolveRepairConversation ? await resolveRepairConversation(artifact) : '')
+    || '';
+  const quickEdit = useQuickEdit(artifact, {
+    enabled: open && canQuickEdit,
+    headRevisionId: workspace.currentRevision?.id || null,
+    resolveConversation: async () => (await resolveArtifactConversation()) || null,
+    // Same send the comment repair uses, with a fresh chat as the last resort.
+    continueInChat: async (message) => {
+      if (!onAddressWithAgent) return false;
+      const target = (await resolveArtifactConversation()) || repairConversationId;
+      const started = await onAddressWithAgent({
+        artifact,
+        prompt: quickEditChatPrompt(artifact, message),
+        conversationId: target,
+      });
+      return started !== false;
+    },
+    // As after a Source save: the host hears of the new content (its card
+    // and any URL it derives), and the preview reloads in the same render.
+    onApplied: async () => {
+      onReload();
+      reportChange({ ...artifact, mtime: Date.now() / 1000 });
+      try { await workspace.load(); } catch { /* the preview already shows the change */ }
+    },
+    onStale: () => { void workspace.load(); },
+  });
+
   if (!open || !artifact) return null;
 
   const title = artifact.title || artifact.path?.split('/').pop();
@@ -1300,6 +1341,15 @@ export function ArtifactViewer({
         review={bodyReview}
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
       />
+
+      {canQuickEdit && workspace.mode === 'preview' && (
+        <QuickEditBar
+          controller={quickEdit}
+          // A reload after a quick edit would replace Source text never saved.
+          disabledReason={workspace.dirty ? t('quickEdit.unsavedSource') : ''}
+          onOpenChat={onClose}
+        />
+      )}
 
       <ConfirmModal
         open={!!pendingDiscard}
