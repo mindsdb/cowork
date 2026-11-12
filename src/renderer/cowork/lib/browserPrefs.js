@@ -1,8 +1,9 @@
 // The browser's preferences, as the app holds them now: whether the person
 // approves the agent's consequential browser steps (a purchase, a message, a
-// submit, a click by position) on a chat card. The choice is the person's
-// server-side setting `browser_approve_steps` (settings.browserApproveSteps,
-// beside browserEnabled), so every device and tab reads the same one; App.jsx
+// submit) on a chat card; clicks by position never ask. The choice is the
+// person's server-side setting `browser_approve_steps`
+// (settings.browserApproveSteps, beside browserEnabled), so every device and
+// tab reads the same one; App.jsx
 // feeds it in here whenever settings change. Anything but an explicit `false`
 // asks: a server that predates the setting, or settings not read yet, never
 // let the app approve a held step for the person (lib/browserApproval.js).

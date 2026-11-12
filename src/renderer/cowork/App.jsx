@@ -172,7 +172,7 @@ import {
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
-import { approveIfApprovalsOff, isAutoApprovedCard } from './lib/browserApproval';
+import { approveIfApprovalsOff, autoApprovePositionClick, isAutoApprovedCard, isPositionClickCard } from './lib/browserApproval';
 import { forgetLegacyBrowserPrefs, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
 import { Outlet } from 'react-router-dom';
@@ -1486,20 +1486,25 @@ function AppCore() {
   // time a question appears while messages are queued, hands them back to
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
-  // With Approve browser steps off (Settings > Shared browser), clicks by
-  // position and held browser steps are approved for the person, once per
-  // card, and never shown (lib/browserApproval.js). The setting is read fresh
-  // from the server first, so approvals turned on from another device since
-  // this tab read settings count: then the card shows. A card the approval
-  // didn't land on shows after POSITION_AUTO_APPROVE_MS, so the person can
-  // still answer it.
+  // Clicks by position are approved for the person whatever the setting,
+  // and so are held browser steps with Approve browser steps off (Settings >
+  // Shared browser): once per card, never shown (lib/browserApproval.js). For
+  // a held step the setting is read fresh from the server first, so approvals
+  // turned on from another device since this tab read settings count: then
+  // the card shows. A card the approval didn't land on shows after
+  // POSITION_AUTO_APPROVE_MS, so the person can still answer it.
   const autoApprovedRef = useRef(new Set());
   const approvePositionClicks = (taskIds, steps) => {
     (steps || []).forEach((s) => {
       const questionId = s.badge === 'AskUser' && !s.data?.answer ? s.data?.question_id : null;
       if (!questionId || autoApprovedRef.current.has(questionId) || !isAutoApprovedCard(s.data)) return;
       autoApprovedRef.current.add(questionId);
-      void approveIfApprovalsOff({ conversationIds: taskIds, questionId, isWeb: host.isWeb, submit: submitAnswer })
+      const approval = { conversationIds: taskIds, questionId, isWeb: host.isWeb, submit: submitAnswer };
+      if (isPositionClickCard(s.data)) {
+        void autoApprovePositionClick(approval).catch(() => false);
+        return;
+      }
+      void approveIfApprovalsOff(approval)
         .then((outcome) => {
           if (outcome === 'asks') setSettings((prev) => ({ ...prev, browserApproveSteps: true }));
         })
