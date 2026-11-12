@@ -38,6 +38,32 @@ describe('console handoff', () => {
     expect(findSample(mode, id)?.sample.label).toBe(label);
   });
 
+  // The console's Gallery shows each sample's prompt as a copy of this text,
+  // and Make your own sends what Cowork holds. Editing a prompt here without
+  // the console's copy shows people one prompt and sends another.
+  it.each([
+    ["games", "celestial-merge-2048", "Make a sliding number merge puzzle on a 4x4 grid: swipe to slide all tiles in one direction, matching tiles merge into their sum, and the goal is to reach the highest tile before the board fills up. Style the tiles as celestial bodies that evolve from asteroids to moons, planets, and blazing suns as they merge, set against a starry night sky."],
+    ["games", "classic-snake-game", "Make a classic snake game: the snake moves around a grid eating food, grows longer with each bite, and dies if it hits a wall or its own body. Style it as a koi fish gliding through a tranquil Japanese zen garden viewed from above, leaving a gentle ripple trail on the water."],
+    ["apps", "build-a-quote-or-invoice-generator", "Build a single-page quote and invoice generator for my business: company details at the top, line items with quantity and price, automatic totals and tax, and a clean printable layout."],
+    ["visualization", "track-monthly-kpis-across-departments", "Build a KPI dashboard with monthly metrics for sales, marketing, product, and support, with trend charts. Use sample data I can replace."],
+    ["website", "build-a-landing-page-for-a-product-launch", "Build a landing page for an upcoming product launch, with a hero section, feature highlights, testimonials, an FAQ, and an email signup form."],
+    ["apps", "build-study-planning-and-progress-tool", "Design a study planning tool for setting learning goals, breaking them into tasks, and tracking progress."],
+    ["spreadsheet", "clean-up-my-spreadsheet-and-chart-it", "I'm going to attach a spreadsheet or CSV. Clean it up (duplicates, blanks, odd dates), tell me what you changed, and chart the main trend."],
+    ["wide-research", "summarize-a-document-and-draft-my-reply", "I'm going to attach a document. Summarize it, list what I need to do, and draft a reply I can send."],
+    ["spreadsheet", "compile-a-north-america-ai-conference-calendar", "Help me collect upcoming AI industry conferences in North America for the rest of the year and compile them into a calendar."],
+    ["wide-research", "research-a-prospect-and-draft-outreach", "Fernhill Freight is a made-up company for this example: a 900-person regional trucking and warehousing business in the US Midwest that is growing an e-commerce fulfillment line. Research what companies like it are dealing with right now, then write a one-page brief for a first conversation with their Head of Revenue Operations: what the company does, what is happening in its industry, likely priorities for this person, and two angles for a conversation. Then draft a short, personalized first email."],
+    ["spreadsheet", "pull-key-terms-out-of-a-contract", "Write a realistic sample vendor services contract, then extract its key terms into a table: parties, start and end dates, renewal and notice period, payment terms, liability cap, termination rights. Flag anything unusual or one-sided. Afterwards I'll attach my own contract for the same treatment."],
+    ["wide-research", "coach-me-on-a-deal-from-a-call-transcript", "Write a realistic sample sales call transcript (about a page, with speaker turns), then score the deal on budget, authority, need and timing with a quote as evidence for each, list the risks and open questions, suggest next steps, and draft the follow-up email. Afterwards I'll paste a real transcript."],
+    ["wide-research", "turn-meeting-notes-into-action-items", "I'm going to paste a meeting transcript or rough notes (if I don't, use a realistic sample). Pull out decisions, action items with owners and due dates, and open questions, then draft a short recap email I can send to attendees."],
+    ["visualization", "build-a-project-rollout-timeline", "Build a project rollout timeline as a swimlane Gantt chart grouped by phase, with an owner color per team and a status column. Clicking an item opens its details. Use a sample 12-week project I can replace with mine."],
+    ["visualization", "map-a-process-as-a-diagram", "Build a left-to-right process diagram with two swimlanes (a person and an AI agent), steps, diamond checkpoints between steps, and details on hover. Draw every arrow from the actual positions of the shapes it connects, so each arrow starts and ends on a shape. Use a sample process I can replace with mine."],
+    ["website", "build-a-project-status-page", "Build a web page with a status update for a website redesign: five milestones with owners and dates, a progress bar at 60%, and a short risks section."],
+    ["website", "build-a-team-offsite-invitation-page", "Build a web page inviting the team to an offsite on Friday 4 December in Lisbon, with the agenda, travel notes and a packing list."],
+    ["website", "build-a-feature-announcement-page", "Build a web page announcing a new 'shared calendars' feature, with a headline, three benefits and a short FAQ."],
+  ])('keeps %s/%s word for word as the console Gallery shows it', (mode, id, prompt) => {
+    expect(findSample(mode, id)?.sample.prompt).toBe(prompt);
+  });
+
   it('keeps the console placement it knows, so the task can be credited to it', () => {
     window.history.replaceState(null, '', '/?from=console&mode=games&sample=celestial-merge-2048&placement=gallery');
     captureConsoleHandoff(at('?from=console&mode=games&sample=celestial-merge-2048&placement=gallery'));

@@ -267,7 +267,7 @@ export const TASK_MODES = [
       },
       {
         label: 'Research a prospect and draft outreach',
-        prompt: 'Research Datadog and their Head of Revenue Operations. Write a one-page brief: what the company does, recent news, likely priorities for this person, and two angles for a conversation. Then draft a short, personalized first email.',
+        prompt: 'Fernhill Freight is a made-up company for this example: a 900-person regional trucking and warehousing business in the US Midwest that is growing an e-commerce fulfillment line. Research what companies like it are dealing with right now, then write a one-page brief for a first conversation with their Head of Revenue Operations: what the company does, what is happening in its industry, likely priorities for this person, and two angles for a conversation. Then draft a short, personalized first email.',
       },
       {
         label: 'Coach me on a deal from a call transcript',
