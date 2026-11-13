@@ -57,6 +57,9 @@ const RUN_STATUS = {
   failed:    { tone: 'danger',  key: 'failed' },
   cancelled: { tone: 'muted',   key: 'cancelled' },
 };
+// A run that stopped at a limit is failed on the server, but did its work up
+// to there: it reads as a warning, and its reason names the limit.
+const STOPPED_AT_LIMIT = { tone: 'warning', key: 'stoppedAtLimit' };
 
 const msg = (key, vars) => i18n.t(`scheduleDetail.${key}`, { ns: 'projects', ...vars });
 
@@ -100,6 +103,8 @@ export default function ScheduleDetailView({
   onReviewedAutoPause,
   // (scheduleId) — stops the run in flight, as the chat's Stop does.
   onStopRun,
+  // (section) — opens Settings, where a run's limits are raised.
+  onOpenSettings,
   agentLabel,
 }) {
   const { t } = useTranslation('projects');
@@ -247,6 +252,7 @@ export default function ScheduleDetailView({
           onResume={(id) => withBusy(() => onResume?.(id))}
           onRunNow={(id) => withBusy(() => onRunNow?.(id))}
           onReviewRun={(conversationId) => onOpenRunSession?.(conversationId)}
+          onOpenSettings={onOpenSettings}
         />
 
         {task.prompt && (
@@ -263,7 +269,9 @@ export default function ScheduleDetailView({
             <ListNotice>{t('scheduleDetail.noRuns')}</ListNotice>
           )}
           {shown.map((run) => {
-            const status = RUN_STATUS[run.status] || RUN_STATUS.cancelled;
+            const status = run.status === 'failed' && run.outcome === 'stopped_at_limit'
+              ? STOPPED_AT_LIMIT
+              : RUN_STATUS[run.status] || RUN_STATUS.cancelled;
             const look = { tone: status.tone, label: t(`scheduleDetail.runStatus.${status.key}`) };
             const reason = run.status === 'failed' ? (run.error || null) : null;
             const when = absoluteTime(run.startedAt);

@@ -543,6 +543,7 @@
     "missed": "Perdida",
     "lastFailed": "Última falló",
     "lastRunFailed": "Última ejecución fallida",
+    "stoppedAtLimit": "Detenida en un límite",
     "done": "Terminada",
     "active": "Activa"
   },
@@ -572,11 +573,14 @@
     "autoPausedNote": "Reanudar vuelve a activar la programación y puede recuperar una ejecución pendiente. Ejecutar ahora la ejecuta una vez, ahora.",
     "partialTitle": "La última ejecución se detuvo a medias",
     "partialNote": "Algunas de sus acciones pueden haberse completado. Revisa la ejecución antes de volver a ejecutarla.",
+    "limitTitle": "La última ejecución se detuvo en un límite",
+    "limitNote": "Puede que parte del trabajo esté hecho. Revisa la ejecución antes de volver a ejecutarla.",
     "failedTitle": "La última ejecución falló",
     "resume": "Reanudar",
     "runNow": "Ejecutar ahora",
     "reviewRun": "Revisar ejecución",
-    "runAgain": "Ejecutar de nuevo"
+    "runAgain": "Ejecutar de nuevo",
+    "openSettings": "Abrir Ajustes"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -652,7 +656,8 @@
       "running": "En ejecución",
       "success": "Correcta",
       "failed": "Fallida",
-      "cancelled": "Detenida"
+      "cancelled": "Detenida",
+      "stoppedAtLimit": "Detenida en un límite"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Ejecutándose ahora",

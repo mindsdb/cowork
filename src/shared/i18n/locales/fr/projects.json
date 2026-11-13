@@ -543,6 +543,7 @@
     "missed": "Manquée",
     "lastFailed": "Dernier échec",
     "lastRunFailed": "Échec de la dernière exécution",
+    "stoppedAtLimit": "Arrêtée à une limite",
     "done": "Terminée",
     "active": "Active"
   },
@@ -572,11 +573,14 @@
     "autoPausedNote": "« Reprendre » réactive la planification et peut rattraper une exécution en attente. « Exécuter maintenant » l’exécute une fois, tout de suite.",
     "partialTitle": "La dernière exécution s’est arrêtée en cours de route",
     "partialNote": "Certaines de ses actions ont pu aboutir. Vérifiez l’exécution avant de la relancer.",
+    "limitTitle": "La dernière exécution s’est arrêtée à une limite",
+    "limitNote": "Une partie du travail a pu être effectuée. Vérifiez l’exécution avant de la relancer.",
     "failedTitle": "La dernière exécution a échoué",
     "resume": "Reprendre",
     "runNow": "Exécuter maintenant",
     "reviewRun": "Vérifier l’exécution",
-    "runAgain": "Relancer"
+    "runAgain": "Relancer",
+    "openSettings": "Ouvrir les Paramètres"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -652,7 +656,8 @@
       "running": "En cours",
       "success": "Réussie",
       "failed": "Échec",
-      "cancelled": "Arrêtée"
+      "cancelled": "Arrêtée",
+      "stoppedAtLimit": "Arrêtée à une limite"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "En cours d’exécution",

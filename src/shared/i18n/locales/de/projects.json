@@ -543,6 +543,7 @@
     "missed": "Verpasst",
     "lastFailed": "Zuletzt fehlgeschlagen",
     "lastRunFailed": "Letzte Ausführung fehlgeschlagen",
+    "stoppedAtLimit": "An Limit gestoppt",
     "done": "Fertig",
     "active": "Aktiv"
   },
@@ -572,11 +573,14 @@
     "autoPausedNote": "„Fortsetzen“ aktiviert den Zeitplan wieder und holt eventuell eine ausstehende Ausführung nach. „Jetzt ausführen“ führt sie sofort einmal aus.",
     "partialTitle": "Die letzte Ausführung wurde vorzeitig beendet",
     "partialNote": "Einige Aktionen wurden möglicherweise abgeschlossen. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
+    "limitTitle": "Die letzte Ausführung wurde an einem Limit gestoppt",
+    "limitNote": "Ein Teil der Arbeit ist möglicherweise erledigt. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
     "failedTitle": "Die letzte Ausführung ist fehlgeschlagen",
     "resume": "Fortsetzen",
     "runNow": "Jetzt ausführen",
     "reviewRun": "Ausführung prüfen",
-    "runAgain": "Erneut ausführen"
+    "runAgain": "Erneut ausführen",
+    "openSettings": "Einstellungen öffnen"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -652,7 +656,8 @@
       "running": "Läuft",
       "success": "Erfolgreich",
       "failed": "Fehlgeschlagen",
-      "cancelled": "Gestoppt"
+      "cancelled": "Gestoppt",
+      "stoppedAtLimit": "An Limit gestoppt"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Läuft gerade",

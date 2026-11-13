@@ -543,6 +543,7 @@
     "missed": "未実行",
     "lastFailed": "前回失敗",
     "lastRunFailed": "前回の実行に失敗",
+    "stoppedAtLimit": "上限で停止",
     "done": "完了",
     "active": "有効"
   },
@@ -572,11 +573,14 @@
     "autoPausedNote": "「再開」を押すとスケジュールが再び有効になり、保留中の実行が行われる場合があります。「今すぐ実行」を押すと、今すぐ1回だけ実行します。",
     "partialTitle": "前回の実行は途中で停止しました",
     "partialNote": "一部の操作は完了している可能性があります。再実行する前に実行内容を確認してください。",
+    "limitTitle": "前回の実行は上限に達して停止しました",
+    "limitNote": "作業の一部は完了している可能性があります。再実行する前に実行内容を確認してください。",
     "failedTitle": "前回の実行に失敗しました",
     "resume": "再開",
     "runNow": "今すぐ実行",
     "reviewRun": "実行を確認",
-    "runAgain": "再実行"
+    "runAgain": "再実行",
+    "openSettings": "設定を開く"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -652,7 +656,8 @@
       "running": "実行中",
       "success": "成功",
       "failed": "失敗",
-      "cancelled": "停止"
+      "cancelled": "停止",
+      "stoppedAtLimit": "上限で停止"
     },
     "sentence": "{when}（{zone}）",
     "runningNow": "現在実行中",
