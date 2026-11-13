@@ -304,6 +304,22 @@ async function startFixtureServer(): Promise<void> {
           + '<button id="pay" style="top:0">Pay</button><button id="delete" style="top:60px">Delete account</button>'
           + `<iframe src="${origin.replace('127.0.0.1', 'localhost')}/fields" style="position:absolute;left:0;top:120px;width:400px;height:200px;border:0"></iframe>`);
     }
+    if (url.pathname === '/nested-focus') {
+      /* Another site's frame that embeds two frames of yet another site,
+         each a text field: this browser reads neither of those two. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Nested focus</title><style>body{margin:0}</style>'
+          + `<iframe src="${origin.replace('127.0.0.1', 'localhost')}/two-fields" style="position:absolute;left:0;top:0;width:500px;height:300px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/two-fields') {
+      const field = `<iframe src="${origin}/one-field" style="display:block;width:400px;height:100px;border:0"></iframe>`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Two fields</title><style>body{margin:0}</style>${field}${field}`);
+    }
+    if (url.pathname === '/one-field') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>One field</title><style>body{margin:0}</style><input id="u" aria-label="Field" style="width:300px;height:40px">');
+    }
     if (url.pathname === '/in-button') {
       /* A text field inside a "Delete account" button, and one inside a
          div with role button whose Space key clicks it; either click marks
@@ -976,6 +992,31 @@ test("names the node the focus rests on in a page read: the same token while it 
   const onPassword: string = (await page()).focus;
   expect([shown, approved, inFrame]).not.toContain(onPassword);
   expect(onPassword).toEqual(expect.any(String));
+});
+
+/* Runs `code` in the first child frame of the page at `route`, in that
+   frame's own world, as the frame's own script would. */
+async function inChildFrame(route: string, code: string): Promise<unknown> {
+  return app.evaluate(({ webContents }, { at, script }) => webContents.getAllWebContents().find((contents) => contents.getURL() === at)?.mainFrame.frames[0]?.executeJavaScript(script), { at: `${origin}${route}`, script: code });
+}
+
+test("names the frame element the focus rests in where this browser can't read that frame, so a focus that moves from one such frame to another while a card waits changes the token", async () => {
+  await openAt('/nested-focus');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  await expect.poll(() => inChildFrame('/nested-focus', 'frames.length'), { timeout: 10_000 }).toBe(2);
+  // Into the field of the first of the two frames inside another site's frame.
+  const clicked = await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true });
+  expect(clicked.status, clicked.body.toString()).toBe(200);
+  expect(await inChildFrame('/nested-focus', 'document.activeElement === document.querySelectorAll("iframe")[0]')).toBe(true);
+  const first: string = (await page()).focus;
+  expect(first).toEqual(expect.any(String));
+  expect((await page()).focus, 'the focus stays').toBe(first);
+  // While the card waits, the page moves the focus into the second one.
+  await inChildFrame('/nested-focus', 'document.querySelectorAll("iframe")[1].focus()');
+  expect(await inChildFrame('/nested-focus', 'document.activeElement === document.querySelectorAll("iframe")[1]')).toBe(true);
+  const second: string = (await page()).focus;
+  expect(second).toEqual(expect.any(String));
+  expect(second).not.toBe(first);
 });
 
 test('types spaces into a field inside a button, or a div whose Space key clicks it, by number and focused, and clicks neither', async () => {

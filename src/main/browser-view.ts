@@ -385,9 +385,10 @@ export class ElectronTab implements TabView {
   }
 
   /* page.json's `focus`, read through the debugger for this read only
-     (FrameReads.focusToken), or null when nothing has the focus, the
+     (FrameReads.focusToken, which names a frame's element when the focus is
+     inside a frame it can't read), or null when nothing has the focus, the
      debugger can't be had (something else holds it, or the person took
-     over and it was detached) or it can't say. */
+     over and it was detached) or the read fails or times out. */
   private focusToken(): Promise<string | null> {
     return withDebugger(this.contents.debugger, (session) => new FrameReads(session).focusToken()).catch(() => null);
   }

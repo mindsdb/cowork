@@ -271,10 +271,12 @@ export interface PageSnapshot {
       tree places). */
   frames: PageFrame[];
   /** An opaque token naming the node the focus rests on, the deepest one
-      through frames: equal tokens mean the same node. This host names it
-      by its frame and its backend node id (FrameReads.focusToken in
-      src/main/browser-frames.ts), and leaves it out while nothing has the
-      focus or the debugger can't read it. */
+      through frames this host can read, and that frame's element when the
+      focus is inside a frame it can't read: equal tokens mean the same
+      node. This host names it by its frame and its backend node id
+      (FrameReads.focusToken in src/main/browser-frames.ts), and leaves it
+      out only while nothing has the focus or it can't read the page at all
+      (the debugger is held elsewhere, or the read times out). */
   focus?: string;
 }
 

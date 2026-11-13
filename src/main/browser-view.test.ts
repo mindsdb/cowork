@@ -221,7 +221,7 @@ describe('ElectronTab', () => {
     expect(contents.world).toEqual([PAGE_WORLD_ID]);
   });
 
-  it("names the node the focus rests on in a page read by its frame and node, through another site's frame, the same token while it stays, and none while nothing has the focus or the debugger can't read it", async () => {
+  it("names the node the focus rests on in a page read by its frame and node, through another site's frame, a payment frame by its frame element, the same token while it stays, and none while nothing has the focus or something else holds the debugger", async () => {
     const { tab, contents } = setup();
     const page = contents.debugger.page;
     const withFocus = { focus: true };
@@ -237,12 +237,14 @@ describe('ElectronTab', () => {
     page.frames.push({ id: 'widget', url: 'https://other.test/w', parentId: MAIN_FRAME, remote: true, focused: 3 });
     page.focusedOwnerOf = 'widget';
     expect((await tab.read(100, withFocus)).focus).toBe('widget:3');
-    // A payment provider's frame opens no world, so the focus there can't be read.
+    // A payment provider's frame opens no world, so the token names its frame element in the page (node 9).
     page.frames.push({ id: 'pay', url: 'https://js.stripe.com/v3/elements-inner-card', parentId: MAIN_FRAME, remote: true, focused: 4 });
     page.focusedOwnerOf = 'pay';
-    expect(await tab.read(100, withFocus)).not.toHaveProperty('focus');
+    page.frames[0].focused = 9;
+    expect((await tab.read(100, withFocus)).focus).toBe(`${MAIN_FRAME}:9`);
     // Something else holds the debugger: the read answers, with no focus.
     page.focusedOwnerOf = null;
+    page.frames[0].focused = 8;
     contents.debugger.attach();
     const held = await tab.read(100, withFocus);
     expect(held).toMatchObject({ url: 'https://a.test/', challenges: [] });

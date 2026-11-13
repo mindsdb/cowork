@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { fakeCdpDebugger, MAIN_FRAME, sentOf } from '../../tests/browser-fake-cdp';
-import { type DebuggerSession, FrameReads, withDebugger } from './browser-frames';
+import { type FakeCdpDebugger, fakeCdpDebugger, MAIN_FRAME, sentOf } from '../../tests/browser-fake-cdp';
+import { type DebuggerSession, FRAME_READ_MS, FrameReads, withDebugger } from './browser-frames';
 
 const STRIPE = { id: 'card', url: 'https://js.stripe.com/v3/elements-inner-card', parentId: MAIN_FRAME, remote: true };
 const WIDGET = { id: 'widget', url: 'https://login.other.test/embed', parentId: MAIN_FRAME, remote: true };
@@ -182,5 +182,64 @@ describe('FrameReads.frameMasks', () => {
     const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
     expect(masks).toEqual([box(-2, -2, 204, 104), box(150, 280, 50, 20), box(0, 200, 20, 40)]);
     expect(sentOf(dbg, 'Page.createIsolatedWorld').map(({ params }) => params.frameId)).toEqual(['widget']);
+  });
+});
+
+describe('FrameReads.focusToken', () => {
+  const token = (dbg: FakeCdpDebugger) => withDebugger(dbg, (session) => new FrameReads(session).focusToken());
+  /* The page's world sees the focus rest on a frame element it can't read into. */
+  const onFrame = { secret: false, otherSite: true, sealed: false };
+
+  it("names the element of a payment provider's frame the focus rests in, which no world opens in, so a focus that moves from one such frame to another while a card waits changes the token", async () => {
+    // The card number's frame and the security code's, each its own frame element in the page (nodes 21 and 22).
+    const dbg = fakeCdpDebugger({
+      main: { focus: onFrame, focused: 21 },
+      frames: [{ ...STRIPE, id: 'number' }, { ...STRIPE, id: 'cvc', url: 'https://js.stripe.com/v3/elements-inner-cvc' }],
+      focusedOwnerOf: 'number',
+    });
+    const first = await token(dbg);
+    expect(first).toBe(`${MAIN_FRAME}:21`);
+    expect(await token(dbg), 'the focus stays').toBe(first);
+    dbg.page.frames[0].focused = 22;
+    dbg.page.focusedOwnerOf = 'cvc';
+    expect(await token(dbg)).toBe(`${MAIN_FRAME}:22`);
+    expect(sentOf(dbg, 'Page.createIsolatedWorld').map(({ params }) => params.frameId)).toEqual([MAIN_FRAME, MAIN_FRAME, MAIN_FRAME]);
+  });
+
+  it("names the element of a frame of yet another site inside another site's frame, read in that frame's own world, so a focus that moves from one such frame to another changes the token", async () => {
+    const dbg = fakeCdpDebugger({
+      main: { focus: onFrame },
+      // The widget's own world sees the focus rest on one of its frame elements (nodes 31 and 32).
+      frames: [
+        { ...WIDGET, focus: onFrame, focused: 31 },
+        { id: 'inner-a', url: 'https://a.test/fields', parentId: 'widget', remote: true, focused: 5 },
+        { id: 'inner-b', url: 'https://a.test/fields', parentId: 'widget', remote: true, focused: 5 },
+      ],
+      focusedOwnerOf: 'widget',
+    });
+    expect(await token(dbg)).toBe('widget:31');
+    dbg.page.frames[1].focused = 32;
+    expect(await token(dbg)).toBe('widget:32');
+    expect(sentOf(dbg, 'Page.createIsolatedWorld').map(({ params }) => params.frameId)).not.toContain('inner-a');
+  });
+
+  it('names the frame element the focus rests on when the debugger names no frame of it, or the frame went before its world opened', async () => {
+    const noFrame = fakeCdpDebugger({ main: { focus: onFrame, focused: 41 }, frames: [WIDGET], focusedOwnerOf: null });
+    expect(await token(noFrame)).toBe(`${MAIN_FRAME}:41`);
+    const gone = fakeCdpDebugger({ main: { focus: onFrame, focused: 42 }, frames: [WIDGET], focusedOwnerOf: 'gone' });
+    expect(await token(gone)).toBe(`${MAIN_FRAME}:42`);
+  });
+
+  it('names the deepest node it reaches when the focus sits past the closed shadow roots it follows', async () => {
+    const sealed = { secret: false, otherSite: false, sealed: true };
+    const dbg = fakeCdpDebugger({ main: { focus: sealed, closedRoots: Array.from({ length: 12 }, () => sealed), focused: 51 } });
+    expect(await token(dbg)).toBe(`${MAIN_FRAME}:51`);
+    expect(sentOf(dbg, 'DOM.resolveNode').length).toBeGreaterThan(1);
+  });
+
+  it(`leaves the focus out while nothing has it, and when the read takes longer than ${FRAME_READ_MS} ms`, async () => {
+    expect(await token(fakeCdpDebugger())).toBeNull();
+    const hung = fakeCdpDebugger({ main: { focus: onFrame, focused: 61 }, frames: [{ ...WIDGET, hangs: true }], focusedOwnerOf: 'widget' });
+    expect(await token(hung)).toBeNull();
   });
 });

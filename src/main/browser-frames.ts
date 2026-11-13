@@ -23,7 +23,8 @@
  * sendCommand takes its id. `focusedField` follows the focus the same way
  * for a type with focused true, and names the text entry it rests on by its
  * frame and DOM.describeNode's backend node id; `focusToken` names any node
- * it rests on so, for a page read's `focus`.
+ * it rests on so, for a page read's `focus`, and the frame element where the
+ * focus goes on into a frame it can't read.
  *
  * `frameMasks`: the secret fields a screenshot blacks out inside the frames
  * below the main one, each read in its frame's own world, as the web pod's
@@ -583,21 +584,26 @@ export class FrameReads {
 
   /**
    * page.json's `focus`: an opaque token naming the node the focus rests on,
-   * the deepest one through frames, followed as `focusedSecret` follows it
-   * (through same-origin frames in the world, closed shadow roots and a
-   * frame of another site), as the frame whose world reads it and
-   * DOM.describeNode's backend node id, which stays the same while the node
-   * does ("frame:node"). Null while nothing has the focus, and where it
-   * can't be read: a payment provider's frame (no world opens there), a
-   * frame of yet another site inside another site's, a frame with no owner
-   * the debugger can name, a focus past CLOSED_ROOTS_DEEP closed roots, and
-   * a read that fails or takes longer than FRAME_READ_MS.
+   * the deepest one through frames that this browser can read, followed as
+   * `focusedSecret` follows it (through same-origin frames in the world,
+   * closed shadow roots and a frame of another site), as the frame whose
+   * world reads it and DOM.describeNode's backend node id, which stays the
+   * same while the node does ("frame:node"). Where the focus goes on into a
+   * frame this browser can't read, it names that frame's element, so a focus
+   * that moves from one such frame to another changes the token: a payment
+   * provider's frame (no world opens there), a frame of yet another site
+   * inside another site's, a frame the debugger names no frame of, and a
+   * frame whose read fails. Past CLOSED_ROOTS_DEEP closed roots it names the
+   * deepest node it reached. Null while nothing has the focus, and when the
+   * page can't be read at all: a read that fails before it reaches the focus
+   * or takes longer than FRAME_READ_MS.
    */
   async focusToken(): Promise<string | null> {
-    const read = async () => this.followFocus<string | null>(await this.session.mainFrame(), true, null, async (_focus, frameId, from) => {
+    const named = async (frameId: string, from: string | null): Promise<string | null> => {
       const node = await this.session.nodeOf(frameId, { kind: 'focusedNode' }, from);
       return node === null ? null : `${frameId}:${node}`;
-    });
+    };
+    const read = async () => this.followFocus<string | null>(await this.session.mainFrame(), true, null, (_focus, frameId, from) => named(frameId, from), named);
     return withTimeout(read(), FRAME_READ_MS).catch(() => null);
   }
 
@@ -605,15 +611,18 @@ export class FrameReads {
      main frame, whose focus may go on into a frame of another site) through
      closed shadow roots and into a frame of another site, and answers what
      `at` makes of the world's read where it rests (its frame, and the closed
-     root it is read from, null for the document). It answers `unread` where
-     it can't follow: a frame of yet another site inside another site's, a
-     frame owner the debugger names no frame of, or more than
-     CLOSED_ROOTS_DEEP closed roots. */
+     root it is read from, null for the document). Where it can't follow, it
+     answers what `stop` makes of the world's read where it stopped, and
+     `unread` when no `stop` is given: at a frame of yet another site inside
+     another site's, a frame owner the debugger names no frame of, a frame
+     whose read fails (a payment provider's frame, where no world opens,
+     among them), and past CLOSED_ROOTS_DEEP closed roots. */
   private async followFocus<T>(
     frameId: string,
     top: boolean,
     unread: T,
     at: (focus: FocusedSecret, frameId: string, from: string | null) => Promise<T>,
+    stop: (frameId: string, from: string | null) => Promise<T> = async () => unread,
   ): Promise<T> {
     let from: string | null = null;
     try {
@@ -621,11 +630,11 @@ export class FrameReads {
         const focus: FocusedSecret = await this.session.read<FocusedSecret>(frameId, { kind: 'focusedSecret' }, from);
         if (focus.secret) return await at(focus, frameId, from);
         if (focus.otherSite) {
-          if (!top) return unread;
+          if (!top) return await stop(frameId, from);
           const inner = await this.session.frameOf(frameId, { kind: 'focusedFrame' }, from);
-          if (!inner) return unread;
+          if (!inner) return await stop(frameId, from);
           await this.session.attachFrames();
-          return await this.followFocus(inner, false, unread, at);
+          return await this.followFocus(inner, false, unread, at, stop).catch(() => stop(frameId, from));
         }
         if (!focus.sealed) return await at(focus, frameId, from);
         const root: string | null = await this.session.closedRootOf(frameId, { kind: 'focusedElement' }, from);
@@ -633,7 +642,7 @@ export class FrameReads {
         if (from !== null) await this.session.release(frameId, from);
         from = root;
       }
-      return unread;
+      return await stop(frameId, from);
     } finally {
       if (from !== null) await this.session.release(frameId, from);
     }
