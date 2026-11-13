@@ -168,11 +168,50 @@
       "label": "Rótulo",
       "trigger": "Ativação",
       "project": "Projeto",
-      "instructions": "Instruções"
+      "instructions": "Instruções",
+      "capabilities": "Pode usar"
     },
     "patternPlaceholder": "padrão regex",
     "instructionsPlaceholder": "persona / tom para este chat",
     "save": "Salvar",
-    "removeRoute": "Remover rota"
+    "removeRoute": "Remover rota",
+    "switch": {
+      "allow_scratchpad": "Código e arquivos",
+      "allow_connectors": "Conexões",
+      "allow_memory_writes": "Gravar na memória",
+      "allow_file_replies": "Devolver arquivos"
+    },
+    "scratchpadWarning": "Assim os pedidos dessa pessoa podem ler e alterar os arquivos deste projeto, incluindo a memória e as configurações de conexão.",
+    "connectorsNeedScratchpad": "Requer código e arquivos",
+    "switchesAdminOnly": "Um administrador da organização altera isto."
+  },
+  "channelSenders": {
+    "title": "Pessoas",
+    "intro": "Só as pessoas que você aprovar podem falar com o agente por este bot. Uma mensagem de qualquer outra pessoa não inicia nada e aparece aqui. Confira o ID, não só o nome: qualquer pessoa pode escolher qualquer nome.",
+    "loading": "Carregando pessoas…",
+    "loadFailed": "Não foi possível carregar as pessoas deste canal",
+    "actionFailed": "Não deu certo. Tente de novo.",
+    "adminOnly": "Um administrador da organização decide quem pode usar este bot.",
+    "section": {
+      "pending": "Aguardando aprovação ({count})",
+      "allowed": "Permitidas ({count})",
+      "blocked": "Bloqueadas ({count})"
+    },
+    "noPending": "Ninguém está aguardando.",
+    "senderIdLabel": "ID do remetente na plataforma",
+    "chatIdLabel": "ID do chat em grupo",
+    "group": "grupo",
+    "approve": "Aprovar",
+    "block": "Bloquear",
+    "remove": "Remover",
+    "pendingCount": "{count, plural, one {# pessoa aguardando} other {# pessoas aguardando}}",
+    "pairing": {
+      "create": "Criar um código de pareamento",
+      "codeLabel": "Código de pareamento",
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "howTo": "Dê este código a uma só pessoa. Ela o envia ao bot pela própria conta antes das {time} e passa a ter acesso. Funciona uma vez.",
+      "tooMany": "Este canal já tem o máximo de códigos não usados. Aguarde um expirar."
+    }
   }
 }
