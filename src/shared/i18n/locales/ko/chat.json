@@ -295,7 +295,13 @@
     "skipped": "건너뛰었습니다.",
     "timedOut": "답변 없음 — 시간이 초과되었습니다.",
     "answered": "답변:",
-    "noLongerActive": "더 이상 유효하지 않은 질문입니다."
+    "noLongerActive": "더 이상 유효하지 않은 질문입니다.",
+    "browserStep": {
+      "title": "이 브라우저 단계를 승인하시겠습니까?",
+      "intro": "구매, 전송, 삭제 또는 제출을 할 수 있으며, 승인한 경우에만 실행됩니다.",
+      "approved": "브라우저 작업 승인됨",
+      "cancelled": "브라우저 작업 취소됨"
+    }
   },
   "codingTerminal": {
     "unavailable": "이 빌드에서는 내장 터미널을 사용할 수 없습니다.",

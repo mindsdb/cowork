@@ -295,7 +295,13 @@
     "skipped": "已跳过。",
     "timedOut": "未回答：已超时。",
     "answered": "已回答：",
-    "noLongerActive": "此问题已失效。"
+    "noLongerActive": "此问题已失效。",
+    "browserStep": {
+      "title": "要批准这个浏览器步骤吗？",
+      "intro": "它可能会购买、发送、删除或提交内容，只有在你批准后才会执行。",
+      "approved": "已批准浏览器操作",
+      "cancelled": "已取消浏览器操作"
+    }
   },
   "codingTerminal": {
     "unavailable": "此版本不支持内置终端。",
