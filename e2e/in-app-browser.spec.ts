@@ -812,7 +812,7 @@ test('lists a transparent frame laid over a control, with its box, unread', asyn
   await openAt('/clear-frame');
   const other = origin.replace('127.0.0.1', 'localhost');
   await expect.poll(async () => (await page()).frames, { timeout: 10_000 }).toEqual([
-    { url: `${other}/buy`, read: false, box: { x: 0, y: 0, width: 300, height: 100 } },
+    { url: `${other}/buy`, read: false, box: { x: 0, y: 0, width: 300, height: 100 }, at: { x: 0, y: 0 } },
   ]);
 });
 
