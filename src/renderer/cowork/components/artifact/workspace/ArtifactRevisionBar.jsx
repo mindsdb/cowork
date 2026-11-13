@@ -16,6 +16,8 @@ export function ArtifactRevisionBar({
   onSave,
   onDiscard,
   onCompare,
+  // The viewer's layer toggles (ENG-4227), in the centre of the line.
+  layerControls = null,
 }) {
   const { t } = useTranslation('artifacts');
   const statusCopy = status === 'saving'
@@ -30,12 +32,15 @@ export function ArtifactRevisionBar({
   const visibleStatus = canEdit ? statusCopy : t('revisionBar.viewOnly');
 
   return (
-    <div className="artifact-revision-bar">
+    // Centred like the top line (1fr auto 1fr): the revision on the left, the
+    // layer toggles in the centre, History and saving on the right.
+    <div className="artifact-revision-bar is-centered">
       <div className="artifact-revision-identity">
         <span className="artifact-draft-dot" aria-hidden="true" />
         <strong>{revisionLabel(revision)}</strong>
         <span className={`artifact-save-state is-${status}`}>{visibleStatus}</span>
       </div>
+      <div className="artifact-revision-center">{layerControls}</div>
       <div className="artifact-revision-actions">
         {revisions.length > 1 && (
           <label className="artifact-history-picker">

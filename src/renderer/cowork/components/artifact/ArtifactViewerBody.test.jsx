@@ -287,10 +287,11 @@ describe('ArtifactViewerBody stats panel', () => {
   it('keeps the text selection composer away from the Stats panel', () => {
     const selection = { quote: 'Deck', start: 0, end: 4 };
     const stats = { open: false, controller, accessMode: 'public', accessLoaded: true, onClose: vi.fn() };
-    const { rerender } = render(renderBody('review', {}, {}, stats, { textSelection: selection }));
+    // The composer belongs to Comments being on.
+    const { rerender } = render(renderBody('review', {}, {}, stats, { textSelection: selection, open: true }));
     expect(screen.getByTestId('text-selection-comment')).toBeInTheDocument();
 
-    rerender(renderBody('review', {}, {}, { ...stats, open: true }, { textSelection: selection }));
+    rerender(renderBody('review', {}, {}, { ...stats, open: true }, { textSelection: selection, open: true }));
     expect(screen.getByTestId('stats-panel')).toBeInTheDocument();
     expect(screen.queryByTestId('text-selection-comment')).toBeNull();
   });
