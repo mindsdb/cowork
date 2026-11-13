@@ -73,6 +73,7 @@
 
 import {
   CARD_FIELD_ATTRIBUTES,
+  CARD_FIELD_EXEMPT,
   CARD_FIELD_NAME,
   CARD_FIELD_WORD_BREAKS,
   type Challenge,
@@ -188,18 +189,20 @@ export interface FrameReadRules {
 }
 
 /** The card-field rule as the page's world reads it: CARD_FIELD_NAME's
-    source, which it reads ignoring case, CARD_FIELD_WORD_BREAKS' sources,
-    which it reads case-sensitive, and CARD_FIELD_ATTRIBUTES. The world's
-    state carries it (PageWorldState), since the world takes nothing from
-    this module. */
+    and CARD_FIELD_EXEMPT's sources, which it reads ignoring case,
+    CARD_FIELD_WORD_BREAKS' sources, which it reads case-sensitive, and
+    CARD_FIELD_ATTRIBUTES. The world's state carries it (PageWorldState),
+    since the world takes nothing from this module. */
 export interface CardFieldRule {
   name: string;
+  exempt: string;
   wordBreaks: readonly string[];
   attributes: readonly string[];
 }
 
 export const CARD_FIELD_RULE: CardFieldRule = {
   name: CARD_FIELD_NAME.source,
+  exempt: CARD_FIELD_EXEMPT.source,
   wordBreaks: CARD_FIELD_WORD_BREAKS.map((wordBreak) => wordBreak.source),
   attributes: CARD_FIELD_ATTRIBUTES,
 };
@@ -494,17 +497,22 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   };
   /* An input, a textarea, a select or an editor by its attribute. */
   const isField = (el: Element): boolean => ['input', 'textarea', 'select'].includes(tagOf(el)) || editable(el);
-  /* Whether the page names `el` for a card by the one card-field rule
-     page.json pins for both hosts (world.cardField, CARD_FIELD_RULE): its
-     name, ignoring case, matches the values of its attributes joined in
-     that order with a space, a missing one as empty, or that joined value
-     split into words, each word break applied in order, case-sensitive,
-     replacing every match with its first group and a space. */
+  /* Whether the page names `el` for a payment card by the one card-field
+     rule page.json pins for both hosts (world.cardField, CARD_FIELD_RULE).
+     Its two name forms are the values of its attributes joined in that
+     order with a space, a missing one as empty, and that joined value split
+     into words, each word break applied in order, case-sensitive, replacing
+     every match with its first group and a space. In each form every match
+     of the exempt pattern (another card's number, such as a gift card's),
+     ignoring case, becomes a space, and the name pattern, ignoring case,
+     tests what is left of either form. */
   const CARD_NAME = new RegExp(world.cardField.name, 'i');
+  const CARD_EXEMPT = new RegExp(world.cardField.exempt, 'gi');
   const CARD_WORD_BREAKS = world.cardField.wordBreaks.map((source) => new RegExp(source, 'g'));
   const cardNamed = (el: Element): boolean => {
     const joined = world.cardField.attributes.map((attr) => el.getAttribute(attr) || '').join(' ');
-    return CARD_NAME.test(joined) || CARD_NAME.test(CARD_WORD_BREAKS.reduce((text, wordBreak) => text.replace(wordBreak, '$1 '), joined));
+    const split = CARD_WORD_BREAKS.reduce((text, wordBreak) => text.replace(wordBreak, '$1 '), joined);
+    return [joined, split].some((form) => CARD_NAME.test(form.replace(CARD_EXEMPT, ' ')));
   };
   /* A secret field: a password field, one whose autocomplete names a
      password, a one-time code or a card, a field the page names for a card

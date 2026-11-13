@@ -123,20 +123,28 @@ export const SIGN_IN_FRAME_HOSTS: readonly string[] = [
   'accounts.google.com', 'appleid.apple.com', 'login.microsoftonline.com', 'login.live.com', 'facebook.com',
 ];
 
-/** The one rule both hosts hold for a field a page names for a card, as
-    page.json's `limits` pins it (`card_field_name`, `card_field_word_breaks`,
-    `card_field_attributes`), which the pod host holds too: a field is
-    card-named when CARD_FIELD_NAME, ignoring case, matches the values of its
-    CARD_FIELD_ATTRIBUTES joined in that order with a space, a missing one as
-    empty, or that joined value's word-split form: each of
+/** The one rule both hosts hold for a field a page names for a payment
+    card, as page.json's `limits` pins it (`card_field_name`,
+    `card_field_exempt`, `card_field_word_breaks`, `card_field_attributes`),
+    which the pod host holds too. A field's two name forms are the values of
+    its CARD_FIELD_ATTRIBUTES joined in that order with a space, a missing
+    one as empty, and that joined value's word-split form: each of
     CARD_FIELD_WORD_BREAKS applied in order, case-sensitive, replacing every
     match with its first group and a space, so cardNumberInput reads as
-    "card Number Input" and CVVCode as "CVV Code". A card-named field is a
-    secret field: a read never carries its value, a screenshot blacks it out,
-    a type, a select or an editing key into it answers 403 password_field,
-    and a page read never reads a frame that holds one. The page's world
-    reads it (`cardNamed` and `isSecret` in src/main/browser-page-script.ts). */
+    "card Number Input" and CVVCode as "CVV Code". In each form every match
+    of CARD_FIELD_EXEMPT, ignoring case, is replaced with a space, and the
+    field is card-named when CARD_FIELD_NAME, ignoring case, matches what is
+    left of either form. CARD_FIELD_EXEMPT matches the number of a card that
+    isn't a payment card (a gift, loyalty, library or insurance card), so
+    giftCardNumber and "Library card number" are ordinary fields, while
+    giftCardCvv and a field named cardNumber with the label "Gift card
+    number" stay card-named. A card-named field is a secret field: a read
+    never carries its value, a screenshot blacks it out, a type, a select or
+    an editing key into it answers 403 password_field, and a page read never
+    reads a frame that holds one. The page's world reads it (`cardNamed` and
+    `isSecret` in src/main/browser-page-script.ts). */
 export const CARD_FIELD_NAME = /(^|[^a-z0-9]|card|cc)(cvc|cvv2?|csc)([^a-z0-9]|$)|card[\s._-]*(numbers?|num|no)(?![a-z])|(^|[^a-z0-9])cc[\s._-]*(numbers?|num)(?![a-z])|security[\s._-]*code/i;
+export const CARD_FIELD_EXEMPT = /(gift|loyalty|rewards?|library|members?(hip)?|insurance|health|medicare|medicaid|student|transit|benefits?|sim|national[\s._-]*id)[\s._-]*card[\s._-]*(numbers?|num|no)(?![a-z])/i;
 export const CARD_FIELD_WORD_BREAKS: readonly RegExp[] = [/([a-z0-9])(?=[A-Z])/g, /([A-Z])(?=[A-Z][a-z])/g];
 export const CARD_FIELD_ATTRIBUTES: readonly string[] = ['name', 'id', 'aria-label', 'placeholder'];
 

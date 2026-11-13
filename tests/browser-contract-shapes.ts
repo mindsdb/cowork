@@ -94,7 +94,14 @@ const frameElementShape = shape(
 
 const frameShape = shape(
   { url: str, read: bool, box: nullable(shape({ x: int, y: int, width: int, height: int })) },
-  { offscreen: bool, elements: list(frameElementShape), text: str, truncated: bool },
+  {
+    offscreen: bool,
+    // The frame element's top-left in its document's content coordinates, in CSS pixels: no scroll changes it.
+    at: shape({ x: int, y: int }),
+    elements: list(frameElementShape),
+    text: str,
+    truncated: bool,
+  },
 );
 
 /* Both hosts send `frames` on every page, so its check is required here;

@@ -252,11 +252,13 @@ async function startFixtureServer(): Promise<void> {
     }
     if (url.pathname === '/card-names') {
       /* Fields only their attributes name: a card's security code by its
-         name, a card's number by its id and its label together, and notes
-         whose name starts like a card's number. */
+         name, a card's number by its id and its label together, notes
+         whose name starts like a card's number, a gift card's number by its
+         name, and a card's number by its name under a gift card's label. */
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Card names</title><style>input{display:block;width:300px;height:40px;margin:10px 0}</style>'
-          + '<label>Security digits <input name="card_cvc"></label><input id="card" aria-label="Number"><label>Notes <input name="cardnotes"></label>');
+          + '<label>Security digits <input name="card_cvc"></label><input id="card" aria-label="Number"><label>Notes <input name="cardnotes"></label>'
+          + '<label>Gift card <input name="giftCardNumber"></label><input name="cardNumber" aria-label="Gift card number">');
     }
     if (url.pathname === '/card-named') {
       /* A checkout form whose card field only its name and label name, with
@@ -870,10 +872,10 @@ async function fieldValue(route: string, selector: string): Promise<string> {
     .find((contents) => contents.getURL() === at)?.executeJavaScript(`document.querySelector(${JSON.stringify(field)}).value`), { at: `${origin}${route}`, field: selector }));
 }
 
-test("refuses a focused type into a field page.json's one card-field rule names for a card, by one attribute or two together, and types into one it names for none", async () => {
+test("refuses a focused type into a field page.json's one card-field rule names for a card, by one attribute or two together, and types into one it names for none, a gift card's number included", async () => {
   await openAt('/card-names');
   const typeFocused = (text: string) => act({ action: 'type', focused: true, text, submit: false });
-  for (const [name, selector] of [['Security digits', '[name=card_cvc]'], ['Number', '#card']]) {
+  for (const [name, selector] of [['Security digits', '[name=card_cvc]'], ['Number', '#card'], ['Gift card number', '[name=cardNumber]']]) {
     expect((await act({ action: 'click', element: await element(name) })).status).toBe(200);
     const refused = await typeFocused('123');
     expect(refused.status, `${name}: ${refused.body.toString()}`).toBe(403);
@@ -884,6 +886,13 @@ test("refuses a focused type into a field page.json's one card-field rule names 
   const typed = await typeFocused('gift wrap');
   expect(typed.status, typed.body.toString()).toBe(200);
   expect(await fieldValue('/card-names', '[name=cardnotes]')).toBe('gift wrap');
+  // A gift card's number is no payment card's: typed by number, and read back.
+  const gift = await act({ action: 'type', element: await element('Gift card'), text: '6006 1234', submit: false });
+  expect(gift.status, gift.body.toString()).toBe(200);
+  expect(await fieldValue('/card-names', '[name=giftCardNumber]')).toBe('6006 1234');
+  const byName = Object.fromEntries((await page()).elements.map((e: { name: string }) => [e.name, e]));
+  expect(byName['Gift card']).toMatchObject({ role: 'textbox', value: '6006 1234' });
+  expect(byName['Gift card number']).toMatchObject({ role: 'textbox', value_hidden: true });
 });
 
 test("treats a field page.json's card-field rule names for a card as a secret field: no value in a read, blacked out in a screenshot, in another site's frame too, and no type, select or editing key into it", async () => {

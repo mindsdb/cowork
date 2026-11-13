@@ -1486,11 +1486,11 @@ describe('frames', () => {
     fields.forEach(({ attributes }, i) => {
       const field = frameDoc(`card-${i}`).getElementById('field')!;
       for (const [attr, value] of Object.entries(attributes)) field.setAttribute(attr, value);
-      // Four frames to a row, each 240 by 36, all in view.
-      place(document.getElementById(`card-${i}`)!, (i % 4) * 250, Math.floor(i / 4) * 38, 240, 36);
+      // Eight frames to a row, each 120 by 36, all in view.
+      place(document.getElementById(`card-${i}`)!, (i % 8) * 125, Math.floor(i / 8) * 38, 120, 36);
     });
     expect([window.innerWidth, window.innerHeight]).toEqual([1024, 768]);
-    expect(Math.ceil(fields.length / 4) * 38).toBeLessThan(768);
+    expect(Math.ceil(fields.length / 8) * 38).toBeLessThan(768);
     const page = snapshot(freshWorld());
     expect(page.frames).toHaveLength(fields.length);
     const wrong = fields
