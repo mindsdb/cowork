@@ -1037,16 +1037,16 @@
       "title": "Examiner et expliquer sans modifier les fichiers."
     },
     "supervised": {
-      "label": "Demander d’abord",
-      "title": "S’arrêter avant les commandes qui nécessitent votre approbation."
+      "label": "Demander l’approbation",
+      "title": "Toujours demander avant de modifier des fichiers hors de la tâche ou d’utiliser Internet."
     },
     "workspace": {
-      "label": "Auto dans l’espace de travail",
-      "title": "Travailler en autonomie dans la copie isolée de cette tâche."
+      "label": "Approuver pour moi",
+      "title": "Un réviseur approuve les demandes courantes et bloque celles qui sont risquées."
     },
     "fullAccess": {
       "label": "Accès complet",
-      "title": "Travailler en autonomie sans restriction d’accès aux fichiers."
+      "title": "Accès sans restriction à Internet et à tous les fichiers de votre ordinateur."
     }
   },
   "branchSelect": {

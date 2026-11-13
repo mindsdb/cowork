@@ -1037,16 +1037,16 @@
       "title": "Untersuchen und erklären, ohne Dateien zu ändern."
     },
     "supervised": {
-      "label": "Erst fragen",
-      "title": "Vor Befehlen pausieren, die Ihre Genehmigung erfordern."
+      "label": "Genehmigung anfragen",
+      "title": "Immer fragen, bevor Dateien außerhalb der Aufgabe bearbeitet werden oder das Internet genutzt wird."
     },
     "workspace": {
-      "label": "Arbeitsbereich automatisch",
-      "title": "Selbstständig in der isolierten Kopie dieser Aufgabe arbeiten."
+      "label": "Für mich genehmigen",
+      "title": "Ein Prüfer genehmigt Routineanfragen und blockiert riskante."
     },
     "fullAccess": {
       "label": "Vollzugriff",
-      "title": "Selbstständig ohne Dateisystem-Einschränkungen arbeiten."
+      "title": "Uneingeschränkter Zugriff auf das Internet und alle Dateien auf Ihrem Computer."
     }
   },
   "branchSelect": {

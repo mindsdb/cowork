@@ -1037,16 +1037,16 @@
       "title": "Inspecionar e explicar sem alterar arquivos."
     },
     "supervised": {
-      "label": "Perguntar antes",
-      "title": "Pausar antes de comandos que precisam da sua aprovação."
+      "label": "Pedir aprovação",
+      "title": "Perguntar sempre antes de editar arquivos fora da tarefa ou usar a internet."
     },
     "workspace": {
-      "label": "Auto no espaço de trabalho",
-      "title": "Trabalhar de forma autônoma dentro da cópia isolada desta tarefa."
+      "label": "Aprovar por mim",
+      "title": "Um revisor aprova os pedidos de rotina e bloqueia os arriscados."
     },
     "fullAccess": {
       "label": "Acesso total",
-      "title": "Trabalhar de forma autônoma sem restrições do sistema de arquivos."
+      "title": "Acesso irrestrito à internet e a todos os arquivos do seu computador."
     }
   },
   "branchSelect": {

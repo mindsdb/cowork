@@ -24,11 +24,20 @@ function translatedOption(value: PermissionMode, key: string): PermissionOption 
   };
 }
 
-export const PERMISSION_OPTIONS: PermissionOption[] = PERMISSION_KEYS.map(([value, key]) => translatedOption(value, key));
+const PERMISSION_OPTIONS: PermissionOption[] = PERMISSION_KEYS.map(([value, key]) => translatedOption(value, key));
 
-/** A fresh copy with the labels in the current language (a new array, so pickers re-render on a switch). */
-export function permissionOptions(): PermissionOption[] {
-  return PERMISSION_OPTIONS.map((option) => ({ value: option.value, label: option.label, title: option.title }));
+/**
+ * The modes a picker offers, as a fresh copy with the labels in the current
+ * language (a new array, so pickers re-render on a switch).
+ *
+ * Read only is not offered for new work: Plan mode covers looking without
+ * changing. A project or task saved with it keeps it, so it stays in that
+ * picker until the person chooses something else.
+ */
+export function permissionOptions(current?: PermissionMode): PermissionOption[] {
+  return PERMISSION_OPTIONS
+    .filter((option) => option.value !== 'read_only' || current === 'read_only')
+    .map((option) => ({ value: option.value, label: option.label, title: option.title }));
 }
 
 export const PERMISSION_LABELS = Object.defineProperties(
