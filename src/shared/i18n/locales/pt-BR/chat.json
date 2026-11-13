@@ -624,5 +624,30 @@
     "closedTitle": "O navegador desta tarefa está fechado",
     "closedDescription": "{agent} o abre de novo quando precisar.",
     "squeezed": "Aumente a janela para ver a página"
+  },
+  "connectorDraft": {
+    "notSaved": "Modelo de conector · não salvo",
+    "kept": "Você já tem um conector com este id. Salvar de novo o substitui.",
+    "saved": "Salvo. Adicione suas credenciais em Conectar apps e dados.",
+    "savedConnect": "Salvo. Conecte-o para adicionar suas credenciais.",
+    "saveFailed": "Não foi possível salvar o conector.",
+    "button": {
+      "save": "Salvar conector",
+      "saveAgain": "Salvar de novo",
+      "saving": "Salvando…",
+      "done": "Salvo",
+      "connect": "Conectar"
+    },
+    "modal": {
+      "fieldsTitle": "O que você vai informar",
+      "usageTitle": "Como o Anton vai usar",
+      "helpUrl": "Onde encontrar: {url}"
+    },
+    "field": {
+      "secret": "secreto",
+      "required": "obrigatório",
+      "optional": "opcional",
+      "example": "Exemplo: {value}"
+    }
   }
 }
