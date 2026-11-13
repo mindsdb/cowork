@@ -108,6 +108,14 @@ describe('in a zone other than the device\'s', () => {
       .toEqual(['2026-11-01T08:30:00.000Z']);
   });
 
+  it.each([
+    ['daily', ['2027-03-14T10:30:00.000Z', '2027-03-15T10:30:00.000Z', '2027-03-16T10:30:00.000Z']],
+    ['weekly', ['2027-03-14T10:30:00.000Z', '2027-03-21T10:30:00.000Z', '2027-03-28T10:30:00.000Z']],
+  ])('advances %s previews from the resolved run after a DST gap', (cadence, expected) => {
+    expect(utc(nextRuns({ cadence, time: '02:30', weekday: 0 }, new Date('2027-03-13T12:00:00Z'), 3, LA)))
+      .toEqual(expected);
+  });
+
   it('reads a saved run back in the task\'s zone', () => {
     expect(whenFromDate('2026-10-19T16:00:00Z', 'weekly', LA)).toEqual({ cadence: 'weekly', time: '09:00', weekday: 1, date: '2026-10-19' });
     expect(defaultWhen(NOW, LA)).toMatchObject({ time: '04:00', date: '2026-10-14' });

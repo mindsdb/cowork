@@ -128,14 +128,24 @@ export function nextRuns(when, now = new Date(), count = 3, zone = deviceZone())
     }
     return runs;
   }
-  // Three weeks of days covers every cadence's next three runs.
-  for (let i = 0; i < 22 && runs.length < count; i += 1) {
+  // Find the first future run using the requested wall-clock time.
+  for (let i = 0; i < 22 && runs.length < Math.min(count, 1); i += 1) {
     const day = (today.wd + i) % 7;
     const fits = when.cadence === 'daily'
       || (when.cadence === 'weekdays' && day >= 1 && day <= 5)
       || (when.cadence === 'weekly' && day === Number(when.weekday));
     const at = fits && zonedDate({ ...today, d: today.d + i, h: t.h, mi: t.m }, tz);
     if (at && at.getTime() > after) runs.push(at);
+  }
+  // Like the server, advance from each resolved occurrence. A skipped
+  // 02:30 becomes 03:30, and subsequent runs keep that resolved time.
+  while (runs.length && runs.length < count) {
+    const previous = zoneParts(runs[runs.length - 1], tz);
+    let days = when.cadence === 'weekly' ? 7 : 1;
+    if (when.cadence === 'weekdays') {
+      while ([0, 6].includes((previous.wd + days) % 7)) days += 1;
+    }
+    runs.push(zonedDate({ ...previous, d: previous.d + days }, tz));
   }
   return runs;
 }
