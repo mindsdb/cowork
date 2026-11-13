@@ -606,6 +606,7 @@
     "atMinute": "分：",
     "at": "時刻：",
     "time": "時刻",
+    "timeZone": "タイムゾーン",
     "nextRuns": "{count, plural, other {次回の実行：{runs}}}",
     "timePassed": "その時刻はすでに過ぎています。",
     "name": "名前",

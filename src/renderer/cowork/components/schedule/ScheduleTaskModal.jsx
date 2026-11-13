@@ -15,7 +15,8 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea, Tooltip } from '../ui';
 import { missedRunLabel, missedRunText } from '../../lib/scheduleCopy';
 import {
-  INTERVAL_MINUTES, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, weekdayName, whenFromDate,
+  INTERVAL_MINUTES, defaultWhen, describeWhen, deviceZone, formatRun, nextRuns, timeZoneLabel, usableZone,
+  weekdayName, whenFromDate, zoneChoices,
 } from '../../lib/scheduleWhen';
 import Ico from '../Icons';
 import ModelSelect from '../ModelSelect.jsx';
@@ -105,14 +106,16 @@ export default function ScheduleTaskModal({
       // the form's Project select uses the project PATH as its value. Hydrate
       // by resolving the stored id back to a path via `projects` (ENG-1255).
       const match = task.projectId ? projects.find((p) => p.id === task.projectId) : null;
+      const timezone = usableZone(task.timezone);
       const at = task.nextRunAt && !Number.isNaN(new Date(task.nextRunAt).getTime())
-        ? whenFromDate(task.nextRunAt, task.cadence || 'daily')
-        : { ...defaultWhen(), cadence: task.cadence || 'daily' };
+        ? whenFromDate(task.nextRunAt, task.cadence || 'daily', timezone)
+        : { ...defaultWhen(new Date(), timezone), cadence: task.cadence || 'daily' };
       setForm({
         title:       task.title || '',
         prompt:      task.prompt || '',
         projectPath: match?.path || defaultProjectPath || NO_PROJECT,
         model:       task.model || DEFAULT_MODEL,
+        timezone,
         ...at,
       });
     } else {
@@ -121,8 +124,14 @@ export default function ScheduleTaskModal({
   }, [open, task?.id, defaultProjectPath, projects]);
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
+  // Switching zone keeps the clock time and day the user picked, so "9:00"
+  // stays 9:00 and only the zone it's read in changes.
+  const zoneOptions = useMemo(
+    () => zoneChoices(task?.timezone).map((z) => ({ value: z, label: timeZoneLabel(z) })),
+    [task?.timezone],
+  );
   const upcoming = useMemo(() => formRuns(form, task, new Date()), [form, task]);
-  const zone = timeZoneLabel();
+  const zone = timeZoneLabel(form.timezone);
   // The same models the chat composer offers. With platform UI off, the
   // operator's picker decides: off shows no field at all (the operator's
   // own models run), and otherwise only the models it offers.
@@ -170,7 +179,7 @@ export default function ScheduleTaskModal({
       title:        form.title.trim() || form.prompt.trim().slice(0, 80),
       prompt:       form.prompt,
       cadence:      form.cadence,
-      timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
+      timezone:     form.timezone,
       next_run_at:  first.toISOString(),
       project_id:   projectMatch?.id || null,
       // Sent even when it's the default, so an edit can clear a pin.
@@ -281,14 +290,25 @@ export default function ScheduleTaskModal({
                 onChange={(v) => update('time', v)}
                 style={{ ...fieldInput, width: 130 }}
               />
-              <span className="text-[12.5px] text-ink-3">{zone}</span>
+              {zoneOptions.length > 1 ? (
+                <Select
+                  value={form.timezone}
+                  onValueChange={(v) => v && update('timezone', v)}
+                  ariaLabel={t('scheduleTaskModal.timeZone')}
+                  width={180}
+                  style={fieldSelectStyle}
+                  options={zoneOptions}
+                />
+              ) : (
+                <span className="text-[12.5px] text-ink-3">{zone}</span>
+              )}
             </div>
             {/* The schedule read back, so what is saved is what was meant. */}
             <div className="flex flex-col gap-1 rounded-card-row bg-surface-2 px-3.5 py-3" aria-live="polite">
               <span className="text-sm font-semibold text-ink">{describeWhen(form)}, {zone}</span>
               <span className="text-[12.5px] text-ink-3">
                 {upcoming.length
-                  ? t('scheduleTaskModal.nextRuns', { count: upcoming.length, runs: upcoming.map((d) => formatRun(d)).join(' · ') })
+                  ? t('scheduleTaskModal.nextRuns', { count: upcoming.length, runs: upcoming.map((d) => formatRun(d, new Date(), form.timezone)).join(' · ') })
                   : t('scheduleTaskModal.timePassed')}
               </span>
             </div>
@@ -370,13 +390,14 @@ export default function ScheduleTaskModal({
 function formRuns(form, task, now) {
   const original = task?.nextRunAt ? new Date(task.nextRunAt) : null;
   if (original && original > now) {
-    const saved = whenFromDate(original, task.cadence || 'daily');
-    const unchanged = form.cadence === saved.cadence && form.time === saved.time
+    const saved = whenFromDate(original, task.cadence || 'daily', task.timezone);
+    const unchanged = form.timezone === usableZone(task.timezone)
+      && form.cadence === saved.cadence && form.time === saved.time
       && (form.cadence !== 'weekly' || Number(form.weekday) === saved.weekday)
       && (form.cadence !== 'once' || form.date === saved.date);
-    if (unchanged) return [original, ...nextRuns(form, original, 2)];
+    if (unchanged) return [original, ...nextRuns(form, original, 2, form.timezone)];
   }
-  return nextRuns(form, now, 3);
+  return nextRuns(form, now, 3, form.timezone);
 }
 
 function emptyForm({ defaultProjectPath }) {
@@ -385,6 +406,7 @@ function emptyForm({ defaultProjectPath }) {
     prompt: '',
     projectPath: defaultProjectPath || NO_PROJECT,
     model: DEFAULT_MODEL,
+    timezone: deviceZone(),
     ...defaultWhen(),
   };
 }

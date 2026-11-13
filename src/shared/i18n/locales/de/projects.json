@@ -606,6 +606,7 @@
     "atMinute": "zur Minute",
     "at": "um",
     "time": "Uhrzeit",
+    "timeZone": "Zeitzone",
     "nextRuns": "{count, plural, one {Nächste Ausführung: {runs}} other {Nächste Ausführungen: {runs}}}",
     "timePassed": "Dieser Zeitpunkt ist bereits vorbei.",
     "name": "Name",

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { defaultWhen, describeWhen, nextRuns, timeZoneLabel, whenFromDate } from './scheduleWhen';
+import {
+  defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, usableZone, whenFromDate, zoneChoices,
+} from './scheduleWhen';
 
 // Tests run with TZ=UTC (tests/ setup), so local and UTC agree.
 // Wednesday, Oct 14 2026, 10:30.
@@ -71,5 +73,59 @@ describe('timeZoneLabel', () => {
     ['UTC', 'UTC'],
   ])('%s', (zone, label) => {
     expect(timeZoneLabel(zone)).toBe(label);
+  });
+});
+
+describe('in a zone other than the device\'s', () => {
+  const LA = 'America/Los_Angeles';
+  const utc = (runs) => runs.map((d) => d.toISOString());
+
+  it('daily 9:00 in Los Angeles runs at 16:00 UTC (PDT)', () => {
+    expect(utc(nextRuns({ cadence: 'daily', time: '09:00' }, NOW, 2, LA)))
+      .toEqual(['2026-10-14T16:00:00.000Z', '2026-10-15T16:00:00.000Z']);
+  });
+
+  it('weekdays use the zone\'s calendar day, not UTC\'s', () => {
+    // 01:00 UTC on Sat 17 is still Fri 16 in Los Angeles.
+    const fridayEvening = new Date(Date.UTC(2026, 9, 17, 1, 0));
+    expect(utc(nextRuns({ cadence: 'weekdays', time: '19:00' }, fridayEvening, 2, LA)))
+      .toEqual(['2026-10-17T02:00:00.000Z', '2026-10-20T02:00:00.000Z']);
+  });
+
+  it('keeps the wall-clock time across a DST change', () => {
+    // US clocks fall back on Sun Nov 1 2026.
+    const before = new Date(Date.UTC(2026, 9, 31, 12, 0));
+    expect(utc(nextRuns({ cadence: 'daily', time: '09:00' }, before, 2, LA)))
+      .toEqual(['2026-10-31T16:00:00.000Z', '2026-11-01T17:00:00.000Z']);
+  });
+
+  it('resolves a skipped or repeated time as the server does', () => {
+    // 02:30 on Mar 8 2026 never happens in Los Angeles: it runs at 03:30 PDT.
+    expect(utc(nextRuns({ cadence: 'once', time: '02:30', date: '2026-03-08' }, new Date(0), 1, LA)))
+      .toEqual(['2026-03-08T10:30:00.000Z']);
+    // 01:30 on Nov 1 2026 happens twice: the first one, in PDT.
+    expect(utc(nextRuns({ cadence: 'once', time: '01:30', date: '2026-11-01' }, new Date(0), 1, LA)))
+      .toEqual(['2026-11-01T08:30:00.000Z']);
+  });
+
+  it('reads a saved run back in the task\'s zone', () => {
+    expect(whenFromDate('2026-10-19T16:00:00Z', 'weekly', LA)).toEqual({ cadence: 'weekly', time: '09:00', weekday: 1, date: '2026-10-19' });
+    expect(defaultWhen(NOW, LA)).toMatchObject({ time: '04:00', date: '2026-10-14' });
+  });
+
+  it('formats preview runs in the zone', () => {
+    expect(formatRun(new Date('2026-10-15T16:00:00Z'), NOW, LA)).toMatch(/^Thu 9:00/);
+  });
+
+  it('falls back to the device zone for "local" or an unknown name', () => {
+    expect(usableZone('local')).toBe('UTC');
+    expect(usableZone('Not/AZone')).toBe('UTC');
+    expect(usableZone(LA)).toBe(LA);
+  });
+
+  it('offers the device zone and UTC, plus a saved task\'s own zone', () => {
+    expect(zoneChoices()).toEqual(['UTC']);
+    expect(zoneChoices('Etc/UTC')).toEqual(['UTC']);
+    expect(zoneChoices('Europe/London')).toEqual(['UTC', 'Europe/London']);
   });
 });

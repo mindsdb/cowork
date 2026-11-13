@@ -606,6 +606,7 @@
     "atMinute": "at minute",
     "at": "at",
     "time": "Time",
+    "timeZone": "Time zone",
     "nextRuns": "{count, plural, one {Next run: {runs}} other {Next runs: {runs}}}",
     "timePassed": "That time has passed.",
     "name": "Name",

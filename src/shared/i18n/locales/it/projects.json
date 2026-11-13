@@ -606,6 +606,7 @@
     "atMinute": "al minuto",
     "at": "alle",
     "time": "Ora",
+    "timeZone": "Fuso orario",
     "nextRuns": "{count, plural, one {Prossima esecuzione: {runs}} other {Prossime esecuzioni: {runs}}}",
     "timePassed": "Questo orario è già passato.",
     "name": "Nome",
