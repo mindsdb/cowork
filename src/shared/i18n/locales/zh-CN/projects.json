@@ -578,6 +578,22 @@
     "reviewRun": "查看运行",
     "runAgain": "再次运行"
   },
+  "scheduleRunNotice": {
+    "untitled": "定时任务",
+    "failedTitle": "定时任务失败",
+    "failedBody": "“{title}”上次运行未完成。点击查看。",
+    "failedToast": "定时任务“{title}”上次运行未完成。",
+    "succeededTitle": "定时任务已完成",
+    "succeededBody": "“{title}”已完成一次运行。点击打开。",
+    "succeededToast": "定时任务“{title}”已完成一次运行。",
+    "openAction": "打开任务"
+  },
+  "scheduleNotifyMenu": {
+    "label": "通知",
+    "heading": "通知我",
+    "failed": "失败的运行",
+    "succeeded": "成功的运行"
+  },
   "scheduleTaskModal": {
     "cadence": {
       "once": "一次",

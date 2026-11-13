@@ -578,6 +578,22 @@
     "reviewRun": "Vérifier l’exécution",
     "runAgain": "Relancer"
   },
+  "scheduleRunNotice": {
+    "untitled": "Tâche planifiée",
+    "failedTitle": "Échec d’une tâche planifiée",
+    "failedBody": "« {title} » n’a pas terminé sa dernière exécution. Cliquez pour vérifier.",
+    "failedToast": "La tâche planifiée « {title} » n’a pas terminé sa dernière exécution.",
+    "succeededTitle": "Tâche planifiée terminée",
+    "succeededBody": "« {title} » a terminé une exécution. Cliquez pour l’ouvrir.",
+    "succeededToast": "La tâche planifiée « {title} » a terminé une exécution.",
+    "openAction": "Ouvrir la tâche"
+  },
+  "scheduleNotifyMenu": {
+    "label": "Notifications",
+    "heading": "Me notifier pour",
+    "failed": "Exécutions en échec",
+    "succeeded": "Exécutions réussies"
+  },
   "scheduleTaskModal": {
     "cadence": {
       "once": "Une fois",

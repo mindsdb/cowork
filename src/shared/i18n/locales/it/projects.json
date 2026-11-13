@@ -578,6 +578,22 @@
     "reviewRun": "Controlla esecuzione",
     "runAgain": "Esegui di nuovo"
   },
+  "scheduleRunNotice": {
+    "untitled": "Attività pianificata",
+    "failedTitle": "Attività pianificata non riuscita",
+    "failedBody": "“{title}” non ha completato l’ultima esecuzione. Fai clic per controllare.",
+    "failedToast": "L’attività pianificata “{title}” non ha completato l’ultima esecuzione.",
+    "succeededTitle": "Attività pianificata completata",
+    "succeededBody": "“{title}” ha completato un’esecuzione. Fai clic per aprirla.",
+    "succeededToast": "L’attività pianificata “{title}” ha completato un’esecuzione.",
+    "openAction": "Apri attività"
+  },
+  "scheduleNotifyMenu": {
+    "label": "Notifiche",
+    "heading": "Avvisami per",
+    "failed": "Esecuzioni non riuscite",
+    "succeeded": "Esecuzioni riuscite"
+  },
   "scheduleTaskModal": {
     "cadence": {
       "once": "Una volta",

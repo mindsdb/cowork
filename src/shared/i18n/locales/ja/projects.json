@@ -578,6 +578,22 @@
     "reviewRun": "実行を確認",
     "runAgain": "再実行"
   },
+  "scheduleRunNotice": {
+    "untitled": "スケジュールされたタスク",
+    "failedTitle": "スケジュールされたタスクが失敗しました",
+    "failedBody": "「{title}」の前回の実行は完了しませんでした。クリックして確認してください。",
+    "failedToast": "スケジュールされたタスク「{title}」の前回の実行は完了しませんでした。",
+    "succeededTitle": "スケジュールされたタスクが完了しました",
+    "succeededBody": "「{title}」の実行が完了しました。クリックして開きます。",
+    "succeededToast": "スケジュールされたタスク「{title}」の実行が完了しました。",
+    "openAction": "タスクを開く"
+  },
+  "scheduleNotifyMenu": {
+    "label": "通知",
+    "heading": "通知する対象",
+    "failed": "失敗した実行",
+    "succeeded": "成功した実行"
+  },
   "scheduleTaskModal": {
     "cadence": {
       "once": "1回のみ",

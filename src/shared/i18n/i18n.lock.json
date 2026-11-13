@@ -121345,6 +121345,142 @@
       "text": "0d2cf9b364c4"
     }
   },
+  "projects:scheduleNotifyMenu.failed": {
+    "de": {
+      "from": "24afc952b6cc",
+      "text": "fdd6763e6fdd"
+    },
+    "es": {
+      "from": "24afc952b6cc",
+      "text": "f63850a87aaa"
+    },
+    "fr": {
+      "from": "24afc952b6cc",
+      "text": "204adb368447"
+    },
+    "it": {
+      "from": "24afc952b6cc",
+      "text": "287eccd87b9b"
+    },
+    "ja": {
+      "from": "24afc952b6cc",
+      "text": "05ec16d7afd7"
+    },
+    "ko": {
+      "from": "24afc952b6cc",
+      "text": "7946575714d1"
+    },
+    "pt-BR": {
+      "from": "24afc952b6cc",
+      "text": "64a2a44d1f40"
+    },
+    "zh-CN": {
+      "from": "24afc952b6cc",
+      "text": "7dcd71a2c465"
+    }
+  },
+  "projects:scheduleNotifyMenu.heading": {
+    "de": {
+      "from": "bbdfa1828f2a",
+      "text": "62faf16f7a97"
+    },
+    "es": {
+      "from": "bbdfa1828f2a",
+      "text": "ebacd203691c"
+    },
+    "fr": {
+      "from": "bbdfa1828f2a",
+      "text": "dfc87e601b90"
+    },
+    "it": {
+      "from": "bbdfa1828f2a",
+      "text": "1e5e924a8d43"
+    },
+    "ja": {
+      "from": "bbdfa1828f2a",
+      "text": "7e9866c6c5dd"
+    },
+    "ko": {
+      "from": "bbdfa1828f2a",
+      "text": "179bae6fe795"
+    },
+    "pt-BR": {
+      "from": "bbdfa1828f2a",
+      "text": "1c78fff3a26e"
+    },
+    "zh-CN": {
+      "from": "bbdfa1828f2a",
+      "text": "1fbb20662871"
+    }
+  },
+  "projects:scheduleNotifyMenu.label": {
+    "de": {
+      "from": "788011833a5a",
+      "text": "f7205df4f1e2"
+    },
+    "es": {
+      "from": "788011833a5a",
+      "text": "80dade6fab6f"
+    },
+    "fr": {
+      "from": "788011833a5a",
+      "text": "788011833a5a"
+    },
+    "it": {
+      "from": "788011833a5a",
+      "text": "b49faefbb7aa"
+    },
+    "ja": {
+      "from": "788011833a5a",
+      "text": "4b6ded8a7f18"
+    },
+    "ko": {
+      "from": "788011833a5a",
+      "text": "12ddd6ca6906"
+    },
+    "pt-BR": {
+      "from": "788011833a5a",
+      "text": "6b8e9ecbc2ba"
+    },
+    "zh-CN": {
+      "from": "788011833a5a",
+      "text": "4b6ded8a7f18"
+    }
+  },
+  "projects:scheduleNotifyMenu.succeeded": {
+    "de": {
+      "from": "85080248317b",
+      "text": "cdde82cb602d"
+    },
+    "es": {
+      "from": "85080248317b",
+      "text": "6d999f5b48db"
+    },
+    "fr": {
+      "from": "85080248317b",
+      "text": "71abcaddb5ac"
+    },
+    "it": {
+      "from": "85080248317b",
+      "text": "0b63f0852afc"
+    },
+    "ja": {
+      "from": "85080248317b",
+      "text": "e9a9740d46d3"
+    },
+    "ko": {
+      "from": "85080248317b",
+      "text": "7c1a60d52a18"
+    },
+    "pt-BR": {
+      "from": "85080248317b",
+      "text": "e72e856a39c9"
+    },
+    "zh-CN": {
+      "from": "85080248317b",
+      "text": "491268971225"
+    }
+  },
   "projects:scheduleRow.cadence.daily": {
     "de": {
       "from": "b36c2611dcdf",
@@ -122227,6 +122363,278 @@
     "zh-CN": {
       "from": "0991397702fa",
       "text": "04eb539709cf"
+    }
+  },
+  "projects:scheduleRunNotice.failedBody": {
+    "de": {
+      "from": "c40cda097938",
+      "text": "d35750600823"
+    },
+    "es": {
+      "from": "c40cda097938",
+      "text": "9d1040310adb"
+    },
+    "fr": {
+      "from": "c40cda097938",
+      "text": "f547edb39063"
+    },
+    "it": {
+      "from": "c40cda097938",
+      "text": "cc8dcbef2cc2"
+    },
+    "ja": {
+      "from": "c40cda097938",
+      "text": "09ed7692e45d"
+    },
+    "ko": {
+      "from": "c40cda097938",
+      "text": "a2bd351c40e5"
+    },
+    "pt-BR": {
+      "from": "c40cda097938",
+      "text": "22f3012c651a"
+    },
+    "zh-CN": {
+      "from": "c40cda097938",
+      "text": "5b9789cdaf68"
+    }
+  },
+  "projects:scheduleRunNotice.failedTitle": {
+    "de": {
+      "from": "bc91ffaad74f",
+      "text": "f011958d1268"
+    },
+    "es": {
+      "from": "bc91ffaad74f",
+      "text": "b47a56828da0"
+    },
+    "fr": {
+      "from": "bc91ffaad74f",
+      "text": "afcf8d395d94"
+    },
+    "it": {
+      "from": "bc91ffaad74f",
+      "text": "fabaf2896861"
+    },
+    "ja": {
+      "from": "bc91ffaad74f",
+      "text": "276780f46bef"
+    },
+    "ko": {
+      "from": "bc91ffaad74f",
+      "text": "2764c3386aec"
+    },
+    "pt-BR": {
+      "from": "bc91ffaad74f",
+      "text": "6412cd3c3dfb"
+    },
+    "zh-CN": {
+      "from": "bc91ffaad74f",
+      "text": "c8cca7512596"
+    }
+  },
+  "projects:scheduleRunNotice.failedToast": {
+    "de": {
+      "from": "57f1955f873d",
+      "text": "79c6d30fc8f5"
+    },
+    "es": {
+      "from": "57f1955f873d",
+      "text": "806e5d490f7a"
+    },
+    "fr": {
+      "from": "57f1955f873d",
+      "text": "c23bed27f965"
+    },
+    "it": {
+      "from": "57f1955f873d",
+      "text": "3cb078216cc0"
+    },
+    "ja": {
+      "from": "57f1955f873d",
+      "text": "c3556bc608d7"
+    },
+    "ko": {
+      "from": "57f1955f873d",
+      "text": "667ed9aed99f"
+    },
+    "pt-BR": {
+      "from": "57f1955f873d",
+      "text": "3a6356380acf"
+    },
+    "zh-CN": {
+      "from": "57f1955f873d",
+      "text": "5026b85f09bc"
+    }
+  },
+  "projects:scheduleRunNotice.openAction": {
+    "de": {
+      "from": "6b5c9394cb7f",
+      "text": "b831c02809ba"
+    },
+    "es": {
+      "from": "6b5c9394cb7f",
+      "text": "c21833e30922"
+    },
+    "fr": {
+      "from": "6b5c9394cb7f",
+      "text": "629ac07c8100"
+    },
+    "it": {
+      "from": "6b5c9394cb7f",
+      "text": "24702be2543c"
+    },
+    "ja": {
+      "from": "6b5c9394cb7f",
+      "text": "321ab6dc3d29"
+    },
+    "ko": {
+      "from": "6b5c9394cb7f",
+      "text": "7b797d98de89"
+    },
+    "pt-BR": {
+      "from": "6b5c9394cb7f",
+      "text": "6851a1e12534"
+    },
+    "zh-CN": {
+      "from": "6b5c9394cb7f",
+      "text": "0a92e7687ea3"
+    }
+  },
+  "projects:scheduleRunNotice.succeededBody": {
+    "de": {
+      "from": "0464e4fa383a",
+      "text": "3472fa3b0b19"
+    },
+    "es": {
+      "from": "0464e4fa383a",
+      "text": "4e19254e31ee"
+    },
+    "fr": {
+      "from": "0464e4fa383a",
+      "text": "cf401fec2ae5"
+    },
+    "it": {
+      "from": "0464e4fa383a",
+      "text": "68e1d4fe76e8"
+    },
+    "ja": {
+      "from": "0464e4fa383a",
+      "text": "547ada675067"
+    },
+    "ko": {
+      "from": "0464e4fa383a",
+      "text": "4337c183f2cf"
+    },
+    "pt-BR": {
+      "from": "0464e4fa383a",
+      "text": "ef03703b2d61"
+    },
+    "zh-CN": {
+      "from": "0464e4fa383a",
+      "text": "47669625e26a"
+    }
+  },
+  "projects:scheduleRunNotice.succeededTitle": {
+    "de": {
+      "from": "ad795921df76",
+      "text": "0ec1235a584a"
+    },
+    "es": {
+      "from": "ad795921df76",
+      "text": "1031fc5fe43b"
+    },
+    "fr": {
+      "from": "ad795921df76",
+      "text": "1764c0efca83"
+    },
+    "it": {
+      "from": "ad795921df76",
+      "text": "6169a7e63a4f"
+    },
+    "ja": {
+      "from": "ad795921df76",
+      "text": "b4f2dfa8ccb5"
+    },
+    "ko": {
+      "from": "ad795921df76",
+      "text": "ec968aeccf2d"
+    },
+    "pt-BR": {
+      "from": "ad795921df76",
+      "text": "25a41aec9301"
+    },
+    "zh-CN": {
+      "from": "ad795921df76",
+      "text": "0a36c06f3120"
+    }
+  },
+  "projects:scheduleRunNotice.succeededToast": {
+    "de": {
+      "from": "ba4a3cb56525",
+      "text": "dea4bf0bbd63"
+    },
+    "es": {
+      "from": "ba4a3cb56525",
+      "text": "a1d14814aca6"
+    },
+    "fr": {
+      "from": "ba4a3cb56525",
+      "text": "11edad992da5"
+    },
+    "it": {
+      "from": "ba4a3cb56525",
+      "text": "002e7d30b404"
+    },
+    "ja": {
+      "from": "ba4a3cb56525",
+      "text": "9d198ec024ef"
+    },
+    "ko": {
+      "from": "ba4a3cb56525",
+      "text": "cd23b247cb08"
+    },
+    "pt-BR": {
+      "from": "ba4a3cb56525",
+      "text": "8d29e67c7310"
+    },
+    "zh-CN": {
+      "from": "ba4a3cb56525",
+      "text": "c7d1b8ca4173"
+    }
+  },
+  "projects:scheduleRunNotice.untitled": {
+    "de": {
+      "from": "a9ee5495dfc2",
+      "text": "88e6dbe8e0e4"
+    },
+    "es": {
+      "from": "a9ee5495dfc2",
+      "text": "980cbd4d5cf3"
+    },
+    "fr": {
+      "from": "a9ee5495dfc2",
+      "text": "de9d8fdba986"
+    },
+    "it": {
+      "from": "a9ee5495dfc2",
+      "text": "d4858774aef1"
+    },
+    "ja": {
+      "from": "a9ee5495dfc2",
+      "text": "50c1cde6afcb"
+    },
+    "ko": {
+      "from": "a9ee5495dfc2",
+      "text": "47981e5fd0b3"
+    },
+    "pt-BR": {
+      "from": "a9ee5495dfc2",
+      "text": "b6a53f9f0a77"
+    },
+    "zh-CN": {
+      "from": "a9ee5495dfc2",
+      "text": "3c39e9bde120"
     }
   },
   "projects:scheduleStatus.active": {
