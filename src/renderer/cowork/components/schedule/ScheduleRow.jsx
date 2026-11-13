@@ -11,7 +11,7 @@ import { ItemActions, ListItem, StatusDot } from '../collection';
 import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
 import { scheduleState, scheduleStatusBadge } from './ScheduleStatusBadge';
-import { dateLocale, describeWhen, whenFromDate } from '../../lib/scheduleWhen';
+import { dateLocale, describeWhen, deviceZone, timeZoneLabel, usableZone, whenFromDate } from '../../lib/scheduleWhen';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
 function absoluteTime(iso) {
@@ -76,9 +76,11 @@ export default function ScheduleRow({
 
   // The schedule in words, then when it next runs: the row's second line.
   const state = scheduleState(task);
-  const sentence = task.nextRunAt && !Number.isNaN(new Date(task.nextRunAt).getTime())
-    ? describeWhen(whenFromDate(task.nextRunAt, task.cadence))
+  const when = task.nextRunAt && !Number.isNaN(new Date(task.nextRunAt).getTime())
+    ? describeWhen(whenFromDate(task.nextRunAt, task.cadence, task.timezone))
     : cadenceLabel(task.cadence);
+  // Name the zone only when it isn't the one the viewer is in.
+  const sentence = usableZone(task.timezone) === deviceZone() ? when : `${when}, ${timeZoneLabel(task.timezone)}`;
   const next = state === 'active' && !task.running ? relativeTime(task.nextRunAt) : null;
   const description = next ? t('scheduleRow.descriptionWithNext', { sentence, next }) : sentence;
   // Badge variants (accent, muted, warning, danger, success) are StatusDot tones.

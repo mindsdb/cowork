@@ -606,6 +606,7 @@
     "atMinute": "시작 시각",
     "at": "시각",
     "time": "시간",
+    "timeZone": "시간대",
     "nextRuns": "{count, plural, other {다음 실행: {runs}}}",
     "timePassed": "이미 지난 시간입니다.",
     "name": "이름",

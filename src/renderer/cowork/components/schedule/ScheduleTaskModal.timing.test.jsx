@@ -68,3 +68,37 @@ it('unlocks a model after availability changes outside the app', async () => {
   await user.click(await screen.findByRole('option', { name: /Paid model/ }));
   expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('Paid model');
 });
+
+it('keeps a task saved in another zone in that zone', async () => {
+  clock('2026-11-09T12:00:00Z');
+  // 9:00 in Los Angeles (PST) is 17:00 UTC.
+  const onSubmit = setup({
+    id: 's', prompt: 'report', cadence: 'daily', timezone: 'America/Los_Angeles', nextRunAt: '2026-11-09T17:00:00Z',
+  });
+  expect(screen.getByLabelText('Time')).toHaveValue('09:00');
+  expect(screen.getByText(/^Every day at 9:00 AM, Los Angeles time$/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Time'), { target: { value: '10:00' } });
+  const payload = await save(onSubmit);
+  expect(payload.timezone).toBe('America/Los_Angeles');
+  expect(payload.next_run_at).toBe('2026-11-09T18:00:00.000Z');
+});
+
+it('switches a task to UTC, keeping its clock time', async () => {
+  clock('2026-11-09T12:00:00Z');
+  const onSubmit = setup({
+    id: 's', prompt: 'report', cadence: 'daily', timezone: 'America/Los_Angeles', nextRunAt: '2026-11-09T17:00:00Z',
+  });
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('combobox', { name: 'Time zone' }));
+  await user.click(await screen.findByRole('option', { name: 'UTC' }));
+  expect(screen.getByLabelText('Time')).toHaveValue('09:00');
+  const payload = await save(onSubmit);
+  expect(payload.timezone).toBe('UTC');
+  expect(payload.next_run_at).toBe('2026-11-10T09:00:00.000Z');
+});
+
+it('shows the zone as text when the device is already on UTC', () => {
+  setup();
+  expect(screen.queryByRole('combobox', { name: 'Time zone' })).toBeNull();
+  expect(screen.getAllByText(/UTC/).length).toBeGreaterThan(0);
+});

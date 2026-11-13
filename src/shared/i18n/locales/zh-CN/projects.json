@@ -606,6 +606,7 @@
     "atMinute": "分钟：",
     "at": "时间：",
     "time": "时间",
+    "timeZone": "时区",
     "nextRuns": "{count, plural, other {下次运行：{runs}}}",
     "timePassed": "该时间已过。",
     "name": "名称",

@@ -123759,6 +123759,40 @@
       "text": "61bf86d95e74"
     }
   },
+  "projects:scheduleTaskModal.timeZone": {
+    "de": {
+      "from": "b9fe1464783e",
+      "text": "00507b23a11b"
+    },
+    "es": {
+      "from": "b9fe1464783e",
+      "text": "43b228654bb9"
+    },
+    "fr": {
+      "from": "b9fe1464783e",
+      "text": "d32a29719827"
+    },
+    "it": {
+      "from": "b9fe1464783e",
+      "text": "fb8bc4e335c4"
+    },
+    "ja": {
+      "from": "b9fe1464783e",
+      "text": "ec8924e34a0f"
+    },
+    "ko": {
+      "from": "b9fe1464783e",
+      "text": "26e997a5196c"
+    },
+    "pt-BR": {
+      "from": "b9fe1464783e",
+      "text": "e87f8d91b2b2"
+    },
+    "zh-CN": {
+      "from": "b9fe1464783e",
+      "text": "b5d72c5c00f2"
+    }
+  },
   "projects:scheduleTaskModal.when": {
     "de": {
       "from": "cf9c7aa24a26",

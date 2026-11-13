@@ -64,7 +64,7 @@ const msg = (key, vars) => i18n.t(`scheduleDetail.${key}`, { ns: 'projects', ...
 // time is shown in this computer's zone, so that is the zone it names.
 function scheduleSentence(task) {
   if (!task.nextRunAt || Number.isNaN(new Date(task.nextRunAt).getTime())) return '';
-  return msg('sentence', { when: describeWhen(whenFromDate(task.nextRunAt, task.cadence)), zone: timeZoneLabel() });
+  return msg('sentence', { when: describeWhen(whenFromDate(task.nextRunAt, task.cadence, task.timezone)), zone: timeZoneLabel(task.timezone) });
 }
 
 function nextRunText(task, state) {
