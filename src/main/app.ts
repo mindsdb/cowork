@@ -29,7 +29,8 @@ import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnecti
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, initTokenStore } from './token-store';
+import { holdQuitWriters, runQuitFlushes } from './quit-flush';
 import { signedInAccountId, refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
@@ -1478,39 +1479,6 @@ function setupIPC() {
     }
   });
 
-  // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.
-  // When enabled the refresh token lives in the macOS keychain; otherwise
-  // it sits in a plaintext file under ~/.cowork. Flipping the flag migrates
-  // any existing token to the chosen store.
-  ipcMain.handle(IPC.KEYCHAIN_PREF_GET, () => {
-    const vars = readEnvFile();
-    // Default is enabled; only false when explicitly set to 'false'.
-    return { enabled: vars.COWORK_KEYCHAIN !== 'false' };
-  });
-
-  ipcMain.handle(IPC.KEYCHAIN_PREF_SET, async (_event, enabled: boolean) => {
-    try {
-      const homeDir = coworkHome();
-      if (!fs.existsSync(homeDir)) {
-        ensureAccountDataRoot();
-      }
-      const envPath = coworkEnvPath();
-      const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-      const lines = existing.split('\n').filter((l) => !l.startsWith('COWORK_KEYCHAIN='));
-      // Only write the key when disabling; absence means "enabled" (the default).
-      if (!enabled) lines.push('COWORK_KEYCHAIN=false');
-      const out = lines.filter((l) => l.length > 0).join('\n') + '\n';
-      fs.writeFileSync(envPath, out, 'utf-8');
-
-      // Move any existing token into the newly-chosen store.
-      migrateRefreshTokenStore(enabled);
-      return { ok: true };
-    } catch (error) {
-      diagnostic("main.app", "ERROR", "keychain_failed_to_set_preference", '[keychain] failed to set preference', error);
-      return { ok: false };
-    }
-  });
-
   ipcMain.handle(IPC.SETTINGS_CHECK_CONFIGURED, async () => {
     return checkConfigured();
   });
@@ -1673,6 +1641,11 @@ diagnostic("main.app", "INFO", "boot_modules_loaded", '[boot] modules loaded');
 
 app.whenReady().then(async () => {
   diagnostic("main.app", "INFO", "boot_app_ready", '[boot] app ready');
+
+  diagnostic("main.app", "INFO", "boot_token_store", '[boot] token store');
+  // Everything below reads the stored session synchronously. No timeout: one
+  // would turn a slow answer to a Keychain or wallet prompt into a sign-out.
+  await initTokenStore();
 
   diagnostic("main.app", "INFO", "boot_migrate_legacy_home", '[boot] migrate legacy home');
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
@@ -2155,6 +2128,10 @@ async function drainServerForQuit(): Promise<void> {
   // Stop all OAuth refresh loops before the server shuts down so no
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
+  // A refresh landing after the token flush would rotate the token in memory only.
+  // The quit is not undone, so the hold is never released.
+  holdQuitWriters();
+  cancelScheduledRefresh();
   // An auto-mode shell update installs itself as the app goes down, outside
   // the update-maintenance gate that the in-app "Restart now" install enters.
   // The download only stages the payload (Windows: the NSIS installer on disk;
@@ -2194,6 +2171,12 @@ async function drainServerForQuit(): Promise<void> {
       forceReapServer(),
       new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
     ]);
+  }
+
+  // The refresh token rotates on refresh; a write still queued when the
+  // process exits would leave the previous one on disk.
+  if (!(await runQuitFlushes())) {
+    diagnostic("main.app", "WARNING", "token_store_flush_did_not_finish_before_quit", '[token-store] pending token writes did not finish before the quit ceiling');
   }
 }
 

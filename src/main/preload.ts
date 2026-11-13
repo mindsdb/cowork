@@ -238,9 +238,6 @@ contextBridge.exposeInMainWorld('antontron', {
   decideAccountOwnership: (accountId: string, keepExisting: boolean) =>
     ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_DECIDE, { accountId, keepExisting }),
 
-  // Keychain preference (Electron-only, mac-relevant)
-  getKeychainPref: () => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_GET),
-  setKeychainPref: (enabled: boolean) => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_SET, enabled),
   // The agent's anonymous usage events, the shared browser's included.
   getUsageEventsPref: () => ipcRenderer.invoke(IPC.USAGE_EVENTS_GET),
   setUsageEventsPref: (enabled: boolean) => ipcRenderer.invoke(IPC.USAGE_EVENTS_SET, enabled),

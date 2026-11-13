@@ -16,7 +16,6 @@ vi.mock('../../../platform/host', () => ({
     get isElectron() { return !deployment.isWeb; },
     isMac: () => false,
     openExternal: vi.fn(),
-    getKeychainPref: vi.fn(async () => false),
   },
   getVersionInfo: vi.fn(async () => ({ app: '', ui: null, source: 'web' })),
   isElectron: false,

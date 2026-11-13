@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Shared state the hoisted electron mock and the tests both reach.
+// Shared state the hoisted mocks and the tests both reach.
 const h = vi.hoisted(() => {
   const base = `${process.env.TMPDIR || '/tmp'}/token-store-test-${process.pid}`;
   return {
@@ -10,21 +11,87 @@ const h = vi.hoisted(() => {
     home: `${base}/cowork-home`,
     sendSpy: vi.fn(),
     winDestroyed: { value: false },
-    safeStorageAvailable: { value: true },
+    available: { value: true as boolean | 'throw' },
+    encryptFails: { value: false },
+    encryptGate: { value: null as Promise<void> | null },
+    decryptGate: { value: null as Promise<void> | null },
+    reEncrypt: { value: false },
+    renameFail: { code: '', times: 0, onFail: null as (() => void) | null },
+    failWriteTo: { value: '' },
+    calls: [] as string[],
+    encrypted: [] as string[],
+    decrypted: [] as Buffer[],
+    events: [] as string[],
   };
 });
 
-vi.mock('electron', () => ({
-  app: { getPath: () => h.userData },
-  safeStorage: {
-    isEncryptionAvailable: () => h.safeStorageAvailable.value,
-    encryptString: (s: string) => Buffer.from(`dpapi:${s}`),
-    decryptString: (b: Buffer) => b.toString('utf8').replace(/^dpapi:/, ''),
-  },
-  BrowserWindow: {
-    getAllWindows: () => [{ isDestroyed: () => h.winDestroyed.value, webContents: { send: h.sendSpy } }],
-  },
-}));
+// The synchronous safeStorage methods are gone in Electron 46; any call fails
+// the test. The async ones use a readable stand-in ciphertext ("enc:<token>").
+vi.mock('electron', () => {
+  const removed = () => { throw new Error('synchronous safeStorage is removed in Electron 46'); };
+  return {
+    app: { getPath: () => h.userData, getName: () => 'TestApp', getVersion: () => '9.9.9' },
+    safeStorage: {
+      isEncryptionAvailable: removed,
+      encryptString: removed,
+      decryptString: removed,
+      isAsyncEncryptionAvailable: async () => {
+        h.calls.push('available');
+        if (h.available.value === 'throw') throw new Error('key provider failed');
+        return h.available.value;
+      },
+      encryptStringAsync: async (plain: string) => {
+        h.encrypted.push(plain);
+        if (h.encryptGate.value) await h.encryptGate.value;
+        if (h.encryptFails.value) throw new Error('encryption failed');
+        return Buffer.from(`enc:${plain}`);
+      },
+      decryptStringAsync: async (data: Buffer) => {
+        h.decrypted.push(Buffer.from(data));
+        if (h.decryptGate.value) await h.decryptGate.value;
+        const text = data.toString('utf8');
+        if (!text.startsWith('enc:')) throw new Error('decryption failed');
+        return { result: text.slice(4), shouldReEncrypt: h.reEncrypt.value };
+      },
+    },
+    BrowserWindow: {
+      getAllWindows: () => [{ isDestroyed: () => h.winDestroyed.value, webContents: { send: h.sendSpy } }],
+    },
+  };
+});
+
+// Real fs, with two switches: a rename that fails a set number of times, and a
+// write to one path that always fails.
+vi.mock('fs', async (importActual) => {
+  const actual = await importActual<typeof import('fs')>();
+  const renameSync: typeof actual.renameSync = (from, to) => {
+    if (h.renameFail.times > 0) {
+      h.renameFail.times -= 1;
+      h.renameFail.onFail?.();
+      throw Object.assign(new Error(`${h.renameFail.code}: forced by test`), { code: h.renameFail.code });
+    }
+    return actual.renameSync(from, to);
+  };
+  const writeFileSync = ((file: fs.PathOrFileDescriptor, data: string | NodeJS.ArrayBufferView, options?: fs.WriteFileOptions) => {
+    if (h.failWriteTo.value && String(file) === h.failWriteTo.value) {
+      throw Object.assign(new Error('EIO: forced by test'), { code: 'EIO' });
+    }
+    return actual.writeFileSync(file, data, options);
+  }) as typeof actual.writeFileSync;
+  return { ...actual, default: { ...actual, renameSync, writeFileSync }, renameSync, writeFileSync };
+});
+
+// Records every diagnostic event name, then logs as usual.
+vi.mock('../shared/diagnostics', async (importActual) => {
+  const actual = await importActual<typeof import('../shared/diagnostics')>();
+  return {
+    ...actual,
+    diagnostic: (...args: Parameters<typeof actual.diagnostic>) => {
+      h.events.push(args[2]);
+      return actual.diagnostic(...args);
+    },
+  };
+});
 
 // accountDataRoot too: recordActiveOrganization resolves the account root
 // through it, and a mock missing it fails every test in this file, not just the
@@ -37,13 +104,64 @@ function setPlatform(platform: string) {
   Object.defineProperty(process, 'platform', { value: platform });
 }
 
-// IS_MAC is computed at module load, so each platform scenario needs a
-// fresh import.
+// The platform and every path are read at module load, so each scenario needs
+// a fresh import. A fresh import is also a fresh process as far as the store's
+// memory goes: it is how these tests model "the next launch".
 async function loadStore(platform: string) {
   vi.resetModules();
   setPlatform(platform);
   return await import('./token-store');
 }
+
+async function bootStore(platform: string) {
+  const store = await loadStore(platform);
+  await store.initTokenStore();
+  return store;
+}
+
+const SECURE = () => path.join(h.userData, 'mindshub-refresh.bin');
+const FALLBACK = () => path.join(h.home, 'refresh-token.dat');
+const present = () => ({ secure: fs.existsSync(SECURE()), fallback: fs.existsSync(FALLBACK()) });
+const MARKER = () => path.join(h.userData, 'keychain-unavailable');
+
+// The fallback file's format: AES-256-CBC, IV first, key derived from userData.
+function fallbackKey(): Buffer {
+  return crypto.createHash('sha256').update(`mindshub-cowork:${h.userData}`).digest();
+}
+
+function setMtime(file: string, seconds?: number): void {
+  if (seconds !== undefined) fs.utimesSync(file, seconds, seconds);
+}
+
+function writeFallback(token: string, mtimeSeconds?: number): void {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', fallbackKey(), iv);
+  fs.writeFileSync(FALLBACK(), Buffer.concat([iv, cipher.update(token, 'utf8'), cipher.final()]));
+  setMtime(FALLBACK(), mtimeSeconds);
+}
+
+function readFallback(): string {
+  const data = fs.readFileSync(FALLBACK());
+  const decipher = crypto.createDecipheriv('aes-256-cbc', fallbackKey(), data.subarray(0, 16));
+  return Buffer.concat([decipher.update(data.subarray(16)), decipher.final()]).toString('utf8');
+}
+
+function writeSecure(token: string, mtimeSeconds?: number): void {
+  fs.writeFileSync(SECURE(), `enc:${token}`);
+  setMtime(SECURE(), mtimeSeconds);
+}
+
+function readSecure(): string {
+  return fs.readFileSync(SECURE(), 'utf8').replace(/^enc:/, '');
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
+const logged = (event: string) => h.events.includes(event);
 
 beforeEach(() => {
   fs.rmSync(path.dirname(h.userData), { recursive: true, force: true });
@@ -51,7 +169,19 @@ beforeEach(() => {
   fs.mkdirSync(h.home, { recursive: true });
   h.sendSpy.mockClear();
   h.winDestroyed.value = false;
-  h.safeStorageAvailable.value = true;
+  h.available.value = true;
+  h.encryptFails.value = false;
+  h.encryptGate.value = null;
+  h.decryptGate.value = null;
+  h.reEncrypt.value = false;
+  h.renameFail.code = '';
+  h.renameFail.times = 0;
+  h.renameFail.onFail = null;
+  h.failWriteTo.value = '';
+  h.calls.length = 0;
+  h.encrypted.length = 0;
+  h.decrypted.length = 0;
+  h.events.length = 0;
 });
 
 afterEach(() => {
@@ -59,89 +189,517 @@ afterEach(() => {
 });
 
 describe('token-store persistence', () => {
-  it('round-trips the refresh token through safeStorage on Windows', async () => {
-    const store = await loadStore('win32');
-    store.saveTokens('at', 3600, 'my-refresh-token');
-    expect(store.getRefreshToken()).toBe('my-refresh-token');
-    // Written via the DPAPI path, not the fallback file.
-    expect(fs.existsSync(path.join(h.userData, 'mindshub-refresh.bin'))).toBe(true);
+  it('round-trips the token through the secure file', async () => {
+    let store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'rt-1');
+    expect(store.getRefreshToken()).toBe('rt-1');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('rt-1');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+
+    store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBe('rt-1');
   });
 
-  // ─── ENG-761 regression: safeStorage unavailable must not lose the
-  // session. The pre-fix writeToken silently persisted NOTHING, so the
-  // user looked signed in until the next launch, then showed up as
-  // unauthenticated.
-  it('falls back to the encrypted file when safeStorage is unavailable (Windows)', async () => {
-    h.safeStorageAvailable.value = false;
-    const store = await loadStore('win32');
+  it('round-trips on Windows', async () => {
+    let store = await bootStore('win32');
+    store.saveTokens('at', 3600, 'win-token');
+    await store.flushTokenStore();
+    store = await bootStore('win32');
+    expect(store.getRefreshToken()).toBe('win-token');
+  });
+
+  it('reads a secure file written by the previous build without altering its bytes', async () => {
+    writeSecure('legacy-token');
+    const bytes = fs.readFileSync(SECURE());
+    const store = await bootStore('win32');
+    expect(store.getRefreshToken()).toBe('legacy-token');
+    expect(h.decrypted).toEqual([bytes]);
+  });
+
+  it('migrates a fallback-only token into the secure file', async () => {
+    writeFallback('from-fallback');
+    const store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBe('from-fallback');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('from-fallback');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+  });
+
+  it('drops the fallback copy the previous build kept beside the secure file', async () => {
+    writeSecure('same', 1_000);
+    writeFallback('same', 2_000);
+    const store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBe('same');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('same');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+  });
+
+  it('reads the secure file when both were written in the same instant', async () => {
+    writeSecure('same', 1_000);
+    writeFallback('same', 1_000);
+    const store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBe('same');
+    expect(h.decrypted).toHaveLength(1);
+    await store.flushTokenStore();
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+  });
+
+  it('prefers a secure file newer than a fallback file left behind', async () => {
+    writeSecure('fresh', 2_000);
+    writeFallback('stale', 1_000);
+    const store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBe('fresh');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('fresh');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+  });
+
+  it('falls back to the encrypted file when safeStorage is unavailable', async () => {
+    h.available.value = false;
+    let store = await bootStore('linux');
     store.saveTokens('at', 3600, 'fallback-refresh-token');
-    expect(fs.existsSync(path.join(h.home, 'refresh-token.dat'))).toBe(true);
+    await store.flushTokenStore();
+    expect(fs.existsSync(SECURE())).toBe(false);
+    expect(readFallback()).toBe('fallback-refresh-token');
+    // Encrypted at rest: the plaintext never touches disk.
+    expect(fs.readFileSync(FALLBACK()).includes('fallback-refresh-token')).toBe(false);
+    expect(logged('token_store_safestorage_unavailable_using_encrypted_file_fallback')).toBe(true);
+
+    store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('fallback-refresh-token');
-    // Encrypted at rest — the plaintext never touches disk.
-    const raw = fs.readFileSync(path.join(h.home, 'refresh-token.dat'));
-    expect(raw.includes('fallback-refresh-token')).toBe(false);
   });
 
-  it('reads a fallback-written token even after safeStorage becomes available again', async () => {
-    h.safeStorageAvailable.value = false;
-    let store = await loadStore('win32');
-    store.saveTokens('at', 3600, 'written-during-outage');
-
-    h.safeStorageAvailable.value = true;
-    store = await loadStore('win32');
-    expect(store.getRefreshToken()).toBe('written-during-outage');
+  it('treats a failing availability check as unavailable', async () => {
+    h.available.value = 'throw';
+    const store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'rt');
+    await store.flushTokenStore();
+    expect(readFallback()).toBe('rt');
+    expect(fs.existsSync(SECURE())).toBe(false);
   });
 
-  it('does not revive an older safeStorage token after a fallback write', async () => {
-    let store = await loadStore('win32');
-    store.saveTokens('at-1', 3600, 'old-dpapi-token');
+  it('falls back when encryption fails', async () => {
+    h.encryptFails.value = true;
+    const store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'rt');
+    await store.flushTokenStore();
+    expect(readFallback()).toBe('rt');
+    expect(fs.existsSync(SECURE())).toBe(false);
+  });
 
-    h.safeStorageAvailable.value = false;
+  it('moves back to the secure file once safeStorage recovers mid-session', async () => {
+    h.available.value = false;
+    const store = await bootStore('linux');
+    store.saveTokens('at-1', 3600, 'during-outage');
+    await store.flushTokenStore();
+    expect(readFallback()).toBe('during-outage');
+
+    h.available.value = true;
+    store.saveTokens('at-2', 3600, 'after-recovery');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('after-recovery');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+  });
+
+  it('does not revive an older secure token after a fallback write', async () => {
+    let store = await bootStore('linux');
+    store.saveTokens('at-1', 3600, 'old-secure-token');
+    await store.flushTokenStore();
+
+    h.available.value = false;
     store.saveTokens('at-2', 3600, 'rotated-fallback-token');
-    expect(fs.existsSync(path.join(h.userData, 'mindshub-refresh.bin'))).toBe(false);
+    await store.flushTokenStore();
+    expect(fs.existsSync(SECURE())).toBe(false);
 
-    h.safeStorageAvailable.value = true;
-    store = await loadStore('win32');
+    h.available.value = true;
+    store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('rotated-fallback-token');
   });
 
-  it('keeps a fresh fallback copy on safeStorage writes so an outage can still read the session', async () => {
-    h.safeStorageAvailable.value = false;
-    let store = await loadStore('win32');
-    store.saveTokens('at-1', 3600, 'fallback-token');
-
-    // safeStorage recovers and stores a newer token; the fallback copy is
-    // refreshed alongside it, never left stale and never deleted.
-    h.safeStorageAvailable.value = true;
-    store.saveTokens('at-2', 3600, 'new-dpapi-token');
-    expect(store.getRefreshToken()).toBe('new-dpapi-token');
-
-    // Next launch during a safeStorage outage still reads the session.
-    h.safeStorageAvailable.value = false;
-    store = await loadStore('win32');
-    expect(store.getRefreshToken()).toBe('new-dpapi-token');
+  it('keeps an unreadable secure file and reports no session', async () => {
+    fs.writeFileSync(SECURE(), 'garbage');
+    const store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBeNull();
+    await store.flushTokenStore();
+    expect(fs.readFileSync(SECURE(), 'utf8')).toBe('garbage');
+    expect(logged('token_store_secure_file_unreadable')).toBe(true);
   });
 
-  it('cleans up a legacy safeStorage file on macOS writes', async () => {
-    const store = await loadStore('darwin');
-    fs.writeFileSync(path.join(h.userData, 'mindshub-refresh.bin'), 'legacy-era-token');
-    store.saveTokens('at', 3600, 'mac-refresh-token');
-    expect(fs.existsSync(path.join(h.userData, 'mindshub-refresh.bin'))).toBe(false);
-    expect(store.getRefreshToken()).toBe('mac-refresh-token');
+  it('recovers from the fallback file when the secure file cannot be decrypted', async () => {
+    fs.writeFileSync(SECURE(), 'garbage');
+    setMtime(SECURE(), 2_000);
+    writeFallback('backup', 1_000);
+    const store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBe('backup');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('backup');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
   });
 
-  it('round-trips through the encrypted file on macOS', async () => {
-    const store = await loadStore('darwin');
-    store.saveTokens('at', 3600, 'mac-refresh-token');
-    expect(store.getRefreshToken()).toBe('mac-refresh-token');
+  it('leaves both files alone when safeStorage is down at startup', async () => {
+    writeSecure('fresh', 2_000);
+    writeFallback('stale', 1_000);
+    h.available.value = false;
+    const store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBeNull();
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('fresh');
+    expect(readFallback()).toBe('stale');
+    expect(logged('token_store_secure_store_unavailable_at_startup')).toBe(true);
+  });
+
+  it('reads the same-instant fallback copy when safeStorage is down at startup', async () => {
+    writeSecure('same', 1_000);
+    writeFallback('same', 1_000);
+    h.available.value = false;
+    const store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBe('same');
+    await store.flushTokenStore();
+    expect(present()).toEqual({ secure: true, fallback: true });
+  });
+
+  it('re-encrypts when safeStorage asks for it', async () => {
+    writeSecure('tok');
+    h.reEncrypt.value = true;
+    const store = await bootStore('linux');
+    await store.flushTokenStore();
+    expect(h.encrypted).toEqual(['tok']);
+    expect(readSecure()).toBe('tok');
+  });
+
+  it('does not re-encrypt an unchanged token', async () => {
+    const store = await bootStore('linux');
+    store.saveTokens('at-1', 3600, 'same');
+    await store.flushTokenStore();
+    store.saveTokens('at-2', 3600, 'same');
+    await store.flushTokenStore();
+    expect(h.encrypted).toEqual(['same']);
+  });
+
+  it('does not re-encrypt a token it just loaded from the secure file', async () => {
+    writeSecure('loaded');
+    const store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'loaded');
+    await store.flushTokenStore();
+    expect(h.encrypted).toEqual([]);
+  });
+
+  it('ignores a save without a refresh token', async () => {
+    const store = await bootStore('linux');
+    store.saveTokens('at-1', 3600, 'kept');
+    await store.flushTokenStore();
+    store.saveTokens('at-2', 3600, '');
+    expect(store.getRefreshToken()).toBe('kept');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('kept');
+    expect(h.encrypted).toEqual(['kept']);
+  });
+
+  it('warns once when the token is read before the store loaded', async () => {
+    const store = await loadStore('linux');
+    expect(store.getRefreshToken()).toBeNull();
+    expect(store.getRefreshToken()).toBeNull();
+    expect(h.events.filter((e) => e === 'token_store_read_before_init')).toHaveLength(1);
+  });
+
+  it('writes the secure file owner-only, even over a wider file left by an older build', async () => {
+    writeSecure('old');
+    fs.chmodSync(SECURE(), 0o644);
+    const store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'new');
+    await store.flushTokenStore();
+    expect(fs.statSync(SECURE()).mode & 0o777).toBe(0o600);
+  });
+
+  // The rename failures are armed after saveTokens: its synchronous account
+  // bookkeeping writes files of its own, and the write under test runs later.
+  it('retries a transiently locked rename', async () => {
+    const store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'rt');
+    h.renameFail.code = 'EPERM';
+    h.renameFail.times = 2;
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('rt');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+    expect(logged('token_store_secure_file_write_failed')).toBe(false);
+  });
+
+  it('falls back on a rename error that is not transient, and says why', async () => {
+    const store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'rt');
+    h.renameFail.code = 'EXDEV';
+    h.renameFail.times = 1;
+    await store.flushTokenStore();
+    expect(readFallback()).toBe('rt');
+    expect(logged('token_store_secure_file_write_failed')).toBe(true);
+    expect(logged('token_store_safestorage_unavailable_using_encrypted_file_fallback')).toBe(false);
+  });
+
+  it('removes leftover temp files at startup and on sign-out', async () => {
+    fs.writeFileSync(`${SECURE()}.tmp`, 'x');
+    fs.writeFileSync(`${FALLBACK()}.tmp`, 'x');
+    const store = await bootStore('linux');
+    expect(fs.existsSync(`${SECURE()}.tmp`)).toBe(false);
+    expect(fs.existsSync(`${FALLBACK()}.tmp`)).toBe(false);
+
+    fs.writeFileSync(`${SECURE()}.tmp`, 'x');
+    fs.writeFileSync(`${FALLBACK()}.tmp`, 'x');
+    store.clearTokens();
+    expect(fs.existsSync(`${SECURE()}.tmp`)).toBe(false);
+    expect(fs.existsSync(`${FALLBACK()}.tmp`)).toBe(false);
   });
 
   it('clearTokens removes every store so the next read is a definitive null', async () => {
-    const store = await loadStore('win32');
+    let store = await bootStore('linux');
     store.saveTokens('at', 3600, 'to-be-cleared');
+    await store.flushTokenStore();
     store.clearTokens();
     expect(store.getRefreshToken()).toBeNull();
     expect(store.getAccessToken()).toBeNull();
+    expect(present()).toEqual({ secure: false, fallback: false });
+
+    store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBeNull();
+  });
+});
+
+describe('token-store write ordering', () => {
+  it('a sign-out during encryption leaves nothing on disk', async () => {
+    const gate = deferred();
+    h.encryptGate.value = gate.promise;
+    const store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'A');
+    await vi.waitFor(() => expect(h.encrypted).toEqual(['A']));
+    store.clearTokens();
+    gate.resolve();
+    await store.flushTokenStore();
+    expect(store.getRefreshToken()).toBeNull();
+    expect(present()).toEqual({ secure: false, fallback: false });
+  });
+
+  it('a flush waits for a token saved while it was waiting', async () => {
+    const gate = deferred();
+    h.encryptGate.value = gate.promise;
+    const store = await bootStore('linux');
+    store.saveTokens('at-1', 3600, 'A');
+    await vi.waitFor(() => expect(h.encrypted).toEqual(['A']));
+    const flushed = store.flushTokenStore();
+    store.saveTokens('at-2', 3600, 'B');
+    gate.resolve();
+    await flushed;
+    expect(readSecure()).toBe('B');
+  });
+
+  it('a sign-out right after encryption resolved leaves nothing on disk', async () => {
+    const gate = deferred();
+    h.encryptGate.value = gate.promise;
+    const store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'A');
+    await vi.waitFor(() => expect(h.encrypted).toEqual(['A']));
+    // Same tick: the write's continuation is still queued behind this sign-out.
+    gate.resolve();
+    store.clearTokens();
+    await store.flushTokenStore();
+    expect(present()).toEqual({ secure: false, fallback: false });
+  });
+
+  it('a sign-out between write attempts leaves nothing on disk', async () => {
+    const store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'A');
+    // Armed after saveTokens (see above). The first attempt fails; the
+    // sign-out lands before the retry.
+    h.renameFail.code = 'EPERM';
+    h.renameFail.times = 1;
+    h.renameFail.onFail = () => store.clearTokens();
+    await store.flushTokenStore();
+    expect(present()).toEqual({ secure: false, fallback: false });
+    expect(fs.existsSync(`${SECURE()}.tmp`)).toBe(false);
+  });
+
+  it('the later of two saves wins', async () => {
+    const gate = deferred();
+    h.encryptGate.value = gate.promise;
+    const store = await bootStore('linux');
+    store.saveTokens('at-1', 3600, 'A');
+    await vi.waitFor(() => expect(h.encrypted).toEqual(['A']));
+    store.saveTokens('at-2', 3600, 'B');
+    gate.resolve();
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('B');
+  });
+
+  it('a save during the startup load wins over the token on disk', async () => {
+    writeSecure('disk');
+    const gate = deferred();
+    h.decryptGate.value = gate.promise;
+    const store = await loadStore('linux');
+    const init = store.initTokenStore();
+    await vi.waitFor(() => expect(h.decrypted).toHaveLength(1));
+    store.saveTokens('at', 3600, 'fresh');
+    gate.resolve();
+    await init;
+    expect(store.getRefreshToken()).toBe('fresh');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('fresh');
+  });
+
+  it('a sign-out during the startup decrypt leaves nothing on disk', async () => {
+    writeSecure('old');
+    const gate = deferred();
+    h.decryptGate.value = gate.promise;
+    const store = await loadStore('linux');
+    const init = store.initTokenStore();
+    await vi.waitFor(() => expect(h.decrypted.length).toBe(1));
+    store.clearTokens();
+    gate.resolve();
+    await init;
+    expect(store.getRefreshToken()).toBeNull();
+    await store.flushTokenStore();
+    expect(present()).toEqual({ secure: false, fallback: false });
+  });
+
+  it.skipIf(process.platform === 'win32')('tightens the mode of a secure file written without one', async () => {
+    writeSecure('loose');
+    fs.chmodSync(SECURE(), 0o644);
+    const store = await bootStore('linux');
+    expect(store.getRefreshToken()).toBe('loose');
+    expect(fs.statSync(SECURE()).mode & 0o777).toBe(0o600);
+  });
+
+  it('holds writes until the store has loaded', async () => {
+    const store = await loadStore('linux');
+    store.saveTokens('at', 3600, 'early');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(h.encrypted).toEqual([]);
+    expect(fs.existsSync(SECURE())).toBe(false);
+    await store.initTokenStore();
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('early');
+  });
+});
+
+describe('token-store on macOS', () => {
+  it('does not pin the install to the fallback file when the availability check throws', async () => {
+    h.available.value = 'throw';
+    let store = await bootStore('darwin');
+    store.saveTokens('at', 3600, 'thrown-token');
+    await store.flushTokenStore();
+    expect(readFallback()).toBe('thrown-token');
+    expect(fs.existsSync(MARKER())).toBe(false);
+
+    h.available.value = true;
+    store = await bootStore('darwin');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('thrown-token');
+  });
+
+  it('migrates the newer fallback file over an older secure file', async () => {
+    writeSecure('relic', 1_000);
+    writeFallback('current', 2_000);
+    const store = await bootStore('darwin');
+    expect(h.decrypted).toHaveLength(0);
+    expect(store.getRefreshToken()).toBe('current');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('current');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+  });
+
+  it('migrates a fallback-only token into the Keychain-backed file', async () => {
+    writeFallback('mac-current');
+    const store = await bootStore('darwin');
+    expect(store.getRefreshToken()).toBe('mac-current');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('mac-current');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+  });
+
+  it('warns about a pinned fallback once per process, not on every rotation', async () => {
+    fs.writeFileSync(MARKER(), '{}');
+    const store = await bootStore('darwin');
+    store.saveTokens('at-1', 3600, 'rt-1');
+    await store.flushTokenStore();
+    store.saveTokens('at-2', 3600, 'rt-2');
+    await store.flushTokenStore();
+    expect(readFallback()).toBe('rt-2');
+    expect(h.events.filter((e) => e === 'token_store_safestorage_unavailable_using_encrypted_file_fallback')).toHaveLength(1);
+  });
+
+  it('a marker deleted while the app runs lets the next write use the Keychain', async () => {
+    fs.writeFileSync(MARKER(), '{}');
+    const store = await bootStore('darwin');
+    store.saveTokens('at', 3600, 'A');
+    await store.flushTokenStore();
+    expect(readFallback()).toBe('A');
+    fs.rmSync(MARKER());
+    store.saveTokens('at', 3600, 'B');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('B');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+  });
+
+  it('records a Keychain refusal and stops asking', async () => {
+    h.available.value = false;
+    let store = await bootStore('darwin');
+    store.saveTokens('at', 3600, 'refused-token');
+    await store.flushTokenStore();
+    const marker = JSON.parse(fs.readFileSync(MARKER(), 'utf8'));
+    expect(marker).toMatchObject({ reason: 'availability_false', appVersion: '9.9.9' });
+    expect(typeof marker.at).toBe('string');
+    expect(readFallback()).toBe('refused-token');
+    expect(logged('token_store_keychain_unavailable_marker_written')).toBe(true);
+
+    h.available.value = true;
+    h.calls.length = 0;
+    store = await bootStore('darwin');
+    expect(h.calls.filter((c) => c === 'available')).toHaveLength(0);
+    expect(store.getRefreshToken()).toBe('refused-token');
+  });
+
+  it('records an encryption failure the same way', async () => {
+    h.encryptFails.value = true;
+    const store = await bootStore('darwin');
+    store.saveTokens('at', 3600, 'rt');
+    await store.flushTokenStore();
+    expect(JSON.parse(fs.readFileSync(MARKER(), 'utf8'))).toMatchObject({ reason: 'encrypt_failed' });
+    expect(readFallback()).toBe('rt');
+  });
+
+  it('never writes the marker on Linux', async () => {
+    h.available.value = false;
+    const store = await bootStore('linux');
+    store.saveTokens('at', 3600, 'rt');
+    await store.flushTokenStore();
+    expect(fs.existsSync(MARKER())).toBe(false);
+  });
+
+  it('does not treat an undecryptable file as a Keychain refusal', async () => {
+    fs.writeFileSync(SECURE(), 'garbage');
+    const store = await bootStore('darwin');
+    expect(store.getRefreshToken()).toBeNull();
+    expect(fs.existsSync(MARKER())).toBe(false);
+    expect(fs.existsSync(SECURE())).toBe(true);
+  });
+
+  it('recovers from the fallback file without a marker when the secure file cannot be decrypted', async () => {
+    fs.writeFileSync(SECURE(), 'garbage');
+    setMtime(SECURE(), 2_000);
+    writeFallback('backup', 1_000);
+    const store = await bootStore('darwin');
+    expect(store.getRefreshToken()).toBe('backup');
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('backup');
+    expect(fs.existsSync(MARKER())).toBe(false);
+  });
+
+  it('prefers a newer secure file over a fallback file left behind', async () => {
+    writeSecure('fresh', 2_000);
+    writeFallback('stale', 1_000);
+    const store = await bootStore('darwin');
+    expect(store.getRefreshToken()).toBe('fresh');
+    await store.flushTokenStore();
+    expect(fs.existsSync(FALLBACK())).toBe(false);
   });
 });
 

@@ -19,26 +19,46 @@ import {
 import { accountIdFromToken, activeOrgIdFromToken } from './jwt';
 import { accountDataRoot, coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
+import { retryOnTransientLock } from './fs-retry';
+import { registerQuitFlush } from './quit-flush';
 
 // Persistence for the Keycloak refresh token.
 //
-// On macOS, Electron's safeStorage (Keychain) binds ACLs to the binary's
-// CDHash, which changes on every build — even with the same Developer ID
-// cert — causing a keychain-access prompt on every app launch. We use
-// AES-256-CBC file-based storage instead (encrypted, 0600 permissions).
+// The token lives in memory for the whole process. initTokenStore() loads it
+// once after app ready; saveTokens() and clearTokens() change memory at once
+// while a serialized queue writes the disk. That keeps the synchronous API the
+// auth code is built on, while safeStorage itself is async only.
 //
-// On Windows/Linux, safeStorage (DPAPI / libsecret) doesn't prompt, so
-// we keep using it there.
+// On every platform the token is encrypted with safeStorage into
+// userData/mindshub-refresh.bin. refresh-token.dat is written only while
+// safeStorage is unavailable, and removed once a secure write lands.
+//
+// macOS: safeStorage keeps its key in the Keychain item "<app name> Safe
+// Storage". Its ACL trusts the app's designated requirement (bundle id plus
+// Team ID), so signed updates read it without a prompt. An install whose item
+// predates the bundle id change is prompted for Keychain access: Always Allow
+// ends the prompts, a plain Allow repeats them every launch. A refusal, including
+// a Deny, is recorded in KEYCHAIN_UNAVAILABLE_MARKER and keeps the install on
+// the fallback file, so the user is not asked again on every launch. Deleting
+// the marker file brings the Keychain back.
 
+const SECURE_FILE = path.join(app.getPath('userData'), 'mindshub-refresh.bin');
+const FALLBACK_FILE = path.join(coworkHome(), 'refresh-token.dat');
+const SECURE_TMP = `${SECURE_FILE}.tmp`;
+const FALLBACK_TMP = `${FALLBACK_FILE}.tmp`;
+// Short on purpose: a target that is never writable also fails with
+// EPERM/EACCES and would spend the whole budget on every write, and two files'
+// worth must fit inside the quit flush ceiling.
+const WRITE_RETRY = { attempts: 4, baseDelayMs: 60 };
 const IS_MAC = process.platform === 'darwin';
-const KEYCHAIN_FILE = path.join(app.getPath('userData'), 'mindshub-refresh.bin');
-const ENCRYPTED_FILE = path.join(coworkHome(), 'refresh-token.dat');
+const KEYCHAIN_UNAVAILABLE_MARKER = path.join(app.getPath('userData'), 'keychain-unavailable');
 
-// ── Mac file-based encryption ───────────────────────────────────────
+type StoreKind = 'secure' | 'fallback';
 
-// Machine-local obfuscation key derived from a stable per-user path.
-// This is NOT cryptographic security — it prevents casual plaintext
-// exposure on disk. The real protection is file permissions (0600).
+// ── Fallback file encryption ────────────────────────────────────────
+
+// Key derived from public values: this only keeps the token from sitting on
+// disk in plaintext. The real protection is the file's 0600 mode.
 function deriveKey(): Buffer {
   const seed = `mindshub-cowork:${app.getPath('userData')}`;
   return crypto.createHash('sha256').update(seed).digest();
@@ -60,12 +80,7 @@ function decryptToken(data: Buffer): string {
   return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
 }
 
-// ── Read / write per platform ───────────────────────────────────────
-
-function writeEncryptedFile(refreshToken: string): void {
-  fs.mkdirSync(coworkHome(), { recursive: true });
-  fs.writeFileSync(ENCRYPTED_FILE, encryptToken(refreshToken), { mode: 0o600 });
-}
+// ── Files ───────────────────────────────────────────────────────────
 
 // ENOENT is the expected case (nothing to remove); anything else means a
 // stale token may survive and shadow a rotated one later — say so.
@@ -75,62 +90,270 @@ function removeStaleStore(file: string): void {
   }
 }
 
-function writeToken(refreshToken: string): void {
-  if (IS_MAC) {
-    writeEncryptedFile(refreshToken);
-    // Pre-file-store builds kept the token in safeStorage under userData.
-    // Inert on macOS reads, but don't leave stale credential material behind.
-    removeStaleStore(KEYCHAIN_FILE);
-    return;
-  }
-  if (safeStorage.isEncryptionAvailable()) {
-    fs.writeFileSync(KEYCHAIN_FILE, safeStorage.encryptString(refreshToken));
-    // Refresh the encrypted-file copy too rather than deleting it: on
-    // machines where DPAPI/libsecret flaps, the fallback is the only store
-    // readable during the next outage, and keeping it fresh means a stale
-    // rotated token can never shadow the real one. Best-effort — the
-    // safeStorage write above already persisted the session.
-    try { writeEncryptedFile(refreshToken); } catch (e) {
-      diagnostic("main.token-store", "WARNING", "token_store_could_not_refresh_encrypted_file_copy", '[token-store] could not refresh encrypted-file copy', e);
-    }
-    return;
-  }
-  // safeStorage unavailable (DPAPI/libsecret failure). Previously this
-  // silently persisted NOTHING — the user looked signed in until the
-  // next launch, then showed up as unauthenticated (ENG-761). Fall back
-  // to the same encrypted file macOS uses so the session survives.
-  diagnostic("main.token-store", "WARNING", "token_store_safestorage_unavailable_using_encrypted_file_fallback", '[token-store] safeStorage unavailable — using encrypted-file fallback');
-  writeEncryptedFile(refreshToken);
-  // Do not let a previously stored DPAPI token take precedence if
-  // safeStorage recovers after the refresh token has rotated.
-  removeStaleStore(KEYCHAIN_FILE);
+function mtimeMs(file: string): number | null {
+  try { return fs.statSync(file).mtimeMs; } catch { return null; }
 }
 
-function readToken(): string | null {
-  // Mac: encrypted file
-  if (IS_MAC) {
-    if (!fs.existsSync(ENCRYPTED_FILE)) return null;
-    return decryptToken(fs.readFileSync(ENCRYPTED_FILE));
+function readFallbackFile(): string | null {
+  try {
+    return decryptToken(fs.readFileSync(FALLBACK_FILE));
+  } catch (e: any) {
+    if (e?.code !== 'ENOENT') diagnostic("main.token-store", "WARNING", "token_store_fallback_file_unreadable", '[token-store] fallback token file is unreadable', e);
+    return null;
   }
-  // Windows/Linux: safeStorage, then the encrypted-file fallback written
-  // when safeStorage was unavailable at save time.
-  if (fs.existsSync(KEYCHAIN_FILE) && safeStorage.isEncryptionAvailable()) {
-    return safeStorage.decryptString(fs.readFileSync(KEYCHAIN_FILE));
+}
+
+const STORE_FILES = {
+  secure: { file: SECURE_FILE, tmp: SECURE_TMP },
+  fallback: { file: FALLBACK_FILE, tmp: FALLBACK_TMP },
+} as const;
+
+// Each attempt checks the generation and writes in one synchronous run, so a
+// saveTokens or clearTokens can land only between attempts, never between the
+// check and the rename. Resolves false when a newer one made this write stale.
+async function writeStore(kind: StoreKind, token: string, data: Buffer, generation: number): Promise<boolean> {
+  const { file, tmp } = STORE_FILES[kind];
+  // Removing the other kind's file keeps an older token there from shadowing
+  // this one once the stores change roles.
+  const staleCopy = STORE_FILES[kind === 'secure' ? 'fallback' : 'secure'].file;
+  try {
+    const written = await retryOnTransientLock(() => {
+      if (generation !== _persistGeneration) return false;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.rmSync(tmp, { force: true });
+      // mode applies only when a file is created; the fresh temp file carries
+      // it onto the target through the rename.
+      fs.writeFileSync(tmp, data, { mode: 0o600 });
+      fs.renameSync(tmp, file);
+      removeStaleStore(staleCopy);
+      return true;
+    }, WRITE_RETRY);
+    if (written && generation === _persistGeneration) _lastPersisted = { token, kind };
+    return written;
+  } finally {
+    removeStaleStore(tmp);
   }
-  if (fs.existsSync(ENCRYPTED_FILE)) return decryptToken(fs.readFileSync(ENCRYPTED_FILE));
-  return null;
 }
 
 function deleteTokenFiles(): void {
-  try { fs.unlinkSync(ENCRYPTED_FILE); } catch {}
-  try { fs.unlinkSync(KEYCHAIN_FILE); } catch {}
+  for (const { file, tmp } of Object.values(STORE_FILES)) {
+    removeStaleStore(file);
+    removeStaleStore(tmp);
+  }
 }
 
-// ── Public API ──────────────────────────────────────────────────────
+// ── safeStorage ─────────────────────────────────────────────────────
+
+async function secureStoreAvailable(): Promise<boolean> {
+  if (keychainRefused()) return false;
+  let available: boolean;
+  try {
+    available = await safeStorage.isAsyncEncryptionAvailable();
+  } catch (e) {
+    // A throw says nothing about the user's choice, so it must not pin the
+    // install to the fallback file; only a false answer counts as a refusal.
+    diagnostic("main.token-store", "WARNING", "token_store_async_encryption_check_failed", '[token-store] safeStorage availability check failed', e);
+    return false;
+  }
+  if (!available) recordKeychainRefusal('availability_false', null);
+  return available;
+}
+
+function keychainRefused(): boolean {
+  return IS_MAC && fs.existsSync(KEYCHAIN_UNAVAILABLE_MARKER);
+}
+
+// macOS only. Windows DPAPI never asks, and on Linux a refusal is often
+// temporary, so neither is worth pinning.
+function recordKeychainRefusal(reason: 'availability_false' | 'encrypt_failed', error: unknown): void {
+  if (!IS_MAC) return;
+  const record = {
+    reason,
+    error: error instanceof Error ? error.message : error == null ? null : String(error),
+    at: new Date().toISOString(),
+    appVersion: app.getVersion(),
+  };
+  try {
+    fs.mkdirSync(path.dirname(KEYCHAIN_UNAVAILABLE_MARKER), { recursive: true });
+    fs.writeFileSync(KEYCHAIN_UNAVAILABLE_MARKER, JSON.stringify(record) + '\n', { mode: 0o600 });
+    diagnostic("main.token-store", "WARNING", "token_store_keychain_unavailable_marker_written", `[token-store] Keychain unavailable (${reason}); this install stays on the fallback file`, error);
+  } catch (e) {
+    diagnostic("main.token-store", "WARNING", "token_store_could_not_write_keychain_unavailable_marker", '[token-store] could not record the Keychain refusal', e);
+  }
+}
+
+// ── State ───────────────────────────────────────────────────────────
 
 let _accessToken: string | null = null;
 let _expiresAt = 0; // epoch ms
 let _tokenStoreVersion = 0;
+let _refreshToken: string | null = null;
+let _initialized = false;
+let _initPromise: Promise<void> | null = null;
+let _warnedReadBeforeInit = false;
+let _warnedPinnedFallback = false;
+// Bumped by every saveTokens that carries a refresh token and by clearTokens.
+// A queued write or a startup load that finds it changed is stale and drops out.
+let _persistGeneration = 0;
+// What the disk already holds, so an unchanged token is not re-encrypted on
+// every access-token refresh.
+let _lastPersisted: { token: string; kind: StoreKind } | null = null;
+let _releaseWrites!: () => void;
+// Writes start only after initTokenStore finished, so nothing the startup load
+// removes can be a file a write just produced.
+let _persistChain: Promise<void> = new Promise<void>((resolve) => { _releaseWrites = resolve; });
+
+// ── Startup load ────────────────────────────────────────────────────
+
+export function initTokenStore(): Promise<void> {
+  if (!_initPromise) {
+    _initPromise = loadAtStartup()
+      .catch((e) => {
+        diagnostic("main.token-store", "WARNING", "token_store_startup_load_failed", '[token-store] could not load the stored session', e);
+      })
+      .finally(() => {
+        _initialized = true;
+        _releaseWrites();
+      });
+  }
+  return _initPromise;
+}
+
+async function loadAtStartup(): Promise<void> {
+  const generation = _persistGeneration;
+  removeStaleStore(SECURE_TMP);
+  removeStaleStore(FALLBACK_TMP);
+
+  const secureTime = mtimeMs(SECURE_FILE);
+  const fallbackTime = mtimeMs(FALLBACK_FILE);
+  if (secureTime === null && fallbackTime === null) return;
+  // With both present the newer one is current. Equal times favour the secure
+  // file: the previous build wrote the same token to both in one go.
+  const source: StoreKind =
+    secureTime !== null && (fallbackTime === null || secureTime >= fallbackTime) ? 'secure' : 'fallback';
+
+  const available = await secureStoreAvailable();
+  const target: StoreKind = available ? 'secure' : 'fallback';
+
+  if (source === 'secure' && !available) {
+    diagnostic("main.token-store", "WARNING", "token_store_secure_store_unavailable_at_startup", '[token-store] safeStorage unavailable at startup; keeping the stored session for the next launch');
+    // An older fallback file may hold a token rotated out since. Only one
+    // written in the same instant is the same token.
+    const token = fallbackTime === secureTime ? readFallbackFile() : null;
+    if (token !== null) adoptLoadedToken(generation, token, false, null);
+    return;
+  }
+
+  let token: string | null = null;
+  let from: StoreKind = source;
+  let reEncrypt = false;
+  if (source === 'secure') {
+    try {
+      const decrypted = await safeStorage.decryptStringAsync(fs.readFileSync(SECURE_FILE));
+      token = decrypted.result;
+      reEncrypt = decrypted.shouldReEncrypt;
+    } catch (e: any) {
+      // ENOENT: the file vanished meanwhile (a sign-out), not a decrypt failure.
+      if (e?.code !== 'ENOENT') diagnostic("main.token-store", "WARNING", "token_store_secure_file_unreadable", '[token-store] secure token file cannot be decrypted', e);
+      // The secure file is lost for good, so an older fallback file costs nothing to try.
+      if (fallbackTime !== null) {
+        token = readFallbackFile();
+        from = 'fallback';
+      }
+    }
+  } else {
+    token = readFallbackFile();
+  }
+  if (token === null) return;
+
+  if (from === 'secure' && process.platform !== 'win32') {
+    // The previous build wrote this file without a mode; nothing may be queued
+    // to rewrite it, so tighten it here.
+    try { fs.chmodSync(SECURE_FILE, 0o600); } catch (e: any) {
+      if (e?.code !== 'ENOENT') diagnostic("main.token-store", "WARNING", "token_store_could_not_restrict_secure_file_mode", '[token-store] could not restrict the secure token file mode', e);
+    }
+  }
+
+  const otherFileExists = (from === 'secure' ? fallbackTime : secureTime) !== null;
+  const needsWrite = from !== target || otherFileExists || reEncrypt;
+  adoptLoadedToken(generation, token, needsWrite, needsWrite ? null : { token, kind: target });
+}
+
+function adoptLoadedToken(
+  generation: number,
+  token: string,
+  needsWrite: boolean,
+  persisted: { token: string; kind: StoreKind } | null,
+): void {
+  // A saveTokens or clearTokens during the load already set newer state.
+  if (generation !== _persistGeneration) return;
+  _refreshToken = token;
+  _lastPersisted = persisted;
+  if (needsWrite) enqueuePersist(token, generation);
+}
+
+// ── Write queue ─────────────────────────────────────────────────────
+
+function enqueuePersist(token: string, generation: number): void {
+  _persistChain = _persistChain
+    .then(() => persist(token, generation))
+    .catch((e) => {
+      diagnostic("main.token-store", "WARNING", "token_store_failed_to_persist_refresh_token", '[token-store] failed to persist refresh token', e);
+    });
+}
+
+async function persist(token: string, generation: number): Promise<void> {
+  if (generation !== _persistGeneration) return;
+  const available = await secureStoreAvailable();
+  const kind: StoreKind = available ? 'secure' : 'fallback';
+  if (_lastPersisted?.token === token && _lastPersisted.kind === kind) return;
+
+  const outcome = available ? await trySecureWrite(token, generation) : 'skipped';
+  if (outcome === 'done') return;
+  if (outcome === 'skipped') warnFallbackWrite();
+  await writeStore('fallback', token, encryptToken(token), generation);
+}
+
+async function trySecureWrite(token: string, generation: number): Promise<'done' | 'write_failed' | 'skipped'> {
+  let encrypted: Buffer;
+  try {
+    encrypted = await safeStorage.encryptStringAsync(token);
+  } catch (e) {
+    diagnostic("main.token-store", "WARNING", "token_store_encryption_failed", '[token-store] safeStorage encryption failed', e);
+    recordKeychainRefusal('encrypt_failed', e);
+    return 'skipped';
+  }
+  try {
+    await writeStore('secure', token, encrypted, generation);
+    return 'done';
+  } catch (e) {
+    diagnostic("main.token-store", "WARNING", "token_store_secure_file_write_failed", '[token-store] could not write the secure token file', e);
+    return 'write_failed';
+  }
+}
+
+function warnFallbackWrite(): void {
+  // A refusal marker pins the fallback for good; saying so on every token
+  // rotation adds nothing.
+  const pinned = keychainRefused();
+  if (pinned && _warnedPinnedFallback) return;
+  _warnedPinnedFallback ||= pinned;
+  diagnostic("main.token-store", "WARNING", "token_store_safestorage_unavailable_using_encrypted_file_fallback", '[token-store] safeStorage unavailable — using encrypted-file fallback');
+}
+
+/** Resolves once every write queued before it settles, including writes queued
+ *  while it waits, reached disk or failed. Before initTokenStore runs, writes
+ *  are held, so there is nothing to wait for. */
+export async function flushTokenStore(): Promise<void> {
+  if (!_initPromise) return;
+  let current: Promise<void>;
+  do {
+    current = _persistChain;
+    await current;
+  } while (current !== _persistChain);
+}
+
+registerQuitFlush(flushTokenStore);
 
 // Push the new auth state to every renderer. token-store is the single
 // choke point every MindsHub auth transition flows through (login,
@@ -151,9 +374,9 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
   _accessToken = accessToken;
   _expiresAt = Date.now() + expiresInSeconds * 1000;
   if (refreshToken) {
-    try { writeToken(refreshToken); } catch (e) {
-      diagnostic("main.token-store", "WARNING", "token_store_failed_to_persist_refresh_token", '[token-store] failed to persist refresh token', e);
-    }
+    _refreshToken = refreshToken;
+    _persistGeneration += 1;
+    enqueuePersist(refreshToken, _persistGeneration);
   }
   recordSignedInAccount(accessToken, refreshToken);
   // After the account, always: the organization root resolves through whichever
@@ -307,11 +530,11 @@ export function isAccessTokenExpired(): boolean {
 }
 
 export function getRefreshToken(): string | null {
-  try {
-    return readToken();
-  } catch {
-    return null;
+  if (!_initialized && _refreshToken === null && !_warnedReadBeforeInit) {
+    _warnedReadBeforeInit = true;
+    diagnostic("main.token-store", "WARNING", "token_store_read_before_init", '[token-store] refresh token read before the store loaded');
   }
+  return _refreshToken;
 }
 
 export function clearTokens(): void {
@@ -321,6 +544,9 @@ export function clearTokens(): void {
   _tokenStoreVersion += 1;
   _accessToken = null;
   _expiresAt = 0;
+  _refreshToken = null;
+  _persistGeneration += 1;
+  _lastPersisted = null;
   deleteTokenFiles();
   // Same choke point, same reason: a sign-out recorded here keeps the account
   // this install was using, so it stays on its own data root rather than
@@ -332,8 +558,3 @@ export function clearTokens(): void {
   }
   broadcastAuthChanged(false);
 }
-
-// Stub — the keychain toggle in settings calls this, but on macOS we no
-// longer use the keychain so there is nothing to migrate. On Windows/Linux
-// there is only one store (safeStorage) so migration is also a no-op.
-export function migrateRefreshTokenStore(_toKeychain: boolean): void {}

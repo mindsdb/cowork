@@ -43,8 +43,6 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "INSTALL_LOG": "install:log",
   "INSTALL_PROGRESS": "install:progress",
   "INSTALL_START": "install:start",
-  "KEYCHAIN_PREF_GET": "keychain:get",
-  "KEYCHAIN_PREF_SET": "keychain:set",
   "KEYCHAIN_REVOKE": "keychain:revoke",
   "MINDSHUB_AUTH_CHANGED": "mindshub:auth-changed",
   "MINDSHUB_BRAND_IMAGES": "mindshub:brand-images",

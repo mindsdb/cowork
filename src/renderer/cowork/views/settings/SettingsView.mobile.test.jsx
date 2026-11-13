@@ -20,7 +20,6 @@ vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: false,
     isMac: () => false,
-    getKeychainPref: vi.fn(async () => false),
     openExternal: vi.fn(),
     serverDiagnostics: vi.fn(async () => ({})),
   },

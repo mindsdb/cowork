@@ -31,7 +31,6 @@ vi.mock('../../../platform/host', () => ({
     isElectron: true,
     isWeb: false,
     isMac: () => false,
-    getKeychainPref: vi.fn(async () => false),
     openExternal: vi.fn(),
     serverDiagnostics: vi.fn(async () => ({})),
     logout: spies.logout,

@@ -23,6 +23,7 @@ vi.mock('./token-store', () => ({
   // fail a test, which reads as four mystery errors on an otherwise green run.
   getAccessToken: vi.fn(),
   isAccessTokenExpired: vi.fn(() => false),
+  flushTokenStore: vi.fn(async () => undefined),
 }));
 vi.mock('./minds-credential', () => ({
   hasUserSuppliedMindsCredential: vi.fn(async () => false),
@@ -34,7 +35,7 @@ vi.mock('./minds-credential', () => ({
   syncUsableMindsCredential: vi.fn(async () => true),
 }));
 
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens, getTokenStoreVersion, isAccessTokenExpired } from './token-store';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, getTokenStoreVersion, isAccessTokenExpired, flushTokenStore } from './token-store';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
 import {
   beginMindsCredentialSignOut,
@@ -47,6 +48,7 @@ import {
   refreshTokensOnly,
   scheduleRefreshRetry,
 } from './minds-auth';
+import { holdQuitWriters, runQuitFlushes } from './quit-flush';
 import {
   beginMindsResumeCredentialGate,
   isMindsResumeCredentialGateActive,
@@ -778,5 +780,84 @@ describe('refreshTokensOnly outcome mapping', () => {
     expect(fn).toHaveBeenCalledTimes(1);
     expect(r1).toEqual({ status: 'ok', token: 'at' });
     expect(r2).toEqual(r1);
+  });
+
+  it('re-arms a held refresh for the rest of its delay', async () => {
+    const fn = mockFetchOnce(async () => jsonResponse(503, {}));
+    scheduleRefreshRetry();
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    const resume = holdQuitWriters();
+    await vi.advanceTimersByTimeAsync(2_000);
+    resume();
+    await vi.advanceTimersByTimeAsync(3_999);
+    expect(fn).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs a held refresh at once when its due time passed during the hold', async () => {
+    const fn = mockFetchOnce(async () => jsonResponse(503, {}));
+    scheduleRefreshRetry();
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    const resume = holdQuitWriters();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fn).not.toHaveBeenCalled();
+
+    resume();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('makes the quit flush wait for an exchange in flight and flush its token', async () => {
+    (flushTokenStore as Mock).mockClear();
+    let release!: (v: unknown) => void;
+    const gate = new Promise((r) => { release = r; });
+    mockFetchOnce(async () => { await gate; return jsonResponse(200, { access_token: 'at', expires_in: 300, refresh_token: 'rt-2' }); });
+    const pending = refreshTokensOnly();
+
+    let flushed = false;
+    const quitFlush = runQuitFlushes().then((ok) => { flushed = ok; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flushed).toBe(false);
+    expect(flushTokenStore).not.toHaveBeenCalled();
+
+    release(null);
+    await pending;
+    await quitFlush;
+    expect(flushed).toBe(true);
+    expect(saveTokens).toHaveBeenCalledWith('at', 300, 'rt-2');
+    expect((saveTokens as Mock).mock.invocationCallOrder[0])
+      .toBeLessThan((flushTokenStore as Mock).mock.invocationCallOrder[0]);
+  });
+
+  it('does not arm a timer for a refresh that lands while held', async () => {
+    let release!: (v: unknown) => void;
+    const gate = new Promise((r) => { release = r; });
+    const fn = mockFetchOnce(async () => { await gate; return jsonResponse(200, { access_token: 'at', expires_in: 300 }); });
+    const pending = refreshTokensOnly();
+
+    const resume = holdQuitWriters();
+    release(null);
+    await expect(pending).resolves.toEqual({ status: 'ok', token: 'at' });
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    // The due time passed while held, so the refresh runs at once.
+    resume();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not re-arm a refresh cancelled while held', async () => {
+    const fn = mockFetchOnce(async () => jsonResponse(503, {}));
+    scheduleRefreshRetry();
+    const resume = holdQuitWriters();
+    cancelScheduledRefresh();
+
+    resume();
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(fn).not.toHaveBeenCalled();
   });
 });
