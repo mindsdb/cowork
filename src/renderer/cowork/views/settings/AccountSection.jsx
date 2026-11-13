@@ -9,7 +9,7 @@ import { useLogout, LOGOUT_CONFIRM_COPY } from '../../hooks/useLogout';
 import { useMindsOrgs } from '../../hooks/useMindsOrgs';
 import { organizationLabel, orgDisplayName } from '../../../../shared/minds-orgs';
 import { accountInitials } from '../../lib/accountUser';
-import { MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
+import { MINDS_CONSOLE_HOME_URL } from '../../../lib/mindsUrls';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 import { sharedTranslator, useTranslation } from '../../../lib/i18n';
 
@@ -68,7 +68,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
           )}
         </div>
         <a
-          href={MINDS_CONSOLE_URL}
+          href={MINDS_CONSOLE_HOME_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 text-[12px] font-medium text-accent no-underline py-[5px] px-2.5 rounded-md border border-solid border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]"

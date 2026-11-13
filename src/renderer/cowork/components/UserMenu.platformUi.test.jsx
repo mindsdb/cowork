@@ -6,7 +6,10 @@ vi.mock('../../platform/host', () => ({
   host: { isWeb: true, isElectron: false, logout: vi.fn() },
   isElectron: false, openExternal: vi.fn(), mindshubListOrgs: vi.fn(), mindshubSwitchOrg: vi.fn(),
 }));
-vi.mock('../lib/analytics', () => ({ resetDeviceIdentity: vi.fn(), trackBillingOpened: vi.fn() }));
+vi.mock('../lib/analytics', () => ({
+  resetDeviceIdentity: vi.fn(), trackBillingOpened: vi.fn(),
+  trackMenuApiKeysClicked: vi.fn(), trackMenuApiDocsClicked: vi.fn(),
+}));
 import UserMenu from './UserMenu';
 import ToastProvider from './ui/Toast';
 

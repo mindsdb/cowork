@@ -278,6 +278,8 @@
     "settings": "設定",
     "billing": "請求と使用量",
     "members": "メンバー",
+    "apiKeys": "API キー",
+    "apiDocs": "API ドキュメント",
     "help": "ヘルプとフィードバック",
     "manageOrg": "組織を管理",
     "logout": "サインアウト",

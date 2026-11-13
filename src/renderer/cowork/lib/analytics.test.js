@@ -1901,3 +1901,22 @@ describe('mid-task message events (ENG-4194)', () => {
     expect((await sentEvent(fetchMock, 'addon_overridden')).properties).toMatchObject({ outcome: 'unknown', decided_by: 'jev' });
   });
 });
+
+describe('user menu developer links (ENG-4288)', () => {
+  it.each([
+    ['trackMenuApiKeysClicked', 'menu_api_keys_clicked'],
+    ['trackMenuApiDocsClicked', 'menu_api_docs_clicked'],
+  ])('%s sends %s on every click', async (fn, eventName) => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    const sent = () => fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body).event)
+      .filter((event) => event === eventName).length;
+
+    analytics[fn]();
+    const event = await sentEvent(fetchMock, eventName);
+    expect(event.properties.surface).toBe('desktop');
+    analytics[fn]();
+    await vi.waitFor(() => expect(sent()).toBe(2));
+  });
+});

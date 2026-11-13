@@ -278,6 +278,8 @@
     "settings": "설정",
     "billing": "결제 및 사용량",
     "members": "멤버",
+    "apiKeys": "API 키",
+    "apiDocs": "API 문서",
     "help": "도움말 및 피드백",
     "manageOrg": "조직 관리",
     "logout": "로그아웃",

@@ -156,6 +156,16 @@ describe('console host derivation (the one role that differs by host shape)', ()
     expect(MINDS_CONSOLE_URL).toBe('https://console.staging.mindshub.ai');
   });
 
+  // The console sends a sign-in that lands on its bare root to Cowork
+  // (ENG-4288), so a link from Cowork that means "the console" has to name a
+  // page or it bounces straight back.
+  it('points the console home link at /home, not the bare root', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.staging.mindshub.ai');
+    const { MINDS_CONSOLE_HOME_URL } = await importUrls();
+
+    expect(MINDS_CONSOLE_HOME_URL).toBe('https://console.staging.mindshub.ai/home');
+  });
+
   it('keeps the console. label on prod', async () => {
     vi.stubEnv('VITE_MINDS_API_URL', 'https://api.mindshub.ai');
     const { MINDS_CONSOLE_URL } = await importUrls();

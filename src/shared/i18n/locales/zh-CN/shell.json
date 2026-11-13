@@ -278,6 +278,8 @@
     "settings": "设置",
     "billing": "账单与用量",
     "members": "成员",
+    "apiKeys": "API 密钥",
+    "apiDocs": "API 文档",
     "help": "帮助与反馈",
     "manageOrg": "管理组织",
     "logout": "退出登录",
