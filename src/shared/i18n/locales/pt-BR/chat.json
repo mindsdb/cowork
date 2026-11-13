@@ -301,6 +301,20 @@
       "intro": "Ela pode comprar, enviar, excluir ou confirmar algo, e só é executada se você aprovar.",
       "approved": "Ação do navegador aprovada",
       "cancelled": "Ação do navegador cancelada"
+    },
+    "handOver": {
+      "title": "Sua vez no navegador",
+      "watching": "Faça no navegador e {agent} continua sozinho alguns segundos depois, ou clique em Concluído, continuar.",
+      "manual": "Quando terminar no navegador, clique em Concluído, continuar.",
+      "stillYours": "O navegador ainda é seu. Quando terminar, clique em Concluído, continuar e {agent} retoma dali.",
+      "doneContinue": "Concluído, continuar",
+      "openBrowser": "Abrir navegador",
+      "finishLater": "Terminar depois",
+      "stop": "Parar",
+      "noBrowser": "Não há navegador para devolver aqui.",
+      "handedBack": "Devolvido, continuou",
+      "stopped": "Passagem interrompida",
+      "ended": "Passagem encerrada"
     }
   },
   "codingTerminal": {
@@ -610,6 +624,7 @@
     "aNewTab": "uma nova aba",
     "yourTurn": "Sua vez em {site}. Clique em Concluído para devolver a {agent}.",
     "yourTurnReason": "Sua vez em {site}: {reason}. Clique em Concluído para devolver a {agent}.",
+    "yourTurnWatching": "Sua vez em {site}: {reason}. {agent} continua sozinho quando estiver feito, ou clique em Concluído.",
     "agentUsing": "{agent} está usando. Assuma o controle para usar você mesmo.",
     "pageReadsNote": "As leituras de página e capturas de tela de {agent} vão para o provedor do modelo que atende o seu turno.",
     "back": "Voltar",
@@ -675,7 +690,8 @@
       "goTo": "Ir para o navegador dela",
       "closeIts": "Fechar o navegador dela (abas salvas)",
       "watching": "Alguém está assistindo"
-    }
+    },
+    "phoneYourTurnWatching": "Sua vez: {reason}. {agent} continua sozinho quando estiver feito, ou toque em Concluído no navegador."
   },
   "voiceCall": {
     "dialogLabel": "Chamada de voz com {agent}",

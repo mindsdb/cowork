@@ -238,7 +238,9 @@ export function LocalBrowserStage({
 
   const personHolds = state?.control.holder === 'human';
   const site = siteOf(state?.url ?? '');
-  const hint = controlHint(t, { holder: state?.control.holder, reason: state?.control.reason ?? '', url: state?.url ?? '', agentLabel });
+  const hint = controlHint(t, {
+    holder: state?.control.holder, reason: state?.control.reason ?? '', watching: state?.watching === true, url: state?.url ?? '', agentLabel,
+  });
   /* The oldest download still waiting keeps the line until the person
      answers it, so a page can't slip a newer one under their click; with
      none waiting, the newest. Save and Don't save arm a moment after a

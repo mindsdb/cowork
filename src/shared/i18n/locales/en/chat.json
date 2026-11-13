@@ -301,6 +301,20 @@
       "intro": "It may buy, send, delete or submit something, and runs only if you approve.",
       "approved": "Browser action approved",
       "cancelled": "Browser action cancelled"
+    },
+    "handOver": {
+      "title": "Your turn in the browser",
+      "watching": "Do it in the browser and {agent} carries on by itself a few seconds later — or click Done, continue.",
+      "manual": "When you're finished in the browser, click Done, continue.",
+      "stillYours": "The browser is still yours. When you're finished, click Done, continue and {agent} picks up from there.",
+      "doneContinue": "Done, continue",
+      "openBrowser": "Open browser",
+      "finishLater": "Finish later",
+      "stop": "Stop",
+      "noBrowser": "There's no browser to hand back here.",
+      "handedBack": "Handed back — continued",
+      "stopped": "Hand-over stopped",
+      "ended": "Hand-over ended"
     }
   },
   "codingTerminal": {
@@ -610,6 +624,7 @@
     "aNewTab": "a new tab",
     "yourTurn": "Your turn on {site}. Click Done to hand it back to {agent}.",
     "yourTurnReason": "Your turn on {site}: {reason}. Click Done to hand it back to {agent}.",
+    "yourTurnWatching": "Your turn on {site}: {reason}. {agent} carries on by itself once it's done — or click Done.",
     "agentUsing": "{agent} is using it. Take over to use it yourself.",
     "pageReadsNote": "{agent}'s page reads and screenshots go to the model provider that serves your turn.",
     "back": "Back",
@@ -675,7 +690,8 @@
       "goTo": "Go to its browser",
       "closeIts": "Close its browser (tabs saved)",
       "watching": "Someone is watching it"
-    }
+    },
+    "phoneYourTurnWatching": "Your turn: {reason}. {agent} carries on by itself once it's done — or tap Done in the browser."
   },
   "voiceCall": {
     "dialogLabel": "Voice call with {agent}",

@@ -301,6 +301,20 @@
       "intro": "它可能会购买、发送、删除或提交内容，只有在你批准后才会执行。",
       "approved": "已批准浏览器操作",
       "cancelled": "已取消浏览器操作"
+    },
+    "handOver": {
+      "title": "请在浏览器中操作",
+      "watching": "在浏览器中完成后，{agent} 会在几秒后自动继续；也可以点击“完成并继续”。",
+      "manual": "在浏览器中完成后，请点击“完成并继续”。",
+      "stillYours": "浏览器仍由你操作。完成后点击“完成并继续”，{agent} 会从那里接着做。",
+      "doneContinue": "完成并继续",
+      "openBrowser": "打开浏览器",
+      "finishLater": "稍后完成",
+      "stop": "停止",
+      "noBrowser": "这里没有可交还的浏览器。",
+      "handedBack": "已交还 — 已继续",
+      "stopped": "已停止交接",
+      "ended": "交接已结束"
     }
   },
   "codingTerminal": {
@@ -610,6 +624,7 @@
     "aNewTab": "新标签页",
     "yourTurn": "轮到你操作 {site} 了。点击“完成”即可交还给 {agent}。",
     "yourTurnReason": "轮到你操作 {site} 了：{reason}。点击“完成”即可交还给 {agent}。",
+    "yourTurnWatching": "请在 {site} 上操作：{reason}。完成后 {agent} 会自动继续；也可以点击“完成”。",
     "agentUsing": "{agent} 正在使用。接管后即可自己操作。",
     "pageReadsNote": "{agent} 读取的页面内容和截图会发送给为你这一轮提供服务的模型提供商。",
     "back": "后退",
@@ -675,7 +690,8 @@
       "goTo": "前往其浏览器",
       "closeIts": "关闭其浏览器（标签页已保存）",
       "watching": "有人正在查看"
-    }
+    },
+    "phoneYourTurnWatching": "请操作：{reason}。完成后 {agent} 会自动继续；也可以在浏览器中轻点“完成”。"
   },
   "voiceCall": {
     "dialogLabel": "与 {agent} 语音通话",

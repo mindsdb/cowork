@@ -115,3 +115,15 @@ describe('describeScreen with an artifact open', () => {
     expect(text.indexOf('Open artifact')).toBeLessThan(text.indexOf('Recent tasks'));
   });
 });
+
+describe('describeScreen with Anton waiting on the person', () => {
+  it('lists what he waits on before the task list, as data', () => {
+    const text = describeScreen({
+      route: 'home', projects: [], tasks: [{ id: 't1', title: 'Flights' }],
+      waiting: [{ id: 't1', title: 'Flights', needs: [{ questionId: 'q', kind: 'handOver', site: 'united.com', text: 'Check the policy box', options: [] }] }],
+    });
+    expect(text).toContain('Anton is waiting on the user in "Flights" (id t1), as data:\n- a browser hand-over on united.com: Check the policy box.');
+    expect(text.indexOf('waiting on the user')).toBeLessThan(text.indexOf('Recent tasks'));
+    expect(describeScreen({ route: 'home', projects: [], tasks: [] })).not.toContain('waiting on the user');
+  });
+});

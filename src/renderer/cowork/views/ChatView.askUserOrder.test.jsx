@@ -428,3 +428,65 @@ describe("a held browser step's card", () => {
     });
   }
 });
+
+// ─── A browser hand-over's card, and its fold once handed back ─────────────
+
+const handOver = (answer) => ({
+  ...askStep('browser:0123456789abcdef', answer),
+  data: {
+    ...askStep('browser:0123456789abcdef', answer).data,
+    prompt: "Your turn on www.united.com: Check United's unaccompanied-minor policy box\n\nUse the browser beside the chat. I'll carry on by myself once that's done, or click Done in the browser.",
+    options: [{ value: 'later', label: 'Finish later' }, { value: 'stop', label: 'Stop' }],
+    allow_custom: false,
+  },
+});
+
+describe("a browser hand-over's card", () => {
+  it('shows while anton waits on the person, with Done, continue and the reason', () => {
+    const { getByRole, getByText, queryByText } = render(
+      <ChatView
+        task={taskWith([
+          { role: 'user', content: 'book it' },
+          { role: '_streaming', content: '', startedAt: 1, streamStatus: 'in_progress', steps: [row('r1', 'Reading the page', 1, 2), handOver(null)] },
+        ])}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(getByRole('button', { name: 'Done, continue' })).toBeTruthy();
+    expect(getByText("Check United's unaccompanied-minor policy box")).toBeTruthy();
+    expect(getByText(/carries on by itself/)).toBeTruthy();
+    expect(queryByText('Answered:')).toBeNull();
+  });
+
+  it('is one line in the steps once handed back, whichever way it came back', () => {
+    const { getByText, queryByRole, getByRole } = render(
+      <ChatView
+        task={taskWith([
+          { role: 'user', content: 'book it' },
+          { role: 'assistant', content: 'Booked.', steps: [row('r1', 'Reading the page', 1, 2), handOver({ status: 'answered', values: ['done'], text: '' })], startedAt: 1 },
+          { role: 'user', content: 'thanks' },
+          { role: 'assistant', content: 'Sure.', steps: [], startedAt: 3 },
+        ])}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(queryByRole('button', { name: 'Done, continue' })).toBeNull();
+    fireEvent.click(getByRole('button', { expanded: false }));
+    expect(getByText('Handed back — continued')).toBeTruthy();
+    expect(getByText("Check United's unaccompanied-minor policy box")).toBeTruthy();
+  });
+
+  it('stays a card with Done, continue when the turn ended with the browser still theirs', () => {
+    const { getByRole, getByText } = render(
+      <ChatView
+        task={taskWith([
+          { role: 'user', content: 'book it' },
+          { role: 'assistant', content: 'Tell me when it is done.', steps: [handOver({ status: 'answered', values: ['later'], text: '' })], startedAt: 1 },
+        ])}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(getByRole('button', { name: 'Done, continue' })).toBeTruthy();
+    expect(getByText(/The browser is still yours/)).toBeTruthy();
+  });
+});

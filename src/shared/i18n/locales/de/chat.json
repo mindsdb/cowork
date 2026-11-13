@@ -301,6 +301,20 @@
       "intro": "Er kann etwas kaufen, senden, löschen oder absenden und wird nur ausgeführt, wenn Sie ihn bestätigen.",
       "approved": "Browser-Aktion bestätigt",
       "cancelled": "Browser-Aktion abgebrochen"
+    },
+    "handOver": {
+      "title": "Sie sind im Browser dran",
+      "watching": "Erledigen Sie es im Browser, dann macht {agent} wenige Sekunden später von selbst weiter – oder klicken Sie auf Fertig, weiter.",
+      "manual": "Wenn Sie im Browser fertig sind, klicken Sie auf Fertig, weiter.",
+      "stillYours": "Der Browser liegt noch bei Ihnen. Wenn Sie fertig sind, klicken Sie auf Fertig, weiter, und {agent} macht dort weiter.",
+      "doneContinue": "Fertig, weiter",
+      "openBrowser": "Browser öffnen",
+      "finishLater": "Später fertig machen",
+      "stop": "Stoppen",
+      "noBrowser": "Hier gibt es keinen Browser zum Zurückgeben.",
+      "handedBack": "Zurückgegeben – weiter",
+      "stopped": "Übergabe gestoppt",
+      "ended": "Übergabe beendet"
     }
   },
   "codingTerminal": {
@@ -610,6 +624,7 @@
     "aNewTab": "einem neuen Tab",
     "yourTurn": "Sie sind auf {site} an der Reihe. Klicken Sie auf „Fertig“, um an {agent} zurückzugeben.",
     "yourTurnReason": "Sie sind auf {site} an der Reihe: {reason}. Klicken Sie auf „Fertig“, um an {agent} zurückzugeben.",
+    "yourTurnWatching": "Sie sind dran auf {site}: {reason}. {agent} macht von selbst weiter, sobald es erledigt ist – oder klicken Sie auf Fertig.",
     "agentUsing": "{agent} verwendet ihn gerade. Übernehmen Sie, um ihn selbst zu verwenden.",
     "pageReadsNote": "Die Seiteninhalte und Screenshots, die {agent} liest, gehen an den Modellanbieter, der Ihre Runde bearbeitet.",
     "back": "Zurück",
@@ -675,7 +690,8 @@
       "goTo": "Zum Browser wechseln",
       "closeIts": "Browser schließen (Tabs gespeichert)",
       "watching": "Jemand sieht gerade zu"
-    }
+    },
+    "phoneYourTurnWatching": "Sie sind dran: {reason}. {agent} macht von selbst weiter, sobald es erledigt ist – oder tippen Sie im Browser auf Fertig."
   },
   "voiceCall": {
     "dialogLabel": "Sprachanruf mit {agent}",

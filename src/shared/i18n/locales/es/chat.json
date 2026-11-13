@@ -301,6 +301,20 @@
       "intro": "Puede comprar, enviar, eliminar o confirmar algo, y solo se ejecuta si lo apruebas.",
       "approved": "Acción del navegador aprobada",
       "cancelled": "Acción del navegador cancelada"
+    },
+    "handOver": {
+      "title": "Te toca en el navegador",
+      "watching": "Hazlo en el navegador y {agent} sigue solo unos segundos después, o haz clic en Listo, continuar.",
+      "manual": "Cuando termines en el navegador, haz clic en Listo, continuar.",
+      "stillYours": "El navegador sigue siendo tuyo. Cuando termines, haz clic en Listo, continuar y {agent} retoma desde ahí.",
+      "doneContinue": "Listo, continuar",
+      "openBrowser": "Abrir navegador",
+      "finishLater": "Terminar después",
+      "stop": "Detener",
+      "noBrowser": "Aquí no hay ningún navegador que devolver.",
+      "handedBack": "Devuelto, continuó",
+      "stopped": "Traspaso detenido",
+      "ended": "Traspaso terminado"
     }
   },
   "codingTerminal": {
@@ -610,6 +624,7 @@
     "aNewTab": "una pestaña nueva",
     "yourTurn": "Es tu turno en {site}. Haz clic en Listo para devolvérselo a {agent}.",
     "yourTurnReason": "Es tu turno en {site}: {reason}. Haz clic en Listo para devolvérselo a {agent}.",
+    "yourTurnWatching": "Te toca en {site}: {reason}. {agent} sigue solo cuando esté hecho, o haz clic en Listo.",
     "agentUsing": "{agent} lo está usando. Toma el control para usarlo tú.",
     "pageReadsNote": "Las lecturas de página y capturas de pantalla de {agent} van al proveedor del modelo que atiende tu turno.",
     "back": "Atrás",
@@ -675,7 +690,8 @@
       "goTo": "Ir a su navegador",
       "closeIts": "Cerrar su navegador (pestañas guardadas)",
       "watching": "Alguien lo está viendo"
-    }
+    },
+    "phoneYourTurnWatching": "Te toca: {reason}. {agent} sigue solo cuando esté hecho, o toca Listo en el navegador."
   },
   "voiceCall": {
     "dialogLabel": "Llamada de voz con {agent}",

@@ -15,6 +15,7 @@ import { BrowserFrame, paneMayTakeFocus } from './BrowserFrame';
 import { BlankStartOver, browserRequestFor } from './BlankBrowserPanel';
 import { LocalBrowserStage } from './LocalBrowserStage';
 import { controlHint } from './controlHint';
+import { HAND_BACK_MESSAGE, registerHandBackViewer } from '../../lib/browserHandBack';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The person's browser beside the chat. The agent drives it through its
@@ -97,7 +98,7 @@ const STOPPED = {
 };
 
 /** @type {{ holder: 'human' | 'agent', reason: string }} */
-const AGENT_HOLDS = Object.freeze({ holder: 'agent', reason: '' });
+const AGENT_HOLDS = Object.freeze({ holder: 'agent', reason: '', watching: false });
 
 function tabHidden() {
   return document.visibilityState === 'hidden';
@@ -211,6 +212,9 @@ function WebBrowserStage({
      (set below, once relink exists). */
   const renewTimer = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
   const renewRef = useRef(() => {});
+  // Takes this frame's viewer off the hand-back list (lib/browserHandBack.js).
+  const unregisterHandBackRef = useRef(() => {});
+  useEffect(() => () => unregisterHandBackRef.current(), []);
   const frameKey = `${viewUrl}:${generation}`;
 
   // The reconnect is over: the viewer is live or ready, or the pane stopped, hid or closed.
@@ -435,6 +439,12 @@ function WebBrowserStage({
         setViewerReady(true);
         setSlow(false);
         postTheme(frameRef.current);
+        /* The hand-over card's Done, continue reaches the viewer's Done
+           through this frame (lib/browserHandBack.js). */
+        unregisterHandBackRef.current();
+        unregisterHandBackRef.current = registerHandBackViewer(sessionId, () => {
+          frameWindow.postMessage({ type: HAND_BACK_MESSAGE }, '*');
+        });
         return;
       }
       /* The viewer's current socket got the pod's hello: this connection
@@ -464,11 +474,16 @@ function WebBrowserStage({
         if (text) onDraftRef.current?.(browserRequestFor(text));
         return;
       }
-      // Who holds the browser: 'human' when the agent handed it to the person or they took over.
+      // Who holds the browser: 'human' when the agent handed it to the person or they took over,
+      // and whether the hand-over comes back by itself once the person did what it waits for.
       if (type === VIEWER_CONTROL) {
-        const holds = { holder: event.data?.holder === 'human' ? 'human' : 'agent', reason: String(event.data?.reason || '').slice(0, 300) };
+        const holds = {
+          holder: event.data?.holder === 'human' ? 'human' : 'agent',
+          reason: String(event.data?.reason || '').slice(0, 300),
+          watching: event.data?.watching === true,
+        };
         setControl(holds);
-        onControlRef.current?.(holds.holder, holds.reason);
+        onControlRef.current?.(holds.holder, holds.reason, holds.watching);
         return;
       }
       if (type !== VIEWER_CLOSED) return;
@@ -506,7 +521,7 @@ function WebBrowserStage({
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [mint, relink, armWatchdog, endReconnect]);
+  }, [mint, relink, armWatchdog, endReconnect, sessionId]);
 
   /* Keep the viewer's toolbar in the app's theme as the theme, skin or
      custom accent changes. */
@@ -519,6 +534,8 @@ function WebBrowserStage({
 
   // A new frame (or a fresh link in flight) waits for its own viewer's ready.
   useEffect(() => {
+    unregisterHandBackRef.current();
+    unregisterHandBackRef.current = () => {};
     readyRef.current = false;
     liveRef.current = false;
     renewingRef.current = false;

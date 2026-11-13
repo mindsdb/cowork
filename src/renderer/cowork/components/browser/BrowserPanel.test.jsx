@@ -7,6 +7,7 @@ vi.mock('../../api', () => ({ embedBrowser: (...args) => embedBrowser(...args) }
 import { BrowserPanel, START_FADE_MS, STARTING_TIMEOUT_MS, isBlankPage, webPaneNote } from './BrowserPanel';
 import { QUICK_CLOSE_MS, RELINK_RETRY_MS, RELINK_WAIT_MS } from '../../lib/browserSession';
 import viewerMessages from '../../__fixtures__/browser-viewer/messages.json';
+import { handBackBrowser, resetHandBack } from '../../lib/browserHandBack';
 import { WEB_JEV_LINE, WEB_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 
 const VIEW = `${window.location.origin}/browser/sessions/t-abc/view?et=tok`;
@@ -144,7 +145,35 @@ describe('BrowserPanel', () => {
       expect(onControl).not.toHaveBeenCalled();
       messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'human', reason: 'sign in to Kayak' });
       messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'agent' });
-      expect(onControl.mock.calls).toEqual([['human', 'sign in to Kayak'], ['agent', '']]);
+      expect(onControl.mock.calls).toEqual([['human', 'sign in to Kayak', false], ['agent', '', false]]);
+    });
+
+    it('says when a hand-over comes back by itself', async () => {
+      const onControl = vi.fn();
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} onControl={onControl} />);
+      await flush();
+      messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'human', reason: 'tick the policy box', watching: true });
+      expect(onControl).toHaveBeenLastCalledWith('human', 'tick the policy box', true);
+    });
+
+    it("hands the card's Done, continue to its own viewer once it is ready, and only then", async () => {
+      resetHandBack();
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      const win = frameWindow();
+      // Not ready yet: the hand-back waits for the viewer.
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      expect(win.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      messageFrom(win, { type: 'browser-viewer-ready' });
+      expect(win.postMessage).toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      win.postMessage.mockClear();
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('sent');
+      expect(win.postMessage).toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      // Another browser's hand-back never reaches this viewer.
+      win.postMessage.mockClear();
+      expect(await handBackBrowser('t-other', { desktop: false })).toBe('waiting');
+      expect(win.postMessage).not.toHaveBeenCalled();
+      resetHandBack();
     });
 
     it('covers a blank tab with the start page, and gets out of the way once a page opens', async () => {
@@ -311,6 +340,17 @@ describe('BrowserPanel', () => {
 
       messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'agent' });
       expect(screen.getByText(AGENT_USING)).toBeInTheDocument();
+    });
+
+    it("the web pane's hint says a hand-over that comes back by itself does, as the desktop's says", async () => {
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://shop.example.test/cart' });
+      messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'human', reason: 'Tick the policy box', watching: true });
+      expect(screen.getByText("Your turn on shop.example.test: Tick the policy box. Cowork carries on by itself once it's done — or click Done.")).toBeInTheDocument();
+
+      messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'human', reason: 'Tick the policy box' });
+      expect(screen.getByText('Your turn on shop.example.test: Tick the policy box. Click Done to hand it back to Cowork.')).toBeInTheDocument();
     });
 
     it('starts another session with the agent holding the browser', async () => {
