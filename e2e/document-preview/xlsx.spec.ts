@@ -114,9 +114,10 @@ function expectGrid(grid: GridFacts, summary: RenderSummary, fixture: PreviewFix
 test.describe('xlsx preview', () => {
   for (const fixture of loadFixtures('xlsx')) {
     test(`${fixture.kind}: ${fixture.name}`, async ({ page, baseURL }) => {
-      /* 400,000 cells of text at both caps: it takes 38-58s on a CI runner,
-         too close to the 60s default for a suite that fails on a retry. */
-      if (fixture.file === 'text-past-caps.xlsx') test.setTimeout(180_000);
+      /* A truncated fixture fills the row and column caps, a 400,000-cell grid.
+         On a CI runner that runs close to the 60s default, and this suite fails
+         on a test that needed a retry. */
+      if (fixture.expect.truncated) test.setTimeout(180_000);
       if (!baseURL) throw new Error('The web project sets baseURL to the harness page');
       const harnessOrigin = new URL(baseURL).origin;
       const testRequests = recordRequests(page);
