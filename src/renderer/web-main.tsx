@@ -117,6 +117,7 @@ void whenI18nReady().then(() => {
   createRoot(root).render(
     <StrictMode>
       {legacyTenant || codeFixture ? (
+        // Access is gated upstream; render directly without a Keycloak login.
         <App />
       ) : mobileShell ? (
         <MobileShellRoot
@@ -128,7 +129,11 @@ void whenI18nReady().then(() => {
           <App />
         </MobileShellRoot>
       ) : (
-        // Hold mounting until auth resolves, so the first API probe has a token.
+        // LoadingComponent holds the mount until keycloak.init() resolves. Without
+        // it the provider renders App immediately, App's boot effect probes
+        // /api/v1/health before `authenticated` is set, getAccessToken() returns
+        // null so no Bearer is attached, the auth ingress 401s the probe, and
+        // resolveBootTarget lands a signed-in user on the auth screen.
         <ReactKeycloakProvider
           authClient={keycloak}
           initOptions={initOptions}
