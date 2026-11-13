@@ -543,6 +543,14 @@ describe('the desktop browser pane', () => {
     expect(screen.getByRole('button', { name: 'Forward' })).toBeDisabled();
   });
 
+  it('says a hand-over that comes back by itself does, and Done still works', async () => {
+    render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} />);
+    emit(state({ watching: true, control: { holder: 'human', reason: 'Tick the policy box', since: 2, seq: 1, by: 'agent' } }));
+    expect(screen.getByText("Your turn on shop.example.test: Tick the policy box. Cowork carries on by itself once it's done — or click Done.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(calls('handBack')).toEqual([['handBack', 't-abc']]);
+  });
+
   it("says sign-ins stay, in Settings' words, while the person holds the browser", async () => {
     render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} />);
     const providerLine = "Cowork's page reads and screenshots go to the model provider that serves your turn.";

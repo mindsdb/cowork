@@ -37,8 +37,10 @@ import {
   type StepAction,
   type StepRequest,
   type Tab,
+  type WaitFor,
 } from '../shared/browser-contract';
 import { diagnostic } from '../shared/diagnostics';
+import { type HandOverWatch, WATCH_TICK_MS, watchTick } from './browser-handover-watch';
 import { refusedDestination } from './browser-profile';
 import type { Screenshot } from './browser-screenshot';
 
@@ -135,6 +137,14 @@ export interface BrowserSessionsOptions {
   now?: () => number;
   maxLive?: number;
   idleMs?: number;
+  /** Runs `tick` every `ms` until the returned stop is called: the hand-over watch's clock. */
+  every?: (tick: () => void, ms: number) => () => void;
+}
+
+function every(tick: () => void, ms: number): () => void {
+  const timer = setInterval(tick, ms);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 interface TabEntry {
@@ -156,6 +166,8 @@ interface TaskSession {
   lastPersonInputAt: number;
   login: LoginRequest | null;
   downloads: BrowserDownload[];
+  /** A hand-over that comes back by itself once the person did what it waits for. */
+  watch: HandOverWatch | null;
 }
 
 const unavailable = () => new BridgeError('browser_unavailable', "the app's window is closed");
@@ -191,6 +203,8 @@ export class BrowserSessions {
      The shown task stays the shown one either way, so a covered pane still
      keeps its task from the idle close and the live-task cap. */
   private stageUsable = false;
+  /* Stops the hand-over watch's clock, while any task's hand-over is watched. */
+  private stopWatching: (() => void) | null = null;
 
   constructor(private readonly options: BrowserSessionsOptions) {
     this.now = options.now ?? Date.now;
@@ -245,6 +259,7 @@ export class BrowserSessions {
       lastPersonInputAt: 0,
       login: null,
       downloads: [],
+      watch: null,
     };
     this.sessions.set(id, session);
     // A task whose first tab fails to build is not kept.
@@ -310,6 +325,8 @@ export class BrowserSessions {
 
   private closeSession(session: TaskSession): void {
     this.sessions.delete(session.id);
+    session.watch = null;
+    this.syncWatchClock();
     session.login?.respond(null);
     for (const tab of session.tabs) tab.view.close();
     if (this.shownId === session.id) this.shownId = null;
@@ -441,16 +458,57 @@ export class BrowserSessions {
     return this.enqueue(session, () => this.agentRead(session, () => this.active(session).view.screenshot(annotate, quality)));
   }
 
-  /** POST /sessions/{id}/control: the agent hands the browser to the person. */
+  /** POST /sessions/{id}/control: the agent hands the browser to the person,
+      with what the hand-over waits for when it comes back by itself. */
   control(id: string, request: ControlRequest): Control {
     const session = this.ensure(id);
-    return this.setControl(session, request.holder, request.reason, 'agent');
+    const control = this.setControl(session, request.holder, request.reason, 'agent', request.waitFor);
+    if (session.watch) void this.readWatched(session);
+    return control;
+  }
+
+  /* One read of a watched hand-over's page, in the isolated world, and the
+     hand back when it's done. A read that fails, or that control changed
+     under, counts for nothing. */
+  private async readWatched(session: TaskSession): Promise<void> {
+    const watch = session.watch;
+    if (!watch || session.login) return;
+    let page: PageSnapshot;
+    try {
+      page = await this.active(session).view.read(0);
+    } catch {
+      return;
+    }
+    if (session.watch !== watch || session.control.seq !== watch.seq || !this.sessions.has(session.id)) return;
+    if (watchTick(watch, page, { now: this.now(), lastPersonInputAt: session.lastPersonInputAt })) {
+      this.setControl(session, 'agent', '', 'person');
+    }
+  }
+
+  /** One tick of the hand-over watch: every watched task's page is read. */
+  async tickWatches(): Promise<void> {
+    await Promise.all([...this.sessions.values()].filter((s) => s.watch).map((s) => this.readWatched(s)));
+  }
+
+  private syncWatchClock(): void {
+    const watching = [...this.sessions.values()].some((s) => s.watch);
+    if (watching && !this.stopWatching) {
+      this.stopWatching = (this.options.every ?? every)(() => { void this.tickWatches(); }, WATCH_TICK_MS);
+    } else if (!watching && this.stopWatching) {
+      this.stopWatching();
+      this.stopWatching = null;
+    }
   }
 
   /* Control changes before any tab is told, so a tab that fails to stop its
      step or watch its secret fields never leaves the browser with the agent. */
-  private setControl(session: TaskSession, holder: Control['holder'], reason: string, by: Control['by']): Control {
+  private setControl(session: TaskSession, holder: Control['holder'], reason: string, by: Control['by'], waitFor?: WaitFor): Control {
     session.control = { holder, reason, since: this.now(), seq: session.control.seq + 1, by };
+    // Any change of hands ends a watch; only an agent's hand-over that waits for something starts one.
+    session.watch = holder === 'human' && waitFor
+      ? { waitFor, seq: session.control.seq, handedAt: this.now(), before: null, lastKey: null }
+      : null;
+    this.syncWatchClock();
     if (holder === 'human') {
       for (const tab of session.tabs) {
         try {
@@ -683,6 +741,7 @@ export class BrowserSessions {
       canGoForward: view.canGoForward(),
       tabs: session.tabs.map((t) => this.tabOf(t, session)),
       control: { ...session.control },
+      watching: session.watch !== null,
       login: session.login ? { host: session.login.host } : null,
       downloads: [...session.downloads],
     };

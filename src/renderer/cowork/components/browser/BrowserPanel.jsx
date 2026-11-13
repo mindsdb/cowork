@@ -10,6 +10,7 @@ import { host } from '../../../platform/host';
 import { BrowserFrame } from './BrowserFrame';
 import { BlankStartOver, browserRequestFor } from './BlankBrowserPanel';
 import { LocalBrowserStage } from './LocalBrowserStage';
+import { HAND_BACK_MESSAGE, registerHandBackViewer } from '../../lib/browserHandBack';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The person's browser beside the chat. The agent drives it through its
@@ -136,6 +137,9 @@ function WebBrowserStage({
   const quickCloses = useRef(0);
   // Whether the current link's viewer said it is ready, for the close handler.
   const readyRef = useRef(false);
+  // Takes this frame's viewer off the hand-back list (lib/browserHandBack.js).
+  const unregisterHandBackRef = useRef(() => {});
+  useEffect(() => () => unregisterHandBackRef.current(), []);
   const frameKey = `${viewUrl}:${generation}`;
 
   const mint = useCallback(async () => {
@@ -214,6 +218,12 @@ function WebBrowserStage({
         setViewerReady(true);
         setSlow(false);
         postTheme(frameRef.current);
+        /* The hand-over card's Done, continue reaches the viewer's Done
+           through this frame (lib/browserHandBack.js). */
+        unregisterHandBackRef.current();
+        unregisterHandBackRef.current = registerHandBackViewer(sessionId, () => {
+          frameWindow.postMessage({ type: HAND_BACK_MESSAGE }, '*');
+        });
         return;
       }
       // The page the viewer shows, for whoever opened the pane.
@@ -233,7 +243,11 @@ function WebBrowserStage({
       }
       // Who holds the browser: 'human' when Anton handed it to the person.
       if (type === 'browser-viewer-control') {
-        onControlRef.current?.(event.data?.holder === 'human' ? 'human' : 'agent', String(event.data?.reason || '').slice(0, 300));
+        onControlRef.current?.(
+          event.data?.holder === 'human' ? 'human' : 'agent',
+          String(event.data?.reason || '').slice(0, 300),
+          event.data?.watching === true,
+        );
         return;
       }
       if (type !== VIEWER_CLOSED) return;
@@ -255,7 +269,7 @@ function WebBrowserStage({
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [mint]);
+  }, [mint, sessionId]);
 
   /* Keep the viewer's toolbar in the app's theme as the theme, skin or
      custom accent changes. */
@@ -268,6 +282,8 @@ function WebBrowserStage({
 
   // A new frame (or a fresh link in flight) waits for its own viewer's ready.
   useEffect(() => {
+    unregisterHandBackRef.current();
+    unregisterHandBackRef.current = () => {};
     readyRef.current = false;
     setViewerReady(false);
     setPageUrl('');
