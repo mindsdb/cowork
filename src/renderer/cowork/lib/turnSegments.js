@@ -40,8 +40,14 @@
 // as an agent message between the work before and after it. So is a message
 // the person added to the running task (an `Addon` step, ENG-4194): it renders
 // as their own row at the point it joined.
+//
+// An answered held browser step is not a boundary: its card folds into the
+// turn's steps as one line, "Browser action approved" or "cancelled", with the
+// step's site and action (lib/browserStepPrompt.js). An answered click by
+// position's card, the app's own approval, shows nothing.
 
-import { isAutoApprovedCard } from './browserApproval';
+import { isPositionClickCard } from './browserApproval';
+import { answeredBrowserStep } from './browserStepPrompt';
 
 const isQuestion = (step) => step?.badge === 'AskUser';
 const isMessage = (step) => step?.badge === 'Message';
@@ -83,9 +89,13 @@ export function splitTurnSegments(steps, { startedAt = null, endedAt = null, con
   };
   let current = { kind: 'steps', key: 'seg-0', steps: [], startedAt };
   for (const step of list) {
-    // An answered position card, or held step with approvals off, was the
-    // app's own approval: nothing to show.
-    if (isQuestion(step) && step.data?.answer && isAutoApprovedCard(step.data)) continue;
+    // An answered position card was the app's own approval: nothing to show.
+    if (isQuestion(step) && step.data?.answer && isPositionClickCard(step.data)) continue;
+    const browserStep = answeredBrowserStep(step);
+    if (browserStep) {
+      current.steps.push(browserStep);
+      continue;
+    }
     if (!isQuestion(step) && !isMessage(step) && !isAddon(step)) {
       current.steps.push(step);
       continue;

@@ -639,7 +639,7 @@
     },
     "browserInstead": {
       "title": "Usar o navegador em vez disso",
-      "help": "Sem conexão: você entra em {name} no navegador compartilhado e o trabalho acontece lá. Mais lento que conectar."
+      "help": "Sem conexão: você entra em {name} no modo navegador e o trabalho acontece lá. Mais lento que conectar."
     }
   },
   "legacyConnect": {

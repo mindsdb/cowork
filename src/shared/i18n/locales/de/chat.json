@@ -262,7 +262,7 @@
       "openingGoogleDrive": "Google Drive wird geöffnet…",
       "addFromGoogleDrive": "Dateien aus Google Drive hinzufügen",
       "addFromSharePoint": "Dateien aus SharePoint hinzufügen",
-      "browserTitle": "{agent} kann in dieser Aufgabe Ihren geteilten Browser verwenden. Das Ausschalten gilt ab Ihrer nächsten Nachricht.",
+      "browserTitle": "{agent} kann in dieser Aufgabe den Browsermodus verwenden. Das Ausschalten gilt ab Ihrer nächsten Nachricht.",
       "browser": "Browser",
       "browserOff": "Browser für diese Aufgabe ausschalten",
       "browserOn": "Browser für diese Aufgabe einschalten",
@@ -295,7 +295,13 @@
     "skipped": "Übersprungen.",
     "timedOut": "Keine Antwort – Zeit abgelaufen.",
     "answered": "Beantwortet:",
-    "noLongerActive": "Diese Frage ist nicht mehr aktiv."
+    "noLongerActive": "Diese Frage ist nicht mehr aktiv.",
+    "browserStep": {
+      "title": "Diesen Browser-Schritt bestätigen?",
+      "intro": "Er kann etwas kaufen, senden, löschen oder absenden und wird nur ausgeführt, wenn Sie ihn bestätigen.",
+      "approved": "Browser-Aktion bestätigt",
+      "cancelled": "Browser-Aktion abgebrochen"
+    }
   },
   "codingTerminal": {
     "unavailable": "Das eingebettete Terminal ist in diesem Build nicht verfügbar.",
@@ -565,7 +571,7 @@
   },
   "browser": {
     "close": "Browser schließen",
-    "shared": "Geteilter Browser",
+    "shared": "Browsermodus",
     "title": "Browser",
     "unreachable": "Der Browser ist nicht erreichbar",
     "stopped": {

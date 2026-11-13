@@ -258,3 +258,36 @@ describe("a held step's Skip approvals", () => {
     expect(screen.queryByRole('switch')).toBeNull();
   });
 });
+
+describe("a held step's site and action", () => {
+  const prompt = (url, step) => (
+    '**Approve this browser step?**\n\nThis step may commit something for you, such as a purchase, a payment, a message, a deletion '
+    + `or a form:\n\n\`\`\`\n${url}\n${step}\n\`\`\`\n\nIt runs only if you approve. Cancel, Skip or no answer stops it.`
+  );
+  const withPrompt = (text) => {
+    const held = card(HOLD);
+    return { ...held, data: { ...held.data, prompt: text } };
+  };
+
+  it('shows as pills under one short line, with the options and Skip approvals', () => {
+    const { container } = render(<AskUserCard step={withPrompt(prompt('https://www.united.com/en/us', 'type "hunter2" into textbox "Password"'))} conversationId="c1" />);
+    expect(container.querySelector('pre, code')).toBeNull();
+    expect(screen.getByText('Approve this browser step?')).toBeTruthy();
+    expect(screen.getByText(/runs only if you approve/)).toBeTruthy();
+    expect(screen.queryByText(/This step may commit/)).toBeNull();
+    expect(screen.getByText('united.com').closest('[title]').getAttribute('title')).toBe('https://www.united.com/en/us');
+    expect(screen.getByText('Type into textbox "Password"')).toBeTruthy();
+    expect(container.textContent).not.toContain('hunter2');
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Cancel/ })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Skip approvals for later steps' })).toBeTruthy();
+  });
+
+  it('falls back to the prompt as written when it is in another shape', () => {
+    const odd = '**Approve this browser step?**\n\nSomething else entirely:\n\n```\nnot an address\nclick "Booking"\n```';
+    const { container } = render(<AskUserCard step={withPrompt(odd)} conversationId="c1" />);
+    expect(container.querySelector('pre')).not.toBeNull();
+    expect(container.textContent).toContain('not an address');
+    expect(screen.queryByText('united.com')).toBeNull();
+  });
+});

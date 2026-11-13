@@ -262,7 +262,7 @@
       "openingGoogleDrive": "Ouverture de Google Drive…",
       "addFromGoogleDrive": "Ajouter des fichiers depuis Google Drive",
       "addFromSharePoint": "Ajouter des fichiers depuis SharePoint",
-      "browserTitle": "{agent} peut utiliser votre navigateur partagé dans cette tâche. La désactivation s’applique à partir de votre prochain message.",
+      "browserTitle": "{agent} peut utiliser le mode navigateur dans cette tâche. La désactivation s’applique à partir de votre prochain message.",
       "browser": "Navigateur",
       "browserOff": "Désactiver le navigateur pour cette tâche",
       "browserOn": "Activer le navigateur pour cette tâche",
@@ -295,7 +295,13 @@
     "skipped": "Question passée.",
     "timedOut": "Aucune réponse : délai dépassé.",
     "answered": "Réponse :",
-    "noLongerActive": "Cette question n’est plus active."
+    "noLongerActive": "Cette question n’est plus active.",
+    "browserStep": {
+      "title": "Approuver cette étape dans le navigateur ?",
+      "intro": "Elle peut acheter, envoyer, supprimer ou valider quelque chose, et ne s’exécute que si vous l’approuvez.",
+      "approved": "Action du navigateur approuvée",
+      "cancelled": "Action du navigateur annulée"
+    }
   },
   "codingTerminal": {
     "unavailable": "Le terminal intégré n’est pas disponible dans cette version.",
@@ -565,7 +571,7 @@
   },
   "browser": {
     "close": "Fermer le navigateur",
-    "shared": "Navigateur partagé",
+    "shared": "Mode navigateur",
     "title": "Navigateur",
     "unreachable": "Le navigateur est injoignable",
     "stopped": {

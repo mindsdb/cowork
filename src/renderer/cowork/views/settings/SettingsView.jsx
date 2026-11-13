@@ -1063,6 +1063,10 @@ export default function SettingsView({
   // adding e.g. an Anthropic key "just works" without touching the
   // custom-model controls. Falls back to MindsHub when nothing is
   // configured so the unconfigured baseline still surfaces a row.
+  // Signed in to a MindsHub server for inference: a keyed MindsHub card,
+  // or the platform's sign-in. Then the decision model is Jev there.
+  const mindsConnected = visibleProviders.some((p) => p.type === 'minds-cloud' && providerConfigured(p))
+    || (PLATFORM_UI && Boolean(isSsoConnected));
   const defaultModeProviderType = (() => {
     const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
     if (minds && providerConfigured(minds)) return 'minds-cloud';
@@ -2012,17 +2016,27 @@ export default function SettingsView({
                     {showRouterRoleRow(settings.routing, settings.gate)
                       && RoleRow({ role: 'router', label: t('agent.roles.router') })}
                     {RoleRow({ role: 'coding', label: t('agent.roles.coding') })}
+                    {/* The decision model: Jev when signed in to MindsHub for
+                        inference, else the organization's own endpoint, for
+                        whoever may set it (routing.canSetDecisionModel). */}
+                    <DecisionModelSettingsGroup
+                      embedded
+                      settings={settings}
+                      setSetting={setSetting}
+                      agentLabel={agentLabel || 'Anton'}
+                      mindsConnected={mindsConnected}
+                    />
                   </>
                 );
               })()}
             </SettingsGroup>
           </div>}
-          {/* The organization's own decision model, beside its LLM provider:
-              shown only to whoever may change it (the server's
-              routing.canSetDecisionModel). */}
-          <div className="order-3">
-            <DecisionModelSettingsGroup settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} />
-          </div>
+          {/* Without the Model router card, the decision model is a group of its own. */}
+          {!PLATFORM_UI && (
+            <div className="order-3">
+              <DecisionModelSettingsGroup settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} />
+            </div>
+          )}
         </div>
 
         <SettingsGroup title={t('memory.title')}>

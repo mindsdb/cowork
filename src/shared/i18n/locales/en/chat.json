@@ -262,7 +262,7 @@
       "openingGoogleDrive": "Opening Google Drive…",
       "addFromGoogleDrive": "Add files from Google Drive",
       "addFromSharePoint": "Add files from SharePoint",
-      "browserTitle": "{agent} can use your shared browser in this task. Off applies from your next message.",
+      "browserTitle": "{agent} can use browser mode in this task. Off applies from your next message.",
       "browser": "Browser",
       "browserOff": "Turn the browser off for this task",
       "browserOn": "Turn the browser on for this task",
@@ -295,7 +295,13 @@
     "skipped": "Skipped.",
     "timedOut": "No answer — timed out.",
     "answered": "Answered:",
-    "noLongerActive": "This question is no longer active."
+    "noLongerActive": "This question is no longer active.",
+    "browserStep": {
+      "title": "Approve this browser step?",
+      "intro": "It may buy, send, delete or submit something, and runs only if you approve.",
+      "approved": "Browser action approved",
+      "cancelled": "Browser action cancelled"
+    }
   },
   "codingTerminal": {
     "unavailable": "Embedded terminal is not available on this build.",
@@ -565,7 +571,7 @@
   },
   "browser": {
     "close": "Close browser",
-    "shared": "Shared browser",
+    "shared": "Browser mode",
     "title": "Browser",
     "unreachable": "The browser isn't reachable",
     "stopped": {

@@ -29,7 +29,7 @@ function setVisibility(state) {
 /* happy-dom loads no page into the frame here, so it has no window of its
    own: give it one the test can see messages go to and come from. */
 function frameWindow() {
-  const frame = screen.getByTitle('Shared browser');
+  const frame = screen.getByTitle('Browser mode');
   if (!frame.__testWindow) {
     const win = { postMessage: vi.fn() };
     Object.defineProperty(frame, 'contentWindow', { configurable: true, get: () => win });
@@ -158,7 +158,7 @@ describe('BrowserPanel', () => {
       render(<BrowserPanel sessionId={body.session_id} onClose={() => {}} />);
       await flush();
       expect(embedBrowser).toHaveBeenCalledWith(body.session_id);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', fromThisApp);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', fromThisApp);
       expect(screen.queryByText('The browser returned an unexpected address.')).toBeNull();
     });
 
@@ -171,7 +171,7 @@ describe('BrowserPanel', () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
       expect(embedBrowser).toHaveBeenCalledWith('t-abc');
-      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.queryByTitle('Browser mode')).toBeNull();
       expect(screen.getByText("The browser isn't reachable")).toBeInTheDocument();
       expect(screen.getByText('The browser returned an unexpected address.')).toBeInTheDocument();
     });
@@ -181,7 +181,7 @@ describe('BrowserPanel', () => {
       expect(screen.getByRole('status')).toHaveTextContent('Starting your browser…');
       await flush();
       expect(embedBrowser).toHaveBeenCalledWith('t-abc');
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}1`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}1`);
       expect(screen.getByRole('status')).toHaveTextContent('Starting your browser…');
       messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
       expect(screen.queryByRole('status')).toBeNull();
@@ -192,7 +192,7 @@ describe('BrowserPanel', () => {
          each loads the frame and never says it is ready. */
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
-      fireEvent.load(screen.getByTitle('Shared browser'));
+      fireEvent.load(screen.getByTitle('Browser mode'));
       expect(screen.getByRole('status')).toHaveTextContent('Starting your browser…');
       act(() => { vi.advanceTimersByTime(STARTING_TIMEOUT_MS); });
       expect(screen.getByText('Your browser is taking longer than usual')).toBeInTheDocument();
@@ -218,7 +218,7 @@ describe('BrowserPanel', () => {
       embedBrowser.mockResolvedValue(link(2));
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Try again' })); });
       expect(embedBrowser).toHaveBeenCalledTimes(2);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}2`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}2`);
       expect(screen.getByText('Starting your browser…')).toBeInTheDocument();
       // The person's retry starts the clock over.
       act(() => { vi.advanceTimersByTime(STARTING_TIMEOUT_MS - 1); });
@@ -239,7 +239,7 @@ describe('BrowserPanel', () => {
       embedBrowser.mockResolvedValue({ ...link(), ticket_expires_at: 0 });
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
-      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.queryByTitle('Browser mode')).toBeNull();
       expect(screen.getByText('The browser returned an unexpected address.')).toBeInTheDocument();
     });
   });
@@ -248,13 +248,13 @@ describe('BrowserPanel', () => {
     it('is sandboxed without allow-same-origin', async () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('sandbox', 'allow-forms allow-scripts');
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('sandbox', 'allow-forms allow-scripts');
     });
 
     it('delegates no permission to the viewer, and sends it no referrer', async () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
-      const frame = screen.getByTitle('Shared browser');
+      const frame = screen.getByTitle('Browser mode');
       // No allow attribute: no clipboard or any other permission reaches the viewer.
       expect(frame).not.toHaveAttribute('allow');
       expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer');
@@ -264,7 +264,7 @@ describe('BrowserPanel', () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
       const win = frameWindow();
-      fireEvent.load(screen.getByTitle('Shared browser'));
+      fireEvent.load(screen.getByTitle('Browser mode'));
       expect(win.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'browser-theme' }), '*');
       win.postMessage.mockClear();
       messageFrom(win, { type: 'browser-viewer-ready' });
@@ -291,7 +291,7 @@ describe('BrowserPanel', () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
       setVisibility('hidden');
-      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.queryByTitle('Browser mode')).toBeNull();
       expect(screen.queryByRole('status')).toBeNull();
       expect(embedBrowser).toHaveBeenCalledTimes(1);
 
@@ -299,7 +299,7 @@ describe('BrowserPanel', () => {
       setVisibility('visible');
       await flush();
       expect(embedBrowser).toHaveBeenCalledTimes(2);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}2`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}2`);
     });
 
     it('opens no frame for a link that arrives after the tab hid', async () => {
@@ -308,7 +308,7 @@ describe('BrowserPanel', () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       setVisibility('hidden');
       await act(async () => { resolve(link()); });
-      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.queryByTitle('Browser mode')).toBeNull();
     });
 
     it('mints nothing while opened in a hidden tab, until it is visible', async () => {
@@ -327,7 +327,7 @@ describe('BrowserPanel', () => {
       embedBrowser.mockResolvedValue(link(2));
       await act(async () => { window.dispatchEvent(new Event('online')); });
       expect(embedBrowser).toHaveBeenCalledTimes(2);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}2`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}2`);
     });
 
     /* The router's refusal pages post 4401, 4504, 4502 and 4500; the viewer
@@ -348,7 +348,7 @@ describe('BrowserPanel', () => {
         messageFrom(win, { type: 'browser-viewer-closed', code });
         await flush();
         expect(embedBrowser).toHaveBeenCalledTimes(2);
-        expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}2`);
+        expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}2`);
       },
     );
 
@@ -363,7 +363,7 @@ describe('BrowserPanel', () => {
       act(() => { vi.advanceTimersByTime(15 * 60_000); });
       messageFrom(frameWindow(), { type: 'browser-viewer-closed', code: 4401 });
       await flush();
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}2`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}2`);
       expect(screen.getByRole('status')).toHaveTextContent('Starting your browser…');
       messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
       expect(screen.queryByRole('status')).toBeNull();
@@ -384,7 +384,7 @@ describe('BrowserPanel', () => {
       messageFrom(frameWindow(), { type: 'browser-viewer-closed', code: 4502 });
       await flush();
       expect(embedBrowser).toHaveBeenCalledTimes(2);
-      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.queryByTitle('Browser mode')).toBeNull();
       expect(screen.getByText("The browser isn't reachable")).toBeInTheDocument();
       expect(screen.getByText('The browser view keeps closing. Try again in a moment.')).toBeInTheDocument();
     });
@@ -423,7 +423,7 @@ describe('BrowserPanel', () => {
       messageFrom(frameWindow(), { type: 'browser-viewer-closed', code: 4401 });
       await flush();
       expect(embedBrowser).toHaveBeenCalledTimes(2);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}2`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}2`);
       expect(screen.getByText('Your browser is taking longer than usual')).toBeInTheDocument();
 
       // The lapse counted nothing: one quick refusal after it still re-mints.
@@ -431,7 +431,7 @@ describe('BrowserPanel', () => {
       messageFrom(frameWindow(), { type: 'browser-viewer-closed', code: 4502 });
       await flush();
       expect(embedBrowser).toHaveBeenCalledTimes(3);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}3`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}3`);
 
       messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
       expect(screen.queryByRole('status')).toBeNull();
@@ -446,7 +446,7 @@ describe('BrowserPanel', () => {
       messageFrom(frameWindow(), { type: 'browser-viewer-closed', code });
       await flush();
       expect(embedBrowser).toHaveBeenCalledTimes(1);
-      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.queryByTitle('Browser mode')).toBeNull();
       // The browser is reachable, just full: the title says which.
       expect(screen.getByText(title)).toBeInTheDocument();
       expect(screen.queryByText("The browser isn't reachable")).toBeNull();
@@ -456,7 +456,7 @@ describe('BrowserPanel', () => {
 
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Try again' })); });
       expect(embedBrowser).toHaveBeenCalledTimes(2);
-      expect(screen.getByTitle('Shared browser')).toBeInTheDocument();
+      expect(screen.getByTitle('Browser mode')).toBeInTheDocument();
 
       messageFrom(frameWindow(), { type: 'browser-viewer-closed', code });
       await flush();
@@ -470,7 +470,7 @@ describe('BrowserPanel', () => {
       setVisibility('visible');
       await flush();
       expect(embedBrowser).toHaveBeenCalledTimes(4);
-      expect(screen.getByTitle('Shared browser')).toBeInTheDocument();
+      expect(screen.getByTitle('Browser mode')).toBeInTheDocument();
     });
 
     it('stops asking after a second quick close in a row, until the person tries again', async () => {
@@ -486,7 +486,7 @@ describe('BrowserPanel', () => {
 
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Try again' })); });
       expect(embedBrowser).toHaveBeenCalledTimes(3);
-      expect(screen.getByTitle('Shared browser')).toBeInTheDocument();
+      expect(screen.getByTitle('Browser mode')).toBeInTheDocument();
     });
   });
 });

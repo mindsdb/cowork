@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
@@ -10,9 +10,11 @@ import DecisionModelSettingsGroup from './DecisionModelSettingsGroup';
 
 const ADMIN = { canSetDecisionModel: true, decisions: null };
 
-/* The Settings form's draft: what the group sets, it reads back. */
+/* The Settings form's draft: what the group sets, it reads back. Another LLM
+   provider than MindsHub unless a test says otherwise: on MindsHub there is
+   nothing to set up. */
 function Form({ initial, onSet = () => {} }) {
-  const [settings, setSettings] = useState(initial);
+  const [settings, setSettings] = useState({ planningProvider: 'anthropic', ...initial });
   const setSetting = (key, value) => {
     onSet(key, value);
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -34,6 +36,30 @@ describe('DecisionModelSettingsGroup', () => {
     render(<Form initial={{ routing: ADMIN }} />);
     expect(screen.getByText('Decision model')).toBeInTheDocument();
     expect(screen.getByText(/lets Cowork's browser pick its steps quickly when you don't use MindsHub/)).toBeInTheDocument();
+  });
+
+  it('signed in to MindsHub, is just Jev, for everyone, with nothing to set up', () => {
+    render(<Form initial={{ routing: { canSetDecisionModel: false }, planningProvider: 'minds-cloud' }} />);
+    expect(screen.getByText('Jev')).toBeInTheDocument();
+    expect(screen.getByText('Used to route and decide actions in the agent.')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Endpoint URL')).not.toBeInTheDocument();
+  });
+
+  it('on MindsHub keeps the fields of a decision model the organization already set', () => {
+    render(<Form initial={{ routing: ADMIN, planningProvider: 'minds-cloud', decisionModelUrl: 'https://decide.example.test/d' }} />);
+    expect(screen.getByLabelText('Endpoint URL')).toHaveValue('https://decide.example.test/d');
+    expect(screen.queryByText('Jev')).not.toBeInTheDocument();
+  });
+
+  it('follows the MindsHub sign-in it is given over the LLM provider', () => {
+    render(<Form initial={{ routing: ADMIN, planningProvider: 'minds-cloud' }} />);
+    cleanup();
+    render(<DecisionModelSettingsGroup settings={{ routing: ADMIN, planningProvider: 'minds-cloud' }} setSetting={() => {}} mindsConnected={false} embedded />);
+    expect(screen.queryByLabelText('Endpoint URL')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(screen.getByLabelText('Endpoint URL')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('edits the endpoint, key and model name in the draft and tests them', async () => {

@@ -66,11 +66,9 @@
     "clearFailed": "Die Browserdaten konnten nicht gelöscht werden. Versuchen Sie es erneut.",
     "signOutTitle": "Von allen Websites abmelden",
     "signOut": "Abmelden",
-    "sharedBrowser": "Gemeinsamer Browser",
-    "useSharedBrowser": "Gemeinsamen Browser verwenden",
+    "sharedBrowser": "Browsermodus",
+    "useSharedBrowser": "Browsermodus verwenden",
     "beta": "Beta",
-    "signInsTitle": "Anmeldungen",
-    "providerSeesTitle": "Was der Modellanbieter sieht",
     "retry": "Erneut versuchen",
     "usageEventsTitle": "Nutzungsereignisse",
     "sendUsageEvents": "Anonyme Nutzungsereignisse senden",
@@ -205,6 +203,11 @@
     "passed": "Antwort in {ms} ms.",
     "failed": "Das Entscheidungsmodell hat nicht wie erwartet geantwortet ({error}). Prüfen Sie Endpunkt und Schlüssel.",
     "untested": "Das Entscheidungsmodell konnte nicht getestet werden. Versuchen Sie es noch einmal.",
-    "remove": "Entfernen"
+    "remove": "Entfernen",
+    "jev": "Jev",
+    "modelLabel": "Modell:",
+    "subtitle": "Wird verwendet, um Anfragen zu routen und Aktionen im Agenten zu entscheiden.",
+    "showMore": "Mehr anzeigen",
+    "showLess": "Weniger anzeigen"
   }
 }

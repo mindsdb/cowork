@@ -14,6 +14,8 @@ import {
 } from '../lib/browserApproval';
 import { host } from '../../platform/host';
 import { saveApproveSteps, useBrowserPrefs } from '../lib/browserPrefs';
+import { parseBrowserStepPrompt } from '../lib/browserStepPrompt';
+import BrowserStepPills from './BrowserStepPills';
 import { Switch } from './ui/Switch';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 import ChatCardShell from './ChatCardShell';
@@ -90,9 +92,21 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
   // person approves what the brief shows.
   // Memoised: ChatView re-renders on every streamed delta, and each card
   // would otherwise re-parse its brief every time.
+  // A held browser step's card says its site and action as pills, under one
+  // short line, in place of anton's fenced address and step
+  // (lib/browserStepPrompt.js); any other prompt shows as written.
   const prompt = q.prompt || '';
+  const stepPills = useMemo(() => (isBrowserStepCard(q) ? parseBrowserStepPrompt(prompt) : null), [q, prompt]);
   const promptBody = useMemo(
-    () => (prompt.trim().includes('\n') ? (
+    () => (stepPills ? (
+      <div className="flex flex-col gap-1.5">
+        <MarkdownPlainText>
+          <strong className="font-semibold text-ink">{t('askUser.browserStep.title')}</strong>
+          {' '}<span className="text-ink-3">{t('askUser.browserStep.intro')}</span>
+        </MarkdownPlainText>
+        <BrowserStepPills pills={stepPills} />
+      </div>
+    ) : prompt.trim().includes('\n') ? (
       <MarkdownContent
         text={prompt}
         softBreaks
@@ -104,7 +118,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
     ) : (
       <MarkdownPlainText>{prompt.trim()}</MarkdownPlainText>
     )),
-    [prompt],
+    [prompt, stepPills, t],
   );
 
   // This is the only interactive control in an otherwise static stream, it

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BROWSER_ACTION_BADGE, browserActionLabel, groupBrowserSteps } from './browserSteps';
 import { browserStep } from './browserSession';
+import { answeredBrowserStep } from './browserStepPrompt';
 
 describe('a browser call’s label', () => {
   it("is a run's goal, the site it opens, or what it does on the page", () => {
@@ -33,5 +34,14 @@ describe("a turn's browser steps as one row", () => {
     expect(grouped[0]).toMatchObject({ status: 'in_progress', completedAt: null, label: 'Reading the page' });
     const lone = [other('a'), call('s1', 'Opening a.com')];
     expect(groupBrowserSteps(lone)).toBe(lone);
+  });
+
+  it('moves an answered held step to right after the row, and leaves a waiting one where it is', () => {
+    const OPTIONS = [{ value: 'approve', label: 'Approve', detail: 'Take this step once' }, { value: 'cancel', label: 'Cancel' }];
+    const held = (id, answer) => ({ id, label: 'Question for you', badge: 'AskUser', status: 'completed', data: { question_id: `browser:approve:t-abc:${id}`, options: OPTIONS, answer } });
+    const approved = held('p1', { status: 'answered', values: ['approve'] });
+    const waiting = held('p2', null);
+    const grouped = groupBrowserSteps([call('s1', 'Opening a.com'), approved, other('b'), call('s2', 'Booking'), waiting], { follows: answeredBrowserStep });
+    expect(grouped.map((s) => s.id)).toEqual(['b', 'browser-group-s1', 'p1', 'p2']);
   });
 });

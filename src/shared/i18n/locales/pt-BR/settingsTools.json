@@ -66,11 +66,9 @@
     "clearFailed": "Não foi possível apagar os dados do navegador. Tente novamente.",
     "signOutTitle": "Sair de todos os sites",
     "signOut": "Sair",
-    "sharedBrowser": "Navegador compartilhado",
-    "useSharedBrowser": "Usar o navegador compartilhado",
+    "sharedBrowser": "Modo navegador",
+    "useSharedBrowser": "Usar o modo navegador",
     "beta": "Beta",
-    "signInsTitle": "Logins",
-    "providerSeesTitle": "O que o provedor de modelos vê",
     "retry": "Tentar novamente",
     "usageEventsTitle": "Eventos de uso",
     "sendUsageEvents": "Enviar eventos de uso anônimos",
@@ -205,6 +203,11 @@
     "passed": "Respondeu em {ms} ms.",
     "failed": "O modelo de decisão não respondeu como esperado ({error}). Verifique o endpoint e a chave.",
     "untested": "Não foi possível testar o modelo de decisão. Tente de novo.",
-    "remove": "Remover"
+    "remove": "Remover",
+    "jev": "Jev",
+    "modelLabel": "Modelo:",
+    "subtitle": "Usado para rotear e decidir ações no agente.",
+    "showMore": "Mostrar mais",
+    "showLess": "Mostrar menos"
   }
 }

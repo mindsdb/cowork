@@ -262,7 +262,7 @@
       "openingGoogleDrive": "Google Driveを開いています…",
       "addFromGoogleDrive": "Google Driveからファイルを追加",
       "addFromSharePoint": "SharePointからファイルを追加",
-      "browserTitle": "このタスクでは、{agent}が共有ブラウザを使用できます。オフにすると次のメッセージから適用されます。",
+      "browserTitle": "このタスクでは、{agent}がブラウザモードを使用できます。オフにすると次のメッセージから適用されます。",
       "browser": "ブラウザ",
       "browserOff": "このタスクのブラウザをオフにする",
       "browserOn": "このタスクのブラウザをオンにする",
@@ -295,7 +295,13 @@
     "skipped": "スキップしました。",
     "timedOut": "回答がないまま時間切れになりました。",
     "answered": "回答：",
-    "noLongerActive": "この質問は終了しています。"
+    "noLongerActive": "この質問は終了しています。",
+    "browserStep": {
+      "title": "このブラウザのステップを承認しますか？",
+      "intro": "購入、送信、削除、フォームの送信などを行う可能性があり、承認した場合にのみ実行されます。",
+      "approved": "ブラウザの操作を承認しました",
+      "cancelled": "ブラウザの操作をキャンセルしました"
+    }
   },
   "codingTerminal": {
     "unavailable": "このビルドでは埋め込みターミナルを利用できません。",
@@ -565,7 +571,7 @@
   },
   "browser": {
     "close": "ブラウザを閉じる",
-    "shared": "共有ブラウザ",
+    "shared": "ブラウザモード",
     "title": "ブラウザ",
     "unreachable": "ブラウザに接続できません",
     "stopped": {

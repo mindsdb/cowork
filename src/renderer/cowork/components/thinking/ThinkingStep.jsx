@@ -12,6 +12,8 @@ import { useTypedText } from './FirstTake';
 import { stepDisplayLabel } from '../../lib/responseStreamAdapter';
 import i18n, { useTranslation } from '../../../lib/i18n';
 import { MarkdownContent } from '../markdown/MarkdownContent';
+import { BROWSER_APPROVAL_BADGE } from '../../lib/browserStepPrompt';
+import BrowserStepPills from '../BrowserStepPills';
 
 const DOT_FRAMES = ['.', '..', '...', '..', '.'];
 function TextDots() {
@@ -142,6 +144,10 @@ export function ThinkingStep({
             </span>
           )}
           {isInProgress && <TextDots />}
+          {/* A held browser step the person answered: its site and action. */}
+          {step.badge === BROWSER_APPROVAL_BADGE && step.data?.pills ? (
+            <BrowserStepPills pills={step.data.pills} size="xs" className="shrink" />
+          ) : null}
         </div>
         <div className="ml-2 flex flex-none items-center gap-2 pr-1">
           {step.cellStatus === 'timeout' && (
