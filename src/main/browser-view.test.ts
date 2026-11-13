@@ -223,32 +223,50 @@ describe('ElectronTab', () => {
   it("names the node the focus rests on in a page read by its frame and node, through another site's frame, the same token while it stays, and none while nothing has the focus or the debugger can't read it", async () => {
     const { tab, contents } = setup();
     const page = contents.debugger.page;
-    expect(await tab.read(100), 'nothing has the focus').not.toHaveProperty('focus');
+    const withFocus = { focus: true };
+    expect(await tab.read(100, withFocus), 'nothing has the focus').not.toHaveProperty('focus');
     page.frames[0].focused = 7;
-    const first = await tab.read(100);
+    const first = await tab.read(100, withFocus);
     expect(first.focus).toBe(`${MAIN_FRAME}:7`);
-    expect((await tab.read(100)).focus, 'the focus stays').toBe(first.focus);
+    expect((await tab.read(100, withFocus)).focus, 'the focus stays').toBe(first.focus);
     // The page moves the focus to another button.
     page.frames[0].focused = 8;
-    expect((await tab.read(100)).focus).toBe(`${MAIN_FRAME}:8`);
+    expect((await tab.read(100, withFocus)).focus).toBe(`${MAIN_FRAME}:8`);
     // Inside another site's frame, read in its own world.
     page.frames.push({ id: 'widget', url: 'https://other.test/w', parentId: MAIN_FRAME, remote: true, focused: 3 });
     page.focusedOwnerOf = 'widget';
-    expect((await tab.read(100)).focus).toBe('widget:3');
+    expect((await tab.read(100, withFocus)).focus).toBe('widget:3');
     // A payment provider's frame opens no world, so the focus there can't be read.
     page.frames.push({ id: 'pay', url: 'https://js.stripe.com/v3/elements-inner-card', parentId: MAIN_FRAME, remote: true, focused: 4 });
     page.focusedOwnerOf = 'pay';
-    expect(await tab.read(100)).not.toHaveProperty('focus');
+    expect(await tab.read(100, withFocus)).not.toHaveProperty('focus');
     // Something else holds the debugger: the read answers, with no focus.
     page.focusedOwnerOf = null;
     contents.debugger.attach();
-    const held = await tab.read(100);
+    const held = await tab.read(100, withFocus);
     expect(held).toMatchObject({ url: 'https://a.test/', challenges: [] });
     expect(held).not.toHaveProperty('focus');
     contents.debugger.detach();
     // Each read lets go of the debugger.
-    expect((await tab.read(100)).focus).toBe(`${MAIN_FRAME}:8`);
+    expect((await tab.read(100, withFocus)).focus).toBe(`${MAIN_FRAME}:8`);
     expect(contents.attached).toBe(false);
+  });
+
+  it("reads the page with no debugger unless asked for the focus, as the hand-over watch reads it every second outside the session's queue", async () => {
+    const { tab, contents } = setup();
+    contents.debugger.page.frames[0].focused = 7;
+    const watched = await tab.read(0);
+    expect(watched).toMatchObject({ url: 'https://a.test/', challenges: [] });
+    expect(watched).not.toHaveProperty('focus');
+    expect(await tab.read(100, { focus: false })).not.toHaveProperty('focus');
+    expect(contents.attaches).toBe(0);
+    expect(contents.sent).toEqual([]);
+    // So a step that starts during such a read still gets the debugger.
+    contents.debugger.attach();
+    expect(await tab.read(0)).toMatchObject({ url: 'https://a.test/' });
+    contents.debugger.detach();
+    expect((await tab.read(100, { focus: true })).focus).toBe(`${MAIN_FRAME}:7`);
+    expect(contents.attaches).toBe(2);
   });
 
   it('reports a check frame from the frame tree without running script in it', async () => {

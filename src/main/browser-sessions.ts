@@ -73,6 +73,16 @@ export const MIN_VIEW_PX = 200;
 
 const usable = (bounds: ViewBounds): boolean => bounds.width >= MIN_VIEW_PX && bounds.height >= MIN_VIEW_PX;
 
+/** What a page read reads beyond the page's isolated world. `focus`:
+    page.json's `focus`, the focused node, which the tab names through the
+    debugger. Only anton's reads ask for it (page, and a step's
+    include_page), which run in the session's queue, so a read outside it
+    (the hand-over watch's every second) never holds the debugger a step
+    that starts then needs. */
+export interface PageReadOptions {
+  focus?: boolean;
+}
+
 /** One tab: a native view the host drives. browser-view.ts implements it. */
 export interface TabView {
   url(): string;
@@ -80,7 +90,7 @@ export interface TabView {
   loading(): boolean;
   canGoBack(): boolean;
   canGoForward(): boolean;
-  read(maxText: number): Promise<PageSnapshot>;
+  read(maxText: number, options?: PageReadOptions): Promise<PageSnapshot>;
   /** Runs a step and lets it settle. `onInputDone` runs once its input is
       over, before the settle. */
   act(request: StepRequest, onInputDone: () => void): Promise<StepOutcome>;
@@ -410,7 +420,7 @@ export class BrowserSessions {
 
   page(id: string, maxText: number): Promise<PageSnapshot> {
     const session = this.ensure(id);
-    return this.enqueue(session, () => this.agentRead(session, () => this.active(session).view.read(maxText)));
+    return this.enqueue(session, () => this.agentRead(session, () => this.active(session).view.read(maxText, { focus: true })));
   }
 
   action(id: string, request: StepRequest): Promise<ActionAnswer> {
@@ -444,7 +454,7 @@ export class BrowserSessions {
          holds it. */
       if (request.includePage && session.control.holder !== 'human') {
         const readSeq = session.control.seq;
-        const page = await current.view.read(3000);
+        const page = await current.view.read(3000, { focus: true });
         if (session.control.seq === readSeq) answer.page = page;
       }
       if (session.control.seq !== seq) answer.changed = null;

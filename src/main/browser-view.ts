@@ -75,7 +75,7 @@ import {
 } from './browser-page-script';
 import { browserViewPreferences, guardNavigation, navigationAllowed, refusedDestination, type RequestsInFlight, requestsInFlight } from './browser-profile';
 import { frameLook, nearlyOneColor, renderScreenshot, type Screenshot } from './browser-screenshot';
-import type { TabFactory, TabHooks, TabView, ViewBounds } from './browser-sessions';
+import type { PageReadOptions, TabFactory, TabHooks, TabView, ViewBounds } from './browser-sessions';
 
 /* A navigation the agent asks for answers once the page loads, or after this
    long with the page still loading; anton reads the page either way. It is
@@ -373,12 +373,13 @@ export class ElectronTab implements TabView {
 
   /* The page's world reads every frame its rules let it; the first
      FRAME_READ_RULES.read (FRAMES_READ) the look keeps read stay read
-     (keepSeen). The read carries `focus` when the debugger names the node
-     the focus rests on (focusToken). */
-  async read(maxText: number): Promise<PageSnapshot> {
+     (keepSeen). Asked for the focus (PageReadOptions), the read carries
+     `focus` when the debugger names the node the focus rests on
+     (focusToken); otherwise it never attaches the debugger. */
+  async read(maxText: number, options: PageReadOptions = {}): Promise<PageSnapshot> {
     const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: FRAME_READ_RULES });
     const inside = this.framesInside(new Set(raw.frames.filter((frame) => frame.read).map((frame) => frame.url)));
-    const [frames, focus] = await Promise.all([this.keepSeen(raw.frames, raw.viewport), this.focusToken()]);
+    const [frames, focus] = await Promise.all([this.keepSeen(raw.frames, raw.viewport), options.focus ? this.focusToken() : null]);
     const page = pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls(), inside);
     return focus === null ? page : { ...page, focus };
   }

@@ -589,6 +589,16 @@ describe('the pane', () => {
     expect(tabs[0].hooks.popupAllowed()).toBe(false);
   });
 
+  it("asks for the focused node only on anton's page read and a step's page read, which run in the session's queue", async () => {
+    const { sessions, tabs } = harness();
+    sessions.open('t-a', 'https://a.test/');
+    await sessions.page('t-a', 100);
+    expect(tabs[0].read).toHaveBeenLastCalledWith(100, { focus: true });
+    await sessions.action('t-a', step({ action: 'click', element: 1, include_page: true }));
+    expect(tabs[0].read).toHaveBeenLastCalledWith(3000, { focus: true });
+    expect(tabs[0].read).toHaveBeenCalledTimes(2);
+  });
+
   it("answers whether the step changed the page, and can't tell once the person took the browser during the step or its read", async () => {
     const { sessions, tabs } = harness();
     sessions.open('t-a', 'https://a.test/');
