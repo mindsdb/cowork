@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { setOrgMode } from '../../../../lib/orgMode';
 import { SHARE_ORG_REQUIRED_CODE } from '../../../lib/sharingContract';
+import { OWNED_BY_OTHER_USER_CODE } from './publishErrors';
 
 const apiMock = vi.hoisted(() => ({
   publishArtifact: vi.fn(),
@@ -68,7 +69,7 @@ describe('on Web, an artifact published automatically as "only me"', () => {
 
   it('records sharing it with someone as a first share, and leaves artifact_published alone', async () => {
     wsMock.setArtifactAccess.mockResolvedValue({
-      url: 'https://share/abc', report_id: 'rep-1', accessMode: 'restricted',
+      url: 'https://share/abc', result: { report_id: 'rep-1' }, accessMode: 'restricted',
       accessEmails: ['alice@x.com'], orgAllowed: false, ownerOnly: false,
     });
     const { result } = await openPanel();
@@ -127,7 +128,7 @@ describe('on Web, a draft that is published automatically while its viewer is op
   beforeEach(() => {
     setOrgMode(true);
     wsMock.loadArtifactAccess.mockResolvedValueOnce(DRAFT_ACCESS).mockResolvedValue(ONLY_ME_ACCESS);
-    wsMock.setArtifactAccess.mockResolvedValue({ url: 'https://share/abc', report_id: 'rep-1', accessMode: 'public' });
+    wsMock.setArtifactAccess.mockResolvedValue({ url: 'https://share/abc', result: { report_id: 'rep-1' }, accessMode: 'public' });
   });
   afterEach(() => setOrgMode(false));
 
@@ -166,7 +167,7 @@ describe('on Desktop', () => {
   const LOCAL = { id: ID, type: 'html', path: '/p/.anton/artifacts/r/index.html', accessMode: 'public' };
 
   it('records a first publish as a first share, beside artifact_published', async () => {
-    apiMock.publishArtifact.mockResolvedValue({ url: 'https://share/new', accessMode: 'public', report_id: 'rep-2' });
+    apiMock.publishArtifact.mockResolvedValue({ url: 'https://share/new', accessMode: 'public', result: { report_id: 'rep-2' } });
     const { result } = renderHook(() => usePublish(LOCAL, { enabled: true }));
 
     await act(async () => { await result.current.publish({ mode: 'public' }); });
@@ -180,7 +181,7 @@ describe('on Desktop', () => {
   });
 
   it('puts the page it published on the card, and takes it off on Stop sharing', async () => {
-    apiMock.publishArtifact.mockResolvedValue({ url: 'https://share/new', accessMode: 'public', report_id: 'rep-2' });
+    apiMock.publishArtifact.mockResolvedValue({ url: 'https://share/new', accessMode: 'public', result: { report_id: 'rep-2' } });
     const onChange = vi.fn();
     const { result } = renderHook(() => usePublish(LOCAL, { onChange, enabled: true }));
     await act(async () => { await result.current.publish({ mode: 'public' }); });
@@ -233,6 +234,15 @@ describe('on Desktop', () => {
     expect(analytics.trackArtifactAccessChangeFailed).toHaveBeenCalledWith(expect.objectContaining({
       entry: 'viewer', reason: 'left_live',
     }));
+  });
+
+  it('records a save refused because another account published it as owned_by_other', async () => {
+    apiMock.publishArtifact.mockRejectedValue(Object.assign(new Error('conflict'), { code: OWNED_BY_OTHER_USER_CODE }));
+    const { result } = renderHook(() => usePublish(LOCAL, { enabled: true }));
+
+    await act(async () => { await result.current.publish({ mode: 'public' }); });
+
+    expect(analytics.trackArtifactAccessChangeFailed).toHaveBeenCalledWith(expect.objectContaining({ reason: 'owned_by_other' }));
   });
 
   it('records nothing when a save fails, except the failure', async () => {

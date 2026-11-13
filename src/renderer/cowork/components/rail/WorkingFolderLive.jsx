@@ -674,7 +674,9 @@ export function WorkingFolderLive({
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => {
           setPreviewArt(updated);
-          setArtifacts((prev) => prev.map((a) => a.path === updated.path ? { ...a, publishedUrl: updated.publishedUrl } : a));
+          // The whole report: its access and page id too, which the rail's own
+          // Download and Delete read, and the rail does not refetch.
+          setArtifacts((prev) => prev.map((a) => a.path === updated.path ? { ...a, ...updated } : a));
         }}
         onDelete={(path) => {
           setArtifacts((prev) => prev.filter((a) => a.path !== path));

@@ -81,6 +81,18 @@ export function shareSnapshot(artifact, { teams = [] } = {}) {
   };
 }
 
+/**
+ * The page id a publish or access-change answer names. cowork-server puts it
+ * under `result` (the publisher's own answer); a top-level field is read too,
+ * for a server that also answers it there.
+ */
+export function publishedPageId(answer) {
+  for (const id of [answer?.result?.report_id, answer?.reportId, answer?.report_id]) {
+    if (typeof id === 'string' && id) return id;
+  }
+  return '';
+}
+
 /** Whether a save from `before` to `after` is worth an access-changed event. */
 export function isReportableAccessChange(before, after) {
   if (before.fingerprint !== null && before.fingerprint === after.fingerprint) return false;

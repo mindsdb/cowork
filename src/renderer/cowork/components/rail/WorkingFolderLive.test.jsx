@@ -48,9 +48,16 @@ vi.mock('../../../platform/host', () => ({
     openPath: (...a) => openPath(...a),
   },
 }));
+// What the viewer reports back after a save in it, set per test.
+const viewerReport = vi.hoisted(() => ({ next: null }));
 vi.mock('../artifact', () => ({
-  ArtifactViewer: ({ open, artifact }) => (open
-    ? <div data-testid="artifact-viewer">{artifact.title}</div>
+  ArtifactViewer: ({ open, artifact, onChange }) => (open
+    ? (
+      <div data-testid="artifact-viewer">
+        {artifact.title}
+        <button type="button" onClick={() => onChange?.({ ...artifact, ...viewerReport.next })}>Viewer saves</button>
+      </div>
+    )
     : null),
 }));
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
@@ -120,6 +127,18 @@ afterEach(() => setOrgMode(false));
 
 describe('artifacts rail click in org mode', () => {
   beforeEach(() => setOrgMode(true));
+
+  it("keeps what the viewer reported, so the rail's Download names the page", async () => {
+    const row = await renderRail(draft());
+    fireEvent.click(row);
+    viewerReport.next = { publishedUrl: SHARED_URL, accessMode: 'public', reportId: 'rep-9' };
+    fireEvent.click(await screen.findByText('Viewer saves'));
+
+    fireEvent.click(within(await openKebab()).getByText('Download'));
+    await vi.waitFor(() => expect(downloadArtifactFile).toHaveBeenCalledWith(
+      expect.objectContaining({ reportId: 'rep-9', publishedUrl: SHARED_URL }), { entry: 'rail' },
+    ));
+  });
 
   it('previews the authenticated draft instead of opening a tab', async () => {
     const row = await renderRail(draft());
@@ -970,6 +989,25 @@ describe('deleting from the rail on Desktop', () => {
     expect(trackArtifactAccessChanged).not.toHaveBeenCalled();
     expect(trackArtifactAccessChangeFailed).toHaveBeenCalledWith(expect.objectContaining({
       entry: 'rail_delete', reason: 'left_live',
+    }));
+  });
+
+  it("keeps what the viewer reported, so the rail's Delete names the page and its access", async () => {
+    const row = await renderRail(draft({ ext: '.html', path: '/proj/.anton/artifacts/weekly/index.html' }));
+    fireEvent.click(row);
+    // The viewer published it behind a password.
+    viewerReport.next = {
+      publishedUrl: SHARED_URL, accessMode: 'password', accessProtected: true, reportId: 'rep-9',
+    };
+    fireEvent.click(await screen.findByText('Viewer saves'));
+
+    fireEvent.click(within(await openKebab()).getByText('Delete'));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+    await vi.waitFor(() => expect(trackArtifactAccessChanged).toHaveBeenCalledTimes(1));
+    expect(trackArtifactAccessChanged).toHaveBeenCalledWith(expect.objectContaining({
+      entry: 'rail_delete',
+      reportId: 'rep-9',
+      before: expect.objectContaining({ audience: 'password' }),
     }));
   });
 

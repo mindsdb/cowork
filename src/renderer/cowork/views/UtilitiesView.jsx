@@ -24,7 +24,7 @@ import {
 import { ConfirmModal } from '../components/ConfirmModal';
 import { trackArtifactPublished } from '../lib/analytics';
 import {
-  UNKNOWN_SHARE_SNAPSHOT, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, shareSnapshot,
+  UNKNOWN_SHARE_SNAPSHOT, publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, shareSnapshot,
 } from '../lib/artifactShareAnalytics';
 import { publishFailureReason } from '../components/artifact/publish/publishErrors';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
@@ -676,7 +676,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
           entry: 'utilities',
           before,
           after: shareSnapshot({ ...result, publishedUrl: result.url }),
-          reportId: result.report_id || '',
+          reportId: publishedPageId(result),
         });
       }
       setStatus(result.url ? t('publish.sharedUrl', { url: result.url }) : t('publish.shared'));

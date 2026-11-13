@@ -55,7 +55,8 @@ import { AUDIENCE_CHOICE } from '../lib/orgSharing';
 import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
 import { publishFailureReason, publishRefusalMessage } from '../components/artifact/publish/publishErrors';
 import {
-  reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal, shareSnapshot,
+  publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal,
+  shareSnapshot,
 } from '../lib/artifactShareAnalytics';
 import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
@@ -873,7 +874,7 @@ export default function ArtifactsView({
         const requested = readAudienceRequest(access);
         const saved = {
           ...artifact,
-          reportId: r.report_id || artifact.reportId || '',
+          reportId: publishedPageId(r) || artifact.reportId || '',
           publishedUrl: r.url,
           accessMode: m,
           accessProtected: m === 'password',
@@ -889,7 +890,7 @@ export default function ArtifactsView({
           entry: 'list',
           before: shareSnapshot(artifact),
           after: shareSnapshot(saved),
-          reportId: r.report_id || '',
+          reportId: publishedPageId(r),
           access,
         });
         showToast({

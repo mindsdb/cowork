@@ -32,6 +32,7 @@ import {
 import { publishFailureReason, publishRefusalMessage } from './publishErrors';
 import {
   UNKNOWN_SHARE_SNAPSHOT,
+  publishedPageId,
   reportAccessChangeFailed,
   reportAccessChanged,
   reportWithdrawal,
@@ -291,14 +292,14 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         artifactKey: r.artifactKey || artifact?.artifactKey || '',
         // The page just published, so later events name it before the list
         // reloads.
-        reportId: r.report_id || r.reportId || artifact?.reportId || '',
+        reportId: publishedPageId(r) || artifact?.reportId || '',
         modified: false,
       };
       reportAccessChanged(artifact, {
         entry: 'viewer',
         before,
         after: shareSnapshot(next, { teams: teamListRef.current }),
-        reportId: r.report_id || r.reportId || '',
+        reportId: publishedPageId(r),
         access,
       });
       // False, so the panel now on screen does not act on another artifact's save.

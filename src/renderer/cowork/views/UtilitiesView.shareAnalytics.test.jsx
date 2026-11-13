@@ -53,10 +53,25 @@ describe('UtilitiesView sharing analytics', () => {
     await waitFor(() => expect(report.reportLinkCopied).toHaveBeenCalledWith(artifact, { entry: 'utilities' }));
   });
 
+  it("reads a re-share's before as unknown when the list doesn't say who it reached", async () => {
+    // Published, but the publishable list carries no access mode.
+    const listed = { ...artifact, accessMode: undefined };
+    api.fetchPublishable.mockResolvedValue({ publishReady: true, artifacts: [listed], history: [] });
+    api.publishArtifact.mockResolvedValueOnce({ url: artifact.publishedUrl, accessMode: 'public', result: { report_id: 'rep-4' } });
+    render(<UtilitiesView kind="publish" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Share' }));
+    await waitFor(() => expect(report.reportAccessChanged).toHaveBeenCalledTimes(1));
+    expect(report.reportAccessChanged.mock.calls[0][1]).toMatchObject({
+      before: { shared: null, audience: 'unknown' },
+      after: { shared: true, audience: 'public' },
+    });
+  });
+
   it('records sharing an unpublished artifact as a first share, and a failure as a failure', async () => {
     const draft = { ...artifact, publishedUrl: '', accessMode: undefined };
     api.fetchPublishable.mockResolvedValue({ publishReady: true, artifacts: [draft], history: [] });
-    api.publishArtifact.mockResolvedValueOnce({ url: 'https://minds.example/r', accessMode: 'public', report_id: 'rep-3' });
+    api.publishArtifact.mockResolvedValueOnce({ url: 'https://minds.example/r', accessMode: 'public', result: { report_id: 'rep-3' } });
     render(<UtilitiesView kind="publish" />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Share' }));

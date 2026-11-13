@@ -76,7 +76,7 @@ describe('Artifacts page sharing analytics', () => {
   });
 
   it('records a share from the dialog as a first share', async () => {
-    api.publishArtifact.mockResolvedValue({ url: 'https://share/a1', accessMode: 'restricted', report_id: 'rep-1' });
+    api.publishArtifact.mockResolvedValue({ url: 'https://share/a1', accessMode: 'restricted', result: { report_id: 'rep-1' } });
     await shareWithPeople();
 
     await waitFor(() => expect(report.reportAccessChanged).toHaveBeenCalledTimes(1));
@@ -90,7 +90,7 @@ describe('Artifacts page sharing analytics', () => {
   });
 
   it("keeps the card's page id current after a share", async () => {
-    api.publishArtifact.mockResolvedValue({ url: 'https://share/a1', accessMode: 'restricted', report_id: 'rep-1' });
+    api.publishArtifact.mockResolvedValue({ url: 'https://share/a1', accessMode: 'restricted', result: { report_id: 'rep-1' } });
     const onArtifactChanged = vi.fn();
     await shareWithPeople(onArtifactChanged);
     await waitFor(() => expect(onArtifactChanged).toHaveBeenCalledWith(expect.objectContaining({ reportId: 'rep-1' })));

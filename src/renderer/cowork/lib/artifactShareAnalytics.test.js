@@ -11,6 +11,7 @@ vi.mock('./analytics', () => analytics);
 
 import {
   isReportableAccessChange,
+  publishedPageId,
   reportAccessChanged,
   reportDownloaded,
   reportWithdrawal,
@@ -99,6 +100,19 @@ describe('isReportableAccessChange', () => {
   it('reports a save from an unknown audience, which can be a pull-back', () => {
     const unknown = shareSnapshot(restricted({ accessEmails: null }));
     expect(isReportableAccessChange(unknown, onlyMe)).toBe(true);
+  });
+});
+
+describe('publishedPageId', () => {
+  it('reads the page id where cowork-server puts it, under result', () => {
+    // ArtifactPublishResult.model_dump(by_alias=True): no top-level report id.
+    expect(publishedPageId({ url: 'u', accessMode: 'public', result: { report_id: 'rid-1', view_url: 'u' } })).toBe('rid-1');
+  });
+
+  it('also reads a top-level id, and answers empty for none', () => {
+    expect(publishedPageId({ url: 'u', reportId: 'rid-2' })).toBe('rid-2');
+    expect(publishedPageId({ url: 'u', result: {} })).toBe('');
+    expect(publishedPageId(null)).toBe('');
   });
 });
 
