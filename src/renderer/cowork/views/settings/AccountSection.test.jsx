@@ -19,6 +19,7 @@ vi.mock('../../hooks/useMindsOrgs', () => ({
 }));
 
 import AccountSection from './AccountSection';
+import { MINDS_CONSOLE_HOME_URL } from '../../../lib/mindsUrls';
 
 // What desktop sign-out actually removes and keeps. Spelled out here rather than
 // read from the shared copy, so a change to the wording has to change this too.
@@ -48,5 +49,18 @@ describe('AccountSection sign-out copy', () => {
     expect(dialog).toContain('removes the AI provider API keys saved in Cowork for this account');
     expect(dialog).toContain(KEPT);
     expect(dialog).not.toContain('stored API keys');
+  });
+});
+
+describe('AccountSection console link', () => {
+  // The console sends a sign-in that lands on its bare root to Cowork
+  // (ENG-4288). Someone who opens the console from here meant the console, so
+  // the link names its home page rather than bouncing them back.
+  it('opens the console home page, not the bare root', () => {
+    render(<AccountSection isSsoConnected />);
+
+    const link = screen.getByRole('link', { name: /MindsHub/ });
+    expect(link).toHaveAttribute('href', MINDS_CONSOLE_HOME_URL);
+    expect(new URL(link.getAttribute('href')).pathname).toBe('/home');
   });
 });

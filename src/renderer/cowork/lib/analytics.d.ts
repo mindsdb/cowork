@@ -62,6 +62,12 @@ export function trackComparisonContinued(
   details: { side: 'a' | 'b'; models?: { a?: string; b?: string }; turns: number; carriedAll: boolean; verdict?: string | null; cost?: ComparisonCostProps },
 ): void;
 
+/** The user menu's API keys link was clicked (ENG-4288). Never throws. */
+export function trackMenuApiKeysClicked(): void;
+
+/** The user menu's API docs link was clicked (ENG-4288). Never throws. */
+export function trackMenuApiDocsClicked(): void;
+
 /** First switch into the Code workspace per launch. Never throws. */
 export function trackCodeViewOpened(): void;
 

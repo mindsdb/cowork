@@ -278,6 +278,8 @@
     "settings": "Settings",
     "billing": "Billing & Usage",
     "members": "Members",
+    "apiKeys": "API keys",
+    "apiDocs": "API docs",
     "help": "Help & Feedback",
     "manageOrg": "Manage organization",
     "logout": "Logout",

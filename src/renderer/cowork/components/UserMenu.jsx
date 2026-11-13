@@ -4,9 +4,9 @@ import { PLATFORM_UI } from '../../lib/deployment';
  * placeholder), display name, and org, opening a dropdown with the account
  * destinations. Parity with the web console's user menu (ENG-1408).
  *
- * The primary actions are Settings, Billing & Usage, Members, Help & Feedback,
- * and Logout. Manage organization appears when the active organization has a
- * readable label. External destinations carry an ↗ hint so the jump out of the
+ * The primary actions are Settings, Billing & Usage, Members, API keys, API
+ * docs, Help & Feedback, and Logout. Manage organization appears when the
+ * active organization has a readable label. External destinations carry an ↗ hint so the jump out of the
  * app is telegraphed before the click.
  *
  * **The organization picker lives here rather than in the rail**, and the
@@ -26,11 +26,13 @@ import { PLATFORM_UI } from '../../lib/deployment';
 import { useRef, useState } from 'react';
 import {
   ArrowUpRight,
+  BookOpen,
   Building2,
   Check,
   CircleHelp,
   CreditCard,
   EllipsisVertical,
+  KeyRound,
   LogOut,
   Settings,
   UsersRound,
@@ -48,9 +50,11 @@ import { useMindsOrgs } from '../hooks/useMindsOrgs';
 import { rememberLastOrg, useOrgLanding } from '../lib/orgLanding';
 import { organizationLabel, orgDisplayName } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
-import { trackBillingOpened } from '../lib/analytics';
+import { trackBillingOpened, trackMenuApiDocsClicked, trackMenuApiKeysClicked } from '../lib/analytics';
 import { openExternal } from '../../platform/host';
 import {
+  MINDS_API_DOCS_URL,
+  MINDS_API_KEY_URL,
   MINDS_BILLING_URL,
   MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
@@ -282,6 +286,12 @@ export function UserMenu({ user, onOpenSettings }) {
     // is otherwise invisible — but any upgrade-intent analysis must exclude it.
     PLATFORM_UI && externalItem(t, CreditCard, t('userMenu.billing'), consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
     PLATFORM_UI && externalItem(t, UsersRound, t('userMenu.members'), consoleLink(MINDS_MEMBERS_URL)),
+    // Developer links (ENG-4288). Sign-in lands in Cowork rather than the
+    // console, so a developer who came for the API needs a one-click route to
+    // keys and docs. MindsHub-only, like the console links around them: keys
+    // are a console page, and the docs describe the MindsHub API.
+    PLATFORM_UI && externalItem(t, KeyRound, t('userMenu.apiKeys'), consoleLink(MINDS_API_KEY_URL), () => trackMenuApiKeysClicked()),
+    PLATFORM_UI && externalItem(t, BookOpen, t('userMenu.apiDocs'), MINDS_API_DOCS_URL, () => trackMenuApiDocsClicked()),
     PLATFORM_UI && externalItem(t, CircleHelp, t('userMenu.help'), MINDS_SUPPORT_URL),
     // Creating or leaving an organization is a full console flow, so the menu
     // deep-links out rather than growing a second one that would open a

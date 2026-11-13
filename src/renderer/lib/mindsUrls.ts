@@ -94,6 +94,12 @@ const KEYCLOAK_BASE = MINDS_KEYCLOAK_URL.replace(/\/auth\/?$/, '');
 // nothing catching it — and since ENG-1533 every one of those links emits a
 // `billing_opened` event, which would then be measurable and wrong.
 export const MINDS_CONSOLE_URL = mindsServiceHost('console');
+// The console's home page, for links that mean "open the console". Never the
+// bare root: the console now sends a fresh sign-in that lands on `/` to Cowork
+// (ENG-4288), so a root link from inside Cowork would bounce straight back.
+// `/home` is an explicit destination, which the console honours as it does
+// any deep link.
+export const MINDS_CONSOLE_HOME_URL = `${MINDS_CONSOLE_URL}/home`;
 export const MINDS_BILLING_URL = `${MINDS_CONSOLE_URL}/settings/organization/billing`;
 // The console opens its add-credits dialog on `?exhausted=1` for a billing
 // owner (ENG-1782). For anyone else the same page opens a request-tokens
@@ -142,6 +148,10 @@ export function consoleUrlFor(
 
 // Environment-independent MindsHub destinations (docs site + support page).
 export const MINDS_DOCS_URL = 'https://docs.mindshub.ai';
+// The API docs the user menu links to (ENG-4288). The docs site's home is the
+// API reference today; named apart so the menu link can move to a deeper page
+// without touching anything else that means "the docs".
+export const MINDS_API_DOCS_URL = `${MINDS_DOCS_URL}/`;
 export const MINDS_SUPPORT_URL = 'https://mindshub.ai/support';
 
 // Desktop app download. `os=auto` lets the marketing page detect the visitor's

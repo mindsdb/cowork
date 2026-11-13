@@ -278,6 +278,8 @@
     "settings": "Einstellungen",
     "billing": "Abrechnung und Nutzung",
     "members": "Mitglieder",
+    "apiKeys": "API-Schlüssel",
+    "apiDocs": "API-Dokumentation",
     "help": "Hilfe und Feedback",
     "manageOrg": "Organisation verwalten",
     "logout": "Abmelden",
