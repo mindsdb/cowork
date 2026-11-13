@@ -167,7 +167,7 @@
   "modeTabs": {
     "ariaLabel": "产物模式",
     "preview": "预览",
-    "edit": "编辑",
+    "source": "源代码",
     "review": "审阅",
     "editDisabled": "只有产物所有者可以编辑",
     "reviewDisabled": "此产物不支持审阅",
@@ -341,7 +341,12 @@
     "reported": "{count, plural, other {预览报告了 # 个错误}}",
     "line": "第 {line} 行",
     "title": "预览错误",
-    "ariaLabel": "预览错误，{count} 个"
+    "ariaLabel": "预览错误，{count} 个",
+    "kind": {
+      "rejection": "未处理的 Promise 拒绝",
+      "console": "控制台错误",
+      "http": "服务器错误"
+    }
   },
   "liveAppPreview": {
     "failure": "无法连接到此应用。请重新加载以重试，或在浏览器中打开。",
@@ -447,7 +452,8 @@
     "discardMessage": "智能体的更改会保留在此产物的历史记录中，但该建议将被关闭，不会被应用。",
     "discardFailed": "无法放弃该建议。",
     "deleteTitle": "删除产物？",
-    "deleteMessage": "“{title}”将被永久删除。此操作无法撤销。"
+    "deleteMessage": "“{title}”将被永久删除。此操作无法撤销。",
+    "changedElsewhere": "此产物已更改。重新加载"
   },
   "artifactsView": {
     "sort": {
@@ -637,6 +643,56 @@
       }
     }
   },
+  "quickEdit": {
+    "ariaLabel": "快速编辑",
+    "inputLabel": "请求修改",
+    "placeholder": "请求修改…",
+    "send": "发送",
+    "route": {
+      "edit": "正在直接编辑…",
+      "agent": "正在交给智能体…"
+    },
+    "stage": {
+      "routing": "正在确定处理方式…",
+      "reading": "正在读取产物…",
+      "writing": "正在写入修改…",
+      "checking": "正在检查预览…",
+      "fixing": "正在修复检查发现的问题…"
+    },
+    "handingOff": "正在发送到聊天…",
+    "applied": "已完成。",
+    "undo": "撤销",
+    "undoing": "正在撤销…",
+    "undone": "已撤销。",
+    "noop": "没有任何更改。",
+    "failed": "无法在此处完成该修改。",
+    "askAgent": "改为询问智能体",
+    "errors": {
+      "stale": "你打开此产物后它已被更改。已重新加载，请重试。",
+      "busy": "此产物的另一项修改仍在进行中。完成后请重试。",
+      "failed": "无法完成修改。",
+      "stopped": "修改在完成前停止了。",
+      "chatFailed": "无法在聊天中继续。请在聊天中重试。",
+      "filesChanged": "此修改涉及的文件之后又被更改，因此无法在此撤销。",
+      "filesChangedNamed": "{paths} 之后又被更改，因此无法在此撤销此修改。",
+      "alreadyUndone": "此修改已撤销。",
+      "repairPending": "此产物有一条智能体建议正在等待你的决定。请先接受或放弃它。",
+      "undoGone": "此修改已无法在此撤销。请使用历史记录回退。"
+    },
+    "placeholderChat": "询问或修改此产物…",
+    "openInChat": "在聊天中打开",
+    "needsAnswer": "需要你在聊天中回答",
+    "workingInChat": "正在聊天中处理…",
+    "sentToChat": "已发送到聊天。",
+    "chatStopped": "聊天轮次在回答前停止了。",
+    "unsavedConfirm": {
+      "title": "你有未保存的更改。发送前要保存吗？",
+      "save": "保存并发送",
+      "discard": "放弃并发送",
+      "cancel": "取消",
+      "saveFailed": "无法保存你的更改，因此未发送任何内容。"
+    }
+  },
   "stats": {
     "toggle": {
       "show": "统计",
@@ -669,5 +725,30 @@
       "temporarilyUnavailable": "统计暂时不可用。",
       "loadFailed": "无法加载统计。"
     }
+  },
+  "refPill": {
+    "open": "打开{title}"
+  },
+  "quickEditCard": {
+    "title": "已在查看器中编辑",
+    "count": "{count, plural, other {# 项更改}}",
+    "undone": "已撤销",
+    "showAll": "{count, plural, other {显示全部 # 项}}",
+    "showFewer": "收起"
+  },
+  "layers": {
+    "ariaLabel": "查看器图层",
+    "source": "实时编辑",
+    "comments": "评论",
+    "sourceOffPrompt": {
+      "title": "关闭实时编辑？",
+      "message": "实时编辑中未保存的更改将被放弃。",
+      "confirmLabel": "放弃更改"
+    }
+  },
+  "address": {
+    "draft": "草稿",
+    "copy": "复制地址",
+    "copied": "已复制"
   }
 }

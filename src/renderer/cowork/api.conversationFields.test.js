@@ -97,3 +97,33 @@ describe('a task built from one conversation', () => {
     expect(task.projectId).toBe('7d1f4a52-0c3e-4b8e-9a51-2f6c1d0e9b11');
   });
 });
+
+// A quick-edit group (ENG-4227): the item carries only the group event, and
+// its content is model-facing text. It hydrates as the card's data, never as
+// a replayed turn.
+describe('a quick-edit group in the items', () => {
+  it('keeps the group event and derives no turn from it', async () => {
+    const group = {
+      type: 'response.quick_edit_group',
+      kind: 'quick_edit_group',
+      artifactId: 'a1',
+      artifactSlug: 'launch-brief',
+      artifactTitle: 'Launch brief',
+      edits: [{ editId: 'e1', request: 'blue', summary: 'Blue.', changed: [], revisionId: 'r2', at: '2026-11-12T10:00:00+00:00', model: null, undone: false }],
+    };
+    global.fetch = vi.fn(async (url) => (
+      String(url).includes('/items')
+        ? jsonRes({
+          items: [{ id: 'm1', role: 'assistant', harness: 'cowork-quick-edit', content: 'Changes made directly…', events: [group] }],
+          hasMore: false,
+        })
+        : jsonRes(listItem())
+    ));
+    const task = await fetchSession('c1');
+    const [message] = task.messages;
+    expect(message.quickEditGroup).toEqual(group);
+    expect(message.events).toBeUndefined();
+    expect(message.steps).toBeUndefined();
+    expect(task.messages).toHaveLength(1);
+  });
+});

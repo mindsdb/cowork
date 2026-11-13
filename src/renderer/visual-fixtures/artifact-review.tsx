@@ -8,6 +8,8 @@ import '../cowork/styles/tailwind.css';
 import { ArtifactViewer } from '../cowork/components/artifact';
 import type { ArtifactViewerArtifact } from '../cowork/components/artifact';
 import { ToastProvider } from '../cowork/components/ui/Toast';
+import { ChatTranscriptContext } from '../cowork/lib/chatTranscriptContext';
+import { ModelPickerContext } from '../cowork/lib/modelPickerContext';
 
 const MARKDOWN = `# Q3 launch readiness
 
@@ -64,6 +66,11 @@ const IS_DESKTOP = SEARCH_PARAMS.get('deployment') === 'desktop';
 // `?comments=down`: the owner's comments-access answers 503, as a review
 // service that is down does.
 const IS_COMMENTS_DOWN = SEARCH_PARAMS.get('comments') === 'down';
+// `?quickEdit=1`: the server offers quick edits (ENG-4227), and the bar's
+// request streams a direct edit that lands as a new revision.
+const QUICK_EDIT_CAPABILITIES = SEARCH_PARAMS.get('quickEdit') === '1' && !(SEARCH_PARAMS.get('role') === 'reviewer' || SEARCH_PARAMS.get('owner') === 'unknown')
+  ? { canQuickEdit: true, quickEditDirect: SEARCH_PARAMS.get('direct') !== 'off' }
+  : {};
 const PROJECT_REF = IS_DESKTOP ? 'local' : '11111111-1111-1111-1111-111111111111';
 const INITIAL_CONTENT = IS_HTML_SLIDES ? HTML_SLIDES : MARKDOWN;
 const ARTIFACT_FILENAME = IS_HTML_SLIDES ? 'artifact-collaboration-slides.html' : 'Q3-launch-readiness.md';
@@ -144,7 +151,11 @@ window.fetch = async (input, init) => {
     });
   }
   if (url.includes('/api/v1/artifacts/status?')) {
-    return new Response(JSON.stringify({ publishedUrl: '', accessMode: 'private', artifactKey: ARTIFACT_KEY }), {
+    // `?published=1`: a published page, for the header's address pill.
+    const publishedUrl = SEARCH_PARAMS.get('published') === '1'
+      ? 'https://view-pr-cowork-1422.dev.mindshub.ai/p/artifact-collaboration-slides-a1b2c3d4'
+      : '';
+    return new Response(JSON.stringify({ publishedUrl, accessMode: publishedUrl ? 'public' : 'private', artifactKey: ARTIFACT_KEY }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -167,9 +178,62 @@ window.fetch = async (input, init) => {
         canAddressWithAgent: !IS_REVIEWER,
         canResolveComments: !IS_REVIEWER,
         ...OWNER_UNKNOWN_CAPABILITIES,
+        ...QUICK_EDIT_CAPABILITIES,
       },
       currentRevision,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  if (url.endsWith('/quick-edits/quick-edit-fixture-1/undo')) {
+    // Slow enough to see the bar's undo in progress.
+    await new Promise((resolve) => { setTimeout(resolve, 1500); });
+    currentContent = INITIAL_CONTENT;
+    currentRevision = { ...REVISION, id: 'rev-undone', number: 6, summary: 'Undid a quick edit' };
+    return new Response(JSON.stringify({
+      editId: 'quick-edit-fixture-1', restored: [ARTIFACT_FILENAME], removed: [], revision: currentRevision,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  if (url.endsWith(`/api/v1/artifacts/workspace/${PROJECT_REF}/${ARTIFACT_ID}/quick-edits`)) {
+    // A request that needs data goes to the chat, as the router would send it.
+    const asked = JSON.parse(String(init?.body || '{}'));
+    if (/\bdata\b|sales|warehouse/i.test(asked.message || '')) {
+      return new Response(
+        `event: route\ndata: ${JSON.stringify({ route: 'agent', confidence: 0.91, ms: 120, reason: 'jev' })}\n\n`
+        + `event: done\ndata: ${JSON.stringify({ status: 'agent', summary: '', revisionId: null, previousRevisionId: null, changed: [], check: null, editId: null, undoable: false, ms: 130 })}\n\n`,
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      );
+    }
+    const previousRevisionId = currentRevision.id;
+    currentContent = IS_HTML_SLIDES
+      ? currentContent.replace('color: #43d8ef', 'color: #f2b84b')
+      : currentContent.replace('# Q3 launch readiness', '# Q3 launch readiness (final)');
+    currentRevision = { ...REVISION, id: 'rev-quick', number: 5, summary: 'Quick edit' };
+    const frames = [
+      ['route', { route: 'edit', confidence: 0.94, ms: 140 }],
+      ['progress', { stage: 'reading' }],
+      ['progress', { stage: 'writing' }],
+      ['done', {
+        status: 'applied',
+        summary: IS_HTML_SLIDES ? 'Made the kicker amber.' : 'Marked the title as final.',
+        revisionId: currentRevision.id,
+        previousRevisionId,
+        changed: [ARTIFACT_FILENAME],
+        check: { status: 'passed', findings: [] },
+        editId: 'quick-edit-fixture-1',
+        undoable: true,
+        ms: 4200,
+      }],
+    ];
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      async start(controller) {
+        for (const [event, data] of frames) {
+          await new Promise((resolve) => { setTimeout(resolve, 250); });
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
   }
   if (url.endsWith(`/revisions/${PREVIOUS.id}`)) {
     return new Response(JSON.stringify(PREVIOUS), {
@@ -254,6 +318,7 @@ window.fetch = async (input, init) => {
         canAddressWithAgent: !IS_REVIEWER,
         canResolveComments: !IS_REVIEWER,
         ...OWNER_UNKNOWN_CAPABILITIES,
+        ...QUICK_EDIT_CAPABILITIES,
       },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
@@ -300,6 +365,18 @@ document.body.classList.add(theme === 'dark' ? 'gf-theme-dark' : 'gf-theme-light
 document.body.style.margin = '0';
 document.body.style.background = 'var(--bg)';
 
+const CONVERSATION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const QUICK_EDIT_CATALOG = 'canQuickEdit' in QUICK_EDIT_CAPABILITIES ? {
+  models: [
+    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
+    { id: 'gpt-5-mini', name: 'GPT-5 mini' },
+  ],
+  modelMeta: {
+    modelProviders: {},
+    modelEfforts: { 'claude-sonnet-4-5': { efforts: ['low', 'medium', 'high'], default: 'high' } },
+  },
+} : null;
+
 function Fixture() {
   const [artifact, setArtifact] = useState<ArtifactViewerArtifact>({
     id: ARTIFACT_ID,
@@ -326,7 +403,24 @@ function Fixture() {
       : `/api/v1/artifacts/drafts/${PROJECT_REF}/${ARTIFACT_ID}/${ARTIFACT_FILENAME}`,
   });
 
+  // `?quickEdit=1`: the composer's catalog for the bar's picker, and a chat
+  // whose agent answers a message the bar hands it, streamed in words.
+  const [chatMessages, setChatMessages] = useState<Array<Record<string, unknown>>>([]);
+  const answerInChat = async ({ prompt }: { prompt: string }) => {
+    setChatMessages((prev) => [...prev, { role: 'user', content: prompt }]);
+    const words = 'I pulled last quarter’s sales from the warehouse and added a **Q3 revenue** column to the deck, by region. North leads at $4.2M.'.split(' ');
+    for (let n = 1; n <= words.length; n += 1) {
+      await new Promise((resolve) => { setTimeout(resolve, 120); });
+      const text = words.slice(0, n).join(' ');
+      setChatMessages((prev) => [...prev.filter((m) => m.role !== '_streaming'), { role: '_streaming', content: text, steps: [] }]);
+    }
+    setChatMessages((prev) => [...prev.filter((m) => m.role !== '_streaming'), { role: 'assistant', content: words.join(' ') }]);
+    return true;
+  };
+
   return (
+    <ModelPickerContext.Provider value={QUICK_EDIT_CATALOG}>
+    <ChatTranscriptContext.Provider value={{ conversationId: CONVERSATION_ID, messages: chatMessages }}>
     <ArtifactViewer
       open
       artifact={artifact}
@@ -344,9 +438,11 @@ function Fixture() {
         });
       }}
       onDelete={() => undefined}
-      onAddressWithAgent={async () => undefined}
-      conversationId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+      onAddressWithAgent={'canQuickEdit' in QUICK_EDIT_CAPABILITIES ? answerInChat : async () => undefined}
+      conversationId={CONVERSATION_ID}
     />
+    </ChatTranscriptContext.Provider>
+    </ModelPickerContext.Provider>
   );
 }
 

@@ -18,6 +18,10 @@ import { CircleAlert } from 'lucide-react';
 import { Icon } from '../components/ui/Icon';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
+import { parseQuickEditPrompt } from '../lib/quickEditPrompt';
+import { planQuickEditCards } from '../lib/quickEditGroup';
+import { QuickEditGroupCard } from '../components/chat/QuickEditGroupCard';
+import { ArtifactRefPill } from '../components/artifacts/ArtifactRefPill';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
 import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
@@ -28,6 +32,7 @@ import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { FirstTake } from '../components/thinking/FirstTake';
 import { stepDisplayLabel } from '../lib/responseStreamAdapter';
 import { OrbitProvider } from '../lib/orbitRegistry';
+import { ChatTranscriptContext } from '../lib/chatTranscriptContext';
 import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
@@ -317,11 +322,16 @@ function AddonRow({ step, agentLabel, onMoveToQueue }) {
 
 // The user's side of a Cowork turn: the shared UserTurn bubble, plus the
 // attachments and artifact-repair card only Cowork messages carry.
-function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projectName, projectId, conversationId, turnId, streaming = false, deleting = false, addonLabel = null }) {
+function CoworkUserTurn({ content: rawContent, attachments, onDelete, onEdit, isLast, projectName, projectId, conversationId, turnId, streaming = false, deleting = false, addonLabel = null, onOpenArtifact = null }) {
   // An "Address with agent" handoff is a machine prompt — ids, a base revision
   // and the raw thread JSON — so it renders as a card rather than as the wall of
   // identifiers it literally is. Null for every ordinary message.
   const { t } = useTranslation('chat');
+  // A message from the artifact viewer's chat bar (ENG-4227) ends in
+  // "(About the artifact `<slug>`.)" for the agent; the turn shows the user's
+  // words and names the artifact as a pill under them instead.
+  const aboutArtifact = parseQuickEditPrompt(rawContent);
+  const content = aboutArtifact ? aboutArtifact.text : rawContent;
   const repair = parseArtifactRepairPrompt(content);
   const attachmentRows = attachments?.map((a) => {
     // Image attachments preview inline as a thumbnail (fetched as a
@@ -354,6 +364,11 @@ function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projec
       </div>
     );
   });
+  const artifactPill = aboutArtifact ? (
+    <div className="user-turn-artifact-ref">
+      <ArtifactRefPill slug={aboutArtifact.slug} onOpen={onOpenArtifact} />
+    </div>
+  ) : null;
   const actions = deleting ? (
     <span
       // Primary ink, not the usual meta grey: the turn around it is at
@@ -380,6 +395,7 @@ function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projec
       turnId={turnId}
       deleting={deleting}
       attachments={attachmentRows}
+      footer={artifactPill}
       actions={shownActions}
     >
       {repair ? <ArtifactRepairCard repair={repair} projectId={projectId} streaming={streaming} /> : null}
@@ -2438,8 +2454,17 @@ export default function ChatView({
   }, [streamingMsg]);
 
   const deleteInFlight = deletingTurnMessageId != null;
+  // The artifact viewer's chat bar (ENG-4227) mirrors the agent's reply to a
+  // message it sent into this chat, from these same messages.
+  // Quick edits from the artifact viewer, adjacent ones merged into one card.
+  const quickEditPlan = planQuickEditCards(visibleMessages);
+  const chatTranscript = useMemo(
+    () => ({ conversationId: task?.id || null, messages: task?.messages || [] }),
+    [task?.id, task?.messages],
+  );
 
   return (
+    <ChatTranscriptContext.Provider value={chatTranscript}>
     <div
       ref={chatRef}
       // minmax(0, 1fr) is critical — bare `1fr` lets the grid track EXPAND
@@ -2755,6 +2780,8 @@ export default function ChatView({
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
+                // An old quick-edit request: the card after it shows it.
+                if (quickEditPlan.hidden.has(i)) return null;
                 const orphan = isOrphanUser(i);
                 // A question the server never saw has no id; it is removed
                 // locally, by the row itself, once nothing is streaming.
@@ -2781,6 +2808,7 @@ export default function ChatView({
                     deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
                     addonLabel={m._addon ? t(`chatView.addon.${addonRowLabel('saved').key}`, { agent: agentLabel || 'Anton' }) : null}
+                    onOpenArtifact={handleArtifactOpen}
                     onEdit={pane ? null : (text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
@@ -3338,6 +3366,18 @@ export default function ChatView({
                   />
                 );
               }
+              // Quick edits from the artifact viewer's bar (ENG-4227): one
+              // card per burst, without a turn's toolbar or agent label.
+              // Adjacent cards are drawn as one, at the first (planQuickEditCards).
+              if (quickEditPlan.hidden.has(i)) return null;
+              const quickEditGroup = quickEditPlan.cards.get(i);
+              if (quickEditGroup) {
+                return (
+                  <div key={messageKey(m, i)} className={deletingThisTurn ? 'opacity-60' : undefined}>
+                    <QuickEditGroupCard group={quickEditGroup} onOpenArtifact={handleArtifactOpen} />
+                  </div>
+                );
+              }
               // A turn that failed before producing anything renders no
               // bubble — the blank block above billing cards (ENG-1304).
               // Same predicate keeps isOrphanUser's delete affordance honest.
@@ -3790,5 +3830,6 @@ export default function ChatView({
         </ModalBody>
       </Modal>
     </div>
+    </ChatTranscriptContext.Provider>
   );
 }
