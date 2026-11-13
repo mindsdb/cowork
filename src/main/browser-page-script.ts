@@ -450,11 +450,19 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* The address a frame owner names: an object's data, the others' src. */
   const sourceOf = (owner: Element): string =>
     (tagOf(owner) === 'object' ? (owner as HTMLObjectElement).data : (owner as HTMLIFrameElement).src) || '';
+  /* Whether frame document `inner` is still the initial about:blank one
+     while its owner names an http(s) address: a lazy frame that hasn't
+     loaded yet (a scroll near it loads it), or one still loading. It holds
+     nothing of that address. */
+  const awaitingLoad = (owner: Element, inner: Document | null): boolean =>
+    !!inner && String(inner.location?.href || '') === 'about:blank' && /^https?:/i.test(sourceOf(owner));
   /* A frame's address as a read lists it: its document's own when this
-     world reaches it, else the address its owner names. */
+     world reaches it, else the address its owner names, as it does for a
+     document awaiting its load (awaitingLoad), so the load doesn't change
+     the frame's address between two reads. */
   const addressOf = (owner: Element): string => {
     const inner = frameDocOf(owner);
-    return inner ? String(inner.location?.href || sourceOf(owner)) : sourceOf(owner);
+    return inner && !awaitingLoad(owner, inner) ? String(inner.location?.href || sourceOf(owner)) : sourceOf(owner);
   };
   /* Whether `address`'s host is one of `hosts`, or a name under one. */
   const hostIn = (address: string, hosts: readonly string[]): boolean => {
@@ -982,7 +990,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
      drawn unreadable, and found by a hit test at most of its sample points,
      so a page can't carry a frame it hides off screen, under a box, behind
      its own CSS, or behind a cover with holes), on no payment, sign-in or
-     consent address (its src's or its document's), holding no private
+     consent address (its src's or its document's), not awaiting its load
+     (awaitingLoad), holding no private
      field, and reached before `phaseMs` has passed since the first frame's
      turn, so a page of many frames can't hold the read to its timeout.
      ElectronTab.read then looks at what the page draws over each frame
@@ -1012,7 +1021,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         hostIn(address, rules.paymentHosts) || hostIn(address, rules.signInHosts) || consentPage(address);
       const shownWidth = Math.min(box.x + box.width, viewport.width) - Math.max(box.x, 0);
       const shownHeight = Math.min(box.y + box.height, viewport.height) - Math.max(box.y, 0);
-      if (!inner || offscreen || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
+      if (!inner || awaitingLoad(owner, inner) || offscreen || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
         || drawnScale(owner) < FRAME_MIN_SCALE || refusedAddress(src) || refusedAddress(url) || win.performance.now() > deadline
         || drawnUnreadable(owner) || !hitsOwner(owner, box) || holdsPrivateField(inner)) {
         return { url, read: false, box, offscreen };

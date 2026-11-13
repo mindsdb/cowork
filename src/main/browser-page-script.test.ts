@@ -941,6 +941,47 @@ describe('frames', () => {
     expect(world.ids.size).toBe(0);
   });
 
+  it("lists a frame whose document is still the initial about:blank by the http address its owner names, unread, as a lazy frame waiting to load reads, so the scroll that loads it doesn't change its address", async () => {
+    document.body.innerHTML = `
+      <iframe id="empty" srcdoc=""></iframe>
+      <iframe id="blank"></iframe>
+      <iframe id="named-blank" src="about:blank"></iframe>
+      <iframe id="lazy" loading="lazy" src="https://maps.other.test/embed?q=1"></iframe>
+      <iframe id="loading" src="https://chat.other.test/widget"></iframe>
+      <iframe id="panel" srcdoc="<iframe id='inner-lazy' loading='lazy' src='https://video.other.test/v/7'></iframe>"></iframe>`;
+    await framesLoad();
+    /* happy-dom loads no frame by address, so an empty document stands in
+       for the initial about:blank one, which this world reaches: a frame
+       with no src or src about:blank, and a lazy frame before it loads. */
+    const blank = frameDoc('empty');
+    Object.defineProperty(blank, 'location', { configurable: true, get: () => ({ href: 'about:blank' }) });
+    const inner = frameDoc('panel');
+    const owners = ['blank', 'named-blank', 'lazy', 'loading'].map((id) => document.getElementById(id)!);
+    for (const owner of [...owners, inner.getElementById('inner-lazy')!]) {
+      Object.defineProperty(owner, 'contentDocument', { configurable: true, get: () => blank });
+    }
+    place(document.getElementById('empty')!, 0, 0, 0, 0);
+    place(document.getElementById('blank')!, 10, 10, 300, 100);
+    place(document.getElementById('named-blank')!, 10, 120, 300, 100);
+    place(document.getElementById('lazy')!, 10, 6000, 300, 100);
+    place(document.getElementById('loading')!, 10, 230, 300, 100);
+    place(document.getElementById('panel')!, 10, 340, 300, 200);
+    place(inner.getElementById('inner-lazy')!, 10, 10, 200, 100);
+    const raw = snapshot(freshWorld());
+    // An empty document headed for another address holds nothing of it, so it takes none of the frame reads.
+    expect(raw.frames.map(({ url, read, offscreen }) => [url, read, offscreen])).toEqual([
+      ['about:blank', true, false],
+      ['about:blank', true, false],
+      ['https://chat.other.test/widget', false, false],
+      ['about:srcdoc', true, false],
+      ['https://maps.other.test/embed?q=1', false, true],
+      ['https://video.other.test/v/7', false, false],
+    ]);
+    expect(pageAnswer(raw, [], [], []).frames.map((frame) => frame.url)).toEqual([
+      'about:blank', 'about:blank', 'https://chat.other.test/widget', 'about:srcdoc', 'https://maps.other.test/embed', 'https://video.other.test/v/7',
+    ]);
+  });
+
   it('lists a transparent frame, which still takes clicks, with its box and unread; a hidden one stays out', async () => {
     document.body.innerHTML = `
       <iframe id="clear" src="https://shop.other.test/buy" style="opacity: 0"></iframe>

@@ -278,6 +278,13 @@ async function startFixtureServer(): Promise<void> {
         .end('<title>Camel card</title><style>body{margin:0;background:#fff}input{position:absolute;left:100px;top:40px;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
           + '<input id="cardNumberInput" value="4242424242424242">');
     }
+    if (url.pathname === '/lazy-frame') {
+      /* Another site's embedded form 6000 px down, which loads only once a
+         scroll brings it near the view. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Lazy frame</title><style>body{margin:0;height:7000px}</style>'
+          + `<iframe loading="lazy" src="${origin.replace('127.0.0.1', 'localhost')}/fields" style="position:absolute;left:0;top:6000px;width:400px;height:200px;border:0"></iframe>`);
+    }
     if (url.pathname === '/focus-move') {
       /* Two buttons, and another site's embedded form below them. */
       return void res.writeHead(200, { 'content-type': 'text/html' })
@@ -694,6 +701,22 @@ test("lists a frame inside a same-origin frame it reads as its own frame, unread
     else expect(inner.box, route).toBeNull();
     expect(JSON.stringify(await page()), route).not.toContain('Delete my account');
   }
+});
+
+test("lists another site's lazy frame by the address it names before the scroll that loads it and after, unread", async () => {
+  await openAt('/lazy-frame');
+  const fields = `${origin.replace('127.0.0.1', 'localhost')}/fields`;
+  const loaded = () => app.evaluate(({ webContents }, { at, frame }) => webContents.getAllWebContents()
+    .find((contents) => contents.getURL() === at)?.mainFrame.frames.some((f) => f.url === frame) ?? false, { at: `${origin}/lazy-frame`, frame: fields });
+  const before = await page();
+  expect(await loaded(), 'the frame has not loaded yet').toBe(false);
+  expect(before.frames).toEqual([expect.objectContaining({ url: fields, read: false, offscreen: true })]);
+  await inPage('/lazy-frame', 'scrollTo(0, 5200)');
+  await expect.poll(loaded, { timeout: 10_000 }).toBe(true);
+  const after = await page();
+  expect(after.scroll.y).toBe(5200);
+  expect(after.frames).toEqual([expect.objectContaining({ url: fields, read: false })]);
+  await inPage('/lazy-frame', 'scrollTo(0, 0)');
 });
 
 test('refuses a click by number on a control something covers, and presses nothing', async () => {
