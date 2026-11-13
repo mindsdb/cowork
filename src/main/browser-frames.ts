@@ -1,7 +1,8 @@
 /*
  * What the page's isolated world can't see, read through the view's debugger
  * while a step has it attached (withAgentInput in browser-input.ts), or a
- * screenshot does (ElectronTab.screenshot in browser-view.ts).
+ * screenshot does (ElectronTab.screenshot in browser-view.ts), or a page read
+ * does for its `focus` (ElectronTab.read).
  *
  * `frameAt`: where a press at a point lands. The world's own hit test
  * (elementFromPoint) stops at the host of a closed shadow root, so a control
@@ -21,7 +22,8 @@
  * (flat) gives each such frame a session on the same debugger, and
  * sendCommand takes its id. `focusedField` follows the focus the same way
  * for a type with focused true, and names the text entry it rests on by its
- * frame and DOM.describeNode's backend node id.
+ * frame and DOM.describeNode's backend node id; `focusToken` names any node
+ * it rests on so, for a page read's `focus`.
  *
  * `frameMasks`: the secret fields a screenshot blacks out inside the frames
  * below the main one, each read in its frame's own world, as the web pod's
@@ -49,7 +51,6 @@
 import { BridgeError, PAYMENT_FRAME_HOSTS } from '../shared/browser-contract';
 import {
   type Box,
-  CARD_FIELD_RULE,
   type FocusedSecret,
   type FocusedTyping,
   type FoundSecrets,
@@ -560,8 +561,9 @@ export class FrameReads {
    * read tells whether the focus is still on the same field, with whether a
    * key there reaches a control a Space key may click; a secret field, or
    * one the card-field rule page.json pins for both hosts names for a card
-   * (CARD_FIELD_RULE, FocusedTyping); anything else; or `unreadable`, for
-   * whatever `focusedSecret` counts as secret because it can't read it (a
+   * (CARD_FIELD_RULE, which the world's state carries, and FocusedTyping);
+   * anything else; or `unreadable`, for whatever `focusedSecret` counts as
+   * secret because it can't read it (a
    * payment provider's frame, a frame of yet another site inside another
    * site's, a frame with no owner the debugger can name, a focus past
    * CLOSED_ROOTS_DEEP closed roots, and a read that fails or takes longer
@@ -571,12 +573,32 @@ export class FrameReads {
     const unreadable: FocusedField = { kind: 'unreadable' };
     const read = async () => this.followFocus<FocusedField>(await this.session.mainFrame(), true, unreadable, async (focus, frameId, from) => {
       if (focus.secret) return { kind: 'secret' };
-      const typing = await this.session.read<FocusedTyping>(frameId, { kind: 'focusedTyping', cardField: CARD_FIELD_RULE }, from);
+      const typing = await this.session.read<FocusedTyping>(frameId, { kind: 'focusedTyping' }, from);
       if (typing.cardNamed) return { kind: 'secret' };
-      const node = await this.session.nodeOf(frameId, { kind: 'focusedEntry', cardField: CARD_FIELD_RULE }, from);
+      const node = await this.session.nodeOf(frameId, { kind: 'focusedEntry' }, from);
       return node === null ? { kind: 'other' } : { kind: 'entry', field: `${frameId}/${node}`, inControl: typing.inControl };
     });
     return withTimeout(read(), FRAME_READ_MS).catch(() => unreadable);
+  }
+
+  /**
+   * page.json's `focus`: an opaque token naming the node the focus rests on,
+   * the deepest one through frames, followed as `focusedSecret` follows it
+   * (through same-origin frames in the world, closed shadow roots and a
+   * frame of another site), as the frame whose world reads it and
+   * DOM.describeNode's backend node id, which stays the same while the node
+   * does ("frame:node"). Null while nothing has the focus, and where it
+   * can't be read: a payment provider's frame (no world opens there), a
+   * frame of yet another site inside another site's, a frame with no owner
+   * the debugger can name, a focus past CLOSED_ROOTS_DEEP closed roots, and
+   * a read that fails or takes longer than FRAME_READ_MS.
+   */
+  async focusToken(): Promise<string | null> {
+    const read = async () => this.followFocus<string | null>(await this.session.mainFrame(), true, null, async (_focus, frameId, from) => {
+      const node = await this.session.nodeOf(frameId, { kind: 'focusedNode' }, from);
+      return node === null ? null : `${frameId}:${node}`;
+    });
+    return withTimeout(read(), FRAME_READ_MS).catch(() => null);
   }
 
   /* Follows the focus from frame `frameId`'s document (`top` for the page's

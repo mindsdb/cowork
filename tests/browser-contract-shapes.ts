@@ -106,6 +106,8 @@ export const pageShape = shape(
     truncated: bool,
     scroll: nullable(shape({ y: int, height: int, viewport: int })),
     challenges: list(shape({ host: str, kind: str })),
+    // An opaque token naming the focused node; a host may leave it out.
+    focus: str,
   },
 );
 

@@ -2,7 +2,7 @@ import type { BrowserWindow, Session, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { ANTON_REQUEST_TIMEOUT_MS, FRAMES_PHASE_MS, parseStepRequest, SETTLE_MAX_MS, SETTLE_QUIET_MS, STEP_TIMEOUT_MS, type StepOutcome, type StepRequest } from '../shared/browser-contract';
 import type { TabHooks } from './browser-sessions';
-import { type FakeFrame, sentOf } from '../../tests/browser-fake-cdp';
+import { type FakeFrame, MAIN_FRAME, sentOf } from '../../tests/browser-fake-cdp';
 import { FRAME_READ_MS } from './browser-frames';
 import { PAGE_READ_TIMEOUT_MS, PAGE_WORLD_ID, SECRET_SEARCH_DEPTH } from './browser-page-script';
 import type { ImageLike } from './browser-screenshot';
@@ -218,6 +218,37 @@ describe('ElectronTab', () => {
     expect(page).toMatchObject({ url: 'https://a.test/', challenges: [] });
     expect(page).not.toHaveProperty('boxes');
     expect(contents.world).toEqual([PAGE_WORLD_ID]);
+  });
+
+  it("names the node the focus rests on in a page read by its frame and node, through another site's frame, the same token while it stays, and none while nothing has the focus or the debugger can't read it", async () => {
+    const { tab, contents } = setup();
+    const page = contents.debugger.page;
+    expect(await tab.read(100), 'nothing has the focus').not.toHaveProperty('focus');
+    page.frames[0].focused = 7;
+    const first = await tab.read(100);
+    expect(first.focus).toBe(`${MAIN_FRAME}:7`);
+    expect((await tab.read(100)).focus, 'the focus stays').toBe(first.focus);
+    // The page moves the focus to another button.
+    page.frames[0].focused = 8;
+    expect((await tab.read(100)).focus).toBe(`${MAIN_FRAME}:8`);
+    // Inside another site's frame, read in its own world.
+    page.frames.push({ id: 'widget', url: 'https://other.test/w', parentId: MAIN_FRAME, remote: true, focused: 3 });
+    page.focusedOwnerOf = 'widget';
+    expect((await tab.read(100)).focus).toBe('widget:3');
+    // A payment provider's frame opens no world, so the focus there can't be read.
+    page.frames.push({ id: 'pay', url: 'https://js.stripe.com/v3/elements-inner-card', parentId: MAIN_FRAME, remote: true, focused: 4 });
+    page.focusedOwnerOf = 'pay';
+    expect(await tab.read(100)).not.toHaveProperty('focus');
+    // Something else holds the debugger: the read answers, with no focus.
+    page.focusedOwnerOf = null;
+    contents.debugger.attach();
+    const held = await tab.read(100);
+    expect(held).toMatchObject({ url: 'https://a.test/', challenges: [] });
+    expect(held).not.toHaveProperty('focus');
+    contents.debugger.detach();
+    // Each read lets go of the debugger.
+    expect((await tab.read(100)).focus).toBe(`${MAIN_FRAME}:8`);
+    expect(contents.attached).toBe(false);
   });
 
   it('reports a check frame from the frame tree without running script in it', async () => {

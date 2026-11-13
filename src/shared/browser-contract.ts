@@ -124,14 +124,20 @@ export const SIGN_IN_FRAME_HOSTS: readonly string[] = [
 ];
 
 /** The one rule both hosts hold for a field a page names for a card, as
-    page.json's `limits` pins it (`card_field_name`, `card_field_attributes`),
-    which the pod host holds too: a field is card-named when CARD_FIELD_NAME,
-    ignoring case, matches the values of its CARD_FIELD_ATTRIBUTES joined in
-    that order with a space, a missing one as empty. A page read never reads
-    a frame that holds one, and a type with focused true never types into one
-    (403 password_field); the page's world reads it (`cardNamed` in
-    src/main/browser-page-script.ts). */
-export const CARD_FIELD_NAME = /(^|[^a-z0-9]|card|cc)(cvc|cvv2?|csc)([^a-z0-9]|$)|card[\s._-]*(number|num|no)(?![a-z])|(^|[^a-z0-9])cc[\s._-]*(number|num)(?![a-z])|security[\s._-]*code/i;
+    page.json's `limits` pins it (`card_field_name`, `card_field_word_breaks`,
+    `card_field_attributes`), which the pod host holds too: a field is
+    card-named when CARD_FIELD_NAME, ignoring case, matches the values of its
+    CARD_FIELD_ATTRIBUTES joined in that order with a space, a missing one as
+    empty, or that joined value's word-split form: each of
+    CARD_FIELD_WORD_BREAKS applied in order, case-sensitive, replacing every
+    match with its first group and a space, so cardNumberInput reads as
+    "card Number Input" and CVVCode as "CVV Code". A card-named field is a
+    secret field: a read never carries its value, a screenshot blacks it out,
+    a type, a select or an editing key into it answers 403 password_field,
+    and a page read never reads a frame that holds one. The page's world
+    reads it (`cardNamed` and `isSecret` in src/main/browser-page-script.ts). */
+export const CARD_FIELD_NAME = /(^|[^a-z0-9]|card|cc)(cvc|cvv2?|csc)([^a-z0-9]|$)|card[\s._-]*(numbers?|num|no)(?![a-z])|(^|[^a-z0-9])cc[\s._-]*(numbers?|num)(?![a-z])|security[\s._-]*code/i;
+export const CARD_FIELD_WORD_BREAKS: readonly RegExp[] = [/([a-z0-9])(?=[A-Z])/g, /([A-Z])(?=[A-Z][a-z])/g];
 export const CARD_FIELD_ATTRIBUTES: readonly string[] = ['name', 'id', 'aria-label', 'placeholder'];
 
 /** anton's STEP_ACTIONS (anton/core/browser/tool.py). */
@@ -256,6 +262,12 @@ export interface PageSnapshot {
       ElectronTab.read in src/main/browser-view.ts for one only the frame
       tree places). */
   frames: PageFrame[];
+  /** An opaque token naming the node the focus rests on, the deepest one
+      through frames: equal tokens mean the same node. This host names it
+      by its frame and its backend node id (FrameReads.focusToken in
+      src/main/browser-frames.ts), and leaves it out while nothing has the
+      focus or the debugger can't read it. */
+  focus?: string;
 }
 
 /** What a step did to the page: whether it changed what the page shows,

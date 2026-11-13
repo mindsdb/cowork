@@ -16,12 +16,15 @@
  * The function is sent to the page as its own source text, so it must not use
  * anything from this module: every helper lives inside it. Tests call it
  * directly on a DOM, and also run its source text, which proves it is
- * self-contained.
+ * self-contained. The one thing it takes from this module besides a
+ * request, the card-field rule (CARD_FIELD_RULE), comes in with the world's
+ * state (WORLD_STATE).
  *
  * Secret fields (password, current-password, new-password, one-time-code and
- * cc-* autocomplete, and any field once seen as one of those) never return
- * their value; they carry `value_hidden`, and a type, a select or an editing
- * key into one is refused. The `watch` request marks every secret field and
+ * cc-* autocomplete, a field the card-field rule names for a card, and any
+ * field once seen as one of those) never return their value; they carry
+ * `value_hidden`, and a type, a select or an editing key into one is
+ * refused. The `watch` request marks every secret field and
  * starts a MutationObserver, so a "show password" toggle after it still
  * counts. The tab sends it for each new document and when the person takes
  * the browser, but Electron runs no isolated-world script while the page is
@@ -60,17 +63,18 @@
  * reaches its text or a name there; each frame inside it is listed, unread.
  * A frame from another site can't be read
  * from here: this world runs in the view's main frame, and the page's DOM
- * gives it no way into another site's document; a page read attaches no
- * debugger, which would open a world in that frame, so that frame is listed
- * unread. A step
- * or a screenshot, which attach the debugger, read its focus and its secret
- * fields in that frame's own isolated world (browser-frames.ts).
+ * gives it no way into another site's document, and a page read opens no
+ * world there to read its text, so that frame is listed unread. A step, a
+ * screenshot and a page read's `focus`, which attach the debugger, read its
+ * focus and its secret fields in that frame's own isolated world
+ * (browser-frames.ts).
  * `secretBoxes` finds what every screenshot blacks out.
  */
 
 import {
   CARD_FIELD_ATTRIBUTES,
   CARD_FIELD_NAME,
+  CARD_FIELD_WORD_BREAKS,
   type Challenge,
   ELEMENTS_PER_FRAME,
   type FrameBox,
@@ -100,6 +104,10 @@ export const PAGE_READ_TIMEOUT_MS = 10_000;
 export const SECRET_SEARCH_DEPTH = 8;
 
 export interface PageWorldState {
+  /** The card-field rule (CARD_FIELD_RULE), which the world's source text
+      carries in (WORLD_STATE), since the world takes nothing from this
+      module. */
+  cardField: CardFieldRule;
   ids: Map<number, Element>;
   byElement: WeakMap<Element, number>;
   next: number;
@@ -177,19 +185,24 @@ export interface FrameReadRules {
   minPx: number;
   paymentHosts: readonly string[];
   signInHosts: readonly string[];
-  /** A frame holding a field this rule names for a card is never read. */
-  cardField: CardFieldRule;
 }
 
 /** The card-field rule as the page's world reads it: CARD_FIELD_NAME's
-    source, which it reads ignoring case, and CARD_FIELD_ATTRIBUTES. A
-    request carries it, since the world takes nothing from this module. */
+    source, which it reads ignoring case, CARD_FIELD_WORD_BREAKS' sources,
+    which it reads case-sensitive, and CARD_FIELD_ATTRIBUTES. The world's
+    state carries it (PageWorldState), since the world takes nothing from
+    this module. */
 export interface CardFieldRule {
   name: string;
+  wordBreaks: readonly string[];
   attributes: readonly string[];
 }
 
-export const CARD_FIELD_RULE: CardFieldRule = { name: CARD_FIELD_NAME.source, attributes: CARD_FIELD_ATTRIBUTES };
+export const CARD_FIELD_RULE: CardFieldRule = {
+  name: CARD_FIELD_NAME.source,
+  wordBreaks: CARD_FIELD_WORD_BREAKS.map((wordBreak) => wordBreak.source),
+  attributes: CARD_FIELD_ATTRIBUTES,
+};
 
 export const FRAME_READ_RULES: FrameReadRules = {
   read: FRAMES_READ,
@@ -199,7 +212,6 @@ export const FRAME_READ_RULES: FrameReadRules = {
   minPx: FRAME_MIN_READ_PX,
   paymentHosts: PAYMENT_FRAME_HOSTS,
   signInHosts: SIGN_IN_FRAME_HOSTS,
-  cardField: CARD_FIELD_RULE,
 };
 
 /** A child frame a click can land in, as a page read finds it: its address
@@ -222,8 +234,9 @@ export interface FocusedSecret {
 /** What a type with focused true reads where the focus rests besides the
     text entry it types into: whether the page names the focused element
     for a card by the card-field rule page.json pins (CARD_FIELD_RULE, as
-    for a frame read's card-named field), which it never types into and
-    refuses as a secret field (403 password_field); and whether a key
+    for a secret field and a frame read's card-named field), which it never
+    types into and refuses as a secret field (403 password_field), on an
+    element that is no field too (an editor CSS alone makes); and whether a key
     there reaches a control a Space key may click (a button around the
     field), so a space goes in as text. */
 export interface FocusedTyping {
@@ -263,10 +276,16 @@ export type PageWorldRequest =
   /* The text entry that isn't secret where the focus rests, which a type
      with focused true types into, or null. It answers an element, which the
      debugger names by its node (browser-frames.ts). */
-  | { kind: 'focusedEntry'; cardField: CardFieldRule }
+  | { kind: 'focusedEntry' }
   /* What else a type with focused true reads where the focus rests, by
      value (FocusedTyping). */
-  | { kind: 'focusedTyping'; cardField: CardFieldRule }
+  | { kind: 'focusedTyping' }
+  /* The node the focus rests on, for a page read's `focus`: the element,
+     followed as far as this world sees; from a closed shadow root that holds
+     no focus, its host; or null while nothing has the focus. It answers an
+     element, which the debugger names by its node
+     (FrameReads.focusToken in browser-frames.ts). */
+  | { kind: 'focusedNode' }
   /* Where the focus is while a type step types into element `id`. */
   | { kind: 'typingFocus'; id: number }
   | { kind: 'viewport' }
@@ -460,10 +479,28 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     if (query.has('client_id') && ['response_type', 'redirect_uri', 'request_uri'].some((key) => query.has(key))) return true;
     return url.pathname.toLowerCase().split('/').some((part) => CONSENT_SEGMENTS.has(part) || part.startsWith('consent'));
   };
+  /* An input, a textarea, a select or an editor by its attribute. */
+  const isField = (el: Element): boolean => ['input', 'textarea', 'select'].includes(tagOf(el)) || editable(el);
+  /* Whether the page names `el` for a card by the one card-field rule
+     page.json pins for both hosts (world.cardField, CARD_FIELD_RULE): its
+     name, ignoring case, matches the values of its attributes joined in
+     that order with a space, a missing one as empty, or that joined value
+     split into words, each word break applied in order, case-sensitive,
+     replacing every match with its first group and a space. */
+  const CARD_NAME = new RegExp(world.cardField.name, 'i');
+  const CARD_WORD_BREAKS = world.cardField.wordBreaks.map((source) => new RegExp(source, 'g'));
+  const cardNamed = (el: Element): boolean => {
+    const joined = world.cardField.attributes.map((attr) => el.getAttribute(attr) || '').join(' ');
+    return CARD_NAME.test(joined) || CARD_NAME.test(CARD_WORD_BREAKS.reduce((text, wordBreak) => text.replace(wordBreak, '$1 '), joined));
+  };
+  /* A secret field: a password field, one whose autocomplete names a
+     password, a one-time code or a card, a field the page names for a card
+     (cardNamed; never an element that is no field, so a section or a label
+     named for a card keeps its text), or any element once seen as one. */
   const isSecret = (el: Element): boolean => {
     if (world.secret.has(el)) return true;
     const auto = (el.getAttribute('autocomplete') || '').toLowerCase();
-    if ((tagOf(el) === 'input' && inputType(el) === 'password') || SECRET_AUTOCOMPLETE.test(auto)) {
+    if ((tagOf(el) === 'input' && inputType(el) === 'password') || SECRET_AUTOCOMPLETE.test(auto) || (isField(el) && cardNamed(el))) {
       world.secret.add(el);
       return true;
     }
@@ -803,18 +840,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     : [...candidates.filter((c) => c.visible), ...candidates.filter((c) => !c.visible)].slice(0, max));
 
   /* A field that says a frame holds something only the person handles: a
-     secret field (password, one-time code, card), a field named for a card,
-     or a sign-in field. */
-  /* Whether the page names `el` for a card by the one card-field rule
-     page.json pins for both hosts, which the request carries (CardFieldRule):
-     `rule.name`, ignoring case, matches the values of `rule.attributes`
-     joined in that order with a space, a missing one as empty. */
-  const cardNamed = (el: Element, rule: CardFieldRule): boolean =>
-    new RegExp(rule.name, 'i').test(rule.attributes.map((attr) => el.getAttribute(attr) || '').join(' '));
+     secret field (password, one-time code, card, or one named for a card:
+     isSecret), or a sign-in field. */
   const SIGN_IN_AUTOCOMPLETE = /(^|\s)(username|webauthn)(\s|$)/;
-  const isField = (el: Element): boolean => ['input', 'textarea', 'select'].includes(tagOf(el)) || editable(el);
-  const holdsPrivateField = (root: Node, cardField: CardFieldRule): boolean => elementsIn(root).some((el) => isField(el) && (
-    isSecret(el) || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase()) || cardNamed(el, cardField)));
+  const holdsPrivateField = (root: Node): boolean => elementsIn(root).some((el) => isField(el) && (
+    isSecret(el) || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase())));
 
   /* An element's parent as it is drawn: the slot it is assigned to, its
      parent, or a shadow root's host. */
@@ -984,7 +1014,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       const shownHeight = Math.min(box.y + box.height, viewport.height) - Math.max(box.y, 0);
       if (!inner || offscreen || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
         || drawnScale(owner) < FRAME_MIN_SCALE || refusedAddress(src) || refusedAddress(url) || win.performance.now() > deadline
-        || drawnUnreadable(owner) || !hitsOwner(owner, box) || holdsPrivateField(inner, rules.cardField)) {
+        || drawnUnreadable(owner) || !hitsOwner(owner, box) || holdsPrivateField(inner)) {
         return { url, read: false, box, offscreen };
       }
       const view = { width: inner.defaultView?.innerWidth ?? 0, height: inner.defaultView?.innerHeight ?? 0 };
@@ -1329,11 +1359,12 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* The text entry a type with focused true types into, or null: the
      element at typingAt when it is a text, search, email, url, tel or
      number input or a textarea that isn't disabled or read only, or an
-     editor, and is neither secret nor named for a card by `cardField`
-     (cardNamed), as the web pod's isTextEntry reads it. */
-  const focusedEntry = (cardField: CardFieldRule): Element | null => {
+     editor, and is neither secret nor named for a card (cardNamed, which
+     reaches an editor CSS alone makes too), as the web pod's isTextEntry
+     reads it. */
+  const focusedEntry = (): Element | null => {
     const at = typingAt();
-    if (!at || isSecret(at) || cardNamed(at, cardField)) return null;
+    if (!at || isSecret(at) || cardNamed(at)) return null;
     if (tagOf(at) === 'input' || tagOf(at) === 'textarea') {
       const field = at as HTMLInputElement;
       const takesText = tagOf(at) === 'textarea' || TEXT_ENTRY_INPUTS.has(field.type);
@@ -1473,10 +1504,18 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     case 'focusedElement':
       return deepActive();
     case 'focusedEntry':
-      return focusedEntry(request.cardField);
+      return focusedEntry();
     case 'focusedTyping': {
       const at = typingAt();
-      return { cardNamed: !!at && cardNamed(at, request.cardField), inControl: inControl(at) } satisfies FocusedTyping;
+      return { cardNamed: !!at && cardNamed(at), inControl: inControl(at) } satisfies FocusedTyping;
+    }
+    case 'focusedNode': {
+      /* The top document's body, or its root without one, has the focus
+         while nothing else does. In a frame of another site, whose owner
+         has the page's focus, its body is where the focus rests. */
+      const active = deepActive() ?? (from ? (from as ShadowRoot).host : null);
+      const nothing = win.top === win && (active === doc.body || active === doc.documentElement);
+      return active && !nothing ? active : null;
     }
     case 'typingFocus': {
       const el = world.ids.get(request.id);
@@ -1674,7 +1713,7 @@ export function screenshotMasks(found: FoundSecrets, frameUrls: string[], search
    belongs to the isolated world, not to the page, so the page never sees it. */
 const WORLD_STATE_KEY = '__coworkBrowserWorld';
 
-const WORLD_STATE = `globalThis[${JSON.stringify(WORLD_STATE_KEY)}] ??= { ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet(), change: null }`;
+const WORLD_STATE = `globalThis[${JSON.stringify(WORLD_STATE_KEY)}] ??= { cardField: ${JSON.stringify(CARD_FIELD_RULE)}, ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet(), change: null }`;
 
 /** The source text that runs `request` in the isolated world. */
 export function pageWorldSource(request: PageWorldRequest): string {

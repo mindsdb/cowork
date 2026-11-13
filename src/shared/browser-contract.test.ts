@@ -26,6 +26,7 @@ import {
   bridgeUrl,
   CARD_FIELD_ATTRIBUTES,
   CARD_FIELD_NAME,
+  CARD_FIELD_WORD_BREAKS,
   electronHostsInAppBrowser,
   ELEMENTS_PER_FRAME,
   FRAME_MIN_READ_PX,
@@ -118,10 +119,13 @@ describe('the browser contract fixtures', () => {
       sign_in_frame_hosts: [...SIGN_IN_FRAME_HOSTS],
       frames_phase_ms: FRAMES_PHASE_MS,
       card_field_name: CARD_FIELD_NAME.source,
+      card_field_word_breaks: CARD_FIELD_WORD_BREAKS.map((wordBreak) => wordBreak.source),
       card_field_attributes: [...CARD_FIELD_ATTRIBUTES],
     });
     // page.json reads the pattern ignoring case, and with nothing else.
     expect(CARD_FIELD_NAME.flags).toBe('i');
+    // It reads each word break case-sensitive, replacing every match.
+    expect(CARD_FIELD_WORD_BREAKS.map((wordBreak) => wordBreak.flags)).toEqual(['g', 'g']);
   });
 
   it.each(all.filter(([, , e]) => e.kind === 'request'))('%s "%s": the request guard agrees', (_file, _name, example) => {

@@ -373,12 +373,22 @@ export class ElectronTab implements TabView {
 
   /* The page's world reads every frame its rules let it; the first
      FRAME_READ_RULES.read (FRAMES_READ) the look keeps read stay read
-     (keepSeen). */
+     (keepSeen). The read carries `focus` when the debugger names the node
+     the focus rests on (focusToken). */
   async read(maxText: number): Promise<PageSnapshot> {
     const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: FRAME_READ_RULES });
     const inside = this.framesInside(new Set(raw.frames.filter((frame) => frame.read).map((frame) => frame.url)));
-    const frames = await this.keepSeen(raw.frames, raw.viewport);
-    return pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls(), inside);
+    const [frames, focus] = await Promise.all([this.keepSeen(raw.frames, raw.viewport), this.focusToken()]);
+    const page = pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls(), inside);
+    return focus === null ? page : { ...page, focus };
+  }
+
+  /* page.json's `focus`, read through the debugger for this read only
+     (FrameReads.focusToken), or null when nothing has the focus, the
+     debugger can't be had (something else holds it, or the person took
+     over and it was detached) or it can't say. */
+  private focusToken(): Promise<string | null> {
+    return withDebugger(this.contents.debugger, (session) => new FrameReads(session).focusToken()).catch(() => null);
   }
 
   /* The frames the page's world read, kept read as the web pod reads them:

@@ -52,7 +52,7 @@ function layout(): void {
 }
 
 const freshWorld = (): PageWorldState => ({
-  ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet(), change: null,
+  cardField: CARD_FIELD_RULE, ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet(), change: null,
 });
 
 /* MutationObserver callbacks run after the change, as in a browser. */
@@ -713,7 +713,7 @@ describe('the isolated-world page read', () => {
     const world = freshWorld();
     const inControl = (el: Element) => {
       (el as HTMLElement).focus();
-      return (pageWorld(document, world, { kind: 'focusedTyping', cardField: CARD_FIELD_RULE }) as FocusedTyping).inControl;
+      return (pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping).inControl;
     };
     for (const id of ['in-button', 'in-role', 'in-click', 'in-stop', 'as-button']) expect(inControl(document.getElementById(id)!), id).toBe(true);
     expect(inControl(root.getElementById('in-shadow')!), 'in-shadow').toBe(true);
@@ -777,6 +777,95 @@ describe('the isolated-world page read', () => {
     expect(pageWorld(document, world, { kind: 'select', id: month.id, values: ['13'] })).toEqual({ ok: false, reason: 'secret' });
     expect(select.value).toBe('01');
     expect(fired).toEqual([]);
+  });
+
+  it("treats a field the page names for a card as a secret field: no value in a read or a screenshot, and no type, select or editing key into it, while a container named for a card keeps its text", () => {
+    document.body.innerHTML = `
+      <section data-box id="card-number-section" aria-label="Card number">Pay with the card ending in 4242.</section>
+      <input data-box id="card" name="card_number" aria-label="Card" value="4111111111111111">
+      <select data-box id="saved" name="card_no" aria-label="Saved card"><option value="1">Visa</option><option value="2">Amex</option></select>
+      <div data-box id="cvv" contenteditable aria-label="CVV">737</div>
+      <input data-box id="holder" name="cardholderName" aria-label="Name on card" value="Ada Example">`;
+    layout();
+    // The editor's secret text sends the read through each text node's box.
+    const restore = textBoxesFromParents();
+    const world = freshWorld();
+    const page = snapshot(world);
+    restore();
+    const byName = Object.fromEntries(page.elements.map((e) => [e.name, e]));
+    expect(byName.Card).toEqual({ id: byName.Card.id, role: 'textbox', name: 'Card', value_hidden: true });
+    expect(byName['Saved card']).toEqual({ id: byName['Saved card'].id, role: 'combobox', name: 'Saved card', value_hidden: true });
+    expect(byName.CVV).toEqual({ id: byName.CVV.id, role: 'textbox', name: 'CVV', value_hidden: true });
+    expect(byName['Name on card']).toMatchObject({ value: 'Ada Example' });
+    expect(page.text).toContain('Pay with the card ending in 4242.');
+    expect(JSON.stringify(page)).not.toMatch(/4111111111111111|737/);
+    const id = (name: string) => byName[name].id as number;
+    expect(pageWorld(document, world, { kind: 'focusField', id: id('Card'), select: true })).toEqual({ ok: false, reason: 'secret' } satisfies FocusFieldResult);
+    expect(pageWorld(document, world, { kind: 'focusField', id: id('CVV'), select: false })).toEqual({ ok: false, reason: 'secret' });
+    expect(pageWorld(document, world, { kind: 'focus', id: id('Card'), editing: true })).toEqual({ ok: false, reason: 'secret' } satisfies FocusResult);
+    expect(pageWorld(document, world, { kind: 'select', id: id('Saved card'), values: ['2'] })).toEqual({ ok: false, reason: 'secret' } satisfies SelectResult);
+    expect((document.getElementById('saved') as HTMLSelectElement).value).toBe('1');
+    expect(pageWorld(document, world, { kind: 'locate', id: id('Card'), reveal: false })).toMatchObject({ found: true, secret: true });
+    // A key that edits nothing may focus it; then the focus is on a secret field, for a press or a type.
+    expect(pageWorld(document, world, { kind: 'focus', id: id('Card'), editing: false })).toEqual({ ok: true });
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: true, otherSite: false, sealed: false } satisfies FocusedSecret);
+    expect(pageWorld(document, world, { kind: 'typingFocus', id: id('Name on card') })).toEqual({ secret: true, inField: false, inControl: false } satisfies TypingFocus);
+    // The field named for no card takes typing.
+    expect(pageWorld(document, world, { kind: 'focusField', id: id('Name on card'), select: false })).toEqual({ ok: true, selected: false });
+    // A screenshot blacks out each field named for a card, and nothing else.
+    expect(secretBoxes().secrets).toEqual(['card', 'saved', 'cvv'].map((field) => {
+      const { x, y, width, height } = document.getElementById(field)!.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+  });
+
+  it("reads page.json's checkout page with a card field named card_number as its example lists the elements", () => {
+    const fixture = JSON.parse(readFileSync(path.resolve(__dirname, '__fixtures__/browser-contract/page.json'), 'utf-8')) as FixtureFile;
+    const example = fixture.examples['a checkout page with a card field named card_number'].body as { elements: unknown[] };
+    document.body.innerHTML = `
+      <input data-box type="email" aria-label="Email" value="ada@example.test">
+      <input data-box aria-label="Name on card" value="Ada Example">
+      <input data-box name="card_number" aria-label="Card" value="4242424242424242">
+      <button data-box>Pay $42.00</button>`;
+    layout();
+    const page = snapshot(freshWorld());
+    expect(page.elements).toEqual(example.elements);
+    expect(JSON.stringify(page)).not.toContain('4242424242424242');
+  });
+
+  it("names the node the focus rests on for a page read's focus: the deepest the world sees, the host of a closed root that holds none, and none while nothing has it", async () => {
+    document.body.innerHTML = `<button id="a">A</button><button id="b">B</button><x-widget id="host" tabindex="0"></x-widget>
+      <iframe id="form" srcdoc="<input id='inner'>"></iframe>`;
+    await framesLoad();
+    const host = document.getElementById('host')!;
+    const root = host.attachShadow({ mode: 'closed' });
+    root.innerHTML = '<input id="sealed">';
+    const world = freshWorld();
+    const focused = (from?: ShadowRoot) => pageWorld(document, world, { kind: 'focusedNode' }, from);
+    expect(focused(), 'nothing has the focus').toBeNull();
+    document.getElementById('a')!.focus();
+    expect(focused()).toBe(document.getElementById('a'));
+    document.getElementById('b')!.focus();
+    expect(focused()).toBe(document.getElementById('b'));
+    // Inside a same-origin frame.
+    (frameDoc('form').getElementById('inner') as HTMLInputElement).focus();
+    document.getElementById('form')!.focus();
+    expect(focused()).toBe(frameDoc('form').getElementById('inner'));
+    // A host the focus rests on itself, read from its closed root that holds none.
+    host.focus();
+    expect(focused()).toBe(host);
+    expect(focused(root)).toBe(host);
+    // From the closed root the debugger hands it, the field inside, in its source text too.
+    (root.getElementById('sealed') as HTMLInputElement).focus();
+    expect(focused(root)).toBe(root.getElementById('sealed'));
+    try {
+      const fromSource = new Function(`return ${pageWorldFunction({ kind: 'focusedNode' })}`)() as (from: ShadowRoot) => Element | null;
+      expect(fromSource(root)).toBe(root.getElementById('sealed'));
+    } finally {
+      delete (window as unknown as Record<string, unknown>).__coworkBrowserWorld;
+    }
+    (root.getElementById('sealed') as HTMLInputElement).blur();
+    expect(focused(), 'nothing has the focus again').toBeNull();
   });
 
   it('selects an option by value or label and fires input and change', () => {
@@ -1224,7 +1313,7 @@ describe('frames', () => {
       <iframe id="plain" srcdoc="<p>Nothing to type into</p>"></iframe>`;
     await framesLoad();
     const world = freshWorld();
-    const entry = () => pageWorld(document, world, { kind: 'focusedEntry', cardField: CARD_FIELD_RULE });
+    const entry = () => pageWorld(document, world, { kind: 'focusedEntry' });
     for (const id of ['text', 'odd', 'search', 'email', 'url', 'tel', 'number', 'note', 'editor', 'custom']) {
       (document.getElementById(id) as HTMLElement).focus();
       expect(entry(), id).toBe(document.getElementById(id));
@@ -1256,7 +1345,7 @@ describe('frames', () => {
       <iframe id="form" srcdoc="<input id='inner-card' placeholder='Card number'><input id='inner-name' aria-label='Name'>"></iframe>`;
     await framesLoad();
     const world = freshWorld();
-    const typing = () => pageWorld(document, world, { kind: 'focusedTyping', cardField: CARD_FIELD_RULE }) as FocusedTyping;
+    const typing = () => pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping;
     for (const id of ['hint', 'name', 'cvc', 'code']) {
       (document.getElementById(id) as HTMLElement).focus();
       expect(typing().cardNamed, id).toBe(true);
@@ -1317,8 +1406,8 @@ describe('frames', () => {
       for (const [attr, value] of Object.entries(attributes)) field.setAttribute(attr, value);
       document.body.replaceChildren(field);
       field.focus();
-      const typing = pageWorld(document, world, { kind: 'focusedTyping', cardField: CARD_FIELD_RULE }) as FocusedTyping;
-      const entry = pageWorld(document, world, { kind: 'focusedEntry', cardField: CARD_FIELD_RULE });
+      const typing = pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping;
+      const entry = pageWorld(document, world, { kind: 'focusedEntry' });
       if (typing.cardNamed !== cardNamed || (entry === null) !== cardNamed) {
         wrong.push(`${describeField(attributes)}: card-named ${typing.cardNamed}, text entry ${entry !== null}`);
       }

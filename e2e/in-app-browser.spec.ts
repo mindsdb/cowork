@@ -258,6 +258,33 @@ async function startFixtureServer(): Promise<void> {
         .end('<title>Card names</title><style>input{display:block;width:300px;height:40px;margin:10px 0}</style>'
           + '<label>Security digits <input name="card_cvc"></label><input id="card" aria-label="Number"><label>Notes <input name="cardnotes"></label>');
     }
+    if (url.pathname === '/card-named') {
+      /* A checkout form whose card field only its name and label name, with
+         the card number the person typed in clear from (100, 40) to (290,
+         80), grey on light grey, so only a mask draws black there; a saved
+         card picker its name names for a card; the name on the card; and
+         another site's frame at (0, 220) whose card field only its camelCase
+         id names, drawn from (100, 260) to (290, 300). */
+      const inner = `${origin.replace('127.0.0.1', 'localhost')}/camel-card`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Card named</title><style>body{margin:0;background:#fff}input,select{position:absolute;left:100px;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
+          + '<input name="card_number" aria-label="Card" value="4242424242424242" style="top:40px">'
+          + '<select name="card_no" aria-label="Saved card" style="top:100px"><option value="1">Visa</option><option value="2">Amex</option></select>'
+          + '<input name="cardholderName" aria-label="Name on card" style="top:160px">'
+          + `<iframe src="${inner}" style="position:absolute;left:0;top:220px;width:400px;height:120px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/camel-card') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Camel card</title><style>body{margin:0;background:#fff}input{position:absolute;left:100px;top:40px;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
+          + '<input id="cardNumberInput" value="4242424242424242">');
+    }
+    if (url.pathname === '/focus-move') {
+      /* Two buttons, and another site's embedded form below them. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Focus move</title><style>body{margin:0}button{position:absolute;left:0;width:200px;height:40px}</style>'
+          + '<button id="pay" style="top:0">Pay</button><button id="delete" style="top:60px">Delete account</button>'
+          + `<iframe src="${origin.replace('127.0.0.1', 'localhost')}/fields" style="position:absolute;left:0;top:120px;width:400px;height:200px;border:0"></iframe>`);
+    }
     if (url.pathname === '/in-button') {
       /* A text field inside a "Delete account" button, and one inside a
          div with role button whose Space key clicks it; either click marks
@@ -824,6 +851,69 @@ test("refuses a focused type into a field page.json's one card-field rule names 
   const typed = await typeFocused('gift wrap');
   expect(typed.status, typed.body.toString()).toBe(200);
   expect(await fieldValue('/card-names', '[name=cardnotes]')).toBe('gift wrap');
+});
+
+test("treats a field page.json's card-field rule names for a card as a secret field: no value in a read, blacked out in a screenshot, in another site's frame too, and no type, select or editing key into it", async () => {
+  await openAt('/card-named');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  const read = await page();
+  const byName = Object.fromEntries(read.elements.map((e: { name: string }) => [e.name, e]));
+  expect(byName.Card).toEqual({ id: byName.Card.id, role: 'textbox', name: 'Card', value_hidden: true });
+  expect(byName['Saved card']).toEqual({ id: byName['Saved card'].id, role: 'combobox', name: 'Saved card', value_hidden: true });
+  expect(JSON.stringify(read)).not.toContain('4242424242424242');
+  const refused = async (step: Record<string, unknown>) => {
+    const reply = await act(step);
+    expect(reply.status, `${JSON.stringify(step)}: ${reply.body.toString()}`).toBe(403);
+    expect(reply.json().error).toBe('password_field');
+  };
+  await refused({ action: 'type', element: byName.Card.id, text: '4111111111111111' });
+  await refused({ action: 'press', element: byName.Card.id, key: 'Backspace' });
+  await refused({ action: 'select', element: byName['Saved card'].id, value: 'Amex' });
+  // A click puts the focus there; an editing key into it is still refused.
+  expect((await act({ action: 'click', element: byName.Card.id })).status).toBe(200);
+  await refused({ action: 'press', key: 'Backspace' });
+  await refused({ action: 'type', focused: true, text: '4111', submit: false });
+  expect(await fieldValue('/card-named', '[name=card_number]')).toBe('4242424242424242');
+  expect(await fieldValue('/card-named', '[name=card_no]')).toBe('1');
+  // The field named for no card takes typing, and only the card fields are blacked out, the frame's read in its own world.
+  expect((await act({ action: 'type', element: byName['Name on card'].id, text: 'Ada' })).status).toBe(200);
+  expect(await fieldValue('/card-named', '[name=cardholderName]')).toBe('Ada');
+  expect(await blackIn('/card-named', [[195, 60], [195, 180], [195, 280], [50, 280]])).toEqual([true, false, true, false]);
+});
+
+/* Runs `code` in the page at `route`, in the page's own world, as the
+   page's own script would. */
+async function inPage(route: string, code: string): Promise<unknown> {
+  return app.evaluate(({ webContents }, { at, script }) => webContents.getAllWebContents().find((contents) => contents.getURL() === at)?.executeJavaScript(script), { at: `${origin}${route}`, script: code });
+}
+
+test("names the node the focus rests on in a page read: the same token while it stays, another once the page moves the focus to another button while a card waits, and one inside another site's frame", async () => {
+  await openAt('/focus-move');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  expect(await page(), 'nothing has the focus yet').not.toHaveProperty('focus');
+  expect((await act({ action: 'click', element: await element('Pay') })).status).toBe(200);
+  // The read when the card shows, and again while it waits.
+  const shown: string = (await page()).focus;
+  expect(shown).toEqual(expect.any(String));
+  expect((await page()).focus).toBe(shown);
+  // While the card waits, the page moves the focus to another button.
+  await inPage('/focus-move', 'document.getElementById("delete").focus()');
+  const approved: string = (await page()).focus;
+  expect(approved).toEqual(expect.any(String));
+  expect(approved).not.toBe(shown);
+  // Back on the first button, the token is the first one again.
+  await inPage('/focus-move', 'document.getElementById("pay").focus()');
+  expect((await page()).focus).toBe(shown);
+  // Inside another site's frame, each field by its own token.
+  expect((await act({ action: 'click', x: 20, y: 140, coords: 'page', into_frame: true })).status).toBe(200);
+  const inFrame: string = (await page()).focus;
+  expect(inFrame).toEqual(expect.any(String));
+  expect([shown, approved]).not.toContain(inFrame);
+  expect((await page()).focus).toBe(inFrame);
+  expect((await act({ action: 'click', x: 20, y: 240, coords: 'page', into_frame: true })).status).toBe(200);
+  const onPassword: string = (await page()).focus;
+  expect([shown, approved, inFrame]).not.toContain(onPassword);
+  expect(onPassword).toEqual(expect.any(String));
 });
 
 test('types spaces into a field inside a button, or a div whose Space key clicks it, by number and focused, and clicks neither', async () => {

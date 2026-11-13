@@ -29,6 +29,11 @@ export interface FakeFrame {
       with focused true (focusedEntry); none when it rests on anything else.
       A test changes it to move the focus to another field. */
   entry?: number;
+  /** The backend node id of the node the focus rests on in this frame, as
+      the frame's own world answers a page read's focus (focusedNode); none
+      while nothing has the focus there. A test changes it to move the
+      focus. */
+  focused?: number;
   /** The focus rests on a field the page names for a card, as the frame's
       own world answers a type with focused true (focusedTyping). */
   cardNamed?: boolean;
@@ -134,7 +139,7 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
       }
       case 'DOM.describeNode': {
         if (params.objectId === 'focused-owner') return { node: { localName: 'iframe', nodeName: 'IFRAME', frameId: model.focusedOwnerOf } };
-        const entry = /^entry:(.+):(\d+)$/.exec(String(params.objectId ?? ''));
+        const entry = /^(?:entry|focused):(.+):(\d+)$/.exec(String(params.objectId ?? ''));
         if (entry) return { node: { localName: 'input', nodeName: 'INPUT', backendNodeId: Number(entry[2]) } };
         // The element the focus stops on in a frame, at a closed-root level: its closed root, when it keeps one.
         const host = /^focus:(.+):(\d+)$/.exec(String(params.objectId ?? ''));
@@ -197,6 +202,7 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         if (expression.includes('"kind":"focusedFrame"')) return node(focus.otherSite && model.focusedOwnerOf ? 'focused-owner' : null);
         if (expression.includes('"kind":"focusedElement"')) return node(focus.sealed ? `focus:${target.id}:${level + 1}` : null);
         if (expression.includes('"kind":"focusedEntry"')) return node(target.entry === undefined ? null : `entry:${target.id}:${target.entry}`);
+        if (expression.includes('"kind":"focusedNode"')) return node(target.focused === undefined ? null : `focused:${target.id}:${target.focused}`);
         if (expression.includes('"kind":"focusedSecret"')) return { result: { type: 'object', value: focus } };
         if (expression.includes('"kind":"focusedTyping"')) return { result: { type: 'object', value: { cardNamed: target.cardNamed === true, inControl: target.inControl === true } } };
         if (expression.includes('"kind":"secretBoxes"')) {
