@@ -13,23 +13,27 @@ import Button from './ui/Button';
 import { Card } from './ui/Card';
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { fetchConnectorDraftSaved, saveConnectorDraft } from '../api';
-
-const SAVED_TEXT = 'Saved. Add your credentials in Connect Apps and Data.';
-const KEPT_TEXT = 'You already keep a connector with this id. Saving again replaces it.';
+import { useTranslation } from '../../lib/i18n';
 
 function text(value) {
   return typeof value === 'string' ? value : '';
 }
 
 function FieldRow({ field }) {
-  const notes = [field.secret ? 'secret' : null, field.required ? 'required' : 'optional'].filter(Boolean);
+  const { t } = useTranslation('chat');
+  const notes = [
+    field.secret ? t('connectorDraft.field.secret') : null,
+    field.required ? t('connectorDraft.field.required') : t('connectorDraft.field.optional'),
+  ].filter(Boolean);
   return (
     <li style={{ marginBottom: 8 }}>
       <div style={{ color: 'var(--ink)' }}>
         {text(field.label)} <span style={{ color: 'var(--ink-3)' }}>({text(field.name)}, {notes.join(', ')})</span>
       </div>
       {text(field.placeholder) && (
-        <div style={{ color: 'var(--ink-3)', fontSize: 12.5 }}>Example: {text(field.placeholder)}</div>
+        <div style={{ color: 'var(--ink-3)', fontSize: 12.5 }}>
+          {t('connectorDraft.field.example', { value: text(field.placeholder) })}
+        </div>
       )}
       {text(field.help) && <div style={{ color: 'var(--ink-3)', fontSize: 12.5 }}>{text(field.help)}</div>}
     </li>
@@ -37,6 +41,7 @@ function FieldRow({ field }) {
 }
 
 function ConnectorDraftModal({ connector, open, onClose }) {
+  const { t } = useTranslation('chat');
   const fields = Array.isArray(connector.fields) ? connector.fields : [];
   return (
     <Modal open={open} onClose={onClose} width="min(640px, 92vw)" labelledBy="connector-draft-modal-title">
@@ -49,16 +54,16 @@ function ConnectorDraftModal({ connector, open, onClose }) {
       <ModalBody padding="20px 22px">
         {/* Opt back into text selection; the app root sets user-select:none. */}
         <div style={{ userSelect: 'text', fontSize: 13.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-          <div className="s-h3" style={{ marginBottom: 6 }}>What you will enter</div>
+          <div className="s-h3" style={{ marginBottom: 6 }}>{t('connectorDraft.modal.fieldsTitle')}</div>
           <ul style={{ margin: '0 0 16px', paddingLeft: 18 }}>
             {fields.map((f) => <FieldRow key={text(f.name)} field={f} />)}
           </ul>
           {text(connector.help_url) && (
-            <div style={{ marginBottom: 16 }}>Where to find them: {text(connector.help_url)}</div>
+            <div style={{ marginBottom: 16 }}>{t('connectorDraft.modal.helpUrl', { url: text(connector.help_url) })}</div>
           )}
           {text(connector.usage_notes) && (
             <>
-              <div className="s-h3" style={{ marginBottom: 6 }}>How Anton will use it</div>
+              <div className="s-h3" style={{ marginBottom: 6 }}>{t('connectorDraft.modal.usageTitle')}</div>
               <div>{text(connector.usage_notes)}</div>
             </>
           )}
@@ -69,6 +74,7 @@ function ConnectorDraftModal({ connector, open, onClose }) {
 }
 
 export default function ConnectorDraftCard({ connector }) {
+  const { t } = useTranslation('chat');
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -95,9 +101,9 @@ export default function ConnectorDraftCard({ connector }) {
     try {
       await saveConnectorDraft(connector);
       setSaved(true);
-      setStatus({ kind: 'ok', text: SAVED_TEXT });
+      setStatus({ kind: 'ok', text: t('connectorDraft.saved') });
     } catch (err) {
-      setStatus({ kind: 'error', text: err?.message || 'Could not save the connector.' });
+      setStatus({ kind: 'error', text: err?.message || t('connectorDraft.saveFailed') });
     } finally {
       setSaving(false);
     }
@@ -127,7 +133,7 @@ export default function ConnectorDraftCard({ connector }) {
                 <span style={{ color: status.kind === 'error' ? 'var(--danger)' : 'var(--success, #1F8F5F)' }}>
                   {status.text}
                 </span>
-              ) : kept ? KEPT_TEXT : 'Connector template · not saved'}
+              ) : kept ? t('connectorDraft.kept') : t('connectorDraft.notSaved')}
             </div>
           </div>
 
@@ -137,7 +143,13 @@ export default function ConnectorDraftCard({ connector }) {
             disabled={saving || saved || !id}
             onClick={handleSave}
           >
-            {saved ? 'Saved' : saving ? 'Saving…' : kept ? 'Save again' : 'Save connector'}
+            {saved
+              ? t('connectorDraft.button.done')
+              : saving
+                ? t('connectorDraft.button.saving')
+                : kept
+                  ? t('connectorDraft.button.saveAgain')
+                  : t('connectorDraft.button.save')}
           </Button>
         </div>
       </Card>
