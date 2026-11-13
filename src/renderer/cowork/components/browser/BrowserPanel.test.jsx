@@ -68,7 +68,7 @@ function fromViewer(step, port, fields = {}) {
 async function liveViewer() {
   render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
   await flush();
-  const frame = screen.getByTitle('Shared browser');
+  const frame = screen.getByTitle('Browser mode');
   const port = fakePort();
   fromViewer(DROP_READY, port);
   fromViewer(DROP_LIVE, port);
@@ -368,7 +368,7 @@ describe('BrowserPanel', () => {
       expect(document.activeElement).toBe(document.body);
       const port = fakePort();
       messageFrom(frameWindow(), { type: 'browser-viewer-ready' }, [port]);
-      expect(document.activeElement).toBe(screen.getByTitle('Shared browser'));
+      expect(document.activeElement).toBe(screen.getByTitle('Browser mode'));
       expect(port.postMessage).toHaveBeenCalledWith({ type: 'browser-viewer-focus' });
     });
 
@@ -413,7 +413,7 @@ describe('BrowserPanel', () => {
 
       messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://www.kayak.com/' });
       await flush();
-      expect(document.activeElement).toBe(screen.getByTitle('Shared browser'));
+      expect(document.activeElement).toBe(screen.getByTitle('Browser mode'));
       expect(port.postMessage.mock.calls).toEqual([[{ type: 'browser-viewer-focus' }]]);
     });
 
@@ -445,7 +445,7 @@ describe('BrowserPanel', () => {
       expect(onSend).toHaveBeenCalledTimes(1);
       messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://www.kayak.com/' });
       await flush();
-      expect(document.activeElement).toBe(screen.getByTitle('Shared browser'));
+      expect(document.activeElement).toBe(screen.getByTitle('Browser mode'));
       expect(port.postMessage.mock.calls).toEqual([[{ type: 'browser-viewer-focus' }]]);
     });
 
@@ -481,8 +481,8 @@ describe('BrowserPanel', () => {
       const tickets = (p) => p.postMessage.mock.calls.filter(([m]) => m?.type === 'browser-viewer-ticket');
       expect(tickets(later)).toEqual([]);
       expect(tickets(port)).toEqual([]);
-      expect(screen.getByTitle('Shared browser')).not.toBe(frame);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}2`);
+      expect(screen.getByTitle('Browser mode')).not.toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}2`);
     });
 
     it('keeps the port open while its frame stays, and closes it when the frame goes', async () => {
@@ -497,7 +497,7 @@ describe('BrowserPanel', () => {
       // No browser slot is free: the pane stops and drops the frame.
       messageFrom(frameWindow(), { type: 'browser-viewer-closed', code: 4503 });
       await flush();
-      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.queryByTitle('Browser mode')).toBeNull();
       expect(port.close).toHaveBeenCalledTimes(1);
     });
   });
@@ -735,7 +735,7 @@ describe('BrowserPanel', () => {
       expect(port.postMessage).toHaveBeenLastCalledWith({ ...DROP_TICKET.message, ticket: 'tok2' });
       fromViewer(DROP_LIVE_AGAIN, port);
       expect(embedBrowser).toHaveBeenCalledTimes(2);
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
       expect(frame).toHaveAttribute('src', `${VIEW}1`);
       expect(document.activeElement).toBe(frame);
       expect(screen.queryByRole('status')).toBeNull();
@@ -749,12 +749,12 @@ describe('BrowserPanel', () => {
       fromViewer(DROP_CLOSED, port);
       await flush();
       expect(stopShown()).toBeNull();
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
 
       embedBrowser.mockResolvedValue(link(2));
       await act(async () => { window.dispatchEvent(new Event('online')); });
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
       expect(frame).toHaveAttribute('src', `${VIEW}1`);
       expect(stopShown()).toBeNull();
     });
@@ -770,7 +770,7 @@ describe('BrowserPanel', () => {
 
       await act(async () => { vi.advanceTimersByTime(RELINK_RETRY_MS); });
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
       expect(stopShown()).toBeNull();
       expect(embedBrowser).toHaveBeenCalledTimes(3);
     });
@@ -787,7 +787,7 @@ describe('BrowserPanel', () => {
       await act(async () => { vi.advanceTimersByTime(1); });
       expect(embedBrowser).toHaveBeenCalledTimes(3);
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
     });
 
     it('retries a failed link after a close for a frame whose page gave no port', async () => {
@@ -802,7 +802,7 @@ describe('BrowserPanel', () => {
 
       await act(async () => { vi.advanceTimersByTime(RELINK_RETRY_MS); });
       expect(embedBrowser).toHaveBeenCalledTimes(3);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}3`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}3`);
       expect(stopShown()).toBeNull();
     });
 
@@ -818,7 +818,7 @@ describe('BrowserPanel', () => {
       embedBrowser.mockResolvedValue(link(3));
       fromViewer(DROP_CLOSED, port);
       await flush();
-      const fresh = screen.getByTitle('Shared browser');
+      const fresh = screen.getByTitle('Browser mode');
       expect(fresh).not.toBe(frame);
       expect(fresh).toHaveAttribute('src', `${VIEW}3`);
       expect(port.close).toHaveBeenCalledTimes(1);
@@ -839,10 +839,10 @@ describe('BrowserPanel', () => {
 
       embedBrowser.mockResolvedValue(link(3));
       await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS - 1); });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
       await act(async () => { vi.advanceTimersByTime(1); });
-      expect(screen.getByTitle('Shared browser')).not.toBe(frame);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}3`);
+      expect(screen.getByTitle('Browser mode')).not.toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}3`);
       expect(embedBrowser).toHaveBeenCalledTimes(3);
     });
 
@@ -858,12 +858,12 @@ describe('BrowserPanel', () => {
       embedBrowser.mockResolvedValue(link(3));
       fromViewer(DROP_CLOSED, port);
       await flush();
-      const fresh = screen.getByTitle('Shared browser');
+      const fresh = screen.getByTitle('Browser mode');
       expect(fresh).not.toBe(frame);
       fromViewer(DROP_READY, fakePort());
 
       await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS - 1); });
-      expect(screen.getByTitle('Shared browser')).toBe(fresh);
+      expect(screen.getByTitle('Browser mode')).toBe(fresh);
       expect(embedBrowser).toHaveBeenCalledTimes(3);
     });
 
@@ -887,7 +887,7 @@ describe('BrowserPanel', () => {
       expect(embedBrowser).toHaveBeenCalledTimes(6);
       expect(stopShown()).toBeNull();
       await act(async () => { await vi.advanceTimersByTimeAsync(16_000); });
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}3`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}3`);
       expect(stopShown()).toBeNull();
     });
 
@@ -899,13 +899,13 @@ describe('BrowserPanel', () => {
       await flush();
       // Each retry's failure schedules the next, so the clock runs one timer at a time.
       await act(async () => { await vi.advanceTimersByTimeAsync(RELINK_WAIT_MS - 1); });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
       expect(stopShown()).toBeNull();
       // 2, 4, 8, 16 and 30 s apart, then every 30 s.
       expect(embedBrowser).toHaveBeenCalledTimes(8);
 
       await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.queryByTitle('Browser mode')).toBeNull();
       expect(screen.getByText("The browser isn't reachable")).toBeInTheDocument();
       expect(screen.getByText('Failed to fetch')).toBeInTheDocument();
     });
@@ -920,15 +920,15 @@ describe('BrowserPanel', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(RELINK_WAIT_MS - 1); });
       embedBrowser.mockResolvedValueOnce(link(3));
       await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-      const reloaded = screen.getByTitle('Shared browser');
+      const reloaded = screen.getByTitle('Browser mode');
       expect(reloaded).toHaveAttribute('src', `${VIEW}3`);
       fromViewer(DROP_READY, fakePort());
 
       // Its viewer isn't live yet: a ticket fetched now that fails reloads the frame again.
       embedBrowser.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue(link(4));
       await act(async () => { window.dispatchEvent(new Event('online')); });
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}4`);
-      expect(screen.getByTitle('Shared browser')).not.toBe(reloaded);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}4`);
+      expect(screen.getByTitle('Browser mode')).not.toBe(reloaded);
     });
 
     it.each([401, 403])('says why at once when the link after a close is refused (%s), for a viewer with a port', async (status) => {
@@ -938,7 +938,7 @@ describe('BrowserPanel', () => {
       fromViewer(DROP_CLOSED, port);
       await flush();
       expect(embedBrowser).toHaveBeenCalledTimes(2);
-      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.queryByTitle('Browser mode')).toBeNull();
       expect(screen.getByText("The browser isn't reachable")).toBeInTheDocument();
       expect(screen.getByText(`API /browse/embed returned ${status}`)).toBeInTheDocument();
       await act(async () => { await vi.advanceTimersByTimeAsync(RELINK_WAIT_MS); });
@@ -978,7 +978,7 @@ describe('BrowserPanel', () => {
       expect(stopShown()).toBeNull();
       await act(async () => { vi.advanceTimersByTime(RELINK_RETRY_MS); });
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
     });
 
     it("takes no port, keyboard or link from another window's ready, live and close", async () => {
@@ -1006,7 +1006,7 @@ describe('BrowserPanel', () => {
       embedBrowser.mockResolvedValue(link(2));
       fromViewer(DROP_CLOSED, null);
       await flush();
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}2`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}2`);
 
       fromViewer(DROP_READY, fakePort());
       act(() => { vi.advanceTimersByTime(15_000); });
@@ -1024,7 +1024,7 @@ describe('BrowserPanel', () => {
       await flush();
       embedBrowser.mockResolvedValue(link(3));
       await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS); });
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}3`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}3`);
 
       // Its viewer says ready and neither goes live nor closes: no second watchdog fetches.
       fromViewer(DROP_READY, fakePort());
@@ -1035,7 +1035,7 @@ describe('BrowserPanel', () => {
       embedBrowser.mockResolvedValue(link(4));
       fromViewer(DROP_CLOSED, null);
       await flush();
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}4`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}4`);
       fromViewer(DROP_READY, fakePort());
       act(() => { vi.advanceTimersByTime(15_000); });
       fromViewer(DROP_CLOSED, null);
@@ -1071,7 +1071,7 @@ describe('BrowserPanel', () => {
       const { frame } = await liveViewer();
       await act(async () => { window.dispatchEvent(new Event('online')); });
       expect(embedBrowser).toHaveBeenCalledTimes(1);
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
     });
   });
 
@@ -1087,12 +1087,12 @@ describe('BrowserPanel', () => {
       await act(async () => { vi.advanceTimersByTime(1); });
       expect(embedBrowser).toHaveBeenCalledTimes(2);
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
       fromViewer(DROP_LIVE, port);
 
       setVisibility('hidden');
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-pause' });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
       await act(async () => { vi.advanceTimersByTime(2 * 60 * 60_000); });
       expect(embedBrowser).toHaveBeenCalledTimes(2);
 
@@ -1101,7 +1101,7 @@ describe('BrowserPanel', () => {
       await flush();
       expect(embedBrowser).toHaveBeenCalledTimes(3);
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok3' });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
       expect(frame).toHaveAttribute('src', `${VIEW}1`);
       expect(document.activeElement).toBe(frame);
       expect(ticketsOnWindow()).toEqual([]);
@@ -1109,10 +1109,10 @@ describe('BrowserPanel', () => {
       // That ticket never goes live: the frame reloads with a fresh link once the wait runs out.
       embedBrowser.mockResolvedValue(link(4));
       await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS - 1); });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
       await act(async () => { vi.advanceTimersByTime(1); });
-      expect(screen.getByTitle('Shared browser')).not.toBe(frame);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}4`);
+      expect(screen.getByTitle('Browser mode')).not.toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}4`);
     });
 
     it('gives no renewal to a viewer with a port that never went live', async () => {
@@ -1161,7 +1161,7 @@ describe('BrowserPanel', () => {
       fromViewer(DROP_CLOSED, port);
       await flush();
       expect(stopShown()).toBeNull();
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}4`);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}4`);
     });
 
     it('a connection that drops within 10 s of a renewal relinks and counts nothing', async () => {
@@ -1180,7 +1180,7 @@ describe('BrowserPanel', () => {
         expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: `tok${n + 1}` });
         fromViewer(DROP_LIVE_AGAIN, port);
         expect(stopShown()).toBeNull();
-        expect(screen.getByTitle('Shared browser')).toBe(frame);
+        expect(screen.getByTitle('Browser mode')).toBe(frame);
       }
       expect(embedBrowser).toHaveBeenCalledTimes(5);
     });
@@ -1191,7 +1191,7 @@ describe('BrowserPanel', () => {
       await act(async () => { vi.advanceTimersByTime(RENEW_AFTER_MS); });
       expect(embedBrowser).toHaveBeenCalledTimes(2);
       expect(port.postMessage).toHaveBeenCalledTimes(1);
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
       expect(stopShown()).toBeNull();
 
       // The live socket runs on to its lease, and the router closes it.
@@ -1201,7 +1201,7 @@ describe('BrowserPanel', () => {
       fromViewer(DROP_CLOSED, port, { code: 4401 });
       await flush();
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
     });
 
     it('leaves a viewer it paused alone while the tab is hidden, even when a close crosses the pause', async () => {
@@ -1212,14 +1212,14 @@ describe('BrowserPanel', () => {
       fromViewer(DROP_CLOSED, port);
       await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS); });
       expect(embedBrowser).toHaveBeenCalledTimes(1);
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
 
       embedBrowser.mockResolvedValue(link(2));
       setVisibility('visible');
       await flush();
       expect(embedBrowser).toHaveBeenCalledTimes(2);
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
     });
 
     it('renews nothing for a live that crosses the pause, and reloads the frame when the ticket it hands as the tab shows never goes live', async () => {
@@ -1236,8 +1236,8 @@ describe('BrowserPanel', () => {
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
       embedBrowser.mockResolvedValue(link(3));
       await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS); });
-      expect(screen.getByTitle('Shared browser')).not.toBe(frame);
-      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}3`);
+      expect(screen.getByTitle('Browser mode')).not.toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toHaveAttribute('src', `${VIEW}3`);
     });
 
     it('relinks when the network comes back after the fetch as the tab shows failed, even after a live that crossed the pause', async () => {
@@ -1253,7 +1253,7 @@ describe('BrowserPanel', () => {
       await act(async () => { window.dispatchEvent(new Event('online')); });
       expect(embedBrowser).toHaveBeenCalledTimes(3);
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok3' });
-      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(screen.getByTitle('Browser mode')).toBe(frame);
     });
   });
 });
