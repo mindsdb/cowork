@@ -42,24 +42,47 @@ export function isFramableViewUrl(url, appOrigin = window.location.origin) {
     && VIEWER_PATH.test(parsed.pathname);
 }
 
+/* The shortest renewal the pane schedules. The router's lease runs 780 s past
+   its ticket's redeem-by time today; an answer whose lease ends sooner than
+   this after it gets no renewal. */
+export const MIN_RENEW_AFTER_MS = 60_000;
+
+/**
+ * A viewer link the pane may use: the address to frame, the ticket in it (its
+ * `et`), which a viewer that takes tickets in place redeems over its port, and
+ * how long after the fetch the pane asks for the next ticket.
+ *
+ * @typedef {{ viewUrl: string, ticket: string, renewAfterMs: number | null }} ViewerLink
+ */
+
 /**
  * The viewer link in a POST /browse/embed answer, or null when the pane must
- * not frame it: an address off the app's viewer path, a viewer for another
- * session than the pane's, or an answer with no redeem-by time
- * (`ticket_expires_at`). The pane never schedules a mint from either time; it
- * mints again on mount, visibility, network return and the viewer's close
- * message.
+ * not use it: an address off the app's viewer path, a viewer for another
+ * session than the pane's, an address with no ticket, or an answer with no
+ * redeem-by time (`ticket_expires_at`). `renewAfterMs` is the lease's length
+ * past the redeem-by time (`lease_expires_at - ticket_expires_at`), so a
+ * ticket fetched then is redeemed before the lease ends; it is null when the
+ * answer has no lease, or one that ends under MIN_RENEW_AFTER_MS after it.
  *
  * @param {import('../api').BrowserEmbed | null | undefined} answer
  * @param {string} sessionId  The session the pane shows.
  * @param {string} [appOrigin]
- * @returns {string | null}
+ * @returns {ViewerLink | null}
  */
 export function viewerLinkFrom(answer, sessionId, appOrigin = window.location.origin) {
   if (!isFramableViewUrl(answer?.view_url, appOrigin)) return null;
-  if (new URL(answer.view_url).pathname !== `/browser/sessions/${sessionId}/view`) return null;
+  const url = new URL(answer.view_url);
+  if (url.pathname !== `/browser/sessions/${sessionId}/view`) return null;
   if (!Number.isFinite(answer.ticket_expires_at) || answer.ticket_expires_at <= 0) return null;
-  return answer.view_url;
+  const ticket = url.searchParams.get('et');
+  if (!ticket) return null;
+  const lease = answer.lease_expires_at;
+  const renewAfterMs = Number.isFinite(lease) ? (lease - answer.ticket_expires_at) * 1000 : null;
+  return {
+    viewUrl: answer.view_url,
+    ticket,
+    renewAfterMs: renewAfterMs !== null && renewAfterMs >= MIN_RENEW_AFTER_MS ? renewAfterMs : null,
+  };
 }
 
 /* Reducer half: the step a `response.browser_session_opened` event adds, or
@@ -117,13 +140,78 @@ export function latestBrowserSessionIdIn(messages, streamingMsg = null) {
   return null;
 }
 
-/* The messages the browser router's viewer page (its viewer.html) posts to
-   the pane: ready once its script runs, and closed, with a close code, when
-   its connection closes. Each router refusal of the view is a page that posts
-   the closed message too. A rename on the router's side needs the same rename
-   here. */
+/* The messages between the pane and the browser's viewer page (viewer.html).
+   The browser service owns their names: __fixtures__/browser-viewer/
+   messages.json is a byte-for-byte copy of its list, and
+   browserSession.test.js pins each name here to it.
+
+   The viewer posts to the pane on window: ready once its script runs, live
+   when its current socket got the pod's hello, and closed, with a close
+   code, when no live or pending socket is left. Each router refusal of the
+   view is a page that posts the closed message too. url, ask and control
+   carry the page the viewer shows, a question typed in its address bar, and
+   who holds the browser. A viewer that takes tickets in place transfers a
+   MessagePort with its ready; the pane posts ticket, pause and focus on that
+   port only, so no ticket travels by window.postMessage. The theme alone
+   goes to the viewer's window (browserViewerTheme). */
 export const VIEWER_READY = 'browser-viewer-ready';
+export const VIEWER_LIVE = 'browser-viewer-live';
 export const VIEWER_CLOSED = 'browser-viewer-closed';
+export const VIEWER_URL = 'browser-viewer-url';
+export const VIEWER_ASK = 'browser-viewer-ask';
+export const VIEWER_CONTROL = 'browser-viewer-control';
+export const VIEWER_TICKET = 'browser-viewer-ticket';
+export const VIEWER_PAUSE = 'browser-viewer-pause';
+export const VIEWER_FOCUS = 'browser-viewer-focus';
+export const VIEWER_THEME = 'browser-theme';
+
+/**
+ * What the viewer posts to the pane, on window. The pane's handler reads each
+ * message's raw event.data with no model, so this says what each one
+ * carries. A ready comes with the MessagePort in event.ports when the viewer
+ * takes tickets in place.
+ *
+ * @typedef {{ type: 'browser-viewer-ready' }
+ *   | { type: 'browser-viewer-live' }
+ *   | { type: 'browser-viewer-closed', code?: number }
+ *   | { type: 'browser-viewer-url', url: string }
+ *   | { type: 'browser-viewer-ask', text: string }
+ *   | { type: 'browser-viewer-control', holder: 'human' | 'agent', reason?: string }} ViewerToPaneMessage
+ */
+
+/**
+ * What the pane posts to the viewer on its port. `ticket` is 1 to 4096
+ * characters.
+ *
+ * @typedef {{ type: 'browser-viewer-ticket', ticket: string }
+ *   | { type: 'browser-viewer-pause' }
+ *   | { type: 'browser-viewer-focus' }} PaneToViewerMessage
+ */
+
+/* A connection the viewer lost gets a fresh link for RELINK_WAIT_MS after
+   the close, past the router's 105 s deadline for the events stream to
+   start. A failed link fetch in that time is tried again after
+   RELINK_RETRY_MS, doubling up to RELINK_RETRY_MAX_MS, each delay cut by up
+   to half at random. */
+export const RELINK_WAIT_MS = 120_000;
+export const RELINK_RETRY_MS = 2_000;
+export const RELINK_RETRY_MAX_MS = 30_000;
+
+/**
+ * Whether a failed POST /browse/embed may succeed if the pane asks again: it
+ * got no HTTP answer, or a timeout (408), a rate limit (429), a browser
+ * service failure the app's server passes on as 424, or a server failure
+ * (5xx). Any other answer, such as 401 for a person signed out or 403 for a
+ * browser turned off, is a refusal the pane shows at once.
+ *
+ * @param {unknown} err  What embedBrowser threw: an api.js RefusalError carries `status`.
+ * @returns {boolean}
+ */
+export function linkMayComeLater(err) {
+  const status = /** @type {{ status?: unknown } | null | undefined} */ (err)?.status;
+  if (typeof status !== 'number') return true;
+  return status === 408 || status === 424 || status === 429 || status >= 500;
+}
 
 /* Close codes the pane reads. 4401: the link lapsed or was spent, or the
    viewer's lease ended; the router's starting page also posts it as its own
@@ -196,7 +284,7 @@ export function browserViewerTheme(style, theme) {
     const value = style.getPropertyValue(token).trim();
     if (value) vars[name] = value;
   }
-  return { type: 'browser-theme', scheme: theme === 'dark' ? 'dark' : 'light', vars };
+  return { type: VIEWER_THEME, scheme: theme === 'dark' ? 'dark' : 'light', vars };
 }
 
 /* An address the person typed in the browser pane, as the browser takes it:

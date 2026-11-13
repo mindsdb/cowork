@@ -598,7 +598,6 @@
     "webPaneNote": "Ce que ce volet affiche et ce que vous y saisissez, mots de passe compris, transite par Cloudflare et par le service de navigateur de MindsDB entre vous et le site. Les lectures de page et captures d’écran de {agent} sont envoyées au fournisseur de modèles qui traite votre tour.",
     "unexpectedAddress": "Le navigateur a renvoyé une adresse inattendue.",
     "couldNotOpen": "Impossible d’ouvrir le navigateur.",
-    "hint": "Vous partagez ce navigateur avec {agent}. Cliquez dedans pour prendre la main.",
     "reload": "Recharger la vue du navigateur",
     "tryAgain": "Réessayer",
     "slowTitle": "Votre navigateur met plus de temps que d’habitude",

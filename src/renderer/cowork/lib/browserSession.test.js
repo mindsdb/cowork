@@ -7,8 +7,15 @@ import {
   NO_BROWSER_SLOT_CLOSE_CODE,
   QUICK_CLOSE_MS,
   TASK_CAP_CLOSE_CODE,
+  VIEWER_ASK,
   VIEWER_CLOSED,
+  VIEWER_CONTROL,
+  VIEWER_FOCUS,
+  VIEWER_LIVE,
+  VIEWER_PAUSE,
   VIEWER_READY,
+  VIEWER_TICKET,
+  VIEWER_URL,
   afterViewerClose,
   browserSessionIdIn,
   desktopTaskSession,
@@ -18,10 +25,12 @@ import {
   browserViewerTheme,
   conversationUsedBrowser,
   isFramableViewUrl,
+  linkMayComeLater,
   viewerLinkFrom,
   withBrowserStep,
 } from './browserSession';
 import embedAnswer from '../__fixtures__/browser-router/embed_answer.json';
+import viewerMessages from '../__fixtures__/browser-viewer/messages.json';
 
 const APP = 'https://cowork.example.test';
 const VIEW = `${APP}/browser/sessions/t-abc/view?et=tok`;
@@ -62,7 +71,21 @@ describe('viewerLinkFrom', () => {
   const minted = (fields) => ({ session_id: 't-abc', view_url: VIEW, lease_expires_at: 1_900_000_780, ...fields });
 
   it('takes a minted link that says when its ticket must be redeemed', () => {
-    expect(viewerLinkFrom(minted({ ticket_expires_at: 1_900_000_000 }), 't-abc', APP)).toBe(VIEW);
+    expect(viewerLinkFrom(minted({ ticket_expires_at: 1_900_000_000 }), 't-abc', APP))
+      .toEqual({ viewUrl: VIEW, ticket: 'tok', renewAfterMs: 780_000 });
+  });
+
+  it("reads the ticket and when to renew it from the router's own two times", () => {
+    const at = (fields) => viewerLinkFrom(minted({ ticket_expires_at: 1_900_000_000, ...fields }), 't-abc', APP);
+    expect(at({})).toEqual({ viewUrl: VIEW, ticket: 'tok', renewAfterMs: 780_000 });
+    // No ticket in the address: nothing the viewer could redeem.
+    expect(at({ view_url: `${APP}/browser/sessions/t-abc/view` })).toBeNull();
+    expect(at({ view_url: `${APP}/browser/sessions/t-abc/view?et=` })).toBeNull();
+    // No lease, or one too close to the redeem-by time: no renewal.
+    expect(at({ lease_expires_at: undefined })).toEqual({ viewUrl: VIEW, ticket: 'tok', renewAfterMs: null });
+    expect(at({ lease_expires_at: '1900000780' })?.renewAfterMs).toBeNull();
+    expect(at({ lease_expires_at: 1_900_000_059 })?.renewAfterMs).toBeNull();
+    expect(at({ lease_expires_at: 1_900_000_060 })?.renewAfterMs).toBe(60_000);
   });
 
   it('refuses a link with no redeem-by time, or one the pane must not frame', () => {
@@ -75,7 +98,8 @@ describe('viewerLinkFrom', () => {
 
   it("takes the router's own embed answer (cowork-server's embed_answer.json)", () => {
     const { body } = embedAnswer.examples['a viewer link'];
-    expect(viewerLinkFrom(body, body.session_id, new URL(body.view_url).origin)).toBe(body.view_url);
+    expect(viewerLinkFrom(body, body.session_id, new URL(body.view_url).origin))
+      .toEqual({ viewUrl: body.view_url, ticket: 'ticket-example', renewAfterMs: 780_000 });
   });
 
   it("refuses a viewer for another session than the pane's", () => {
@@ -84,6 +108,22 @@ describe('viewerLinkFrom', () => {
 
   it('does not take the old single expires_at for the redeem-by time', () => {
     expect(viewerLinkFrom({ session_id: 't-abc', view_url: VIEW, expires_at: 1_900_000_000 }, 't-abc', APP)).toBeNull();
+  });
+});
+
+describe('the viewer messages', () => {
+  it("the viewer message names match the browser service's list", () => {
+    expect({
+      ready: VIEWER_READY,
+      live: VIEWER_LIVE,
+      closed: VIEWER_CLOSED,
+      url: VIEWER_URL,
+      ask: VIEWER_ASK,
+      control: VIEWER_CONTROL,
+    }).toEqual(viewerMessages.viewer_to_pane);
+    expect({ ticket: VIEWER_TICKET, pause: VIEWER_PAUSE, focus: VIEWER_FOCUS }).toEqual(viewerMessages.pane_to_viewer_port);
+    const style = { getPropertyValue: () => '' };
+    expect({ theme: browserViewerTheme(style, 'light').type }).toEqual(viewerMessages.pane_to_viewer_window);
   });
 });
 
@@ -185,6 +225,20 @@ describe('afterViewerClose', () => {
   it('names the close codes the router and the viewer send', () => {
     expect([LEASE_CLOSE_CODE, NO_BROWSER_SLOT_CLOSE_CODE, TASK_CAP_CLOSE_CODE]).toEqual([4401, 4503, 4429]);
     expect([VIEWER_READY, VIEWER_CLOSED]).toEqual(['browser-viewer-ready', 'browser-viewer-closed']);
+  });
+});
+
+describe('linkMayComeLater', () => {
+  const refused = (status) => Object.assign(new Error(`API /browse/embed returned ${status}`), { status });
+
+  it('tries again after no answer, a timeout, a rate limit or a server failure', () => {
+    expect(linkMayComeLater(new TypeError('Failed to fetch'))).toBe(true);
+    expect(linkMayComeLater(undefined)).toBe(true);
+    for (const status of [408, 424, 429, 500, 502, 503, 504]) expect(linkMayComeLater(refused(status))).toBe(true);
+  });
+
+  it('takes a refusal as the answer', () => {
+    for (const status of [400, 401, 403, 404, 409, 422]) expect(linkMayComeLater(refused(status))).toBe(false);
   });
 });
 
