@@ -227,15 +227,26 @@ export interface FrameBox {
   height: number;
 }
 
+/** A frame element's top-left in its document's content, in whole CSS
+    pixels: its top-left in the view plus the scroll of every scrolling
+    element it is laid out in and the page's, so no scroll changes it. */
+export interface FramePoint {
+  x: number;
+  y: number;
+}
+
 /** A rendered child frame. `url` is origin and path for http and https,
-    about:blank or about:srcdoc, otherwise the scheme alone. `box` is null for
-    a frame the host can't place. Only a read frame carries what it holds. */
+    about:blank or about:srcdoc, otherwise the scheme alone. A placed frame
+    has its `box` and `at`; `box` is null, with no `at`, for a frame the host
+    can't place. Only a read frame carries what it holds. */
 export type PageFrame =
-  | { url: string; read: false; box: FrameBox | null; offscreen?: true }
+  | { url: string; read: false; box: null }
+  | { url: string; read: false; box: FrameBox; at: FramePoint; offscreen?: true }
   | {
     url: string;
     read: true;
-    box: FrameBox | null;
+    box: FrameBox;
+    at: FramePoint;
     offscreen?: true;
     elements: PageFrameElement[];
     text: string;

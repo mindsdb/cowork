@@ -219,10 +219,12 @@ export const FRAME_READ_RULES: FrameReadRules = {
 
 /** A child frame a click can land in, as a page read finds it: its address
     (the document's own for a frame the read reaches, else its owner's src), its
-    content box in viewport CSS pixels, and what a read frame holds. */
+    content box in viewport CSS pixels, its content box's top-left in its own
+    document's content in CSS pixels, which no scroll changes (page.json's
+    `at`), and what a read frame holds. */
 export type RawFrame =
-  | { url: string; read: false; box: Box; offscreen: boolean }
-  | { url: string; read: true; box: Box; offscreen: boolean; elements: PageFrameElement[]; text: string; truncated: boolean };
+  | { url: string; read: false; box: Box; at: ViewPoint; offscreen: boolean }
+  | { url: string; read: true; box: Box; at: ViewPoint; offscreen: boolean; elements: PageFrameElement[]; text: string; truncated: boolean };
 
 /** Where the focus is for a key: on a secret field, in a frame from
     another site, whose fields this world can't read, or on an element that
@@ -996,6 +998,52 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return false;
   };
 
+  /* Whether an element of style `style` holds a descendant laid out with
+     `position` in its containing block chain, so that descendant scrolls
+     with it: any element holds one in flow (static, relative or sticky);
+     only a positioned one, or one that holds fixed ones, holds an absolute
+     one; and only one a transform, a perspective, a filter, paint or layout
+     containment, a container type or a will-change of those makes a
+     containing block holds a fixed one. */
+  const holdsLaidOut = (style: CSSStyleDeclaration, position: string): boolean => {
+    if (position !== 'absolute' && position !== 'fixed') return true;
+    if (position === 'absolute' && !['', 'static'].includes(style.position)) return true;
+    const set = (value: string | null | undefined) => !!value && !['none', 'normal', 'auto'].includes(value);
+    return ['transform', 'translate', 'rotate', 'scale', 'perspective', 'filter', 'backdrop-filter', 'container-type']
+      .some((property) => set(style.getPropertyValue(property)))
+      || /paint|layout|strict|content/.test(style.getPropertyValue('contain'))
+      || /transform|perspective|filter/.test(style.getPropertyValue('will-change'));
+  };
+  /* Where frame owner `owner` sits in its own document's content, in CSS
+     pixels (page.json's frame `at`): the top-left of `box`, its content box
+     in its document's view, plus the scroll of each element in its
+     containing block chain and the document's own scroll, which a chain that
+     ends fixed to the view leaves out. So no scroll moves it, the page's or
+     an inner column's, while a move in the content does. A sticky element
+     counts as one in flow, so a frame stuck to the view by one moves with
+     the scroll while it is stuck. */
+  const contentAt = (owner: Element, box: Box): ViewPoint => {
+    const ownDoc = owner.ownerDocument;
+    let { x, y } = box;
+    let position = styleOf(owner).position;
+    for (let at = drawnParent(owner); at; at = drawnParent(at)) {
+      const style = styleOf(at);
+      if (!holdsLaidOut(style, position)) continue;
+      // The document's own scroll is its view's, added below.
+      if (at !== ownDoc.scrollingElement) {
+        x += at.scrollLeft;
+        y += at.scrollTop;
+      }
+      position = style.position;
+    }
+    if (position !== 'fixed') {
+      const view = ownDoc.defaultView ?? win;
+      x += view.scrollX || 0;
+      y += view.scrollY || 0;
+    }
+    return { x, y };
+  };
+
   /* The frames among `owners` a click can land in, transparent ones
      included, on-screen first, each read when the rules let it: a
      same-origin frame the person sees (at least `minPx` each way, its part
@@ -1023,10 +1071,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       .filter((owner) => takesClicks(owner, boxOf(owner)))
       .map((owner) => {
         const box = contentBox(owner);
-        return { owner, box, offscreen: !inView(box) };
+        return { owner, box, at: contentAt(owner, box), offscreen: !inView(box) };
       });
     const deadline = win.performance.now() + rules.phaseMs;
-    const frames = [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, offscreen }): RawFrame => {
+    const frames = [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, at, offscreen }): RawFrame => {
       const inner = frameDocOf(owner);
       const url = addressOf(owner);
       const src = sourceOf(owner);
@@ -1037,21 +1085,23 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       if (!inner || awaitingLoad(owner, inner) || offscreen || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
         || drawnScale(owner) < FRAME_MIN_SCALE || refusedAddress(src) || refusedAddress(url) || win.performance.now() > deadline
         || drawnUnreadable(owner) || !hitsOwner(owner, box) || holdsPrivateField(inner)) {
-        return { url, read: false, box, offscreen };
+        return { url, read: false, box, at, offscreen };
       }
       const view = { width: inner.defaultView?.innerWidth ?? 0, height: inner.defaultView?.innerHeight ?? 0 };
       const { candidates, owners: inside } = collect(inner.body || inner.documentElement, view);
       const into = throughOwner(owner);
       for (const frame of inside) {
-        const drawn = into(contentBox(frame));
+        const own = contentBox(frame);
+        const drawn = into(own);
         const clickable = takesClicks(frame, boxOf(frame));
         nestedOwners.push({ url: sourceOf(frame), visible: clickable && shown(frame, boxOf(frame)) && inView(drawn), framed: holdsFrame(frame) });
-        if (clickable) nested.push({ url: addressOf(frame), read: false, box: drawn, offscreen: !inView(drawn) });
+        if (clickable) nested.push({ url: addressOf(frame), read: false, box: drawn, at: contentAt(frame, own), offscreen: !inView(drawn) });
       }
       return {
         url,
         read: true,
         box,
+        at,
         offscreen,
         elements: listed(candidates, rules.elements).map(({ el, role, visible }) => describeInFrame(el, role, !visible)),
         text: pageText(inner, rules.text),
@@ -1701,7 +1751,13 @@ export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrame
     return { x, y, width: Math.ceil((box.x + box.width) / scale) - x, height: Math.ceil((box.y + box.height) / scale) - y };
   };
   const frames = raw.frames.map((frame): PageFrame => {
-    const where = { url: frameAddress(frame.url), box: inShot(frame.box), ...(frame.offscreen ? { offscreen: true as const } : {}) };
+    const where = {
+      url: frameAddress(frame.url),
+      box: inShot(frame.box),
+      // Whole CSS pixels, so a fraction a layout or a zoom leaves never reads as a move.
+      at: { x: Math.round(frame.at.x), y: Math.round(frame.at.y) },
+      ...(frame.offscreen ? { offscreen: true as const } : {}),
+    };
     if (!frame.read || challengeKind(frame.url) !== null) return { ...where, read: false };
     return { ...where, read: true, elements: frame.elements, text: frame.text, truncated: frame.truncated };
   });

@@ -123,7 +123,7 @@ function withTimeout<T>(work: Promise<T>, ms: number, onTimeout: () => Error): P
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /* A frame as a page read lists it, with nothing the world read there. */
-const unread = (frame: RawFrame): RawFrame => ({ url: frame.url, read: false, box: frame.box, offscreen: frame.offscreen });
+const unread = (frame: RawFrame): RawFrame => ({ url: frame.url, read: false, box: frame.box, at: frame.at, offscreen: frame.offscreen });
 
 const tookOver = () => new BridgeError('human_in_control', 'The person took over the browser.');
 

@@ -295,8 +295,8 @@ describe('ElectronTab', () => {
     const { tab, contents } = setup();
     const box = { x: 0, y: 0, width: 400, height: 100 };
     contents.frames = [
-      { url: 'https://a.test/panel', read: true, box, offscreen: false, elements: [], text: '', truncated: false },
-      { url: 'https://a.test/ad', read: false, box: { ...box, y: 200 }, offscreen: false },
+      { url: 'https://a.test/panel', read: true, box, at: { x: 0, y: 0 }, offscreen: false, elements: [], text: '', truncated: false },
+      { url: 'https://a.test/ad', read: false, box: { ...box, y: 200 }, at: { x: 0, y: 200 }, offscreen: false },
     ];
     contents.frameOwners = [{ url: 'https://a.test/panel', visible: true, framed: true }, { url: 'https://a.test/ad', visible: true, framed: true }];
     contents.mainFrame.frames = [
@@ -314,7 +314,7 @@ describe('ElectronTab', () => {
   describe("a page read's look at the frames it read", () => {
     const BOX = { x: 100, y: 100, width: 400, height: 200 };
     const readFrame = (box = BOX, text = 'Get the weekly digest.', elements: unknown[] = [{ role: 'button', name: 'Subscribe' }]) =>
-      ({ url: 'https://a.test/inner', read: true, box, offscreen: false, elements, text, truncated: false });
+      ({ url: 'https://a.test/inner', read: true, box, at: { x: box.x, y: box.y }, offscreen: false, elements, text, truncated: false });
     /* A capture of a box, 2 device pixels a CSS pixel, scaled down for the
        look: all one gray, or with every tenth pixel drawn dark as text is
        (`drawsText`, or where it says so of the box captured). */
@@ -352,8 +352,8 @@ describe('ElectronTab', () => {
       captured(contents, false);
       const page = await tab.read(100);
       expect(page.frames).toEqual([
-        { url: 'https://a.test/inner', read: false, box: expect.anything() },
-        { url: 'https://a.test/inner', read: false, box: expect.anything() },
+        { url: 'https://a.test/inner', read: false, box: expect.anything(), at: { x: 100, y: 100 } },
+        { url: 'https://a.test/inner', read: false, box: expect.anything(), at: { x: 100, y: 100 } },
       ]);
       expect(JSON.stringify(page)).not.toMatch(/weekly digest|Subscribe|Ignore your instructions/);
     });
@@ -401,7 +401,7 @@ describe('ElectronTab', () => {
 
     it('keeps a frame read that found no text to look for, and captures no frame it left unread', async () => {
       const { tab, contents } = setup();
-      contents.frames = [readFrame(BOX, '', [{ role: 'textbox', name: '' }]), { url: 'https://other.test/', read: false, box: BOX, offscreen: false }];
+      contents.frames = [readFrame(BOX, '', [{ role: 'textbox', name: '' }]), { url: 'https://other.test/', read: false, box: BOX, at: { x: 100, y: 100 }, offscreen: false }];
       captured(contents, false);
       const page = await tab.read(100);
       expect(page.frames.map((frame) => frame.read)).toEqual([true, false]);

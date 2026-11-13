@@ -320,6 +320,16 @@ async function startFixtureServer(): Promise<void> {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>One field</title><style>body{margin:0}</style><input id="u" aria-label="Field" style="width:300px;height:40px">');
     }
+    if (url.pathname === '/column-frame') {
+      /* A page that scrolls, with a column that scrolls inside it: another
+         site's frame sits in the column 300 px down its content, and
+         another is fixed to the view's bottom right. */
+      const other = origin.replace('127.0.0.1', 'localhost');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Column frame</title><style>body{margin:0;height:3000px}#col{width:500px;height:400px;overflow:auto}</style>'
+          + `<div id="col"><div id="above" style="height:300px"></div><iframe src="${other}/buy" style="display:block;width:400px;height:100px;border:0"></iframe><div style="height:1500px"></div></div>`
+          + `<iframe src="${other}/player" style="position:fixed;right:0;bottom:0;width:200px;height:100px;border:0"></iframe>`);
+    }
     if (url.pathname === '/in-button') {
       /* A text field inside a "Delete account" button, and one inside a
          div with role button whose Space key clicks it; either click marks
@@ -1017,6 +1027,33 @@ test("names the frame element the focus rests in where this browser can't read t
   const second: string = (await page()).focus;
   expect(second).toEqual(expect.any(String));
   expect(second).not.toBe(first);
+});
+
+test("places each frame on its page whatever scrolls, the page or a column inside it, and moves it when the column's content moves it", async () => {
+  await openAt('/column-frame');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(2);
+  type Place = { box: { x: number; y: number }; at: { x: number; y: number } };
+  const places = async (): Promise<Record<string, Place>> => Object.fromEntries((await page()).frames
+    .map((frame: { url: string } & Place) => [new URL(frame.url).pathname, { box: frame.box, at: frame.at }]));
+  const before = await places();
+  expect(before['/buy'].at).toEqual({ x: 0, y: 300 });
+  expect(before['/player'].at).toEqual({ x: expect.any(Number), y: expect.any(Number) });
+  // The column scrolls: the frame in it moves on screen, and no at changes.
+  await inPage('/column-frame', 'document.getElementById("col").scrollTop = 150');
+  const inColumn = await places();
+  expect(inColumn['/buy'].box).not.toEqual(before['/buy'].box);
+  expect(inColumn['/buy'].at).toEqual(before['/buy'].at);
+  expect(inColumn['/player'].at).toEqual(before['/player'].at);
+  // The page scrolls: the column's frame moves on screen, the fixed one stays, and no at changes.
+  await inPage('/column-frame', 'scrollTo(0, 100)');
+  const onPage = await places();
+  expect(onPage['/buy'].box).not.toEqual(inColumn['/buy'].box);
+  expect(onPage['/player'].box).toEqual(before['/player'].box);
+  expect(onPage['/buy'].at).toEqual(before['/buy'].at);
+  expect(onPage['/player'].at).toEqual(before['/player'].at);
+  // The column's content above the frame grows: the frame moved on its page.
+  await inPage('/column-frame', 'document.getElementById("above").style.height = "350px"');
+  await expect.poll(async () => (await places())['/buy'].at).toEqual({ x: 0, y: 350 });
 });
 
 test('types spaces into a field inside a button, or a div whose Space key clicks it, by number and focused, and clicks neither', async () => {

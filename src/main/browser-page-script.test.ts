@@ -203,7 +203,7 @@ describe('the isolated-world page read', () => {
     const answer = pageAnswer(raw, challengesFrom(frameUrls, raw.frameOwners), frameUrls, []);
     expect(problems(pageShape, answer)).toEqual([]);
     expect(answer.challenges).toEqual([{ host: 'challenges.cloudflare.com', kind: 'cloudflare' }]);
-    expect(answer.frames).toEqual([{ url: 'https://challenges.cloudflare.com/cdn-cgi/x', read: false, box: { x: 10, y: 340, width: 300, height: 65 } }]);
+    expect(answer.frames).toEqual([{ url: 'https://challenges.cloudflare.com/cdn-cgi/x', read: false, box: { x: 10, y: 340, width: 300, height: 65 }, at: { x: 10, y: 340 } }]);
     expect(answer).not.toHaveProperty('boxes');
     expect(answer).not.toHaveProperty('frameOwners');
     expect(pageWorld(document, freshWorld(), { kind: 'viewport' })).toEqual({ width: window.innerWidth, height: window.innerHeight });
@@ -964,6 +964,60 @@ describe('frames', () => {
     expect(world.ids.size).toBe(0);
   });
 
+  it("places each frame on its page whatever scrolls, as page.json's at: its content box's top-left plus the page's scroll and each scroll it moves with, the page's none for one fixed to the view, and a column's none for one not laid out in it", async () => {
+    document.body.innerHTML = `
+      <div id="column" style="overflow: auto; height: 300px"><iframe id="in-column" src="https://forms.other.test/a" style="border: 2px solid black"></iframe></div>
+      <iframe id="fixed" src="https://chat.other.test/w" style="position: fixed"></iframe>
+      <div id="loose" style="overflow: auto; height: 300px"><iframe id="absolute" src="https://ads.other.test/b" style="position: absolute"></iframe></div>
+      <div id="held" style="overflow: auto; height: 300px; position: relative"><iframe id="held-absolute" src="https://ads.other.test/c" style="position: absolute"></iframe></div>
+      <div style="transform: translateX(0)"><iframe id="fixed-in-transform" src="https://chat.other.test/x" style="position: fixed"></iframe></div>`;
+    await framesLoad();
+    const byId = (id: string) => document.getElementById(id)!;
+    byId('column').scrollTop = 200;
+    byId('loose').scrollTop = 150;
+    byId('held').scrollTop = 120;
+    window.scrollTo(0, 400);
+    try {
+      // Where the view draws each frame after those scrolls.
+      place(byId('in-column'), 10, 50, 300, 100);
+      place(byId('fixed'), 500, 10, 200, 100);
+      place(byId('absolute'), 10, 200, 300, 100);
+      place(byId('held-absolute'), 10, 320, 300, 100);
+      place(byId('fixed-in-transform'), 500, 450, 200, 100);
+      const at = Object.fromEntries(snapshot(freshWorld()).frames.map((frame) => [frame.url, frame.at]));
+      expect(at).toEqual({
+        // Its content box, inside its 2 px border, plus the column's scroll and the page's.
+        'https://forms.other.test/a': { x: 12, y: 52 + 200 + 400 },
+        // Fixed to the view: no scroll moves it.
+        'https://chat.other.test/w': { x: 500, y: 10 },
+        // Laid out against the page, not the unpositioned column it sits in.
+        'https://ads.other.test/b': { x: 10, y: 200 + 400 },
+        // Laid out against the positioned column it sits in.
+        'https://ads.other.test/c': { x: 10, y: 320 + 120 + 400 },
+        // A transformed box holds a fixed frame, and scrolls with the page.
+        'https://chat.other.test/x': { x: 500, y: 450 + 400 },
+      });
+    } finally {
+      window.scrollTo(0, 0);
+    }
+  });
+
+  it("places a frame inside a frame it read in that frame's own document, by that document's scroll", async () => {
+    document.body.innerHTML = `<iframe id="panel" srcdoc="<div style='height: 2000px'></div><iframe id='inner' src='https://video.other.test/v/7'></iframe>"></iframe>`;
+    await framesLoad();
+    const inner = frameDoc('panel');
+    place(document.getElementById('panel')!, 10, 20, 400, 300);
+    place(inner.getElementById('inner')!, 30, 40, 200, 100);
+    inner.defaultView!.scrollTo(0, 500);
+    window.scrollTo(0, 70);
+    try {
+      const nested = snapshot(freshWorld()).frames.find((frame) => frame.url === 'https://video.other.test/v/7');
+      expect(nested?.at).toEqual({ x: 30, y: 40 + 500 });
+    } finally {
+      window.scrollTo(0, 0);
+    }
+  });
+
   it("lists a frame whose document is still the initial about:blank by the http address its owner names, unread, as a lazy frame waiting to load reads, so the scroll that loads it doesn't change its address", async () => {
     document.body.innerHTML = `
       <iframe id="empty" srcdoc=""></iframe>
@@ -1018,9 +1072,9 @@ describe('frames', () => {
     place(document.getElementById('hidden')!, 10, 340, 300, 100);
     const raw = snapshot(freshWorld());
     expect(raw.frames).toEqual([
-      { url: 'https://shop.other.test/buy', read: false, box: { x: 10, y: 10, width: 300, height: 100 }, offscreen: false },
-      { url: 'about:srcdoc', read: false, box: { x: 10, y: 120, width: 300, height: 100 }, offscreen: false },
-      { url: 'https://ads.example.test/', read: false, box: { x: 10, y: 230, width: 300, height: 100 }, offscreen: false },
+      { url: 'https://shop.other.test/buy', read: false, box: { x: 10, y: 10, width: 300, height: 100 }, at: { x: 10, y: 10 }, offscreen: false },
+      { url: 'about:srcdoc', read: false, box: { x: 10, y: 120, width: 300, height: 100 }, at: { x: 10, y: 120 }, offscreen: false },
+      { url: 'https://ads.example.test/', read: false, box: { x: 10, y: 230, width: 300, height: 100 }, at: { x: 10, y: 230 }, offscreen: false },
     ]);
     expect(JSON.stringify(raw)).not.toContain('Readable');
     expect(pageAnswer(raw, [], [], []).frames.map((frame) => frame.box)).toEqual([
@@ -1306,6 +1360,8 @@ describe('frames', () => {
       { url: 'https://other.test/radios', read: false, box: { x: 30, y: 150, width: 200, height: 100 }, offscreen: false },
       { url: 'https://other.test/more', read: false, box: { x: 30, y: 1100, width: 200, height: 100 }, offscreen: true },
     ]);
+    // Each in its own document's content: a frame inside the panel, in the panel's.
+    expect(page.frames.map(({ at }) => at)).toEqual([{ x: 20, y: 100 }, { x: 10, y: 50 }, { x: 10, y: 1000 }]);
     expect(page.frames[0]).toMatchObject({ text: 'Embedded account panel', elements: [] });
     expect(page.nestedOwners).toEqual([
       { url: 'https://other.test/radios', visible: true, framed: true },
@@ -1654,7 +1710,7 @@ describe('the page answer', () => {
   });
 
   it("lists a frame inside a frame the read read that the frame's DOM doesn't place, as one in a closed shadow root there, by the frame tree, unread and with no box", () => {
-    const panel = { url: 'https://news.example.test/panel', read: true as const, box: { x: 0, y: 0, width: 400, height: 300 }, offscreen: false, elements: [], text: 'Embedded account panel', truncated: false };
+    const panel = { url: 'https://news.example.test/panel', read: true as const, box: { x: 0, y: 0, width: 400, height: 300 }, at: { x: 0, y: 0 }, offscreen: false, elements: [], text: 'Embedded account panel', truncated: false };
     const owners = { frameOwners: [{ url: panel.url, visible: true, framed: true }], nestedOwners: [{ url: 'https://other.test/radios', visible: true, framed: true }] };
     const answer = pageAnswer(raw({ ...owners, frames: [panel] }), [], [panel.url], ['https://other.test/radios', 'https://other.test/sealed']);
     expect(answer.frames.slice(1)).toEqual([{ url: 'https://other.test/sealed', read: false, box: null }]);
@@ -1666,13 +1722,13 @@ describe('the page answer', () => {
     const answer = pageAnswer(raw({
       frameOwners: [{ url: 'https://forms.example.test/newsletter?u=ada', visible: true, framed: true }, { url: 'data:text/html,hi', visible: true, framed: true }],
       frames: [
-        { url: 'https://forms.example.test/newsletter?u=ada#top', read: true, box: { x: 160, y: 300.4, width: 875, height: 280 }, offscreen: false, elements: [{ role: 'button', name: 'Subscribe' }], text: 'Get the weekly digest.', truncated: false },
-        { url: 'data:text/html,hi', read: false, box: { x: 0, y: 1600, width: 160, height: 160 }, offscreen: true },
+        { url: 'https://forms.example.test/newsletter?u=ada#top', read: true, box: { x: 160, y: 300.4, width: 875, height: 280 }, at: { x: 160, y: 300.4 }, offscreen: false, elements: [{ role: 'button', name: 'Subscribe' }], text: 'Get the weekly digest.', truncated: false },
+        { url: 'data:text/html,hi', read: false, box: { x: 0, y: 1600, width: 160, height: 160 }, at: { x: 0, y: 1600 }, offscreen: true },
       ],
     }), [], ['https://forms.example.test/newsletter?u=ada', 'data:text/html,hi'], []);
     expect(answer.frames).toEqual([
-      { url: 'https://forms.example.test/newsletter', read: true, box: { x: 102, y: 192, width: 561, height: 180 }, elements: [{ role: 'button', name: 'Subscribe' }], text: 'Get the weekly digest.', truncated: false },
-      { url: 'data:', read: false, box: { x: 0, y: 1024, width: 103, height: 103 }, offscreen: true },
+      { url: 'https://forms.example.test/newsletter', read: true, box: { x: 102, y: 192, width: 561, height: 180 }, at: { x: 160, y: 300 }, elements: [{ role: 'button', name: 'Subscribe' }], text: 'Get the weekly digest.', truncated: false },
+      { url: 'data:', read: false, box: { x: 0, y: 1024, width: 103, height: 103 }, at: { x: 0, y: 1600 }, offscreen: true },
     ]);
     expect(problems(pageShape, answer)).toEqual([]);
   });
@@ -1681,10 +1737,23 @@ describe('the page answer', () => {
     // 1536 CSS pixels in a 1024-pixel screenshot: 1.5 CSS pixels a screenshot pixel.
     const answer = pageAnswer(raw({
       viewport: { width: 1536, height: 900 },
-      frames: [{ url: 'https://shop.other.test/buy', read: false, box: { x: 150.6, y: 75.3, width: 300, height: 150 }, offscreen: false }],
+      frames: [{ url: 'https://shop.other.test/buy', read: false, box: { x: 150.6, y: 75.3, width: 300, height: 150 }, at: { x: 150.6, y: 75.3 }, offscreen: false }],
     }), [], [], []);
     // CSS x 150.6 to 450.6 is screenshot x 100.4 to 300.4: an integer click at 300 lands at CSS 450, in the frame.
-    expect(answer.frames).toEqual([{ url: 'https://shop.other.test/buy', read: false, box: { x: 100, y: 50, width: 201, height: 101 } }]);
+    expect(answer.frames).toEqual([{ url: 'https://shop.other.test/buy', read: false, box: { x: 100, y: 50, width: 201, height: 101 }, at: { x: 151, y: 75 } }]);
+  });
+
+  it("gives each placed frame its at in whole CSS pixels, unscaled, and none to a frame it can't place", () => {
+    const answer = pageAnswer(raw({
+      viewport: { width: 1536, height: 900 },
+      frameOwners: [{ url: 'https://shop.other.test/buy', visible: true, framed: true }],
+      frames: [{ url: 'https://shop.other.test/buy', read: false, box: { x: 150.6, y: 75.3, width: 300, height: 150 }, at: { x: 150.6, y: 1275.3 }, offscreen: false }],
+    }), [], ['https://shop.other.test/buy', 'https://js.stripe.com/v3/x'], []);
+    expect(answer.frames).toEqual([
+      { url: 'https://shop.other.test/buy', read: false, box: { x: 100, y: 50, width: 201, height: 101 }, at: { x: 151, y: 1275 } },
+      { url: 'https://js.stripe.com/v3/x', read: false, box: null },
+    ]);
+    expect(problems(pageShape, answer)).toEqual([]);
   });
 
   it("lists a frame the page's DOM doesn't place, as one in a closed shadow root, unread and with no box", () => {
@@ -1721,9 +1790,9 @@ describe('the page answer', () => {
   it("never passes on a check frame's content", () => {
     const answer = pageAnswer(raw({
       frameOwners: [{ url: 'https://challenges.cloudflare.com/x', visible: true, framed: true }],
-      frames: [{ url: 'https://challenges.cloudflare.com/x', read: true, box: { x: 0, y: 0, width: 300, height: 65 }, offscreen: false, elements: [{ role: 'checkbox', name: 'Verify you are human' }], text: 'Verify', truncated: false }],
+      frames: [{ url: 'https://challenges.cloudflare.com/x', read: true, box: { x: 0, y: 0, width: 300, height: 65 }, at: { x: 0, y: 0 }, offscreen: false, elements: [{ role: 'checkbox', name: 'Verify you are human' }], text: 'Verify', truncated: false }],
     }), [], ['https://challenges.cloudflare.com/x'], []);
-    expect(answer.frames).toEqual([{ url: 'https://challenges.cloudflare.com/x', read: false, box: { x: 0, y: 0, width: 192, height: 42 } }]);
+    expect(answer.frames).toEqual([{ url: 'https://challenges.cloudflare.com/x', read: false, box: { x: 0, y: 0, width: 192, height: 42 }, at: { x: 0, y: 0 } }]);
   });
 
   it.each([
