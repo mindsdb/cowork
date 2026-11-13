@@ -194,6 +194,88 @@ describe('refreshTokensOnly outcome mapping', () => {
     expect(isMindsResumeCredentialGateActive()).toBe(false);
   });
 
+  it('refreshes an expired token before handing it to a started sidecar', async () => {
+    // A first-run install can outlast the access token. The sidecar must not
+    // come up holding the expired one, or the first turn fails at the gateway.
+    (isAccessTokenExpired as Mock).mockReturnValueOnce(true);
+    const fetch = mockFetchOnce(async () => jsonResponse(200, {
+      access_token: 'at-after-install',
+      expires_in: 300,
+      refresh_token: 'rt-after-install',
+    }));
+
+    await expect(handOffMindsCredentialToStartedSidecar()).resolves.toBe(true);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(saveTokens).toHaveBeenCalledWith('at-after-install', 300, 'rt-after-install');
+    const saveOrder = (saveTokens as Mock).mock.invocationCallOrder[0];
+    const firstPushOrder = (syncUsableMindsCredential as Mock).mock.invocationCallOrder[0];
+    expect(saveOrder).toBeLessThan(firstPushOrder);
+    expect(syncUsableMindsCredential).toHaveBeenLastCalledWith({ invalidateCatalog: true });
+  });
+
+  it('preserves the refresh retry after a transient startup refresh failure', async () => {
+    (isAccessTokenExpired as Mock).mockReturnValueOnce(true);
+    (syncUsableMindsCredential as Mock).mockResolvedValueOnce(false);
+    const fetch = vi.fn()
+      .mockImplementationOnce(async () => jsonResponse(503, {}))
+      .mockImplementation(async () => jsonResponse(200, {
+        access_token: 'at-after-startup-retry',
+        expires_in: 300,
+        refresh_token: 'rt-after-startup-retry',
+      }));
+    globalThis.fetch = fetch as unknown as typeof globalThis.fetch;
+    beginMindsResumeCredentialGate();
+
+    await expect(handOffMindsCredentialToStartedSidecar()).resolves.toBe(false);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(saveTokens).not.toHaveBeenCalled();
+    expect(clearTokens).not.toHaveBeenCalled();
+    expect(syncUsableMindsCredential).toHaveBeenCalledWith({ invalidateCatalog: true });
+    expect(isMindsResumeCredentialGateActive()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(saveTokens).toHaveBeenCalledWith('at-after-startup-retry', 300, 'rt-after-startup-retry');
+    expect(clearTokens).not.toHaveBeenCalled();
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(2);
+    expect(isMindsResumeCredentialGateActive()).toBe(false);
+  });
+
+  it('clears the session without retrying an invalid_grant during startup', async () => {
+    (isAccessTokenExpired as Mock).mockReturnValueOnce(true);
+    // No user-supplied key remains usable after the session is cleared.
+    (syncUsableMindsCredential as Mock).mockResolvedValue(false);
+    const fetch = mockFetchOnce(async () => jsonResponse(400, { error: 'invalid_grant' }));
+    scheduleRefreshRetry();
+    beginMindsResumeCredentialGate();
+
+    await expect(handOffMindsCredentialToStartedSidecar()).resolves.toBe(false);
+
+    expect(clearTokens).toHaveBeenCalledTimes(1);
+    expect(saveTokens).not.toHaveBeenCalled();
+    expect(syncUsableMindsCredential).toHaveBeenLastCalledWith({ invalidateCatalog: true });
+    expect(isMindsResumeCredentialGateActive()).toBe(true);
+    await expect(waitForMindsResumeCredential()).resolves.toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh a live token when a sidecar starts', async () => {
+    const fetch = mockFetchOnce(async () => jsonResponse(500, {}));
+
+    await expect(handOffMindsCredentialToStartedSidecar()).resolves.toBe(true);
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
+  });
+
   it('retries a failed sidecar PUT without rotating the Keycloak token again', async () => {
     const fetch = mockFetchOnce(async () => jsonResponse(200, {
       access_token: 'at-new',
