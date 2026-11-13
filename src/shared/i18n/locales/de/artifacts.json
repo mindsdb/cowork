@@ -24,6 +24,12 @@
       "readyTimeoutMs": "Die Vorschau hat zu lange gedauert: Sie ist nicht innerhalb von {seconds} Sekunden gestartet, dem Limit der Vorschau.",
       "progressTimeoutMs": "Die Vorschau hat zu lange gedauert: {seconds} Sekunden lang gab es keinen Fortschritt, das Limit der Vorschau."
     },
+    "truncatedMobile": {
+      "xlsx": "Pro Tabellenblatt werden bis zu {rows, number} Zeilen und {columns, number} Spalten angezeigt.",
+      "pptx": "{count, plural, one {Die erste Folie wird angezeigt.} other {Die ersten # Folien werden angezeigt.}}",
+      "pdf": "Die ersten {pages, number} Seiten werden angezeigt.",
+      "docx": "Ein Teil dieses Dokuments wird angezeigt."
+    },
     "truncated": {
       "xlsx": "Pro Tabellenblatt werden bis zu {rows, number} Zeilen und {columns, number} Spalten angezeigt. Über {action, select, download {Herunterladen} other {Öffnen}} erhalten Sie das vollständige Blatt.",
       "pptx": "{count, plural, one {Die erste Folie wird angezeigt.} other {Die ersten # Folien werden angezeigt.}} Über {action, select, download {Herunterladen} other {Öffnen}} erhalten Sie die vollständige Präsentation.",

@@ -15,7 +15,8 @@ vi.mock('../components/rail', () => ({
 vi.mock('../components/Composer', () => ({ default: () => <div>Agent composer</div> }));
 vi.mock('../components/task', () => ({ TaskList: () => null }));
 vi.mock('../components/project/NewProjectModal', () => ({ default: () => null }));
-vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
+const platform = vi.hoisted(() => ({ isWeb: true, isMobileShell: false }));
+vi.mock('../../platform/host', () => ({ host: platform }));
 
 import ProjectsView from './ProjectsView';
 
@@ -26,6 +27,7 @@ const shared = {
 const own = { id: 'my-project-id', name: 'planning', display_name: 'My planning', path: '/own/planning' };
 
 beforeEach(() => {
+  platform.isMobileShell = false;
   vi.clearAllMocks();
   api.listSharedProjectFiles.mockResolvedValue({ files: [{ path: 'report.html', name: 'report.html', size: 12 }] });
   api.readSharedProjectFile.mockResolvedValue({ content: '<script>privateCall()</script>' });
@@ -99,4 +101,14 @@ it('discards an in-flight file response after an access recheck fails', async ()
   await screen.findByText(/This shared project is unavailable/);
   await act(async () => { finishRead({ content: 'stale private content' }); });
   expect(screen.queryByText('stale private content')).not.toBeInTheDocument();
+});
+
+it('explains mobile shared-file downloads without fetching bytes', async () => {
+  platform.isMobileShell = true;
+  render(<ProjectsView projects={[shared]} selectedProject={shared} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'report.html' }));
+  await screen.findByText('<script>privateCall()</script>');
+  fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Downloads are not available in the mobile app');
+  expect(api.downloadSharedProjectFile).not.toHaveBeenCalled();
 });

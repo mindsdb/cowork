@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MindsHub Cowork</title>
+    <!--
+      Never shown in a normal build: capacitor.config.ts sets server.url, so the
+      shell loads the cloud app directly. Capacitor still requires a webDir with
+      an index.html; if this page ever appears, send the user to the remote app.
+    -->
+    <script src="env.js"></script>
+    <script>
+      if (window.COWORK_REMOTE_URL) window.location.replace(window.COWORK_REMOTE_URL);
+    </script>
+    <style>
+      html, body { margin: 0; height: 100%; background: #0E1518; }
+      @media (prefers-color-scheme: light) { html, body { background: #F6F8F9; } }
+    </style>
+  </head>
+  <body></body>
+</html>

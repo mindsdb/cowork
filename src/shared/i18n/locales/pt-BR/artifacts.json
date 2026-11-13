@@ -24,6 +24,12 @@
       "readyTimeoutMs": "A visualização demorou demais: não começou em {seconds} segundos, o limite da visualização.",
       "progressTimeoutMs": "A visualização demorou demais: ficou sem progresso por {seconds} segundos, o limite da visualização."
     },
+    "truncatedMobile": {
+      "xlsx": "Mostrando até {rows, number} linhas e {columns, number} colunas de cada planilha.",
+      "pptx": "{count, plural, one {Mostrando o primeiro slide.} other {Mostrando os primeiros # slides.}}",
+      "pdf": "Mostrando as primeiras {pages, number} páginas.",
+      "docx": "Mostrando parte deste documento."
+    },
     "truncated": {
       "xlsx": "Mostrando até {rows, number} linhas e {columns, number} colunas de cada planilha. {action, select, download {Baixar} other {Abrir}} mostra a planilha completa.",
       "pptx": "{count, plural, one {Mostrando o primeiro slide.} other {Mostrando os primeiros # slides.}} {action, select, download {Baixar} other {Abrir}} mostra a apresentação completa.",

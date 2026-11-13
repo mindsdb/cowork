@@ -1,3 +1,4 @@
+import { downloadUnavailableMessage } from '../lib/browserDownload';
 // Live artifacts page — mirrors the Projects header / filter pattern.
 //
 // Header:    "Live artifacts" Inter title + Inter subtitle (no CTA —
@@ -224,7 +225,7 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
  */
 async function downloadWithFeedback(artifact, toastManager, { note } = {}) {
   if (!(await downloadArtifactFile(artifact))) {
-    toastManager.add({ title: tr('artifactsView.downloadFailed'), type: 'danger' });
+    toastManager.add({ title: downloadUnavailableMessage(tr('artifactsView.downloadFailed')), type: 'danger' });
     return;
   }
   if (note) toastManager.add({ title: note });

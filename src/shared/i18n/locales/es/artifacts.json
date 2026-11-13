@@ -24,6 +24,12 @@
       "readyTimeoutMs": "La vista previa tardó demasiado: no empezó en {seconds} segundos, el límite de la vista previa.",
       "progressTimeoutMs": "La vista previa tardó demasiado: no avanzó durante {seconds} segundos, el límite de la vista previa."
     },
+    "truncatedMobile": {
+      "xlsx": "Se muestran hasta {rows, number} filas y {columns, number} columnas de cada hoja.",
+      "pptx": "{count, plural, one {Se muestra la primera diapositiva.} other {Se muestran las primeras # diapositivas.}}",
+      "pdf": "Se muestran las primeras {pages, number} páginas.",
+      "docx": "Se muestra parte de este documento."
+    },
     "truncated": {
       "xlsx": "Se muestran hasta {rows, number} filas y {columns, number} columnas de cada hoja. {action, select, download {Descargar} other {Abrir}} muestra la hoja completa.",
       "pptx": "{count, plural, one {Se muestra la primera diapositiva.} other {Se muestran las primeras # diapositivas.}} {action, select, download {Descargar} other {Abrir}} muestra la presentación completa.",
