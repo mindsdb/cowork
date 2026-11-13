@@ -11,6 +11,7 @@ import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { offersBilling } from '../lib/billingLinks';
 import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked } from '../lib/analytics';
 import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
 import { getDraft } from '../lib/draftStore';
@@ -600,7 +601,7 @@ export default function HomeView({
                   : t('home.connectProvider.operatorBody')}</div>
               </div>
               {PLATFORM_UI && <div className="home-connect-card__actions">
-                <Button
+                {offersBilling() && <Button
                   variant="primary"
                   onClick={() => {
                     // Same card, same trigger as ChatView's provider_required
@@ -609,7 +610,7 @@ export default function HomeView({
                     trackBillingOpened('connect_provider');
                     host.openExternal(MINDS_BILLING_URL);
                   }}
-                >{t('home.connectProvider.startFree')}</Button>
+                >{t('home.connectProvider.startFree')}</Button>}
                 <Button
                   variant="primary"
                   onClick={() => onOpenSettings?.('agent')}

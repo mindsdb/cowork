@@ -291,6 +291,34 @@ describe('CompareView', () => {
     expect(screen.getAllByRole('button', { name: /Add funds/ }).length).toBeGreaterThan(0);
   });
 
+  it('inside the mobile app, explains the blocked start without offering to add funds', async () => {
+    hostMock.isMobileShell = true;
+    try {
+      mockHistory([]);
+      render(withUsage(usage(EMPTY), <CompareView models={models} projects={projects} />));
+      fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+      const [modelA, modelB] = screen.getAllByLabelText('model');
+      fireEvent.change(modelA, { target: { value: 'kimi' } });
+      fireEvent.change(modelB, { target: { value: 'qwen' } });
+      expect(screen.getByText('Balance empty')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /Add funds/ })).toBeNull();
+    } finally {
+      hostMock.isMobileShell = false;
+    }
+  });
+
+  it('inside the mobile app, a held follow-up offers no Add funds', async () => {
+    hostMock.isMobileShell = true;
+    try {
+      const ranOut = [{ role: 'user', content: 'p', created_at: '2026-09-23T10:00:00Z' }, { role: 'error', code: 'token_limit', content: 'out' }];
+      await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', ranOut) }, usage(EMPTY));
+      const held = screen.getByRole('status', { name: 'Follow-up message' });
+      expect(within(held).queryByRole('button', { name: 'Add funds' })).toBeNull();
+    } finally {
+      hostMock.isMobileShell = false;
+    }
+  });
+
   it('warns that a comparison spends about twice a task on a low balance, and still starts', async () => {
     mockHistory([]);
     render(withUsage(usage(LOW), <CompareView models={models} projects={projects} />));

@@ -11,6 +11,7 @@ import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError, mindsProbeNotice, probePolicyUnavailableSentence, probeRateLimitedSentence } from '../../lib/providerStatus';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../../lib/usageWarnings';
+import { offersBilling } from '../../lib/billingLinks';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../components/ui';
@@ -102,7 +103,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger font-semibold">{t('probe.noCredits')}{' '}</span>
-          <button
+          {offersBilling() && <button
             type="button"
             // Recorded before the navigation, so web and
             // desktop count identically. `host.openExternal` is
@@ -115,7 +116,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
               return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
             }}
             className={LINK_BTN}
-          >{t('probe.topUp')}</button>
+          >{t('probe.topUp')}</button>}
         </div>
         {byok}
       </div>
@@ -133,7 +134,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger">{body} </span>
-          <button
+          {offersBilling() && <button
             type="button"
             onClick={() => {
               // Literal triggers inline, so the analytics vocabulary sweep sees them.
@@ -141,7 +142,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
               return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
             }}
             className={LINK_BTN}
-          >{t('probe.addFunds')}</button>
+          >{t('probe.addFunds')}</button>}
         </div>
         {byok}
       </div>
@@ -179,6 +180,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
 /** The Budgets tab for this session's organization; credits do not lift a budget. */
 function ViewBudgetsLink({ children }) {
   const budgetsUrl = useBudgetsUrl();
+  if (!offersBilling()) return null;
   return (
     <button
       type="button"
@@ -216,6 +218,9 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
         <ViewBudgetsLink>{t('agent.viewBudgets')}</ViewBudgetsLink>
       </div>
     );
+  }
+  if (!offersBilling()) {
+    return <div className="text-[11.5px] text-ink-3">{t('agent.modelNeedsCreditsNoLink', { model: label })}</div>;
   }
   return (
     <div className="text-[11.5px] text-ink-3">

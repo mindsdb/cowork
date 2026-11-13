@@ -49,6 +49,7 @@ import { rememberLastOrg, useOrgLanding } from '../lib/orgLanding';
 import { organizationLabel, orgDisplayName } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened } from '../lib/analytics';
+import { offersBilling } from '../lib/billingLinks';
 import { openExternal } from '../../platform/host';
 import {
   MINDS_BILLING_URL,
@@ -280,7 +281,7 @@ export function UserMenu({ user, onOpenSettings }) {
     // went looking. It has to be recorded — it is a real route to the billing
     // page, and a capped user who dismisses the card and uses the menu instead
     // is otherwise invisible — but any upgrade-intent analysis must exclude it.
-    PLATFORM_UI && externalItem(t, CreditCard, t('userMenu.billing'), consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
+    PLATFORM_UI && offersBilling() && externalItem(t, CreditCard, t('userMenu.billing'), consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
     PLATFORM_UI && externalItem(t, UsersRound, t('userMenu.members'), consoleLink(MINDS_MEMBERS_URL)),
     PLATFORM_UI && externalItem(t, CircleHelp, t('userMenu.help'), MINDS_SUPPORT_URL),
     // Creating or leaving an organization is a full console flow, so the menu
