@@ -232,6 +232,24 @@ async function startFixtureServer(): Promise<void> {
           + '<input id="email" type="email" style="top:0"><button id="go" style="top:60px">Go</button><input id="pw" type="password" value="hunter2" style="top:120px">'
           + '<input id="card" placeholder="Card number" style="top:180px">');
     }
+    if (url.pathname === '/nested-frames' || url.pathname === '/sealed-nested') {
+      /* The page's own panel frame, which embeds another site's frame of
+         radios: in its DOM, or in a closed shadow root there. */
+      const panel = url.pathname === '/nested-frames' ? '/panel' : '/sealed-panel';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Nested</title><style>body{margin:0}</style><iframe src="${panel}" style="position:absolute;left:0;top:0;width:500px;height:300px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/panel' || url.pathname === '/sealed-panel') {
+      const radios = `<iframe src="${origin.replace('127.0.0.1', 'localhost')}/radios" style="display:block;width:400px;height:120px;border:0"></iframe>`;
+      const frame = url.pathname === '/panel' ? radios
+        : `<div id="host"></div><script>document.getElementById("host").attachShadow({ mode: "closed" }).innerHTML = ${JSON.stringify(radios)}</script>`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Panel</title><style>body{margin:0;background:#fff;font:20px sans-serif}</style><p>Embedded account panel</p>${frame}`);
+    }
+    if (url.pathname === '/radios') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Radios</title><label><input type="radio" name="a" checked> Keep my account</label><label><input type="radio" name="a"> Delete my account</label>');
+    }
     if (url.pathname === '/in-button') {
       /* A text field inside a "Delete account" button, and one inside a
          div with role button whose Space key clicks it; either click marks
@@ -626,6 +644,20 @@ test('reads a same-origin frame a dark mode inverts or a filter dims, and leaves
     const [frame] = (await page()).frames;
     expect.soft(frame.read, name).toBe(read);
     expect.soft(JSON.stringify(frame).includes('weekly digest'), name).toBe(read);
+  }
+});
+
+test("lists a frame inside a same-origin frame it reads as its own frame, unread, with its box, or with no box where the frame keeps it in a closed shadow root", async () => {
+  const radios = `${origin.replace('127.0.0.1', 'localhost')}/radios`;
+  for (const [route, placed] of [['/nested-frames', true], ['/sealed-nested', false]] as const) {
+    await openAt(route);
+    await expect.poll(async () => (await page()).frames.map((f: { url: string; read: boolean }) => [f.url, f.read]), { timeout: 10_000, message: route })
+      .toEqual([[`${origin}/${placed ? 'panel' : 'sealed-panel'}`, true], [radios, false]]);
+    const [panel, inner] = (await page()).frames;
+    expect(panel.text, route).toContain('Embedded account panel');
+    if (placed) expect(inner.box).toMatchObject({ x: 0, width: 400 });
+    else expect(inner.box, route).toBeNull();
+    expect(JSON.stringify(await page()), route).not.toContain('Delete my account');
   }
 });
 

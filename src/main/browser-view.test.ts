@@ -26,8 +26,11 @@ const electron = await vi.hoisted(async () => {
     change = { token: null as number | null, changes: 0, lastChangeAt: 0, busy: false, opaque: false };
     mainFrame = { origin: 'https://a.test', framesInSubtree: [] as unknown[], frames: [] as unknown[] };
     focus = { secret: false, otherSite: false, sealed: false };
-    /* The frames the page's world lists in a page read, and the view's zoom. */
+    /* The frames the page's world lists in a page read, the frame owners it
+       found in the page and in the frames it read, and the view's zoom. */
     frames: unknown[] = [];
+    frameOwners: unknown[] = [];
+    nestedOwners: unknown[] = [];
     zoom = 1;
     /* What the page's secret-field read finds for a screenshot. */
     secrets = { secrets: [] as unknown[], paymentFrames: [] as unknown[], otherSiteFrames: [] as unknown[], mirroredFrames: [] as unknown[], owners: 0, viewport: { width: 800, height: 600 } };
@@ -100,7 +103,7 @@ const electron = await vi.hoisted(async () => {
         if (this.change.token === token) this.change.token = null;
         return { ok: true };
       }
-      return { url: this.url, title: 'Title', scroll: { y: 0, height: 600, viewport: 600 }, elements: [], text: '', truncated: false, frameOwners: [], frames: this.frames, boxes: [], viewport: { width: 800, height: 600 } };
+      return { url: this.url, title: 'Title', scroll: { y: 0, height: 600, viewport: 600 }, elements: [], text: '', truncated: false, frameOwners: this.frameOwners, nestedOwners: this.nestedOwners, frames: this.frames, boxes: [], viewport: { width: 800, height: 600 } };
     });
   }
   class WebContentsView {
@@ -234,6 +237,26 @@ describe('ElectronTab', () => {
     const [snapshot] = worldCalls(contents, 'snapshot');
     expect(snapshot[1][0].code).toContain('"paymentHosts":["stripe.com",');
     expect(snapshot[1][0].code).toContain('"read":5');
+  });
+
+  it("lists a frame inside a frame the read read that the read couldn't place, by the frame tree, and none inside a frame it didn't read", async () => {
+    const { tab, contents } = setup();
+    const box = { x: 0, y: 0, width: 400, height: 100 };
+    contents.frames = [
+      { url: 'https://a.test/panel', read: true, box, offscreen: false, elements: [], text: '', truncated: false },
+      { url: 'https://a.test/ad', read: false, box: { ...box, y: 200 }, offscreen: false },
+    ];
+    contents.frameOwners = [{ url: 'https://a.test/panel', visible: true, framed: true }, { url: 'https://a.test/ad', visible: true, framed: true }];
+    contents.mainFrame.frames = [
+      { url: 'https://a.test/panel', origin: 'https://a.test', frames: [{ url: 'https://other.test/sealed' }] },
+      { url: 'https://a.test/ad', origin: 'https://a.test', frames: [{ url: 'https://ads.other.test/slot' }] },
+    ];
+    const page = await tab.read(100);
+    expect(page.frames.map((frame) => [frame.url, frame.read, frame.box === null])).toEqual([
+      ['https://a.test/panel', true, false],
+      ['https://a.test/ad', false, false],
+      ['https://other.test/sealed', false, true],
+    ]);
   });
 
   describe("a page read's look at the frames it read", () => {

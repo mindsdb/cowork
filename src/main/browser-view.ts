@@ -351,6 +351,13 @@ export class ElectronTab implements TabView {
     return this.contents.mainFrame.frames.map((frame) => frame.url);
   }
 
+  /* The addresses of the frames inside the main frame's child frames at
+     `addresses` (the frames a page read read), by the frame tree, which
+     places a frame a closed shadow root keeps there too. */
+  private framesInside(addresses: ReadonlySet<string>): string[] {
+    return this.contents.mainFrame.frames.filter((child) => addresses.has(child.url)).flatMap((child) => child.frames.map((frame) => frame.url));
+  }
+
   /* How many frames sit directly in the documents a screenshot's search for
      secrets walks (secretBoxes): the main frame's, and below it each
      same-origin frame's that is not a payment frame, SECRET_SEARCH_DEPTH
@@ -369,8 +376,9 @@ export class ElectronTab implements TabView {
      (keepSeen). */
   async read(maxText: number): Promise<PageSnapshot> {
     const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: FRAME_READ_RULES });
+    const inside = this.framesInside(new Set(raw.frames.filter((frame) => frame.read).map((frame) => frame.url)));
     const frames = await this.keepSeen(raw.frames, raw.viewport);
-    return pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls());
+    return pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls(), inside);
   }
 
   /* The frames the page's world read, kept read as the web pod reads them:

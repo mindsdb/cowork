@@ -57,7 +57,8 @@
  * its box, as the page draws it, shows more than one color
  * (browser-view.ts). A read
  * frame's elements have no id and no field value, and no editor's text
- * reaches its text or a name there. A frame from another site can't be read
+ * reaches its text or a name there; each frame inside it is listed, unread.
+ * A frame from another site can't be read
  * from here: this world runs in the view's main frame, and the page's DOM
  * gives it no way into another site's document; a page read attaches no
  * debugger, which would open a world in that frame, so that frame is listed
@@ -282,7 +283,11 @@ export interface RawSnapshot {
       whether the person can see it (a non-empty box in the viewport, not
       hidden or transparent), and whether it holds a frame. */
   frameOwners: DomFrame[];
-  /** The ones a click can land in, on-screen first, and what a read one holds. */
+  /** Every frame owner inside the frames the read read (their DOM and open
+      shadow roots), for main to count against the frame tree. */
+  nestedOwners: DomFrame[];
+  /** The ones a click can land in, on-screen first, and what a read one
+      holds; then the ones a click can land in inside a frame read, unread. */
   frames: RawFrame[];
   /** Boxes of the numbered elements in the viewport, in CSS pixels, for screenshot labels. */
   boxes: ElementBox[];
@@ -411,6 +416,12 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* The address a frame owner names: an object's data, the others' src. */
   const sourceOf = (owner: Element): string =>
     (tagOf(owner) === 'object' ? (owner as HTMLObjectElement).data : (owner as HTMLIFrameElement).src) || '';
+  /* A frame's address as a read lists it: its document's own when this
+     world reaches it, else the address its owner names. */
+  const addressOf = (owner: Element): string => {
+    const inner = frameDocOf(owner);
+    return inner ? String(inner.location?.href || sourceOf(owner)) : sourceOf(owner);
+  };
   /* Whether `address`'s host is one of `hosts`, or a name under one. */
   const hostIn = (address: string, hosts: readonly string[]): boolean => {
     let host: string;
@@ -929,8 +940,16 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
      turn, so a page of many frames can't hold the read to its timeout.
      ElectronTab.read then looks at what the page draws over each frame
      read, and keeps the first `read` it finds seen (browser-view.ts), so
-     every frame read here is one the look may choose. */
-  const readFrames = (owners: Element[], rules: FrameReadRules): RawFrame[] => {
+     every frame read here is one the look may choose.
+     Each frame owner inside a frame read (its DOM and open shadow roots) is
+     listed too, after them, unread, with its content box where the page
+     draws it (throughOwner): a key may reach a control there, which anton
+     can see only as a frame it wasn't shown. `nestedOwners` gives main all
+     of those owners, a hidden one included, to count against the frame tree
+     (pageAnswer). */
+  const readFrames = (owners: Element[], rules: FrameReadRules): { frames: RawFrame[]; nestedOwners: DomFrame[] } => {
+    const nested: RawFrame[] = [];
+    const nestedOwners: DomFrame[] = [];
     const placed = owners
       .filter((owner) => takesClicks(owner, boxOf(owner)))
       .map((owner) => {
@@ -938,10 +957,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         return { owner, box, offscreen: !inView(box) };
       });
     const deadline = win.performance.now() + rules.phaseMs;
-    return [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, offscreen }): RawFrame => {
+    const frames = [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, offscreen }): RawFrame => {
       const inner = frameDocOf(owner);
+      const url = addressOf(owner);
       const src = sourceOf(owner);
-      const url = inner ? String(inner.location?.href || src) : src;
       const refusedAddress = (address: string) =>
         hostIn(address, rules.paymentHosts) || hostIn(address, rules.signInHosts) || consentPage(address);
       const shownWidth = Math.min(box.x + box.width, viewport.width) - Math.max(box.x, 0);
@@ -952,7 +971,14 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         return { url, read: false, box, offscreen };
       }
       const view = { width: inner.defaultView?.innerWidth ?? 0, height: inner.defaultView?.innerHeight ?? 0 };
-      const { candidates } = collect(inner.body || inner.documentElement, view);
+      const { candidates, owners: inside } = collect(inner.body || inner.documentElement, view);
+      const into = throughOwner(owner);
+      for (const frame of inside) {
+        const drawn = into(contentBox(frame));
+        const clickable = takesClicks(frame, boxOf(frame));
+        nestedOwners.push({ url: sourceOf(frame), visible: clickable && shown(frame, boxOf(frame)) && inView(drawn), framed: holdsFrame(frame) });
+        if (clickable) nested.push({ url: addressOf(frame), read: false, box: drawn, offscreen: !inView(drawn) });
+      }
       return {
         url,
         read: true,
@@ -963,6 +989,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         truncated: candidates.length > rules.elements,
       };
     });
+    return { frames: [...frames, ...nested], nestedOwners };
   };
 
   /*
@@ -1000,6 +1027,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       return { url: sourceOf(owner), visible: shown(owner, box) && inView(box), framed: holdsFrame(owner) };
     });
     const scroller = doc.scrollingElement || doc.documentElement;
+    const read = frameRules ? readFrames(owners, frameRules) : { frames: [], nestedOwners: [] };
     return {
       url: String(doc.location?.href || ''),
       title: clean(doc.title, 300),
@@ -1012,7 +1040,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       text: pageText(doc, maxText),
       truncated: candidates.length > maxElements,
       frameOwners,
-      frames: frameRules ? readFrames(owners, frameRules) : [],
+      nestedOwners: read.nestedOwners,
+      frames: read.frames,
       boxes,
       viewport,
     };
@@ -1576,9 +1605,11 @@ function unplacedFrames(childFrameUrls: string[], owners: DomFrame[]): string[] 
 
 /** The page answer anton reads: the read without main's own fields, with the
     checks the person can see, and the page's child frames (`childFrameUrls`,
-    the main frame's direct children) in screenshot pixels. A check frame's
-    content never leaves main. */
-export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrameUrls: string[]): PageSnapshot {
+    the main frame's direct children) in screenshot pixels, with the frames
+    inside the frames the read read (`nestedFrameUrls`, by the frame tree)
+    that the read couldn't place, as one in a closed shadow root there,
+    listed unread with no box. A check frame's content never leaves main. */
+export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrameUrls: string[], nestedFrameUrls: string[]): PageSnapshot {
   const scale = screenshotScale(raw.viewport.width);
   /* Outward to whole pixels, as renderScreenshot's masks: a click at any
      screenshot point that lands in the frame is inside its box. */
@@ -1593,6 +1624,7 @@ export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrame
     return { ...where, read: true, elements: frame.elements, text: frame.text, truncated: frame.truncated };
   });
   for (const url of unplacedFrames(childFrameUrls, raw.frameOwners)) frames.push({ url: frameAddress(url), read: false, box: null });
+  for (const url of unplacedFrames(nestedFrameUrls, raw.nestedOwners)) frames.push({ url: frameAddress(url), read: false, box: null });
   return {
     url: raw.url,
     title: raw.title,
