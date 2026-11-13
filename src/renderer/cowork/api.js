@@ -3289,6 +3289,52 @@ export async function deleteChannelBinding(bindingId) {
   return req(`/channels/bindings/${enc(bindingId)}`, { method: 'DELETE' });
 }
 
+// ── Channel senders (who may run turns through a bot) and pairing codes ──
+
+/**
+ * Senders who wrote to a channel bot, newest first.
+ * @param {{status?: 'pending'|'allowed'|'blocked', channelType?: string}} [filter]
+ * @returns {Promise<{senders: object[], forbidden: boolean}>} `forbidden` when the
+ *   server refused a non-admin (org mode); any other failure throws, so the
+ *   panel never shows a failed load as "no requests".
+ */
+export async function fetchChannelSenders({ status, channelType } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (channelType) params.set('channel_type', channelType);
+  const query = params.toString();
+  try {
+    const data = await req(`/channels/senders${query ? `?${query}` : ''}`);
+    return { senders: Array.isArray(data) ? data : [], forbidden: false };
+  } catch (err) {
+    if (err?.status === 403) return { senders: [], forbidden: true };
+    throw err;
+  }
+}
+
+/** Let one sender run turns in the chat they wrote from; returns the updated sender. */
+export async function approveChannelSender(senderId) {
+  return req(`/channels/senders/${enc(senderId)}/approve`, { method: 'POST' });
+}
+
+/** Stop one sender in their chat; returns the updated sender. */
+export async function blockChannelSender(senderId) {
+  return req(`/channels/senders/${enc(senderId)}/block`, { method: 'POST' });
+}
+
+/** Forget a sender; their next message is a new pending request. */
+export async function deleteChannelSender(senderId) {
+  return req(`/channels/senders/${enc(senderId)}`, { method: 'DELETE' });
+}
+
+/**
+ * A one-time pairing code for the channel, shown once.
+ * @returns {Promise<{channel_type: string, code: string, expires_at: string}>}
+ */
+export async function createChannelPairingCode(channelType) {
+  return req(`/channels/${enc(channelType)}/pairing-codes`, { method: 'POST' });
+}
+
 // ─── Attachments And Context ───────────────────────────────────────────────
 
 /** POST /v1/attachments/{project_name}/{session_id}/upload — response body is a JSON array of file attachments. */
