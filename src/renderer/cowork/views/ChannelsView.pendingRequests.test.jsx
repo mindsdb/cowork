@@ -35,8 +35,16 @@ vi.mock('../api', () => ({
   deleteChannelSender: vi.fn(),
 }));
 
-import { fetchChannelPlugins, fetchChannelSenders } from '../api';
+import { fetchChannelBindings, fetchChannelPlugins, fetchChannelSenders } from '../api';
 import ChannelsView, { PENDING_POLL_MS } from './ChannelsView';
+import userEvent from '@testing-library/user-event';
+import { approveChannelSender } from '../api';
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
 
 const pendingPolls = () => fetchChannelSenders.mock.calls.filter(([arg]) => arg?.status === 'pending').length;
 
@@ -82,6 +90,7 @@ describe('ChannelsView — pending requests', () => {
     await flush();
     const first = pendingPolls();
 
+    expect(first).toBeGreaterThan(0);
     await act(async () => { vi.advanceTimersByTime(PENDING_POLL_MS * 3); });
     expect(pendingPolls()).toBe(first);
   });
@@ -92,5 +101,90 @@ describe('ChannelsView — pending requests', () => {
     render(<ChannelsView />);
 
     expect((await screen.findByRole('button', { name: 'Make a pairing code' })).disabled).toBe(true);
+  });
+
+  it('shows the route switches read-only once the server refuses a non-admin', async () => {
+    fetchChannelSenders.mockResolvedValue({ senders: [], forbidden: true });
+    fetchChannelBindings.mockResolvedValueOnce([{
+      id: 'b1', channel_type: 'telegram', external_group_id: '555', trigger_rule: 'always',
+      allow_scratchpad: false, allow_connectors: false, allow_memory_writes: false, allow_file_replies: false,
+    }]);
+    render(<ChannelsView />);
+
+    expect(await screen.findByText('An organization admin changes these.')).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: 'Send files back' }).disabled).toBe(true);
+  });
+
+  it('shows a request that arrives while the page is open on the next poll', async () => {
+    let waiting = [];
+    fetchChannelSenders.mockImplementation(async () => ({ senders: waiting, forbidden: false }));
+    render(<ChannelsView />);
+    await screen.findByText('No one is waiting.');
+
+    waiting = [{ ...pending('new', 'telegram'), display_name: 'Newcomer' }];
+    await act(async () => { vi.advanceTimersByTime(PENDING_POLL_MS); });
+
+    expect(await screen.findByText('Newcomer')).toBeTruthy();
+    expect(screen.getByLabelText('1 person waiting')).toBeTruthy();
+  });
+
+  it('never lets an older poll overwrite newer counts', async () => {
+    const slow = deferred();
+    fetchChannelSenders
+      .mockReturnValueOnce(slow.promise)
+      .mockResolvedValue({ senders: [pending('a', 'telegram')], forbidden: false });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<ChannelsView />);
+    await user.click(await screen.findByRole('button', { name: 'Refresh' }));
+    await screen.findByLabelText('1 person waiting');
+
+    await act(async () => {
+      slow.resolve({ senders: [pending('a', 'telegram'), pending('b', 'telegram'), pending('c', 'telegram')], forbidden: false });
+      await slow.promise;
+    });
+
+    expect(screen.getByLabelText('1 person waiting')).toBeTruthy();
+    expect(screen.queryByLabelText('3 people waiting')).toBeNull();
+  });
+
+  it('counts again right after an approval instead of waiting for the next poll', async () => {
+    let waiting = [{ ...pending('a', 'telegram'), display_name: 'Ann' }];
+    fetchChannelSenders.mockImplementation(async () => ({ senders: waiting, forbidden: false }));
+    approveChannelSender.mockImplementation(async () => { waiting = []; return {}; });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<ChannelsView />);
+    await screen.findByLabelText('1 person waiting');
+
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByLabelText('1 person waiting')).toBeNull();
+  });
+
+  it('drops the counts when a poll fails', async () => {
+    fetchChannelSenders
+      .mockResolvedValueOnce({ senders: [pending('a', 'telegram')], forbidden: false })
+      .mockRejectedValue(Object.assign(new Error('API returned 500'), { status: 500 }));
+    render(<ChannelsView />);
+    await screen.findByLabelText('1 person waiting');
+
+    await act(async () => { vi.advanceTimersByTime(PENDING_POLL_MS); });
+    await flush();
+
+    expect(screen.queryByLabelText('1 person waiting')).toBeNull();
+  });
+
+  it('keeps the switches read-only until the first poll says who may change them', async () => {
+    const first = deferred();
+    fetchChannelSenders.mockReturnValueOnce(first.promise).mockResolvedValue({ senders: [], forbidden: false });
+    fetchChannelBindings.mockResolvedValueOnce([{
+      id: 'b1', channel_type: 'telegram', external_group_id: '555', trigger_rule: 'always',
+      allow_scratchpad: false, allow_connectors: false, allow_memory_writes: false, allow_file_replies: false,
+    }]);
+    render(<ChannelsView />);
+
+    expect((await screen.findByRole('checkbox', { name: 'Send files back' })).disabled).toBe(true);
+    await act(async () => { first.resolve({ senders: [], forbidden: false }); await first.promise; });
+    expect(screen.getByRole('checkbox', { name: 'Send files back' }).disabled).toBe(false);
   });
 });

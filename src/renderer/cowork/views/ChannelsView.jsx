@@ -354,6 +354,9 @@ export default function ChannelsView() {
   // Bumped by each pending poll so the open People panel refetches too.
   const [pendingTick, setPendingTick] = useState(0);
   const pollRef = useRef(null);
+  // The sender routes refuse a non-admin in org mode; the route switches do too.
+  // null until the first poll answers, and the switches stay read-only until then.
+  const [sendersForbidden, setSendersForbidden] = useState(null);
   const pollAttemptRef = useRef(0);
 
   async function pollPending() {
@@ -362,9 +365,15 @@ export default function ChannelsView() {
     try {
       result = await fetchChannelSenders({ status: 'pending' });
     } catch {
-      return; // The People panel shows the failure for the selected channel.
+      // The People panel shows the failure; counts that may be wrong are dropped,
+      // and a save of the switches is left to the server to refuse.
+      if (pollAttemptRef.current !== attemptId) return;
+      setPendingByType({});
+      setSendersForbidden((known) => known ?? false);
+      return;
     }
     if (pollAttemptRef.current !== attemptId) return;
+    setSendersForbidden(result.forbidden);
     if (result.forbidden) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -468,6 +477,7 @@ export default function ChannelsView() {
                   key={`senders-${selected.channel_type}`}
                   channelType={selected.channel_type}
                   orgReady={selected.org_ready !== false}
+                  onChanged={pollPending}
                   refreshToken={refreshCount + pendingTick}
                 />
                 <ChannelBindings
@@ -475,6 +485,7 @@ export default function ChannelsView() {
                   refreshToken={refreshCount}
                   plugins={plugins}
                   channelType={selected.channel_type}
+                  switchesReadOnly={sendersForbidden !== false}
                 />
               </>
             ) : null}

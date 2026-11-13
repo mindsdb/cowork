@@ -168,12 +168,22 @@
       "label": "Label",
       "trigger": "Trigger",
       "project": "Project",
-      "instructions": "Instructions"
+      "instructions": "Instructions",
+      "capabilities": "Can use"
     },
     "patternPlaceholder": "pattern",
     "instructionsPlaceholder": "persona / tone for this chat",
     "save": "Save",
-    "removeRoute": "Remove route"
+    "removeRoute": "Remove route",
+    "switch": {
+      "allow_scratchpad": "Code and files",
+      "allow_connectors": "Connections",
+      "allow_memory_writes": "Memory writes",
+      "allow_file_replies": "Send files back"
+    },
+    "scratchpadWarning": "Their requests can then read and change this project's files, including its memory and connection settings.",
+    "connectorsNeedScratchpad": "Needs code and files on",
+    "switchesAdminOnly": "An organization admin changes these."
   },
   "channelSenders": {
     "title": "People",

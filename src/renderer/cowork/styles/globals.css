@@ -4172,6 +4172,16 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-route-table td { padding: 6px 8px; border-top: 1px solid var(--border-subtle); vertical-align: top; }
 .channels-input-sm { padding: 5px 8px; font-size: 12px; width: 100%; }
 .channels-route-actions { display: flex; gap: 6px; white-space: nowrap; }
+.channels-senders-section { margin: 12px 0 4px; }
+.channels-senders-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.channels-senders-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--line-2); border-radius: var(--r-8); }
+/* The name is the sender's own text: kept to one clipped line so stacked marks cannot draw over the ids beside it. */
+.channels-senders-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; line-height: 1.4; }
+.channels-senders-row .channels-route-actions { margin-left: auto; }
+.channels-pairing { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.channels-pairing .channels-muted { flex-basis: 100%; margin: 0; }
+.channels-switch { display: grid; grid-template-columns: auto 1fr; column-gap: 6px; align-items: start; margin-bottom: 4px; font-size: 13px; }
+.channels-switch small { grid-column: 2; }
 
 @keyframes step-error-dot-fade {
   0%   { opacity: 1; }
