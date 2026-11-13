@@ -49,6 +49,7 @@
 import { BridgeError, PAYMENT_FRAME_HOSTS } from '../shared/browser-contract';
 import {
   type Box,
+  CARD_FIELD_RULE,
   type FocusedSecret,
   type FocusedTyping,
   type FoundSecrets,
@@ -558,20 +559,21 @@ export class FrameReads {
    * in browser-page-script.ts), named by its frame and its node so a later
    * read tells whether the focus is still on the same field, with whether a
    * key there reaches a control a Space key may click; a secret field, or
-   * one the page names for a card (FocusedTyping), as the web pod counts
-   * it; anything else; or `unreadable`, for whatever `focusedSecret` counts
-   * as secret because it can't read it (a payment provider's frame, a frame
-   * of yet another site inside another site's, a frame with no owner the
-   * debugger can name, a focus past CLOSED_ROOTS_DEEP closed roots, and a
-   * read that fails or takes longer than FRAME_READ_MS).
+   * one the card-field rule page.json pins for both hosts names for a card
+   * (CARD_FIELD_RULE, FocusedTyping); anything else; or `unreadable`, for
+   * whatever `focusedSecret` counts as secret because it can't read it (a
+   * payment provider's frame, a frame of yet another site inside another
+   * site's, a frame with no owner the debugger can name, a focus past
+   * CLOSED_ROOTS_DEEP closed roots, and a read that fails or takes longer
+   * than FRAME_READ_MS).
    */
   async focusedField(): Promise<FocusedField> {
     const unreadable: FocusedField = { kind: 'unreadable' };
     const read = async () => this.followFocus<FocusedField>(await this.session.mainFrame(), true, unreadable, async (focus, frameId, from) => {
       if (focus.secret) return { kind: 'secret' };
-      const typing = await this.session.read<FocusedTyping>(frameId, { kind: 'focusedTyping' }, from);
+      const typing = await this.session.read<FocusedTyping>(frameId, { kind: 'focusedTyping', cardField: CARD_FIELD_RULE }, from);
       if (typing.cardNamed) return { kind: 'secret' };
-      const node = await this.session.nodeOf(frameId, { kind: 'focusedEntry' }, from);
+      const node = await this.session.nodeOf(frameId, { kind: 'focusedEntry', cardField: CARD_FIELD_RULE }, from);
       return node === null ? { kind: 'other' } : { kind: 'entry', field: `${frameId}/${node}`, inControl: typing.inControl };
     });
     return withTimeout(read(), FRAME_READ_MS).catch(() => unreadable);

@@ -169,8 +169,8 @@ export interface FixtureExample {
 export interface FixtureFile {
   description: string;
   /** Values both hosts hold to: a number, such as saved_tabs.json's
-      per-project cap, or a list of hosts, such as page.json's payment frame
-      hosts. */
-  limits?: Record<string, number | string[]>;
+      per-project cap, a regular expression's source, such as page.json's
+      card_field_name, or a list, such as page.json's payment frame hosts. */
+  limits?: Record<string, number | string | string[]>;
   examples: Record<string, FixtureExample>;
 }

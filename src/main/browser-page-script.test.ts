@@ -1,8 +1,11 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'fs';
+import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ELEMENTS_PER_FRAME, TEXT_PER_FRAME } from '../shared/browser-contract';
-import { pageShape, problems } from '../../tests/browser-contract-shapes';
+import { CARD_FIELD_ATTRIBUTES, ELEMENTS_PER_FRAME, TEXT_PER_FRAME } from '../shared/browser-contract';
+import { type FixtureFile, pageShape, problems } from '../../tests/browser-contract-shapes';
 import {
+  CARD_FIELD_RULE,
   type FoundSecrets,
   FRAME_READ_RULES,
   frameAddress,
@@ -710,7 +713,7 @@ describe('the isolated-world page read', () => {
     const world = freshWorld();
     const inControl = (el: Element) => {
       (el as HTMLElement).focus();
-      return (pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping).inControl;
+      return (pageWorld(document, world, { kind: 'focusedTyping', cardField: CARD_FIELD_RULE }) as FocusedTyping).inControl;
     };
     for (const id of ['in-button', 'in-role', 'in-click', 'in-stop', 'as-button']) expect(inControl(document.getElementById(id)!), id).toBe(true);
     expect(inControl(root.getElementById('in-shadow')!), 'in-shadow').toBe(true);
@@ -1221,7 +1224,7 @@ describe('frames', () => {
       <iframe id="plain" srcdoc="<p>Nothing to type into</p>"></iframe>`;
     await framesLoad();
     const world = freshWorld();
-    const entry = () => pageWorld(document, world, { kind: 'focusedEntry' });
+    const entry = () => pageWorld(document, world, { kind: 'focusedEntry', cardField: CARD_FIELD_RULE });
     for (const id of ['text', 'odd', 'search', 'email', 'url', 'tel', 'number', 'note', 'editor', 'custom']) {
       (document.getElementById(id) as HTMLElement).focus();
       expect(entry(), id).toBe(document.getElementById(id));
@@ -1253,7 +1256,7 @@ describe('frames', () => {
       <iframe id="form" srcdoc="<input id='inner-card' placeholder='Card number'><input id='inner-name' aria-label='Name'>"></iframe>`;
     await framesLoad();
     const world = freshWorld();
-    const typing = () => pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping;
+    const typing = () => pageWorld(document, world, { kind: 'focusedTyping', cardField: CARD_FIELD_RULE }) as FocusedTyping;
     for (const id of ['hint', 'name', 'cvc', 'code']) {
       (document.getElementById(id) as HTMLElement).focus();
       expect(typing().cardNamed, id).toBe(true);
@@ -1268,6 +1271,79 @@ describe('frames', () => {
     (frameDoc('form').getElementById('inner-name') as HTMLInputElement).focus();
     document.getElementById('form')!.focus();
     expect(typing()).toEqual({ cardNamed: false, inControl: false });
+  });
+
+  /* page.json's card-field examples (anton's tests/fixtures/browser_contract,
+     copied byte for byte into __fixtures__/browser-contract): values of a
+     field's name, id, aria-label or placeholder that name it for a card, or
+     don't, and a field named for one only by two of its attributes
+     together. Each field below carries the attributes one example gives it. */
+  interface CardFieldExample {
+    card_named: boolean;
+    values?: string[];
+    attributes?: Record<string, string>;
+  }
+  interface CardField {
+    attributes: Record<string, string>;
+    cardNamed: boolean;
+  }
+  /* The fields page.json's examples give: each of an example's values in
+     the attributes `placed` puts it in, and an example's attributes
+     together. */
+  const cardFields = (placed: (value: string, index: number) => Array<Record<string, string>>): CardField[] => {
+    const page = JSON.parse(readFileSync(path.resolve(__dirname, '__fixtures__/browser-contract/page.json'), 'utf-8')) as FixtureFile;
+    return Object.values(page.examples)
+      .filter((example) => example.kind === 'classification')
+      .flatMap((example) => {
+        const body = example.body as CardFieldExample;
+        const fields = [...(body.values ?? []).flatMap(placed), ...(body.attributes ? [body.attributes] : [])];
+        return fields.map((attributes) => ({ attributes, cardNamed: body.card_named }));
+      });
+  };
+  /* Each value in each attribute alone. */
+  const inEachAttribute = (value: string) => CARD_FIELD_ATTRIBUTES.map((attr) => ({ [attr]: value }));
+  /* Each value once, in the attributes in turn. */
+  const inOneAttribute = (value: string, index: number) => [{ [CARD_FIELD_ATTRIBUTES[index % CARD_FIELD_ATTRIBUTES.length]]: value }];
+  const describeField = (attributes: Record<string, string>) => Object.entries(attributes).map(([attr, value]) => `${attr}=${JSON.stringify(value)}`).join(' ');
+
+  it("names a field for a card by page.json's one rule, each value in each attribute alone and two attributes together, so a type with focused true finds it card-named and no text entry", () => {
+    const fields = cardFields(inEachAttribute);
+    expect(fields.filter((f) => f.cardNamed).length).toBeGreaterThan(fields.length / 3);
+    expect(fields.some((f) => !f.cardNamed)).toBe(true);
+    const world = freshWorld();
+    const wrong: string[] = [];
+    for (const { attributes, cardNamed } of fields) {
+      const field = document.createElement('input');
+      for (const [attr, value] of Object.entries(attributes)) field.setAttribute(attr, value);
+      document.body.replaceChildren(field);
+      field.focus();
+      const typing = pageWorld(document, world, { kind: 'focusedTyping', cardField: CARD_FIELD_RULE }) as FocusedTyping;
+      const entry = pageWorld(document, world, { kind: 'focusedEntry', cardField: CARD_FIELD_RULE });
+      if (typing.cardNamed !== cardNamed || (entry === null) !== cardNamed) {
+        wrong.push(`${describeField(attributes)}: card-named ${typing.cardNamed}, text entry ${entry !== null}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('never reads a same-origin frame that holds a field page.json names for a card, and reads one whose field it names for none', async () => {
+    const fields = cardFields(inOneAttribute);
+    document.body.innerHTML = fields.map((_, i) => `<iframe id="card-${i}" srcdoc="<input id='field'>"></iframe>`).join('');
+    await framesLoad();
+    fields.forEach(({ attributes }, i) => {
+      const field = frameDoc(`card-${i}`).getElementById('field')!;
+      for (const [attr, value] of Object.entries(attributes)) field.setAttribute(attr, value);
+      // Four frames to a row, each 240 by 36, all in view.
+      place(document.getElementById(`card-${i}`)!, (i % 4) * 250, Math.floor(i / 4) * 38, 240, 36);
+    });
+    expect([window.innerWidth, window.innerHeight]).toEqual([1024, 768]);
+    expect(Math.ceil(fields.length / 4) * 38).toBeLessThan(768);
+    const page = snapshot(freshWorld());
+    expect(page.frames).toHaveLength(fields.length);
+    const wrong = fields
+      .filter(({ cardNamed }, i) => page.frames[i].read === cardNamed)
+      .map(({ attributes, cardNamed }) => `${describeField(attributes)}: ${cardNamed ? 'card-named, yet its frame was read' : 'named for no card, yet its frame was left unread'}`);
+    expect(wrong).toEqual([]);
   });
 
   it('finds what a screenshot must hide: secret fields in the page, its open shadow roots and its same-origin frames, payment frames by address, and every frame from another site', async () => {

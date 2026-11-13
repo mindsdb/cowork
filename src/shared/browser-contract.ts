@@ -123,6 +123,17 @@ export const SIGN_IN_FRAME_HOSTS: readonly string[] = [
   'accounts.google.com', 'appleid.apple.com', 'login.microsoftonline.com', 'login.live.com', 'facebook.com',
 ];
 
+/** The one rule both hosts hold for a field a page names for a card, as
+    page.json's `limits` pins it (`card_field_name`, `card_field_attributes`),
+    which the pod host holds too: a field is card-named when CARD_FIELD_NAME,
+    ignoring case, matches the values of its CARD_FIELD_ATTRIBUTES joined in
+    that order with a space, a missing one as empty. A page read never reads
+    a frame that holds one, and a type with focused true never types into one
+    (403 password_field); the page's world reads it (`cardNamed` in
+    src/main/browser-page-script.ts). */
+export const CARD_FIELD_NAME = /(^|[^a-z0-9]|card|cc)(cvc|cvv2?|csc)([^a-z0-9]|$)|card[\s._-]*(number|num|no)(?![a-z])|(^|[^a-z0-9])cc[\s._-]*(number|num)(?![a-z])|security[\s._-]*code/i;
+export const CARD_FIELD_ATTRIBUTES: readonly string[] = ['name', 'id', 'aria-label', 'placeholder'];
+
 /** anton's STEP_ACTIONS (anton/core/browser/tool.py). */
 export const STEP_ACTIONS = [
   'click', 'type', 'press', 'select', 'scroll', 'hover', 'drag',

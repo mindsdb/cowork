@@ -250,6 +250,14 @@ async function startFixtureServer(): Promise<void> {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Radios</title><label><input type="radio" name="a" checked> Keep my account</label><label><input type="radio" name="a"> Delete my account</label>');
     }
+    if (url.pathname === '/card-names') {
+      /* Fields only their attributes name: a card's security code by its
+         name, a card's number by its id and its label together, and notes
+         whose name starts like a card's number. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Card names</title><style>input{display:block;width:300px;height:40px;margin:10px 0}</style>'
+          + '<label>Security digits <input name="card_cvc"></label><input id="card" aria-label="Number"><label>Notes <input name="cardnotes"></label>');
+    }
     if (url.pathname === '/in-button') {
       /* A text field inside a "Delete account" button, and one inside a
          div with role button whose Space key clicks it; either click marks
@@ -794,6 +802,28 @@ test("types a focused type into an ordinary field of another site's embedded for
   expect(own.status, own.body.toString()).toBe(200);
   expect(await entryValue(origin, 'email')).toBe('bo@example.test');
   expect(await entryValue(other, 'email')).toBe('adé@example.test');
+});
+
+/* The value of field `selector` in the page at `route`, read from main. */
+async function fieldValue(route: string, selector: string): Promise<string> {
+  return String(await app.evaluate(({ webContents }, { at, field }) => webContents.getAllWebContents()
+    .find((contents) => contents.getURL() === at)?.executeJavaScript(`document.querySelector(${JSON.stringify(field)}).value`), { at: `${origin}${route}`, field: selector }));
+}
+
+test("refuses a focused type into a field page.json's one card-field rule names for a card, by one attribute or two together, and types into one it names for none", async () => {
+  await openAt('/card-names');
+  const typeFocused = (text: string) => act({ action: 'type', focused: true, text, submit: false });
+  for (const [name, selector] of [['Security digits', '[name=card_cvc]'], ['Number', '#card']]) {
+    expect((await act({ action: 'click', element: await element(name) })).status).toBe(200);
+    const refused = await typeFocused('123');
+    expect(refused.status, `${name}: ${refused.body.toString()}`).toBe(403);
+    expect(refused.json().error).toBe('password_field');
+    expect(await fieldValue('/card-names', selector), name).toBe('');
+  }
+  expect((await act({ action: 'click', element: await element('Notes') })).status).toBe(200);
+  const typed = await typeFocused('gift wrap');
+  expect(typed.status, typed.body.toString()).toBe(200);
+  expect(await fieldValue('/card-names', '[name=cardnotes]')).toBe('gift wrap');
 });
 
 test('types spaces into a field inside a button, or a div whose Space key clicks it, by number and focused, and clicks neither', async () => {

@@ -24,6 +24,8 @@ import {
   BRIDGE_URL_PATTERN,
   type BridgeErrorCode,
   bridgeUrl,
+  CARD_FIELD_ATTRIBUTES,
+  CARD_FIELD_NAME,
   electronHostsInAppBrowser,
   ELEMENTS_PER_FRAME,
   FRAME_MIN_READ_PX,
@@ -105,7 +107,7 @@ describe('the browser contract fixtures', () => {
     expect(action.limits).toEqual({ settle_max_ms: SETTLE_MAX_MS, settle_quiet_ms: SETTLE_QUIET_MS });
   });
 
-  it("reads a page's frames at the contract's numbers, and never on its payment or sign-in hosts", () => {
+  it("reads a page's frames at the contract's numbers, never on its payment or sign-in hosts, and names a field for a card by the contract's one rule", () => {
     const page = JSON.parse(readFileSync(path.join(FIXTURES, 'page.json'), 'utf-8')) as FixtureFile;
     expect(page.limits).toEqual({
       frames_read: FRAMES_READ,
@@ -115,7 +117,11 @@ describe('the browser contract fixtures', () => {
       payment_frame_hosts: [...PAYMENT_FRAME_HOSTS],
       sign_in_frame_hosts: [...SIGN_IN_FRAME_HOSTS],
       frames_phase_ms: FRAMES_PHASE_MS,
+      card_field_name: CARD_FIELD_NAME.source,
+      card_field_attributes: [...CARD_FIELD_ATTRIBUTES],
     });
+    // page.json reads the pattern ignoring case, and with nothing else.
+    expect(CARD_FIELD_NAME.flags).toBe('i');
   });
 
   it.each(all.filter(([, , e]) => e.kind === 'request'))('%s "%s": the request guard agrees', (_file, _name, example) => {
@@ -125,7 +131,7 @@ describe('the browser contract fixtures', () => {
   });
 
   it("reads into_frame on the fixture's one step the person approved into a frame, and on no other step", () => {
-    const steps = all.filter(([file, , e]) => file === 'action.json' && e.kind === 'request');
+    const steps = all.filter(([file, , e]) => file === 'action.json' && e.kind === 'request' && !e.refused);
     const approved = steps.filter(([, , e]) => 'into_frame' in (e.body as Record<string, unknown>)).map(([, name]) => name);
     expect(approved).toHaveLength(1);
     for (const [, name, example] of steps) {
@@ -189,7 +195,9 @@ describe('the browser contract fixtures', () => {
       if (e.kind === 'request') return !(e.where in REQUEST_GUARDS);
       if (e.kind === 'response') return file !== 'error.json' && !(e.where in RESPONSE_SHAPES);
       // The commit list is the web pod's to enforce; the desktop holds no
-      // step, so its examples are kept, not checked here.
+      // step, so its examples are kept, not checked here. page.json's
+      // card-field values go through the page world's own rule in
+      // src/main/browser-page-script.test.ts.
       return !['turn_block', 'constructor', 'event', 'classification'].includes(e.kind);
     });
     expect(unchecked.map(([file, name]) => `${file}: ${name}`)).toEqual([]);

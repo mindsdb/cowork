@@ -69,6 +69,8 @@
  */
 
 import {
+  CARD_FIELD_ATTRIBUTES,
+  CARD_FIELD_NAME,
   type Challenge,
   ELEMENTS_PER_FRAME,
   type FrameBox,
@@ -175,7 +177,19 @@ export interface FrameReadRules {
   minPx: number;
   paymentHosts: readonly string[];
   signInHosts: readonly string[];
+  /** A frame holding a field this rule names for a card is never read. */
+  cardField: CardFieldRule;
 }
+
+/** The card-field rule as the page's world reads it: CARD_FIELD_NAME's
+    source, which it reads ignoring case, and CARD_FIELD_ATTRIBUTES. A
+    request carries it, since the world takes nothing from this module. */
+export interface CardFieldRule {
+  name: string;
+  attributes: readonly string[];
+}
+
+export const CARD_FIELD_RULE: CardFieldRule = { name: CARD_FIELD_NAME.source, attributes: CARD_FIELD_ATTRIBUTES };
 
 export const FRAME_READ_RULES: FrameReadRules = {
   read: FRAMES_READ,
@@ -185,6 +199,7 @@ export const FRAME_READ_RULES: FrameReadRules = {
   minPx: FRAME_MIN_READ_PX,
   paymentHosts: PAYMENT_FRAME_HOSTS,
   signInHosts: SIGN_IN_FRAME_HOSTS,
+  cardField: CARD_FIELD_RULE,
 };
 
 /** A child frame a click can land in, as a page read finds it: its address
@@ -206,11 +221,11 @@ export interface FocusedSecret {
 
 /** What a type with focused true reads where the focus rests besides the
     text entry it types into: whether the page names the focused element
-    for a card (by its name, id, label or placeholder, as a frame read's
-    card-named field), which it never types into and refuses as a secret
-    field, as the web pod does; and whether a key there reaches a control a
-    Space key may click (a button around the field), so a space goes in as
-    text. */
+    for a card by the card-field rule page.json pins (CARD_FIELD_RULE, as
+    for a frame read's card-named field), which it never types into and
+    refuses as a secret field (403 password_field); and whether a key
+    there reaches a control a Space key may click (a button around the
+    field), so a space goes in as text. */
 export interface FocusedTyping {
   cardNamed: boolean;
   inControl: boolean;
@@ -248,10 +263,10 @@ export type PageWorldRequest =
   /* The text entry that isn't secret where the focus rests, which a type
      with focused true types into, or null. It answers an element, which the
      debugger names by its node (browser-frames.ts). */
-  | { kind: 'focusedEntry' }
+  | { kind: 'focusedEntry'; cardField: CardFieldRule }
   /* What else a type with focused true reads where the focus rests, by
      value (FocusedTyping). */
-  | { kind: 'focusedTyping' }
+  | { kind: 'focusedTyping'; cardField: CardFieldRule }
   /* Where the focus is while a type step types into element `id`. */
   | { kind: 'typingFocus'; id: number }
   | { kind: 'viewport' }
@@ -790,14 +805,16 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* A field that says a frame holds something only the person handles: a
      secret field (password, one-time code, card), a field named for a card,
      or a sign-in field. */
-  const CARD_FIELD_NAME = /(^|[^a-z])(cvc|cvv2?|csc)([^a-z]|$)|card[\s_-]*(number|num|no)|cc[\s_-]*num|security[\s_-]*code/i;
-  /* Whether the page names `el` for a card (CARD_FIELD_NAME) by its name,
-     id, label or placeholder, as the web pod's cardNamed does. */
-  const cardNamed = (el: Element): boolean => ['name', 'id', 'aria-label', 'placeholder'].some((attr) => CARD_FIELD_NAME.test(el.getAttribute(attr) || ''));
+  /* Whether the page names `el` for a card by the one card-field rule
+     page.json pins for both hosts, which the request carries (CardFieldRule):
+     `rule.name`, ignoring case, matches the values of `rule.attributes`
+     joined in that order with a space, a missing one as empty. */
+  const cardNamed = (el: Element, rule: CardFieldRule): boolean =>
+    new RegExp(rule.name, 'i').test(rule.attributes.map((attr) => el.getAttribute(attr) || '').join(' '));
   const SIGN_IN_AUTOCOMPLETE = /(^|\s)(username|webauthn)(\s|$)/;
   const isField = (el: Element): boolean => ['input', 'textarea', 'select'].includes(tagOf(el)) || editable(el);
-  const holdsPrivateField = (root: Node): boolean => elementsIn(root).some((el) => isField(el) && (
-    isSecret(el) || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase()) || cardNamed(el)));
+  const holdsPrivateField = (root: Node, cardField: CardFieldRule): boolean => elementsIn(root).some((el) => isField(el) && (
+    isSecret(el) || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase()) || cardNamed(el, cardField)));
 
   /* An element's parent as it is drawn: the slot it is assigned to, its
      parent, or a shadow root's host. */
@@ -967,7 +984,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       const shownHeight = Math.min(box.y + box.height, viewport.height) - Math.max(box.y, 0);
       if (!inner || offscreen || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
         || drawnScale(owner) < FRAME_MIN_SCALE || refusedAddress(src) || refusedAddress(url) || win.performance.now() > deadline
-        || drawnUnreadable(owner) || !hitsOwner(owner, box) || holdsPrivateField(inner)) {
+        || drawnUnreadable(owner) || !hitsOwner(owner, box) || holdsPrivateField(inner, rules.cardField)) {
         return { url, read: false, box, offscreen };
       }
       const view = { width: inner.defaultView?.innerWidth ?? 0, height: inner.defaultView?.innerHeight ?? 0 };
@@ -1312,11 +1329,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* The text entry a type with focused true types into, or null: the
      element at typingAt when it is a text, search, email, url, tel or
      number input or a textarea that isn't disabled or read only, or an
-     editor, and is neither secret nor named for a card (cardNamed), as the
-     web pod's isTextEntry reads it. */
-  const focusedEntry = (): Element | null => {
+     editor, and is neither secret nor named for a card by `cardField`
+     (cardNamed), as the web pod's isTextEntry reads it. */
+  const focusedEntry = (cardField: CardFieldRule): Element | null => {
     const at = typingAt();
-    if (!at || isSecret(at) || cardNamed(at)) return null;
+    if (!at || isSecret(at) || cardNamed(at, cardField)) return null;
     if (tagOf(at) === 'input' || tagOf(at) === 'textarea') {
       const field = at as HTMLInputElement;
       const takesText = tagOf(at) === 'textarea' || TEXT_ENTRY_INPUTS.has(field.type);
@@ -1456,10 +1473,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     case 'focusedElement':
       return deepActive();
     case 'focusedEntry':
-      return focusedEntry();
+      return focusedEntry(request.cardField);
     case 'focusedTyping': {
       const at = typingAt();
-      return { cardNamed: !!at && cardNamed(at), inControl: inControl(at) } satisfies FocusedTyping;
+      return { cardNamed: !!at && cardNamed(at, request.cardField), inControl: inControl(at) } satisfies FocusedTyping;
     }
     case 'typingFocus': {
       const el = world.ids.get(request.id);
