@@ -1,0 +1,11 @@
+# Same id on both platforms (see ../README.md, "Contract with the web app").
+# The Apple team comes from the installed provisioning profile at build time and
+# App Store Connect auth is the API key, so neither an Apple ID nor a team id
+# lives here.
+for_platform :ios do
+  app_identifier("ai.mindshub.cowork")
+end
+
+for_platform :android do
+  package_name("ai.mindshub.cowork")
+end

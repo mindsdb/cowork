@@ -1,0 +1,864 @@
+{
+  "messages": {
+    "usage": {
+      "actions": {
+        "viewUsage": "查看用量",
+        "addFunds": "充值",
+        "setUpAutoTopUp": "设置自动充值",
+        "manageAutoTopUp": "管理自动充值",
+        "updatePaymentMethod": "更新付款方式"
+      },
+      "noFreeGrant": "此账户不含免费的 MindsHub Air 令牌。MindsHub Air 和其他模型一样，会使用你的余额。",
+      "allowanceStop": {
+        "noGrant": "{noGrant}你的余额已用完，请充值后继续。",
+        "withTime": "你的 MindsHub Air 免费额度已用完，余额也已用完。请充值以继续工作，或等待额度在 {time} 恢复。",
+        "noTime": "你的 MindsHub Air 免费额度已用完，余额也已用完。请充值以继续工作。"
+      },
+      "freeServingPaused": {
+        "until": "免费 MindsHub Air 已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
+        "dailyReset": "免费 MindsHub Air 已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。如需立即继续工作，请充值。"
+      },
+      "resting": {
+        "resetsAt": "将于 {time} 重置。",
+        "noReset": "Air 可使用这些令牌，直至用完。"
+      },
+      "balanceEmptySentence": "你的余额已用完。",
+      "percentLeft": "免费额度剩余 {percent}",
+      "autoTopUpFailed": {
+        "title": "自动充值失败",
+        "body": "无法从你的银行卡扣款。请充值或更新付款方式。"
+      },
+      "balanceEmpty": {
+        "title": "余额已用完",
+        "body": "请充值以开始新任务。",
+        "freeUsedToo": "你的免费额度也已用完。请充值，或等待额度恢复。",
+        "freeUsedTooWithTime": "你的免费额度也已用完。请充值，或等待额度在 {time} 恢复。"
+      },
+      "balanceLow": {
+        "title": "余额不足",
+        "autoRefills": "剩余 {usd}。余额低于 {floor} 时，自动充值会将其补足至 {target}。",
+        "autoCovers": "剩余 {usd}。自动充值将补足余额。",
+        "autoPending": "剩余 {usd}。自动充值正在等待银行处理。",
+        "autoCapReached": "剩余 {usd}。为避免超出每月上限，自动充值已暂停。请充值以继续。",
+        "body": "剩余 {usd}。请充值或开启自动充值。"
+      },
+      "freeUsed": {
+        "title": "免费额度已用完",
+        "body": "在额度恢复前，MindsHub Air 将使用你的余额。",
+        "bodyWithTime": "在额度于 {time} 恢复前，MindsHub Air 将使用你的余额。",
+        "bodyWithUsd": "在额度恢复前，MindsHub Air 将使用你的余额（剩余 {usd}）。",
+        "bodyWithUsdWithTime": "在额度于 {time} 恢复前，MindsHub Air 将使用你的余额（剩余 {usd}）。"
+      },
+      "freeLow": {
+        "body": "之后，在额度恢复前，MindsHub Air 将使用你的余额。",
+        "bodyWithTime": "之后，在额度于 {time} 恢复前，MindsHub Air 将使用你的余额。",
+        "balanceLowToo": "你的余额也不多了（{usd}）。"
+      },
+      "budgetExceeded": {
+        "raise": "在所有者或管理员于“预算”中提高上限前，付费模型无法运行。",
+        "airHasRoom": "在所有者或管理员于“预算”中提高上限前，付费模型无法运行。免费额度未用完时，MindsHub Air 仍可使用。"
+      }
+    },
+    "scheduleWhen": {
+      "timeZone": "{city} 时间",
+      "onceNoDate": "{time} 运行一次",
+      "once": "{day} {time} 运行一次",
+      "every15": "每 15 分钟",
+      "every30": "每 30 分钟",
+      "hourly": "每小时第 {minute} 分",
+      "daily": "每天 {time}",
+      "weekdays": "每个工作日 {time}",
+      "weekly": "每{weekday} {time}",
+      "weeklyNoDay": "每周 {time}"
+    },
+    "scheduleCopy": {
+      "missedOnceServer": "如果此时服务器停机，只要在一小时内恢复，任务就会运行。超过一小时则会标记为“已错过”，你可以手动运行。",
+      "missedOnceApp": "如果此时 MindsHub 已关闭，只要在一小时内重新打开，任务就会运行。超过一小时则会标记为“已错过”，你可以手动运行。",
+      "missedRecurringServer": "如果到期时服务器停机，恢复后任务将运行一次，补上过去 7 天内最近错过的那一次。其他错过的运行将被跳过。",
+      "missedRecurringApp": "如果到期时 MindsHub 已关闭，重新打开后任务将运行一次，补上过去 7 天内最近错过的那一次。其他错过的运行将被跳过。",
+      "missedLabelServer": "如果此时服务器停机",
+      "missedLabelApp": "如果此时 MindsHub 已关闭",
+      "missedOnceTitleServer": "服务器停机期间，此一次性任务的运行时间已过",
+      "missedOnceTitleApp": "MindsHub 关闭期间，此一次性任务的运行时间已过"
+    },
+    "stopScheduleRun": {
+      "unreachable": "无法连接服务器以停止运行。请重试。",
+      "failed": "无法停止运行。请重试。",
+      "starting": "运行仍在启动中。请稍后再点击“停止”。"
+    },
+    "providerStatus": {
+      "probe": {
+        "rateLimited": "请求过于频繁。请稍候，然后再次测试。",
+        "policyUnavailable": "计费服务暂时不可用。请稍后重试。"
+      },
+      "row": {
+        "walletEmpty": "没有可用积分。请充值以使用 MindsHub。",
+        "allowanceExhausted": "没有可用的免费 MindsHub Air 令牌，余额也已用完。",
+        "freeAirPaused": "免费 MindsHub Air 目前已暂停。",
+        "budgetExceeded": "你所在组织的预算已用完。"
+      },
+      "missingApiKey": "请在右侧添加 API 密钥。",
+      "missingBaseUrl": "请在右侧添加基础 URL。",
+      "http": {
+        "unauthorized": "未授权：API 密钥被拒绝。",
+        "forbidden": "禁止访问：API 密钥没有访问权限。",
+        "notFound": "找不到端点：请检查基础 URL。",
+        "rateLimited": "已达到速率限制：请稍后重试。",
+        "unreachable": "目前无法连接提供商（HTTP {code}）。",
+        "rejected": "提供商拒绝了请求（HTTP {code}）。"
+      },
+      "connectError": "无法连接提供商：网络或 DNS 出现问题。",
+      "timeout": "提供商未及时响应。",
+      "tls": "连接提供商时出现 TLS／证书问题。"
+    },
+    "witPhrases": {
+      "thinking": {
+        "0": "正在预热神经元",
+        "1": "正在了解情况",
+        "2": "正在寻找切入点",
+        "3": "正在勾勒思路",
+        "4": "正在梳理问题",
+        "5": "正在快速回顾已知信息",
+        "6": "正在挑选工具",
+        "7": "正在排列步骤",
+        "8": "正在评估全局",
+        "9": "正在决定从哪里入手",
+        "10": "正在寻找线索",
+        "11": "正在搭建计划"
+      },
+      "working": {
+        "0": "正在计算数据",
+        "1": "正在礼貌地询问数据",
+        "2": "正在整理数据",
+        "3": "正在闯关",
+        "4": "正在理清头绪",
+        "5": "正在挖掘金矿",
+        "6": "正在拼出全貌",
+        "7": "正在反复验算",
+        "8": "正在绘制数据点",
+        "9": "正在埋头苦干",
+        "10": "正在顺藤摸瓜",
+        "11": "正在攻坚克难"
+      },
+      "reasoning": {
+        "0": "正在提炼洞见",
+        "1": "正在组织回复",
+        "2": "正在润色措辞",
+        "3": "正在将数据化为洞察",
+        "4": "正在拼合拼图",
+        "5": "正在串联线索",
+        "6": "正在编织脉络",
+        "7": "正在多方印证",
+        "8": "正在斟酌用词",
+        "9": "正在让内容更易读",
+        "10": "正在精炼叙述",
+        "11": "马上就好，请稍候"
+      }
+    },
+    "responseStream": {
+      "reasoning": "正在推理…",
+      "responseFailed": "回复失败",
+      "questionForYou": "需要你回答",
+      "runningCode": "正在运行代码",
+      "toolCall": "工具调用",
+      "rateLimitedWaiting": "已达到速率限制，正在等待",
+      "waitingForModel": "正在等待模型",
+      "standIn": {
+        "0": "正在开始…",
+        "1": "正在处理…",
+        "2": "这就开始…",
+        "3": "正在做准备…",
+        "4": "正在进行设置…",
+        "5": "正在收集所需信息…",
+        "6": "正在安排最初的步骤…",
+        "7": "正在规划思路…",
+        "8": "正在理清细节…",
+        "9": "正在打好基础…",
+        "10": "正在仔细思考…",
+        "11": "正在规划步骤…",
+        "12": "正在汇总材料…",
+        "13": "正在处理第一部分…",
+        "14": "正在初步过一遍…",
+        "15": "正在逐步推进…",
+        "16": "正在撸起袖子…",
+        "17": "正在热身…",
+        "18": "正在熟悉情况…",
+        "19": "先从基础开始…"
+      },
+      "artifact": "产物",
+      "skill": "技能"
+    },
+    "compare": {
+      "unjudgeable": {
+        "both": "两个模型都在完成前用完了积分，因此无法评判这一轮。",
+        "one": "{name} 在完成前用完了积分，因此无法评判这一轮。",
+        "bothBudget": "两个模型都在完成前达到了组织的预算上限，因此无法评判这一轮。",
+        "oneBudget": "{name} 在完成前达到了组织的预算上限，因此无法评判这一轮。"
+      },
+      "verdict": {
+        "tie": "不相上下",
+        "neither": "都不好",
+        "none": "未评判"
+      },
+      "status": {
+        "continued": "已作为任务继续",
+        "working": "处理中",
+        "waiting": "等待中",
+        "done": "完成",
+        "outOfCredits": "积分不足",
+        "rateLimited": "已限速",
+        "failed": "失败",
+        "stopped": "已停止",
+        "budgetReached": "已达预算上限"
+      },
+      "block": {
+        "loadFailed": "有一侧未能加载。请先在上方重试，再继续发送。",
+        "loading": "两个模型都加载完成后，即可继续发送。",
+        "checkFailed": "无法确认是否有一侧仍在处理。",
+        "sending": "正在向两个模型发送任务…",
+        "firstFailed": "任务尚未送达任何一个模型。请在上方重新发送。",
+        "outOfCreditsBoth": "余额已用完，两个模型均已停止。请充值以继续对比。",
+        "outOfCreditsOne": "余额已用完，{name} 已停止。请充值以继续对比。",
+        "bothWorking": "两个模型都完成后，即可继续发送。",
+        "oneWorking": "{name} 完成后，即可继续发送。",
+        "bothContinued": "两侧都已作为任务继续，此对比无法再发送消息。",
+        "sideContinued": "{name} 已作为任务继续。只能发送给 {other}。",
+        "sideWorking": "{name} 仍在处理。只能发送给 {other}，或请等待。"
+      },
+      "twiceTheCredits": "对比会运行两个模型，因此消耗的积分约为单个任务的两倍。",
+      "turnsTitle": "{nameA}：{countA, plural, other {# 轮}} · {nameB}：{countB, plural, other {# 轮}}",
+      "cost": {
+        "truncated": "会话过长，无法完整统计，因此这是最低值。",
+        "unpriced": "部分调用无法计价，未计入其中。"
+      },
+      "usage": {
+        "inputDetail": "新增 {fresh} · 已缓存 {cached} · 写入缓存 {written}",
+        "notPriced": "未计价",
+        "turn": "第 {turn} 轮",
+        "total": "合计"
+      }
+    },
+    "orgSharing": {
+      "counts": {
+        "teams": "{count, plural, other {# 个团队}}",
+        "people": "{count, plural, other {# 人}}",
+        "outsideEmails": "{count, plural, other {# 个外部邮箱}}"
+      },
+      "list": {
+        "two": "{first} 和 {second}",
+        "three": "{first}、{second} 和 {third}"
+      },
+      "orgAdminOnlyHint": "只有管理员可以与组织中的所有人分享",
+      "orgArtifactShareWithheldHint": "你的角色无法与组织中的所有人分享",
+      "mindsHubUnreachableHint": "无法连接 MindsHub",
+      "mindsHubUnreachablePermissions": "无法连接 MindsHub 以确认你可以分享的范围。",
+      "mindsHubUnreachableEdit": "无法连接 MindsHub 以确认你是否可以更改。",
+      "mindsHubUnreachableTeams": "无法连接 MindsHub 加载你的团队，因此未列出与团队分享的技能。",
+      "mindsHubThrottled": "MindsHub 正在限制请求。请过一分钟再试。",
+      "onlyMeTitle": "仅自己",
+      "onlyMeDesc": {
+        "skill": "其他人无法使用",
+        "artifact": "其他人无法打开"
+      },
+      "specificTitle": "特定团队和人员",
+      "specificDesc": {
+        "skill": "选择团队或同事",
+        "artifact": "选择团队、同事或外部邮箱"
+      },
+      "alwaysOnLabel": "始终包含在每个任务中",
+      "thisSkill": "此技能",
+      "alwaysOnHelp": {
+        "on": "Anton 会在每个任务中包含 {name}。",
+        "off": "Anton 只会在相关时使用 {name}。"
+      },
+      "alwaysOnOrgAdminHint": "只有管理员可以将与所有人分享的技能设为始终启用",
+      "alwaysOnEditorHint": "只有可编辑此技能的人才能更改此设置",
+      "alwaysOnBadge": "始终启用",
+      "alwaysOnBadgeHint": "包含在所有共享对象的每个任务中",
+      "everyoneAt": "{org} 的所有人",
+      "everyoneInOrganization": "组织中的所有人",
+      "everyoneAtDesc": "你所在组织中的任何人",
+      "yourOrganization": "你的组织",
+      "unknownPerson": "未知用户",
+      "recipients": {
+        "addEmail": "请至少添加一个邮箱。",
+        "outside": "{count} 个在 {org} 之外",
+        "addTeamPersonOrEmail": "请至少添加一个团队、人员或邮箱。",
+        "addTeamOrPerson": "请至少添加一个团队或人员。"
+      },
+      "teamBadge": "团队：{team}",
+      "sections": {
+        "mine": "我的",
+        "sharedWithMe": "与我分享",
+        "team": "我的团队",
+        "builtin": "内置"
+      },
+      "share": {
+        "everyoneAt": "已与 {org} 的所有人分享",
+        "everyoneInOrganization": "已与组织中的所有人分享",
+        "with": "已与 {phrase} 分享",
+        "notYet": "尚未分享",
+        "public": "公开链接：任何拿到网址的人都能打开",
+        "password": "受密码保护",
+        "shared": "已分享"
+      }
+    },
+    "sharedResourceAccess": {
+      "otherActor": "另一位成员",
+      "unknownActor": "未知"
+    },
+    "liveAppSharing": {
+      "shareLabel": "允许他人复制…",
+      "everyoneLabel": "此部署中的所有人",
+      "sharedWithYouLabel": "可复制的应用",
+      "copyGoesToGeneral": "你的副本会保存到“General”项目中。",
+      "from": "来自 {owner}",
+      "fromForEveryone": "来自 {owner} · 面向所有人",
+      "duplicatedFrom": "复制自 {owner}",
+      "thisApp": "此应用",
+      "duplicateTitle": "要复制“{name}”吗？",
+      "duplicateDisclaimer": "{owner} 允许你复制此应用。你的副本会使用你自己的连接运行，并能访问这些连接可访问的一切。启动前请先检查。"
+    },
+    "liveAppState": {
+      "liveAt": "已在 {host} 上线",
+      "live": "已上线",
+      "stoppedAt": "已于 {when} 停止",
+      "stopped": "已停止",
+      "stoppedLineReason": "{stopped}（{reason}）。请让智能体重新启动它。",
+      "stoppedLine": "{stopped}。请让智能体重新启动它。",
+      "checkFailed": "无法确认此应用是否正在运行。请重新加载后重试。",
+      "runsAtOwnAddress": "此实时应用在独立地址上运行。",
+      "runningAskAddress": "此实时应用正在运行。请向智能体询问其地址。",
+      "notRunning": "此实时应用未在运行。请让智能体启动它。",
+      "launch": "启动"
+    },
+    "skillSharing": {
+      "label": "谁可以使用",
+      "private": {
+        "label": "仅自己",
+        "description": "只有你可以查看和使用。"
+      },
+      "everyone": {
+        "label": "所有人（只读）",
+        "description": "这里的所有人都可以使用，但只有你可以更改。"
+      },
+      "createHint": "你之后可以在技能页面中更改此设置。"
+    },
+    "artifactAuthorship": {
+      "unknownOwner": "未知所有者",
+      "otherMemberDescription": "由此项目的另一位成员创建。你可以查看，但无法更改。",
+      "unknownOwnerDescription": "没有记录此产物的所有者。"
+    },
+    "artifactExport": {
+      "cannotExport": "无法导出此文件。",
+      "alreadyRunning": "已有导出正在进行，请稍后重试。",
+      "pdfBusy": "PDF 导出繁忙，请重试。",
+      "pdfTooLong": "PDF 导出耗时过长。",
+      "failed": "无法导出此文件。",
+      "omittedReferences": "{count, plural, other {已省略此产物之外的 # 项内容。}}",
+      "notSaved": "已导出 {filename}，但无法下载。"
+    },
+    "artifactPaths": {
+      "noPath": "此产物未包含文件路径。",
+      "relativeNoProject": "此产物路径是相对路径，但该任务没有项目文件夹。",
+      "outsideProject": "此产物路径指向项目文件夹之外。"
+    },
+    "artifactActions": {
+      "noPreviewDownloaded": "此文件类型无法预览，已改为下载。"
+    },
+    "browserApproval": {
+      "unreadable": "无法检查此批准请求，因此未执行任何操作。",
+      "lapsed": "此步骤已不在浏览器中等待，因此未执行任何操作。",
+      "unavailable": "此处无法使用浏览器，因此未执行任何操作。",
+      "refusedReason": "无法在浏览器中批准此步骤：{reason}。",
+      "refused": "无法在浏览器中批准此步骤。请重试。",
+      "notConfirmed": "浏览器未确认批准，因此未执行任何操作。请重试。"
+    },
+    "browserSession": {
+      "opened": "已打开浏览器"
+    },
+    "figureSources": {
+      "noSource": "无来源：此回答中没有任何步骤返回过这个数字。采取行动前请先核实。",
+      "repeated": "沿用自之前的回答",
+      "aFile": "一个文件",
+      "fromPage": "来自 {name}，第 {page} 页",
+      "from": "来自 {name}",
+      "fromQueryLabel": "来自查询：{label}",
+      "fromQuery": "来自查询",
+      "fromWebLabel": "来自网络：{label}",
+      "fromWeb": "来自网络",
+      "fromStepLabel": "来自步骤：{label}",
+      "fromStep": "来自步骤",
+      "andMore": "{source} 等 {count} 个来源"
+    },
+    "connectionIdentity": {
+      "unrecognizedConnector": "无法识别的连接器"
+    },
+    "datasourceSubmission": {
+      "errors": {
+        "nameRequired": "请为此连接命名，以便日后区分。",
+        "tlsModeRequired": "请选择如何检查此服务器的证书。",
+        "caRequired": "请粘贴 CA 证书，或选择公共证书颁发机构。",
+        "caTooLarge": "该 CA 证书超过了 64 KiB 的上限。请只粘贴此服务器所需的证书链。"
+      },
+      "hints": {
+        "tlsFailed": "无法验证服务器的证书。自托管数据库通常会出示其自行生成的证书，任何客户端都无法验证。如果此服务器属于这种情况，请关闭“Only connect if the certificate is signed by a public authority”。",
+        "destinationForbidden": "无法从此处访问该地址。数据库必须位于公网地址上，不能是私有或本地地址。",
+        "authenticationFailed": "服务器拒绝了用户名或密码。",
+        "insufficientPrivileges": "此账户无法读取此连接指向的任何内容。如果你指定了架构，请检查其拼写和大小写（PostgreSQL 会将大小写视为名称的一部分），并确认该账户拥有该架构的 USAGE 权限以及其中表的 SELECT 权限。账户同时拥有写入权限没有问题；但拥有超级用户权限或能读取服务器文件的账户会被拒绝，因为这些权限超出了你的数据库范围。",
+        "connectionFailed": "服务器没有响应。请检查主机和端口，并确认防火墙允许此连接。",
+        "tls": {
+          "refusedLogin": "服务器要求直接发送密码，而此连接不会检查服务器的证书，因此未发送密码。",
+          "refusedLoginOrHandshake": "服务器可能未完成加密连接，也可能要求直接发送密码；由于此连接不会检查服务器的证书，因此未发送密码。",
+          "refusedPgLogin": "服务器要求的登录方式在不检查服务器证书的情况下不被此连接允许，因此未发送密码。",
+          "refusedPgLoginOrHandshake": "服务器可能未完成加密连接，也可能要求了一种在不检查服务器证书时此连接不允许的登录方式。未发送密码。",
+          "turnChecksOnCheckbox": "如果服务器的证书由公共机构签发，请开启“Only connect if the certificate is signed by a public authority”，然后重试。",
+          "turnChecksOnMysql": "在“Certificate”下选择“Signed by a public authority”，或选择“Signed by my own certificate authority”并粘贴服务器的 CA 证书，然后重试。",
+          "pgScramFallback": "如果服务器不支持 TLS，或其证书并非由公共机构签发，请让服务器管理员将此账户改为使用 SCRAM-SHA-256 登录。",
+          "mysqlUnverifiedCertificate": "无法验证服务器的证书。如果服务器使用自签名证书或私有证书颁发机构，请在“Certificate”下选择“Signed by my own certificate authority”，并粘贴该机构的证书。选择“Encrypt when offered, don't check the certificate”也能连接，但每当服务器要求直接发送密码时（例如重启后），登录都可能失败。",
+          "mysqlCustomCaMismatch": "无法使用你粘贴的 CA 证书验证服务器的证书。请确认它就是为此服务器证书签名的机构，并确认你输入的主机是该证书上列出的名称。"
+        }
+      },
+      "state": {
+        "connected": "已连接",
+        "failed": "无法连接",
+        "pending": "正在检查连接",
+        "pendingDetail": "你的凭据已加密存储。检查完成后，此页面会自动更新。"
+      }
+    },
+    "fileDrop": {
+      "uploading": "正在上传…"
+    },
+    "authenticatedResource": {
+      "loadFailedStatus": "无法加载文件（{status}）",
+      "loadFailed": "无法加载文件"
+    },
+    "artifactWorkspaceApi": {
+      "requestFailed": "请求失败（{status}）",
+      "draftLoadFailed": "无法加载私有草稿（{status}）"
+    },
+    "skillsStore": {
+      "catalogueInvalid": "技能目录的响应无效。"
+    },
+    "modelCatalog": {
+      "modelRouter": {
+        "label": "Model Router",
+        "desc": "自动路由到此账户配置的模型"
+      },
+      "operatorDefault": "运营方默认",
+      "restricted": {
+        "title": "你所在组织的管理员限制了此模型。",
+        "tag": "受限"
+      },
+      "needsCredits": "需要积分",
+      "budgetReached": {
+        "tag": "已达预算上限",
+        "title": "你所在组织的预算已用完。所有者或管理员可以在“预算”中提高上限。"
+      }
+    },
+    "settingsTransform": {
+      "routerSubtitle": {
+        "legacy": "用于每一轮中快速判断直接回复还是委派，以及历史记录摘要。",
+        "gateOffUntilPicked": "用于历史记录摘要。在此处选择模型之前，每轮对话前的“回复或委派”判断处于关闭状态。",
+        "gateOffNoModel": "用于历史记录摘要。每轮对话前的“回复或委派”判断已关闭：没有可用的模型。",
+        "followsPick": "用于历史记录摘要，以及每轮对话前的“回复或委派”判断。该判断对延迟要求严格：请在此处选择最快的模型，而不是最聪明的。",
+        "gateRunsOn": "用于历史记录摘要。每轮对话前的“回复或委派”判断在 {model} 上运行，而非此处所选模型。",
+        "gateRunsOnWithProvider": "用于历史记录摘要。每轮对话前的“回复或委派”判断在 {model}（{provider}）上运行，而非此处所选模型。"
+      },
+      "staleModel": "{model}（旧版，请重新选择模型）",
+      "otherModel": "其他…",
+      "latestNote": "最新"
+    },
+    "time": {
+      "justNow": "刚刚",
+      "ago": {
+        "s": "{value} 秒前",
+        "m": "{value} 分钟前",
+        "h": "{value} 小时前",
+        "d": "{value} 天前"
+      },
+      "in": {
+        "s": "{value} 秒后",
+        "m": "{value} 分钟后",
+        "h": "{value} 小时后",
+        "d": "{value} 天后"
+      }
+    },
+    "turnError": {
+      "tryAgain": "重试",
+      "setUpMindsHub": "设置 MindsHub"
+    },
+    "surface": {
+      "tasksNote": "在{other, select, desktop {桌面应用} other {网页版}}中创建的任务只会保留在那里。",
+      "artifactsNote": "在{other, select, desktop {桌面应用} other {网页版}}中创建的产物只会保留在那里。"
+    },
+    "antonErrors": {
+      "noProvider": "此账户未连接任何 LLM 提供商。你可以通过 MindsHub 免费开始，或在“设置”中添加你自己的提供商。",
+      "couldNotComplete": "无法完成此任务。"
+    },
+    "displayToggle": {
+      "switchStyle": "切换到 {style} 风格"
+    },
+    "conversationHistory": {
+      "thinkingDots": "正在思考...",
+      "thinking": "正在思考…",
+      "runningTask": "正在运行任务…",
+      "finishedReasoning": "推理完成",
+      "updatedContext": "已更新上下文",
+      "agentPhase": "{agent}：{phase}",
+      "agentWorking": "{agent} 正在处理",
+      "unexpectedError": "发生意外错误。"
+    },
+    "cloudConnector": {
+      "editTitle": "编辑 {name}"
+    },
+    "artifactRepair": {
+      "queued": "正在修改",
+      "ready": "修改待审阅",
+      "accepted": "已应用修改",
+      "rejected": "已放弃修改",
+      "noChange": "无需修改",
+      "conflict": "无法应用修改",
+      "cancelled": "已取消",
+      "discarded": "已忽略建议",
+      "sent": "已发送给智能体"
+    }
+  },
+  "scheduleCommon": {
+    "untitled": "未命名定时任务",
+    "deleteTitle": "要删除定时任务吗？",
+    "deleteMessage": "“{title}”将被永久删除。此操作无法撤销。",
+    "delete": "删除",
+    "keep": "保留",
+    "deleting": "正在删除…",
+    "edit": "编辑",
+    "noProject": "无项目",
+    "breadcrumb": "定时任务"
+  },
+  "scheduleStatus": {
+    "pausedFinishing": "已暂停 · 正在完成运行",
+    "running": "运行中",
+    "autoPaused": "已自动暂停",
+    "paused": "已暂停",
+    "missed": "已错过",
+    "lastFailed": "上次失败",
+    "lastRunFailed": "上次运行失败",
+    "done": "已完成",
+    "active": "已启用"
+  },
+  "scheduleRow": {
+    "cadence": {
+      "once": "一次性",
+      "every15": "每 15 分钟",
+      "every30": "每 30 分钟",
+      "hourly": "每小时",
+      "daily": "每天",
+      "weekdays": "工作日",
+      "weekly": "每周"
+    },
+    "openProject": "打开 {project}",
+    "descriptionWithNext": "{sentence} · 下次：{next}",
+    "stop": "停止",
+    "run": "运行",
+    "pause": "暂停",
+    "resume": "恢复"
+  },
+  "scheduleRunAlert": {
+    "finishingTitle": "已暂停，当前运行将继续完成",
+    "finishingNote": "暂停期间不会开始新的运行。点击“停止运行”会立即结束本次运行；已完成的操作将保留。",
+    "missedNote": "延迟超过一小时，因此没有自动运行。你可以立即运行，或编辑任务设置新的时间。",
+    "autoPausedTitleCount": "连续 {count} 次运行失败，已暂停",
+    "autoPausedTitle": "多次运行失败，已暂停",
+    "autoPausedNote": "“恢复”会重新启用定时，并可能补上一次待运行的任务。“立即运行”会马上运行一次。",
+    "partialTitle": "上次运行中途停止",
+    "partialNote": "部分操作可能已经完成。再次运行前，请先查看本次运行。",
+    "failedTitle": "上次运行失败",
+    "resume": "恢复",
+    "runNow": "立即运行",
+    "reviewRun": "查看运行",
+    "runAgain": "再次运行"
+  },
+  "scheduleTaskModal": {
+    "cadence": {
+      "once": "一次",
+      "every15": "每 15 分钟",
+      "every30": "每 30 分钟",
+      "hourly": "每小时",
+      "daily": "每天",
+      "weekdays": "每个工作日",
+      "weekly": "每周"
+    },
+    "errorNoPrompt": "请告诉 {agent} 要做什么。",
+    "errorPickFutureTime": "请选择一个未来的时间。",
+    "errorPickTime": "请选择时间。",
+    "errorSave": "无法保存定时任务。",
+    "editTitle": "编辑定时任务",
+    "createTitle": "创建定时任务",
+    "editSubtitle": "更改将从下次运行开始生效。",
+    "createSubtitleWeb": "即使关闭此标签页，{agent} 也会自动运行此任务。",
+    "createSubtitleDesktop": "只要 MindsHub 处于打开状态，{agent} 就会自动运行此任务。",
+    "promptLabel": "{agent} 应该做什么？",
+    "promptPlaceholder": "让 {agent}…",
+    "when": "时间",
+    "howOften": "频率",
+    "dayOfWeek": "星期",
+    "date": "日期",
+    "atMinute": "分钟：",
+    "at": "时间：",
+    "time": "时间",
+    "nextRuns": "{count, plural, other {下次运行：{runs}}}",
+    "timePassed": "该时间已过。",
+    "name": "名称",
+    "namePlaceholder": "根据提示词自动命名",
+    "project": "项目",
+    "model": "模型",
+    "accountDefault": "账户默认",
+    "cancel": "取消",
+    "saveAndRunOnce": "保存并运行一次",
+    "saving": "正在保存…",
+    "saveChanges": "保存更改",
+    "schedule": "创建定时"
+  },
+  "scheduledView": {
+    "sort": {
+      "next": "下次运行",
+      "name": "名称",
+      "created": "最近创建"
+    },
+    "trialRunFailed": "已保存“{title}”，但试运行未能开始：{reason}",
+    "trialRunFallback": "请尝试“立即运行”。",
+    "deleteFailed": "无法删除定时任务。",
+    "actionFailed": "定时任务操作失败。",
+    "title": "定时任务",
+    "subtitleDesktop": "定时任务会在 {product} 打开时运行。如果关闭期间有到期的运行，{agent} 会在重新打开后运行过去 7 天内最近的一次。",
+    "subtitleWeb": "定时任务在服务器上运行，即使关闭此标签页也不受影响。如果服务器停机期间有到期的运行，{agent} 会在服务器恢复后运行过去 7 天内最近的一次。",
+    "scheduleTask": "创建定时任务",
+    "searchPlaceholder": "搜索定时任务",
+    "filteredCount": "{shown} / {total} 个定时任务",
+    "count": "{count, plural, other {# 个定时任务}}",
+    "missedCount": "{count, plural, other {# 次错过的运行}}",
+    "autoPausedOne": "“{title}”连续多次运行失败，已暂停",
+    "autoPausedMany": "{count} 个定时任务连续多次运行失败，已暂停",
+    "review": "查看",
+    "reviewNamed": "查看“{title}”",
+    "emptyTitle": "还没有定时任务",
+    "emptyDescription": "让 {agent} 定期重复执行任务，例如每周一的摘要、每小时的日志巡检、每天的 KPI 快照。",
+    "emptyAction": "创建第一个定时任务",
+    "needsAttention": "需要处理",
+    "everythingElse": "其他"
+  },
+  "scheduleDetail": {
+    "runStatus": {
+      "running": "运行中",
+      "success": "成功",
+      "failed": "失败",
+      "cancelled": "已停止"
+    },
+    "sentence": "{when}（{zone}）",
+    "runningNow": "正在运行",
+    "nextRun": "下次运行：{when}",
+    "notFound": "找不到定时任务。",
+    "backToList": "返回定时任务",
+    "actionFailed": "操作失败。",
+    "allScheduledTasks": "所有定时任务",
+    "enabledAriaLabel": "已启用定时",
+    "stopping": "正在停止…",
+    "stopRun": "停止运行",
+    "running": "正在运行…",
+    "runNow": "立即运行",
+    "scheduleAriaLabel": "定时",
+    "accountDefaultModel": "账户默认模型",
+    "ranOnDefaultModel": "默认模型",
+    "modelUnavailable": "{model} 不可用，因此本次运行使用了你的默认模型。",
+    "succeededCount": "{total, plural, other {# 次运行中成功 {succeeded} 次}}",
+    "promptAriaLabel": "提示词",
+    "runs": "运行记录",
+    "loading": "正在加载…",
+    "noRuns": "还没有运行记录。点击“立即运行”试一试。",
+    "manual": "手动",
+    "statusWithReason": "{status}：{reason}",
+    "openFailedRun": "打开 {when} 失败的运行：{reason}",
+    "openRun": "打开 {when} 的运行",
+    "showOlder": "显示更早的运行"
+  },
+  "contextFileModal": {
+    "download": "下载",
+    "revealInFinder": "在 Finder 中显示",
+    "reveal": "显示位置",
+    "openInDefaultApp": "用默认应用打开",
+    "open": "打开",
+    "binary": {
+      "cantDisplay": "此文件无法直接显示（二进制文件、文件过大或非文本）。",
+      "useActions": "请使用下方的操作查看。",
+      "downloading": "正在下载…"
+    },
+    "projectInstructions": "项目说明",
+    "instructionsPlaceholder": "告诉智能体如何在此项目中工作，例如代码库规范、输出偏好、需要避免的事项…",
+    "fileContentsPlaceholder": "文件内容",
+    "noInstructionsYet": "（还没有说明，点击“编辑”添加）",
+    "emptyFile": "（空文件）",
+    "thisFileCapitalized": "此文件",
+    "thisFile": "此文件",
+    "noLongerAttached": "{name} 已不再附加到此对话。",
+    "noLongerInProject": "{path} 已不在此项目中。",
+    "couldNotLoadImage": "无法加载图片。",
+    "couldNotLoadPreview": "无法加载预览",
+    "couldNotReadFile": "无法读取文件",
+    "couldNotSave": "无法保存",
+    "couldNotDelete": "无法删除",
+    "deleteConfirm": {
+      "title": "要删除 {name} 吗？",
+      "message": "此操作无法撤销。"
+    },
+    "delete": "删除",
+    "loading": "正在加载…",
+    "readOnly": "只读。你没有编辑此共享资源的权限。",
+    "preview": "预览",
+    "file": "文件",
+    "deletePermanently": "将永久删除。",
+    "noDeletePermission": "你没有删除此共享资源的权限。",
+    "noEditPermission": "你没有编辑此共享资源的权限。",
+    "cancel": "取消",
+    "saving": "正在保存…",
+    "save": "保存",
+    "close": "关闭",
+    "edit": "编辑"
+  },
+  "newProjectModal": {
+    "remove": "移除",
+    "fileSizeKb": "{size} KB",
+    "nameRequired": "请输入项目名称。",
+    "folderUnsupported": "此服务器不支持将项目指向文件夹。它已将“{name}”创建为普通项目，并清除了你选择的文件夹。请更新 Cowork 以使用你的文件夹；如果不需要该项目，也可以将其删除。",
+    "couldNotCreate": "无法创建项目。",
+    "couldNotOpenPicker": "无法打开文件夹选择器。",
+    "title": "新建项目",
+    "nameLabel": "项目名称",
+    "instructionsLabel": "说明",
+    "savedAs": "保存为",
+    "instructionsPlaceholder": "告诉智能体如何在此项目中工作，例如代码库规范、输出偏好、需要避免的事项…",
+    "locationLabel": "位置",
+    "locationHelpChosen": "智能体会处理此文件夹中已有的文件。Cowork 会在其中添加 skills/ 和 .anton/ 文件夹；删除项目时，你的文件会原样保留。",
+    "locationHelpDefault": "默认情况下，Cowork 会为项目创建一个新文件夹。",
+    "changeFolder": "更改文件夹",
+    "useExistingFolder": "使用现有文件夹",
+    "clear": "清除",
+    "filesLabel": "文件",
+    "optional": "（可选）",
+    "dropFiles": "将文件拖放到此处",
+    "clickToBrowse": "或点击浏览",
+    "dropHint": "参考文档、架构、示例等，任何智能体需要了解的内容。",
+    "cancel": "取消",
+    "creating": "正在创建…",
+    "create": "创建"
+  },
+  "projectCard": {
+    "untitledTask": "未命名任务",
+    "stats": {
+      "tasks": "{count, plural, other {# 个任务}}",
+      "memories": "{count, plural, other {# 条记忆}}",
+      "schedules": "{count, plural, other {# 个定时任务}}",
+      "artifacts": "{count, plural, other {# 个产物}}"
+    },
+    "pin": "置顶项目",
+    "unpin": "取消置顶项目",
+    "menu": "项目菜单",
+    "deleting": "正在删除…",
+    "sharedReadOnly": "与你分享 · 只读",
+    "noActivity": "暂无活动",
+    "running": "{count} 个正在运行"
+  },
+  "sharedProjectFiles": {
+    "unavailable": "此共享项目不可用。其所有者或运营方可能已移除访问权限。",
+    "notText": "此文件无法以文本形式显示。如果文件仍然可用，请下载查看。",
+    "downloadUnavailable": "无法下载。访问权限可能已被移除。",
+    "ariaLabel": "共享项目文件",
+    "projectsCrumb": "项目",
+    "allProjects": "所有项目",
+    "sharedReadOnly": "与你分享 · 只读",
+    "intro": "浏览和下载文件。只有所有者可以编辑此项目或在此运行任务。",
+    "loadingFiles": "正在加载文件…",
+    "files": "文件",
+    "noFiles": "还没有共享文件。",
+    "truncated": "此项目的文件过多，无法全部列出。",
+    "download": "下载",
+    "loadingFile": "正在加载文件…",
+    "selectFile": "选择一个文件进行阅读。HTML 将以源代码形式显示。"
+  },
+  "sharedProjectReference": {
+    "title": "项目 ID：{id}",
+    "label": "项目 · {id}"
+  },
+  "projectPicker": {
+    "couldNotCreate": "无法创建项目。",
+    "choose": "选择项目",
+    "workInProject": "在项目中工作",
+    "searchOrCreate": "搜索或创建…",
+    "searchProjects": "搜索项目…",
+    "noMatch": "没有与“{query}”匹配的项目。",
+    "noProjects": "还没有项目。",
+    "creating": "正在创建…",
+    "createPrefix": "创建",
+    "quotedName": "“{name}”",
+    "newProject": "新建项目"
+  },
+  "moveToProjectModal": {
+    "title": "移至项目",
+    "subtitleNamed": "移动“{title}”及其成果",
+    "subtitle": "移动此任务及其成果",
+    "searchPlaceholder": "搜索项目或输入新名称…",
+    "createNew": "创建“{name}”",
+    "alreadyIn": "此任务已在“{name}”中。",
+    "noOtherProjects": "还没有其他项目。输入名称即可创建。",
+    "moveEverythingAriaLabel": "全部移动：包括此任务创建的文件和产物",
+    "moveEverything": "全部移动：包括此任务创建的文件和产物",
+    "cancel": "取消",
+    "moving": "正在移动…",
+    "moveTo": "移至 {name}",
+    "move": "移动"
+  },
+  "projectsView": {
+    "newProject": "新建项目",
+    "sort": {
+      "recent": "最近",
+      "name": "名称",
+      "mostActive": "最活跃",
+      "leastActive": "最不活跃"
+    },
+    "counts": {
+      "filtered": "{filtered} / {total} 个项目",
+      "total": "{count, plural, other {# 个项目}}",
+      "pinned": "{count, plural, other {已置顶 # 个}}"
+    },
+    "menu": {
+      "open": "打开",
+      "pin": "置顶",
+      "unpin": "取消置顶",
+      "rename": "重命名…",
+      "chosenFolderHint": "所选文件夹",
+      "adminOrCreatorHint": "管理员或创建者",
+      "chosenFolderRenameTitle": "此项目指向你选择的文件夹。请直接重命名该文件夹。",
+      "revealInFinder": "在 Finder 中显示",
+      "delete": "删除…",
+      "generalUndeletable": "“General”项目无法删除，它是用于收纳无归属内容的工作区。",
+      "noDeletePermission": "你没有删除此项目的权限。",
+      "ariaLabel": "项目操作"
+    },
+    "noRenamePermission": "你没有重命名此项目的权限。",
+    "renameFailed": "重命名失败：{error}",
+    "expandPanel": "展开面板",
+    "collapsePanel": "收起面板",
+    "title": "项目",
+    "allProjects": "所有项目",
+    "deleting": "正在删除…",
+    "projectMenu": "项目菜单",
+    "composerPlaceholder": "在 {project} 中开始新任务…",
+    "subtitle": "{agent} 用来归类对话、记忆和产出的工作区。",
+    "theAgent": "智能体",
+    "searchPlaceholder": "搜索项目",
+    "empty": {
+      "title": "还没有项目",
+      "description": "创建第一个项目，开始归类对话和产出。",
+      "action": "创建第一个项目"
+    }
+  }
+}

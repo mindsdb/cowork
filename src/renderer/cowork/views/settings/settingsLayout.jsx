@@ -2,6 +2,7 @@ import { useContext, createContext, Children, useState } from 'react';
 import Ico from '../../components/Icons';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
+import { useTranslation } from '../../../lib/i18n';
 
 // Layout mode for the settings surface. Desktop (default) renders the
 // two-column nav + scrolling panel inside a modal; mobile (ENG-990) renders
@@ -78,6 +79,7 @@ export function Section({ title, subtitle, notice, children }) {
 // Pass `footer` as JSX — buttons, status text, whatever the section needs.
 export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
+  const { t } = useTranslation('settings');
   if (mobile) {
     // Natural flow so the whole detail page scrolls (no internal scroll or
     // width cap). A sticky full-bleed bottom bar carries the action: the Save
@@ -101,7 +103,7 @@ export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
             <span aria-hidden="true" className="inline-flex text-[var(--ok)]">
               {Ico.check ? Ico.check(14) : '✓'}
             </span>
-            <span>Changes are saved automatically.</span>
+            <span>{t('autoSave.savedAutomatically')}</span>
           </div>
         ) : null}
       </div>

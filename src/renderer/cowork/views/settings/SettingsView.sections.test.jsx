@@ -81,6 +81,7 @@ vi.mock('../../code/api', () => ({
 }));
 
 import SettingsView from './SettingsView';
+import { fetchRecommendedModels } from '../../api';
 
 beforeEach(() => {
   window.localStorage.setItem('mindshub.code.enabled.v1', 'true');
@@ -265,5 +266,15 @@ describe('SettingsView — Code Mode opt-in', () => {
     expect(await screen.findByRole('combobox', { name: 'Default terminal shell' })).toBeInTheDocument();
     expect(codingSpies.engines).toHaveBeenCalledOnce();
     expect(codingSpies.terminalShells).toHaveBeenCalledOnce();
+  });
+});
+
+describe('SettingsView — Coding agent model picker', () => {
+  it('re-checks model availability (refresh) when the picker opens', async () => {
+    const user = userEvent.setup();
+    fetchRecommendedModels.mockClear();
+    render(<Harness section="codingAgent" />);
+    await user.click(await screen.findByRole('combobox', { name: 'Coding agent model' }));
+    expect(fetchRecommendedModels).toHaveBeenCalledWith({ refresh: true });
   });
 });

@@ -1,0 +1,30 @@
+{
+  "picker": {
+    "placeholder": "Modell auswählen",
+    "empty": "Keine Modelle gefunden",
+    "searchAriaLabel": "Modelle durchsuchen",
+    "unavailable": "Nicht verfügbar",
+    "addCredits": "Guthaben aufladen",
+    "addCreditsTooltip": "Laden Sie Guthaben auf, um dieses Modell zu nutzen"
+  },
+  "groups": {
+    "openWeight": "Open-Weight",
+    "other": "Weitere"
+  },
+  "effort": {
+    "label": "Aufwand",
+    "description": "Mehr Aufwand liefert gründlichere Antworten, dauert aber länger und schöpft Ihre Limits schneller aus.",
+    "default": "Standard",
+    "levels": {
+      "none": "Keiner",
+      "minimal": "Minimal",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "xhigh": "Sehr hoch",
+      "max": "Maximal",
+      "fast": "Schnell",
+      "slow": "Langsam"
+    }
+  }
+}

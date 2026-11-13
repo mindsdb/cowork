@@ -11,8 +11,10 @@
 
 import { Modal, ModalHeader, ModalBody } from '../ui/Modal';
 import { MarkdownContent } from '../markdown/MarkdownContent';
+import { useTranslation } from '../../../lib/i18n';
 
 export default function HowToModal({ open, title, content, onClose }) {
+  const { t } = useTranslation('library');
   return (
     <Modal
       open={open}
@@ -23,7 +25,7 @@ export default function HowToModal({ open, title, content, onClose }) {
       layer="system"
       labelledBy="howto-title"
     >
-      <ModalHeader id="howto-title" title={title || 'How to'} onClose={onClose} />
+      <ModalHeader id="howto-title" title={title || t('dataVault.howTo')} onClose={onClose} />
       <ModalBody padding="16px 22px 22px">
         <MarkdownContent text={content || ''} id="howto" complete />
       </ModalBody>

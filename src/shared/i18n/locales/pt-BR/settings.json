@@ -1,0 +1,498 @@
+{
+  "nav": {
+    "title": "Configurações",
+    "ariaLabel": "Seções de configurações",
+    "groups": {
+      "General": "Geral",
+      "Code": "Código",
+      "App": "App",
+      "System": "Sistema"
+    },
+    "items": {
+      "agent": "Agente",
+      "codingAgent": "Agente de código",
+      "computers": "Computadores",
+      "appearance": "Aparência",
+      "branding": "Marca",
+      "desktop": "Desktop",
+      "channels": "Canais",
+      "updates": "Atualizações",
+      "backend": "Backend",
+      "usage": "Uso",
+      "account": "Conta"
+    }
+  },
+  "header": {
+    "signIn": "Entrar",
+    "signInTooltip": "Entre com o MindsHub para usar os modelos gerenciados"
+  },
+  "autoSave": {
+    "saving": "Salvando…",
+    "failed": "Não foi possível salvar",
+    "saved": "Salvo",
+    "savedAutomatically": "As alterações são salvas automaticamente."
+  },
+  "language": {
+    "title": "Idioma",
+    "ariaLabel": "Idioma",
+    "matchSystem": "Igual ao sistema ({language})"
+  },
+  "appearance": {
+    "title": "Aparência",
+    "style": {
+      "title": "Estilo",
+      "lockedSubtitle": "Definido por esta implantação. Claro e escuro continuam sendo escolha sua.",
+      "subtitle": "Normal, 8-Bit ou crie o seu com Personalizado. Combina com claro e escuro.",
+      "ariaLabel": "Estilo",
+      "optionAriaLabel": "Estilo {name}"
+    },
+    "skins": {
+      "normal": {
+        "label": "Normal",
+        "title": "Use a aparência padrão."
+      },
+      "8bit": {
+        "label": "8-Bit",
+        "title": "Use a aparência retrô 8-Bit."
+      },
+      "custom": {
+        "label": "Personalizado",
+        "title": "Crie sua própria aparência."
+      }
+    },
+    "theme": {
+      "title": "Tema",
+      "subtitle": "Claro ou escuro; também muda o fundo animado.",
+      "ariaLabel": "Tema",
+      "light": "Claro",
+      "lightAriaLabel": "Tema claro",
+      "lightHint": "Use o tema claro.",
+      "dark": "Escuro",
+      "darkAriaLabel": "Tema escuro",
+      "darkHint": "Use o tema escuro."
+    },
+    "accent": {
+      "title": "Cor de destaque",
+      "subtitle": "Botões, realces, foco: a cor da marca do seu tema.",
+      "ariaLabel": "Cor de destaque personalizada"
+    },
+    "background": {
+      "default": "Padrão",
+      "lightTitle": "Fundo claro",
+      "lightSubtitle": "Usado no tema claro. Uma cor escura vira um tom claro do mesmo matiz; o texto se ajusta para continuar legível. Com Padrão, o fundo escuro dá o tom ou vale a aparência padrão do tema claro.",
+      "lightAriaLabel": "Cor de fundo personalizada — Modo claro",
+      "lightDefaultAriaLabel": "Fundo claro padrão",
+      "darkTitle": "Fundo escuro",
+      "darkSubtitle": "Usado no tema escuro. Uma cor clara vira um tom escuro do mesmo matiz; o texto se ajusta para continuar legível. Com Padrão, o fundo claro dá o tom ou vale a aparência padrão do tema escuro.",
+      "darkAriaLabel": "Cor de fundo personalizada — Modo escuro",
+      "darkDefaultAriaLabel": "Fundo escuro padrão"
+    },
+    "corners": {
+      "title": "Cantos",
+      "subtitle": "O quanto as superfícies parecem marcadas.",
+      "ariaLabel": "Raio dos cantos",
+      "square": "Retos",
+      "squareAriaLabel": "Cantos retos",
+      "squareHint": "Cantos de pixel marcados.",
+      "soft": "Suaves",
+      "softAriaLabel": "Cantos suaves",
+      "softHint": "Levemente arredondados.",
+      "round": "Redondos",
+      "roundAriaLabel": "Cantos redondos",
+      "roundHint": "Totalmente arredondados."
+    },
+    "typeface": {
+      "title": "Tipografia",
+      "subtitle": "A fonte padrão da interface, ou monoespaçada em tudo para um visual de terminal.",
+      "ariaLabel": "Tipografia personalizada",
+      "standard": "Padrão",
+      "standardAriaLabel": "Fonte padrão",
+      "standardHint": "Inter para o texto da interface.",
+      "mono": "Mono",
+      "monoAriaLabel": "Fonte monoespaçada",
+      "monoHint": "JetBrains Mono em tudo."
+    },
+    "scanlines": {
+      "title": "Linhas de varredura",
+      "subtitle": "Uma leve camada de linhas de varredura estilo CRT sobre todo o app.",
+      "ariaLabel": "Camada de linhas de varredura"
+    },
+    "greeting": {
+      "title": "Saudação",
+      "subtitle": "A frase exibida quando você começa uma nova tarefa.",
+      "hint": "Exibida acima do campo da tarefa quando você começa uma nova tarefa.",
+      "ariaLabel": "Texto da saudação"
+    },
+    "sidebarTitle": {
+      "title": "Título da barra lateral",
+      "subtitle": "Exibido no topo do painel de navegação à esquerda. Deixe em branco para usar o padrão, {product}.",
+      "hint": "Substitui o logotipo de {product} no painel de navegação.",
+      "ariaLabel": "Texto do título da barra lateral"
+    },
+    "sidebarTitleColor": {
+      "title": "Cor do título da barra lateral",
+      "subtitle": "Escolha uma cor para o título da barra lateral ou use a cor de texto padrão do tema.",
+      "ariaLabel": "Cor do título da barra lateral",
+      "follow": "Seguir o tema",
+      "followAriaLabel": "Seguir a cor do tema"
+    },
+    "sidebarLogo": {
+      "title": "Logo da barra lateral",
+      "subtitle": "Um ícone ao lado do título da barra lateral. PNG, JPG ou SVG, com menos de 300 KB.",
+      "change": "Trocar logo",
+      "upload": "Enviar logo",
+      "remove": "Remover",
+      "tooLarge": "O logo deve ter menos de 300 KB."
+    },
+    "favicon": {
+      "title": "Ícone da aba do navegador",
+      "subtitle": "PNG, ICO, SVG ou WEBP, com menos de 100 KB. Uma imagem quadrada de pelo menos 32 × 32 pixels funciona melhor.",
+      "previewAlt": "Prévia do ícone da aba do navegador",
+      "change": "Trocar ícone",
+      "upload": "Enviar ícone",
+      "remove": "Remover",
+      "removeAriaLabel": "Remover o ícone da aba do navegador",
+      "fileAriaLabel": "Arquivo do ícone da aba do navegador",
+      "wrongType": "Escolha uma imagem PNG, ICO, SVG ou WEBP.",
+      "tooLarge": "O ícone da aba deve ter menos de 100 KB.",
+      "unreadable": "Não foi possível ler esta imagem. Tente outro arquivo."
+    },
+    "figureSources": {
+      "title": "Mostrar de onde vêm os números",
+      "subtitle": "Sublinha cada número de uma resposta com a etapa de onde ele veio e marca os números que nenhuma etapa retornou."
+    },
+    "animatedBackground": {
+      "title": "Fundo animado",
+      "subtitle": "Uma grade de pontos animada atrás do app em vez de uma superfície lisa."
+    },
+    "counters": {
+      "title": "Mostrar contadores no painel de navegação",
+      "subtitle": "Contadores em Projetos / Agendadas / Artefatos / Apps conectados, e o tempo decorrido em cada linha de Recentes.",
+      "ariaLabel": "Contadores do painel de navegação"
+    },
+    "themeToggle": {
+      "title": "Botão de alternar tema",
+      "subtitle": "Controle de claro/escuro no botão de exibição no canto da janela."
+    },
+    "styleToggle": {
+      "title": "Botão de alternar estilo 8-bit",
+      "subtitle": "Controle de estilo Normal/8-Bit no mesmo botão. Com os dois ativados, o botão abre as configurações de exibição."
+    },
+    "setByOrg": "Definido pela sua organização.",
+    "yourStyle": {
+      "title": "Seu estilo",
+      "description": "Substituem a aparência da sua organização, só para você.",
+      "off": "As configurações de estilo pessoal estão desativadas. Todos veem a aparência da sua organização.",
+      "orgSetsRest": "As demais configurações de estilo são definidas pela marca da sua organização.",
+      "changeInBranding": "Alterar em Marca →"
+    },
+    "display": {
+      "title": "Exibição",
+      "description": "Preferências de exibição pessoais. Só você as vê."
+    }
+  },
+  "mobile": {
+    "back": "Voltar às configurações",
+    "close": "Fechar configurações"
+  },
+  "footer": {
+    "hint": {
+      "missingNames": "Cada provedor personalizado precisa de um nome",
+      "saving": "Salvando…",
+      "noChanges": "Nenhuma alteração não salva",
+      "save": "Salve as alterações.",
+      "retest": "Teste de novo os provedores que falharam.",
+      "saveAndTest": "Salve as alterações e teste os provedores de novo."
+    },
+    "status": {
+      "testing": "Testando a configuração…",
+      "saving": "Salvando as configurações…",
+      "testPassed": "Teste aprovado: provedor, modelo e credenciais estão corretos.",
+      "saved": "Configurações salvas.",
+      "testProblem": "O teste encontrou um problema.",
+      "configProblem": "A configuração tem um problema.",
+      "applyOnSave": "As alterações valem ao salvar."
+    },
+    "button": {
+      "saving": "Salvando…",
+      "save": "Salvar",
+      "saved": "Salvo"
+    },
+    "errors": {
+      "saveFailed": "Não foi possível salvar as configurações.",
+      "verifyFailed": "Configurações salvas, mas a verificação falhou: {error}",
+      "checkFailed": "Não foi possível verificar a configuração.",
+      "validateFailed": "Não foi possível validar as configurações."
+    }
+  },
+  "fields": {
+    "clearTooltip": "Limpar (vale ao salvar)",
+    "clearAriaLabel": "Limpar valor"
+  },
+  "apiKey": {
+    "ariaLabel": "Chave de API",
+    "namedAriaLabel": "Chave de API de {name}",
+    "revealFirst": "Mostre a chave antes de copiá-la",
+    "copied": "Copiada",
+    "copyFailed": "Não foi possível copiar: selecione a chave e copie manualmente",
+    "copy": "Copiar para a área de transferência",
+    "copiedAriaLabel": "Copiada para a área de transferência",
+    "copyAriaLabel": "Copiar a chave para a área de transferência",
+    "hide": "Ocultar chave",
+    "revealing": "Mostrando…",
+    "reveal": "Mostrar chave",
+    "clearTooltip": "Limpar esta chave (vale ao salvar)",
+    "clearAriaLabel": "Limpar chave"
+  },
+  "budget": {
+    "fieldTitle": "{label} ({min}–{max}, padrão {fallback}{unit, select, million { milhões de tokens} other {}})",
+    "millionTokens": "milhões de tokens",
+    "safetyLimit": "limite de segurança",
+    "noLimitHint": "sem limite: valem só os limites de etapas e de continuações automáticas",
+    "default": "padrão {value}",
+    "or": "— ou —"
+  },
+  "probe": {
+    "byok": "Ou adicione seu próprio provedor e chave de API abaixo.",
+    "noCredits": "Nenhum crédito disponível.",
+    "topUp": "Recarregar saldo →",
+    "addFunds": "Adicionar fundos →",
+    "slowDown": "{sentence} Não é um problema de créditos.",
+    "budgetReached": "O orçamento da sua organização acabou. {detail}",
+    "viewBudgetsArrow": "Ver orçamentos →"
+  },
+  "providers": {
+    "title": "Provedores de LLM",
+    "unavailable": "O provedor configurado não está disponível. Tente de novo ou fale com seu administrador.",
+    "status": {
+      "connected": "conectado",
+      "unableToConnect": "não foi possível conectar",
+      "testing": "testando…",
+      "notTested": "não testado"
+    },
+    "statusTitle": {
+      "signedIn": "Conectado pelo login do MindsHub.",
+      "passed": "O último teste foi aprovado",
+      "passedDetail": "O último teste foi aprovado ({detail})",
+      "failed": "O último teste falhou",
+      "failedDetail": "O último teste falhou: {detail}",
+      "testing": "Testando…",
+      "notTested": "Ainda não testado: salve as configurações e execute um teste para verificar.",
+      "notTestedNoTests": "A conexão com o provedor não foi testada."
+    },
+    "desc": {
+      "mindsCloud": "Todos os modelos de ponta em um só lugar: Claude, GPT, Gemini e mais.",
+      "anthropic": "Use os modelos Claude com sua chave de API da Anthropic.",
+      "openai": "Use os modelos GPT com sua chave de API da OpenAI.",
+      "gemini": "Use os modelos Gemini pelo endpoint compatível com OpenAI do Google.",
+      "openaiCompatible": "Qualquer servidor compatível com OpenAI (Ollama, vLLM, Together, Groq etc.)."
+    },
+    "customHeading": "Provedor personalizado compatível com OpenAI",
+    "customName": {
+      "label": "Nome do provedor personalizado",
+      "hint": "Nome exibido deste provedor personalizado; aparece nas listas de modelos abaixo.",
+      "required": "Nome obrigatório"
+    },
+    "baseUrl": "URL base",
+    "getKey": "Obtenha sua chave de API em {link}",
+    "openInBrowser": "Abra {url} no seu navegador.",
+    "noAccount": "Não tem uma conta?",
+    "signUp": "Cadastre-se →",
+    "signUpTooltip": "Abra a página de cadastro do MindsHub no seu navegador.",
+    "remove": "Remover este provedor",
+    "editKey": "Editar chave de API",
+    "allConfigured": "Todos os tipos de provedor já estão configurados",
+    "addAnother": "Adicionar outro provedor",
+    "add": "Adicionar provedor",
+    "choose": "Escolha um provedor:",
+    "hidePicker": "Oculte o seletor de provedores.",
+    "closePicker": "Fechar o seletor de provedores"
+  },
+  "agent": {
+    "modelRouter": "Roteador de modelos",
+    "roles": {
+      "planning": "Modelo de planejamento",
+      "router": "Modelo de roteamento e resumo",
+      "coding": "Modelo de código",
+      "planningSubtitle": "Usado para raciocinar, orquestrar e responder.",
+      "codingSubtitle": "Usado para gerar código no scratchpad."
+    },
+    "providerLabel": "Provedor:",
+    "modelLabel": "Modelo:",
+    "providerHint": "Escolha qual provedor atende a função de {role, select, planning {planejamento} coding {código} router {roteamento} other {{role}}}.",
+    "modelHint": "Escolha o modelo de {role, select, planning {planejamento} coding {código} router {roteamento} other {{role}}}. Escolha Outro… para digitar um id de modelo personalizado.",
+    "customModelPlaceholder": "Digite um id de modelo",
+    "customModelHint": "Id de modelo livre enviado como está ao provedor.",
+    "modelIdHint": "Id de modelo enviado como está a este provedor.",
+    "checking": "Verificando a conexão com {provider}…",
+    "notConfigured": "{provider} não está configurado: adicione as credenciais em Provedores de LLM, acima, ou escolha outro provedor.",
+    "unknownNotConfigured": "Este provedor não está configurado. Adicione-o em Provedores de LLM, acima.",
+    "failed": "{provider} falhou no último teste: verifique-o em Provedores de LLM, acima, ou escolha outro provedor.",
+    "modelUnavailable": "{model} não está disponível. Escolha outro modelo ou fale com seu administrador.",
+    "modelRestricted": "Um administrador da sua organização restringiu {model}. Escolha outro modelo.",
+    "modelNeedsCredits": "{model} precisa de créditos. {link} para usá-lo.",
+    "topUpBalance": "Recarregue seu saldo",
+    "modelBudgetReached": "{model} não pode ser executado porque o orçamento da sua organização acabou.",
+    "viewBudgets": "Ver orçamentos"
+  },
+  "memory": {
+    "title": "Memória",
+    "mode": {
+      "title": "Modo de memória",
+      "subtitle": "Como {agent} atualiza a memória de longo prazo.",
+      "ariaLabel": "Modo de memória",
+      "autopilot": "Automático",
+      "autopilotHint": "{agent} atualiza a memória de longo prazo automaticamente.",
+      "copilot": "Copiloto",
+      "copilotHint": "{agent} sugere atualizações de memória para você confirmar.",
+      "off": "Desativado",
+      "offHint": "Desativa as atualizações da memória de longo prazo."
+    },
+    "episodic": {
+      "title": "Memória episódica",
+      "subtitle": "Salva o histórico de conversas para consultas futuras."
+    },
+    "dashboards": {
+      "title": "Dashboards proativos",
+      "subtitle": "Gera relatórios HTML automaticamente a partir da saída do scratchpad."
+    },
+    "actFirst": {
+      "title": "Agir primeiro, perguntar depois",
+      "subtitle": "Age com padrões razoáveis e explica as suposições no caminho, em vez de parar para perguntar."
+    }
+  },
+  "advanced": {
+    "title": "Configurações avançadas",
+    "limits": {
+      "title": "Limitar quanto uma tarefa pode fazer",
+      "subtitleOn": "{agent} para ou pergunta antes de continuar ao atingir as etapas, continuações automáticas e tokens definidos abaixo.",
+      "subtitleOff": "Desativado: uma tarefa roda até terminar, até um limite de segurança alto em que {agent} pergunta antes de continuar. Ative para definir seus próprios limites."
+    },
+    "maxSteps": {
+      "title": "Máximo de etapas por tarefa",
+      "subtitle": "Quantas ações (executar código, ler arquivos, pesquisar) {agent} pode realizar em uma solicitação antes de pausar para falar com você. Aumente para que tarefas grandes terminem de uma vez; diminua para controlar mais o tempo e o custo."
+    },
+    "maxContinuations": {
+      "title": "Máximo de continuações automáticas",
+      "subtitle": "Quando {agent} para, mas o trabalho parece incompleto, o Cowork o envia de volta para terminar; isto limita quantas vezes. Aumente para mais minúcia sem intervenção; use 0 para parar após a primeira tentativa (você ainda recebe um resumo do que falta)."
+    },
+    "maxTokens": {
+      "title": "Máximo de tokens por tarefa",
+      "subtitle": "O máximo de tokens que {agent} pode gastar em uma solicitação antes de pausar para falar com você, para que uma tarefa travada não consuma boa parte da sua cota gratuita ou do seu saldo sem terminar. Aumente se você costuma passar trabalhos grandes; diminua para limitar o custo de cada solicitação.",
+      "noLimit": "Sem limite"
+    },
+    "jev": {
+      "title": "Respostas rápidas com Jev",
+      "subtitle": "Jev, o modelo de decisão do MindsHub, lê cada mensagem e a conversa recente para decidir se o modelo escolhido pode respondê-la diretamente, e verifica se {agent} terminou o trabalho. Desative para que {agent} processe cada mensagem."
+    }
+  },
+  "desktop": {
+    "title": "Desktop",
+    "keepAwake": {
+      "title": "Manter ativo para tarefas agendadas",
+      "subtitle": "Enquanto estiver na tomada, impede que este computador entre em repouso quando uma tarefa agendada está em execução ou prestes a começar. Não consegue despertar um computador que já está em repouso nem impedir o repouso ao fechar a tampa."
+    }
+  },
+  "branding": {
+    "title": "Marca",
+    "description": "A aparência da sua organização, para todos que fazem parte dela. Os membros a veem na próxima vez que abrirem o app ou as Configurações.",
+    "adminOnly": "Definido pelo administrador da sua organização.",
+    "saveError": {
+      "forbidden": "Só um administrador da organização pode alterar a marca.",
+      "generic": "Não foi possível salvar a marca. Tente novamente."
+    },
+    "sidebarTitle": {
+      "title": "Título da barra lateral",
+      "subtitle": "Exibido no topo da barra lateral para todos na sua organização. Nome da empresa acompanha as mudanças de nome no console; um título personalizado fica como você digitou; Nenhum mostra só o logo.",
+      "ariaLabel": "Título da barra lateral",
+      "company": "Nome da empresa",
+      "companyHint": "Acompanha o nome da empresa, inclusive quando muda.",
+      "custom": "Personalizado",
+      "customHint": "Um título que você digita e que se mantém mesmo se o nome mudar.",
+      "none": "Nenhum",
+      "noneAriaLabel": "Nenhum (só o logo)",
+      "noneHint": "Sem título: só o logo.",
+      "customAriaLabel": "Título personalizado da barra lateral",
+      "required": "Digite um título para a barra lateral ou escolha Nome da empresa ou Nenhum.",
+      "preview": "A barra lateral mostra:",
+      "logoOnly": "só o logo",
+      "noTitle": "(sem título)"
+    },
+    "logo": {
+      "title": "Logo e ícone",
+      "subtitle": "O logo é o da barra lateral e o ícone é o da aba do navegador, para todos na sua organização. Eles são definidos no console.",
+      "iconAlt": "Ícone da organização",
+      "logoAlt": "Logo da organização",
+      "logoDarkAlt": "Logo da organização para fundos escuros",
+      "noneSet": "Nenhum definido.",
+      "opensInBrowser": "Abre no seu navegador",
+      "editInConsole": "Editar no console"
+    },
+    "theme": {
+      "title": "Tema da organização",
+      "subtitle": "Claro ou escuro para todos, ou deixe cada membro escolher.",
+      "ariaLabel": "Tema da organização",
+      "notSet": "Não definido",
+      "notSetAriaLabel": "Sem tema da organização",
+      "lightAriaLabel": "Tema claro da organização",
+      "darkAriaLabel": "Tema escuro da organização"
+    },
+    "style": {
+      "title": "Estilo da organização",
+      "deploymentLocked": "Definido por esta implantação, para todas as organizações nela.",
+      "subtitle": "A aparência de onde todos na sua organização partem. Com Personalizado, você escolhe a cor, o fundo, os cantos e a tipografia.",
+      "ariaLabel": "Estilo da organização",
+      "notSet": "Não definido",
+      "notSetAriaLabel": "Sem estilo da organização",
+      "notSetHint": "Os membros mantêm a aparência padrão do app.",
+      "optionAriaLabel": "Estilo {name} da organização"
+    },
+    "accent": {
+      "subtitle": "Botões, realces e anéis de foco.",
+      "ariaLabel": "Cor de destaque da organização"
+    },
+    "background": {
+      "lightSubtitle": "Usado no tema claro. Uma cor escura vira um tom claro do mesmo matiz; o texto se ajusta para continuar legível. Com Padrão, o fundo escuro dá o tom ou vale a aparência clara padrão.",
+      "lightAriaLabel": "Cor de fundo claro da organização",
+      "lightDefaultAriaLabel": "Fundo claro padrão da organização",
+      "darkSubtitle": "Usado no tema escuro. Uma cor clara vira um tom escuro do mesmo matiz; o texto se ajusta para continuar legível. Com Padrão, o fundo claro dá o tom ou vale a aparência escura padrão.",
+      "darkAriaLabel": "Cor de fundo escuro da organização",
+      "darkDefaultAriaLabel": "Fundo escuro padrão da organização"
+    },
+    "corners": {
+      "ariaLabel": "Raio dos cantos da organização",
+      "squareAriaLabel": "Cantos retos da organização",
+      "softAriaLabel": "Cantos suaves da organização",
+      "roundAriaLabel": "Cantos redondos da organização"
+    },
+    "typeface": {
+      "subtitle": "A fonte padrão da interface, ou monoespaçada em tudo.",
+      "ariaLabel": "Tipografia da organização",
+      "standardAriaLabel": "Fonte padrão da organização",
+      "monoAriaLabel": "Fonte monoespaçada da organização"
+    },
+    "greeting": {
+      "title": "Saudação da organização",
+      "subtitle": "A frase que os membros veem ao começar uma nova tarefa. Deixe em branco para usar a padrão.",
+      "ariaLabel": "Saudação da organização"
+    },
+    "membersChoose": {
+      "title": "Permitir que os membros escolham o próprio estilo",
+      "subtitle": "Ativado: o estilo da organização é o ponto de partida, e os membros podem alterá-lo em Seu estilo. Desativado: todos veem o estilo da organização."
+    },
+    "guidelines": {
+      "title": "Diretrizes de marca para o Anton",
+      "subtitle": "Como o Anton deve usar sua marca em apresentações, documentos, apps e gráficos: o tom de voz, as palavras a usar ou evitar, onde fica o logo. O Anton também recebe suas cores, tipografia e logo das configurações acima.",
+      "placeholder": "Markdown. Por exemplo:\n- Títulos só com a primeira letra maiúscula\n- Coloque o logo no canto superior esquerdo nos slides de título"
+    },
+    "footer": {
+      "ariaLabel": "Alterações de marca não salvas",
+      "saving": "Salvando…",
+      "unsaved": "Alterações de marca não salvas. Você já as vê; os demais as verão quando você salvar.",
+      "cancel": "Cancelar",
+      "save": "Salvar marca",
+      "saved": "Salvo. Os membros verão na próxima vez que abrirem o app ou as Configurações.",
+      "clean": "Nenhuma alteração de marca não salva"
+    }
+  }
+}

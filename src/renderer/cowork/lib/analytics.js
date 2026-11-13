@@ -20,6 +20,7 @@ import { diagnostic } from '../../../shared/diagnostics';
 
 import { host } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
+import { startCreditsFlow } from './creditsFlow';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
@@ -30,8 +31,9 @@ const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
   ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
-  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — only on the first task within 30 min of a console handoff
-  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
+  ARTIFACT_STATS_OPENED:    'artifact_stats_opened',    // { artifact_id (cowork artifact uuid, bare hex; not the id artifact_published sends, which prefers report_id), access_mode: 'public'|'password'|'restricted'|null, has_views }
+  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id?, entry_placement? } — only on the first task within 30 min of a console handoff
+  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, entry_placement? } — Home composer interactive after a console handoff
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
   EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
@@ -141,6 +143,10 @@ const EVENTS = {
   COMPARISON_VERDICT_RECORDED:'comparison_verdict_recorded', // { comparison_id, turn_index, winner, winner_model?, other_model?, changed, ...cost }
   COMPARISON_CONTINUED:     'comparison_continued',     // { comparison_id, side, model, other_model, turns, carried_all, chose_winner?, ...cost }
   // ...cost: cost_a_usd?, cost_b_usd?, cost_total_usd?, cost_partial, cost_stale?, tokens_a?, tokens_b?, cheaper_side?: 'a'|'b'|'same' (complete figures only)
+  // A message sent while a turn runs (ENG-4194). Never carries its text.
+  ADDON_ADDED:              'addon_added',              // { decided_by: 'jev'|'user', via: 'send'|'queue' } — joined the running task
+  ADDON_QUEUED:             'addon_queued',             // { reason } — queued as the next task: the server's reason, or 'attachments'|'no_conversation'|'no_live_stream'|'turn_ending'|'not_found'|'unsupported'|'timeout'|'error'|'unknown'
+  ADDON_OVERRIDDEN:         'addon_overridden',         // { direction: 'to_queue'|'to_task', outcome, decided_by? } — the person moved a message against where it landed; decided_by 'jev' on to_queue is the accuracy signal
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -623,6 +629,17 @@ export function trackArtifactPublished(artifactId, visibility) {
   });
 }
 
+// Fires after the first successful load of each Stats panel open. access_mode
+// is null until the viewer knows the real mode, because usePublish reports
+// 'public' as its default before that.
+export function trackArtifactStatsOpened({ artifactId, accessMode = null, hasViews = false } = {}) {
+  capture(EVENTS.ARTIFACT_STATS_OPENED, {
+    artifact_id: artifactId || '',
+    access_mode: accessMode || null,
+    has_views: !!hasViews,
+  });
+}
+
 // Where the next task came from, when Home was opened by a console link. Held
 // here rather than threaded through App's send path because the handoff is
 // consumed in HomeView and the event fires in App; it attributes exactly one
@@ -632,11 +649,21 @@ export function trackArtifactPublished(artifactId, visibility) {
 const ENTRY_ATTRIBUTION_TTL_MS = 30 * 60 * 1000;
 let pendingEntryAttribution = null;
 
-export function setEntryAttribution(entrySource, exampleId) {
+export function setEntryAttribution(entrySource, exampleId, placement) {
   pendingEntryAttribution = entrySource
-    ? { entry_source: entrySource, example_id: exampleId || null, at: Date.now() }
+    ? {
+      entry_source: entrySource,
+      example_id: exampleId || null,
+      entry_placement: placement || null,
+      at: Date.now(),
+    }
     : null;
 }
+
+// The console surface a handoff came from, as an event property, only when the
+// link named one; absent rather than null so a missing placement reads as
+// "not recorded", the same as before the console sent it.
+const placementProps = (placement) => (placement ? { entry_placement: placement } : {});
 
 export function trackAgentSessionStarted() {
   const pending = pendingEntryAttribution;
@@ -644,7 +671,13 @@ export function trackAgentSessionStarted() {
   const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
   capture(
     EVENTS.AGENT_SESSION_STARTED,
-    fresh ? { entry_source: pending.entry_source, example_id: pending.example_id } : {}
+    fresh
+      ? {
+        entry_source: pending.entry_source,
+        example_id: pending.example_id,
+        ...placementProps(pending.entry_placement),
+      }
+      : {}
   );
 }
 
@@ -710,17 +743,19 @@ export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
   };
   if (start?.example_id) props.example_id = start.example_id;
   if (start?.added_chars != null) props.added_chars = start.added_chars;
+  Object.assign(props, placementProps(entry?.entry_placement));
   capture(EVENTS.NEW_TASK_MESSAGE_SENT, props);
 }
 
 // The console handoff's arrival: the Home composer is on screen and usable,
 // with the sample in it (`prefilled`) or empty. Separate from the console's
 // click, which only says the user asked to come here.
-export function trackComposerReady(entrySource, exampleId, prefilled) {
+export function trackComposerReady(entrySource, exampleId, prefilled, placement) {
   capture(EVENTS.COMPOSER_READY, {
     entry_source: entrySource,
     example_id: exampleId || null,
     prefilled: Boolean(prefilled),
+    ...placementProps(placement),
   });
 }
 
@@ -814,6 +849,8 @@ export function trackTurnFailed(conversationId, event) {
 // `kind` names which in-chat usage notice was clicked ('free_low', 'free_used',
 // 'auto_top_up_failed'), so `usage_alert` can be split by notice.
 export function trackBillingOpened(trigger, workspaceMode, kind) {
+  // Every billing link passes here, so it is where the post-payment availability follow-up arms.
+  startCreditsFlow();
   capture(EVENTS.BILLING_OPENED, {
     trigger: trigger || 'unknown',
     workspace_mode: workspaceMode || undefined,
@@ -894,6 +931,39 @@ export function trackComparisonStarted(comparison, { fileCount = 0, exampleId = 
     from_project: Boolean(comparison.sourceProjectId),
     file_count: fileCount,
     example_id: exampleId || undefined,
+  });
+}
+
+// Mid-task messages (ENG-4194). Ids and reasons only, never the text.
+export function trackAddonAdded(decidedBy, via) {
+  capture(EVENTS.ADDON_ADDED, { decided_by: decidedBy === 'user' ? 'user' : 'jev', via: via === 'queue' ? 'queue' : 'send' });
+}
+
+// Reasons are reported from a fixed list: the server's own reason strings are
+// not ours to forward as-is, and anything new reads as 'unknown'.
+const ADDON_QUEUED_REASONS = new Set([
+  // The app's own.
+  'empty', 'attachments', 'no_conversation', 'no_live_stream', 'turn_ending',
+  'not_found', 'unsupported', 'timeout', 'error', 'returned',
+  // The server's `queued` reasons.
+  'jev', 'next_task', 'low_confidence', 'new_request', 'jev_off', 'jev_error', 'jev_timeout',
+  'too_many', 'too_large', 'rate_limited', 'busy', 'internal', 'redis_error', 'pod_timeout',
+]);
+const ADDON_OVERRIDE_OUTCOMES = new Set([
+  'added', 'withdrawn', 'already_read', ...ADDON_QUEUED_REASONS,
+]);
+
+const allowed = (value, list) => (list.has(value) ? value : 'unknown');
+
+export function trackAddonQueued(reason) {
+  capture(EVENTS.ADDON_QUEUED, { reason: allowed(reason, ADDON_QUEUED_REASONS) });
+}
+
+export function trackAddonOverridden(direction, outcome, decidedBy) {
+  capture(EVENTS.ADDON_OVERRIDDEN, {
+    direction: direction === 'to_task' ? 'to_task' : 'to_queue',
+    outcome: allowed(outcome, ADDON_OVERRIDE_OUTCOMES),
+    ...(decidedBy ? { decided_by: decidedBy === 'user' ? 'user' : 'jev' } : {}),
   });
 }
 

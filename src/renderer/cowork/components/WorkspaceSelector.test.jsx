@@ -220,6 +220,15 @@ describe('WorkspaceSelector — the menu', () => {
     expect(active).toHaveAccessibleName('Client A');
   });
 
+  it('names a workspace without a display name "Workspace"', () => {
+    const unnamed = { ...CLIENT_A, displayName: '' };
+    hookMock.useHubWorkspaces.mockReturnValue(
+      state({ enabled: true, reachable: true, workspaces: [DEFAULT_WS, unnamed], activeWorkspaceId: unnamed.id }),
+    );
+    render(<WorkspaceSelector user={user} />);
+    expect(trigger()).toHaveAccessibleName('Workspace: Workspace');
+  });
+
   it('says archived rather than try-again when the server answers 409', async () => {
     // The server gives archived its own status precisely so the UI can stop
     // telling someone to retry something that cannot succeed.

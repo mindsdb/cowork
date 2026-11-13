@@ -22,6 +22,7 @@ import { Icon } from '../ui/Icon';
 import { Card } from '../ui/Card';
 import { Modal, ModalBody, ModalHeader, ModalToolbar } from '../ui/Modal';
 import { Alert, Badge, EmptyState, Select, Tooltip } from '../ui';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 // Category → fallback Ico name when a connector doesn't ship its own
 // flat icon. Keep this map small and obvious; "other" → generic puzzle.
@@ -33,50 +34,50 @@ const CATEGORY_ICON = {
   developer:     'code',
 };
 
-// Display name + render order for category sections in the picker.
+// Render order for category sections in the picker; display names live in
+// the library catalog under connectorPicker.category.<key>.
 // Order is GTM-flow-coherent: top of the funnel down to ops/data.
 // Categories not in this list fall to the bottom under "Other"
 // (alphabetical), so a new category in the JSONs doesn't disappear.
 const CATEGORY_ORDER = [
   // GTM funnel — top to bottom
-  ['crm', 'CRM'],
-  ['sales-engagement', 'Sales Engagement'],
-  ['enrichment', 'Lead Enrichment'],
-  ['marketing', 'Marketing Automation'],
-  ['analytics', 'Product & Web Analytics'],
-  ['ads', 'Advertising'],
-  ['support', 'Support & Helpdesk'],
-  ['customer-success', 'Customer Success'],
-  ['revenue-intel', 'Revenue Intelligence'],
+  'crm',
+  'sales-engagement',
+  'enrichment',
+  'marketing',
+  'analytics',
+  'ads',
+  'support',
+  'customer-success',
+  'revenue-intel',
   // Cross-functional
-  ['communication', 'Communication'],
-  ['productivity', 'Productivity & Project Management'],
-  ['scheduling', 'Scheduling'],
-  ['forms', 'Forms'],
-  ['documents', 'Documents & E-Signature'],
+  'communication',
+  'productivity',
+  'scheduling',
+  'forms',
+  'documents',
   // Finance & people
-  ['billing', 'Billing & Payments'],
-  ['accounting', 'Accounting'],
-  ['hr', 'HR & People Ops'],
-  ['files', 'Files'],
+  'billing',
+  'accounting',
+  'hr',
+  'files',
   // Operations
-  ['mobility', 'Mobility & Delivery'],
-  ['logistics', 'Logistics & Shipping'],
+  'mobility',
+  'logistics',
   // Agent capabilities — APIs that extend what AI can DO
-  ['ai', 'AI APIs'],
-  ['web-search', 'Web Search'],
-  ['maps', 'Maps & Geocoding'],
-  ['public-data', 'Public Data APIs'],
+  'ai',
+  'web-search',
+  'maps',
+  'public-data',
   // Tech / infra
-  ['engineering', 'Engineering & DevOps'],
-  ['observability', 'Observability & Monitoring'],
-  ['database', 'Databases'],
-  ['vector-db', 'Vector Databases'],
-  ['data', 'Data Infrastructure'],
-  ['cloud', 'Cloud Providers'],
+  'engineering',
+  'observability',
+  'database',
+  'vector-db',
+  'data',
+  'cloud',
 ];
-const CATEGORY_LABELS = Object.fromEntries(CATEGORY_ORDER);
-const CATEGORY_INDEX = Object.fromEntries(CATEGORY_ORDER.map(([k], i) => [k, i]));
+const CATEGORY_INDEX = Object.fromEntries(CATEGORY_ORDER.map((k, i) => [k, i]));
 
 function groupByCategory(connectors) {
   const groups = new Map();
@@ -101,9 +102,10 @@ function groupByCategory(connectors) {
 }
 
 function categoryLabel(key) {
-  return CATEGORY_LABELS[key] || (key
+  if (key in CATEGORY_INDEX) return i18n.t(`connectorPicker.category.${key}`, { ns: 'library' });
+  return key && key !== 'other'
     ? key.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-    : 'Other');
+    : i18n.t('connectorPicker.category.other', { ns: 'library' });
 }
 
 function iconFor(connector) {
@@ -137,6 +139,7 @@ function ConnectorLogo({ connector, size = 22 }) {
 // memo: `filtered` changes on every search keystroke, so the .map recreates
 // every tile element — memo skips tiles whose connector didn't change.
 const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
+  const { t } = useTranslation('library');
   return (
     <Card
       as="button"
@@ -154,7 +157,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
       <div className="min-w-0 flex flex-col gap-1">
         <span className="flex items-center gap-1.5 min-w-0">
           <span className="font-[family-name:var(--font-display)] font-semibold text-base text-ink tracking-[0] truncate">{connector.label || connector.id}</span>
-          {connector.custom && <Badge variant="accent" size="xs" className="shrink-0">Custom</Badge>}
+          {connector.custom && <Badge variant="accent" size="xs" className="shrink-0">{t('connectionCard.custom')}</Badge>}
           {/* Spec-driven, not per-connector code: any connector that sets
               `notice` in its JSON gets the badge, and one that doesn't gets
               no extra markup at all. */}
@@ -210,12 +213,10 @@ function ConnectorSection({ title, count, connectors, onPick, className = 'mb-[1
 // Cloud only. These connectors come back flagged `cloud_available: false`;
 // they're listed rather than hidden so the directory shows the real catalogue,
 // and picking one opens the download-the-desktop-app modal instead of a form.
-const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
 
 // Its counterpart: what this deployment can actually connect right now. Named
 // for the deployment rather than "Featured" because on cloud it isn't a curated
 // subset — it is the whole of what works here.
-const CLOUD_AVAILABLE_TITLE = 'Available here (MindsHub Cloud)';
 
 // Above this many, the cloud side groups by category instead of showing one
 // flat block. The flat block was right while cloud ran a handful of OAuth
@@ -227,6 +228,7 @@ const CLOUD_GROUPING_THRESHOLD = 5;
 // Always last in the list, for people who browse instead of searching. It
 // carries no query: Anton asks which system to connect.
 function BuildCustomTile({ onBuildCustom }) {
+  const { t } = useTranslation('library');
   return (
     <Card
       as="button"
@@ -239,8 +241,8 @@ function BuildCustomTile({ onBuildCustom }) {
         {Ico.plus(20)}
       </span>
       <div className="min-w-0 flex flex-col gap-1">
-        <span className="font-[family-name:var(--font-display)] font-semibold text-base text-ink tracking-[0]">Build a custom connector</span>
-        <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 leading-[1.4]">Connect a system that isn't listed. Anton sets it up with you.</span>
+        <span className="font-[family-name:var(--font-display)] font-semibold text-base text-ink tracking-[0]">{t('connectorPicker.buildCustom')}</span>
+        <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 leading-[1.4]">{t('connectorPicker.buildCustomDescription')}</span>
       </div>
     </Card>
   );
@@ -263,6 +265,7 @@ function matchesSearch(connector, q) {
 // entry points show only where the server says one would be kept (one
 // person's own scope), and never in org mode.
 export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, onBuildCustom }) {
+  const { t } = useTranslation('library');
   const orgMode = useOrgMode();
   const [connectors, setConnectors] = useState([]);
   const [query, setQuery] = useState('');
@@ -285,12 +288,12 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
     setCategory('all');
     setSortBy('default');
     // Cloud: also pull what only the desktop app can run, so the directory
-    // can list it under DESKTOP_ONLY_TITLE. Desktop already gets everything.
+    // can list it under the desktop-only section. Desktop already gets everything.
     fetchConnectors({ includeUnavailable: PLATFORM_UI && orgMode })
       .then((list) => setConnectors(Array.isArray(list)
         ? list.filter((connector) => PLATFORM_UI || connector.cloud_available !== false)
         : []))
-      .catch((e) => setError(e?.message || 'Failed to load connectors'))
+      .catch((e) => setError(e?.message || t('connectorPicker.loadFailed')))
       .finally(() => setLoading(false));
   }, [open, orgMode]);
 
@@ -328,7 +331,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
   // anything else alphabetical (mirrors groupByCategory's logic).
   const availableCategories = useMemo(() => {
     const seen = new Set(connectors.map((c) => c.category || 'other').filter(Boolean));
-    const known = CATEGORY_ORDER.map(([k]) => k).filter((k) => seen.has(k));
+    const known = CATEGORY_ORDER.filter((k) => seen.has(k));
     const others = Array.from(seen).filter((k) => !(k in CATEGORY_INDEX)).sort();
     return [...known, ...others];
   }, [connectors]);
@@ -371,7 +374,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
       size="md"
       labelledBy="connector-picker-title"
     >
-        <ModalHeader id="connector-picker-title" title="Connectors Directory" onClose={onClose} />
+        <ModalHeader id="connector-picker-title" title={t('connectorPicker.title')} onClose={onClose} />
         {/* Search, then filter/sort, then the cloud note — pinned above
             the scrolling grid as one "narrow my results" cluster. */}
         <ModalToolbar style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, padding: '12px 16px' }}>
@@ -385,8 +388,8 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search connectors — gmail, postgres, slack…"
-              aria-label="Search connectors"
+              placeholder={t('connectorPicker.searchPlaceholder')}
+              aria-label={t('connectorPicker.searchAriaLabel')}
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
@@ -401,7 +404,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
         <div className="flex items-center gap-2 flex-wrap">
           <Select
             variant="pill"
-            label="Filter by"
+            label={t('connectorPicker.filterBy')}
             value={category}
             onValueChange={setCategory}
             // "All categories" sits at the top, then a hairline
@@ -410,7 +413,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
             // the GTM-curated `availableCategories` order — that one
             // still drives section ordering inside the body.
             options={[
-              { value: 'all', label: 'All categories' },
+              { value: 'all', label: t('connectorPicker.allCategories') },
               { separator: true },
               ...[...availableCategories]
                 .map((cat) => ({ value: cat, label: categoryLabel(cat) }))
@@ -419,12 +422,12 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
           />
           <Select
             variant="pill"
-            label="Sort by"
+            label={t('connectorPicker.sortBy')}
             value={sortBy}
             onValueChange={setSortBy}
             options={[
-              { value: 'default', label: 'By category' },
-              { value: 'name',    label: 'Name (A–Z)' },
+              { value: 'default', label: t('connectorPicker.byCategory') },
+              { value: 'name',    label: t('connectorPicker.byName') },
             ]}
           />
         </div>
@@ -438,15 +441,15 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
         {PLATFORM_UI && orgMode && desktopOnly.length > 0 && (
           <div>
             <Alert variant="info">
-              More connectors are on the way here. The rest of them work today in the{' '}
-              <button
+              {t('connectorPicker.cloudNote.before')}{' '}
+              {host.isMobileShell ? t('connectorPicker.cloudNote.link') : (<button
                 type="button"
                 onClick={() => host.openExternal('https://mindshub.ai/download')}
                 className="font-medium underline underline-offset-2 bg-transparent border-0 p-0 cursor-pointer text-inherit [font:inherit]"
               >
-                Cowork Desktop App
-              </button>
-              .
+                {t('connectorPicker.cloudNote.link')}
+              </button>)}
+              {t('connectorPicker.cloudNote.after')}
             </Alert>
           </div>
         )}
@@ -458,7 +461,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
         <ModalBody padding="24px 16px 16px" background="var(--surface-2)">
           {loading && (
             <div className="p-3 text-ink-3 text-[13px]">
-              Loading connectors…
+              {t('connectorPicker.loading')}
             </div>
           )}
           {error && (
@@ -469,10 +472,10 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
           {!loading && !error && filtered.length === 0 && (offerBuildForQuery ? (
             <EmptyState
               icon={Ico.search(20)}
-              title={<>No connectors match “{trimmedQuery}”</>}
-              description="Anton can build one with you: it asks how the system is reached, then sets up and tests the connection."
+              title={t('connectorPicker.noMatchQuery', { query: trimmedQuery })}
+              description={t('connectorPicker.buildDescription')}
               action={{
-                label: <span className="truncate">Build a custom connector for “{trimmedQuery}”</span>,
+                label: <span className="truncate">{t('connectorPicker.buildFor', { query: trimmedQuery })}</span>,
                 onClick: () => onBuildCustom(trimmedQuery),
                 primary: true,
                 className: 'max-w-full',
@@ -481,10 +484,10 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
           ) : (
             <div className="p-3 text-ink-3 text-[13px]">
               {query && queryMatchesAny && category !== 'all'
-                ? <>No connectors in this category match <strong>“{query}”</strong>.</>
+                ? <>{t('connectorPicker.noMatchInCategory.before')}<strong>“{query}”</strong>{t('connectorPicker.noMatchInCategory.after')}</>
                 : query
-                  ? <>No connectors match <strong>“{query}”</strong>.</>
-                  : 'No connectors available yet.'}
+                  ? <>{t('connectorPicker.noMatch.before')}<strong>“{query}”</strong>{t('connectorPicker.noMatch.after')}</>
+                  : t('connectorPicker.noneAvailable')}
             </div>
           ))}
           {/* Body — two modes:
@@ -505,7 +508,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
             // Few enough to read at a glance: one block, no sections holding a
             // tile each. The desktop catalogue below gives the directory its body.
             <ConnectorSection
-              title={PLATFORM_UI ? CLOUD_AVAILABLE_TITLE : 'Available connectors'}
+              title={PLATFORM_UI ? t('connectorPicker.cloudAvailable') : t('connectorPicker.available')}
               connectors={available}
               onPick={onPick}
               className="mb-6"
@@ -530,7 +533,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
             <>
               {category === 'all' && !query.trim() && (
                 <ConnectorSection
-                  title="Featured"
+                  title={t('connectorPicker.featured')}
                   connectors={available.filter((c) => c.featured)}
                   onPick={onPick}
                   className="mb-6"
@@ -553,7 +556,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
             </div>
           )}
           {PLATFORM_UI && <ConnectorSection
-            title={DESKTOP_ONLY_TITLE}
+            title={t('connectorPicker.desktopOnly')}
             count={desktopOnly.length}
             connectors={desktopOnly}
             onPick={onDesktopOnly}

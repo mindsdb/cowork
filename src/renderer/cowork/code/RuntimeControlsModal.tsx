@@ -17,12 +17,19 @@ import { codingApi, type PermissionMode, type Personality, type RuntimeControls 
 import { effortLabel, effortLevelsFor, resolveEffort } from './reasoning';
 import { host } from '../../platform/host';
 import { PERMISSION_OPTIONS } from './permissions';
+import { useTranslation } from '../../lib/i18n';
 
-const PERSONALITIES = [
-  { value: 'pragmatic', label: 'Pragmatic' },
-  { value: 'friendly', label: 'Friendly' },
-  { value: 'none', label: 'No personality' },
-];
+const PERSONALITY_VALUES = ['pragmatic', 'friendly', 'none'] as const;
+
+/* Statuses this modal sets itself; anything else comes from the server and
+   is shown as received. */
+const SANDBOX_STATUS_KEYS: Record<string, string> = {
+  unknown: 'runtimeControls.sandbox.unknown',
+  unavailable: 'runtimeControls.sandbox.unavailable',
+  'setup started': 'runtimeControls.sandbox.setupStarted',
+  'setup failed': 'runtimeControls.sandbox.setupFailed',
+  ready: 'runtimeControls.sandbox.ready',
+};
 
 
 export function RuntimeControlsModal({
@@ -48,6 +55,7 @@ export function RuntimeControlsModal({
   onClose: () => void;
   onApply: (value: RuntimeControls) => Promise<void> | void;
 }) {
+  const { t } = useTranslation('code');
   const [draft, setDraft] = useState(value);
   const [folderError, setFolderError] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -118,7 +126,7 @@ export function RuntimeControlsModal({
       // back restores it; only the update drops it.
       await onApply(offersNoEffort ? { ...draft, reasoning_effort: null } : draft);
     } catch (reason) {
-      setSubmitError(reason instanceof Error && reason.message ? reason.message : 'Try again.');
+      setSubmitError(reason instanceof Error && reason.message ? reason.message : t('runtimeControls.tryAgain'));
     }
   };
 
@@ -126,39 +134,40 @@ export function RuntimeControlsModal({
     <Modal open={open} onClose={onClose} size="sm" labelledBy="code-controls-title" dismissible={!busy}>
       <ModalHeader
         id="code-controls-title"
-        title="Task settings"
-        subtitle="These settings apply to future turns in this coding task."
+        title={t('runtimeControls.title')}
+        subtitle={t('runtimeControls.subtitle')}
         onClose={onClose}
       />
       <ModalBody>
         <div className="code-controls-grid">
-          <Field className="min-w-0" label="Model">
+          <Field className="min-w-0" label={t('runtimeControls.model')}>
             <ModelSelect
               value={draft.model}
               onValueChange={chooseModel}
               options={modelOptions}
               variant="field"
-              ariaLabel="Task model"
+              ariaLabel={t('runtimeControls.modelAriaLabel')}
+              onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }}
               disabled={busy}
             />
           </Field>
           {effortLevels && (
-            <Field className="min-w-0" label="Reasoning">
+            <Field className="min-w-0" label={t('runtimeControls.reasoning')}>
               <Select
                 value={resolveEffort(draft.reasoning_effort, null, effortLevels) || ''}
                 onValueChange={(next: string) => update('reasoning_effort', next)}
                 options={effortLevels.levels.map((level) => ({
                   value: level,
                   label: effortLabel(level),
-                  description: level === effortLevels.modelDefault ? 'Model default' : undefined,
+                  description: level === effortLevels.modelDefault ? t('runtimeControls.modelDefault') : undefined,
                 }))}
-                ariaLabel="Reasoning effort"
-                placeholder="Effort"
+                ariaLabel={t('runtimeControls.reasoningAriaLabel')}
+                placeholder={t('runtimeControls.effortPlaceholder')}
                 disabled={busy}
               />
             </Field>
           )}
-          <Field className="min-w-0" label="Permissions">
+          <Field className="min-w-0" label={t('runtimeControls.permissions')}>
             <Select
               value={draft.permission_mode}
               onValueChange={(next: string) => setDraft((current) => ({
@@ -167,45 +176,45 @@ export function RuntimeControlsModal({
                 network_access: next === 'full_access' ? true : current.network_access,
               }))}
               options={PERMISSION_OPTIONS}
-              ariaLabel="Task permissions"
+              ariaLabel={t('runtimeControls.permissionsAriaLabel')}
               disabled={busy}
             />
           </Field>
-          <Field className="min-w-0" label="Personality">
+          <Field className="min-w-0" label={t('runtimeControls.personality')}>
             <Select
               value={draft.personality}
               onValueChange={(next: string) => update('personality', next as Personality)}
-              options={PERSONALITIES}
-              ariaLabel="Agent personality"
+              options={PERSONALITY_VALUES.map((personality) => ({ value: personality, label: t(`runtimeControls.personalities.${personality}`) }))}
+              ariaLabel={t('runtimeControls.personalityAriaLabel')}
               disabled={busy}
             />
           </Field>
           <div className="code-controls-toggle">
-            <div><strong>Fast</strong><small>Use priority inference when the model supports it.</small></div>
-            <Switch checked={draft.service_tier === 'priority'} onCheckedChange={(checked) => update('service_tier', checked ? 'priority' : 'standard')} disabled={busy} aria-label="Fast inference" />
+            <div><strong>{t('runtimeControls.fast.title')}</strong><small>{t('runtimeControls.fast.description')}</small></div>
+            <Switch checked={draft.service_tier === 'priority'} onCheckedChange={(checked) => update('service_tier', checked ? 'priority' : 'standard')} disabled={busy} aria-label={t('runtimeControls.fast.ariaLabel')} />
           </div>
           <div className="code-controls-toggle">
-            <div><strong>Network access</strong><small>{draft.permission_mode === 'full_access' ? 'Included with full access.' : 'Allow commands to reach external services.'}</small></div>
+            <div><strong>{t('runtimeControls.network.title')}</strong><small>{draft.permission_mode === 'full_access' ? t('runtimeControls.network.includedWithFullAccess') : t('runtimeControls.network.description')}</small></div>
             <Switch
               checked={draft.network_access}
               onCheckedChange={(checked) => setDraft((current) => ({ ...current, network_access: checked, web_search: checked ? current.web_search : false }))}
               disabled={busy || draft.permission_mode === 'full_access'}
-              aria-label="Network access"
+              aria-label={t('runtimeControls.network.title')}
             />
           </div>
           <div className="code-controls-toggle">
-            <div><strong>Web search</strong><small>Let the coding agent search the web when useful.</small></div>
+            <div><strong>{t('runtimeControls.webSearch.title')}</strong><small>{t('runtimeControls.webSearch.description')}</small></div>
             <Switch
               checked={draft.web_search}
               onCheckedChange={(checked) => setDraft((current) => ({ ...current, web_search: checked, network_access: checked || current.network_access }))}
               disabled={busy}
-              aria-label="Web search"
+              aria-label={t('runtimeControls.webSearch.title')}
             />
           </div>
           <div className="code-controls-folders">
             <div className="code-controls-folders__heading">
-              <div><strong>Additional folders</strong><small>Let this task work across related local folders.</small></div>
-              <Button variant="subtle" size="sm" disabled={busy} onClick={() => void addFolder()}>Add folder</Button>
+              <div><strong>{t('runtimeControls.folders.title')}</strong><small>{t('runtimeControls.folders.description')}</small></div>
+              <Button variant="subtle" size="sm" disabled={busy} onClick={() => void addFolder()}>{t('runtimeControls.folders.add')}</Button>
             </div>
             {draft.additional_dirs.length > 0 && (
               <div className="code-controls-folders__list">
@@ -217,7 +226,7 @@ export function RuntimeControlsModal({
                       variant="subtle"
                       size="sm"
                       disabled={busy}
-                      aria-label={`Remove additional folder ${path}`}
+                      aria-label={t('runtimeControls.folders.removeAriaLabel', { path })}
                       onClick={() => update('additional_dirs', draft.additional_dirs.filter((item) => item !== path))}
                     >×</Button>
                   </div>
@@ -229,8 +238,10 @@ export function RuntimeControlsModal({
           {host.getPlatform() === 'win32' && (
             <div className="code-controls-windows">
               <div>
-                <strong>Windows sandbox</strong>
-                <small>{windowsSandbox ? windowsSandbox.replace(/([A-Z])/g, ' $1').toLowerCase() : 'Checking…'}</small>
+                <strong>{t('runtimeControls.sandbox.title')}</strong>
+                <small>{windowsSandbox
+                  ? (SANDBOX_STATUS_KEYS[windowsSandbox] ? t(SANDBOX_STATUS_KEYS[windowsSandbox]) : windowsSandbox.replace(/([A-Z])/g, ' $1').toLowerCase())
+                  : t('runtimeControls.sandbox.checking')}</small>
               </div>
               {windowsSandbox && windowsSandbox !== 'ready' && (
                 <Button
@@ -244,18 +255,18 @@ export function RuntimeControlsModal({
                       .catch(() => setWindowsSandbox('setup failed'))
                       .finally(() => setSandboxBusy(false));
                   }}
-                >Set up</Button>
+                >{t('runtimeControls.sandbox.setUp')}</Button>
               )}
             </div>
           )}
           {submitError && (
             <div ref={errorRef} className="code-controls-error">
-              <Alert variant="danger" title="Couldn't apply task settings">{submitError}</Alert>
+              <Alert variant="danger" title={t('runtimeControls.applyFailed')}>{submitError}</Alert>
             </div>
           )}
         </div>
       </ModalBody>
-      <ModalFooter cancel={<Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>}>
+      <ModalFooter cancel={<Button variant="subtle" disabled={busy} onClick={onClose}>{t('runtimeControls.cancel')}</Button>}>
         {/* `.btn:disabled` sets pointer-events: none, so a hint on the button
             itself never shows. The wrapper takes the hover instead. */}
         <Tooltip content={applyBlockedReason}>
@@ -264,7 +275,7 @@ export function RuntimeControlsModal({
               variant="primary"
               disabled={busy || !draft.model || !!applyBlockedReason}
               onClick={() => void apply()}
-            >Apply</Button>
+            >{t('runtimeControls.apply')}</Button>
           </span>
         </Tooltip>
       </ModalFooter>

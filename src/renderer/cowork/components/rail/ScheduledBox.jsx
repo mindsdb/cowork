@@ -3,6 +3,7 @@
 
 import Ico from '../Icons';
 import { RailCard } from './RailCard';
+import { useTranslation } from '../../../lib/i18n';
 
 // Kept for the clickable row below, which stays inline (its `all: unset`,
 // padding, cursor, transition are all clickable-conditional + it uses a
@@ -10,10 +11,11 @@ import { RailCard } from './RailCard';
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 
 function ScheduledList({ items, onSelect }) {
+  const { t } = useTranslation('shell');
   if (!items.length) {
     return (
       <p className="font-body text-sm text-ink-4 pt-2 px-1 pb-1">
-        Nothing scheduled here yet.
+        {t('rail.scheduled.empty')}
       </p>
     );
   }
@@ -75,8 +77,9 @@ export function ScheduledBox({
   defaultOpen = true,
   onSelect,
 }) {
+  const { t } = useTranslation('shell');
   return (
-    <RailCard title="Scheduled Tasks" defaultOpen={defaultOpen}>
+    <RailCard title={t('rail.scheduled.title')} defaultOpen={defaultOpen}>
       <ScheduledList items={items} onSelect={onSelect} />
     </RailCard>
   );
