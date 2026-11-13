@@ -125,38 +125,56 @@ export const SIGN_IN_FRAME_HOSTS: readonly string[] = [
 
 /** The one rule both hosts hold for a field a page names for a payment
     card, as page.json's `limits` pins it (`card_field_name`,
-    `card_field_exempt`, `card_field_payment`, `card_field_word_breaks`,
-    `card_field_attributes`), which the pod host holds too. The rule reads
-    each value of a field's CARD_FIELD_ATTRIBUTES, a missing one as empty,
-    and that value's word-split form: each of CARD_FIELD_WORD_BREAKS applied
-    in order, case-sensitive, replacing every match with its first group and
-    a space, so cardNumberInput reads as "card Number Input" and CVVCode as
-    "CVV Code". Then every match of CARD_FIELD_EXEMPT, ignoring case, is
-    replaced with a space in each value and in each split form on its own,
-    so an exempt match never runs from one attribute into the next. A field
-    skips that step when CARD_FIELD_PAYMENT, ignoring case, matches any of
-    its values or their split forms. Its two name forms are then its values
-    joined in order with a space and its split forms joined the same way, and
-    the field is card-named when CARD_FIELD_NAME, ignoring case, matches
-    either name form. CARD_FIELD_EXEMPT matches the number of a card that
-    isn't a payment card, such as a gift, loyalty, library, insurance or
-    identity card (an id with no letter or digit right before it, so
-    prepaid's id never counts). CARD_FIELD_PAYMENT matches a word for a
-    payment card with no letter right before or after it: credit, debit,
-    prepaid, payment, bank, charge, a card network's name, EBT, HSA or FSA.
-    So giftCardNumber, "Library card number" and "ID card number" are
+    `card_field_exempt`, `card_field_conjunction`, `card_field_payment`,
+    `card_field_word_breaks`, `card_field_attributes`), which the pod host
+    holds too. The rule reads each value of a field's CARD_FIELD_ATTRIBUTES,
+    a missing one as empty, and that value's word-split form: each of
+    CARD_FIELD_WORD_BREAKS applied in order, case-sensitive, replacing every
+    match with its first group and a space, so cardNumberInput reads as
+    "card Number Input" and CVVCode as "CVV Code". Then every match of
+    CARD_FIELD_EXEMPT, ignoring case, is replaced with a space in each value
+    and in each split form on its own, so an exempt match never runs from one
+    attribute into the next, but a match stays when CARD_FIELD_CONJUNCTION,
+    ignoring case, matches the text before it in its form, read before any
+    replacement. A field skips that step when CARD_FIELD_PAYMENT, ignoring
+    case, matches any of its values or their split forms. Its two name forms
+    are then its values joined in order with a space and its split forms
+    joined the same way, and the field is card-named when CARD_FIELD_NAME,
+    ignoring case, matches either name form. CARD_FIELD_EXEMPT matches the
+    number of a card that isn't a payment card, such as a gift, loyalty,
+    library or insurance card or an identity card (an ID, green, residence,
+    Social Security, Aadhaar, citizen or voter card; an id with no letter or
+    digit right before it, so prepaid's id never counts).
+    CARD_FIELD_CONJUNCTION matches text that ends in a conjunction (or, and,
+    &, +, / or a comma, then only spaces or separators: . _ -), unless the
+    text reads as text that doesn't end in one followed by exempt cards'
+    names, each with a conjunction after it. An exempt card's name is one of CARD_FIELD_EXEMPT's
+    qualifiers, alone or followed by card or a card number, and or and and
+    count only with no letter or digit right before them. So a conjunction
+    keeps the card number in "Card or gift card number", "Payment or rewards
+    card number" and "Card, gift or loyalty card number", where it joins an
+    ordinary card to one the exempt pattern doesn't name, and not in "Gift or
+    loyalty card number", "Gift card or library card number" or "Gift card
+    number and PIN". CARD_FIELD_PAYMENT matches a word for a payment card
+    with no letter right before or after it: credit, debit, prepaid, CC, ATM,
+    EBT, HSA or FSA, or one of the card networks Visa, Mastercard, Amex,
+    American Express, Discover, Diners, JCB, UnionPay, Maestro, RuPay and
+    Interac. Payment, bank and charge aren't payment words, since they also
+    name a checkout's section. So giftCardNumber, payment[gift_card_number],
+    "Library card number", "ID card number" and "Green card number" are
     ordinary fields, while giftCardCvv, "Benefits card number", "Credit card
-    or gift card number", creditOrGiftCardNumber, a field named
-    giftCardNumber with the placeholder "Card number" and one with the id
-    member and the placeholder "Card number" stay card-named. A card-named
-    field is a secret field: a read never carries its value, a screenshot
-    blacks it out, a type, a select or an editing key into it answers 403
-    password_field, and a page read never reads a frame that holds one. The
-    page's world reads it (`cardNamed` and `isSecret` in
-    src/main/browser-page-script.ts). */
+    or gift card number", creditOrGiftCardNumber, "Visa gift card number",
+    "Green Dot card number", a field named giftCardNumber with the
+    placeholder "Card number" and one with the id member and the placeholder
+    "Card number" stay card-named. A card-named field is a secret field: a
+    read never carries its value, a screenshot blacks it out, a type, a
+    select or an editing key into it answers 403 password_field, and a page
+    read never reads a frame that holds one. The page's world reads it
+    (`cardNamed` and `isSecret` in src/main/browser-page-script.ts). */
 export const CARD_FIELD_NAME = /(^|[^a-z0-9]|card|cc)(cvc|cvv2?|csc)([^a-z0-9]|$)|card[\s._-]*(numbers?|num|no)(?![a-z])|(^|[^a-z0-9])cc[\s._-]*(numbers?|num)(?![a-z])|security[\s._-]*code/i;
-export const CARD_FIELD_EXEMPT = /(gift|loyalty|rewards?|library|members?(hip)?|insurance|health|medicare|medicaid|student|transit|sim|national[\s._-]*id|identity|(?<![a-z0-9])id)[\s._-]*card[\s._-]*(numbers?|num|no)(?![a-z])/i;
-export const CARD_FIELD_PAYMENT = /(?<![a-z])(credit|debit|prepaid|payment|bank|charge|visa|master[\s._-]*card|amex|american[\s._-]*express|discover|diners|jcb|union[\s._-]*pay|maestro|ebt|hsa|fsa)(?![a-z])/i;
+export const CARD_FIELD_EXEMPT = /(gift|loyalty|rewards?|library|members?(hip)?|insurance|health|medicare|medicaid|student|transit|sim|national[\s._-]*id|identity|(?<![a-z0-9])id|green|residen(t|ce|cy)|social[\s._-]*security|aadhaa?r|citizen(ship)?|voter)[\s._-]*card[\s._-]*(numbers?|num|no)(?![a-z])/i;
+export const CARD_FIELD_CONJUNCTION = /^(?!([\s\S]*[^&+/,\s._-](?<!(?<![a-z0-9])or)(?<!(?<![a-z0-9])and))?[\s._-]*((gift|loyalty|rewards?|library|members?(hip)?|insurance|health|medicare|medicaid|student|transit|sim|national[\s._-]*id|identity|(?<![a-z0-9])id|green|residen(t|ce|cy)|social[\s._-]*security|aadhaa?r|citizen(ship)?|voter)([\s._-]*card([\s._-]*(numbers?|num|no))?)?[\s._-]*((?<![a-z0-9])(or|and)|[&+/,])[\s._-]*)+$)[\s\S]*((?<![a-z0-9])(or|and)|[&+/,])[\s._-]*$/i;
+export const CARD_FIELD_PAYMENT = /(?<![a-z])(credit|debit|prepaid|cc|atm|ebt|hsa|fsa|visa|master[\s._-]*card|am[\s._-]*ex|american[\s._-]*express|discover|diners|jcb|union[\s._-]*pay|maestro|ru[\s._-]*pay|interac)(?![a-z])/i;
 export const CARD_FIELD_WORD_BREAKS: readonly RegExp[] = [/([a-z0-9])(?=[A-Z])/g, /([A-Z])(?=[A-Z][a-z])/g];
 export const CARD_FIELD_ATTRIBUTES: readonly string[] = ['name', 'id', 'aria-label', 'placeholder'];
 

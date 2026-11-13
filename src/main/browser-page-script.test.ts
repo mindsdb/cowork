@@ -907,18 +907,72 @@ describe('the isolated-world page read', () => {
     }));
   });
 
+  it("keeps an ordinary card's number a conjunction joins to a card the exempt pattern doesn't name, names no payment-section gift card or identity card for a card, and keeps a payment card's name in a gift card's label, so a read, a type and a screenshot treat each as page.json's rule does", () => {
+    document.body.innerHTML = `
+      <input data-box id="either" aria-label="Card or gift card number" value="4111111111111111">
+      <input data-box id="store-or-gift" name="storeCardOrGiftCardNumber" aria-label="Tender" value="4000056655665556">
+      <input data-box id="visa-gift" aria-label="Visa gift card number" value="4012888888881881">
+      <input data-box id="green-dot" aria-label="Green Dot card number" value="5105105105105100">
+      <input data-box id="section-gift" name="payment[gift_card_number]" placeholder="Gift card number" value="6006 1234">
+      <input data-box id="gift-or-loyalty" aria-label="Gift or loyalty card number" value="7777 0001">
+      <input data-box id="gift-pin" aria-label="Gift card number and PIN" value="6006 5678">
+      <input data-box id="green-card" aria-label="Green card number" value="SRC1234567890">`;
+    layout();
+    const world = freshWorld();
+    const page = snapshot(world);
+    const byName = Object.fromEntries(page.elements.map((e) => [e.name, e]));
+    const cardNamed = ['Card or gift card number', 'Tender', 'Visa gift card number', 'Green Dot card number'];
+    for (const name of cardNamed) expect(byName[name], name).toEqual({ id: byName[name].id, role: 'textbox', name, value_hidden: true });
+    expect(byName['Gift card number']).toMatchObject({ role: 'textbox', value: '6006 1234' });
+    expect(byName['Gift or loyalty card number']).toMatchObject({ role: 'textbox', value: '7777 0001' });
+    expect(byName['Gift card number and PIN']).toMatchObject({ role: 'textbox', value: '6006 5678' });
+    expect(byName['Green card number']).toMatchObject({ role: 'textbox', value: 'SRC1234567890' });
+    expect(JSON.stringify(page)).not.toMatch(/4111111111111111|4000056655665556|4012888888881881|5105105105105100/);
+    const id = (name: string) => byName[name].id as number;
+    expect(pageWorld(document, world, { kind: 'focusField', id: id('Card or gift card number'), select: false })).toEqual({ ok: false, reason: 'secret' } satisfies FocusFieldResult);
+    expect(pageWorld(document, world, { kind: 'focusField', id: id('Gift card number'), select: false })).toEqual({ ok: true, selected: false });
+    expect(pageWorld(document, world, { kind: 'focusField', id: id('Green card number'), select: false })).toEqual({ ok: true, selected: false });
+    // A type with focused true reads the same rule where the focus rests.
+    const typing = (field: string) => {
+      (document.getElementById(field) as HTMLElement).focus();
+      return (pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping).cardNamed;
+    };
+    const fields = ['either', 'store-or-gift', 'visa-gift', 'green-dot', 'section-gift', 'gift-or-loyalty', 'gift-pin', 'green-card'];
+    expect(fields.map(typing)).toEqual([true, true, true, true, false, false, false, false]);
+    // A screenshot blacks out the card-named fields, and no ordinary card's number.
+    expect(secretBoxes().secrets).toEqual(fields.slice(0, 4).map((field) => {
+      const { x, y, width, height } = document.getElementById(field)!.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+  });
+
   it("tests the card rule's payment pattern afresh on each field of a read, so the payment word one field's name held never hides the next field's", () => {
-    /* AmEx holds its payment word only before the word split, which reads
-       it as Am Ex. A payment pattern compiled with a g flag would test it
-       from where the credit card's name left off, miss it, and read the AmEx
-       gift card's number as ordinary. */
+    /* PrePaid holds its payment word only before the word split, which reads
+       it as Pre Paid. A payment pattern compiled with a g flag would test it
+       from where the credit card's name left off, miss it, and read the
+       prepaid gift card's number as ordinary. */
     document.body.innerHTML = `
       <input data-box name="Credit card number" aria-label="Card" value="4111111111111111">
-      <input data-box name="AmEx_gift_card_number" aria-label="Gift card" value="378282246310005">`;
+      <input data-box name="PrePaid_gift_card_number" aria-label="Gift card" value="378282246310005">`;
     layout();
     const page = snapshot(freshWorld());
     expect(page.elements.map((e) => [e.name, e.value_hidden])).toEqual([['Card', true], ['Gift card', true]]);
     expect(JSON.stringify(page)).not.toMatch(/4111111111111111|378282246310005/);
+  });
+
+  it("tests the card rule's conjunction pattern afresh on each exempt match, so the conjunction one field's label kept never hides the next field's", () => {
+    /* cardOrGiftCardNumberInput names its card number only in its split
+       form (card Or Gift Card Number Input), where the conjunction keeps
+       it. A conjunction pattern compiled with a g flag would test the text
+       before it from where the first field's "Card or " left off, find no
+       start there, and read the second card's number as ordinary. */
+    document.body.innerHTML = `
+      <input data-box aria-label="Card or gift card number" value="4111111111111111">
+      <input data-box name="cardOrGiftCardNumberInput" aria-label="Tender" value="4000056655665556">`;
+    layout();
+    const page = snapshot(freshWorld());
+    expect(page.elements.map((e) => [e.name, e.value_hidden])).toEqual([['Card or gift card number', true], ['Tender', true]]);
+    expect(JSON.stringify(page)).not.toMatch(/4111111111111111|4000056655665556/);
   });
 
   it("reads page.json's checkout page with a card field named card_number as its example lists the elements", () => {
@@ -1621,11 +1675,11 @@ describe('frames', () => {
     fields.forEach(({ attributes }, i) => {
       const field = frameDoc(`card-${i}`).getElementById('field')!;
       for (const [attr, value] of Object.entries(attributes)) field.setAttribute(attr, value);
-      // Eight frames to a row, each 120 by 36, all in view.
-      place(document.getElementById(`card-${i}`)!, (i % 8) * 125, Math.floor(i / 8) * 38, 120, 36);
+      // Sixteen frames to a row, each 60 by 36, all in view.
+      place(document.getElementById(`card-${i}`)!, (i % 16) * 64, Math.floor(i / 16) * 38, 60, 36);
     });
     expect([window.innerWidth, window.innerHeight]).toEqual([1024, 768]);
-    expect(Math.ceil(fields.length / 8) * 38).toBeLessThan(768);
+    expect(Math.ceil(fields.length / 16) * 38).toBeLessThan(768);
     const page = snapshot(freshWorld());
     expect(page.frames).toHaveLength(fields.length);
     const wrong = fields

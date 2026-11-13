@@ -73,6 +73,7 @@
 
 import {
   CARD_FIELD_ATTRIBUTES,
+  CARD_FIELD_CONJUNCTION,
   CARD_FIELD_EXEMPT,
   CARD_FIELD_NAME,
   CARD_FIELD_PAYMENT,
@@ -190,13 +191,15 @@ export interface FrameReadRules {
 }
 
 /** The card-field rule as the page's world reads it: CARD_FIELD_NAME's,
-    CARD_FIELD_EXEMPT's and CARD_FIELD_PAYMENT's sources, which it reads
-    ignoring case, CARD_FIELD_WORD_BREAKS' sources, which it reads
-    case-sensitive, and CARD_FIELD_ATTRIBUTES. The world's state carries it
-    (PageWorldState), since the world takes nothing from this module. */
+    CARD_FIELD_EXEMPT's, CARD_FIELD_CONJUNCTION's and CARD_FIELD_PAYMENT's
+    sources, which it reads ignoring case, CARD_FIELD_WORD_BREAKS' sources,
+    which it reads case-sensitive, and CARD_FIELD_ATTRIBUTES. The world's
+    state carries it (PageWorldState), since the world takes nothing from
+    this module. */
 export interface CardFieldRule {
   name: string;
   exempt: string;
+  conjunction: string;
   payment: string;
   wordBreaks: readonly string[];
   attributes: readonly string[];
@@ -205,6 +208,7 @@ export interface CardFieldRule {
 export const CARD_FIELD_RULE: CardFieldRule = {
   name: CARD_FIELD_NAME.source,
   exempt: CARD_FIELD_EXEMPT.source,
+  conjunction: CARD_FIELD_CONJUNCTION.source,
   payment: CARD_FIELD_PAYMENT.source,
   wordBreaks: CARD_FIELD_WORD_BREAKS.map((wordBreak) => wordBreak.source),
   attributes: CARD_FIELD_ATTRIBUTES,
@@ -523,20 +527,33 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
      of the exempt pattern (another card's number, such as a gift or an ID
      card's), ignoring case, becomes a space in each value and each split
      value on its own, so an exempt match never runs from one attribute into
-     the next. The name pattern, ignoring case, then tests the values joined
-     in order with a space and the split values joined so. The payment
-     pattern carries no g flag, which would carry lastIndex from one test to
-     the next, so the payment word one field held could hide the next
+     the next; but a match stays when the conjunction pattern, ignoring case,
+     matches the text before it in that value or split value as read, so
+     "Card or gift card number" keeps its card's number. The name pattern,
+     ignoring case, then tests the values joined in order with a space and
+     the split values joined so. The payment and conjunction patterns carry
+     no g flag, which would carry lastIndex from one test to the next, so
+     the payment word or the conjunction one field held could hide the next
      field's in the same read. */
   const CARD_NAME = new RegExp(world.cardField.name, 'i');
   const CARD_EXEMPT = new RegExp(world.cardField.exempt, 'gi');
+  const CARD_CONJUNCTION = new RegExp(world.cardField.conjunction, 'i');
   const CARD_PAYMENT = new RegExp(world.cardField.payment, 'i');
   const CARD_WORD_BREAKS = world.cardField.wordBreaks.map((source) => new RegExp(source, 'g'));
+  /* `form` with every exempt match the conjunction pattern doesn't keep
+     replaced with a space. A replacer's arguments end with the match's
+     offset and the whole text (the exempt pattern names no group), so the
+     text before the match is read in `form` as it was before any
+     replacement. */
+  const exemptedForm = (form: string): string => form.replace(CARD_EXEMPT, (match: string, ...rest: unknown[]) => {
+    const offset = rest[rest.length - 2] as number;
+    return CARD_CONJUNCTION.test(form.slice(0, offset)) ? match : ' ';
+  });
   const cardNamed = (el: Element): boolean => {
     const values = world.cardField.attributes.map((attr) => el.getAttribute(attr) || '');
     const splits = values.map((value) => CARD_WORD_BREAKS.reduce((text, wordBreak) => text.replace(wordBreak, '$1 '), value));
     const payment = [...values, ...splits].some((form) => CARD_PAYMENT.test(form));
-    const exempted = (forms: string[]) => (payment ? forms : forms.map((form) => form.replace(CARD_EXEMPT, ' ')));
+    const exempted = (forms: string[]) => (payment ? forms : forms.map(exemptedForm));
     return [values, splits].some((forms) => CARD_NAME.test(exempted(forms).join(' ')));
   };
   /* A secret field: a password field, one whose autocomplete names a
