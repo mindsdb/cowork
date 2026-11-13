@@ -2426,10 +2426,37 @@ export async function deletePickedFile(engine, name, fileId, project) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
 }
 
+// On the desktop the server requires the app secret for Notion page search and
+// fetch, so they go through the main process; org mode, the web SPA and a
+// shell without the bridge call the route directly. Resolves to `{ data }`
+// with the server's JSON, or null to make the direct request.
+async function notionViaMain(path, call, signal) {
+  if (!host.isElectron || getOrgMode()) return null;
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  // IPC cannot be cancelled; an abort only stops waiting for it.
+  const result = await new Promise((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+    signal?.addEventListener('abort', onAbort, { once: true });
+    call().then(resolve, reject).finally(() => signal?.removeEventListener('abort', onAbort));
+  });
+  if (!result) return null;
+  if (result.ok) return { data: result.data };
+  if ('status' in result) {
+    // The same error a direct request raises for this response.
+    throw await responseError({
+      status: result.status,
+      text: async () => result.text,
+      headers: { get: (h) => (h.toLowerCase() === 'retry-after' ? result.retryAfter : null) },
+    }, `API ${path} returned ${result.status}`);
+  }
+  throw new Error(result.reason);
+}
+
 // Pages and databases matching `query` in one Notion connection's workspace,
 // for the chat's "Add pages from Notion" picker.
 export async function searchNotionPages(name, query, { signal } = {}) {
-  const data = await req('/connectors/notion/search', {
+  const viaMain = await notionViaMain('/connectors/notion/search', () => host.notionSearchPages(name, query), signal);
+  const data = viaMain ? viaMain.data : await req('/connectors/notion/search', {
     method: 'POST',
     body: JSON.stringify({ name, query }),
     signal,
@@ -2440,6 +2467,8 @@ export async function searchNotionPages(name, query, { signal } = {}) {
 // A picked page's title and text (capped server-side; `truncated` says so),
 // sent with the chat message so the agent doesn't have to fetch it itself.
 export async function fetchNotionPage(name, page, { signal } = {}) {
+  const viaMain = await notionViaMain('/connectors/notion/fetch', () => host.notionFetchPage(name, page), signal);
+  if (viaMain) return viaMain.data;
   return req('/connectors/notion/fetch', {
     method: 'POST',
     body: JSON.stringify({ name, page }),
@@ -2464,11 +2493,18 @@ export async function fetchSavedConnection(engine, name) {
 }
 
 // Changes an MCP-based connection's read/write/none tool-access mode after
-// it's already connected (ENG-487 — HubSpot's connector is the first with
-// an editable-after-connect setting). No PKCE, no reconnect — a purely
-// local write on cowork-server's side (or a proxy to auth in org mode),
-// works identically from Electron and the web SPA.
+// it's already connected. No PKCE, no reconnect. On the desktop
+// it goes through the main process, which holds the mode in the keychain and
+// the secret the local server requires; org mode (and the web SPA) calls the
+// route directly.
 export async function patchConnectionAccessMode(engine, name, accessMode) {
+  if (host.isElectron && !getOrgMode()) {
+    const result = await host.setConnectionAccessMode(engine, name, accessMode);
+    if (result) {
+      if (!result.ok) throw new Error(result.reason || 'Could not change tool access.');
+      return result;
+    }
+  }
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/access-mode`, {
     method: 'PATCH',
     body: JSON.stringify({ access_mode: accessMode }),

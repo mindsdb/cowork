@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { diagnostic } from '../shared/diagnostics';
 import { buildKind } from './cowork-home';
 import { getFallbackPassword, setFallbackPassword, deleteFallbackPassword } from './keychain-fallback';
@@ -81,6 +82,47 @@ export async function setRefreshToken(engine: string, accountEmail: string, toke
 
 export async function deleteRefreshToken(engine: string, accountEmail: string): Promise<void> {
   await deletePassword(SERVICE_NAME, accountKey(engine, accountEmail));
+}
+
+// An MCP connection's read/write/none tool access, held here so cell code
+// cannot raise it by editing the vault file. A service of its own, keyed by the
+// store root the server runs on (each Cowork account and organization has its
+// own vault, and may name a connection the same) and the connection name.
+const ACCESS_MODE_SERVICE = buildKind() === 'prod' ? 'cowork-mcp-access-mode' : `cowork-mcp-access-mode-${buildKind()}`;
+
+// A hash, so the account name is short and holds no path characters.
+function storeScope(storeRoot: string): string {
+  return crypto.createHash('sha256').update(storeRoot).digest('hex').slice(0, 32);
+}
+
+function accessModeAccount(storeRoot: string, engine: string, name: string): string {
+  return `${storeScope(storeRoot)}|${engine}:${name}`;
+}
+
+export async function getMcpAccessMode(storeRoot: string, engine: string, name: string): Promise<string | null> {
+  return getPassword(ACCESS_MODE_SERVICE, accessModeAccount(storeRoot, engine, name));
+}
+
+export async function setMcpAccessMode(storeRoot: string, engine: string, name: string, mode: string): Promise<void> {
+  await setPassword(ACCESS_MODE_SERVICE, accessModeAccount(storeRoot, engine, name), mode);
+}
+
+export async function deleteMcpAccessMode(storeRoot: string, engine: string, name: string): Promise<void> {
+  await deletePassword(ACCESS_MODE_SERVICE, accessModeAccount(storeRoot, engine, name));
+}
+
+// Set once every MCP connection of a store has its mode in the keychain. From
+// then on that store's vault-file mode is never read: cell code can write it.
+function migrationAccount(storeRoot: string): string {
+  return `__migration_done__|${storeScope(storeRoot)}`;
+}
+
+export async function isMcpAccessModeMigrated(storeRoot: string): Promise<boolean> {
+  return (await getPassword(ACCESS_MODE_SERVICE, migrationAccount(storeRoot))) !== null;
+}
+
+export async function markMcpAccessModeMigrated(storeRoot: string): Promise<void> {
+  await setPassword(ACCESS_MODE_SERVICE, migrationAccount(storeRoot), '1');
 }
 
 // ENG-1241: the 15 static OAuth client id/secret values that used to ship in
