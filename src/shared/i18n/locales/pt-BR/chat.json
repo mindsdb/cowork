@@ -295,7 +295,13 @@
     "skipped": "Pulada.",
     "timedOut": "Sem resposta: o tempo esgotou.",
     "answered": "Resposta:",
-    "noLongerActive": "Esta pergunta não está mais ativa."
+    "noLongerActive": "Esta pergunta não está mais ativa.",
+    "browserStep": {
+      "title": "Aprovar esta etapa no navegador?",
+      "intro": "Ela pode comprar, enviar, excluir ou confirmar algo, e só é executada se você aprovar.",
+      "approved": "Ação do navegador aprovada",
+      "cancelled": "Ação do navegador cancelada"
+    }
   },
   "codingTerminal": {
     "unavailable": "O terminal integrado não está disponível nesta versão.",

@@ -295,7 +295,13 @@
     "skipped": "Skipped.",
     "timedOut": "No answer — timed out.",
     "answered": "Answered:",
-    "noLongerActive": "This question is no longer active."
+    "noLongerActive": "This question is no longer active.",
+    "browserStep": {
+      "title": "Approve this browser step?",
+      "intro": "It may buy, send, delete or submit something, and runs only if you approve.",
+      "approved": "Browser action approved",
+      "cancelled": "Browser action cancelled"
+    }
   },
   "codingTerminal": {
     "unavailable": "Embedded terminal is not available on this build.",

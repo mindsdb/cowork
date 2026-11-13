@@ -295,7 +295,13 @@
     "skipped": "Omitida.",
     "timedOut": "Sin respuesta: se agotó el tiempo.",
     "answered": "Respuesta:",
-    "noLongerActive": "Esta pregunta ya no está activa."
+    "noLongerActive": "Esta pregunta ya no está activa.",
+    "browserStep": {
+      "title": "¿Apruebas este paso en el navegador?",
+      "intro": "Puede comprar, enviar, eliminar o confirmar algo, y solo se ejecuta si lo apruebas.",
+      "approved": "Acción del navegador aprobada",
+      "cancelled": "Acción del navegador cancelada"
+    }
   },
   "codingTerminal": {
     "unavailable": "La terminal integrada no está disponible en esta compilación.",

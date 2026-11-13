@@ -24071,6 +24071,142 @@
       "text": "27e72738aedf"
     }
   },
+  "chat:askUser.browserStep.approved": {
+    "de": {
+      "from": "8c918fd3f993",
+      "text": "6758818b447c"
+    },
+    "es": {
+      "from": "8c918fd3f993",
+      "text": "404564b2f076"
+    },
+    "fr": {
+      "from": "8c918fd3f993",
+      "text": "3b2e8c000549"
+    },
+    "it": {
+      "from": "8c918fd3f993",
+      "text": "50a72a84313a"
+    },
+    "ja": {
+      "from": "8c918fd3f993",
+      "text": "c5f4f84025d6"
+    },
+    "ko": {
+      "from": "8c918fd3f993",
+      "text": "41129bfa971c"
+    },
+    "pt-BR": {
+      "from": "8c918fd3f993",
+      "text": "4a94f301fb24"
+    },
+    "zh-CN": {
+      "from": "8c918fd3f993",
+      "text": "8dca64d7de07"
+    }
+  },
+  "chat:askUser.browserStep.cancelled": {
+    "de": {
+      "from": "bc8fc2df6001",
+      "text": "5829c93c6394"
+    },
+    "es": {
+      "from": "bc8fc2df6001",
+      "text": "3ac64d66f39f"
+    },
+    "fr": {
+      "from": "bc8fc2df6001",
+      "text": "4fc0ea0e3893"
+    },
+    "it": {
+      "from": "bc8fc2df6001",
+      "text": "e1daa9c687f5"
+    },
+    "ja": {
+      "from": "bc8fc2df6001",
+      "text": "e6f463f97c0d"
+    },
+    "ko": {
+      "from": "bc8fc2df6001",
+      "text": "24ba9a1ce3d0"
+    },
+    "pt-BR": {
+      "from": "bc8fc2df6001",
+      "text": "e63dc67ea3cd"
+    },
+    "zh-CN": {
+      "from": "bc8fc2df6001",
+      "text": "8d805489903a"
+    }
+  },
+  "chat:askUser.browserStep.intro": {
+    "de": {
+      "from": "5f80b907a5f5",
+      "text": "8ce4b97d86d8"
+    },
+    "es": {
+      "from": "5f80b907a5f5",
+      "text": "9c53363dfc84"
+    },
+    "fr": {
+      "from": "5f80b907a5f5",
+      "text": "c1b86ae6bc7d"
+    },
+    "it": {
+      "from": "5f80b907a5f5",
+      "text": "2f56e274141a"
+    },
+    "ja": {
+      "from": "5f80b907a5f5",
+      "text": "79f1d98d363b"
+    },
+    "ko": {
+      "from": "5f80b907a5f5",
+      "text": "e758a7847163"
+    },
+    "pt-BR": {
+      "from": "5f80b907a5f5",
+      "text": "2f56cd4273ae"
+    },
+    "zh-CN": {
+      "from": "5f80b907a5f5",
+      "text": "95e0092a5b47"
+    }
+  },
+  "chat:askUser.browserStep.title": {
+    "de": {
+      "from": "783f300238cd",
+      "text": "c89703f33cde"
+    },
+    "es": {
+      "from": "783f300238cd",
+      "text": "dbf04cef0bbf"
+    },
+    "fr": {
+      "from": "783f300238cd",
+      "text": "9632b9aee2dd"
+    },
+    "it": {
+      "from": "783f300238cd",
+      "text": "a28d441acde2"
+    },
+    "ja": {
+      "from": "783f300238cd",
+      "text": "4f9d6ba00593"
+    },
+    "ko": {
+      "from": "783f300238cd",
+      "text": "bd75918c0627"
+    },
+    "pt-BR": {
+      "from": "783f300238cd",
+      "text": "13508b15c86c"
+    },
+    "zh-CN": {
+      "from": "783f300238cd",
+      "text": "f2e7f7152d61"
+    }
+  },
   "chat:askUser.hintCustom": {
     "de": {
       "from": "3262e6c28de4",

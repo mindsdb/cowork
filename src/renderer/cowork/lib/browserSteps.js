@@ -6,7 +6,8 @@
    I'm needed on (Settings > Shared browser, lib/browserPrefs.js), a turn's
    browser steps show as one Browser row whose label follows the latest call
    (groupBrowserSteps), and the pane opens by itself only when it is the
-   person's turn (browserApproval.js isPersonsBrowserTurn). */
+   person's turn (browserApproval.js isPersonsBrowserTurn). A step the person
+   approved or cancelled before that row follows it as a line of its own. */
 
 import { BROWSER_BADGE, browserSessionIdIn } from './browserSession';
 import i18n from '../../lib/i18n';
@@ -71,12 +72,16 @@ export const isBrowserRow = (step) => step?.badge === BROWSER_BADGE || step?.bad
  * A turn's steps with its browser steps (the Browser step and each browser
  * call) as one Browser row, where the last of them was: labelled by the
  * latest call, running while any is, and opening the turn's browser when
- * clicked. Anything else stays as it is.
+ * clicked. A step `follows` picks out (an answered held step's card,
+ * browserStepPrompt.js answeredBrowserStep) moves from before that row to
+ * right after it, so the browser's work reads as one row and its approvals
+ * under it. Anything else stays as it is.
  *
  * @param {Array<object>} steps
+ * @param {{ follows?: (step: object) => unknown }} [options]
  * @returns {Array<object>}
  */
-export function groupBrowserSteps(steps) {
+export function groupBrowserSteps(steps, { follows = () => false } = {}) {
   const list = Array.isArray(steps) ? steps : [];
   const members = list.filter(isBrowserRow);
   if (members.length < 2) return list;
@@ -97,8 +102,9 @@ export function groupBrowserSteps(steps) {
     ...(latest.cellStatus ? { cellStatus: latest.cellStatus } : null),
   };
   const last = list.lastIndexOf(members.at(-1));
+  const answered = list.filter((step, i) => i < last && follows(step));
   return list.flatMap((step, i) => {
-    if (i === last) return [group];
-    return isBrowserRow(step) ? [] : [step];
+    if (i === last) return [group, ...answered];
+    return isBrowserRow(step) || answered.includes(step) ? [] : [step];
   });
 }

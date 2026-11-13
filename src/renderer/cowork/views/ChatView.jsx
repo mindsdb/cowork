@@ -56,6 +56,7 @@ import TopShortcuts from '../components/TopShortcuts';
 import VoiceOrb from '../components/VoiceOrb';
 import { isPersonsBrowserTurn, isPositionClickCard } from '../lib/browserApproval';
 import { BROWSER_ACTION_BADGE, groupBrowserSteps } from '../lib/browserSteps';
+import { BROWSER_APPROVAL_BADGE, answeredBrowserStep } from '../lib/browserStepPrompt';
 import { useBrowserPrefs } from '../lib/browserPrefs';
 import Button from '../components/ui/Button';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
@@ -666,7 +667,7 @@ function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conver
   // are one row, labelled by the latest (lib/browserSteps.js).
   const { onlyWhenNeeded } = useBrowserPrefs();
   const segments = useMemo(
-    () => splitTurnSegments(onlyWhenNeeded ? groupBrowserSteps(steps) : steps, { startedAt, endedAt, conversationLive, reopenable, reply }),
+    () => splitTurnSegments(onlyWhenNeeded ? groupBrowserSteps(steps, { follows: answeredBrowserStep }) : steps, { startedAt, endedAt, conversationLive, reopenable, reply }),
     [steps, startedAt, endedAt, conversationLive, reopenable, reply, onlyWhenNeeded],
   );
   const liveIdx = live ? liveSegmentIndex(segments) : -1;
@@ -2546,8 +2547,9 @@ export default function ChatView({
      Browser step shows its session in the pane; any other step opens its
      cells in the scratchpad viewer, under its message's key `prefix`. */
   const activateStep = (prefix) => (step) => {
-    // A Browser step, a browser call or a turn's browser row shows its browser.
-    if (step?.badge === BROWSER_BADGE || step?.badge === BROWSER_ACTION_BADGE) {
+    // A Browser step, a browser call, a turn's browser row or a browser step
+    // the person answered shows its browser.
+    if (step?.badge === BROWSER_BADGE || step?.badge === BROWSER_ACTION_BADGE || step?.badge === BROWSER_APPROVAL_BADGE) {
       const sessionId = step.data?.sessionId || latestBrowserId;
       if (viewable(sessionId)) {
         setShownBrowserId(sessionId);

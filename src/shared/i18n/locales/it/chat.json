@@ -295,7 +295,13 @@
     "skipped": "Saltata.",
     "timedOut": "Nessuna risposta: tempo scaduto.",
     "answered": "Risposta:",
-    "noLongerActive": "Questa domanda non è più attiva."
+    "noLongerActive": "Questa domanda non è più attiva.",
+    "browserStep": {
+      "title": "Approvi questo passaggio nel browser?",
+      "intro": "Può acquistare, inviare, eliminare o confermare qualcosa, e viene eseguito solo se lo approvi.",
+      "approved": "Azione del browser approvata",
+      "cancelled": "Azione del browser annullata"
+    }
   },
   "codingTerminal": {
     "unavailable": "Il terminale integrato non è disponibile in questa build.",
