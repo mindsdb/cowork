@@ -2848,9 +2848,12 @@ export function confirmConnectorTest(confirmId) {
   });
 }
 
-export function cancelConnectorTest({ approvalId, confirmId } = {}) {
+// The reason rides in the query string: a server that predates it ignores an
+// unknown query parameter but refuses an unknown body field.
+export function cancelConnectorTest({ approvalId, confirmId, reason } = {}) {
   const body = approvalId ? { approval_id: approvalId } : { confirm_id: confirmId };
-  return req('/connectors/submissions/cancel', { method: 'POST', body: JSON.stringify(body) });
+  const query = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+  return req(`/connectors/submissions/cancel${query}`, { method: 'POST', body: JSON.stringify(body) });
 }
 
 // Backwards-compatible non-streaming wrapper — kept so callers that
