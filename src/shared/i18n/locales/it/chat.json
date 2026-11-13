@@ -467,7 +467,10 @@
         "1": "Crea una landing page per il lancio di un prodotto",
         "2": "Crea un sito web con dashboard",
         "3": "Crea un sito portfolio",
-        "4": "Crea un blog aziendale"
+        "4": "Crea un blog aziendale",
+        "5": "Crea una pagina sullo stato del progetto",
+        "6": "Crea una pagina di invito a un offsite del team",
+        "7": "Crea una pagina per annunciare una funzionalità"
       }
     },
     "apps": {
@@ -496,7 +499,8 @@
         "2": "Crea una checklist di due diligence per un’acquisizione",
         "3": "Confronta i migliori VLM usando i dati di Hugging Face",
         "4": "Calcola l’IRR dei flussi di cassa di un investimento",
-        "5": "Riordina il mio foglio di calcolo e creane un grafico"
+        "5": "Riordina il mio foglio di calcolo e creane un grafico",
+        "6": "Estrai i termini chiave di un contratto"
       }
     },
     "visualization": {
@@ -507,7 +511,9 @@
         "0": "Mostra le vendite settimanali con una mappa di calore",
         "1": "Genera un’analisi dell’abbandono dei clienti con insight",
         "2": "Monitora i KPI mensili di tutti i reparti",
-        "3": "Analizza il panorama competitivo per segmento di mercato"
+        "3": "Analizza il panorama competitivo per segmento di mercato",
+        "4": "Crea una timeline di rilascio del progetto",
+        "5": "Rappresenta un processo come diagramma"
       }
     },
     "wide-research": {
@@ -522,7 +528,10 @@
         "4": "Definisci le buyer persona e le customer journey map",
         "5": "Riassumi un documento e prepara una bozza di risposta",
         "6": "Scegli un modello locale adatto al mio computer",
-        "7": "Rivedi cosa ho in programma questa settimana"
+        "7": "Rivedi cosa ho in programma questa settimana",
+        "8": "Fai ricerche su un potenziale cliente e prepara un primo contatto",
+        "9": "Consigliami su una trattativa a partire dalla trascrizione di una chiamata",
+        "10": "Trasforma le note di una riunione in azioni da fare"
       }
     },
     "games": {
