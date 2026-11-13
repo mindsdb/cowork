@@ -1,0 +1,628 @@
+{
+  "cardShell": {
+    "notice": "お知らせ",
+    "question": "質問"
+  },
+  "chatView": {
+    "connectIntro": {
+      "clickToReopen": "クリックしてフォームを再度開く",
+      "fillOutForm": "サイドパネルのフォームに入力してください",
+      "cancel": "キャンセル",
+      "disconnect": "接続を解除"
+    },
+    "attachment": {
+      "connector": "コネクタ",
+      "image": "画像",
+      "file": "ファイル"
+    },
+    "turn": {
+      "metaDateTime": "{month}{day}日 {time}",
+      "deleting": "削除中…",
+      "copyMessage": "メッセージをコピー",
+      "copyResponse": "回答をコピー",
+      "agentFallback": "エージェント"
+    },
+    "incomplete": {
+      "spendCeiling": "途中で停止しました：このタスクはトークン予算の上限に達しました。",
+      "roundCap": "途中で停止しました：このタスクはステップ数の上限に達しました。",
+      "handbackBudget": "途中で停止しました：タスクの完了前に自動継続の回数を使い切りました。",
+      "handbackVerifierFailure": "途中で停止しました：エージェントがタスクの完了を確認できませんでした。",
+      "handbackStuck": "途中で停止しました：エージェントがタスクの行き詰まりを判断しました。",
+      "retryExhausted": "途中で停止しました：タスクが繰り返し失敗しました。",
+      "questionUnanswered": "途中で停止しました：質問への回答がありませんでした。",
+      "contentFilter": "途中で停止しました：モデルのコンテンツフィルターにより回答がブロックされました。",
+      "fallback": "完了前に停止しました。"
+    },
+    "figureFile": {
+      "attachedFile": "添付ファイル",
+      "noteWithStep": "ファイルの現在の内容を表示しています。ステップが読み取った内容は「ステップを開く」で確認できます。",
+      "note": "ファイルの現在の内容を表示しています。ステップが読み取った時点の内容とは異なる場合があります。"
+    },
+    "artifactCard": {
+      "fallbackTitle": "アーティファクト",
+      "showInFinder": "Finderで表示",
+      "showInFolder": "フォルダで表示",
+      "openShared": "共有アーティファクトを開く",
+      "download": "ダウンロード",
+      "open": "開く",
+      "openPreview": "プレビューを開く",
+      "noPreviewNoLink": "このアーティファクトはプレビューできず、共有リンクもまだありません。",
+      "noDownloadableFile": "このアーティファクトにはダウンロードできるファイルがまだありません。",
+      "noFilePath": "ファイルパスがありません",
+      "deletedStatus": "このアーティファクトは削除されました。",
+      "noPathAvailable": "アーティファクトのファイルパスがありません。",
+      "couldNotOpen": "アーティファクトを開けませんでした。",
+      "opened": "開きました。",
+      "shownInFinder": "Finderで表示しました。",
+      "shownInFolder": "フォルダで表示しました。",
+      "couldNotShow": "アーティファクトを表示できませんでした。",
+      "downloading": "ダウンロード中…",
+      "preview": "プレビュー",
+      "previewInProduct": "このアーティファクトを{product}でプレビュー",
+      "openSharedTooltip": "共有アーティファクトを開く",
+      "saveFileTooltip": "このアーティファクトのファイルを保存",
+      "previewPath": "{path}をプレビュー",
+      "downloadPath": "{path}をダウンロード",
+      "actionTarget": "{action}：{target}",
+      "sharedLink": "共有リンク",
+      "sharedLinkTooltip": "共有アーティファクトを新しいタブで開く",
+      "openInDefaultApp": "デフォルトのアプリで開く",
+      "deletedAriaLabel": "削除されたアーティファクト：{title}",
+      "thumbnailAlt": "アーティファクトのサムネイル",
+      "deletedTitle": "このアーティファクトは削除されました",
+      "liveArtifact": "ライブアーティファクト",
+      "deletedBadge": "削除済み"
+    },
+    "kinds": {
+      "provider": "プロバイダー",
+      "billing": "請求",
+      "usage": "使用量",
+      "connection": "接続",
+      "model": "モデル",
+      "rateLimit": "レート制限",
+      "attachment": "添付ファイル",
+      "conversation": "会話",
+      "agent": "エージェント",
+      "server": "サーバー"
+    },
+    "cards": {
+      "taskStopped": "タスクを停止しました",
+      "providerLimitBody": "プロバイダーの使用量上限に達しました。新しいタスクを始める前に管理者にお問い合わせください。",
+      "addFunds": "残高を追加",
+      "switchToAir": "MindsHub Airに切り替える",
+      "balanceRanOut": "タスクの完了前に残高がなくなりました。新しいタスクを始める前に残高を追加してください。",
+      "balanceEmptyAirLeft": "残高がないため、このモデルは実行できません。MindsHub Airの無料枠はまだ残っています。",
+      "providerUnavailableTitle": "プロバイダーが一時的に利用できません",
+      "providerPausedBody": "プロバイダーがリクエストの受け付けを一時停止しています。しばらくしてからもう一度お試しいただくか、管理者にお問い合わせください。",
+      "freeAirPausedTitle": "無料のMindsHub Airは一時停止中です",
+      "connectProviderTitle": "チャットを始めるにはプロバイダーを接続してください",
+      "providerSetupRequiredTitle": "プロバイダーの設定が必要です",
+      "connectProviderBody": "MindsHubなら、MindsHub Airの無料枠から始めて、その後は使った分だけお支払いいただけます。設定で自分のAPIキーを追加することもできます。",
+      "providerSetupRequiredBody": "タスクを始める前に、モデルプロバイダーを設定するよう運用担当者に依頼してください。",
+      "startForFree": "無料で始める",
+      "openSettings": "設定を開く",
+      "autoTopUpFailedTitle": "自動チャージに失敗しました",
+      "autoTopUpFailedBody": "残高を追加できませんでした。タスクを継続するには、残高を追加するか支払い方法を更新してください。",
+      "rateLimitedTitle": "短時間にリクエストが集中しています",
+      "tryAgainIn": "{seconds}秒後に再試行",
+      "tryAgain": "再試行",
+      "adminSpendingLimitBody": "管理者が設定した支出上限に達しました。管理者にお問い合わせください。",
+      "budgetUsedUpTitle": "組織の予算を使い切りました",
+      "viewBudgets": "予算を表示"
+    },
+    "usageAlert": {
+      "freeLow": "Airの無料枠：残り{percent}",
+      "freeLowRefills": "Airの無料枠：残り{percent} · {time}にリセット",
+      "freeUsed": "Airの無料枠を使い切りました · 現在は残高から支払っています",
+      "freeUsedUntil": "Airの無料枠を使い切りました · {time}まで残高から支払います"
+    },
+    "reconnect": {
+      "couldNotReconnect": "再接続できませんでした。サインアウトしてから、もう一度サインインしてください。",
+      "failed": "再接続に失敗しました。",
+      "cannotAuthTitle": "プロバイダーの認証に失敗しました",
+      "reconnectedTitle": "再接続しました",
+      "reconnectTitle": "続けるには再接続してください",
+      "signInAgainTitle": "もう一度サインインしてください",
+      "updateKeyTitle": "APIキーを更新してください",
+      "cannotAuthBody": "モデルプロバイダーが認証情報を拒否しました。プロバイダーの設定を確認するよう運用担当者に依頼してください。",
+      "reconnectedBody": "MindsHubのセッションを更新しました。続けるには、メッセージをもう一度送信してください。",
+      "reconnectBody": "MindsHubのセッションが無効になりました。再接続すると続けられます。この会話は失われません。",
+      "signInAgainBody": "MindsHubのセッションが無効になりました。設定を開いてもう一度サインインしてください。",
+      "updateKeyBody": "{provider}のAPIキーが無効になりました。続けるには設定でキーを更新してください。",
+      "updateKeyBodyGeneric": "プロバイダーのAPIキーが無効になりました。続けるには設定でキーを更新してください。",
+      "reconnecting": "再接続中…",
+      "reconnect": "再接続"
+    },
+    "model": {
+      "thisModel": "このモデル",
+      "restrictedTitle": "{model}は制限されています",
+      "unavailableTitle": "{model}は現在利用できません",
+      "askOperatorBody": "設定されているモデルとそのアクセス権を確認するよう運用担当者に依頼してください。",
+      "restrictedBody": "組織の管理者がこのモデルを制限しています。設定で別のモデルを選択してください。",
+      "needsCreditsTitle": "{model}にはクレジットが必要です",
+      "needsCreditsBody": "このモデルを使うにはクレジットが足りません。残高をチャージしてください。",
+      "disabledBody": "このモデルはワークスペースで無効になっています。設定で別のモデルを選択してください。",
+      "topUpBalance": "残高をチャージ"
+    },
+    "overloaded": {
+      "theModelProvider": "モデルプロバイダー",
+      "body": "{who}で一時的な障害が発生し、時間内に復旧しませんでした。しばらくしてからもう一度お試しください。",
+      "withFailover": "{base}MindsHubなら、このようなプロバイダーの障害を自動的に回避するため、タスクは止まりません。",
+      "title": "{who}で一時的な問題が発生しています"
+    },
+    "header": {
+      "expandPanel": "パネルを展開",
+      "collapsePanel": "パネルを折りたたむ",
+      "apps": "アプリ",
+      "connectAppsAndData": "アプリとデータを接続",
+      "projects": "プロジェクト",
+      "allProjects": "すべてのプロジェクト",
+      "openProject": "プロジェクトを開く：{project}",
+      "taskMenu": "タスクメニュー"
+    },
+    "transcript": {
+      "loading": "読み込み中…",
+      "loadEarlier": "以前のメッセージを読み込む",
+      "thinking": "考え中…",
+      "connect": "接続",
+      "streaming": "受信中…",
+      "deletingExchange": "選択したやり取りを削除しています。"
+    },
+    "queue": {
+      "status": "{count}件が待機中 · {agent}を待っています",
+      "remove": "キューから削除"
+    },
+    "composer": {
+      "replyPlaceholder": "返信…"
+    },
+    "errors": {
+      "reference": "参照ID：{id}",
+      "modelNotFoundNamedTitle": "「{model}」は使用できるモデルではありません",
+      "modelNotFoundTitle": "そのモデルは利用できません",
+      "modelNotFoundOperatorBody": "プロバイダーが設定されたモデルを提供できません。モデルの設定を確認するよう運用担当者に依頼してください。",
+      "modelNotFoundNamedBody": "設定で指定されている「{model}」はこのプロバイダーでは提供されていないため、送信されませんでした。設定の一覧からモデルを選んでください。",
+      "modelNotFoundBody": "選択したモデルは削除されたか、提供が終了しました。設定で別のモデルに切り替えてください。",
+      "imageFormatTitle": "画像を読み込めませんでした",
+      "imageFormatBody": "添付した画像はモデルが処理できない形式です。PNGまたはJPEGに変換して、もう一度送信してください。",
+      "contentRecoveryTitle": "この会話の問題を修正しました",
+      "contentRecoveryBody": "この会話の以前の画像が、内部的な形式の問題によりモデルに送信できませんでした。画像は自動的に削除されたので、そのまま続けられます。",
+      "contentTooLargeTitle": "画像のサイズが大きすぎます",
+      "billingUnavailableTitle": "請求処理が一時的に利用できません",
+      "billingUnavailableBody": "MindsHubでこのリクエストの請求を確認できませんでした。一時的な問題です。しばらくしてからもう一度お試しください。",
+      "providerUnauthorizedBody": "プロバイダーがこのリクエストを承認できませんでした。しばらくしてからもう一度お試しください。",
+      "workerUnresponsiveTitle": "エージェントが起動しませんでした",
+      "workerUnresponsiveBody": "このターンはエージェントに届かなかったため、何も実行されていません。リクエストの問題ではなく、こちら側の不具合です。しばらくしてからもう一度お試しください。",
+      "modelTimeoutTitle": "モデルから応答がありませんでした",
+      "modelTimeoutBody": "モデルからの応答が途絶えたため、このターンを終了しました。もう一度お試しください。繰り返し発生する場合は、設定で別のモデルを選択してください。",
+      "modelTimeoutOperatorBody": "モデルからの応答が途絶えたため、このターンを終了しました。もう一度お試しください。繰り返し発生する場合は、モデルの設定を確認するよう運用担当者に依頼してください。",
+      "turnLostTitle": "回答が途中で切れました",
+      "turnLostBody": "回答の完了前にサーバーが停止したため、回答はここで終わっています。質問に問題はありません。サーバーが復旧したらもう一度お試しください。",
+      "stalledTitle": "応答が止まっています",
+      "stalledBody": "{product}がエージェントからの応答を受信できなくなりました。回答はまだ処理中の可能性があります。完了を待ってから再送信してください。",
+      "serverBusyTitle": "サーバーが混み合っています",
+      "coworkUnavailableTitle": "サーバーが応答していません"
+    },
+    "addon": {
+      "sending": "送信中…",
+      "added": "現在のタスクに追加しました",
+      "withdrawing": "キューに移動中…",
+      "read": "{agent} が読みました",
+      "returned": "キューに移動しました",
+      "moveToQueue": "キューに移動",
+      "addToTask": "現在のタスクに追加",
+      "addingToTask": "現在のタスクに追加中",
+      "unconfirmed": "追加されたかどうかを確認できませんでした。もう一度送信しますか？",
+      "sendAgain": "再送信",
+      "queued": {
+        "separate": "キューに追加：別のリクエストのようなので、現在のタスクの後に実行されます。",
+        "unsure": "キューに追加：現在のタスクに関係するか判断できませんでした。矢印で今すぐ追加できます。",
+        "unchecked": "キューに追加：現在のタスクに関係するか確認できませんでした。",
+        "unavailable": "キューに追加：現在のタスクは今はメッセージを受け付けられません。",
+        "files": "キューに追加：ファイル付きのメッセージは現在のタスクの後に実行されます。",
+        "notRead": "キューに追加：読み取る前にタスクが終了しました。"
+      }
+    }
+  },
+  "composer": {
+    "placeholder": "こんにちは。今日は何をお手伝いしましょうか？",
+    "removeMode": "{mode}モードを解除",
+    "attachment": {
+      "connector": "コネクタ",
+      "image": "画像",
+      "file": "ファイル",
+      "queued": "待機中",
+      "remove": "添付ファイルを削除"
+    },
+    "claudeCodeNotDetected": "Claude-Code — このマシンでは検出されませんでした",
+    "model": {
+      "operatorDefaultTitle": "運用担当者が設定したモデルで実行します",
+      "routerTitle": "このアカウントで設定されたモデルに自動的に振り分けます",
+      "routerSettings": "ルーターの設定",
+      "fixed": "このタスクのモデルは固定されています",
+      "model": "モデル",
+      "connectProvider": "モデルを選ぶには、設定でプロバイダーを接続してください",
+      "choose": "モデルを選択",
+      "select": "モデルを選択",
+      "effort": "推論レベル"
+    },
+    "slash": {
+      "openFilePicker": "ファイルを選択",
+      "ariaLabel": "スキルとアクション"
+    },
+    "errors": {
+      "attachFiles": "ファイルを添付できませんでした。",
+      "addGoogleDriveFiles": "Google Driveのファイルを追加できませんでした。",
+      "updateDatasource": "データソースの設定を更新できませんでした。",
+      "send": "送信できませんでした。"
+    },
+    "dropFiles": "ドロップしてファイルを添付",
+    "addContext": "コンテキストを追加",
+    "menu": {
+      "attachFiles": "ファイルや写真を添付",
+      "openingGoogleDrive": "Google Driveを開いています…",
+      "addFromGoogleDrive": "Google Driveからファイルを追加",
+      "addFromSharePoint": "SharePointからファイルを追加",
+      "browserTitle": "このタスクでは、{agent}が共有ブラウザを使用できます。オフにすると次のメッセージから適用されます。",
+      "browser": "ブラウザ",
+      "browserOff": "このタスクのブラウザをオフにする",
+      "browserOn": "このタスクのブラウザをオンにする",
+      "connectors": "コネクタ",
+      "connectorsHint": "オフにすると、このチャットの次のメッセージから適用されます。",
+      "noConnectors": "コネクタはまだありません。{link}から追加できます。",
+      "connectAppsAndData": "アプリとデータを接続",
+      "enableConnector": "このチャットで{name}を有効にする",
+      "disableConnector": "このチャットで{name}を無効にする"
+    },
+    "stop": "生成を停止",
+    "send": "送信",
+    "project": {
+      "fixed": "このタスクのプロジェクトは固定されています",
+      "none": "プロジェクトなし"
+    },
+    "chooseHarness": "ハーネスを選択"
+  },
+  "attachmentThumbnail": {
+    "open": "画像を開く",
+    "openNamed": "画像を開く：{name}"
+  },
+  "askUser": {
+    "announcement": "エージェントから質問があります",
+    "hintCustom": "…または、下に回答を入力してください。",
+    "hintSelectOnly": "上の選択肢から選んでください。入力した回答は受け付けられません。別の内容を入力するにはスキップしてください。",
+    "skip": "スキップ",
+    "send": "送信",
+    "skipped": "スキップしました。",
+    "timedOut": "回答がないまま時間切れになりました。",
+    "answered": "回答：",
+    "noLongerActive": "この質問は終了しています。"
+  },
+  "codingTerminal": {
+    "unavailable": "このビルドでは埋め込みターミナルを利用できません。",
+    "couldNotStart": "Claude Codeを起動できませんでした。",
+    "exited": "Claude Codeが終了しました（コード{code}）。"
+  },
+  "turnActions": {
+    "copy": "コピー",
+    "editTooltip": "編集して再送信",
+    "editAriaLabel": "このメッセージを編集して再送信",
+    "copied": "コピーしました",
+    "delete": "削除",
+    "copyFailed": "コピーできませんでした。もう一度お試しください。"
+  },
+  "minimap": {
+    "ariaLabel": "会話のターン",
+    "message": "メッセージ",
+    "goTo": "メッセージ{index}に移動：{snippet}"
+  },
+  "userTurn": {
+    "showMore": "もっと見る",
+    "showLess": "折りたたむ"
+  },
+  "scroller": {
+    "scrollToLatest": "最新までスクロール"
+  },
+  "duration": {
+    "seconds": "{seconds}秒",
+    "minutesSeconds": "{minutes}分{seconds}秒",
+    "hoursMinutes": "{hours}時間{minutes}分",
+    "milliseconds": "{ms}ミリ秒"
+  },
+  "thinking": {
+    "workingFor": "{duration}作業中",
+    "hide": "思考プロセスを非表示",
+    "show": "思考プロセスを表示",
+    "thinking": "考え中…",
+    "workedFor": "{duration}作業しました",
+    "thoughtProcess": "思考プロセス",
+    "timedOutTitle": "{count, plural, other {#個のセルがタイムアウトしたため、エージェントがより小さいステップで再試行しました。展開すると該当するセルを確認できます。}}",
+    "timedOutBadge": "{count}件タイムアウト",
+    "cellTimedOutTitle": "このセルは、タイムアウトしたか応答がなくなったため停止されました。次のセルを小さくするか、作業を複数のセルに分けてください。",
+    "cellTimedOut": "タイムアウト",
+    "cellErrorTitle": "このセルはエラーで終了しました。",
+    "artifactBadge": "アーティファクト"
+  },
+  "phaseProgress": {
+    "thinking": {
+      "1": "じっくり考えました",
+      "2": "全体像を整理しました",
+      "3": "手順を組み立てました",
+      "4": "切り口を決めました",
+      "5": "進め方を考えました"
+    },
+    "working": {
+      "1": "作業を進めました",
+      "2": "数字を計算しました",
+      "3": "主な作業を終えました",
+      "4": "結果をまとめました",
+      "5": "手がかりをたどりました"
+    },
+    "reasoning": {
+      "1": "回答をまとめました",
+      "2": "全体をまとめました",
+      "3": "結果を絞り込みました",
+      "4": "回答を作成しました",
+      "5": "読みやすく整えました"
+    },
+    "artifact": "アーティファクトを仕上げました",
+    "empty": "エージェントの作業中は、ここにステップが表示されます。"
+  },
+  "scratchpad": {
+    "untitled": "無題",
+    "toolCall": "ツール呼び出し",
+    "title": "スクラッチパッド",
+    "noSteps": "このターンにはステップがありません。",
+    "stepOf": "ステップ {index}/{total}",
+    "reason": "推論：",
+    "exec": "実行：",
+    "duration": "所要時間：",
+    "arguments": "引数",
+    "code": "コード",
+    "args": "引数",
+    "packages": "パッケージ：",
+    "output": "出力",
+    "stderr": "Stderr",
+    "hideArgs": "引数を非表示",
+    "showArgs": "引数を表示",
+    "hideCode": "コードを非表示",
+    "showCode": "コードを表示"
+  },
+  "figure": {
+    "kinds": {
+      "query": "クエリ",
+      "file": "ファイル",
+      "web": "Webページ",
+      "step": "ステップ"
+    },
+    "states": {
+      "query": "クエリから取得",
+      "file": "ファイルから取得",
+      "web": "Webから取得",
+      "step": "ステップから取得",
+      "none": "出典なし",
+      "earlierAnswer": "以前の回答から引用"
+    },
+    "tableHint": "矢印キーで、この表の数値間を移動できます。",
+    "copied": "コピーしました",
+    "copyFailed": "コピーできませんでした",
+    "copy": "コピー",
+    "opensInNewWindow": "（新しいウィンドウで開きます）",
+    "page": "{page}ページ",
+    "copySql": "SQLをコピー",
+    "request": "リクエスト",
+    "copyRequest": "リクエストをコピー",
+    "viewFile": "ファイルを表示",
+    "openStep": "ステップを開く",
+    "ariaLabel": "{figure}、{state}",
+    "popoverTitle": "{figure}の出典"
+  },
+  "markdown": {
+    "artifactLocalLinkTitle": "このファイルはライブアーティファクトのパネルにあります。そこから開くかダウンロードしてください",
+    "linkBlocked": "リンクをブロックしました：サポートされていないURLスキームです",
+    "opensInNewWindow": "（新しいウィンドウで開きます）",
+    "copied": "コピーしました",
+    "copy": "コピー",
+    "scrollSideways": "横にスクロールすると、行の続きを表示できます。",
+    "copyCode": "コードをコピー",
+    "copyLanguageCode": "{language}のコードをコピー",
+    "form": {
+      "parseErrorTitle": "フォームを解析できませんでした",
+      "parseErrorSubtitle": "エージェントが送信したフォームの仕様が有効なJSONではありませんでした。",
+      "askRetry": "エージェントに再試行を依頼",
+      "dismiss": "閉じる",
+      "preparing": "フォームを準備中…",
+      "specDidNotParse": "フォームの仕様を解析できませんでした。",
+      "useSidePanel": "サイドパネルからエージェントに再試行を依頼してください。",
+      "openInSidePanel": "サイドパネルで開く",
+      "form": "フォーム",
+      "fillItOut": " — サイドパネルで入力してください →"
+    },
+    "chart": {
+      "invalidSpec": "グラフの仕様が無効です",
+      "intentUnsupported": "`chart` intent形式には、バックエンドのコンパイルエンドポイントが必要です（未接続）。完全な設定には`chartjs`を使用してください。",
+      "missingType": "グラフの種類が指定されていません",
+      "unsupportedType": "サポートされていないグラフの種類です：「{type}」。サポートされている種類：{supported}。",
+      "invalidJson": "グラフの仕様のJSONが無効です",
+      "error": "エラー：{error}"
+    }
+  },
+  "taskModes": {
+    "slides": {
+      "pillLabel": "スライドを作成",
+      "chipLabel": "スライド",
+      "placeholder": "プレゼンテーションのテーマを入力してください",
+      "samples": {
+        "0": "四半期の売上実績ダッシュボードを作成",
+        "1": "競合の状況とポジショニングを分析",
+        "2": "チームの週次ステータス報告を自動化",
+        "3": "製品発売に向けた市場機会を調査",
+        "4": "先週の更新内容をもとに今週の更新を作成"
+      }
+    },
+    "website": {
+      "pillLabel": "Webサイトを作成",
+      "chipLabel": "Webサイト",
+      "placeholder": "作りたいWebサイトについて入力してください",
+      "samples": {
+        "0": "小規模ビジネス向けのオンラインストアを作成",
+        "1": "製品発売のランディングページを作成",
+        "2": "ダッシュボードのWebサイトを作成",
+        "3": "ポートフォリオサイトを作成",
+        "4": "企業ブログを作成",
+        "5": "プロジェクトの進捗ページを作成",
+        "6": "チームのオフサイト招待ページを作成",
+        "7": "新機能の告知ページを作成"
+      }
+    },
+    "apps": {
+      "pillLabel": "アプリを開発",
+      "chipLabel": "アプリを開発",
+      "chipNoun": "アプリ",
+      "placeholder": "作りたいアプリについて入力してください",
+      "samples": {
+        "0": "従業員オンボーディングのワークフローアプリを作成",
+        "1": "経費精算・承認アプリを作成",
+        "2": "チェックイン機能付きのフィットネス記録アプリを作成",
+        "3": "学習計画と進捗管理のツールを作成",
+        "4": "顧客フィードバック収集アプリを作成",
+        "5": "見積書・請求書の作成ツールを作成",
+        "6": "エラーの原因を説明して修正案を提示",
+        "7": "習慣トラッカーを作成"
+      }
+    },
+    "spreadsheet": {
+      "pillLabel": "スプレッドシート",
+      "chipLabel": "スプレッドシート",
+      "placeholder": "分析するスプレッドシートをアップロードするか、一から作成しましょう",
+      "samples": {
+        "0": "プロジェクトのタスクをライフサイクル全体ですっきり管理",
+        "1": "北米のAIカンファレンスのカレンダーを作成",
+        "2": "買収デューデリジェンスのチェックリストを作成",
+        "3": "Hugging Faceのデータで主要なVLMモデルを比較",
+        "4": "投資キャッシュフローのIRRを計算",
+        "5": "スプレッドシートを整理してグラフにする",
+        "6": "契約書から主要な条件を抜き出す"
+      }
+    },
+    "visualization": {
+      "pillLabel": "可視化",
+      "chipLabel": "可視化",
+      "placeholder": "データをアップロードして、どう可視化するかCoworkに伝えてください",
+      "samples": {
+        "0": "週ごとの販売活動をヒートマップで表示",
+        "1": "顧客離脱の分析とインサイトを作成",
+        "2": "部門ごとの月次KPIを追跡",
+        "3": "市場セグメント別に競合の状況を分析",
+        "4": "プロジェクトの展開スケジュールを作成",
+        "5": "プロセスを図にまとめる"
+      }
+    },
+    "wide-research": {
+      "pillLabel": "ワイドリサーチ",
+      "chipLabel": "ワイドリサーチ",
+      "placeholder": "並行して調査したい複雑なプロジェクトについて入力してください",
+      "samples": {
+        "0": "包括的な市場規模分析を実施",
+        "1": "競合の詳細なベンチマーク調査を実施",
+        "2": "新興技術の動向を調査",
+        "3": "投資のデューデリジェンス調査を実施",
+        "4": "顧客ペルソナとカスタマージャーニーマップを調査",
+        "5": "ドキュメントを要約して返信の下書きを作成",
+        "6": "自分のコンピュータに合ったローカルモデルを選ぶ",
+        "7": "今週やるべきことを確認",
+        "8": "見込み客を調べて最初の連絡文を下書き",
+        "9": "通話の文字起こしから商談のアドバイスを受ける",
+        "10": "会議メモをアクションアイテムにまとめる"
+      }
+    },
+    "games": {
+      "pillLabel": "ゲームを作成",
+      "chipLabel": "ゲームを作成",
+      "chipNoun": "ゲーム",
+      "placeholder": "作りたいゲームについて入力してください",
+      "samples": {
+        "0": "定番のスネークゲーム",
+        "1": "ネオンの落ち物パズル",
+        "2": "ホタルの記憶ゲーム",
+        "3": "星空の2048",
+        "4": "紙飛行機のタップゲーム"
+      }
+    },
+    "examples": {
+      "chipLabel": "サンプル",
+      "placeholder": "サンプルを選ぶか、自分のタスクを入力してください"
+    },
+    "samplePrompts": "プロンプトの例",
+    "pillsAriaLabel": "タスクの種類"
+  },
+  "taskRows": {
+    "openProject": "{project}を開く",
+    "untitled": "無題のタスク",
+    "actionsFor": "{title}の操作",
+    "actionsForUntitled": "無題のタスクの操作",
+    "running": "実行中",
+    "moveToProject": "プロジェクトに移動…",
+    "delete": "削除",
+    "scheduledTask": "スケジュール済みタスク",
+    "runs": "{count, plural, other {#回実行}}",
+    "openLatestRun": "最新の実行を開く"
+  },
+  "taskList": {
+    "title": "タスク",
+    "emptyTitle": "このプロジェクトにはまだタスクがありません",
+    "emptyDescription": "上にプロンプトを入力して始めましょう。"
+  },
+  "browser": {
+    "close": "ブラウザを閉じる",
+    "shared": "共有ブラウザ",
+    "title": "ブラウザ",
+    "unreachable": "ブラウザに接続できません",
+    "stopped": {
+      "keepsClosing": "ブラウザの表示が繰り返し閉じてしまいます。しばらくしてからもう一度お試しください。",
+      "noSlotTitle": "空いているブラウザがありません",
+      "noSlotDescription": "現在、すべてのブラウザが使用中です。数分後にもう一度お試しください。",
+      "taskCapTitle": "ブラウザが上限に達しています",
+      "taskCapDescription": "ブラウザですでに{count}件のタスクが開かれています。"
+    },
+    "webPaneNote": "このペインに表示される内容と、ここで入力する内容（パスワードを含む）は、サイトとの送受信の際にCloudflareとMindsDBのブラウザサービスを経由します。{agent}が読み取ったページ内容とスクリーンショットは、このターンを処理するモデルプロバイダーに送信されます。",
+    "unexpectedAddress": "ブラウザから予期しないアドレスが返されました。",
+    "couldNotOpen": "ブラウザを開けませんでした。",
+    "hint": "このブラウザはあなたと{agent}で共有しています。クリックすると操作を引き継げます。",
+    "reload": "ブラウザの表示を再読み込み",
+    "tryAgain": "再試行",
+    "slowTitle": "ブラウザの起動にいつもより時間がかかっています",
+    "slowDescription": "まだ起動中の可能性があります。もう一度試すか、ペインを閉じて1分ほどしてから戻ってください。",
+    "starting": "ブラウザを起動しています…",
+    "signIn": {
+      "title": "{site}からサインインを求められています",
+      "hint": "ユーザー名とパスワードは、このサイトにのみ送信されます。",
+      "username": "ユーザー名",
+      "password": "パスワード",
+      "cancel": "キャンセル",
+      "submit": "サインイン"
+    },
+    "download": {
+      "where": "{folder}の「ダウンロード」",
+      "waiting": "このページが{name}を{where}にダウンロードしようとしています。",
+      "progressing": "{name}をダウンロード中…",
+      "completed": "{name}は{where}に保存されました。",
+      "cancelled": "{name}は保存されませんでした。",
+      "failed": "{name}をダウンロードできませんでした。",
+      "save": "保存",
+      "dontSave": "保存しない"
+    },
+    "aNewTab": "新しいタブ",
+    "yourTurn": "{site}であなたの操作が必要です。終わったら「完了」をクリックして{agent}に戻してください。",
+    "yourTurnReason": "{site}であなたの操作が必要です：{reason}。終わったら「完了」をクリックして{agent}に戻してください。",
+    "agentUsing": "{agent}が使用中です。自分で操作するには引き継いでください。",
+    "pageReadsNote": "{agent}が読み取ったページ内容とスクリーンショットは、このターンを処理するモデルプロバイダーに送信されます。",
+    "back": "戻る",
+    "forward": "進む",
+    "reloadPage": "ページを再読み込み",
+    "done": "完了",
+    "takeOver": "引き継ぐ",
+    "newTab": "新しいタブ",
+    "closedTitle": "このタスクのブラウザは閉じています",
+    "closedDescription": "必要になると{agent}が再び開きます。",
+    "squeezed": "ページを表示するにはウィンドウを大きくしてください"
+  }
+}

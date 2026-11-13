@@ -15,14 +15,15 @@ import { Badge } from '../ui';
 import { Modal, ModalBody, ModalHeader, ModalToolbar } from '../ui/Modal';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { CodeBlock } from './CodeBlock';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 function fmtMs(ms) {
   if (!Number.isFinite(ms) || ms < 0) return null;
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 1000) return i18n.t('duration.milliseconds', { ns: 'chat', ms: Math.round(ms) });
+  if (ms < 60_000) return i18n.t('duration.seconds', { ns: 'chat', seconds: (ms / 1000).toFixed(1) });
   const m = Math.floor(ms / 60000);
   const s = Math.floor((ms % 60000) / 1000);
-  return `${m}m ${s}s`;
+  return i18n.t('duration.minutesSeconds', { ns: 'chat', minutes: m, seconds: s });
 }
 
 function detectLanguage(data, isToolCall) {
@@ -42,6 +43,7 @@ function detectLanguage(data, isToolCall) {
 const UNNAMED_TAB_KEY = '__unnamed__';
 
 export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null }) {
+  const { t } = useTranslation('chat');
   const { isNarrow } = useBreakpoint();
 
   // Group cells by their canonical tab id (anton's `name` field).
@@ -64,14 +66,14 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
         // instead. Scratchpad tabs are keyed by the pad's own name,
         // which IS meant to be shown as-is.
         const displayName = !tabId
-          ? 'Untitled'
+          ? t('scratchpad.untitled')
           : (s._isToolCall ? (s.label || tabId) : tabId);
         byTab.set(key, { id: key, name: displayName, cells: [] });
       }
       byTab.get(key).cells.push(s);
     }
     return [...byTab.values()];
-  }, [steps]);
+  }, [steps, t]);
 
   const focusTabId = useMemo(() => {
     if (!focusStepId) return tabs[0]?.id;
@@ -91,7 +93,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
   // scratchpad cells at all) — "Scratchpad" as a fixed title would be
   // wrong there, so title off whether the active pad is a tool call.
   const activeIsToolCallOnly = !!activeTab && activeTab.cells.every((c) => c._isToolCall);
-  const modalTitle = activeIsToolCallOnly ? (activeTab.name || 'Tool Call') : 'Scratchpad';
+  const modalTitle = activeIsToolCallOnly ? (activeTab.name || t('scratchpad.toolCall')) : t('scratchpad.title');
 
   // Esc + backdrop dismissal are handled by <Modal>.
 
@@ -168,7 +170,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
             />
           ))}
           {(!activeTab || activeTab.cells.length === 0) && (
-            <p className="p-8 text-body text-ink-4">No steps in this turn.</p>
+            <p className="p-8 text-body text-ink-4">{t('scratchpad.noSteps')}</p>
           )}
         </ModalBody>
     </Modal>
@@ -176,6 +178,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
 }
 
 function CellView({ cell, index, total, focused = false }) {
+  const { t } = useTranslation('chat');
   const [showCode, setShowCode] = useState(false);
   const containerRef = useRef(null);
   const data = cell.data || {};
@@ -195,8 +198,8 @@ function CellView({ cell, index, total, focused = false }) {
       catch { node.scrollIntoView(); }
     });
     setHighlight(true);
-    const t = setTimeout(() => setHighlight(false), 1600);
-    return () => { cancelAnimationFrame(id); clearTimeout(t); };
+    const timer = setTimeout(() => setHighlight(false), 1600);
+    return () => { cancelAnimationFrame(id); clearTimeout(timer); };
   }, [focused]);
   const isToolCall = !!cell._isToolCall;
   // The cell's input event (.end) and result event (.result) BOTH
@@ -270,7 +273,7 @@ function CellView({ cell, index, total, focused = false }) {
           full width. */}
       <div className="scratchpad-cell-grid grid items-start grid-cols-[auto_1fr] gap-x-3">
         <span className="text-xs tabular-nums text-ink-4 pt-[2px]">
-          step {index}/{total}
+          {t('scratchpad.stepOf', { index, total })}
         </span>
 
         <div className="min-w-0 flex flex-col gap-1">
@@ -280,10 +283,10 @@ function CellView({ cell, index, total, focused = false }) {
               the badge. */}
           <div className="flex items-baseline justify-between gap-3">
             <span className="truncate font-display text-base font-semibold text-ink">
-              {data.one_line_description || cell.label || 'Untitled'}
+              {data.one_line_description || cell.label || t('scratchpad.untitled')}
             </span>
             {code && (
-              <CodeToggle checked={showCode} onChange={setShowCode} label={isToolCall ? 'Args' : 'Code'} />
+              <CodeToggle checked={showCode} onChange={setShowCode} isToolCall={isToolCall} />
             )}
           </div>
 
@@ -292,13 +295,13 @@ function CellView({ cell, index, total, focused = false }) {
               the meta strip going missing entirely. */}
           {!isToolCall && (
             <div className="flex items-center gap-3 text-xs tabular-nums text-ink-4">
-              <span>reason: <span className="text-ink-3">{fmtMs(reasoningMs) ?? '—'}</span></span>
-              <span>exec: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
+              <span>{t('scratchpad.reason')} <span className="text-ink-3">{fmtMs(reasoningMs) ?? '—'}</span></span>
+              <span>{t('scratchpad.exec')} <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
             </div>
           )}
           {isToolCall && executionMs != null && (
             <div className="flex items-center gap-3 text-xs tabular-nums text-ink-4">
-              <span>duration: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
+              <span>{t('scratchpad.duration')} <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
             </div>
           )}
 
@@ -308,13 +311,13 @@ function CellView({ cell, index, total, focused = false }) {
               without a label as the lone artefact of the cell run. */}
           {showCode && code && (
             <Section
-              label={isToolCall ? 'Arguments' : 'Code'}
+              label={isToolCall ? t('scratchpad.arguments') : t('scratchpad.code')}
               right={!isToolCall && Array.isArray(data.packages) && data.packages.length > 0 ? (
                 <span
                   className="text-xs text-ink-4 truncate max-w-[60%]"
                   title={data.packages.join(', ')}
                 >
-                  pkgs: <span className="text-ink-3">{data.packages.join(', ')}</span>
+                  {t('scratchpad.packages')} <span className="text-ink-3">{data.packages.join(', ')}</span>
                 </span>
               ) : null}
             >
@@ -343,7 +346,7 @@ function CellView({ cell, index, total, focused = false }) {
                 ? <div className="overflow-hidden rounded-md border border-line"><CodeBlock code={formattedOutput} language={outputLang} /></div>
                 : <pre className="overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-snug text-ink">{formattedOutput}</pre>;
               return showCode
-                ? <Section label="Output">{outputBlock}</Section>
+                ? <Section label={t('scratchpad.output')}>{outputBlock}</Section>
                 : <div className="mt-4">{outputBlock}</div>;
             })()
           )}
@@ -353,7 +356,7 @@ function CellView({ cell, index, total, focused = false }) {
               top-line result. Auto-revealed for errored cells via
               the useEffect that flips showCode true above. */}
           {showCode && hasErr && (
-            <Section label="Stderr">
+            <Section label={t('scratchpad.stderr')}>
               <pre className="overflow-x-auto rounded-md border border-red-200 bg-red-50 p-3 font-mono text-[12px] leading-snug text-red-700">
 {stderr}
               </pre>
@@ -369,13 +372,18 @@ function CellView({ cell, index, total, focused = false }) {
 // a labelled toggle: the word "Code" with a 32×18 track + 14px
 // thumb to its right. On = accent fill, off = surface-2. Both
 // states inherit theme via CSS variables so dark/light Just Work.
-function CodeToggle({ checked, onChange, label = 'Code' }) {
+function CodeToggle({ checked, onChange, isToolCall = false }) {
+  const { t } = useTranslation('chat');
+  const label = isToolCall ? t('scratchpad.args') : t('scratchpad.code');
+  const ariaLabel = isToolCall
+    ? (checked ? t('scratchpad.hideArgs') : t('scratchpad.showArgs'))
+    : (checked ? t('scratchpad.hideCode') : t('scratchpad.showCode'));
   return (
     <button
       type="button"
       role="switch"
       aria-checked={!!checked}
-      aria-label={checked ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+      aria-label={ariaLabel}
       onClick={() => onChange?.(!checked)}
       className="inline-flex items-center gap-2 shrink-0 py-1 px-[6px] bg-transparent border-0 rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] text-[11.5px] font-medium text-ink-3 hover:text-ink-2 [transition:color_var(--dur-hover)_ease]"
     >

@@ -16,7 +16,8 @@ vi.mock('../lib/analytics', async (importOriginal) => {
 });
 
 import { ModelSelect } from './ModelSelect';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { HubUsageContext } from '../lib/hubUsageContext';
 import { buildModelPickerOptions } from '../lib/modelPickerOptions';
 
 const OPTIONS = [
@@ -267,6 +268,38 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     // Holds because the row is disabled, NOT because of the button's
     // stopPropagation — strip that and this still passes.
     expect(onValueChange).not.toHaveBeenCalled();
+  });
+
+  it('sends a billing owner straight to the add-credits dialog', async () => {
+    const user = userEvent.setup();
+    hostSpies.openExternal.mockClear();
+    render(
+      <HubUsageContext.Provider value={{ usage: { isBillingOwner: true }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <Harness options={LOCKED} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+    await user.click(within(row).getByRole('button', { name: 'Add credits' }));
+
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+  });
+
+  it('sends a member to the billing page, where the dialog would be one they cannot submit', async () => {
+    const user = userEvent.setup();
+    hostSpies.openExternal.mockClear();
+    render(
+      <HubUsageContext.Provider value={{ usage: { isBillingOwner: false }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <Harness options={LOCKED} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+    await user.click(within(row).getByRole('button', { name: 'Add credits' }));
+
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
 
   it('leaves an affordable row without one', async () => {

@@ -12,12 +12,14 @@ import {
   formatResetTime,
   freeAllowanceState,
   isBalanceEmpty,
+  modelAccessSignature,
   allowanceStopCopy,
   freeServingPausedCopy,
   budgetExceededCopy,
   NO_FREE_GRANT_SENTENCE,
   FREE_TOKENS_LOW_FRACTION,
   USAGE_ACTIONS,
+  AIR_ON_BALANCE_WARN_USD,
 } from './usageWarnings';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
 
@@ -38,6 +40,9 @@ const usage = (over = {}) => ({
 // working when the allowance runs out and gets no figure at any number.
 const at = (percent) => ({ percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET });
 const unpaid = (over = {}) => usage({ balance: null, freeTokens: at(28), ...over });
+// A balance under the $5 line (ENG-4188/ENG-4208): the allowance running low
+// is still news to it, unlike to a balance that carries Air past it.
+const SHORT = { usd: 3.2, canConsume: true, hasToppedUp: true, alert: 'low' };
 
 const labels = (w) => w.actions.map((a) => a.label);
 
@@ -162,8 +167,9 @@ describe('deriveComposerWarning', () => {
     // spend. Only the standing figure goes, so a closed warning steps down to
     // nothing rather than to a figure they were never shown.
     const w = deriveComposerWarning(usage({
+      balance: SHORT,
       freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
-    }));
+    }), { model: 'mindshub_air' });
     expect(w.kind).toBe('free_low');
     expect(w.whenDismissed).toBeUndefined();
   });
@@ -210,7 +216,7 @@ describe('deriveComposerWarning', () => {
   });
 
   it('free tokens running low: names the count and what happens next, no top-up CTA', () => {
-    const w = deriveComposerWarning(usage({
+    const w = deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: 12.4, limit: 100, used: 87.6, remaining: 12.4, resetsAt: RESET },
     }));
     expect(w.kind).toBe('free_low');
@@ -222,22 +228,62 @@ describe('deriveComposerWarning', () => {
   it('free tokens low AND balance low on Air: says both and offers funds', () => {
     const w = deriveComposerWarning(usage({
       freeTokens: { percentRemaining: 12.4, limit: 100, used: 87.6, remaining: 12.4, resetsAt: RESET },
-      balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' },
+      balance: SHORT,
     }), { model: 'mindshub_air' });
     expect(w.kind).toBe('free_low');
-    expect(w.body).toContain('Your balance is low too ($8.42).');
+    expect(w.body).toContain('Your balance is low too ($3.20).');
     expect(labels(w)).toEqual(['View usage', 'Add funds']);
   });
 
-  it('free tokens used, balance fine: an info note, not an error', () => {
-    const w = deriveComposerWarning(usage({
-      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
-    }));
-    expect(w.kind).toBe('free_used');
-    expect(w.tone).toBe('info');
-    expect(w.title).toBe('Free allowance used up');
-    expect(w.body).toMatch(/^MindsHub Air is on your balance \(\$42\.10 left\) until your allowance refills at Sep 1[12], 12:00 PM\.$/);
-    expect(labels(w)).toEqual(['View usage']);
+  describe('free tokens used with a balance to fall through to (ENG-4188)', () => {
+    const spent = { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET };
+    const wallet = (usd, alert = usd < 20 ? 'low' : '') => ({ usd, canConsume: true, hasToppedUp: true, alert });
+
+    it('says nothing while the balance carries Air, on the router or on Air', () => {
+      for (const usd of [199.48, 42.1, 12, AIR_ON_BALANCE_WARN_USD]) {
+        for (const model of [null, 'model-router', 'mindshub_air']) {
+          expect(deriveComposerWarning(usage({ freeTokens: spent, balance: wallet(usd) }), { model })).toBeNull();
+        }
+      }
+    });
+
+    it('warns once the balance drops under $5, with the ways to add to it', () => {
+      for (const model of [null, 'model-router', 'mindshub_air']) {
+        const w = deriveComposerWarning(usage({ freeTokens: spent, balance: wallet(4.99) }), { model });
+        expect(w.kind).toBe('balance_low');
+        expect(w.tone).toBe('warning');
+        expect(w.body).toBe('$4.99 left. Add funds or turn on auto top up.');
+        expect(labels(w)).toEqual(['Add funds', 'Set up auto top up']);
+      }
+    });
+
+    it('keys the close to the step it was made in, so it holds until the next mark', () => {
+      const step = (usd) => deriveComposerWarning(usage({ freeTokens: spent, balance: wallet(usd) })).dismissKey;
+      expect(step(4.2)).toBe(step(3));
+      expect(step(2)).not.toBe(step(3));
+      expect(step(0.5)).not.toBe(step(2));
+    });
+
+    it('says nothing under $5 while auto top up is working, since it refills itself', () => {
+      const w = deriveComposerWarning(usage({
+        freeTokens: spent,
+        balance: wallet(3),
+        autoTopUp: { enabled: true, thresholdUsd: 5, rechargeToUsd: 25, status: 'ok' },
+      }));
+      expect(w).toBeNull();
+    });
+
+    it('an explicit paid pick still hears from auth\'s own low line', () => {
+      expect(deriveComposerWarning(usage({ freeTokens: spent, balance: wallet(12) }), { model: 'claude-sonnet-4' })?.kind)
+        .toBe('balance_low');
+    });
+
+    it('keeps the plain note when the wallet is unknown', () => {
+      const w = deriveComposerWarning(usage({ freeTokens: spent, balance: null }), { model: 'mindshub_air' });
+      expect(w.kind).toBe('free_used');
+      expect(w.tone).toBe('info');
+      expect(w.body).toMatch(/^MindsHub Air is on your balance until your allowance refills at Sep 1[12], 12:00 PM\.$/);
+    });
   });
 
   it('paid balance low without auto top up: Add funds + Set up auto top up', () => {
@@ -278,15 +324,20 @@ describe('deriveComposerWarning', () => {
   });
 
   it('the router (the default pick) can spend either resource, so it hears about both', () => {
-    const lowBalance = usage({ balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' } });
+    const lowBalance = usage({ balance: { usd: 4.2, canConsume: true, hasToppedUp: true, alert: 'low' } });
     expect(deriveComposerWarning(lowBalance, { model: 'model-router' })?.kind).toBe('balance_low');
     expect(deriveComposerWarning(lowBalance, { model: null })?.kind).toBe('balance_low');
-    const lowFree = usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
-    expect(deriveComposerWarning(lowFree, { model: 'model-router' })?.kind).toBe('free_low');
+    // Under auth's $20 line but over $5: the router keeps quiet (ENG-4188).
+    const shortOfTwenty = usage({ balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' } });
+    expect(deriveComposerWarning(shortOfTwenty, { model: 'model-router' })).toBeNull();
+    const lowFree = usage({ balance: SHORT, freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
+    expect(deriveComposerWarning(lowFree, { model: 'model-router' })?.kind).toBe('balance_low');
+    // Free tokens low with a balance that carries Air: no bar (ENG-4208).
+    expect(deriveComposerWarning(usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } }), { model: 'mindshub_air' })).toBeNull();
   });
 
   it('accepts the catalog option object the views pass as `model`', () => {
-    const lowFree = usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
+    const lowFree = unpaid({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
     expect(deriveComposerWarning(lowFree, { model: { id: 'model-router', name: 'Model Router' } })?.kind).toBe('free_low');
     expect(deriveComposerWarning(lowFree, { model: { id: 'claude-sonnet-4' } })).toBeNull();
   });
@@ -403,25 +454,40 @@ describe('usageTransitions', () => {
   const free = (percent) => usage({
     freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
   });
+  const short = (percent) => usage({
+    balance: SHORT,
+    freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
+  });
+
+  it('keeps quiet about the allowance running low on a balance that carries Air (ENG-4208)', () => {
+    expect(usageTransitions(free(40), free(18))).toEqual([]);
+  });
 
   it('tells a running task when it crosses into the low band', () => {
-    expect(usageTransitions(free(40), free(18))).toEqual([
+    expect(usageTransitions(short(40), short(18))).toEqual([
       { kind: 'free_low', fractionLeft: 0.18, resetsAt: RESET },
     ]);
   });
 
   it('reports each step it crosses, not each poll', () => {
     // Draining inside one step is not news the task has not already had.
-    expect(usageTransitions(free(18), free(16))).toEqual([]);
+    expect(usageTransitions(short(18), short(16))).toEqual([]);
     // Crossing into the next one is.
-    expect(usageTransitions(free(18), free(8))).toEqual([
+    expect(usageTransitions(short(18), short(8))).toEqual([
       { kind: 'free_low', fractionLeft: 0.08, resetsAt: RESET },
     ]);
   });
 
   it('says the tokens are gone rather than low when a task empties them', () => {
-    const t = usageTransitions(free(18), free(0));
+    const t = usageTransitions(unpaid({ freeTokens: at(18) }), unpaid({ freeTokens: at(0) }));
     expect(t.map((c) => c.kind)).toEqual(['free_used']);
+  });
+
+  it('keeps quiet when the tokens run out on a balance that carries Air (ENG-4188)', () => {
+    expect(usageTransitions(free(18), free(0))).toEqual([]);
+    const short = { usd: 3, canConsume: true, hasToppedUp: true, alert: 'low' };
+    expect(usageTransitions(usage({ freeTokens: at(18), balance: short }), usage({ freeTokens: at(0), balance: short }))
+      .map((c) => c.kind)).toEqual(['free_used']);
   });
 
   it('stays quiet on the low crossing for a task on an explicit paid model', () => {
@@ -442,7 +508,7 @@ describe('usageTransitions', () => {
 
   it('reports the deepest crossing too, not just the first two', () => {
     // 10% into 5%: the third mark, and the last one before free_used owns it.
-    expect(usageTransitions(free(8), free(4))).toEqual([
+    expect(usageTransitions(short(8), short(4))).toEqual([
       { kind: 'free_low', fractionLeft: 0.04, resetsAt: RESET },
     ]);
   });
@@ -462,8 +528,8 @@ describe('usageTransitions', () => {
 
   it('reports the free grant running out', () => {
     const t = usageTransitions(
-      usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } }),
-      usage({ freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } }),
+      unpaid({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } }),
+      unpaid({ freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } }),
     );
     expect(t).toEqual([{ kind: 'free_used', resetsAt: RESET }]);
   });
@@ -471,6 +537,7 @@ describe('usageTransitions', () => {
     const before = usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
     const after = usage({
       freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET },
+      balance: { usd: 3, canConsume: true, hasToppedUp: true, alert: 'low' },
       autoTopUp: { enabled: true, status: 'payment_failed' },
     });
     expect(usageTransitions(before, after, { model: 'claude-sonnet-4' })).toEqual([{ kind: 'auto_top_up_failed' }]);
@@ -584,6 +651,45 @@ describe('isBalanceEmpty', () => {
     ['missing from the read', null],
   ])('does not read a wallet %s as empty', (_label, balance) => {
     expect(isBalanceEmpty(balance)).toBe(false);
+  });
+});
+
+describe('modelAccessSignature', () => {
+  it('has no signature for an unreachable or missing read', () => {
+    expect(modelAccessSignature(null)).toBeNull();
+    expect(modelAccessSignature({ reachable: false })).toBeNull();
+  });
+
+  it('changes when the wallet empties or fills', () => {
+    const funded = modelAccessSignature(usage());
+    const empty = modelAccessSignature(usage({ balance: { usd: 0, canConsume: false, alert: 'depleted' } }));
+    expect(empty).not.toBe(funded);
+  });
+
+  it('changes when the free allowance is spent', () => {
+    expect(modelAccessSignature(usage({ freeTokens: at(0) }))).not.toBe(modelAccessSignature(usage()));
+  });
+
+  it('reads the wallet from walletCanConsume for a member whose balance is null', () => {
+    const member = (walletCanConsume) => usage({ isBillingOwner: false, balance: null, autoTopUp: null, walletCanConsume });
+    expect(modelAccessSignature(member(true))).not.toBe(modelAccessSignature(member(false)));
+  });
+
+  it('prefers walletCanConsume over the balance when both are present', () => {
+    expect(modelAccessSignature(usage({ walletCanConsume: false }))).toBe(
+      modelAccessSignature(usage({ balance: { usd: 0, canConsume: false, alert: 'depleted' } })),
+    );
+  });
+
+  it('falls back to the balance when walletCanConsume is absent (older servers)', () => {
+    const empty = usage({ balance: { usd: 0, canConsume: false, alert: 'depleted' } });
+    expect(modelAccessSignature(empty)).not.toBe(modelAccessSignature(usage()));
+    expect(modelAccessSignature({ ...empty, walletCanConsume: null })).toBe(modelAccessSignature(empty));
+  });
+
+  it('ignores a balance amount change that does not cross empty', () => {
+    expect(modelAccessSignature(usage({ balance: { usd: 3, canConsume: true, alert: 'low' } })))
+      .toBe(modelAccessSignature(usage()));
   });
 });
 
@@ -715,7 +821,7 @@ describe('freeDismissStep', () => {
     // the key is opaque, and the only lost case is a task whose poll lands on
     // the edge exactly, which then reports on its next step instead.
     expect(freeDismissStep(FREE_TOKENS_LOW_FRACTION)).toBe(0);
-    const atEdge = deriveComposerWarning(usage({
+    const atEdge = deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: 20, limit: 100, used: 80, remaining: 20, resetsAt: RESET },
     }));
     expect(atEdge.kind).toBe('free_low');
@@ -723,7 +829,7 @@ describe('freeDismissStep', () => {
   });
 
   it('keys the free warning to the step, so one close does not hide it to zero', () => {
-    const at = (percent) => deriveComposerWarning(usage({
+    const at = (percent) => deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
     }));
     expect(at(18).dismissKey).toBe('free_low:1');
@@ -756,7 +862,7 @@ describe('countsAsWarning', () => {
     // The figure a dismissal falls back to is still not a warning: closing
     // the bar must not keep the account looking unhealthy forever.
     expect(countsAsWarning(low.whenDismissed)).toBe(false);
-    expect(countsAsWarning(deriveComposerWarning(usage({
+    expect(countsAsWarning(deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
     })))).toBe(true);
     expect(countsAsWarning(deriveComposerWarning(usage({

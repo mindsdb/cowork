@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import Tooltip from '../ui/Tooltip';
 import { copyText } from '../../lib/clipboard';
+import { useTranslation } from '../../../lib/i18n';
 
 const ICON_SZ = 16;
 
@@ -17,7 +18,7 @@ const ICON_SZ = 16;
  */
 export function TurnActions({
   text = '',
-  copyLabel = 'Copy',
+  copyLabel: copyLabelProp,
   onEdit,
   onDelete,
   isLast = false,
@@ -30,6 +31,8 @@ export function TurnActions({
   isLast?: boolean;
   align?: 'left' | 'right';
 }) {
+  const { t } = useTranslation('chat');
+  const copyLabel = copyLabelProp ?? t('turnActions.copy');
   const [status, setStatus] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
   // The live region exists once the reader has copied from this turn, so a
   // transcript of idle turns doesn't carry one status region per message.
@@ -60,14 +63,14 @@ export function TurnActions({
   return (
     <div className={`turn-actions${isLast ? ' is-last' : ''} ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
       {onEdit && (
-        <Tooltip content="Edit and resend">
-          <button type="button" className="turn-action-btn" onClick={onEdit} aria-label="Edit and resend this message">
+        <Tooltip content={t('turnActions.editTooltip')}>
+          <button type="button" className="turn-action-btn" onClick={onEdit} aria-label={t('turnActions.editAriaLabel')}>
             {Ico.edit(ICON_SZ)}
           </button>
         </Tooltip>
       )}
       {canCopy && (
-        <Tooltip content={copied ? 'Copied' : copyLabel}>
+        <Tooltip content={copied ? t('turnActions.copied') : copyLabel}>
           <button
             type="button"
             className={`turn-action-btn${copied ? ' is-done' : ''}`}
@@ -80,15 +83,15 @@ export function TurnActions({
         </Tooltip>
       )}
       {onDelete && (
-        <Tooltip content="Delete">
-          <button type="button" className="turn-action-btn turn-action-btn--danger" aria-label="Delete" onClick={onDelete}>
+        <Tooltip content={t('turnActions.delete')}>
+          <button type="button" className="turn-action-btn turn-action-btn--danger" aria-label={t('turnActions.delete')} onClick={onDelete}>
             {Ico.trash(ICON_SZ)}
           </button>
         </Tooltip>
       )}
       {canCopy && announced && (
         <span role="status" className={status === 'failed' ? 'turn-actions__error' : 'sr-only'}>
-          {copied ? 'Copied' : status === 'failed' ? 'Could not copy. Try again.' : ''}
+          {copied ? t('turnActions.copied') : status === 'failed' ? t('turnActions.copyFailed') : ''}
         </span>
       )}
     </div>

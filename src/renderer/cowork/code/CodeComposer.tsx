@@ -4,6 +4,7 @@ import { ComposerFrame } from '../components/chat/ComposerFrame';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
 import { Textarea } from '../components/ui/Input';
+import { useTranslation } from '../../lib/i18n';
 import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode, type SkillLibraryItem, type TaskMode } from './api';
 import { ComposerAddMenu } from './ComposerAddMenu';
 import { planModeCommand } from './planModeCommand';
@@ -87,6 +88,7 @@ export const CodeComposer = memo(function CodeComposer({
   history = [],
   referenceRequest = null,
 }: CodeComposerProps) {
+  const { t } = useTranslation('code');
   const [prompt, setPrompt] = useState(() => readComposerDraft(session.id)?.prompt ?? '');
   const [commandIndex, setCommandIndex] = useState(0);
   const [attachments, setAttachments] = useState<InputReference[]>(() => readComposerDraft(session.id)?.attachments ?? []);
@@ -112,8 +114,8 @@ export const CodeComposer = memo(function CodeComposer({
   const modeBlocked = !active && (planningLoading || (modeChange && !canPlan));
   const sendBlocked = notStarted || modeBlocked;
   const modeHint = notStarted ? ''
-    : !active && planningLoading ? 'Checking available task modes…'
-    : modeBlocked ? 'This task mode is unavailable. Change the mode before sending.' : '';
+    : !active && planningLoading ? t('composer.checkingModes')
+    : modeBlocked ? t('composer.modeUnavailable') : '';
   const previousLiveMode = useRef({ mode: session.task_mode, active });
   // A mode chosen for the next turn must not silently become a steer/queue
   // if another window starts work first. Follow the live mode until idle.
@@ -255,7 +257,7 @@ export const CodeComposer = memo(function CodeComposer({
           attachFiles(event.dataTransfer.files);
         }}
       >
-        {draggingFiles && <div className="code-drop-hint">Drop files to attach</div>}
+        {draggingFiles && <div className="code-drop-hint">{t('composer.dropHint')}</div>}
         {commandQuery != null && (
           <CodeCommandPalette
             items={paletteItems}
@@ -282,8 +284,8 @@ export const CodeComposer = memo(function CodeComposer({
           value={prompt}
           onChange={(value: string) => { setPrompt(value); setHistoryIndex(null); }}
           rows={2}
-          placeholder={active ? waiting ? 'Queue a follow-up while the agent waits…' : delivery === 'steer' ? 'Steer the current work…' : 'Add a follow-up for after this turn…' : notStarted ? 'Start a new task to continue' : recoverable ? 'Reopen the task, then say how to continue…' : mode === 'plan' ? 'Refine the plan…' : 'Ask for another change…'}
-          aria-label="Follow-up instruction"
+          placeholder={active ? waiting ? t('composer.placeholder.queueWhileWaiting') : delivery === 'steer' ? t('composer.placeholder.steer') : t('composer.placeholder.followUp') : notStarted ? t('composer.placeholder.notStarted') : recoverable ? t('composer.placeholder.recoverable') : mode === 'plan' ? t('composer.placeholder.refinePlan') : t('composer.placeholder.anotherChange')}
+          aria-label={t('composer.inputAriaLabel')}
           // Not disabled while a send is in flight: a disabled field drops
           // focus, so whatever the reader types next would be lost.
           disabled={notStarted}
@@ -376,22 +378,22 @@ export const CodeComposer = memo(function CodeComposer({
           <ComposerAddMenu disabled={busy} onAttach={() => fileInputRef.current?.click()}
             planMode={mode === 'plan'} planDisabled={active}
             onPlanChange={canPlan || draftMode !== undefined ? enabled => setDraftMode(enabled ? 'plan' : 'build') : undefined} />
-          {mode === 'plan' && <span className="code-composer__permission-label">When building:</span>}
+          {mode === 'plan' && <span className="code-composer__permission-label">{t('composer.whenBuilding')}</span>}
           <PermissionSelect
             value={session.permission_mode}
             onValueChange={(value) => void onPermissionChange(value)}
             // The server rejects task-control changes mid-turn.
             disabled={busy || active}
-            disabledReason={active ? 'Permissions can be changed after the current turn finishes' : undefined}
+            disabledReason={active ? t('composer.permissionsLocked') : undefined}
           />
           <span className="code-composer__actions-spacer" aria-hidden="true" />
           <div className="code-composer__delivery">
-            {active && <Button variant="subtle" size="sm" disabled={busy} onClick={() => void onStop()} aria-label="Stop coding agent">{Ico.stop(12)} Stop</Button>}
-            {active && hasDraft && <Select variant="pill" aria-label="Instruction delivery" value={waiting ? 'queue' : delivery} disabled={busy || waiting}
+            {active && <Button variant="subtle" size="sm" disabled={busy} onClick={() => void onStop()} aria-label={t('composer.stopAriaLabel')}>{Ico.stop(12)} {t('composer.stop')}</Button>}
+            {active && hasDraft && <Select variant="pill" aria-label={t('composer.deliveryAriaLabel')} value={waiting ? 'queue' : delivery} disabled={busy || waiting}
               onValueChange={(value: string) => setDelivery(value === 'steer' ? 'steer' : 'queue')}
-              options={[{ value: 'queue', label: 'Queue' }, { value: 'steer', label: 'Steer' }]} />}
-            {(!active || hasDraft) && <Button variant="primary" size="sm" disabled={busy || !hasDraft || sendBlocked} onClick={() => void submit()} aria-label={active ? delivery === 'steer' && !waiting ? 'Steer current turn' : 'Queue instruction' : 'Send follow-up'}>
-              {Ico.send(14)} {active ? delivery === 'steer' && !waiting ? 'Steer' : 'Queue' : 'Send'}
+              options={[{ value: 'queue', label: t('composer.queue') }, { value: 'steer', label: t('composer.steer') }]} />}
+            {(!active || hasDraft) && <Button variant="primary" size="sm" disabled={busy || !hasDraft || sendBlocked} onClick={() => void submit()} aria-label={active ? delivery === 'steer' && !waiting ? t('composer.steerAriaLabel') : t('composer.queueAriaLabel') : t('composer.sendAriaLabel')}>
+              {Ico.send(14)} {active ? delivery === 'steer' && !waiting ? t('composer.steer') : t('composer.queue') : t('composer.send')}
             </Button>}
           </div>
         </div>

@@ -4,6 +4,7 @@ import { resetDeviceIdentity } from '../lib/analytics';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { productName } from '../../lib/deploymentBrand';
 import { STOCK_SHORT_NAME } from '../../../shared/product-name';
+import i18n from '../../lib/i18n';
 
 // Sign-out copy, shared by every sign-out entry point (settings Account
 // section, sidebar user menu) so the pane and the dialog can't disagree. The
@@ -12,17 +13,17 @@ import { STOCK_SHORT_NAME } from '../../../shared/product-name';
 // not at once. Web only ends the Keycloak browser session, so it says no more.
 // A web build without the platform UI signs in through its own deployment,
 // not MindsHub.
+const tr = (key, vars) => i18n.t(`logout.${key}`, { ns: 'shell', ...vars });
+/* Getters, so every read follows the current language. */
 export const LOGOUT_CONFIRM_COPY = {
-  title: `Sign out of ${productName(STOCK_SHORT_NAME)}?`,
-  message: host.isWeb
-    ? PLATFORM_UI
-      ? "This signs you out of Cowork. You'll need to sign in again with MindsHub to keep using it."
-      : `This signs you out of ${productName(STOCK_SHORT_NAME)}. You'll need to sign in again to keep using it.`
-    : "This ends your MindsHub session and removes the AI provider API keys saved in Cowork for this account, each organization before it's next used. Projects, files, connected apps and data connections, including their saved passwords, stay here. You'll need to sign in again to keep using Cowork.",
-  paneSubtitle:
-    "End your MindsHub session and remove the AI provider API keys saved in Cowork for this account. An organization that isn't open is cleared before it's next used. Projects, files, connected apps and data connections, including their saved passwords, stay on this device.",
-  tooltip: 'Sign out and remove saved API keys',
-  confirmLabel: 'Sign out',
+  get title() { return tr('title', { product: productName(STOCK_SHORT_NAME) }); },
+  get message() {
+    if (!host.isWeb) return tr('messageDesktop');
+    return PLATFORM_UI ? tr('messageWebMindsHub') : tr('messageWeb', { product: productName(STOCK_SHORT_NAME) });
+  },
+  get paneSubtitle() { return tr('paneSubtitle'); },
+  get tooltip() { return tr('tooltip'); },
+  get confirmLabel() { return tr('confirm'); },
 };
 
 // Grace window before the Electron success path self-heals with its own
@@ -128,7 +129,7 @@ async function runLogout() {
     // immediately only on a desktop rejection. Web leaves the dialog open
     // with a retry message when it cannot confirm sign-out.
     if (!ok && host.isWeb) {
-      publish({ error: 'Could not finish signing out. Please try again.' });
+      publish({ error: tr('failed') });
       return;
     }
     if (!ok) {
@@ -155,7 +156,7 @@ export function useLogout() {
   return {
     loggingOut: settling,
     locked,
-    waitNote: error || (settling && !locked ? LOGOUT_WAIT_NOTE : ''),
+    waitNote: error || (settling && !locked ? tr('waitNote') : ''),
     logout: runLogout,
   };
 }

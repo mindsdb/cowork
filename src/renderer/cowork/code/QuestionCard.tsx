@@ -4,12 +4,14 @@ import { RadioGroup, Radio } from '../components/ui/RadioGroup';
 import Ico from '../components/Icons';
 import type { PendingQuestion } from './api';
 import { DecisionTray } from './DecisionTray';
+import { useTranslation } from '../../lib/i18n';
 
 export function QuestionCard({ pending, busy, onAnswer }: {
   pending: PendingQuestion;
   busy: boolean;
   onAnswer: (answers: Record<string, string[]>) => Promise<void>;
 }) {
+  const { t } = useTranslation('code');
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const complete = pending.questions.every(question => !!answers[question.id]?.trim());
@@ -19,15 +21,15 @@ export function QuestionCard({ pending, busy, onAnswer }: {
     try {
       await onAnswer(Object.fromEntries(pending.questions.map(question => [question.id, [answers[question.id].trim()]])));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not send your answers. Try again.');
+      setError(reason instanceof Error ? reason.message : t('question.error'));
     }
   };
   return <DecisionTray
-    label="Agent questions"
-    kind={pending.questions.length > 1 ? `${pending.questions.length} questions` : 'Question'}
+    label={t('question.label')}
+    kind={t('question.kind', { count: pending.questions.length })}
     icon={Ico.user(12)}
     onSubmit={() => void submit()}
-    actions={{ primary: { label: busy ? 'Sending…' : 'Continue', type: 'submit', disabled: busy || !complete } }}
+    actions={{ primary: { label: busy ? t('question.sending') : t('question.continue'), type: 'submit', disabled: busy || !complete } }}
   >
     {pending.questions.map(question => <fieldset key={question.id} disabled={busy} className="code-question">
       <legend id={`${pending.id}-${question.id}-legend`}>{question.question}</legend>
@@ -39,7 +41,7 @@ export function QuestionCard({ pending, busy, onAnswer }: {
         </Radio>)}
       </RadioGroup>}
       {(question.isSecret || question.isOther || !question.options?.length) && <label className="code-question__custom">
-        <span>{question.isSecret ? 'Private answer' : question.options?.length ? 'Or write your own answer' : 'Your answer'}</span>
+        <span>{question.isSecret ? t('question.privateAnswer') : question.options?.length ? t('question.ownAnswer') : t('question.yourAnswer')}</span>
         <Input type={question.isSecret ? 'password' : 'text'} autoComplete="off" maxLength={8000}
           value={!question.isSecret && question.options?.some(option => option.label === answers[question.id]) ? '' : answers[question.id] || ''}
           onChange={value => setAnswers(current => ({ ...current, [question.id]: value }))} />

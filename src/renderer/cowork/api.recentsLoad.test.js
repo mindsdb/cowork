@@ -32,7 +32,7 @@ const jsonRes = (body, ok = true, status = 200) => ({
 const conversations = (n) => ({
   conversations: Array.from({ length: n }, (_, i) => ({
     id: `c${i}`, title: `Task ${i}`, project: 'general',
-    updated_at: '2026-09-02T10:00:00Z', created_at: '2026-09-02T09:00:00Z',
+    updatedAt: '2026-09-02T10:00:00Z', createdAt: '2026-09-02T09:00:00Z',
   })),
 });
 
@@ -131,7 +131,7 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
       : Promise.resolve(jsonRes({ conversations: [
         null,
         'nonsense',
-        { id: 'c-good', title: 'Survivor', project: 'general', updated_at: '2026-09-02T10:00:00Z' },
+        { id: 'c-good', title: 'Survivor', project: 'general', updatedAt: '2026-09-02T10:00:00Z' },
       ] })));
 
     const tasks = await fetchSessions();
