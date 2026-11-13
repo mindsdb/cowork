@@ -634,11 +634,11 @@
       "save": "コネクタを保存",
       "saveAgain": "もう一度保存",
       "saving": "保存中…",
-      "done": "保存済み"
+      "done": "保存しました"
     },
     "modal": {
       "fieldsTitle": "入力する内容",
-      "usageTitle": "Anton の使い方",
+      "usageTitle": "Antonによる利用方法",
       "helpUrl": "入手先: {url}"
     },
     "field": {

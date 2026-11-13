@@ -13,7 +13,7 @@ import Button from './ui/Button';
 import { Card } from './ui/Card';
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { fetchConnectorDraftSaved, saveConnectorDraft } from '../api';
-import { useTranslation } from '../../lib/i18n';
+import { formatList, useTranslation } from '../../lib/i18n';
 
 function text(value) {
   return typeof value === 'string' ? value : '';
@@ -28,7 +28,7 @@ function FieldRow({ field }) {
   return (
     <li style={{ marginBottom: 8 }}>
       <div style={{ color: 'var(--ink)' }}>
-        {text(field.label)} <span style={{ color: 'var(--ink-3)' }}>({text(field.name)}, {notes.join(', ')})</span>
+        {text(field.label)} <span style={{ color: 'var(--ink-3)' }}>({text(field.name)}, {formatList(notes)})</span>
       </div>
       {text(field.placeholder) && (
         <div style={{ color: 'var(--ink-3)', fontSize: 12.5 }}>

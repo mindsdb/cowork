@@ -34664,7 +34664,7 @@
     },
     "ja": {
       "from": "b5c120b316c2",
-      "text": "62eb40ecbddc"
+      "text": "725ff212bc1f"
     },
     "ko": {
       "from": "b5c120b316c2",
@@ -34792,7 +34792,7 @@
     },
     "fr": {
       "from": "f4391aaab501",
-      "text": "8851d700dfcd"
+      "text": "0f0b50fdf1b5"
     },
     "it": {
       "from": "f4391aaab501",
@@ -34920,7 +34920,7 @@
   "chat:connectorDraft.kept": {
     "de": {
       "from": "f7b81689579a",
-      "text": "6969b0b2609c"
+      "text": "f8aad43b9799"
     },
     "es": {
       "from": "f7b81689579a",
@@ -34928,7 +34928,7 @@
     },
     "fr": {
       "from": "f7b81689579a",
-      "text": "3e64e2905ee6"
+      "text": "ea78e1dc5066"
     },
     "it": {
       "from": "f7b81689579a",
@@ -34954,7 +34954,7 @@
   "chat:connectorDraft.modal.fieldsTitle": {
     "de": {
       "from": "8dfb52743a66",
-      "text": "18fa0f6c9ce4"
+      "text": "e00b3050e9ae"
     },
     "es": {
       "from": "8dfb52743a66",
@@ -34988,7 +34988,7 @@
   "chat:connectorDraft.modal.helpUrl": {
     "de": {
       "from": "473328e64c37",
-      "text": "41def46c268f"
+      "text": "3c84427fb377"
     },
     "es": {
       "from": "473328e64c37",
@@ -34996,7 +34996,7 @@
     },
     "fr": {
       "from": "473328e64c37",
-      "text": "ac6b10aa2ae1"
+      "text": "ce576ad4992c"
     },
     "it": {
       "from": "473328e64c37",
@@ -35030,7 +35030,7 @@
     },
     "fr": {
       "from": "b498371d034b",
-      "text": "c324d143f01c"
+      "text": "dc9d8ce378c0"
     },
     "it": {
       "from": "b498371d034b",
@@ -35038,11 +35038,11 @@
     },
     "ja": {
       "from": "b498371d034b",
-      "text": "1df56e1af788"
+      "text": "8e0b042cb4b1"
     },
     "ko": {
       "from": "b498371d034b",
-      "text": "bbac6bd351b0"
+      "text": "5f7ecfa9f786"
     },
     "pt-BR": {
       "from": "b498371d034b",
@@ -35098,7 +35098,7 @@
     },
     "fr": {
       "from": "6284920b2db5",
-      "text": "4d4865c5ac1c"
+      "text": "6d680601aa8a"
     },
     "it": {
       "from": "6284920b2db5",
@@ -35124,7 +35124,7 @@
   "chat:connectorDraft.saved": {
     "de": {
       "from": "f3c1f75b2199",
-      "text": "59056beb6abd"
+      "text": "7a6c7255d666"
     },
     "es": {
       "from": "f3c1f75b2199",
@@ -35144,7 +35144,7 @@
     },
     "ko": {
       "from": "f3c1f75b2199",
-      "text": "ef20ba593054"
+      "text": "14a16eef597e"
     },
     "pt-BR": {
       "from": "f3c1f75b2199",

@@ -70,6 +70,8 @@ export function cardActivationProps({ as, onActivate }: ActivationOpts = {}) {
     tabIndex: 0,
     onClick: onActivate,
     onKeyDown: (e: KeyboardEvent) => {
+      // A key pressed on a nested control belongs to that control.
+      if (e.target !== e.currentTarget) return;
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(e); }
     },
   };

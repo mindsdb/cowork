@@ -627,8 +627,8 @@
   },
   "connectorDraft": {
     "notSaved": "Connector-Vorlage · nicht gespeichert",
-    "kept": "Du hast bereits einen Connector mit dieser ID. Erneutes Speichern ersetzt ihn.",
-    "saved": "Gespeichert. Füge deine Zugangsdaten unter Apps und Daten verbinden hinzu.",
+    "kept": "Sie haben bereits einen Connector mit dieser ID. Erneutes Speichern ersetzt ihn.",
+    "saved": "Gespeichert. Fügen Sie Ihre Zugangsdaten unter „Apps und Daten verbinden“ hinzu.",
     "saveFailed": "Der Connector konnte nicht gespeichert werden.",
     "button": {
       "save": "Connector speichern",
@@ -637,9 +637,9 @@
       "done": "Gespeichert"
     },
     "modal": {
-      "fieldsTitle": "Was du eingibst",
+      "fieldsTitle": "Was Sie eingeben",
       "usageTitle": "Wie Anton ihn nutzt",
-      "helpUrl": "Wo du sie findest: {url}"
+      "helpUrl": "Wo Sie sie finden: {url}"
     },
     "field": {
       "secret": "geheim",
