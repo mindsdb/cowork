@@ -330,6 +330,12 @@ async function startFixtureServer(): Promise<void> {
           + `<div id="col"><div id="above" style="height:300px"></div><iframe src="${other}/buy" style="display:block;width:400px;height:100px;border:0"></iframe><div style="height:1500px"></div></div>`
           + `<iframe src="${other}/player" style="position:fixed;right:0;bottom:0;width:200px;height:100px;border:0"></iframe>`);
     }
+    if (url.pathname === '/card-handover') {
+      /* A checkout form whose empty card field only its name names for a card. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Card hand-over</title><style>input,button{display:block;width:300px;height:40px;margin:10px 0}</style>'
+          + '<input name="card_number" aria-label="Card number"><button>Pay</button>');
+    }
     if (url.pathname === '/in-button') {
       /* A text field inside a "Delete account" button, and one inside a
          div with role button whose Space key clicks it; either click marks
@@ -1332,6 +1338,33 @@ test('hands the browser to the person, and only their Done hands it back', async
   await shell.evaluate((id) => (window as any).antontron.browser.handBack(id), SESSION);
   const info = (await call('GET', `/sessions/${SESSION}`)).json();
   expect(info.control).toMatchObject({ holder: 'agent', by: 'person', seq: handed.json().seq + 1 });
+});
+
+test("hands the browser back by itself once the person fills the card field the hand-over waits for, though no read carries that field's value", async () => {
+  await openAt('/card-handover');
+  const card = await element('Card number');
+  expect((await page()).elements.find((e: { id: number }) => e.id === card)).toMatchObject({ value_hidden: true });
+  const handed = await call('POST', `/sessions/${SESSION}/control`, { holder: 'human', reason: 'Enter your card', wait_for: { element: card, state: 'filled' } });
+  expect(handed.status, handed.body.toString()).toBe(200);
+  await shell.evaluate((id) => (window as any).antontron.browser.show(id, { x: 400, y: 0, width: 800, height: 800 }), SESSION);
+  try {
+    // The person fills the field (set here by script) and presses a key of their own.
+    await inPage('/card-handover', 'document.querySelector("[name=card_number]").value = "4242424242424242"');
+    await app.evaluate(({ BrowserWindow, webContents }, at) => {
+      BrowserWindow.getAllWindows()[0]?.focus();
+      const tab = webContents.getAllWebContents().find((contents) => contents.getURL() === at);
+      tab?.focus();
+      tab?.sendInputEvent({ type: 'keyDown', keyCode: 'Shift' });
+      tab?.sendInputEvent({ type: 'keyUp', keyCode: 'Shift' });
+    }, `${origin}/card-handover`);
+    await expect.poll(async () => (await call('GET', `/sessions/${SESSION}`)).json().control, { timeout: 15_000 })
+      .toMatchObject({ holder: 'agent', by: 'person', seq: handed.json().seq + 1 });
+  } finally {
+    if ((await call('GET', `/sessions/${SESSION}`)).json().control.holder === 'human') {
+      await shell.evaluate((id) => (window as any).antontron.browser.handBack(id), SESSION);
+    }
+    await shell.evaluate(() => (window as any).antontron.browser.hide());
+  }
 });
 
 test('shows the task in the pane, answers whether it draws, and hides it again', async () => {

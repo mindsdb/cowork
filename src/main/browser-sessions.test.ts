@@ -60,6 +60,7 @@ function harness(options: { maxLive?: number } = {}) {
         park: vi.fn(() => { tab.shownAt = null; }),
         abortInput: vi.fn(() => { tab.aborts += 1; }),
         watchSecrets: vi.fn(() => { tab.watches += 1; }),
+        handbackElement: vi.fn(async () => null),
         close: vi.fn(() => { tab.closed = true; }),
       };
       tabs.push(tab);

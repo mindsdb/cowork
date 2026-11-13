@@ -175,6 +175,34 @@ afterEach(() => {
 });
 
 describe('the isolated-world page read', () => {
+  it("says whether a hand-over's element is checked and whether it is filled, never its value, a secret field's included, and nothing once it left the page", () => {
+    document.body.innerHTML = `
+      <input data-box id="card" name="card_number" aria-label="Card number" value="4242424242424242">
+      <input data-box id="pw" type="password" aria-label="Password">
+      <input data-box id="blank" aria-label="Name" value="   ">
+      <input data-box id="box" type="checkbox" aria-label="I agree" checked>
+      <div data-box id="switch" role="switch" aria-checked="true" aria-label="Alerts" tabindex="0"></div>
+      <select data-box id="pick" aria-label="Plan"><option value="">Choose</option><option value="pro">Pro</option></select>
+      <div data-box id="notes" contenteditable aria-label="Notes">Leave at the door</div>`;
+    layout();
+    const world = freshWorld();
+    const ids = Object.fromEntries((snapshot(world).elements as Array<{ id: number; name: string }>).map((e) => [e.name, e.id]));
+    const state = (name: string) => pageWorld(document, world, { kind: 'handbackElement', id: ids[name] });
+    expect(state('Card number')).toEqual({ checked: false, filled: true });
+    expect(state('Password')).toEqual({ checked: false, filled: false });
+    expect(state('Name')).toEqual({ checked: false, filled: false });
+    expect(state('I agree')).toEqual({ checked: true, filled: true });
+    expect(state('Alerts')).toEqual({ checked: true, filled: false });
+    expect(state('Plan')).toEqual({ checked: false, filled: false });
+    (document.getElementById('pick') as HTMLSelectElement).value = 'pro';
+    expect(state('Plan')).toEqual({ checked: false, filled: true });
+    expect(state('Notes')).toEqual({ checked: false, filled: true });
+    expect(JSON.stringify(state('Card number'))).not.toContain('4242');
+    document.getElementById('card')!.remove();
+    expect(state('Card number')).toBeNull();
+    expect(pageWorld(document, world, { kind: 'handbackElement', id: 999 })).toBeNull();
+  });
+
   it('numbers the elements and hides every secret value', () => {
     document.body.innerHTML = SIGN_IN;
     layout();
@@ -1553,6 +1581,17 @@ describe('frames', () => {
       .filter(({ cardNamed }, i) => page.frames[i].read === cardNamed)
       .map(({ attributes, cardNamed }) => `${describeField(attributes)}: ${cardNamed ? 'card-named, yet its frame was read' : 'named for no card, yet its frame was left unread'}`);
     expect(wrong).toEqual([]);
+  });
+
+  it('lists every frame unread, and reads none, when the read asks for no frame reads, as the hand-over watch reads the page', async () => {
+    document.body.innerHTML = `<iframe id="form" srcdoc="<p>Get the weekly digest.</p><button>Subscribe</button>"></iframe>`;
+    await framesLoad();
+    place(document.getElementById('form')!, 10, 10, 400, 200);
+    const world = freshWorld();
+    expect(snapshot(world).frames.map((frame) => frame.read)).toEqual([true]);
+    const watched = pageWorld(document, world, { kind: 'snapshot', maxText: 0, maxElements: 300, frames: { ...FRAME_READ_RULES, read: 0 } }) as RawSnapshot;
+    expect(watched.frames).toEqual([{ url: 'about:srcdoc', read: false, box: { x: 10, y: 10, width: 400, height: 200 }, at: { x: 10, y: 10 }, offscreen: false }]);
+    expect(JSON.stringify(watched)).not.toMatch(/weekly digest|Subscribe/);
   });
 
   it('finds what a screenshot must hide: secret fields in the page, its open shadow roots and its same-origin frames, payment frames by address, and every frame from another site', async () => {

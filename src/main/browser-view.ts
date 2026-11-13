@@ -58,6 +58,7 @@ import {
   type FocusResult,
   type FoundSecrets,
   FRAME_READ_RULES,
+  type HandbackElement,
   type HitTestResult,
   isPaymentAddress,
   type LocateResult,
@@ -373,15 +374,25 @@ export class ElectronTab implements TabView {
 
   /* The page's world reads every frame its rules let it; the first
      FRAME_READ_RULES.read (FRAMES_READ) the look keeps read stay read
-     (keepSeen). Asked for the focus (PageReadOptions), the read carries
-     `focus` when the debugger names the node the focus rests on
-     (focusToken); otherwise it never attaches the debugger. */
+     (keepSeen). Asked for no frame reads (PageReadOptions' `frames` false,
+     the hand-over watch's), the world lists every frame unread, so nothing
+     is looked at. Asked for the focus, the read carries `focus` when the
+     debugger names the node the focus rests on (focusToken); otherwise it
+     never attaches the debugger. */
   async read(maxText: number, options: PageReadOptions = {}): Promise<PageSnapshot> {
-    const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: FRAME_READ_RULES });
+    const rules = options.frames === false ? { ...FRAME_READ_RULES, read: 0 } : FRAME_READ_RULES;
+    const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: rules });
     const inside = this.framesInside(new Set(raw.frames.filter((frame) => frame.read).map((frame) => frame.url)));
     const [frames, focus] = await Promise.all([this.keepSeen(raw.frames, raw.viewport), options.focus ? this.focusToken() : null]);
     const page = pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls(), inside);
     return focus === null ? page : { ...page, focus };
+  }
+
+  /** Whether element `id` is checked and whether it holds anything, never
+      what, read in the page's isolated world for a hand-over's watch, or
+      null once it left the page. */
+  handbackElement(id: number): Promise<HandbackElement | null> {
+    return this.inWorld<HandbackElement | null>({ kind: 'handbackElement', id });
   }
 
   /* page.json's `focus`, read through the debugger for this read only

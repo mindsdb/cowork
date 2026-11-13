@@ -41,7 +41,8 @@ import {
   type WaitFor,
 } from '../shared/browser-contract';
 import { diagnostic } from '../shared/diagnostics';
-import { type HandOverWatch, WATCH_TICK_MS, watchTick } from './browser-handover-watch';
+import { type HandOverWatch, WATCH_TICK_MS, watchTick, type WatchRead } from './browser-handover-watch';
+import type { HandbackElement } from './browser-page-script';
 import { refusedDestination } from './browser-profile';
 import type { Screenshot } from './browser-screenshot';
 
@@ -75,14 +76,16 @@ export const MIN_VIEW_PX = 200;
 
 const usable = (bounds: ViewBounds): boolean => bounds.width >= MIN_VIEW_PX && bounds.height >= MIN_VIEW_PX;
 
-/** What a page read reads beyond the page's isolated world. `focus`:
-    page.json's `focus`, the focused node, which the tab names through the
-    debugger. Only anton's reads ask for it (page, and a step's
-    include_page), which run in the session's queue, so a read outside it
-    (the hand-over watch's every second) never holds the debugger a step
-    that starts then needs. */
+/** How a page read reads. `focus`: page.json's `focus`, the focused node,
+    which the tab names through the debugger. Only anton's reads ask for it
+    (page, and a step's include_page), which run in the session's queue, so
+    a read outside it (the hand-over watch's every second) never holds the
+    debugger a step that starts then needs. `frames` false: every frame is
+    listed unread, so the page's world reads none and the tab looks at
+    none, as the hand-over watch, which compares no frame, reads the page. */
 export interface PageReadOptions {
   focus?: boolean;
+  frames?: boolean;
 }
 
 /** One tab: a native view the host drives. browser-view.ts implements it. */
@@ -93,6 +96,10 @@ export interface TabView {
   canGoBack(): boolean;
   canGoForward(): boolean;
   read(maxText: number, options?: PageReadOptions): Promise<PageSnapshot>;
+  /** Whether element `id` of the page's last read is checked and whether it
+      holds anything, never what, a secret field included; null once it
+      left the page. The hand-over watch reads it. */
+  handbackElement(id: number): Promise<HandbackElement | null>;
   /** Runs a step and lets it settle. `onInputDone` runs once its input is
       over, before the settle. */
   act(request: StepRequest, onInputDone: () => void): Promise<StepOutcome>;
@@ -181,6 +188,8 @@ interface TaskSession {
   downloads: BrowserDownload[];
   /** A hand-over that comes back by itself once the person did what it waits for. */
   watch: HandOverWatch | null;
+  /** The watch's read is in flight, so a tick starts none. */
+  watchReading: boolean;
 }
 
 const unavailable = () => new BridgeError('browser_unavailable', "the app's window is closed");
@@ -273,6 +282,7 @@ export class BrowserSessions {
       login: null,
       downloads: [],
       watch: null,
+      watchReading: false,
     };
     this.sessions.set(id, session);
     // A task whose first tab fails to build is not kept.
@@ -493,20 +503,30 @@ export class BrowserSessions {
     return control;
   }
 
-  /* One read of a watched hand-over's page, in the isolated world, and the
-     hand back when it's done. A read that fails, or that control changed
-     under, counts for nothing. */
+  /* One read of a watched hand-over's page, in the isolated world, its
+     frames listed unread, with the state of the element an element wait
+     waits for, and the hand back when it's done. A tick while the last read
+     is still in flight starts none. A read that fails, or that control
+     changed under, counts for nothing. */
   private async readWatched(session: TaskSession): Promise<void> {
     const watch = session.watch;
-    if (!watch || session.login) return;
-    let page: PageSnapshot;
+    if (!watch || session.login || session.watchReading) return;
+    session.watchReading = true;
+    let read: WatchRead;
     try {
-      page = await this.active(session).view.read(0);
+      const view = this.active(session).view;
+      const [page, element] = await Promise.all([
+        view.read(0, { frames: false }),
+        'element' in watch.waitFor ? view.handbackElement(watch.waitFor.element) : null,
+      ]);
+      read = { page, element };
     } catch {
       return;
+    } finally {
+      session.watchReading = false;
     }
     if (session.watch !== watch || session.control.seq !== watch.seq || !this.sessions.has(session.id)) return;
-    if (watchTick(watch, page, { now: this.now(), lastPersonInputAt: session.lastPersonInputAt })) {
+    if (watchTick(watch, read, { now: this.now(), lastPersonInputAt: session.lastPersonInputAt })) {
       this.setControl(session, 'agent', '', 'person');
     }
   }

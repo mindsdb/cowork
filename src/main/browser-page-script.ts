@@ -313,6 +313,9 @@ export type PageWorldRequest =
   | { kind: 'changeMark'; token: number; at: ViewPoint | null }
   | { kind: 'changeStop'; token: number }
   | { kind: 'secretBoxes'; paymentHosts: readonly string[]; depth: number }
+  /* Element `id`'s state for a hand-over's watch (HandbackElement), or null
+     once it left the page. */
+  | { kind: 'handbackElement'; id: number }
   | { kind: 'watch' };
 
 export interface RawSnapshot {
@@ -382,6 +385,14 @@ export interface TypingFocus {
   secret: boolean;
   inField: boolean;
   inControl: boolean;
+}
+
+/** What a hand-over's watch reads of the element it waits for
+    (browser-handover-watch.ts): whether it is checked, and whether it holds
+    anything, a secret field included, never what. */
+export interface HandbackElement {
+  checked: boolean;
+  filled: boolean;
 }
 
 /**
@@ -1057,7 +1068,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
      turn, so a page of many frames can't hold the read to its timeout.
      ElectronTab.read then looks at what the page draws over each frame
      read, and keeps the first `read` it finds seen (browser-view.ts), so
-     every frame read here is one the look may choose.
+     every frame read here is one the look may choose. Rules whose `read` is
+     0 (the hand-over watch's) read no frame.
      Each frame owner inside a frame read (its DOM and open shadow roots) is
      listed too, after them, unread, with its content box where the page
      draws it (throughOwner): a key may reach a control there, which anton
@@ -1082,7 +1094,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         hostIn(address, rules.paymentHosts) || hostIn(address, rules.signInHosts) || consentPage(address);
       const shownWidth = Math.min(box.x + box.width, viewport.width) - Math.max(box.x, 0);
       const shownHeight = Math.min(box.y + box.height, viewport.height) - Math.max(box.y, 0);
-      if (!inner || awaitingLoad(owner, inner) || offscreen || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
+      if (rules.read <= 0 || !inner || awaitingLoad(owner, inner) || offscreen || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
         || drawnScale(owner) < FRAME_MIN_SCALE || refusedAddress(src) || refusedAddress(url) || win.performance.now() > deadline
         || drawnUnreadable(owner) || !hitsOwner(owner, box) || holdsPrivateField(inner)) {
         return { url, read: false, box, at, offscreen };
@@ -1569,6 +1581,18 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     }
     case 'viewport':
       return viewport;
+    case 'handbackElement': {
+      const el = world.ids.get(request.id);
+      if (!el || !el.isConnected) return null;
+      const tag = tagOf(el);
+      let filled: boolean;
+      // A box's value is its form value ("on"), not anything the person entered.
+      if (tag === 'input' && ['checkbox', 'radio'].includes(inputType(el))) filled = (el as HTMLInputElement).checked;
+      else if (tag === 'select') filled = (el as HTMLSelectElement).selectedIndex >= 0 && Boolean((el as HTMLSelectElement).value);
+      else if (tag === 'input' || tag === 'textarea') filled = (el as HTMLInputElement).value.trim().length > 0;
+      else filled = editable(el) && (el.textContent ?? '').trim().length > 0;
+      return { checked: checkedOf(el), filled } satisfies HandbackElement;
+    }
     case 'focusedSecret':
       return { secret: focusOnSecret(), otherSite: !!focusedFrameOwner(), sealed: focusSealed() } satisfies FocusedSecret;
     case 'focusedFrame':
