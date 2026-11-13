@@ -204,9 +204,12 @@ export interface FocusedSecret {
     text entry it types into: whether the page names the focused element
     for a card (by its name, id, label or placeholder, as a frame read's
     card-named field), which it never types into and refuses as a secret
-    field, as the web pod does. */
+    field, as the web pod does; and whether a key there reaches a control a
+    Space key may click (a button around the field), so a space goes in as
+    text. */
 export interface FocusedTyping {
   cardNamed: boolean;
+  inControl: boolean;
 }
 
 /** What a screenshot must not show, in viewport CSS pixels: secret fields
@@ -320,10 +323,13 @@ export type FocusResult =
 export type HitTestResult = { found: false } | { found: true; reaches: number; throughFrame: number };
 
 /** The focus before each key of a type step: whether it is on a secret field,
-    and whether it is still in the field the step types into. */
+    whether it is still in the field the step types into, and whether a key
+    there reaches a control a Space key may click (a button around the
+    field), so a space goes in as text. */
 export interface TypingFocus {
   secret: boolean;
   inField: boolean;
+  inControl: boolean;
 }
 
 /**
@@ -1243,6 +1249,25 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return !!active && !active.shadowRoot && (tagOf(active).includes('-') || SHADOW_HOSTS.has(tagOf(active)));
   };
 
+  /* The roles of a field a person types in, where a key types rather than
+     clicks. */
+  const TYPING_ROLES = new Set(['textbox', 'searchbox', 'spinbutton', 'combobox']);
+  /* Whether a key typed into field `el` reaches a control a Space key may
+     click: an element around it in its own document, across open shadow
+     roots, with a role (roleOf: a button, a link, a role a key activates,
+     an onclick or a tab stop), such as a "Delete account" button around a
+     text field, or the field itself with such a role and none a person
+     types in. A key event there bubbles to that control, whose keyup on
+     Space clicks it. */
+  const inControl = (el: Element | null): boolean => {
+    for (let at: Node | null = el; at && at.nodeType !== 9; at = parentAcross(at)) {
+      if (at.nodeType !== 1) continue;
+      const role = roleOf(at as Element);
+      if (role && !(at === el && TYPING_ROLES.has(role))) return true;
+    }
+    return false;
+  };
+
   /* Where a type with focused true types: the focused element, followed as
      deepActive follows it and on into a same-origin frame whose body has
      the focus there (a whole-document editor), or null. */
@@ -1401,11 +1426,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       return focusedEntry();
     case 'focusedTyping': {
       const at = typingAt();
-      return { cardNamed: !!at && cardNamed(at) } satisfies FocusedTyping;
+      return { cardNamed: !!at && cardNamed(at), inControl: inControl(at) } satisfies FocusedTyping;
     }
     case 'typingFocus': {
       const el = world.ids.get(request.id);
-      return { secret: focusOnSecret(), inField: !!el && el.isConnected && focusIn(el) };
+      return { secret: focusOnSecret(), inField: !!el && el.isConnected && focusIn(el), inControl: inControl(deepActive()) } satisfies TypingFocus;
     }
     case 'focusField': {
       const el = world.ids.get(request.id);

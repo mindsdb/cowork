@@ -37,7 +37,7 @@ function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing, cdp: 
   const page: PageReader = {
     locate: vi.fn(async () => located()),
     focusedSecret: vi.fn(async () => ({ secret: false, otherSite: false, sealed: false })),
-    typingFocus: vi.fn(async (): Promise<TypingFocus> => ({ secret: false, inField: true })),
+    typingFocus: vi.fn(async (): Promise<TypingFocus> => ({ secret: false, inField: true, inControl: false })),
     focusField: vi.fn(async () => ({ ok: true as const, selected: true })),
     focus: vi.fn(async () => ({ ok: true as const })),
     select: vi.fn(async () => ({ ok: true as const, chosen: ['x'] })),
@@ -70,10 +70,10 @@ const typedText = (sent: SentCommand[]) =>
 
 /* The focus a type step finds before each key: it moves to a secret field
    once `moved` says so, as when the page or a typed line break moves it. */
-const focusMovesToSecretWhen = (moved: () => boolean) => vi.fn(async (): Promise<TypingFocus> => ({ secret: moved(), inField: !moved() }));
+const focusMovesToSecretWhen = (moved: () => boolean) => vi.fn(async (): Promise<TypingFocus> => ({ secret: moved(), inField: !moved(), inControl: false }));
 
 /* The same, with the focus moving to an ordinary element outside the field. */
-const focusLeavesWhen = (moved: () => boolean) => vi.fn(async (): Promise<TypingFocus> => ({ secret: false, inField: !moved() }));
+const focusLeavesWhen = (moved: () => boolean) => vi.fn(async (): Promise<TypingFocus> => ({ secret: false, inField: !moved(), inControl: false }));
 
 describe('withAgentInput', () => {
   it('attaches for one step, sends only allowed methods and detaches', async () => {
@@ -182,16 +182,32 @@ describe('runStep', () => {
   });
 
   it('refuses to type when the focus lands in a secret field', async () => {
-    const { dbg, stepHost } = host({ typingFocus: vi.fn(async () => ({ secret: true, inField: false })) });
+    const { dbg, stepHost } = host({ typingFocus: vi.fn(async () => ({ secret: true, inField: false, inControl: false })) });
     await expect(runStep(stepHost, step({ action: 'type', element: 2, text: 'x' }))).rejects.toMatchObject({ code: 'password_field' });
     expect(events(dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
   });
 
   it('clears and types nothing when the page moves the focus away as the field takes it', async () => {
-    const { dbg, page, stepHost } = host({ typingFocus: vi.fn(async () => ({ secret: false, inField: false })) });
+    const { dbg, page, stepHost } = host({ typingFocus: vi.fn(async () => ({ secret: false, inField: false, inControl: false })) });
     await expect(runStep(stepHost, step({ action: 'type', element: 2, text: 'shoes' }))).rejects.toMatchObject({ code: 'stale_element', status: 409 });
     expect(page.typingFocus).toHaveBeenCalledWith(2);
     expect(events(dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+  });
+
+  it("types a type by number's spaces as inserted text while its field sits in a control a Space key clicks, read before each key, and keys them elsewhere", async () => {
+    let keys = 0;
+    const inButton = host({
+      focusField: vi.fn(async () => ({ ok: true as const, selected: false })),
+      typingFocus: vi.fn(async (): Promise<TypingFocus> => ({ secret: false, inField: true, inControl: keys++ > 1 })),
+    });
+    // The page moves the field into a button after its first two keys.
+    await runStep(inButton.stepHost, step({ action: 'type', element: 2, text: 'a bc d', clear: false }));
+    expect(typedText(inButton.dbg.sent)).toBe('a bcd');
+    expect(events(inButton.dbg.sent, 'Input.insertText')).toEqual([{ text: ' ' }]);
+    const plain = host();
+    await runStep(plain.stepHost, step({ action: 'type', element: 2, text: 'a b', clear: false }));
+    expect(typedText(plain.dbg.sent)).toBe('a b');
+    expect(events(plain.dbg.sent, 'Input.insertText')).toEqual([]);
   });
 
   it('focuses the field instead of clicking it, so typing never clicks a control', async () => {
@@ -452,6 +468,16 @@ describe('runStep', () => {
     expect(typedText(sealed.dbg.sent)).toBe('shoes');
     // The entry is read from inside the root the debugger handed the world.
     expect(sentOf(sealed.dbg, 'Runtime.callFunctionOn').some(({ params }) => String(params.functionDeclaration).includes('"kind":"focusedEntry"'))).toBe(true);
+  });
+
+  it("types a focused type's spaces as inserted text while its field sits in a control a Space key clicks, in another site's frame too", async () => {
+    const { dbg, stepHost } = host({}, pacing, widget({ entry: 41, inControl: true }));
+    await runStep(stepHost, typeFocused('a b'));
+    expect(typedText(dbg.sent)).toBe('ab');
+    expect(events(dbg.sent, 'Input.insertText')).toEqual([{ text: ' ' }]);
+    const page = host({}, pacing, { main: { entry: 3, inControl: true } });
+    await runStep(page.stepHost, typeFocused('a b'));
+    expect(events(page.dbg.sent, 'Input.insertText')).toEqual([{ text: ' ' }]);
   });
 
   it.each([

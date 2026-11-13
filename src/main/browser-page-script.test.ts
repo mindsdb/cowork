@@ -684,14 +684,46 @@ describe('the isolated-world page read', () => {
     const email = snapshot(world).elements.find((e) => e.name === 'Email')!;
     const typingFocus = () => pageWorld(document, world, { kind: 'typingFocus', id: email.id });
     (document.getElementById('email') as HTMLInputElement).focus();
-    expect(typingFocus()).toEqual({ secret: false, inField: true } satisfies TypingFocus);
+    expect(typingFocus()).toEqual({ secret: false, inField: true, inControl: false } satisfies TypingFocus);
     (document.getElementById('go') as HTMLButtonElement).focus();
-    expect(typingFocus()).toEqual({ secret: false, inField: false });
+    expect(typingFocus()).toEqual({ secret: false, inField: false, inControl: true });
     (document.getElementById('pw') as HTMLInputElement).focus();
-    expect(typingFocus()).toEqual({ secret: true, inField: false });
+    expect(typingFocus()).toEqual({ secret: true, inField: false, inControl: false });
     document.getElementById('email')!.remove();
-    expect(typingFocus()).toEqual({ secret: true, inField: false });
-    expect(pageWorld(document, world, { kind: 'typingFocus', id: 999 })).toEqual({ secret: true, inField: false });
+    expect(typingFocus()).toEqual({ secret: true, inField: false, inControl: false });
+    expect(pageWorld(document, world, { kind: 'typingFocus', id: 999 })).toEqual({ secret: true, inField: false, inControl: false });
+  });
+
+  it("tells a type whether its field sits in a control a Space key clicks, so its spaces go in as text: in a button, an element whose role a key activates, an onclick or a tab stop, across open shadow roots, or a field with such a role itself", () => {
+    document.body.innerHTML = `
+      <button type="button">Delete account <input id="in-button" aria-label="Reason"></button>
+      <div role="button" tabindex="0">Delete account <input id="in-role" aria-label="Why"></div>
+      <div onclick="void 0"><input id="in-click" aria-label="Note"></div>
+      <div tabindex="0"><textarea id="in-stop" aria-label="Comment"></textarea></div>
+      <div id="as-button" role="button" contenteditable></div>
+      <div id="host" role="button"></div>
+      <form><label>Name <input id="plain"></label></form>
+      <div tabindex="-1"><input id="in-group" aria-label="City"></div>
+      <div id="editor" contenteditable></div>`;
+    const root = document.getElementById('host')!.attachShadow({ mode: 'open' });
+    root.innerHTML = '<input id="in-shadow" aria-label="Code">';
+    const world = freshWorld();
+    const inControl = (el: Element) => {
+      (el as HTMLElement).focus();
+      return (pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping).inControl;
+    };
+    for (const id of ['in-button', 'in-role', 'in-click', 'in-stop', 'as-button']) expect(inControl(document.getElementById(id)!), id).toBe(true);
+    expect(inControl(root.getElementById('in-shadow')!), 'in-shadow').toBe(true);
+    for (const id of ['plain', 'in-group', 'editor']) expect(inControl(document.getElementById(id)!), id).toBe(false);
+    // A type by number reads the same before each key.
+    place(document.getElementById('in-button')!, 10, 10, 200, 20);
+    place(document.getElementById('plain')!, 10, 40, 200, 20);
+    const listed = snapshot(world).elements;
+    const typingFocus = (name: string) => pageWorld(document, world, { kind: 'typingFocus', id: listed.find((e) => e.name === name)!.id as number });
+    document.getElementById('in-button')!.focus();
+    expect(typingFocus('Reason')).toEqual({ secret: false, inField: true, inControl: true });
+    document.getElementById('plain')!.focus();
+    expect(typingFocus('Name')).toEqual({ secret: false, inField: true, inControl: false });
   });
 
   it('focuses a text field for typing, selecting its text, and leaves secret fields and other elements alone', () => {
@@ -1180,18 +1212,18 @@ describe('frames', () => {
     const typing = () => pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping;
     for (const id of ['hint', 'name', 'cvc', 'code']) {
       (document.getElementById(id) as HTMLElement).focus();
-      expect(typing(), id).toEqual({ cardNamed: true } satisfies FocusedTyping);
+      expect(typing().cardNamed, id).toBe(true);
     }
     for (const id of ['email', 'go']) {
       (document.getElementById(id) as HTMLElement).focus();
-      expect(typing(), id).toEqual({ cardNamed: false });
+      expect(typing().cardNamed, id).toBe(false);
     }
     (frameDoc('form').getElementById('inner-card') as HTMLInputElement).focus();
     document.getElementById('form')!.focus();
-    expect(typing()).toEqual({ cardNamed: true });
+    expect(typing()).toEqual({ cardNamed: true, inControl: false } satisfies FocusedTyping);
     (frameDoc('form').getElementById('inner-name') as HTMLInputElement).focus();
     document.getElementById('form')!.focus();
-    expect(typing()).toEqual({ cardNamed: false });
+    expect(typing()).toEqual({ cardNamed: false, inControl: false });
   });
 
   it('finds what a screenshot must hide: secret fields in the page, its open shadow roots and its same-origin frames, payment frames by address, and every frame from another site', async () => {

@@ -232,6 +232,15 @@ async function startFixtureServer(): Promise<void> {
           + '<input id="email" type="email" style="top:0"><button id="go" style="top:60px">Go</button><input id="pw" type="password" value="hunter2" style="top:120px">'
           + '<input id="card" placeholder="Card number" style="top:180px">');
     }
+    if (url.pathname === '/in-button') {
+      /* A text field inside a "Delete account" button, and one inside a
+         div with role button whose Space key clicks it; either click marks
+         the title. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>In button</title><style>button,div{display:block;width:400px;height:60px;margin:10px 0}</style>'
+          + '<button type="button" onclick="document.title = \'deleted\'">Delete account <input id="reason" aria-label="Reason"></button>'
+          + '<div role="button" tabindex="0" onclick="document.title = \'deleted\'" onkeyup="if (event.key === \' \') this.click()">Delete account <input id="why" aria-label="Why"></div>');
+    }
     if (url.pathname === '/closed-fields') {
       /* A form the page keeps in a closed shadow root, with an ordinary
          field and a password field the person has filled. */
@@ -753,6 +762,20 @@ test("types a focused type into an ordinary field of another site's embedded for
   expect(own.status, own.body.toString()).toBe(200);
   expect(await entryValue(origin, 'email')).toBe('bo@example.test');
   expect(await entryValue(other, 'email')).toBe('adé@example.test');
+});
+
+test('types spaces into a field inside a button, or a div whose Space key clicks it, by number and focused, and clicks neither', async () => {
+  await openAt('/in-button');
+  const value = (id: string): Promise<string> => app.evaluate(({ webContents }, { at, field }) => webContents.getAllWebContents()
+    .find((contents) => contents.getURL() === at)?.executeJavaScript(`document.getElementById(${JSON.stringify(field)}).value`), { at: `${origin}/in-button`, field: id });
+  for (const [name, id] of [['Reason', 'reason'], ['Why', 'why']]) {
+    const typed = await act({ action: 'type', element: await element(name), text: 'a b' });
+    expect(typed.status, typed.body.toString()).toBe(200);
+    const focused = await act({ action: 'type', focused: true, text: ' c d', submit: false });
+    expect(focused.status, focused.body.toString()).toBe(200);
+    expect(await value(id), name).toBe('a b c d');
+    expect((await page()).title, name).toBe('In button');
+  }
 });
 
 test('refuses an editing key into a password field the page keeps in a closed shadow root, and types into an ordinary field there', async () => {

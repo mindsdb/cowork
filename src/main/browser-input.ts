@@ -13,7 +13,9 @@
  * (keyDown and keyUp per character) with short pauses. Characters with no key
  * on a US layout go in with Input.insertText, and so do a tab and a long text
  * past its first KEYED_CHARS characters, so the step ends inside its time
- * limit.
+ * limit, and a space while the field sits in a control a Space key may click
+ * (a "Delete account" button around a text field), whose keyup would click
+ * it.
  *
  * `runStep` turns a checked step into those commands. As on the web pod, a
  * type or press step focuses its element rather than clicking it, and a type,
@@ -205,6 +207,15 @@ function pastes(press: KeyPress): boolean {
 
 // ---- Input ---------------------------------------------------------------------
 
+/** What typing reads before each key (AgentInput.typeText): whether a space
+    typed now goes in as inserted text rather than as the Space key, as it
+    must while the field sits in a control a Space key may click, such as a
+    "Delete account" button around a text field, whose keyup a key event
+    reaches. */
+export interface KeyCheck {
+  spaceAsText: boolean;
+}
+
 const BUTTON_BITS: Record<MouseButton, number> = { left: 1, right: 2, middle: 4 };
 
 const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -350,13 +361,16 @@ export class AgentInput {
    * Types `text`: its first KEYED_CHARS characters key by key, a character
    * with no key as inserted text, and the rest inserted INSERTED_CHUNK_CHARS
    * at a time. `beforeKey` runs before each key and each chunk, and stops the
-   * typing by throwing.
+   * typing by throwing. A space goes in as inserted text, with no key event,
+   * when `beforeKey` answers that the field sits in a control a Space key
+   * may click (`spaceAsText`): the Space key's keyup would bubble to that
+   * control and click it.
    */
-  async typeText(text: string, beforeKey: () => Promise<void>): Promise<void> {
+  async typeText(text: string, beforeKey: () => Promise<KeyCheck>): Promise<void> {
     const chars = [...text];
     for (const char of chars.slice(0, KEYED_CHARS)) {
-      await beforeKey();
-      const key = TYPED_KEYS.get(char);
+      const { spaceAsText } = await beforeKey();
+      const key = char === ' ' && spaceAsText ? undefined : TYPED_KEYS.get(char);
       if (key) await this.press({ modifiers: [], key });
       else await this.send('Input.insertText', { text: char });
       await this.pause(35, 90);
@@ -646,9 +660,9 @@ function focusNotTyped(kind: Exclude<FocusedField['kind'], 'entry'>): BridgeErro
 async function typeIntoFocus(input: AgentInput, frames: FrameReads, text: string, submit: boolean): Promise<void> {
   const start = await frames.focusedField();
   if (start.kind !== 'entry') throw focusNotTyped(start.kind);
-  const keepTyping = async () => {
+  const keepTyping = async (): Promise<KeyCheck> => {
     const now = await frames.focusedField();
-    if (now.kind === 'entry' && now.field === start.field) return;
+    if (now.kind === 'entry' && now.field === start.field) return { spaceAsText: now.inControl };
     if (now.kind === 'secret') throw secretField('the focused field');
     const why = now.kind === 'unreadable' ? "this browser couldn't read the focus" : 'the focus left the field the step began typing into';
     throw new BridgeError('stale_element', `${why}, so the rest was not typed; read the page again`);
@@ -725,13 +739,15 @@ export async function runStep(host: StepHost, request: StepRequest, platform: No
         if (!field.ok) throw focusRefused(step.element, field.reason);
         /* Before every key: typing stops once the focus is on a secret field
            or has left this one, whether a typed line break moved it or the
-           page did, so no key goes anywhere the step didn't name. */
-        const keepTyping = async () => {
+           page did, so no key goes anywhere the step didn't name, and a
+           space goes in as text while the field sits in a control. */
+        const keepTyping = async (): Promise<KeyCheck> => {
           const focus = await host.page.typingFocus(step.element);
           if (focus.secret) throw secretField('the focused field');
           if (!focus.inField) {
             throw new BridgeError('stale_element', `the focus left element ${step.element}, so the rest was not typed; read the page again`);
           }
+          return { spaceAsText: focus.inControl };
         };
         if (field.selected) {
           await keepTyping();

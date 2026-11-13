@@ -478,10 +478,11 @@ export interface FramePlace {
 
 /** What has the focus for a type with focused true (FrameReads.focusedField):
     a text entry that isn't secret, with `field` naming it by its frame and
-    its node; a secret field or one named for a card; anything else; or a
-    focus this browser can't read. */
+    its node and `inControl` saying a key there reaches a control a Space key
+    may click (FocusedTyping); a secret field or one named for a card;
+    anything else; or a focus this browser can't read. */
 export type FocusedField =
-  | { kind: 'entry'; field: string }
+  | { kind: 'entry'; field: string; inControl: boolean }
   | { kind: 'secret' | 'other' | 'unreadable' };
 
 interface LayoutMetrics {
@@ -555,8 +556,9 @@ export class FrameReads {
    * What has the focus for a type with focused true, read where it rests as
    * `focusedSecret` reads it: a text entry that isn't secret (focusedEntry
    * in browser-page-script.ts), named by its frame and its node so a later
-   * read tells whether the focus is still on the same field; a secret field,
-   * or one the page names for a card (FocusedTyping), as the web pod counts
+   * read tells whether the focus is still on the same field, with whether a
+   * key there reaches a control a Space key may click; a secret field, or
+   * one the page names for a card (FocusedTyping), as the web pod counts
    * it; anything else; or `unreadable`, for whatever `focusedSecret` counts
    * as secret because it can't read it (a payment provider's frame, a frame
    * of yet another site inside another site's, a frame with no owner the
@@ -570,7 +572,7 @@ export class FrameReads {
       const typing = await this.session.read<FocusedTyping>(frameId, { kind: 'focusedTyping' }, from);
       if (typing.cardNamed) return { kind: 'secret' };
       const node = await this.session.nodeOf(frameId, { kind: 'focusedEntry' }, from);
-      return node === null ? { kind: 'other' } : { kind: 'entry', field: `${frameId}/${node}` };
+      return node === null ? { kind: 'other' } : { kind: 'entry', field: `${frameId}/${node}`, inControl: typing.inControl };
     });
     return withTimeout(read(), FRAME_READ_MS).catch(() => unreadable);
   }
