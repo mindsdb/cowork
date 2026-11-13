@@ -109,9 +109,10 @@ describe('publishedPageId', () => {
     expect(publishedPageId({ url: 'u', accessMode: 'public', result: { report_id: 'rid-1', view_url: 'u' } })).toBe('rid-1');
   });
 
-  it('also reads a top-level id, and answers empty for none', () => {
-    expect(publishedPageId({ url: 'u', reportId: 'rid-2' })).toBe('rid-2');
+  it('reads nothing at the top level, and answers empty for none', () => {
+    expect(publishedPageId({ url: 'u', reportId: 'rid-2', report_id: 'rid-3' })).toBe('');
     expect(publishedPageId({ url: 'u', result: {} })).toBe('');
+    expect(publishedPageId({ url: 'u', result: { report_id: 7 } })).toBe('');
     expect(publishedPageId(null)).toBe('');
   });
 });

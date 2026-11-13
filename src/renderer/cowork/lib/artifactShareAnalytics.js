@@ -82,15 +82,14 @@ export function shareSnapshot(artifact, { teams = [] } = {}) {
 }
 
 /**
- * The page id a publish or access-change answer names. cowork-server puts it
- * under `result` (the publisher's own answer); a top-level field is read too,
- * for a server that also answers it there.
+ * The page id a publish or access-change answer names: cowork-server puts it
+ * only under `result`, the publisher's own answer. Nothing at the top level is
+ * read, because artifact_published's id reads the top level first and has to
+ * keep sending what it always has.
  */
 export function publishedPageId(answer) {
-  for (const id of [answer?.result?.report_id, answer?.reportId, answer?.report_id]) {
-    if (typeof id === 'string' && id) return id;
-  }
-  return '';
+  const id = answer?.result?.report_id;
+  return typeof id === 'string' ? id : '';
 }
 
 /** Whether a save from `before` to `after` is worth an access-changed event. */
