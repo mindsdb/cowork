@@ -21,6 +21,7 @@ import {
   modelLabel,
   transformSettingsRows,
   routerRoleSubtitle,
+  jevOffForZdr,
   showJevSwitch,
   showRouterRoleRow,
   SETTINGS_KEY_MAP,
@@ -1256,5 +1257,17 @@ describe('jev routing settings', () => {
     [null, 'minds-cloud', false], // older server: nothing to save
   ])('shows the Jev switch for routing %j with coding on %s: %s', (routing, coding, shown) => {
     expect(showJevSwitch(routing, coding)).toBe(shown);
+  });
+});
+
+describe('jevOffForZdr', () => {
+  it.each([
+    [{ mode: 'jev', zdr: true }, true],
+    [{ mode: 'jev', zdr: false }, false],
+    [{ mode: 'jev' }, false],
+    [null, false],
+    ['jev', false],
+  ])('reads %j as %s', (routing, off) => {
+    expect(jevOffForZdr(routing)).toBe(off);
   });
 });

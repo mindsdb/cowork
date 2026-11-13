@@ -355,6 +355,11 @@ export function showJevSwitch(routing, codingProviderType) {
   return routing.mode === 'jev' || routing.mode === 'off' || codingProviderType === 'minds-cloud';
 }
 
+/** Whether zero data retention keeps Jev off, whatever the switch says. Sent by servers with ZDR. */
+export function jevOffForZdr(routing) {
+  return !!routing && typeof routing === 'object' && routing.zdr === true;
+}
+
 // ─── Role row copy ──────────────────────────────────────────────────
 
 /**

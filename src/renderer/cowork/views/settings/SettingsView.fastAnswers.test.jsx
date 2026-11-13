@@ -145,6 +145,21 @@ describe('the Fast answers with Jev switch', () => {
     expect(screen.getByLabelText(SWITCH)).not.toBeChecked();
   });
 
+  it('shows off and disabled while zero data retention is on', async () => {
+    render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing: { mode: 'jev', zdr: true } })} />);
+    await expandAdvanced();
+    expect(screen.getByLabelText(SWITCH)).not.toBeChecked();
+    expect(screen.getByLabelText(SWITCH)).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Off while zero data retention is on. Every message runs Anton.')).toBeInTheDocument();
+  });
+
+  it('stays usable when the server says zero data retention is off', async () => {
+    render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing: { mode: 'jev', zdr: false } })} />);
+    await expandAdvanced();
+    expect(screen.getByLabelText(SWITCH)).toBeChecked();
+    expect(screen.getByLabelText(SWITCH)).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
   it('saves turning Jev off', async () => {
     const onSave = vi.fn(async () => {});
     render(<SettingsView

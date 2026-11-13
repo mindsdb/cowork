@@ -4,7 +4,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted, isModelZdrRestricted } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, jevOffForZdr, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -939,6 +939,7 @@ export default function SettingsView({
   // effectiveRoleProvider already falls back to MindsHub, as the server does.
   const budgetRowsShown = hasBudgetSettings && !(host.isWeb && PLATFORM_UI);
   const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
+  const jevZdrOff = jevOffForZdr(settings?.routing);
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     // null is a tombstone ("clear the stored row so the server's enabled-aware
@@ -2048,10 +2049,13 @@ export default function SettingsView({
             {jevSwitchShown && (
               <Section
                 title="Fast answers with Jev"
-                subtitle={`Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn it off to have every message run ${agentLabel || 'Anton'}.`}
+                subtitle={jevZdrOff
+                  ? `Off while zero data retention is on. Every message runs ${agentLabel || 'Anton'}.`
+                  : `Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn it off to have every message run ${agentLabel || 'Anton'}.`}
               >
                 <Switch
-                  checked={settings.jevDecisionsEnabled ?? true}
+                  checked={jevZdrOff ? false : (settings.jevDecisionsEnabled ?? true)}
+                  disabled={jevZdrOff}
                   onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
                   aria-label="Fast answers with Jev"
                 />
