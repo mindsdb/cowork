@@ -624,5 +624,30 @@
     "closedTitle": "Il browser di questa attività è chiuso",
     "closedDescription": "{agent} lo riaprirà quando ne avrà bisogno.",
     "squeezed": "Allarga la finestra per vedere la pagina"
+  },
+  "connectorDraft": {
+    "notSaved": "Modello di connettore · non salvato",
+    "kept": "Hai già un connettore con questo id. Salvarlo di nuovo lo sostituisce.",
+    "saved": "Salvato. Aggiungi le tue credenziali in Connetti app e dati.",
+    "savedConnect": "Salvato. Connettilo per aggiungere le tue credenziali.",
+    "saveFailed": "Impossibile salvare il connettore.",
+    "button": {
+      "save": "Salva connettore",
+      "saveAgain": "Salva di nuovo",
+      "saving": "Salvataggio…",
+      "done": "Salvato",
+      "connect": "Connetti"
+    },
+    "modal": {
+      "fieldsTitle": "Cosa inserirai",
+      "usageTitle": "Come lo userà Anton",
+      "helpUrl": "Dove trovarle: {url}"
+    },
+    "field": {
+      "secret": "segreto",
+      "required": "obbligatorio",
+      "optional": "facoltativo",
+      "example": "Esempio: {value}"
+    }
   }
 }

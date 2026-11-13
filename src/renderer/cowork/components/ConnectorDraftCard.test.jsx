@@ -44,6 +44,30 @@ describe('ConnectorDraftCard', () => {
     expect(api.saveConnectorDraft).toHaveBeenCalledTimes(1);
   });
 
+  it.each([['Enter', '{Enter}'], ['Space', ' ']])('saves on %s from the Save button and leaves the details closed', async (_name, key) => {
+    render(<ConnectorDraftCard connector={connector} />);
+    screen.getByRole('button', { name: 'Save connector' }).focus();
+
+    await userEvent.keyboard(key);
+
+    expect(api.saveConnectorDraft).toHaveBeenCalledTimes(1);
+    expect(api.saveConnectorDraft).toHaveBeenCalledWith(connector);
+    expect(await screen.findByRole('button', { name: 'Saved' })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('connects on Enter from the Connect button without opening the details', async () => {
+    const onConnect = vi.fn();
+    render(<ConnectorDraftCard connector={connector} onConnect={onConnect} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Save connector' }));
+    screen.getByRole('button', { name: 'Connect' }).focus();
+
+    await userEvent.keyboard('{Enter}');
+
+    expect(onConnect).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('shows the server refusal and lets the member try again', async () => {
     api.saveConnectorDraft.mockRejectedValue(new Error('label looks like it holds a credential value.'));
     render(<ConnectorDraftCard connector={connector} />);

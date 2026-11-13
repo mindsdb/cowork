@@ -624,5 +624,30 @@
     "closedTitle": "Le navigateur de cette tâche est fermé",
     "closedDescription": "{agent} le rouvrira quand il en aura besoin.",
     "squeezed": "Agrandissez la fenêtre pour voir la page"
+  },
+  "connectorDraft": {
+    "notSaved": "Modèle de connecteur · non enregistré",
+    "kept": "Vous avez déjà un connecteur avec cet id. L’enregistrer à nouveau le remplace.",
+    "saved": "Enregistré. Ajoutez vos identifiants dans Connecter des applications et des données.",
+    "savedConnect": "Enregistré. Connectez-le pour ajouter vos identifiants.",
+    "saveFailed": "Impossible d’enregistrer le connecteur.",
+    "button": {
+      "save": "Enregistrer le connecteur",
+      "saveAgain": "Enregistrer à nouveau",
+      "saving": "Enregistrement…",
+      "done": "Enregistré",
+      "connect": "Connecter"
+    },
+    "modal": {
+      "fieldsTitle": "Ce que vous allez saisir",
+      "usageTitle": "Comment Anton l’utilisera",
+      "helpUrl": "Où les trouver : {url}"
+    },
+    "field": {
+      "secret": "secret",
+      "required": "obligatoire",
+      "optional": "facultatif",
+      "example": "Exemple : {value}"
+    }
   }
 }
