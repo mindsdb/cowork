@@ -459,6 +459,8 @@ describe('runStep', () => {
     ["the password field of another site's frame", widget({ focus: inRoot({ secret: true }) })],
     ['a secret field in a closed root', sealedMain({ secret: true })],
     ["a secret field in a closed root inside another site's frame", widget({ focus: inRoot({ sealed: true }), closedRoots: [inRoot({ secret: true })] })],
+    ['a field the page names for a card', { main: { cardNamed: true } }],
+    ["a field named for a card in another site's frame", widget({ cardNamed: true })],
   ])('refuses a focused type onto %s as password_field, and types nothing', async (_where, cdp) => {
     const { dbg, stepHost } = host({}, pacing, cdp);
     await expect(runStep(stepHost, typeFocused('hunter2'))).rejects.toMatchObject({ code: 'password_field', status: 403 });
@@ -520,6 +522,7 @@ describe('runStep', () => {
     ['another field that takes text too', { entry: 42 }, 'stale_element'],
     ['an element that takes no text', { entry: undefined }, 'stale_element'],
     ['a secret field', { entry: undefined, focus: inRoot({ secret: true }) }, 'password_field'],
+    ['a field named for a card', { entry: undefined, cardNamed: true }, 'password_field'],
   ] as const)('stops a focused type once the page moves the focus to %s', async (_where, to, code) => {
     const { dbg, stepHost } = focusMovesInFrame(3, to);
     await expect(runStep(stepHost, typeFocused('ada@example.test'))).rejects.toMatchObject({ code });

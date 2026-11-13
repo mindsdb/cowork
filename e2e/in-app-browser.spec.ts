@@ -219,15 +219,18 @@ async function startFixtureServer(): Promise<void> {
     if (url.pathname === '/frame-entry') {
       /* The same embedded form twice: from another site at the top, and
          from the page's own origin below it. */
-      const entry = (at: string, top: number) => `<iframe src="${at}/entry" style="position:absolute;left:0;top:${top}px;width:400px;height:170px;border:0"></iframe>`;
+      const entry = (at: string, top: number) => `<iframe src="${at}/entry" style="position:absolute;left:0;top:${top}px;width:400px;height:230px;border:0"></iframe>`;
       return void res.writeHead(200, { 'content-type': 'text/html' })
-        .end(`<title>Frame entry</title><style>body{margin:0}</style>${entry(origin.replace('127.0.0.1', 'localhost'), 0)}${entry(origin, 200)}`);
+        .end(`<title>Frame entry</title><style>body{margin:0}</style>${entry(origin.replace('127.0.0.1', 'localhost'), 0)}${entry(origin, 260)}`);
     }
     if (url.pathname === '/entry') {
-      /* An email field, a button and a password field the person filled, 40 px tall each, at 0, 60 and 120. */
+      /* An email field, a button, a password field the person filled and a
+         card field named only by its placeholder, 40 px tall each, at 0, 60,
+         120 and 180. */
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Entry</title><style>body{margin:0;background:#fff}input,button{position:absolute;left:0;width:300px;height:40px;border:0;background:#eee;font:20px sans-serif}</style>'
-          + '<input id="email" type="email" style="top:0"><button id="go" style="top:60px">Go</button><input id="pw" type="password" value="hunter2" style="top:120px">');
+          + '<input id="email" type="email" style="top:0"><button id="go" style="top:60px">Go</button><input id="pw" type="password" value="hunter2" style="top:120px">'
+          + '<input id="card" placeholder="Card number" style="top:180px">');
     }
     if (url.pathname === '/closed-fields') {
       /* A form the page keeps in a closed shadow root, with an ordinary
@@ -716,7 +719,7 @@ async function entryValue(at: string, id: string): Promise<string> {
     .find((f) => f.url === frame)?.executeJavaScript(`document.getElementById(${JSON.stringify(field)}).value`), { page: `${origin}/frame-entry`, frame: `${at}/entry`, field: id }));
 }
 
-test("types a focused type into an ordinary field of another site's embedded form and of the page's own, one step each, and refuses one onto a password field or a button", async () => {
+test("types a focused type into an ordinary field of another site's embedded form and of the page's own, one step each, and refuses one onto a password field, a field named for a card or a button", async () => {
   await openAt('/frame-entry');
   await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(2);
   const other = origin.replace('127.0.0.1', 'localhost');
@@ -739,8 +742,13 @@ test("types a focused type into an ordinary field of another site's embedded for
   expect(secret.status, secret.body.toString()).toBe(403);
   expect(secret.json().error).toBe('password_field');
   expect(await entryValue(other, 'pw')).toBe('hunter2');
+  expect((await act({ action: 'click', x: 20, y: 200, coords: 'page', into_frame: true })).status).toBe(200);
+  const card = await typeFocused('4242424242424242');
+  expect(card.status, card.body.toString()).toBe(403);
+  expect(card.json().error).toBe('password_field');
+  expect(await entryValue(other, 'card')).toBe('');
   // The page's own frame, read in the page's process.
-  expect((await act({ action: 'click', x: 20, y: 220, coords: 'page', into_frame: true })).status).toBe(200);
+  expect((await act({ action: 'click', x: 20, y: 280, coords: 'page', into_frame: true })).status).toBe(200);
   const own = await typeFocused('bo@example.test');
   expect(own.status, own.body.toString()).toBe(200);
   expect(await entryValue(origin, 'email')).toBe('bo@example.test');

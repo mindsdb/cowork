@@ -29,6 +29,9 @@ export interface FakeFrame {
       with focused true (focusedEntry); none when it rests on anything else.
       A test changes it to move the focus to another field. */
   entry?: number;
+  /** The focus rests on a field the page names for a card, as the frame's
+      own world answers a type with focused true (focusedTyping). */
+  cardNamed?: boolean;
   /** What the frame's own world finds for a screenshot, in its own viewport's pixels. */
   secrets?: Partial<FoundSecrets>;
   /** The frame's owner element in the page: its content and border boxes in
@@ -193,6 +196,7 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         if (expression.includes('"kind":"focusedElement"')) return node(focus.sealed ? `focus:${target.id}:${level + 1}` : null);
         if (expression.includes('"kind":"focusedEntry"')) return node(target.entry === undefined ? null : `entry:${target.id}:${target.entry}`);
         if (expression.includes('"kind":"focusedSecret"')) return { result: { type: 'object', value: focus } };
+        if (expression.includes('"kind":"focusedTyping"')) return { result: { type: 'object', value: { cardNamed: target.cardNamed === true } } };
         if (expression.includes('"kind":"secretBoxes"')) {
           const viewport = target.owner ? { width: target.owner.content.width, height: target.owner.content.height } : SECRETS_NONE.viewport;
           return { result: { type: 'object', value: { ...SECRETS_NONE, viewport, ...target.secrets } } };

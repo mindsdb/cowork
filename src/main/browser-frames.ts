@@ -50,6 +50,7 @@ import { BridgeError, PAYMENT_FRAME_HOSTS } from '../shared/browser-contract';
 import {
   type Box,
   type FocusedSecret,
+  type FocusedTyping,
   type FoundSecrets,
   isPaymentAddress,
   pageWorldFunction,
@@ -477,8 +478,8 @@ export interface FramePlace {
 
 /** What has the focus for a type with focused true (FrameReads.focusedField):
     a text entry that isn't secret, with `field` naming it by its frame and
-    its node; a secret field; anything else; or a focus this browser can't
-    read. */
+    its node; a secret field or one named for a card; anything else; or a
+    focus this browser can't read. */
 export type FocusedField =
   | { kind: 'entry'; field: string }
   | { kind: 'secret' | 'other' | 'unreadable' };
@@ -554,10 +555,11 @@ export class FrameReads {
    * What has the focus for a type with focused true, read where it rests as
    * `focusedSecret` reads it: a text entry that isn't secret (focusedEntry
    * in browser-page-script.ts), named by its frame and its node so a later
-   * read tells whether the focus is still on the same field; a secret field;
-   * anything else; or `unreadable`, for whatever `focusedSecret` counts as
-   * secret because it can't read it (a payment provider's frame, a frame of
-   * yet another site inside another site's, a frame with no owner the
+   * read tells whether the focus is still on the same field; a secret field,
+   * or one the page names for a card (FocusedTyping), as the web pod counts
+   * it; anything else; or `unreadable`, for whatever `focusedSecret` counts
+   * as secret because it can't read it (a payment provider's frame, a frame
+   * of yet another site inside another site's, a frame with no owner the
    * debugger can name, a focus past CLOSED_ROOTS_DEEP closed roots, and a
    * read that fails or takes longer than FRAME_READ_MS).
    */
@@ -565,6 +567,8 @@ export class FrameReads {
     const unreadable: FocusedField = { kind: 'unreadable' };
     const read = async () => this.followFocus<FocusedField>(await this.session.mainFrame(), true, unreadable, async (focus, frameId, from) => {
       if (focus.secret) return { kind: 'secret' };
+      const typing = await this.session.read<FocusedTyping>(frameId, { kind: 'focusedTyping' }, from);
+      if (typing.cardNamed) return { kind: 'secret' };
       const node = await this.session.nodeOf(frameId, { kind: 'focusedEntry' }, from);
       return node === null ? { kind: 'other' } : { kind: 'entry', field: `${frameId}/${node}` };
     });

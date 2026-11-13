@@ -362,7 +362,8 @@ export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
     `focused`, types into whatever has the focus: a frame's field has no
     number, so the model clicks it by position first. A focused type types at
     the caret and clears nothing, and the host types it only into a text entry
-    that isn't secret (typeIntoFocus in src/main/browser-input.ts). */
+    that isn't read only, disabled, secret or named for a card (typeIntoFocus
+    in src/main/browser-input.ts). */
 export type Step =
   | { action: 'click'; target: StepTarget; button: MouseButton; clicks: 1 | 2 | 3 }
   | { action: 'type'; focused?: false; element: number; text: string; clear: boolean; submit: boolean }

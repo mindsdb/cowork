@@ -23,8 +23,9 @@
  * into a frame of another site, or into a closed shadow root, is refused
  * when the field focused there is a secret one, or can't be read
  * (`keysGoToSecret`). A type with focused true names no element: it types
- * only into a text entry that isn't secret where the focus rests, in a frame
- * of any site too, and stops once the focus leaves it (`typeIntoFocus`). A
+ * only into a text entry that isn't secret or named for a card where the
+ * focus rests, in a frame of any site too, and stops once the focus leaves
+ * it (`typeIntoFocus`). A
  * click by
  * number presses only where both the page's hit test and the debugger's,
  * which sees inside closed shadow roots, find its element and no frame. Just
@@ -636,10 +637,11 @@ function focusNotTyped(kind: Exclude<FocusedField['kind'], 'entry'>): BridgeErro
 /* A type with focused true: `text` at the caret of the field that has the
    focus, in a frame of the page's origin or of another site, or in a closed
    shadow root, read through the debugger (FrameReads.focusedField), with
-   nothing cleared first. It types only into a text entry that isn't secret.
-   Before every key, and before the Enter `submit` adds, it reads the focus
-   again, and stops once the focus is anywhere but the field it began in: on
-   a secret field (403 password_field), on another field or element, or
+   nothing cleared first. It types only into a text entry that isn't read
+   only, disabled, secret or named for a card. Before every key, and before
+   the Enter `submit` adds, it reads the focus again, and stops once the
+   focus is anywhere but the field it began in: on a secret field or one
+   named for a card (403 password_field), on another field or element, or
    where it can't be read, whatever moved it. */
 async function typeIntoFocus(input: AgentInput, frames: FrameReads, text: string, submit: boolean): Promise<void> {
   const start = await frames.focusedField();

@@ -200,6 +200,15 @@ export interface FocusedSecret {
   sealed: boolean;
 }
 
+/** What a type with focused true reads where the focus rests besides the
+    text entry it types into: whether the page names the focused element
+    for a card (by its name, id, label or placeholder, as a frame read's
+    card-named field), which it never types into and refuses as a secret
+    field, as the web pod does. */
+export interface FocusedTyping {
+  cardNamed: boolean;
+}
+
 /** What a screenshot must not show, in viewport CSS pixels: secret fields
     (in the page, its open shadow roots and its same-origin frames, placed
     where each frame draws them, or the whole frame where a transform or an
@@ -233,6 +242,9 @@ export type PageWorldRequest =
      with focused true types into, or null. It answers an element, which the
      debugger names by its node (browser-frames.ts). */
   | { kind: 'focusedEntry' }
+  /* What else a type with focused true reads where the focus rests, by
+     value (FocusedTyping). */
+  | { kind: 'focusedTyping' }
   /* Where the focus is while a type step types into element `id`. */
   | { kind: 'typingFocus'; id: number }
   | { kind: 'viewport' }
@@ -759,12 +771,13 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
      secret field (password, one-time code, card), a field named for a card,
      or a sign-in field. */
   const CARD_FIELD_NAME = /(^|[^a-z])(cvc|cvv2?|csc)([^a-z]|$)|card[\s_-]*(number|num|no)|cc[\s_-]*num|security[\s_-]*code/i;
+  /* Whether the page names `el` for a card (CARD_FIELD_NAME) by its name,
+     id, label or placeholder, as the web pod's cardNamed does. */
+  const cardNamed = (el: Element): boolean => ['name', 'id', 'aria-label', 'placeholder'].some((attr) => CARD_FIELD_NAME.test(el.getAttribute(attr) || ''));
   const SIGN_IN_AUTOCOMPLETE = /(^|\s)(username|webauthn)(\s|$)/;
   const isField = (el: Element): boolean => ['input', 'textarea', 'select'].includes(tagOf(el)) || editable(el);
   const holdsPrivateField = (root: Node): boolean => elementsIn(root).some((el) => isField(el) && (
-    isSecret(el)
-    || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase())
-    || ['name', 'id', 'aria-label', 'placeholder'].some((attr) => CARD_FIELD_NAME.test(el.getAttribute(attr) || ''))));
+    isSecret(el) || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase()) || cardNamed(el)));
 
   /* An element's parent as it is drawn: the slot it is assigned to, its
      parent, or a shadow root's host. */
@@ -1230,18 +1243,27 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return !!active && !active.shadowRoot && (tagOf(active).includes('-') || SHADOW_HOSTS.has(tagOf(active)));
   };
 
-  /* The text entry a type with focused true types into, or null: the
-     focused element, followed as deepActive follows it and on into a
-     same-origin frame whose body has the focus there (a whole-document
-     editor), when it is a text, search, email, url, tel or number input, a
-     textarea, or an editor, and isn't secret. */
-  const focusedEntry = (): Element | null => {
+  /* Where a type with focused true types: the focused element, followed as
+     deepActive follows it and on into a same-origin frame whose body has
+     the focus there (a whole-document editor), or null. */
+  const typingAt = (): Element | null => {
     const active = deepActive();
     const inner = active && FRAME_TAGS.has(tagOf(active)) ? frameDocOf(active) : null;
-    const at = inner?.body && inner.activeElement === inner.body ? inner.body : active;
-    if (!at || isSecret(at)) return null;
-    if (tagOf(at) === 'input') return TEXT_ENTRY_INPUTS.has((at as HTMLInputElement).type) ? at : null;
-    if (tagOf(at) === 'textarea') return at;
+    return inner?.body && inner.activeElement === inner.body ? inner.body : active;
+  };
+  /* The text entry a type with focused true types into, or null: the
+     element at typingAt when it is a text, search, email, url, tel or
+     number input or a textarea that isn't disabled or read only, or an
+     editor, and is neither secret nor named for a card (cardNamed), as the
+     web pod's isTextEntry reads it. */
+  const focusedEntry = (): Element | null => {
+    const at = typingAt();
+    if (!at || isSecret(at) || cardNamed(at)) return null;
+    if (tagOf(at) === 'input' || tagOf(at) === 'textarea') {
+      const field = at as HTMLInputElement;
+      const takesText = tagOf(at) === 'textarea' || TEXT_ENTRY_INPUTS.has(field.type);
+      return takesText && !field.disabled && !field.readOnly ? at : null;
+    }
     return editable(at) || contentEditable(at) || userModifiable(at) ? at : null;
   };
 
@@ -1377,6 +1399,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       return deepActive();
     case 'focusedEntry':
       return focusedEntry();
+    case 'focusedTyping': {
+      const at = typingAt();
+      return { cardNamed: !!at && cardNamed(at) } satisfies FocusedTyping;
+    }
     case 'typingFocus': {
       const el = world.ids.get(request.id);
       return { secret: focusOnSecret(), inField: !!el && el.isConnected && focusIn(el) };

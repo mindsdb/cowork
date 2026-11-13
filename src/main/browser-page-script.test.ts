@@ -14,6 +14,7 @@ import {
   type FocusFieldResult,
   type ChangeMark,
   type FocusedSecret,
+  type FocusedTyping,
   type FocusResult,
   type HitTestResult,
   type LocateResult,
@@ -1135,6 +1136,8 @@ describe('frames', () => {
       <div id="editor" contenteditable></div><x-editor id="custom" contenteditable="plaintext-only" tabindex="0"></x-editor>
       <input id="pw" type="password"><input id="otp" autocomplete="one-time-code"><input id="card" autocomplete="cc-number">
       <div id="card-editor" contenteditable autocomplete="cc-number"></div>
+      <input id="card-hint" placeholder="Card number"><input id="card-name" name="cardnumber"><input id="cvc" aria-label="CVC">
+      <input id="fixed" readonly value="Fixed"><textarea id="fixed-note" readonly></textarea>
       <input id="date" type="date"><input id="box" type="checkbox"><input id="range" type="range"><button id="go">Go</button>
       <select id="pick"><option>A</option></select><a id="link" href="/x">Link</a>
       <iframe id="form" srcdoc="<input id='inner' type='email'><input id='innerpw' type='password'>"></iframe>
@@ -1147,7 +1150,7 @@ describe('frames', () => {
       (document.getElementById(id) as HTMLElement).focus();
       expect(entry(), id).toBe(document.getElementById(id));
     }
-    for (const id of ['pw', 'otp', 'card', 'card-editor', 'date', 'box', 'range', 'go', 'pick', 'link']) {
+    for (const id of ['pw', 'otp', 'card', 'card-editor', 'card-hint', 'card-name', 'cvc', 'fixed', 'fixed-note', 'date', 'box', 'range', 'go', 'pick', 'link']) {
       (document.getElementById(id) as HTMLElement).focus();
       expect(entry(), id).toBeNull();
     }
@@ -1165,6 +1168,30 @@ describe('frames', () => {
     expect(entry()).toBe(frameDoc('whole').body);
     document.getElementById('plain')!.focus();
     expect(entry()).toBeNull();
+  });
+
+  it('says a type with focused true finds the focus on a field the page names for a card, by its name, id, label or placeholder, in the page or a same-origin frame, so the type is refused as a secret field', async () => {
+    document.body.innerHTML = `
+      <input id="hint" placeholder="Card number"><input id="name" name="cardnumber"><input id="cvc" aria-label="CVC">
+      <input id="code" name="security_code"><input id="email" type="email" aria-label="Email"><button id="go">Go</button>
+      <iframe id="form" srcdoc="<input id='inner-card' placeholder='Card number'><input id='inner-name' aria-label='Name'>"></iframe>`;
+    await framesLoad();
+    const world = freshWorld();
+    const typing = () => pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping;
+    for (const id of ['hint', 'name', 'cvc', 'code']) {
+      (document.getElementById(id) as HTMLElement).focus();
+      expect(typing(), id).toEqual({ cardNamed: true } satisfies FocusedTyping);
+    }
+    for (const id of ['email', 'go']) {
+      (document.getElementById(id) as HTMLElement).focus();
+      expect(typing(), id).toEqual({ cardNamed: false });
+    }
+    (frameDoc('form').getElementById('inner-card') as HTMLInputElement).focus();
+    document.getElementById('form')!.focus();
+    expect(typing()).toEqual({ cardNamed: true });
+    (frameDoc('form').getElementById('inner-name') as HTMLInputElement).focus();
+    document.getElementById('form')!.focus();
+    expect(typing()).toEqual({ cardNamed: false });
   });
 
   it('finds what a screenshot must hide: secret fields in the page, its open shadow roots and its same-origin frames, payment frames by address, and every frame from another site', async () => {
