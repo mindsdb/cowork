@@ -446,7 +446,8 @@
     "discardMessage": "エージェントの変更はこのアーティファクトの履歴に残りますが、提案は終了し、適用されません。",
     "discardFailed": "その提案を破棄できませんでした。",
     "deleteTitle": "アーティファクトを削除しますか？",
-    "deleteMessage": "「{title}」は完全に削除されます。この操作は取り消せません。"
+    "deleteMessage": "「{title}」は完全に削除されます。この操作は取り消せません。",
+    "changedElsewhere": "このアーティファクトは変更されました。再読み込み"
   },
   "artifactsView": {
     "sort": {

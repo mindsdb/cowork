@@ -40,6 +40,7 @@ const workspaceApi = vi.hoisted(() => ({
   loadArtifactDraftText: vi.fn(),
   streamQuickEdit: vi.fn(),
   undoQuickEdit: vi.fn(),
+  loadArtifactRevisions: vi.fn(async () => ({ revisions: [{ id: 'r1' }] })),
 }));
 const answerArtifactCheck = vi.hoisted(() => vi.fn(async () => true));
 
@@ -1091,6 +1092,79 @@ describe('ArtifactViewer quick edit bar', () => {
       await within(thread()).findByText('Made the title blue.');
       await new Promise((resolve) => { setTimeout(resolve, 400); });
       expect(document.activeElement).toBe(close);
+    });
+  });
+
+  describe('a chat turn that changes the artifact', () => {
+    const loads = () => workspaceApi.loadArtifactDraftDocument.mock.calls.length;
+    const user = { role: 'user', content: 'Add Q3 sales\n\n(About the artifact `launch-brief`.)' };
+    function renderInChat(messages) {
+      const ui = (msgs) => (
+        <ChatTranscriptContext.Provider value={{ conversationId: 'conv-1', messages: msgs }}>
+          <ArtifactViewer open artifact={artifact} onClose={vi.fn()} conversationId="conv-1" onAddressWithAgent={vi.fn(async () => true)} />
+        </ChatTranscriptContext.Provider>
+      );
+      const view = render(ui(messages));
+      return { ...view, update: (msgs) => view.rerender(ui(msgs)) };
+    }
+    beforeEach(() => {
+      workspaceApi.loadArtifactRevisions.mockReset();
+      workspaceMock.load.mockClear();
+    });
+
+    it('reloads the preview behind the cover and refreshes the revision when the head moved', async () => {
+      workspaceApi.loadArtifactRevisions.mockResolvedValue({ revisions: [{ id: 'r9' }, { id: 'r1' }] });
+      const view = renderInChat([]);
+      await screen.findByTitle('Launch brief');
+      const start = loads();
+      view.update([user, { role: '_streaming', content: 'Working', steps: [] }]);
+      view.update([user, { role: 'assistant', content: 'Added a Q3 column.' }]);
+
+      expect(await screen.findByTestId('preview-reload-cover')).toBeInTheDocument();
+      await waitFor(() => expect(loads()).toBe(start + 1), { timeout: 2000 });
+      expect(workspaceMock.load).toHaveBeenCalledTimes(1);
+      expect(workspaceApi.loadArtifactRevisions).toHaveBeenCalledTimes(1);
+    });
+
+    it('does nothing when the head is unchanged', async () => {
+      workspaceApi.loadArtifactRevisions.mockResolvedValue({ revisions: [{ id: 'r1' }] });
+      const view = renderInChat([]);
+      await screen.findByTitle('Launch brief');
+      const start = loads();
+      view.update([user, { role: '_streaming', content: 'Working', steps: [] }]);
+      view.update([user, { role: 'assistant', content: 'Nothing to change.' }]);
+
+      await waitFor(() => expect(workspaceApi.loadArtifactRevisions).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => { setTimeout(resolve, 400); });
+      expect(loads()).toBe(start);
+      expect(screen.queryByTestId('preview-reload-cover')).toBeNull();
+      expect(workspaceMock.load).not.toHaveBeenCalled();
+    });
+
+    it('offers a reload notice instead of reloading over unsaved editor text', async () => {
+      workspaceMock.dirty = true;
+      workspaceApi.loadArtifactRevisions.mockResolvedValue({ revisions: [{ id: 'r9' }] });
+      const view = renderInChat([]);
+      await screen.findByTitle('Launch brief');
+      const start = loads();
+      view.update([user, { role: '_streaming', content: 'Working', steps: [] }]);
+      view.update([user, { role: 'assistant', content: 'Added a Q3 column.' }]);
+
+      const notice = await screen.findByRole('button', { name: 'This artifact changed. Reload' });
+      expect(loads()).toBe(start);
+      expect(workspaceMock.load).not.toHaveBeenCalled();
+
+      fireEvent.click(notice);
+      await waitFor(() => expect(loads()).toBe(start + 1), { timeout: 2000 });
+      expect(workspaceMock.load).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: 'This artifact changed. Reload' })).toBeNull();
+    });
+
+    it('asks nothing while no turn has run', async () => {
+      renderInChat([{ role: 'assistant', content: 'Earlier.' }]);
+      await screen.findByTitle('Launch brief');
+      await new Promise((resolve) => { setTimeout(resolve, 100); });
+      expect(workspaceApi.loadArtifactRevisions).not.toHaveBeenCalled();
     });
   });
 });

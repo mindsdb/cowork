@@ -38,6 +38,7 @@ import {
   createDraftLink,
   loadArtifactDraftText,
   loadArtifactDraftDocument,
+  loadArtifactRevisions,
 } from '../../lib/artifactWorkspaceApi';
 import {
   RefusedDraftLink,
@@ -933,6 +934,62 @@ export function ArtifactViewer({
     && (!conversationId || String(chatTranscript.conversationId || '') === String(conversationId))
     ? chatTranscript.messages
     : null;
+
+  // A turn in this chat may change the artifact (a bar message the agent took
+  // over, or any other turn). When one ends, ask for the head revision once:
+  // if it moved since the turn began, show the new content (behind the reload
+  // cover) and refresh the revision line, or, over unsaved editor text, say
+  // so instead of reloading. The signal is the chat's own live row, so
+  // nothing polls.
+  const chatLive = !!chatMessages?.some((m) => m?.role === '_streaming');
+  const [changedElsewhere, setChangedElsewhere] = useState(false);
+  useEffect(() => { setChangedElsewhere(false); }, [open, artifact?.id]);
+  const turnWatchRef = useRef({ live: false, startHead: null });
+  const latestRef = useRef({});
+  latestRef.current = { workspace, artifact };
+  useEffect(() => {
+    const watch = turnWatchRef.current;
+    if (!open) {
+      watch.live = chatLive;
+      return;
+    }
+    if (chatLive && !watch.live) watch.startHead = workspace.currentRevision?.id || null;
+    if (!chatLive && watch.live) {
+      const startHead = watch.startHead;
+      void (async () => {
+        let head = null;
+        try {
+          const { workspace: ws, artifact: card } = latestRef.current;
+          const data = await loadArtifactRevisions(card, ws.source?.path || null);
+          head = data?.revisions?.[0]?.id || null;
+        } catch {
+          return;
+        }
+        const { workspace: ws, artifact: card } = latestRef.current;
+        // Unchanged, or already shown (an applied quick edit refreshed it).
+        if (!head || head === startHead || head === (ws.currentRevision?.id || null)) return;
+        if (ws.dirty) {
+          setChangedElsewhere(true);
+          return;
+        }
+        void previewReload.reload(() => {
+          onReload();
+          reportChange({ ...card, mtime: Date.now() / 1000 });
+        });
+        try { await ws.load(); } catch { /* the preview shows the change either way */ }
+      })();
+    }
+    watch.live = chatLive;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatLive, open]);
+  const reloadChangedElsewhere = () => {
+    setChangedElsewhere(false);
+    void previewReload.reload(() => {
+      onReload();
+      reportChange({ ...artifact, mtime: Date.now() / 1000 });
+    });
+    void workspace.load().catch(() => {});
+  };
   // The bar's model and effort, picked with the composer's own picker and
   // catalog. Effort null is "no pick": medium where the model offers it.
   const modelPicker = useModelPickerContext();
@@ -1440,6 +1497,11 @@ export function ArtifactViewer({
       )}
       {tabError && (
         <div className="artifact-workspace-notice" role="alert">{tabError}</div>
+      )}
+      {changedElsewhere && (
+        <button type="button" className="artifact-feedback-notice" onClick={reloadChangedElsewhere}>
+          {Ico.reload(14)} <span>{t('viewer.changedElsewhere')}</span>
+        </button>
       )}
       {draftLinkExpired && (
         <button type="button" className="artifact-feedback-notice" onClick={onReload}>

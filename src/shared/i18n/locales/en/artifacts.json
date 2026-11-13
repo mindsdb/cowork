@@ -446,7 +446,8 @@
     "discardMessage": "The agent's change stays in this artifact's history, but the suggestion is closed and will not be applied.",
     "discardFailed": "Could not discard that suggestion.",
     "deleteTitle": "Delete artifact?",
-    "deleteMessage": "\"{title}\" will be permanently deleted. This cannot be undone."
+    "deleteMessage": "\"{title}\" will be permanently deleted. This cannot be undone.",
+    "changedElsewhere": "This artifact changed. Reload"
   },
   "artifactsView": {
     "sort": {

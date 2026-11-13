@@ -446,7 +446,8 @@
     "discardMessage": "A alteração do agente fica no histórico do artefato, mas a sugestão é fechada e não será aplicada.",
     "discardFailed": "Não foi possível descartar essa sugestão.",
     "deleteTitle": "Excluir artefato?",
-    "deleteMessage": "\"{title}\" será excluído permanentemente. Não é possível desfazer."
+    "deleteMessage": "\"{title}\" será excluído permanentemente. Não é possível desfazer.",
+    "changedElsewhere": "Este artefato mudou. Recarregar"
   },
   "artifactsView": {
     "sort": {

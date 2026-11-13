@@ -446,7 +446,8 @@
     "discardMessage": "La modifica dell’agente resta nella cronologia di questo artefatto, ma il suggerimento viene chiuso e non verrà applicato.",
     "discardFailed": "Impossibile scartare quel suggerimento.",
     "deleteTitle": "Eliminare l’artefatto?",
-    "deleteMessage": "«{title}» verrà eliminato definitivamente. L’operazione non può essere annullata."
+    "deleteMessage": "«{title}» verrà eliminato definitivamente. L’operazione non può essere annullata.",
+    "changedElsewhere": "Questo artefatto è cambiato. Ricarica"
   },
   "artifactsView": {
     "sort": {

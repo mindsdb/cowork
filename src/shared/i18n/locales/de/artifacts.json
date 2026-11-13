@@ -446,7 +446,8 @@
     "discardMessage": "Die Änderung des Agents bleibt im Verlauf dieses Artefakts erhalten, aber der Vorschlag wird geschlossen und nicht angewendet.",
     "discardFailed": "Dieser Vorschlag konnte nicht verworfen werden.",
     "deleteTitle": "Artefakt löschen?",
-    "deleteMessage": "„{title}“ wird endgültig gelöscht. Dies kann nicht rückgängig gemacht werden."
+    "deleteMessage": "„{title}“ wird endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "changedElsewhere": "Dieses Artefakt wurde geändert. Neu laden"
   },
   "artifactsView": {
     "sort": {

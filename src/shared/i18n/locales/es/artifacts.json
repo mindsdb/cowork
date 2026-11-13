@@ -446,7 +446,8 @@
     "discardMessage": "El cambio del agente queda en el historial del artefacto, pero la sugerencia se cierra y no se aplicará.",
     "discardFailed": "No se pudo descartar esa sugerencia.",
     "deleteTitle": "¿Eliminar artefacto?",
-    "deleteMessage": "\"{title}\" se eliminará de forma permanente. No se puede deshacer."
+    "deleteMessage": "\"{title}\" se eliminará de forma permanente. No se puede deshacer.",
+    "changedElsewhere": "Este artefacto cambió. Volver a cargar"
   },
   "artifactsView": {
     "sort": {

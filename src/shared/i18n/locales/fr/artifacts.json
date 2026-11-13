@@ -446,7 +446,8 @@
     "discardMessage": "La modification de l’agent reste dans l’historique de cet artefact, mais la suggestion est fermée et ne sera pas appliquée.",
     "discardFailed": "Impossible d’abandonner cette suggestion.",
     "deleteTitle": "Supprimer l’artefact ?",
-    "deleteMessage": "« {title} » sera définitivement supprimé. Cette action est irréversible."
+    "deleteMessage": "« {title} » sera définitivement supprimé. Cette action est irréversible.",
+    "changedElsewhere": "Cet artefact a changé. Recharger"
   },
   "artifactsView": {
     "sort": {

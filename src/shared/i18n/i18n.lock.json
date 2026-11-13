@@ -24955,6 +24955,40 @@
       "text": "9ce119af74fc"
     }
   },
+  "artifacts:viewer.changedElsewhere": {
+    "de": {
+      "from": "ed827deff989",
+      "text": "2cb6b357b395"
+    },
+    "es": {
+      "from": "ed827deff989",
+      "text": "d9fd7133c794"
+    },
+    "fr": {
+      "from": "ed827deff989",
+      "text": "4098bd05976e"
+    },
+    "it": {
+      "from": "ed827deff989",
+      "text": "d34463e2bfae"
+    },
+    "ja": {
+      "from": "ed827deff989",
+      "text": "be31c6cfe17d"
+    },
+    "ko": {
+      "from": "ed827deff989",
+      "text": "18faf0ae37a8"
+    },
+    "pt-BR": {
+      "from": "ed827deff989",
+      "text": "ec1e7a72a8b4"
+    },
+    "zh-CN": {
+      "from": "ed827deff989",
+      "text": "6a468b3e509c"
+    }
+  },
   "artifacts:viewer.closePrompt.saving.confirmLabel": {
     "de": {
       "from": "bb84f7e60ffe",

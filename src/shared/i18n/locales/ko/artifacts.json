@@ -446,7 +446,8 @@
     "discardMessage": "에이전트의 변경 사항은 이 아티팩트의 기록에 남지만, 제안은 닫히고 적용되지 않습니다.",
     "discardFailed": "해당 제안을 취소하지 못했습니다.",
     "deleteTitle": "아티팩트를 삭제할까요?",
-    "deleteMessage": "‘{title}’이(가) 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다."
+    "deleteMessage": "‘{title}’이(가) 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+    "changedElsewhere": "이 아티팩트가 변경되었습니다. 다시 불러오기"
   },
   "artifactsView": {
     "sort": {

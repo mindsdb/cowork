@@ -446,7 +446,8 @@
     "discardMessage": "智能体的更改会保留在此产物的历史记录中，但该建议将被关闭，不会被应用。",
     "discardFailed": "无法放弃该建议。",
     "deleteTitle": "删除产物？",
-    "deleteMessage": "“{title}”将被永久删除。此操作无法撤销。"
+    "deleteMessage": "“{title}”将被永久删除。此操作无法撤销。",
+    "changedElsewhere": "此产物已更改。重新加载"
   },
   "artifactsView": {
     "sort": {
