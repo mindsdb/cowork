@@ -76,17 +76,51 @@ const elementShape = shape(
   },
 );
 
+/* A child frame's element: read-only, with no id a step could name. */
+const frameElementShape = shape(
+  { role: str, name: str },
+  {
+    value: nullable(str),
+    value_hidden: bool,
+    type: str,
+    checked: nullable(bool),
+    disabled: bool,
+    offscreen: bool,
+    context: str,
+    in_dialog: bool,
+    options: list(str),
+  },
+);
+
+const frameShape = shape(
+  { url: str, read: bool, box: nullable(shape({ x: int, y: int, width: int, height: int })) },
+  {
+    offscreen: bool,
+    // The frame element's top-left in its document's content coordinates, in CSS pixels: no scroll changes it.
+    at: shape({ x: int, y: int }),
+    elements: list(frameElementShape),
+    text: str,
+    truncated: bool,
+  },
+);
+
+/* Both hosts send `frames` on every page, so its check is required here;
+   anton reads a page without it as one with none. */
 export const pageShape = shape(
-  { url: str, title: str, elements: list(elementShape) },
+  { url: str, title: str, elements: list(elementShape), frames: list(frameShape) },
   {
     text: str,
     truncated: bool,
     scroll: nullable(shape({ y: int, height: int, viewport: int })),
     challenges: list(shape({ host: str, kind: str })),
+    // An opaque token naming the focused node; a host may leave it out.
+    focus: str,
   },
 );
 
-export const actionAnswerShape = shape({ ok: bool, url: str }, { page: nullable(pageShape) });
+/* Both hosts send `changed` on every answer; anton reads one without it as
+   a host that can't tell. */
+export const actionAnswerShape = shape({ ok: bool, url: str, changed: nullable(bool) }, { page: nullable(pageShape) });
 
 const tabShape = shape({ id: str, url: str, title: str, active: bool });
 export const tabsAnswerShape = shape({ tabs: list(tabShape) });
@@ -143,7 +177,9 @@ export interface FixtureExample {
 
 export interface FixtureFile {
   description: string;
-  /** Numbers both hosts hold to, such as saved_tabs.json's per-project cap. */
-  limits?: Record<string, number>;
+  /** Values both hosts hold to: a number, such as saved_tabs.json's
+      per-project cap, a regular expression's source, such as page.json's
+      card_field_name, or a list, such as page.json's payment frame hosts. */
+  limits?: Record<string, number | string | string[]>;
   examples: Record<string, FixtureExample>;
 }

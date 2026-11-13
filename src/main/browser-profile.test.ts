@@ -17,6 +17,7 @@ import {
   isQuarantinedAccountRoot,
   isMindsHubHost,
   refusedDestination,
+  requestsInFlight,
   navigationAllowed,
   reachesProtectedPort,
 } from './browser-profile';
@@ -39,6 +40,7 @@ function fakeSession() {
   const events: Record<string, (...args: never[]) => unknown> = {};
   let requestFilter: { urls: string[] } | null = null;
   let requestListener: ((details: { url: string }, cb: (r: { cancel?: boolean }) => void) => void) | null = null;
+  const progress: Record<'sent' | 'completed' | 'failed', ((details: RequestDetails) => void) | null> = { sent: null, completed: null, failed: null };
   let userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) anton/2.0.7 Chrome/142.0.7444.59 Electron/39.8.10 Safari/537.36';
   const ses = {
     setPermissionRequestHandler: (h: never) => { handlers.request = h; },
@@ -51,6 +53,9 @@ function fakeSession() {
         requestFilter = filter;
         requestListener = listener;
       },
+      onSendHeaders: (_filter: unknown, listener: (details: RequestDetails) => void) => { progress.sent = listener; },
+      onCompleted: (_filter: unknown, listener: (details: RequestDetails) => void) => { progress.completed = listener; },
+      onErrorOccurred: (_filter: unknown, listener: (details: RequestDetails) => void) => { progress.failed = listener; },
     },
     getUserAgent: () => userAgent,
     setUserAgent: (ua: string) => { userAgent = ua; },
@@ -70,7 +75,18 @@ function fakeSession() {
       requestListener!({ url }, (r) => resolve(r.cancel === true));
     }),
     userAgent: () => userAgent,
+    progress,
   };
+}
+
+/* What Electron tells the request listeners about one request, as far as
+   the step's request count reads it. */
+interface RequestDetails {
+  id: number;
+  url: string;
+  webContentsId?: number;
+  resourceType: string;
+  frame?: { parent: unknown } | null;
 }
 
 describe('the profile folder', () => {
@@ -129,6 +145,57 @@ describe('view preferences', () => {
       spellcheck: false,
     });
     expect(browserViewPreferences(ses)).not.toHaveProperty('preload');
+  });
+});
+
+describe("a step's requests", () => {
+  it("counts a tab's main-frame page, script and fetch requests from its step's start, by id alone", () => {
+    const fake = fakeSession();
+    configureBrowserSession(fake.ses, { protectedPorts: () => [26866] });
+    const requests = requestsInFlight(fake.ses);
+    let clock = 1_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => clock);
+    try {
+      const top = { parent: null };
+      const child = { parent: top };
+      const send = (details: Omit<RequestDetails, 'url'>) => fake.progress.sent!({ url: `https://a.test/${details.id}`, ...details });
+      // Before the step: not the step's.
+      send({ id: 1, webContentsId: 7, resourceType: 'xhr', frame: top });
+      requests.begin(7);
+      send({ id: 2, webContentsId: 7, resourceType: 'xhr', frame: top });
+      send({ id: 3, webContentsId: 7, resourceType: 'script', frame: top });
+      send({ id: 4, webContentsId: 7, resourceType: 'mainFrame', frame: null });
+      // A child frame's request, an image, another tab's and one with no tab don't count.
+      send({ id: 5, webContentsId: 7, resourceType: 'xhr', frame: child });
+      send({ id: 6, webContentsId: 7, resourceType: 'image', frame: top });
+      send({ id: 7, webContentsId: 8, resourceType: 'xhr', frame: top });
+      send({ id: 8, resourceType: 'xhr', frame: top });
+      expect(requests.of(7)).toEqual({ sent: 3, pending: 3, lastEndedAt: 0 });
+      expect(requests.of(8)).toBeNull();
+      clock = 2_000;
+      fake.progress.completed!({ id: 1, url: 'https://a.test/1', webContentsId: 7, resourceType: 'xhr', frame: top });
+      fake.progress.completed!({ id: 5, url: 'https://a.test/5', webContentsId: 7, resourceType: 'xhr', frame: child });
+      expect(requests.of(7)).toEqual({ sent: 3, pending: 3, lastEndedAt: 0 });
+      fake.progress.completed!({ id: 2, url: 'https://a.test/2', webContentsId: 7, resourceType: 'xhr', frame: top });
+      clock = 2_500;
+      fake.progress.failed!({ id: 3, url: 'https://a.test/3', webContentsId: 7, resourceType: 'script', frame: null });
+      expect(requests.of(7)).toEqual({ sent: 3, pending: 1, lastEndedAt: 2_500 });
+      expect(JSON.stringify(requests.of(7))).not.toContain('a.test');
+      requests.end(7);
+      expect(requests.of(7)).toBeNull();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('counts nothing from a frame that went away before Electron could name it', () => {
+    const fake = fakeSession();
+    configureBrowserSession(fake.ses, { protectedPorts: () => [26866] });
+    const requests = requestsInFlight(fake.ses);
+    requests.begin(7);
+    const gone = { get parent(): never { throw new Error('Render frame was disposed before WebFrameMain could be accessed'); } };
+    fake.progress.sent!({ id: 1, url: 'https://a.test/', webContentsId: 7, resourceType: 'xhr', frame: gone });
+    expect(requests.of(7)).toEqual({ sent: 0, pending: 0, lastEndedAt: 0 });
   });
 });
 

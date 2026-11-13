@@ -61,7 +61,7 @@ function fakeSession() {
     setDevicePermissionHandler: vi.fn(),
     setDisplayMediaRequestHandler: vi.fn(),
     on: vi.fn(),
-    webRequest: { onBeforeRequest: vi.fn() },
+    webRequest: { onBeforeRequest: vi.fn(), onSendHeaders: vi.fn(), onCompleted: vi.fn(), onErrorOccurred: vi.fn() },
     getUserAgent: () => 'Mozilla/5.0 Chrome/142 Electron/39 Safari/537.36',
     setUserAgent: vi.fn(),
     cookies: { get: vi.fn(async () => []), flushStore: vi.fn(async () => {}) },

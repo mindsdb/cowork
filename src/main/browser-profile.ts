@@ -21,7 +21,9 @@
  * browse from the person's own machine. The request listener cancels a page's
  * requests to the local server's port or the bridge's port, apart from the
  * two kinds it never sees (PAGE_REQUEST_FILTER_URLS says which). The user
- * agent loses the app and Electron tokens.
+ * agent loses the app and Electron tokens. While an agent step settles, the
+ * profile counts the requests that step started in its tab's main frame
+ * (RequestsInFlight), by id alone.
  */
 
 import * as fs from 'fs';
@@ -266,6 +268,96 @@ export async function resolvedRisk(ses: Session, hostname: string): Promise<Reso
   }
 }
 
+/** What a tab's step has sent and still waits for, from its main frame. */
+export interface StepRequestCount {
+  sent: number;
+  pending: number;
+  /** Date.now() when the last of them ended; 0 before any did. */
+  lastEndedAt: number;
+}
+
+/** What the request count reads of Electron's details of a request: never
+    its address. */
+export interface StepRequestDetails {
+  id: number;
+  webContentsId?: number;
+  resourceType: string;
+  /** The frame that sent it; Electron's may throw once the frame is gone. */
+  frame?: { readonly parent: unknown } | null;
+}
+
+interface StepRequests {
+  ids: Set<number>;
+  sent: number;
+  lastEndedAt: number;
+}
+
+/* The request types a step's content arrives by: the page itself, its
+   scripts, and its fetch and XHR calls (Electron reports fetch as xhr). */
+const STEP_REQUEST_TYPES: ReadonlySet<string> = new Set(['mainFrame', 'script', 'xhr']);
+/* Ids kept per step: a page that sends more in one settle has already kept
+   it busy past SETTLE_MAX_MS. */
+const MAX_STEP_REQUESTS = 500;
+
+/* Whether a request is the main frame's own. A frame Electron can no longer
+   reach (it navigated or closed) counts as not. */
+function fromMainFrame(details: StepRequestDetails): boolean {
+  if (details.resourceType === 'mainFrame') return true;
+  try {
+    return details.frame?.parent === null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The requests each agent step started in its tab's main frame, from the
+ * step's start (begin) until its settle ends (end). Only the page itself,
+ * its scripts and its fetch and XHR calls count: a child frame's requests (an
+ * ad that never stops loading) and images never hold a step. Each request is
+ * kept by its id alone, never its address.
+ */
+export class RequestsInFlight {
+  private readonly steps = new Map<number, StepRequests>();
+
+  begin(contentsId: number): void {
+    this.steps.set(contentsId, { ids: new Set(), sent: 0, lastEndedAt: 0 });
+  }
+
+  end(contentsId: number): void {
+    this.steps.delete(contentsId);
+  }
+
+  of(contentsId: number): StepRequestCount | null {
+    const step = this.steps.get(contentsId);
+    return step ? { sent: step.sent, pending: step.ids.size, lastEndedAt: step.lastEndedAt } : null;
+  }
+
+  sent(details: StepRequestDetails): void {
+    const step = details.webContentsId === undefined ? undefined : this.steps.get(details.webContentsId);
+    if (!step || !STEP_REQUEST_TYPES.has(details.resourceType) || !fromMainFrame(details)) return;
+    step.sent += 1;
+    if (step.ids.size < MAX_STEP_REQUESTS) step.ids.add(details.id);
+  }
+
+  ended(details: StepRequestDetails): void {
+    const step = details.webContentsId === undefined ? undefined : this.steps.get(details.webContentsId);
+    if (step?.ids.delete(details.id)) step.lastEndedAt = Date.now();
+  }
+}
+
+const requestCounts = new WeakMap<Session, RequestsInFlight>();
+
+/** The profile's request count, which configureBrowserSession feeds. */
+export function requestsInFlight(ses: Session): RequestsInFlight {
+  let requests = requestCounts.get(ses);
+  if (!requests) {
+    requests = new RequestsInFlight();
+    requestCounts.set(ses, requests);
+  }
+  return requests;
+}
+
 /** Locks down a browser profile's session. Run once per session. */
 export function configureBrowserSession(ses: Session, options: ProfileOptions): void {
   ses.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -298,6 +390,12 @@ export function configureBrowserSession(ses: Session, options: ProfileOptions): 
       callback({ cancel: risk.metadata || (risk.loopback && options.protectedPorts().includes(portOf(url))) });
     });
   });
+  /* A request the listener above cancelled never sends its headers, so it
+     never counts; its error is ignored. */
+  const requests = requestsInFlight(ses);
+  ses.webRequest.onSendHeaders({ urls: PAGE_REQUEST_FILTER_URLS }, (details) => requests.sent(details));
+  ses.webRequest.onCompleted({ urls: PAGE_REQUEST_FILTER_URLS }, (details) => requests.ended(details));
+  ses.webRequest.onErrorOccurred({ urls: PAGE_REQUEST_FILTER_URLS }, (details) => requests.ended(details));
   ses.setUserAgent(browserUserAgent(ses.getUserAgent()));
 }
 

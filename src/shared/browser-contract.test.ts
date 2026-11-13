@@ -1,3 +1,21 @@
+/*
+ * The browser contract's fixtures, src/main/__fixtures__/browser-contract,
+ * are byte-for-byte copies of anton's tests/fixtures/browser_contract, its
+ * README.md included. anton owns them: they pin the HTTP contract between
+ * anton's `browser` tool and the two hosts that serve it, the browser router
+ * on the web and this app's own in-app browser.
+ *
+ * This file reads every JSON file there. It checks each request example
+ * against the guards in src/shared/browser-contract.ts and each response
+ * example against the shapes in tests/browser-contract-shapes.ts, and
+ * src/main/browser-bridge.contract.test.ts sends the requests through the
+ * real bridge and checks the host's answers against the same shapes.
+ *
+ * To refresh them, copy the folder from anton again and run `npx vitest run
+ * src/shared/browser-contract.test.ts src/main/browser-bridge.contract.test.ts`.
+ * A failure means the contract changed: update the host, then bump
+ * BROWSER_HOST_API if the shapes changed.
+ */
 import { readdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
@@ -6,7 +24,15 @@ import {
   BRIDGE_URL_PATTERN,
   type BridgeErrorCode,
   bridgeUrl,
+  CARD_FIELD_ATTRIBUTES,
+  CARD_FIELD_EXEMPT,
+  CARD_FIELD_NAME,
+  CARD_FIELD_WORD_BREAKS,
   electronHostsInAppBrowser,
+  ELEMENTS_PER_FRAME,
+  FRAME_MIN_READ_PX,
+  FRAMES_PHASE_MS,
+  FRAMES_READ,
   MAX_CONTROL_REASON,
   MAX_SAVED_TABS_PER_PROJECT,
   MIN_IN_APP_BROWSER_ELECTRON_MAJOR,
@@ -17,7 +43,12 @@ import {
   parseSaveTab,
   parseStageBounds,
   parseStepRequest,
+  PAYMENT_FRAME_HOSTS,
   SESSION_ID_PATTERN,
+  SETTLE_MAX_MS,
+  SETTLE_QUIET_MS,
+  SIGN_IN_FRAME_HOSTS,
+  TEXT_PER_FRAME,
   type Parsed,
 } from './browser-contract';
 import {
@@ -73,10 +104,47 @@ describe('the browser contract fixtures', () => {
     expect(savedTabs.limits?.saved_tabs_per_project).toBe(MAX_SAVED_TABS_PER_PROJECT);
   });
 
+  it("settles a step at the contract's numbers", () => {
+    const action = JSON.parse(readFileSync(path.join(FIXTURES, 'action.json'), 'utf-8')) as FixtureFile;
+    expect(action.limits).toEqual({ settle_max_ms: SETTLE_MAX_MS, settle_quiet_ms: SETTLE_QUIET_MS });
+  });
+
+  it("reads a page's frames at the contract's numbers, never on its payment or sign-in hosts, and names a field for a card by the contract's one rule", () => {
+    const page = JSON.parse(readFileSync(path.join(FIXTURES, 'page.json'), 'utf-8')) as FixtureFile;
+    expect(page.limits).toEqual({
+      frames_read: FRAMES_READ,
+      elements_per_frame: ELEMENTS_PER_FRAME,
+      text_per_frame: TEXT_PER_FRAME,
+      frame_min_read_px: FRAME_MIN_READ_PX,
+      payment_frame_hosts: [...PAYMENT_FRAME_HOSTS],
+      sign_in_frame_hosts: [...SIGN_IN_FRAME_HOSTS],
+      frames_phase_ms: FRAMES_PHASE_MS,
+      card_field_name: CARD_FIELD_NAME.source,
+      card_field_exempt: CARD_FIELD_EXEMPT.source,
+      card_field_word_breaks: CARD_FIELD_WORD_BREAKS.map((wordBreak) => wordBreak.source),
+      card_field_attributes: [...CARD_FIELD_ATTRIBUTES],
+    });
+    // page.json reads the pattern ignoring case, and with nothing else.
+    expect(CARD_FIELD_NAME.flags).toBe('i');
+    // It reads the exempt pattern so too, and replaces every match of it.
+    expect(CARD_FIELD_EXEMPT.flags).toBe('i');
+    // It reads each word break case-sensitive, replacing every match.
+    expect(CARD_FIELD_WORD_BREAKS.map((wordBreak) => wordBreak.flags)).toEqual(['g', 'g']);
+  });
+
   it.each(all.filter(([, , e]) => e.kind === 'request'))('%s "%s": the request guard agrees', (_file, _name, example) => {
     const guard = REQUEST_GUARDS[example.where];
     expect(guard, `no guard for ${example.where}`).toBeDefined();
     expect(guard(example.body).ok).toBe(!example.refused);
+  });
+
+  it("reads into_frame on the fixture's one step the person approved into a frame, and on no other step", () => {
+    const steps = all.filter(([file, , e]) => file === 'action.json' && e.kind === 'request' && !e.refused);
+    const approved = steps.filter(([, , e]) => 'into_frame' in (e.body as Record<string, unknown>)).map(([, name]) => name);
+    expect(approved).toHaveLength(1);
+    for (const [, name, example] of steps) {
+      expect(parseStepRequest(example.body), name).toMatchObject({ ok: true, value: { intoFrame: approved.includes(name) } });
+    }
   });
 
   it('refuses the take-back as person_only, not as a bad request', () => {
@@ -135,7 +203,9 @@ describe('the browser contract fixtures', () => {
       if (e.kind === 'request') return !(e.where in REQUEST_GUARDS);
       if (e.kind === 'response') return file !== 'error.json' && !(e.where in RESPONSE_SHAPES);
       // The commit list is the web pod's to enforce; the desktop holds no
-      // step, so its examples are kept, not checked here.
+      // step, so its examples are kept, not checked here. page.json's
+      // card-field values go through the page world's own rule in
+      // src/main/browser-page-script.test.ts.
       return !['turn_block', 'constructor', 'event', 'classification'].includes(e.kind);
     });
     expect(unchecked.map(([file, name]) => `${file}: ${name}`)).toEqual([]);
@@ -147,8 +217,36 @@ describe('step requests', () => {
     const parsed = parseStepRequest({ action: 'click', element: 3, x: 10, y: 20, coords: 'screenshot' });
     expect(parsed).toEqual({
       ok: true,
-      value: { step: { action: 'click', target: { x: 10, y: 20 }, button: 'left', clicks: 1 }, coords: 'screenshot', includePage: false },
+      value: { step: { action: 'click', target: { x: 10, y: 20 }, button: 'left', clicks: 1 }, coords: 'screenshot', includePage: false, intoFrame: false },
     });
+  });
+
+  it('reads into_frame, which anton sends true after the person approves a one-step card for a step that may land in a frame, and takes anything else as false', () => {
+    expect(parseStepRequest({ action: 'click', x: 10, y: 20, into_frame: true })).toMatchObject({ ok: true, value: { intoFrame: true } });
+    for (const into_frame of [undefined, false, 'true', 1, null]) {
+      expect(parseStepRequest({ action: 'click', x: 10, y: 20, into_frame }), String(into_frame)).toMatchObject({ ok: true, value: { intoFrame: false } });
+    }
+  });
+
+  it('reads a type with focused true as one into the field that has the focus, with no element, and types at the caret', () => {
+    expect(parseStepRequest({ action: 'type', focused: true, text: 'ada@example.test', submit: false, include_page: true })).toEqual({
+      ok: true,
+      value: { step: { action: 'type', focused: true, text: 'ada@example.test', submit: false }, coords: 'page', includePage: true, intoFrame: false },
+    });
+    expect(parseStepRequest({ action: 'type', focused: true, text: 'x', submit: true })).toMatchObject({ ok: true, value: { step: { submit: true } } });
+    expect(parseStepRequest({ action: 'type', focused: true, text: 'x' })).toMatchObject({ ok: true, value: { step: { submit: false } } });
+  });
+
+  it.each([
+    [{ action: 'type', focused: true, element: 3, text: 'x' }, 'an element as well'],
+    [{ action: 'type', focused: true, x: 10, y: 20, text: 'x' }, 'a point as well'],
+    [{ action: 'type', focused: true, text: 'x', clear: true }, 'a clear, which it never does'],
+    [{ action: 'type', focused: 'true', text: 'x' }, 'a string for true'],
+    [{ action: 'type', focused: false, text: 'x' }, 'false, with no element'],
+    [{ action: 'type', focused: true }, 'no text'],
+    [{ action: 'press', focused: true, key: 'a' }, 'another action'],
+  ] as Array<[Record<string, unknown>, string]>)('refuses a focused type %j (%s)', (body) => {
+    expect(parseStepRequest(body).ok).toBe(false);
   });
 
   it.each([

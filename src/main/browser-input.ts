@@ -1,25 +1,43 @@
 /*
  * The agent's input into the in-app browser.
  *
- * Main attaches the view's debugger for one agent step, sends only the
- * Input.* commands below (plus focus emulation, so typing reaches a field while
- * the app's window is in the background), and detaches when the step ends,
- * failures included. It never sends Runtime, Page, Network, Debugger, Console
- * or Log commands, and browser-sessions.ts never runs a step while the person
- * holds the browser, so no debugger is attached during their turn.
+ * Main attaches the view's debugger for one agent step, sends the Input.*
+ * commands below (plus focus emulation, so typing reaches a field while the
+ * app's window is in the background) and the reads browser-frames.ts makes,
+ * and detaches when the step ends, failures included. browser-sessions.ts
+ * never runs a step while the person holds the browser, so no debugger is
+ * attached during their turn.
  *
  * Input looks like a person's: the mouse moves along an eased, slightly curved
  * path to a random point inside the element, and text is typed key by key
  * (keyDown and keyUp per character) with short pauses. Characters with no key
  * on a US layout go in with Input.insertText, and so do a tab and a long text
  * past its first KEYED_CHARS characters, so the step ends inside its time
- * limit.
+ * limit, and a space while the field sits in a control a Space key may click
+ * (a "Delete account" button around a text field), whose keyup would click
+ * it.
  *
  * `runStep` turns a checked step into those commands. As on the web pod, a
  * type or press step focuses its element rather than clicking it, and a type,
  * a select or a press of a key that edits text into a secret field gets 403
  * password_field. Before every key, typing checks that the focus is still in
- * its field and not on a secret one, and stops when it isn't.
+ * its field and not on a secret one, and stops when it isn't. An editing key
+ * into a frame of another site, or into a closed shadow root, is refused
+ * when the field focused there is a secret one, or can't be read
+ * (`keysGoToSecret`). A type with focused true names no element: it types
+ * only into a text entry that isn't secret or named for a card where the
+ * focus rests, in a frame of any site too, and stops once the focus leaves
+ * it (`typeIntoFocus`). A
+ * click by
+ * number presses only where both the page's hit test and the debugger's,
+ * which sees inside closed shadow roots, find its element and no frame. Just
+ * before each press, a click or a drag checks its point again, and presses
+ * nothing once the page slid a frame or another element under it
+ * (`pressPoint`). A press by position, or a drag's release, whose point lands
+ * in a frame is refused, at the step's start and just before it, unless anton
+ * says the person approved a one-step card for a step that may land in one,
+ * and then it goes only into the frame that was there when the step began
+ * (`frameGuard`).
  */
 
 import {
@@ -28,24 +46,9 @@ import {
   type StepRequest,
   type StepTarget,
 } from '../shared/browser-contract';
-import type { FocusFieldResult, FocusResult, LocateResult, SelectResult, TypingFocus } from './browser-page-script';
+import { type CdpDebugger, type FocusedField, FrameReads, withDebugger } from './browser-frames';
+import type { FocusedSecret, FocusFieldResult, FocusResult, HitTestResult, LocateResult, SelectResult, TypingFocus } from './browser-page-script';
 import { screenshotScale } from './browser-screenshot';
-
-/** The only commands main ever sends through a view's debugger. */
-export const ALLOWED_CDP_METHODS: ReadonlySet<string> = new Set([
-  'Input.dispatchMouseEvent',
-  'Input.dispatchKeyEvent',
-  'Input.insertText',
-  'Emulation.setFocusEmulationEnabled',
-]);
-
-/** The part of Electron's webContents.debugger this module uses. */
-export interface CdpDebugger {
-  attach(protocolVersion?: string): void;
-  detach(): void;
-  isAttached(): boolean;
-  sendCommand(method: string, params?: Record<string, unknown>): Promise<unknown>;
-}
 
 /** Waiting and randomness, injected so tests run fast and repeatably. */
 export interface Pacing {
@@ -204,6 +207,15 @@ function pastes(press: KeyPress): boolean {
 
 // ---- Input ---------------------------------------------------------------------
 
+/** What typing reads before each key (AgentInput.typeText): whether a space
+    typed now goes in as inserted text rather than as the Space key, as it
+    must while the field sits in a control a Space key may click, such as a
+    "Delete account" button around a text field, whose keyup a key event
+    reaches. */
+export interface KeyCheck {
+  spaceAsText: boolean;
+}
+
 const BUTTON_BITS: Record<MouseButton, number> = { left: 1, right: 2, middle: 4 };
 
 const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -256,10 +268,13 @@ export class AgentInput {
     this.mouse = { ...to };
   }
 
-  async click(at: Point, button: MouseButton, clicks: 1 | 2 | 3): Promise<void> {
+  /** Moves to `at` and clicks there. `beforePress` runs just before each
+      press, and stops the click by throwing. */
+  async click(at: Point, button: MouseButton, clicks: 1 | 2 | 3, beforePress: () => Promise<void> = async () => {}): Promise<void> {
     await this.moveTo(at);
     await this.pause(40, 80);
     for (let count = 1; count <= clicks; count += 1) {
+      await beforePress();
       await this.mouseEvent('mousePressed', at, { button, buttons: BUTTON_BITS[button], clickCount: count });
       await this.pause(50, 60);
       await this.mouseEvent('mouseReleased', at, { button, buttons: 0, clickCount: count });
@@ -281,13 +296,27 @@ export class AgentInput {
     }
   }
 
-  async drag(from: Point, to: Point): Promise<void> {
+  /** Presses at `from`, moves to `to` with the button held and releases.
+      `beforePress` runs just before the press and `beforeRelease` just
+      before the release, and each stops the drag by throwing. Stopped before
+      the release, the pointer goes back to `from` and lets go there, as a
+      person calls a drag off, so the button is never left held (the web
+      pod's drag does the same). */
+  async drag(from: Point, to: Point, beforePress: () => Promise<void> = async () => {}, beforeRelease: () => Promise<void> = async () => {}): Promise<void> {
     await this.moveTo(from);
     await this.pause(40, 60);
+    await beforePress();
     await this.mouseEvent('mousePressed', from, { button: 'left', buttons: 1, clickCount: 1 });
     await this.pause(60, 60);
     await this.moveTo(to, 1);
     await this.pause(40, 60);
+    try {
+      await beforeRelease();
+    } catch (error) {
+      await this.moveTo(from, 1);
+      await this.mouseEvent('mouseReleased', from, { button: 'left', buttons: 0, clickCount: 1 });
+      throw error;
+    }
     await this.mouseEvent('mouseReleased', to, { button: 'left', buttons: 0, clickCount: 1 });
   }
 
@@ -332,13 +361,16 @@ export class AgentInput {
    * Types `text`: its first KEYED_CHARS characters key by key, a character
    * with no key as inserted text, and the rest inserted INSERTED_CHUNK_CHARS
    * at a time. `beforeKey` runs before each key and each chunk, and stops the
-   * typing by throwing.
+   * typing by throwing. A space goes in as inserted text, with no key event,
+   * when `beforeKey` answers that the field sits in a control a Space key
+   * may click (`spaceAsText`): the Space key's keyup would bubble to that
+   * control and click it.
    */
-  async typeText(text: string, beforeKey: () => Promise<void>): Promise<void> {
+  async typeText(text: string, beforeKey: () => Promise<KeyCheck>): Promise<void> {
     const chars = [...text];
     for (const char of chars.slice(0, KEYED_CHARS)) {
-      await beforeKey();
-      const key = TYPED_KEYS.get(char);
+      const { spaceAsText } = await beforeKey();
+      const key = char === ' ' && spaceAsText ? undefined : TYPED_KEYS.get(char);
       if (key) await this.press({ modifiers: [], key });
       else await this.send('Input.insertText', { text: char });
       await this.pause(35, 90);
@@ -351,30 +383,24 @@ export class AgentInput {
 }
 
 /**
- * Attaches the debugger, runs one step's input and detaches, whatever happens.
- * Only allow-listed methods are sent. A debugger that is already attached
- * means something else holds it, so the step is refused rather than shared.
+ * Attaches the debugger, runs one step's input and the reads it needs
+ * (browser-frames.ts), and detaches, whatever happens (withDebugger). Only
+ * allow-listed methods are sent. A debugger that is already attached means
+ * something else holds it, so the step is refused rather than shared.
  */
 export async function withAgentInput<T>(
   dbg: CdpDebugger,
   start: Point,
   pacing: Pacing,
-  run: (input: AgentInput) => Promise<T>,
+  run: (input: AgentInput, frames: FrameReads) => Promise<T>,
 ): Promise<{ result: T; mouse: Point }> {
-  if (dbg.isAttached()) throw new BridgeError('page_busy', 'the page is busy with another step');
-  dbg.attach('1.3');
-  try {
-    const send = (method: string, params: Record<string, unknown>) => {
-      if (!ALLOWED_CDP_METHODS.has(method)) throw new Error(`refused to send ${method} to the page`);
-      return dbg.sendCommand(method, params);
-    };
+  return withDebugger(dbg, async (session) => {
+    const send = (method: string, params: Record<string, unknown>) => session.send(method, params);
     await send('Emulation.setFocusEmulationEnabled', { enabled: true });
     const input = new AgentInput(send, pacing, start);
-    const result = await run(input);
+    const result = await run(input, new FrameReads(session));
     return { result, mouse: input.position };
-  } finally {
-    if (dbg.isAttached()) dbg.detach();
-  }
+  });
 }
 
 // ---- Steps -----------------------------------------------------------------------
@@ -382,7 +408,8 @@ export async function withAgentInput<T>(
 /** The isolated-world reads a step needs (browser-page-script.ts). */
 export interface PageReader {
   locate(id: number, reveal: boolean): Promise<LocateResult>;
-  focusedSecret(): Promise<boolean>;
+  /** Whether the focus is on a secret field, on a frame of another site the world can't read, or on an element that may keep a closed shadow root. */
+  focusedSecret(): Promise<FocusedSecret>;
   /** Where the focus is while a type step types into element `id`. */
   typingFocus(id: number): Promise<TypingFocus>;
   /** Focuses text field `id` for typing; with `select`, selects its text so typing replaces it. */
@@ -391,6 +418,10 @@ export interface PageReader {
   focus(id: number, editing: boolean): Promise<FocusResult>;
   select(id: number, values: string[]): Promise<SelectResult>;
   viewport(): Promise<{ width: number; height: number }>;
+  /** Which of `points` a click reaches element `id` at. */
+  hitTest(id: number, points: Point[]): Promise<HitTestResult>;
+  /** Whether a press at `at` lands on a secret field. */
+  secretAt(at: Point): Promise<boolean>;
 }
 
 export interface Navigation {
@@ -405,7 +436,7 @@ export interface StepHost {
   nav: Navigation;
   pacing: Pacing;
   /** Runs `run` with the debugger attached for this one step. */
-  withInput<T>(run: (input: AgentInput) => Promise<T>): Promise<T>;
+  withInput<T>(run: (input: AgentInput, frames: FrameReads) => Promise<T>): Promise<T>;
 }
 
 const stale = (id: number, why: string) => new BridgeError('stale_element', `element ${id} ${why}`);
@@ -425,10 +456,60 @@ function focusRefused(id: number, reason: Extract<FocusFieldResult, { ok: false 
   }
 }
 
+/* The points a click by number tries after its random one, as fractions of
+   the element's visible box from its middle: the middle, then the same points
+   out toward the edges every time, as on the web pod. */
+const FIXED_POINTS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0], [-0.25, 0], [0.25, 0], [0, -0.25], [0, 0.25], [-0.4, -0.4], [0.4, -0.4], [-0.4, 0.4], [0.4, 0.4],
+];
+
+/* Why no point of a click by number reaches its element: a frame inside it
+   (or a part of the page the isolated world can't read) takes the click, or
+   something covers it (a dialog, a banner, a frame laid over it). */
+function unreached(id: number, intoFrame: boolean): BridgeError {
+  return intoFrame
+    ? stale(id, "holds a frame, or a part of the page this browser can't read, where a click by number would land; click inside it by position from a screenshot")
+    : stale(id, 'is covered by another element, such as a dialog or banner; deal with that first, or take a screenshot');
+}
+
+/* The first of `points` a click reaches element `id` at: the page's hit test
+   lands on the element there (`hitTest`), and the debugger's, which sees
+   inside closed shadow roots, finds no frame there (`pressLandsInFrame`). A
+   control that slots its own text over a frame in its closed shadow root
+   reads to the page's hit test as the control, at every point. When no point
+   reaches it, the step is refused rather than pressing what lies there
+   (`unreached`). A `wheel` may land in a frame inside the element, since a
+   wheel activates nothing there. */
+async function reachingPoint(host: StepHost, frames: FrameReads, id: number, points: Point[], wheel: boolean): Promise<Point> {
+  let intoFrame = false;
+  for (let from = 0; from < points.length;) {
+    const hit = await host.page.hitTest(id, points.slice(from));
+    if (!hit.found) throw stale(id, 'is no longer on the page');
+    intoFrame ||= hit.throughFrame >= 0;
+    if (hit.reaches < 0) {
+      if (wheel && hit.throughFrame >= 0) return points[from + hit.throughFrame];
+      break;
+    }
+    const at = points[from + hit.reaches];
+    if (wheel || !(await frames.pressLandsInFrame(at))) return at;
+    intoFrame = true;
+    from += hit.reaches + 1;
+  }
+  throw unreached(id, intoFrame);
+}
+
 /* A point inside the element, scrolled into view first. The scroll is wheel
    ticks over the page, as a person scrolls; a box that is still out of view
-   after that (a scrolled container) is brought in by the page itself. */
-async function elementPoint(host: StepHost, input: AgentInput, id: number): Promise<{ at: Point; located: Extract<LocateResult, { found: true }> }> {
+   after that (a scrolled container) is brought in by the page itself. The
+   point is a random one, as a person clicks, or else the first fixed point
+   that reaches the element (`reachingPoint`). */
+async function elementPoint(
+  host: StepHost,
+  input: AgentInput,
+  frames: FrameReads,
+  id: number,
+  wheel = false,
+): Promise<{ at: Point; located: Extract<LocateResult, { found: true }> }> {
   let located = await host.page.locate(id, false);
   for (let round = 0; round < 3 && located.found && located.shown && !located.inViewport; round += 1) {
     const { box, viewport } = located;
@@ -446,12 +527,18 @@ async function elementPoint(host: StepHost, input: AgentInput, id: number): Prom
   const right = Math.min(box.x + box.width, viewport.width);
   const bottom = Math.min(box.y + box.height, viewport.height);
   if (right <= left || bottom <= top) throw stale(id, 'is outside the view');
+  const width = right - left;
+  const height = bottom - top;
   const spread = () => 0.3 + host.pacing.random() * 0.4;
-  return { at: { x: left + (right - left) * spread(), y: top + (bottom - top) * spread() }, located };
+  const points: Point[] = [
+    { x: left + width * spread(), y: top + height * spread() },
+    ...FIXED_POINTS.map(([dx, dy]) => ({ x: left + width * (0.5 + dx), y: top + height * (0.5 + dy) })),
+  ];
+  return { at: await reachingPoint(host, frames, id, points, wheel), located };
 }
 
-async function targetPoint(host: StepHost, input: AgentInput, target: StepTarget, coords: 'page' | 'screenshot'): Promise<Point> {
-  if ('element' in target) return (await elementPoint(host, input, target.element)).at;
+async function targetPoint(host: StepHost, input: AgentInput, frames: FrameReads, target: StepTarget, coords: 'page' | 'screenshot'): Promise<Point> {
+  if ('element' in target) return (await elementPoint(host, input, frames, target.element)).at;
   const viewport = await host.page.viewport();
   const scale = coords === 'screenshot' ? screenshotScale(viewport.width) : 1;
   const at = { x: target.x * scale, y: target.y * scale };
@@ -461,11 +548,162 @@ async function targetPoint(host: StepHost, input: AgentInput, target: StepTarget
   return at;
 }
 
+/* Why a press was not sent: something arrived under its point while the
+   pointer glided there. */
+function movedUnder(where: string, intoFrame: boolean): BridgeError {
+  return new BridgeError('stale_element', `${intoFrame ? 'a frame' : 'another element'} moved ${where} as the pointer arrived, so nothing was pressed; read the page again`);
+}
+
+/* Why a press anton sent with into_frame was not sent: the frame under its
+   point is not the one there when the step began. */
+const notTheFrame = (where: string) =>
+  new BridgeError('stale_element', `the frame under ${where} is no longer the one there when the step began, so nothing was pressed; read the page again`);
+
+/* The check a press, or a drag's release, at a point runs when the step
+   starts, and the one it hands back to run just before. anton's commit hold
+   judged the step by the frames its last page read showed, and a frame can
+   arrive under the point after that read: the page moves one there, or the
+   person scrolls. A step anton sends with into_frame (`intoFrame`: the person
+   approved a one-step card for a step whose point may land in a frame,
+   whatever held it) may press into the frame that
+   lies there when it starts, and only into that one, at the address it had
+   then (`frameUnder`): once that frame moved away, another one lies over
+   it, it navigated, or the debugger can't say which frame is there, the
+   press is refused, as the web pod lapses an approval bound to a frame that
+   changed. Any other press or release whose point lands in a frame is
+   refused, at the start and just before it; so is one where a frame arrived
+   during the glide. `where` names the point. */
+async function frameGuard(frames: FrameReads, at: Point, intoFrame: boolean, where: string): Promise<() => Promise<void>> {
+  if (!intoFrame) {
+    if (await frames.pressLandsInFrame(at)) {
+      throw new BridgeError('stale_element', `a frame is now under ${where}, and the step wasn't approved to press into one, so nothing was pressed; read the page again`);
+    }
+    return async () => {
+      if (await frames.pressLandsInFrame(at)) throw movedUnder(`under ${where}`, true);
+    };
+  }
+  const before = await frames.frameUnder(at);
+  if (before === 'unread') throw new BridgeError('stale_element', `this browser couldn't tell which frame lies under ${where}, so nothing was pressed; read the page again`);
+  return async () => {
+    const now = await frames.frameUnder(at);
+    if (before === null) {
+      if (now !== null) throw movedUnder(`under ${where}`, true);
+    } else if (now === null || now === 'unread' || now.id !== before.id || now.url !== before.url) {
+      throw notTheFrame(where);
+    }
+  };
+}
+
+/* A step's press point, and the check that runs just before each press there.
+   The pointer glides for a while and the page sees it come, so the page can
+   slide something under the point after the step's first look. The commit
+   hold judged the step by what lay there before. A click by number must still
+   reach its element at the point, and never land in a frame (`hitTest`,
+   `pressLandsInFrame`); a click by position goes by `frameGuard`. */
+async function pressPoint(
+  host: StepHost,
+  input: AgentInput,
+  frames: FrameReads,
+  target: StepTarget,
+  coords: 'page' | 'screenshot',
+  intoFrame: boolean,
+): Promise<{ at: Point; beforePress: () => Promise<void> }> {
+  if ('element' in target) {
+    const id = target.element;
+    const { at } = await elementPoint(host, input, frames, id);
+    return {
+      at,
+      beforePress: async () => {
+        const hit = await host.page.hitTest(id, [at]);
+        if (!hit.found) throw stale(id, 'is no longer on the page');
+        const inFrame = hit.throughFrame >= 0 || await frames.pressLandsInFrame(at);
+        if (hit.reaches < 0 || inFrame) throw movedUnder(`over element ${id}`, inFrame);
+      },
+    };
+  }
+  const at = await targetPoint(host, input, frames, target, coords);
+  return { at, beforePress: await frameGuard(frames, at, intoFrame, `the point (${target.x}, ${target.y})`) };
+}
+
+/* The check a drag runs on one of its ends when the step starts, and the
+   one it hands back to run just before the press there, or the release. A
+   drag that starts on a secret field takes its text out, and one that drops
+   onto one puts text in, so either is refused as typing there is (403
+   password_field), as the web pod refuses it: by the element the end names
+   (LocateResult.secret) and by what lies under its point (secretAt), and
+   just before the press or release by what lies under the point then, since
+   the page may slide a field there as the pointer arrives (the web pod
+   checks only the drop again). secretAt reads the page's own document, not
+   a frame under the point: frameGuard holds a point in a frame. `what`
+   names the end. */
+async function secretGuard(host: StepHost, target: StepTarget, at: Point, what: string): Promise<() => Promise<void>> {
+  const clear = async () => {
+    if (await host.page.secretAt(at)) throw secretField(what);
+  };
+  if ('element' in target) {
+    const located = await host.page.locate(target.element, false);
+    if (located.found && located.secret) throw secretField(what);
+  }
+  await clear();
+  return clear;
+}
+
+/* Whether an editing key now goes into a secret field: the focused one,
+   followed into frames of the page's origin, or, when the focus rests on a
+   frame of another site or on an element that may keep a closed shadow
+   root, the one focused in there, read through the debugger
+   (`FrameReads.focusedSecret`), which counts what it can't read as secret.
+   A key into an ordinary field of an embedded form, or of a closed root,
+   still goes in. */
+async function keysGoToSecret(host: StepHost, frames: FrameReads): Promise<boolean> {
+  const focus = await host.page.focusedSecret();
+  return focus.secret || ((focus.otherSite || focus.sealed) && await frames.focusedSecret());
+}
+
+/* Why a type with focused true types nothing, by what has the focus when
+   it starts. */
+function focusNotTyped(kind: Exclude<FocusedField['kind'], 'entry'>): BridgeError {
+  switch (kind) {
+    case 'secret':
+      return secretField('the focused field');
+    case 'other':
+      return new BridgeError('not_a_text_field', "what has the focus isn't a text field, so nothing was typed; click the field first");
+    case 'unreadable':
+      return new BridgeError('focus_unreadable', "this browser couldn't read what has the focus, so nothing was typed");
+  }
+}
+
+/* A type with focused true: `text` at the caret of the field that has the
+   focus, in a frame of the page's origin or of another site, or in a closed
+   shadow root, read through the debugger (FrameReads.focusedField), with
+   nothing cleared first. It types only into a text entry that isn't read
+   only, disabled, secret or named for a card. Before every key, and before
+   the Enter `submit` adds, it reads the focus again, and stops once the
+   focus is anywhere but the field it began in: on a secret field or one
+   named for a card (403 password_field), on another field or element, or
+   where it can't be read, whatever moved it. */
+async function typeIntoFocus(input: AgentInput, frames: FrameReads, text: string, submit: boolean): Promise<void> {
+  const start = await frames.focusedField();
+  if (start.kind !== 'entry') throw focusNotTyped(start.kind);
+  const keepTyping = async (): Promise<KeyCheck> => {
+    const now = await frames.focusedField();
+    if (now.kind === 'entry' && now.field === start.field) return { spaceAsText: now.inControl };
+    if (now.kind === 'secret') throw secretField('the focused field');
+    const why = now.kind === 'unreadable' ? "this browser couldn't read the focus" : 'the focus left the field the step began typing into';
+    throw new BridgeError('stale_element', `${why}, so the rest was not typed; read the page again`);
+  };
+  await input.typeText(text, keepTyping);
+  if (submit) {
+    await keepTyping();
+    await input.press({ modifiers: [], key: ENTER });
+  }
+}
+
 const SCROLL_DELTAS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as const;
 
 /** Runs one checked step. */
 export async function runStep(host: StepHost, request: StepRequest, platform: NodeJS.Platform = process.platform): Promise<void> {
-  const { step, coords } = request;
+  const { step, coords, intoFrame } = request;
   switch (step.action) {
     case 'navigate':
       return host.nav.load(step.url);
@@ -493,21 +731,39 @@ export async function runStep(host: StepHost, request: StepRequest, platform: No
       if (step.button === 'middle' && platform !== 'darwin' && platform !== 'win32') {
         throw new BridgeError('bad_request', "the agent can't paste the person's selection, which a middle click does on Linux; click with the left or right button");
       }
-      return host.withInput(async (input) => input.click(await targetPoint(host, input, step.target, coords), step.button, step.clicks));
+      return host.withInput(async (input, frames) => {
+        const { at, beforePress } = await pressPoint(host, input, frames, step.target, coords, intoFrame);
+        await input.click(at, step.button, step.clicks, beforePress);
+      });
     case 'hover':
-      return host.withInput(async (input) => input.hover(await targetPoint(host, input, step.target, coords)));
+      return host.withInput(async (input, frames) => input.hover(await targetPoint(host, input, frames, step.target, coords)));
     case 'drag':
-      return host.withInput(async (input) => {
-        const from = await targetPoint(host, input, step.from, coords);
-        const to = await targetPoint(host, input, step.to, coords);
-        await input.drag(from, to);
+      return host.withInput(async (input, frames) => {
+        const from = await pressPoint(host, input, frames, step.from, coords, intoFrame);
+        const to = await targetPoint(host, input, frames, step.to, coords);
+        const startClear = await secretGuard(host, step.from, from.at, "the drag's start");
+        const dropClear = await secretGuard(host, step.to, to, 'the drop target');
+        const where = 'element' in step.to ? `the drop point on element ${step.to.element}` : `the drop point (${step.to.x}, ${step.to.y})`;
+        const beforeRelease = await frameGuard(frames, to, intoFrame, where);
+        await input.drag(
+          from.at,
+          to,
+          async () => {
+            await from.beforePress();
+            await startClear();
+          },
+          async () => {
+            await beforeRelease();
+            await dropClear();
+          },
+        );
       });
     case 'scroll':
-      return host.withInput(async (input) => {
+      return host.withInput(async (input, frames) => {
         const [sx, sy] = SCROLL_DELTAS[step.direction];
         let at: Point;
         if (step.element !== undefined) {
-          at = (await elementPoint(host, input, step.element)).at;
+          at = (await elementPoint(host, input, frames, step.element, true)).at;
         } else {
           const viewport = await host.page.viewport();
           at = { x: viewport.width / 2, y: viewport.height / 2 };
@@ -515,18 +771,21 @@ export async function runStep(host: StepHost, request: StepRequest, platform: No
         await input.wheel(at, sx * step.amount, sy * step.amount);
       });
     case 'type':
+      if (step.focused) return host.withInput((input, frames) => typeIntoFocus(input, frames, step.text, step.submit));
       return host.withInput(async (input) => {
         const field = await host.page.focusField(step.element, step.clear);
         if (!field.ok) throw focusRefused(step.element, field.reason);
         /* Before every key: typing stops once the focus is on a secret field
            or has left this one, whether a typed line break moved it or the
-           page did, so no key goes anywhere the step didn't name. */
-        const keepTyping = async () => {
+           page did, so no key goes anywhere the step didn't name, and a
+           space goes in as text while the field sits in a control. */
+        const keepTyping = async (): Promise<KeyCheck> => {
           const focus = await host.page.typingFocus(step.element);
           if (focus.secret) throw secretField('the focused field');
           if (!focus.inField) {
             throw new BridgeError('stale_element', `the focus left element ${step.element}, so the rest was not typed; read the page again`);
           }
+          return { spaceAsText: focus.inControl };
         };
         if (field.selected) {
           await keepTyping();
@@ -545,12 +804,12 @@ export async function runStep(host: StepHost, request: StepRequest, platform: No
       }
       if (pastes(press)) throw new BridgeError('bad_request', "the agent can't paste the person's clipboard; type the text instead");
       const editing = editsText(press);
-      return host.withInput(async (input) => {
+      return host.withInput(async (input, frames) => {
         if (step.element !== undefined) {
           const focus = await host.page.focus(step.element, editing);
           if (!focus.ok) throw focusRefused(step.element, focus.reason);
         }
-        if (editing && await host.page.focusedSecret()) throw secretField('the focused field');
+        if (editing && await keysGoToSecret(host, frames)) throw secretField('the focused field');
         await input.press(press);
       });
     }

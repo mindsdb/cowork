@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { PageElement, PageSnapshot } from '../shared/browser-contract';
 import { parseControlRequest } from '../shared/browser-contract';
-import { BrowserSessions, type TabHooks, type TabView } from './browser-sessions';
-import { pageChanged, pageKey, WATCH_IDLE_MS, WATCH_TICK_MS, waitForMet } from './browser-handover-watch';
+import { BrowserSessions, type PageReadOptions, type TabHooks, type TabView } from './browser-sessions';
+import { pageChanged, pageKey, WATCH_IDLE_MS, WATCH_TICK_MS, waitForMet, type WatchRead } from './browser-handover-watch';
+import type { HandbackElement } from './browser-page-script';
 
 const page = (elements: PageElement[], url = 'https://united.test/minor'): PageSnapshot => ({
-  url, title: 'T', scroll: { y: 0, height: 100, viewport: 100 }, elements, text: '', truncated: false, challenges: [],
+  url, title: 'T', scroll: { y: 0, height: 100, viewport: 100 }, elements, text: '', truncated: false, challenges: [], frames: [],
 });
 const box = (checked: boolean): PageElement => ({ id: 12, role: 'checkbox', name: "I've read and understood", checked });
+/* A watch's read: the page, and the watched element's state as the page's world reads it. */
+const read = (now: PageSnapshot, element: HandbackElement | null = null): WatchRead => ({ page: now, element });
 
 describe('wait_for in POST /sessions/{id}/control', () => {
   it('takes an element state or a page change, and refuses anything else', () => {
@@ -23,16 +26,20 @@ describe('wait_for in POST /sessions/{id}/control', () => {
 });
 
 describe('waitForMet', () => {
-  it('reads a box as checked, a field as filled without its value, and a page as changed', () => {
-    expect(waitForMet({ element: 12, state: 'checked' }, page([box(false)]), page([box(true)]))).toBe(true);
-    expect(waitForMet({ element: 12, state: 'checked' }, page([box(false)]), page([box(false)]))).toBe(false);
+  it("reads a box as checked and a field as filled from the element's state in the page, never its value, and a page as changed", () => {
+    expect(waitForMet({ element: 12, state: 'checked' }, page([box(false)]), read(page([box(true)]), { checked: true, filled: true }))).toBe(true);
+    expect(waitForMet({ element: 12, state: 'checked' }, page([box(false)]), read(page([box(false)]), { checked: false, filled: false }))).toBe(false);
     const field = (value?: string): PageElement => ({ id: 4, role: 'textbox', name: 'Name', ...(value === undefined ? {} : { value }) });
-    expect(waitForMet({ element: 4, state: 'filled' }, null, page([field('Ana')]))).toBe(true);
-    expect(waitForMet({ element: 4, state: 'filled' }, null, page([field('  ')]))).toBe(false);
-    expect(waitForMet({ element: 4, state: 'filled' }, null, page([{ id: 4, role: 'textbox', name: 'Code', value_hidden: true }]))).toBe(false);
-    // Gone because the person moved on to another page: done.
-    expect(waitForMet({ element: 12, state: 'checked' }, page([box(false)]), page([], 'https://united.test/next'))).toBe(true);
-    expect(waitForMet({ page: 'changes' }, page([box(false)]), page([box(false)], 'https://united.test/next'))).toBe(true);
+    expect(waitForMet({ element: 4, state: 'filled' }, null, read(page([field('Ana')]), { checked: false, filled: true }))).toBe(true);
+    expect(waitForMet({ element: 4, state: 'filled' }, null, read(page([field('  ')]), { checked: false, filled: false }))).toBe(false);
+    // A secret field, a card's number among them, never carries its value, and its state still says it is filled.
+    const card: PageElement = { id: 4, role: 'textbox', name: 'Card number', value_hidden: true };
+    expect(waitForMet({ element: 4, state: 'filled' }, null, read(page([card]), { checked: false, filled: true }))).toBe(true);
+    expect(waitForMet({ element: 4, state: 'filled' }, null, read(page([card]), { checked: false, filled: false }))).toBe(false);
+    // Gone because the person moved on to another page: done; gone on the same page: not yet.
+    expect(waitForMet({ element: 12, state: 'checked' }, page([box(false)]), read(page([], 'https://united.test/next')))).toBe(true);
+    expect(waitForMet({ element: 12, state: 'checked' }, page([box(false)]), read(page([])))).toBe(false);
+    expect(waitForMet({ page: 'changes' }, page([box(false)]), read(page([box(false)], 'https://united.test/next')))).toBe(true);
   });
 
   it('counts a page as changed only when its element list differs materially', () => {
@@ -43,20 +50,37 @@ describe('waitForMet', () => {
     expect(pageChanged(page(els(3)), page(els(3, 3)))).toBe(true);
   });
 
-  it('never puts a value in what it compares', () => {
-    expect(pageKey(page([{ id: 4, role: 'textbox', name: 'Name', value: 'secret-ish' }]))).not.toContain('secret-ish');
+  it("never puts a value in what it compares, and counts the watched element's state", () => {
+    expect(pageKey(read(page([{ id: 4, role: 'textbox', name: 'Name', value: 'secret-ish' }])))).not.toContain('secret-ish');
+    const card = page([{ id: 4, role: 'textbox', name: 'Card number', value_hidden: true }]);
+    expect(pageKey(read(card, { checked: false, filled: true }))).not.toBe(pageKey(read(card, { checked: false, filled: false })));
   });
 });
 
 function watched() {
   let clock = 1_000_000;
   let current = page([box(false)]);
+  /* What the page's world reads of each element: a box's own checked state unless a test says otherwise. */
+  let states: Record<number, HandbackElement> | null = null;
+  const stateOf = (id: number): HandbackElement | null => {
+    if (states) return states[id] ?? null;
+    const el = current.elements.find((e) => e.id === id);
+    return el ? { checked: el.checked === true, filled: el.checked === true || Boolean(el.value?.trim()) } : null;
+  };
   const ticks: Array<() => void> = [];
   let stopped = 0;
   let hooks: TabHooks | null = null;
+  const reads: Array<PageReadOptions | undefined> = [];
+  let hold: Promise<void> | null = null;
   const view = {
     url: () => current.url, title: () => 'T', loading: () => false, canGoBack: () => false, canGoForward: () => false,
-    read: async () => current, act: async () => {}, screenshot: async () => ({ jpeg: Buffer.from(''), width: 1, height: 1 }),
+    read: async (_maxText: number, options?: PageReadOptions) => {
+      reads.push(options);
+      if (hold) await hold;
+      return current;
+    },
+    handbackElement: async (id: number) => stateOf(id),
+    act: async () => {}, screenshot: async () => ({ jpeg: Buffer.from(''), width: 1, height: 1 }),
     load: async () => {}, back: async () => {}, forward: async () => {}, reload: async () => {},
     show: () => {}, park: () => {}, abortInput: () => {}, watchSecrets: () => {}, close: () => {},
   } as unknown as TabView;
@@ -72,10 +96,18 @@ function watched() {
   return {
     sessions,
     set: (next: PageSnapshot) => { current = next; },
+    setStates: (next: Record<number, HandbackElement>) => { states = next; },
     input: () => hooks?.personInput(),
     advance: (ms: number) => { clock += ms; },
     ticks,
     stopped: () => stopped,
+    reads,
+    /* Holds every read until the returned function lets them go. */
+    holdReads: () => {
+      let release = () => {};
+      hold = new Promise<void>((resolve) => { release = resolve; });
+      return () => { hold = null; release(); };
+    },
   };
 }
 
@@ -99,6 +131,37 @@ describe('a hand-over that comes back by itself', () => {
     expect(w.sessions.info('t-a').control).toMatchObject({ holder: 'agent', by: 'person', seq: 2 });
     expect(w.sessions.stateOf('t-a')?.watching).toBe(false);
     expect(w.stopped()).toBe(1);
+  });
+
+  it("hands back once the person fills a card field, whose value no read carries, as the page's world reads it filled", async () => {
+    const w = watched();
+    const card = page([{ id: 4, role: 'textbox', name: 'Card number', value_hidden: true }]);
+    w.set(card);
+    w.setStates({ 4: { checked: false, filled: false } });
+    w.sessions.control('t-a', { holder: 'human', reason: 'Enter your card', waitFor: { element: 4, state: 'filled' } });
+    await w.sessions.tickWatches();
+    w.advance(500);
+    w.input();
+    w.setStates({ 4: { checked: false, filled: true } });
+    w.advance(WATCH_IDLE_MS);
+    await w.sessions.tickWatches();
+    w.advance(WATCH_TICK_MS);
+    await w.sessions.tickWatches();
+    expect(w.sessions.info('t-a').control).toMatchObject({ holder: 'agent', by: 'person', seq: 2 });
+  });
+
+  it("reads the page with its frames listed unread and none looked at, and starts no read while the last one hasn't answered", async () => {
+    const w = watched();
+    const release = w.holdReads();
+    // The hand-over reads the page at once, and that read hasn't answered when the clock ticks twice.
+    w.sessions.control('t-a', { holder: 'human', reason: 'Tick the policy box', waitFor: { element: 12, state: 'checked' } });
+    const ticks = [w.sessions.tickWatches(), w.sessions.tickWatches()];
+    expect(w.reads).toEqual([{ frames: false }]);
+    release();
+    await Promise.all(ticks);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await w.sessions.tickWatches();
+    expect(w.reads).toEqual([{ frames: false }, { frames: false }]);
   });
 
   it('waits for the person: a box already checked with no input since never hands back', async () => {

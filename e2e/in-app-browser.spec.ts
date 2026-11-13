@@ -71,6 +71,387 @@ async function startFixtureServer(): Promise<void> {
     if (url.pathname === '/set-cookie') {
       return void res.writeHead(200, { 'content-type': 'text/html', 'set-cookie': 'e2e=kept; Max-Age=3600; Path=/' }).end('<title>Set</title>set');
     }
+    if (url.pathname === '/long') {
+      /* 150 lines 30 px apart, about 6,000 characters: more than a page
+         read's default 3,000. */
+      const lines = Array.from({ length: 150 }, (_, i) => `<p>Line ${i + 1} of the long page says hello.</p>`).join('');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Long</title><style>body{margin:0;font:16px sans-serif}p{margin:0;height:30px;line-height:30px}</style>${lines}`);
+    }
+    if (url.pathname === '/many') {
+      /* 20,000 rows of about 125 characters, each with a button: about
+         2.5 MB of text and 20,000 controls, scrolled to the middle. */
+      const filler = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.';
+      const rows = Array.from({ length: 20_000 }, (_, i) => `<div><p>Row ${i} ${filler}</p><button>Action ${i}</button></div>`).join('');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Many</title>${rows}<script>scrollTo(0, document.documentElement.scrollHeight / 2)</script>`);
+    }
+    if (url.pathname === '/late') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Late</title><button onclick="fetch(\'/slow\').then((r) => r.text()).then((t) => { const p = document.createElement(\'p\'); p.textContent = t; document.body.append(p); })">Load</button>');
+    }
+    if (url.pathname === '/slow') {
+      setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('Arrived late'), 2_500);
+      return;
+    }
+    if (url.pathname === '/still') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Still</title><button>Nothing</button><button onclick="document.getElementById(\'o\').textContent = \'Changed\'">Change</button><p id="o">Before</p>');
+    }
+    if (url.pathname === '/frames') {
+      /* One frame from this origin, and the same page from another one:
+         localhost is another origin than 127.0.0.1. */
+      const other = origin.replace('127.0.0.1', 'localhost');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Frames</title><p>Top text</p><iframe src="/frame-inner" style="width:400px;height:200px"></iframe><iframe src="${other}/frame-inner" style="width:400px;height:200px"></iframe>`);
+    }
+    if (url.pathname === '/unseen-frames') {
+      /* Same-origin frames in view, in DOM order: two the person sees (one
+         tinted grey), then one under a box, a faint one, a masked one, a
+         darkened one, a blurred one and one inside a box that inverts and
+         darkens it, then one below the view. */
+      const styles = ['', 'filter:grayscale(1)', '', 'opacity:0.05', 'mask-image:linear-gradient(transparent,transparent)', 'filter:brightness(0)', 'filter:blur(40px)', ''];
+      const at = (i: number) => `position:absolute;left:${(i % 4) * 200}px;top:${Math.floor(i / 4) * 130}px;width:200px;height:120px;border:0;margin:0`;
+      const frames = styles.map((style, i) => (i === 7
+        ? `<div style="${at(i)};filter:invert(1) brightness(0)"><iframe src="/frame-inner" style="width:200px;height:120px;border:0"></iframe></div>`
+        : `<iframe src="/frame-inner" style="${at(i)};${style}"></iframe>`)).join('');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Unseen</title><style>body{margin:0}</style>${frames}<div style="${at(2)};background:#fff"></div>`
+          + '<iframe src="/frame-inner" style="position:absolute;left:0;top:3000px;width:200px;height:120px;border:0"></iframe>');
+    }
+    if (url.pathname === '/hidden-frame') {
+      /* One same-origin frame, 300 by 150 at (50, 50), alone on its page,
+         drawn as `case` says: plain; in a page a dark mode inverts; slightly
+         dimmed; under a white cover that only paints (a 1 px element's box
+         shadow or outline), which a hit test can't see; under a white cover
+         with a 3 px hole at the middle of each cell of a 5 by 5 grid over it;
+         or through a mask border. */
+      const frame = (style = '') => `<iframe src="/frame-inner" style="position:absolute;left:50px;top:50px;width:300px;height:150px;border:0;${style}"></iframe>`;
+      const dot = (paint: string) => `<div style="position:absolute;left:200px;top:125px;width:1px;height:1px;z-index:2;${paint}"></div>`;
+      const holes = [0.1, 0.3, 0.5, 0.7, 0.9].flatMap((fy) => [0.1, 0.3, 0.5, 0.7, 0.9].map((fx) => `M${Math.floor(300 * fx) - 1} ${Math.floor(150 * fy) - 1}h3v3h-3z`)).join('');
+      const pages: Record<string, string> = {
+        plain: frame(),
+        dark: `<div style="filter:invert(1) hue-rotate(180deg);background:#fff;position:absolute;inset:0">${frame()}</div>`,
+        dimmed: frame('filter:brightness(0.85)'),
+        shadow: frame() + dot('box-shadow:0 0 0 400px #fff'),
+        outline: frame() + dot('outline:400px solid #fff'),
+        holes: frame() + `<div style="position:absolute;left:50px;top:50px;width:300px;height:150px;z-index:2;background:#fff;clip-path:path(evenodd,'M0 0H300V150H0Z${holes}')"></div>`,
+        'mask-border': frame('-webkit-mask-box-image-source:linear-gradient(transparent,transparent);-webkit-mask-box-image-slice:1 fill'),
+      };
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Hidden frame</title><style>body{margin:0;background:#fff}</style>${pages[url.searchParams.get('case') ?? 'plain']}`);
+    }
+    if (url.pathname === '/css-editor') {
+      /* A same-origin frame whose draft CSS alone makes editable. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Editor</title><p>Top</p><iframe src="/css-editor-inner" style="width:400px;height:200px;border:0"></iframe>');
+    }
+    if (url.pathname === '/shadow-editor') {
+      /* A same-origin frame whose drafts sit in a widget's open shadow root:
+         one CSS alone makes editable, one an attribute does. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Shadow editor</title><p>Top</p><iframe src="/shadow-editor-inner" style="width:400px;height:200px;border:0"></iframe>');
+    }
+    if (url.pathname === '/shadow-editor-inner') {
+      const drafts = '<div tabindex="0">To: <div style="-webkit-user-modify:read-write;min-height:20px">CSS-DRAFT typed by the person</div></div>'
+        + '<div tabindex="0">Cc: <div contenteditable style="min-height:20px">ATTR-DRAFT typed by the person</div></div>';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Inner</title><p>Compose</p><x-compose id="c"></x-compose><button>Send</button><script>document.getElementById("c").attachShadow({ mode: "open" }).innerHTML = ${JSON.stringify(drafts)}</script>`);
+    }
+    if (url.pathname === '/css-editor-inner') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Inner</title><p>Compose</p><div tabindex="0">To: <div style="-webkit-user-modify:read-write;min-height:40px">CSS-DRAFT typed by the person</div></div><button>Send</button>');
+    }
+    if (url.pathname === '/frame-inner') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Inner</title><p>Get the weekly digest.</p><label>Email <input value="ada@example.test"></label><button>Subscribe</button>');
+    }
+    if (url.pathname === '/buy') {
+      /* Another site's page that records every click it gets, as a one-click
+         Buy would act on it. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Buy</title><style>html,body{margin:0;height:100%}button{width:100%;height:100%}</style><button>Buy now</button>'
+          + '<script>addEventListener("click", (e) => fetch("/log", { method: "POST", body: JSON.stringify({ type: "frame-click", isTrusted: e.isTrusted }) }))</script>');
+    }
+    if (url.pathname === '/wrapped-frame') {
+      /* Another site's frame inside a control that is listed with a number,
+         and the same page behind an object and an embed that name themselves
+         as controls. */
+      const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
+      const box = 'display:block;width:400px;height:120px;border:0;margin:0';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Wrapped</title><div tabindex="0" aria-label="More info" style="${box}"><iframe src="${buy}" style="${box}"></iframe></div>`
+          + `<object data="${buy}" type="text/html" role="button" aria-label="Dismiss" style="${box}"></object>`
+          + `<embed src="${buy}" type="text/html" tabindex="0" title="Close" style="${box}">`);
+    }
+    if (url.pathname === '/sealed-frame') {
+      /* Another site's frame in a closed shadow root of a control that is
+         listed with a number: the page's DOM can't place it. */
+      const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
+      const box = 'display:block;width:400px;height:120px;border:0;margin:0';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Sealed</title><div id="w" tabindex="0" aria-label="More info" style="${box}"></div>`
+          + `<script>document.getElementById("w").attachShadow({ mode: "closed" }).innerHTML = '<iframe src="${buy}" style="${box}"></iframe>'</script>`);
+    }
+    if (url.pathname === '/sealed-slot-frame') {
+      /* A control that slots its own text, which fills it, over another
+         site's frame laid in its closed shadow root: the page's own hit test
+         stops at the control and finds its text at every point. */
+      const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
+      const sealed = `<style>iframe{position:absolute;left:0;top:0;width:100%;height:100%;border:0}</style><slot></slot><iframe src="${buy}"></iframe>`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Sealed slot</title><x-btn id="w" role="button" style="display:block;position:relative;width:400px;height:120px;margin:0;overflow:hidden;font:100px/120px sans-serif">Continue</x-btn>'
+          + `<script>document.getElementById("w").attachShadow({ mode: "closed" }).innerHTML = ${JSON.stringify(sealed)}</script>`);
+    }
+    if (url.pathname === '/frame-fields') {
+      /* Another site's embedded form, with an ordinary field and a password
+         field the person has filled. */
+      const fields = `${origin.replace('127.0.0.1', 'localhost')}/fields`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Frame fields</title><style>body{margin:0}</style><iframe src="${fields}" style="position:absolute;left:0;top:0;width:400px;height:200px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/fields') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Fields</title><style>body{margin:0;background:#fff}input{position:absolute;left:0;width:300px;height:40px;border:0;background:#fff;font:20px sans-serif}</style>'
+          + '<input id="u" style="top:0"><input id="p" type="password" value="hunter2" style="top:100px">'
+          + '<script>addEventListener("keydown", (e) => fetch("/log", { method: "POST", body: JSON.stringify({ type: "frame-key", key: e.key, target: e.target.id, isTrusted: e.isTrusted }) }))</script>');
+    }
+    if (url.pathname === '/frame-entry') {
+      /* The same embedded form twice: from another site at the top, and
+         from the page's own origin below it. */
+      const entry = (at: string, top: number) => `<iframe src="${at}/entry" style="position:absolute;left:0;top:${top}px;width:400px;height:230px;border:0"></iframe>`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Frame entry</title><style>body{margin:0}</style>${entry(origin.replace('127.0.0.1', 'localhost'), 0)}${entry(origin, 260)}`);
+    }
+    if (url.pathname === '/entry') {
+      /* An email field, a button, a password field the person filled and a
+         card field named only by its placeholder, 40 px tall each, at 0, 60,
+         120 and 180. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Entry</title><style>body{margin:0;background:#fff}input,button{position:absolute;left:0;width:300px;height:40px;border:0;background:#eee;font:20px sans-serif}</style>'
+          + '<input id="email" type="email" style="top:0"><button id="go" style="top:60px">Go</button><input id="pw" type="password" value="hunter2" style="top:120px">'
+          + '<input id="card" placeholder="Card number" style="top:180px">');
+    }
+    if (url.pathname === '/nested-frames' || url.pathname === '/sealed-nested') {
+      /* The page's own panel frame, which embeds another site's frame of
+         radios: in its DOM, or in a closed shadow root there. */
+      const panel = url.pathname === '/nested-frames' ? '/panel' : '/sealed-panel';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Nested</title><style>body{margin:0}</style><iframe src="${panel}" style="position:absolute;left:0;top:0;width:500px;height:300px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/panel' || url.pathname === '/sealed-panel') {
+      const radios = `<iframe src="${origin.replace('127.0.0.1', 'localhost')}/radios" style="display:block;width:400px;height:120px;border:0"></iframe>`;
+      const frame = url.pathname === '/panel' ? radios
+        : `<div id="host"></div><script>document.getElementById("host").attachShadow({ mode: "closed" }).innerHTML = ${JSON.stringify(radios)}</script>`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Panel</title><style>body{margin:0;background:#fff;font:20px sans-serif}</style><p>Embedded account panel</p>${frame}`);
+    }
+    if (url.pathname === '/radios') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Radios</title><label><input type="radio" name="a" checked> Keep my account</label><label><input type="radio" name="a"> Delete my account</label>');
+    }
+    if (url.pathname === '/card-names') {
+      /* Fields only their attributes name: a card's security code by its
+         name, a card's number by its id and its label together, notes
+         whose name starts like a card's number, a gift card's number by its
+         name, and a card's number by its name under a gift card's label. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Card names</title><style>input{display:block;width:300px;height:40px;margin:10px 0}</style>'
+          + '<label>Security digits <input name="card_cvc"></label><input id="card" aria-label="Number"><label>Notes <input name="cardnotes"></label>'
+          + '<label>Gift card <input name="giftCardNumber"></label><input name="cardNumber" aria-label="Gift card number">');
+    }
+    if (url.pathname === '/card-named') {
+      /* A checkout form whose card field only its name and label name, with
+         the card number the person typed in clear from (100, 40) to (290,
+         80), grey on light grey, so only a mask draws black there; a saved
+         card picker its name names for a card; the name on the card; and
+         another site's frame at (0, 220) whose card field only its camelCase
+         id names, drawn from (100, 260) to (290, 300). */
+      const inner = `${origin.replace('127.0.0.1', 'localhost')}/camel-card`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Card named</title><style>body{margin:0;background:#fff}input,select{position:absolute;left:100px;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
+          + '<input name="card_number" aria-label="Card" value="4242424242424242" style="top:40px">'
+          + '<select name="card_no" aria-label="Saved card" style="top:100px"><option value="1">Visa</option><option value="2">Amex</option></select>'
+          + '<input name="cardholderName" aria-label="Name on card" style="top:160px">'
+          + `<iframe src="${inner}" style="position:absolute;left:0;top:220px;width:400px;height:120px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/camel-card') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Camel card</title><style>body{margin:0;background:#fff}input{position:absolute;left:100px;top:40px;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
+          + '<input id="cardNumberInput" value="4242424242424242">');
+    }
+    if (url.pathname === '/drag-card') {
+      /* A card field only its name and label name for a card, a notes box
+         and a field of the person's name, each 300 by 40 at the left, 80
+         px apart. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Drag card</title><style>body{margin:0}input,textarea{position:absolute;left:0;width:300px;height:40px;margin:0;border:0;padding:0;background:#eee;font:20px sans-serif}</style>'
+          + '<input name="card_number" aria-label="Card" value="4242424242424242" style="top:0">'
+          + '<textarea aria-label="Notes" style="top:80px"></textarea>'
+          + '<input aria-label="Name" value="Ada Example" style="top:160px">');
+    }
+    if (url.pathname === '/lazy-frame') {
+      /* Another site's embedded form 6000 px down, which loads only once a
+         scroll brings it near the view. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Lazy frame</title><style>body{margin:0;height:7000px}</style>'
+          + `<iframe loading="lazy" src="${origin.replace('127.0.0.1', 'localhost')}/fields" style="position:absolute;left:0;top:6000px;width:400px;height:200px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/focus-move') {
+      /* Two buttons, and another site's embedded form below them. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Focus move</title><style>body{margin:0}button{position:absolute;left:0;width:200px;height:40px}</style>'
+          + '<button id="pay" style="top:0">Pay</button><button id="delete" style="top:60px">Delete account</button>'
+          + `<iframe src="${origin.replace('127.0.0.1', 'localhost')}/fields" style="position:absolute;left:0;top:120px;width:400px;height:200px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/nested-focus') {
+      /* Another site's frame that embeds two frames of yet another site,
+         each a text field: this browser reads neither of those two. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Nested focus</title><style>body{margin:0}</style>'
+          + `<iframe src="${origin.replace('127.0.0.1', 'localhost')}/two-fields" style="position:absolute;left:0;top:0;width:500px;height:300px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/two-fields') {
+      const field = `<iframe src="${origin}/one-field" style="display:block;width:400px;height:100px;border:0"></iframe>`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Two fields</title><style>body{margin:0}</style>${field}${field}`);
+    }
+    if (url.pathname === '/one-field') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>One field</title><style>body{margin:0}</style><input id="u" aria-label="Field" style="width:300px;height:40px">');
+    }
+    if (url.pathname === '/column-frame') {
+      /* A page that scrolls, with a column that scrolls inside it: another
+         site's frame sits in the column 300 px down its content, and
+         another is fixed to the view's bottom right. */
+      const other = origin.replace('127.0.0.1', 'localhost');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Column frame</title><style>body{margin:0;height:3000px}#col{width:500px;height:400px;overflow:auto}</style>'
+          + `<div id="col"><div id="above" style="height:300px"></div><iframe src="${other}/buy" style="display:block;width:400px;height:100px;border:0"></iframe><div style="height:1500px"></div></div>`
+          + `<iframe src="${other}/player" style="position:fixed;right:0;bottom:0;width:200px;height:100px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/card-handover') {
+      /* A checkout form whose empty card field only its name names for a card. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Card hand-over</title><style>input,button{display:block;width:300px;height:40px;margin:10px 0}</style>'
+          + '<input name="card_number" aria-label="Card number"><button>Pay</button>');
+    }
+    if (url.pathname === '/in-button') {
+      /* A text field inside a "Delete account" button, and one inside a
+         div with role button whose Space key clicks it; either click marks
+         the title. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>In button</title><style>button,div{display:block;width:400px;height:60px;margin:10px 0}</style>'
+          + '<button type="button" onclick="document.title = \'deleted\'">Delete account <input id="reason" aria-label="Reason"></button>'
+          + '<div role="button" tabindex="0" onclick="document.title = \'deleted\'" onkeyup="if (event.key === \' \') this.click()">Delete account <input id="why" aria-label="Why"></div>');
+    }
+    if (url.pathname === '/closed-fields') {
+      /* A form the page keeps in a closed shadow root, with an ordinary
+         field and a password field the person has filled. */
+      const form = '<style>input{position:absolute;left:0;width:300px;height:40px;border:0;font:20px sans-serif}</style>'
+        + '<input id="u" style="top:0"><input id="p" type="password" value="hunter2" style="top:100px">';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Closed fields</title><style>body{margin:0}</style><x-login id="host" style="display:block;position:absolute;left:0;top:0;width:400px;height:200px"></x-login>'
+          + `<script>const root = document.getElementById("host").attachShadow({ mode: "closed" }); root.innerHTML = ${JSON.stringify(form)};`
+          + 'root.addEventListener("keydown", (e) => fetch("/log", { method: "POST", body: JSON.stringify({ type: "closed-key", key: e.key, target: e.target.id, isTrusted: e.isTrusted }) }));</script>');
+    }
+    if (url.pathname === '/closed-frame-fields') {
+      /* Another site's embedded form in a closed shadow root. */
+      const fields = `${origin.replace('127.0.0.1', 'localhost')}/fields`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Closed frame fields</title><style>body{margin:0}</style><div id="host" style="position:absolute;left:0;top:0;width:400px;height:200px"></div>'
+          + `<script>document.getElementById("host").attachShadow({ mode: "closed" }).innerHTML = '<iframe src="${fields}" style="position:absolute;left:0;top:0;width:400px;height:200px;border:0"></iframe>'</script>`);
+    }
+    if (url.pathname === '/card') {
+      /* A checkout form whose card number shows in clear, from (100, 40) to
+         (290, 80), grey on light grey, so only a mask draws black there. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Card</title><style>body{margin:0;background:#fff}input{position:absolute;left:100px;top:40px;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
+          + '<input autocomplete="cc-number" value="4242424242424242">');
+    }
+    if (url.pathname === '/scaled-card') {
+      /* Another site's checkout frame, 300 by 100, drawn at twice its size. */
+      const card = `${origin.replace('127.0.0.1', 'localhost')}/card`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Scaled card</title><style>body{margin:0;background:#fff}</style>'
+          + `<iframe src="${card}" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;transform:scale(2);transform-origin:0 0"></iframe>`);
+    }
+    if (url.pathname === '/half-card') {
+      /* Another site's checkout frame, 300 by 100, drawn at half its size. */
+      const card = `${origin.replace('127.0.0.1', 'localhost')}/card`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Half card</title><style>body{margin:0;background:#fff}</style>'
+          + `<iframe src="${card}" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;transform:scale(0.5);transform-origin:0 0"></iframe>`);
+    }
+    if (url.pathname === '/scaled-same-card') {
+      /* The page's own checkout frame, 300 by 100, drawn at `scale` times its size. */
+      const scale = Number(url.searchParams.get('scale'));
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Scaled same card</title><style>body{margin:0;background:#fff}</style>'
+          + `<iframe src="/card" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;transform:scale(${scale});transform-origin:0 0"></iframe>`);
+    }
+    if (url.pathname === '/along-same-card') {
+      /* The page's own checkout frame, 300 by 100, turned 30 degrees by an
+         offset path, its transform, rotate and scale all none: drawn inside
+         (95, 32) to (405, 268), its card number from (206, 136) to (362, 226). */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Along same card</title><style>body{margin:0;background:#fff}</style>'
+          + '<iframe src="/card" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;offset-path:path(\'M 250 150 L 400 150\');offset-rotate:30deg"></iframe>');
+    }
+    if (url.pathname === '/reflected-card') {
+      /* Three card numbers -webkit-box-reflect copies: the page's own field,
+         from (0, 0) to (190, 40), copied 20 px below it; the page's own
+         checkout frame at (300, 0) and another site's at (0, 250), 300 by
+         100, each copied 10 px below it. */
+      const card = `${origin.replace('127.0.0.1', 'localhost')}/card`;
+      const frame = 'position:absolute;width:300px;height:100px;border:0;-webkit-box-reflect:below 10px';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Reflected card</title><style>body{margin:0;background:#fff}input{display:block;margin:0;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
+          + '<div style="position:absolute;left:0;top:0;-webkit-box-reflect:below 20px"><input autocomplete="cc-number" value="4242424242424242"></div>'
+          + `<iframe src="/card" style="${frame};left:300px;top:0"></iframe><iframe src="${card}" style="${frame};left:0;top:250px"></iframe>`);
+    }
+    if (url.pathname === '/closed-same-card') {
+      /* The page's own checkout frame, in a closed shadow root. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Closed same card</title><style>body{margin:0;background:#fff}</style><div id="host" style="position:absolute;left:0;top:0;width:300px;height:100px"></div>'
+          + '<script>document.getElementById("host").attachShadow({ mode: "closed" }).innerHTML = \'<iframe src="/card" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0"></iframe>\'</script>');
+    }
+    if (url.pathname === '/clear-frame') {
+      /* Another site's frame drawn fully transparent over a button. */
+      const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
+      const at = 'position:absolute;left:0;top:0;width:300px;height:100px;border:0;margin:0';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Clear</title><button style="${at}">Under</button><iframe src="${buy}" style="${at};opacity:0"></iframe>`);
+    }
+    if (url.pathname === '/moving-frame') {
+      /* Another site's frame that slides over the button once the pointer
+         moves on the page. */
+      const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Moving</title><style>body{margin:0}</style>'
+          + '<button onclick="document.title = \'clicked\'" style="position:absolute;left:0;top:200px;width:300px;height:100px">Go</button>'
+          + `<iframe id="f" src="${buy}" style="position:absolute;left:600px;top:0;width:300px;height:100px;border:0"></iframe>`
+          + '<script>addEventListener("pointermove", () => { const f = document.getElementById("f"); f.style.left = "0px"; f.style.top = "200px"; }, { once: true })</script>');
+    }
+    if (url.pathname === '/swap-frame') {
+      /* Another site's player frame under the point, and its Buy frame,
+         which slides over the player once the pointer moves on the page. */
+      const other = origin.replace('127.0.0.1', 'localhost');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Swap</title><style>body{margin:0}</style>'
+          + `<iframe src="${other}/player" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0"></iframe>`
+          + `<iframe id="f" src="${other}/buy" style="position:absolute;left:600px;top:300px;width:300px;height:100px;border:0;z-index:5"></iframe>`
+          + '<script>addEventListener("pointermove", () => { const f = document.getElementById("f"); f.style.left = "0px"; f.style.top = "0px"; }, { once: true })</script>');
+    }
+    if (url.pathname === '/player') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Player</title><style>html,body{margin:0;height:100%}button{width:100%;height:100%}</style><button>Play video</button>'
+          + '<script>addEventListener("click", (e) => fetch("/log", { method: "POST", body: JSON.stringify({ type: "player-click", isTrusted: e.isTrusted }) }))</script>');
+    }
+    if (url.pathname === '/covered') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Covered</title><button onclick="document.title = \'clicked\'">Under</button><div style="position:fixed;inset:0;background:rgba(0,0,0,0.3)">Cookie banner</div>');
+    }
     if (url.pathname === '/echo-cookie') {
       const cookie = (req.headers.cookie ?? '').replace(/[<>&]/g, '');
       return void res.writeHead(200, { 'content-type': 'text/html' }).end(`<title>Echo</title><p>cookie:[${cookie}]</p>`);
@@ -138,6 +519,22 @@ async function markPage(): Promise<void> {
 /* The /form page's mark, or null once the page reloaded. */
 async function pageMark(): Promise<string | null> {
   return app.evaluate(({ webContents }, at) => webContents.getAllWebContents().find((contents) => contents.getURL() === at)?.executeJavaScript('window.inAppBrowserE2eMark ?? null') ?? 'no page', `${origin}/form`);
+}
+
+/* Whether each of `points`, in the page's CSS pixels, is black in a
+   screenshot of the page at `route`, as a mask draws it. */
+async function blackIn(route: string, points: number[][]): Promise<boolean[]> {
+  const shot = await call('GET', `/sessions/${SESSION}/screenshot?quality=95`);
+  expect(shot.status, shot.body.toString()).toBe(200);
+  const width: number = await app.evaluate(({ webContents }, at) => webContents.getAllWebContents().find((contents) => contents.getURL() === at)?.executeJavaScript('innerWidth'), `${origin}${route}`);
+  const scale = Number(shot.headers['x-image-width']) / width;
+  const pixels: number[][] = await app.evaluate(({ nativeImage }, { jpeg, at }) => {
+    const image = nativeImage.createFromBuffer(Buffer.from(jpeg, 'base64'));
+    const { width: imageWidth } = image.getSize();
+    const bitmap = image.toBitmap();
+    return at.map(([x, y]) => [...bitmap.subarray((y * imageWidth + x) * 4, (y * imageWidth + x) * 4 + 3)]);
+  }, { jpeg: shot.body.toString('base64'), at: points.map(([x, y]) => [Math.round(x * scale), Math.round(y * scale)]) });
+  return pixels.map((rgb) => rgb.every((channel) => channel < 40));
 }
 
 async function openAt(route: string): Promise<void> {
@@ -226,6 +623,643 @@ test('scrolls an element into view before clicking it', async () => {
   await expect.poll(() => log.some((e) => e.type === 'click' && e.target === 'far' && e.isTrusted)).toBe(true);
 });
 
+test('reads the text the person sees once the page is scrolled past what a read holds', async () => {
+  await openAt('/long');
+  expect((await page()).text.startsWith('Line 1 of the long page')).toBe(true);
+  expect((await act({ action: 'scroll', direction: 'down', amount: 3600 })).status).toBe(200);
+  await expect.poll(async () => (await page()).scroll.y).toBeGreaterThan(3000);
+  const read = await page();
+  // Lines are 30 px tall, so the first line in view is the one the scroll reached.
+  const top = Math.floor(read.scroll.y / 30) + 1;
+  expect(read.text.startsWith(`… Line ${top} of the long page`), read.text.slice(0, 80)).toBe(true);
+  expect(read.text).toContain(`Line ${top + 5} of the long page`);
+  expect(read.text).toContain('… (above the view) Line 1 of the long page');
+});
+
+test('reads a page of 20,000 controls and 2.5 MB of text scrolled to the middle well inside the read timeout, with what is in view first', async () => {
+  await openAt('/many');
+  await expect.poll(async () => (await page()).scroll.y, { timeout: 10_000 }).toBeGreaterThan(100_000);
+  const started = Date.now();
+  const read = await page();
+  const took = Date.now() - started;
+  const middle = Number(/^… Row (\d+) /.exec(read.text)?.[1]);
+  expect(middle, read.text.slice(0, 80)).toBeGreaterThan(9_000);
+  expect(read.elements).toHaveLength(300);
+  expect(read.truncated).toBe(true);
+  // The buttons in view come first, from the rows the text starts at.
+  expect(read.elements[0]).toMatchObject({ role: 'button', name: `Action ${middle}` });
+  expect(read.elements[0].offscreen).toBeUndefined();
+  // About 0.1 s here, where a walk of every text node takes 1.5 s.
+  expect(took, `the read took ${took} ms`).toBeLessThan(1_000);
+});
+
+test("a click's answer carries what a request it started brings 2.5 s later", async () => {
+  await openAt('/late');
+  const load = await element('Load');
+  const started = Date.now();
+  const reply = await act({ action: 'click', element: load, include_page: true });
+  expect(reply.status, reply.body.toString()).toBe(200);
+  const answer = reply.json();
+  expect(answer.page.text).toContain('Arrived late');
+  expect(answer.changed).toBe(true);
+  expect(Date.now() - started).toBeLessThan(4_500);
+});
+
+test('says whether a step changed what the page shows', async () => {
+  await openAt('/still');
+  const nothing = await act({ action: 'click', element: await element('Nothing') });
+  expect(nothing.json()).toMatchObject({ ok: true, changed: false });
+  const change = await act({ action: 'click', element: await element('Change') });
+  expect(change.json()).toMatchObject({ ok: true, changed: true });
+  expect((await act({ action: 'wait', ms: 10 })).json()).toMatchObject({ ok: true, changed: null });
+});
+
+test('reads a same-origin frame, lists one from another site unread, and lists no frame as an element', async () => {
+  await openAt('/frames');
+  await expect.poll(async () => (await page()).frames.map((f: { read: boolean }) => f.read), { timeout: 10_000 }).toEqual([true, false]);
+  const snapshot = await page();
+  expect(snapshot.elements).toEqual([]);
+  const [same, other] = snapshot.frames;
+  expect(same).toMatchObject({ url: `${origin}/frame-inner`, read: true, truncated: false });
+  expect(same.text).toContain('Get the weekly digest.');
+  expect(same.elements).toEqual([{ role: 'textbox', name: 'Email' }, { role: 'button', name: 'Subscribe' }]);
+  // Boxes round outward, so an edge between two pixels takes both.
+  expect(same.box).toMatchObject({ width: 400 });
+  expect([200, 201]).toContain(same.box.height);
+  expect(other).toMatchObject({ url: `${origin.replace('127.0.0.1', 'localhost')}/frame-inner`, read: false, box: { width: 400 } });
+  expect([200, 201]).toContain(other.box.height);
+  expect(JSON.stringify(snapshot)).not.toContain('ada@example.test');
+});
+
+test("reads no text of an editor that CSS alone makes editable in a same-origin frame, in its text or a name", async () => {
+  await openAt('/css-editor');
+  await expect.poll(async () => (await page()).frames.map((f: { read: boolean }) => f.read), { timeout: 10_000 }).toEqual([true]);
+  const [frame] = (await page()).frames;
+  expect(frame.text).toContain('Compose');
+  expect(frame.elements).toEqual([{ role: 'clickable', name: 'To:' }, { role: 'button', name: 'Send' }]);
+  expect(JSON.stringify(frame)).not.toContain('CSS-DRAFT');
+});
+
+test("reads no text of an editor in a widget's open shadow root in a same-origin frame, one CSS alone makes editable or one an attribute does, in its text or a name", async () => {
+  await openAt('/shadow-editor');
+  await expect.poll(async () => (await page()).frames.map((f: { read: boolean }) => f.read), { timeout: 10_000 }).toEqual([true]);
+  await expect.poll(async () => (await page()).frames[0].text ?? '', { timeout: 10_000 }).toContain('Compose');
+  const [frame] = (await page()).frames;
+  expect(frame.text).toContain('Send');
+  expect(JSON.stringify(frame)).not.toMatch(/CSS-DRAFT|ATTR-DRAFT/);
+});
+
+test('reads a same-origin frame only where the person sees it, and lists the rest with their boxes, unread', async () => {
+  await openAt('/unseen-frames');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(9);
+  const snapshot = await page();
+  expect(snapshot.frames.map((f: { read: boolean }) => f.read)).toEqual([true, true, false, false, false, false, false, false, false]);
+  expect(snapshot.frames.map((f: { offscreen?: boolean }) => f.offscreen ?? false)).toEqual([false, false, false, false, false, false, false, false, true]);
+  expect(snapshot.frames.every((f: { box: { width: number } | null }) => f.box !== null && f.box.width >= 200)).toBe(true);
+});
+
+test('reads a same-origin frame a dark mode inverts or a filter dims, and leaves one unread under a cover only its paint shows, a cover with holes, or a mask border', async () => {
+  const cases: Array<[string, boolean]> = [
+    ['plain', true], ['dark', true], ['dimmed', true], ['shadow', false], ['outline', false], ['holes', false], ['mask-border', false],
+  ];
+  for (const [name, read] of cases) {
+    await openAt(`/hidden-frame?case=${name}`);
+    await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+    // The frame's page loads after the frame is placed: wait for its text where the frame is read.
+    if (read) await expect.poll(async () => (await page()).frames[0].text ?? '', { timeout: 10_000, message: name }).toContain('Get the weekly digest.');
+    const [frame] = (await page()).frames;
+    expect.soft(frame.read, name).toBe(read);
+    expect.soft(JSON.stringify(frame).includes('weekly digest'), name).toBe(read);
+  }
+});
+
+test("lists a frame inside a same-origin frame it reads as its own frame, unread, with its box, or with no box where the frame keeps it in a closed shadow root", async () => {
+  const radios = `${origin.replace('127.0.0.1', 'localhost')}/radios`;
+  for (const [route, placed] of [['/nested-frames', true], ['/sealed-nested', false]] as const) {
+    await openAt(route);
+    await expect.poll(async () => (await page()).frames.map((f: { url: string; read: boolean }) => [f.url, f.read]), { timeout: 10_000, message: route })
+      .toEqual([[`${origin}/${placed ? 'panel' : 'sealed-panel'}`, true], [radios, false]]);
+    const [panel, inner] = (await page()).frames;
+    expect(panel.text, route).toContain('Embedded account panel');
+    if (placed) expect(inner.box).toMatchObject({ x: 0, width: 400 });
+    else expect(inner.box, route).toBeNull();
+    expect(JSON.stringify(await page()), route).not.toContain('Delete my account');
+  }
+});
+
+test("lists another site's lazy frame by the address it names before the scroll that loads it and after, unread", async () => {
+  await openAt('/lazy-frame');
+  const fields = `${origin.replace('127.0.0.1', 'localhost')}/fields`;
+  const loaded = () => app.evaluate(({ webContents }, { at, frame }) => webContents.getAllWebContents()
+    .find((contents) => contents.getURL() === at)?.mainFrame.frames.some((f) => f.url === frame) ?? false, { at: `${origin}/lazy-frame`, frame: fields });
+  const before = await page();
+  expect(await loaded(), 'the frame has not loaded yet').toBe(false);
+  expect(before.frames).toEqual([expect.objectContaining({ url: fields, read: false, offscreen: true })]);
+  await inPage('/lazy-frame', 'scrollTo(0, 5200)');
+  await expect.poll(loaded, { timeout: 10_000 }).toBe(true);
+  const after = await page();
+  expect(after.scroll.y).toBe(5200);
+  expect(after.frames).toEqual([expect.objectContaining({ url: fields, read: false })]);
+  await inPage('/lazy-frame', 'scrollTo(0, 0)');
+});
+
+test('refuses a click by number on a control something covers, and presses nothing', async () => {
+  await openAt('/covered');
+  const reply = await act({ action: 'click', element: await element('Under') });
+  expect(reply.status).toBe(409);
+  expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('is covered by another element') });
+  expect((await page()).title).toBe('Covered');
+});
+
+test("lists no object or embed as an element, and refuses a click by number that would land in a control's own frame", async () => {
+  await openAt('/wrapped-frame');
+  /* The three owners with their boxes, and the embed's frame again with
+     none: an embed never says whether it holds a frame, so the frame tree's
+     extra child can't be placed, which holds every click by position here. */
+  await expect.poll(async () => (await page()).frames.map((f: { box: unknown }) => f.box === null), { timeout: 10_000 }).toEqual([false, false, false, true]);
+  const snapshot = await page();
+  expect(snapshot.elements.map((e: { name: string }) => e.name)).toEqual(['More info']);
+  const reply = await act({ action: 'click', element: await element('More info') });
+  expect(reply.status, reply.body.toString()).toBe(409);
+  expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
+  // Long enough for a click that landed to have been recorded.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
+});
+
+test('refuses a click by number on a control whose closed shadow root holds a frame, and presses nothing', async () => {
+  await openAt('/sealed-frame');
+  // The frame tree's child has no owner in the DOM, so it is listed with no box.
+  await expect.poll(async () => (await page()).frames.map((f: { box: unknown }) => f.box), { timeout: 10_000 }).toEqual([null]);
+  const reply = await act({ action: 'click', element: await element('More info') });
+  expect(reply.status, reply.body.toString()).toBe(409);
+  expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
+});
+
+test("refuses a click by number on a control that slots its own text over a frame in its closed shadow root, and presses nothing", async () => {
+  await openAt('/sealed-slot-frame');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  const reply = await act({ action: 'click', element: await element('Continue') });
+  expect(reply.status, reply.body.toString()).toBe(409);
+  expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
+});
+
+test('lists a transparent frame laid over a control, with its box, unread', async () => {
+  await openAt('/clear-frame');
+  const other = origin.replace('127.0.0.1', 'localhost');
+  await expect.poll(async () => (await page()).frames, { timeout: 10_000 }).toEqual([
+    { url: `${other}/buy`, read: false, box: { x: 0, y: 0, width: 300, height: 100 }, at: { x: 0, y: 0 } },
+  ]);
+});
+
+test('presses by position into a frame under the point only when anton says the person approved it', async () => {
+  await openAt('/clear-frame');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // The frame was there when anton read the page, so a step it didn't raise for approval is refused.
+  const refused = await act({ action: 'click', x: 20, y: 20, coords: 'page' });
+  expect(refused.status, refused.body.toString()).toBe(409);
+  expect(refused.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame is now under the point (20, 20)') });
+  // What anton sends once the app approved clicks by position on the page itself: into_frame false.
+  const positionApproved = await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: false });
+  expect(positionApproved.status, positionApproved.body.toString()).toBe(409);
+  expect(positionApproved.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame is now under the point (20, 20)') });
+  const drop = await act({ action: 'drag', from: { x: 20, y: 150 }, to: { x: 20, y: 20 }, coords: 'page' });
+  expect(drop.status, drop.body.toString()).toBe(409);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
+  const approved = await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true });
+  expect(approved.status, approved.body.toString()).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'frame-click')).toEqual([{ type: 'frame-click', isTrusted: true }]);
+});
+
+test("types into an ordinary field of another site's embedded form, and refuses an editing key into its password field", async () => {
+  await openAt('/frame-fields');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // The person approved each click into the frame.
+  expect((await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true })).status).toBe(200);
+  const typed = await act({ action: 'press', key: 'a' });
+  expect(typed.status, typed.body.toString()).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'frame-key')).toEqual([{ type: 'frame-key', key: 'a', target: 'u', isTrusted: true }]);
+  log = [];
+  expect((await act({ action: 'click', x: 20, y: 120, coords: 'page', into_frame: true })).status).toBe(200);
+  const refused = await act({ action: 'press', key: 'a' });
+  expect(refused.status, refused.body.toString()).toBe(403);
+  expect(refused.json().error).toBe('password_field');
+  // A key that edits nothing still goes in.
+  expect((await act({ action: 'press', key: 'ArrowLeft' })).status).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'frame-key').map((e) => e.key)).toEqual(['ArrowLeft']);
+});
+
+/* The value of field `id` in the /frame-entry page's frame at `at`/entry,
+   read from main. */
+async function entryValue(at: string, id: string): Promise<string> {
+  return String(await app.evaluate(({ webContents }, { page, frame, field }) => webContents.getAllWebContents()
+    .find((contents) => contents.getURL() === page)?.mainFrame.framesInSubtree
+    .find((f) => f.url === frame)?.executeJavaScript(`document.getElementById(${JSON.stringify(field)}).value`), { page: `${origin}/frame-entry`, frame: `${at}/entry`, field: id }));
+}
+
+test("types a focused type into an ordinary field of another site's embedded form and of the page's own, one step each, and refuses one onto a password field, a field named for a card or a button", async () => {
+  await openAt('/frame-entry');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(2);
+  const other = origin.replace('127.0.0.1', 'localhost');
+  const typeFocused = (text: string) => act({ action: 'type', focused: true, text, submit: false });
+  // Nothing has the focus yet.
+  const nothing = await typeFocused('x');
+  expect(nothing.status, nothing.body.toString()).toBe(409);
+  expect(nothing.json().error).toBe('not_a_text_field');
+  // The person approved each click into a frame; the typing needs no approval.
+  expect((await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true })).status).toBe(200);
+  const typed = await typeFocused('adé@example.test');
+  expect(typed.status, typed.body.toString()).toBe(200);
+  expect(await entryValue(other, 'email')).toBe('adé@example.test');
+  expect((await act({ action: 'click', x: 20, y: 80, coords: 'page', into_frame: true })).status).toBe(200);
+  const button = await typeFocused('x');
+  expect(button.status, button.body.toString()).toBe(409);
+  expect(button.json().error).toBe('not_a_text_field');
+  expect((await act({ action: 'click', x: 20, y: 140, coords: 'page', into_frame: true })).status).toBe(200);
+  const secret = await typeFocused('x');
+  expect(secret.status, secret.body.toString()).toBe(403);
+  expect(secret.json().error).toBe('password_field');
+  expect(await entryValue(other, 'pw')).toBe('hunter2');
+  expect((await act({ action: 'click', x: 20, y: 200, coords: 'page', into_frame: true })).status).toBe(200);
+  const card = await typeFocused('4242424242424242');
+  expect(card.status, card.body.toString()).toBe(403);
+  expect(card.json().error).toBe('password_field');
+  expect(await entryValue(other, 'card')).toBe('');
+  // The page's own frame, read in the page's process.
+  expect((await act({ action: 'click', x: 20, y: 280, coords: 'page', into_frame: true })).status).toBe(200);
+  const own = await typeFocused('bo@example.test');
+  expect(own.status, own.body.toString()).toBe(200);
+  expect(await entryValue(origin, 'email')).toBe('bo@example.test');
+  expect(await entryValue(other, 'email')).toBe('adé@example.test');
+});
+
+/* The value of field `selector` in the page at `route`, read from main. */
+async function fieldValue(route: string, selector: string): Promise<string> {
+  return String(await app.evaluate(({ webContents }, { at, field }) => webContents.getAllWebContents()
+    .find((contents) => contents.getURL() === at)?.executeJavaScript(`document.querySelector(${JSON.stringify(field)}).value`), { at: `${origin}${route}`, field: selector }));
+}
+
+test("refuses a focused type into a field page.json's one card-field rule names for a card, by one attribute or two together, and types into one it names for none, a gift card's number included", async () => {
+  await openAt('/card-names');
+  const typeFocused = (text: string) => act({ action: 'type', focused: true, text, submit: false });
+  for (const [name, selector] of [['Security digits', '[name=card_cvc]'], ['Number', '#card'], ['Gift card number', '[name=cardNumber]']]) {
+    expect((await act({ action: 'click', element: await element(name) })).status).toBe(200);
+    const refused = await typeFocused('123');
+    expect(refused.status, `${name}: ${refused.body.toString()}`).toBe(403);
+    expect(refused.json().error).toBe('password_field');
+    expect(await fieldValue('/card-names', selector), name).toBe('');
+  }
+  expect((await act({ action: 'click', element: await element('Notes') })).status).toBe(200);
+  const typed = await typeFocused('gift wrap');
+  expect(typed.status, typed.body.toString()).toBe(200);
+  expect(await fieldValue('/card-names', '[name=cardnotes]')).toBe('gift wrap');
+  // A gift card's number is no payment card's: typed by number, and read back.
+  const gift = await act({ action: 'type', element: await element('Gift card'), text: '6006 1234', submit: false });
+  expect(gift.status, gift.body.toString()).toBe(200);
+  expect(await fieldValue('/card-names', '[name=giftCardNumber]')).toBe('6006 1234');
+  const byName = Object.fromEntries((await page()).elements.map((e: { name: string }) => [e.name, e]));
+  expect(byName['Gift card']).toMatchObject({ role: 'textbox', value: '6006 1234' });
+  expect(byName['Gift card number']).toMatchObject({ role: 'textbox', value_hidden: true });
+});
+
+test("treats a field page.json's card-field rule names for a card as a secret field: no value in a read, blacked out in a screenshot, in another site's frame too, and no type, select or editing key into it", async () => {
+  await openAt('/card-named');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  const read = await page();
+  const byName = Object.fromEntries(read.elements.map((e: { name: string }) => [e.name, e]));
+  expect(byName.Card).toEqual({ id: byName.Card.id, role: 'textbox', name: 'Card', value_hidden: true });
+  expect(byName['Saved card']).toEqual({ id: byName['Saved card'].id, role: 'combobox', name: 'Saved card', value_hidden: true });
+  expect(JSON.stringify(read)).not.toContain('4242424242424242');
+  const refused = async (step: Record<string, unknown>) => {
+    const reply = await act(step);
+    expect(reply.status, `${JSON.stringify(step)}: ${reply.body.toString()}`).toBe(403);
+    expect(reply.json().error).toBe('password_field');
+  };
+  await refused({ action: 'type', element: byName.Card.id, text: '4111111111111111' });
+  await refused({ action: 'press', element: byName.Card.id, key: 'Backspace' });
+  await refused({ action: 'select', element: byName['Saved card'].id, value: 'Amex' });
+  // A click puts the focus there; an editing key into it is still refused.
+  expect((await act({ action: 'click', element: byName.Card.id })).status).toBe(200);
+  await refused({ action: 'press', key: 'Backspace' });
+  await refused({ action: 'type', focused: true, text: '4111', submit: false });
+  expect(await fieldValue('/card-named', '[name=card_number]')).toBe('4242424242424242');
+  expect(await fieldValue('/card-named', '[name=card_no]')).toBe('1');
+  // The field named for no card takes typing, and only the card fields are blacked out, the frame's read in its own world.
+  expect((await act({ action: 'type', element: byName['Name on card'].id, text: 'Ada' })).status).toBe(200);
+  expect(await fieldValue('/card-named', '[name=cardholderName]')).toBe('Ada');
+  expect(await blackIn('/card-named', [[195, 60], [195, 180], [195, 280], [50, 280]])).toEqual([true, false, true, false]);
+});
+
+test("refuses a drag that starts on a field page.json's card-field rule names for a card or drops onto one, by element and by position, and drags between ordinary fields", async () => {
+  await openAt('/drag-card');
+  const [card, notes, name] = [await element('Card'), await element('Notes'), await element('Name')];
+  const refused = async (step: Record<string, unknown>, what: string) => {
+    const reply = await act(step);
+    expect(reply.status, `${JSON.stringify(step)}: ${reply.body.toString()}`).toBe(403);
+    expect(reply.json()).toMatchObject({ error: 'password_field', message: expect.stringContaining(what) });
+  };
+  await refused({ action: 'drag', from: { element: card }, to: { element: notes } }, "the drag's start");
+  await refused({ action: 'drag', from: { x: 150, y: 20 }, to: { x: 150, y: 100 }, coords: 'page' }, "the drag's start");
+  await refused({ action: 'drag', from: { element: notes }, to: { element: card } }, 'the drop target');
+  await refused({ action: 'drag', from: { x: 150, y: 180 }, to: { x: 150, y: 20 }, coords: 'page' }, 'the drop target');
+  expect(await fieldValue('/drag-card', 'textarea')).toBe('');
+  expect(await fieldValue('/drag-card', '[name=card_number]')).toBe('4242424242424242');
+  // A drag between ordinary fields runs.
+  const ordinary = await act({ action: 'drag', from: { element: name }, to: { element: notes } });
+  expect(ordinary.status, ordinary.body.toString()).toBe(200);
+  expect(JSON.stringify(await page())).not.toContain('4242424242424242');
+});
+
+/* Runs `code` in the page at `route`, in the page's own world, as the
+   page's own script would. */
+async function inPage(route: string, code: string): Promise<unknown> {
+  return app.evaluate(({ webContents }, { at, script }) => webContents.getAllWebContents().find((contents) => contents.getURL() === at)?.executeJavaScript(script), { at: `${origin}${route}`, script: code });
+}
+
+test("names the node the focus rests on in a page read: the same token while it stays, another once the page moves the focus to another button while a card waits, and one inside another site's frame", async () => {
+  await openAt('/focus-move');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  expect(await page(), 'nothing has the focus yet').not.toHaveProperty('focus');
+  expect((await act({ action: 'click', element: await element('Pay') })).status).toBe(200);
+  // The read when the card shows, and again while it waits.
+  const shown: string = (await page()).focus;
+  expect(shown).toEqual(expect.any(String));
+  expect((await page()).focus).toBe(shown);
+  // While the card waits, the page moves the focus to another button.
+  await inPage('/focus-move', 'document.getElementById("delete").focus()');
+  const approved: string = (await page()).focus;
+  expect(approved).toEqual(expect.any(String));
+  expect(approved).not.toBe(shown);
+  // Back on the first button, the token is the first one again.
+  await inPage('/focus-move', 'document.getElementById("pay").focus()');
+  expect((await page()).focus).toBe(shown);
+  // Inside another site's frame, each field by its own token.
+  expect((await act({ action: 'click', x: 20, y: 140, coords: 'page', into_frame: true })).status).toBe(200);
+  const inFrame: string = (await page()).focus;
+  expect(inFrame).toEqual(expect.any(String));
+  expect([shown, approved]).not.toContain(inFrame);
+  expect((await page()).focus).toBe(inFrame);
+  expect((await act({ action: 'click', x: 20, y: 240, coords: 'page', into_frame: true })).status).toBe(200);
+  const onPassword: string = (await page()).focus;
+  expect([shown, approved, inFrame]).not.toContain(onPassword);
+  expect(onPassword).toEqual(expect.any(String));
+});
+
+/* Runs `code` in the first child frame of the page at `route`, in that
+   frame's own world, as the frame's own script would. */
+async function inChildFrame(route: string, code: string): Promise<unknown> {
+  return app.evaluate(({ webContents }, { at, script }) => webContents.getAllWebContents().find((contents) => contents.getURL() === at)?.mainFrame.frames[0]?.executeJavaScript(script), { at: `${origin}${route}`, script: code });
+}
+
+test("names the frame element the focus rests in where this browser can't read that frame, so a focus that moves from one such frame to another while a card waits changes the token", async () => {
+  await openAt('/nested-focus');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  await expect.poll(() => inChildFrame('/nested-focus', 'frames.length'), { timeout: 10_000 }).toBe(2);
+  // Into the field of the first of the two frames inside another site's frame.
+  const clicked = await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true });
+  expect(clicked.status, clicked.body.toString()).toBe(200);
+  expect(await inChildFrame('/nested-focus', 'document.activeElement === document.querySelectorAll("iframe")[0]')).toBe(true);
+  const first: string = (await page()).focus;
+  expect(first).toEqual(expect.any(String));
+  expect((await page()).focus, 'the focus stays').toBe(first);
+  // While the card waits, the page moves the focus into the second one.
+  await inChildFrame('/nested-focus', 'document.querySelectorAll("iframe")[1].focus()');
+  expect(await inChildFrame('/nested-focus', 'document.activeElement === document.querySelectorAll("iframe")[1]')).toBe(true);
+  const second: string = (await page()).focus;
+  expect(second).toEqual(expect.any(String));
+  expect(second).not.toBe(first);
+});
+
+test("places each frame on its page whatever scrolls, the page or a column inside it, and moves it when the column's content moves it", async () => {
+  await openAt('/column-frame');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(2);
+  type Place = { box: { x: number; y: number }; at: { x: number; y: number } };
+  const places = async (): Promise<Record<string, Place>> => Object.fromEntries((await page()).frames
+    .map((frame: { url: string } & Place) => [new URL(frame.url).pathname, { box: frame.box, at: frame.at }]));
+  const before = await places();
+  expect(before['/buy'].at).toEqual({ x: 0, y: 300 });
+  expect(before['/player'].at).toEqual({ x: expect.any(Number), y: expect.any(Number) });
+  // The column scrolls: the frame in it moves on screen, and no at changes.
+  await inPage('/column-frame', 'document.getElementById("col").scrollTop = 150');
+  const inColumn = await places();
+  expect(inColumn['/buy'].box).not.toEqual(before['/buy'].box);
+  expect(inColumn['/buy'].at).toEqual(before['/buy'].at);
+  expect(inColumn['/player'].at).toEqual(before['/player'].at);
+  // The page scrolls: the column's frame moves on screen, the fixed one stays, and no at changes.
+  await inPage('/column-frame', 'scrollTo(0, 100)');
+  const onPage = await places();
+  expect(onPage['/buy'].box).not.toEqual(inColumn['/buy'].box);
+  expect(onPage['/player'].box).toEqual(before['/player'].box);
+  expect(onPage['/buy'].at).toEqual(before['/buy'].at);
+  expect(onPage['/player'].at).toEqual(before['/player'].at);
+  // The column's content above the frame grows: the frame moved on its page.
+  await inPage('/column-frame', 'document.getElementById("above").style.height = "350px"');
+  await expect.poll(async () => (await places())['/buy'].at).toEqual({ x: 0, y: 350 });
+});
+
+test('types spaces into a field inside a button, or a div whose Space key clicks it, by number and focused, and clicks neither', async () => {
+  await openAt('/in-button');
+  const value = (id: string): Promise<string> => app.evaluate(({ webContents }, { at, field }) => webContents.getAllWebContents()
+    .find((contents) => contents.getURL() === at)?.executeJavaScript(`document.getElementById(${JSON.stringify(field)}).value`), { at: `${origin}/in-button`, field: id });
+  for (const [name, id] of [['Reason', 'reason'], ['Why', 'why']]) {
+    const typed = await act({ action: 'type', element: await element(name), text: 'a b' });
+    expect(typed.status, typed.body.toString()).toBe(200);
+    const focused = await act({ action: 'type', focused: true, text: ' c d', submit: false });
+    expect(focused.status, focused.body.toString()).toBe(200);
+    expect(await value(id), name).toBe('a b c d');
+    expect((await page()).title, name).toBe('In button');
+  }
+});
+
+test('refuses an editing key into a password field the page keeps in a closed shadow root, and types into an ordinary field there', async () => {
+  await openAt('/closed-fields');
+  expect((await act({ action: 'click', x: 20, y: 20, coords: 'page' })).status).toBe(200);
+  const typed = await act({ action: 'press', key: 'a' });
+  expect(typed.status, typed.body.toString()).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'closed-key')).toEqual([{ type: 'closed-key', key: 'a', target: 'u', isTrusted: true }]);
+  log = [];
+  expect((await act({ action: 'click', x: 20, y: 120, coords: 'page' })).status).toBe(200);
+  const refused = await act({ action: 'press', key: 'a' });
+  expect(refused.status, refused.body.toString()).toBe(403);
+  expect(refused.json().error).toBe('password_field');
+  expect((await act({ action: 'press', key: 'ArrowLeft' })).status).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'closed-key').map((e) => e.key)).toEqual(['ArrowLeft']);
+});
+
+test("refuses an editing key into the password field of another site's form the page keeps in a closed shadow root, and types into its ordinary field", async () => {
+  await openAt('/closed-frame-fields');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  expect((await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true })).status).toBe(200);
+  const typed = await act({ action: 'press', key: 'a' });
+  expect(typed.status, typed.body.toString()).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'frame-key')).toEqual([{ type: 'frame-key', key: 'a', target: 'u', isTrusted: true }]);
+  log = [];
+  expect((await act({ action: 'click', x: 20, y: 120, coords: 'page', into_frame: true })).status).toBe(200);
+  const refused = await act({ action: 'press', key: 'a' });
+  expect(refused.status, refused.body.toString()).toBe(403);
+  expect(refused.json().error).toBe('password_field');
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-key')).toEqual([]);
+});
+
+test("blacks out the password field of another site's embedded form in a screenshot, and shows the rest of the form", async () => {
+  await openAt('/frame-fields');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // The frame is 400 CSS pixels wide at the page's top left; its box says how the screenshot scales.
+  const [frame] = (await page()).frames;
+  const scale = frame.box.width / 400;
+  const shot = await call('GET', `/sessions/${SESSION}/screenshot?quality=95`);
+  expect(shot.status, shot.body.toString()).toBe(200);
+  // CSS points: three in the password field (0, 100) to (300, 140), then the ordinary field and the form's background.
+  const points = [[10, 105], [150, 120], [290, 135], [150, 20], [350, 170]].map(([x, y]) => [Math.round(x * scale), Math.round(y * scale)]);
+  const pixels: number[][] = await app.evaluate(({ nativeImage }, { jpeg, at }) => {
+    const image = nativeImage.createFromBuffer(Buffer.from(jpeg, 'base64'));
+    const { width } = image.getSize();
+    const bitmap = image.toBitmap();
+    return at.map(([x, y]) => [...bitmap.subarray((y * width + x) * 4, (y * width + x) * 4 + 3)]);
+  }, { jpeg: shot.body.toString('base64'), at: points });
+  const dark = pixels.map((rgb) => rgb.every((channel) => channel < 40));
+  expect(dark).toEqual([true, true, true, false, false]);
+});
+
+test("blacks out a card field in the page's own frame kept in a closed shadow root, where the page's search can't reach it", async () => {
+  await openAt('/closed-same-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // CSS points: three on the card number, then the form's background.
+  expect(await blackIn('/closed-same-card', [[110, 60], [190, 60], [280, 60], [50, 20]])).toEqual([true, true, true, false]);
+});
+
+/* Attaches or detaches the debugger of the page at `route` from outside the
+   browser, as something else holding it would. */
+async function holdDebugger(route: string, hold: boolean): Promise<void> {
+  await app.evaluate(({ webContents }, { at, attach }) => {
+    const contents = webContents.getAllWebContents().find((c) => c.getURL() === at);
+    if (attach) contents?.debugger.attach('1.3');
+    else if (contents?.debugger.isAttached()) contents.debugger.detach();
+  }, { at: `${origin}${route}`, attach: hold });
+}
+
+test("takes no screenshot while something else holds the debugger when the page keeps a frame its search can't reach, and blacks out whole another site's frame it found", async () => {
+  await openAt('/closed-same-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  await holdDebugger('/closed-same-card', true);
+  try {
+    const shot = await call('GET', `/sessions/${SESSION}/screenshot?quality=95`);
+    expect(shot.status, shot.body.toString()).toBe(500);
+    expect(shot.json()).toMatchObject({ error: 'internal', message: expect.stringContaining("couldn't read every frame") });
+  } finally {
+    await holdDebugger('/closed-same-card', false);
+  }
+  await openAt('/frame-fields');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  await holdDebugger('/frame-fields', true);
+  try {
+    // CSS points: the ordinary field and the password field, both inside the frame.
+    expect(await blackIn('/frame-fields', [[150, 20], [150, 120], [350, 170]])).toEqual([true, true, true]);
+  } finally {
+    await holdDebugger('/frame-fields', false);
+  }
+});
+
+test("blacks out a card field where another site's frame draws it at twice its size", async () => {
+  await openAt('/scaled-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // CSS points: three on the card number, drawn from (200, 80) to (580, 160); then the frame's background, where an unscaled mask would land.
+  expect(await blackIn('/scaled-card', [[220, 120], [390, 120], [560, 150], [150, 60], [100, 170]])).toEqual([true, true, true, false, false]);
+});
+
+test("blacks out a card field where another site's frame draws it at half its size", async () => {
+  await openAt('/half-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // CSS points: three on the card number, drawn from (50, 20) to (145, 40); then where an unscaled mask would land, and the frame's background.
+  expect(await blackIn('/half-card', [[55, 23], [97, 30], [140, 37], [200, 60], [20, 10]])).toEqual([true, true, true, false, false]);
+});
+
+test("blacks out a card field where the page's own frame draws it at twice or half its size, and the whole frame where an offset path turns it, while something else holds the debugger too", async () => {
+  for (const scale of [2, 0.5]) {
+    const route = `/scaled-same-card?scale=${scale}`;
+    await openAt(route);
+    await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+    // CSS points: three on the card number, drawn from (100, 40) to (290, 80) times the scale; then the page or the frame's background where an unscaled mask would land.
+    const points = [[100 * scale + 5, 40 * scale + 3], [195 * scale, 60 * scale], [290 * scale - 5, 80 * scale - 3], scale === 2 ? [150, 60] : [200, 60]];
+    expect(await blackIn(route, points), `scale ${scale}`).toEqual([true, true, true, false]);
+    await holdDebugger(route, true);
+    try {
+      expect(await blackIn(route, points), `scale ${scale}, the debugger held`).toEqual([true, true, true, false]);
+    } finally {
+      await holdDebugger(route, false);
+    }
+  }
+  await openAt('/along-same-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // CSS points: both ends and the middle of the card number, the four corners of the box the frame is drawn in, then the page outside it.
+  const along = [[206, 136], [284, 181], [362, 226], [103, 40], [397, 40], [103, 260], [397, 260], [50, 300]];
+  const blackedOut = [true, true, true, true, true, true, true, false];
+  expect(await blackIn('/along-same-card', along), 'an offset path').toEqual(blackedOut);
+  await holdDebugger('/along-same-card', true);
+  try {
+    expect(await blackIn('/along-same-card', along), 'an offset path, the debugger held').toEqual(blackedOut);
+  } finally {
+    await holdDebugger('/along-same-card', false);
+  }
+});
+
+test('blacks out the copy -webkit-box-reflect draws of a card field, and the whole copy of a frame, while something else holds the debugger too', async () => {
+  await openAt('/reflected-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(2);
+  const points = [
+    // The page's field, its copy from (0, 60) to (190, 100), and the gap between them.
+    [95, 20], [10, 80], [95, 80], [180, 80], [95, 50],
+    // The page's frame's copy from (300, 110) to (600, 210), its card number's copy from (400, 130) to (590, 170), and the page below it.
+    [410, 150], [495, 150], [580, 150], [320, 120], [320, 230],
+    // Another site's frame's copy from (0, 360) to (300, 460), its card number's copy from (100, 380) to (290, 420), and the page beside it.
+    [195, 400], [20, 370], [350, 400],
+  ];
+  const blackedOut = [true, true, true, true, false, true, true, true, true, false, true, true, false];
+  expect(await blackIn('/reflected-card', points)).toEqual(blackedOut);
+  await holdDebugger('/reflected-card', true);
+  try {
+    expect(await blackIn('/reflected-card', points), 'the debugger held').toEqual(blackedOut);
+  } finally {
+    await holdDebugger('/reflected-card', false);
+  }
+});
+
+test('refuses a click whose point a frame slides over as the pointer arrives, by number and by position, and presses nothing', async () => {
+  await openAt('/moving-frame');
+  const byNumber = await act({ action: 'click', element: await element('Go') });
+  expect(byNumber.status, byNumber.body.toString()).toBe(409);
+  expect(byNumber.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
+  await openAt('/moving-frame');
+  const byPosition = await act({ action: 'click', x: 20, y: 220, coords: 'page' });
+  expect(byPosition.status, byPosition.body.toString()).toBe(409);
+  expect(byPosition.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
+  expect((await page()).title).toBe('Moving');
+});
+
+test('presses nothing with into_frame once another frame slides over the approved one as the pointer arrives, and presses the approved one when it stays', async () => {
+  // The pointer starts on the page, outside the player frame, so the page sees it move.
+  expect((await act({ action: 'hover', x: 700, y: 500, coords: 'page' })).status).toBe(200);
+  await openAt('/swap-frame');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(2);
+  const swapped = await act({ action: 'click', x: 150, y: 50, coords: 'page', into_frame: true });
+  expect(swapped.status, swapped.body.toString()).toBe(409);
+  expect(swapped.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('the frame under the point (150, 50) is no longer the one there') });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click' || e.type === 'player-click')).toEqual([]);
+  // Read again, the Buy frame now lies under the point, and an approved press goes into it.
+  const approved = await act({ action: 'click', x: 150, y: 50, coords: 'page', into_frame: true });
+  expect(approved.status, approved.body.toString()).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'frame-click')).toEqual([{ type: 'frame-click', isTrusted: true }]);
+});
+
 test('turns shared workers off, since their WebSockets skip the request listener', async () => {
   await openAt('/features');
   await expect.poll(async () => (await page()).text).toContain('SharedWorker: undefined');
@@ -304,6 +1338,33 @@ test('hands the browser to the person, and only their Done hands it back', async
   await shell.evaluate((id) => (window as any).antontron.browser.handBack(id), SESSION);
   const info = (await call('GET', `/sessions/${SESSION}`)).json();
   expect(info.control).toMatchObject({ holder: 'agent', by: 'person', seq: handed.json().seq + 1 });
+});
+
+test("hands the browser back by itself once the person fills the card field the hand-over waits for, though no read carries that field's value", async () => {
+  await openAt('/card-handover');
+  const card = await element('Card number');
+  expect((await page()).elements.find((e: { id: number }) => e.id === card)).toMatchObject({ value_hidden: true });
+  const handed = await call('POST', `/sessions/${SESSION}/control`, { holder: 'human', reason: 'Enter your card', wait_for: { element: card, state: 'filled' } });
+  expect(handed.status, handed.body.toString()).toBe(200);
+  await shell.evaluate((id) => (window as any).antontron.browser.show(id, { x: 400, y: 0, width: 800, height: 800 }), SESSION);
+  try {
+    // The person fills the field (set here by script) and presses a key of their own.
+    await inPage('/card-handover', 'document.querySelector("[name=card_number]").value = "4242424242424242"');
+    await app.evaluate(({ BrowserWindow, webContents }, at) => {
+      BrowserWindow.getAllWindows()[0]?.focus();
+      const tab = webContents.getAllWebContents().find((contents) => contents.getURL() === at);
+      tab?.focus();
+      tab?.sendInputEvent({ type: 'keyDown', keyCode: 'Shift' });
+      tab?.sendInputEvent({ type: 'keyUp', keyCode: 'Shift' });
+    }, `${origin}/card-handover`);
+    await expect.poll(async () => (await call('GET', `/sessions/${SESSION}`)).json().control, { timeout: 15_000 })
+      .toMatchObject({ holder: 'agent', by: 'person', seq: handed.json().seq + 1 });
+  } finally {
+    if ((await call('GET', `/sessions/${SESSION}`)).json().control.holder === 'human') {
+      await shell.evaluate((id) => (window as any).antontron.browser.handBack(id), SESSION);
+    }
+    await shell.evaluate(() => (window as any).antontron.browser.hide());
+  }
 });
 
 test('shows the task in the pane, answers whether it draws, and hides it again', async () => {
