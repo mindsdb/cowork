@@ -56,6 +56,7 @@ export function artifactDownloadUrl(artifact) {
 }
 
 export async function downloadArtifactFile(artifact, { actionPath } = {}) {
+  if (host.isMobileShell) return false;
   const rawPath = actionPath || artifact?.canonicalPath || artifact?.path || '';
   const filename = downloadFilename(rawPath, artifact?.title || 'artifact');
   const serveRel = artifact?.serveUrl || '';

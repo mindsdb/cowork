@@ -24,6 +24,12 @@
       "readyTimeoutMs": "预览耗时过长：未能在 {seconds} 秒的预览时限内启动。",
       "progressTimeoutMs": "预览耗时过长：已有 {seconds} 秒没有进展，超出预览时限。"
     },
+    "truncatedMobile": {
+      "xlsx": "每个工作表最多显示 {rows, number} 行、{columns, number} 列。",
+      "pptx": "{count, plural, other {仅显示前 # 张幻灯片。}}",
+      "pdf": "仅显示前 {pages, number} 页。",
+      "docx": "仅显示此文档的一部分。"
+    },
     "truncated": {
       "xlsx": "每个工作表最多显示 {rows, number} 行、{columns, number} 列。{action, select, download {下载} other {打开}}后可查看完整工作表。",
       "pptx": "{count, plural, other {仅显示前 # 张幻灯片。}}{action, select, download {下载} other {打开}}后可查看完整演示文稿。",

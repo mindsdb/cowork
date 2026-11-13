@@ -9,6 +9,7 @@ import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // origin. Routing through host keeps the port in one place.
 
 import { iterateSSE } from './lib/responseStreamAdapter';
+import { noteRefreshScopes } from './lib/modelRefresh';
 import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
 import { isAntonConfigError } from './lib/antonErrors';
 import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
@@ -1757,15 +1758,16 @@ let _settingsLock = Promise.resolve();
    the `reasoning_efforts`/`default_reasoning_effort` it advertises) and merges a
    static effort catalog for direct providers. Returns null on any failure so the
    caller keeps the static lists baked into transformSettingsRows. */
-export async function fetchRecommendedModels({ refresh = false } = {}) {
+export async function fetchRecommendedModels({ refresh = false, scope = 'all' } = {}) {
   try {
-    // `refresh` bypasses the server's fetch_minds_models cache (up to a
-    // 5-minute TTL) — the model dropdown passes it on open so a wallet top-up
-    // isn't masked by the cached `enabled` map. A cached *failure* is still
-    // honored server-side, so this can't cost every open an HTTP timeout while
-    // MindsHub is down.
-    const data = await req(`/settings/recommended-models${refresh ? '?refresh=true' : ''}`);
-    if (data && typeof data === 'object') return data;
+    // `refresh` skips the server's short listing cache, so a wallet top-up shows at once.
+    // scope 'minds' forces only the MindsHub leg; a BYO endpoint keeps its cache.
+    const query = refresh ? `?refresh=true${scope === 'minds' ? '&refresh_scope=minds' : ''}` : '';
+    const data = await req(`/settings/recommended-models${query}`);
+    if (data && typeof data === 'object') {
+      noteRefreshScopes(data.refreshScopes);
+      return data;
+    }
   } catch { /* fall back to static lists */ }
   return null;
 }
@@ -3874,4 +3876,25 @@ export function openCommentsStream(userDir, reportId, since, { onEvent, onError,
     }
   })();
   return ctrl;
+}
+
+// Push notifications for the mobile app (ENG-4023, lib/mobilePush.ts). The
+// device token is the APNs device token on iOS and the FCM registration token
+// on Android. Both answer 204. A server without push answers 404/405/501; the
+// error carries `status` so the caller can tell that apart from a failure.
+export async function registerPushDevice({ token, platform, appVersion = null, environment = null }) {
+  return req('/push/devices', {
+    method: 'POST',
+    body: JSON.stringify({ token, platform, app_version: appVersion, environment }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+// Sign-out runs this before the tokens are cleared, so keep it short.
+export async function unregisterPushDevice(token, { timeoutMs = 3_000 } = {}) {
+  return req('/push/devices', {
+    method: 'DELETE',
+    body: JSON.stringify({ token }),
+    timeoutMs,
+  });
 }

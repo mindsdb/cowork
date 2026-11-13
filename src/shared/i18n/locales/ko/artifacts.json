@@ -24,6 +24,12 @@
       "readyTimeoutMs": "미리 보기에 시간이 너무 오래 걸렸습니다. 미리 보기 한도인 {seconds}초 안에 시작되지 않았습니다.",
       "progressTimeoutMs": "미리 보기에 시간이 너무 오래 걸렸습니다. 미리 보기 한도인 {seconds}초 동안 진행되지 않았습니다."
     },
+    "truncatedMobile": {
+      "xlsx": "각 시트에서 최대 {rows, number}행, {columns, number}열까지 표시합니다.",
+      "pptx": "{count, plural, other {처음 #개 슬라이드를 표시합니다.}}",
+      "pdf": "처음 {pages, number}페이지를 표시합니다.",
+      "docx": "이 문서의 일부를 표시합니다."
+    },
     "truncated": {
       "xlsx": "각 시트에서 최대 {rows, number}행, {columns, number}열까지 표시합니다. 전체 시트는 {action, select, download {다운로드하여} other {‘열기’로}} 확인할 수 있습니다.",
       "pptx": "{count, plural, other {처음 #개 슬라이드를 표시합니다.}} 전체 슬라이드는 {action, select, download {다운로드하여} other {‘열기’로}} 확인할 수 있습니다.",

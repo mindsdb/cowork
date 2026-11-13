@@ -1,9 +1,9 @@
 // Schedule a new task, or edit one: the same modal for both; pass `task` to
 // edit.
 //
-// Layout: what to do (the prompt) first, then when, read back as a sentence
-// with the next few runs, then the name and project. Pausing lives on the
-// task's page and row, not here.
+// Layout: the name, what to do (the prompt), then when, read back as a
+// sentence with the next few runs, then the project and model side by side.
+// Pausing lives on the task's page and row, not here.
 //
 // "When" is one line of compact controls sized to their values (how often,
 // the day or date when that needs one, the time, the zone), the way calendar
@@ -18,6 +18,10 @@ import {
   INTERVAL_MINUTES, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, weekdayName, whenFromDate,
 } from '../../lib/scheduleWhen';
 import Ico from '../Icons';
+import ModelSelect from '../ModelSelect.jsx';
+import { buildModelPickerOptions, offeredModels, withModelPickerFallback } from '../../lib/modelPickerOptions';
+import { modelPickerMode } from '../../../lib/modelPicker';
+import { PLATFORM_UI } from '../../../lib/deployment';
 import { productName } from '../../../lib/deploymentBrand';
 import { host } from '../../../platform/host';
 import { askToNotify } from '../../hooks/useAutoPauseNotifications';
@@ -34,6 +38,10 @@ const FONT_BODY = 'var(--font-body)';
 // `handleSubmit` resolves it to `project_id: null` (server → general), and it
 // can't collide with a real project path.
 const NO_PROJECT = '__no_project__';
+
+// The server's value for "run on the account's default models". A run whose
+// pinned model can't be served falls back to it.
+const DEFAULT_MODEL = 'default';
 
 // Cadence values and their label keys (scheduleTaskModal.cadence.*).
 const CADENCE_OPTIONS = [
@@ -71,6 +79,8 @@ export default function ScheduleTaskModal({
   open, onClose, onSubmit,
   task,                    // when set → edit mode
   projects = [],
+  models = [],
+  modelMeta = {},
   defaultProjectPath = '',
   busy = false,
   agentLabel,
@@ -102,6 +112,7 @@ export default function ScheduleTaskModal({
         title:       task.title || '',
         prompt:      task.prompt || '',
         projectPath: match?.path || defaultProjectPath || NO_PROJECT,
+        model:       task.model || DEFAULT_MODEL,
         ...at,
       });
     } else {
@@ -110,15 +121,37 @@ export default function ScheduleTaskModal({
   }, [open, task?.id, defaultProjectPath, projects]);
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
-  const upcoming = useMemo(() => nextRuns(form, new Date(), 3), [form]);
+  const upcoming = useMemo(() => formRuns(form, task, new Date()), [form, task]);
   const zone = timeZoneLabel();
+  // The same models the chat composer offers. With platform UI off, the
+  // operator's picker decides: off shows no field at all (the operator's
+  // own models run), and otherwise only the models it offers.
+  const pickable = useMemo(() => {
+    if (PLATFORM_UI) return models;
+    return modelPickerMode() === 'off' ? [] : offeredModels(models, modelMeta?.modelEnabled);
+  }, [models, modelMeta?.modelEnabled]);
+  const showModel = PLATFORM_UI || pickable.length > 0;
+  const modelOptions = useMemo(() => [
+    { value: DEFAULT_MODEL, label: t('scheduleTaskModal.accountDefault'), pin: 'top' },
+    // A pin the catalog no longer lists stays selectable as itself, where
+    // the user picks freely; an operator's list offers only its own models.
+    ...buildModelPickerOptions(
+      PLATFORM_UI ? withModelPickerFallback(pickable, form.model === DEFAULT_MODEL ? '' : form.model) : pickable,
+      modelMeta,
+    ),
+  ], [pickable, modelMeta, form.model, t]);
+  // What is sent: the pick when it's on offer, else the default.
+  const sentModel = !showModel
+    ? DEFAULT_MODEL
+    : (PLATFORM_UI || pickable.some((m) => m.id === form.model) ? form.model : DEFAULT_MODEL);
 
   async function handleSubmit({ runOnce = false } = {}) {
     if (!form.prompt.trim()) {
       setError(t('scheduleTaskModal.errorNoPrompt', { agent: displayName }));
       return;
     }
-    const first = upcoming[0];
+    // A preview can outlive its next occurrence while the dialog stays open.
+    const first = formRuns(form, task, new Date())[0];
     if (!first) {
       setError(form.cadence === 'once' ? t('scheduleTaskModal.errorPickFutureTime') : t('scheduleTaskModal.errorPickTime'));
       return;
@@ -140,10 +173,8 @@ export default function ScheduleTaskModal({
       timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
       next_run_at:  first.toISOString(),
       project_id:   projectMatch?.id || null,
-      // Scheduled tasks always use the user's configured default
-      // model — exposing the picker here let people accidentally
-      // pin a stale model id that's no longer valid.
-      model:        null,
+      // Sent even when it's the default, so an edit can clear a pin.
+      model:        sentModel,
     };
     // A one-off that already ran stays off when only its time changes, so a
     // new time in the future turns it back on: "from the next run" is true.
@@ -179,6 +210,15 @@ export default function ScheduleTaskModal({
       />
       <ModalBody padding="18px 20px">
         <div className="flex flex-col gap-[18px]">
+          <Field label={t('scheduleTaskModal.name')} optional>
+            <Input
+              value={form.title}
+              onChange={(v) => update('title', v)}
+              placeholder={t('scheduleTaskModal.namePlaceholder')}
+              style={fieldInput}
+            />
+          </Field>
+
           <Field label={t('scheduleTaskModal.promptLabel', { agent: displayName })}>
             <Textarea
               value={form.prompt}
@@ -255,14 +295,6 @@ export default function ScheduleTaskModal({
           </div>
 
           <div className="grid grid-cols-[1fr_1fr] gap-[14px]">
-            <Field label={t('scheduleTaskModal.name')} optional>
-              <Input
-                value={form.title}
-                onChange={(v) => update('title', v)}
-                placeholder={t('scheduleTaskModal.namePlaceholder')}
-                style={fieldInput}
-              />
-            </Field>
             <Field label={t('scheduleTaskModal.project')}>
               <Select
                 value={form.projectPath}
@@ -278,6 +310,21 @@ export default function ScheduleTaskModal({
                 ]}
               />
             </Field>
+            {showModel && (
+              <Field label={t('scheduleTaskModal.model')}>
+                <ModelSelect
+                  value={sentModel}
+                  onValueChange={(v) => v && update('model', v)}
+                  ariaLabel={t('scheduleTaskModal.model')}
+                  variant="field"
+                  style={fieldSelectStyle}
+                  options={modelOptions}
+                  onOpenChange={(open) => {
+                    if (open) Promise.resolve().then(() => modelMeta?.onRefresh?.()).catch(() => {});
+                  }}
+                />
+              </Field>
+            )}
           </div>
 
           {error && (
@@ -318,11 +365,26 @@ export default function ScheduleTaskModal({
 
 // ── Helpers ──
 
+// An unrelated edit must not bring a deferred start forward. Only the timing
+// controls relevant to this cadence determine whether the schedule changed.
+function formRuns(form, task, now) {
+  const original = task?.nextRunAt ? new Date(task.nextRunAt) : null;
+  if (original && original > now) {
+    const saved = whenFromDate(original, task.cadence || 'daily');
+    const unchanged = form.cadence === saved.cadence && form.time === saved.time
+      && (form.cadence !== 'weekly' || Number(form.weekday) === saved.weekday)
+      && (form.cadence !== 'once' || form.date === saved.date);
+    if (unchanged) return [original, ...nextRuns(form, original, 2)];
+  }
+  return nextRuns(form, now, 3);
+}
+
 function emptyForm({ defaultProjectPath }) {
   return {
     title: '',
     prompt: '',
     projectPath: defaultProjectPath || NO_PROJECT,
+    model: DEFAULT_MODEL,
     ...defaultWhen(),
   };
 }

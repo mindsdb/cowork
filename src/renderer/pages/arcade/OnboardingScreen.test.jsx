@@ -9,6 +9,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 const hostMock = vi.hoisted(() => ({
   isWeb: true,
   isElectron: false,
+  isMobileShell: false,
   isMac: () => false,
   checkConfigured: vi.fn(async () => ({ configured: true, provider: 'minds_cloud' })),
   openExternal: vi.fn(),
@@ -85,6 +86,18 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
     expect(hostMock.openExternal).toHaveBeenCalledWith(
       'https://mindshub.ai/download?os=auto&from=cowork-welcome',
     );
+  });
+
+  // ENG-4023: the mobile app cannot install the desktop app, so no offer.
+  it('welcome page offers no desktop app inside the mobile app', async () => {
+    hostMock.isMobileShell = true;
+    try {
+      render(<OnboardingScreen onComplete={() => {}} />);
+      await screen.findByRole('button', { name: 'Continue' });
+      expect(screen.queryByRole('button', { name: 'Get the desktop app' })).toBeNull();
+    } finally {
+      hostMock.isMobileShell = false;
+    }
   });
 
   // ENG-2311 review: host.openExternal is window.open() on web, so two clicks

@@ -24,6 +24,12 @@
       "readyTimeoutMs": "L’anteprima ha richiesto troppo tempo: non si è avviata entro {seconds} secondi, il limite dell’anteprima.",
       "progressTimeoutMs": "L’anteprima ha richiesto troppo tempo: non è avanzata per {seconds} secondi, il limite dell’anteprima."
     },
+    "truncatedMobile": {
+      "xlsx": "Vengono mostrate fino a {rows, number} righe e {columns, number} colonne di ogni foglio.",
+      "pptx": "{count, plural, one {Viene mostrata la prima diapositiva.} other {Vengono mostrate le prime # diapositive.}}",
+      "pdf": "Vengono mostrate le prime {pages, number} pagine.",
+      "docx": "Viene mostrata solo una parte del documento."
+    },
     "truncated": {
       "xlsx": "Vengono mostrate fino a {rows, number} righe e {columns, number} colonne di ogni foglio. Per il foglio completo, usa {action, select, download {Scarica} other {Apri}}.",
       "pptx": "{count, plural, one {Viene mostrata la prima diapositiva.} other {Vengono mostrate le prime # diapositive.}} Per la presentazione completa, usa {action, select, download {Scarica} other {Apri}}.",

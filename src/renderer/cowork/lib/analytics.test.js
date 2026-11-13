@@ -908,6 +908,15 @@ describe('billing + provisioning events (ENG-1533)', () => {
     expect(event.properties.trigger).toBe('token_limit');
   });
 
+  it('billing_opened arms the post-payment availability follow-up (ENG-4147)', async () => {
+    mockFetch();
+    const { trackBillingOpened } = await importAnalytics();
+    const { creditsFlowState } = await import('./creditsFlow');
+    expect(creditsFlowState().armedAt).toBeNull();
+    trackBillingOpened('locked_model_row');
+    expect(creditsFlowState().armedAt).not.toBeNull();
+  });
+
   it('billing_opened: every trigger a renderer call site sends is named in the EVENTS vocabulary', () => {
     /* The comment on EVENTS.BILLING_OPENED is the list a funnel query is
        written from. A trigger that is sent but not listed there is a cohort
@@ -1588,8 +1597,44 @@ describe('console handoff attribution', () => {
     const body = await sentEvent(fetchMock, 'composer_ready');
 
     expect(body.properties).toMatchObject({ entry_source: 'console', example_id: 'classic-snake-game', prefilled: true });
+    expect(body.properties).not.toHaveProperty('entry_placement');
     // No prompt text rides on the event under any key.
     expect(JSON.stringify(body)).not.toMatch(/koi|snake moves/i);
+  });
+
+  it('credits a Gallery handoff to the Gallery on every event the handoff leads to', async () => {
+    const fetchMock = mockFetch();
+    const {
+      setEntryAttribution, trackComposerReady, trackNewTaskMessageSent, trackAgentSessionStarted,
+    } = await importAnalytics();
+
+    trackComposerReady('console', 'celestial-merge-2048', true, 'gallery');
+    setEntryAttribution('console', 'celestial-merge-2048', 'gallery');
+    trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'example', example_id: 'celestial-merge-2048' } });
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    const [ready, sent, session] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(ready.properties.entry_placement).toBe('gallery');
+    expect(sent.event).toBe('new_task_message_sent');
+    expect(sent.properties).toMatchObject({ via: 'console_link', entry_placement: 'gallery' });
+    expect(session.properties).toMatchObject({
+      entry_source: 'console', example_id: 'celestial-merge-2048', entry_placement: 'gallery',
+    });
+  });
+
+  it('records no placement for a handoff that named none', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackNewTaskMessageSent, trackAgentSessionStarted } = await importAnalytics();
+
+    setEntryAttribution('console', 'classic-snake-game');
+    trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'example', example_id: 'classic-snake-game' } });
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    for (const call of fetchMock.mock.calls) {
+      expect(JSON.parse(call[1].body).properties).not.toHaveProperty('entry_placement');
+    }
   });
 });
 

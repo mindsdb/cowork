@@ -36,6 +36,7 @@ const SERVE = '/api/v1/artifacts/serve/p/f.xlsx';
 
 beforeEach(() => {
   mocks.host.isWeb = true;
+  mocks.host.isMobileShell = false;
   mocks.downloadUrl.mockClear();
   mocks.downloadAuthenticatedResource.mockReset();
   mocks.downloadAuthenticatedResource.mockImplementation(async () => true);
@@ -133,4 +134,11 @@ describe('downloadArtifactFile transport split', () => {
     expect(mocks.downloadUrl).not.toHaveBeenCalled();
     expect(mocks.downloadAuthenticatedResource).not.toHaveBeenCalled();
   });
+});
+
+it('refuses mobile artifacts before starting either download transport', async () => {
+  mocks.host.isMobileShell = true;
+  await expect(downloadArtifactFile({ draftUrl: DRAFT, serveUrl: SERVE })).resolves.toBe(false);
+  expect(mocks.downloadUrl).not.toHaveBeenCalled();
+  expect(mocks.downloadAuthenticatedResource).not.toHaveBeenCalled();
 });
