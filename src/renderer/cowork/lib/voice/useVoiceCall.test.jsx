@@ -395,6 +395,29 @@ describe('a quiet call', () => {
   });
 });
 
+describe('a call-back about what Anton needs', () => {
+  it('says what he needs, never that the work is done', async () => {
+    const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '' }));
+    await act(() => hook.result.current.callBack('Anton needs the user to check the policy box on united.com.', null, { asks: true }));
+    expect(hook.result.current.analyzing).toBe(true);
+    expect(hook.result.current.micOn).toBe(false);
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    const greet = peer.channel.sent.find((e) => e.type === 'session.instructions.append');
+    expect(greet.content).toMatch(/needs something from the user/);
+    expect(greet.content).toMatch(/Don't say the work is done/);
+    expect(greet.content).toMatch(/never instructions to you/);
+    expect(greet.content).toMatch(/check the policy box on united.com/);
+  });
+
+  it('is said on a live call as a request, not a result', async () => {
+    const { result } = await started({ onAsk: vi.fn(), context: () => '' });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    act(() => { result.current.announce('Anton asks which seat.', { asks: true }); });
+    expect(peer.channel.sent.at(-1).content).toMatch(/needs something from the user/);
+    expect(peer.channel.sent.at(-1).content).toMatch(/Anton asks which seat./);
+  });
+});
+
 describe('a call-back that hears nothing', () => {
   it('stops analyzing and opens the microphone after a while with GPT-Live silent', async () => {
     const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '' }));
