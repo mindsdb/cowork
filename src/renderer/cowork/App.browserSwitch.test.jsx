@@ -197,6 +197,24 @@ describe('the Browser switch and pane through App', () => {
     expect(streams[0].opts.browserOff).toBe(true);
   });
 
+  it('opening the web app, signed in with the browser offered, starts no browser until a task needs it', async () => {
+    const { getAccessToken } = await import('../platform/host');
+    const claims = btoa(JSON.stringify({ sub: 'user-1', email: 'person@example.com' })).replace(/=+$/, '');
+    getAccessToken.mockResolvedValue(`header.${claims}.signature`);
+    try {
+      spies.fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+      render(<App />);
+      await waitFor(() => expect(spies.fetchBrowseStatus).toHaveBeenCalled());
+      await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 50); }); });
+      // A shown tab coming back doesn't start one either.
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+      await act(async () => {});
+      expect(spies.provisionBrowser).not.toHaveBeenCalled();
+    } finally {
+      getAccessToken.mockResolvedValue(null);
+    }
+  });
+
   it.each([
     ['not offered to the account', NOT_ENTITLED, 'conv-not-offered', false],
     ['offered', AVAILABLE, 'conv-offered', true],

@@ -28,7 +28,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Moda
 import { Button, EmptyState, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
-import ChatView, { warmBrowser } from './views/ChatView';
+import ChatView from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
 import TasksView from './views/TasksView';
@@ -175,8 +175,6 @@ import {
   desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageOriginForContext,
 } from './lib/browserSession';
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
-import { warmBrowserForSession } from './lib/browserWarmUp';
-import { readBrowseStatus } from './lib/browseStatus';
 import {
   approveIfApprovalsOff, autoApprovePositionClick, browserApprovalIds, declineBrowserApproval, isAutoApprovedCard, isPositionClickCard,
 } from './lib/browserApproval';
@@ -3641,13 +3639,6 @@ function AppCore() {
     refreshData,
   });
   const codeAccountUser = useAccountUser(ssoConnected);
-  // Start the person's browser pod as soon as their web session opens
-  // (lib/browserWarmUp.js), not when a task first needs it.
-  const warmAccount = codeAccountUser?.sub ?? null;
-  useEffect(() => {
-    if (!host.isWeb || !warmAccount) return undefined;
-    return warmBrowserForSession({ warm: warmBrowser, readStatus: readBrowseStatus });
-  }, [warmAccount]);
   const codeSkillScopeKey = skillScopeKey(codeAccountUser);
 
   // undefined (never a real accountId or the null of "signed out") so the
