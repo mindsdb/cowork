@@ -367,8 +367,13 @@
   .artifact-layer-toggle-label { display: none; }
 }
 
-/* The bar reads as an input while focused: the app's focus ring, quiet. */
-.artifact-quick-edit-input:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: var(--ring); }
+/* The bar's input (ENG-4227): the main composer's frame (.composer-frame),
+   slimmer. A hairline border on the composer's surface and radius at rest,
+   one step stronger on hover, the accent border and the quiet ring while
+   focused. No resting shadow. */
+.artifact-quick-edit-input { border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--surface-0, var(--surface)); transition: border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease; }
+.artifact-quick-edit-input:hover { border-color: var(--line-2); }
+.artifact-quick-edit-input:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
 
 /* The unsaved-changes confirm, anchored to the bar (ENG-4227): the app's
    popover surface, compact, the primary action last. */

@@ -404,9 +404,9 @@ export function QuickEditBar({
         </div>
       )}
       {sendError && <div className="artifact-quick-edit-error artifact-quick-edit-hint" role="alert">{sendError}</div>}
-      <div className="artifact-quick-edit-input shrink-0 flex items-end gap-[2px] bg-surface rounded-[16px]
-        border-[0.5px] border-[rgba(39,39,42,0.15)] py-[8px] pl-[8px] pr-[4px]
-        focus-within:border-[rgba(39,39,42,0.3)] transition-colors">
+      {/* The main composer's frame, slimmer: hairline border, soft radius,
+          one step stronger on hover, accent while focused (artifactWorkspace.css). */}
+      <div className="artifact-quick-edit-input shrink-0 flex items-end gap-[2px] py-[7px] pl-[8px] pr-[4px]">
         <textarea
           ref={taRef}
           rows={1}

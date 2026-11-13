@@ -43,7 +43,8 @@
 //     always-present row below the model list (ModelSelect's "Effort"
 //     footer) rather than another filterable option.
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useCloseOnFrameFocus } from './useCloseOnFrameFocus';
 import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
 import { ChevronsUpDown, Check, Search } from 'lucide-react';
 import { Icon } from './Icon';
@@ -121,6 +122,15 @@ export function Combobox({
      native view steps aside rather than draw over it. */
   const [popupOpen, setPopupOpen] = useState(false);
   useNativeOverlay(open ?? popupOpen);
+  // Controlled or not is decided at mount, as Base UI decides it: a caller
+  // that starts uncontrolled and later passes `open` is still ignored.
+  const controlledRef = useRef(open !== undefined);
+  const shownOpen = controlledRef.current ? open : popupOpen;
+  // A click into the artifact preview (an iframe) is outside the popup too.
+  useCloseOnFrameFocus(shownOpen, () => {
+    onOpenChange?.(false, { reason: 'frame-focus' });
+    setPopupOpen(false);
+  });
 
   return (
     <BaseCombobox.Root
@@ -130,7 +140,9 @@ export function Combobox({
       // only changes the value on user action, never when the item list
       // shrinks under it. Pinned in Combobox.test.jsx.
       onValueChange={(item) => onValueChange?.(item ? item.value : '')}
-      open={open}
+      // Controlled either way: by the caller, or by the state Base UI's own
+      // changes keep, so a close from outside (the iframe focus) can land.
+      open={shownOpen}
       onOpenChange={(next, details) => {
         // The caller may cancel the change, and then the popup stays as it is.
         onOpenChange?.(next, details);
