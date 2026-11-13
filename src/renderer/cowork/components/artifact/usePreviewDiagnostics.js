@@ -13,6 +13,13 @@ const MAX_ERRORS = 20;
 // _MAX_PREVIEW_MESSAGE) so the notice and the repair payload never show more
 // than the server would have kept anyway.
 const MAX_MESSAGE_LENGTH = 300;
+// console.error and failed requests can repeat on every tick of a page's own
+// loop. Each keeps at most this many entries, so they never crowd a script
+// error out of the list (or out of the repair payload).
+const MAX_PER_NOISY_TYPE = 5;
+const NOISY_TYPES = new Set(['console', 'http']);
+// The body of a failed request, as the shim reports it.
+const MAX_HTTP_BODY = 300;
 
 /**
  * One report from the preview frame. Every report becomes this shape, so the
@@ -20,12 +27,40 @@ const MAX_MESSAGE_LENGTH = 300;
  * read one record type. The server reads only message, file and line.
  *
  * @typedef {object} PreviewDiagnostic
- * @property {'error' | 'resource' | 'csp'} type  The shim's report type.
+ * @property {'error' | 'resource' | 'csp' | 'rejection' | 'console' | 'http'} type
+ *   The shim's report type. `rejection` is an unhandled promise rejection,
+ *   `console` a console.error carrying an Error, `http` a fetch/XHR answered
+ *   with a 5xx.
  * @property {string} message
  * @property {string} file
  * @property {number} line
- * @property {string} url  The resource that failed to load; '' for a script error.
+ * @property {string} url  The resource that failed to load, or the request
+ *   that failed; '' for a script error.
  */
+
+/* The fields a script-shaped report carries (error, rejection, console). */
+function scriptReport(type, data, message) {
+  return {
+    type,
+    message,
+    file: String(data.file || ''),
+    line: Number(data.line) || 0,
+    url: '',
+  };
+}
+
+const REJECTION_PREFIX = 'Unhandled promise rejection';
+
+/* "<METHOD> <url> → <status>: <body>", the server's sentence for a failed
+   request, built here only when the shim sent the parts instead. */
+function httpMessage(data) {
+  const method = String(data.method || 'GET').toUpperCase();
+  const url = String(data.url || '').trim();
+  const status = Number(data.status) || 0;
+  if (!url || !status) return '';
+  const body = String(data.body || '').trim().slice(0, MAX_HTTP_BODY);
+  return `${method} ${url} → ${status}${body ? `: ${body}` : ''}`;
+}
 
 /* Returns null for a type we don't recognize or a report too empty to say
    anything useful. */
@@ -52,13 +87,23 @@ function normalize(data) {
     };
   }
   if (data.type === 'error') {
-    return {
-      type: 'error',
-      message: String(data.message || ''),
-      file: String(data.file || ''),
-      line: Number(data.line) || 0,
-      url: '',
-    };
+    return scriptReport('error', data, String(data.message || ''));
+  }
+  if (data.type === 'rejection') {
+    // The server reads only the message, so it says what kind of failure
+    // this was; the shim may or may not have said so already.
+    const reason = String(data.message || '').trim();
+    if (!reason) return null;
+    const message = reason.startsWith(REJECTION_PREFIX) ? reason : `${REJECTION_PREFIX}: ${reason}`;
+    return scriptReport('rejection', data, message);
+  }
+  if (data.type === 'console') {
+    return scriptReport('console', data, String(data.message || '').trim());
+  }
+  if (data.type === 'http') {
+    const message = String(data.message || '').trim() || httpMessage(data);
+    if (!message) return null;
+    return { type: 'http', message, file: '', line: 0, url: String(data.url || '').trim() };
   }
   return null;
 }
@@ -100,6 +145,8 @@ function addEntry(prev, entry) {
     return next;
   }
   if (prev.length >= MAX_ERRORS) return prev;
+  if (NOISY_TYPES.has(entry.type)
+    && prev.filter((e) => e.type === entry.type).length >= MAX_PER_NOISY_TYPE) return prev;
   const duplicate = prev.some((e) => e.message === entry.message
     && e.file === entry.file && e.line === entry.line);
   return duplicate ? prev : [...prev, entry];
@@ -108,6 +155,8 @@ function addEntry(prev, entry) {
 function signature(errors) {
   return errors.map((e) => `${e.message}|${e.file}|${e.line}`).join('\n');
 }
+
+export { normalize as normalizePreviewDiagnostic, addEntry as addPreviewDiagnostic };
 
 export function usePreviewDiagnostics(iframeRef, { enabled = true, resetKey = '' } = {}) {
   const [errors, setErrors] = useState([]);

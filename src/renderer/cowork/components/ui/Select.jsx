@@ -49,7 +49,8 @@
 //   - `variant="unstyled"` — wiring only, for domain controls that use an
 //     established trigger treatment such as Composer's `meta-pill`.
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useCloseOnFrameFocus } from './useCloseOnFrameFocus';
 import { Select as BaseSelect } from '@base-ui/react/select';
 import { ChevronDown, ChevronsUpDown, Check } from 'lucide-react';
 import { Icon } from './Icon';
@@ -240,6 +241,15 @@ export function Select({
      native view steps aside rather than draw over it. */
   const [popupOpen, setPopupOpen] = useState(false);
   useNativeOverlay(open ?? popupOpen);
+  // Controlled or not is decided at mount, as Base UI decides it: a caller
+  // that starts uncontrolled and later passes `open` is still ignored.
+  const controlledRef = useRef(open !== undefined);
+  const shownOpen = controlledRef.current ? open : popupOpen;
+  // A click into the artifact preview (an iframe) is outside the popup too.
+  useCloseOnFrameFocus(shownOpen, () => {
+    onOpenChange?.(false, { reason: 'frame-focus' });
+    setPopupOpen(false);
+  });
 
   return (
     <BaseSelect.Root
@@ -248,7 +258,8 @@ export function Select({
       // Base UI ≥ 1.7 emits null when the selected value leaves a shrinking
       // option list. A user can't pick null from a listbox, so never forward it.
       onValueChange={(next) => { if (next != null) onValueChange?.(next); }}
-      open={open}
+      // Controlled either way, so a close from outside (the iframe focus) lands.
+      open={shownOpen}
       onOpenChange={(next, details) => {
         // The caller may cancel the change, and then the popup stays as it is.
         onOpenChange?.(next, details);

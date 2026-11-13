@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { usePreviewDiagnostics } from './usePreviewDiagnostics';
+import { addPreviewDiagnostic, normalizePreviewDiagnostic, usePreviewDiagnostics } from './usePreviewDiagnostics';
 
 function Harness({ resetKey = 'a' }) {
   const iframeRef = useRef(null);
@@ -171,7 +171,7 @@ describe('usePreviewDiagnostics', () => {
     expect(screen.getByTestId('count').textContent).toBe('4');
   });
 
-  it('ignores a message type outside the known four', () => {
+  it('ignores a message type it does not know', () => {
     render(<Harness />);
     const frame = screen.getByTitle('Draft preview');
 
@@ -268,5 +268,59 @@ describe('usePreviewDiagnostics', () => {
     send(frame, { type: 'error', message: 'boom', file: 'a.html', line: 1 });
 
     expect(screen.getByTestId('dismissed').textContent).toBe('false');
+  });
+
+  it('collects the new shim types alongside script errors', () => {
+    render(<Harness />);
+    const frame = screen.getByTitle('Draft preview');
+
+    send(frame, { type: 'rejection', message: 'boom' });
+    send(frame, { type: 'console', message: 'TypeError: a is undefined', file: 'app.js', line: 4 });
+    send(frame, { type: 'http', message: 'GET /api/x → 502: bad gateway', url: '/api/x' });
+
+    expect(screen.getByTestId('count').textContent).toBe('3');
+    expect(screen.getByTestId('first').textContent).toBe('Unhandled promise rejection: boom');
+  });
+});
+
+describe('normalizePreviewDiagnostic: the shim types added for the agent check (ENG-4207)', () => {
+  it('says what a rejection was, once', () => {
+    expect(normalizePreviewDiagnostic({ type: 'rejection', message: 'Failed to fetch', file: 'a.js', line: '7' }))
+      .toEqual({ type: 'rejection', message: 'Unhandled promise rejection: Failed to fetch', file: 'a.js', line: 7, url: '' });
+    expect(normalizePreviewDiagnostic({ type: 'rejection', message: 'Unhandled promise rejection: x' }).message)
+      .toBe('Unhandled promise rejection: x');
+    expect(normalizePreviewDiagnostic({ type: 'rejection', message: '  ' })).toBeNull();
+  });
+
+  it('keeps a console error as the page printed it, with its location', () => {
+    expect(normalizePreviewDiagnostic({ type: 'console', message: ' RangeError: bad length ', file: 'lib.js', line: 12 }))
+      .toEqual({ type: 'console', message: 'RangeError: bad length', file: 'lib.js', line: 12, url: '' });
+  });
+
+  it("keeps a failed request's sentence, or builds it from the parts", () => {
+    expect(normalizePreviewDiagnostic({ type: 'http', message: 'POST /api/save → 500: oops', url: '/api/save' }))
+      .toEqual({ type: 'http', message: 'POST /api/save → 500: oops', file: '', line: 0, url: '/api/save' });
+    expect(normalizePreviewDiagnostic({ type: 'http', method: 'post', url: '/api/save', status: 503, body: 'x'.repeat(400) }).message)
+      .toBe(`POST /api/save → 503: ${'x'.repeat(300)}`);
+    expect(normalizePreviewDiagnostic({ type: 'http', url: '/api/a', status: 500 }).message).toBe('GET /api/a → 500');
+    expect(normalizePreviewDiagnostic({ type: 'http', url: '', status: 500 })).toBeNull();
+  });
+
+  it('holds console and http entries to five each, so they never crowd out a script error', () => {
+    let list = [];
+    for (let i = 0; i < 8; i += 1) {
+      list = addPreviewDiagnostic(list, normalizePreviewDiagnostic({ type: 'console', message: `Error: ${i}` }));
+      list = addPreviewDiagnostic(list, normalizePreviewDiagnostic({ type: 'http', url: `/api/${i}`, status: 500 }));
+    }
+    list = addPreviewDiagnostic(list, normalizePreviewDiagnostic({ type: 'error', message: 'ReferenceError: x' }));
+
+    expect(list.filter((e) => e.type === 'console')).toHaveLength(5);
+    expect(list.filter((e) => e.type === 'http')).toHaveLength(5);
+    expect(list[list.length - 1].message).toBe('ReferenceError: x');
+  });
+
+  it('collapses a repeated rejection', () => {
+    const entry = normalizePreviewDiagnostic({ type: 'rejection', message: 'boom' });
+    expect(addPreviewDiagnostic([entry], { ...entry })).toHaveLength(1);
   });
 });

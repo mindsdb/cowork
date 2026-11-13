@@ -100,6 +100,7 @@ vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 import { ArtifactViewer } from './ArtifactViewer';
+import { _resetArtifactChecks, handleArtifactCheckEvent } from '../../lib/artifactCheck';
 
 const artifact = {
   id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
@@ -208,4 +209,29 @@ describe('ArtifactViewer preview errors', () => {
 
     expect(headerErrors()).toEqual([]);
   });
+
+  it("answers the agent's preview check from the reloaded page (ENG-4207)", async () => {
+    _resetArtifactChecks();
+    const submit = vi.fn(async () => ({ ok: true }));
+    render(<ArtifactViewer open artifact={{ ...artifact, slug: 'launch' }} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    await vi.waitFor(() => expect(loadArtifactDraftDocument).toHaveBeenCalledTimes(1));
+
+    handleArtifactCheckEvent({
+      type: 'response.artifact_check', check_id: 'acheck:1', artifact_slug: 'launch', timeout_s: 30,
+    }, { submit });
+
+    // The same reload as the reload button: the draft is fetched again.
+    await vi.waitFor(() => expect(loadArtifactDraftDocument).toHaveBeenCalledTimes(2));
+    const frame = await screen.findByTitle('Launch brief');
+    fireEvent.load(frame);
+    postFromPreview(frame.contentWindow, { type: 'http', message: 'GET /api/items → 500: boom', url: '/api/items' });
+
+    await vi.waitFor(() => expect(submit).toHaveBeenCalled(), { timeout: 6000 });
+    expect(submit).toHaveBeenCalledWith('acheck:1', expect.objectContaining({
+      status: 'failed',
+      errors: [expect.objectContaining({ type: 'http', message: 'GET /api/items → 500: boom' })],
+    }));
+    _resetArtifactChecks();
+  }, 10000);
 });
