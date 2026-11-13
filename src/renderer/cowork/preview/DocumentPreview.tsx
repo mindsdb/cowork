@@ -30,6 +30,7 @@ import { PREVIEW_PARENT_LIMITS, previewLimits } from './limits';
 import { loadPreviewBundle, type LoadedPreviewBundle } from './runtime/bundle';
 import { readPreviewBytes } from './runtime/readBytes';
 import './documentPreview.css';
+import { MOBILE_DOWNLOAD_NOTE } from '../lib/browserDownload';
 
 export interface DocumentPreviewSource {
   url: string;
@@ -121,13 +122,14 @@ export function previewFailureReason({ code, limit }: Pick<PreviewFailure, 'code
    deck counts the slides it drew, since either the slide cap or the element
    cap can end it. */
 export function truncationLine(type: DocumentPreviewType, units: number, downloads: boolean): string {
-  return tr(`documentPreview.truncated.${type}`, {
+  const line = tr(`documentPreview.${host.isMobileShell ? 'truncatedMobile' : 'truncated'}.${type}`, {
     action: downloads ? 'download' : 'open',
     count: units,
     rows: CAPS.maxSheetRows,
     columns: CAPS.maxSheetColumns,
     pages: CAPS.maxPdfPages,
   });
+  return host.isMobileShell ? `${line} ${MOBILE_DOWNLOAD_NOTE}` : line;
 }
 
 interface FailureProps {
@@ -145,7 +147,7 @@ function FailureNote({ failure, downloads, download, openInDefaultApp }: Failure
   const { t } = useTranslation('artifacts');
   const [downloaded, setDownloaded] = useState<boolean | null>(null);
   const started = useRef(false);
-  const downloadsOnFailure = downloads && host.isWeb;
+  const downloadsOnFailure = downloads && host.isWeb && !host.isMobileShell;
   const save = () => {
     setDownloaded(null);
     download().then(setDownloaded, () => setDownloaded(false));
@@ -162,7 +164,7 @@ function FailureNote({ failure, downloads, download, openInDefaultApp }: Failure
         {downloads && downloaded ? previewFailedDownloadedNote() : previewFailedNote()}
       </p>
       <p className="document-preview-note-reason">{previewFailureReason(failure)}</p>
-      {downloads
+      {host.isMobileShell ? <p>{MOBILE_DOWNLOAD_NOTE}</p> : downloads
         ? (!downloadsOnFailure || downloaded === false) && <Button onClick={save}>{t('documentPreview.download')}</Button>
         : <Button onClick={openInDefaultApp}>{t('documentPreview.open')}</Button>}
     </div>
@@ -194,9 +196,9 @@ function TruncationBar({ previewType, units, downloads, download, openInDefaultA
       {downloads && saveFailed && (
         <span className="document-preview-truncated-error" role="alert">{downloadFailedNote()}</span>
       )}
-      <Button onClick={downloads ? save : openInDefaultApp}>
+      {!host.isMobileShell && <Button onClick={downloads ? save : openInDefaultApp}>
         {downloads ? t('documentPreview.download') : t('documentPreview.open')}
-      </Button>
+      </Button>}
     </div>
   );
 }

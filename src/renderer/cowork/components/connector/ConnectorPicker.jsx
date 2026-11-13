@@ -450,13 +450,13 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
           <div>
             <Alert variant="info">
               {t('connectorPicker.cloudNote.before')}{' '}
-              <button
+              {host.isMobileShell ? t('connectorPicker.cloudNote.link') : (<button
                 type="button"
                 onClick={() => host.openExternal('https://mindshub.ai/download')}
                 className="font-medium underline underline-offset-2 bg-transparent border-0 p-0 cursor-pointer text-inherit [font:inherit]"
               >
                 {t('connectorPicker.cloudNote.link')}
-              </button>
+              </button>)}
               {t('connectorPicker.cloudNote.after')}
             </Alert>
           </div>

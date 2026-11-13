@@ -42,7 +42,9 @@ export default function ComingSoonModal({ feature, onClose, offer = null }) {
             : (feature ? t('comingSoon.unavailableBodyNamed', { feature }) : t('comingSoon.unavailableBody'))}
         </p>
       </ModalBody>
-      {PLATFORM_UI ? (
+      {/* The mobile app (ENG-4023) offers no installer: a phone cannot run
+          the desktop app, so the note stands alone with a Close button. */}
+      {PLATFORM_UI && !host.isMobileShell ? (
         <ModalFooter
           cancel={(
             <Button variant="subtle" onClick={onClose}>

@@ -86,6 +86,40 @@ jobs:
     # Ungated for the same reason as the unit tests; it needs no secrets.
     uses: ./.github/workflows/document-preview.yml
 
+  # The mobile shell (mobile/, ENG-4023) only needs its native smoke build when
+  # the PR touches it. A path filter on a second `pull_request` workflow would be
+  # a second run tree, so the filter is a job here instead.
+  mobile-changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - name: Does this PR touch mobile/?
+        id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          files="$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')"
+          if grep -qE '^(mobile/|\.github/workflows/(mobile-smoke|build-android)\.yml$)' <<< "$files"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  mobile-smoke:
+    # Ungated like the unit tests: GitHub-hosted runners, no secrets.
+    needs: [mobile-changes]
+    if: needs.mobile-changes.outputs.changed == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/mobile-smoke.yml
+
   workflow-lint:
     # actionlint, the caller/callee permission check, and a zizmor audit, shared
     # with every other service repo. Ungated for the same reason as the tests.

@@ -24,6 +24,12 @@
       "readyTimeoutMs": "Die Vorschau hat zu lange gedauert: Sie ist nicht innerhalb von {seconds} Sekunden gestartet, dem Limit der Vorschau.",
       "progressTimeoutMs": "Die Vorschau hat zu lange gedauert: {seconds} Sekunden lang gab es keinen Fortschritt, das Limit der Vorschau."
     },
+    "truncatedMobile": {
+      "xlsx": "Pro Tabellenblatt werden bis zu {rows, number} Zeilen und {columns, number} Spalten angezeigt.",
+      "pptx": "{count, plural, one {Die erste Folie wird angezeigt.} other {Die ersten # Folien werden angezeigt.}}",
+      "pdf": "Die ersten {pages, number} Seiten werden angezeigt.",
+      "docx": "Ein Teil dieses Dokuments wird angezeigt."
+    },
     "truncated": {
       "xlsx": "Pro Tabellenblatt werden bis zu {rows, number} Zeilen und {columns, number} Spalten angezeigt. Über {action, select, download {Herunterladen} other {Öffnen}} erhalten Sie das vollständige Blatt.",
       "pptx": "{count, plural, one {Die erste Folie wird angezeigt.} other {Die ersten # Folien werden angezeigt.}} Über {action, select, download {Herunterladen} other {Öffnen}} erhalten Sie die vollständige Präsentation.",
@@ -629,6 +635,39 @@
         "hint": "Vergleicht Tonfall und das Befolgen von Anweisungen",
         "prompt": "Schreiben Sie eine Ankündigung für einen neuen Dunkelmodus in einer Notiz-App in drei Versionen: einen Tweet unter 280 Zeichen, eine freundliche E-Mail unter 120 Wörtern und einen Changelog-Eintrag unter 50 Wörtern. Jede Version soll zu ihrem Kanal passen."
       }
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "Statistiken",
+      "hide": "Statistiken ausblenden"
+    },
+    "title": "Statistiken",
+    "close": "Statistikbereich schließen",
+    "loading": "Statistiken werden geladen",
+    "retry": "Erneut versuchen",
+    "trackViews": "Aufrufe zählen",
+    "trackingOff": "Die Zählung ist deaktiviert. Aktivieren Sie sie, um Aufrufe zu zählen.",
+    "metrics": {
+      "viewsInPeriod": "Aufrufe (30 Tage)",
+      "uniqueViewers": "Eindeutige Besucher (30 Tage)",
+      "totalViews": "Aufrufe gesamt",
+      "lastViewed": "Zuletzt aufgerufen"
+    },
+    "daysInUtc": "Tage in UTC",
+    "chartLabel": "Aufrufe pro Tag",
+    "viewers": {
+      "email": "E-Mail",
+      "lastSeen": "Zuletzt gesehen",
+      "restrictedOnly": "Namen von Besuchern werden nur bei eingeschränkter Freigabe erfasst."
+    },
+    "noViews": "Noch keine Aufrufe",
+    "errors": {
+      "otherAccount": "Für dieses Konto sind keine Statistiken verfügbar.",
+      "unavailable": "Für dieses Artefakt sind keine Statistiken verfügbar.",
+      "reconnect": "Verbinden Sie MindsHub erneut, um Statistiken zu sehen.",
+      "temporarilyUnavailable": "Statistiken sind vorübergehend nicht verfügbar.",
+      "loadFailed": "Statistiken konnten nicht geladen werden."
     }
   }
 }

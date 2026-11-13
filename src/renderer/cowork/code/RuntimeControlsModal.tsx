@@ -147,6 +147,7 @@ export function RuntimeControlsModal({
               options={modelOptions}
               variant="field"
               ariaLabel={t('runtimeControls.modelAriaLabel')}
+              onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }}
               disabled={busy}
             />
           </Field>

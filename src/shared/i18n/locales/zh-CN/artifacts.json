@@ -24,6 +24,12 @@
       "readyTimeoutMs": "预览耗时过长：未能在 {seconds} 秒的预览时限内启动。",
       "progressTimeoutMs": "预览耗时过长：已有 {seconds} 秒没有进展，超出预览时限。"
     },
+    "truncatedMobile": {
+      "xlsx": "每个工作表最多显示 {rows, number} 行、{columns, number} 列。",
+      "pptx": "{count, plural, other {仅显示前 # 张幻灯片。}}",
+      "pdf": "仅显示前 {pages, number} 页。",
+      "docx": "仅显示此文档的一部分。"
+    },
     "truncated": {
       "xlsx": "每个工作表最多显示 {rows, number} 行、{columns, number} 列。{action, select, download {下载} other {打开}}后可查看完整工作表。",
       "pptx": "{count, plural, other {仅显示前 # 张幻灯片。}}{action, select, download {下载} other {打开}}后可查看完整演示文稿。",
@@ -629,6 +635,39 @@
         "hint": "对比语气和遵循指令的能力",
         "prompt": "为一款笔记应用新推出的深色模式撰写发布公告，共三个版本：一条不超过 280 个字符的推文、一封不超过 120 词的友好邮件，以及一条不超过 50 词的更新日志。每个版本都要符合各自渠道的风格。"
       }
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "统计",
+      "hide": "隐藏统计"
+    },
+    "title": "统计",
+    "close": "关闭统计面板",
+    "loading": "正在加载统计",
+    "retry": "重试",
+    "trackViews": "统计浏览量",
+    "trackingOff": "浏览统计已关闭。开启后开始统计浏览量。",
+    "metrics": {
+      "viewsInPeriod": "浏览量（30 天）",
+      "uniqueViewers": "独立访客（30 天）",
+      "totalViews": "总浏览量",
+      "lastViewed": "最近浏览"
+    },
+    "daysInUtc": "日期按 UTC",
+    "chartLabel": "每日浏览量",
+    "viewers": {
+      "email": "邮箱",
+      "lastSeen": "最近访问",
+      "restrictedOnly": "仅在共享受限时记录访客名称。"
+    },
+    "noViews": "暂无浏览",
+    "errors": {
+      "otherAccount": "此账户无法使用统计。",
+      "unavailable": "此产物无法使用统计。",
+      "reconnect": "重新连接 MindsHub 以查看统计。",
+      "temporarilyUnavailable": "统计暂时不可用。",
+      "loadFailed": "无法加载统计。"
     }
   }
 }

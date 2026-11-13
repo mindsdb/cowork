@@ -44,6 +44,7 @@ let container;
 let root;
 
 beforeEach(() => {
+  mocks.host.isMobileShell = false;
   mocks.downloadAuthenticatedResource.mockClear();
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
@@ -501,4 +502,13 @@ describe('ContextFileModal showing an attached file as text', () => {
     expect(document.body.textContent).toContain('stock.csv is no longer attached to this chat.');
     expect(document.querySelector('[role="note"]')).toBeNull();
   });
+});
+
+it('hides the unsupported mobile project file download button', async () => {
+  mocks.host.isMobileShell = true;
+  await act(async () => {
+    root.render(<ContextFileModal open projectName="acme" filePath="chart.png" onClose={() => {}} />);
+  });
+  expect([...document.querySelectorAll('button')].some((b) => b.textContent.includes('Download'))).toBe(false);
+  expect(mocks.downloadAuthenticatedResource).not.toHaveBeenCalled();
 });

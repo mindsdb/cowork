@@ -24,6 +24,12 @@
       "readyTimeoutMs": "La vista previa tardó demasiado: no empezó en {seconds} segundos, el límite de la vista previa.",
       "progressTimeoutMs": "La vista previa tardó demasiado: no avanzó durante {seconds} segundos, el límite de la vista previa."
     },
+    "truncatedMobile": {
+      "xlsx": "Se muestran hasta {rows, number} filas y {columns, number} columnas de cada hoja.",
+      "pptx": "{count, plural, one {Se muestra la primera diapositiva.} other {Se muestran las primeras # diapositivas.}}",
+      "pdf": "Se muestran las primeras {pages, number} páginas.",
+      "docx": "Se muestra parte de este documento."
+    },
     "truncated": {
       "xlsx": "Se muestran hasta {rows, number} filas y {columns, number} columnas de cada hoja. {action, select, download {Descargar} other {Abrir}} muestra la hoja completa.",
       "pptx": "{count, plural, one {Se muestra la primera diapositiva.} other {Se muestran las primeras # diapositivas.}} {action, select, download {Descargar} other {Abrir}} muestra la presentación completa.",
@@ -629,6 +635,39 @@
         "hint": "Compara el tono y el seguimiento de instrucciones",
         "prompt": "Escribe el anuncio de lanzamiento de un nuevo modo oscuro en una app de notas en tres versiones: un tuit de menos de 280 caracteres, un correo amigable de menos de 120 palabras y una entrada del registro de cambios de menos de 50 palabras. Cada una debe sonar adecuada para su canal."
       }
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "Estadísticas",
+      "hide": "Ocultar estadísticas"
+    },
+    "title": "Estadísticas",
+    "close": "Cerrar el panel de estadísticas",
+    "loading": "Cargando estadísticas",
+    "retry": "Reintentar",
+    "trackViews": "Contar visitas",
+    "trackingOff": "El seguimiento está desactivado. Actívalo para empezar a contar visitas.",
+    "metrics": {
+      "viewsInPeriod": "Visitas (30 días)",
+      "uniqueViewers": "Visitantes únicos (30 días)",
+      "totalViews": "Visitas totales",
+      "lastViewed": "Última visita"
+    },
+    "daysInUtc": "Días en UTC",
+    "chartLabel": "Visitas por día",
+    "viewers": {
+      "email": "Correo electrónico",
+      "lastSeen": "Última visita",
+      "restrictedOnly": "Los nombres de quienes lo ven solo se registran cuando el acceso es restringido."
+    },
+    "noViews": "Aún no hay visitas",
+    "errors": {
+      "otherAccount": "Las estadísticas no están disponibles para esta cuenta.",
+      "unavailable": "Las estadísticas no están disponibles para este artefacto.",
+      "reconnect": "Vuelve a conectar MindsHub para ver las estadísticas.",
+      "temporarilyUnavailable": "Las estadísticas no están disponibles temporalmente.",
+      "loadFailed": "No se pudieron cargar las estadísticas."
     }
   }
 }

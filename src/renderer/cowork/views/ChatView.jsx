@@ -1,3 +1,4 @@
+import { downloadUnavailableMessage } from '../lib/browserDownload';
 import { diagnostic } from '../../../shared/diagnostics';
 /* Anton Chat — Direction A: Conservative.
    Near-1:1 port of docs/design-guidelines/chat.html (ChatConservative).
@@ -1002,7 +1003,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
       return;
     }
     if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
-      showStatus('error', t('chatView.artifactCard.noDownloadableFile'));
+      showStatus('error', downloadUnavailableMessage(t('chatView.artifactCard.noDownloadableFile')));
       return;
     }
     showStatus(doneKind, doneText);

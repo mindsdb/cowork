@@ -467,7 +467,10 @@
         "1": "Build a landing page for a product launch",
         "2": "Build a dashboard website",
         "3": "Build a portfolio website",
-        "4": "Build a company blog"
+        "4": "Build a company blog",
+        "5": "Build a project status page",
+        "6": "Build a team offsite invitation page",
+        "7": "Build a feature announcement page"
       }
     },
     "apps": {
@@ -496,7 +499,8 @@
         "2": "Create acquisition due diligence checklist",
         "3": "Compare top VLM models using Hugging Face data",
         "4": "Calculate IRR for investment cash flows",
-        "5": "Clean up my spreadsheet and chart it"
+        "5": "Clean up my spreadsheet and chart it",
+        "6": "Pull key terms out of a contract"
       }
     },
     "visualization": {
@@ -507,7 +511,9 @@
         "0": "Show weekly sales activity via heatmap",
         "1": "Generate customer churn analysis and insights",
         "2": "Track monthly KPIs across departments",
-        "3": "Analyze competitor landscape across market segments"
+        "3": "Analyze competitor landscape across market segments",
+        "4": "Build a project rollout timeline",
+        "5": "Map a process as a diagram"
       }
     },
     "wide-research": {
@@ -522,7 +528,10 @@
         "4": "Research customer personas and journey maps",
         "5": "Summarize a document and draft my reply",
         "6": "Choose a local model that fits my computer",
-        "7": "Review what is on my plate this week"
+        "7": "Review what is on my plate this week",
+        "8": "Research a prospect and draft outreach",
+        "9": "Coach me on a deal from a call transcript",
+        "10": "Turn meeting notes into action items"
       }
     },
     "games": {
