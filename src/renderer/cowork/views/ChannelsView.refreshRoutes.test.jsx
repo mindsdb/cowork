@@ -30,6 +30,10 @@ vi.mock('../api', () => ({
   updateChannelBinding: vi.fn(),
   deleteChannelBinding: vi.fn(),
   fetchProjects: vi.fn(async () => []),
+  fetchChannelSenders: vi.fn(async () => ({ senders: [], forbidden: false })),
+  approveChannelSender: vi.fn(),
+  blockChannelSender: vi.fn(),
+  deleteChannelSender: vi.fn(),
 }));
 
 import { fetchChannelBindings } from '../api';

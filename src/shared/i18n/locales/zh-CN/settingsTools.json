@@ -168,11 +168,50 @@
       "label": "标签",
       "trigger": "触发条件",
       "project": "项目",
-      "instructions": "指令"
+      "instructions": "指令",
+      "capabilities": "可使用"
     },
     "patternPlaceholder": "匹配模式",
     "instructionsPlaceholder": "此聊天的角色 / 语气",
     "save": "保存",
-    "removeRoute": "移除路由"
+    "removeRoute": "移除路由",
+    "switch": {
+      "allow_scratchpad": "代码和文件",
+      "allow_connectors": "连接",
+      "allow_memory_writes": "写入记忆",
+      "allow_file_replies": "回传文件"
+    },
+    "scratchpadWarning": "开启后，对方的请求可以读取和修改此项目的文件，包括其记忆和连接设置。",
+    "connectorsNeedScratchpad": "需要先开启代码和文件",
+    "switchesAdminOnly": "由组织管理员更改这些设置。"
+  },
+  "channelSenders": {
+    "title": "人员",
+    "intro": "只有你批准的人才能通过这个机器人联系智能体。其他人发来的消息不会启动任何操作，而是显示在这里。请核对 ID，而不只是名字：任何人都可以随意取名。",
+    "loading": "正在加载人员…",
+    "loadFailed": "无法加载此频道的人员",
+    "actionFailed": "操作未成功，请重试。",
+    "adminOnly": "由组织管理员管理谁可以使用这个机器人。",
+    "section": {
+      "pending": "等待批准（{count}）",
+      "allowed": "已允许（{count}）",
+      "blocked": "已屏蔽（{count}）"
+    },
+    "noPending": "没有人在等待。",
+    "senderIdLabel": "平台上的发送者 ID",
+    "chatIdLabel": "群聊 ID",
+    "group": "群组",
+    "approve": "批准",
+    "block": "屏蔽",
+    "remove": "移除",
+    "pendingCount": "{count, plural, other {# 人等待中}}",
+    "pairing": {
+      "create": "生成配对码",
+      "codeLabel": "配对码",
+      "copy": "复制",
+      "copied": "已复制",
+      "howTo": "只把这个配对码给一个人。对方在 {time} 前用自己的账号发给机器人即可加入。仅可使用一次。",
+      "tooMany": "此频道未使用的配对码已达上限。请等待其中一个过期。"
+    }
   }
 }

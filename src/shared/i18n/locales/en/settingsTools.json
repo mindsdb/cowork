@@ -168,11 +168,50 @@
       "label": "Label",
       "trigger": "Trigger",
       "project": "Project",
-      "instructions": "Instructions"
+      "instructions": "Instructions",
+      "capabilities": "Can use"
     },
     "patternPlaceholder": "pattern",
     "instructionsPlaceholder": "persona / tone for this chat",
     "save": "Save",
-    "removeRoute": "Remove route"
+    "removeRoute": "Remove route",
+    "switch": {
+      "allow_scratchpad": "Code and files",
+      "allow_connectors": "Connections",
+      "allow_memory_writes": "Memory writes",
+      "allow_file_replies": "Send files back"
+    },
+    "scratchpadWarning": "Their requests can then read and change this project's files, including its memory and connection settings.",
+    "connectorsNeedScratchpad": "Needs code and files on",
+    "switchesAdminOnly": "An organization admin changes these."
+  },
+  "channelSenders": {
+    "title": "People",
+    "intro": "Only people you approve can reach the agent through this bot. A message from anyone else starts nothing and shows up here. Check the ID, not only the name: anyone can choose any name.",
+    "loading": "Loading people…",
+    "loadFailed": "Couldn't load the people for this channel",
+    "actionFailed": "That didn't work. Try again.",
+    "adminOnly": "An organization admin manages who can use this bot.",
+    "section": {
+      "pending": "Waiting for approval ({count})",
+      "allowed": "Allowed ({count})",
+      "blocked": "Blocked ({count})"
+    },
+    "noPending": "No one is waiting.",
+    "senderIdLabel": "Sender ID on the platform",
+    "chatIdLabel": "Group chat ID",
+    "group": "group",
+    "approve": "Approve",
+    "block": "Block",
+    "remove": "Remove",
+    "pendingCount": "{count, plural, one {# person waiting} other {# people waiting}}",
+    "pairing": {
+      "create": "Make a pairing code",
+      "codeLabel": "Pairing code",
+      "copy": "Copy",
+      "copied": "Copied",
+      "howTo": "Give this code to one person. They send it to the bot from their own account before {time}, and they're in. It works once.",
+      "tooMany": "This channel already has as many unused codes as it can hold. Wait for one to expire."
+    }
   }
 }

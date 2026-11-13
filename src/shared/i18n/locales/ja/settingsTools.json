@@ -168,11 +168,50 @@
       "label": "ラベル",
       "trigger": "トリガー",
       "project": "プロジェクト",
-      "instructions": "指示"
+      "instructions": "指示",
+      "capabilities": "使用できる機能"
     },
     "patternPlaceholder": "パターン",
     "instructionsPlaceholder": "このチャットでのペルソナ/口調",
     "save": "保存",
-    "removeRoute": "ルートを削除"
+    "removeRoute": "ルートを削除",
+    "switch": {
+      "allow_scratchpad": "コードとファイル",
+      "allow_connectors": "接続",
+      "allow_memory_writes": "メモリへの書き込み",
+      "allow_file_replies": "ファイルの返信"
+    },
+    "scratchpadWarning": "オンにすると、このユーザーの依頼でこのプロジェクトのファイル（メモリと接続設定を含む）の読み取りと変更ができるようになります。",
+    "connectorsNeedScratchpad": "コードとファイルをオンにする必要があります",
+    "switchesAdminOnly": "これらの設定は組織の管理者が変更します。"
+  },
+  "channelSenders": {
+    "title": "ユーザー",
+    "intro": "このボット経由でエージェントにアクセスできるのは、承認したユーザーだけです。それ以外のユーザーからのメッセージでは何も実行されず、ここに表示されます。名前は誰でも自由に設定できるため、名前だけでなく ID も確認してください。",
+    "loading": "ユーザーを読み込んでいます…",
+    "loadFailed": "このチャネルのユーザーを読み込めませんでした",
+    "actionFailed": "うまくいきませんでした。もう一度お試しください。",
+    "adminOnly": "このボットを使えるユーザーは組織の管理者が管理します。",
+    "section": {
+      "pending": "承認待ち ({count})",
+      "allowed": "許可済み ({count})",
+      "blocked": "ブロック済み ({count})"
+    },
+    "noPending": "承認待ちのユーザーはいません。",
+    "senderIdLabel": "プラットフォーム上の送信者 ID",
+    "chatIdLabel": "グループチャット ID",
+    "group": "グループ",
+    "approve": "承認",
+    "block": "ブロック",
+    "remove": "削除",
+    "pendingCount": "{count, plural, other {#人が承認待ち}}",
+    "pairing": {
+      "create": "ペアリングコードを作成",
+      "codeLabel": "ペアリングコード",
+      "copy": "コピー",
+      "copied": "コピーしました",
+      "howTo": "このコードは 1 人にだけ渡してください。その人が {time} までに自分のアカウントからボットに送ると承認されます。使えるのは 1 回だけです。",
+      "tooMany": "このチャネルの未使用コードはすでに上限に達しています。いずれかが期限切れになるまでお待ちください。"
+    }
   }
 }

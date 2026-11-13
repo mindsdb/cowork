@@ -168,11 +168,50 @@
       "label": "Bezeichnung",
       "trigger": "Auslöser",
       "project": "Projekt",
-      "instructions": "Anweisungen"
+      "instructions": "Anweisungen",
+      "capabilities": "Darf nutzen"
     },
     "patternPlaceholder": "Muster",
     "instructionsPlaceholder": "Persona / Ton für diesen Chat",
     "save": "Speichern",
-    "removeRoute": "Route entfernen"
+    "removeRoute": "Route entfernen",
+    "switch": {
+      "allow_scratchpad": "Code und Dateien",
+      "allow_connectors": "Verbindungen",
+      "allow_memory_writes": "Ins Gedächtnis schreiben",
+      "allow_file_replies": "Dateien zurücksenden"
+    },
+    "scratchpadWarning": "Dann können Anfragen dieser Person die Dateien dieses Projekts lesen und ändern, einschließlich Gedächtnis und Verbindungseinstellungen.",
+    "connectorsNeedScratchpad": "Erfordert Code und Dateien",
+    "switchesAdminOnly": "Ein Administrator der Organisation ändert diese Einstellungen."
+  },
+  "channelSenders": {
+    "title": "Personen",
+    "intro": "Nur Personen, die Sie freigeben, erreichen den Agenten über diesen Bot. Eine Nachricht von anderen startet nichts und erscheint hier. Prüfen Sie die ID, nicht nur den Namen: Jeder kann jeden Namen wählen.",
+    "loading": "Personen werden geladen…",
+    "loadFailed": "Die Personen dieses Kanals konnten nicht geladen werden",
+    "actionFailed": "Das hat nicht geklappt. Versuchen Sie es erneut.",
+    "adminOnly": "Ein Administrator der Organisation legt fest, wer diesen Bot nutzen darf.",
+    "section": {
+      "pending": "Warten auf Freigabe ({count})",
+      "allowed": "Zugelassen ({count})",
+      "blocked": "Blockiert ({count})"
+    },
+    "noPending": "Niemand wartet.",
+    "senderIdLabel": "Absender-ID auf der Plattform",
+    "chatIdLabel": "ID des Gruppenchats",
+    "group": "Gruppe",
+    "approve": "Freigeben",
+    "block": "Blockieren",
+    "remove": "Entfernen",
+    "pendingCount": "{count, plural, one {# Person wartet} other {# Personen warten}}",
+    "pairing": {
+      "create": "Kopplungscode erstellen",
+      "codeLabel": "Kopplungscode",
+      "copy": "Kopieren",
+      "copied": "Kopiert",
+      "howTo": "Geben Sie diesen Code genau einer Person. Sie sendet ihn vor {time} von ihrem eigenen Konto an den Bot und ist damit zugelassen. Er funktioniert einmal.",
+      "tooMany": "Dieser Kanal hat bereits die höchste Zahl ungenutzter Codes. Warten Sie, bis einer abläuft."
+    }
   }
 }

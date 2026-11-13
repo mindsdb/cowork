@@ -168,11 +168,50 @@
       "label": "Etichetta",
       "trigger": "Attivazione",
       "project": "Progetto",
-      "instructions": "Istruzioni"
+      "instructions": "Istruzioni",
+      "capabilities": "Può usare"
     },
     "patternPlaceholder": "pattern",
     "instructionsPlaceholder": "personalità / tono per questa chat",
     "save": "Salva",
-    "removeRoute": "Rimuovi instradamento"
+    "removeRoute": "Rimuovi instradamento",
+    "switch": {
+      "allow_scratchpad": "Codice e file",
+      "allow_connectors": "Connessioni",
+      "allow_memory_writes": "Scrivere in memoria",
+      "allow_file_replies": "Rimandare i file"
+    },
+    "scratchpadWarning": "Le sue richieste potranno leggere e modificare i file di questo progetto, compresi la memoria e le impostazioni delle connessioni.",
+    "connectorsNeedScratchpad": "Richiede codice e file",
+    "switchesAdminOnly": "Un amministratore dell’organizzazione modifica queste impostazioni."
+  },
+  "channelSenders": {
+    "title": "Persone",
+    "intro": "Solo le persone che approvi possono raggiungere l’agente tramite questo bot. Un messaggio da chiunque altro non avvia nulla e compare qui. Controlla l’ID, non solo il nome: chiunque può scegliere qualsiasi nome.",
+    "loading": "Caricamento delle persone…",
+    "loadFailed": "Impossibile caricare le persone di questo canale",
+    "actionFailed": "Non ha funzionato. Riprova.",
+    "adminOnly": "Un amministratore dell’organizzazione decide chi può usare questo bot.",
+    "section": {
+      "pending": "In attesa di approvazione ({count})",
+      "allowed": "Consentite ({count})",
+      "blocked": "Bloccate ({count})"
+    },
+    "noPending": "Nessuno è in attesa.",
+    "senderIdLabel": "ID del mittente sulla piattaforma",
+    "chatIdLabel": "ID della chat di gruppo",
+    "group": "gruppo",
+    "approve": "Approva",
+    "block": "Blocca",
+    "remove": "Rimuovi",
+    "pendingCount": "{count, plural, one {# persona in attesa} other {# persone in attesa}}",
+    "pairing": {
+      "create": "Crea un codice di abbinamento",
+      "codeLabel": "Codice di abbinamento",
+      "copy": "Copia",
+      "copied": "Copiato",
+      "howTo": "Dai questo codice a una sola persona. Lo invia al bot dal proprio account entro le {time} e viene ammessa. Funziona una volta.",
+      "tooMany": "Questo canale ha già il numero massimo di codici non usati. Aspetta che uno scada."
+    }
   }
 }

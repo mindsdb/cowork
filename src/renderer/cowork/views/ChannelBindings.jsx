@@ -3,7 +3,8 @@
 // panel is mainly for editing them (label, trigger rule, pinned project) and
 // removing stale ones; a manual "Add route" form is provided for pre-wiring a
 // known chat id. When `channelType` is given the panel is scoped to that one
-// channel: rows are filtered and new routes are created on it.
+// channel: rows are filtered and new routes are created on it. Each route also
+// carries what an allowed person's turns may use; all off by default.
 
 import { useEffect, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
@@ -20,9 +21,10 @@ import { Select } from '../components/ui';
 import { useTranslation } from '../../lib/i18n';
 
 const TRIGGERS = ['always', 'mention_only', 'regex'];
+const SWITCHES = ['allow_scratchpad', 'allow_connectors', 'allow_memory_writes', 'allow_file_replies'];
 const BLANK = { channel_type: '', external_group_id: '', display_name: '', trigger_rule: 'always', trigger_pattern: '', anton_project_id: '' };
 
-export default function ChannelBindings({ plugins = [], channelType = null, refreshToken = 0 }) {
+export default function ChannelBindings({ plugins = [], channelType = null, refreshToken = 0, switchesReadOnly = false }) {
   const { t } = useTranslation('settingsTools');
   const [bindings, setBindings] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -51,6 +53,13 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
   function rowValue(b, name) {
     const e = edits[b.id] || {};
     return name in e ? e[name] : (b[name] ?? '');
+  }
+  // Connectors count only with the scratchpad on (the server does the same) and
+  // show off without it, so any scratchpad change saves connectors as shown: off.
+  function toggleSwitch(b, name, on) {
+    const connectorsShownOff = name === 'allow_scratchpad' && (!on || !rowValue(b, 'allow_scratchpad'));
+    editField(b.id, name, on);
+    if (connectorsShownOff && rowValue(b, 'allow_connectors') !== false) editField(b.id, 'allow_connectors', false);
   }
 
   async function saveRow(b) {
@@ -147,7 +156,7 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
       ) : (
         <table className="channels-route-table">
           <thead>
-            <tr>{channelType ? null : <th>{t('channelBindings.columns.channel')}</th>}<th>{t('channelBindings.columns.chat')}</th><th>{t('channelBindings.columns.label')}</th><th>{t('channelBindings.columns.trigger')}</th><th>{t('channelBindings.columns.project')}</th><th>{t('channelBindings.columns.instructions')}</th><th></th></tr>
+            <tr>{channelType ? null : <th>{t('channelBindings.columns.channel')}</th>}<th>{t('channelBindings.columns.chat')}</th><th>{t('channelBindings.columns.label')}</th><th>{t('channelBindings.columns.trigger')}</th><th>{t('channelBindings.columns.project')}</th><th>{t('channelBindings.columns.instructions')}</th><th>{t('channelBindings.columns.capabilities')}</th><th></th></tr>
           </thead>
           <tbody>
             {rows.map((b) => {
@@ -192,6 +201,31 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
                       placeholder={t('channelBindings.instructionsPlaceholder')}
                       value={rowValue(b, 'instructions')}
                       onChange={(e) => editField(b.id, 'instructions', e.target.value)} />
+                  </td>
+                  <td>
+                    {SWITCHES.map((name) => {
+                      const scratchpadOn = !!rowValue(b, 'allow_scratchpad');
+                      const needsScratchpad = name === 'allow_connectors' && !scratchpadOn;
+                      return (
+                        <label key={name} className="channels-switch">
+                          <input
+                            type="checkbox"
+                            aria-label={t(`channelBindings.switch.${name}`)}
+                            checked={!!rowValue(b, name) && !needsScratchpad}
+                            disabled={switchesReadOnly || needsScratchpad}
+                            onChange={(e) => toggleSwitch(b, name, e.target.checked)}
+                          />
+                          <span>{t(`channelBindings.switch.${name}`)}</span>
+                          {name === 'allow_scratchpad' ? (
+                            <small className="channels-muted">{t('channelBindings.scratchpadWarning')}</small>
+                          ) : null}
+                          {needsScratchpad ? (
+                            <small className="channels-muted">{t('channelBindings.connectorsNeedScratchpad')}</small>
+                          ) : null}
+                        </label>
+                      );
+                    })}
+                    {switchesReadOnly ? <small className="channels-muted">{t('channelBindings.switchesAdminOnly')}</small> : null}
                   </td>
                   <td className="channels-route-actions">
                     {dirty ? (

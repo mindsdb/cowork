@@ -168,11 +168,50 @@
       "label": "레이블",
       "trigger": "트리거",
       "project": "프로젝트",
-      "instructions": "지침"
+      "instructions": "지침",
+      "capabilities": "사용 가능"
     },
     "patternPlaceholder": "패턴",
     "instructionsPlaceholder": "이 채팅의 페르소나/어조",
     "save": "저장",
-    "removeRoute": "라우트 제거"
+    "removeRoute": "라우트 제거",
+    "switch": {
+      "allow_scratchpad": "코드 및 파일",
+      "allow_connectors": "연결",
+      "allow_memory_writes": "메모리 쓰기",
+      "allow_file_replies": "파일 보내기"
+    },
+    "scratchpadWarning": "켜면 이 사람의 요청으로 이 프로젝트의 파일(메모리와 연결 설정 포함)을 읽고 변경할 수 있습니다.",
+    "connectorsNeedScratchpad": "코드 및 파일을 켜야 합니다",
+    "switchesAdminOnly": "조직 관리자가 이 설정을 변경합니다."
+  },
+  "channelSenders": {
+    "title": "사용자",
+    "intro": "승인한 사용자만 이 봇을 통해 에이전트에 접근할 수 있습니다. 그 밖의 사람이 보낸 메시지는 아무것도 실행하지 않고 여기에 표시됩니다. 이름은 누구나 마음대로 정할 수 있으므로 이름뿐 아니라 ID도 확인하세요.",
+    "loading": "사용자를 불러오는 중…",
+    "loadFailed": "이 채널의 사용자를 불러오지 못했습니다",
+    "actionFailed": "실패했습니다. 다시 시도하세요.",
+    "adminOnly": "이 봇을 사용할 수 있는 사람은 조직 관리자가 관리합니다.",
+    "section": {
+      "pending": "승인 대기 중 ({count})",
+      "allowed": "허용됨 ({count})",
+      "blocked": "차단됨 ({count})"
+    },
+    "noPending": "대기 중인 사람이 없습니다.",
+    "senderIdLabel": "플랫폼의 발신자 ID",
+    "chatIdLabel": "그룹 채팅 ID",
+    "group": "그룹",
+    "approve": "승인",
+    "block": "차단",
+    "remove": "제거",
+    "pendingCount": "{count, plural, other {#명 대기 중}}",
+    "pairing": {
+      "create": "페어링 코드 만들기",
+      "codeLabel": "페어링 코드",
+      "copy": "복사",
+      "copied": "복사됨",
+      "howTo": "이 코드는 한 사람에게만 주세요. 그 사람이 {time} 전에 자신의 계정으로 봇에 보내면 승인됩니다. 한 번만 사용할 수 있습니다.",
+      "tooMany": "이 채널은 사용하지 않은 코드가 이미 최대 개수입니다. 하나가 만료될 때까지 기다리세요."
+    }
   }
 }

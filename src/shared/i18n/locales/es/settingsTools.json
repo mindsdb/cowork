@@ -168,11 +168,50 @@
       "label": "Etiqueta",
       "trigger": "Activación",
       "project": "Proyecto",
-      "instructions": "Instrucciones"
+      "instructions": "Instrucciones",
+      "capabilities": "Puede usar"
     },
     "patternPlaceholder": "patrón",
     "instructionsPlaceholder": "personalidad / tono para este chat",
     "save": "Guardar",
-    "removeRoute": "Quitar ruta"
+    "removeRoute": "Quitar ruta",
+    "switch": {
+      "allow_scratchpad": "Código y archivos",
+      "allow_connectors": "Conexiones",
+      "allow_memory_writes": "Escribir en memoria",
+      "allow_file_replies": "Devolver archivos"
+    },
+    "scratchpadWarning": "Así sus pedidos pueden leer y cambiar los archivos de este proyecto, incluida su memoria y la configuración de sus conexiones.",
+    "connectorsNeedScratchpad": "Requiere código y archivos",
+    "switchesAdminOnly": "Un administrador de la organización cambia esto."
+  },
+  "channelSenders": {
+    "title": "Personas",
+    "intro": "Solo las personas que apruebes pueden hablar con el agente a través de este bot. Un mensaje de cualquier otra persona no inicia nada y aparece aquí. Revisa el ID, no solo el nombre: cualquiera puede elegir cualquier nombre.",
+    "loading": "Cargando personas…",
+    "loadFailed": "No se pudieron cargar las personas de este canal",
+    "actionFailed": "No funcionó. Inténtalo de nuevo.",
+    "adminOnly": "Un administrador de la organización decide quién puede usar este bot.",
+    "section": {
+      "pending": "Esperando aprobación ({count})",
+      "allowed": "Permitidas ({count})",
+      "blocked": "Bloqueadas ({count})"
+    },
+    "noPending": "No hay nadie esperando.",
+    "senderIdLabel": "ID del remitente en la plataforma",
+    "chatIdLabel": "ID del chat grupal",
+    "group": "grupo",
+    "approve": "Aprobar",
+    "block": "Bloquear",
+    "remove": "Quitar",
+    "pendingCount": "{count, plural, one {# persona esperando} other {# personas esperando}}",
+    "pairing": {
+      "create": "Crear un código de vinculación",
+      "codeLabel": "Código de vinculación",
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "howTo": "Da este código a una sola persona. Debe enviarlo al bot desde su propia cuenta antes de las {time} y quedará dentro. Funciona una vez.",
+      "tooMany": "Este canal ya tiene el máximo de códigos sin usar. Espera a que uno caduque."
+    }
   }
 }

@@ -168,11 +168,50 @@
       "label": "Libellé",
       "trigger": "Déclencheur",
       "project": "Projet",
-      "instructions": "Instructions"
+      "instructions": "Instructions",
+      "capabilities": "Peut utiliser"
     },
     "patternPlaceholder": "motif",
     "instructionsPlaceholder": "persona / ton pour cette discussion",
     "save": "Enregistrer",
-    "removeRoute": "Retirer la route"
+    "removeRoute": "Retirer la route",
+    "switch": {
+      "allow_scratchpad": "Code et fichiers",
+      "allow_connectors": "Connexions",
+      "allow_memory_writes": "Écrire en mémoire",
+      "allow_file_replies": "Renvoyer des fichiers"
+    },
+    "scratchpadWarning": "Ses demandes peuvent alors lire et modifier les fichiers de ce projet, y compris sa mémoire et ses paramètres de connexion.",
+    "connectorsNeedScratchpad": "Nécessite code et fichiers",
+    "switchesAdminOnly": "Un administrateur de l’organisation modifie ces réglages."
+  },
+  "channelSenders": {
+    "title": "Personnes",
+    "intro": "Seules les personnes que vous approuvez peuvent joindre l’agent via ce bot. Un message de quelqu’un d’autre ne lance rien et apparaît ici. Vérifiez l’identifiant, pas seulement le nom : n’importe qui peut choisir n’importe quel nom.",
+    "loading": "Chargement des personnes…",
+    "loadFailed": "Impossible de charger les personnes de ce canal",
+    "actionFailed": "Cela n’a pas fonctionné. Réessayez.",
+    "adminOnly": "Un administrateur de l’organisation décide qui peut utiliser ce bot.",
+    "section": {
+      "pending": "En attente d’approbation ({count})",
+      "allowed": "Autorisées ({count})",
+      "blocked": "Bloquées ({count})"
+    },
+    "noPending": "Personne n’attend.",
+    "senderIdLabel": "Identifiant de l’expéditeur sur la plateforme",
+    "chatIdLabel": "Identifiant de la discussion de groupe",
+    "group": "groupe",
+    "approve": "Approuver",
+    "block": "Bloquer",
+    "remove": "Retirer",
+    "pendingCount": "{count, plural, one {# personne en attente} other {# personnes en attente}}",
+    "pairing": {
+      "create": "Créer un code d’association",
+      "codeLabel": "Code d’association",
+      "copy": "Copier",
+      "copied": "Copié",
+      "howTo": "Donnez ce code à une seule personne. Elle l’envoie au bot depuis son propre compte avant {time}, et elle est acceptée. Il fonctionne une fois.",
+      "tooMany": "Ce canal a déjà le nombre maximal de codes inutilisés. Attendez qu’un code expire."
+    }
   }
 }

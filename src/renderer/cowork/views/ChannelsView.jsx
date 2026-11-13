@@ -1,7 +1,7 @@
 // `<ChannelsView>` — connect messaging channels (Telegram/Slack/Discord/
 // WhatsApp) to the agent. Master–detail layout: a left rail lists the
 // channels with their status, the right pane shows the selected channel's
-// credentials plus its routes. Capability flags from the server decide which
+// credentials, the people who may use its bot, and its routes. Capability flags from the server decide which
 // fields/buttons render. Secrets are masked on read (is_set / value:null) and
 // only sent when the operator types a new value.
 //
@@ -10,11 +10,12 @@
 // adapter online — channels without setup must have their webhook URL
 // registered on the platform side (we surface the path for that).
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { iconSize } from '../components/ui/Icon';
 import { Badge, Button, Field, Tooltip } from '../components/ui';
 import ChannelBindings from './ChannelBindings';
+import ChannelSenders from './ChannelSenders';
 import { useTranslation } from '../../lib/i18n';
 import {
   fetchChannelPlugins,
@@ -28,7 +29,12 @@ import {
   testChannelConnection,
   fetchChannelAgent,
   setChannelAgent,
+  fetchChannelSenders,
 } from '../api';
+
+// How often the open page asks for new pending requests: a stranger's message
+// only shows up here, so the owner should not have to press Refresh.
+export const PENDING_POLL_MS = 10_000;
 
 // Which harness answers in channels — distinct from the desktop harness
 // toggle. Changing it applies to NEW conversations; existing chats stay pinned
@@ -343,6 +349,46 @@ export default function ChannelsView() {
   const [selectedType, setSelectedType] = useState(null);
   // Bumped by Refresh so the Routes panel refetches its bindings.
   const [refreshCount, setRefreshCount] = useState(0);
+  // Pending requests per channel type, from one poll across all channels.
+  const [pendingByType, setPendingByType] = useState({});
+  // Bumped by each pending poll so the open People panel refetches too.
+  const [pendingTick, setPendingTick] = useState(0);
+  const pollRef = useRef(null);
+  // The sender routes refuse a non-admin in org mode; the route switches do too.
+  // null until the first poll answers, and the switches stay read-only until then.
+  const [sendersForbidden, setSendersForbidden] = useState(null);
+  const pollAttemptRef = useRef(0);
+
+  async function pollPending() {
+    const attemptId = ++pollAttemptRef.current;
+    let result;
+    try {
+      result = await fetchChannelSenders({ status: 'pending' });
+    } catch {
+      // The People panel shows the failure; counts that may be wrong are dropped,
+      // and a save of the switches is left to the server to refuse.
+      if (pollAttemptRef.current !== attemptId) return;
+      setPendingByType({});
+      setSendersForbidden((known) => known ?? false);
+      return;
+    }
+    if (pollAttemptRef.current !== attemptId) return;
+    setSendersForbidden(result.forbidden);
+    if (result.forbidden) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+      return;
+    }
+    const counts = {};
+    for (const s of result.senders) counts[s.channel_type] = (counts[s.channel_type] || 0) + 1;
+    setPendingByType(counts);
+    setPendingTick((n) => n + 1);
+  }
+  useEffect(() => {
+    pollPending();
+    pollRef.current = setInterval(pollPending, PENDING_POLL_MS);
+    return () => clearInterval(pollRef.current);
+  }, []);
 
   async function refresh() {
     const [pl, st] = await Promise.all([fetchChannelPlugins(), fetchChannelStatus()]);
@@ -355,6 +401,7 @@ export default function ChannelsView() {
   function refreshAll() {
     setRefreshCount((n) => n + 1);
     refresh();
+    pollPending();
   }
 
   // Fall back to the first plugin so the detail pane is never empty once the
@@ -389,6 +436,7 @@ export default function ChannelsView() {
             {plugins.map((p) => {
               const st = statusByType[p.channel_type];
               const isSelected = p.channel_type === selected?.channel_type;
+              const pending = pendingByType[p.channel_type] || 0;
               return (
                 <button
                   key={p.channel_type}
@@ -402,6 +450,11 @@ export default function ChannelsView() {
                     {p.display_name}
                     <code className="channels-type">{p.channel_type}</code>
                   </span>
+                  {pending ? (
+                    <Badge variant="warning" size="xs" aria-label={t('channelSenders.pendingCount', { count: pending })}>
+                      {pending}
+                    </Badge>
+                  ) : null}
                   <StatusBadge
                     active={st?.status === 'active'}
                     configured={st?.configured}
@@ -420,11 +473,19 @@ export default function ChannelsView() {
                   status={statusByType[selected.channel_type]}
                   onChanged={refresh}
                 />
+                <ChannelSenders
+                  key={`senders-${selected.channel_type}`}
+                  channelType={selected.channel_type}
+                  orgReady={selected.org_ready !== false}
+                  onChanged={pollPending}
+                  refreshToken={refreshCount + pendingTick}
+                />
                 <ChannelBindings
                   key={`routes-${selected.channel_type}`}
                   refreshToken={refreshCount}
                   plugins={plugins}
                   channelType={selected.channel_type}
+                  switchesReadOnly={sendersForbidden !== false}
                 />
               </>
             ) : null}
