@@ -135,7 +135,7 @@ export const SIGN_IN_FRAME_HOSTS: readonly string[] = [
     of CARD_FIELD_EXEMPT, ignoring case, is replaced with a space, and the
     field is card-named when CARD_FIELD_NAME, ignoring case, matches what is
     left of either form. CARD_FIELD_EXEMPT matches the number of a card that
-    isn't a payment card (a gift, loyalty, library or insurance card), so
+    isn't a payment card, such as a gift, loyalty, library or insurance card, so
     giftCardNumber and "Library card number" are ordinary fields, while
     giftCardCvv and a field named cardNumber with the label "Gift card
     number" stay card-named. A card-named field is a secret field: a read
