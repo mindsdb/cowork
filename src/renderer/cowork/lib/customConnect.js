@@ -12,26 +12,46 @@ import { SHAREPOINT_ENGINE } from './connectorIds';
 
 export const ADDRESS_FIELD = '_api_address';
 
-const ADDRESS_HELP = "The address your provider's documentation gives for its API, such as api.example.com.";
+const ADDRESS_HELP = "Only the host your provider's documentation gives for its API, such as api.example.com, with no path or version.";
 const TEMPLATE_NOTE = 'Anton wrote the field names and help below. Check them against your provider before entering a key.';
 const NO_CHECK_NOTE = 'This connector has no connection check, so it cannot be connected. If the API takes a key, ask Anton to build it again; if it takes none, Anton can use it without a connector.';
 
 const MARKER = '__custom_connection__';
 
 /**
+ * Where the connector sends the member's key, in one sentence, from the
+ * server's summary (an auth type and the names that carry a value).
+ * @param {{type?: string, names?: string[]}|null|undefined} summary
+ * @returns {string} The sentence, or '' when there is no usable summary.
+ */
+export function keySentAs(summary) {
+  const names = Array.isArray(summary?.names) ? summary.names.filter((n) => typeof n === 'string' && n) : [];
+  if (summary?.type === 'basic') return 'Sent as HTTP Basic sign-in.';
+  if (summary?.type === 'header' && names.length) {
+    return `Sent as the ${names.join(', ')} header${names.length > 1 ? 's' : ''}.`;
+  }
+  if (summary?.type === 'query' && names.length) {
+    return `Sent in the request URL as ${names.join(', ')}.`;
+  }
+  return '';
+}
+
+/**
  * Shape a custom connector's spec into its cloud connect form.
  * @param {object} spec The connect spec App builds from the connector's form.
  * @param {object|null} check The connector's check, or null when it has none.
  * @param {string} label The connector's label, the connection's default name.
+ * @param {{type?: string, names?: string[]}|null} [authSummary] Where the key is sent.
  * @returns {object}
  */
-export function toCustomConnectSpec(spec, check, label) {
+export function toCustomConnectSpec(spec, check, label, authSummary = null) {
   const templateFields = Array.isArray(spec?.fields) ? spec.fields : [];
   const hasCheck = Boolean(check && typeof check === 'object');
+  const sentAs = keySentAs(authSummary);
   return {
     ...spec,
     _custom_connect: { connectorId: spec?._connector_id || spec?.engine, label, hasCheck },
-    form_warning: hasCheck ? TEMPLATE_NOTE : NO_CHECK_NOTE,
+    form_warning: hasCheck ? [TEMPLATE_NOTE, sentAs].filter(Boolean).join(' ') : NO_CHECK_NOTE,
     actions: hasCheck
       ? [{ id: 'submit', label: 'Connect', kind: 'primary' }, { id: 'cancel', label: 'Cancel', kind: 'cancel' }]
       : [{ id: 'cancel', label: 'Close', kind: 'cancel' }],
@@ -61,7 +81,7 @@ export function toCustomConnectSpec(spec, check, label) {
  */
 export function connectSpecFor({ full, baseSpec, label, orgMode, editingConnection = null }) {
   if (!orgMode) return baseSpec;
-  if (full?.custom) return toCustomConnectSpec(baseSpec, full.check || null, label);
+  if (full?.custom) return toCustomConnectSpec(baseSpec, full.check || null, label, full.auth_summary || null);
   return toCloudSpec(baseSpec, editingConnection);
 }
 
@@ -97,6 +117,7 @@ const CHECK_FAILURES = {
   check_not_protected: 'The check answered without your key, so it cannot prove the key works. Ask Anton to build the connector again with an endpoint that needs the key.',
   authentication_failed: 'The provider refused these credentials.',
   provider_error: 'The provider answered with an error.',
+  check_path_not_found: "The provider has no such path. The connector's paths may be missing a version such as /v2; ask Anton to build the connector again.",
   host_unresolved: 'That address could not be found.',
   host_not_public: 'That address is not on the public internet.',
   address_refused: 'That address cannot be used.',

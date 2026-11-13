@@ -48,11 +48,12 @@ import {
   fetchAuthenticatedBlob,
   fetchAuthenticatedResponse,
 } from '../../lib/authenticatedResource';
-import { downloadFilename } from '../../lib/browserDownload';
+import { downloadFilename, MOBILE_DOWNLOAD_NOTE } from '../../lib/browserDownload';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { limitArtifactFrames } from '../artifact/artifactPreviewUtils';
-import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
-import { DOWNLOAD_FAILED_NOTE, DocumentPreview, PREVIEW_FAILED_DOWNLOADED_NOTE } from '../../preview/DocumentPreview';
+import { noPreviewDownloadedNote } from '../../lib/artifactActions';
+import { downloadFailedNote, DocumentPreview, previewFailedDownloadedNote } from '../../preview/DocumentPreview';
+import { useTranslation } from '../../../lib/i18n';
 import { documentPreviewType } from '../../preview/kinds';
 
 /* Where the file's bytes are read from: an attachment's raw URL, else the
@@ -136,6 +137,7 @@ function hasFileAccess({ projectName, filePath, rawUrl, showOpenAction }) {
 // so the user always has an escape hatch regardless of what's
 // rendered inline.
 function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpenAction = true }) {
+  const { t } = useTranslation('projects');
   const abs = joinAbs(projectPath, filePath);
   const dlUrl = projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '';
   // Attachments have a `rawUrl` but no project filePath — Reveal-in-
@@ -146,6 +148,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpen
   if (savesFile({ projectName, filePath, rawUrl })) {
     const saveUrl = dlUrl || rawUrl;
     if (!saveUrl) return null;
+    if (host.isMobileShell) return null;
     return (
       <button
         type="button"
@@ -153,24 +156,24 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpen
           downloadAuthenticatedResource(saveUrl, downloadFilename(filePath)).catch(() => {});
         }}
         className="no-underline cursor-pointer bg-transparent border border-solid border-line text-ink-2 py-[6px] px-3 rounded-[6px] font-[family-name:var(--font-body)] text-sm font-medium inline-flex items-center gap-[6px]"
-      >{Ico.downloadCloud ? Ico.downloadCloud(14) : '↓'} Download</button>
+      >{Ico.downloadCloud ? Ico.downloadCloud(14) : '↓'} {t('contextFileModal.download')}</button>
     );
   }
 
   return (
     <div className="inline-flex gap-1">
       {hasProjectFile && (
-        <Tooltip content="Reveal in Finder">
+        <Tooltip content={t('contextFileModal.revealInFinder')}>
           <Button
             onClick={() => abs && host.showItemInFolder(abs)}
-          >{Ico.folder ? Ico.folder(14) : '📁'} Reveal</Button>
+          >{Ico.folder ? Ico.folder(14) : '📁'} {t('contextFileModal.reveal')}</Button>
         </Tooltip>
       )}
       {showOpenAction && (
-        <Tooltip content="Open in default app">
+        <Tooltip content={t('contextFileModal.openInDefaultApp')}>
           <Button
             onClick={() => openInDefaultApp({ projectPath, filePath })}
-          >{Ico.externalLink ? Ico.externalLink(14) : '↗'} Open</Button>
+          >{Ico.externalLink ? Ico.externalLink(14) : '↗'} {t('contextFileModal.open')}</Button>
         </Tooltip>
       )}
     </div>
@@ -189,26 +192,29 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpen
 // later download is the user's click on Download.
 function BinaryFilePanel({
   fileName, detail, projectPath, projectName, filePath, rawUrl, showOpenAction,
-  downloadOnOpen = false, downloadedNote = NO_PREVIEW_DOWNLOADED_NOTE,
+  downloadOnOpen = false, downloadedNote = noPreviewDownloadedNote(),
 }) {
+  const { t } = useTranslation('projects');
   const offersActions = hasFileAccess({ projectName, filePath, rawUrl, showOpenAction });
   const [downloaded, setDownloaded] = useState(null);
   const started = useRef(false);
   useEffect(() => {
-    if (!downloadOnOpen || started.current) return;
+    if (!downloadOnOpen || host.isMobileShell || started.current) return;
     started.current = true;
     downloadAuthenticatedResource(fileUrl({ projectName, filePath, rawUrl }), downloadFilename(filePath))
       .then(setDownloaded, () => setDownloaded(false));
   }, [downloadOnOpen, projectName, filePath, rawUrl]);
   let message = (
     <>
-      This file can't be displayed inline (binary, too large, or not text).
-      {offersActions && ' Use the actions below to view it.'}
+      {t('contextFileModal.binary.cantDisplay')}
+      {offersActions && ` ${t('contextFileModal.binary.useActions')}`}
     </>
   );
-  if (downloadOnOpen) {
-    if (downloaded === null) message = 'Downloading…';
-    else message = downloaded ? downloadedNote : DOWNLOAD_FAILED_NOTE;
+  if (host.isMobileShell) {
+    message = MOBILE_DOWNLOAD_NOTE;
+  } else if (downloadOnOpen) {
+    if (downloaded === null) message = t('contextFileModal.binary.downloading');
+    else message = downloaded ? downloadedNote : downloadFailedNote();
   }
   return (
     <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-[14px] text-center py-8 px-5 rounded-card-row bg-surface-2 border border-solid border-transparent">
@@ -278,6 +284,7 @@ export default function ContextFileModal({
   onClose,
   onChanged,       // called after a successful save / delete so callers can refresh
 }) {
+  const { t } = useTranslation('projects');
   const [loading, setLoading] = useState(false);
   const [content, setContent] = useState('');
   const [draft, setDraft] = useState('');
@@ -331,13 +338,13 @@ export default function ContextFileModal({
   const genericMode = typeof saver === 'function' || typeof loader === 'function';
 
   const headerTitle = title ?? (isAnton ? 'anton.md' : filePath);
-  const headerSubtitle = subtitle ?? (isAnton ? 'Project instructions' : null);
+  const headerSubtitle = subtitle ?? (isAnton ? t('contextFileModal.projectInstructions') : null);
   const editorPlaceholder = placeholder ?? (isAnton
-    ? "Tell the agent how to work in this project — codebase conventions, output preferences, things to avoid…"
-    : 'File contents');
+    ? t('contextFileModal.instructionsPlaceholder')
+    : t('contextFileModal.fileContentsPlaceholder'));
   const emptyText = emptyMessage ?? (isAnton
-    ? '(no instructions yet — click Edit to add some)'
-    : '(empty file)');
+    ? t('contextFileModal.noInstructionsYet')
+    : t('contextFileModal.emptyFile'));
 
   // Markdown files render with our chat MarkdownContent component so
   // headings, lists, code fences, tables, and links look the way they
@@ -371,8 +378,8 @@ export default function ContextFileModal({
   /* What a read that finds no file says: an attachment is read by its raw
      URL, a project file by its path. */
   const missing = rawUrl
-    ? `${headerTitle || 'This file'} is no longer attached to this chat.`
-    : `${filePath} is no longer in this project.`;
+    ? t('contextFileModal.noLongerAttached', { name: headerTitle || t('contextFileModal.thisFileCapitalized') })
+    : t('contextFileModal.noLongerInProject', { path: filePath });
 
   // Load on open. Anton.md is special-cased server-side: the read
   // endpoint returns an empty body when the file doesn't exist yet,
@@ -434,7 +441,7 @@ export default function ContextFileModal({
               setLoadError(missing);
             } else {
               setMode('binary');
-              setBinaryDetail('Could not load image.');
+              setBinaryDetail(t('contextFileModal.couldNotLoadImage'));
             }
             setLoading(false);
           });
@@ -470,7 +477,7 @@ export default function ContextFileModal({
           })
           .catch((e) => {
             if (cancelled) return;
-            setLoadError(e?.status === 404 ? missing : (e?.message || 'Could not read file'));
+            setLoadError(e?.status === 404 ? missing : (e?.message || t('contextFileModal.couldNotReadFile')));
           })
           .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
@@ -514,7 +521,7 @@ export default function ContextFileModal({
               setLoadError(missing);
             } else {
               setMode('binary');
-              setBinaryDetail(e?.message || 'Could not load preview');
+              setBinaryDetail(e?.message || t('contextFileModal.couldNotLoadPreview'));
             }
           })
           .finally(() => { if (!cancelled) setLoading(false); });
@@ -530,7 +537,7 @@ export default function ContextFileModal({
         .catch((e) => {
           if (cancelled) return;
           setMode('binary');
-          setBinaryDetail(e?.message || 'Could not load preview');
+          setBinaryDetail(e?.message || t('contextFileModal.couldNotLoadPreview'));
         })
         .finally(() => { if (!cancelled) setLoading(false); });
       return () => { cancelled = true; };
@@ -559,7 +566,7 @@ export default function ContextFileModal({
       })
       .catch((e) => {
         if (cancelled) return;
-        const msg = e?.message || 'Could not read file';
+        const msg = e?.message || t('contextFileModal.couldNotReadFile');
         // 413 (too large) and 415 (not UTF-8 / not a text file) are
         // expected for binary or oversized files. Surface a graceful
         // "Reveal in Finder / Download" affordance instead of the
@@ -605,7 +612,7 @@ export default function ContextFileModal({
       setEditing(false);
       onChanged?.({ path: filePath, content: draft });
     } catch (e) {
-      setError(e?.message || 'Could not save');
+      setError(e?.message || t('contextFileModal.couldNotSave'));
     } finally {
       setBusy(false);
     }
@@ -628,11 +635,11 @@ export default function ContextFileModal({
 
   const handleDelete = async () => {
     if (!deleteApplicable || !deleteAllowed) return;
-    const confirmTarget = title || filePath || 'this file';
+    const confirmTarget = title || filePath || t('contextFileModal.thisFile');
     if (!(await confirm({
-      title: `Delete ${confirmTarget}?`,
-      message: "This can't be undone.",
-      confirmLabel: 'Delete',
+      title: t('contextFileModal.deleteConfirm.title', { name: confirmTarget }),
+      message: t('contextFileModal.deleteConfirm.message'),
+      confirmLabel: t('contextFileModal.delete'),
       destructive: true,
     }))) return;
     setBusy(true);
@@ -646,7 +653,7 @@ export default function ContextFileModal({
       onChanged?.({ path: filePath, deleted: true });
       onClose?.();
     } catch (e) {
-      setError(e?.message || 'Could not delete');
+      setError(e?.message || t('contextFileModal.couldNotDelete'));
     } finally {
       setBusy(false);
     }
@@ -679,7 +686,7 @@ export default function ContextFileModal({
             pre or the iframe, not the body. */}
         <ModalBody style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {loading && (
-            <div className="text-ink-3 text-[13px]">Loading…</div>
+            <div className="text-ink-3 text-[13px]">{t('contextFileModal.loading')}</div>
           )}
           {loadError && (
             <Alert variant="danger" className="shrink-0">{loadError}</Alert>
@@ -696,7 +703,7 @@ export default function ContextFileModal({
           />
           {!editable && (
             <div className="shrink-0 text-[12px] text-ink-3" role="note">
-              Read only. You do not have permission to edit this shared resource.
+              {t('contextFileModal.readOnly')}
             </div>
           )}
           {/* HTML branch — render inside a sandboxed iframe with the
@@ -704,7 +711,7 @@ export default function ContextFileModal({
           {!loading && mode === 'html' && (previewUrl || previewHtml) && (
             <div className="flex-1 min-h-0 rounded-card-row overflow-hidden border border-solid border-line bg-surface-2">
               <iframe
-                title={headerTitle || 'Preview'}
+                title={headerTitle || t('contextFileModal.preview')}
                 src={previewHtml ? undefined : previewUrl}
                 srcDoc={limitArtifactFrames(previewHtml) || undefined}
                 sandbox="allow-scripts allow-popups allow-forms allow-modals"
@@ -721,7 +728,7 @@ export default function ContextFileModal({
                 src={previewUrl}
                 alt={headerTitle}
                 className="max-w-full max-h-full object-contain"
-                onError={() => { setMode('binary'); setBinaryDetail('Could not load image.'); }}
+                onError={() => { setMode('binary'); setBinaryDetail(t('contextFileModal.couldNotLoadImage')); }}
               />
             </div>
           )}
@@ -730,11 +737,11 @@ export default function ContextFileModal({
           {!loading && !loadError && documentMode && documentType && (
             <div className="relative flex-1 min-h-0 rounded-card-row overflow-hidden border border-solid border-line">
               <DocumentPreview
-                source={{ url: bytesUrl, previewType: documentType, filename: headerTitle || 'file' }}
+                source={{ url: bytesUrl, previewType: documentType, filename: headerTitle || t('contextFileModal.file') }}
                 fetchFile={(url, signal) => fetchAuthenticatedResponse(url, { signal })}
                 download={() => downloadAuthenticatedResource(bytesUrl, downloadFilename(filePath))}
                 openInDefaultApp={() => openInDefaultApp({ projectPath, filePath })}
-                onLoadError={(e) => setLoadError(e?.status === 404 ? missing : (e?.message || 'Could not read file'))}
+                onLoadError={(e) => setLoadError(e?.status === 404 ? missing : (e?.message || t('contextFileModal.couldNotReadFile')))}
                 fileAction={fileSaves ? 'download' : 'open'}
               />
             </div>
@@ -744,7 +751,7 @@ export default function ContextFileModal({
           {!loading && mode === 'binary' && (
             <BinaryFilePanel
               key={bytesUrl || filePath}
-              fileName={filePath || title || 'file'}
+              fileName={filePath || title || t('contextFileModal.file')}
               detail={binaryDetail}
               projectPath={projectPath}
               projectName={projectName}
@@ -754,7 +761,7 @@ export default function ContextFileModal({
               downloadOnOpen={host.isWeb && !!bytesUrl && noPreview?.url === bytesUrl}
               /* Past the inline cap, a file the viewer would show as text
                  still has a preview; it was too large to show here. */
-              downloadedNote={noPreview?.refused === TOO_LARGE ? PREVIEW_FAILED_DOWNLOADED_NOTE : NO_PREVIEW_DOWNLOADED_NOTE}
+              downloadedNote={noPreview?.refused === TOO_LARGE ? previewFailedDownloadedNote() : noPreviewDownloadedNote()}
             />
           )}
           {!loading && !loadError && mode === 'text' && (editing ? (
@@ -789,14 +796,14 @@ export default function ContextFileModal({
               without one (memory) get it here, behind its own confirm. */}
           {deleteApplicable && !editingText && !loading && (
             <div className="shrink-0 flex items-center justify-between gap-3 pt-3 border-t border-x-0 border-b-0 border-solid border-line">
-              <span className="text-[12px] text-ink-3">Delete this permanently.</span>
+              <span className="text-[12px] text-ink-3">{t('contextFileModal.deletePermanently')}</span>
               <Button
                 variant="danger"
                 size="sm"
                 onClick={handleDelete}
                 disabled={busy || !deleteAllowed}
-                title={!deleteAllowed ? 'You do not have permission to delete this shared resource.' : undefined}
-              >{Ico.trash ? Ico.trash(14) : null}Delete</Button>
+                title={!deleteAllowed ? t('contextFileModal.noDeletePermission') : undefined}
+              >{Ico.trash ? Ico.trash(14) : null}{t('contextFileModal.delete')}</Button>
             </div>
           )}
         </ModalBody>
@@ -814,15 +821,15 @@ export default function ContextFileModal({
                   setEditing(false);
                 }}
                 disabled={busy}
-              >Cancel</Button>
+              >{t('contextFileModal.cancel')}</Button>
             )}
           >
             <Button variant="primary" onClick={save} disabled={busy}>
-              {busy ? 'Saving…' : 'Save'}
+              {busy ? t('contextFileModal.saving') : t('contextFileModal.save')}
             </Button>
           </ModalFooter>
         ) : !loading && (
-          <ModalFooter cancel={<Button variant="subtle" onClick={() => onClose?.()}>Close</Button>}>
+          <ModalFooter cancel={<Button variant="subtle" onClick={() => onClose?.()}>{t('contextFileModal.close')}</Button>}>
             {/* HTML / image / document / binary modes always offer a way to get at the
                 file, even when the modal renders something else inline. */}
             {showFileAccess && (
@@ -838,9 +845,9 @@ export default function ContextFileModal({
               <Button
                 variant="primary"
                 disabled={!editable}
-                title={!editable ? 'You do not have permission to edit this shared resource.' : undefined}
+                title={!editable ? t('contextFileModal.noEditPermission') : undefined}
                 onClick={() => setEditing(true)}
-              >Edit</Button>
+              >{t('contextFileModal.edit')}</Button>
             )}
           </ModalFooter>
         )}

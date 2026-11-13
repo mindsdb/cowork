@@ -6,6 +6,7 @@ import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { getApiOrigin } from '../../platform/host';
 import { safeCodeExternalUrl } from './developerTools';
 import { openCodeExternalUrl } from './shellLinks';
+import { useTranslation } from '../../lib/i18n';
 import './preview-panel.css';
 
 
@@ -34,6 +35,7 @@ export function PreviewPanel({
   url: string | null;
   onClose: () => void;
 }) {
+  const { t } = useTranslation('code');
   const [generation, setGeneration] = useState(0);
   const [viewport, setViewport] = useState<Viewport>('responsive');
   const previewUrl = framablePreviewUrl(url);
@@ -51,31 +53,31 @@ export function PreviewPanel({
 
   return (
     <>
-      <button type="button" className="code-preview-scrim" aria-label="Close preview" onClick={onClose} />
-      <aside id="code-preview-panel" className="code-preview" aria-label="Live preview">
+      <button type="button" className="code-preview-scrim" aria-label={t('previewPanel.closeAriaLabel')} onClick={onClose} />
+      <aside id="code-preview-panel" className="code-preview" aria-label={t('previewPanel.ariaLabel')}>
         <header className="code-preview__header">
           <div>
-            <div className="section-label">Project action</div>
-            <div className="code-preview__title">Preview</div>
+            <div className="section-label">{t('previewPanel.eyebrow')}</div>
+            <div className="code-preview__title">{t('previewPanel.title')}</div>
           </div>
           <div className="code-preview__actions">
-            <Button icon size="sm" variant="subtle" aria-label="Reload preview" disabled={!previewUrl} onClick={() => setGeneration((current) => current + 1)}>{Ico.reload(14)}</Button>
-            <Button icon size="sm" variant="subtle" aria-label="Open preview in browser" disabled={!previewUrl} onClick={() => void openCodeExternalUrl(previewUrl)}>{Ico.arrowUpRight(14)}</Button>
-            <Button icon size="sm" variant="subtle" aria-label="Close preview" onClick={onClose}>{Ico.close(14)}</Button>
+            <Button icon size="sm" variant="subtle" aria-label={t('previewPanel.reloadAriaLabel')} disabled={!previewUrl} onClick={() => setGeneration((current) => current + 1)}>{Ico.reload(14)}</Button>
+            <Button icon size="sm" variant="subtle" aria-label={t('previewPanel.openInBrowserAriaLabel')} disabled={!previewUrl} onClick={() => void openCodeExternalUrl(previewUrl)}>{Ico.arrowUpRight(14)}</Button>
+            <Button icon size="sm" variant="subtle" aria-label={t('previewPanel.closeAriaLabel')} onClick={onClose}>{Ico.close(14)}</Button>
           </div>
         </header>
         <div className="code-preview__toolbar">
-          <code title={previewUrl || undefined}>{previewUrl || 'Preview is not available'}</code>
+          <code title={previewUrl || undefined}>{previewUrl || t('previewPanel.unavailable')}</code>
           <ToggleGroup
             size="sm"
             className="code-preview__viewports"
-            aria-label="Preview width"
+            aria-label={t('previewPanel.widthAriaLabel')}
             value={viewport}
             onValueChange={(value) => setViewport(value as Viewport)}
             options={[
-              { value: 'responsive', label: Ico.computer(14), 'aria-label': 'responsive preview' },
-              { value: 'tablet', label: Ico.appWindow(14), 'aria-label': 'tablet preview' },
-              { value: 'mobile', label: Ico.phone(14), 'aria-label': 'mobile preview' },
+              { value: 'responsive', label: Ico.computer(14), 'aria-label': t('previewPanel.responsiveAriaLabel') },
+              { value: 'tablet', label: Ico.appWindow(14), 'aria-label': t('previewPanel.tabletAriaLabel') },
+              { value: 'mobile', label: Ico.phone(14), 'aria-label': t('previewPanel.mobileAriaLabel') },
             ]}
           />
         </div>
@@ -83,7 +85,7 @@ export function PreviewPanel({
           {previewUrl ? (
             <iframe
               key={`${previewUrl}:${generation}`}
-              title="Project preview"
+              title={t('previewPanel.frameTitle')}
               src={previewUrl}
               style={{ width: viewportWidths[viewport] }}
               // allow-same-origin stays: the framed page is the task's own dev
@@ -97,8 +99,8 @@ export function PreviewPanel({
               size="sm"
               className="code-preview__empty"
               icon={Ico.globe(20)}
-              title="No local preview yet"
-              description="Run a project action that listens on the task’s development port."
+              title={t('previewPanel.empty.title')}
+              description={t('previewPanel.empty.description')}
             />
           )}
         </div>

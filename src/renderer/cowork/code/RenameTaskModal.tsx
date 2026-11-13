@@ -3,6 +3,7 @@ import Button from '../components/ui/Button';
 import { Field } from '../components/ui/Field';
 import { Input } from '../components/ui/Input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
+import { useTranslation } from '../../lib/i18n';
 
 
 export function RenameTaskModal({
@@ -18,6 +19,7 @@ export function RenameTaskModal({
   onClose: () => void;
   onRename: (title: string) => Promise<void> | void;
 }) {
+  const { t } = useTranslation('code');
   const [value, setValue] = useState(title);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -33,14 +35,14 @@ export function RenameTaskModal({
     try {
       await onRename(normalized);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not rename this coding task.');
+      setError(reason instanceof Error ? reason.message : t('renameTask.failed'));
     }
   };
   return (
     <Modal open={open} onClose={onClose} size="sm" labelledBy="code-rename-title" dismissible={!busy}>
-      <ModalHeader id="code-rename-title" title="Rename coding task" onClose={onClose} />
+      <ModalHeader id="code-rename-title" title={t('renameTask.title')} onClose={onClose} />
       <ModalBody>
-        <Field label="Task name" error={error || undefined}>
+        <Field label={t('renameTask.label')} error={error || undefined}>
           <Input
             value={value}
             onChange={setValue}
@@ -52,8 +54,8 @@ export function RenameTaskModal({
           />
         </Field>
       </ModalBody>
-      <ModalFooter cancel={<Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>}>
-        <Button variant="primary" disabled={busy || !value.trim()} onClick={() => void submit()}>Rename</Button>
+      <ModalFooter cancel={<Button variant="subtle" disabled={busy} onClick={onClose}>{t('renameTask.cancel')}</Button>}>
+        <Button variant="primary" disabled={busy || !value.trim()} onClick={() => void submit()}>{t('renameTask.rename')}</Button>
       </ModalFooter>
     </Modal>
   );

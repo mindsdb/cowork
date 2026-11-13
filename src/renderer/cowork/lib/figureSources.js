@@ -1,3 +1,6 @@
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.figureSources.${key}`, { ns: 'projects', ...vars });
 /* Which step of a turn each figure (number) in its answer came from.
 
    cowork-server sends one `response.figure_sources` event just before
@@ -74,7 +77,9 @@ const ORIGINS = new Set(['step', 'question', 'none', 'earlier_answer']);
 const KINDS = new Set(['query', 'file', 'web', 'step']);
 
 export const NO_SOURCE_TEXT = 'No source: no step in this answer returned this figure. Check it before you act on it.';
+export const noSourceText = () => tr('noSource');
 export const REPEATED_TEXT = 'Repeated from an earlier answer';
+export const repeatedText = () => tr('repeated');
 
 /* A path relative to the project, or null. The file viewer reads it through
    the project files API, so an absolute path, a Windows path or a `..` segment
@@ -202,23 +207,23 @@ export function rebaseFigureSources(figureSources, answerText, text, bodyTextMap
 function describeSource(source) {
   const { kind, label, page } = source;
   if (kind === 'file') {
-    const name = label || 'a file';
-    return page != null ? `From ${name}, page ${page}` : `From ${name}`;
+    const name = label || tr('aFile');
+    return page != null ? tr('fromPage', { name, page }) : tr('from', { name });
   }
-  if (kind === 'query') return label ? `From a query: ${label}` : 'From a query';
-  if (kind === 'web') return label ? `From the web: ${label}` : 'From the web';
-  return label ? `From a step: ${label}` : 'From a step';
+  if (kind === 'query') return label ? tr('fromQueryLabel', { label }) : tr('fromQuery');
+  if (kind === 'web') return label ? tr('fromWebLabel', { label }) : tr('fromWeb');
+  return label ? tr('fromStepLabel', { label }) : tr('fromStep');
 }
 
 /** The tooltip and accessible description of a marked figure: one line,
  *  naming the first source and counting the rest.
  *  @param {LinkedFigure} figure */
 export function figureSourceText(figure) {
-  if (figure.origin === 'none') return NO_SOURCE_TEXT;
-  if (figure.origin === 'earlier_answer') return REPEATED_TEXT;
+  if (figure.origin === 'none') return noSourceText();
+  if (figure.origin === 'earlier_answer') return repeatedText();
   const [first, ...rest] = figure.sources;
   if (!first) return '';
-  return rest.length > 0 ? `${describeSource(first)} and ${rest.length} more` : describeSource(first);
+  return rest.length > 0 ? tr('andMore', { source: describeSource(first), count: rest.length }) : describeSource(first);
 }
 
 /** Whether a figure gets a mark: a sourced one with a source to name, one no

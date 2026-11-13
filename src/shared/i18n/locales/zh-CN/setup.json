@@ -1,0 +1,216 @@
+{
+  "install": {
+    "title": "正在载入世界",
+    "subtitle": "正在安装引擎",
+    "spriteTitle": "正在安装",
+    "preparing": "正在准备安装…",
+    "steps": {
+      "xcode": "Xcode 命令行工具",
+      "git": "检查 / 安装 git",
+      "uv": "安装 uv（Python 包管理器）",
+      "coworkServer": "安装 cowork-server",
+      "verify": "验证安装",
+      "server": "启动服务器"
+    },
+    "failedAt": "失败步骤：",
+    "tryAgain": "重试",
+    "consoleIdle": "> 启动序列已开始…",
+    "cancel": "取消安装",
+    "cancelling": "正在取消…",
+    "cancelled": "安装已取消。",
+    "cancellingLog": "正在取消安装...",
+    "doneSpriteTitle": "设置完成",
+    "done": "设置完成！",
+    "launching": "正在启动你的工作区…"
+  },
+  "legal": {
+    "terms": "服务条款",
+    "privacy": "隐私政策",
+    "termsHeading": "服务条款",
+    "privacyHeading": "隐私政策",
+    "back": "← 返回"
+  },
+  "terms": {
+    "title": "许可协议",
+    "subtitle": "每段冒险都从一卷羊皮纸开始",
+    "spriteTitle": "许可协议卷轴",
+    "intro": "开始之前，请阅读并接受我们的政策。",
+    "readTerms": "→ 阅读服务条款",
+    "readPrivacy": "→ 阅读隐私政策",
+    "consentAriaLabel": "我已阅读并同意 MindsDB 的服务条款和隐私政策",
+    "consentBefore": "我已阅读并同意 MindsDB 的",
+    "consentAnd": "和",
+    "consentAfter": "我理解，勾选此框即表示我同意受这些条款的约束。",
+    "accept": "接受并继续 ▶",
+    "nextInstall": "接下来，我们将安装 {product} 所需的系统依赖项。",
+    "takesAMinute": "大约需要一分钟。"
+  },
+  "theme": {
+    "title": "选择你的显示风格",
+    "subtitle": "选择屏幕风格 · 随时可以更改",
+    "groupAriaLabel": "选择显示主题",
+    "presets": {
+      "midnight": {
+        "name": "午夜",
+        "sub": "标准 · 深色",
+        "desc": "标准外观，深夜色调背景，搭配霓虹青色强调色。"
+      },
+      "daylight": {
+        "name": "日光",
+        "sub": "标准 · 浅色",
+        "desc": "标准外观，简洁的白色背景，搭配青绿色强调色。"
+      },
+      "gameboy": {
+        "name": "GAME BOY",
+        "sub": "8-BIT · 浅色",
+        "desc": "橄榄色纸面配深绿色墨迹，等宽字体。适合明亮环境的掌机怀旧风。"
+      },
+      "arcade": {
+        "name": "街机",
+        "sub": "8-BIT · 深色",
+        "desc": "深海军蓝底上的荧光青色，CRT 扫描线，粗犷的等宽字体。经典投币街机风格。"
+      }
+    },
+    "custom": {
+      "name": "自己设计",
+      "sub": "自定义",
+      "desc": "在应用内设计你自己的主题：强调色、背景、圆角、字体和扫描线。设置 → 外观 → 风格 → 自定义。"
+    },
+    "cardAriaLabel": "{name} — {sub}",
+    "customAriaLabel": "{name} — 在应用内设计你自己的主题",
+    "pick": "按 ⏎ 选择 {name}",
+    "customPrompt": "可在应用内设计，先选择一个预设开始",
+    "back": "← 返回"
+  },
+  "launch": {
+    "tagline": "一个应用，任意智能体。",
+    "nowPlaying": "正在运行：",
+    "nowLoading": "正在载入…"
+  },
+  "onboarding": {
+    "errors": {
+      "saveFailed": "无法保存你的设置，请重试。",
+      "saveToServerFailed": "无法将你的设置保存到服务器，请重试。",
+      "invalidKey": "API 密钥无效",
+      "mindsKeySaveFailed": "无法保存 MindsHub 密钥。",
+      "validationFailed": "验证失败",
+      "signInTimedOut": "登录超时：浏览器未完成授权。请重试，并在最新打开的标签页中完成登录（关闭所有旧的“You're authorized”标签页），或按 {reloadKey} 重新加载。",
+      "signInCancelled": "登录已取消。准备好后可随时重试。",
+      "signInFailed": "登录失败，请重试。",
+      "signUpFailed": "注册失败，请重试。",
+      "mindsSetupFailed": "MindsHub 设置失败：{reason}",
+      "unexpected": "发生意外错误，请重试。",
+      "mindsSetupFailedRetry": "无法设置 MindsHub，请重试。"
+    },
+    "welcome": {
+      "title": "欢迎",
+      "subtitle": "正在做好准备"
+    },
+    "ready": {
+      "subtitle": "一切就绪",
+      "body": "你的工作区已就绪。给智能体布置一个任务，它会完成工作并交回结果。",
+      "desktop": "Cowork 也有桌面版。",
+      "getDesktop": "下载桌面应用"
+    },
+    "continue": "继续",
+    "agreePrefix": "继续即表示你同意我们的",
+    "agreeAnd": "和",
+    "pickOrg": {
+      "title": "选择组织",
+      "subtitle": "由谁支付你的用量",
+      "body": "你属于多个组织。请选择这台电脑要使用的组织：你的用量将由该组织的积分支付，其管理员可以查看和撤销这台电脑的访问权限。之后可以在账户菜单中更改。"
+    },
+    "success": {
+      "title": "一切就绪",
+      "subtitle": "你已登录",
+      "heading": "一切就绪！",
+      "workingIn": "当前组织",
+      "readyToGo": "准备就绪"
+    },
+    "validating": {
+      "spriteTitle": "正在验证",
+      "label": "正在测试连接…"
+    },
+    "signupWait": {
+      "spriteTitle": "正在等待注册",
+      "heading": "请在浏览器中完成注册",
+      "body": "创建账户后，打开我们发送给你的验证邮件，点击其中的链接即可在这里自动登录。",
+      "cancel": "取消"
+    },
+    "byok": {
+      "title": "使用你自己的密钥",
+      "subtitle": "添加一个 LLM 提供商以继续",
+      "skippedIntro": "选择一个用于运行的 LLM 提供商。你可以稍后在“设置 → 提供商”中连接 MindsHub（分享到网页时需要）。",
+      "noCreditsIntro": "你的 MindsHub 账户还没有 LLM 积分。充值后即可使用托管模型，你也可以在下方连接自己的提供商。",
+      "back": "← 返回账户选项",
+      "selectProvider": "选择提供商",
+      "custom": "自定义",
+      "baseUrl": "基础 URL",
+      "baseUrlHint": "Ollama、vLLM、Together、Groq、LM Studio 等。",
+      "model": "模型",
+      "customModel": "自定义...",
+      "modelIdPlaceholder": "输入模型 ID...",
+      "modelNamePlaceholder": "输入模型名称...",
+      "keyLabel": {
+        "anthropic": "Anthropic API 密钥",
+        "gemini": "Google AI API 密钥",
+        "custom": "API 密钥（可选）",
+        "openai": "OpenAI API 密钥"
+      },
+      "customKeyPlaceholder": "如不需要，按回车键跳过",
+      "connect": "连接"
+    },
+    "minds": {
+      "title": "开始使用",
+      "subtitle": "创建免费账户或登录以继续",
+      "managedBy": "由 MINDSDB 托管",
+      "benefits": {
+        "routing": "智能模型路由",
+        "connectors": "安全的数据连接器",
+        "dashboards": "分享仪表板"
+      },
+      "oneMoment": "请稍候…",
+      "createAccount": "创建免费账户",
+      "signIn": "登录",
+      "apiKeyLabel": "MindsHub API 密钥",
+      "connecting": "正在连接…",
+      "connect": "连接",
+      "noAccount": "还没有账户？",
+      "createOne": "免费创建一个 →",
+      "verifyBefore": "已验证邮箱？只差一步：点击",
+      "verifyAfter": "即可完成，无需重新注册。",
+      "continueWithout": "不使用账户继续 →"
+    }
+  },
+  "checklist": {
+    "title": "了解 Cowork",
+    "closeAriaLabel": "关闭清单",
+    "close": "关闭",
+    "startFailed": "无法开始聊天，请重试。",
+    "completeHeading": "你已掌握基础操作！",
+    "steps": {
+      "bring-your-work": {
+        "title": "从你自己的工作开始",
+        "description": "告诉 Cowork 你正在做什么，再交给它一个文件或一些笔记。"
+      },
+      "customize-role": {
+        "title": "按你的角色定制 Cowork",
+        "description": "添加现成的工具和工作流。"
+      },
+      "connect-app": {
+        "title": "连接应用",
+        "description": "关联 Google Drive，让 Cowork 处理你的文件。"
+      },
+      "see-it-work": {
+        "title": "试试示例",
+        "description": "在首页选择一个示例，看它如何生成。"
+      }
+    }
+  },
+  "firstArtifactTip": {
+    "ariaLabel": "你的第一个实时产物",
+    "body": "你的第一个实时产物已就绪，它就在这里。你可以随时打开，或发布它以分享实时 URL。",
+    "gotIt": "知道了",
+    "showMe": "带我看看"
+  }
+}

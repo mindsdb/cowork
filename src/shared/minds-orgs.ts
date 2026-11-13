@@ -5,6 +5,9 @@
  * desktop preference behavior testable without standing up Keycloak.
  */
 
+import { sourceTranslator, type Translate } from './i18n/translate';
+import appSource from './i18n/locales/en/app.json';
+
 /** One organization a person belongs to, as the desktop shows it. */
 export interface MindsOrg {
   /** Keycloak organization id — what `users/switch-organization` takes. */
@@ -83,6 +86,12 @@ export function isIdOrganizationName(name: string | null | undefined): boolean {
  * both halves into `System A… · Personal organi…`.
  */
 export const PERSONAL_ORG_LABEL = 'Personal';
+
+/* The label as shown lives in the `app` catalog (`orgs.personal`): the
+   renderer passes its `app` translator to organizationLabel and
+   orgDisplayName. PERSONAL_ORG_LABEL itself stays English: it is also stored
+   as account data. */
+const english: Translate = sourceTranslator(appSource);
 const AUTH_PERSONAL_ORG_DISPLAY_NAME = 'Personal Organization';
 
 /**
@@ -105,10 +114,17 @@ const AUTH_PERSONAL_ORG_DISPLAY_NAME = 'Personal Organization';
  * hosts already answer "what if there is no display name" differently. Keeping
  * the substitution here leaves the data honest and the choice in one place.
  */
-export function organizationLabel(org: MindsOrg | null | undefined): string | null {
+export function organizationLabel(org: MindsOrg | null | undefined, t: Translate = english): string | null {
   if (!org) return null;
-  if (org.isPersonal && isGeneratedPersonalOrgName(org)) return PERSONAL_ORG_LABEL;
+  if (org.isPersonal && isGeneratedPersonalOrgName(org)) return t('orgs.personal');
   return org.displayName || org.name || null;
+}
+
+/** An organization name carried as account data (accountUser's `org`), for
+ *  display: PERSONAL_ORG_LABEL in the reader's language, anything else as is. */
+export function orgDisplayName(name: string | null | undefined, t: Translate = english): string | null {
+  if (!name) return null;
+  return name === PERSONAL_ORG_LABEL ? t('orgs.personal') : name;
 }
 
 /**

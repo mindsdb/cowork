@@ -1,11 +1,14 @@
+import i18n from '../../lib/i18n';
 import type { CodingSession } from './api';
+
+const tx = (key: string) => i18n.t(key, { ns: 'code' });
 
 export function taskAttention(session: CodingSession): { key: string; message: string } | null {
   if (session.archived) return null;
-  if (session.pending_question) return { key: `question:${session.pending_question.id}`, message: 'A task needs your answer.' };
-  if (session.pending_approval) return { key: `approval:${session.pending_approval.id}`, message: 'A task needs your approval.' };
-  if (session.task_mode === 'plan' && session.status === 'completed') return { key: 'plan', message: 'A plan is ready for your review.' };
-  if (session.status === 'failed' || session.status === 'interrupted') return { key: session.status, message: 'A task needs attention before it can continue.' };
+  if (session.pending_question) return { key: `question:${session.pending_question.id}`, message: tx('taskAttention.answer') };
+  if (session.pending_approval) return { key: `approval:${session.pending_approval.id}`, message: tx('taskAttention.approval') };
+  if (session.task_mode === 'plan' && session.status === 'completed') return { key: 'plan', message: tx('taskAttention.plan') };
+  if (session.status === 'failed' || session.status === 'interrupted') return { key: session.status, message: tx('taskAttention.failed') };
   return null;
 }
 
@@ -14,6 +17,6 @@ export function newAttention(previous: CodingSession | undefined, current: Codin
   if (!previous || current.archived) return null;
   const next = taskAttention(current);
   if (next && next.key !== taskAttention(previous)?.key) return next.message;
-  if (current.status === 'completed' && previous.status !== 'completed' && current.task_mode !== 'plan') return 'A coding task has finished.';
+  if (current.status === 'completed' && previous.status !== 'completed' && current.task_mode !== 'plan') return tx('taskAttention.finished');
   return null;
 }

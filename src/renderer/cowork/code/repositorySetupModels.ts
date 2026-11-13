@@ -1,3 +1,5 @@
+import i18n from '../../lib/i18n';
+
 export interface TaskRepositorySetup {
   branch: string | null;
   base_branches: Record<string, string>;
@@ -33,6 +35,6 @@ export function branchNameIssue(value: string): string {
     value.includes('@{') ||
     value.endsWith('.') ||
     value.split('/').some((part) => !part || part.startsWith('.') || part.endsWith('.lock'))
-    ? 'Use a Git branch name such as feat/repo-status.'
+    ? i18n.t('repositorySetup.invalidBranch', { ns: 'code', example: 'feat/repo-status' })
     : '';
 }

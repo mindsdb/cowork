@@ -28,6 +28,7 @@ import { EllipsisVertical } from 'lucide-react';
 import { Icon, type IconSize } from './Icon';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
+import { useTranslation } from '../../../lib/i18n';
 import Button, { type ButtonVariant } from './Button';
 import Kbd from './Kbd';
 import Menu, { type MenuItem } from './Menu';
@@ -119,12 +120,14 @@ export function ActionBar({
   size = 'sm',
   align = 'end',
   menuSide = 'bottom',
-  overflowLabel = 'More actions',
+  overflowLabel,
   className,
   ...rest
 }: ActionBarProps) {
+  const { t } = useTranslation('shell');
   const items = overflow.filter((item): item is MenuItem => !!item);
   if (!primary && !secondary && !tertiary && !items.length && !leading) return null;
+  const moreLabel = overflowLabel === undefined ? t('ui.actionBar.moreActions') : overflowLabel;
   return (
     <div className={cn(barVariants({ size, align }), className)} {...rest}>
       {leading && <div className="min-w-0 flex-1">{leading}</div>}
@@ -134,14 +137,14 @@ export function ActionBar({
       {items.length > 0 && (
         <Menu
           trigger={(
-            <Button icon size={size} variant="subtle" aria-label={overflowLabel}>
+            <Button icon size={size} variant="subtle" aria-label={moreLabel}>
               <Icon of={EllipsisVertical} size={ICON_SIZE[size]} />
             </Button>
           )}
           items={items}
           side={menuSide}
           align="end"
-          ariaLabel={overflowLabel}
+          ariaLabel={moreLabel}
         />
       )}
     </div>

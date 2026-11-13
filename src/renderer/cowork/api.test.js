@@ -66,6 +66,7 @@ describe('authFetch organization boundary', () => {
 
     expect(fetch).toHaveBeenCalledWith('/api/v1/projects', {
       headers: {
+        'X-Cowork-UI-Locale': 'en',
         Authorization: expect.stringMatching(/^Bearer /),
         'X-Cowork-Expected-Organization-Id': ORGANIZATION_A,
       },
@@ -240,6 +241,26 @@ describe('fetchRecommendedModels', () => {
   it('asks the server to bypass its cache when refresh is set', async () => {
     await fetchRecommendedModels({ refresh: true });
     expect(calls[0]).toContain('/settings/recommended-models?refresh=true');
+  });
+
+  it('forces only the MindsHub leg for the availability triggers', async () => {
+    await fetchRecommendedModels({ refresh: true, scope: 'minds' });
+    expect(calls[0]).toContain('/settings/recommended-models?refresh=true&refresh_scope=minds');
+  });
+
+  it('forces every leg for a picker open', async () => {
+    await fetchRecommendedModels({ refresh: true, scope: 'all' });
+    expect(calls[0]).not.toContain('refresh_scope');
+  });
+
+  it('remembers whether the server honors the narrow scope, from the response', async () => {
+    const { serverHonorsRefreshScope } = await import('./lib/modelRefresh');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ refreshScopes: ['all', 'minds'] }) })));
+    await fetchRecommendedModels({ refresh: true });
+    expect(serverHonorsRefreshScope('minds')).toBe(true);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ recommendedModels: {} }) })));
+    await fetchRecommendedModels({ refresh: true });
+    expect(serverHonorsRefreshScope('minds')).toBe(false);
   });
 
   it('returns the parsed body', async () => {

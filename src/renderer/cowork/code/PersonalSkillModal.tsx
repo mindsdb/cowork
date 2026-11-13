@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+import i18n, { useTranslation } from '../../lib/i18n';
 import { ConfirmModal } from '../components/ConfirmModal';
 import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
@@ -15,7 +16,7 @@ import './personal-skill.css';
 
 const EMPTY: PersonalSkillWrite = { name: '', description: '', instructions: '', enabled: true };
 const MAX_BYTES = 120_000;
-const message = (reason: unknown) => reason instanceof Error ? reason.message : 'Could not save this skill. Please try again.';
+const message = (reason: unknown) => reason instanceof Error ? reason.message : i18n.t('personalSkill.saveFailed', { ns: 'code' });
 
 // Mounted for one editing session; closing/reopening never revives an old draft.
 export function PersonalSkillModal({ skillId, onClose, onSaved }: {
@@ -23,6 +24,7 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation('code');
   const [draft, setDraft] = useState<PersonalSkillWrite>(EMPTY);
   const [original, setOriginal] = useState<PersonalSkill | null>(null);
   const [mode, setMode] = useState('write');
@@ -64,13 +66,13 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
   const readFile = async (file?: File) => {
     if (!file || inFlight.current) return;
     setError('');
-    if (!/\.(md|skill)$/i.test(file.name)) { setError('Choose a SKILL.md or .skill text file.'); return; }
-    if (file.size > MAX_BYTES) { setError('Choose a skill smaller than 120 KB.'); return; }
+    if (!/\.(md|skill)$/i.test(file.name)) { setError(t('personalSkill.errors.fileType')); return; }
+    if (file.size > MAX_BYTES) { setError(t('personalSkill.errors.fileTooLarge')); return; }
     inFlight.current = true; setBusy(true);
     try {
       const content = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
       setUpload({ name: file.name, content });
-    } catch { setError('Could not read this file. Choose a UTF-8 text skill.'); }
+    } catch { setError(t('personalSkill.errors.fileUnreadable')); }
     finally { inFlight.current = false; setBusy(false); }
   };
   const valid = mode === 'import' ? !!upload?.content.trim()
@@ -78,7 +80,7 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
   const save = () => {
     if (!valid) return;
     if (mode === 'write' && new TextEncoder().encode(draft.instructions).length > MAX_BYTES) {
-      setError('Keep the instructions under 120 KB.'); return;
+      setError(t('personalSkill.errors.instructionsTooLong')); return;
     }
     void run(() => {
       if (mode === 'import' && upload) return personalSkillsApi.import(upload.content);
@@ -87,21 +89,21 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
     });
   };
   const fields = <div className="code-personal-skill__fields">
-    <Field label="Name"><Input value={draft.name} maxLength={120} onChange={(name) => setDraft({ ...draft, name })} placeholder="e.g. Review my TypeScript" autoFocus /></Field>
-    <Field label="When to use it" help="Helps the agent recognise when this skill is relevant."><Input value={draft.description} maxLength={1024} onChange={(description) => setDraft({ ...draft, description })} placeholder="Review TypeScript changes for clarity and reliable error handling." /></Field>
-    <Field label="Instructions" help="Write or paste the steps and standards the agent should follow."><Textarea value={draft.instructions} maxLength={MAX_BYTES} onChange={(instructions) => setDraft({ ...draft, instructions })} rows={9} placeholder="Start by reading the changed files…" /></Field>
+    <Field label={t('personalSkill.fields.name')}><Input value={draft.name} maxLength={120} onChange={(name) => setDraft({ ...draft, name })} placeholder={t('personalSkill.fields.namePlaceholder')} autoFocus /></Field>
+    <Field label={t('personalSkill.fields.description')} help={t('personalSkill.fields.descriptionHelp')}><Input value={draft.description} maxLength={1024} onChange={(description) => setDraft({ ...draft, description })} placeholder={t('personalSkill.fields.descriptionPlaceholder')} /></Field>
+    <Field label={t('personalSkill.fields.instructions')} help={t('personalSkill.fields.instructionsHelp')}><Textarea value={draft.instructions} maxLength={MAX_BYTES} onChange={(instructions) => setDraft({ ...draft, instructions })} rows={9} placeholder={t('personalSkill.fields.instructionsPlaceholder')} /></Field>
     <div className="code-personal-skill__availability">
-      <div><strong>Available to the agent</strong><p>{original?.projects.length ? 'Existing project restrictions will be kept.' : 'Available to new Code tasks on this computer.'}</p></div>
-      <Switch checked={draft.enabled} onCheckedChange={(enabled) => setDraft({ ...draft, enabled })} disabled={busy} aria-label="Available to the agent" />
+      <div><strong>{t('personalSkill.fields.available')}</strong><p>{original?.projects.length ? t('personalSkill.fields.keepRestrictions') : t('personalSkill.fields.availableHint')}</p></div>
+      <Switch checked={draft.enabled} onCheckedChange={(enabled) => setDraft({ ...draft, enabled })} disabled={busy} aria-label={t('personalSkill.fields.available')} />
     </div>
   </div>;
 
   return <>
     <Modal open onClose={close} size="md" labelledBy="personal-skill-title" dismissible={!busy} maxHeight="min(820px, 92vh)">
-      <ModalHeader id="personal-skill-title" title={skillId ? 'Edit personal skill' : 'Add personal skill'} subtitle="For your Code tasks. No Git repository required." onClose={close} />
+      <ModalHeader id="personal-skill-title" title={skillId ? t('personalSkill.editTitle') : t('personalSkill.addTitle')} subtitle={t('personalSkill.subtitle')} onClose={close} />
       {skillId ? <ModalBody>
-        {loading ? <div className="code-personal-skill__state" role="status"><Spinner /> Loading skill…</div>
-          : !original ? <div className="code-personal-skill__state"><Alert variant="danger">{error}</Alert><Button variant="subtle" onClick={() => setRetry((value) => value + 1)}>Try again</Button></div>
+        {loading ? <div className="code-personal-skill__state" role="status"><Spinner /> {t('personalSkill.loading')}</div>
+          : !original ? <div className="code-personal-skill__state"><Alert variant="danger">{error}</Alert><Button variant="subtle" onClick={() => setRetry((value) => value + 1)}>{t('personalSkill.tryAgain')}</Button></div>
             : <fieldset className="code-personal-skill" disabled={busy}>
               {fields}
               {error && !confirmation && <Alert variant="danger">{error}</Alert>}
@@ -110,18 +112,18 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
         // Adding: the Write/Import tabs stay pinned while the body scrolls.
         : <Tabs className="contents" value={mode} onValueChange={(value) => { setMode(String(value)); setError(''); }}>
           <ModalToolbar flush>
-            <TabList className="border-b-0" aria-label="Add a personal skill"><Tab value="write" disabled={busy}>Write instructions</Tab><Tab value="import" disabled={busy}>Import file</Tab></TabList>
+            <TabList className="border-b-0" aria-label={t('personalSkill.tabs.ariaLabel')}><Tab value="write" disabled={busy}>{t('personalSkill.tabs.write')}</Tab><Tab value="import" disabled={busy}>{t('personalSkill.tabs.import')}</Tab></TabList>
           </ModalToolbar>
           <ModalBody>
             <fieldset className="code-personal-skill" disabled={busy}>
                 <TabPanel value="write" className="pt-0">{fields}</TabPanel>
                 <TabPanel value="import" className="pt-0">
                   <div className="code-personal-skill__import">
-                    <input ref={fileInput} type="file" accept=".md,.skill" aria-label="Skill file" hidden onChange={(event) => { void readFile(event.target.files?.[0]); event.target.value = ''; }} />
-                    <strong>Bring your own SKILL.md</strong>
-                    <p>Choose a text file with a name, description and instructions. It will be copied into your Code skills. The original file stays unchanged.</p>
-                    <Button variant="tinted" onClick={() => fileInput.current?.click()}>{Ico.attach(14)} {upload ? 'Choose another file' : 'Choose file'}</Button>
-                    <small>SKILL.md or .skill · Up to 120 KB</small>
+                    <input ref={fileInput} type="file" accept=".md,.skill" aria-label={t('personalSkill.import.fileAriaLabel')} hidden onChange={(event) => { void readFile(event.target.files?.[0]); event.target.value = ''; }} />
+                    <strong>{t('personalSkill.import.title')}</strong>
+                    <p>{t('personalSkill.import.description')}</p>
+                    <Button variant="tinted" onClick={() => fileInput.current?.click()}>{Ico.attach(14)} {upload ? t('personalSkill.import.chooseAnother') : t('personalSkill.import.choose')}</Button>
+                    <small>{t('personalSkill.import.limits')}</small>
                   </div>
                   {upload && <div className="code-personal-skill__preview"><strong>{upload.name}</strong><pre>{upload.content}</pre></div>}
                 </TabPanel>
@@ -129,13 +131,13 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
             </fieldset>
           </ModalBody>
         </Tabs>}
-      <ModalFooter cancel={<Button variant="subtle" onClick={close} disabled={busy}>Cancel</Button>}>
-        <Button variant="primary" onClick={save} disabled={busy || loading || !valid || (!!skillId && !original)}>{busy ? 'Saving…' : skillId ? 'Save changes' : 'Add skill'}</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={close} disabled={busy}>{t('personalSkill.cancel')}</Button>}>
+        <Button variant="primary" onClick={save} disabled={busy || loading || !valid || (!!skillId && !original)}>{busy ? t('personalSkill.saving') : skillId ? t('personalSkill.saveChanges') : t('personalSkill.add')}</Button>
       </ModalFooter>
     </Modal>
-    <ConfirmModal open={!!confirmation} title="Discard changes?"
-      message="Your unsaved skill changes will be lost."
-      confirmLabel="Discard changes" cancelLabel="Keep editing" destructive
+    <ConfirmModal open={!!confirmation} title={t('personalSkill.discard.title')}
+      message={t('personalSkill.discard.message')}
+      confirmLabel={t('personalSkill.discard.confirm')} cancelLabel={t('personalSkill.discard.cancel')} destructive
       onClose={() => setConfirmation(null)} onConfirm={onClose} />
   </>;
 }

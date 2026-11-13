@@ -38,6 +38,20 @@ async function openTheConnectorsMenu() {
 }
 
 describe('the connector toggles', () => {
+  it('names an OAuth connection by the display name the server sends', async () => {
+    renderComposer({ connectors: [{ ...GMAIL, display_name: 'Work inbox (ops@example.com)' }, POSTGRES] });
+    await openTheConnectorsMenu();
+
+    expect(await screen.findByText('Work inbox (ops@example.com)')).toBeInTheDocument();
+  });
+
+  it('falls back to the engine for a connection with no display name', async () => {
+    renderComposer();
+    await openTheConnectorsMenu();
+
+    expect(await screen.findByText('postgres')).toBeInTheDocument();
+  });
+
   it('lists a cloud database connection beside the OAuth ones', async () => {
     renderComposer();
     await openTheConnectorsMenu();

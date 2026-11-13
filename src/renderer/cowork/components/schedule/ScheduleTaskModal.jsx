@@ -1,9 +1,9 @@
 // Schedule a new task, or edit one: the same modal for both; pass `task` to
 // edit.
 //
-// Layout: what to do (the prompt) first, then when, read back as a sentence
-// with the next few runs, then the name and project. Pausing lives on the
-// task's page and row, not here.
+// Layout: the name, what to do (the prompt), then when, read back as a
+// sentence with the next few runs, then the project and model side by side.
+// Pausing lives on the task's page and row, not here.
 //
 // "When" is one line of compact controls sized to their values (how often,
 // the day or date when that needs one, the time, the zone), the way calendar
@@ -15,13 +15,18 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea, Tooltip } from '../ui';
 import { missedRunLabel, missedRunText } from '../../lib/scheduleCopy';
 import {
-  INTERVAL_MINUTES, WEEKDAY_NAMES, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, whenFromDate,
+  INTERVAL_MINUTES, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, weekdayName, whenFromDate,
 } from '../../lib/scheduleWhen';
 import Ico from '../Icons';
+import ModelSelect from '../ModelSelect.jsx';
+import { buildModelPickerOptions, offeredModels, withModelPickerFallback } from '../../lib/modelPickerOptions';
+import { modelPickerMode } from '../../../lib/modelPicker';
+import { PLATFORM_UI } from '../../../lib/deployment';
 import { productName } from '../../../lib/deploymentBrand';
 import { host } from '../../../platform/host';
 import { askToNotify } from '../../hooks/useAutoPauseNotifications';
 import { scheduleState } from './ScheduleStatusBadge';
+import { useTranslation } from '../../../lib/i18n';
 
 const FONT_BODY = 'var(--font-body)';
 
@@ -34,18 +39,23 @@ const FONT_BODY = 'var(--font-body)';
 // can't collide with a real project path.
 const NO_PROJECT = '__no_project__';
 
+// The server's value for "run on the account's default models". A run whose
+// pinned model can't be served falls back to it.
+const DEFAULT_MODEL = 'default';
+
+// Cadence values and their label keys (scheduleTaskModal.cadence.*).
 const CADENCE_OPTIONS = [
-  { value: 'once',     label: 'Once' },
-  { value: 'every_15_minutes', label: 'Every 15 minutes' },
-  { value: 'every_30_minutes', label: 'Every 30 minutes' },
-  { value: 'hourly',   label: 'Every hour' },
-  { value: 'daily',    label: 'Every day' },
-  { value: 'weekdays', label: 'Every weekday' },
-  { value: 'weekly',   label: 'Every week' },
+  { value: 'once',     key: 'once' },
+  { value: 'every_15_minutes', key: 'every15' },
+  { value: 'every_30_minutes', key: 'every30' },
+  { value: 'hourly',   key: 'hourly' },
+  { value: 'daily',    key: 'daily' },
+  { value: 'weekdays', key: 'weekdays' },
+  { value: 'weekly',   key: 'weekly' },
 ];
 
 // Mon first, as a week reads; values are JS getDay() numbers.
-const WEEKDAY_OPTIONS = [1, 2, 3, 4, 5, 6, 0].map((d) => ({ value: String(d), label: WEEKDAY_NAMES[d] }));
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 const fieldInput = {
   width: '100%', boxSizing: 'border-box',
@@ -69,12 +79,17 @@ export default function ScheduleTaskModal({
   open, onClose, onSubmit,
   task,                    // when set → edit mode
   projects = [],
+  models = [],
+  modelMeta = {},
   defaultProjectPath = '',
   busy = false,
   agentLabel,
 }) {
+  const { t } = useTranslation('projects');
   const isEdit = !!task;
   const displayName = productName(agentLabel);
+  const cadenceOptions = CADENCE_OPTIONS.map(({ value, key }) => ({ value, label: t(`scheduleTaskModal.cadence.${key}`) }));
+  const weekdayOptions = WEEKDAY_ORDER.map((d) => ({ value: String(d), label: weekdayName(d) }));
 
   const [form, setForm] = useState(() => emptyForm({ defaultProjectPath }));
   const [error, setError] = useState('');
@@ -97,6 +112,7 @@ export default function ScheduleTaskModal({
         title:       task.title || '',
         prompt:      task.prompt || '',
         projectPath: match?.path || defaultProjectPath || NO_PROJECT,
+        model:       task.model || DEFAULT_MODEL,
         ...at,
       });
     } else {
@@ -105,17 +121,39 @@ export default function ScheduleTaskModal({
   }, [open, task?.id, defaultProjectPath, projects]);
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
-  const upcoming = useMemo(() => nextRuns(form, new Date(), 3), [form]);
+  const upcoming = useMemo(() => formRuns(form, task, new Date()), [form, task]);
   const zone = timeZoneLabel();
+  // The same models the chat composer offers. With platform UI off, the
+  // operator's picker decides: off shows no field at all (the operator's
+  // own models run), and otherwise only the models it offers.
+  const pickable = useMemo(() => {
+    if (PLATFORM_UI) return models;
+    return modelPickerMode() === 'off' ? [] : offeredModels(models, modelMeta?.modelEnabled);
+  }, [models, modelMeta?.modelEnabled]);
+  const showModel = PLATFORM_UI || pickable.length > 0;
+  const modelOptions = useMemo(() => [
+    { value: DEFAULT_MODEL, label: t('scheduleTaskModal.accountDefault'), pin: 'top' },
+    // A pin the catalog no longer lists stays selectable as itself, where
+    // the user picks freely; an operator's list offers only its own models.
+    ...buildModelPickerOptions(
+      PLATFORM_UI ? withModelPickerFallback(pickable, form.model === DEFAULT_MODEL ? '' : form.model) : pickable,
+      modelMeta,
+    ),
+  ], [pickable, modelMeta, form.model, t]);
+  // What is sent: the pick when it's on offer, else the default.
+  const sentModel = !showModel
+    ? DEFAULT_MODEL
+    : (PLATFORM_UI || pickable.some((m) => m.id === form.model) ? form.model : DEFAULT_MODEL);
 
   async function handleSubmit({ runOnce = false } = {}) {
     if (!form.prompt.trim()) {
-      setError(`Tell ${displayName} what to do.`);
+      setError(t('scheduleTaskModal.errorNoPrompt', { agent: displayName }));
       return;
     }
-    const first = upcoming[0];
+    // A preview can outlive its next occurrence while the dialog stays open.
+    const first = formRuns(form, task, new Date())[0];
     if (!first) {
-      setError(form.cadence === 'once' ? 'Pick a time in the future.' : 'Pick a time.');
+      setError(form.cadence === 'once' ? t('scheduleTaskModal.errorPickFutureTime') : t('scheduleTaskModal.errorPickTime'));
       return;
     }
     setError('');
@@ -135,10 +173,8 @@ export default function ScheduleTaskModal({
       timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
       next_run_at:  first.toISOString(),
       project_id:   projectMatch?.id || null,
-      // Scheduled tasks always use the user's configured default
-      // model — exposing the picker here let people accidentally
-      // pin a stale model id that's no longer valid.
-      model:        null,
+      // Sent even when it's the default, so an edit can clear a pin.
+      model:        sentModel,
     };
     // A one-off that already ran stays off when only its time changes, so a
     // new time in the future turns it back on: "from the next run" is true.
@@ -149,7 +185,7 @@ export default function ScheduleTaskModal({
       await onSubmit(payload, task?.id || null, { runOnce });
       onClose?.();
     } catch (err) {
-      setError(err?.message || 'Could not save schedule.');
+      setError(err?.message || t('scheduleTaskModal.errorSave'));
     }
   }
 
@@ -164,21 +200,30 @@ export default function ScheduleTaskModal({
     >
       <ModalHeader
         id="schedule-modal-title"
-        title={isEdit ? 'Edit scheduled task' : 'Schedule a task'}
+        title={isEdit ? t('scheduleTaskModal.editTitle') : t('scheduleTaskModal.createTitle')}
         subtitle={isEdit
-          ? `Changes apply from the next run.`
+          ? t('scheduleTaskModal.editSubtitle')
           : host.isWeb
-            ? `${displayName} runs this on its own, even with this tab closed.`
-            : `${displayName} runs this on its own while MindsHub is open.`}
+            ? t('scheduleTaskModal.createSubtitleWeb', { agent: displayName })
+            : t('scheduleTaskModal.createSubtitleDesktop', { agent: displayName })}
         onClose={onClose}
       />
       <ModalBody padding="18px 20px">
         <div className="flex flex-col gap-[18px]">
-          <Field label={`What should ${displayName} do?`}>
+          <Field label={t('scheduleTaskModal.name')} optional>
+            <Input
+              value={form.title}
+              onChange={(v) => update('title', v)}
+              placeholder={t('scheduleTaskModal.namePlaceholder')}
+              style={fieldInput}
+            />
+          </Field>
+
+          <Field label={t('scheduleTaskModal.promptLabel', { agent: displayName })}>
             <Textarea
               value={form.prompt}
               onChange={(v) => update('prompt', v)}
-              placeholder={`Ask ${displayName} to…`}
+              placeholder={t('scheduleTaskModal.promptPlaceholder', { agent: displayName })}
               rows={4}
               autoFocus
               style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.45 }}
@@ -187,7 +232,7 @@ export default function ScheduleTaskModal({
 
           <div className="flex flex-col gap-2.5">
             <span className="inline-flex items-center gap-1 text-sm font-medium text-ink-2">
-              When
+              {t('scheduleTaskModal.when')}
               {/* What happens when the app is closed at the task's time:
                   too long to sit under the field, so it's a tooltip. */}
               <Tooltip content={missedRunText(form.cadence)}>
@@ -204,34 +249,34 @@ export default function ScheduleTaskModal({
               <Select
                 value={form.cadence}
                 onValueChange={(v) => v && update('cadence', v)}
-                ariaLabel="How often"
+                ariaLabel={t('scheduleTaskModal.howOften')}
                 width={160}
                 style={fieldSelectStyle}
-                options={CADENCE_OPTIONS}
+                options={cadenceOptions}
               />
               {form.cadence === 'weekly' && (
                 <Select
                   value={String(form.weekday)}
                   onValueChange={(v) => v && update('weekday', Number(v))}
-                  ariaLabel="Day of the week"
+                  ariaLabel={t('scheduleTaskModal.dayOfWeek')}
                   width={140}
                   style={fieldSelectStyle}
-                  options={WEEKDAY_OPTIONS}
+                  options={weekdayOptions}
                 />
               )}
               {form.cadence === 'once' && (
                 <Input
                   type="date"
-                  aria-label="Date"
+                  aria-label={t('scheduleTaskModal.date')}
                   value={form.date}
                   onChange={(v) => update('date', v)}
                   style={{ ...fieldInput, width: 170 }}
                 />
               )}
-              <span className="px-0.5 text-sm text-ink-3">{INTERVAL_MINUTES[form.cadence] ? 'at minute' : 'at'}</span>
+              <span className="px-0.5 text-sm text-ink-3">{INTERVAL_MINUTES[form.cadence] ? t('scheduleTaskModal.atMinute') : t('scheduleTaskModal.at')}</span>
               <Input
                 type="time"
-                aria-label="Time"
+                aria-label={t('scheduleTaskModal.time')}
                 value={form.time}
                 onChange={(v) => update('time', v)}
                 style={{ ...fieldInput, width: 130 }}
@@ -243,36 +288,43 @@ export default function ScheduleTaskModal({
               <span className="text-sm font-semibold text-ink">{describeWhen(form)}, {zone}</span>
               <span className="text-[12.5px] text-ink-3">
                 {upcoming.length
-                  ? `Next ${upcoming.length === 1 ? 'run' : 'runs'}: ${upcoming.map((d) => formatRun(d)).join(' · ')}`
-                  : 'That time has passed.'}
+                  ? t('scheduleTaskModal.nextRuns', { count: upcoming.length, runs: upcoming.map((d) => formatRun(d)).join(' · ') })
+                  : t('scheduleTaskModal.timePassed')}
               </span>
             </div>
           </div>
 
           <div className="grid grid-cols-[1fr_1fr] gap-[14px]">
-            <Field label="Name" optional>
-              <Input
-                value={form.title}
-                onChange={(v) => update('title', v)}
-                placeholder="Named from the prompt"
-                style={fieldInput}
-              />
-            </Field>
-            <Field label="Project">
+            <Field label={t('scheduleTaskModal.project')}>
               <Select
                 value={form.projectPath}
                 onValueChange={(v) => update('projectPath', v)}
-                ariaLabel="Project"
+                ariaLabel={t('scheduleTaskModal.project')}
                 style={fieldSelectStyle}
                 options={[
                   // "No project" is the unassigned mode, not a project — divide
                   // it from the real projects (which map 1:1 to the projects page).
-                  { value: NO_PROJECT, label: 'No project' },
+                  { value: NO_PROJECT, label: t('scheduleCommon.noProject') },
                   { separator: true },
                   ...projects.map((p) => ({ value: p.path, label: projectLabel(p) })),
                 ]}
               />
             </Field>
+            {showModel && (
+              <Field label={t('scheduleTaskModal.model')}>
+                <ModelSelect
+                  value={sentModel}
+                  onValueChange={(v) => v && update('model', v)}
+                  ariaLabel={t('scheduleTaskModal.model')}
+                  variant="field"
+                  style={fieldSelectStyle}
+                  options={modelOptions}
+                  onOpenChange={(open) => {
+                    if (open) Promise.resolve().then(() => modelMeta?.onRefresh?.()).catch(() => {});
+                  }}
+                />
+              </Field>
+            )}
           </div>
 
           {error && (
@@ -286,7 +338,7 @@ export default function ScheduleTaskModal({
       <ModalFooter
         cancel={(
           <Button variant="subtle" onClick={onClose} disabled={busy}>
-            Cancel
+            {t('scheduleTaskModal.cancel')}
           </Button>
         )}
       >
@@ -294,7 +346,7 @@ export default function ScheduleTaskModal({
           // Create it and try it once now, rather than wait for its time
           // to find out whether the prompt works.
           <Button onClick={() => handleSubmit({ runOnce: true })} disabled={busy}>
-            Save and run once
+            {t('scheduleTaskModal.saveAndRunOnce')}
           </Button>
         )}
         <Button
@@ -303,7 +355,7 @@ export default function ScheduleTaskModal({
           disabled={busy}
         >
           {!isEdit && !busy && Ico.plus(14)}
-          {busy ? 'Saving…' : (isEdit ? 'Save changes' : 'Schedule')}
+          {busy ? t('scheduleTaskModal.saving') : (isEdit ? t('scheduleTaskModal.saveChanges') : t('scheduleTaskModal.schedule'))}
         </Button>
       </ModalFooter>
     </Modal>
@@ -313,11 +365,26 @@ export default function ScheduleTaskModal({
 
 // ── Helpers ──
 
+// An unrelated edit must not bring a deferred start forward. Only the timing
+// controls relevant to this cadence determine whether the schedule changed.
+function formRuns(form, task, now) {
+  const original = task?.nextRunAt ? new Date(task.nextRunAt) : null;
+  if (original && original > now) {
+    const saved = whenFromDate(original, task.cadence || 'daily');
+    const unchanged = form.cadence === saved.cadence && form.time === saved.time
+      && (form.cadence !== 'weekly' || Number(form.weekday) === saved.weekday)
+      && (form.cadence !== 'once' || form.date === saved.date);
+    if (unchanged) return [original, ...nextRuns(form, original, 2)];
+  }
+  return nextRuns(form, now, 3);
+}
+
 function emptyForm({ defaultProjectPath }) {
   return {
     title: '',
     prompt: '',
     projectPath: defaultProjectPath || NO_PROJECT,
+    model: DEFAULT_MODEL,
     ...defaultWhen(),
   };
 }

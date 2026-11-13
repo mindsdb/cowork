@@ -3,6 +3,7 @@
 // own so the view does not pull in the hook.
 
 import { SHARE_ORG_REQUIRED_CODE } from '../../../lib/sharingContract';
+import i18n from '../../../../lib/i18n';
 
 // The upload service answers HTTP 409 with this code when the artifact's report
 // belongs to another account. cowork-server passes it on as `detail.code`, and
@@ -36,7 +37,7 @@ export function isShareOrgRequiredError(e) {
  * @returns {string | null}
  */
 export function publishRefusalMessage(e) {
-  if (isOwnedByOtherUserError(e)) return OWNED_BY_OTHER_USER_MESSAGE;
+  if (isOwnedByOtherUserError(e)) return i18n.t('publish.ownedByOther', { ns: 'artifacts' });
   if (isShareOrgRequiredError(e)) return e.message;
   return null;
 }

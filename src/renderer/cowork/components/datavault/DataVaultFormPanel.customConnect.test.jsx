@@ -28,7 +28,7 @@ const SPEC = toCustomConnectSpec({
   engine: 'acme_crm',
   _connector_id: 'acme_crm',
   fields: [{ name: 'api_key', label: 'API key', type: 'password', secret: true, required: true }],
-}, { path: '/v1/me', headers: { Authorization: 'Bearer {api_key}' } }, 'Acme CRM');
+}, { path: '/v1/me' }, 'Acme CRM');
 
 function renderPanel() {
   const handlers = { onSubmit: vi.fn(), onContinue: vi.fn(), onClose: vi.fn() };

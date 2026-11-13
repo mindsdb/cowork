@@ -8,6 +8,7 @@ import { diagnostic } from '../../../../shared/diagnostics';
 
 import { Component } from 'react';
 import { Alert } from '../ui';
+import i18n from '../../../lib/i18n';
 
 export class FormErrorBoundary extends Component {
   constructor(props) {
@@ -28,7 +29,7 @@ export class FormErrorBoundary extends Component {
     if (this.state.error) {
       return (
         <Alert variant="danger" className="my-2">
-          Form panel crashed: <code style={{ fontFamily: 'var(--font-mono)' }}>{String(this.state.error?.message || this.state.error)}</code>
+          {i18n.t('dataVault.formCrashed', { ns: 'library' })} <code style={{ fontFamily: 'var(--font-mono)' }}>{String(this.state.error?.message || this.state.error)}</code>
         </Alert>
       );
     }

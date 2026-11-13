@@ -1,0 +1,210 @@
+{
+  "updates": {
+    "backendVersion": {
+      "loading": "Cargando…",
+      "unavailable": "No disponible"
+    },
+    "currentVersion": {
+      "title": "Versión actual",
+      "subtitle": "La versión que se está ejecutando. Las actualizaciones del servidor y de la interfaz se aplican automáticamente al iniciar; los componentes internos se muestran en los detalles.",
+      "releaseWeek": "Semana de lanzamiento {range}",
+      "outOfSyncHint": "Los componentes internos abarcan {days} días: uno de ellos está desactualizado. Consulta los detalles.",
+      "outOfSync": "⚠ desincronizado",
+      "built": "compilado {date}",
+      "appShell": "App de escritorio",
+      "tooOldHint": "Compatible: {minVersion} o posterior, y con no más de {days} días de diferencia con la app más reciente ({latestVersion}).",
+      "tooOld": "⚠ demasiado antigua",
+      "osCappedHint": "La app más reciente requiere macOS {minMacos} o posterior, así que esta app ya no se actualiza.",
+      "osCapped": "⚠ sin actualizaciones en macOS {macos}",
+      "tooOldAlert": "Esta app es demasiado antigua para esta versión de {product}. Algunas funciones estarán ocultas hasta que la app se actualice a {version}. Usa Actualizaciones de software más abajo.",
+      "showDetails": "Detalles",
+      "hideDetails": "Ocultar detalles",
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "copyFailed": "No se pudo copiar: selecciona los detalles de arriba para copiarlos manualmente"
+    },
+    "software": {
+      "title": "Actualizaciones de software",
+      "subtitle": "Las actualizaciones de la interfaz y del servidor se aplican automáticamente al reiniciar la app. Las nuevas versiones de la app se descargan en segundo plano y se instalan la próxima vez que la abras.",
+      "manualAfterFailure": "Aún puedes descargar el instalador manualmente.",
+      "installerDownloading": "Descargando el instalador. Cuando termine, cierra {product} y abre el instalador para completar la actualización.",
+      "installerDownloadingDeb": "Descargando el instalador. Cuando termine, cierra {product} y {step}.",
+      "downloadInstallerHint": "Descarga el instalador, luego cierra {product} y ábrelo para completar la actualización.",
+      "downloadInstallerHintDeb": "Descarga el instalador, luego cierra {product} y {step}.",
+      "offline": "No se pudo comprobar: parece que no tienes conexión.",
+      "checkFailed": "No se pudieron buscar actualizaciones. Inténtalo de nuevo.",
+      "upToDate": "Tienes la última versión.",
+      "serverPart": "Servidor → {version}",
+      "agentPart": "Agente → {version}",
+      "uiPart": "Interfaz → {version}",
+      "newVersion": "nueva versión",
+      "checking": "Buscando…",
+      "check": "Buscar actualizaciones",
+      "updateReady": "Actualización lista",
+      "restartToApply": "Reinicia la app para aplicarla.",
+      "restartToApplyWith": "Reinicia la app para aplicarla ({changes}).",
+      "restarting": "Reiniciando…",
+      "tryAgain": "Reintentar",
+      "restartNow": "Reiniciar ahora",
+      "auto": {
+        "checking": "Buscando una actualización de la app…",
+        "available": "Nueva versión de la app disponible",
+        "downloading": "Descargando actualización de la app…",
+        "downloadingPercent": "Descargando actualización de la app: {percent}%",
+        "ready": "Actualización de la app lista",
+        "installing": "Instalando actualización de la app…",
+        "failed": "Falló la actualización de la app",
+        "readyHint": "Reinicia {product} para terminar de instalar la actualización descargada.",
+        "failedHint": "No se pudo completar la actualización automática. Tu instalación actual sigue funcionando.",
+        "availableManualHint": "Descárgala cuando quieras.",
+        "availableHint": "La actualización está lista para descargarse.",
+        "workingHint": "Puedes seguir trabajando mientras {product} prepara la actualización.",
+        "download": "Descargar actualización",
+        "retry": "Reintentar"
+      },
+      "newAppVersion": "Nueva versión de la app {version}",
+      "downloadAgain": "Descargar de nuevo",
+      "downloadInstaller": "Descargar instalador",
+      "applyFailed": "No se pudo aplicar la actualización. Inténtalo de nuevo."
+    }
+  },
+  "backend": {
+    "web": {
+      "title": "El backend se gestiona en el servidor",
+      "body": "El backend de Python se ejecuta en el servidor: no se puede controlar desde esta interfaz."
+    },
+    "status": {
+      "online": {
+        "title": "El backend de MindsHub está en ejecución",
+        "subtitle": "El servidor local de Python responde a /health."
+      },
+      "starting": {
+        "title": "El backend de MindsHub se está iniciando…",
+        "subtitle": "Iniciando el servidor local de Python. Suele tardar unos segundos."
+      },
+      "stopping": {
+        "title": "El backend de MindsHub se está deteniendo…",
+        "subtitle": "Esperando a que el servidor local de Python termine."
+      },
+      "stopped": {
+        "title": "El backend de MindsHub está detenido",
+        "subtitle": "Detuviste el servidor local de Python. Haz clic en \"Iniciar backend\" abajo para volver a iniciarlo."
+      },
+      "failed": {
+        "title": "El backend de MindsHub no está en ejecución",
+        "subtitle": "El servidor local de Python no se inició. El error más reciente y el final del registro aparecen abajo."
+      }
+    },
+    "refreshTooltip": "Actualizar diagnóstico",
+    "refresh": "Actualizar",
+    "stopping": "Deteniendo…",
+    "stop": "Detener backend",
+    "starting": "Iniciando…",
+    "restarting": "Reiniciando…",
+    "start": "Iniciar backend",
+    "restart": "Reiniciar backend",
+    "statusHeading": "Estado",
+    "port": "Puerto",
+    "exit": "Salida",
+    "started": "Iniciado",
+    "noStartError": "No se registró ningún error de inicio específico. Revisa el final del registro: es posible que el proceso se haya cerrado después de iniciar.",
+    "log": "Registro",
+    "noLog": "(aún no hay registro)"
+  },
+  "account": {
+    "username": "Nombre de usuario",
+    "organization": "Organización",
+    "signIn": {
+      "title": "Activa las funciones en la nube",
+      "subtitle": "Inicia sesión con MindsHub para acceder a todos los modelos, la ejecución en la nube y la publicación, todo en un solo lugar.",
+      "features": {
+        "router": {
+          "label": "Enrutador de modelos integrado",
+          "desc": "La forma más sencilla de usar todos los modelos en un solo lugar: Claude, GPT, DeepSeek, Kimi y más."
+        },
+        "remote": {
+          "label": "Tareas remotas",
+          "desc": "Ejecuta código y tareas largas en infraestructura administrada, no en tu laptop."
+        },
+        "share": {
+          "label": "Comparte y colabora",
+          "desc": "Comparte paneles, informes y artefactos, y trabajen juntos en ellos."
+        },
+        "unified": {
+          "label": "Cuenta unificada",
+          "desc": "Un inicio de sesión, una factura: sin malabares con claves de API de distintos proveedores."
+        }
+      },
+      "comingSoon": "próximamente",
+      "error": "No se completó el inicio de sesión: {error}",
+      "button": "Iniciar sesión / Registrarse en MindsHub"
+    },
+    "cancel": "Cancelar",
+    "signingOut": "Cerrando sesión…",
+    "signOut": "Cerrar sesión",
+    "web": {
+      "title": "Gestionada a través de MindsHub",
+      "body": "En la versión web, la cuenta se gestiona a través de MindsHub."
+    }
+  },
+  "usage": {
+    "actions": {
+      "viewUsage": "Ver uso",
+      "addFunds": "Agregar fondos",
+      "setUpAutoTopUp": "Configurar recarga automática",
+      "manageAutoTopUp": "Gestionar recarga automática",
+      "updatePaymentMethod": "Actualizar método de pago"
+    },
+    "free": {
+      "title": "Cupo gratuito de Air",
+      "badge": "Solo MindsHub Air",
+      "resetsAt": "Se renueva a las {time}",
+      "unlimited": "Ilimitado en esta cuenta.",
+      "used": "{percent} de tu cupo usado",
+      "left": "Queda {percent}",
+      "meterLabel": "Cupo gratuito de Air usado",
+      "usedUpUntil": "Agotado. MindsHub Air se cobra de tu saldo hasta que se renueve a las {time}.",
+      "usedUp": "Agotado. MindsHub Air se cobra de tu saldo hasta que se renueve.",
+      "afterUntil": "Después, MindsHub Air usa tu saldo hasta que se renueve a las {time}.",
+      "after": "Después, MindsHub Air usa tu saldo."
+    },
+    "autoTopUp": {
+      "off": "La recarga automática está desactivada. Actívala para que tus tareas sigan ejecutándose cuando tu saldo esté bajo.",
+      "rule": "Recarga hasta {target} cuando tu saldo baja de {floor}.",
+      "on": "Activada.",
+      "paymentFailed": "Falló la recarga automática: no pudimos cobrar a tu tarjeta. Actualiza tu método de pago para reanudarla.",
+      "capReached": "{rule} En pausa para no superar el límite de este mes.",
+      "pendingAction": "{rule} Esperando que tu banco confirme el último cargo.",
+      "badgeOn": "Recarga automática activada",
+      "badgeFailed": "Falló la recarga automática",
+      "badgePaused": "Recarga automática en pausa"
+    },
+    "low": {
+      "off": "Saldo bajo. Agrega fondos o activa la recarga automática para que tus tareas sigan ejecutándose.",
+      "ok": "Saldo bajo. La recarga automática lo repondrá.",
+      "pending": "Saldo bajo. La recarga automática está esperando a tu banco.",
+      "other": "Saldo bajo. Agrega fondos para que tus tareas sigan ejecutándose."
+    },
+    "balance": {
+      "title": "Saldo",
+      "empty": "Vacío. Los modelos de pago no se ejecutarán hasta que agregues fondos.",
+      "usedBy": "Lo usan los modelos de pago, y MindsHub Air cuando se agotan los tokens gratuitos.",
+      "spentRange": "de crédito gastado del {start} al {end}",
+      "spentDate": "de crédito gastado {date}",
+      "spentThisPeriod": "de crédito gastado en este período",
+      "notOwner": "Solo el responsable de facturación de tu organización puede agregar fondos o cambiar la recarga automática."
+    },
+    "signIn": {
+      "title": "Inicia sesión para ver tu uso",
+      "body": "Tu cupo gratuito de Air y tu saldo aparecerán aquí cuando inicies sesión en MindsHub.",
+      "goToAccount": "Ir a Cuenta"
+    },
+    "loading": "Cargando uso…",
+    "error": {
+      "title": "No se pudo cargar el uso",
+      "body": "MindsHub no respondió. Inténtalo de nuevo o revisa tu uso en la consola.",
+      "tryAgain": "Reintentar"
+    },
+    "empty": "Todavía no hay uso para mostrar en esta cuenta."
+  }
+}

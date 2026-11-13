@@ -23,11 +23,12 @@ import { RailCard } from './RailCard';
 import { duplicateLiveApp, fetchSharedLiveApps } from '../../api';
 import { noteArtifactCreated } from '../../lib/artifactsStore';
 import {
-  SHARED_WITH_YOU_LABEL,
+  sharedWithYouLabel,
   duplicateDisclaimer,
   duplicateDisclaimerTitle,
   sharedByLine,
 } from '../../lib/liveAppSharing';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 const REFRESH_MS = 60_000;
 
@@ -39,6 +40,7 @@ const REFRESH_MS = 60_000;
  * whatever hides with an empty list, so a refusal that empties it still shows.
  */
 export function useSharedLiveApps({ projectId, refreshKey = null, onDuplicated, destination = '' }) {
+  const { t } = useTranslation('shell');
   const [apps, setApps] = useState([]);
   const [loadError, setLoadError] = useState('');
   // The app whose disclaimer is open, and the copy request it confirms.
@@ -72,7 +74,7 @@ export function useSharedLiveApps({ projectId, refreshKey = null, onDuplicated, 
           onFinal();
           return;
         }
-        if (!loaded.current) setLoadError("Couldn't load the apps you can duplicate.");
+        if (!loaded.current) setLoadError(i18n.t('rail.shared.loadFailed', { ns: 'shell' }));
       });
   }, []);
 
@@ -111,7 +113,7 @@ export function useSharedLiveApps({ projectId, refreshKey = null, onDuplicated, 
       onDuplicated?.(card);
       setPending(null);
     } catch (e) {
-      setDuplicateError(e?.message || "Couldn't duplicate this app.");
+      setDuplicateError(e?.message || i18n.t('rail.shared.duplicateFailed', { ns: 'shell' }));
       // The share or the owner's app may be gone (404), or a copy already
       // exists (409); the server's list knows either way.
       if (e?.status === 404 || e?.status === 409) load();
@@ -130,10 +132,10 @@ export function useSharedLiveApps({ projectId, refreshKey = null, onDuplicated, 
       open={!!pending}
       title={duplicateDisclaimerTitle(pending)}
       message={destination ? `${duplicateDisclaimer(pending)} ${destination}` : duplicateDisclaimer(pending)}
-      confirmLabel="Duplicate"
-      cancelLabel="Cancel"
+      confirmLabel={t('rail.shared.duplicate')}
+      cancelLabel={t('common.cancel')}
       busy={busy}
-      busyLabel="Duplicating…"
+      busyLabel={t('rail.shared.duplicating')}
       error={duplicateError}
       onClose={closeDisclaimer}
       onConfirm={confirmDuplicate}
@@ -148,27 +150,29 @@ export function useSharedLiveApps({ projectId, refreshKey = null, onDuplicated, 
  * "Duplicated" that does nothing. The server refuses a second copy too.
  */
 export function SharedAppAction({ app, onChoose, size = 'xs' }) {
+  const { t } = useTranslation('shell');
   if (app.yourCopy) {
     return (
       <Button
         size={size}
         variant="subtle"
         disabled
-        aria-label={`You have a copy of ${app.name}`}
-        title="You have a copy. Delete it to duplicate the app again."
+        aria-label={t('rail.shared.haveCopyAriaLabel', { name: app.name })}
+        title={t('rail.shared.haveCopyTitle')}
       >
-        Duplicated
+        {t('rail.shared.duplicated')}
       </Button>
     );
   }
   return (
-    <Button size={size} variant="tinted" aria-label={`Duplicate ${app.name}`} onClick={() => onChoose(app)}>
-      Duplicate
+    <Button size={size} variant="tinted" aria-label={t('rail.shared.duplicateAriaLabel', { name: app.name })} onClick={() => onChoose(app)}>
+      {t('rail.shared.duplicate')}
     </Button>
   );
 }
 
 export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
+  const { t } = useTranslation('shell');
   const toastManager = useToastManager();
   const { apps, loadError, choose, disclaimer } = useSharedLiveApps({
     projectId,
@@ -176,7 +180,7 @@ export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
     // The copy lands in this project's Artifacts card, which may be scrolled
     // or closed, so the toast is what says it worked.
     onDuplicated: (card) => {
-      toastManager.add({ title: 'Duplicated into this project.', type: 'success' });
+      toastManager.add({ title: t('rail.shared.duplicatedToast'), type: 'success' });
       onDuplicated?.(card);
     },
   });
@@ -186,8 +190,8 @@ export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
   return (
     <>
       {showCard && (
-        <RailCard title={SHARED_WITH_YOU_LABEL} defaultOpen>
-          <section aria-label={SHARED_WITH_YOU_LABEL}>
+        <RailCard title={sharedWithYouLabel()} defaultOpen>
+          <section aria-label={sharedWithYouLabel()}>
             {loadError && <p className="text-xs px-1 pb-0.5 text-danger">{loadError}</p>}
             <ul className="m-0 p-0 list-none flex flex-col gap-0.5">
               {apps.map((app) => (

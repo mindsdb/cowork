@@ -5,6 +5,7 @@ import { TurnMinimap } from './TurnMinimap';
 
 import type { StickToBottom } from './useStickToBottom';
 import './chat.css';
+import { useTranslation } from '../../../lib/i18n';
 
 type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'children' | 'onScroll' | 'onWheel' | 'onTouchStart' | 'onPointerDown' | 'onKeyDown' | 'onClickCapture'> & {
   [data: `data-${string}`]: string | undefined;
@@ -40,6 +41,7 @@ export function ChatScroller({
   minimap?: boolean;
   children: ReactNode;
 }) {
+  const { t } = useTranslation('chat');
   const contentRef = useRef<HTMLDivElement>(null);
   const { isStuck, scrollToBottom, isAtBottom, isFar, updateReserve, releaseAnchor, pause, setSelecting } = stick;
   // Bumped when the content changes size or its nodes change, so the minimap
@@ -111,7 +113,7 @@ export function ChatScroller({
         <button
           type="button"
           className="chat-jump"
-          aria-label="Scroll to latest"
+          aria-label={t('scroller.scrollToLatest')}
           onClick={() => {
             const reduce = typeof window.matchMedia === 'function'
               && window.matchMedia('(prefers-reduced-motion: reduce)').matches;

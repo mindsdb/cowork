@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listSharePointChildren } from '../../api';
+import i18n from '../../../lib/i18n';
 
 export const ROOT = 'root';
 
@@ -50,7 +51,7 @@ export function useSharePointTree({ connection, site, driveId }) {
       .catch((err) => {
         if (tokens.current.get(id) !== token || libraryRef.current !== requestedFor) return;
         tokens.current.delete(id);
-        patch(id, { loading: false, error: err?.message || 'This folder could not be listed.' });
+        patch(id, { loading: false, error: err?.message || i18n.t('sharepoint.folderListFailed', { ns: 'library' }) });
       });
   }, [connection, site, driveId, libraryKey, patch]);
 
