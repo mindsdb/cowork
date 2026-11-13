@@ -384,6 +384,11 @@
     "jev": {
       "title": "使用 Jev 快速回答",
       "subtitle": "Jev 是 MindsHub 的决策模型，它会读取每条消息和近期对话，判断你选择的模型能否直接回答，并检查 {agent} 是否已完成工作。关闭后，每条消息都会交由 {agent} 运行。"
+    },
+    "jevClassify": {
+      "title": "使用 Jev 进行分类",
+      "subtitle": "让 {agent} 在将大量文本归入类别、或对每条文本回答是/否问题时，使用 MindsHub 的决策模型 Jev，而不是你选择的模型。批量处理时更快、更省钱。关闭后，将使用你选择的模型为文本分类。",
+      "unavailable": "仅当编码模型在 MindsHub 上运行时可用。"
     }
   },
   "desktop": {

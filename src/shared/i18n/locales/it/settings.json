@@ -384,6 +384,11 @@
     "jev": {
       "title": "Risposte rapide con Jev",
       "subtitle": "Jev, il modello decisionale di MindsHub, legge ogni messaggio e la conversazione recente per decidere se il modello scelto può rispondere direttamente, e verifica se {agent} ha finito il lavoro. Disattivalo per far passare ogni messaggio da {agent}."
+    },
+    "jevClassify": {
+      "title": "Usa Jev per la classificazione",
+      "subtitle": "Consente a {agent} di suddividere molti testi in categorie, o di rispondere a una domanda sì/no su ciascuno, con Jev, il modello decisionale di MindsHub, invece del modello scelto. Più veloce ed economico per grandi quantità. Disattivalo per etichettare i testi con il modello scelto.",
+      "unavailable": "Disponibile solo quando il modello di codice è su MindsHub."
     }
   },
   "desktop": {
