@@ -14,6 +14,7 @@
 
 import { useState } from 'react';
 import Ico from '../Icons';
+import { useTranslation } from '../../../lib/i18n';
 
 export function RailCard({
   title,
@@ -27,6 +28,7 @@ export function RailCard({
   noChevron = false,
   children,
 }) {
+  const { t } = useTranslation('shell');
   const [open, setOpen] = useState(!!defaultOpen || noChevron);
   return (
     <div className="bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0">
@@ -47,7 +49,7 @@ export function RailCard({
           </span>
           <span
             className="text-ink-4 inline-flex shrink-0"
-            title={open ? 'Collapse' : 'Expand'}
+            title={open ? t('rail.card.collapse') : t('rail.card.expand')}
           >
             {open ? Ico.chevDown(12) : Ico.chevRight(12)}
           </span>

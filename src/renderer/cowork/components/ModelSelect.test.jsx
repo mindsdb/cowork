@@ -16,7 +16,8 @@ vi.mock('../lib/analytics', async (importOriginal) => {
 });
 
 import { ModelSelect } from './ModelSelect';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { HubUsageContext } from '../lib/hubUsageContext';
 import { buildModelPickerOptions } from '../lib/modelPickerOptions';
 
 const OPTIONS = [
@@ -269,6 +270,38 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     expect(onValueChange).not.toHaveBeenCalled();
   });
 
+  it('sends a billing owner straight to the add-credits dialog', async () => {
+    const user = userEvent.setup();
+    hostSpies.openExternal.mockClear();
+    render(
+      <HubUsageContext.Provider value={{ usage: { isBillingOwner: true }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <Harness options={LOCKED} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+    await user.click(within(row).getByRole('button', { name: 'Add credits' }));
+
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+  });
+
+  it('sends a member to the billing page, where the dialog would be one they cannot submit', async () => {
+    const user = userEvent.setup();
+    hostSpies.openExternal.mockClear();
+    render(
+      <HubUsageContext.Provider value={{ usage: { isBillingOwner: false }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <Harness options={LOCKED} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+    await user.click(within(row).getByRole('button', { name: 'Add credits' }));
+
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
   it('leaves an affordable row without one', async () => {
     const user = userEvent.setup();
     render(<Harness options={LOCKED} />);
@@ -290,6 +323,30 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     await user.click(screen.getByRole('combobox'));
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     expect(within(row).getByRole('button', { name: 'Router Settings' })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
+  });
+});
+
+/* A budget-stopped row is closed off too, and credits do not lift a budget. */
+describe('ModelSelect: a row the org budget stops offers no credits', () => {
+  const OPTIONS = buildModelPickerOptions([
+    { id: 'mindshub_air', name: 'MindsHub Air' },
+    { id: 'opus', name: 'Claude Opus 5' },
+  ], {
+    modelEnabled: { mindshub_air: true, opus: false },
+    modelDisabledReasons: { opus: 'budget_exceeded' },
+  });
+
+  it('tags the row Budget reached, explains it on hover, and attaches no Add credits button', async () => {
+    const user = userEvent.setup();
+    render(<Harness options={OPTIONS} />);
+
+    await user.click(screen.getByRole('combobox'));
+    const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+    expect(row).toHaveTextContent('Budget reached');
+    expect(row).not.toHaveTextContent('Needs credits');
+    expect(row).toHaveAttribute('title', "Your organization's budget is used up. An owner or admin can raise it in Budgets.");
+    expect(row).toHaveAttribute('aria-disabled', 'true');
     expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
   });
 });

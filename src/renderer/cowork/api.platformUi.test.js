@@ -41,6 +41,7 @@ it.each([
     const options = {
       model: 'caller-selected-model',
       reasoningEffort: 'high',
+      resetPicks: ['model', 'reasoning_effort'],
       projectName: 'reports',
       attachmentIds: ['file-1'],
       onDone: resolve,
@@ -63,6 +64,8 @@ it.each([
     attachment_ids: ['file-1'],
   });
   expect(body).not.toHaveProperty('reasoning_effort');
+  // Without a picker this client sends no picks, so it resets none either.
+  expect(body).not.toHaveProperty('reset_picks');
 });
 
 it('ignores a model restored from conversation metadata on the next question', async () => {

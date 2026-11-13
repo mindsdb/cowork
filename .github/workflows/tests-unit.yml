@@ -140,6 +140,10 @@ jobs:
         run: npm run test:windows-setup-contract
       - name: Cowork purity guard (no direct bridge access)
         run: npm run check:cowork-purity
+      - name: Translations in step with English (ENG-4149)
+        run: npm run check:i18n
+      - name: Translation check rules
+        run: npm run test:i18n-check
       - name: Unit + component tests + coverage
         run: npm run test:coverage
       - name: Coverage summary

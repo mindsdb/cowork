@@ -5,6 +5,7 @@ import Button from '../../components/ui/Button';
 import { signOutOfBrowserSites } from '../../api';
 import { readBrowseStatus } from '../../lib/browseStatus';
 import { host, onInAppBrowserRegistered } from '../../../platform/host';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* Settings > Agent > Shared browser, in its own group. It shows when the
    server says this deployment offers the browser to this person
@@ -34,49 +35,55 @@ import { host, onInAppBrowserRegistered } from '../../../platform/host';
 
    Every desktop also gets a switch for the agent's anonymous usage events, in
    its own group whatever the browser's status, since it covers all of the
-   agent's events, not only the browser's. */
+   agent's events, not only the browser's.
 
-export const NOT_ENTITLED = 'Not available for your account.';
-export const ORGANIZATION_OFF = 'Your organization turned off the browser.';
-export const STATUS_UNCONFIRMED = "Couldn't confirm the browser right now. Try again in a moment.";
+   Text lives in the settingsTools catalog (browser.*). The exported constants
+   are its English, fixed at import, for the components and tests that import
+   them; this section renders the current language. */
+
+const english = (key) => i18n.t(`settingsTools:browser.${key}`, { lng: 'en' });
+
+export const NOT_ENTITLED = english('notEntitled');
+export const ORGANIZATION_OFF = english('organizationOff');
+export const STATUS_UNCONFIRMED = english('statusUnconfirmed');
 
 export function webDisclosure(agentLabel) {
-  return `A browser you and ${agentLabel} use together, shown beside the chat. It runs in MindsDB's cloud, so websites see MindsDB's addresses. ${agentLabel} asks you before a step that submits, buys, sends or deletes.`;
+  return i18n.t('settingsTools:browser.webDisclosure', { agent: agentLabel });
 }
 
 export function desktopDisclosure(agentLabel) {
-  return `A browser inside this app that you and ${agentLabel} use together, shown beside the chat. Websites see your own connection, and no MindsDB server carries your browsing. ${agentLabel}'s code runs as you and can read this browser's sign-ins. Some sites, Google's sign-in among them, don't allow signing in from an app's built-in browser.`;
+  return i18n.t('settingsTools:browser.desktopDisclosure', { agent: agentLabel });
 }
 
 /* Both sign-in lines name Settings rather than a place on this page, so the
    pane can show them as they are. On the desktop a site's session cookies end
    when the app quits, and only its persistent cookies outlive a restart. */
-export const WEB_SIGN_INS = 'Sites you sign in to stay signed in for your later tasks, in every organization you belong to, until they go 90 days unused or you sign out of all sites in Settings.';
-export const DESKTOP_SIGN_INS = 'Sites you sign in to stay signed in on this computer for your later tasks, in every organization of this account, until the site signs you out or you sign out of all sites in Settings. Some sites sign you out when the app quits.';
+export const WEB_SIGN_INS = english('webSignIns');
+export const DESKTOP_SIGN_INS = english('desktopSignIns');
 
-export const WEB_SIGN_OUT_HELP = "Clears every site's cookies and sign-ins from your browser and from storage. Saved tabs stay.";
-export const SIGN_OUT_HELP = "Clears this browser's cookies, sign-ins and cache, and closes its tabs. Saved tabs stay.";
+export const WEB_SIGN_OUT_HELP = english('webSignOutHelp');
+export const SIGN_OUT_HELP = english('signOutHelp');
 /* cowork-server's browser client (services/browser.py) answers 424
    browser_unreachable when its call to the router fails or passes its own
    time limit. After a timeout the router may still finish the sign-out, and
    signing out again is right in either case. */
-export const SIGN_OUT_UNCONFIRMED = "The sign-out didn't confirm in time. It may have finished; sign out again to be sure.";
+export const SIGN_OUT_UNCONFIRMED = english('signOutUnconfirmed');
 
 /* `signedInToMindsHub` names MindsHub, a MindsDB service, as the provider a
    signed-in desktop's turns may go to. */
 export function pageContentLine(agentLabel, { signedInToMindsHub = false } = {}) {
-  const viaMindsHub = signedInToMindsHub ? ", MindsHub when you're signed in" : '';
-  return `When ${agentLabel} reads a page, its text and a screenshot go to the model provider that serves your turn${viaMindsHub}.`;
+  return i18n.t('settingsTools:browser.pageContent', { agent: agentLabel, mindshub: signedInToMindsHub ? 'yes' : 'no' });
 }
-export const WEB_JEV_LINE = 'With Fast answers with Jev on, Jev also gets the goal of each browser step, the page\'s address, title, element names and first 1,500 characters, and the recent steps, earlier addresses included, without field values or what you type.';
+export const WEB_JEV_LINE = english('webJevLine');
 
 /* The switch reaches only the agent's events: the app's own analytics
    (lib/analytics.js) doesn't read it. */
 export function usageEventsHelp(agentLabel) {
-  return `${agentLabel} sends MindsDB anonymous usage events, with an installation id, the browser's included, never page text or addresses. Off stops them from the next time you restart the app.`;
+  return i18n.t('settingsTools:browser.usageEventsHelp', { agent: agentLabel });
 }
 
 export default function BrowserSettingsSection({ settings, setSetting, agentLabel = 'Anton', signedInToMindsHub = false }) {
+  const { t } = useTranslation('settingsTools');
   // The last BrowseStatus answer (api.js), or null before the first one.
   const [status, setStatus] = useState(null);
   // Whether the last status read failed. It shows only while no answer came.
@@ -152,9 +159,9 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
       const cleared = inApp
         ? (await host.inAppBrowser.clearData()).ok
         : (await signOutOfBrowserSites())?.cleared === true;
-      note = cleared ? 'Signed out of all sites.' : "Couldn't clear the browser's data. Try again.";
+      note = cleared ? t('browser.signedOut') : t('browser.clearFailed');
     } catch (err) {
-      note = err?.code === 'browser_unreachable' ? SIGN_OUT_UNCONFIRMED : "Couldn't clear the browser's data. Try again.";
+      note = err?.code === 'browser_unreachable' ? t('browser.signOutUnconfirmed') : t('browser.clearFailed');
     }
     setSignOut({ busy: false, note });
   };
@@ -165,8 +172,8 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
   };
 
   const signOutRow = (
-    <Section title="Sign out of all sites" subtitle={signOut.note || (inApp ? SIGN_OUT_HELP : WEB_SIGN_OUT_HELP)}>
-      <Button size="sm" variant="subtle" disabled={signOut.busy} onClick={() => void signOutOfAllSites()}>Sign out</Button>
+    <Section title={t('browser.signOutTitle')} subtitle={signOut.note || (inApp ? t('browser.signOutHelp') : t('browser.webSignOutHelp'))}>
+      <Button size="sm" variant="subtle" disabled={signOut.busy} onClick={() => void signOutOfAllSites()}>{t('browser.signOut')}</Button>
     </Section>
   );
 
@@ -174,40 +181,40 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     <Switch
       checked={settings.browserEnabled ?? true}
       onCheckedChange={(v) => setSetting('browserEnabled', v)}
-      aria-label="Shared browser"
+      aria-label={t('browser.sharedBrowser')}
     />
   );
 
   let browserGroup = null;
   if (offered) {
     browserGroup = (
-      <SettingsGroup title="Shared browser">
-        <Section title="Use the shared browser" subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}>
+      <SettingsGroup title={t('browser.sharedBrowser')}>
+        <Section title={t('browser.useSharedBrowser')} subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}>
           {browserSwitch}
         </Section>
-        <Section title="Sign-ins" subtitle={inApp ? DESKTOP_SIGN_INS : WEB_SIGN_INS} />
+        <Section title={t('browser.signInsTitle')} subtitle={inApp ? t('browser.desktopSignIns') : t('browser.webSignIns')} />
         {signOutRow}
         <Section
-          title="What the model provider sees"
-          subtitle={inApp ? pageContentLine(agentLabel, { signedInToMindsHub }) : `${pageContentLine(agentLabel)} ${WEB_JEV_LINE}`}
+          title={t('browser.providerSeesTitle')}
+          subtitle={inApp ? pageContentLine(agentLabel, { signedInToMindsHub }) : `${pageContentLine(agentLabel)} ${t('browser.webJevLine')}`}
         />
       </SettingsGroup>
     );
   } else if (refused) {
     // Access is off, but the person's saved sign-ins are still theirs to clear.
     browserGroup = (
-      <SettingsGroup title="Shared browser">
-        <Section title="Use the shared browser" subtitle={status.status === 'organization_off' ? ORGANIZATION_OFF : NOT_ENTITLED} />
+      <SettingsGroup title={t('browser.sharedBrowser')}>
+        <Section title={t('browser.useSharedBrowser')} subtitle={status.status === 'organization_off' ? t('browser.organizationOff') : t('browser.notEntitled')} />
         {signOutRow}
       </SettingsGroup>
     );
   } else if (unconfirmed) {
     browserGroup = (
-      <SettingsGroup title="Shared browser">
+      <SettingsGroup title={t('browser.sharedBrowser')}>
         <Section
-          title="Use the shared browser"
-          subtitle={STATUS_UNCONFIRMED}
-          notice={<Button size="sm" variant="subtle" onClick={() => void loadStatus()}>Retry</Button>}
+          title={t('browser.useSharedBrowser')}
+          subtitle={t('browser.statusUnconfirmed')}
+          notice={<Button size="sm" variant="subtle" onClick={() => void loadStatus()}>{t('browser.retry')}</Button>}
         >
           {browserSwitch}
         </Section>
@@ -220,12 +227,12 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     <>
       {browserGroup}
       {usageEvents !== null && (
-        <SettingsGroup title="Usage events">
-          <Section title="Send anonymous usage events" subtitle={usageEventsHelp(agentLabel)}>
+        <SettingsGroup title={t('browser.usageEventsTitle')}>
+          <Section title={t('browser.sendUsageEvents')} subtitle={usageEventsHelp(agentLabel)}>
             <Switch
               checked={usageEvents}
               onCheckedChange={(v) => void saveUsageEvents(v)}
-              aria-label="Send anonymous usage events"
+              aria-label={t('browser.sendUsageEvents')}
             />
           </Section>
         </SettingsGroup>

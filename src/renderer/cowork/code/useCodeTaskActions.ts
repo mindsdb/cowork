@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import i18n from '../../lib/i18n';
 import {
   codingApi,
   type CreateCodeTaskInput,
@@ -13,6 +14,11 @@ const CONTROL_TIMEOUT_MS = 20_000;
 
 function errorMessage(reason: unknown, fallback: string): string {
   return reason instanceof Error ? reason.message : fallback;
+}
+
+
+function tx(key: string, values?: Record<string, unknown>): string {
+  return i18n.t(key, { ns: 'code', ...values });
 }
 
 
@@ -74,7 +80,7 @@ export function useCodeTaskActions({
       return true;
     } catch (reason) {
       if (stillRelevant()) {
-        setError(`${completedMessage}, but the task list could not refresh: ${errorMessage(reason, 'try again shortly')}`);
+        setError(tx('taskActions.refreshFailed', { completed: completedMessage, reason: errorMessage(reason, tx('taskActions.tryAgainShortly')) }));
       }
       return false;
     }
@@ -94,7 +100,7 @@ export function useCodeTaskActions({
         result = await action();
       } catch (reason) {
         if (selectedIdRef.current === actionSessionId) {
-          setError(errorMessage(reason, 'Coding operation failed.'));
+          setError(errorMessage(reason, tx('taskActions.operationFailed')));
         }
         if (rethrow) throw reason;
         return undefined;
@@ -102,13 +108,13 @@ export function useCodeTaskActions({
 
       await reconcile(
         refresh,
-        'The operation completed',
+        tx('taskActions.completed.operation'),
         () => selectedIdRef.current === actionSessionId,
       );
       if (refreshList) {
         await reconcile(
           () => loadSessions(selectedIdRef.current === actionSessionId ? actionSessionId || undefined : undefined),
-          'The operation completed',
+          tx('taskActions.completed.operation'),
           () => selectedIdRef.current === actionSessionId,
         );
       }
@@ -153,10 +159,10 @@ export function useCodeTaskActions({
       // "Restoring task…" until the list or detail fetch returns.
       onSessionsChangeRef.current([created, ...sessionsRef.current.filter((item) => item.id !== created.id)]);
       onSelectionChangeRef.current(created.id, false);
-      await reconcile(() => loadSessions(created.id), 'The task started');
+      await reconcile(() => loadSessions(created.id), tx('taskActions.completed.started'));
     } catch (reason) {
       trackCodeTaskStartFailed('new', input, reason);
-      setError(errorMessage(reason, 'Could not start this task.'));
+      setError(errorMessage(reason, tx('taskActions.errors.start')));
     } finally {
       endAction();
     }
@@ -170,10 +176,10 @@ export function useCodeTaskActions({
       const forked = await codingApi.forkSession(session.id);
       trackCodeTaskStarted(forked, { origin: 'fork' });
       onSelectionChangeRef.current(forked.id, false);
-      await reconcile(() => loadSessions(forked.id), 'The task was forked');
+      await reconcile(() => loadSessions(forked.id), tx('taskActions.completed.forked'));
     } catch (reason) {
       trackCodeTaskStartFailed('fork', null, reason);
-      setError(errorMessage(reason, 'Could not fork this coding task.'));
+      setError(errorMessage(reason, tx('taskActions.errors.fork')));
     } finally {
       endAction();
     }
@@ -196,9 +202,9 @@ export function useCodeTaskActions({
           onSelectionChangeRef.current(session.id, false);
           await refresh();
         }
-      }, `The task was ${archive ? 'archived' : 'restored'}`);
+      }, archive ? tx('taskActions.completed.archived') : tx('taskActions.completed.restored'));
     } catch (reason) {
-      setError(errorMessage(reason, 'Could not update this coding task.'));
+      setError(errorMessage(reason, tx('taskActions.errors.update')));
     } finally {
       endAction();
     }

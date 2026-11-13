@@ -1,0 +1,30 @@
+{
+  "picker": {
+    "placeholder": "Sélectionner un modèle",
+    "empty": "Aucun modèle trouvé",
+    "searchAriaLabel": "Rechercher des modèles",
+    "unavailable": "Indisponible",
+    "addCredits": "Ajouter des crédits",
+    "addCreditsTooltip": "Ajoutez des crédits pour utiliser ce modèle"
+  },
+  "groups": {
+    "openWeight": "Poids ouverts",
+    "other": "Autres"
+  },
+  "effort": {
+    "label": "Effort",
+    "description": "Un effort plus élevé donne des réponses plus approfondies, mais prend plus de temps et consomme vos limites plus vite.",
+    "default": "Par défaut",
+    "levels": {
+      "none": "Aucun",
+      "minimal": "Minimal",
+      "low": "Faible",
+      "medium": "Moyen",
+      "high": "Élevé",
+      "xhigh": "Très élevé",
+      "max": "Maximal",
+      "fast": "Rapide",
+      "slow": "Lent"
+    }
+  }
+}

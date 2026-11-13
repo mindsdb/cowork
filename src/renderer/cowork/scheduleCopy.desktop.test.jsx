@@ -3,6 +3,7 @@
 // (selfHostedCopy tests).
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import ToastProvider from './components/ui/Toast';
 
 vi.mock('../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
@@ -21,12 +22,12 @@ const scheduledProps = {
 
 describe('desktop app', () => {
   it('says scheduled tasks run while the app is open', () => {
-    render(<ScheduledView {...scheduledProps} />);
+    render(<ScheduledView {...scheduledProps} />, { wrapper: ToastProvider });
     expect(screen.getByText(/^Scheduled tasks run while .+ is open\. If a run was due while it was closed, Anton runs the latest one from the last 7 days when it reopens\.$/)).toBeInTheDocument();
   });
 
-  it('names the desktop app when scheduling', () => {
+  it('says the app must be open when scheduling', () => {
     render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
-    expect(screen.getByText('Anton runs this prompt on the cadence you set, while the desktop app is open.')).toBeInTheDocument();
+    expect(screen.getByText('Anton runs this on its own while MindsHub is open.')).toBeInTheDocument();
   });
 });

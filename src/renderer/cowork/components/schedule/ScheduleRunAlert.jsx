@@ -8,11 +8,14 @@
 // now. Neither is offered while a run is still going.
 
 import { Alert, Button } from '../ui';
+import i18n, { useTranslation } from '../../../lib/i18n';
 import { missedOnceTitle } from '../../lib/scheduleCopy';
 import { lastRunFailed, scheduleState } from './ScheduleStatusBadge';
 
 // Outcomes after which some of the run's actions may have happened.
 const MAY_HAVE_ACTED = new Set(['failed_during_execution', 'interrupted', 'uncertain']);
+
+const msg = (key, vars) => i18n.t(`scheduleRunAlert.${key}`, { ns: 'projects', ...vars });
 
 export function runAlert(task) {
   const state = scheduleState(task);
@@ -22,9 +25,9 @@ export function runAlert(task) {
     return {
       kind: 'finishing',
       variant: 'info',
-      title: 'Paused — the current run will finish',
+      title: msg('finishingTitle'),
       reason: null,
-      note: 'Nothing else starts while it’s paused. Stop run ends it now; anything it has already done stays done.',
+      note: msg('finishingNote'),
     };
   }
   if (state === 'missed') {
@@ -33,7 +36,7 @@ export function runAlert(task) {
       variant: 'warning',
       title: missedOnceTitle(),
       reason: null,
-      note: 'It was more than an hour late, so it didn’t run on its own. Run it now, or edit it to give it a new time.',
+      note: msg('missedNote'),
     };
   }
   if (state === 'auto_paused') {
@@ -41,10 +44,10 @@ export function runAlert(task) {
       kind: 'auto_paused',
       variant: 'danger',
       title: task.consecutiveFailures
-        ? `Paused after ${task.consecutiveFailures} failed runs in a row`
-        : 'Paused after repeated failed runs',
+        ? msg('autoPausedTitleCount', { count: task.consecutiveFailures })
+        : msg('autoPausedTitle'),
       reason,
-      note: 'Resume turns the schedule back on and may catch up a pending run. Run now runs it once, now.',
+      note: msg('autoPausedNote'),
     };
   }
   if (task.running || !lastRunFailed(task)) return null;
@@ -52,47 +55,53 @@ export function runAlert(task) {
     return {
       kind: 'partial',
       variant: 'warning',
-      title: 'The last run stopped partway',
+      title: msg('partialTitle'),
       reason,
-      note: 'Some of its actions may have completed. Review the run before running it again.',
+      note: msg('partialNote'),
     };
   }
   return {
     kind: 'failed',
     variant: 'danger',
-    title: 'The last run failed',
+    title: msg('failedTitle'),
     reason,
   };
 }
 
 export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onReviewRun }) {
+  const { t } = useTranslation('projects');
   const alert = runAlert(task);
   if (!alert) return null;
   const conversationId = alert.kind === 'finishing' || alert.kind === 'missed'
     ? null
     : task.lastRun?.conversationId || null;
+  // The action that answers the alert comes first as a default button; the
+  // rest are subtle.
+  const actions = [
+    alert.kind === 'auto_paused' && (
+      <Button key="resume" size="sm" onClick={() => onResume?.(task.id)} disabled={busy}>{t('scheduleRunAlert.resume')}</Button>
+    ),
+    alert.kind === 'missed' && (
+      <Button key="run" size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy}>{t('scheduleRunAlert.runNow')}</Button>
+    ),
+    conversationId && (
+      <Button key="review" size="sm" variant={alert.kind === 'partial' || alert.kind === 'failed' ? 'default' : 'subtle'} onClick={() => onReviewRun?.(conversationId)}>{t('scheduleRunAlert.reviewRun')}</Button>
+    ),
+    alert.kind === 'partial' && (
+      <Button key="again" size="sm" variant="subtle" onClick={() => onRunNow?.(task.id)} disabled={busy || task.running}>{t('scheduleRunAlert.runAgain')}</Button>
+    ),
+  ].filter(Boolean);
   return (
     // The notice of a run still finishing changes as the run ends, so it is
     // announced politely; the others are alerts.
-    <Alert variant={alert.variant} title={alert.title} role={alert.variant === 'info' ? 'status' : undefined}>
-      <div className="flex flex-col gap-2">
-        {alert.reason && <span>{alert.reason}</span>}
-        {alert.note && <span>{alert.note}</span>}
-        <div className="flex flex-wrap gap-2">
-          {alert.kind === 'auto_paused' && (
-            <Button size="sm" onClick={() => onResume?.(task.id)} disabled={busy}>Resume</Button>
-          )}
-          {conversationId && (
-            <Button size="sm" onClick={() => onReviewRun?.(conversationId)}>Review run</Button>
-          )}
-          {alert.kind === 'partial' && (
-            <Button size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy || task.running}>Run again</Button>
-          )}
-          {alert.kind === 'missed' && (
-            <Button size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy}>Run now</Button>
-          )}
-        </div>
-      </div>
+    <Alert
+      variant={alert.variant}
+      title={alert.title}
+      role={alert.variant === 'info' ? 'status' : undefined}
+      actions={actions.length ? actions : null}
+    >
+      {alert.reason && <p className="m-0">{alert.reason}</p>}
+      {alert.note && <p className="m-0 mt-1 text-ink-3">{alert.note}</p>}
     </Alert>
   );
 }

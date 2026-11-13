@@ -30,6 +30,7 @@ const ACCOUNT_SCOPED_PREFIXES = [
   'anton:conv-artifacts:', // conversationHistory.js — its legacy sibling
   'anton.composerDrafts', // draftStore.js — unsent message text
   'anton.settingsCache', // settingsCache.js — first-paint settings
+  'anton.orgBrandingCache', // orgBrandingCache.js — first-paint org branding
   'anton:pinned-projects', // ProjectsView.jsx — which projects were pinned
   'mindshub-code:last-project', // useCodeProjects.ts — last code project opened
   'mindshub-code:last-folder', // useNewTaskDraft.ts — last folder-only task's folder

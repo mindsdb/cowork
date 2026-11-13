@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import i18n, { useTranslation } from '../../lib/i18n';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Collapsible } from '../components/ui/Collapsible';
@@ -41,7 +42,7 @@ function compareSessions(left: CodingSession, right: CodingSession, sortOrder: S
 }
 
 function projectLabel(session: CodingSession): string {
-  return session.project_name?.trim() || 'No project';
+  return session.project_name?.trim() || i18n.t('sidebarSessions.noProject', { ns: 'code' });
 }
 
 function matchesSession(session: CodingSession, normalizedQuery: string): boolean {
@@ -71,6 +72,7 @@ export function CodeSidebarSessions({
   /** The "Show nav-panel counters" setting: row dates and group counts, as in Cowork's rows. */
   showCounters?: boolean;
 }) {
+  const { t } = useTranslation('code');
   const preferences = useMemo(initialPreferences, []);
   const isUnread = useTaskSeen(sessions, selectedId);
   const [organization, setOrganization] = useState<Organization>(preferences.organization);
@@ -147,7 +149,7 @@ export function CodeSidebarSessions({
         delete next[session.id];
         return next;
       });
-      setRowError(`Couldn't ${nextPinned ? 'pin' : 'unpin'} this task.`);
+      setRowError(nextPinned ? t('sidebarSessions.errors.pin') : t('sidebarSessions.errors.unpin'));
     } finally {
       setPinBusy((current) => {
         const next = new Set(current);
@@ -180,7 +182,8 @@ export function CodeSidebarSessions({
     // Cowork's rows. With nothing to show, the title runs to the row's end.
     const restingLabel = needsYou ? status.label : (showCounters ? updated : null);
     const hasAside = working || needsYou || unread || !!restingLabel;
-    const name = session.title || 'untitled coding task';
+    const name = session.title || t('sidebarSessions.untitledLower');
+    const title = session.title || t('sidebarSessions.untitled');
     return (
       <div
         key={session.id}
@@ -196,10 +199,10 @@ export function CodeSidebarSessions({
           className="code-sidebar-session"
           onClick={() => onSelect(session.id)}
           aria-current={selectedId === session.id ? 'page' : undefined}
-          aria-label={`${session.title || 'Untitled coding task'}, ${status.label}${unread ? ', unread' : ''}, ${repository}, ${updated}`}
-          title={`${session.title || 'Untitled coding task'} · ${repository}`}
+          aria-label={t('sidebarSessions.rowAriaLabel', { title, status: status.label, unread: unread ? 'yes' : 'no', repository, updated })}
+          title={`${title} · ${repository}`}
         >
-          <span className="code-sidebar-session__title">{session.title || 'Untitled coding task'}</span>
+          <span className="code-sidebar-session__title">{title}</span>
           {hasAside && (
             <span className={`code-sidebar-session__aside${needsYou ? ` is-${status.tone}` : ''}`}>
               {working && <span className="code-sidebar-session__spinner" aria-hidden="true" />}
@@ -213,9 +216,9 @@ export function CodeSidebarSessions({
           side="bottom"
           align="end"
           width={200}
-          ariaLabel={`Actions for ${name}`}
+          ariaLabel={t('sidebarSessions.actionsFor', { name })}
           trigger={(
-            <Button icon size="xxs" variant="subtle" className="code-sidebar-session__menu" aria-label={`Actions for ${name}`}>
+            <Button icon size="xxs" variant="subtle" className="code-sidebar-session__menu" aria-label={t('sidebarSessions.actionsFor', { name })}>
               {Ico.moreVert(12)}
             </Button>
           )}
@@ -233,26 +236,26 @@ export function CodeSidebarSessions({
   ) : null;
 
   const menuItems = [
-    { heading: <span className="code-sidebar-organize-menu__heading">Organize</span>, id: 'organize-heading' },
+    { heading: <span className="code-sidebar-organize-menu__heading">{t('sidebarSessions.organize')}</span>, id: 'organize-heading' },
     {
-      id: 'organize-project', icon: Ico.folder(14), label: 'Projects', hint: organization === 'project' ? '✓' : undefined,
+      id: 'organize-project', icon: Ico.folder(14), label: t('sidebarSessions.projects'), hint: organization === 'project' ? '✓' : undefined,
       aria: { 'aria-current': organization === 'project' ? 'true' : undefined },
       onClick: () => updatePreference('project', sortOrder),
     },
     {
-      id: 'organize-list', icon: Ico.list(14), label: 'Task list', hint: organization === 'list' ? '✓' : undefined,
+      id: 'organize-list', icon: Ico.list(14), label: t('sidebarSessions.taskList'), hint: organization === 'list' ? '✓' : undefined,
       aria: { 'aria-current': organization === 'list' ? 'true' : undefined },
       onClick: () => updatePreference('list', sortOrder),
     },
     { separator: true, id: 'organize-separator' },
-    { heading: <span className="code-sidebar-organize-menu__heading">Sort</span>, id: 'sort-heading' },
+    { heading: <span className="code-sidebar-organize-menu__heading">{t('sidebarSessions.sort')}</span>, id: 'sort-heading' },
     {
-      id: 'sort-priority', icon: Ico.slider(14), label: 'Priority', hint: sortOrder === 'priority' ? '✓' : undefined,
+      id: 'sort-priority', icon: Ico.slider(14), label: t('sidebarSessions.priority'), hint: sortOrder === 'priority' ? '✓' : undefined,
       aria: { 'aria-current': sortOrder === 'priority' ? 'true' : undefined },
       onClick: () => updatePreference(organization, 'priority'),
     },
     {
-      id: 'sort-updated', icon: Ico.clock(14), label: 'Last updated', hint: sortOrder === 'updated' ? '✓' : undefined,
+      id: 'sort-updated', icon: Ico.clock(14), label: t('sidebarSessions.lastUpdated'), hint: sortOrder === 'updated' ? '✓' : undefined,
       aria: { 'aria-current': sortOrder === 'updated' ? 'true' : undefined },
       onClick: () => updatePreference(organization, 'updated'),
     },
@@ -261,18 +264,18 @@ export function CodeSidebarSessions({
   return (
     <div className="code-sidebar-sessions">
       <div className="section-label code-sidebar-sessions__label">
-        <span>Code tasks</span>
+        <span>{t('sidebarSessions.title')}</span>
         <Menu
           trigger={(
-            <Button size="xxs" variant="subtle" className="code-sidebar-organize-trigger" aria-label="Organize coding tasks">
-              {Ico.slider(12)}<span>Organize</span>
+            <Button size="xxs" variant="subtle" className="code-sidebar-organize-trigger" aria-label={t('sidebarSessions.organizeAriaLabel')}>
+              {Ico.slider(12)}<span>{t('sidebarSessions.organize')}</span>
             </Button>
           )}
           items={menuItems}
           side="bottom"
           align="end"
           width={190}
-          ariaLabel="Organize coding tasks"
+          ariaLabel={t('sidebarSessions.organizeAriaLabel')}
         />
       </div>
       {sessions.length >= 5 && (
@@ -283,18 +286,18 @@ export function CodeSidebarSessions({
           size="sm"
           leading={Ico.search(12)}
           wrapperClassName="code-sidebar-session-search"
-          placeholder="Find a task"
-          aria-label="Find a coding task"
+          placeholder={t('sidebarSessions.searchPlaceholder')}
+          aria-label={t('sidebarSessions.searchAriaLabel')}
         />
       )}
       {rowError && <div className="code-sidebar-sessions__error" role="status">{rowError}</div>}
       <div className="scroll-clean code-sidebar-sessions__list">
         {ordered.length === 0 && archived.length === 0 && (
           <div className="code-sidebar-sessions__empty">
-            {normalizedQuery ? 'No coding tasks match your search.' : 'Start a coding task to keep its conversation and changes here.'}
+            {normalizedQuery ? t('sidebarSessions.noMatch') : t('sidebarSessions.empty')}
           </div>
         )}
-        {sessionGroup('Pinned', pinned)}
+        {sessionGroup(t('sidebarSessions.pinned'), pinned)}
         {organization === 'project'
           ? projects.map(([label, items]) => sessionGroup(label, items))
           // One list either way: priority order already puts what needs you
@@ -308,7 +311,7 @@ export function CodeSidebarSessions({
             className="code-sidebar-archived"
             triggerClassName="px-2.5"
             panelClassName="code-sidebar-archived__panel"
-            title="Archived"
+            title={t('sidebarSessions.archived')}
             meta={archived.length}
           >
             {archived.map(sessionRow)}

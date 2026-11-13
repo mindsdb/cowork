@@ -20,11 +20,12 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
+import { orgBrandImageOrigins, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 
 const ARTIFACT_CDN = 'https://cdn.jsdelivr.net';
 
 const webTemplate = readFileSync(join(__dirname, 'index-web.html'), 'utf8');
-const platformWebPage = withDraftLinkFrameSources(webTemplate);
+const platformWebPage = withOrgBrandImageSources(withDraftLinkFrameSources(webTemplate));
 const desktopPage = readFileSync(join(__dirname, 'index.html'), 'utf8');
 
 const WEB_PAGES: [string, string][] = [
@@ -112,6 +113,16 @@ describe('shell CSP', () => {
 
   it.each(WEB_PAGES)('gives frame-src and child-src the same sources in %s', (_name, html) => {
     expect(directive(html, 'child-src')).toEqual(directive(html, 'frame-src'));
+  });
+
+  /*
+   * Org logos and icons come from auth, so the hosted page's
+   * img-src names exactly the auth hosts on top of the template's, and the
+   * template (self-hosted and white-label) names none of them.
+   */
+  it('lets the platform-UI web page load org brand images from the auth hosts only', () => {
+    expect(directive(platformWebPage, 'img-src')).toEqual([...directive(webTemplate, 'img-src'), ...orgBrandImageOrigins(undefined)]);
+    expect(ourDomains(directive(webTemplate, 'img-src'))).toEqual([]);
   });
 
   /*

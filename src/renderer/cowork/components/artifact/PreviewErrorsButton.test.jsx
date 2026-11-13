@@ -159,4 +159,23 @@ describe('PreviewErrorsButton', () => {
       expect(screen.getByRole('status')).toBeEmptyDOMElement();
     });
   });
+
+  it('names the kind of a rejection, a console error and a server error', () => {
+    render(<PreviewErrorsButton diagnostics={diagnosticsOf([
+      { type: 'rejection', message: 'Unhandled promise rejection: boom', file: '', line: 0 },
+      { type: 'console', message: 'TypeError: a is undefined', file: 'https://x.example/app.js', line: 3 },
+      { type: 'http', message: 'GET /api/a → 500', file: '', line: 0, url: '/api/a' },
+      { type: 'error', message: 'ReferenceError: x', file: '', line: 0 },
+    ])} />);
+
+    fireEvent.click(errorsButton());
+
+    const [rejection, consoleError, http, script] = within(screen.getByRole('dialog')).getAllByRole('listitem');
+    expect(within(rejection).getByText('Unhandled promise rejection')).toBeInTheDocument();
+    expect(within(consoleError).getByText('Console error')).toBeInTheDocument();
+    expect(within(consoleError).getByText('app.js:3')).toBeInTheDocument();
+    expect(within(http).getByText('Server error')).toBeInTheDocument();
+    // A script error's message speaks for itself.
+    expect(script.textContent).toBe('ReferenceError: x');
+  });
 });

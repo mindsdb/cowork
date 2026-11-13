@@ -17,6 +17,7 @@ import { Check, ListFilter, X } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import Menu from '../ui/Menu';
 import { cn } from '../../lib/cn';
+import { useTranslation } from '../../../lib/i18n';
 
 export interface FilterOption { value: string; label: string; title?: string }
 
@@ -32,6 +33,7 @@ const CHECK = <Icon of={Check} size={14} />;
 const NO_CHECK = <span className="inline-block w-[14px]" aria-hidden="true" />;
 
 export function FilterMenu({ filters }: { filters: Filter[] }) {
+  const { t } = useTranslation('library');
   const active = filters.filter(isActive).length;
   const items = filters.map((f) => (f.toggle
     ? {
@@ -59,20 +61,20 @@ export function FilterMenu({ filters }: { filters: Filter[] }) {
     }));
   return (
     <Menu
-      ariaLabel="Filter"
+      ariaLabel={t('collection.filter.label')}
       width={220}
       items={items}
       trigger={(
         <button
           type="button"
-          aria-label={active ? `Filter, ${active} active` : 'Filter'}
+          aria-label={active ? t('collection.filter.activeAriaLabel', { count: active }) : t('collection.filter.label')}
           className={cn(
             'inline-flex h-[34px] cursor-pointer items-center gap-1.5 rounded-[7px] border-0 px-[11px] font-body text-[12.5px] text-ink-2',
             'bg-surface-2 hover:bg-surface-3 focus-visible:[box-shadow:var(--ring)] focus-visible:outline-none',
           )}
         >
           <Icon of={ListFilter} size={14} className="text-ink-3" />
-          Filter
+          {t('collection.filter.label')}
           {active > 0 && (
             <span className="min-w-[17px] rounded-full bg-[var(--accent-bg)] px-[5px] text-center text-[10.5px] font-semibold leading-[17px] text-accent">
               {active}
@@ -86,17 +88,18 @@ export function FilterMenu({ filters }: { filters: Filter[] }) {
 
 /** Active filters as removable chips, with Clear when more than one is on. */
 export function FilterChips({ filters, onClear }: { filters: Filter[]; onClear: () => void }) {
+  const { t } = useTranslation('library');
   const active = filters.filter(isActive);
   if (!active.length) return null;
   return (
-    <div className="flex flex-wrap items-center gap-1.5" aria-label="Active filters" role="group">
+    <div className="flex flex-wrap items-center gap-1.5" aria-label={t('collection.filter.activeFilters')} role="group">
       {active.map((f) => (
         <span key={f.id} className="inline-flex h-[26px] max-w-full items-center overflow-hidden rounded-[6px] border border-solid border-line-2 bg-surface font-body text-xs text-ink-2">
           {!f.toggle && <span className="px-2 text-ink-4">{f.label}</span>}
           <span className={cn('min-w-0 truncate px-2', !f.toggle && 'border-y-0 border-r-0 border-l border-solid border-line')}>{valueLabel(f)}</span>
           <button
             type="button"
-            aria-label={`Remove ${f.label} filter`}
+            aria-label={t('collection.filter.removeAriaLabel', { label: f.label })}
             onClick={() => (f.toggle ? f.onChange(false) : f.onChange(f.allValue))}
             className="inline-flex h-full cursor-pointer items-center border-y-0 border-r-0 border-l border-solid border-line bg-transparent px-1.5 text-ink-4 hover:bg-surface-2 hover:text-ink focus-visible:[box-shadow:var(--ring)] focus-visible:outline-none"
           >
@@ -106,7 +109,7 @@ export function FilterChips({ filters, onClear }: { filters: Filter[]; onClear: 
       ))}
       {active.length > 1 && (
         <button type="button" onClick={onClear} className="cursor-pointer border-0 bg-transparent px-1 font-body text-xs text-ink-3 hover:text-ink">
-          Clear
+          {t('collection.filter.clear')}
         </button>
       )}
     </div>

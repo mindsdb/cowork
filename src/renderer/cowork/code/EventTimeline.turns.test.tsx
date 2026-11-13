@@ -46,6 +46,23 @@ describe('the user message', () => {
   });
 });
 
+describe('the attachments sent with a message', () => {
+  it('shows each one by the name it was sent with', () => {
+    const message = event(1, 'user_message', 'Use these', { data: { attachments: [
+      { name: 'notes.txt', kind: 'mention' },
+      { name: 'screen.png', kind: 'local_image' },
+    ] } });
+    render(<EventTimeline {...props([message])} session={session('running')} />);
+    expect(screen.getByText('notes.txt')).toBeInTheDocument();
+    expect(screen.getByText('screen.png')).toBeInTheDocument();
+  });
+
+  it('shows none for a message sent without any', () => {
+    const { container } = render(<EventTimeline {...props([event(1, 'user_message', 'Plain')])} session={session('running')} />);
+    expect(container.querySelector('.user-turn-attachment')).toBeNull();
+  });
+});
+
 describe('following new events', () => {
   let box: FakeScrollBox;
   beforeEach(() => {

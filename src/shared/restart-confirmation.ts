@@ -4,6 +4,13 @@
 // renderer shows for it. Shared so the main-process handlers and the renderer
 // guard agree on one contract.
 
+import { sourceTranslator, type Translate } from './i18n/translate';
+import appSource from './i18n/locales/en/app.json';
+
+/* The copy lives in the `app` catalog under `restartConfirm`. The renderer passes its
+   `app` translator; without one the copy is English. */
+const english: Translate = sourceTranslator(appSource);
+
 export interface RestartConfirmation {
   confirm: true;
   /** Running tasks, or null when the sidecar did not answer in time. */
@@ -28,21 +35,20 @@ export interface RestartConfirmationCopy {
 
 /** The dialog copy. One running task is named in the singular; an unknown
  *  count says so instead of guessing. */
-export function restartConfirmationCopy(runningTasks: number | null): RestartConfirmationCopy {
-  const confirmLabel = 'Restart anyway';
-  const cancelLabel = 'Cancel';
+export function restartConfirmationCopy(runningTasks: number | null, t: Translate = english): RestartConfirmationCopy {
+  const confirmLabel = t('restartConfirm.confirm');
+  const cancelLabel = t('restartConfirm.cancel');
   if (runningTasks === null) {
     return {
-      title: 'Restart now?',
-      body: 'Cowork cannot tell whether any tasks are running. Restarting stops every running task.',
+      title: t('restartConfirm.unknownTitle'),
+      body: t('restartConfirm.unknownBody'),
       confirmLabel,
       cancelLabel,
     };
   }
-  const noun = runningTasks === 1 ? 'running task' : 'running tasks';
   return {
-    title: `Stop ${runningTasks} ${noun} and restart?`,
-    body: 'Restarting stops the tasks mid-answer. You can restart later from Settings or the update banner.',
+    title: t('restartConfirm.title', { count: runningTasks }),
+    body: t('restartConfirm.body'),
     confirmLabel,
     cancelLabel,
   };

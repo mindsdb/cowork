@@ -37,6 +37,8 @@ vi.mock('../../lib/authenticatedResource', async (importOriginal) => ({
 }));
 
 vi.mock('../../api', () => ({
+  fetchPublishStats: vi.fn(),
+  setPublishTracking: vi.fn(),
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   mountArtifactPreview: vi.fn(),
   previewArtifact: vi.fn(),
@@ -48,6 +50,8 @@ vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async
 // The real artifactRef: a card without a full identity must stay on srcdoc.
 vi.mock('../../lib/artifactWorkspaceApi', async (importOriginal) => ({
   artifactRef: (await importOriginal()).artifactRef,
+  loadArtifactStats: vi.fn(),
+  setArtifactTracking: vi.fn(),
   loadArtifactDraftText,
   loadArtifactDraftDocument,
   createDraftLink,

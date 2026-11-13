@@ -14,6 +14,9 @@
 
 import { diagnostic } from '../../../shared/diagnostics';
 import { approveBrowserStep, declineBrowserStep } from '../api';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.browserApproval.${key}`, { ns: 'projects', ...vars });
 
 export const BROWSER_APPROVE_VALUE = 'approve';
 
@@ -22,6 +25,7 @@ const APPROVAL_QUESTION = new RegExp(`^${APPROVAL_PREFIX}([A-Za-z0-9_-]{1,64}):(
 
 /** What the card says on Approve when its ids can't be read. */
 export const UNREADABLE_APPROVAL = "This approval request can't be checked, so nothing ran.";
+export const unreadableApproval = () => tr('unreadable');
 
 /**
  * Whether a card is a commit-hold card: its id has the commit hold's prefix,
@@ -50,14 +54,14 @@ export function browserApprovalIds(questionId) {
 export function approvalRefusalText(err) {
   // With no running browser (`session_not_found`), no step is held either.
   if (err?.code === 'approval_lapsed' || err?.code === 'session_not_found') {
-    return 'This step is no longer waiting in the browser, so nothing ran.';
+    return tr('lapsed');
   }
-  if (err?.code === 'unavailable' || err?.status === 409) return "The browser isn't available here, so nothing ran.";
+  if (err?.code === 'unavailable' || err?.status === 409) return tr('unavailable');
   /* Only a server's refusal carries a status (responseError in api.js); a
      network or parse error's own text is the engine's, not a reason. */
   const fromServer = typeof err?.status === 'number' && typeof err?.message === 'string';
   const reason = fromServer && err.message && !/^API \//.test(err.message) ? err.message.replace(/\.$/, '') : '';
-  return reason ? `Couldn't approve this step in the browser: ${reason}.` : "Couldn't approve this step in the browser. Try again.";
+  return reason ? tr('refusedReason', { reason }) : tr('refused');
 }
 
 /**
@@ -75,7 +79,7 @@ export async function recordBrowserApproval(ids, approve = approveBrowserStep) {
     return { ok: false, message: approvalRefusalText(err) };
   }
   if (answer?.approved === true && answer.pending_id === ids.pendingId) return { ok: true };
-  return { ok: false, message: "The browser didn't confirm the approval, so nothing ran. Try again." };
+  return { ok: false, message: tr('notConfirmed') };
 }
 
 /**

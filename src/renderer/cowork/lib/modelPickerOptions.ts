@@ -33,6 +33,8 @@ export interface ModelPickerOption {
   restricted?: boolean;
   /** Zero data retention is what closes this row. */
   zdr?: boolean;
+  /** The org's spending budget is used up; no credits action applies. */
+  budgetReached?: boolean;
   /** Row tooltip. */
   title?: string;
 }
@@ -78,7 +80,8 @@ export function buildModelPickerOptions(
       value: model.id,
       label: model.name,
       /* Availability is the only row tag: "Needs credits" for the
-         wallet or the allowance, "Restricted" for an admin's rule, "ZDR restricted" for ZDR, from
+         wallet or the allowance, "Restricted" for an admin's model rule,
+         "ZDR restricted" for ZDR, "Budget reached" for the org's spent budget, from
          the helper the Settings builder shares. Version state is a muted note,
          not a pill: pills on most rows pushed long names into an ellipsis. */
       ...unavailableModelFields(modelEnabled, modelDisabledReasons, model.id),

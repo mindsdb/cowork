@@ -6,6 +6,7 @@ import {
 } from './api';
 import { getTerminalShellPreference } from './terminalPreferences';
 import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
+import i18n from '../../lib/i18n';
 
 
 // Fast while a run action is coming up, so its preview appears promptly; a
@@ -80,7 +81,7 @@ export function useProjectActions(sessionId: string | null | undefined, active =
   }, [active, previewPending, previewUrl, sessionId]);
 
   const run = useCallback(async (action: ProjectActionSummary): Promise<ProjectActionRunResponse> => {
-    if (!sessionId) throw new Error('Open a coding task before running a project action.');
+    if (!sessionId) throw new Error(i18n.t('projectActions.noTask', { ns: 'code' }));
     const request = actionRequest.current + 1;
     actionRequest.current = request;
     const requestedSession = sessionId;

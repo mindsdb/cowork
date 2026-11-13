@@ -15,19 +15,31 @@ describe('Alert', () => {
     expect(el).not.toHaveAttribute('role');
   });
 
-  it('applies the expected bg/border/text classes per variant', () => {
+  it('carries the tone in the surface and the icon, and keeps the text neutral', () => {
     const expected = {
-      info: ['bg-info-bg', 'border-info-border', 'text-info-text'],
-      success: ['bg-success-bg', 'border-success-border', 'text-success-text'],
-      warning: ['bg-warning-bg', 'border-warning-border', 'text-warning-text'],
-      danger: ['bg-danger-bg', 'border-danger-border', 'text-danger-text'],
+      info: ['bg-info-bg', 'border-info-border', 'text-accent'],
+      success: ['bg-success-bg', 'border-success-border', 'text-[var(--success)]'],
+      warning: ['bg-warning-bg', 'border-warning-border', 'text-warning'],
+      danger: ['bg-danger-bg', 'border-danger-border', 'text-danger'],
     } as const;
     for (const variant of Object.keys(expected) as Array<keyof typeof expected>) {
-      const { container, unmount } = render(<Alert variant={variant}>{variant}</Alert>);
-      const cls = (container.firstChild as HTMLElement).className.split(/\s+/);
-      expect(cls).toEqual(expect.arrayContaining([...expected[variant]]));
+      const [bg, border, iconTone] = expected[variant];
+      const { container, unmount } = render(<Alert variant={variant} title="Title">{variant}</Alert>);
+      const root = container.firstChild as HTMLElement;
+      const cls = root.className.split(/\s+/);
+      expect(cls).toEqual(expect.arrayContaining([bg, border, 'text-ink-2']));
+      expect(cls.some((c) => c.endsWith('-text'))).toBe(false);
+      expect(root.querySelector('svg')?.parentElement?.className).toContain(iconTone);
+      expect(screen.getByText('Title').className).toContain('text-ink');
       unmount();
     }
+  });
+
+  it('draws the variant icon by default, a given one instead, or none for null', () => {
+    const { container: byDefault } = render(<Alert variant="danger">x</Alert>);
+    expect(byDefault.querySelector('svg')).not.toBeNull();
+    const { container: none } = render(<Alert variant="danger" icon={null}>y</Alert>);
+    expect(none.querySelector('svg')).toBeNull();
   });
 
   it('marks danger and warning as live alerts, info/success as passive', () => {
@@ -49,6 +61,19 @@ describe('Alert', () => {
     expect(screen.getByText('Heads up')).toBeInTheDocument();
     expect(screen.getByTestId('icon')).toBeInTheDocument();
     expect(screen.getByText('Body')).toBeInTheDocument();
+  });
+
+  it('renders actions under the body, inside the text column', () => {
+    render(
+      <Alert variant="danger" title="Paused" icon={<svg data-testid="icon" />} actions={<button>Resume</button>}>
+        <p>Body</p>
+      </Alert>,
+    );
+    const button = screen.getByRole('button', { name: 'Resume' });
+    const body = screen.getByText('Body');
+    // Same column as the body, after it.
+    expect(button.closest('div')?.parentElement).toBe(body.parentElement);
+    expect(body.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('merges a caller className without dropping variant classes', () => {

@@ -7,6 +7,7 @@
 export type ModelDisabledReason =
   | 'model_restricted'
   | 'zdr_restricted'
+  | 'budget_exceeded'
   | 'wallet_empty'
   | 'included_allowance_exhausted';
 
@@ -16,6 +17,7 @@ export interface UnavailableModelFields {
   locked?: true;
   restricted?: true;
   zdr?: true;
+  budgetReached?: true;
   tag?: string;
   title?: string;
 }
@@ -25,6 +27,13 @@ export const MODEL_RESTRICTED_REASON: 'model_restricted';
 export const RESTRICTED_MODEL_TITLE: string;
 export const ZDR_RESTRICTED_REASON: 'zdr_restricted';
 export const ZDR_RESTRICTED_MODEL_TITLE: string;
+export function zdrRestrictedModelTitle(): string;
+export function restrictedModelTitle(): string;
+export function modelRouterLabel(): string;
+export function operatorDefaultLabel(): string;
+export const BUDGET_EXCEEDED_REASON: 'budget_exceeded';
+export const BUDGET_REACHED_MODEL_TITLE: string;
+export function budgetReachedModelTitle(): string;
 
 /**
  * Narrows cowork-server's `modelDisabledReasons` relay to the entries whose
@@ -40,6 +49,11 @@ export function isModelRestricted(
   id: string,
 ): boolean;
 export function isModelZdrRestricted(
+  modelEnabled: Record<string, boolean> | undefined,
+  modelDisabledReasons: Record<string, ModelDisabledReason> | undefined,
+  id: string,
+): boolean;
+export function isModelBudgetReached(
   modelEnabled: Record<string, boolean> | undefined,
   modelDisabledReasons: Record<string, ModelDisabledReason> | undefined,
   id: string,

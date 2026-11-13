@@ -11,6 +11,11 @@
 // matches nothing lands in the "Other" bucket rather than a wrong group, and an
 // option carrying an explicit `maker` key skips the inference entirely.
 
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.modelCatalog.${key}`, { ns: 'projects', ...vars });
+
 // Declaration order = group display order in the picker (mirrors the
 // design: MindsHub first, then the frontier labs, Other last).
 const MAKERS = [
@@ -45,10 +50,19 @@ export const MODEL_ROUTER_LABEL = 'Model Router';
 // The same row under an operator's picker (lib/modelPicker), which has no
 // account Settings to route by: the question runs on the operator's models.
 export const OPERATOR_DEFAULT_LABEL = 'Operator default';
+/** MODEL_ROUTER_LABEL in the viewer's language. */
+export function modelRouterLabel() {
+  return tr('modelRouter.label');
+}
+/** OPERATOR_DEFAULT_LABEL in the viewer's language. */
+export function operatorDefaultLabel() {
+  return tr('operatorDefault');
+}
+/* `name` and `desc` are read when shown, so they follow the language. */
 export const MODEL_ROUTER = {
   id: MODEL_ROUTER_ID,
-  name: MODEL_ROUTER_LABEL,
-  desc: "Routes to this account's configured model automatically",
+  get name() { return modelRouterLabel(); },
+  get desc() { return tr('modelRouter.desc'); },
 };
 
 // ─── Picker sections ────────────────────────────────────────────────
@@ -255,17 +269,40 @@ export const MODEL_RESTRICTED_REASON = 'model_restricted';
 /* The row tooltip for a restricted model. */
 export const RESTRICTED_MODEL_TITLE = 'An admin in your organization restricted this model.';
 
+/** RESTRICTED_MODEL_TITLE in the viewer's language. */
+export function restrictedModelTitle() {
+  return tr('restricted.title');
+}
+
 /* The `modelDisabledReasons` value for a row the org's zero data retention blocks. */
 export const ZDR_RESTRICTED_REASON = 'zdr_restricted';
 
-/* The row tooltip for a ZDR-blocked model. */
+/* The row tooltip for a ZDR-blocked model. English, for tests; zdrRestrictedModelTitle() is the viewer's language. */
 export const ZDR_RESTRICTED_MODEL_TITLE = 'Zero data retention is on, so only models from ZDR-compliant providers can be used.';
 
+export function zdrRestrictedModelTitle() {
+  return tr('zdrRestricted.title');
+}
+
+/* The `disabled_reason` for a paid row while the org's spending budget is used
+   up. Credits do not lift it; an owner or admin raises the budget. */
+export const BUDGET_EXCEEDED_REASON = 'budget_exceeded';
+
+/* The row tooltip for a model the org's budget stops. English, for tests and
+   callers that import it; budgetReachedModelTitle() is the viewer's language. */
+export const BUDGET_REACHED_MODEL_TITLE = "Your organization's budget is used up. An owner or admin can raise it in Budgets.";
+
+export function budgetReachedModelTitle() {
+  return tr('budgetReached.title');
+}
+
 /* Every `disabled_reason` the renderer recognizes on a MindsHub model row: an
-   admin's model rule, zero data retention, the empty wallet, and the spent allowance. */
+   admin's model rule, zero data retention, the spent org budget, the empty
+   wallet, and the spent allowance. */
 const KNOWN_MODEL_DISABLED_REASONS = new Set([
   MODEL_RESTRICTED_REASON,
   ZDR_RESTRICTED_REASON,
+  BUDGET_EXCEEDED_REASON,
   'wallet_empty',
   'included_allowance_exhausted',
 ]);
@@ -310,12 +347,19 @@ export function isModelZdrRestricted(modelEnabled, modelDisabledReasons, id) {
     && (modelDisabledReasons || {})[id] === ZDR_RESTRICTED_REASON;
 }
 
+/** True when `id` is unavailable because the org's spending budget is used up. */
+export function isModelBudgetReached(modelEnabled, modelDisabledReasons, id) {
+  return isModelLocked(modelEnabled, id)
+    && (modelDisabledReasons || {})[id] === BUDGET_EXCEEDED_REASON;
+}
+
 /**
  * @typedef {{
  *   disabled?: true,
  *   locked?: true,
  *   restricted?: true,
  *   zdr?: true,
+ *   budgetReached?: true,
  *   tag?: string,
  *   title?: string,
  * }} UnavailableModelFields
@@ -329,8 +373,10 @@ export function isModelZdrRestricted(modelEnabled, modelDisabledReasons, id) {
  * - Restricted by an admin: disabled and `restricted`, tagged "Restricted", with
  *   the admin tooltip. Never `locked`, so ModelSelect attaches no "Add credits"
  *   button: money cannot unlock an admin rule.
- * - Blocked by zero data retention: the same, plus `zdr`, tagged "ZDR restricted" with
- *   the ZDR tooltip.
+ * - Blocked by zero data retention: the same, plus `zdr`, tagged "ZDR restricted"
+ *   with the ZDR tooltip.
+ * - Stopped by the org's spent budget: disabled and `budgetReached`, tagged
+ *   "Budget reached". Never `locked`, since credits do not raise a budget.
  * - Anything else unavailable (the wallet, the spent allowance, or a server too
  *   old to send a reason): disabled and `locked`, tagged "Needs credits".
  *
@@ -339,12 +385,15 @@ export function isModelZdrRestricted(modelEnabled, modelDisabledReasons, id) {
 export function unavailableModelFields(modelEnabled, modelDisabledReasons, id) {
   if (!isModelLocked(modelEnabled, id)) return {};
   if (isModelZdrRestricted(modelEnabled, modelDisabledReasons, id)) {
-    return { disabled: true, restricted: true, zdr: true, tag: 'ZDR restricted', title: ZDR_RESTRICTED_MODEL_TITLE };
+    return { disabled: true, restricted: true, zdr: true, tag: tr('zdrRestricted.tag'), title: zdrRestrictedModelTitle() };
   }
   if (isModelRestricted(modelEnabled, modelDisabledReasons, id)) {
-    return { disabled: true, restricted: true, tag: 'Restricted', title: RESTRICTED_MODEL_TITLE };
+    return { disabled: true, restricted: true, tag: tr('restricted.tag'), title: restrictedModelTitle() };
   }
-  return { disabled: true, locked: true, tag: 'Needs credits' };
+  if (isModelBudgetReached(modelEnabled, modelDisabledReasons, id)) {
+    return { disabled: true, budgetReached: true, tag: tr('budgetReached.tag'), title: budgetReachedModelTitle() };
+  }
+  return { disabled: true, locked: true, tag: tr('needsCredits') };
 }
 
 /** True when `id` is a frozen version of some other alias. */

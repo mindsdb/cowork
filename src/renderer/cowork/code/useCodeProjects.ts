@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { codingApi, type CodeProject } from './api';
 import { DEFAULT_CODING_AGENT_MODEL } from './defaults';
+import i18n from '../../lib/i18n';
 
 const LAST_PROJECT_KEY = 'mindshub-code:last-project';
 const NO_PROJECT_STORAGE_VALUE = '__no_code_project__';
@@ -27,7 +28,7 @@ export function useCodeProjects(sessionProjectId?: string | null) {
         return page.items.some((item) => item.id === stored) ? stored : page.items[0]?.id || null;
       });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not load Code Projects.');
+      setError(reason instanceof Error ? reason.message : i18n.t('projects.loadFailed', { ns: 'code' }));
     } finally {
       setLoading(false);
     }

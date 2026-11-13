@@ -18,6 +18,7 @@ import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite } from './sprites';
 import { LegalViewer } from './TermsScreen';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
+import i18n, { sharedTranslator, useTranslation } from '../../lib/i18n';
 
 type Provider = 'minds' | 'byok';
 type ByokProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
@@ -62,14 +63,14 @@ export async function persistOnboarding(
   deps: PersistDeps,
   lines: string[],
 ): Promise<PersistResult> {
-  const GENERIC = 'Could not save your settings. Please try again.';
+  const GENERIC = i18n.t('onboarding.errors.saveFailed', { ns: 'setup' });
   try {
     await deps.saveSettings(lines.join('\n'));
     const dbOk = await deps.syncToDb(lines);
     if (!dbOk) {
       return {
         ok: false,
-        error: 'Could not save your settings to the server. Please try again.',
+        error: i18n.t('onboarding.errors.saveToServerFailed', { ns: 'setup' }),
         dbSyncFailed: true,
       };
     }
@@ -175,6 +176,7 @@ export default function OnboardingScreen({
    */
   onComplete: (deferredModelLines?: string[]) => void;
 }) {
+  const { t } = useTranslation('setup');
   const [provider, setProvider] = useState<Provider>('minds');
   const [byokProvider, setByokProvider] = useState<ByokProvider>('anthropic');
   // Seeded once the backend's recommended-model lists load (see effect below).
@@ -380,7 +382,7 @@ export default function OnboardingScreen({
       const result = await host.validateProvider('minds', apiKey.trim(), mindsBase);
       if (!result.ok) {
         setPhase('error');
-        setErrorMsg(result.error || 'Invalid API key');
+        setErrorMsg(result.error || t('onboarding.errors.invalidKey'));
         return;
       }
 
@@ -395,7 +397,7 @@ export default function OnboardingScreen({
       const stored = await host.mindshubSetUserKey(apiKey.trim());
       if (stored.supported && !stored.ok) {
         setPhase('error');
-        setErrorMsg(stored.reason || 'Could not save the MindsHub key.');
+        setErrorMsg(stored.reason || t('onboarding.errors.mindsKeySaveFailed'));
         return;
       }
       const mindsLines = [
@@ -435,7 +437,7 @@ export default function OnboardingScreen({
 
       if (!result.ok) {
         setPhase('error');
-        setErrorMsg(result.error || 'Validation failed');
+        setErrorMsg(result.error || t('onboarding.errors.validationFailed'));
         return;
       }
 
@@ -471,7 +473,7 @@ export default function OnboardingScreen({
 
     if (result && !result.ok) {
       setPhase('minds-no-llm');
-      setErrorMsg(result.error || 'Validation failed');
+      setErrorMsg(result.error || t('onboarding.errors.validationFailed'));
       return;
     }
 
@@ -507,13 +509,11 @@ export default function OnboardingScreen({
         // The loopback callback never arrived — usually the sign-in
         // happened in a STALE browser tab from an earlier app launch
         // (the callback port changes every launch).
-        setErrorMsg(
-          `Sign-in timed out — the browser never finished authorizing. Try again and complete the newest tab it opens (close any older "You're authorized" tabs), or press ${reloadKey} to reload.`,
-        );
+        setErrorMsg(t('onboarding.errors.signInTimedOut', { reloadKey }));
       } else if (/cancelled/i.test(reason)) {
-        setErrorMsg('Sign-in was cancelled. Try again whenever you’re ready.');
+        setErrorMsg(t('onboarding.errors.signInCancelled'));
       } else {
-        setErrorMsg(reason || 'Sign in failed. Please try again.');
+        setErrorMsg(reason || t('onboarding.errors.signInFailed'));
       }
       return;
     }
@@ -543,7 +543,7 @@ export default function OnboardingScreen({
         return;
       }
       setPhase('error');
-      setErrorMsg(reason || 'Sign up failed. Please try again.');
+      setErrorMsg(reason || t('onboarding.errors.signUpFailed'));
       return;
     }
     await completeMindsAuth();
@@ -587,7 +587,7 @@ export default function OnboardingScreen({
       finalizeResult = await host.mindshubFinalize(pick?.organizationId, pick?.chosenByUser);
     } catch (e: any) {
       setPhase('error');
-      setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
+      setErrorMsg(t('onboarding.errors.mindsSetupFailed', { reason: e?.message || t('onboarding.errors.unexpected') }));
       return;
     }
     // No LLM credits — account authenticated but the app could not set MindsHub
@@ -613,7 +613,7 @@ export default function OnboardingScreen({
     }
     if (!finalizeResult.ok) {
       setPhase('error');
-      setErrorMsg(finalizeResult.reason || 'Failed to set up MindsHub. Please try again.');
+      setErrorMsg(finalizeResult.reason || t('onboarding.errors.mindsSetupFailedRetry'));
       return;
     }
     // Provider only — the backend resolves the default model on load, and
@@ -672,7 +672,7 @@ export default function OnboardingScreen({
   // success/error fall through to their own screens below.
   if (host.isWeb && (webConfigured === null || autoFinalizing) && phase !== 'success' && phase !== 'error') {
     return (
-      <ArcadeShell title="Welcome" subtitle="getting things ready">
+      <ArcadeShell title={t('onboarding.welcome.title')} subtitle={t('onboarding.welcome.subtitle')}>
         <div className="arc-stack arc-fade-in" style={{ gap: 16, padding: '12px 0' }}>
           <PixelSprite name="anton" size={72} bob title="Anton" />
         </div>
@@ -686,25 +686,24 @@ export default function OnboardingScreen({
   // effect handles consent + entry itself (loading above, then success below).
   if (host.isWeb && webConfigured && !autoFinalizing && phase !== 'success' && phase !== 'error') {
     return (
-      <ArcadeShell title={STOCK_PRODUCT_NAME} subtitle="you're all set">
+      <ArcadeShell title={STOCK_PRODUCT_NAME} subtitle={t('onboarding.ready.subtitle')}>
         <div className="arc-stack" style={{ gap: 18 }}>
           <PixelSprite name="anton" size={84} bob title="Anton" />
           <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
-            Your workspace is ready. Give the agent a task. It does the work and hands back
-            the results.
+            {t('onboarding.ready.body')}
           </div>
           <button
             className="arc-btn"
             style={{ width: '100%' }}
             onClick={() => { if (finalizedRef.current) return; finalizedRef.current = true; onComplete(); }}
           >
-            Continue
+            {t('onboarding.continue')}
           </button>
           {/* ENG-2311: the onboarding email sent minutes before this screen
               makes getting the desktop app step 1 of 5, and this page said
               nothing about it. An offer beside Continue, not ahead of it. */}
-          <div style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
-            Cowork also runs on your desktop.{' '}
+          {!host.isMobileShell && <div style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
+            {t('onboarding.ready.desktop')}{' '}
             <button
               type="button"
               className="arc-link"
@@ -715,14 +714,14 @@ export default function OnboardingScreen({
                 host.openExternal(MINDS_DOWNLOAD_URL);
               }}
             >
-              Get the desktop app
+              {t('onboarding.ready.getDesktop')}
             </button>
-          </div>
+          </div>}
           <div style={{ fontSize: 10.5, lineHeight: 1.5, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 420 }}>
-            By continuing, you agree to our{' '}
-            <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>Terms of Service</button>{' '}
-            and{' '}
-            <button type="button" className="arc-link" onClick={() => setLegalDoc('privacy')}>Privacy Policy</button>.
+            {t('onboarding.agreePrefix')}{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>{t('legal.terms')}</button>{' '}
+            {t('onboarding.agreeAnd')}{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('privacy')}>{t('legal.privacy')}</button>.
           </div>
         </div>
       </ArcadeShell>
@@ -736,13 +735,10 @@ export default function OnboardingScreen({
   // those words rather than naming the key.
   if (phase === 'pick-org') {
     return (
-      <ArcadeShell title="Choose an organization" subtitle="who pays for your usage">
+      <ArcadeShell title={t('onboarding.pickOrg.title')} subtitle={t('onboarding.pickOrg.subtitle')}>
         <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(420px, 100%)' }}>
           <div style={{ fontSize: 11.5, lineHeight: 1.65, letterSpacing: '0.03em', color: 'var(--arc-muted)', textAlign: 'center' }}>
-            You belong to more than one organization. Pick the one this computer
-            should work in — its credits pay for your usage, and its admins can
-            see and revoke this computer's access. You can change it later from
-            the account menu.
+            {t('onboarding.pickOrg.body')}
           </div>
 
           <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
@@ -755,8 +751,8 @@ export default function OnboardingScreen({
                   checked={pickedOrgId === org.id}
                   onChange={() => setPickedOrgId(org.id)}
                 />
-                <span style={{ fontSize: 12.5, letterSpacing: '0.03em' }} title={organizationLabel(org) ?? undefined}>
-                  {organizationLabel(org)}
+                <span style={{ fontSize: 12.5, letterSpacing: '0.03em' }} title={organizationLabel(org, sharedTranslator('app')) ?? undefined}>
+                  {organizationLabel(org, sharedTranslator('app'))}
                 </span>
               </label>
             ))}
@@ -768,7 +764,7 @@ export default function OnboardingScreen({
             disabled={!pickedOrgId}
             onClick={() => mintMindsKey({ organizationId: pickedOrgId, chosenByUser: true })}
           >
-            Continue
+            {t('onboarding.continue')}
           </button>
         </div>
       </ArcadeShell>
@@ -778,19 +774,19 @@ export default function OnboardingScreen({
   // ── Victory ────────────────────────────────────────────────────────
   if (phase === 'success') {
     return (
-      <ArcadeShell title="All set" subtitle="you're signed in">
+      <ArcadeShell title={t('onboarding.success.title')} subtitle={t('onboarding.success.subtitle')}>
         <div className="arc-stack arc-pop" style={{ gap: 18 }}>
           <PixelSprite name="anton" size={84} bob title="Anton" />
           <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--arc-green)' }}>
-            You're all set!
+            {t('onboarding.success.heading')}
           </div>
           {mintedOrg && (
             <div style={{ fontSize: 11.5, letterSpacing: '0.06em', color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 340 }}>
-              Working in <strong>{organizationLabel(mintedOrg)}</strong>
+              {t('onboarding.success.workingIn')} <strong>{organizationLabel(mintedOrg, sharedTranslator('app'))}</strong>
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, letterSpacing: '0.1em', color: 'var(--arc-muted)' }}>
-            <PixelSprite name="coin" size={18} /> Ready to go
+            <PixelSprite name="coin" size={18} /> {t('onboarding.success.readyToGo')}
           </div>
         </div>
       </ArcadeShell>
@@ -800,10 +796,10 @@ export default function OnboardingScreen({
   // ── Validating overlay content (shared) ────────────────────────────
   const validatingBlock = (
     <div className="arc-stack arc-fade-in" style={{ gap: 16, padding: '12px 0' }}>
-      <PixelSprite name="bolt" size={44} title="Validating" />
+      <PixelSprite name="bolt" size={44} title={t('onboarding.validating.spriteTitle')} />
       <PixelMarquee cells={20} style={{ width: 280 }} />
       <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', color: 'var(--arc-muted)' }}>
-        TESTING LINK…
+        {t('onboarding.validating.label')}
       </span>
     </div>
   );
@@ -814,16 +810,15 @@ export default function OnboardingScreen({
   // and Cancel tears the loopback listener down via the main process.
   const signupWaitBlock = (
     <div className="arc-stack arc-fade-in" style={{ gap: 14, padding: '12px 0' }}>
-      <PixelSprite name="bolt" size={44} title="Waiting for sign-up" />
+      <PixelSprite name="bolt" size={44} title={t('onboarding.signupWait.spriteTitle')} />
       <PixelMarquee cells={20} style={{ width: 280 }} />
       <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', color: 'var(--arc-muted)' }}>
-        FINISH SIGN-UP IN YOUR BROWSER
+        {t('onboarding.signupWait.heading')}
       </span>
       <span style={{ fontSize: 11, lineHeight: 1.6, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 340 }}>
-        Create your account, then open the verification email we send you —
-        clicking its link signs you in here automatically.
+        {t('onboarding.signupWait.body')}
       </span>
-      <button type="button" className="arc-link" onClick={() => host.oauthCancel()}>Cancel</button>
+      <button type="button" className="arc-link" onClick={() => host.oauthCancel()}>{t('onboarding.signupWait.cancel')}</button>
     </div>
   );
 
@@ -832,7 +827,7 @@ export default function OnboardingScreen({
   if (step === 'byok' && (phase === 'minds-no-llm' || phase === 'validating')) {
     const showLlmForm = phase === 'minds-no-llm';
     return (
-      <ArcadeShell title="Use your own key" subtitle="add an LLM provider to continue">
+      <ArcadeShell title={t('onboarding.byok.title')} subtitle={t('onboarding.byok.subtitle')}>
         <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(420px, 100%)' }}>
           {phase === 'validating' && validatingBlock}
 
@@ -845,8 +840,8 @@ export default function OnboardingScreen({
                     key whose paid-model probe failed, and that probe is gone, so
                     the flag that told the two credit cases apart went with it. */}
                 {skippedMinds
-                  ? <>Pick an LLM provider to run on. You can connect MindsHub later in Settings → Providers (needed to share to the web).</>
-                  : <>Your MindsHub account has no LLM credits yet. Top up to use managed models — or connect your own provider below.</>}
+                  ? t('onboarding.byok.skippedIntro')
+                  : t('onboarding.byok.noCreditsIntro')}
               </div>
 
               <button
@@ -861,22 +856,22 @@ export default function OnboardingScreen({
                   setErrorMsg('');
                   setLlmApiKey('');
                 }}
-              >← back to account options</button>
+              >{t('onboarding.byok.back')}</button>
 
               <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18, textAlign: 'left' }}>
                 <div>
-                  <label className="arc-label">Select a provider</label>
+                  <label className="arc-label">{t('onboarding.byok.selectProvider')}</label>
                   <div className="arc-seg-row">
                     <button type="button" className={`arc-seg ${byokProvider === 'anthropic' ? 'selected' : ''}`} onClick={() => handleSwitchByokProvider('anthropic')}>Anthropic</button>
                     <button type="button" className={`arc-seg ${byokProvider === 'openai' ? 'selected' : ''}`} onClick={() => handleSwitchByokProvider('openai')}>OpenAI</button>
                     <button type="button" className={`arc-seg ${byokProvider === 'gemini' ? 'selected' : ''}`} onClick={() => handleSwitchByokProvider('gemini')}>Gemini</button>
-                    <button type="button" className={`arc-seg ${byokProvider === 'openai-compatible' ? 'selected' : ''}`} onClick={() => handleSwitchByokProvider('openai-compatible')}>Custom</button>
+                    <button type="button" className={`arc-seg ${byokProvider === 'openai-compatible' ? 'selected' : ''}`} onClick={() => handleSwitchByokProvider('openai-compatible')}>{t('onboarding.byok.custom')}</button>
                   </div>
                 </div>
 
                 {byokProvider === 'openai-compatible' && (
                   <div>
-                    <label className="arc-label">Base URL</label>
+                    <label className="arc-label">{t('onboarding.byok.baseUrl')}</label>
                     <input
                       type="text"
                       className="arc-input"
@@ -884,12 +879,12 @@ export default function OnboardingScreen({
                       value={customBaseUrl}
                       onChange={(e) => { setCustomBaseUrl(e.target.value); setErrorMsg(''); }}
                     />
-                    <div className="arc-hint">Ollama, vLLM, Together, Groq, LM Studio, etc.</div>
+                    <div className="arc-hint">{t('onboarding.byok.baseUrlHint')}</div>
                   </div>
                 )}
 
                 <div>
-                  <label className="arc-label">Model</label>
+                  <label className="arc-label">{t('onboarding.byok.model')}</label>
                   {models.length > 0 ? (
                     <>
                       <select
@@ -900,14 +895,14 @@ export default function OnboardingScreen({
                         {models.map((m: { id: string; label: string }) => (
                           <option key={m.id} value={m.id}>{m.label}</option>
                         ))}
-                        <option value={CUSTOM_MODEL}>Custom...</option>
+                        <option value={CUSTOM_MODEL}>{t('onboarding.byok.customModel')}</option>
                       </select>
                       {selectedModel === CUSTOM_MODEL && (
                         <input
                           type="text"
                           className="arc-input"
                           style={{ marginTop: 8 }}
-                          placeholder="Enter model ID..."
+                          placeholder={t('onboarding.byok.modelIdPlaceholder')}
                           value={customModel}
                           onChange={(e) => setCustomModel(e.target.value)}
                           autoFocus
@@ -918,7 +913,7 @@ export default function OnboardingScreen({
                     <input
                       type="text"
                       className="arc-input"
-                      placeholder="Enter model name..."
+                      placeholder={t('onboarding.byok.modelNamePlaceholder')}
                       value={customModel}
                       onChange={(e) => { setCustomModel(e.target.value); setErrorMsg(''); }}
                     />
@@ -927,17 +922,17 @@ export default function OnboardingScreen({
 
                 <div>
                   <label className="arc-label">
-                    {byokProvider === 'anthropic' ? 'Anthropic API Key'
-                      : byokProvider === 'gemini' ? 'Google AI API Key'
-                      : byokProvider === 'openai-compatible' ? 'API Key (optional)'
-                      : 'OpenAI API Key'}
+                    {byokProvider === 'anthropic' ? t('onboarding.byok.keyLabel.anthropic')
+                      : byokProvider === 'gemini' ? t('onboarding.byok.keyLabel.gemini')
+                      : byokProvider === 'openai-compatible' ? t('onboarding.byok.keyLabel.custom')
+                      : t('onboarding.byok.keyLabel.openai')}
                   </label>
                   <input
                     type="password"
                     className="arc-input"
                     placeholder={byokProvider === 'anthropic' ? 'sk-ant-...'
                       : byokProvider === 'gemini' ? 'AIza...'
-                      : byokProvider === 'openai-compatible' ? 'Enter to skip if not needed'
+                      : byokProvider === 'openai-compatible' ? t('onboarding.byok.customKeyPlaceholder')
                       : 'sk-...'}
                     value={llmApiKey}
                     onChange={(e) => setLlmApiKey(e.target.value)}
@@ -956,7 +951,7 @@ export default function OnboardingScreen({
               )}
 
               <button className="arc-btn" disabled={!canConnectLlm} onClick={handleConnectLlm}>
-                Connect
+                {t('onboarding.byok.connect')}
               </button>
             </>
           )}
@@ -970,19 +965,19 @@ export default function OnboardingScreen({
   // used the app, so creating an account leads and signing in is one click
   // away — not the other way round.
   return (
-    <ArcadeShell title="Get started" subtitle="create a free account or sign in to continue">
+    <ArcadeShell title={t('onboarding.minds.title')} subtitle={t('onboarding.minds.subtitle')}>
       <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(420px, 100%)' }}>
         <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16, textAlign: 'left', borderColor: 'color-mix(in srgb, var(--arc-cyan) 35%, transparent)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <PixelSprite name="bolt" size={26} title="MindsHub" />
             <div>
               <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--arc-ink)' }}>MINDSHUB</div>
-              <div style={{ fontSize: 10, letterSpacing: '0.1em', color: 'var(--arc-dim)', marginTop: 2 }}>MANAGED BY MINDSDB</div>
+              <div style={{ fontSize: 10, letterSpacing: '0.1em', color: 'var(--arc-dim)', marginTop: 2 }}>{t('onboarding.minds.managedBy')}</div>
             </div>
           </div>
 
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {['Smart model routing', 'Secure data connectors', 'Share dashboards'].map((b) => (
+            {[t('onboarding.minds.benefits.routing'), t('onboarding.minds.benefits.connectors'), t('onboarding.minds.benefits.dashboards')].map((b) => (
               <li key={b} style={{ fontSize: 11.5, letterSpacing: '0.05em', color: 'var(--arc-muted)', display: 'flex', gap: 9 }}>
                 <span style={{ color: 'var(--arc-green)', fontWeight: 700 }}>+</span> {b}
               </li>
@@ -997,7 +992,7 @@ export default function OnboardingScreen({
                 disabled={phase === 'validating' || phase === 'signup-wait'}
                 onClick={handleMindsSignup}
               >
-                {phase === 'validating' ? 'One moment…' : 'Create a free account'}
+                {phase === 'validating' ? t('onboarding.minds.oneMoment') : t('onboarding.minds.createAccount')}
               </button>
               {/* Stays clickable during signup-wait on purpose — the flows are
                   single-flight in main, so a Sign-in click supersedes a parked
@@ -1009,13 +1004,13 @@ export default function OnboardingScreen({
                 disabled={phase === 'validating'}
                 onClick={handleMindsSSO}
               >
-                Sign in
+                {t('onboarding.minds.signIn')}
               </button>
             </>
           ) : (
             <>
               <div>
-                <label className="arc-label">MindsHub API Key</label>
+                <label className="arc-label">{t('onboarding.minds.apiKeyLabel')}</label>
                 <input
                   type="password"
                   className="arc-input"
@@ -1034,15 +1029,15 @@ export default function OnboardingScreen({
                 disabled={!canConnect || phase === 'validating'}
                 onClick={handleConnect}
               >
-                {phase === 'validating' ? 'Connecting…' : 'Connect'}
+                {phase === 'validating' ? t('onboarding.minds.connecting') : t('onboarding.minds.connect')}
               </button>
               <div style={{ fontSize: 10.5, letterSpacing: '0.05em', color: 'var(--arc-dim)', textAlign: 'center' }}>
-                No account?{' '}
+                {t('onboarding.minds.noAccount')}{' '}
                 <button
                   type="button"
                   className="arc-link"
                   onClick={() => host.openExternal(MINDS_REGISTER_URL)}
-                >Create one for free →</button>
+                >{t('onboarding.minds.createOne')}</button>
               </div>
             </>
           )}
@@ -1053,9 +1048,9 @@ export default function OnboardingScreen({
 
         {phase === 'signup-verify' && (
           <div className="arc-panel" role="status" style={{ padding: '14px 18px', fontSize: 11.5, lineHeight: 1.7, letterSpacing: '0.04em', color: 'var(--arc-muted)', textAlign: 'center' }}>
-            Verified your email? You're one click away — hit{' '}
-            <b style={{ color: 'var(--arc-ink)' }}>Sign in</b> to finish.
-            No need to register again.
+            {t('onboarding.minds.verifyBefore')}{' '}
+            <b style={{ color: 'var(--arc-ink)' }}>{t('onboarding.minds.signIn')}</b>{' '}
+            {t('onboarding.minds.verifyAfter')}
           </div>
         )}
 
@@ -1082,15 +1077,15 @@ export default function OnboardingScreen({
               setSkippedMinds(true);
               setPhase('minds-no-llm');
             }}
-          >Continue without an account →</button>
+          >{t('onboarding.minds.continueWithout')}</button>
         )}
 
         {phase !== 'validating' && (
           <div style={{ fontSize: 10.5, lineHeight: 1.5, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 420 }}>
-            By continuing, you agree to our{' '}
-            <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>Terms of Service</button>{' '}
-            and{' '}
-            <button type="button" className="arc-link" onClick={() => setLegalDoc('privacy')}>Privacy Policy</button>.
+            {t('onboarding.agreePrefix')}{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>{t('legal.terms')}</button>{' '}
+            {t('onboarding.agreeAnd')}{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('privacy')}>{t('legal.privacy')}</button>.
           </div>
         )}
       </div>

@@ -14,6 +14,7 @@ import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked } from '../lib/analytics';
 import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
 import { getDraft } from '../lib/draftStore';
+import i18n, { useTranslation } from '../../lib/i18n';
 
 // ── Boot choreography ───────────────────────────────────────────────────
 //
@@ -50,7 +51,8 @@ import { getDraft } from '../lib/draftStore';
 // config_ready=false) live in App.jsx so they fire once per app
 // session, not once per HomeView remount.
 
-const GREETING_FALLBACK = "Let's knock something off your list";
+// The greeting shown when the host passes none; translated when needed.
+const greetingFallback = () => i18n.t('home.greetingFallback', { ns: 'shell' });
 
 // Per-phase durations. Keep these short enough that the whole
 // post-server choreography fits in ~3s — the user already waited
@@ -139,7 +141,7 @@ function useBootPhase({ serverOnline, configReady, greeting, skipIntro = false }
   // 'typing' — per-char timer + tail pause + advance to 'settling'.
   useEffect(() => {
     if (phase !== 'typing') return undefined;
-    const target = greeting || GREETING_FALLBACK;
+    const target = greeting || greetingFallback();
     if (typedCount >= target.length) {
       const t = setTimeout(() => setPhase('settling'), TYPE_TAIL_MS);
       return () => clearTimeout(t);
@@ -203,13 +205,14 @@ function useOrbCenterOffset(orbRef, containerRef) {
 
 
 function ActiveList({ tasks, onSelect, onClear }) {
+  const { t } = useTranslation('shell');
   if (!tasks.length) return null;
   return (
     <div className="w-full max-w-[640px] mt-9">
       <div className="flex items-center mb-2 py-0 px-1">
-        <div className="text-[12px] font-semibold text-[var(--frost-700)] tracking-[0.02em]">Active</div>
+        <div className="text-[12px] font-semibold text-[var(--frost-700)] tracking-[0.02em]">{t('home.active')}</div>
         <div className="flex-1" />
-        <Button variant="subtle" onClick={onClear}>Clear active</Button>
+        <Button variant="subtle" onClick={onClear}>{t('home.clearActive')}</Button>
       </div>
       <div className="flex flex-col gap-[2px]">
         {tasks.map((t) => (
@@ -269,7 +272,8 @@ export default function HomeView({
   codingModelDefault,
   harnessClaudeCodeEnabled,
 }) {
-  const greetingText = greeting || GREETING_FALLBACK;
+  const { t } = useTranslation('shell');
+  const greetingText = greeting || t('home.greetingFallback');
   const blocked = configReady === false;
 
   // Selected task mode (ENG-1594). Null = default view (pill row visible).
@@ -460,8 +464,8 @@ export default function HomeView({
     const exampleId = sample ? sampleId(sample.label) : (ownWork ? OWN_WORK_START : null);
     // The task is credited to the example only if the example was placed; a
     // kept draft of the user's own is not the example's doing.
-    setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null);
-    trackComposerReady(handoff.entrySource, exampleId, prefilled);
+    setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null, handoff.placement);
+    trackComposerReady(handoff.entrySource, exampleId, prefilled, handoff.placement);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerUsable]);
 
@@ -590,10 +594,10 @@ export default function HomeView({
             <div className="home-connect-card">
               <span className="w-9 h-9 rounded-[9px] inline-flex items-center justify-center bg-[var(--primary-50)] text-[var(--primary-700)] shrink-0">{Ico.key(20)}</span>
               <div className="home-connect-card__body">
-                <div className="text-base font-[650] text-strong">{PLATFORM_UI ? 'Connect a provider to start chatting' : 'Provider setup is required'}</div>
+                <div className="text-base font-[650] text-strong">{PLATFORM_UI ? t('home.connectProvider.title') : t('home.connectProvider.operatorTitle')}</div>
                 <div className="text-sm text-[var(--frost-700)] mt-[3px]">{PLATFORM_UI
-                  ? 'Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.'
-                  : 'Ask your operator to configure the model provider before starting a task.'}</div>
+                  ? t('home.connectProvider.body')
+                  : t('home.connectProvider.operatorBody')}</div>
               </div>
               {PLATFORM_UI && <div className="home-connect-card__actions">
                 <Button
@@ -605,12 +609,12 @@ export default function HomeView({
                     trackBillingOpened('connect_provider');
                     host.openExternal(MINDS_BILLING_URL);
                   }}
-                >Start for free</Button>
+                >{t('home.connectProvider.startFree')}</Button>
                 <Button
                   variant="primary"
                   onClick={() => onOpenSettings?.('agent')}
                   style={{ background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' }}
-                >Open Settings</Button>
+                >{t('sidebar.openSettings')}</Button>
               </div>}
             </div>
           ) : (
@@ -656,7 +660,7 @@ export default function HomeView({
           <div className="w-full h-0 overflow-visible flex flex-col items-center">
             {handoffHint && taskMode && (
               <p role="status" className="text-sm text-[var(--frost-700)] mt-2 mb-0 w-full max-w-[var(--composer-max-width,640px)]">
-                Edit this prompt, then send when you're ready.
+                {t('home.handoffHint')}
               </p>
             )}
             {/* Samples only render when onPrefill exists — a sample click's

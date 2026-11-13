@@ -28,6 +28,7 @@ import {
 import { normalizeExternalBrowserUrl } from '../../shared/external-url';
 import { guardRestart, type GuardedRestartResult } from './restart-guard';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
+import { isMobileShell, mobileShell } from '../lib/mobileShell';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -43,6 +44,11 @@ const bridge: any =
 
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
+
+// Inside the mobile app (ENG-4023): a web build running in the
+// iOS/Android shell's webview. Always also `isWeb`. Use it to hide what makes
+// no sense on a phone (installers, "get the desktop app" offers).
+export { isMobileShell, mobileShell };
 
 // Static deployment capability. The user's opt-in is intentionally owned by
 // the renderer and stored per device; this flag only answers whether this
@@ -1674,6 +1680,40 @@ export async function mindshubListOrgs(): Promise<MindsOrgList> {
   return { orgs: result.orgs, activeOrgId: result.activeOrgId, reachable: true };
 }
 
+/** The org's images as data: URIs, each null when unset or not loadable. */
+export interface DesktopBrandImages {
+  iconUrl: string | null;
+  logoUrl: string | null;
+  logoDarkUrl: string | null;
+}
+
+/**
+ * Desktop only: hand main the org's image URLs (from org-branding); main
+ * downloads them from the auth host, sets the app icon, and returns data:
+ * URIs, since this page loads no remote images. null puts the stock app icon
+ * back. Web shows the URLs directly and gets null here.
+ */
+export async function mindshubBrandImages(
+  urls: { iconUrl: string | null; logoUrl: string | null; logoDarkUrl: string | null } | null,
+): Promise<DesktopBrandImages | null> {
+  if (!isElectron || typeof bridge.mindshubBrandImages !== 'function') return null;
+  try {
+    return (await bridge.mindshubBrandImages(urls)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Desktop only: org id → icon URL in, org id → data: URI out (main downloads them). */
+export async function mindshubOrgIconUris(urls: Record<string, string>): Promise<Record<string, string>> {
+  if (!isElectron || typeof bridge.mindshubOrgIconUris !== 'function') return {};
+  try {
+    return (await bridge.mindshubOrgIconUris(urls)) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
   if (isElectron) {
     if (typeof bridge.mindshubSwitchOrg === 'function') {
@@ -1890,6 +1930,8 @@ export async function decideAccountOwnership(
 export const host = {
   isWeb,
   isElectron,
+  isMobileShell,
+  mobileShell,
   codeModeAvailable,
   supportsDocumentPreview,
   supportsInAppBrowser,

@@ -20,11 +20,13 @@ import {
   CollectionState,
   ListGroup,
 } from '../components/collection';
+import { useTranslation } from '../../lib/i18n';
 
+// `label` is a message key; translated at render.
 const SORT_OPTIONS = [
-  { id: 'recent',  label: 'Recent' },
-  { id: 'name',    label: 'Name (A–Z)' },
-  { id: 'project', label: 'Project' },
+  { id: 'recent',  label: 'tasks.sort.recent' },
+  { id: 'name',    label: 'tasks.sort.name' },
+  { id: 'project', label: 'tasks.sort.project' },
 ];
 
 export default function TasksView({
@@ -41,6 +43,7 @@ export default function TasksView({
   onDeleteTask,
   onMoveTaskToProject,
 }) {
+  const { t } = useTranslation('shell');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
   const [projectFilter, setProjectFilter] = useState('all');
@@ -136,7 +139,7 @@ export default function TasksView({
     return set;
   }, [tasks]);
   const projectFilterOptions = useMemo(() => {
-    const opts = [{ value: 'all', label: 'All projects' }];
+    const opts = [{ value: 'all', label: t('tasks.allProjects') }];
     const seen = new Set();
     for (const p of projects) {
       if (!projectsWithTasks.has(p.name) || seen.has(p.name)) continue;
@@ -151,18 +154,18 @@ export default function TasksView({
       opts.push({ value: n, label: n });
     }
     return opts;
-  }, [projects, projectsWithTasks]);
+  }, [projects, projectsWithTasks, t]);
 
   const filters = [{
-    id: 'project', label: 'Project', value: projectFilter, allValue: 'all',
+    id: 'project', label: t('tasks.sort.project'), value: projectFilter, allValue: 'all',
     options: projectFilterOptions, onChange: setProjectFilter,
   }];
 
   return (
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
-        title="Tasks"
-        subtitle="Every conversation across every project. Sort, filter, and jump straight in."
+        title={t('mobile.tasks')}
+        subtitle={t('tasks.subtitle')}
       />
 
 
@@ -173,17 +176,17 @@ export default function TasksView({
               value={search}
               onChange={setSearch}
               inputRef={searchRef}
-              placeholder="Search tasks"
+              placeholder={t('tasks.searchPlaceholder')}
             />
           }
           filter={<FilterMenu filters={filters} />}
           chips={<FilterChips filters={filters} onClear={() => setProjectFilter('all')} />}
-          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS.map((o) => ({ ...o, label: t(o.label) }))} />}
           counts={
             <>
               {(search || '').trim().length > 0 || projectFilter !== 'all'
-                ? `${visible.length} of ${tasks.length} tasks`
-                : `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`}
+                ? t('tasks.countFiltered', { shown: visible.length, total: tasks.length })
+                : t('mobile.taskCount', { count: tasks.length })}
             </>
           }
         />
@@ -196,12 +199,12 @@ export default function TasksView({
         onClear={() => { setSearch(''); setProjectFilter('all'); }}
         // Search and the project filter both narrow the list, so the copy
         // and the action cover both.
-        noMatchTitle="No tasks match these filters."
-        clearLabel="Clear filters"
+        noMatchTitle={t('tasks.noMatch')}
+        clearLabel={t('tasks.clearFilters')}
         empty={{
           icon: Ico.chats(20),
-          title: 'No tasks yet',
-          description: 'Start a conversation from the home screen — every chat shows up here.',
+          title: t('sidebar.noTasks'),
+          description: t('tasks.emptyDescription'),
           className: 'mx-8 mb-8',
         }}
       >

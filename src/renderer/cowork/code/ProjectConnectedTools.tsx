@@ -3,6 +3,7 @@ import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
 import { FieldSet } from '../components/ui/Field';
+import { useTranslation } from '../../lib/i18n';
 
 function accountLabel(connection: ConnectorConnection): string {
   return connection.display_name || connection.user_label || connection.label || connection.name;
@@ -21,13 +22,14 @@ export function ProjectConnectedTools({
   onOpenConnectors: () => void;
   required?: string[];
 }) {
+  const { t } = useTranslation('code');
   const developerAccounts = connections.filter((connection) => connection.engine === 'github' || connection.engine === 'linear');
   const toggle = (key: string) => onChange(
     selected.includes(key) ? selected.filter((item) => item !== key) : [...selected, key],
   );
 
   return (
-    <FieldSet legend="Connectors">
+    <FieldSet legend={t('projectConnectedTools.title')}>
       {developerAccounts.length ? (
         <div className="code-project-list">
           {developerAccounts.map((connection) => {
@@ -38,20 +40,20 @@ export function ProjectConnectedTools({
               <div key={key} className={`code-project-connection${unavailable ? ' is-unavailable' : ''}`}>
                 <label>
                   <Checkbox size="sm" checked={selected.includes(key)} disabled={unavailable || (required.includes(key) && selected.includes(key))} onCheckedChange={() => toggle(key)} aria-label={label} />
-                  <span className="code-project-connection__text"><strong>{label}</strong><small>{connection.engine === 'github' ? 'GitHub' : 'Linear'}{required.includes(key) ? ' · Used by a repository' : ''}</small></span>
+                  <span className="code-project-connection__text"><strong>{label}</strong><small>{connection.engine === 'github' ? 'GitHub' : 'Linear'}{required.includes(key) ? t('projectConnectedTools.usedByRepository') : ''}</small></span>
                 </label>
-                {unavailable && <Button size="sm" variant="subtle" onClick={onOpenConnectors}>Reconnect</Button>}
+                {unavailable && <Button size="sm" variant="subtle" onClick={onOpenConnectors}>{t('projectConnectedTools.reconnect')}</Button>}
               </div>
             );
           })}
           <div className="code-project-list__actions">
-            <Button size="sm" variant="subtle" onClick={onOpenConnectors}>{Ico.link(14)} Manage connectors</Button>
+            <Button size="sm" variant="subtle" onClick={onOpenConnectors}>{Ico.link(14)} {t('projectConnectedTools.manage')}</Button>
           </div>
         </div>
       ) : (
         <div className="code-project-list code-project-connected-empty">
-          <span>Connect GitHub or Linear to start tasks from issues and deliver pull requests.</span>
-          <Button size="sm" variant="subtle" onClick={onOpenConnectors}>Open Connectors</Button>
+          <span>{t('projectConnectedTools.empty')}</span>
+          <Button size="sm" variant="subtle" onClick={onOpenConnectors}>{t('projectConnectedTools.open')}</Button>
         </div>
       )}
     </FieldSet>

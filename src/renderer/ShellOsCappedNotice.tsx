@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert } from './cowork/components/ui/Alert';
 import Ico from './cowork/components/Icons';
+import { sharedTranslator, useTranslation } from './lib/i18n';
 import { deriveShellOsCappedNotice, MIN_MACOS_FOR_LATEST_SHELL, type ShellSupportVerdict } from '../shared/shell-support';
 
 // The launch notice for a shell whose macOS the newest shell no longer runs on.
@@ -34,12 +35,13 @@ export interface ShellOsCappedNoticeProps {
 }
 
 export function ShellOsCappedNotice({ verdict, onDismiss, topOffset = 12 }: ShellOsCappedNoticeProps) {
+  const { t } = useTranslation('app');
   const [storedDismissal] = useState(readDismissed);
-  const notice = deriveShellOsCappedNotice(verdict);
+  const notice = deriveShellOsCappedNotice(verdict, sharedTranslator('app'));
   if (!notice) return null;
   if (notice.dismissal === 'once' && storedDismissal) return null;
 
-  const label = notice.dismissal === 'once' ? 'Dismiss' : 'Dismiss until the next launch';
+  const label = notice.dismissal === 'once' ? t('shell.dismiss') : t('shell.dismissUntilNextLaunch');
   const handleDismiss = () => {
     if (notice.dismissal === 'once') storeDismissed();
     onDismiss();

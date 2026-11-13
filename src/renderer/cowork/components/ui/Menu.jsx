@@ -46,7 +46,8 @@
 // arrow-key navigation). Used for identity headers like the user menu's
 // email/org block.
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useCloseOnFrameFocus } from './useCloseOnFrameFocus';
 import { Menu as BaseMenu } from '@base-ui/react/menu';
 import { ChevronRight } from 'lucide-react';
 import { Icon } from './Icon';
@@ -213,6 +214,17 @@ export function Menu({
   // here (overlay + Escape + item activation). Trigger mode is left to
   // Base UI (the ArtifactViewer kebab).
   const anchoredMode = controlled && !trigger;
+  // Trigger mode keeps its own open state, so a close from outside (focus
+  // moving into the artifact preview's iframe) can land.
+  const [menuOpen, setMenuOpen] = useState(false);
+  useCloseOnFrameFocus(controlled ? !!open && !anchoredMode : menuOpen, () => {
+    if (controlled) {
+      onOpenChange?.(false, { reason: 'frame-focus' });
+      onClose?.();
+    } else {
+      setMenuOpen(false);
+    }
+  });
 
   const rootProps = controlled
     ? {
@@ -227,7 +239,7 @@ export function Menu({
           if (!next && !anchoredMode) onClose?.();
         },
       }
-    : {};
+    : { open: menuOpen, onOpenChange: (next) => setMenuOpen(next) };
 
   // Normalise the anchor into a virtual element Base UI/Floating UI
   // accepts. A raw DOMRect has no `getBoundingClientRect`, so wrap it;

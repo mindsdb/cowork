@@ -5,6 +5,7 @@
 // does. Queries go by role, label and visible text, never by class.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import ToastProvider from '../components/ui/Toast';
 import userEvent from '@testing-library/user-event';
 import { orderOf, pickOption } from '../../../../tests/helpers/pickOption';
 
@@ -48,7 +49,7 @@ function setup(overrides = {}) {
   // after a hover reveal flips the inline style. Visibility is styling; these
   // tests pin that each action exists, is named, and does the right thing.
   const user = userEvent.setup({ pointerEventsCheck: 0 });
-  return { ...render(<ScheduledView {...props} />), props, user };
+  return { ...render(<ScheduledView {...props} />, { wrapper: ToastProvider }), props, user };
 }
 
 // Narrow the page to one schedule so per-item actions are unambiguous.
@@ -240,5 +241,70 @@ describe('ScheduledView — unseen auto-pauses', () => {
   it('says nothing once each has been reviewed', () => {
     setup({ scheduled: [autoPaused], unseenAutoPauses: [] });
     expect(screen.queryByText(/paused after failing/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ScheduledView — save and run once', () => {
+  it('creates the task, then runs the new task once', async () => {
+    const onCreate = vi.fn().mockResolvedValue({ id: 'new-1' });
+    const { props, user } = setup({ onCreate });
+    await user.click(screen.getAllByRole('button', { name: /Schedule task/ })[0]);
+    await user.type(screen.getByPlaceholderText(/Ask Anton/i), 'try it');
+    await user.click(screen.getByRole('button', { name: 'Save and run once' }));
+    await vi.waitFor(() => expect(props.onRunNow).toHaveBeenCalledWith('new-1', { trial: true }));
+    expect(onCreate.mock.calls[0][0]).toMatchObject({ prompt: 'try it' });
+  });
+
+  it('runs a one-off as a trial, so its own time still comes', async () => {
+    const onCreate = vi.fn().mockResolvedValue({ id: 'new-1' });
+    const { props, user } = setup({ onCreate });
+    await user.click(screen.getAllByRole('button', { name: /Schedule task/ })[0]);
+    await user.type(screen.getByPlaceholderText(/Ask Anton/i), 'try it');
+    await user.click(screen.getByRole('combobox', { name: 'How often' }));
+    await user.click(await screen.findByRole('option', { name: 'Once' }));
+    await user.click(screen.getByRole('button', { name: 'Save and run once' }));
+    await vi.waitFor(() => expect(props.onRunNow).toHaveBeenCalledWith('new-1', { trial: true }));
+    expect(onCreate.mock.calls[0][0]).toMatchObject({ cadence: 'once' });
+  });
+
+  it('closes the form when the trial run fails, so saving again can’t make a second task', async () => {
+    const onCreate = vi.fn().mockResolvedValue({ id: 'new-1' });
+    const onRunNow = vi.fn().mockRejectedValue(new Error('The organization is running as many tasks as it can.'));
+    const { user } = setup({ onCreate, onRunNow });
+    await user.click(screen.getAllByRole('button', { name: /Schedule task/ })[0]);
+    await user.type(screen.getByPlaceholderText(/Ask Anton/i), 'try it');
+    await user.click(screen.getByRole('button', { name: 'Save and run once' }));
+    expect(await screen.findByText(/but its trial run didn’t start: The organization is running as many tasks as it can\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save and run once' })).not.toBeInTheDocument();
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ScheduledView — needs attention first', () => {
+  const failedRun = { status: 'failed', outcome: 'failed_during_execution', error: 'boom' };
+  const rows = [
+    { ...SCHEDULED[0], state: 'active' },
+    { ...SCHEDULED[1], state: 'active', lastRun: failedRun },
+    { ...SCHEDULED[2], state: 'auto_paused', autoPausedAt: '2026-10-14T09:00:00Z' },
+  ];
+
+  it('puts tasks that need you in their own group above the rest', () => {
+    setup({ scheduled: rows });
+    const attention = screen.getByRole('heading', { name: 'Needs attention' }).closest('section');
+    expect(within(attention).getByText('Alpha sweep')).toBeInTheDocument();
+    expect(within(attention).getByText('Paused digest')).toBeInTheDocument();
+    const rest = screen.getByRole('heading', { name: 'Everything else' }).closest('section');
+    expect(within(rest).getByText('Weekly metrics')).toBeInTheDocument();
+  });
+
+  it('shows one plain list when nothing needs attention', () => {
+    setup({ scheduled: [rows[0]] });
+    expect(screen.queryByRole('heading', { name: 'Needs attention' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Everything else' })).toBeNull();
+  });
+
+  it('reads each schedule in words with its next run', () => {
+    setup({ scheduled: [rows[0]] });
+    expect(screen.getByText(/^Every Friday at 9:00 AM · next /)).toBeInTheDocument();
   });
 });

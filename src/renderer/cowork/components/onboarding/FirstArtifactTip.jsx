@@ -1,5 +1,6 @@
 import { Popover } from '@base-ui/react/popover';
 import { Button } from '../ui';
+import { useTranslation } from '../../../lib/i18n';
 
 // One-shot callout anchored to the Live Artifacts nav badge, shown the
 // moment the user's FIRST artifact lands (App owns the arm/trigger
@@ -13,6 +14,7 @@ import { Button } from '../ui';
 //   • Escape / clicking anywhere else
 
 export default function FirstArtifactTip({ open, anchorRef, onGotIt, onShowMe }) {
+  const { t } = useTranslation('setup');
   return (
     <Popover.Root
       open={open}
@@ -31,7 +33,7 @@ export default function FirstArtifactTip({ open, anchorRef, onGotIt, onShowMe })
             // shows up on its own, not from a click.
             initialFocus={false}
             finalFocus={false}
-            aria-label="Your first Live Artifact"
+            aria-label={t('firstArtifactTip.ariaLabel')}
             className="first-artifact-tip"
             style={{
               background: 'var(--ink)',
@@ -47,14 +49,14 @@ export default function FirstArtifactTip({ open, anchorRef, onGotIt, onShowMe })
                 (`.first-artifact-tip-arrow`) keyed off data-side. */}
             <Popover.Arrow className="first-artifact-tip-arrow" />
             <div className="text-sm leading-[1.5]">
-              Your first Live Artifact is ready. It lives here. Open it anytime, or publish it to share a live URL.
+              {t('firstArtifactTip.body')}
             </div>
             {/* Shared Button primitives; the tip sits on an inverted ink
                 surface, so their variant colors are reskinned in
                 globals.css under `.first-artifact-tip .btn`. */}
             <div className="flex justify-end gap-2 mt-[10px]">
-              <Button size="sm" onClick={onGotIt}>Got it</Button>
-              <Button size="sm" variant="primary" onClick={onShowMe}>Show me</Button>
+              <Button size="sm" onClick={onGotIt}>{t('firstArtifactTip.gotIt')}</Button>
+              <Button size="sm" variant="primary" onClick={onShowMe}>{t('firstArtifactTip.showMe')}</Button>
             </div>
           </Popover.Popup>
         </Popover.Positioner>

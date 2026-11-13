@@ -19,8 +19,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import Ico from '../../Icons';
 import { Alert, Button, OutsidePressLayer, Spinner, Tooltip } from '../../ui';
-import { UNRECORDED_LINK_WARNING } from './linkLeftLive';
+import { unrecordedLinkWarning } from './linkLeftLive';
+import i18n, { useTranslation } from '../../../../lib/i18n';
 import { copyText } from '../../../lib/clipboard';
+import { reportLinkCopied, reportShareOpened } from '../../../lib/artifactShareAnalytics';
 import {
   AccessChooser,
   accessDraftFromArtifact,
@@ -32,7 +34,7 @@ import {
   parseEmailList,
 } from './AccessChooser';
 import { SharedWithList, useRecipientItems } from '../../RecipientRows';
-import { AUDIENCE_CHOICE, MINDSHUB_UNREACHABLE_PERMISSIONS, recipientSummary } from '../../../lib/orgSharing';
+import { AUDIENCE_CHOICE, mindsHubUnreachablePermissions, recipientSummary } from '../../../lib/orgSharing';
 import { LOAD_STATUS } from '../../../lib/sharingContract';
 import { LoadStatus, RetryAlert } from '../../LoadStatus';
 import { useArtifactShareState } from './useArtifactShareState';
@@ -101,18 +103,23 @@ function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, chil
   );
 }
 
-function UrlField({ url }) {
+function UrlField({ url, onCopied }) {
+  const { t } = useTranslation('artifacts');
   const [copied, setCopied] = useState(false);
   const display = (url || '').replace(/^https?:\/\//, '');
   const onCopy = async () => {
-    if (await copyText(url)) { setCopied(true); setTimeout(() => setCopied(false), 1400); }
+    if (await copyText(url)) {
+      onCopied?.();
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    }
   };
   return (
     <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-[6px] pb-0 pl-[10px]">
       <span title={url} className="flex-1 min-w-0 font-[family-name:var(--font-mono)] text-[12px] text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap py-2 px-0">{display}</span>
-      <Tooltip content={copied ? 'Copied' : 'Copy URL'}>
+      <Tooltip content={copied ? t('publish.copied') : t('publish.copyUrl')}>
         <button
-          type="button" onClick={onCopy} aria-label="Copy URL"
+          type="button" onClick={onCopy} aria-label={t('publish.copyUrl')}
           className="shrink-0 w-[26px] h-[26px] rounded-[6px] bg-transparent border-0 cursor-pointer inline-grid place-items-center"
           style={{ color: copied ? 'var(--accent)' : 'var(--ink-4)' }}
         >{copied ? Ico.check(14) : Ico.copy(14)}</button>
@@ -168,6 +175,7 @@ function AccessSummaryCard({ pub, sharing, orgName }) {
 const NOTIFY_SHOWN = 3;
 
 function NotifyConfirm({ added, sharing, orgName, busy, choice, onDecide }) {
+  const { t } = useTranslation('artifacts');
   const items = useRecipientItems(
     { userIds: added.userIds, emails: added.emails },
     { teamsState: sharing?.teams || null, orgName, emailsOnly: !sharing },
@@ -178,23 +186,23 @@ function NotifyConfirm({ added, sharing, orgName, busy, choice, onDecide }) {
   const names = items.slice(0, NOTIFY_SHOWN).map((item) => item.primary).join(', ');
   const more = count - Math.min(count, NOTIFY_SHOWN);
   return (
-    <div role="group" aria-label="Notify new people" data-testid="notify-confirm" className="flex min-w-0 flex-1 flex-col gap-2">
+    <div role="group" aria-label={t('publish.notify.ariaLabel')} data-testid="notify-confirm" className="flex min-w-0 flex-1 flex-col gap-2">
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="font-body font-semibold text-sm text-ink">
-          {`Let ${count === 1 ? '1 new person' : `${count} new people`} know by email?`}
+          {t('publish.notify.question', { count })}
         </span>
         <span className="truncate font-body text-xs text-ink-3" title={items.map((item) => item.primary).join(', ')}>
-          {names}{more > 0 && <span className="text-ink-4">{` +${more} more`}</span>}
+          {names}{more > 0 && <span className="text-ink-4">{` ${t('comparison.more', { count: more })}`}</span>}
         </span>
       </div>
       <div className="flex justify-end gap-2">
         <FooterButton onClick={() => onDecide(false)} disabled={busy}
-          busy={busy && choice === false} busyLabel="Saving…">
-          Don&apos;t notify
+          busy={busy && choice === false} busyLabel={t('publish.saving')}>
+          {t('publish.notify.dontNotify')}
         </FooterButton>
         <Button ref={notifyRef} variant="primary" onClick={() => onDecide(true)} disabled={busy}>
           {busy && choice === true && <Spinner style={{ color: 'currentColor' }} />}
-          {busy && choice === true ? 'Saving…' : 'Notify'}
+          {busy && choice === true ? t('publish.saving') : t('publish.notify.notify')}
         </Button>
       </div>
     </div>
@@ -224,10 +232,11 @@ function formatWhen(iso) {
 
 // versions are newest-first, so the highest version number is at index 0.
 function versionLabel(v, i, total) {
-  return v.title || `Version ${total - i}`;
+  return v.title || i18n.t('publish.version', { ns: 'artifacts', number: total - i });
 }
 
 function VersionList({ versions, activatingMd5, busy, onActivate }) {
+  const { t } = useTranslation('artifacts');
   return (
     <div className="flex flex-col gap-[6px] max-h-[240px] overflow-y-auto">
       {versions.map((v, i) => {
@@ -252,12 +261,12 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
             </span>
             {live ? (
               <span className="shrink-0 inline-flex items-center gap-[5px] font-body font-semibold text-[11.5px] text-accent">
-                <span className="w-[6px] h-[6px] rounded-full bg-accent" /> Live
+                <span className="w-[6px] h-[6px] rounded-full bg-accent" /> {t('publish.live')}
               </span>
             ) : (
               <Button onClick={() => onActivate(v.md5)} disabled={busy} className="shrink-0">
                 {acting && <Spinner style={{ color: 'currentColor' }} />}
-                {acting ? 'Rolling back…' : 'Make live'}
+                {acting ? t('publish.rollingBack') : t('publish.makeLive')}
               </Button>
             )}
           </div>
@@ -270,6 +279,7 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
 // ── Main control ─────────────────────────────────────────────────────────
 
 export function PublishMenu({ controller, disabled = false, disabledReason = '' }) {
+  const { t } = useTranslation('artifacts');
   const pub = controller;
   const isPublished = !!pub.publishedUrl;
   const [open, setOpen] = useState(false);
@@ -282,13 +292,13 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     permissionsUnreachable,
   } = useArtifactShareState(pub);
   const sharingSettingsStatus = !sharingReady && (
-    <LoadStatus status={sharingStatus} what="sharing settings" onRetry={pub.orgSharing.retry} />
+    <LoadStatus status={sharingStatus} what={t('publish.load.sharingSettings')} onRetry={pub.orgSharing.retry} />
   );
   const permissionsNotice = permissionsUnreachable && (
-    <RetryAlert variant="warning" className="mb-2" message={MINDSHUB_UNREACHABLE_PERMISSIONS} onRetry={sharing.retry} />
+    <RetryAlert variant="warning" className="mb-2" message={mindsHubUnreachablePermissions()} onRetry={sharing.retry} />
   );
   const accessLoadStatus = accessStatus !== LOAD_STATUS.READY && (
-    <LoadStatus status={accessStatus} what="current access" onRetry={pub.refresh} />
+    <LoadStatus status={accessStatus} what={t('publish.load.currentAccess')} onRetry={pub.refresh} />
   );
   const draftOptions = { orgSharing: !!sharing, teams: sharing?.teams?.teams || [] };
   // The draft the live access reads as.
@@ -439,6 +449,16 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
             if (!pub.busy) setNotifyPrompt(null);
             return;
           }
+          if (v && !open) {
+            reportShareOpened(pub.artifact, {
+              entry: 'viewer',
+              // Unknown until the artifact's access has been read, whatever the
+              // card's default mode says.
+              isShared: shareState.kind === 'unknown' || (isPublished && !pub.accessLoaded)
+                ? null
+                : isSharedWithSomeone,
+            });
+          }
           setOpen(v);
         }}
       >
@@ -464,11 +484,11 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
             ? (
               <>
                 <span aria-hidden="true" className="inline-flex text-ink-3">{shareStateIcon(shareState.kind, 14)}</span>
-                Shared
+                {t('publish.shared')}
                 <span aria-hidden="true" className="inline-flex text-ink-3">{Ico.chevDown(14)}</span>
               </>
             )
-            : 'Share'}
+            : t('publish.share')}
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Positioner side="bottom" align="end" sideOffset={8} style={{ zIndex: 90 }}>
@@ -483,9 +503,9 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
               {/* NOT PUBLISHED — Share to the Web */}
               {!isPublished && (
                 <>
-                  <PanelHeader title="Share to the Web" />
+                  <PanelHeader title={t('publish.shareToWeb')} />
                   <div className="py-3 px-4">
-                    <SectionLabel>Who can access your app</SectionLabel>
+                    <SectionLabel>{t('publish.whoCanAccess')}</SectionLabel>
                     {sharingSettingsStatus || (
                       <>
                         {permissionsNotice}
@@ -499,8 +519,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                     {notifyConfirm || (
                       <FooterButton primary onClick={doPublish}
                         disabled={pub.busy || !sharingReady || !draftValid(draft)}
-                        busy={pub.phase === 'publishing'} busyLabel="Sharing">
-                        Share
+                        busy={pub.phase === 'publishing'} busyLabel={t('publish.sharingBusy')}>
+                        {t('publish.share')}
                       </FooterButton>
                     )}
                   </div>
@@ -512,28 +532,28 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                 <>
                   {/* The same claim as the trigger: an owner-only artifact
                       is published but not shared. */}
-                  <PanelHeader title={isSharedWithSomeone ? 'Shared' : 'Share'} />
+                  <PanelHeader title={isSharedWithSomeone ? t('publish.shared') : t('publish.share')} />
   
                   <div className="py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
-                    <SectionLabel>Website URL</SectionLabel>
-                    <UrlField url={pub.publishedUrl} />
+                    <SectionLabel>{t('publish.websiteUrl')}</SectionLabel>
+                    <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry: 'viewer' })} />
                   </div>
   
                   <div className="py-3 px-4">
                     {view === 'summary' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>Change</LinkButton>}>
-                          Who can access your app
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.change')}</LinkButton>}>
+                          {t('publish.whoCanAccess')}
                         </SectionLabel>
                         {accessLoadStatus || <AccessSummaryCard pub={pub} sharing={sharing} orgName={orgName} />}
                         {pub.accessMode === 'password' && (
                           <div className="mt-2 flex justify-end">
-                            <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>Change password</LinkButton>
+                            <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>{t('publish.changePassword')}</LinkButton>
                           </div>
                         )}
                         {!orgMode && pub.versions.length > 1 && (
                           <div className="mt-3">
-                            <LinkButton onClick={() => setView('versions')}>{`Version history (${pub.versions.length})`}</LinkButton>
+                            <LinkButton onClick={() => setView('versions')}>{t('publish.versionHistoryCount', { count: pub.versions.length })}</LinkButton>
                           </div>
                         )}
                       </>
@@ -541,8 +561,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   
                     {view === 'access' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setNotifyPrompt(null); setView('summary'); }}>Dismiss</LinkButton>}>
-                          Who can access your app
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setNotifyPrompt(null); setView('summary'); }}>{t('publish.dismiss')}</LinkButton>}>
+                          {t('publish.whoCanAccess')}
                         </SectionLabel>
                         {sharingSettingsStatus || accessLoadStatus || (
                           <>
@@ -555,20 +575,20 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   
                     {view === 'password' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => setView('summary')}>Dismiss</LinkButton>}>
-                          Change password
+                        <SectionLabel action={<LinkButton onClick={() => setView('summary')}>{t('publish.dismiss')}</LinkButton>}>
+                          {t('publish.changePassword')}
                         </SectionLabel>
                         <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-2 pb-0 pl-[10px]">
                           <input
                             type={pwd.reveal ? 'text' : 'password'} value={pwd.value}
                             onChange={(e) => setPwd((p) => ({ ...p, value: e.target.value }))}
                             onKeyDown={(e) => { if (e.key === 'Enter') doSavePassword(); }}
-                            autoFocus placeholder="New password"
+                            autoFocus placeholder={t('publish.newPassword')}
                             className="flex-1 min-w-0 bg-transparent border-0 [outline:none] text-ink font-[family-name:var(--font-mono)] text-[13px] py-[9px] px-0"
                           />
-                          <Tooltip content={pwd.reveal ? 'Hide' : 'Show'}>
+                          <Tooltip content={pwd.reveal ? t('publish.hide') : t('publish.show')}>
                             <button type="button" onClick={() => setPwd((p) => ({ ...p, reveal: !p.reveal }))}
-                              aria-label={pwd.reveal ? 'Hide password' : 'Show password'}
+                              aria-label={pwd.reveal ? t('publish.hidePassword') : t('publish.showPassword')}
                               className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
                               {pwd.reveal ? Ico.eyeOff(16) : Ico.eye(16)}
                             </button>
@@ -579,8 +599,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   
                     {view === 'versions' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => setView('summary')}>Dismiss</LinkButton>}>
-                          Version history
+                        <SectionLabel action={<LinkButton onClick={() => setView('summary')}>{t('publish.dismiss')}</LinkButton>}>
+                          {t('publish.versionHistory')}
                         </SectionLabel>
                         <VersionList
                           versions={pub.versions}
@@ -589,21 +609,21 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                           onActivate={doActivate}
                         />
                         <p className="mt-[10px] mx-[2px] mb-0 font-body text-xs text-ink-3 leading-[1.4]">
-                          Making a version live changes what visitors see at your URL. Your workspace files stay as they are.
+                          {t('publish.versionsNote')}
                         </p>
                       </>
                     )}
                   </div>
   
-                  <NoticeRow message={pub.notice || (pub.linkOwnerRecorded === false ? UNRECORDED_LINK_WARNING : '')} />
+                  <NoticeRow message={pub.notice || (pub.linkOwnerRecorded === false ? unrecordedLinkWarning() : '')} />
                   <ErrorRow message={pub.error} />
   
                   <div className="flex items-center justify-between gap-2 py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
                     {notifyConfirm || (<>
                     {!orgMode ? (
                       <FooterButton onClick={doUnpublish} disabled={pub.busy}
-                        busy={pub.phase === 'unpublishing'} busyLabel="Stopping…">
-                        Stop sharing
+                        busy={pub.phase === 'unpublishing'} busyLabel={t('liveAppShare.stopping')}>
+                        {t('publish.stopSharing')}
                       </FooterButton>
                     ) : (
                       // `DELETE /publish` is local-only, and there is nothing to
@@ -617,30 +637,30 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                     {view === 'password' ? (
                       <FooterButton primary onClick={doSavePassword}
                         disabled={pub.busy || !pwd.value.trim() || pwd.value.trim() === (pub.accessPassword || '')}
-                        busy={pub.phase === 'publishing'} busyLabel="Saving…">
-                        Save
+                        busy={pub.phase === 'publishing'} busyLabel={t('publish.saving')}>
+                        {t('revisionBar.save')}
                       </FooterButton>
                     ) : view === 'access' ? (
                       !pub.accessLoaded || !sharingReady ? (
                         // Real prior list not fetched yet — block "Update" so an
                         // empty/stale draft can't overwrite the server's list (ENG-931).
                         // Nor before what sharing allows is known (above).
-                        <FooterButton primary disabled title={pub.accessLoaded || accessStatus === LOAD_STATUS.ERROR ? undefined : 'Loading current access…'}>
-                          Update
+                        <FooterButton primary disabled title={pub.accessLoaded || accessStatus === LOAD_STATUS.ERROR ? undefined : t('publish.loadingAccess')}>
+                          {t('publish.update')}
                         </FooterButton>
                       ) : (draftDiffers(draft, current) || pub.modified) ? (
                         <FooterButton primary onClick={doApplyAccess}
                           disabled={pub.busy || !draftValid(draft)}
-                          busy={pub.phase === 'publishing'} busyLabel="Updating…">
-                          Update
+                          busy={pub.phase === 'publishing'} busyLabel={t('status.updating')}>
+                          {t('publish.update')}
                         </FooterButton>
                       ) : (
                         <UpToDateTag />
                       )
                     ) : (pub.modified && !orgMode) ? (
                       <FooterButton primary onClick={pub.update} disabled={pub.busy}
-                        busy={pub.phase === 'updating'} busyLabel="Updating…">
-                        Update
+                        busy={pub.phase === 'updating'} busyLabel={t('status.updating')}>
+                        {t('publish.update')}
                       </FooterButton>
                     ) : (
                       <UpToDateTag />

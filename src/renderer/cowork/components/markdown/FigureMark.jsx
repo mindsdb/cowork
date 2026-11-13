@@ -28,16 +28,16 @@ import { host } from '../../../platform/host';
 import { copyText } from '../../lib/clipboard';
 import { figureSourceText } from '../../lib/figureSources';
 import { isArtifactLocalPath, isSafeExternalHref, openMarkdownHref } from './markdownLinks';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 /** @typedef {import('../../lib/figureSources').LinkedFigure} LinkedFigure */
 /** @typedef {import('../../lib/figureSources').LinkedFigureSource} LinkedFigureSource */
 
-const KIND_LABELS = { query: 'Query', file: 'File', web: 'Web page', step: 'Step' };
+// Chat-namespace keys, translated where they are shown.
+const KIND_LABELS = { query: 'figure.kinds.query', file: 'figure.kinds.file', web: 'figure.kinds.web', step: 'figure.kinds.step' };
 
 /* The short state after the figure in a mark's accessible name. */
-const KIND_STATES = { query: 'from a query', file: 'from a file', web: 'from the web', step: 'from a step' };
-
-const TABLE_HINT = 'Arrow keys move between the figures in this table.';
+const KIND_STATES = { query: 'figure.states.query', file: 'figure.states.file', web: 'figure.states.web', step: 'figure.states.step' };
 
 /* How long the tooltip stays after the pointer leaves the figure, so the
    pointer can cross onto the tooltip without it closing. */
@@ -45,22 +45,23 @@ const TOOLTIP_CLOSE_GRACE_MS = 120;
 
 /** @param {LinkedFigure} figure */
 function shortState(figure) {
-  if (figure.origin === 'none') return 'no source';
-  if (figure.origin === 'earlier_answer') return 'repeated from an earlier answer';
-  return KIND_STATES[figure.sources[0]?.kind] || KIND_STATES.step;
+  if (figure.origin === 'none') return i18n.t('figure.states.none', { ns: 'chat' });
+  if (figure.origin === 'earlier_answer') return i18n.t('figure.states.earlierAnswer', { ns: 'chat' });
+  return i18n.t(KIND_STATES[figure.sources[0]?.kind] || KIND_STATES.step, { ns: 'chat' });
 }
 
 /* Its own click handler, because MarkdownContent's delegated copy listener
    sits on the answer's root and this popover renders in a portal outside it.
    The button says Copied, or Could not copy, for a moment after a press. */
 function CopyButton({ text, label }) {
+  const { t } = useTranslation('chat');
   const [status, setStatus] = useState(/** @type {'idle' | 'copied' | 'failed'} */ ('idle'));
   useEffect(() => {
     if (status === 'idle') return undefined;
     const timer = setTimeout(() => setStatus('idle'), 1200);
     return () => clearTimeout(timer);
   }, [status]);
-  const said = { idle: label, copied: 'Copied', failed: 'Could not copy' }[status];
+  const said = { idle: label, copied: t('figure.copied'), failed: t('figure.copyFailed') }[status];
   return (
     <Button
       size="xs"
@@ -69,7 +70,7 @@ function CopyButton({ text, label }) {
       onClick={() => { copyText(text).then((ok) => setStatus(ok ? 'copied' : 'failed')); }}
     >
       {status === 'copied' ? Ico.check(12) : Ico.copy(12)}
-      {status === 'idle' ? 'Copy' : said}
+      {status === 'idle' ? t('figure.copy') : said}
     </Button>
   );
 }
@@ -94,6 +95,7 @@ function Snippet({ caption, code, language, copyLabel, wrap = false }) {
    opener, and on web a loopback address names the agent's machine rather than
    the reader's, so it stays text. */
 function SourceLink({ url }) {
+  const { t } = useTranslation('chat');
   const textClass = 'block mt-1 font-[family-name:var(--font-mono)] text-[11.5px] [overflow-wrap:anywhere]';
   if (!isSafeExternalHref(url) || isArtifactLocalPath(url, { web: host.isWeb })) {
     return <span className={`${textClass} text-ink-3`}>{url}</span>;
@@ -110,7 +112,7 @@ function SourceLink({ url }) {
       }}
     >
       {url}
-      <span className="sr-only"> (opens in new window)</span>
+      <span className="sr-only">{t('figure.opensInNewWindow')}</span>
     </a>
   );
 }
@@ -118,7 +120,8 @@ function SourceLink({ url }) {
 /* View file opens a project file by its path, or a file attached to the
    chat by its files-store id; the caller decides which it can read. */
 function SourceItem({ source, onViewFile, onOpenStep }) {
-  const kindLabel = KIND_LABELS[source.kind] || KIND_LABELS.step;
+  const { t } = useTranslation('chat');
+  const kindLabel = t(KIND_LABELS[source.kind] || KIND_LABELS.step);
   // Drop a label that only repeats the kind.
   const label = source.label && source.label.toLowerCase() !== kindLabel.toLowerCase() ? source.label : '';
   const viewFile = (source.path || source.attachment_id) && onViewFile ? () => onViewFile(source) : null;
@@ -128,19 +131,19 @@ function SourceItem({ source, onViewFile, onOpenStep }) {
       <div className="flex items-baseline gap-2 min-w-0">
         <span className="section-label shrink-0">{kindLabel}</span>
         {label && <span className="min-w-0 truncate text-[13px] font-medium text-ink" title={label}>{label}</span>}
-        {source.page != null && <span className="text-[12px] text-ink-3 shrink-0">{`page ${source.page}`}</span>}
+        {source.page != null && <span className="text-[12px] text-ink-3 shrink-0">{t('figure.page', { page: source.page })}</span>}
       </div>
       {source.url && <SourceLink url={source.url} />}
       {source.queries.map((query, i) => (
-        <Snippet key={`query-${i}`} caption="SQL" code={query} language="sql" copyLabel="Copy SQL" />
+        <Snippet key={`query-${i}`} caption="SQL" code={query} language="sql" copyLabel={t('figure.copySql')} />
       ))}
       {source.requests.map((request, i) => (
-        <Snippet key={`request-${i}`} caption="Request" code={request} language="text" copyLabel="Copy request" wrap />
+        <Snippet key={`request-${i}`} caption={t('figure.request')} code={request} language="text" copyLabel={t('figure.copyRequest')} wrap />
       ))}
       {(viewFile || openStep) && (
         <div className="flex flex-wrap gap-2 mt-2">
-          {viewFile && <Button size="sm" onClick={viewFile}>{Ico.eye(14)} View file</Button>}
-          {openStep && <Button size="sm" variant="subtle" onClick={openStep}>Open step</Button>}
+          {viewFile && <Button size="sm" onClick={viewFile}>{Ico.eye(14)} {t('figure.viewFile')}</Button>}
+          {openStep && <Button size="sm" variant="subtle" onClick={openStep}>{t('figure.openStep')}</Button>}
         </div>
       )}
     </li>
@@ -244,6 +247,7 @@ function useFigureTooltip() {
  * }} props
  */
 export function FigureMark({ figure, onOpenStep = null, onViewFile = null, children }) {
+  const { t } = useTranslation('chat');
   const [open, setOpen] = useState(false);
   const buttonRef = useRef(/** @type {HTMLButtonElement | null} */ (null));
   const popupId = useId();
@@ -255,7 +259,7 @@ export function FigureMark({ figure, onOpenStep = null, onViewFile = null, child
      the description, and a sighted one reads it in the tooltip focus opens.
      The tooltip a mouse opens shows the sentence alone. */
   const description = tableStop.hintsArrowKeys
-    ? `${sentence}${/[.!?]$/.test(sentence) ? '' : '.'} ${TABLE_HINT}`
+    ? `${sentence}${/[.!?]$/.test(sentence) ? '' : '.'} ${t('figure.tableHint')}`
     : sentence;
   const className = figure.origin === 'none' ? 'anton-figure anton-figure--unsourced' : 'anton-figure';
   const setPopover = (next) => {
@@ -271,7 +275,7 @@ export function FigureMark({ figure, onOpenStep = null, onViewFile = null, child
         ref={buttonRef}
         type="button"
         className={className}
-        aria-label={`${figure.text}, ${shortState(figure)}`}
+        aria-label={t('figure.ariaLabel', { figure: figure.text, state: shortState(figure) })}
         aria-description={description}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -338,7 +342,7 @@ export function FigureMark({ figure, onOpenStep = null, onViewFile = null, child
                 }}
               >
                 <Popover.Title className="m-0 py-3 px-4 shrink-0 text-[13px] font-semibold leading-[1.4] text-ink border-b border-t-0 border-x-0 border-solid border-line">
-                  {`Where ${figure.text} came from`}
+                  {t('figure.popoverTitle', { figure: figure.text })}
                 </Popover.Title>
                 {figure.origin === 'none' || figure.origin === 'earlier_answer' ? (
                   <p className="m-0 py-3 px-4 min-h-0 overflow-y-auto overscroll-contain text-[13px] leading-[1.5] text-ink-2">{sentence}</p>
