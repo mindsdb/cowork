@@ -27,6 +27,7 @@ import {
   CARD_FIELD_ATTRIBUTES,
   CARD_FIELD_EXEMPT,
   CARD_FIELD_NAME,
+  CARD_FIELD_PAYMENT,
   CARD_FIELD_WORD_BREAKS,
   electronHostsInAppBrowser,
   ELEMENTS_PER_FRAME,
@@ -121,6 +122,7 @@ describe('the browser contract fixtures', () => {
       frames_phase_ms: FRAMES_PHASE_MS,
       card_field_name: CARD_FIELD_NAME.source,
       card_field_exempt: CARD_FIELD_EXEMPT.source,
+      card_field_payment: CARD_FIELD_PAYMENT.source,
       card_field_word_breaks: CARD_FIELD_WORD_BREAKS.map((wordBreak) => wordBreak.source),
       card_field_attributes: [...CARD_FIELD_ATTRIBUTES],
     });
@@ -128,6 +130,8 @@ describe('the browser contract fixtures', () => {
     expect(CARD_FIELD_NAME.flags).toBe('i');
     // It reads the exempt pattern so too, and replaces every match of it.
     expect(CARD_FIELD_EXEMPT.flags).toBe('i');
+    // It reads the payment pattern so too, testing value after value.
+    expect(CARD_FIELD_PAYMENT.flags).toBe('i');
     // It reads each word break case-sensitive, replacing every match.
     expect(CARD_FIELD_WORD_BREAKS.map((wordBreak) => wordBreak.flags)).toEqual(['g', 'g']);
   });

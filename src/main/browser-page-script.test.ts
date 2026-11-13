@@ -870,6 +870,57 @@ describe('the isolated-world page read', () => {
     }));
   });
 
+  it("runs the card rule's exempt step on each attribute alone and skips it when a payment word names the field, so a combined payment-or-gift label is a secret field while an ID card's number is read, typed and left unmasked", () => {
+    document.body.innerHTML = `
+      <input data-box id="combined" aria-label="Credit card or gift card number" value="4111111111111111">
+      <input data-box id="camel" name="creditOrGiftCardNumber" aria-label="Tender" value="4000056655665556">
+      <input data-box id="gift-id" name="giftCardNumber" aria-label="Credit or gift card" value="5555555555554444">
+      <input data-box id="member" placeholder="Card number" value="378282246310005">
+      <input data-box id="benefits" aria-label="Benefits card number" value="6011000990139424">
+      <input data-box id="id-card" aria-label="ID card number" value="D1234567">
+      <input data-box id="student-id" name="student_id_card_number" aria-label="Student ID" value="S-998">
+      <select data-box id="tender-type" name="payment_type" aria-label="Credit or debit card"><option value="credit">Credit</option><option value="debit">Debit</option></select>`;
+    layout();
+    const world = freshWorld();
+    const page = snapshot(world);
+    const byName = Object.fromEntries(page.elements.map((e) => [e.name, e]));
+    const cardNamed = ['Credit card or gift card number', 'Tender', 'Credit or gift card', 'Card number', 'Benefits card number'];
+    for (const name of cardNamed) expect(byName[name], name).toEqual({ id: byName[name].id, role: 'textbox', name, value_hidden: true });
+    expect(byName['ID card number']).toMatchObject({ role: 'textbox', value: 'D1234567' });
+    expect(byName['Student ID']).toMatchObject({ role: 'textbox', value: 'S-998' });
+    expect(byName['Credit or debit card']).toMatchObject({ role: 'combobox', value: 'Credit' });
+    expect(JSON.stringify(page)).not.toMatch(/4111111111111111|4000056655665556|5555555555554444|378282246310005|6011000990139424/);
+    const id = (name: string) => byName[name].id as number;
+    expect(pageWorld(document, world, { kind: 'focusField', id: id('Credit card or gift card number'), select: false })).toEqual({ ok: false, reason: 'secret' } satisfies FocusFieldResult);
+    expect(pageWorld(document, world, { kind: 'focusField', id: id('ID card number'), select: false })).toEqual({ ok: true, selected: false });
+    expect(pageWorld(document, world, { kind: 'focusField', id: id('Student ID'), select: false })).toEqual({ ok: true, selected: false });
+    // A type with focused true reads the same rule where the focus rests.
+    const typing = (field: string) => {
+      (document.getElementById(field) as HTMLElement).focus();
+      return (pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping).cardNamed;
+    };
+    expect(['combined', 'camel', 'gift-id', 'member', 'benefits', 'id-card', 'student-id'].map(typing)).toEqual([true, true, true, true, true, false, false]);
+    // A screenshot blacks out the card-named fields, and no ID card's number.
+    expect(secretBoxes().secrets).toEqual(['combined', 'camel', 'gift-id', 'member', 'benefits'].map((field) => {
+      const { x, y, width, height } = document.getElementById(field)!.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+  });
+
+  it("tests the card rule's payment pattern afresh on each field of a read, so the payment word one field's name held never hides the next field's", () => {
+    /* AmEx holds its payment word only before the word split, which reads
+       it as Am Ex. A payment pattern compiled with a g flag would test it
+       from where the credit card's name left off, miss it, and read the AmEx
+       gift card's number as ordinary. */
+    document.body.innerHTML = `
+      <input data-box name="Credit card number" aria-label="Card" value="4111111111111111">
+      <input data-box name="AmEx_gift_card_number" aria-label="Gift card" value="378282246310005">`;
+    layout();
+    const page = snapshot(freshWorld());
+    expect(page.elements.map((e) => [e.name, e.value_hidden])).toEqual([['Card', true], ['Gift card', true]]);
+    expect(JSON.stringify(page)).not.toMatch(/4111111111111111|378282246310005/);
+  });
+
   it("reads page.json's checkout page with a card field named card_number as its example lists the elements", () => {
     const fixture = JSON.parse(readFileSync(path.resolve(__dirname, '__fixtures__/browser-contract/page.json'), 'utf-8')) as FixtureFile;
     const example = fixture.examples['a checkout page with a card field named card_number'].body as { elements: unknown[] };
