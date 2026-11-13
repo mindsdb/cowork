@@ -63,7 +63,7 @@ const liveTurn = (sessionId = 't-abc') => ({
 const task = (id, messages) => ({ id, title: `Task ${id}`, status: 'active', messages });
 
 function pane() {
-  return screen.queryByRole('complementary', { name: 'Shared browser' });
+  return screen.queryByRole('complementary', { name: 'Browser mode' });
 }
 
 /* The transcript folds a turn's steps: unfold them if needed, then click the
@@ -377,7 +377,7 @@ describe('ChatView shared browser pane', () => {
     const { container } = render(<ChatView task={task('desk-2', [{ id: 'u1', role: 'user', content: 'Go' }, liveTurn()])} onSend={vi.fn()} browserOn />);
     await act(async () => {});
     expect(pane()).not.toBeNull();
-    expect(container.querySelector('aside[aria-label="Shared browser"] iframe')).toBeNull();
+    expect(container.querySelector('aside[aria-label="Browser mode"] iframe')).toBeNull();
     expect(shell.shown).toEqual(['t-abc']);
     expect(embedBrowser).not.toHaveBeenCalled();
   });
@@ -397,10 +397,10 @@ describe('ChatView shared browser pane', () => {
     try {
       render(<ChatView task={task('vis-1', [{ id: 'u1', role: 'user', content: 'Go' }, liveTurn()])} onSend={vi.fn()} browserOn />);
       await act(async () => {});
-      expect(screen.getByTitle('Shared browser')).toBeInTheDocument();
+      expect(screen.getByTitle('Browser mode')).toBeInTheDocument();
       visibility = 'hidden';
       act(() => { document.dispatchEvent(new Event('visibilitychange')); });
-      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.queryByTitle('Browser mode')).toBeNull();
     } finally {
       delete document.visibilityState;
     }

@@ -66,11 +66,9 @@
     "clearFailed": "No se pudieron borrar los datos del navegador. Vuelve a intentarlo.",
     "signOutTitle": "Cerrar sesión en todos los sitios",
     "signOut": "Cerrar sesión",
-    "sharedBrowser": "Navegador compartido",
-    "useSharedBrowser": "Usar el navegador compartido",
+    "sharedBrowser": "Modo navegador",
+    "useSharedBrowser": "Usar el modo navegador",
     "beta": "Beta",
-    "signInsTitle": "Inicios de sesión",
-    "providerSeesTitle": "Qué ve el proveedor de modelos",
     "retry": "Reintentar",
     "usageEventsTitle": "Eventos de uso",
     "sendUsageEvents": "Enviar eventos de uso anónimos",
@@ -205,6 +203,11 @@
     "passed": "Respondió en {ms} ms.",
     "failed": "El modelo de decisión no respondió como se esperaba ({error}). Revisa el endpoint y la clave.",
     "untested": "No se pudo probar el modelo de decisión. Vuelve a intentarlo.",
-    "remove": "Quitar"
+    "remove": "Quitar",
+    "jev": "Jev",
+    "modelLabel": "Modelo:",
+    "subtitle": "Se usa para enrutar y decidir acciones en el agente.",
+    "showMore": "Mostrar más",
+    "showLess": "Mostrar menos"
   }
 }

@@ -46,7 +46,7 @@ it.each([
 ])('the browser group %s', async (_case, signedIn) => {
   renderSettings(signedIn);
   // On the browser switch, on hover.
-  await userEvent.hover(await screen.findByRole('switch', { name: 'Shared browser' }));
+  await userEvent.hover(await screen.findByRole('switch', { name: 'Browser mode' }));
   expect(await screen.findByText(pageContentLine('Cowork', { signedInToMindsHub: signedIn }))).toBeInTheDocument();
 });
 
@@ -60,7 +60,7 @@ it.each([
     onThemeChange={vi.fn()} onSkinChange={vi.fn()} onCustomThemeChange={vi.fn()}
     agentLabel="Cowork" serverOnline section="agent" onSectionChange={vi.fn()} isSsoConnected={false}
   />);
-  await screen.findByRole('switch', { name: 'Shared browser' });
+  await screen.findByRole('switch', { name: 'Browser mode' });
   if (shown) expect(screen.getByRole('switch', { name: 'Voice agent' })).toBeInTheDocument();
   else expect(screen.queryByRole('switch', { name: 'Voice agent' })).not.toBeInTheDocument();
 });

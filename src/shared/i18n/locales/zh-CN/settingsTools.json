@@ -66,11 +66,9 @@
     "clearFailed": "无法清除浏览器数据，请重试。",
     "signOutTitle": "退出所有网站",
     "signOut": "退出登录",
-    "sharedBrowser": "共享浏览器",
-    "useSharedBrowser": "使用共享浏览器",
+    "sharedBrowser": "浏览器模式",
+    "useSharedBrowser": "使用浏览器模式",
     "beta": "测试版",
-    "signInsTitle": "登录信息",
-    "providerSeesTitle": "模型提供商能看到的内容",
     "retry": "重试",
     "usageEventsTitle": "使用事件",
     "sendUsageEvents": "发送匿名使用事件",
@@ -205,6 +203,11 @@
     "passed": "已在 {ms} 毫秒内响应。",
     "failed": "决策模型未按预期响应（{error}）。请检查端点和密钥。",
     "untested": "无法测试决策模型。请重试。",
-    "remove": "移除"
+    "remove": "移除",
+    "jev": "Jev",
+    "modelLabel": "模型：",
+    "subtitle": "用于在代理中路由和决定操作。",
+    "showMore": "显示更多",
+    "showLess": "收起"
   }
 }

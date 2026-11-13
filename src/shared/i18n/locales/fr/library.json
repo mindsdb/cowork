@@ -639,7 +639,7 @@
     },
     "browserInstead": {
       "title": "Utiliser plutôt le navigateur",
-      "help": "Aucune connexion : vous vous connectez à {name} dans le navigateur partagé et le travail se fait là. Plus lent qu’une connexion."
+      "help": "Aucune connexion : vous vous connectez à {name} en mode navigateur et le travail se fait là. Plus lent qu’une connexion."
     }
   },
   "legacyConnect": {

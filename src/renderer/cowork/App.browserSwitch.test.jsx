@@ -151,7 +151,7 @@ async function openHomeComposer(user) {
 }
 
 function pane() {
-  return screen.queryByRole('complementary', { name: 'Shared browser' });
+  return screen.queryByRole('complementary', { name: 'Browser mode' });
 }
 
 describe('the Browser switch and pane through App', () => {

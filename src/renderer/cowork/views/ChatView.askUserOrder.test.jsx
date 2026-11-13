@@ -384,3 +384,47 @@ describe('tool step lines render around ask_user cards in event order (ENG-2981)
     expect(headerIdx).toBeLessThan(text.indexOf('Test passed.'));
   });
 });
+
+// ─── A held browser step's card folds into the steps once answered ─────────
+
+const heldStep = (answer) => ({
+  ...askStep('browser:approve:t-abc:p1', answer),
+  data: {
+    ...askStep('browser:approve:t-abc:p1', answer).data,
+    prompt: '**Approve this browser step?**\n\nThis step may commit something for you, such as a purchase, a payment, a message, a deletion or a form:\n\n```\nhttps://www.united.com/en/us\nclick "Booking"\n```\n\nIt runs only if you approve. Cancel, Skip or no answer stops it.',
+    options: [
+      { value: 'approve', label: 'Approve', detail: 'Take this step once' },
+      { value: 'cancel', label: 'Cancel', detail: 'Leave the page as it is' },
+    ],
+    allow_custom: false,
+  },
+});
+
+describe("a held browser step's card", () => {
+  const renderTurn = (answer) => render(
+    <ChatView
+      task={taskWith([
+        { role: 'user', content: 'book it' },
+        { role: 'assistant', content: 'Done.', steps: [row('r1', 'Reading the page', 1, 2), heldStep(answer)], startedAt: 1 },
+      ])}
+      onSend={vi.fn()}
+    />,
+  );
+
+  for (const [answer, line] of [
+    [{ status: 'answered', values: ['approve'], text: '' }, 'Browser action approved'],
+    [{ status: 'answered', values: ['cancel'], text: '' }, 'Browser action cancelled'],
+  ]) {
+    it(`is one line in the steps once answered: ${line}`, () => {
+      const { getByText, queryByText, queryByRole, getByRole } = renderTurn(answer);
+      expect(queryByRole('button', { name: /Approve/ })).toBeNull();
+      expect(queryByRole('button', { name: /Cancel/ })).toBeNull();
+      expect(queryByText('Answered:')).toBeNull();
+      fireEvent.click(getByRole('button', { expanded: false }));
+      expect(getByText(line)).toBeTruthy();
+      expect(getByText('united.com').closest('[title]').getAttribute('title')).toBe('https://www.united.com/en/us');
+      expect(getByText('Click "Booking"')).toBeTruthy();
+      expect(queryByRole('button', { name: /Approve/ })).toBeNull();
+    });
+  }
+});

@@ -109,8 +109,8 @@ describe('BrowserSettingsSection', () => {
       // The usage-events group shows whatever the browser's status.
       await screen.findByRole('switch', { name: 'Send anonymous usage events' });
       await settled();
-      expect(screen.queryByRole('heading', { level: 2, name: 'Shared browser' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { level: 2, name: 'Browser mode' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('switch', { name: 'Browser mode' })).not.toBeInTheDocument();
       expect(screen.queryByText(STATUS_UNCONFIRMED)).not.toBeInTheDocument();
       expect(screen.queryByText(ORGANIZATION_OFF)).not.toBeInTheDocument();
       expect(screen.queryByText(NOT_ENTITLED)).not.toBeInTheDocument();
@@ -127,8 +127,8 @@ describe('BrowserSettingsSection', () => {
       const setSetting = vi.fn();
       renderSection({ browserEnabled: true }, setSetting);
       expect(await screen.findByText(STATUS_UNCONFIRMED)).toBeInTheDocument();
-      expect(screen.getByRole('heading', { level: 2, name: 'Shared browser' })).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('switch', { name: 'Shared browser' }));
+      expect(screen.getByRole('heading', { level: 2, name: 'Browser mode' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('switch', { name: 'Browser mode' }));
       expect(setSetting).toHaveBeenCalledWith('browserEnabled', false);
       await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
       expect(signOutOfBrowserSites).toHaveBeenCalledTimes(1);
@@ -225,9 +225,9 @@ describe('BrowserSettingsSection', () => {
     it('when the window gets focus', async () => {
       renderSection();
       await settled();
-      expect(screen.queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('switch', { name: 'Browser mode' })).not.toBeInTheDocument();
       act(() => { window.dispatchEvent(new Event('focus')); });
-      expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
+      expect(await screen.findByRole('switch', { name: 'Browser mode' })).toBeInTheDocument();
     });
 
     it('when the tab shows again, and not while it is hidden', async () => {
@@ -240,7 +240,7 @@ describe('BrowserSettingsSection', () => {
         expect(fetchBrowseStatus).toHaveBeenCalledTimes(1);
         visibility.mockReturnValue('visible');
         act(() => { document.dispatchEvent(new Event('visibilitychange')); });
-        expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
+        expect(await screen.findByRole('switch', { name: 'Browser mode' })).toBeInTheDocument();
         expect(fetchBrowseStatus).toHaveBeenCalledTimes(2);
       } finally {
         visibility.mockRestore();
@@ -252,10 +252,10 @@ describe('BrowserSettingsSection', () => {
       shell.inApp = true;
       const { unmount } = renderSection();
       await settled();
-      expect(screen.queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('switch', { name: 'Browser mode' })).not.toBeInTheDocument();
       expect(registered.size).toBe(1);
       act(() => { registered.forEach((cb) => cb()); });
-      expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
+      expect(await screen.findByRole('switch', { name: 'Browser mode' })).toBeInTheDocument();
       expect(fetchBrowseStatus).toHaveBeenCalledTimes(2);
       unmount();
       expect(registered.size).toBe(0);
@@ -273,33 +273,33 @@ describe('BrowserSettingsSection', () => {
       await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalledTimes(1));
       // The browser's registration asks again even with the first read still out.
       act(() => { registered.forEach((cb) => cb()); });
-      expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
+      expect(await screen.findByRole('switch', { name: 'Browser mode' })).toBeInTheDocument();
       await act(async () => { answerFirst({ enabled: true, available: false, status: 'unavailable' }); });
-      expect(screen.getByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
+      expect(screen.getByRole('switch', { name: 'Browser mode' })).toBeInTheDocument();
     });
   });
 
   it('shows the switch in its own group once the server offers the browser, off and marked Beta until turned on', async () => {
     fetchBrowseStatus.mockResolvedValue(AVAILABLE);
     renderSection({});
-    const toggle = await screen.findByRole('switch', { name: 'Shared browser' });
+    const toggle = await screen.findByRole('switch', { name: 'Browser mode' });
     expect(toggle).not.toBeChecked();
     // Off: only the switch; approvals and sign-out show once it is on.
     expect(screen.queryByRole('switch', { name: 'Approve browser steps' })).not.toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: "Only show the browser when I'm needed" })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Use the shared browser/ })).toHaveTextContent('Beta');
-    expect(screen.getByRole('heading', { level: 2, name: 'Shared browser' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Use browser mode/ })).toHaveTextContent('Beta');
+    expect(screen.getByRole('heading', { level: 2, name: 'Browser mode' })).toBeInTheDocument();
   });
 
   it("opens the browser's help on a tap of its info button, since touch has no hover", async () => {
     fetchBrowseStatus.mockResolvedValue(AVAILABLE);
     renderSection({});
-    await screen.findByRole('switch', { name: 'Shared browser' });
-    expect(screen.queryByText('Sign-ins')).toBeNull();
+    await screen.findByRole('switch', { name: 'Browser mode' });
+    expect(screen.queryByText(/Sites you sign in to stay signed in/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Learn what Cowork sees' }));
-    expect(await screen.findByText('Sign-ins')).toBeInTheDocument();
-    expect(screen.getByText('What the model provider sees')).toBeInTheDocument();
+    expect(await screen.findByText(/Sites you sign in to stay signed in/)).toBeInTheDocument();
+    expect(screen.getByText(/reads a page, its text and a screenshot go to the model provider/)).toBeInTheDocument();
   });
 
   it('approving browser steps is on until the person turns it off, and is their server-side setting', async () => {
@@ -361,7 +361,7 @@ describe('BrowserSettingsSection', () => {
     shell.inApp = !web;
     fetchBrowseStatus.mockResolvedValue(AVAILABLE);
     renderSection();
-    await screen.findByRole('switch', { name: 'Shared browser' });
+    await screen.findByRole('switch', { name: 'Browser mode' });
     await settled();
     expect(screen.queryByText('Where the browser runs')).not.toBeInTheDocument();
     expect(screen.queryByText('Your own server')).not.toBeInTheDocument();
@@ -373,7 +373,7 @@ describe('BrowserSettingsSection', () => {
     fetchBrowseStatus.mockResolvedValue({ enabled: false, available: true, status: 'none' });
     const setSetting = vi.fn();
     renderSection({ browserEnabled: false }, setSetting);
-    const toggle = await screen.findByRole('switch', { name: 'Shared browser' });
+    const toggle = await screen.findByRole('switch', { name: 'Browser mode' });
     expect(screen.queryByRole('button', { name: 'Set up' })).not.toBeInTheDocument();
     fireEvent.click(toggle);
     expect(setSetting).toHaveBeenCalledWith('browserEnabled', true);
@@ -390,7 +390,7 @@ describe('BrowserSettingsSection', () => {
       expect(webDisclosure('Cowork')).toMatch(/websites see MindsDB's addresses/);
       expect(webDisclosure('Cowork')).toMatch(/asks you before a step that submits, buys, sends or deletes/);
       // Sign-ins and what the model provider sees are on the switch, on hover.
-      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
+      await userEvent.hover(screen.getByRole('switch', { name: 'Browser mode' }));
       expect(await screen.findByText(WEB_SIGN_INS)).toBeInTheDocument();
       expect(WEB_SIGN_INS).toMatch(/every organization you belong to, until they go 90 days unused or you sign out of all sites in Settings\.$/);
       // No deletion with the MindsHub account runs, so the line promises none.
@@ -403,7 +403,7 @@ describe('BrowserSettingsSection', () => {
     it('names no provider by sign-in on the web', async () => {
       renderSection({}, vi.fn(), { signedInToMindsHub: true });
       await screen.findByText(webDisclosure('Cowork'));
-      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
+      await userEvent.hover(screen.getByRole('switch', { name: 'Browser mode' }));
       expect(await screen.findByText(`${pageContentLine('Cowork')} ${WEB_JEV_LINE}`)).toBeInTheDocument();
       expect(screen.queryByText(/MindsHub when you're signed in/)).not.toBeInTheDocument();
     });
@@ -439,7 +439,7 @@ describe('BrowserSettingsSection', () => {
 
     it('offers no usage-events switch', async () => {
       renderSection();
-      await screen.findByRole('switch', { name: 'Shared browser' });
+      await screen.findByRole('switch', { name: 'Browser mode' });
       expect(screen.queryByRole('switch', { name: 'Send anonymous usage events' })).not.toBeInTheDocument();
     });
   });
@@ -456,7 +456,7 @@ describe('BrowserSettingsSection', () => {
       expect(await screen.findByText(desktopDisclosure('Cowork'))).toBeInTheDocument();
       expect(desktopDisclosure('Cowork')).toMatch(/your own connection, and no MindsDB server carries your browsing/);
       expect(desktopDisclosure('Cowork')).toMatch(/Cowork's code runs as you and can read this browser's sign-ins/);
-      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
+      await userEvent.hover(screen.getByRole('switch', { name: 'Browser mode' }));
       expect(await screen.findByText(DESKTOP_SIGN_INS)).toBeInTheDocument();
       // Session cookies end when the app quits, so the line promises no more than the site keeps.
       expect(DESKTOP_SIGN_INS).toMatch(/until the site signs you out or you sign out of all sites in Settings\. Some sites sign you out when the app quits\.$/);
@@ -469,7 +469,7 @@ describe('BrowserSettingsSection', () => {
       fetchBrowseStatus.mockResolvedValue({ ...AVAILABLE, decisions_model: 'mindshub' });
       renderSection({}, vi.fn(), { signedInToMindsHub: true });
       await screen.findByText(desktopDisclosure('Cowork'));
-      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
+      await userEvent.hover(screen.getByRole('switch', { name: 'Browser mode' }));
       const line = `${pageContentLine('Cowork', { signedInToMindsHub: true })} ${WEB_JEV_LINE}`;
       expect(await screen.findByText(line)).toBeInTheDocument();
     });
@@ -478,7 +478,7 @@ describe('BrowserSettingsSection', () => {
       fetchBrowseStatus.mockResolvedValue({ ...AVAILABLE, decisions_model: 'own' });
       renderSection();
       await screen.findByText(desktopDisclosure('Cowork'));
-      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
+      await userEvent.hover(screen.getByRole('switch', { name: 'Browser mode' }));
       expect(await screen.findByText(/^When Cowork reads a page.* Your organization's decision model also gets the goal of each browser step/)).toBeInTheDocument();
       expect(screen.queryByText(/Jev/)).not.toBeInTheDocument();
     });
@@ -488,7 +488,7 @@ describe('BrowserSettingsSection', () => {
       const line = pageContentLine('Cowork', { signedInToMindsHub: true });
       expect(line).toBe("When Cowork reads a page, its text and a screenshot go to the model provider that serves your turn, MindsHub when you're signed in.");
       await screen.findByText(desktopDisclosure('Cowork'));
-      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
+      await userEvent.hover(screen.getByRole('switch', { name: 'Browser mode' }));
       expect(await screen.findByText(line)).toBeInTheDocument();
     });
 
@@ -546,8 +546,8 @@ describe('BrowserSettingsSection', () => {
       fetchBrowseStatus.mockResolvedValue({ enabled: true, available: false, status: 'unavailable' });
       renderSection();
       await screen.findByRole('switch', { name: 'Send anonymous usage events' });
-      expect(screen.queryByRole('heading', { level: 2, name: 'Shared browser' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { level: 2, name: 'Browser mode' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('switch', { name: 'Browser mode' })).not.toBeInTheDocument();
     });
   });
 
@@ -573,7 +573,7 @@ describe('BrowserSettingsSection', () => {
       fetchBrowseStatus.mockResolvedValue(NO_DECISIONS);
       renderSection({ browserEnabled: false });
       expect(await screen.findByText('Ask your admin to set up a decision model to use the browser.')).toBeInTheDocument();
-      const browserSwitch = screen.getByRole('switch', { name: 'Shared browser' });
+      const browserSwitch = screen.getByRole('switch', { name: 'Browser mode' });
       expect(browserSwitch).not.toBeChecked();
       expect(browserSwitch).toHaveAttribute('aria-disabled', 'true');
       expect(screen.queryByLabelText('Decision model endpoint')).not.toBeInTheDocument();
@@ -583,7 +583,7 @@ describe('BrowserSettingsSection', () => {
       fetchBrowseStatus.mockResolvedValue(NO_DECISIONS);
       renderSection({ browserEnabled: true });
       expect(await screen.findByText(/^Off: there's no decision model anymore\. Ask your admin/)).toBeInTheDocument();
-      expect(screen.getByRole('switch', { name: 'Shared browser' })).not.toBeChecked();
+      expect(screen.getByRole('switch', { name: 'Browser mode' })).not.toBeChecked();
       expect(screen.queryByRole('switch', { name: 'Approve browser steps' })).not.toBeInTheDocument();
     });
 
@@ -591,7 +591,7 @@ describe('BrowserSettingsSection', () => {
       fetchBrowseStatus.mockResolvedValue(ADMIN);
       const onSet = vi.fn();
       render(<Form initial={{ browserEnabled: false, decisionModelUrl: '', decisionModelApiKey: '' }} onSet={onSet} />);
-      const browserSwitch = await screen.findByRole('switch', { name: 'Shared browser' });
+      const browserSwitch = await screen.findByRole('switch', { name: 'Browser mode' });
       expect(browserSwitch).not.toHaveAttribute('aria-disabled', 'true');
       await userEvent.click(browserSwitch);
       // The fields open; the switch stays off.
@@ -611,7 +611,7 @@ describe('BrowserSettingsSection', () => {
       await userEvent.click(test);
       await waitFor(() => expect(onSet).toHaveBeenCalledWith('browserEnabled', true));
       expect(testDecisionModel).toHaveBeenLastCalledWith({ url: 'https://decide.example.test/v1/systemone', apiKey: 'own-key', model: '' });
-      expect(screen.getByRole('switch', { name: 'Shared browser' })).toBeChecked();
+      expect(screen.getByRole('switch', { name: 'Browser mode' })).toBeChecked();
       expect(screen.queryByLabelText('Decision model endpoint')).not.toBeInTheDocument();
       // The fields save with the form, as the rest of the page does.
       expect(onSet).toHaveBeenCalledWith('decisionModelUrl', 'https://decide.example.test/v1/systemone');
@@ -633,7 +633,7 @@ describe('BrowserSettingsSection', () => {
         fetchBrowseStatus.mockResolvedValue(status);
         const { unmount } = renderSection({ browserEnabled: true });
         expect(await screen.findByRole('switch', { name: 'Approve browser steps' })).toBeInTheDocument();
-        expect(screen.getByRole('switch', { name: 'Shared browser' })).toBeChecked();
+        expect(screen.getByRole('switch', { name: 'Browser mode' })).toBeChecked();
         unmount();
       }
     });

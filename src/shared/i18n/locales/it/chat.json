@@ -262,7 +262,7 @@
       "openingGoogleDrive": "Apertura di Google Drive…",
       "addFromGoogleDrive": "Aggiungi file da Google Drive",
       "addFromSharePoint": "Aggiungi file da SharePoint",
-      "browserTitle": "{agent} può usare il browser condiviso in questa attività. La disattivazione vale dal tuo prossimo messaggio.",
+      "browserTitle": "{agent} può usare la modalità browser in questa attività. La disattivazione vale dal tuo prossimo messaggio.",
       "browser": "Browser",
       "browserOff": "Disattiva il browser per questa attività",
       "browserOn": "Attiva il browser per questa attività",
@@ -295,7 +295,13 @@
     "skipped": "Saltata.",
     "timedOut": "Nessuna risposta: tempo scaduto.",
     "answered": "Risposta:",
-    "noLongerActive": "Questa domanda non è più attiva."
+    "noLongerActive": "Questa domanda non è più attiva.",
+    "browserStep": {
+      "title": "Approvi questo passaggio nel browser?",
+      "intro": "Può acquistare, inviare, eliminare o confermare qualcosa, e viene eseguito solo se lo approvi.",
+      "approved": "Azione del browser approvata",
+      "cancelled": "Azione del browser annullata"
+    }
   },
   "codingTerminal": {
     "unavailable": "Il terminale integrato non è disponibile in questa build.",
@@ -565,7 +571,7 @@
   },
   "browser": {
     "close": "Chiudi browser",
-    "shared": "Browser condiviso",
+    "shared": "Modalità browser",
     "title": "Browser",
     "unreachable": "Il browser non è raggiungibile",
     "stopped": {
