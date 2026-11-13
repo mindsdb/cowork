@@ -13,6 +13,7 @@ import { stepDisplayLabel } from '../../lib/responseStreamAdapter';
 import i18n, { useTranslation } from '../../../lib/i18n';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { BROWSER_APPROVAL_BADGE } from '../../lib/browserStepPrompt';
+import { BROWSER_HANDOVER_BADGE } from '../../lib/browserHandOverPrompt';
 import BrowserStepPills from '../BrowserStepPills';
 
 const DOT_FRAMES = ['.', '..', '...', '..', '.'];
@@ -147,6 +148,14 @@ export function ThinkingStep({
           {/* A held browser step the person answered: its site and action. */}
           {step.badge === BROWSER_APPROVAL_BADGE && step.data?.pills ? (
             <BrowserStepPills pills={step.data.pills} size="xs" className="shrink" />
+          ) : null}
+          {/* A browser hand-over that ended: its site and reason. */}
+          {step.badge === BROWSER_HANDOVER_BADGE && step.data?.reason ? (
+            <BrowserStepPills
+              pills={{ url: step.data.site || '', site: step.data.site || '', action: step.data.reason }}
+              size="xs"
+              className="shrink"
+            />
           ) : null}
         </div>
         <div className="ml-2 flex flex-none items-center gap-2 pr-1">

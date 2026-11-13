@@ -254,8 +254,12 @@ export function LocalBrowserStage({
   // The page's own host leads the agent's reason, so a lookalike page can't
   // pass its words off as the app's.
   const turnSite = site || t('browser.aNewTab');
+  /* A hand-over that comes back by itself once the person did what it
+     waits for (a box ticked, a page moved on) says so; Done still works. */
   const hint = personHolds
-    ? (reason
+    ? (reason && state?.watching
+      ? t('browser.yourTurnWatching', { site: turnSite, reason, agent: agentLabel })
+      : reason
       ? t('browser.yourTurnReason', { site: turnSite, reason, agent: agentLabel })
       : t('browser.yourTurn', { site: turnSite, agent: agentLabel }))
     : t('browser.agentUsing', { agent: agentLabel });

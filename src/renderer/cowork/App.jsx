@@ -168,12 +168,18 @@ import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './l
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import { artifactsOnScreen } from './lib/voice/screenArtifacts';
 import {
+  callNeedActions, createCallNeeds, openNeeds,
+} from './lib/voice/callNeeds';
+import { handBackBrowser } from './lib/browserHandBack';
+import {
   desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageOriginForContext,
 } from './lib/browserSession';
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
-import { approveIfApprovalsOff, autoApprovePositionClick, isAutoApprovedCard, isPositionClickCard } from './lib/browserApproval';
+import {
+  approveIfApprovalsOff, autoApprovePositionClick, browserApprovalIds, declineBrowserApproval, isAutoApprovedCard, isPositionClickCard,
+} from './lib/browserApproval';
 import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
 import { Outlet } from 'react-router-dom';
@@ -755,6 +761,11 @@ function AppCore() {
   const callBackRef = useRef(false);
   const callBackSeenRef = useRef({ canCallBack: false });
   const [callBackPending, setCallBackPending] = useState(false);
+  // What the call's work stops on the person for (lib/voice/callNeeds.js),
+  // and the stream's hook for it, set each render below.
+  const callNeedsRef = useRef(null);
+  const callNeedsSeenRef = useRef({});
+  const noteCallNeedsRef = useRef(null);
   const voiceCall = useVoiceCall({
     onAsk: (request) => operateFromCallRef.current(request),
     context: () => callContextRef.current?.() || '',
@@ -1529,6 +1540,7 @@ function AppCore() {
       if (tid) liveStepsRef.current[tid] = steps;
     });
     approvePositionClicks(taskIds, steps);
+    noteCallNeedsRef.current?.(taskIds, steps);
     // Mid-task messages (ENG-4194): queue the ones this client added that the
     // turn handed back, and drop queued copies the turn took after all —
     // before the stream's terminal drains the queue.
@@ -5035,6 +5047,32 @@ function AppCore() {
     };
     document.addEventListener('visibilitychange', onVisible);
   };
+  /* Work the call gave Anton stopped on the person: a browser hand-over, a
+     browser step to approve, or a question. The call says what he needs while
+     it is up, or calls back as finished work does, with the same rules (a
+     tab out of sight waits, the microphone stays off until Anton speaks). A
+     request answered on screen first, within the grace or while the tab
+     waits, is never called about. The call back leaves the work's own call
+     back armed: it hangs up when quiet with the work still running, and the
+     result calls back again. */
+  if (!callNeedsRef.current) {
+    callNeedsRef.current = createCallNeeds({
+      hasCallWork: (tid) => callWorkRef.current.inTask(tid).length > 0,
+      stepsOf: (tid) => liveStepsRef.current[tid],
+      titleOf: (ids) => tasksRef.current.find((t) => ids.includes(t.id))?.title,
+      announce: (news) => callNeedsSeenRef.current.voiceCall.announce(news, { asks: true }),
+      callBackDue: () => callBackRef.current,
+      canCallBack: () => callBackSeenRef.current.canCallBack,
+      takeCallBack: () => {
+        callBackRef.current = false;
+        setCallBackPending(false);
+      },
+      callBack: (news) => { void callNeedsSeenRef.current.voiceCall.callBack(news, getVoicePrefs().voice, { asks: true }); },
+      agentLabel: () => callNeedsSeenRef.current.agentLabel,
+    });
+  }
+  callNeedsSeenRef.current = { voiceCall, agentLabel };
+  noteCallNeedsRef.current = callNeedsRef.current.note;
   // What the voice call is told about the task at the start, as background.
   callContextRef.current = () => {
     const task = callTaskIdRef.current && tasksRef.current.find((t) => t.id === callTaskIdRef.current);
@@ -5194,6 +5232,27 @@ function AppCore() {
       setBrowserRequest({ taskId: task.id, sessionId, at: Date.now() });
       return `Showing the browser from "${task.title}".`;
     },
+    // What Anton waits on, answered by voice as the person's own click on its
+    // card would (lib/voice/callNeeds.js).
+    ...callNeedActions({
+      taskOf: callTask,
+      stepsOf: (tid) => liveStepsRef.current[tid],
+      sessionOf: (task, steps) => latestBrowserSessionIdIn(task.messages, { steps }),
+      handBack: handBackBrowser,
+      showBrowser: (task, sessionId) => {
+        selectTask(task.id);
+        setBrowserRequest({ taskId: task.id, sessionId, at: Date.now() });
+      },
+      approve: ({ conversationIds, questionId }) => autoApprovePositionClick({
+        conversationIds, questionId, isWeb: host.isWeb, submit: submitAnswer,
+      }),
+      decline: async (questionId) => {
+        const held = host.isWeb ? browserApprovalIds(questionId) : null;
+        if (held) await declineBrowserApproval(held);
+      },
+      submit: submitAnswer,
+      agentLabel,
+    }),
     // Saved like a pick in Settings; the prefs listener above moves the call
     // to it, a moment later so this answer gets back first.
     change_voice: ({ voice }) => {
@@ -5215,6 +5274,9 @@ function AppCore() {
       ...callScreenRef.current, tasks: tasksRef.current, callTaskId: callTaskIdRef.current, working: callBusy(),
       browserPage: pageOriginForContext(carriedPageRef.current?.() || ''),
       artifacts: artifactsOnScreen(),
+      waiting: tasksRef.current
+        .map((t) => ({ id: t.id, title: t.title, needs: openNeeds(liveStepsRef.current[t.id]) }))
+        .filter((w) => w.needs.length),
     }),
     actions: callActions,
   });

@@ -12,6 +12,7 @@
 
 import { voiceOperate } from '../../api';
 import { describeArtifacts } from './screenArtifacts';
+import { describeWaiting } from './callNeeds';
 
 export const MAX_ROUNDS = 6;
 const MAX_HISTORY = 40;
@@ -59,7 +60,7 @@ export const isRunning = (task) => (task.messages || []).some((m) => m.role === 
  * start of its text), projects and recent tasks.
  */
 export function describeScreen({
-  route, currentTask, selectedProject, projects, tasks, callTaskId = null, working = null, browserPage = '', artifacts = [], maxTasks = 30,
+  route, currentTask, selectedProject, projects, tasks, callTaskId = null, working = null, browserPage = '', artifacts = [], waiting = [], maxTasks = 30,
 }) {
   const lines = [];
   if (route === 'task' && currentTask) {
@@ -74,6 +75,8 @@ export function describeScreen({
   if (browserPage) lines.push(`The browser beside the page is open on a page from ${browserPage}; a new task from here opens it too.`);
   // Before the task list, so the server's cut of a long snapshot keeps it.
   lines.push(...describeArtifacts(artifacts));
+  // What Anton waits on the person for, which they can answer on the call.
+  lines.push(...describeWaiting(waiting));
   const callTask = callTaskId && (tasks || []).find((t) => t.id === callTaskId);
   if (callTask) lines.push(`The task this call last gave Anton work in: "${callTask.title || 'Untitled'}" (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}.`);
   if (working) {

@@ -44,10 +44,15 @@
 // An answered held browser step is not a boundary: its card folds into the
 // turn's steps as one line, "Browser action approved" or "cancelled", with the
 // step's site and action (lib/browserStepPrompt.js). An answered click by
-// position's card, the app's own approval, shows nothing.
+// position's card, the app's own approval, shows nothing. So is a browser
+// hand-over's card once handed back or stopped: "Handed back — continued",
+// with its site and reason (lib/browserHandOverPrompt.js). One left with the
+// person stays a card while it is the last question of the running turn or
+// of the latest turn they can reply to.
 
 import { isPositionClickCard } from './browserApproval';
 import { answeredBrowserStep } from './browserStepPrompt';
+import { answeredHandOverStep } from './browserHandOverPrompt';
 
 const isQuestion = (step) => step?.badge === 'AskUser';
 const isMessage = (step) => step?.badge === 'Message';
@@ -91,6 +96,13 @@ export function splitTurnSegments(steps, { startedAt = null, endedAt = null, con
   for (const step of list) {
     // An answered position card was the app's own approval: nothing to show.
     if (isQuestion(step) && step.data?.answer && isPositionClickCard(step.data)) continue;
+    const handOver = answeredHandOverStep(step, {
+      stillTheirs: step === lastQuestion && (conversationLive || reopenable),
+    });
+    if (handOver) {
+      current.steps.push(handOver);
+      continue;
+    }
     const browserStep = answeredBrowserStep(step);
     if (browserStep) {
       current.steps.push(browserStep);
