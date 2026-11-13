@@ -35,6 +35,7 @@ import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
 import AskUserCard from '../components/AskUserCard';
+import HandOverCard from '../components/HandOverCard';
 import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
@@ -57,6 +58,8 @@ import VoiceOrb from '../components/VoiceOrb';
 import { isPersonsBrowserTurn, isPositionClickCard } from '../lib/browserApproval';
 import { BROWSER_ACTION_BADGE, groupBrowserSteps } from '../lib/browserSteps';
 import { BROWSER_APPROVAL_BADGE, answeredBrowserStep } from '../lib/browserStepPrompt';
+import { BROWSER_HANDOVER_BADGE, finishedHandOverStep, isHandOverCard } from '../lib/browserHandOverPrompt';
+import { BrowserHandOverContext } from '../lib/browserHandOverContext';
 import { useBrowserPrefs } from '../lib/browserPrefs';
 import Button from '../components/ui/Button';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
@@ -662,12 +665,16 @@ function justFinished(message) {
   return typeof message?._justFinishedAt === 'number' && Date.now() - message._justFinishedAt < JUST_FINISHED_MS;
 }
 
+/* With Only show the browser when I'm needed, an answered approval and a
+   hand-over handed back or stopped follow the turn's Browser row. */
+const followsBrowserRow = (step) => answeredBrowserStep(step) || finishedHandOverStep(step);
+
 function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false, agentLabel = null, onMoveAddonToQueue = null }) {
   // Only show the browser when I'm needed (Settings): a turn's browser steps
   // are one row, labelled by the latest (lib/browserSteps.js).
   const { onlyWhenNeeded } = useBrowserPrefs();
   const segments = useMemo(
-    () => splitTurnSegments(onlyWhenNeeded ? groupBrowserSteps(steps, { follows: answeredBrowserStep }) : steps, { startedAt, endedAt, conversationLive, reopenable, reply }),
+    () => splitTurnSegments(onlyWhenNeeded ? groupBrowserSteps(steps, { follows: followsBrowserRow }) : steps, { startedAt, endedAt, conversationLive, reopenable, reply }),
     [steps, startedAt, endedAt, conversationLive, reopenable, reply, onlyWhenNeeded],
   );
   const liveIdx = live ? liveSegmentIndex(segments) : -1;
@@ -709,6 +716,14 @@ function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conver
       out.push(
         // Spacing: 4px under a block, 12px between consecutive cards.
         <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          {isHandOverCard(seg.step.data) ? (
+            <HandOverCard
+              step={seg.step}
+              conversationId={conversationId}
+              onAnswered={onAnswered}
+              ended={Boolean(seg.step.data?.answer) || seg.expired}
+            />
+          ) : (
           <AskUserCard
             step={seg.step}
             conversationId={conversationId}
@@ -718,6 +733,7 @@ function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conver
             onAnswered={onAnswered}
             onAnswerAsMessage={onAnswerAsMessage}
           />
+          )}
         </div>,
       );
       prevWasCard = true;
@@ -2332,6 +2348,8 @@ export default function ChatView({
   // Anton handed the browser to the person (the viewer says so): it opens,
   // and the strip under it says what to do.
   const [browserHandoff, setBrowserHandoff] = useState(null);
+  // It comes back by itself once the person did what it waits for (the viewer says so).
+  const [handoffWatching, setHandoffWatching] = useState(false);
   /* Whether a turn ran while the person held the browser: a turn that ended
      waiting for them can't see Done, so Done carries it on (`onBrowserControl`).
      A turn still running sees Done itself, and one the person stopped stays
@@ -2341,7 +2359,8 @@ export default function ChatView({
   streamingRef.current = isStreaming;
   if (browserHandoff && isStreaming) heldThroughTurnRef.current = true;
   useEffect(() => { setBrowserHandoff(null); heldThroughTurnRef.current = false; }, [task.id, shownBrowserId]);
-  const onBrowserControl = (holder, reason) => {
+  const onBrowserControl = (holder, reason, watching = false) => {
+    setHandoffWatching(holder === 'human' && watching);
     if (holder === 'human') {
       setBrowserHandoff(reason || 'Anton needs you in the browser');
       setBrowserMinimized(false);
@@ -2492,7 +2511,9 @@ export default function ChatView({
   // the browser expanded over the top 80%, the card gives way to a small orb
   // at its bottom edge, and the strip under it speaks only when Anton needs
   // the person.
-  const needsUser = browserHandoff
+  const needsUser = browserHandoff && handoffWatching
+    ? tc('browser.phoneYourTurnWatching', { reason: browserHandoff, agent: harnessLabel(task?.harness) || 'Anton' })
+    : browserHandoff
     ? `Your turn: ${browserHandoff}. Tap Done in the browser when you're finished, then minimize to continue.`
     : askingUser ? `${harnessLabel(task?.harness) || 'Anton'} has a question for you. Minimize to answer it.` : '';
   // Otherwise the strip says what Anton is doing right now: the live step.
@@ -2549,7 +2570,7 @@ export default function ChatView({
   const activateStep = (prefix) => (step) => {
     // A Browser step, a browser call, a turn's browser row or a browser step
     // the person answered shows its browser.
-    if (step?.badge === BROWSER_BADGE || step?.badge === BROWSER_ACTION_BADGE || step?.badge === BROWSER_APPROVAL_BADGE) {
+    if (step?.badge === BROWSER_BADGE || step?.badge === BROWSER_ACTION_BADGE || step?.badge === BROWSER_APPROVAL_BADGE || step?.badge === BROWSER_HANDOVER_BADGE) {
       const sessionId = step.data?.sessionId || latestBrowserId;
       if (viewable(sessionId)) {
         setShownBrowserId(sessionId);
@@ -2741,8 +2762,28 @@ export default function ChatView({
   }, [streamingMsg]);
 
   const deleteInFlight = deletingTurnMessageId != null;
+  /* The hand-over card's browser, pane and carry-on (components/HandOverCard).
+     A turn that ended while the person held the browser carries on from the
+     card's Done, continue as from the browser's Done (onBrowserControl), and
+     only once: the flag that would send it again is cleared first. */
+  const handOverBrowserId = liveBrowserId || latestBrowserId;
+  const handOverValue = useMemo(() => ({
+    sessionId: handOverBrowserId,
+    paneShown: browserOpen && !browserMinimized,
+    openBrowser: () => {
+      setBrowserMinimized(false);
+      if (viewable(handOverBrowserId)) setShownBrowserId(handOverBrowserId);
+    },
+    continueTask: onSend ? () => {
+      heldThroughTurnRef.current = false;
+      onSend(BROWSER_DONE_MESSAGE);
+    } : null,
+    agentLabel: harnessLabel(task?.harness) || 'Anton',
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [handOverBrowserId, browserOpen, browserMinimized, onSend, task?.harness, browserOn, liveBrowserId]);
 
   return (
+    <BrowserHandOverContext.Provider value={handOverValue}>
     <div
       ref={chatRef}
       // minmax(0, 1fr) is critical — bare `1fr` lets the grid track EXPAND
@@ -4119,5 +4160,6 @@ export default function ChatView({
         </ModalBody>
       </Modal>
     </div>
+    </BrowserHandOverContext.Provider>
   );
 }

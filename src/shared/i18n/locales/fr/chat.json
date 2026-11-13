@@ -301,6 +301,20 @@
       "intro": "Elle peut acheter, envoyer, supprimer ou valider quelque chose, et ne s’exécute que si vous l’approuvez.",
       "approved": "Action du navigateur approuvée",
       "cancelled": "Action du navigateur annulée"
+    },
+    "handOver": {
+      "title": "À vous dans le navigateur",
+      "watching": "Faites-le dans le navigateur et {agent} reprend de lui-même quelques secondes après, ou cliquez sur Terminé, continuer.",
+      "manual": "Quand vous avez fini dans le navigateur, cliquez sur Terminé, continuer.",
+      "stillYours": "Le navigateur est toujours à vous. Quand vous avez fini, cliquez sur Terminé, continuer et {agent} reprend à partir de là.",
+      "doneContinue": "Terminé, continuer",
+      "openBrowser": "Ouvrir le navigateur",
+      "finishLater": "Finir plus tard",
+      "stop": "Arrêter",
+      "noBrowser": "Il n’y a aucun navigateur à rendre ici.",
+      "handedBack": "Rendu, reprise",
+      "stopped": "Passage de main arrêté",
+      "ended": "Passage de main terminé"
     }
   },
   "codingTerminal": {
@@ -611,6 +625,7 @@
     "aNewTab": "un nouvel onglet",
     "yourTurn": "À vous de jouer sur {site}. Cliquez sur Terminé pour rendre la main à {agent}.",
     "yourTurnReason": "À vous de jouer sur {site} : {reason}. Cliquez sur Terminé pour rendre la main à {agent}.",
+    "yourTurnWatching": "À vous sur {site} : {reason}. {agent} reprend de lui-même une fois que c’est fait, ou cliquez sur Terminé.",
     "agentUsing": "{agent} l’utilise. Prenez la main pour l’utiliser vous-même.",
     "pageReadsNote": "Les lectures de page et captures d’écran de {agent} sont envoyées au fournisseur de modèles qui traite votre tour.",
     "back": "Précédent",
@@ -676,7 +691,8 @@
       "goTo": "Aller à son navigateur",
       "closeIts": "Fermer son navigateur (onglets enregistrés)",
       "watching": "Quelqu’un le regarde"
-    }
+    },
+    "phoneYourTurnWatching": "À vous : {reason}. {agent} reprend de lui-même une fois que c’est fait, ou touchez Terminé dans le navigateur."
   },
   "voiceCall": {
     "dialogLabel": "Appel vocal avec {agent}",

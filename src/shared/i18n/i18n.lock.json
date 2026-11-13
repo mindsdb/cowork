@@ -24207,6 +24207,414 @@
       "text": "f2e7f7152d61"
     }
   },
+  "chat:askUser.handOver.doneContinue": {
+    "de": {
+      "from": "d1b304e66a19",
+      "text": "31b498ff4e9f"
+    },
+    "es": {
+      "from": "d1b304e66a19",
+      "text": "a92430568001"
+    },
+    "fr": {
+      "from": "d1b304e66a19",
+      "text": "61e817c2b901"
+    },
+    "it": {
+      "from": "d1b304e66a19",
+      "text": "ac77b1c6e6b5"
+    },
+    "ja": {
+      "from": "d1b304e66a19",
+      "text": "ebea1abfdc7c"
+    },
+    "ko": {
+      "from": "d1b304e66a19",
+      "text": "21455bcea99d"
+    },
+    "pt-BR": {
+      "from": "d1b304e66a19",
+      "text": "fbdf0f2d4955"
+    },
+    "zh-CN": {
+      "from": "d1b304e66a19",
+      "text": "7b61d5bc2897"
+    }
+  },
+  "chat:askUser.handOver.ended": {
+    "de": {
+      "from": "3124eee47cd9",
+      "text": "366ab61fad66"
+    },
+    "es": {
+      "from": "3124eee47cd9",
+      "text": "f51dc48d4357"
+    },
+    "fr": {
+      "from": "3124eee47cd9",
+      "text": "fcd2fe7fac8e"
+    },
+    "it": {
+      "from": "3124eee47cd9",
+      "text": "977364dac21e"
+    },
+    "ja": {
+      "from": "3124eee47cd9",
+      "text": "cc1ccc2d9e1f"
+    },
+    "ko": {
+      "from": "3124eee47cd9",
+      "text": "183217691b0a"
+    },
+    "pt-BR": {
+      "from": "3124eee47cd9",
+      "text": "f1d620893934"
+    },
+    "zh-CN": {
+      "from": "3124eee47cd9",
+      "text": "0765710159a1"
+    }
+  },
+  "chat:askUser.handOver.finishLater": {
+    "de": {
+      "from": "ebe1b4195ee4",
+      "text": "65640c1e69eb"
+    },
+    "es": {
+      "from": "ebe1b4195ee4",
+      "text": "b6d19f270ac6"
+    },
+    "fr": {
+      "from": "ebe1b4195ee4",
+      "text": "94f66d35aae0"
+    },
+    "it": {
+      "from": "ebe1b4195ee4",
+      "text": "9cfa417c3df9"
+    },
+    "ja": {
+      "from": "ebe1b4195ee4",
+      "text": "513de8b3f5be"
+    },
+    "ko": {
+      "from": "ebe1b4195ee4",
+      "text": "c10de4dd97cd"
+    },
+    "pt-BR": {
+      "from": "ebe1b4195ee4",
+      "text": "f6026fa1a0f0"
+    },
+    "zh-CN": {
+      "from": "ebe1b4195ee4",
+      "text": "5f11ef25f4e2"
+    }
+  },
+  "chat:askUser.handOver.handedBack": {
+    "de": {
+      "from": "b1c956eac72b",
+      "text": "ea29108b5c53"
+    },
+    "es": {
+      "from": "b1c956eac72b",
+      "text": "140bdf58bfe8"
+    },
+    "fr": {
+      "from": "b1c956eac72b",
+      "text": "1002d94bdd1b"
+    },
+    "it": {
+      "from": "b1c956eac72b",
+      "text": "6f1631ffb476"
+    },
+    "ja": {
+      "from": "b1c956eac72b",
+      "text": "53a495479401"
+    },
+    "ko": {
+      "from": "b1c956eac72b",
+      "text": "230ee76cc29e"
+    },
+    "pt-BR": {
+      "from": "b1c956eac72b",
+      "text": "da46212644a9"
+    },
+    "zh-CN": {
+      "from": "b1c956eac72b",
+      "text": "bf302f16ae30"
+    }
+  },
+  "chat:askUser.handOver.manual": {
+    "de": {
+      "from": "b1153484b778",
+      "text": "c282aa24694c"
+    },
+    "es": {
+      "from": "b1153484b778",
+      "text": "29795a7c9e40"
+    },
+    "fr": {
+      "from": "b1153484b778",
+      "text": "b959c04448f9"
+    },
+    "it": {
+      "from": "b1153484b778",
+      "text": "56078c5755f6"
+    },
+    "ja": {
+      "from": "b1153484b778",
+      "text": "ca58698a8eaa"
+    },
+    "ko": {
+      "from": "b1153484b778",
+      "text": "4c7e1cd60381"
+    },
+    "pt-BR": {
+      "from": "b1153484b778",
+      "text": "e787b44138ba"
+    },
+    "zh-CN": {
+      "from": "b1153484b778",
+      "text": "c8a3c0f3851f"
+    }
+  },
+  "chat:askUser.handOver.noBrowser": {
+    "de": {
+      "from": "d46c29ee8712",
+      "text": "e0ed4cafd4d7"
+    },
+    "es": {
+      "from": "d46c29ee8712",
+      "text": "ea37d2aea98c"
+    },
+    "fr": {
+      "from": "d46c29ee8712",
+      "text": "c4b9ad56c54f"
+    },
+    "it": {
+      "from": "d46c29ee8712",
+      "text": "c6ae0537cb4c"
+    },
+    "ja": {
+      "from": "d46c29ee8712",
+      "text": "af186978086e"
+    },
+    "ko": {
+      "from": "d46c29ee8712",
+      "text": "b2d6ace277e3"
+    },
+    "pt-BR": {
+      "from": "d46c29ee8712",
+      "text": "78d5cc653d78"
+    },
+    "zh-CN": {
+      "from": "d46c29ee8712",
+      "text": "977c39b1d823"
+    }
+  },
+  "chat:askUser.handOver.openBrowser": {
+    "de": {
+      "from": "b84a7dc03e31",
+      "text": "df9f02ea1609"
+    },
+    "es": {
+      "from": "b84a7dc03e31",
+      "text": "5991afe880ab"
+    },
+    "fr": {
+      "from": "b84a7dc03e31",
+      "text": "e531db6c51d5"
+    },
+    "it": {
+      "from": "b84a7dc03e31",
+      "text": "40d7de5ba698"
+    },
+    "ja": {
+      "from": "b84a7dc03e31",
+      "text": "bb6113c18a42"
+    },
+    "ko": {
+      "from": "b84a7dc03e31",
+      "text": "e4c71349ec42"
+    },
+    "pt-BR": {
+      "from": "b84a7dc03e31",
+      "text": "5991afe880ab"
+    },
+    "zh-CN": {
+      "from": "b84a7dc03e31",
+      "text": "2a7270c4dd74"
+    }
+  },
+  "chat:askUser.handOver.stillYours": {
+    "de": {
+      "from": "4b30df0b0f60",
+      "text": "0d45dbf30fe6"
+    },
+    "es": {
+      "from": "4b30df0b0f60",
+      "text": "b4a72071295d"
+    },
+    "fr": {
+      "from": "4b30df0b0f60",
+      "text": "5509e3f0924d"
+    },
+    "it": {
+      "from": "4b30df0b0f60",
+      "text": "b90545fc479d"
+    },
+    "ja": {
+      "from": "4b30df0b0f60",
+      "text": "1471ce1152ad"
+    },
+    "ko": {
+      "from": "4b30df0b0f60",
+      "text": "efdf3d3f6ac1"
+    },
+    "pt-BR": {
+      "from": "4b30df0b0f60",
+      "text": "42438d96630a"
+    },
+    "zh-CN": {
+      "from": "4b30df0b0f60",
+      "text": "f21856b8e559"
+    }
+  },
+  "chat:askUser.handOver.stop": {
+    "de": {
+      "from": "cae7d57bc067",
+      "text": "39ff84785ea9"
+    },
+    "es": {
+      "from": "cae7d57bc067",
+      "text": "f463306cc7a6"
+    },
+    "fr": {
+      "from": "cae7d57bc067",
+      "text": "5130281b4441"
+    },
+    "it": {
+      "from": "cae7d57bc067",
+      "text": "31cb4e1c9b11"
+    },
+    "ja": {
+      "from": "cae7d57bc067",
+      "text": "ca4d973c0b00"
+    },
+    "ko": {
+      "from": "cae7d57bc067",
+      "text": "92cdef3c5bc0"
+    },
+    "pt-BR": {
+      "from": "cae7d57bc067",
+      "text": "d36c5e504eb7"
+    },
+    "zh-CN": {
+      "from": "cae7d57bc067",
+      "text": "ca4d973c0b00"
+    }
+  },
+  "chat:askUser.handOver.stopped": {
+    "de": {
+      "from": "5987f58bfddd",
+      "text": "a0f03b3b1508"
+    },
+    "es": {
+      "from": "5987f58bfddd",
+      "text": "016d9f43342e"
+    },
+    "fr": {
+      "from": "5987f58bfddd",
+      "text": "4fddebd2bfad"
+    },
+    "it": {
+      "from": "5987f58bfddd",
+      "text": "7bc2dc38002b"
+    },
+    "ja": {
+      "from": "5987f58bfddd",
+      "text": "dc3a01f511b5"
+    },
+    "ko": {
+      "from": "5987f58bfddd",
+      "text": "5d7f5801bd97"
+    },
+    "pt-BR": {
+      "from": "5987f58bfddd",
+      "text": "e4058f0beedc"
+    },
+    "zh-CN": {
+      "from": "5987f58bfddd",
+      "text": "2288237bb35c"
+    }
+  },
+  "chat:askUser.handOver.title": {
+    "de": {
+      "from": "40cf1d28cf13",
+      "text": "72db9248ecce"
+    },
+    "es": {
+      "from": "40cf1d28cf13",
+      "text": "e2ad5fb01449"
+    },
+    "fr": {
+      "from": "40cf1d28cf13",
+      "text": "cca14f63a969"
+    },
+    "it": {
+      "from": "40cf1d28cf13",
+      "text": "874080ad03f9"
+    },
+    "ja": {
+      "from": "40cf1d28cf13",
+      "text": "1494736da561"
+    },
+    "ko": {
+      "from": "40cf1d28cf13",
+      "text": "6f4e159f18e8"
+    },
+    "pt-BR": {
+      "from": "40cf1d28cf13",
+      "text": "c96b02ced83f"
+    },
+    "zh-CN": {
+      "from": "40cf1d28cf13",
+      "text": "42343b0d630b"
+    }
+  },
+  "chat:askUser.handOver.watching": {
+    "de": {
+      "from": "ab51e7a4975c",
+      "text": "7f4ce28fa452"
+    },
+    "es": {
+      "from": "ab51e7a4975c",
+      "text": "acf651809ff0"
+    },
+    "fr": {
+      "from": "ab51e7a4975c",
+      "text": "64f42ed0c4b7"
+    },
+    "it": {
+      "from": "ab51e7a4975c",
+      "text": "cfca9abdda98"
+    },
+    "ja": {
+      "from": "ab51e7a4975c",
+      "text": "13e0de800a8f"
+    },
+    "ko": {
+      "from": "ab51e7a4975c",
+      "text": "838f7a7014a4"
+    },
+    "pt-BR": {
+      "from": "ab51e7a4975c",
+      "text": "5fcf1eff7647"
+    },
+    "zh-CN": {
+      "from": "ab51e7a4975c",
+      "text": "6f12d9b81ee9"
+    }
+  },
   "chat:askUser.hintCustom": {
     "de": {
       "from": "3262e6c28de4",
@@ -26077,6 +26485,40 @@
       "text": "e78468c16ad9"
     }
   },
+  "chat:browser.phoneYourTurnWatching": {
+    "de": {
+      "from": "bd9a3b3bd947",
+      "text": "dce1c7e32e06"
+    },
+    "es": {
+      "from": "bd9a3b3bd947",
+      "text": "68b469cf9ea3"
+    },
+    "fr": {
+      "from": "bd9a3b3bd947",
+      "text": "4207e299ff30"
+    },
+    "it": {
+      "from": "bd9a3b3bd947",
+      "text": "dbd89ed7a458"
+    },
+    "ja": {
+      "from": "bd9a3b3bd947",
+      "text": "c1b17736b387"
+    },
+    "ko": {
+      "from": "bd9a3b3bd947",
+      "text": "c2f9d1a16228"
+    },
+    "pt-BR": {
+      "from": "bd9a3b3bd947",
+      "text": "895e71092b7a"
+    },
+    "zh-CN": {
+      "from": "bd9a3b3bd947",
+      "text": "ca3f0abf3481"
+    }
+  },
   "chat:browser.projectBrowsers.closeIts": {
     "de": {
       "from": "51e9e2218167",
@@ -27503,6 +27945,40 @@
     "zh-CN": {
       "from": "4966da5e33d9",
       "text": "02e852b69fb2"
+    }
+  },
+  "chat:browser.yourTurnWatching": {
+    "de": {
+      "from": "89c853e769ab",
+      "text": "976791f80667"
+    },
+    "es": {
+      "from": "89c853e769ab",
+      "text": "d5110ee00f97"
+    },
+    "fr": {
+      "from": "89c853e769ab",
+      "text": "c30ae5f96761"
+    },
+    "it": {
+      "from": "89c853e769ab",
+      "text": "1c3c59d7414f"
+    },
+    "ja": {
+      "from": "89c853e769ab",
+      "text": "dc6eadc068e0"
+    },
+    "ko": {
+      "from": "89c853e769ab",
+      "text": "e601a67f11e6"
+    },
+    "pt-BR": {
+      "from": "89c853e769ab",
+      "text": "9f09ba498861"
+    },
+    "zh-CN": {
+      "from": "89c853e769ab",
+      "text": "1039722a8898"
     }
   },
   "chat:cardShell.notice": {
