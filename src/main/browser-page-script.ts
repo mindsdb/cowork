@@ -298,8 +298,9 @@ export type PageWorldRequest =
      `childFrames`: how many child frames the frame tree gives the main frame. */
   | { kind: 'hitTest'; id: number; points: ViewPoint[]; childFrames: number }
   /* Whether a press at `at` (viewport CSS pixels) lands on a secret field
-     (isSecret), followed into open shadow roots, for a drag's start and
-     drop point. It answers a boolean. */
+     (isSecret), followed into open shadow roots but not into a frame (a
+     point over a frame lands on its frame element, never secret), for a
+     drag's start and drop point. It answers a boolean. */
   | { kind: 'secretAt'; at: ViewPoint }
   /* A step's change watch, under the step's token. `at` is where the step's
      pointer ended, or null for a step without one. */

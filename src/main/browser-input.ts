@@ -632,8 +632,10 @@ async function pressPoint(
    password_field), as the web pod refuses it: by the element the end names
    (LocateResult.secret) and by what lies under its point (secretAt), and
    just before the press or release by what lies under the point then, since
-   the page may slide a field there as the pointer arrives. `what` names the
-   end. */
+   the page may slide a field there as the pointer arrives (the web pod
+   checks only the drop again). secretAt reads the page's own document, not
+   a frame under the point: frameGuard holds a point in a frame. `what`
+   names the end. */
 async function secretGuard(host: StepHost, target: StepTarget, at: Point, what: string): Promise<() => Promise<void>> {
   const clear = async () => {
     if (await host.page.secretAt(at)) throw secretField(what);
