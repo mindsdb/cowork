@@ -194,6 +194,14 @@
     "approve": "Approve",
     "block": "Block",
     "remove": "Remove",
-    "pendingCount": "{count, plural, one {# person waiting} other {# people waiting}}"
+    "pendingCount": "{count, plural, one {# person waiting} other {# people waiting}}",
+    "pairing": {
+      "create": "Make a pairing code",
+      "codeLabel": "Pairing code",
+      "copy": "Copy",
+      "copied": "Copied",
+      "howTo": "Give this code to one person. They send it to the bot from their own account before {time}, and they're in. It works once.",
+      "tooMany": "This channel already has as many unused codes as it can hold. Wait for one to expire."
+    }
   }
 }

@@ -11,13 +11,16 @@ import {
   approveChannelSender,
   blockChannelSender,
   deleteChannelSender,
+  createChannelPairingCode,
 } from '../api';
+import { copyText } from '../lib/clipboard';
+import { dateLocale } from '../lib/scheduleWhen';
 import { displayName } from '../lib/senderName';
 import { useTranslation } from '../../lib/i18n';
 
 const SECTIONS = ['pending', 'allowed', 'blocked'];
 
-export default function ChannelSenders({ channelType, refreshToken = 0 }) {
+export default function ChannelSenders({ channelType, refreshToken = 0, orgReady = true, onChanged = () => {} }) {
   const { t } = useTranslation('settingsTools');
   const [senders, setSenders] = useState([]);
   const [forbidden, setForbidden] = useState(false);
@@ -27,6 +30,9 @@ export default function ChannelSenders({ channelType, refreshToken = 0 }) {
   const [loaded, setLoaded] = useState(false);
   // A poll and an action can overlap; only the latest request may set state.
   const attemptRef = useRef(0);
+  // The last code made here; held in this panel only and gone once it closes.
+  const [pairing, setPairing] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   async function refresh() {
     const attemptId = ++attemptRef.current;
@@ -49,10 +55,25 @@ export default function ChannelSenders({ channelType, refreshToken = 0 }) {
     setError('');
     try {
       await action(sender.id);
+      onChanged();
       await refresh();
     } catch (err) {
       setError(err?.message || t('channelSenders.actionFailed'));
     }
+  }
+
+  async function makePairingCode() {
+    setError('');
+    setCopied(false);
+    try {
+      setPairing(await createChannelPairingCode(channelType));
+    } catch (err) {
+      setError(err?.status === 409 ? t('channelSenders.pairing.tooMany') : err?.message || t('channelSenders.actionFailed'));
+    }
+  }
+
+  async function copyPairingCode() {
+    setCopied(await copyText(pairing.code));
   }
 
   if (forbidden) {
@@ -68,6 +89,23 @@ export default function ChannelSenders({ channelType, refreshToken = 0 }) {
     <section className="channels-routes">
       <h2 className="channels-routes-title">{t('channelSenders.title')}</h2>
       <p className="channels-intro">{t('channelSenders.intro')}</p>
+      <div className="channels-route-add">
+        <Button variant="subtle" size="sm" onClick={makePairingCode} disabled={!orgReady}>
+          {t('channelSenders.pairing.create')}
+        </Button>
+      </div>
+      {pairing ? (
+        <div className="channels-pairing" data-testid="pairing-code">
+          <input className="channels-input channels-input-sm" readOnly value={pairing.code}
+            aria-label={t('channelSenders.pairing.codeLabel')} />
+          <Button variant="subtle" size="sm" onClick={copyPairingCode}>
+            {copied ? t('channelSenders.pairing.copied') : t('channelSenders.pairing.copy')}
+          </Button>
+          <p className="channels-muted">
+            {t('channelSenders.pairing.howTo', { time: new Date(pairing.expires_at).toLocaleTimeString(dateLocale(), { hour: 'numeric', minute: '2-digit' }) })}
+          </p>
+        </div>
+      ) : null}
       {error ? <p className="channels-error" role="alert">{error}</p> : null}
       {loading ? (
         <p className="channels-muted">{t('channelSenders.loading')}</p>
@@ -84,7 +122,7 @@ export default function ChannelSenders({ channelType, refreshToken = 0 }) {
                 <ul className="channels-senders-list">
                   {rows.map((s) => (
                     <li key={s.id} className="channels-senders-row" data-testid={`sender-${s.id}`}>
-                      <span className="channels-senders-name">{displayName(s.display_name, s.external_sender_id)}</span>
+                      <span className="channels-senders-name" dir="auto">{displayName(s.display_name, s.external_sender_id)}</span>
                       <code className="channels-type" title={t('channelSenders.senderIdLabel')}>{s.external_sender_id}</code>
                       {s.is_group ? (
                         <>

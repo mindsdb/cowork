@@ -7,9 +7,14 @@ vi.mock('../api', () => ({
   approveChannelSender: vi.fn(async () => ({})),
   blockChannelSender: vi.fn(async () => ({})),
   deleteChannelSender: vi.fn(async () => ({ ok: true })),
+  createChannelPairingCode: vi.fn(),
 }));
+vi.mock('../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
 
-import { fetchChannelSenders, approveChannelSender, blockChannelSender, deleteChannelSender } from '../api';
+import {
+  fetchChannelSenders, approveChannelSender, blockChannelSender, deleteChannelSender, createChannelPairingCode,
+} from '../api';
+import { copyText } from '../lib/clipboard';
 import ChannelSenders from './ChannelSenders';
 
 const sender = (over) => ({
@@ -136,5 +141,43 @@ describe('ChannelSenders', () => {
 
     expect(screen.getByText('Allowed (1)')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
+  it('makes a pairing code, shows it once and copies it', async () => {
+    fetchChannelSenders.mockResolvedValue({ senders: [], forbidden: false });
+    createChannelPairingCode.mockResolvedValue({
+      channel_type: 'telegram', code: '7K3M9QXZ', expires_at: '2026-11-13T21:10:00Z',
+    });
+    const user = userEvent.setup();
+    render(<ChannelSenders channelType="telegram" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Make a pairing code' }));
+
+    const shown = within(await screen.findByTestId('pairing-code'));
+    expect(createChannelPairingCode).toHaveBeenCalledWith('telegram');
+    expect(shown.getByLabelText('Pairing code').value).toBe('7K3M9QXZ');
+    expect(shown.getByText(/send it to the bot from their own account/)).toBeTruthy();
+    await user.click(shown.getByRole('button', { name: 'Copy' }));
+    expect(copyText).toHaveBeenCalledWith('7K3M9QXZ');
+    expect(shown.getByRole('button', { name: 'Copied' })).toBeTruthy();
+  });
+
+  it('says why when the channel has too many unused codes', async () => {
+    fetchChannelSenders.mockResolvedValue({ senders: [], forbidden: false });
+    createChannelPairingCode.mockRejectedValue(Object.assign(new Error('API returned 409'), { status: 409 }));
+    const user = userEvent.setup();
+    render(<ChannelSenders channelType="telegram" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Make a pairing code' }));
+
+    expect((await screen.findByRole('alert')).textContent).toBe('This channel already has as many unused codes as it can hold. Wait for one to expire.');
+    expect(screen.queryByTestId('pairing-code')).toBeNull();
+  });
+
+  it('offers no pairing code on a channel that is not ready in this deployment', async () => {
+    fetchChannelSenders.mockResolvedValue({ senders: [], forbidden: false });
+    render(<ChannelSenders channelType="telegram" orgReady={false} />);
+
+    expect((await screen.findByRole('button', { name: 'Make a pairing code' })).disabled).toBe(true);
   });
 });

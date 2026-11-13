@@ -35,7 +35,7 @@ vi.mock('../api', () => ({
   deleteChannelSender: vi.fn(),
 }));
 
-import { fetchChannelSenders } from '../api';
+import { fetchChannelPlugins, fetchChannelSenders } from '../api';
 import ChannelsView, { PENDING_POLL_MS } from './ChannelsView';
 
 const pendingPolls = () => fetchChannelSenders.mock.calls.filter(([arg]) => arg?.status === 'pending').length;
@@ -84,5 +84,13 @@ describe('ChannelsView — pending requests', () => {
 
     await act(async () => { vi.advanceTimersByTime(PENDING_POLL_MS * 3); });
     expect(pendingPolls()).toBe(first);
+  });
+
+  it('offers no pairing code for a channel that is not ready in this deployment', async () => {
+    fetchChannelPlugins.mockResolvedValueOnce([{ ...TELEGRAM, org_ready: false }]);
+    fetchChannelSenders.mockResolvedValue({ senders: [], forbidden: false });
+    render(<ChannelsView />);
+
+    expect((await screen.findByRole('button', { name: 'Make a pairing code' })).disabled).toBe(true);
   });
 });

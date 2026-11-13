@@ -467,6 +467,7 @@ export default function ChannelsView() {
                 <ChannelSenders
                   key={`senders-${selected.channel_type}`}
                   channelType={selected.channel_type}
+                  orgReady={selected.org_ready !== false}
                   refreshToken={refreshCount + pendingTick}
                 />
                 <ChannelBindings
