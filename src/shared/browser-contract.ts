@@ -250,7 +250,11 @@ export interface PageSnapshot {
   /** More elements exist than `elements` lists. */
   truncated: boolean;
   challenges: Challenge[];
-  /** The page's rendered child frames, on-screen first. */
+  /** The page's rendered child frames, on-screen first, and after them,
+      unread, the frames inside each frame the read read, as page.json lets
+      a host list them (readFrames in src/main/browser-page-script.ts, and
+      ElectronTab.read in src/main/browser-view.ts for one only the frame
+      tree places). */
   frames: PageFrame[];
 }
 
