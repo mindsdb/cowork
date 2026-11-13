@@ -150,8 +150,13 @@ export function CodeTasksView({
   ];
 
   return (
-    <main className="code-tasks-view">
-      {projectId && <div className="code-tasks-view__back"><Button variant="subtle" size="sm" onClick={onBack}>{Ico.chevLeft(14)} {t('sidebarSessions.projects')}</Button></div>}
+    <main className="code-tasks-view titlebar-fade titlebar-fade--page">
+      {/* Drill-down trail, rendered into the app titlebar like every other
+          breadcrumb: Projects › project. */}
+      {projectId && <PageHeader
+        crumbs={[{ label: t('sidebarSessions.projects'), onClick: onBack, title: t('tasksView.filters.allProjects') }]}
+        current={projectNames.get(projectId) || t('tasksView.unavailableProject')}
+      />}
       <div className={`code-tasks-view__header${projectId ? ' code-tasks-view__header--project' : ''}`}><PageHeader
         title={projectId ? projectNames.get(projectId) || t('tasksView.unavailableProject') : t('tasksView.allTasks')}
         subtitle={projectId ? t('tasksView.projectSubtitle') : undefined}

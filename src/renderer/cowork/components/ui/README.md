@@ -39,7 +39,7 @@ theming, and behaviour get fixed in one place instead of per call-site.
 The bespoke button systems (`channels-btn`, `dispatch-btn`, `customize-*btn`) were folded
 into `<Button>` during the ENG-936 button sweep; their CSS classes in `globals.css` are now
 orphaned and can be dropped in the design-system styling follow-up. `icon-btn` survives on a
-few window-chrome affordances (sidebar collapse/search, the floating hamburger) where a
+few window-chrome affordances (the titlebar's sidebar toggle and new-task shortcut) where a
 custom animation or Electron drag-region is essential; genuine icon actions elsewhere use
 `<Button icon>`.
 

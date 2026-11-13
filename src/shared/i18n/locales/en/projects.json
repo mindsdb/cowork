@@ -845,8 +845,6 @@
     },
     "noRenamePermission": "You do not have permission to rename this project.",
     "renameFailed": "Rename failed: {error}",
-    "expandPanel": "Expand panel",
-    "collapsePanel": "Collapse panel",
     "title": "Projects",
     "allProjects": "All projects",
     "deleting": "Deleting…",

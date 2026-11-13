@@ -94,10 +94,7 @@
     "progress": {
       "title": "进度"
     },
-    "card": {
-      "collapse": "收起",
-      "expand": "展开"
-    },
+    "card": {},
     "showMore": {
       "less": "收起",
       "more": "还有 {count} 项"
@@ -133,6 +130,10 @@
       "haveCopyTitle": "你已有一个副本。删除它后才能再次复制此应用。",
       "duplicateAriaLabel": "创建 {name} 的副本",
       "duplicatedToast": "已复制到此项目。"
+    },
+    "toggle": {
+      "collapse": "收起面板",
+      "expand": "展开面板"
     }
   },
   "confirm": {
@@ -202,7 +203,8 @@
     "triggerAriaLabel": "工作区：{name}"
   },
   "workspaceMode": {
-    "code": "代码"
+    "code": "代码",
+    "tooltip": "{mode}模式"
   },
   "search": {
     "label": "搜索 {product}",
@@ -308,7 +310,6 @@
       "skillsLibrary": "技能库",
       "compare": "对比模型"
     },
-    "agent": "智能体",
     "pinned": "已置顶",
     "viewAllTasks": "查看所有任务",
     "viewAll": "查看全部 →",
@@ -330,7 +331,8 @@
       "offline": "离线"
     },
     "settings": "设置",
-    "openSettings": "打开设置"
+    "openSettings": "打开设置",
+    "close": "关闭边栏"
   },
   "mobile": {
     "tasks": "任务",
@@ -409,5 +411,9 @@
     "confirm": "退出登录",
     "failed": "无法完成退出登录。请重试。",
     "waitNote": "仍在退出登录。你可以关闭此窗口，退出会自动完成。"
+  },
+  "attention": {
+    "placeholderTooltip": "通知仅适用于代码任务",
+    "placeholderAriaLabel": "通知（适用于代码任务）"
   }
 }

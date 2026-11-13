@@ -151,8 +151,6 @@
       "title": "{who}で一時的な問題が発生しています"
     },
     "header": {
-      "expandPanel": "パネルを展開",
-      "collapsePanel": "パネルを折りたたむ",
       "apps": "アプリ",
       "connectAppsAndData": "アプリとデータを接続",
       "projects": "プロジェクト",

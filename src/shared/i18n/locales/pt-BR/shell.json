@@ -94,10 +94,7 @@
     "progress": {
       "title": "Progresso"
     },
-    "card": {
-      "collapse": "Recolher",
-      "expand": "Expandir"
-    },
+    "card": {},
     "showMore": {
       "less": "Mostrar menos",
       "more": "+ {count} mais"
@@ -133,6 +130,10 @@
       "haveCopyTitle": "Você já tem uma cópia. Exclua-a para duplicar o app novamente.",
       "duplicateAriaLabel": "Duplicar {name}",
       "duplicatedToast": "Duplicado neste projeto."
+    },
+    "toggle": {
+      "collapse": "Recolher painel",
+      "expand": "Expandir painel"
     }
   },
   "confirm": {
@@ -202,7 +203,8 @@
     "triggerAriaLabel": "Espaço de trabalho: {name}"
   },
   "workspaceMode": {
-    "code": "Código"
+    "code": "Código",
+    "tooltip": "Modo {mode}"
   },
   "search": {
     "label": "Pesquisar no {product}",
@@ -308,7 +310,6 @@
       "skillsLibrary": "Biblioteca de habilidades",
       "compare": "Comparar modelos"
     },
-    "agent": "Agente",
     "pinned": "Fixadas",
     "viewAllTasks": "Ver todas as tarefas",
     "viewAll": "Ver tudo →",
@@ -330,7 +331,8 @@
       "offline": "offline"
     },
     "settings": "Configurações",
-    "openSettings": "Abrir configurações"
+    "openSettings": "Abrir configurações",
+    "close": "Fechar barra lateral"
   },
   "mobile": {
     "tasks": "Tarefas",
@@ -409,5 +411,9 @@
     "confirm": "Sair",
     "failed": "Não foi possível concluir a saída. Tente novamente.",
     "waitNote": "Ainda estamos encerrando sua sessão. Você pode fechar isto: termina sozinho."
+  },
+  "attention": {
+    "placeholderTooltip": "As notificações são para tarefas do Código",
+    "placeholderAriaLabel": "Notificações, para tarefas do Código"
   }
 }

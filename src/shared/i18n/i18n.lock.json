@@ -32673,40 +32673,6 @@
       "text": "63c73c4730f4"
     }
   },
-  "chat:chatView.header.collapsePanel": {
-    "de": {
-      "from": "8ad80bc1bbac",
-      "text": "217e93439ced"
-    },
-    "es": {
-      "from": "8ad80bc1bbac",
-      "text": "2595418c62a7"
-    },
-    "fr": {
-      "from": "8ad80bc1bbac",
-      "text": "b880c4f8f37f"
-    },
-    "it": {
-      "from": "8ad80bc1bbac",
-      "text": "0441f5eb0798"
-    },
-    "ja": {
-      "from": "8ad80bc1bbac",
-      "text": "8b1d41ab939c"
-    },
-    "ko": {
-      "from": "8ad80bc1bbac",
-      "text": "624f1cff0f25"
-    },
-    "pt-BR": {
-      "from": "8ad80bc1bbac",
-      "text": "683dc21c7631"
-    },
-    "zh-CN": {
-      "from": "8ad80bc1bbac",
-      "text": "90bb34c2f1de"
-    }
-  },
   "chat:chatView.header.connectAppsAndData": {
     "de": {
       "from": "028b0686e2bc",
@@ -32739,40 +32705,6 @@
     "zh-CN": {
       "from": "028b0686e2bc",
       "text": "8cd16f6e4476"
-    }
-  },
-  "chat:chatView.header.expandPanel": {
-    "de": {
-      "from": "4a74667f1970",
-      "text": "b5d293502d25"
-    },
-    "es": {
-      "from": "4a74667f1970",
-      "text": "f67b6b98bf8b"
-    },
-    "fr": {
-      "from": "4a74667f1970",
-      "text": "8439d1c88def"
-    },
-    "it": {
-      "from": "4a74667f1970",
-      "text": "a412921b2e98"
-    },
-    "ja": {
-      "from": "4a74667f1970",
-      "text": "e62686a4a452"
-    },
-    "ko": {
-      "from": "4a74667f1970",
-      "text": "c2d19988f12e"
-    },
-    "pt-BR": {
-      "from": "4a74667f1970",
-      "text": "6276e0bcc919"
-    },
-    "zh-CN": {
-      "from": "4a74667f1970",
-      "text": "41457ebc161b"
     }
   },
   "chat:chatView.header.openProject": {
@@ -73473,40 +73405,6 @@
       "text": "b067526e73e5"
     }
   },
-  "code:sidebarSessions.noMatch": {
-    "de": {
-      "from": "d9602e7611c1",
-      "text": "1c13a43dbb09"
-    },
-    "es": {
-      "from": "d9602e7611c1",
-      "text": "8bf5260f3db5"
-    },
-    "fr": {
-      "from": "d9602e7611c1",
-      "text": "b3ed47623351"
-    },
-    "it": {
-      "from": "d9602e7611c1",
-      "text": "360566798c7c"
-    },
-    "ja": {
-      "from": "d9602e7611c1",
-      "text": "b740ea1e8ab2"
-    },
-    "ko": {
-      "from": "d9602e7611c1",
-      "text": "8d26543adced"
-    },
-    "pt-BR": {
-      "from": "d9602e7611c1",
-      "text": "6d3f1b80af15"
-    },
-    "zh-CN": {
-      "from": "d9602e7611c1",
-      "text": "c10eea1c98ff"
-    }
-  },
   "code:sidebarSessions.noProject": {
     "de": {
       "from": "f34c2be0d1c5",
@@ -73743,74 +73641,6 @@
     "zh-CN": {
       "from": "b60923d91994",
       "text": "8ba681c0ea8c"
-    }
-  },
-  "code:sidebarSessions.searchAriaLabel": {
-    "de": {
-      "from": "696a972a0a7a",
-      "text": "e21b7e3791d6"
-    },
-    "es": {
-      "from": "696a972a0a7a",
-      "text": "8c572bdbac62"
-    },
-    "fr": {
-      "from": "696a972a0a7a",
-      "text": "2d71078fe78d"
-    },
-    "it": {
-      "from": "696a972a0a7a",
-      "text": "9d8ddfb02878"
-    },
-    "ja": {
-      "from": "696a972a0a7a",
-      "text": "faba2e45c617"
-    },
-    "ko": {
-      "from": "696a972a0a7a",
-      "text": "78a932394862"
-    },
-    "pt-BR": {
-      "from": "696a972a0a7a",
-      "text": "e0a2c2d8c9e9"
-    },
-    "zh-CN": {
-      "from": "696a972a0a7a",
-      "text": "f28eef121982"
-    }
-  },
-  "code:sidebarSessions.searchPlaceholder": {
-    "de": {
-      "from": "5ef7a3bf98d5",
-      "text": "62ef94b7e349"
-    },
-    "es": {
-      "from": "5ef7a3bf98d5",
-      "text": "0f999b3b5d83"
-    },
-    "fr": {
-      "from": "5ef7a3bf98d5",
-      "text": "b9c5e8fb1dc1"
-    },
-    "it": {
-      "from": "5ef7a3bf98d5",
-      "text": "65fd9e7663b2"
-    },
-    "ja": {
-      "from": "5ef7a3bf98d5",
-      "text": "0965df703bc4"
-    },
-    "ko": {
-      "from": "5ef7a3bf98d5",
-      "text": "eaf032d1a5e6"
-    },
-    "pt-BR": {
-      "from": "5ef7a3bf98d5",
-      "text": "e904f160e0e4"
-    },
-    "zh-CN": {
-      "from": "5ef7a3bf98d5",
-      "text": "724f90a5e3b1"
     }
   },
   "code:sidebarSessions.sort": {
@@ -78199,6 +78029,244 @@
       "text": "166a101c4e01"
     }
   },
+  "code:taskAttention.bell.menuLabel": {
+    "de": {
+      "from": "b62459fec8f3",
+      "text": "0766ae79febc"
+    },
+    "es": {
+      "from": "b62459fec8f3",
+      "text": "02f9ef3985b9"
+    },
+    "fr": {
+      "from": "b62459fec8f3",
+      "text": "8a1210ef1caf"
+    },
+    "it": {
+      "from": "b62459fec8f3",
+      "text": "f1dc8df30af7"
+    },
+    "ja": {
+      "from": "b62459fec8f3",
+      "text": "a8950bfcb7a5"
+    },
+    "ko": {
+      "from": "b62459fec8f3",
+      "text": "6135ec363bcd"
+    },
+    "pt-BR": {
+      "from": "b62459fec8f3",
+      "text": "dd9e517bd1ae"
+    },
+    "zh-CN": {
+      "from": "b62459fec8f3",
+      "text": "26e1bf88017c"
+    }
+  },
+  "code:taskAttention.bell.needsYou": {
+    "de": {
+      "from": "9a41ba660995",
+      "text": "a7b3d1be7f67"
+    },
+    "es": {
+      "from": "9a41ba660995",
+      "text": "9a03235a3073"
+    },
+    "fr": {
+      "from": "9a41ba660995",
+      "text": "a9d1afcfc572"
+    },
+    "it": {
+      "from": "9a41ba660995",
+      "text": "d9e70748bb0b"
+    },
+    "ja": {
+      "from": "9a41ba660995",
+      "text": "66fa820bf0f2"
+    },
+    "ko": {
+      "from": "9a41ba660995",
+      "text": "f82d41b29d27"
+    },
+    "pt-BR": {
+      "from": "9a41ba660995",
+      "text": "11255bbd635d"
+    },
+    "zh-CN": {
+      "from": "9a41ba660995",
+      "text": "6a2f7b6b203a"
+    }
+  },
+  "code:taskAttention.bell.none": {
+    "de": {
+      "from": "e19aeaeccaa5",
+      "text": "8d7de9ab880d"
+    },
+    "es": {
+      "from": "e19aeaeccaa5",
+      "text": "9bc4ab93a079"
+    },
+    "fr": {
+      "from": "e19aeaeccaa5",
+      "text": "8c39f969805b"
+    },
+    "it": {
+      "from": "e19aeaeccaa5",
+      "text": "2fcc46581ae1"
+    },
+    "ja": {
+      "from": "e19aeaeccaa5",
+      "text": "5e25a8ac9eee"
+    },
+    "ko": {
+      "from": "e19aeaeccaa5",
+      "text": "539dc5b5bef5"
+    },
+    "pt-BR": {
+      "from": "e19aeaeccaa5",
+      "text": "5ba95a452298"
+    },
+    "zh-CN": {
+      "from": "e19aeaeccaa5",
+      "text": "37965e15b0ba"
+    }
+  },
+  "code:taskAttention.bell.onHint": {
+    "de": {
+      "from": "130011756125",
+      "text": "9f98b7c7f071"
+    },
+    "es": {
+      "from": "130011756125",
+      "text": "0a0ca661486c"
+    },
+    "fr": {
+      "from": "130011756125",
+      "text": "df16db5ac698"
+    },
+    "it": {
+      "from": "130011756125",
+      "text": "39df52d249a6"
+    },
+    "ja": {
+      "from": "130011756125",
+      "text": "0e7174df091c"
+    },
+    "ko": {
+      "from": "130011756125",
+      "text": "f4a53b277b13"
+    },
+    "pt-BR": {
+      "from": "130011756125",
+      "text": "5fc7e20f01a4"
+    },
+    "zh-CN": {
+      "from": "130011756125",
+      "text": "39eae64cfc41"
+    }
+  },
+  "code:taskAttention.bell.trigger": {
+    "de": {
+      "from": "1625e1a017dd",
+      "text": "8343d8c18f8e"
+    },
+    "es": {
+      "from": "1625e1a017dd",
+      "text": "f590ac5f650b"
+    },
+    "fr": {
+      "from": "1625e1a017dd",
+      "text": "9eae4e76044d"
+    },
+    "it": {
+      "from": "1625e1a017dd",
+      "text": "2b72276a78b8"
+    },
+    "ja": {
+      "from": "1625e1a017dd",
+      "text": "aa512304d42c"
+    },
+    "ko": {
+      "from": "1625e1a017dd",
+      "text": "a5ee1b5725b1"
+    },
+    "pt-BR": {
+      "from": "1625e1a017dd",
+      "text": "ee0569eb6143"
+    },
+    "zh-CN": {
+      "from": "1625e1a017dd",
+      "text": "ebec1aed651a"
+    }
+  },
+  "code:taskAttention.bell.triggerNeedsYou": {
+    "de": {
+      "from": "7cd0f29c86bc",
+      "text": "dea9d066b4e5"
+    },
+    "es": {
+      "from": "7cd0f29c86bc",
+      "text": "0eef1e32ae63"
+    },
+    "fr": {
+      "from": "7cd0f29c86bc",
+      "text": "46fe2ce13fba"
+    },
+    "it": {
+      "from": "7cd0f29c86bc",
+      "text": "830d4b78f529"
+    },
+    "ja": {
+      "from": "7cd0f29c86bc",
+      "text": "151436b4a68d"
+    },
+    "ko": {
+      "from": "7cd0f29c86bc",
+      "text": "9e72f7ab47f9"
+    },
+    "pt-BR": {
+      "from": "7cd0f29c86bc",
+      "text": "5b8f80442e2e"
+    },
+    "zh-CN": {
+      "from": "7cd0f29c86bc",
+      "text": "0e4c37b82e9b"
+    }
+  },
+  "code:taskAttention.bell.untitled": {
+    "de": {
+      "from": "77efbb465696",
+      "text": "d9aee9377030"
+    },
+    "es": {
+      "from": "77efbb465696",
+      "text": "1757a8089bc1"
+    },
+    "fr": {
+      "from": "77efbb465696",
+      "text": "07a4563ebbd9"
+    },
+    "it": {
+      "from": "77efbb465696",
+      "text": "c3e0dc7746fe"
+    },
+    "ja": {
+      "from": "77efbb465696",
+      "text": "d68d2fbe67b2"
+    },
+    "ko": {
+      "from": "77efbb465696",
+      "text": "1494d428b533"
+    },
+    "pt-BR": {
+      "from": "77efbb465696",
+      "text": "c07cac05a912"
+    },
+    "zh-CN": {
+      "from": "77efbb465696",
+      "text": "e23ff8b80f62"
+    }
+  },
   "code:taskAttention.failed": {
     "de": {
       "from": "51b955a9cb43",
@@ -78367,6 +78435,74 @@
     "zh-CN": {
       "from": "ec65b327f68f",
       "text": "b21138a10d51"
+    }
+  },
+  "code:taskBar.allTasks": {
+    "de": {
+      "from": "cb66482383df",
+      "text": "7899c6494d0d"
+    },
+    "es": {
+      "from": "cb66482383df",
+      "text": "a05a255681b7"
+    },
+    "fr": {
+      "from": "cb66482383df",
+      "text": "84297af79d42"
+    },
+    "it": {
+      "from": "cb66482383df",
+      "text": "20c02daecd00"
+    },
+    "ja": {
+      "from": "cb66482383df",
+      "text": "dafa7eb71453"
+    },
+    "ko": {
+      "from": "cb66482383df",
+      "text": "c5f4a3dcc348"
+    },
+    "pt-BR": {
+      "from": "cb66482383df",
+      "text": "42b1a5230911"
+    },
+    "zh-CN": {
+      "from": "cb66482383df",
+      "text": "e4eecc38ad37"
+    }
+  },
+  "code:taskBar.allTasksIn": {
+    "de": {
+      "from": "e0155dcfb36f",
+      "text": "b1e63465527e"
+    },
+    "es": {
+      "from": "e0155dcfb36f",
+      "text": "63e88d5f6f2a"
+    },
+    "fr": {
+      "from": "e0155dcfb36f",
+      "text": "792f07a9101c"
+    },
+    "it": {
+      "from": "e0155dcfb36f",
+      "text": "076edb8b39a3"
+    },
+    "ja": {
+      "from": "e0155dcfb36f",
+      "text": "b07839038246"
+    },
+    "ko": {
+      "from": "e0155dcfb36f",
+      "text": "e612039c20a4"
+    },
+    "pt-BR": {
+      "from": "e0155dcfb36f",
+      "text": "19cf2811e585"
+    },
+    "zh-CN": {
+      "from": "e0155dcfb36f",
+      "text": "d1e5a97d3b75"
     }
   },
   "code:taskBar.chooseActionAriaLabel": {
@@ -78607,72 +78743,38 @@
       "text": "c98e118e0a43"
     }
   },
-  "code:taskBar.details.title": {
+  "code:taskBar.detailsMenuShortAriaLabel": {
     "de": {
-      "from": "675816270de0",
-      "text": "594b6ff73a0f"
+      "from": "c13142f7eeca",
+      "text": "e680004f6e9d"
     },
     "es": {
-      "from": "675816270de0",
-      "text": "47bf7d4f370b"
+      "from": "c13142f7eeca",
+      "text": "9de15f9f308b"
     },
     "fr": {
-      "from": "675816270de0",
-      "text": "0a54ed48f0f5"
+      "from": "c13142f7eeca",
+      "text": "94cc96694979"
     },
     "it": {
-      "from": "675816270de0",
-      "text": "1147b2515088"
+      "from": "c13142f7eeca",
+      "text": "8372cda68b60"
     },
     "ja": {
-      "from": "675816270de0",
-      "text": "51d9cbbf5866"
+      "from": "c13142f7eeca",
+      "text": "bdbb18d41be5"
     },
     "ko": {
-      "from": "675816270de0",
-      "text": "109c4830c238"
+      "from": "c13142f7eeca",
+      "text": "eb2e01c554b3"
     },
     "pt-BR": {
-      "from": "675816270de0",
-      "text": "dbd088cf3c3e"
+      "from": "c13142f7eeca",
+      "text": "dfc8a16ecf1f"
     },
     "zh-CN": {
-      "from": "675816270de0",
-      "text": "983556230415"
-    }
-  },
-  "code:taskBar.detailsMenuAriaLabel": {
-    "de": {
-      "from": "9f17ebb23aeb",
-      "text": "3d6c8792ded6"
-    },
-    "es": {
-      "from": "9f17ebb23aeb",
-      "text": "a9d31a934b30"
-    },
-    "fr": {
-      "from": "9f17ebb23aeb",
-      "text": "e618b6d601ca"
-    },
-    "it": {
-      "from": "9f17ebb23aeb",
-      "text": "35b3116fb3aa"
-    },
-    "ja": {
-      "from": "9f17ebb23aeb",
-      "text": "e06c7d37a9ed"
-    },
-    "ko": {
-      "from": "9f17ebb23aeb",
-      "text": "2539fd7025a6"
-    },
-    "pt-BR": {
-      "from": "9f17ebb23aeb",
-      "text": "3c8fb7fbcd8d"
-    },
-    "zh-CN": {
-      "from": "9f17ebb23aeb",
-      "text": "d4533cc95e22"
+      "from": "c13142f7eeca",
+      "text": "56b3909705f3"
     }
   },
   "code:taskBar.files": {
@@ -79015,40 +79117,6 @@
       "text": "4cc75d64ac55"
     }
   },
-  "code:taskBar.review": {
-    "de": {
-      "from": "aff0766a5290",
-      "text": "a1ca13575987"
-    },
-    "es": {
-      "from": "aff0766a5290",
-      "text": "52fadddb772f"
-    },
-    "fr": {
-      "from": "aff0766a5290",
-      "text": "1025e4ed0dab"
-    },
-    "it": {
-      "from": "aff0766a5290",
-      "text": "d7963e3187be"
-    },
-    "ja": {
-      "from": "aff0766a5290",
-      "text": "99bc96b03734"
-    },
-    "ko": {
-      "from": "aff0766a5290",
-      "text": "7e0e212667f7"
-    },
-    "pt-BR": {
-      "from": "aff0766a5290",
-      "text": "52fadddb772f"
-    },
-    "zh-CN": {
-      "from": "aff0766a5290",
-      "text": "8deff6662fea"
-    }
-  },
   "code:taskBar.reviewChanges": {
     "de": {
       "from": "6a47708f4e14",
@@ -79253,38 +79321,38 @@
       "text": "e46b1153fefa"
     }
   },
-  "code:taskBar.showDetailsAriaLabel": {
+  "code:taskBar.showDetailsShortAriaLabel": {
     "de": {
-      "from": "a6c33563d9c3",
-      "text": "12b30ca0aa59"
+      "from": "8cf71b6bbbd5",
+      "text": "6dcded5998fa"
     },
     "es": {
-      "from": "a6c33563d9c3",
-      "text": "c2b903cbb01b"
+      "from": "8cf71b6bbbd5",
+      "text": "377167fb571d"
     },
     "fr": {
-      "from": "a6c33563d9c3",
-      "text": "f14ba2184327"
+      "from": "8cf71b6bbbd5",
+      "text": "d11d0e61e379"
     },
     "it": {
-      "from": "a6c33563d9c3",
-      "text": "ac29e72d2b3b"
+      "from": "8cf71b6bbbd5",
+      "text": "e33b27cf8d18"
     },
     "ja": {
-      "from": "a6c33563d9c3",
-      "text": "279bb5d16398"
+      "from": "8cf71b6bbbd5",
+      "text": "d68c1aeac562"
     },
     "ko": {
-      "from": "a6c33563d9c3",
-      "text": "3eddac7950fa"
+      "from": "8cf71b6bbbd5",
+      "text": "32226908acae"
     },
     "pt-BR": {
-      "from": "a6c33563d9c3",
-      "text": "7d7289cfedd2"
+      "from": "8cf71b6bbbd5",
+      "text": "301eb410104f"
     },
     "zh-CN": {
-      "from": "a6c33563d9c3",
-      "text": "b228f4cac219"
+      "from": "8cf71b6bbbd5",
+      "text": "4bb531abbbf4"
     }
   },
   "code:taskBar.starting": {
@@ -118863,40 +118931,6 @@
       "text": "c7a4e66eb765"
     }
   },
-  "projects:projectsView.collapsePanel": {
-    "de": {
-      "from": "8ad80bc1bbac",
-      "text": "00d28b4cf388"
-    },
-    "es": {
-      "from": "8ad80bc1bbac",
-      "text": "2595418c62a7"
-    },
-    "fr": {
-      "from": "8ad80bc1bbac",
-      "text": "b880c4f8f37f"
-    },
-    "it": {
-      "from": "8ad80bc1bbac",
-      "text": "0441f5eb0798"
-    },
-    "ja": {
-      "from": "8ad80bc1bbac",
-      "text": "8b1d41ab939c"
-    },
-    "ko": {
-      "from": "8ad80bc1bbac",
-      "text": "624f1cff0f25"
-    },
-    "pt-BR": {
-      "from": "8ad80bc1bbac",
-      "text": "683dc21c7631"
-    },
-    "zh-CN": {
-      "from": "8ad80bc1bbac",
-      "text": "90bb34c2f1de"
-    }
-  },
   "projects:projectsView.composerPlaceholder": {
     "de": {
       "from": "e45b39422ece",
@@ -119167,40 +119201,6 @@
     "zh-CN": {
       "from": "f83c80652286",
       "text": "c1fe7fb67eca"
-    }
-  },
-  "projects:projectsView.expandPanel": {
-    "de": {
-      "from": "4a74667f1970",
-      "text": "20c02638c47f"
-    },
-    "es": {
-      "from": "4a74667f1970",
-      "text": "f67b6b98bf8b"
-    },
-    "fr": {
-      "from": "4a74667f1970",
-      "text": "8439d1c88def"
-    },
-    "it": {
-      "from": "4a74667f1970",
-      "text": "a412921b2e98"
-    },
-    "ja": {
-      "from": "4a74667f1970",
-      "text": "e62686a4a452"
-    },
-    "ko": {
-      "from": "4a74667f1970",
-      "text": "c2d19988f12e"
-    },
-    "pt-BR": {
-      "from": "4a74667f1970",
-      "text": "6276e0bcc919"
-    },
-    "zh-CN": {
-      "from": "4a74667f1970",
-      "text": "41457ebc161b"
     }
   },
   "projects:projectsView.menu.adminOrCreatorHint": {
@@ -152625,6 +152625,74 @@
       "text": "07e806fc2eef"
     }
   },
+  "shell:attention.placeholderAriaLabel": {
+    "de": {
+      "from": "f1cbf604b913",
+      "text": "75d04628741d"
+    },
+    "es": {
+      "from": "f1cbf604b913",
+      "text": "1c4c523b06d3"
+    },
+    "fr": {
+      "from": "f1cbf604b913",
+      "text": "83d4a69e4e5e"
+    },
+    "it": {
+      "from": "f1cbf604b913",
+      "text": "0c49cffd3f9d"
+    },
+    "ja": {
+      "from": "f1cbf604b913",
+      "text": "f48fb0d59fca"
+    },
+    "ko": {
+      "from": "f1cbf604b913",
+      "text": "8423ff4c2211"
+    },
+    "pt-BR": {
+      "from": "f1cbf604b913",
+      "text": "1970dce1469b"
+    },
+    "zh-CN": {
+      "from": "f1cbf604b913",
+      "text": "c269321608c9"
+    }
+  },
+  "shell:attention.placeholderTooltip": {
+    "de": {
+      "from": "2aa5d25d94fa",
+      "text": "e1fd776860e4"
+    },
+    "es": {
+      "from": "2aa5d25d94fa",
+      "text": "3ede5da81a4c"
+    },
+    "fr": {
+      "from": "2aa5d25d94fa",
+      "text": "036a167c55ee"
+    },
+    "it": {
+      "from": "2aa5d25d94fa",
+      "text": "13433164ab67"
+    },
+    "ja": {
+      "from": "2aa5d25d94fa",
+      "text": "6c17dba7c962"
+    },
+    "ko": {
+      "from": "2aa5d25d94fa",
+      "text": "e61475d193b8"
+    },
+    "pt-BR": {
+      "from": "2aa5d25d94fa",
+      "text": "796e90bf1e65"
+    },
+    "zh-CN": {
+      "from": "2aa5d25d94fa",
+      "text": "63917a0ba2bc"
+    }
+  },
   "shell:comingSoon.cloudBody": {
     "de": {
       "from": "a84452c543fc",
@@ -155753,74 +155821,6 @@
       "text": "faa3e87e26be"
     }
   },
-  "shell:rail.card.collapse": {
-    "de": {
-      "from": "be6eb1fc3b05",
-      "text": "5503d6ae1ee4"
-    },
-    "es": {
-      "from": "be6eb1fc3b05",
-      "text": "a4698e72ab9f"
-    },
-    "fr": {
-      "from": "be6eb1fc3b05",
-      "text": "2896a21cf475"
-    },
-    "it": {
-      "from": "be6eb1fc3b05",
-      "text": "9ae94d157407"
-    },
-    "ja": {
-      "from": "be6eb1fc3b05",
-      "text": "8ab5d1f1fa80"
-    },
-    "ko": {
-      "from": "be6eb1fc3b05",
-      "text": "aba0885359f9"
-    },
-    "pt-BR": {
-      "from": "be6eb1fc3b05",
-      "text": "2225d4a9a607"
-    },
-    "zh-CN": {
-      "from": "be6eb1fc3b05",
-      "text": "afd4b783536b"
-    }
-  },
-  "shell:rail.card.expand": {
-    "de": {
-      "from": "07548c2c6511",
-      "text": "b68cf2cea9a4"
-    },
-    "es": {
-      "from": "07548c2c6511",
-      "text": "e095e6d5592b"
-    },
-    "fr": {
-      "from": "07548c2c6511",
-      "text": "d6d2352fc7a0"
-    },
-    "it": {
-      "from": "07548c2c6511",
-      "text": "e8784a0877e9"
-    },
-    "ja": {
-      "from": "07548c2c6511",
-      "text": "ccd4ff23f93b"
-    },
-    "ko": {
-      "from": "07548c2c6511",
-      "text": "42dfbd146f39"
-    },
-    "pt-BR": {
-      "from": "07548c2c6511",
-      "text": "e095e6d5592b"
-    },
-    "zh-CN": {
-      "from": "07548c2c6511",
-      "text": "00bd3960fea8"
-    }
-  },
   "shell:rail.context.addDriveFilesFailed": {
     "de": {
       "from": "48a4837d443c",
@@ -157625,35 +157625,35 @@
   },
   "shell:rail.scheduled.title": {
     "de": {
-      "from": "8a9c2a741bc6",
+      "from": "21c4a0a31b6a",
       "text": "02d217f38c23"
     },
     "es": {
-      "from": "8a9c2a741bc6",
+      "from": "21c4a0a31b6a",
       "text": "e020bfc02a67"
     },
     "fr": {
-      "from": "8a9c2a741bc6",
+      "from": "21c4a0a31b6a",
       "text": "c96e11f3a0d8"
     },
     "it": {
-      "from": "8a9c2a741bc6",
+      "from": "21c4a0a31b6a",
       "text": "fcfca7aaf6d6"
     },
     "ja": {
-      "from": "8a9c2a741bc6",
+      "from": "21c4a0a31b6a",
       "text": "42d8cfa1f6fb"
     },
     "ko": {
-      "from": "8a9c2a741bc6",
+      "from": "21c4a0a31b6a",
       "text": "47981e5fd0b3"
     },
     "pt-BR": {
-      "from": "8a9c2a741bc6",
+      "from": "21c4a0a31b6a",
       "text": "90614404b0cc"
     },
     "zh-CN": {
-      "from": "8a9c2a741bc6",
+      "from": "21c4a0a31b6a",
       "text": "3c39e9bde120"
     }
   },
@@ -158029,6 +158029,74 @@
     "zh-CN": {
       "from": "60849ef36f59",
       "text": "b60894870f2b"
+    }
+  },
+  "shell:rail.toggle.collapse": {
+    "de": {
+      "from": "8ad80bc1bbac",
+      "text": "217e93439ced"
+    },
+    "es": {
+      "from": "8ad80bc1bbac",
+      "text": "2595418c62a7"
+    },
+    "fr": {
+      "from": "8ad80bc1bbac",
+      "text": "b880c4f8f37f"
+    },
+    "it": {
+      "from": "8ad80bc1bbac",
+      "text": "0441f5eb0798"
+    },
+    "ja": {
+      "from": "8ad80bc1bbac",
+      "text": "8b1d41ab939c"
+    },
+    "ko": {
+      "from": "8ad80bc1bbac",
+      "text": "624f1cff0f25"
+    },
+    "pt-BR": {
+      "from": "8ad80bc1bbac",
+      "text": "683dc21c7631"
+    },
+    "zh-CN": {
+      "from": "8ad80bc1bbac",
+      "text": "90bb34c2f1de"
+    }
+  },
+  "shell:rail.toggle.expand": {
+    "de": {
+      "from": "4a74667f1970",
+      "text": "b5d293502d25"
+    },
+    "es": {
+      "from": "4a74667f1970",
+      "text": "f67b6b98bf8b"
+    },
+    "fr": {
+      "from": "4a74667f1970",
+      "text": "8439d1c88def"
+    },
+    "it": {
+      "from": "4a74667f1970",
+      "text": "a412921b2e98"
+    },
+    "ja": {
+      "from": "4a74667f1970",
+      "text": "e62686a4a452"
+    },
+    "ko": {
+      "from": "4a74667f1970",
+      "text": "c2d19988f12e"
+    },
+    "pt-BR": {
+      "from": "4a74667f1970",
+      "text": "6276e0bcc919"
+    },
+    "zh-CN": {
+      "from": "4a74667f1970",
+      "text": "41457ebc161b"
     }
   },
   "shell:recents.count": {
@@ -159629,40 +159697,6 @@
       "text": "dc9591e56d50"
     }
   },
-  "shell:sidebar.agent": {
-    "de": {
-      "from": "11b39c93777e",
-      "text": "11b39c93777e"
-    },
-    "es": {
-      "from": "11b39c93777e",
-      "text": "1e068f0819ee"
-    },
-    "fr": {
-      "from": "11b39c93777e",
-      "text": "11b39c93777e"
-    },
-    "it": {
-      "from": "11b39c93777e",
-      "text": "1e068f0819ee"
-    },
-    "ja": {
-      "from": "11b39c93777e",
-      "text": "3ee0075764ef"
-    },
-    "ko": {
-      "from": "11b39c93777e",
-      "text": "d33f1c5fe1f4"
-    },
-    "pt-BR": {
-      "from": "11b39c93777e",
-      "text": "1e068f0819ee"
-    },
-    "zh-CN": {
-      "from": "11b39c93777e",
-      "text": "2df7697dbb61"
-    }
-  },
   "shell:sidebar.agentWorking": {
     "de": {
       "from": "e9ed650a4b29",
@@ -159695,6 +159729,40 @@
     "zh-CN": {
       "from": "e9ed650a4b29",
       "text": "501f071af995"
+    }
+  },
+  "shell:sidebar.close": {
+    "de": {
+      "from": "17e28e230217",
+      "text": "2d6ac68d056b"
+    },
+    "es": {
+      "from": "17e28e230217",
+      "text": "276f0cdb2788"
+    },
+    "fr": {
+      "from": "17e28e230217",
+      "text": "7bb1918b486a"
+    },
+    "it": {
+      "from": "17e28e230217",
+      "text": "80cf79af58ec"
+    },
+    "ja": {
+      "from": "17e28e230217",
+      "text": "09b0ccc86220"
+    },
+    "ko": {
+      "from": "17e28e230217",
+      "text": "1ac091bda5a6"
+    },
+    "pt-BR": {
+      "from": "17e28e230217",
+      "text": "ba1225ee0ddf"
+    },
+    "zh-CN": {
+      "from": "17e28e230217",
+      "text": "5f76a0e144ab"
     }
   },
   "shell:sidebar.collapse": {
@@ -162959,6 +163027,40 @@
     "zh-CN": {
       "from": "340f463033e0",
       "text": "e6f04ffbaa42"
+    }
+  },
+  "shell:workspaceMode.tooltip": {
+    "de": {
+      "from": "43d9411eb04d",
+      "text": "e48829adc238"
+    },
+    "es": {
+      "from": "43d9411eb04d",
+      "text": "2992623f89f8"
+    },
+    "fr": {
+      "from": "43d9411eb04d",
+      "text": "f8c5a0fcdbbf"
+    },
+    "it": {
+      "from": "43d9411eb04d",
+      "text": "245dbe1ef8c7"
+    },
+    "ja": {
+      "from": "43d9411eb04d",
+      "text": "a1576203dad8"
+    },
+    "ko": {
+      "from": "43d9411eb04d",
+      "text": "4d0afb462c62"
+    },
+    "pt-BR": {
+      "from": "43d9411eb04d",
+      "text": "2992623f89f8"
+    },
+    "zh-CN": {
+      "from": "43d9411eb04d",
+      "text": "5e343c9d376d"
     }
   }
 }

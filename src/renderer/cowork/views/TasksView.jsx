@@ -162,7 +162,7 @@ export default function TasksView({
   }];
 
   return (
-    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
+    <div className="scroll-clean titlebar-fade titlebar-fade--page flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title={t('mobile.tasks')}
         subtitle={t('tasks.subtitle')}

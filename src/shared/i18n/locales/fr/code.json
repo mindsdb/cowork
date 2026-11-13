@@ -848,9 +848,6 @@
     "sort": "Trier",
     "priority": "Priorité",
     "lastUpdated": "Dernière mise à jour",
-    "searchPlaceholder": "Trouver une tâche",
-    "searchAriaLabel": "Trouver une tâche de code",
-    "noMatch": "Aucune tâche de code ne correspond à votre recherche.",
     "empty": "Lancez une tâche de code pour retrouver ici sa conversation et ses modifications.",
     "pinned": "Épinglées",
     "archived": "Archivées"
@@ -948,6 +945,15 @@
       "needsYou": "{count, plural, one {# tâche vous attend →} other {# tâches vous attendent →}}",
       "on": "Notifications activées",
       "off": "M’avertir en mon absence"
+    },
+    "bell": {
+      "needsYou": "{count, plural, one {# tâche vous attend} other {# tâches vous attendent}}",
+      "triggerNeedsYou": "Code : {count, plural, one {# tâche vous attend} other {# tâches vous attendent}}",
+      "menuLabel": "Alertes Code",
+      "trigger": "Notifications Code",
+      "none": "Aucune tâche Code ne vous attend",
+      "untitled": "Tâche sans titre",
+      "onHint": "Activé"
     }
   },
   "catalog": {
@@ -1471,10 +1477,7 @@
     "openIsolatedCopy": "Ouvrir la copie isolée",
     "forkTask": "Dupliquer la tâche",
     "taskSettings": "Paramètres de la tâche",
-    "detailsMenuAriaLabel": "Copie de travail et détails de la tâche",
-    "showDetailsAriaLabel": "Afficher les détails de la tâche pour {label}",
     "details": {
-      "title": "Configuration de la tâche",
       "files": "Fichiers",
       "branch": "Branche",
       "computer": "Ordinateur",
@@ -1496,8 +1499,11 @@
     "files": "Fichiers",
     "terminal": "Terminal",
     "reviewChanges": "Relire les modifications",
-    "review": "Relire",
-    "taskActionsAriaLabel": "Actions de la tâche de code"
+    "taskActionsAriaLabel": "Actions de la tâche de code",
+    "allTasksIn": "Toutes les tâches de {name}",
+    "allTasks": "Toutes les tâches",
+    "detailsMenuShortAriaLabel": "Détails de la tâche",
+    "showDetailsShortAriaLabel": "Afficher les détails de la tâche"
   },
   "terminal": {
     "status": {

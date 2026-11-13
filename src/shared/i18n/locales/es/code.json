@@ -848,9 +848,6 @@
     "sort": "Ordenar",
     "priority": "Prioridad",
     "lastUpdated": "Última actualización",
-    "searchPlaceholder": "Buscar una tarea",
-    "searchAriaLabel": "Buscar una tarea de código",
-    "noMatch": "Ninguna tarea de código coincide con tu búsqueda.",
     "empty": "Inicia una tarea de código para conservar aquí su conversación y sus cambios.",
     "pinned": "Fijadas",
     "archived": "Archivadas"
@@ -948,6 +945,15 @@
       "needsYou": "{count, plural, one {# tarea te necesita →} other {# tareas te necesitan →}}",
       "on": "Notificaciones activadas",
       "off": "Avisarme cuando no esté"
+    },
+    "bell": {
+      "needsYou": "{count, plural, one {# tarea te necesita} other {# tareas te necesitan}}",
+      "triggerNeedsYou": "Código: {count, plural, one {# tarea te necesita} other {# tareas te necesitan}}",
+      "menuLabel": "Atención de Código",
+      "trigger": "Notificaciones de Código",
+      "none": "Ninguna tarea de Código te necesita",
+      "untitled": "Tarea sin título",
+      "onHint": "Activado"
     }
   },
   "catalog": {
@@ -1471,10 +1477,7 @@
     "openIsolatedCopy": "Abrir copia aislada",
     "forkTask": "Bifurcar tarea",
     "taskSettings": "Configuración de la tarea",
-    "detailsMenuAriaLabel": "Copia de trabajo y detalles de la tarea",
-    "showDetailsAriaLabel": "Mostrar detalles de la tarea para {label}",
     "details": {
-      "title": "Configuración de la tarea",
       "files": "Archivos",
       "branch": "Rama",
       "computer": "Computadora",
@@ -1496,8 +1499,11 @@
     "files": "Archivos",
     "terminal": "Terminal",
     "reviewChanges": "Revisar cambios",
-    "review": "Revisar",
-    "taskActionsAriaLabel": "Acciones de la tarea de código"
+    "taskActionsAriaLabel": "Acciones de la tarea de código",
+    "allTasksIn": "Todas las tareas de {name}",
+    "allTasks": "Todas las tareas",
+    "detailsMenuShortAriaLabel": "Detalles de la tarea",
+    "showDetailsShortAriaLabel": "Mostrar detalles de la tarea"
   },
   "terminal": {
     "status": {

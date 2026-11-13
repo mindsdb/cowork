@@ -94,10 +94,7 @@
     "progress": {
       "title": "Fortschritt"
     },
-    "card": {
-      "collapse": "Einklappen",
-      "expand": "Ausklappen"
-    },
+    "card": {},
     "showMore": {
       "less": "Weniger anzeigen",
       "more": "+ {count} weitere"
@@ -133,6 +130,10 @@
       "haveCopyTitle": "Sie haben bereits eine Kopie. Löschen Sie sie, um die App erneut zu duplizieren.",
       "duplicateAriaLabel": "{name} duplizieren",
       "duplicatedToast": "In dieses Projekt dupliziert."
+    },
+    "toggle": {
+      "collapse": "Bereich reduzieren",
+      "expand": "Bereich erweitern"
     }
   },
   "confirm": {
@@ -202,7 +203,8 @@
     "triggerAriaLabel": "Arbeitsbereich: {name}"
   },
   "workspaceMode": {
-    "code": "Code"
+    "code": "Code",
+    "tooltip": "Modus {mode}"
   },
   "search": {
     "label": "{product} durchsuchen",
@@ -308,7 +310,6 @@
       "skillsLibrary": "Skill-Bibliothek",
       "compare": "Modelle vergleichen"
     },
-    "agent": "Agent",
     "pinned": "Angeheftet",
     "viewAllTasks": "Alle Aufgaben anzeigen",
     "viewAll": "Alle anzeigen →",
@@ -330,7 +331,8 @@
       "offline": "offline"
     },
     "settings": "Einstellungen",
-    "openSettings": "Einstellungen öffnen"
+    "openSettings": "Einstellungen öffnen",
+    "close": "Seitenleiste schließen"
   },
   "mobile": {
     "tasks": "Aufgaben",
@@ -409,5 +411,9 @@
     "confirm": "Abmelden",
     "failed": "Die Abmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
     "waitNote": "Die Abmeldung läuft noch. Sie können dieses Fenster schließen, der Vorgang wird automatisch abgeschlossen."
+  },
+  "attention": {
+    "placeholderTooltip": "Benachrichtigungen gibt es für Code-Aufgaben",
+    "placeholderAriaLabel": "Benachrichtigungen, für Code-Aufgaben"
   }
 }

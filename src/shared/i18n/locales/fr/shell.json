@@ -94,10 +94,7 @@
     "progress": {
       "title": "Progression"
     },
-    "card": {
-      "collapse": "Réduire",
-      "expand": "Développer"
-    },
+    "card": {},
     "showMore": {
       "less": "Afficher moins",
       "more": "+ {count} de plus"
@@ -133,6 +130,10 @@
       "haveCopyTitle": "Vous en avez déjà une copie. Supprimez-la pour dupliquer à nouveau l’app.",
       "duplicateAriaLabel": "Dupliquer {name}",
       "duplicatedToast": "Dupliquée dans ce projet."
+    },
+    "toggle": {
+      "collapse": "Réduire le panneau",
+      "expand": "Développer le panneau"
     }
   },
   "confirm": {
@@ -202,7 +203,8 @@
     "triggerAriaLabel": "Espace de travail : {name}"
   },
   "workspaceMode": {
-    "code": "Code"
+    "code": "Code",
+    "tooltip": "Mode {mode}"
   },
   "search": {
     "label": "Rechercher dans {product}",
@@ -308,7 +310,6 @@
       "skillsLibrary": "Bibliothèque de compétences",
       "compare": "Comparer les modèles"
     },
-    "agent": "Agent",
     "pinned": "Épinglées",
     "viewAllTasks": "Voir toutes les tâches",
     "viewAll": "Tout voir →",
@@ -330,7 +331,8 @@
       "offline": "hors ligne"
     },
     "settings": "Paramètres",
-    "openSettings": "Ouvrir les paramètres"
+    "openSettings": "Ouvrir les paramètres",
+    "close": "Fermer la barre latérale"
   },
   "mobile": {
     "tasks": "Tâches",
@@ -409,5 +411,9 @@
     "confirm": "Se déconnecter",
     "failed": "Impossible de terminer la déconnexion. Veuillez réessayer.",
     "waitNote": "Déconnexion en cours. Vous pouvez fermer cette fenêtre, l’opération se terminera d’elle-même."
+  },
+  "attention": {
+    "placeholderTooltip": "Les notifications concernent les tâches Code",
+    "placeholderAriaLabel": "Notifications, pour les tâches Code"
   }
 }

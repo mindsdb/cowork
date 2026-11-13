@@ -151,8 +151,6 @@
       "title": "{who}에 일시적인 문제가 발생했습니다"
     },
     "header": {
-      "expandPanel": "패널 펼치기",
-      "collapsePanel": "패널 접기",
       "apps": "앱",
       "connectAppsAndData": "앱 및 데이터 연결",
       "projects": "프로젝트",

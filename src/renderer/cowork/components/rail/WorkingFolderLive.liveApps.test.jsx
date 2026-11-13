@@ -239,9 +239,9 @@ describe('with live apps on', () => {
     await renderRail([app()]);
 
     const list = await screen.findByRole('region', { name: 'Apps you can duplicate' });
-    const artifactsCard = screen.getByRole('button', { name: 'Artifacts' }).closest('.rounded-card');
+    const artifactsCard = screen.getByRole('button', { name: 'Artifacts' }).closest('.rail-section');
     expect(artifactsCard).not.toContainElement(list);
-    expect(within(list.closest('.rounded-card')).getByRole('button', { name: 'Apps you can duplicate' })).toBeInTheDocument();
+    expect(within(list.closest('.rail-section')).getByRole('button', { name: 'Apps you can duplicate' })).toBeInTheDocument();
   });
 
   it('lists a share and duplicates it in a project with no artifacts yet', async () => {
@@ -384,7 +384,7 @@ describe('with live apps on: where a copy lands and shows', () => {
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Duplicate' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   };
-  const artifactsCard = () => screen.getByRole('button', { name: 'Artifacts' }).closest('.rounded-card');
+  const artifactsCard = () => screen.getByRole('button', { name: 'Artifacts' }).closest('.rail-section');
 
   it('copies into the project on screen, even after a switch with Artifacts collapsed', async () => {
     fetchSharedLiveApps.mockResolvedValue([shared]);

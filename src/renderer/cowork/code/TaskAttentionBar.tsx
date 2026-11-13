@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../lib/i18n';
 import Button from '../components/ui/Button';
+import Menu from '../components/ui/Menu';
+import Ico from '../components/Icons';
+import { AppAttention } from '../components/appHeader';
 import { codingApi, type CodingSession } from './api';
 import { newAttention, taskAttention } from './taskAttention';
 import { isAppVisible } from './useAppVisible';
@@ -75,9 +78,36 @@ export function TaskAttentionBar({ sessions, selectedId, active, scopeKey, onSel
       setNotifications(true);
     } catch { if (requestedGeneration === generation.current) setPermissionError(t('taskAttention.bar.failed')); }
   };
-  return <div className="code-attention-bar" aria-label={t('taskAttention.bar.ariaLabel')}>
+  const needsLabel = t('taskAttention.bell.needsYou', { count: attention.length });
+  // Without a titlebar (MobileShell, isolated tests) the controls keep their
+  // inline bar under the task header.
+  const bar = <div className="code-attention-bar" aria-label={t('taskAttention.bar.ariaLabel')}>
     <div>{attention.length > 0 && <Button size="sm" variant="subtle" onClick={() => onSelect(attention[0].id)}>{t('taskAttention.bar.needsYou', { count: attention.length })}</Button>}</div>
     <Button size="sm" variant="subtle" aria-pressed={notifications} onClick={() => void toggle()}>{notifications ? t('taskAttention.bar.on') : t('taskAttention.bar.off')}</Button>
     {permissionError && <p role="status">{permissionError}</p>}
   </div>;
+  // In the titlebar's app zone: a bell, badged while a task needs you. Its menu
+  // lists those tasks and holds the away toggle. Code only: the task list
+  // stops refreshing while Cowork is in front, so a count there would be
+  // stale. Away alerts keep running either way.
+  const bell = <Menu
+    ariaLabel={t('taskAttention.bell.menuLabel')}
+    side="bottom"
+    align="end"
+    width={260}
+    trigger={<button type="button" className="app-attention-bell icon-btn" aria-label={attention.length ? t('taskAttention.bell.triggerNeedsYou', { count: attention.length }) : t('taskAttention.bell.trigger')}>
+      {Ico.bell(16)}
+      {attention.length > 0 && <span className="app-attention-bell__badge" aria-hidden="true">{attention.length}</span>}
+    </button>}
+    items={[
+      attention.length
+        ? { heading: <span className="app-attention-bell__heading">{needsLabel}</span> }
+        : { heading: <span className="app-attention-bell__heading">{t('taskAttention.bell.none')}</span> },
+      ...attention.map(session => ({ id: session.id, icon: Ico.code(14), label: session.title || t('taskAttention.bell.untitled'), onClick: () => onSelect(session.id) })),
+      { divider: true },
+      { id: 'away', icon: Ico.bell(14), label: notifications ? t('taskAttention.bar.on') : t('taskAttention.bar.off'), hint: notifications ? t('taskAttention.bell.onHint') : undefined, keepOpen: true, onClick: () => void toggle() },
+      ...(permissionError ? [{ heading: <span className="app-attention-bell__error" role="status">{permissionError}</span> }] : []),
+    ]}
+  />;
+  return <AppAttention fallback={bar}>{active ? bell : null}</AppAttention>;
 }
