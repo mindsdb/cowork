@@ -18,7 +18,7 @@ import { diagnostic } from '../../../shared/diagnostics';
 //
 // Every product event this module emits is registered in EVENTS below.
 
-import { host } from '../../platform/host';
+import { host, onMindsHubCredentialChanged } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
 import { startCreditsFlow } from './creditsFlow';
 import { subscribeOrganizationChanges } from './organizationChanges';
@@ -35,12 +35,16 @@ const EVENTS = {
   ARTIFACT_STATS_OPENED:    'artifact_stats_opened',    // { artifact_id (cowork artifact uuid, bare hex; not the id artifact_published sends, which prefers report_id), access_mode: 'public'|'password'|'restricted'|null, has_views }
   // The sharing events below all carry { artifact_id (cowork artifact uuid,
   // as artifact_stats_opened), artifact_type, entry, report_id,
-  // sso_organization_id }. report_id is the published page's id: the save's
-  // answer when there is one, else the card's (cowork-server's `reportId`); ''
-  // when the artifact has no live page, or its server predates the card field.
+  // sso_organization_id, acting_organization_id }. report_id is the published
+  // page's id: the save's answer when there is one, else the card's
+  // (cowork-server's `reportId`); '' when the artifact has no live page, or its
+  // server predates the card field. acting_organization_id is the organization
+  // the action ran under (actingOrganizationId); sso_organization_id is the
+  // signed-in session's, which on Desktop can differ.
   // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'rail'|'rail_delete'|'other'.
-  // Deleting a shared artifact reports a pull-back on Desktop only: on Web the
-  // server takes the page down as part of the delete, unseen by this client.
+  // Deleting a shared artifact reports a pull-back on both surfaces: on Desktop
+  // after the client's own unpublish, on Web after the delete succeeds, since
+  // the server's delete takes the page down or fails.
   // Audiences are categories and counts only, never an email, name or password.
   ARTIFACT_SHARE_OPENED:    'artifact_share_opened',    // { is_shared: true|false|null (null while Web still reads who has access) } — the Share panel or dialog opened
   // Every successful save that changes who can open the artifact, while it
@@ -274,6 +278,62 @@ const identity = {
 // reloading the document) re-reads the token on the next event, so the
 // organization the events name is the one switched to.
 subscribeOrganizationChanges(() => { identity.cacheExpiry = 0; });
+
+// The organization a Desktop's MindsHub work runs under, read from the sidecar.
+// A key the person pasted wins over their sign-in, and it can belong to another
+// organization than the one they are signed in to, so the session's
+// organization is not always the one that acted. Only answers the sidecar named
+// are kept; anything else is asked again at the next event.
+const credentialOrg = { id: undefined, expiry: 0, generation: 0 };
+function forgetCredentialOrganization() {
+  credentialOrg.id = undefined;
+  credentialOrg.expiry = 0;
+  credentialOrg.generation += 1;
+}
+subscribeOrganizationChanges(forgetCredentialOrganization);
+// A pasted or removed key reaches the renderer only as this signal. Attached on
+// first use rather than at import, so a module that never sends a sharing event
+// never subscribes.
+let credentialListenerAttached = false;
+function listenForCredentialChanges() {
+  if (credentialListenerAttached) return;
+  credentialListenerAttached = true;
+  try {
+    onMindsHubCredentialChanged(forgetCredentialOrganization);
+  } catch { /* no bridge: nothing changes the credential under us */ }
+}
+
+const CREDENTIAL_ORG_TIMEOUT_MS = 3000;
+
+async function credentialOrganizationId() {
+  listenForCredentialChanges();
+  if (Date.now() < credentialOrg.expiry) return credentialOrg.id;
+  const generation = credentialOrg.generation;
+  try {
+    const res = await fetch(`${host.getApiOrigin()}/api/v1/runtime-credential/minds/organization`, {
+      signal: AbortSignal.timeout(CREDENTIAL_ORG_TIMEOUT_MS),
+    });
+    if (!res.ok) return undefined;
+    const body = await res.json();
+    const id = typeof body?.organizationId === 'string' && body.organizationId ? body.organizationId : undefined;
+    if (id && generation === credentialOrg.generation) {
+      credentialOrg.id = id;
+      credentialOrg.expiry = Date.now() + 5 * 60 * 1000;
+    }
+    return id;
+  } catch {
+    return undefined;
+  }
+}
+
+// The organization the person acted in. On Web that is the session's: every
+// request carries the session token. On Desktop it is the held credential's,
+// and absent when the sidecar cannot say (an older sidecar, MindsHub
+// unreachable, or no MindsHub credential at all).
+function actingOrganizationId() {
+  if (host.isElectron) return credentialOrganizationId();
+  return Promise.resolve(identity.personProps.organization_id);
+}
 // Synchronous guard against the merge firing twice when two events resolve
 // identity in the same tick, before the async localStorage marker is written.
 // Entries are cleared on failure so a later event can still retry.
@@ -566,7 +626,7 @@ function capture(event, properties = {}, envelope = {}) {
     return Promise.resolve(false);
   }
   return getDistinctId()
-    .then((distinctId) => {
+    .then(async (distinctId) => {
       // Before sign-in, fall back to the anonymous device id so pre-login events
       // are captured instead of dropped; they merge into the account on first
       // sign-in (see mergeAnonIntoAccount).
@@ -635,9 +695,15 @@ function capture(event, properties = {}, envelope = {}) {
       }
       // The sharing events carry the session's organisation too, because a
       // person who switches organisations would otherwise be read against the
-      // last one their profile names. The same session caveats apply.
+      // last one their profile names. The same session caveats apply, so they
+      // also carry `acting_organization_id`, the organization the action ran
+      // under (actingOrganizationId).
       if (ORG_STAMPED_EVENTS.has(event) && identity.personProps.organization_id) {
         eventProps.sso_organization_id = identity.personProps.organization_id;
+      }
+      if (ORG_STAMPED_EVENTS.has(event)) {
+        const acting = await actingOrganizationId();
+        if (acting) eventProps.acting_organization_id = acting;
       }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.

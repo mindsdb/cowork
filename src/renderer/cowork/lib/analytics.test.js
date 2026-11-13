@@ -20,7 +20,7 @@ const { getAccessToken, checkInstall, getVersionInfo, drainUpdateJournal, ackUpd
   drainUpdateJournal: vi.fn(async () => []),
   ackUpdateJournal: vi.fn(async () => {}),
   fetchHealth: vi.fn(async () => null),
-  hostState: { isElectron: true },
+  hostState: { isElectron: true, credentialListeners: [] },
 }));
 vi.mock('../../platform/host', () => ({
   host: {
@@ -32,6 +32,11 @@ vi.mock('../../platform/host', () => ({
     getVersionInfo,
     drainUpdateJournal,
     ackUpdateJournal,
+    getApiOrigin: () => 'http://127.0.0.1:26866',
+  },
+  onMindsHubCredentialChanged: (cb) => {
+    hostState.credentialListeners.push(cb);
+    return () => {};
   },
   get isElectron() {
     return hostState.isElectron;
@@ -62,10 +67,10 @@ function mockFetch() {
 const sentEvent = async (fetchMock, name) => {
   await vi.waitFor(() =>
     expect(
-      fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
+      fetchMock.mock.calls.filter((c) => c[1]?.body).map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
     ).toBe(true)
   );
-  return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
+  return fetchMock.mock.calls.filter((c) => c[1]?.body).map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
 };
 
 // Minimal unsigned JWT — decodeJwtPayload only base64url-decodes the middle
@@ -1748,6 +1753,98 @@ describe('artifact sharing events', () => {
       .toMatchObject({ ...common, kind: 'export', format: 'pdf' });
   });
 
+  describe('the organization the action ran under', () => {
+    const ORG_PATH = '/api/v1/runtime-credential/minds/organization';
+    // PostHog's POST answers ok; the sidecar's organization read answers `org`.
+    function mockFetchWithSidecar(answer) {
+      const fn = vi.fn(async (url) => {
+        if (String(url).endsWith(ORG_PATH)) return answer();
+        return { ok: true, status: 200 };
+      });
+      globalThis.fetch = fn;
+      return fn;
+    }
+    const orgAnswer = (organizationId) => ({ ok: true, status: 200, json: async () => ({ organizationId }) });
+    const askedSidecar = (fetchMock) => fetchMock.mock.calls.filter((c) => String(c[0]).endsWith(ORG_PATH)).length;
+
+    afterEach(() => { hostState.isElectron = true; hostState.credentialListeners = []; });
+
+    it('on Desktop is the held key\'s organization, not the signed-in one', async () => {
+      signedIn();
+      const fetchMock = mockFetchWithSidecar(() => orgAnswer('org-of-the-key'));
+      const { trackArtifactLinkCopied } = await importAnalytics();
+
+      trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+
+      const event = await sentEvent(fetchMock, 'artifact_link_copied');
+      expect(event.properties.acting_organization_id).toBe('org-of-the-key');
+      expect(event.properties.sso_organization_id).toBe('org-share');
+    });
+
+    it('on Desktop is left out when the sidecar cannot say, and the session org still rides', async () => {
+      signedIn();
+      for (const answer of [() => ({ ok: false, status: 404 }), () => orgAnswer(null), () => { throw new Error('down'); }]) {
+        const fetchMock = mockFetchWithSidecar(answer);
+        const { trackArtifactDownloaded } = await importAnalytics();
+
+        trackArtifactDownloaded({ artifactId: 'a1', entry: 'viewer', kind: 'file' });
+
+        const event = await sentEvent(fetchMock, 'artifact_downloaded');
+        expect(event.properties).not.toHaveProperty('acting_organization_id');
+        expect(event.properties.sso_organization_id).toBe('org-share');
+      }
+    });
+
+    it('on Web is the session\'s organization, and the sidecar is not asked', async () => {
+      hostState.isElectron = false;
+      signedIn();
+      const fetchMock = mockFetchWithSidecar(() => orgAnswer('never'));
+      const { trackArtifactShareOpened } = await importAnalytics();
+
+      trackArtifactShareOpened({ artifactId: 'a1', entry: 'viewer', isShared: false });
+
+      const event = await sentEvent(fetchMock, 'artifact_share_opened');
+      expect(event.properties.acting_organization_id).toBe('org-share');
+      expect(askedSidecar(fetchMock)).toBe(0);
+    });
+
+    it('asks again after the credential changes, and not before', async () => {
+      signedIn();
+      let org = 'org-A';
+      const fetchMock = mockFetchWithSidecar(() => orgAnswer(org));
+      const { trackArtifactLinkCopied } = await importAnalytics();
+      const acting = () => fetchMock.mock.calls
+        .filter((c) => c[1]?.body)
+        .map((c) => JSON.parse(c[1].body))
+        .filter((b) => b.event === 'artifact_link_copied')
+        .map((b) => b.properties.acting_organization_id);
+
+      trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+      await vi.waitFor(() => expect(acting()).toEqual(['org-A']));
+      org = 'org-B';
+      trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+      await vi.waitFor(() => expect(acting()).toHaveLength(2));
+      expect(acting()).toEqual(['org-A', 'org-A']);
+      expect(askedSidecar(fetchMock)).toBe(1);
+
+      for (const listener of hostState.credentialListeners) listener();
+      trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+      await vi.waitFor(() => expect(acting()).toHaveLength(3));
+      expect(acting()).toEqual(['org-A', 'org-A', 'org-B']);
+    });
+
+    it('is not asked for an event that does not carry it', async () => {
+      signedIn();
+      const fetchMock = mockFetchWithSidecar(() => orgAnswer('org-of-the-key'));
+      const { trackArtifactBuilt } = await importAnalytics();
+
+      trackArtifactBuilt('html', 'a1');
+
+      expect((await sentEvent(fetchMock, 'artifact_built')).properties).not.toHaveProperty('acting_organization_id');
+      expect(askedSidecar(fetchMock)).toBe(0);
+    });
+  });
+
   it('names the organization switched to in place, not the cached one', async () => {
     const tokenFor = (id) => fakeJwt({ sub: 'user-share', email: 'owner@example.com', activate_organization: { id, name: id } });
     getAccessToken.mockResolvedValue(tokenFor('org-A'));
@@ -1755,6 +1852,7 @@ describe('artifact sharing events', () => {
     const { trackArtifactLinkCopied } = await importAnalytics();
     const { notifyOrganizationChanged } = await import('./organizationChanges');
     const copiedOrgs = () => fetchMock.mock.calls
+      .filter((c) => c[1]?.body)
       .map((c) => JSON.parse(c[1].body))
       .filter((b) => b.event === 'artifact_link_copied')
       .map((b) => b.properties.sso_organization_id);
