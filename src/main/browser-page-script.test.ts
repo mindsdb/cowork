@@ -554,6 +554,29 @@ describe('the isolated-world page read', () => {
     }
   });
 
+  it("tells whether a drag's point lands on a secret field, a card-named one included, through an open shadow root, and not on an ordinary field, text or nothing", () => {
+    document.body.innerHTML = `
+      <input id="card" name="card_number" aria-label="Card" value="4242424242424242">
+      <input id="pw" type="password" value="hunter2">
+      <input id="cc" autocomplete="cc-number">
+      <textarea id="notes" aria-label="Notes"></textarea>
+      <input id="holder" name="cardholderName" aria-label="Name on card">
+      <p id="text">Pay now</p>
+      <div id="host"></div>`;
+    const root = document.getElementById('host')!.attachShadow({ mode: 'open' });
+    root.innerHTML = '<input id="cardNumberInput">';
+    const at: Record<string, Element> = Object.fromEntries(['card', 'pw', 'cc', 'notes', 'holder', 'text'].map((id, i) => [`${i},0`, document.getElementById(id)!]));
+    at['6,0'] = document.getElementById('host')!;
+    Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => root.getElementById('cardNumberInput') });
+    const restore = hitTestBy((x, y) => at[`${x},${y}`] ?? null);
+    try {
+      const secretAt = (x: number) => pageWorld(document, freshWorld(), { kind: 'secretAt', at: { x, y: 0 } });
+      expect([0, 1, 2, 3, 4, 5, 6, 7].map(secretAt)).toEqual([true, true, true, false, false, false, true, false]);
+    } finally {
+      restore();
+    }
+  });
+
   it('never counts a point that lands in a frame, or in a custom element sealed from this world, as reaching the control around it', async () => {
     document.body.innerHTML = `
       <div data-box="400x120" id="wrap" tabindex="0" aria-label="More info"><iframe id="buy" src="https://shop.other.test/buy"></iframe></div>

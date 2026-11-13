@@ -171,7 +171,7 @@ const neverAsked = async (): Promise<never> => {
 };
 const NO_PAGE_READER: PageReader = {
   locate: neverAsked, focusedSecret: neverAsked, typingFocus: neverAsked, focusField: neverAsked,
-  focus: neverAsked, select: neverAsked, viewport: neverAsked, hitTest: neverAsked,
+  focus: neverAsked, select: neverAsked, viewport: neverAsked, hitTest: neverAsked, secretAt: neverAsked,
 };
 const NO_NAVIGATION: Navigation = { load: neverAsked, back: neverAsked, forward: neverAsked, reload: neverAsked };
 

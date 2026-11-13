@@ -43,6 +43,7 @@ function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing, cdp: 
     select: vi.fn(async () => ({ ok: true as const, chosen: ['x'] })),
     viewport: vi.fn(async () => VIEWPORT),
     hitTest: vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: 0, throughFrame: -1 })),
+    secretAt: vi.fn(async () => false),
     ...over,
   };
   const nav = { load: vi.fn(async () => {}), back: vi.fn(async () => {}), forward: vi.fn(async () => {}), reload: vi.fn(async () => {}) };
@@ -864,6 +865,33 @@ describe('runStep', () => {
     });
     const released = mouse(dbg).filter((e) => e.type === 'mouseReleased');
     expect(released).toEqual([expect.objectContaining({ x: 400, y: 300, buttons: 0 })]);
+  });
+
+  it('refuses a drag that starts on a secret field or drops onto one, by element or by position, when it starts and again just before the press and the release, and lets go where it began', async () => {
+    const refusal = (what: string) => ({ code: 'password_field', status: 403, message: `${what} is a secret field; only the person fills it` });
+    const onCard = host({ locate: vi.fn(async (id: number) => located({ secret: id === 5 })) });
+    await expect(runStep(onCard.stepHost, step({ action: 'drag', from: { element: 5 }, to: { element: 6 } }))).rejects.toMatchObject(refusal("the drag's start"));
+    await expect(runStep(onCard.stepHost, step({ action: 'drag', from: { element: 6 }, to: { element: 5 } }))).rejects.toMatchObject(refusal('the drop target'));
+    expect(presses(onCard.dbg)).toEqual([]);
+    const byPoint = (secret: (at: { x: number; y: number }) => boolean) => host({ secretAt: vi.fn(async (at) => secret(at)) });
+    const fromCard = byPoint((at) => at.x === 400);
+    await expect(runStep(fromCard.stepHost, step({ action: 'drag', from: { x: 400, y: 300 }, to: { x: 600, y: 300 }, coords: 'page' }))).rejects.toMatchObject(refusal("the drag's start"));
+    const ontoCard = byPoint((at) => at.x === 600);
+    await expect(runStep(ontoCard.stepHost, step({ action: 'drag', from: { x: 400, y: 300 }, to: { x: 600, y: 300 }, coords: 'page' }))).rejects.toMatchObject(refusal('the drop target'));
+    expect([...presses(fromCard.dbg), ...presses(ontoCard.dbg)]).toEqual([]);
+    // The page slides a card field under the start as the pointer arrives: nothing is pressed.
+    const slidUnder = host();
+    const moved = onMouse(slidUnder.dbg, 'mouseMoved');
+    slidUnder.page.secretAt = vi.fn(async (at) => moved.it && at.x === 400);
+    await expect(runStep(slidUnder.stepHost, step({ action: 'drag', from: { x: 400, y: 300 }, to: { x: 600, y: 300 }, coords: 'page' }))).rejects.toMatchObject(refusal("the drag's start"));
+    expect(presses(slidUnder.dbg)).toEqual([]);
+    // Or under the drop point while the button is held: it lets go where the drag began.
+    const slidOnto = host();
+    const pressed = onMouse(slidOnto.dbg, 'mousePressed');
+    slidOnto.page.secretAt = vi.fn(async (at) => pressed.it && at.x === 600);
+    await expect(runStep(slidOnto.stepHost, step({ action: 'drag', from: { element: 6 }, to: { x: 600, y: 300 }, coords: 'page' }))).rejects.toMatchObject(refusal('the drop target'));
+    expect(mouse(slidOnto.dbg).filter((e) => e.type === 'mouseReleased')).toEqual([expect.objectContaining({ buttons: 0 })]);
+    expect(mouse(slidOnto.dbg).filter((e) => e.type === 'mouseReleased')[0].x).not.toBe(600);
   });
 
   it('checks the element a drag starts on again just before the press', async () => {

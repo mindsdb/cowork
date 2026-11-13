@@ -278,6 +278,16 @@ async function startFixtureServer(): Promise<void> {
         .end('<title>Camel card</title><style>body{margin:0;background:#fff}input{position:absolute;left:100px;top:40px;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
           + '<input id="cardNumberInput" value="4242424242424242">');
     }
+    if (url.pathname === '/drag-card') {
+      /* A card field only its name and label name for a card, a notes box
+         and a field of the person's name, each 300 by 40 at the left, 80
+         px apart. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Drag card</title><style>body{margin:0}input,textarea{position:absolute;left:0;width:300px;height:40px;margin:0;border:0;padding:0;background:#eee;font:20px sans-serif}</style>'
+          + '<input name="card_number" aria-label="Card" value="4242424242424242" style="top:0">'
+          + '<textarea aria-label="Notes" style="top:80px"></textarea>'
+          + '<input aria-label="Name" value="Ada Example" style="top:160px">');
+    }
     if (url.pathname === '/lazy-frame') {
       /* Another site's embedded form 6000 px down, which loads only once a
          scroll brings it near the view. */
@@ -902,6 +912,26 @@ test("treats a field page.json's card-field rule names for a card as a secret fi
   expect((await act({ action: 'type', element: byName['Name on card'].id, text: 'Ada' })).status).toBe(200);
   expect(await fieldValue('/card-named', '[name=cardholderName]')).toBe('Ada');
   expect(await blackIn('/card-named', [[195, 60], [195, 180], [195, 280], [50, 280]])).toEqual([true, false, true, false]);
+});
+
+test("refuses a drag that starts on a field page.json's card-field rule names for a card or drops onto one, by element and by position, and drags between ordinary fields", async () => {
+  await openAt('/drag-card');
+  const [card, notes, name] = [await element('Card'), await element('Notes'), await element('Name')];
+  const refused = async (step: Record<string, unknown>, what: string) => {
+    const reply = await act(step);
+    expect(reply.status, `${JSON.stringify(step)}: ${reply.body.toString()}`).toBe(403);
+    expect(reply.json()).toMatchObject({ error: 'password_field', message: expect.stringContaining(what) });
+  };
+  await refused({ action: 'drag', from: { element: card }, to: { element: notes } }, "the drag's start");
+  await refused({ action: 'drag', from: { x: 150, y: 20 }, to: { x: 150, y: 100 }, coords: 'page' }, "the drag's start");
+  await refused({ action: 'drag', from: { element: notes }, to: { element: card } }, 'the drop target');
+  await refused({ action: 'drag', from: { x: 150, y: 180 }, to: { x: 150, y: 20 }, coords: 'page' }, 'the drop target');
+  expect(await fieldValue('/drag-card', 'textarea')).toBe('');
+  expect(await fieldValue('/drag-card', '[name=card_number]')).toBe('4242424242424242');
+  // A drag between ordinary fields runs.
+  const ordinary = await act({ action: 'drag', from: { element: name }, to: { element: notes } });
+  expect(ordinary.status, ordinary.body.toString()).toBe(200);
+  expect(JSON.stringify(await page())).not.toContain('4242424242424242');
 });
 
 /* Runs `code` in the page at `route`, in the page's own world, as the

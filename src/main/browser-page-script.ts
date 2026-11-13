@@ -297,6 +297,10 @@ export type PageWorldRequest =
   /* Which of `points` (viewport CSS pixels) a click reaches element `id` at.
      `childFrames`: how many child frames the frame tree gives the main frame. */
   | { kind: 'hitTest'; id: number; points: ViewPoint[]; childFrames: number }
+  /* Whether a press at `at` (viewport CSS pixels) lands on a secret field
+     (isSecret), followed into open shadow roots, for a drag's start and
+     drop point. It answers a boolean. */
+  | { kind: 'secretAt'; at: ViewPoint }
   /* A step's change watch, under the step's token. `at` is where the step's
      pointer ended, or null for a step without one. */
   | { kind: 'changeStart'; token: number }
@@ -1575,6 +1579,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         return opaqueHit(hit, x, y, hidden) ? 'frame' : 'element';
       });
       return { found: true, reaches: landings.indexOf('element'), throughFrame: landings.indexOf('frame') } satisfies HitTestResult;
+    }
+    case 'secretAt': {
+      const hit = hitAt(request.at.x, request.at.y);
+      return !!hit && isSecret(hit);
     }
     case 'changeStart': {
       stopChanges();

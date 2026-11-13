@@ -420,6 +420,8 @@ export interface PageReader {
   viewport(): Promise<{ width: number; height: number }>;
   /** Which of `points` a click reaches element `id` at. */
   hitTest(id: number, points: Point[]): Promise<HitTestResult>;
+  /** Whether a press at `at` lands on a secret field. */
+  secretAt(at: Point): Promise<boolean>;
 }
 
 export interface Navigation {
@@ -623,6 +625,27 @@ async function pressPoint(
   return { at, beforePress: await frameGuard(frames, at, intoFrame, `the point (${target.x}, ${target.y})`) };
 }
 
+/* The check a drag runs on one of its ends when the step starts, and the
+   one it hands back to run just before the press there, or the release. A
+   drag that starts on a secret field takes its text out, and one that drops
+   onto one puts text in, so either is refused as typing there is (403
+   password_field), as the web pod refuses it: by the element the end names
+   (LocateResult.secret) and by what lies under its point (secretAt), and
+   just before the press or release by what lies under the point then, since
+   the page may slide a field there as the pointer arrives. `what` names the
+   end. */
+async function secretGuard(host: StepHost, target: StepTarget, at: Point, what: string): Promise<() => Promise<void>> {
+  const clear = async () => {
+    if (await host.page.secretAt(at)) throw secretField(what);
+  };
+  if ('element' in target) {
+    const located = await host.page.locate(target.element, false);
+    if (located.found && located.secret) throw secretField(what);
+  }
+  await clear();
+  return clear;
+}
+
 /* Whether an editing key now goes into a secret field: the focused one,
    followed into frames of the page's origin, or, when the focus rests on a
    frame of another site or on an element that may keep a closed shadow
@@ -716,9 +739,22 @@ export async function runStep(host: StepHost, request: StepRequest, platform: No
       return host.withInput(async (input, frames) => {
         const from = await pressPoint(host, input, frames, step.from, coords, intoFrame);
         const to = await targetPoint(host, input, frames, step.to, coords);
+        const startClear = await secretGuard(host, step.from, from.at, "the drag's start");
+        const dropClear = await secretGuard(host, step.to, to, 'the drop target');
         const where = 'element' in step.to ? `the drop point on element ${step.to.element}` : `the drop point (${step.to.x}, ${step.to.y})`;
         const beforeRelease = await frameGuard(frames, to, intoFrame, where);
-        await input.drag(from.at, to, from.beforePress, beforeRelease);
+        await input.drag(
+          from.at,
+          to,
+          async () => {
+            await from.beforePress();
+            await startClear();
+          },
+          async () => {
+            await beforeRelease();
+            await dropClear();
+          },
+        );
       });
     case 'scroll':
       return host.withInput(async (input, frames) => {

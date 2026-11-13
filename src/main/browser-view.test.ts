@@ -88,6 +88,7 @@ const electron = await vi.hoisted(async () => {
       if (code.includes('"kind":"focusedSecret"')) return this.focus;
       if (code.includes('"kind":"secretBoxes"')) return this.secrets;
       if (code.includes('"kind":"hitTest"')) return { found: true, reaches: 0, throughFrame: -1 };
+      if (code.includes('"kind":"secretAt"')) return false as boolean;
       if (code.includes('"kind":"watch"')) return { ok: true };
       const token = Number(/"token":(\d+)/.exec(code)?.[1]);
       if (code.includes('"kind":"changeStart"')) {
