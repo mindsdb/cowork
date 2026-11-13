@@ -15843,6 +15843,142 @@
       "text": "07e95863eca8"
     }
   },
+  "artifacts:documentPreview.truncatedMobile.docx": {
+    "de": {
+      "from": "92452e4e603e",
+      "text": "d15ed91fb95a"
+    },
+    "es": {
+      "from": "92452e4e603e",
+      "text": "bd2ce37977e9"
+    },
+    "fr": {
+      "from": "92452e4e603e",
+      "text": "29ef2618b189"
+    },
+    "it": {
+      "from": "92452e4e603e",
+      "text": "4ab860817213"
+    },
+    "ja": {
+      "from": "92452e4e603e",
+      "text": "697e19ea8ef8"
+    },
+    "ko": {
+      "from": "92452e4e603e",
+      "text": "85b1a43f4f99"
+    },
+    "pt-BR": {
+      "from": "92452e4e603e",
+      "text": "f229bb9f618c"
+    },
+    "zh-CN": {
+      "from": "92452e4e603e",
+      "text": "a45c217f7825"
+    }
+  },
+  "artifacts:documentPreview.truncatedMobile.pdf": {
+    "de": {
+      "from": "f4fccc9994f0",
+      "text": "499b1ac891e0"
+    },
+    "es": {
+      "from": "f4fccc9994f0",
+      "text": "e76fedfaa16a"
+    },
+    "fr": {
+      "from": "f4fccc9994f0",
+      "text": "94c3cd623e37"
+    },
+    "it": {
+      "from": "f4fccc9994f0",
+      "text": "72a49ce832fb"
+    },
+    "ja": {
+      "from": "f4fccc9994f0",
+      "text": "8d2dd38f8ecc"
+    },
+    "ko": {
+      "from": "f4fccc9994f0",
+      "text": "87ddcf591c59"
+    },
+    "pt-BR": {
+      "from": "f4fccc9994f0",
+      "text": "f5326ca5d0d0"
+    },
+    "zh-CN": {
+      "from": "f4fccc9994f0",
+      "text": "cf37c2a729d1"
+    }
+  },
+  "artifacts:documentPreview.truncatedMobile.pptx": {
+    "de": {
+      "from": "4be4cd535a25",
+      "text": "8093770af640"
+    },
+    "es": {
+      "from": "4be4cd535a25",
+      "text": "41eea6e6a376"
+    },
+    "fr": {
+      "from": "4be4cd535a25",
+      "text": "815d04ef808c"
+    },
+    "it": {
+      "from": "4be4cd535a25",
+      "text": "ee1a8394c915"
+    },
+    "ja": {
+      "from": "4be4cd535a25",
+      "text": "d435fa2866b8"
+    },
+    "ko": {
+      "from": "4be4cd535a25",
+      "text": "29b49aee72d9"
+    },
+    "pt-BR": {
+      "from": "4be4cd535a25",
+      "text": "7dca89b015d4"
+    },
+    "zh-CN": {
+      "from": "4be4cd535a25",
+      "text": "c64aac8f331c"
+    }
+  },
+  "artifacts:documentPreview.truncatedMobile.xlsx": {
+    "de": {
+      "from": "83c7ec3063d9",
+      "text": "ed99826448c5"
+    },
+    "es": {
+      "from": "83c7ec3063d9",
+      "text": "cbc54e7a6cf4"
+    },
+    "fr": {
+      "from": "83c7ec3063d9",
+      "text": "d0881723678b"
+    },
+    "it": {
+      "from": "83c7ec3063d9",
+      "text": "1cc6c44f67bb"
+    },
+    "ja": {
+      "from": "83c7ec3063d9",
+      "text": "074ccb9bd772"
+    },
+    "ko": {
+      "from": "83c7ec3063d9",
+      "text": "c3feaf069527"
+    },
+    "pt-BR": {
+      "from": "83c7ec3063d9",
+      "text": "9635c5a6fe2c"
+    },
+    "zh-CN": {
+      "from": "83c7ec3063d9",
+      "text": "eb78458c5ae4"
+    }
+  },
   "artifacts:export.export": {
     "de": {
       "from": "3664895579f0",

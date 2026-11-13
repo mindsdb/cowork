@@ -3844,3 +3844,24 @@ export function openCommentsStream(userDir, reportId, since, { onEvent, onError,
   })();
   return ctrl;
 }
+
+// Push notifications for the mobile app (ENG-4023, lib/mobilePush.ts). The
+// device token is the APNs device token on iOS and the FCM registration token
+// on Android. Both answer 204. A server without push answers 404/405/501; the
+// error carries `status` so the caller can tell that apart from a failure.
+export async function registerPushDevice({ token, platform, appVersion = null, environment = null }) {
+  return req('/push/devices', {
+    method: 'POST',
+    body: JSON.stringify({ token, platform, app_version: appVersion, environment }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+// Sign-out runs this before the tokens are cleared, so keep it short.
+export async function unregisterPushDevice(token, { timeoutMs = 3_000 } = {}) {
+  return req('/push/devices', {
+    method: 'DELETE',
+    body: JSON.stringify({ token }),
+    timeoutMs,
+  });
+}

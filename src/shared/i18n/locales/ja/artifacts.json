@@ -24,6 +24,12 @@
       "readyTimeoutMs": "プレビューに時間がかかりすぎました。プレビューの上限である{seconds}秒以内に開始されませんでした。",
       "progressTimeoutMs": "プレビューに時間がかかりすぎました。{seconds}秒間（プレビューの上限）進行がありませんでした。"
     },
+    "truncatedMobile": {
+      "xlsx": "各シートの最大{rows, number}行・{columns, number}列を表示しています。",
+      "pptx": "{count, plural, other {最初の#枚のスライドを表示しています。}}",
+      "pdf": "最初の{pages, number}ページを表示しています。",
+      "docx": "このドキュメントの一部を表示しています。"
+    },
     "truncated": {
       "xlsx": "各シートの最大{rows, number}行・{columns, number}列を表示しています。シート全体は{action, select, download {ダウンロード} other {「開く」}}で確認できます。",
       "pptx": "{count, plural, other {最初の#枚のスライドを表示しています。}}すべてのスライドは{action, select, download {ダウンロード} other {「開く」}}で確認できます。",

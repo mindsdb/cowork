@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="color-scheme" content="light dark" />
+    <title>MindsHub Cowork</title>
+    <style>
+      :root {
+        --bg: #F6F8F9;
+        --fg: #0E1518;
+        --muted: #5B6B71;
+        --accent: #1F9CB0;
+        --accent-fg: #FFFFFF;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0E1518;
+          --fg: #E8EEF0;
+          --muted: #8FA1A7;
+          --accent: #1F9CB0;
+          --accent-fg: #FFFFFF;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+          max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      main { max-width: 320px; text-align: center; }
+      h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+      p { color: var(--muted); margin: 0 0 24px; }
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 10px;
+        background: var(--accent);
+        color: var(--accent-fg);
+        font: inherit;
+        font-weight: 600;
+        padding: 12px 28px;
+        min-width: 160px;
+      }
+      button:active { opacity: 0.8; }
+      button[disabled] { opacity: 0.6; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Can't reach MindsHub Cowork</h1>
+      <p>Check your internet connection and try again.</p>
+      <button id="retry" type="button">Try again</button>
+    </main>
+    <script>
+      // The deployment this build loads. scripts/cap-copy-before.mjs writes
+      // the URL in here on every cap sync: this page cannot load a sibling
+      // file, because with server.url set Android serves only the page itself.
+      var REMOTE_URL = '__COWORK_REMOTE_URL__';
+      var button = document.getElementById('retry');
+      function retry() {
+        button.disabled = true;
+        button.textContent = 'Connecting…';
+        window.location.replace(REMOTE_URL);
+      }
+      button.addEventListener('click', retry);
+      // Come back on our own when the connection returns.
+      window.addEventListener('online', retry);
+    </script>
+  </body>
+</html>

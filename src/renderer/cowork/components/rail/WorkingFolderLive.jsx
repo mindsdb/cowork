@@ -1,3 +1,4 @@
+import { downloadUnavailableMessage } from '../../lib/browserDownload';
 // Artifacts rail card body.
 //
 // Strictly an "artifacts" surface: data source is `GET /v1/artifacts`
@@ -346,7 +347,7 @@ export function WorkingFolderLive({
         onClick: async () => {
           setRowError('');
           setRowNote('');
-          if (!(await downloadArtifactFile(a))) setRowError(t('rail.artifacts.noServableFile'));
+          if (!(await downloadArtifactFile(a))) setRowError(downloadUnavailableMessage(t('rail.artifacts.noServableFile')));
         },
       },
       canShareLiveApp(a, liveApps) && {
@@ -387,7 +388,7 @@ export function WorkingFolderLive({
       }
       /* Nothing to open and nothing to save: an unshared fullstack app, whose
          draft is only its shell index.html, or a card with no primary file. */
-      setRowError(t('rail.artifacts.noServableFile'));
+      setRowError(downloadUnavailableMessage(t('rail.artifacts.noServableFile')));
       return;
     }
     try {
@@ -477,7 +478,7 @@ export function WorkingFolderLive({
       if (await downloadArtifactFile(artifact)) {
         setRowNote(noPreviewDownloadedNote());
       } else {
-        setRowError(t('rail.artifacts.noServableFile'));
+        setRowError(downloadUnavailableMessage(t('rail.artifacts.noServableFile')));
       }
     } else if (target === 'os') {
       onOpen(artifact.path);

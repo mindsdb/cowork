@@ -24,6 +24,12 @@
       "readyTimeoutMs": "The preview took too long: it didn't start within {seconds} seconds, the preview limit.",
       "progressTimeoutMs": "The preview took too long: it made no progress for {seconds} seconds, the preview limit."
     },
+    "truncatedMobile": {
+      "xlsx": "Showing up to {rows, number} rows and {columns, number} columns of each sheet.",
+      "pptx": "{count, plural, one {Showing the first slide.} other {Showing the first # slides.}}",
+      "pdf": "Showing the first {pages, number} pages.",
+      "docx": "Showing part of this document."
+    },
     "truncated": {
       "xlsx": "Showing up to {rows, number} rows and {columns, number} columns of each sheet. {action, select, download {Download} other {Open}} has the full sheet.",
       "pptx": "{count, plural, one {Showing the first slide.} other {Showing the first # slides.}} {action, select, download {Download} other {Open}} has the full deck.",

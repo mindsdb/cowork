@@ -24,6 +24,12 @@
       "readyTimeoutMs": "L’aperçu a pris trop de temps : il n’a pas démarré en {seconds} secondes, la limite de l’aperçu.",
       "progressTimeoutMs": "L’aperçu a pris trop de temps : il n’a pas progressé pendant {seconds} secondes, la limite de l’aperçu."
     },
+    "truncatedMobile": {
+      "xlsx": "Affichage de {rows, number} lignes et {columns, number} colonnes au maximum par feuille.",
+      "pptx": "{count, plural, one {Affichage de la première diapositive.} other {Affichage des # premières diapositives.}}",
+      "pdf": "Affichage des {pages, number} premières pages.",
+      "docx": "Affichage d’une partie de ce document."
+    },
     "truncated": {
       "xlsx": "Affichage de {rows, number} lignes et {columns, number} colonnes au maximum par feuille. {action, select, download {Téléchargez le fichier} other {Ouvrez le fichier}} pour voir la feuille entière.",
       "pptx": "{count, plural, one {Affichage de la première diapositive.} other {Affichage des # premières diapositives.}} {action, select, download {Téléchargez le fichier} other {Ouvrez le fichier}} pour voir la présentation entière.",
