@@ -1,0 +1,6 @@
+# fastlane for the signed store builds (ENG-4023). Run from mobile/:
+#   bundle install && bundle exec fastlane ios beta | android internal
+# CI: .github/workflows/build-ios.yml and build-android.yml.
+source "https://rubygems.org"
+
+gem "fastlane", "~> 2.241"

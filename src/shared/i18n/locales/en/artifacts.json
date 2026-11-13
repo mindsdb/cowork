@@ -24,6 +24,12 @@
       "readyTimeoutMs": "The preview took too long: it didn't start within {seconds} seconds, the preview limit.",
       "progressTimeoutMs": "The preview took too long: it made no progress for {seconds} seconds, the preview limit."
     },
+    "truncatedMobile": {
+      "xlsx": "Showing up to {rows, number} rows and {columns, number} columns of each sheet.",
+      "pptx": "{count, plural, one {Showing the first slide.} other {Showing the first # slides.}}",
+      "pdf": "Showing the first {pages, number} pages.",
+      "docx": "Showing part of this document."
+    },
     "truncated": {
       "xlsx": "Showing up to {rows, number} rows and {columns, number} columns of each sheet. {action, select, download {Download} other {Open}} has the full sheet.",
       "pptx": "{count, plural, one {Showing the first slide.} other {Showing the first # slides.}} {action, select, download {Download} other {Open}} has the full deck.",
@@ -629,6 +635,39 @@
         "hint": "Compares tone and following instructions",
         "prompt": "Write a launch announcement for a new dark mode in a note-taking app in three versions: a tweet under 280 characters, a friendly email under 120 words, and a changelog entry under 50 words. Each should sound right for its channel."
       }
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "Stats",
+      "hide": "Hide stats"
+    },
+    "title": "Stats",
+    "close": "Close stats panel",
+    "loading": "Loading stats",
+    "retry": "Retry",
+    "trackViews": "Track views",
+    "trackingOff": "Tracking is off. Turn it on to start counting views.",
+    "metrics": {
+      "viewsInPeriod": "Views (30 days)",
+      "uniqueViewers": "Unique viewers (30 days)",
+      "totalViews": "Total views",
+      "lastViewed": "Last viewed"
+    },
+    "daysInUtc": "Days in UTC",
+    "chartLabel": "Views per day",
+    "viewers": {
+      "email": "Email",
+      "lastSeen": "Last seen",
+      "restrictedOnly": "Viewer names are recorded only when sharing is restricted."
+    },
+    "noViews": "No views yet",
+    "errors": {
+      "otherAccount": "Stats are not available for this account.",
+      "unavailable": "Stats are not available for this artifact.",
+      "reconnect": "Reconnect MindsHub to see stats.",
+      "temporarilyUnavailable": "Stats are temporarily unavailable.",
+      "loadFailed": "Could not load stats."
     }
   }
 }

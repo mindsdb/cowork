@@ -24,6 +24,12 @@
       "readyTimeoutMs": "미리 보기에 시간이 너무 오래 걸렸습니다. 미리 보기 한도인 {seconds}초 안에 시작되지 않았습니다.",
       "progressTimeoutMs": "미리 보기에 시간이 너무 오래 걸렸습니다. 미리 보기 한도인 {seconds}초 동안 진행되지 않았습니다."
     },
+    "truncatedMobile": {
+      "xlsx": "각 시트에서 최대 {rows, number}행, {columns, number}열까지 표시합니다.",
+      "pptx": "{count, plural, other {처음 #개 슬라이드를 표시합니다.}}",
+      "pdf": "처음 {pages, number}페이지를 표시합니다.",
+      "docx": "이 문서의 일부를 표시합니다."
+    },
     "truncated": {
       "xlsx": "각 시트에서 최대 {rows, number}행, {columns, number}열까지 표시합니다. 전체 시트는 {action, select, download {다운로드하여} other {‘열기’로}} 확인할 수 있습니다.",
       "pptx": "{count, plural, other {처음 #개 슬라이드를 표시합니다.}} 전체 슬라이드는 {action, select, download {다운로드하여} other {‘열기’로}} 확인할 수 있습니다.",
@@ -629,6 +635,39 @@
         "hint": "어조와 지시 사항 준수 비교",
         "prompt": "메모 앱의 새 다크 모드 출시 공지를 세 가지 버전으로 작성해 주세요. 280자 이내의 트윗, 120단어 이내의 친근한 이메일, 50단어 이내의 변경 로그 항목입니다. 각각 해당 채널에 어울리는 톤이어야 합니다."
       }
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "통계",
+      "hide": "통계 숨기기"
+    },
+    "title": "통계",
+    "close": "통계 패널 닫기",
+    "loading": "통계 불러오는 중",
+    "retry": "다시 시도",
+    "trackViews": "조회수 집계",
+    "trackingOff": "집계가 꺼져 있습니다. 켜면 조회수 집계가 시작됩니다.",
+    "metrics": {
+      "viewsInPeriod": "조회수(30일)",
+      "uniqueViewers": "순 방문자(30일)",
+      "totalViews": "총 조회수",
+      "lastViewed": "마지막 조회"
+    },
+    "daysInUtc": "날짜는 UTC 기준",
+    "chartLabel": "일별 조회수",
+    "viewers": {
+      "email": "이메일",
+      "lastSeen": "마지막 방문",
+      "restrictedOnly": "방문자 이름은 공유가 제한된 경우에만 기록됩니다."
+    },
+    "noViews": "아직 조회수가 없습니다",
+    "errors": {
+      "otherAccount": "이 계정에서는 통계를 사용할 수 없습니다.",
+      "unavailable": "이 아티팩트에서는 통계를 사용할 수 없습니다.",
+      "reconnect": "통계를 보려면 MindsHub를 다시 연결하세요.",
+      "temporarilyUnavailable": "통계를 일시적으로 사용할 수 없습니다.",
+      "loadFailed": "통계를 불러올 수 없습니다."
     }
   }
 }

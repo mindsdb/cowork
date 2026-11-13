@@ -116,7 +116,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  document.head.querySelectorAll('meta[name="cowork-model-picker"]').forEach((node) => node.remove());
+  document.head.querySelectorAll('meta[name="cowork-model-picker"], meta[name="cowork-model-efforts"]').forEach((node) => node.remove());
 });
 
 async function send(user, text) {
@@ -183,6 +183,53 @@ describe("the operator's model picker", () => {
     const stream = await send(user, 'Say hello again');
     expect(stream.kind).toBe('reply');
     expect(stream.opts.model).toBe(sent);
+    // A pin the picker no longer offers goes out as no model and keeps its pin.
+    expect(stream.opts.resetPicks).toEqual([]);
+  });
+
+  it('resets the saved model when a reopened conversation goes back to the operator default', async () => {
+    setMode('default');
+    spies.fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general', model: 'opus-5-5' },
+    ]);
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: savedTask('opus-5-5') });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+    await user.click(await screen.findByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: 'Operator default' }));
+    const stream = await send(user, 'Say hello again');
+    expect(stream.kind).toBe('reply');
+    expect(stream.opts.model).toBe(MODEL_ROUTER_ID);
+    expect(stream.opts.resetPicks).toEqual(['model']);
+  });
+
+  it("keeps a reopened conversation with no saved picks on the default, whatever the home composer shows", async () => {
+    setMode('open');
+    const efforts = document.createElement('meta');
+    efforts.name = 'cowork-model-efforts';
+    efforts.content = JSON.stringify({ models: { 'opus-5-5': ['xhigh'] }, operatorDefault: ['low', 'medium'] });
+    document.head.append(efforts);
+    // What the list returns for a conversation that went back to the default: no model, no effort.
+    spies.fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general', model: null, reasoningEffort: null },
+    ]);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+    await user.click(await goHome(user));
+    await user.click(screen.getByRole('option', { name: 'Opus 5.5' }));
+    await user.click(screen.getByRole('combobox', { name: 'Reasoning effort' }));
+    await user.click(screen.getByRole('option', { name: 'Xhigh' }));
+
+    await user.click(screen.getByText('Alpha task'));
+    expect(await screen.findByRole('combobox', { name: 'Choose model' })).not.toHaveTextContent('Opus 5.5');
+    expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveTextContent('Default effort');
+    const stream = await send(user, 'Say hello again');
+    expect(stream.kind).toBe('reply');
+    expect(stream.opts.model).not.toBe('opus-5-5');
+    expect(stream.opts.reasoningEffort).toBeNull();
+    expect(stream.opts.resetPicks).toEqual([]);
   });
 });
 

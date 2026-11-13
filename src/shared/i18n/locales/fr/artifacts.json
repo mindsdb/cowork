@@ -24,6 +24,12 @@
       "readyTimeoutMs": "L’aperçu a pris trop de temps : il n’a pas démarré en {seconds} secondes, la limite de l’aperçu.",
       "progressTimeoutMs": "L’aperçu a pris trop de temps : il n’a pas progressé pendant {seconds} secondes, la limite de l’aperçu."
     },
+    "truncatedMobile": {
+      "xlsx": "Affichage de {rows, number} lignes et {columns, number} colonnes au maximum par feuille.",
+      "pptx": "{count, plural, one {Affichage de la première diapositive.} other {Affichage des # premières diapositives.}}",
+      "pdf": "Affichage des {pages, number} premières pages.",
+      "docx": "Affichage d’une partie de ce document."
+    },
     "truncated": {
       "xlsx": "Affichage de {rows, number} lignes et {columns, number} colonnes au maximum par feuille. {action, select, download {Téléchargez le fichier} other {Ouvrez le fichier}} pour voir la feuille entière.",
       "pptx": "{count, plural, one {Affichage de la première diapositive.} other {Affichage des # premières diapositives.}} {action, select, download {Téléchargez le fichier} other {Ouvrez le fichier}} pour voir la présentation entière.",
@@ -629,6 +635,39 @@
         "hint": "Compare le ton et le respect des consignes",
         "prompt": "Rédigez une annonce de lancement pour un nouveau mode sombre dans une application de prise de notes, en trois versions : un tweet de moins de 280 caractères, un e-mail chaleureux de moins de 120 mots et une entrée de journal des modifications de moins de 50 mots. Chacune doit avoir le ton adapté à son canal."
       }
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "Statistiques",
+      "hide": "Masquer les statistiques"
+    },
+    "title": "Statistiques",
+    "close": "Fermer le panneau des statistiques",
+    "loading": "Chargement des statistiques",
+    "retry": "Réessayer",
+    "trackViews": "Compter les vues",
+    "trackingOff": "Le suivi est désactivé. Activez-le pour commencer à compter les vues.",
+    "metrics": {
+      "viewsInPeriod": "Vues (30 jours)",
+      "uniqueViewers": "Visiteurs uniques (30 jours)",
+      "totalViews": "Vues au total",
+      "lastViewed": "Dernière vue"
+    },
+    "daysInUtc": "Jours en UTC",
+    "chartLabel": "Vues par jour",
+    "viewers": {
+      "email": "E-mail",
+      "lastSeen": "Dernière visite",
+      "restrictedOnly": "Les noms des visiteurs ne sont enregistrés que lorsque le partage est restreint."
+    },
+    "noViews": "Aucune vue pour l’instant",
+    "errors": {
+      "otherAccount": "Les statistiques ne sont pas disponibles pour ce compte.",
+      "unavailable": "Les statistiques ne sont pas disponibles pour cet artefact.",
+      "reconnect": "Reconnectez MindsHub pour voir les statistiques.",
+      "temporarilyUnavailable": "Les statistiques sont temporairement indisponibles.",
+      "loadFailed": "Impossible de charger les statistiques."
     }
   }
 }

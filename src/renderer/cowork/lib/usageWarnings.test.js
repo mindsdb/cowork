@@ -12,6 +12,7 @@ import {
   formatResetTime,
   freeAllowanceState,
   isBalanceEmpty,
+  modelAccessSignature,
   allowanceStopCopy,
   freeServingPausedCopy,
   budgetExceededCopy,
@@ -650,6 +651,45 @@ describe('isBalanceEmpty', () => {
     ['missing from the read', null],
   ])('does not read a wallet %s as empty', (_label, balance) => {
     expect(isBalanceEmpty(balance)).toBe(false);
+  });
+});
+
+describe('modelAccessSignature', () => {
+  it('has no signature for an unreachable or missing read', () => {
+    expect(modelAccessSignature(null)).toBeNull();
+    expect(modelAccessSignature({ reachable: false })).toBeNull();
+  });
+
+  it('changes when the wallet empties or fills', () => {
+    const funded = modelAccessSignature(usage());
+    const empty = modelAccessSignature(usage({ balance: { usd: 0, canConsume: false, alert: 'depleted' } }));
+    expect(empty).not.toBe(funded);
+  });
+
+  it('changes when the free allowance is spent', () => {
+    expect(modelAccessSignature(usage({ freeTokens: at(0) }))).not.toBe(modelAccessSignature(usage()));
+  });
+
+  it('reads the wallet from walletCanConsume for a member whose balance is null', () => {
+    const member = (walletCanConsume) => usage({ isBillingOwner: false, balance: null, autoTopUp: null, walletCanConsume });
+    expect(modelAccessSignature(member(true))).not.toBe(modelAccessSignature(member(false)));
+  });
+
+  it('prefers walletCanConsume over the balance when both are present', () => {
+    expect(modelAccessSignature(usage({ walletCanConsume: false }))).toBe(
+      modelAccessSignature(usage({ balance: { usd: 0, canConsume: false, alert: 'depleted' } })),
+    );
+  });
+
+  it('falls back to the balance when walletCanConsume is absent (older servers)', () => {
+    const empty = usage({ balance: { usd: 0, canConsume: false, alert: 'depleted' } });
+    expect(modelAccessSignature(empty)).not.toBe(modelAccessSignature(usage()));
+    expect(modelAccessSignature({ ...empty, walletCanConsume: null })).toBe(modelAccessSignature(empty));
+  });
+
+  it('ignores a balance amount change that does not cross empty', () => {
+    expect(modelAccessSignature(usage({ balance: { usd: 3, canConsume: true, alert: 'low' } })))
+      .toBe(modelAccessSignature(usage()));
   });
 });
 

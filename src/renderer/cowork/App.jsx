@@ -79,8 +79,10 @@ import { useServerControl } from './hooks/useServerControl';
 import { useSidebarNav } from './hooks/useSidebarNav';
 import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
+import { useModelAvailabilityTriggers } from './hooks/useModelAvailabilityTriggers';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
+import { createAvailabilityRefresher, mergeChangesNothing, REFRESH_SCOPE, serverHonorsRefreshScope } from './lib/modelRefresh';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useOrgBranding } from './hooks/useOrgBranding';
@@ -138,6 +140,7 @@ import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
 import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
 import { PLATFORM_UI } from '../lib/deployment';
+import { noteMobilePushTaskStarted, setMobilePushNavigator } from '../lib/mobilePush';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -601,11 +604,24 @@ export default function App() {
   );
 }
 
+// The picks a send to `task` goes back to the default on: its own Model Router
+// or "Operator default" pick, and an effort the composer left on "Default"
+// (''). Both go out as no value, which cowork-server reads as "keep the saved
+// pick", as it must for a pinned model the picker no longer offers. Naming
+// them in reset_picks makes the server clear them, so a reload shows the
+// default too. A same-tick override sends a value, so it resets nothing.
+export function turnResetPicks(task, { modelOverride, effortOverride } = {}) {
+  return [
+    ...(!modelOverride && task?.model === MODEL_ROUTER_ID ? ['model'] : []),
+    ...(effortOverride == null && task?.reasoningEffort === '' ? ['reasoning_effort'] : []),
+  ];
+}
+
 // Cmd+K's starting list before anything is typed: the five most recently
 // updated tasks and the first three projects, from state App already holds.
-function searchRecents(tasks, projects) {
+export function searchRecents(tasks, projects) {
   const labelFor = (task) => {
-    const project = projects.find((p) => p.name === task.projectId || p.path === task.projectPath);
+    const project = resolveTaskProject(task, projects);
     return project ? projectLabel(project) : undefined;
   };
   return [
@@ -1795,23 +1811,22 @@ function AppCore() {
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
-  // Re-check wallet availability when the composer's model menu opens, so a top-up
-  // made outside the app unlocks its models without a restart. This is what makes
-  // it safe for the composer to DISABLE a locked model at all: `modelEnabled` is
-  // otherwise refreshed only by the Settings picker, so a user who hits "Add
-  // credits" (which opens an external browser), tops up and comes back would find
-  // the row still greyed until they visited Settings or restarted. Settings has had
-  // this since ENG-412; this is parity with it.
-  //
-  // A failed refresh leaves the map we hold in place — mergeRecommendedModels never
-  // lets an empty response overwrite it, and a model absent from the map counts as
-  // available — so this can never lock the picker.
-  const refreshModelAvailability = useCallback(async () => {
-    const data = await fetchRecommendedModels({ refresh: true });
-    // keepOrder: the menu is already open on the list we hold when this lands.
-    const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
-    if (merged) setSettings((prev) => ({ ...prev, ...merged }));
-  }, [settings]);
+  // One throttled re-check for every picker outside Settings ('all') and the availability
+  // triggers ('minds'). A deferred call is queued, not dropped; stale responses are dropped.
+  const availability = useRef(null);
+  if (!availability.current) {
+    availability.current = createAvailabilityRefresher({
+      fetch: (scope) => fetchRecommendedModels({ refresh: true, scope }),
+      // keepOrder: a menu may be open on this list. Skipping a no-op keeps App from re-rendering per poll.
+      apply: (data) => setSettings((prev) => {
+        const merged = mergeRecommendedModels(prev, data, { keepOrder: true });
+        return merged && !mergeChangesNothing(prev, merged) ? { ...prev, ...merged } : prev;
+      }),
+    });
+  }
+  useEffect(() => () => availability.current?.cancel(), []);
+  const refreshModelAvailability = useCallback(() => availability.current.refresh(REFRESH_SCOPE.all), []);
+  const refreshCreditLocks = useCallback(() => availability.current.refresh(REFRESH_SCOPE.minds), []);
 
   const modelMeta = useMemo(() => ({
     modelProviders: settings.modelProviders,
@@ -2108,6 +2123,9 @@ function AppCore() {
   // web). It's stateless w.r.t. AppCore — nav state flows through context.
   const routerRef = useRef(null);
   if (!routerRef.current) routerRef.current = createCoworkRouter();
+  // Mobile app (ENG-4023): a tapped push notification opens its route here,
+  // including one tapped before the router existed (cold start). No-op elsewhere.
+  useEffect(() => setMobilePushNavigator((path) => { routerRef.current?.navigate(path); }), []);
   const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
@@ -2460,10 +2478,13 @@ function AppCore() {
     ? (sendableModelId(currentTask.model) === MODEL_ROUTER_ID
         ? MODEL_ROUTER
         : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: tApp('tasks.configuredPlanningModel') }))
-    : selectedModel;
-  // Sibling to currentTaskModel (ENG-1940): the task's own effort pick if
-  // it has one, else whatever the home composer currently shows.
-  const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
+    : (currentTask ? MODEL_ROUTER : selectedModel);
+  /* A task with no saved pick is on the default: Model Router and the
+     "Default" effort (''), which is what the server runs a turn that sends
+     neither on. The home composer's picks seed a new task when it is created;
+     an existing task never borrows them, since a send would then save them
+     onto the conversation. */
+  const currentTaskEffort = currentTask ? (currentTask.reasoningEffort ?? '') : selectedEffort;
 
   /* "Switch to MindsHub Air" escape hatch on the model-denial and drained-wallet
      cards (ENG-1304): offered only while Air itself is payable — the free
@@ -3411,6 +3432,14 @@ function AppCore() {
   // finishes too, so a task that just spent the last free tokens flips the
   // notice without waiting for the next tick.
   const { usage: hubUsage, refresh: refreshHubUsage } = useHubUsage(codeAccountUser);
+  useModelAvailabilityTriggers({
+    refresh: refreshCreditLocks,
+    modelEnabled: settings.modelEnabled,
+    modelDisabledReasons: settings.modelDisabledReasons,
+    mindsIds: settings.recommendedModels?.['minds-cloud'],
+    usage: hubUsage,
+    canNarrowRefresh: () => serverHonorsRefreshScope(REFRESH_SCOPE.minds),
+  });
   const hubUsageCtx = useMemo(() => ({
     usage: hubUsage,
     providerType: providerValueToType(settings.planningProvider) || 'minds-cloud',
@@ -3857,6 +3886,9 @@ function AppCore() {
     setTasks((prev) => [newT, ...prev]);
     setActiveTaskId(taskId);
     setRoute('task');
+    // Mobile app (ENG-4023): the first task started is when the app offers
+    // "notify me when tasks finish" (once; no-op outside the app).
+    noteMobilePushTaskStarted();
 
     let resolvedId = taskId;
     /*
@@ -4331,23 +4363,14 @@ function AppCore() {
     // opts.modelOverride carries a same-tick model switch (the "Switch to
     // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
     // closure, so a setTasks({...model}) just before this call would not be
-    // visible here yet. The `selectedModel` fallback is the on-screen model
-    // picker, so only a live send to the task on screen may inherit it; a
-    // drained off-screen task must not pick up whatever model the current
-    // view happens to show — it falls through to the server default instead.
-    const taskModel = sendableModelId(opts.modelOverride
-      || targetTask.model
-      || (opts.targetTask ? null : selectedModel?.id)
-      || null);
+    // visible here yet. A task with no pick sends none and runs on the
+    // server default, as currentTaskModel shows it; it never borrows the
+    // home composer's pick, which the server would then save on the chat.
+    const taskModel = sendableModelId(opts.modelOverride || targetTask.model || null);
     // Sibling precedence chain to taskModel (ENG-1940): a same-tick
-    // override, else the task's own saved pick, else — only for a live
-    // send to the task on screen — the home composer's current pick.
-    // selectedEffort defaults to '', so the trailing `|| null` collapses
-    // that (and any other falsy pick) to null the same way taskModel's does.
-    const taskEffort = (opts.effortOverride
-      ?? targetTask.reasoningEffort
-      ?? (opts.targetTask ? null : selectedEffort))
-      || null;
+    // override, else the task's own saved pick. The "Default" effort ('')
+    // collapses to null, so it sends no effort.
+    const taskEffort = (opts.effortOverride ?? targetTask.reasoningEffort) || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
@@ -4483,6 +4506,7 @@ function AppCore() {
       projectPath: taskProjectPath,
       model: taskModel,
       reasoningEffort: taskEffort,
+      resetPicks: turnResetPicks(targetTask, opts),
       attachmentIds,
       disabledConnections: disabledForSend,
       browserOff: browserOffForSend,
@@ -6490,6 +6514,7 @@ function AppCore() {
             scheduled={scheduled}
             projects={runnableProjects}
             models={modelOptions}
+            modelMeta={modelMeta}
             selectedProject={runnableSelectedProject}
             selectedModel={selectedModel}
             onCreate={handleCreateSchedule}
@@ -6517,6 +6542,7 @@ function AppCore() {
             task={scheduled.find((s) => s.id === selectedScheduleId) || null}
             projects={runnableProjects}
             models={modelOptions}
+            modelMeta={modelMeta}
             agentLabel={agentLabel}
             onBack={() => { setSelectedScheduleId(null); setRoute('scheduled'); }}
             onUpdate={handleUpdateSchedule}

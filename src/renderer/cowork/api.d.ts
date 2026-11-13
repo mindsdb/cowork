@@ -33,6 +33,8 @@ export interface RecommendedModels {
   modelDisabledReasons?: Record<string, string>;
   /** MindsHub's display label per model id. Absent ⇒ derive from the id. */
   modelLabels?: Record<string, string>;
+  /** Refresh scopes the server honors ('all', 'minds'); absent on servers that predate them. */
+  refreshScopes?: string[];
   /** MindsHub's authoritative maker per model id, deciding the picker section. */
   modelProviders?: Record<string, string>;
   /**
@@ -48,7 +50,7 @@ export interface RecommendedModels {
  * Fetch the backend's recommended-models map (MindsHub's live `/v1/models`
  * for minds-cloud). Returns null if the request fails.
  */
-export function fetchRecommendedModels(): Promise<RecommendedModels | null>;
+export function fetchRecommendedModels(opts?: { refresh?: boolean; scope?: 'all' | 'minds' }): Promise<RecommendedModels | null>;
 
 export interface ConnectorConnection {
   engine: string;
@@ -202,3 +204,13 @@ export function publishArtifact(
   path: string,
   access?: import('./lib/sharingContract').ArtifactAccessPayload | null,
 ): Promise<Record<string, unknown>>;
+
+/** Mobile app push (ENG-4023): register this device's APNs/FCM token. Rejects with `status` on a refusal. */
+export function registerPushDevice(body: {
+  token: string;
+  platform: 'ios' | 'android';
+  appVersion?: string | null;
+  environment?: 'production' | 'sandbox' | null;
+}): Promise<{ ok: true } | Record<string, unknown>>;
+/** Mobile app push: remove this device's token from the signed-in user. */
+export function unregisterPushDevice(token: string, options?: { timeoutMs?: number }): Promise<{ ok: true } | Record<string, unknown>>;

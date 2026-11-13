@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Notification tint (brand teal), see AndroidManifest.xml. -->
+    <color name="push_accent">#1F9CB0</color>
+</resources>

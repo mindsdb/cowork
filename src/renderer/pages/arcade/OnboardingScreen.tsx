@@ -702,7 +702,7 @@ export default function OnboardingScreen({
           {/* ENG-2311: the onboarding email sent minutes before this screen
               makes getting the desktop app step 1 of 5, and this page said
               nothing about it. An offer beside Continue, not ahead of it. */}
-          <div style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
+          {!host.isMobileShell && <div style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
             {t('onboarding.ready.desktop')}{' '}
             <button
               type="button"
@@ -716,7 +716,7 @@ export default function OnboardingScreen({
             >
               {t('onboarding.ready.getDesktop')}
             </button>
-          </div>
+          </div>}
           <div style={{ fontSize: 10.5, lineHeight: 1.5, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 420 }}>
             {t('onboarding.agreePrefix')}{' '}
             <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>{t('legal.terms')}</button>{' '}

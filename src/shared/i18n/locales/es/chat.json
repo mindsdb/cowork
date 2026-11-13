@@ -467,7 +467,10 @@
         "1": "Crear una landing page para un lanzamiento",
         "2": "Crear un sitio web tipo panel",
         "3": "Crear un sitio web de portafolio",
-        "4": "Crear un blog para la empresa"
+        "4": "Crear un blog para la empresa",
+        "5": "Crear una página de estado del proyecto",
+        "6": "Crear una invitación para un offsite del equipo",
+        "7": "Crear una página para anunciar una función"
       }
     },
     "apps": {
@@ -496,7 +499,8 @@
         "2": "Crear una lista de verificación para due diligence de adquisición",
         "3": "Comparar los mejores modelos VLM con datos de Hugging Face",
         "4": "Calcular la TIR de flujos de caja de inversión",
-        "5": "Limpiar mi hoja de cálculo y graficarla"
+        "5": "Limpiar mi hoja de cálculo y graficarla",
+        "6": "Extraer los términos clave de un contrato"
       }
     },
     "visualization": {
@@ -507,7 +511,9 @@
         "0": "Mostrar la actividad de ventas semanal en un mapa de calor",
         "1": "Generar un análisis de abandono de clientes",
         "2": "Seguir KPI mensuales por departamento",
-        "3": "Analizar competidores por segmento de mercado"
+        "3": "Analizar competidores por segmento de mercado",
+        "4": "Crear un cronograma de implementación del proyecto",
+        "5": "Representar un proceso como diagrama"
       }
     },
     "wide-research": {
@@ -522,7 +528,10 @@
         "4": "Investigar perfiles de clientes y mapas de recorrido",
         "5": "Resumir un documento y redactar mi respuesta",
         "6": "Elegir un modelo local adecuado para mi computadora",
-        "7": "Revisar mis pendientes de esta semana"
+        "7": "Revisar mis pendientes de esta semana",
+        "8": "Investigar un prospecto y redactar el primer contacto",
+        "9": "Asesorarme sobre una venta a partir de la transcripción de una llamada",
+        "10": "Convertir notas de reunión en tareas pendientes"
       }
     },
     "games": {

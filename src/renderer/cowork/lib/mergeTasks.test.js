@@ -1,6 +1,6 @@
-// ENG-1304 (PR #580 review): the per-task model pin is client-only state —
-// the server returns model: null on every conversation, so the merge must
-// carry the local value or a fetchSessions wipes the Switch-to-Air pin.
+/* A model or effort pick lives on the task until the next send saves it on
+   the server, so the merge must carry the local value or a fetchSessions
+   wipes it (the Switch-to-Air pin, the effort pill). */
 import { describe, it, expect } from 'vitest';
 import { mergeTasksFromServer } from './mergeTasks';
 
@@ -33,6 +33,49 @@ describe('mergeTasksFromServer keeps the local model pin', () => {
   it('takes the server model for tasks with no local counterpart', () => {
     const merged = mergeTasksFromServer([serverTask({ model: 'sonnet' })], []);
     expect(merged[0].model).toBe('sonnet');
+  });
+});
+
+describe('mergeTasksFromServer keeps the local effort pick', () => {
+  it('when the local task has no live messages', () => {
+    const local = [serverTask({ reasoningEffort: 'medium' })];
+    const merged = mergeTasksFromServer([serverTask({ reasoningEffort: 'low' })], local);
+    expect(merged[0].reasoningEffort).toBe('medium');
+  });
+
+  it('when the server has more assistant messages than the client', () => {
+    const local = [serverTask({ reasoningEffort: 'medium', messages: [{ role: 'user', content: 'x' }] })];
+    const server = [serverTask({
+      reasoningEffort: 'low',
+      messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }],
+    })];
+    expect(mergeTasksFromServer(server, local)[0].reasoningEffort).toBe('medium');
+  });
+
+  it('when local wins the conversation surface', () => {
+    const local = [serverTask({
+      reasoningEffort: 'medium',
+      messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }],
+    })];
+    const server = [serverTask({ reasoningEffort: 'low', messages: [{ role: 'user', content: 'x' }] })];
+    expect(mergeTasksFromServer(server, local)[0].reasoningEffort).toBe('medium');
+  });
+
+  it('keeps a pick the composer cleared, rather than the server\'s older one', () => {
+    const local = [serverTask({ reasoningEffort: '' })];
+    const merged = mergeTasksFromServer([serverTask({ reasoningEffort: 'low' })], local);
+    expect(merged[0].reasoningEffort).toBe('');
+  });
+
+  it('takes the server effort when the local task has none', () => {
+    const local = [serverTask({ reasoningEffort: null })];
+    const merged = mergeTasksFromServer([serverTask({ reasoningEffort: 'high' })], local);
+    expect(merged[0].reasoningEffort).toBe('high');
+  });
+
+  it('takes the server effort for tasks with no local counterpart', () => {
+    const merged = mergeTasksFromServer([serverTask({ reasoningEffort: 'high' })], []);
+    expect(merged[0].reasoningEffort).toBe('high');
   });
 });
 
