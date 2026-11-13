@@ -1003,7 +1003,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
       showStatus('error', t('chatView.artifactCard.deletedStatus'));
       return;
     }
-    if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
+    if (!(await downloadArtifactFile(artifact, { actionPath: path, entry: 'chat' }))) {
       showStatus('error', downloadUnavailableMessage(t('chatView.artifactCard.noDownloadableFile')));
       return;
     }
