@@ -1076,15 +1076,16 @@ export function ArtifactViewer({
       // Desktop's path-addressed delete needs a client-side unpublish first.
       // SaaS performs both operations atomically on the scoped server route.
       let leftLive = '';
-      if (needsClientUnpublishBeforeDelete({ orgMode, published: isPublished })) {
+      const before = pub.accessLoaded ? shareSnapshot(pub) : UNKNOWN_SHARE_SNAPSHOT;
+      const clientUnpublishes = needsClientUnpublishBeforeDelete({ orgMode, published: isPublished });
+      if (clientUnpublishes) {
         leftLive = stopSharingNotice(await unpublishArtifact(actionPath));
-        reportWithdrawal(artifact, {
-          entry: 'viewer_delete',
-          before: pub.accessLoaded ? shareSnapshot(pub) : UNKNOWN_SHARE_SNAPSHOT,
-          leftLive: !!leftLive,
-        });
+        reportWithdrawal(artifact, { entry: 'viewer_delete', before, leftLive: !!leftLive });
       }
       await deleteArtifactAndSync(artifact);
+      // On Web the server takes the page down as part of the delete, and the
+      // delete fails if it cannot, so a delete that succeeded took it down.
+      if (!clientUnpublishes && isPublished) reportWithdrawal(artifact, { entry: 'viewer_delete', before });
       setConfirmDelete(false);
       onDelete?.(actionPath, { notice: leftLive });
       // The artifact is gone but its page is still open to anyone with the

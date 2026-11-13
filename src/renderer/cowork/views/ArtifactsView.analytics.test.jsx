@@ -38,6 +38,7 @@ const report = vi.hoisted(() => ({
 vi.mock('../lib/artifactShareAnalytics', async (importOriginal) => ({ ...(await importOriginal()), ...report }));
 
 import ArtifactsView from './ArtifactsView';
+import { setOrgMode } from '../../lib/orgMode';
 import * as api from '../api';
 
 const unpublished = {
@@ -49,6 +50,7 @@ const published = { ...unpublished, publishedUrl: 'https://share/a1', accessMode
 afterEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
+  setOrgMode(false);
 });
 
 function openMenuItem(name) {
@@ -153,6 +155,36 @@ describe('Artifacts page sharing analytics', () => {
     expect(report.reportWithdrawal.mock.calls[0][1]).toMatchObject({
       entry: 'list_delete', before: { shared: true }, leftLive: false,
     });
+  });
+
+  it('records a Web delete of a shared artifact as a pull-back, with no unpublish of its own', async () => {
+    setOrgMode(true);
+    api.deleteArtifact.mockResolvedValue(undefined);
+    render(<ArtifactsView artifacts={[published]} onArtifactChanged={vi.fn()} />);
+    openMenuItem('Delete');
+
+    await waitFor(() => expect(report.reportWithdrawal).toHaveBeenCalledTimes(1));
+    expect(api.unpublishArtifact).not.toHaveBeenCalled();
+    expect(report.reportWithdrawal.mock.calls[0][1]).toMatchObject({
+      entry: 'list_delete', before: { shared: true, audience: 'public' },
+    });
+    expect(report.reportWithdrawal.mock.calls[0][1].leftLive).toBeFalsy();
+  });
+
+  it('records nothing for a Web delete that failed or of an artifact with no page', async () => {
+    setOrgMode(true);
+    api.deleteArtifact.mockRejectedValueOnce(new Error('publisher unavailable'));
+    const { unmount } = render(<ArtifactsView artifacts={[published]} onArtifactChanged={vi.fn()} />);
+    openMenuItem('Delete');
+    await waitFor(() => expect(toast.add).toHaveBeenCalled());
+    unmount();
+
+    api.deleteArtifact.mockResolvedValue(undefined);
+    render(<ArtifactsView artifacts={[unpublished]} onArtifactChanged={vi.fn()} />);
+    openMenuItem('Delete');
+    await waitFor(() => expect(api.deleteArtifact).toHaveBeenCalledTimes(2));
+
+    expect(report.reportWithdrawal).not.toHaveBeenCalled();
   });
 
   it('records a copied link only when the copy worked', async () => {

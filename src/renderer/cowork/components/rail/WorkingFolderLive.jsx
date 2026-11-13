@@ -418,7 +418,8 @@ export function WorkingFolderLive({
       // The server enforces the same rule as a backstop. Skipped in org mode —
       // see needsClientUnpublishBeforeDelete.
       let leftLive = '';
-      if (needsClientUnpublishBeforeDelete({ orgMode, published: a.publishedUrl })) {
+      const clientUnpublishes = needsClientUnpublishBeforeDelete({ orgMode, published: a.publishedUrl });
+      if (clientUnpublishes) {
         leftLive = stopSharingNotice(await unpublishArtifact(a.path));
         reportWithdrawal(a, { entry: 'rail_delete', before: shareSnapshot(a), leftLive: !!leftLive });
       }
@@ -426,6 +427,8 @@ export function WorkingFolderLive({
       // so it works in every shell and the server's unpublish-before-delete
       // guard always runs.
       await deleteArtifactAndSync(a);
+      // On Web that guard is the takedown, and the delete fails without it.
+      if (!clientUnpublishes && a.publishedUrl) reportWithdrawal(a, { entry: 'rail_delete', before: shareSnapshot(a) });
       // The page itself is still open to anyone with its link.
       if (leftLive) setRowNote(leftLive);
     } catch (e) {

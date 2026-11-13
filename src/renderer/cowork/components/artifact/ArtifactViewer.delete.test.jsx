@@ -148,9 +148,23 @@ describe('published artifact deletion from the viewer', () => {
     expect(shareReport.reportWithdrawal.mock.calls[0][1]).toMatchObject({ entry: 'viewer_delete', leftLive: true });
   });
 
-  it('records nothing on Web, where the server takes the page down', async () => {
+  it('records a Web delete of a shared artifact as a pull-back, since the server took the page down', async () => {
     setOrgMode(true);
     await deleteFromViewer();
+    await waitFor(() => expect(shareReport.reportWithdrawal).toHaveBeenCalledTimes(1));
+    expect(unpublishArtifact).not.toHaveBeenCalled();
+    expect(shareReport.reportWithdrawal.mock.calls[0][1]).toMatchObject({
+      entry: 'viewer_delete',
+      before: { shared: true, audience: 'public' },
+    });
+    expect(shareReport.reportWithdrawal.mock.calls[0][1].leftLive).toBeFalsy();
+  });
+
+  it('records nothing when a Web delete fails, since the page is still up', async () => {
+    setOrgMode(true);
+    deleteArtifactAndSync.mockRejectedValueOnce(new Error('publisher unavailable'));
+    await deleteFromViewer();
+    expect(await screen.findByText(/publisher unavailable/)).toBeInTheDocument();
     expect(shareReport.reportWithdrawal).not.toHaveBeenCalled();
   });
 

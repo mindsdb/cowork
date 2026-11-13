@@ -981,11 +981,16 @@ export default function ArtifactsView({
       // needsClientUnpublishBeforeDelete: there this call 501s and the server's
       // own delete does the unpublish with the right credential.
       let leftLive = '';
-      if (needsClientUnpublishBeforeDelete({ orgMode, published: artifact.publishedUrl })) {
+      const clientUnpublishes = needsClientUnpublishBeforeDelete({ orgMode, published: artifact.publishedUrl });
+      if (clientUnpublishes) {
         leftLive = stopSharingNotice(await unpublishArtifact(artifact.path));
         reportWithdrawal(artifact, { entry: 'list_delete', before: shareSnapshot(artifact), leftLive: !!leftLive });
       }
       await deleteArtifactAndSync(artifact);
+      // On Web the delete itself takes the page down, or fails.
+      if (!clientUnpublishes && artifact.publishedUrl) {
+        reportWithdrawal(artifact, { entry: 'list_delete', before: shareSnapshot(artifact) });
+      }
       showToast(leftLive ? { kind: 'warning', message: leftLive } : { kind: 'ok', message: t('artifactsView.deleted') });
     } catch (e) {
       showToast({ kind: 'error', message: t('artifactsView.deleteFailed', { message: String(e?.message || e) }) });

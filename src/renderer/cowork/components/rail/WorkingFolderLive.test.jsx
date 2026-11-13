@@ -1018,3 +1018,40 @@ describe('deleting from the rail on Desktop', () => {
     expect(trackArtifactAccessChanged).not.toHaveBeenCalled();
   });
 });
+
+describe('deleting from the rail on Web', () => {
+  beforeEach(() => {
+    setOrgMode(true);
+    hostState.isWeb = true; hostState.isElectron = false; hostState.localApi = false;
+    trackArtifactAccessChanged.mockClear();
+    unpublishArtifact.mockReset().mockResolvedValue({});
+    deleteArtifactAndSync.mockReset().mockResolvedValue(undefined);
+  });
+
+  async function deleteFromRail(artifact) {
+    await renderRail(artifact);
+    fireEvent.click(within(await openKebab()).getByText('Delete'));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+    await vi.waitFor(() => expect(deleteArtifactAndSync).toHaveBeenCalledTimes(1));
+  }
+
+  it('records deleting a shared artifact as one pull-back, since the server took the page down', async () => {
+    await deleteFromRail(draft({ publishedUrl: SHARED_URL, accessMode: 'public' }));
+
+    expect(unpublishArtifact).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(trackArtifactAccessChanged).toHaveBeenCalledTimes(1));
+    expect(trackArtifactAccessChanged).toHaveBeenCalledWith(expect.objectContaining({
+      entry: 'rail_delete',
+      before: expect.objectContaining({ shared: true, audience: 'public' }),
+      after: expect.objectContaining({ shared: false }),
+    }));
+  });
+
+  it('records nothing when the delete failed', async () => {
+    deleteArtifactAndSync.mockRejectedValue(new Error('publisher unavailable'));
+    await deleteFromRail(draft({ publishedUrl: SHARED_URL, accessMode: 'public' }));
+
+    expect(await screen.findByText(/publisher unavailable/)).toBeInTheDocument();
+    expect(trackArtifactAccessChanged).not.toHaveBeenCalled();
+  });
+});
