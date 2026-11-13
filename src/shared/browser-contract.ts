@@ -101,6 +101,12 @@ export const FRAMES_READ = 5;
 export const ELEMENTS_PER_FRAME = 50;
 export const TEXT_PER_FRAME = 1_000;
 export const FRAME_MIN_READ_PX = 32;
+/** How long each of a page read's two frame phases may take, as page.json's
+    `frames_phase_ms` pins it: the page's world starts no frame read past it
+    from its first (browser-page-script.ts), and ElectronTab.read starts no
+    look at a read frame past it from its first (browser-view.ts). A frame
+    left for later is listed unread. */
+export const FRAMES_PHASE_MS = 2_000;
 
 /** Hosts whose frames hold a payment provider's card fields. A frame on one,
     or on a name under one, is never read and is blacked out of every

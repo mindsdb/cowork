@@ -51,10 +51,11 @@
  * one included, with its content box, and reads the ones it may: a
  * same-origin frame the person sees (enough of it in view, drawn near its
  * size, not faint, masked, blended or filtered out of sight, and found by a
- * hit test at most of its sample points), big enough, within the read cap,
- * on no payment, sign-in or consent address, and holding no secret, card or
- * sign-in field; main then keeps it read only where its box, as the page
- * draws it, shows more than one color (browser-view.ts). A read
+ * hit test at most of its sample points), big enough, reached within the
+ * frames phase, on no payment, sign-in or consent address, and holding no
+ * secret, card or sign-in field; main then keeps the first five read where
+ * its box, as the page draws it, shows more than one color
+ * (browser-view.ts). A read
  * frame's elements have no id and no field value, and no editor's text
  * reaches its text or a name there. A frame from another site can't be read
  * from here: this world runs in the view's main frame, and the page's DOM
@@ -71,6 +72,7 @@ import {
   ELEMENTS_PER_FRAME,
   type FrameBox,
   FRAME_MIN_READ_PX,
+  FRAMES_PHASE_MS,
   FRAMES_READ,
   PAYMENT_FRAME_HOSTS,
   type PageElement,
@@ -160,12 +162,13 @@ export interface ViewPoint {
 
 /** How a page read reads its child frames: the contract's limits and host
     lists. A screenshot's read passes none and reads no frame. The page's
-    world reads up to `candidates` frames, and ElectronTab.read keeps the
-    first `read` of them its look finds the person sees (browser-view.ts),
-    so a frame the look leaves unread takes none of those reads. */
+    world reads every frame its rules let it, starting none past `phaseMs`
+    from its first, and ElectronTab.read keeps the first `read` of them its
+    look finds the person sees (browser-view.ts), so a frame the world or
+    the look leaves unread takes none of those reads. */
 export interface FrameReadRules {
   read: number;
-  candidates: number;
+  phaseMs: number;
   elements: number;
   text: number;
   minPx: number;
@@ -175,7 +178,7 @@ export interface FrameReadRules {
 
 export const FRAME_READ_RULES: FrameReadRules = {
   read: FRAMES_READ,
-  candidates: 2 * FRAMES_READ,
+  phaseMs: FRAMES_PHASE_MS,
   elements: ELEMENTS_PER_FRAME,
   text: TEXT_PER_FRAME,
   minPx: FRAME_MIN_READ_PX,
@@ -920,11 +923,13 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
      in view too, drawn at no less than FRAME_MIN_SCALE of its size, not
      drawn unreadable, and found by a hit test at most of its sample points,
      so a page can't carry a frame it hides off screen, under a box, behind
-     its own CSS, or behind a cover with holes),
-     within the first `candidates` frames read, on no payment, sign-in or
-     consent address (its src's or its document's), and holding no private
-     field. ElectronTab.read then looks at what the page draws over each
-     frame read, and keeps the first `read` it finds seen (browser-view.ts). */
+     its own CSS, or behind a cover with holes), on no payment, sign-in or
+     consent address (its src's or its document's), holding no private
+     field, and reached before `phaseMs` has passed since the first frame's
+     turn, so a page of many frames can't hold the read to its timeout.
+     ElectronTab.read then looks at what the page draws over each frame
+     read, and keeps the first `read` it finds seen (browser-view.ts), so
+     every frame read here is one the look may choose. */
   const readFrames = (owners: Element[], rules: FrameReadRules): RawFrame[] => {
     const placed = owners
       .filter((owner) => takesClicks(owner, boxOf(owner)))
@@ -932,7 +937,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         const box = contentBox(owner);
         return { owner, box, offscreen: !inView(box) };
       });
-    let reads = 0;
+    const deadline = win.performance.now() + rules.phaseMs;
     return [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, offscreen }): RawFrame => {
       const inner = frameDocOf(owner);
       const src = sourceOf(owner);
@@ -941,12 +946,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         hostIn(address, rules.paymentHosts) || hostIn(address, rules.signInHosts) || consentPage(address);
       const shownWidth = Math.min(box.x + box.width, viewport.width) - Math.max(box.x, 0);
       const shownHeight = Math.min(box.y + box.height, viewport.height) - Math.max(box.y, 0);
-      if (!inner || offscreen || reads >= rules.candidates || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
-        || drawnScale(owner) < FRAME_MIN_SCALE || refusedAddress(src) || refusedAddress(url) || drawnUnreadable(owner)
-        || !hitsOwner(owner, box) || holdsPrivateField(inner)) {
+      if (!inner || offscreen || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
+        || drawnScale(owner) < FRAME_MIN_SCALE || refusedAddress(src) || refusedAddress(url) || win.performance.now() > deadline
+        || drawnUnreadable(owner) || !hitsOwner(owner, box) || holdsPrivateField(inner)) {
         return { url, read: false, box, offscreen };
       }
-      reads += 1;
       const view = { width: inner.defaultView?.innerWidth ?? 0, height: inner.defaultView?.innerHeight ?? 0 };
       const { candidates } = collect(inner.body || inner.documentElement, view);
       return {

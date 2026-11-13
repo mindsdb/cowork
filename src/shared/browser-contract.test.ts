@@ -27,6 +27,7 @@ import {
   electronHostsInAppBrowser,
   ELEMENTS_PER_FRAME,
   FRAME_MIN_READ_PX,
+  FRAMES_PHASE_MS,
   FRAMES_READ,
   MAX_CONTROL_REASON,
   MAX_SAVED_TABS_PER_PROJECT,
@@ -113,9 +114,7 @@ describe('the browser contract fixtures', () => {
       frame_min_read_px: FRAME_MIN_READ_PX,
       payment_frame_hosts: [...PAYMENT_FRAME_HOSTS],
       sign_in_frame_hosts: [...SIGN_IN_FRAME_HOSTS],
-      // For a host that reads frames apart from the page's own read; this one
-      // reads them inside it, within PAGE_READ_TIMEOUT_MS.
-      frames_phase_ms: expect.any(Number),
+      frames_phase_ms: FRAMES_PHASE_MS,
     });
   });
 

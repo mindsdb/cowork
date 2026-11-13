@@ -37,6 +37,7 @@ import { type BrowserWindow, type Certificate, type HandlerDetails, type Input, 
 import { diagnostic } from '../shared/diagnostics';
 import {
   BridgeError,
+  FRAMES_PHASE_MS,
   type PageSnapshot,
   PAYMENT_FRAME_HOSTS,
   SETTLE_MAX_MS,
@@ -363,20 +364,38 @@ export class ElectronTab implements TabView {
     return count(main, 0);
   }
 
-  /* The page's world reads up to FRAME_READ_RULES.candidates frames; the
-     first FRAME_READ_RULES.read (FRAMES_READ) the look keeps read stay read,
-     on-screen first and in page order, as the world listed them, so a frame
-     the look leaves unread takes none of those reads, as on the web pod. */
+  /* The page's world reads every frame its rules let it; the first
+     FRAME_READ_RULES.read (FRAMES_READ) the look keeps read stay read
+     (keepSeen). */
   async read(maxText: number): Promise<PageSnapshot> {
     const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: FRAME_READ_RULES });
-    const looked = await Promise.all(raw.frames.map((frame) => this.lookAtFrame(frame, raw.viewport)));
-    let reads = 0;
-    const frames = looked.map((frame) => {
-      if (!frame.read) return frame;
-      reads += 1;
-      return reads <= FRAME_READ_RULES.read ? frame : unread(frame);
-    });
+    const frames = await this.keepSeen(raw.frames, raw.viewport);
     return pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls());
+  }
+
+  /* The frames the page's world read, kept read as the web pod reads them:
+     looked at in the order the world listed them (on-screen first, then
+     page order), as many at a time as reads are still wanted, until
+     FRAME_READ_RULES.read are kept or FRAMES_PHASE_MS has passed since the
+     first look. So a frame the look leaves unread takes none of those
+     reads, however many such frames come first, and a frame past the last
+     look, or past the reads kept, is listed unread. */
+  private async keepSeen(frames: RawFrame[], viewport: { width: number; height: number }): Promise<RawFrame[]> {
+    const kept = frames.map((frame) => (frame.read ? unread(frame) : frame));
+    const waiting = frames.flatMap((frame, at) => (frame.read ? [at] : []));
+    const deadline = Date.now() + FRAMES_PHASE_MS;
+    let reads = 0;
+    for (let next = 0; next < waiting.length && reads < FRAME_READ_RULES.read && Date.now() < deadline;) {
+      const batch = waiting.slice(next, next + FRAME_READ_RULES.read - reads);
+      next += batch.length;
+      const looked = await Promise.all(batch.map((at) => this.lookAtFrame(frames[at], viewport)));
+      batch.forEach((at, i) => {
+        if (!looked[i].read) return;
+        kept[at] = looked[i];
+        reads += 1;
+      });
+    }
+    return kept;
   }
 
   /* A frame the page's world read, kept read only when the person sees what
@@ -386,8 +405,8 @@ export class ElectronTab implements TabView {
      shadow or outline, or one marked pointer-events: none, and a box all one
      color is such a cover's. The frame's part in view, a CSS pixel in from
      each edge, is captured from the composited page and scaled down
-     (frameLook): one small capture a frame read, FRAME_READ_RULES.candidates
-     at most a page read, all at once. A look that fails, or takes longer
+     (frameLook): one small capture a frame looked at, as many at once as
+     reads are still wanted (keepSeen). A look that fails, or takes longer
      than FRAME_LOOK_MS, leaves the frame unread, and so does one that finds
      the box one color. A read that found no text has nothing to look for. */
   private async lookAtFrame(frame: RawFrame, viewport: { width: number; height: number }): Promise<RawFrame> {

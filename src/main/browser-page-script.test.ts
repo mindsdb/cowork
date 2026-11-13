@@ -1098,7 +1098,7 @@ describe('frames', () => {
     }
   });
 
-  it('never reads a frame that holds a secret, card-named or sign-in field, sits on a payment or sign-in host, is a consent page, is under 32 px, or comes after the tenth read, twice the five the look then keeps', async () => {
+  it('never reads a frame that holds a secret, card-named or sign-in field, sits on a payment or sign-in host, is a consent page or is under 32 px, and reads every other frame it finds the person sees, past the five the look then keeps', async () => {
     const frames: Array<[string, string, string]> = [
       ['password', '', "<input type='password'>"],
       ['card', '', "<input name='cardnumber' placeholder='Card'>"],
@@ -1115,8 +1115,25 @@ describe('frames', () => {
     await framesLoad();
     frames.forEach(([id], i) => place(document.getElementById(id)!, 0, i * 38, id === 'tiny' ? 400 : 300, id === 'tiny' ? 20 : 36));
     const page = snapshot(freshWorld());
-    expect(page.frames.map((f) => f.read)).toEqual([...frames.slice(0, 9).map(() => false), ...Array(10).fill(true), false]);
+    expect(page.frames.map((f) => f.read)).toEqual([...frames.slice(0, 9).map(() => false), ...Array(11).fill(true)]);
     expect(JSON.stringify(page)).not.toMatch(/4242|Choose an account|Allow access|Card/);
+  });
+
+  it("starts no frame read once FRAME_READ_RULES.phaseMs has passed since its first, and lists the rest unread with their boxes", async () => {
+    document.body.innerHTML = Array.from({ length: 6 }, (_, i) => `<iframe id="f${i}" srcdoc="<p>Plain ${i}</p>"></iframe>`).join('');
+    await framesLoad();
+    for (let i = 0; i < 6; i += 1) place(document.getElementById(`f${i}`)!, 0, i * 40, 300, 36);
+    // Each look at the clock comes 0.7 s after the last.
+    let clock = 0;
+    const ticking = vi.spyOn(window.performance, 'now').mockImplementation(() => (clock += 700));
+    try {
+      const page = snapshot(freshWorld());
+      expect(page.frames.map((f) => f.read)).toEqual([true, true, false, false, false, false]);
+      expect(page.frames.every((f) => f.box.width === 300)).toBe(true);
+    } finally {
+      ticking.mockRestore();
+    }
+    expect(FRAME_READ_RULES.phaseMs).toBe(2_000);
   });
 
   it("caps a frame's elements, in-view first, and its text", async () => {

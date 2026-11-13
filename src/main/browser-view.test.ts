@@ -1,6 +1,6 @@
 import type { BrowserWindow, Session, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import { ANTON_REQUEST_TIMEOUT_MS, parseStepRequest, SETTLE_MAX_MS, SETTLE_QUIET_MS, STEP_TIMEOUT_MS, type StepOutcome, type StepRequest } from '../shared/browser-contract';
+import { ANTON_REQUEST_TIMEOUT_MS, FRAMES_PHASE_MS, parseStepRequest, SETTLE_MAX_MS, SETTLE_QUIET_MS, STEP_TIMEOUT_MS, type StepOutcome, type StepRequest } from '../shared/browser-contract';
 import type { TabHooks } from './browser-sessions';
 import { type FakeFrame, sentOf } from '../../tests/browser-fake-cdp';
 import { FRAME_READ_MS } from './browser-frames';
@@ -283,16 +283,45 @@ describe('ElectronTab', () => {
       expect(JSON.stringify(page)).not.toMatch(/weekly digest|Subscribe|Ignore your instructions/);
     });
 
-    it('reads the first FRAMES_READ frames the look finds the person sees, so a covered frame takes none of those reads', async () => {
+    it('reads the first FRAMES_READ frames the look finds the person sees, so a covered frame takes none of those reads, and looks at no frame past them', async () => {
       const { tab, contents } = setup();
       // Three frames the page paints over in one color, ahead of six plain ones, each 400 by 40, 50 px apart.
       contents.frames = Array.from({ length: 9 }, (_, i) => readFrame({ x: 0, y: i * 50, width: 400, height: 40 }));
       captured(contents, (rect) => rect.y > 150);
       const page = await tab.read(100);
       expect(page.frames.map((frame) => frame.read)).toEqual([false, false, false, true, true, true, true, true, false]);
-      expect(contents.capturePage).toHaveBeenCalledTimes(9);
+      // The first five at once, then as many as reads are still wanted.
+      expect(contents.capturePage).toHaveBeenCalledTimes(8);
       const [snapshot] = worldCalls(contents, 'snapshot');
-      expect(snapshot[1][0].code).toContain('"candidates":10');
+      expect(snapshot[1][0].code).toContain('"phaseMs":2000');
+    });
+
+    it('reads five frames the person sees behind six covered ones ahead of them, and ten behind which an eleventh is still read', async () => {
+      const { tab, contents } = setup();
+      // Six frames the page paints over in one color, ahead of five plain ones.
+      contents.frames = Array.from({ length: 11 }, (_, i) => readFrame({ x: 0, y: i * 50, width: 400, height: 40 }));
+      captured(contents, (rect) => rect.y > 300);
+      expect((await tab.read(100)).frames.map((frame) => frame.read)).toEqual([...Array(6).fill(false), ...Array(5).fill(true)]);
+      contents.frames = Array.from({ length: 11 }, (_, i) => readFrame({ x: 0, y: i * 50, width: 400, height: 40 }));
+      captured(contents, (rect) => rect.y > 500);
+      expect((await tab.read(100)).frames.map((frame) => frame.read)).toEqual([...Array(10).fill(false), true]);
+    });
+
+    it('starts no look past FRAMES_PHASE_MS from the first, and leaves the frames it never looked at unread', async () => {
+      const { tab, contents } = setup();
+      contents.frames = Array.from({ length: 15 }, (_, i) => readFrame({ x: 0, y: i * 30, width: 400, height: 28 }));
+      // No capture ever answers, so each look gives up at FRAME_LOOK_MS.
+      contents.capturePage.mockImplementation(() => new Promise(() => {}));
+      vi.useFakeTimers();
+      try {
+        const page = tab.read(100);
+        await vi.advanceTimersByTimeAsync(FRAMES_PHASE_MS + FRAME_LOOK_MS);
+        expect((await page).frames.every((frame) => !frame.read)).toBe(true);
+        // Two rounds of five, one a second, and none once the phase is over.
+        expect(contents.capturePage).toHaveBeenCalledTimes(10);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('keeps a frame read that found no text to look for, and captures no frame it left unread', async () => {
