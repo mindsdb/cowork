@@ -158,6 +158,39 @@ function ChatMirror({ reply, chatMessages, onOpenChat }) {
   );
 }
 
+// What a finished reply offers beside its bubble, on the same row: Undo (and
+// its Undoing… / Undone states) after an applied edit, "Ask the agent
+// instead" after a failed one. Null for any other reply.
+const hasReplySide = (reply, canUndo) => (reply.state === 'applied' && (reply.undone || canUndo))
+  || reply.state === 'failed';
+
+function ReplySide({ reply, canUndo, busy, onUndo, onAskAgent }) {
+  const { t } = useTranslation('artifacts');
+  if (reply.state === 'applied') {
+    if (reply.undone) {
+      return (
+        <span className="artifact-quick-edit-action is-done" role="status">
+          {Ico.check(14)}<span>{t('quickEdit.undone')}</span>
+        </span>
+      );
+    }
+    if (!canUndo) return null;
+    return (
+      <ReplyAction
+        icon={Ico.undo(14)}
+        label={reply.undoing ? t('quickEdit.undoing') : t('quickEdit.undo')}
+        busy={!!reply.undoing}
+        disabled={busy}
+        onClick={onUndo}
+      />
+    );
+  }
+  if (reply.state === 'failed') {
+    return <ReplyAction icon={Ico.sparkle(14)} label={t('quickEdit.askAgent')} disabled={busy} onClick={onAskAgent} />;
+  }
+  return null;
+}
+
 function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, chatMessages }) {
   const { t } = useTranslation('artifacts');
   if (reply.state === 'running' || reply.state === 'handing-off') {
@@ -180,23 +213,6 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, cha
     return (
       <>
         <span>{reply.summary || t('quickEdit.applied')}</span>
-        {(reply.undone || canUndo) && (
-          <div className="artifact-quick-edit-actions">
-            {reply.undone ? (
-              <span className="artifact-quick-edit-action is-done" role="status">
-                {Ico.check(14)}<span>{t('quickEdit.undone')}</span>
-              </span>
-            ) : (
-              <ReplyAction
-                icon={Ico.undo(14)}
-                label={reply.undoing ? t('quickEdit.undoing') : t('quickEdit.undo')}
-                busy={!!reply.undoing}
-                disabled={busy}
-                onClick={onUndo}
-              />
-            )}
-          </div>
-        )}
         {reply.undoError && <div className="artifact-quick-edit-error" role="alert">{reply.undoError}</div>}
       </>
     );
@@ -208,9 +224,6 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, cha
     return (
       <>
         <span>{reply.summary || t('quickEdit.failed')}</span>
-        <div className="artifact-quick-edit-actions">
-          <ReplyAction icon={Ico.sparkle(14)} label={t('quickEdit.askAgent')} disabled={busy} onClick={onAskAgent} />
-        </div>
       </>
     );
   }
@@ -220,9 +233,16 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, cha
   return <span className="artifact-quick-edit-error" role="alert">{reply.error || t('quickEdit.errors.failed')}</span>;
 }
 
+/**
+ * `unsaved`: the code editor holds text never saved. Sending then asks first,
+ * in a small confirm anchored to the bar: save and send (through
+ * `onSaveUnsaved`, which resolves to the new revision's id, or null when the
+ * save failed), discard and send (`onDiscardUnsaved`), or cancel.
+ */
 export function QuickEditBar({
-  controller, disabledReason = '', onOpenChat, chatMessages = null, picker = null,
+  controller, onOpenChat, chatMessages = null, picker = null,
   focusRequest = 0, focusUsed = null,
+  unsaved = false, onSaveUnsaved, onDiscardUnsaved,
 }) {
   const { t } = useTranslation('artifacts');
   const { messages, running, direct = true, send, askAgent, undo, undoableId } = controller;
@@ -230,7 +250,10 @@ export function QuickEditBar({
   const taRef = useRef(null);
   const threadRef = useRef(null);
   const threadInnerRef = useRef(null);
-  useAutoFocus(taRef, { focusRequest, focusUsed, blocked: !!disabledReason });
+  useAutoFocus(taRef, { focusRequest, focusUsed, blocked: unsaved });
+  // The unsaved-changes confirm: null, 'open', or 'saving' while a save runs.
+  const [confirm, setConfirm] = useState(null);
+  const [sendError, setSendError] = useState('');
   const threadHeight = useThreadHeight(threadInnerRef, messages.length > 0);
   // Messages whose entrance has played: they never get .is-entering again.
   const enteredRef = useRef(new Set());
@@ -257,16 +280,53 @@ export function QuickEditBar({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, threadHeight]);
 
-  const blocked = running || !!disabledReason;
-  const canSend = !blocked && !!text.trim();
+  const canSend = !running && !confirm && !!text.trim();
+
+  const dispatch = useCallback((options) => {
+    const message = text;
+    setText('');
+    setConfirm(null);
+    requestAnimationFrame(grow);
+    void send(message, options);
+  }, [grow, send, text]);
 
   const submit = useCallback(() => {
     if (!canSend) return;
-    const message = text;
-    setText('');
-    requestAnimationFrame(grow);
-    void send(message);
-  }, [canSend, grow, send, text]);
+    setSendError('');
+    // Unsaved editor text: ask before the edit lands on top of it.
+    if (unsaved) {
+      setConfirm('open');
+      return;
+    }
+    dispatch();
+  }, [canSend, dispatch, unsaved]);
+
+  const saveAndSend = useCallback(async () => {
+    setConfirm('saving');
+    let revisionId = null;
+    try {
+      revisionId = await onSaveUnsaved?.();
+    } catch {
+      revisionId = null;
+    }
+    if (!revisionId) {
+      // Nothing is sent and the message stays in the input.
+      setConfirm(null);
+      setSendError(t('quickEdit.unsavedConfirm.saveFailed'));
+      return;
+    }
+    dispatch({ expectedRevisionId: revisionId });
+  }, [dispatch, onSaveUnsaved, t]);
+
+  const discardAndSend = useCallback(() => {
+    onDiscardUnsaved?.();
+    dispatch();
+  }, [dispatch, onDiscardUnsaved]);
+
+  const cancelConfirm = useCallback(() => {
+    setConfirm(null);
+    taRef.current?.focus();
+  }, []);
 
   return (
     <div className="artifact-quick-edit" aria-label={t('quickEdit.ariaLabel')} role="region">
@@ -280,28 +340,70 @@ export function QuickEditBar({
               onAnimationEnd={() => entered(m.id)}
             >{m.text}</div>
           ) : (
+            // The bubble takes the row's width; Undo or "Ask the agent instead"
+            // sits beside it, centred on it, never shrinking or wrapping.
             <div
               key={m.id}
-              className={`artifact-quick-edit-msg is-reply${entryClass(m.id)}`}
+              className={`artifact-quick-edit-row${entryClass(m.id)}`}
               onAnimationEnd={(e) => { if (e.target === e.currentTarget) entered(m.id); }}
             >
-              <ReplyStatus
-                reply={m}
-                canUndo={m.id === undoableId}
-                busy={running}
-                onUndo={() => undo(m.id)}
-                onAskAgent={() => askAgent(m.id)}
-                onOpenChat={onOpenChat}
-                chatMessages={chatMessages}
-              />
+              <div className="artifact-quick-edit-msg is-reply">
+                <ReplyStatus
+                  reply={m}
+                  canUndo={m.id === undoableId}
+                  busy={running}
+                  onUndo={() => undo(m.id)}
+                  onAskAgent={() => askAgent(m.id)}
+                  onOpenChat={onOpenChat}
+                  chatMessages={chatMessages}
+                />
+              </div>
+              {hasReplySide(m, m.id === undoableId) && (
+                <div className="artifact-quick-edit-side">
+                  <ReplySide
+                    reply={m}
+                    canUndo={m.id === undoableId}
+                    busy={running}
+                    onUndo={() => undo(m.id)}
+                    onAskAgent={() => askAgent(m.id)}
+                  />
+                </div>
+              )}
             </div>
           )))}
           </div>
         </div>
       )}
-      {disabledReason && (
-        <div className="artifact-quick-edit-muted artifact-quick-edit-hint">{disabledReason}</div>
+      {confirm && (
+        <div
+          className="artifact-quick-edit-confirm"
+          role="alertdialog"
+          aria-label={t('quickEdit.unsavedConfirm.title')}
+          onKeyDown={(e) => { if (e.key === 'Escape' && confirm !== 'saving') { e.stopPropagation(); cancelConfirm(); } }}
+        >
+          <span className="artifact-quick-edit-confirm-text">{t('quickEdit.unsavedConfirm.title')}</span>
+          <span className="artifact-quick-edit-confirm-actions">
+            <button type="button" className="artifact-quick-edit-confirm-button" onClick={cancelConfirm} disabled={confirm === 'saving'}>
+              {t('quickEdit.unsavedConfirm.cancel')}
+            </button>
+            <button type="button" className="artifact-quick-edit-confirm-button" onClick={discardAndSend} disabled={confirm === 'saving'}>
+              {t('quickEdit.unsavedConfirm.discard')}
+            </button>
+            <button
+              type="button"
+              className="artifact-quick-edit-confirm-button is-primary"
+              onClick={saveAndSend}
+              disabled={confirm === 'saving'}
+              aria-busy={confirm === 'saving' || undefined}
+              autoFocus
+            >
+              {confirm === 'saving' ? <Spinner /> : null}
+              {t('quickEdit.unsavedConfirm.save')}
+            </button>
+          </span>
+        </div>
       )}
+      {sendError && <div className="artifact-quick-edit-error artifact-quick-edit-hint" role="alert">{sendError}</div>}
       <div className="artifact-quick-edit-input shrink-0 flex items-end gap-[2px] bg-surface rounded-[16px]
         border-[0.5px] border-[rgba(39,39,42,0.15)] py-[8px] pl-[8px] pr-[4px]
         focus-within:border-[rgba(39,39,42,0.3)] transition-colors">
@@ -312,7 +414,6 @@ export function QuickEditBar({
           // Chat only: the bar is a way into the chat, for questions too.
           placeholder={direct ? t('quickEdit.placeholder') : t('quickEdit.placeholderChat')}
           aria-label={t('quickEdit.inputLabel')}
-          disabled={!!disabledReason}
           className="flex-1 min-w-0 resize-none outline-none border-0 bg-transparent
             text-[14px] leading-[24px] text-ink placeholder:text-ink-4 px-[4px]"
           style={{ fontFamily: 'inherit', height: 24, overflowY: 'hidden' }}

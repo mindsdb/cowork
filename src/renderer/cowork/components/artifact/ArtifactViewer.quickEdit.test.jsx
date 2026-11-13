@@ -27,6 +27,7 @@ const workspaceMock = vi.hoisted(() => ({
   repair: null,
   load: vi.fn(async () => {}),
   save: vi.fn(),
+  draft: '',
   discard: vi.fn(),
   compareRevision: vi.fn(),
   refreshRepair: vi.fn(),
@@ -101,7 +102,9 @@ vi.mock('./comments', () => ({
 vi.mock('./workspace/useArtifactWorkspace', () => ({
   useArtifactWorkspace: () => workspaceMock,
 }));
-vi.mock('./workspace/ArtifactSourceEditor', () => ({ ArtifactSourceEditor: () => null }));
+vi.mock('./workspace/ArtifactSourceEditor', () => ({
+  ArtifactSourceEditor: ({ value }) => <textarea data-testid="source-editor" readOnly value={value ?? ''} />,
+}));
 vi.mock('./workspace/ArtifactComparison', () => ({ ArtifactComparison: () => null }));
 vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () => null }));
 // The revision line, holding the layer toggles the viewer hands it.
@@ -170,6 +173,8 @@ describe('ArtifactViewer quick edit bar', () => {
     workspaceMock.dirty = false;
     workspaceMock.capabilities = { role: 'owner', canEdit: true, canQuickEdit: true };
     workspaceMock.source = null;
+    workspaceMock.draft = '';
+    workspaceMock.load.mockImplementation(async () => {});
     workspaceMock.commentsReady = false;
     publishMock.url = '';
     workspaceMock.load.mockClear();
@@ -208,14 +213,15 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(bar()).toBeNull();
   });
 
-  it('leaves a narrow viewer to the code editor while Live edit is on', async () => {
+  it('shows only the editor while Live edit is on, and keeps the bar', async () => {
     workspaceMock.source = HTML_SOURCE;
     renderViewer();
     await screen.findByTitle('Launch brief');
 
     fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
 
-    expect(bar()).toBeNull();
+    expect(screen.getByTestId('preview-surface')).toHaveAttribute('hidden');
+    expect(bar()).not.toBeNull();
   });
 
   it('applies an edit: posts the request, reloads, and shows the summary with Undo', async () => {
@@ -534,13 +540,111 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(signal.aborted).toBe(true);
   });
 
-  it('holds the bar while Source has unsaved text', async () => {
-    workspaceMock.dirty = true;
+  describe('sending over unsaved editor text', () => {
+    const confirm = () => screen.queryByRole('alertdialog', { name: 'You have unsaved changes. Save them before sending?' });
+    beforeEach(() => {
+      workspaceMock.dirty = true;
+      workspaceMock.save.mockReset();
+      workspaceMock.discard.mockClear();
+      workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+    });
+
+    it('keeps the bar usable, and asks before sending', async () => {
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+
+      expect(bar()).toBeEnabled();
+      ask('Make the title blue');
+
+      expect(confirm()).toBeInTheDocument();
+      expect(workspaceApi.streamQuickEdit).not.toHaveBeenCalled();
+    });
+
+    it('saves through the save path, then sends against the new revision', async () => {
+      workspaceMock.save.mockResolvedValue({ ...HTML_SOURCE, revision: { id: 'r7' } });
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      ask('Make the title blue');
+
+      fireEvent.click(within(confirm()).getByRole('button', { name: 'Save and send' }));
+
+      await within(thread()).findByText('Made the title blue.');
+      expect(workspaceMock.save).toHaveBeenCalledTimes(1);
+      expect(workspaceApi.streamQuickEdit.mock.calls[0][1].expectedRevisionId).toBe('r7');
+      expect(confirm()).toBeNull();
+      expect(bar()).toHaveValue('');
+    });
+
+    it('sends nothing and says so when the save fails, keeping the message', async () => {
+      workspaceMock.save.mockResolvedValue(null);
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      ask('Make the title blue');
+
+      fireEvent.click(within(confirm()).getByRole('button', { name: 'Save and send' }));
+
+      expect(await screen.findByText("Your changes couldn't be saved, so nothing was sent.")).toBeInTheDocument();
+      expect(workspaceApi.streamQuickEdit).not.toHaveBeenCalled();
+      expect(bar()).toHaveValue('Make the title blue');
+      expect(confirm()).toBeNull();
+    });
+
+    it('discards the edits, then sends', async () => {
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      ask('Make the title blue');
+
+      fireEvent.click(within(confirm()).getByRole('button', { name: 'Discard and send' }));
+
+      await within(thread()).findByText('Made the title blue.');
+      expect(workspaceMock.discard).toHaveBeenCalledTimes(1);
+      expect(workspaceMock.save).not.toHaveBeenCalled();
+      expect(workspaceApi.streamQuickEdit.mock.calls[0][1].expectedRevisionId).toBe('r1');
+    });
+
+    it('cancels, keeping the edits and the message', async () => {
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      ask('Make the title blue');
+
+      fireEvent.click(within(confirm()).getByRole('button', { name: 'Cancel' }));
+
+      expect(confirm()).toBeNull();
+      expect(bar()).toHaveValue('Make the title blue');
+      expect(workspaceMock.discard).not.toHaveBeenCalled();
+      expect(workspaceMock.save).not.toHaveBeenCalled();
+      expect(workspaceApi.streamQuickEdit).not.toHaveBeenCalled();
+    });
+
+    it('sends straight away when nothing is unsaved', async () => {
+      workspaceMock.dirty = false;
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+
+      ask('Make the title blue');
+
+      expect(confirm()).toBeNull();
+      await within(thread()).findByText('Made the title blue.');
+    });
+  });
+
+  it('refreshes the open editor to the new source after an applied edit', async () => {
+    workspaceMock.source = HTML_SOURCE;
+    workspaceMock.draft = HTML_SOURCE.content;
+    workspaceMock.load.mockImplementation(async () => {
+      workspaceMock.source = { ...HTML_SOURCE, content: '<p>Blue</p>', revision: { id: 'r2' } };
+      workspaceMock.draft = '<p>Blue</p>';
+    });
+    workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
     renderViewer();
     await screen.findByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+    expect(screen.getByTestId('source-editor')).toHaveValue('<p>Hi</p>');
 
-    expect(bar()).toBeDisabled();
-    expect(screen.getByText('Save or discard your Live edit changes to ask for a change here.')).toBeInTheDocument();
+    ask('Make the title blue');
+
+    await within(thread()).findByText('Made the title blue.');
+    await waitFor(() => expect(screen.getByTestId('source-editor')).toHaveValue('<p>Blue</p>'));
   });
 
   describe('model picker', () => {
@@ -865,21 +969,20 @@ describe('ArtifactViewer quick edit bar', () => {
       expect(screen.queryByRole('button', { name: 'Comments' })).toBeNull();
     });
 
-    it('puts Live edit (the code editor) beside the preview on a wide viewer', async () => {
+    it('shows only the editor at a wide width too: no side by side', async () => {
       workspaceMock.source = HTML_SOURCE;
-      withBodyWidth(1200);
+      withBodyWidth(1600);
       renderViewer();
       await screen.findByTitle('Launch brief');
 
       fireEvent.click(toggle('Live edit'));
 
-      expect(document.querySelector('.artifact-viewer-canvas')).toHaveClass('is-split');
+      expect(document.querySelector('.artifact-viewer-canvas')).not.toHaveClass('is-split');
       expect(screen.getByTestId('source-surface')).not.toHaveAttribute('hidden');
-      expect(screen.getByTestId('preview-surface')).not.toHaveAttribute('hidden');
-      expect(bar()).not.toBeNull();
+      expect(screen.getByTestId('preview-surface')).toHaveAttribute('hidden');
     });
 
-    it('puts Live edit in place of the preview on a narrow viewer', async () => {
+    it('shows only the editor at a narrow width', async () => {
       workspaceMock.source = HTML_SOURCE;
       withBodyWidth(900);
       renderViewer();

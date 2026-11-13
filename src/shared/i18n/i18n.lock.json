@@ -22133,38 +22133,174 @@
       "text": "c18edde9c287"
     }
   },
-  "artifacts:quickEdit.unsavedSource": {
+  "artifacts:quickEdit.unsavedConfirm.cancel": {
     "de": {
-      "from": "22e4d44bbe24",
-      "text": "cf9e58e25d0d"
+      "from": "19766ed6ccb2",
+      "text": "f7ff1178af20"
     },
     "es": {
-      "from": "22e4d44bbe24",
-      "text": "b65725d2050e"
+      "from": "19766ed6ccb2",
+      "text": "bb9dbb406dcb"
     },
     "fr": {
-      "from": "22e4d44bbe24",
-      "text": "f222405b3d06"
+      "from": "19766ed6ccb2",
+      "text": "46ad3916f6a0"
     },
     "it": {
-      "from": "22e4d44bbe24",
-      "text": "cd05d3c00010"
+      "from": "19766ed6ccb2",
+      "text": "18c9d912a210"
     },
     "ja": {
-      "from": "22e4d44bbe24",
-      "text": "41159a269284"
+      "from": "19766ed6ccb2",
+      "text": "bca84ea5c65f"
     },
     "ko": {
-      "from": "22e4d44bbe24",
-      "text": "cbf9b416de23"
+      "from": "19766ed6ccb2",
+      "text": "be876433993a"
     },
     "pt-BR": {
-      "from": "22e4d44bbe24",
-      "text": "6482fc88eab3"
+      "from": "19766ed6ccb2",
+      "text": "bb9dbb406dcb"
     },
     "zh-CN": {
-      "from": "22e4d44bbe24",
-      "text": "73c05445daa1"
+      "from": "19766ed6ccb2",
+      "text": "2cd0f3be8738"
+    }
+  },
+  "artifacts:quickEdit.unsavedConfirm.discard": {
+    "de": {
+      "from": "7a3011775d29",
+      "text": "7f9783c0aeda"
+    },
+    "es": {
+      "from": "7a3011775d29",
+      "text": "22b595dc767c"
+    },
+    "fr": {
+      "from": "7a3011775d29",
+      "text": "a41963d4d172"
+    },
+    "it": {
+      "from": "7a3011775d29",
+      "text": "f2523d8ef0f0"
+    },
+    "ja": {
+      "from": "7a3011775d29",
+      "text": "e57e52437fc6"
+    },
+    "ko": {
+      "from": "7a3011775d29",
+      "text": "3c1be320e30b"
+    },
+    "pt-BR": {
+      "from": "7a3011775d29",
+      "text": "ec294913d7ce"
+    },
+    "zh-CN": {
+      "from": "7a3011775d29",
+      "text": "38a5f79af154"
+    }
+  },
+  "artifacts:quickEdit.unsavedConfirm.save": {
+    "de": {
+      "from": "bcec9a3dadda",
+      "text": "6fb0e767a8fd"
+    },
+    "es": {
+      "from": "bcec9a3dadda",
+      "text": "d3d71fcb3bba"
+    },
+    "fr": {
+      "from": "bcec9a3dadda",
+      "text": "6a9a88ac50bd"
+    },
+    "it": {
+      "from": "bcec9a3dadda",
+      "text": "44422816a79e"
+    },
+    "ja": {
+      "from": "bcec9a3dadda",
+      "text": "bd6387a9fc52"
+    },
+    "ko": {
+      "from": "bcec9a3dadda",
+      "text": "776b507684ed"
+    },
+    "pt-BR": {
+      "from": "bcec9a3dadda",
+      "text": "8c977f1bbeec"
+    },
+    "zh-CN": {
+      "from": "bcec9a3dadda",
+      "text": "3745aac3f9e3"
+    }
+  },
+  "artifacts:quickEdit.unsavedConfirm.saveFailed": {
+    "de": {
+      "from": "b6b27f7fcade",
+      "text": "fb43ee789e13"
+    },
+    "es": {
+      "from": "b6b27f7fcade",
+      "text": "b201ac41faa9"
+    },
+    "fr": {
+      "from": "b6b27f7fcade",
+      "text": "c3a0fab479cb"
+    },
+    "it": {
+      "from": "b6b27f7fcade",
+      "text": "507a2b3cc23d"
+    },
+    "ja": {
+      "from": "b6b27f7fcade",
+      "text": "81585cdc0126"
+    },
+    "ko": {
+      "from": "b6b27f7fcade",
+      "text": "692bded2c18d"
+    },
+    "pt-BR": {
+      "from": "b6b27f7fcade",
+      "text": "c1f4a9c0286f"
+    },
+    "zh-CN": {
+      "from": "b6b27f7fcade",
+      "text": "2b6191c036d7"
+    }
+  },
+  "artifacts:quickEdit.unsavedConfirm.title": {
+    "de": {
+      "from": "b451ed6e63fe",
+      "text": "9855f7de4e54"
+    },
+    "es": {
+      "from": "b451ed6e63fe",
+      "text": "a4c759c51aa4"
+    },
+    "fr": {
+      "from": "b451ed6e63fe",
+      "text": "fe6ba7d6b00f"
+    },
+    "it": {
+      "from": "b451ed6e63fe",
+      "text": "e265c17b848e"
+    },
+    "ja": {
+      "from": "b451ed6e63fe",
+      "text": "e05fdf47045b"
+    },
+    "ko": {
+      "from": "b451ed6e63fe",
+      "text": "05a920319bb9"
+    },
+    "pt-BR": {
+      "from": "b451ed6e63fe",
+      "text": "93a326ae8114"
+    },
+    "zh-CN": {
+      "from": "b451ed6e63fe",
+      "text": "9a3e48fc2f90"
     }
   },
   "artifacts:quickEdit.workingInChat": {

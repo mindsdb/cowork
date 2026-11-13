@@ -15,6 +15,18 @@
 }
 .artifact-revision-identity,
 .artifact-revision-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* Centred lines (ENG-4227): three columns, 1fr auto 1fr, so the middle is
+   the true centre whatever the sides hold. The sides never squeeze the
+   middle into overlapping them: the left (title, revision) shrinks with an
+   ellipsis, the right keeps its controls whole, and the middle (the address
+   pill) shrinks before anything overlaps. */
+.artifact-viewer-topbar.is-centered,
+.artifact-revision-bar.is-centered { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(max-content, 1fr); align-items: center; column-gap: 10px; }
+/* The title keeps a readable minimum, so on a tight line the pill gives way
+   first rather than the title collapsing to a letter. */
+.artifact-viewer-topbar.is-centered { grid-template-columns: minmax(min(11rem, 28%), 1fr) minmax(0, auto) minmax(max-content, 1fr); }
+.artifact-revision-bar.is-centered .artifact-revision-actions { justify-content: flex-end; }
+.artifact-revision-center { display: flex; justify-content: center; min-width: 0; }
 .artifact-revision-identity strong { color: var(--ink-2); font-size: 12px; white-space: nowrap; }
 .artifact-draft-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent); }
 .artifact-save-state { color: var(--ink-4); font-size: 11px; white-space: nowrap; }
@@ -219,10 +231,12 @@
 .artifact-compare-loading { flex: 1; display: grid; place-items: center; color: var(--ink-3); font: 13px/1.35 var(--font-body); }
 
 @media (max-width: 820px) {
-  .artifact-viewer-topbar { flex-wrap: wrap; }
-  .artifact-viewer-title-zone { order: 1; flex: 1 1 150px !important; }
-  .artifact-viewer-action-zone { order: 2; flex: 0 0 auto !important; }
-  .artifact-viewer-mode-zone { order: 3; flex: 1 0 100% !important; }
+  /* Narrow: the title and actions share the first row, the pill takes the
+     second, centred. */
+  .artifact-viewer-topbar.is-centered { grid-template-columns: minmax(0, 1fr) max-content; grid-template-areas: "title actions" "address address"; row-gap: 8px; }
+  .artifact-viewer-topbar.is-centered .artifact-viewer-title-zone { grid-area: title; }
+  .artifact-viewer-topbar.is-centered .artifact-viewer-mode-zone { grid-area: address; }
+  .artifact-viewer-topbar.is-centered .artifact-viewer-action-zone { grid-area: actions; }
   .artifact-source-workbench.is-split { grid-template-columns: 1fr; grid-template-rows: minmax(280px, 1fr) minmax(280px, 1fr); overflow: auto; }
   .artifact-render-pane { border-left: 0; border-top: 1px solid var(--line); }
   .artifact-compare-grid { grid-template-columns: 1fr; overflow: auto; }
@@ -251,8 +265,12 @@
 }
 
 @media (max-width: 600px) {
-  .artifact-revision-bar { align-items: flex-start; flex-direction: column; }
-  .artifact-revision-actions { width: 100%; justify-content: flex-end; }
+  .artifact-revision-bar:not(.is-centered) { align-items: flex-start; flex-direction: column; }
+  .artifact-revision-actions { justify-content: flex-end; }
+  .artifact-revision-bar.is-centered { grid-template-columns: minmax(0, 1fr) max-content; grid-template-areas: "identity actions" "center center"; row-gap: 6px; }
+  .artifact-revision-bar.is-centered .artifact-revision-identity { grid-area: identity; }
+  .artifact-revision-bar.is-centered .artifact-revision-center { grid-area: center; }
+  .artifact-revision-bar.is-centered .artifact-revision-actions { grid-area: actions; }
   .artifact-html-edit-guidance > span:last-child { display: none; }
   .artifact-html-edit-actions button { padding: 0 8px; }
 }
@@ -314,10 +332,6 @@
   .artifact-preview-reload-cover { transition: none; animation: none; }
 }
 
-/* Source beside the preview (ENG-4227): code left, preview right. */
-.artifact-viewer-canvas.is-split .artifact-mode-surface.is-source-side { right: 50%; border-right: 1px solid var(--line); }
-.artifact-viewer-canvas.is-split .artifact-mode-surface.is-preview-side { left: 50%; }
-
 /* The address pill in the middle of the header. */
 .artifact-address-pill { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 30px; padding: 0 4px 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font: 500 var(--text-sm)/1 var(--font-body); }
 .artifact-address-pill-icon { display: inline-flex; flex-shrink: 0; color: var(--ink-3); }
@@ -355,3 +369,31 @@
 
 /* The bar reads as an input while focused: the app's focus ring, quiet. */
 .artifact-quick-edit-input:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: var(--ring); }
+
+/* The unsaved-changes confirm, anchored to the bar (ENG-4227): the app's
+   popover surface, compact, the primary action last. */
+.artifact-quick-edit-confirm { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised, var(--surface)); box-shadow: 0 8px 24px rgba(0, 0, 0, .10), 0 0 0 .5px rgba(0, 0, 0, .04); color: var(--ink); font: 500 var(--text-sm)/1.4 var(--font-body); animation: artifact-quick-edit-msg-in var(--dur-popover-in, 80ms) var(--ease-out) both; }
+.artifact-quick-edit-confirm-actions { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.artifact-quick-edit-confirm-button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--r-8); background: transparent; color: var(--ink-2); font: 500 var(--text-sm)/1 var(--font-body); cursor: pointer; transition: background var(--dur-hover) ease, color var(--dur-hover) ease; }
+.artifact-quick-edit-confirm-button:hover:not(:disabled) { background: var(--ghost-hover); color: var(--text-strong); }
+.artifact-quick-edit-confirm-button.is-primary { background: var(--accent); color: #fff; }
+.artifact-quick-edit-confirm-button.is-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, #000); color: #fff; }
+.artifact-quick-edit-confirm-button:disabled { opacity: .6; cursor: default; }
+.artifact-quick-edit-confirm-button:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
+
+/* A reply and its action on one row (ENG-4227): the bubble takes the
+   remaining width and wraps; Undo or "Ask the agent instead" sits beside
+   it, centred on it, never shrinking. Narrow: the action drops below,
+   right-aligned. */
+.artifact-quick-edit-row { align-self: stretch; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.artifact-quick-edit-row > .artifact-quick-edit-msg.is-reply { flex: 0 1 auto; min-width: 0; max-width: none; }
+.artifact-quick-edit-side { flex: 0 0 auto; display: inline-flex; align-items: center; }
+.artifact-quick-edit-row.is-entering { animation: artifact-quick-edit-msg-in var(--dur-layout) var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) {
+  .artifact-quick-edit-row.is-entering { animation-name: artifact-quick-edit-msg-fade; }
+}
+@media (max-width: 520px) {
+  .artifact-quick-edit-row { flex-wrap: wrap; }
+  .artifact-quick-edit-row > .artifact-quick-edit-msg.is-reply { max-width: 100%; }
+  .artifact-quick-edit-side { margin-left: auto; }
+}

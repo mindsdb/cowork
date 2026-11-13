@@ -660,7 +660,6 @@
     "noop": "Nichts geändert.",
     "failed": "Diese Änderung konnte hier nicht vorgenommen werden.",
     "askAgent": "Stattdessen den Agenten fragen",
-    "unsavedSource": "Speichere oder verwirf deine Änderungen in „Live-Bearbeitung“, um hier eine Änderung anzufragen.",
     "errors": {
       "stale": "Dieses Artefakt hat sich geändert, seit du es geöffnet hast. Es wurde neu geladen; versuche es noch einmal.",
       "busy": "Eine andere Änderung an diesem Artefakt läuft noch. Versuche es erneut, wenn sie fertig ist.",
@@ -678,7 +677,14 @@
     "needsAnswer": "Braucht deine Antwort im Chat",
     "workingInChat": "Wird im Chat bearbeitet…",
     "sentToChat": "An den Chat gesendet.",
-    "chatStopped": "Der Chat-Durchlauf wurde vor einer Antwort beendet."
+    "chatStopped": "Der Chat-Durchlauf wurde vor einer Antwort beendet.",
+    "unsavedConfirm": {
+      "title": "Du hast nicht gespeicherte Änderungen. Vor dem Senden speichern?",
+      "save": "Speichern und senden",
+      "discard": "Verwerfen und senden",
+      "cancel": "Abbrechen",
+      "saveFailed": "Deine Änderungen konnten nicht gespeichert werden, daher wurde nichts gesendet."
+    }
   },
   "stats": {
     "toggle": {

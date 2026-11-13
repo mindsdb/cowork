@@ -64,7 +64,7 @@ describe('ArtifactRevisionBar history picker', () => {
 // The viewer's layer toggles (ENG-4227) sit on this line, right-aligned just
 // before History.
 describe('ArtifactRevisionBar layer controls', () => {
-  it('puts the layer controls right before History', () => {
+  it('centres the layer controls between the revision and History', () => {
     render(
       <ArtifactRevisionBar
         revision={{ id: 'rev-2', number: 2, summary: 'x' }}
@@ -77,6 +77,12 @@ describe('ArtifactRevisionBar layer controls', () => {
 
     const layers = screen.getByTestId('layers');
     const history = screen.getByRole('combobox', { name: /Compare/ });
-    expect(layers.nextElementSibling).toContainElement(history);
+    const bar = layers.closest('.artifact-revision-bar');
+    expect(bar).toHaveClass('is-centered');
+    // Three columns: revision, toggles (centre), History.
+    const columns = [...bar.children].map((child) => child.className);
+    expect(columns).toEqual(['artifact-revision-identity', 'artifact-revision-center', 'artifact-revision-actions']);
+    expect(layers.parentElement).toHaveClass('artifact-revision-center');
+    expect(bar.lastElementChild).toContainElement(history);
   });
 });

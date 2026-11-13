@@ -660,7 +660,6 @@
     "noop": "No cambió nada.",
     "failed": "Ese cambio no se pudo hacer aquí.",
     "askAgent": "Preguntar al agente",
-    "unsavedSource": "Guarda o descarta tus cambios en Edición en vivo para pedir un cambio aquí.",
     "errors": {
       "stale": "Este artefacto cambió desde que lo abriste. Se ha vuelto a cargar; inténtalo de nuevo.",
       "busy": "Otro cambio en este artefacto sigue en curso. Inténtalo de nuevo cuando termine.",
@@ -678,7 +677,14 @@
     "needsAnswer": "Necesita tu respuesta en el chat",
     "workingInChat": "Trabajando en el chat…",
     "sentToChat": "Enviado al chat.",
-    "chatStopped": "El turno del chat se detuvo antes de responder."
+    "chatStopped": "El turno del chat se detuvo antes de responder.",
+    "unsavedConfirm": {
+      "title": "Tienes cambios sin guardar. ¿Guardarlos antes de enviar?",
+      "save": "Guardar y enviar",
+      "discard": "Descartar y enviar",
+      "cancel": "Cancelar",
+      "saveFailed": "No se pudieron guardar tus cambios, así que no se envió nada."
+    }
   },
   "stats": {
     "toggle": {

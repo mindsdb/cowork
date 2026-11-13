@@ -137,9 +137,12 @@ export function useQuickEdit(artifact, {
     setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
   }, []);
 
-  const run = useCallback(async (text, { forceRoute = null } = {}) => {
+  const run = useCallback(async (text, { forceRoute = null, expectedRevisionId = null } = {}) => {
     const message = (text || '').trim();
     if (!message || controllerRef.current) return false;
+    // A save just made before sending names its revision: the workspace
+    // reload that will report it has not landed yet.
+    if (expectedRevisionId) headRef.current = expectedRevisionId;
     const history = messagesRef.current
       .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.summary))
       .map((m) => ({ role: m.role, text: m.role === 'user' ? m.text : m.summary }))
@@ -293,7 +296,8 @@ export function useQuickEdit(artifact, {
     return true;
   }, [artifact, direct, patchReply]);
 
-  const send = useCallback((text) => run(text), [run]);
+  // `options.expectedRevisionId`: the revision a save made just before sending.
+  const send = useCallback((text, options) => run(text, { expectedRevisionId: options?.expectedRevisionId || null }), [run]);
 
   // "Ask the agent instead" after a failed edit: the same message, routed to
   // the agent by the server so the turn is recorded like any other.

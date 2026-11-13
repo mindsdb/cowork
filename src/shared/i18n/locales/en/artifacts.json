@@ -660,7 +660,6 @@
     "noop": "Nothing changed.",
     "failed": "That change couldn't be made here.",
     "askAgent": "Ask the agent instead",
-    "unsavedSource": "Save or discard your Live edit changes to ask for a change here.",
     "errors": {
       "stale": "This artifact changed since you opened it. It has been reloaded; try again.",
       "busy": "Another change to this artifact is still running. Try again when it finishes.",
@@ -678,7 +677,14 @@
     "needsAnswer": "Needs your answer in the chat",
     "workingInChat": "Working in the chat…",
     "sentToChat": "Sent to the chat.",
-    "chatStopped": "The chat turn stopped before it answered."
+    "chatStopped": "The chat turn stopped before it answered.",
+    "unsavedConfirm": {
+      "title": "You have unsaved changes. Save them before sending?",
+      "save": "Save and send",
+      "discard": "Discard and send",
+      "cancel": "Cancel",
+      "saveFailed": "Your changes couldn't be saved, so nothing was sent."
+    }
   },
   "stats": {
     "toggle": {

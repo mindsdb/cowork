@@ -660,7 +660,6 @@
     "noop": "Nessuna modifica.",
     "failed": "Non è stato possibile fare questa modifica qui.",
     "askAgent": "Chiedi all'agente",
-    "unsavedSource": "Salva o scarta le modifiche in Modifica dal vivo per chiedere una modifica qui.",
     "errors": {
       "stale": "Questo artefatto è cambiato da quando l'hai aperto. È stato ricaricato; riprova.",
       "busy": "Un'altra modifica a questo artefatto è ancora in corso. Riprova quando termina.",
@@ -678,7 +677,14 @@
     "needsAnswer": "Serve la tua risposta nella chat",
     "workingInChat": "In corso nella chat…",
     "sentToChat": "Inviato alla chat.",
-    "chatStopped": "Il turno della chat si è interrotto prima di rispondere."
+    "chatStopped": "Il turno della chat si è interrotto prima di rispondere.",
+    "unsavedConfirm": {
+      "title": "Hai modifiche non salvate. Salvarle prima di inviare?",
+      "save": "Salva e invia",
+      "discard": "Scarta e invia",
+      "cancel": "Annulla",
+      "saveFailed": "Non è stato possibile salvare le modifiche, quindi non è stato inviato nulla."
+    }
   },
   "stats": {
     "toggle": {

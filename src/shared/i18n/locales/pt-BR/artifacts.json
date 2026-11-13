@@ -660,7 +660,6 @@
     "noop": "Nada mudou.",
     "failed": "Não foi possível fazer essa alteração aqui.",
     "askAgent": "Perguntar ao agente",
-    "unsavedSource": "Salve ou descarte suas alterações em Edição ao vivo para pedir uma alteração aqui.",
     "errors": {
       "stale": "Este artefato mudou desde que você o abriu. Ele foi recarregado; tente novamente.",
       "busy": "Outra alteração neste artefato ainda está em andamento. Tente novamente quando terminar.",
@@ -678,7 +677,14 @@
     "needsAnswer": "Precisa da sua resposta no chat",
     "workingInChat": "Trabalhando no chat…",
     "sentToChat": "Enviado para o chat.",
-    "chatStopped": "O turno do chat parou antes de responder."
+    "chatStopped": "O turno do chat parou antes de responder.",
+    "unsavedConfirm": {
+      "title": "Você tem alterações não salvas. Salvá-las antes de enviar?",
+      "save": "Salvar e enviar",
+      "discard": "Descartar e enviar",
+      "cancel": "Cancelar",
+      "saveFailed": "Não foi possível salvar suas alterações, então nada foi enviado."
+    }
   },
   "stats": {
     "toggle": {

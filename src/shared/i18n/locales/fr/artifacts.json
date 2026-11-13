@@ -660,7 +660,6 @@
     "noop": "Rien n'a changé.",
     "failed": "Cette modification n'a pas pu être faite ici.",
     "askAgent": "Demander plutôt à l'agent",
-    "unsavedSource": "Enregistrez ou abandonnez vos modifications dans Modification en direct pour demander une modification ici.",
     "errors": {
       "stale": "Cet artefact a changé depuis son ouverture. Il a été rechargé ; réessayez.",
       "busy": "Une autre modification de cet artefact est encore en cours. Réessayez une fois terminée.",
@@ -678,7 +677,14 @@
     "needsAnswer": "Attend votre réponse dans le chat",
     "workingInChat": "En cours dans le chat…",
     "sentToChat": "Envoyé dans le chat.",
-    "chatStopped": "Le tour du chat s'est arrêté avant de répondre."
+    "chatStopped": "Le tour du chat s'est arrêté avant de répondre.",
+    "unsavedConfirm": {
+      "title": "Vous avez des modifications non enregistrées. Les enregistrer avant d'envoyer ?",
+      "save": "Enregistrer et envoyer",
+      "discard": "Abandonner et envoyer",
+      "cancel": "Annuler",
+      "saveFailed": "Vos modifications n'ont pas pu être enregistrées ; rien n'a été envoyé."
+    }
   },
   "stats": {
     "toggle": {

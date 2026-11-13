@@ -101,10 +101,6 @@ import {
   withArtifactVersion,
 } from './artifactPreviewUtils';
 
-// The body width from which Source sits beside the preview instead of in
-// its place.
-export const SOURCE_SPLIT_MIN_WIDTH = 1100;
-
 // Extensions we render inline with the lightweight text preview path
 // (server `/v1/artifacts/preview` → text body). `.md` gets the full
 // markdown renderer; `.csv` gets a parsed table; `.txt` and friends
@@ -293,21 +289,6 @@ export function ArtifactViewer({
   const barFocusUsed = useRef(0);
   useEffect(() => { if (open) setBarFocusRequest((n) => n + 1); }, [open, artifact?.id]);
   const [sourceOffPrompt, setSourceOffPrompt] = useState(false);
-  // The body's width decides whether Source sits beside the preview or
-  // replaces it.
-  const [bodyWidth, setBodyWidth] = useState(0);
-  const bodyObserverRef = useRef(null);
-  const bodyRef = useCallback((node) => {
-    bodyObserverRef.current?.disconnect();
-    bodyObserverRef.current = null;
-    if (!node) return;
-    const measure = () => setBodyWidth(node.getBoundingClientRect().width || node.clientWidth || 0);
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    bodyObserverRef.current = observer;
-  }, []);
   // Fallback target for a repair: a brand-new chat. Used when the viewer has no
   // host chat (opened from the artifacts list) and the host either offers no
   // resolver or can't reach the chat that created the artifact.
@@ -1013,11 +994,10 @@ export function ArtifactViewer({
     onStale: () => { void workspace.load(); },
   });
 
-  // Source: the code editor, beside the preview on a wide viewer and in its
-  // place on a narrow one. Turning it off with unsaved text asks first.
+  // Live edit (`source`): the code editor, in the preview's place at any
+  // width. Turning it off with unsaved text asks first.
   const canSource = !!workspace.source && workspace.capabilities?.canEdit !== false;
   const sourceOn = layers.source && canSource;
-  const sourceSplit = sourceOn && bodyWidth >= SOURCE_SPLIT_MIN_WIDTH;
   const setSourceLayer = (on) => {
     if (!on && workspace.dirty) {
       setSourceOffPrompt(true);
@@ -1412,8 +1392,7 @@ export function ArtifactViewer({
       open={open}
       onClose={requestClose}
       size="lg"
-      // Wider with Source on, so code and preview fit side by side.
-      width={sourceOn ? 'min(1440px, 96vw)' : 'min(1080px, 94vw)'}
+      width="min(1080px, 94vw)"
       height="min(820px, 88vh)"
       labelledBy="artifact-viewer-title"
     >
@@ -1446,9 +1425,10 @@ export function ArtifactViewer({
       {/* No revision line to sit on (a published page someone reviews, say):
           the toggles get a line of their own. */}
       {!workspace.currentRevision && layerControls && (
-        <div className="artifact-revision-bar is-layers-only">
+        <div className="artifact-revision-bar is-centered is-layers-only">
           <span />
-          <div className="artifact-revision-actions">{layerControls}</div>
+          <div className="artifact-revision-center">{layerControls}</div>
+          <span />
         </div>
       )}
       {(workspace.error || workspace.conflict) && (
@@ -1552,8 +1532,7 @@ export function ArtifactViewer({
       )}
 
       <ArtifactViewerBody
-        bodyRef={bodyRef}
-        layers={{ source: sourceOn, split: sourceSplit }}
+        layers={{ source: sourceOn }}
         workspace={{ ...workspaceView, save: saveWorkspace }}
         preview={previewModel}
         review={bodyReview}
@@ -1561,7 +1540,7 @@ export function ArtifactViewer({
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
       />
 
-      {canQuickEdit && (!sourceOn || sourceSplit) && (
+      {canQuickEdit && (
         <QuickEditBar
           controller={quickEdit}
           chatMessages={chatMessages}
@@ -1577,8 +1556,14 @@ export function ArtifactViewer({
               onEffortChange={setBarEffort}
             />
           ) : null}
-          // A reload after a quick edit would replace Source text never saved.
-          disabledReason={workspace.dirty ? t('quickEdit.unsavedSource') : ''}
+          // Unsaved editor text: sending asks to save or discard it first,
+          // so the edit never lands on top of it.
+          unsaved={!!workspace.dirty}
+          onSaveUnsaved={async () => {
+            const saved = await saveWorkspace();
+            return saved?.revision?.id || null;
+          }}
+          onDiscardUnsaved={workspace.discard}
           focusRequest={barFocusRequest}
           focusUsed={barFocusUsed}
           onOpenChat={onClose}

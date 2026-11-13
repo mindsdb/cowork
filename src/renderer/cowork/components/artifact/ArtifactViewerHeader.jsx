@@ -89,15 +89,16 @@ export function ArtifactViewerHeader({
     }] : []),
   ];
   return (
-    <div className="artifact-viewer-topbar" style={{
+    // Three columns, 1fr auto 1fr (artifactWorkspace.css): the address pill
+    // in the true centre, the title and the actions on either side.
+    <div className="artifact-viewer-topbar is-centered" style={{
       flex: '0 0 auto',
-      display: 'flex', alignItems: 'center', gap: 10,
       padding: '10px 12px',
       borderBottom: '1px solid var(--line)',
       background: 'var(--surface)',
     }}>
       {/* Left — artifact title. */}
-      <div className="artifact-viewer-title-zone" style={{ flex: '1 1 140px', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+      <div className="artifact-viewer-title-zone" style={{ minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
         <div
           id="artifact-viewer-title"
           className="s-h3"
@@ -119,7 +120,7 @@ export function ArtifactViewerHeader({
           here rather than in the ⋯ menu, which org mode hides, and is offered
           by the same rule as before: never a button that opens nothing, nor a
           tab that would save a file instead of showing it. */}
-      <div className="artifact-viewer-mode-zone" style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+      <div className="artifact-viewer-mode-zone" style={{ minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
         {shownAddress && (
           <ArtifactAddressPill
             kind={shownAddress.kind}
@@ -132,7 +133,7 @@ export function ArtifactViewerHeader({
       </div>
 
       {/* Right — preview errors, comments, stats, publishing, more actions, and close. */}
-      <div className="artifact-viewer-action-zone" style={{ flex: '0 0 auto', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+      <div className="artifact-viewer-action-zone" style={{ minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
         {showStats && (
           <Tooltip content={stats.open ? t('stats.toggle.hide') : t('stats.toggle.show')}>
