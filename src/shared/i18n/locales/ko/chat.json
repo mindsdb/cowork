@@ -628,8 +628,8 @@
   "connectorDraft": {
     "notSaved": "커넥터 템플릿 · 저장되지 않음",
     "kept": "이 ID의 커넥터가 이미 있습니다. 다시 저장하면 대체됩니다.",
-    "saved": "저장했습니다. 앱 및 데이터 연결에서 자격 증명을 추가하세요.",
-    "savedConnect": "저장했습니다. 연결해서 자격 증명을 추가하세요.",
+    "saved": "저장했습니다. ‘앱 및 데이터 연결’에서 자격 증명을 추가하세요.",
+    "savedConnect": "저장했습니다. 연결하여 자격 증명을 추가하세요.",
     "saveFailed": "커넥터를 저장할 수 없습니다.",
     "button": {
       "save": "커넥터 저장",
@@ -640,7 +640,7 @@
     },
     "modal": {
       "fieldsTitle": "입력할 항목",
-      "usageTitle": "Anton의 사용 방법",
+      "usageTitle": "Anton이 사용하는 방법",
       "helpUrl": "찾는 곳: {url}"
     },
     "field": {
