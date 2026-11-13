@@ -209,15 +209,14 @@ describe('the viewer header controls', () => {
   });
 });
 
-describe.each(cases.reasons)('Edit and Review for $name', (reasonCase) => {
-  it('names the reason in each tab', () => {
+describe('the header without mode tabs or layer toggles', () => {
+  it('holds the address pill and no tabs or toggles: those live on the revision line', () => {
     useMode(modeNamed('local web'));
-    const props = headerProps(modeNamed('local web'), { path: 'model.xlsx' });
-    props.workspace = { ...props.workspace, ...reasonCase.workspace };
-    render(<ArtifactViewerHeader {...props} />);
+    render(<ArtifactViewerHeader {...headerProps(modeNamed('local web'), { path: 'page.html' })} />);
 
-    expect(screen.getByRole('tab', { name: reasonCase.edit })).toBeDisabled();
-    expect(screen.getByRole('tab', { name: reasonCase.review })).toBeDisabled();
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Viewer layers' })).toBeNull();
+    expect(document.querySelector('.artifact-address-pill')).not.toBeNull();
   });
 });
 
