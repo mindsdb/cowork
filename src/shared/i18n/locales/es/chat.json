@@ -151,8 +151,6 @@
       "title": "{who} tiene un problema temporal"
     },
     "header": {
-      "expandPanel": "Expandir panel",
-      "collapsePanel": "Contraer panel",
       "apps": "Apps",
       "connectAppsAndData": "Conectar apps y datos",
       "projects": "Proyectos",

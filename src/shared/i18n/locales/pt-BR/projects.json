@@ -845,8 +845,6 @@
     },
     "noRenamePermission": "Você não tem permissão para renomear este projeto.",
     "renameFailed": "Não foi possível renomear: {error}",
-    "expandPanel": "Expandir painel",
-    "collapsePanel": "Recolher painel",
     "title": "Projetos",
     "allProjects": "Todos os projetos",
     "deleting": "Excluindo…",

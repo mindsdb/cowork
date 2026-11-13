@@ -346,7 +346,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   }];
 
   return (
-    <main className="code-skills-view">
+    <main className="code-skills-view titlebar-fade titlebar-fade--page">
       <PageHeader
         title={t('skills.view.title')}
         subtitle={t('skills.view.subtitle')}

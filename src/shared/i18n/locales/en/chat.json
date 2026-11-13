@@ -151,8 +151,6 @@
       "title": "{who} is having a temporary issue"
     },
     "header": {
-      "expandPanel": "Expand panel",
-      "collapsePanel": "Collapse panel",
       "apps": "Apps",
       "connectAppsAndData": "Connect Apps and Data",
       "projects": "Projects",

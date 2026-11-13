@@ -165,7 +165,7 @@ export default function ScheduleDetailView({
   const canToggle = !oneOffWithoutTime(task, state);
 
   return (
-    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col font-[family-name:var(--font-body)]">
+    <div className="scroll-clean titlebar-fade titlebar-fade--page flex-1 overflow-y-auto flex flex-col font-[family-name:var(--font-body)]">
       <PageHeader
         crumbs={[{ label: t('scheduleCommon.breadcrumb'), onClick: onBack, title: t('scheduleDetail.allScheduledTasks') }]}
         title={task.title || t('scheduleCommon.untitled')}

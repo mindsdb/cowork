@@ -848,9 +848,6 @@
     "sort": "排序",
     "priority": "优先级",
     "lastUpdated": "最近更新",
-    "searchPlaceholder": "查找任务",
-    "searchAriaLabel": "查找编程任务",
-    "noMatch": "没有与搜索匹配的编程任务。",
     "empty": "开始一个编程任务后，它的对话和更改都会保存在这里。",
     "pinned": "已置顶",
     "archived": "已归档"
@@ -948,6 +945,15 @@
       "needsYou": "{count, plural, other {# 个任务需要你处理 →}}",
       "on": "通知已开启",
       "off": "离开时通知我"
+    },
+    "bell": {
+      "needsYou": "{count, plural, other {# 个任务需要你处理}}",
+      "triggerNeedsYou": "代码：{count, plural, other {# 个任务需要你处理}}",
+      "menuLabel": "代码待处理",
+      "trigger": "代码通知",
+      "none": "没有需要你处理的代码任务",
+      "untitled": "未命名任务",
+      "onHint": "开"
     }
   },
   "catalog": {
@@ -1471,10 +1477,7 @@
     "openIsolatedCopy": "打开隔离副本",
     "forkTask": "复刻任务",
     "taskSettings": "任务设置",
-    "detailsMenuAriaLabel": "工作副本和任务详情",
-    "showDetailsAriaLabel": "显示 {label} 的任务详情",
     "details": {
-      "title": "任务配置",
       "files": "文件",
       "branch": "分支",
       "computer": "电脑",
@@ -1496,8 +1499,11 @@
     "files": "文件",
     "terminal": "终端",
     "reviewChanges": "审阅更改",
-    "review": "审阅",
-    "taskActionsAriaLabel": "编程任务操作"
+    "taskActionsAriaLabel": "编程任务操作",
+    "allTasksIn": "{name} 中的所有任务",
+    "allTasks": "所有任务",
+    "detailsMenuShortAriaLabel": "任务详情",
+    "showDetailsShortAriaLabel": "显示任务详情"
   },
   "terminal": {
     "status": {

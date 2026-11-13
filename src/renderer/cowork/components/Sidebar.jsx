@@ -1,7 +1,7 @@
 import { PLATFORM_UI } from '../../lib/deployment';
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner, Kbd, Badge, Input, Button, Tooltip } from './ui';
+import { Spinner, Kbd, Badge, Input, Tooltip } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -15,11 +15,12 @@ import { WORKSPACE_SELECTOR_ENABLED } from '../lib/workspaceSelectorFlag';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
-import WorkspaceModeSwitch from './WorkspaceModeSwitch';
 import { surfaceCopy } from '../lib/surface';
-import { brandLogoUrl, productName } from '../../lib/deploymentBrand';
-import { STOCK_PRODUCT_NAME, STOCK_WORDMARK } from '../../../shared/product-name';
+import { shortcutLabel } from '../lib/shortcut';
+import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 import { sharedTranslator, useTranslation } from '../../lib/i18n';
+import { SidebarBrand, WorkspaceSwitch } from './WorkspaceBrand';
+import { useAppHeaderSlots } from './appHeader';
 
 // Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
 // share sage (progress is the same banner mid-download); `error` goes amber.
@@ -40,12 +41,6 @@ const UPDATE_TONE_CLASS = {
     action: 'text-[var(--warning,#c47f00)]',
   },
 };
-
-// Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
-// Windows/Linux use Ctrl+ literal.
-const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
-const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
-const shortcut = (key) => `${MOD_LABEL}${key}`;
 
 function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }) {
   const { t } = useTranslation('shell');
@@ -238,7 +233,6 @@ export default function Sidebar({
   activeRoute,
   activeTaskId,
   activeWorkspace = 'cowork',
-  showWorkspaceSwitch = false,
   activeCodeRoute = null,
   codingSessions = [],
   activeCodingSessionId = null,
@@ -246,7 +240,6 @@ export default function Sidebar({
   serverBusy = false,
   serverBusyKind = 'starting', // 'starting' | 'stopping'
   onNavigate,
-  onWorkspaceChange = () => {},
   onSelectTask,
   onNewTask,
   onSelectCodingSession,
@@ -259,9 +252,18 @@ export default function Sidebar({
   onOpenCodingTasks,
   onOpenCodingConnectors,
   onOpenCodingSkills,
-  onOpenSearch,
   collapsed = false,
   onToggleCollapsed,
+  // Off-canvas drawer (tablet band). The drawer covers the titlebar's sidebar
+  // zone, so it carries its own top row with the close toggle at the same
+  // spot, past the window controls (`lightsInset`).
+  popout = false,
+  lightsInset = 12,
+  // The brand row and, in the head row, the workspace switch (desktop only).
+  brand = null,
+  // Display settings, docked in the footer (was a floating corner button):
+  // { label, icon, onClick }, or null when both Appearance switches are off.
+  displayToggle = null,
   onPinTask,
   onUnpinTask,
   onRenameTask,
@@ -291,16 +293,6 @@ export default function Sidebar({
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
   showCounters = false,
-  // Settings → Appearance → Sidebar title/logo. Replaces the "MindsHub"
-  // wordmark; null/empty falls back to the default (text-only, no logo).
-  navTitle = null,
-  navLogo = null,
-  // The org's logo is a wordmark, not a square icon, so it gets a
-  // wider box than a logo uploaded in Settings.
-  navLogoWide = false,
-  // The org chose "None (logo only)": no title at all, not even
-  // the product name.
-  navTitleHidden = false,
   // Onboarding — "Get to know Cowork" checklist. Each step seeds a new
   // chat via this handler (App's send-from-home). Omit to hide the card
   // (tests, web shells that don't wire it).
@@ -315,18 +307,27 @@ export default function Sidebar({
 }) {
   const { t } = useTranslation('shell');
   const codeRoute = activeWorkspace === 'code';
+  const { setAttention } = useAppHeaderSlots();
   // Signed-in account identity (null when signed out) — decides whether the
   // footer shows the account row + user menu or the plain Settings row.
   const accountUser = useAccountUser(isSsoConnected);
   const workspaceReturnFocusRef = useRef(null);
 
-  // Footer states. The status pill wins over everything (Electron-only, the
-  // server needs attention); otherwise a signed-in user gets the account row.
-  // The quick toggles are keyed off "is the user menu actually rendered", not
-  // "is the user signed in" — while the pill shows, the menu (which hosts the
-  // theme switch) isn't on screen, so the toggles must stay.
+  // The backend status pill shows when the local server needs attention
+  // (Electron only).
   const showsStatusPill = !host.isWeb && (!serverOnline || serverBusy);
-  const showsUserMenu = !showsStatusPill && !!accountUser;
+  const displayButton = displayToggle && (
+    <Tooltip content={displayToggle.label}>
+      <button
+        type="button"
+        className="anton-sidebar__footer-btn shrink-0 [-webkit-app-region:no-drag]"
+        onClick={displayToggle.onClick}
+        aria-label={displayToggle.label}
+      >
+        {displayToggle.icon}
+      </button>
+    </Tooltip>
+  );
   // Which app this is (ENG-2172), and the note that explains an empty list
   // to someone whose work lives in the other one (ENG-2169).
   const surface = surfaceCopy(host.isWeb);
@@ -466,179 +467,128 @@ export default function Sidebar({
     })
     .slice(0, 8);
 
+  // Width animates only while collapsing or expanding. The open width is
+  // --sidebar-w (a vw clamp), so a standing width transition also eased every
+  // window resize and the sidebar lagged the titlebar zone above it. The flag
+  // flips in the same render as `collapsed`, so the toggle still animates.
+  const [prevCollapsed, setPrevCollapsed] = useState(collapsed);
+  const [widthAnimating, setWidthAnimating] = useState(false);
+  if (prevCollapsed !== collapsed) {
+    setPrevCollapsed(collapsed);
+    setWidthAnimating(true);
+  }
+
   return (
     <aside
-      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border border-solid border-line rounded-[14px] shadow-sh-2 origin-left flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] [transition:width_var(--dur-layout)_var(--ease-out),opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]`}
+      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border-0 border-solid border-line flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] ${widthAnimating
+        ? '[transition:width_var(--dur-layout)_var(--ease-out),opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]'
+        : '[transition:opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]'}`}
+      onTransitionEnd={(e) => {
+        if (e.target === e.currentTarget && e.propertyName === 'width') setWidthAnimating(false);
+      }}
       aria-hidden={collapsed || undefined}
       inert={collapsed ? true : undefined}
       style={{
         // Dynamic-only: everything else about this transition lives in the
         // className above. These four properties are collapsed-state-driven
         // and can't be static Tailwind classes.
-        // Combine a gentle leftward translate with a slight scale so
-        // the sidebar reads as "settling into place" rather than just
-        // sliding. Origin pinned to the left edge so the scale grows
-        // from the dock side; the eye picks up the easing curve
-        // along with the width interpolation for a single coherent
-        // motion. Scale + filter values are subtle on purpose —
-        // they're the difference between "this animated" and
-        // "this animated nicely."
-        width: collapsed ? 0 : 'clamp(240px, 24vw, 320px)',
+        // A short leftward translate with the fade and blur, so the
+        // sidebar settles into place. Horizontal only: a scale would also
+        // shrink it toward its vertical centre and drift the rows up and
+        // down as it opens and closes.
+        width: collapsed ? 0 : 'var(--sidebar-w)',
+        // Flush to the window: a single right edge marks where the sidebar
+        // ends (none while collapsed, where the width is 0).
+        borderRightWidth: collapsed ? 0 : 1,
         opacity: collapsed ? 0 : 1,
         transform: collapsed
-          ? 'translateX(-12px) scale(0.985)'
-          : 'translateX(0) scale(1)',
+          ? 'translateX(-12px)'
+          : 'translateX(0)',
         filter: collapsed ? 'blur(6px)' : 'blur(0)',
         pointerEvents: collapsed ? 'none' : 'auto',
       }}
     >
-      {/* Top chrome row: traffic-light pad + collapse/search + ANTON wordmark.
-          padding-top reduced from 14 → 9 to bring the buttons + wordmark
-          5px upward, so they line up with the macOS traffic lights at
-          their new (x:18, y:22) position. */}
-      <div
-        className="anton-sidebar__chrome drag-region shrink-0"
-        // cascade-forced: overrides .anton-sidebar__chrome's default
-        // `padding: 14px 14px 8px` — also dynamic (host.isWeb picks the
-        // left inset that clears the macOS traffic lights in Electron).
-        style={{ padding: `9px 14px 8px ${host.isWeb ? 14 : 88}px` }}
-      >
-        {/* Right-aligned cluster: collapse + search icons, then a
-            middle-dot separator, then the ANTON wordmark. The chrome's
-            existing `justify-content: space-between` pushes the whole
-            cluster against the right edge (the left half is empty space
-            past the traffic-light pad). */}
-        <div className="flex-1" />
-        <div
-          className="anton-sidebar__chrome-left ml-auto"
-          // cascade-forced: overrides .anton-sidebar__chrome-left's default
-          // `gap: 14px` with a tighter 4px for this cluster.
-          style={{ gap: 4 }}
-        >
-          <div className="anton-sidebar__chrome-buttons">
-            {/* Collapse button — always mounted so the search icon
-                next to it never shifts when the host route changes
-                whether the toggle is allowed or not.
-                  • allowed   (chat task)  → fully visible, clickable
-                  • disallowed (other routes) → fades + scales out +
-                    soft blur, but the layout slot stays put so the
-                    search icon doesn't displace.
-                The transition is gentle and a touch over-eased so
-                the hide reads as deliberate without being theatrical. */}
-            {(() => {
-              const canToggle = typeof onToggleCollapsed === 'function';
-              return (
-                <Tooltip content={canToggle ? `${collapsed ? t('sidebar.expand') : t('sidebar.collapse')}  (${shortcut('B')})` : ''}>
-                  <button
-                    className="icon-btn [-webkit-app-region:no-drag] origin-center"
-                    onClick={canToggle ? onToggleCollapsed : undefined}
-                    disabled={!canToggle}
-                    aria-hidden={canToggle ? undefined : 'true'}
-                    tabIndex={canToggle ? undefined : -1}
-                    aria-label={canToggle ? (collapsed ? t('sidebar.expand') : t('sidebar.collapse')) : undefined}
-                    style={{
-                      // All dynamic (canToggle-gated), plus `transition` stays
-                      // inline: .icon-btn sets its own `transition: background
-                      // var(--dur-hover), color var(--dur-hover)` — a Tailwind class would lose that
-                      // cascade tie (same specificity, .icon-btn declared later
-                      // in the stylesheet), silently dropping this custom
-                      // opacity/transform/filter transition.
-                      opacity: canToggle ? 1 : 0,
-                      // Slight scale + tilt + blur on hide so the
-                      // motion is recognisable from the corner of the
-                      // eye but never noisy. Origin pinned to center
-                      // so the slot's geometry stays symmetric.
-                      transform: canToggle
-                        ? 'scale(1) rotate(0deg)'
-                        : 'scale(0.72) rotate(-8deg)',
-                      filter: canToggle ? 'blur(0)' : 'blur(2px)',
-                      pointerEvents: canToggle ? 'auto' : 'none',
-                      cursor: canToggle ? 'pointer' : 'default',
-                      transition:
-                        'opacity var(--dur-layout) var(--ease-out), ' +
-                        'transform var(--dur-layout) var(--ease-out), ' +
-                        'filter var(--dur-layout) var(--ease-out)',
-                    }}
-                  >
-                    {collapsed ? Ico.sidebarExpandRight(16) : Ico.sidebarCollapseLeft(16)}
-                  </button>
-                </Tooltip>
-              );
-            })()}
-            <Tooltip content={`${t('search.ariaLabel')}  (${shortcut('K')})`}>
-              <button
-                className="icon-btn [-webkit-app-region:no-drag]"
-                onClick={onOpenSearch}
-                aria-label={t('search.ariaLabel')}
-              >
-                {Ico.search(16)}
-              </button>
-            </Tooltip>
-          </div>
-          {(!navTitleHidden || navLogo || brandLogoUrl()) && (
-            <span
-              aria-hidden="true"
-              className="text-ink-3 opacity-50 text-[13px] select-none"
-            >·</span>
-          )}
-          {(navLogo || brandLogoUrl()) && (
-            <img
-              src={navLogo || brandLogoUrl()}
-              alt=""
-              aria-hidden="true"
-              className={navLogoWide ? 'anton-sidebar__logo anton-sidebar__logo--wide' : 'anton-sidebar__logo'}
-            />
-          )}
-          {!navTitleHidden && <div className="anton-sidebar__wordmark">{navTitle || productName(STOCK_WORDMARK)}</div>}
-        </div>
+      {/* Head row: the sidebar's share of the titlebar band, so the
+          workspace switch opens and closes with the sidebar as one box.
+          Docked, the window's sidebar toggle floats over the slot at its
+          start; the drawer covers that toggle, so it puts its own close
+          button in the same spot. */}
+      <div className="app-sidebar__head" style={{ paddingLeft: lightsInset }}>
+        {popout ? (
+          <Tooltip content={t('sidebar.close')}>
+            <button
+              type="button"
+              className="icon-btn text-ink-3"
+              onClick={onToggleCollapsed}
+              aria-label={t('sidebar.close')}
+            >
+              {Ico.sidebar(14)}
+            </button>
+          </Tooltip>
+        ) : (
+          <span className="app-sidebar__toggle-slot" aria-hidden="true" />
+        )}
+        {brand?.showSwitch && <WorkspaceSwitch mode={brand.mode} onChange={brand.onChange} />}
       </div>
+      {brand && (
+        <SidebarBrand
+          wordmark={brand.wordmark}
+          logo={brand.logo}
+          stockMark={brand.stockMark}
+          logoWide={brand.logoWide}
+          titleHidden={brand.titleHidden}
+          // Docked, the attention bell sits here beside search; hidden or as
+          // a drawer, it stays in the titlebar.
+          attentionRef={!popout && !collapsed ? setAttention : null}
+          attentionPlaceholder={brand.showSwitch}
+          onOpenSearch={brand.onOpenSearch}
+          searchShortcut={brand.searchShortcut}
+        />
+      )}
 
-      {/* Body — fades + slides in slightly behind the container so
+      {/* Body — fades in slightly behind the container so
           the motion staggers. On appearance the body lags two stagger
           steps (--dur-stagger) so
           the surrounding chrome lands first; on dismissal it leads
           the container so the contents exit before the box does. */}
       <div
-        className="flex-1 min-h-0 flex flex-col"
-        // All dynamic: opacity/transform/pointerEvents/transition-delay are
+        // px-1.5: flush to the window, the rows need their own inset from the
+        // sidebar edges (the floating card used to supply it with its gutter).
+        className="flex-1 min-h-0 flex flex-col px-1.5 pt-1"
+        // All dynamic: opacity/pointerEvents/transition-delay are
         // collapsed-state-driven (the transition string embeds a delay that
         // flips between none and two stagger steps), so none of this can be
         // a static Tailwind class.
         style={{
           opacity: collapsed ? 0 : 1,
-          transform: collapsed ? 'translateY(2px)' : 'translateY(0)',
           pointerEvents: collapsed ? 'none' : 'auto',
           transition:
             'opacity var(--dur-layout) var(--ease-out) ' +
-              `${collapsed ? '0ms' : 'calc(2 * var(--dur-stagger))'}, ` +
-            'transform var(--dur-layout) var(--ease-out) ' +
               `${collapsed ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
         }}
       >
-        {!host.isWeb && showWorkspaceSwitch && (
-          <WorkspaceModeSwitch
-            value={activeWorkspace}
-            onChange={onWorkspaceChange}
-          />
-        )}
-
         {/* The primary action follows the active workspace. Code tasks stay
             distinct from Cowork conversations, but use the same shell grammar. */}
         <div className="anton-sidebar__cta-wrap">
-          <Button
-            variant="tinted"
-            block
-            size="lg"
+          {/* A row like the nav below it: the brand above carries the
+              emphasis, and the shortcut shows on hover and focus. */}
+          <button
+            type="button"
+            className="nav-item anton-sidebar__new-task"
             onClick={codeRoute ? onNewCodingTask : onNewTask}
-            // cascade-forced: .btn sets `gap: 6px`; match the nav rows' 9px.
-            style={{ gap: 9 }}
           >
-            {Ico.plus(14)}
-            <span className="flex-1 text-left font-medium">{codeRoute ? t('sidebar.newCodeTask') : t('sidebar.newTask')}</span>
-            <Kbd>{shortcut('N')}</Kbd>
-          </Button>
+            <span className="nav-row__icon inline-flex shrink-0 items-center">{Ico.newTask(16)}</span>
+            <span className="nav-row__label flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+              {codeRoute ? t('sidebar.newCodeTask') : t('sidebar.newTask')}
+            </span>
+            <Kbd aria-hidden="true">{shortcutLabel('N')}</Kbd>
+          </button>
         </div>
 
+        {/* One scroller from the nav down through the task lists, so a long
+            list never squeezes the rest into a sliver; the New task button
+            above and the footer below stay put. */}
+        <div className="scroll-clean flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
         {/* Cowork navigation belongs to Cowork. Keeping it out of Code avoids
             a mixed rail where switching products and navigating within one
             product look like the same action. */}
@@ -673,6 +623,13 @@ export default function Sidebar({
               active={activeRoute === 'customize'}
               badge={showCounters ? (connectorsCount || null) : null}
             />
+            {/* What the agent remembers and what it can do sit with the rest
+                of the destinations rather than under their own heading. */}
+            <NavItem icon={Ico.brain(16)} label={t('sidebar.nav.memories')} onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
+            <NavItem icon={Ico.cube(16)}  label={t('sidebar.nav.skillsLibrary')} onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
+            {showCompare && (
+              <NavItem icon={Ico.columns(16)} label={t('sidebar.nav.compare')} onClick={() => onNavigate('compare')} active={activeRoute === 'compare'} />
+            )}
             {/* Channels used to have a standalone entry here, web-only, purely
                 because the web shell hid Settings entirely — Channels lives
                 under Settings on desktop. Settings is now reachable on web too,
@@ -683,7 +640,7 @@ export default function Sidebar({
 
         {codeRoute ? (
           <>
-            <div className="nav-list px-2.5 flex flex-col gap-px code-sidebar-nav">
+            <div className="nav-list px-2.5 flex flex-col gap-px">
               <NavItem
                 icon={Ico.folder(16)}
                 label={t('sidebar.nav.projects')}
@@ -722,21 +679,6 @@ export default function Sidebar({
           </>
         ) : (
         <>
-        {/* Agent — the agent's own brain: what it remembers (Memories)
-            and what it can do (Skills library). Pulled out of the old
-            bordered inset and presented as a labeled group, so it reads
-            as a category alongside Pinned / Recent instead of a drawn
-            box (fewer edges). Labels name what the user OWNS (plural
-            collections) rather than the engine's abstract concepts. */}
-        <div className="section-label">{t('sidebar.agent')}</div>
-        <div className="nav-list px-2.5 flex flex-col gap-px">
-          <NavItem icon={Ico.brain(16)} label={t('sidebar.nav.memories')} onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
-          <NavItem icon={Ico.cube(16)}  label={t('sidebar.nav.skillsLibrary')} onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
-          {showCompare && (
-            <NavItem icon={Ico.columns(16)} label={t('sidebar.nav.compare')} onClick={() => onNavigate('compare')} active={activeRoute === 'compare'} />
-          )}
-        </div>
-
         {/* Pinned — only rendered when there are pinned tasks; an empty
             section just wastes rail space. */}
         {pinnedTasks.length > 0 && (
@@ -797,7 +739,7 @@ export default function Sidebar({
             </button>
           </Tooltip>
         </div>
-        <div className="scroll-clean px-2.5 flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
+        <div className="px-2.5 pb-2.5 flex flex-col gap-px">
           {/* Keyed on `tasksWithPin`, NOT `recents`: recents deliberately
               excludes pinned items, so keying on it told a user whose tasks
               are all pinned that they have none — while their pinned tasks
@@ -885,6 +827,7 @@ export default function Sidebar({
         </div>
         </>
         )}
+        </div>
 
         {/* Onboarding tracker — docked above the footer on every screen.
             Hides itself once dismissed (post-completion). */}
@@ -963,102 +906,86 @@ export default function Sidebar({
             Hidden for now behind WORKSPACE_SELECTOR_ENABLED. */}
         {WORKSPACE_SELECTOR_ENABLED && PLATFORM_UI && accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
 
-        {/* Footer — the settings / backend-status controls stay
-            Electron-only: the FastAPI process IS the host on web, so
-            start/stop/diagnostics don't apply. Settings itself is NOT
-            Electron-only any more — the web shell used to hide it
-            entirely, which also hid the only workaround for ENG-1042;
-            see the gate below (ENG-932).
+        {/* Footer. Signed in, the account row is always here, and Settings
+            lives in its menu. Signed out there is no menu, so the footer
+            shows Settings directly. Display settings (light/dark, skin) end
+            the footer's last row in every state. Settings is reachable on web too: it
+            holds the reasoning-effort control, the user's workaround for a
+            turn that spends its whole output budget and returns nothing.
 
-            Normal state: a settings nav row — no server noise when everything
-            is working fine.
-            Disconnected / busy: the status pill replaces the settings row so
-            the problem is immediately visible. */}
+            The backend status pill is Electron-only: on web the FastAPI
+            process is the host, so there is no local server to report on.
+            When the server is down or busy, the pill sits in its own row
+            above the account row; signed out, it replaces the Settings row. */}
         <div className="anton-sidebar__footer">
-          {/* The status-pill variant is Electron-only — on web the FastAPI
-              process IS the host, so there is no local server lifecycle to
-              report on. But Settings itself must be reachable on web
-              (ENG-932): it holds the reasoning-effort control, which is the
-              only user-side workaround for a turn that burns its whole
-              output budget and returns nothing (ENG-1042). So web always
-              gets the plain Settings row; only the pill is gated. */}
-          {showsStatusPill ? (
-              <>
-                <Tooltip content={t('sidebar.status.details')}>
-                  <button
-                    type="button"
-                    className={
-                      'backend-status-control is-clickable flex-1 [-webkit-app-region:no-drag]' +
-                      (serverBusy ? ' is-busy' : '')
-                    }
-                    onClick={onShowServerHelp}
-                    aria-label={t('sidebar.status.details')}
-                  >
-                    <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
-                    <span className="status-text">
-                      <span className="status-text__faded">{t('sidebar.status.backend')}</span>{' '}
-                      {serverBusy ? (
-                        <>
-                          <span className="status-text__live">{serverBusyKind === 'stopping' ? t('sidebar.status.stopping')
-                            : serverBusyKind === 'starting' ? t('sidebar.status.starting')
-                            : serverBusyKind}</span>{' '}
-                          <Spinner />
-                        </>
-                      ) : (
-                        <span className="status-text__faded">{t('sidebar.status.offline')}</span>
-                      )}
-                    </span>
-                  </button>
-                </Tooltip>
+          {showsStatusPill && (
+            <div className="anton-sidebar__footer-row">
+              <Tooltip content={t('sidebar.status.details')}>
+                <button
+                  type="button"
+                  className={
+                    'backend-status-control is-clickable flex-1 [-webkit-app-region:no-drag]' +
+                    (serverBusy ? ' is-busy' : '')
+                  }
+                  onClick={onShowServerHelp}
+                  aria-label={t('sidebar.status.details')}
+                >
+                  <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
+                  <span className="status-text">
+                    <span className="status-text__faded">{t('sidebar.status.backend')}</span>{' '}
+                    {serverBusy ? (
+                      <>
+                        <span className="status-text__live">{serverBusyKind === 'stopping' ? t('sidebar.status.stopping')
+                          : serverBusyKind === 'starting' ? t('sidebar.status.starting')
+                          : serverBusyKind}</span>{' '}
+                        <Spinner />
+                      </>
+                    ) : (
+                      <span className="status-text__faded">{t('sidebar.status.offline')}</span>
+                    )}
+                  </span>
+                </button>
+              </Tooltip>
+              {!accountUser && (
                 <Tooltip content={t('sidebar.settings')}>
                   <button
                     ref={workspaceReturnFocusRef}
-                    className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
+                    type="button"
+                    className={'anton-sidebar__footer-btn shrink-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
                     onClick={() => onNavigate('settings:backend')}
                     aria-label={t('sidebar.settings')}
                   >
                     {Ico.settings(14)}
                   </button>
                 </Tooltip>
-              </>
-            ) : showsUserMenu ? (
-              // Signed in: the account row + user menu (ENG-1408), curated to
-              // the account destinations (Settings, Billing & Usage, Members,
-              // Help & Feedback, Logout).
-              <>
+              )}
+              {!accountUser && displayButton}
+            </div>
+          )}
+          {(accountUser || !showsStatusPill) && (
+            <div className="anton-sidebar__footer-row">
+              {accountUser ? (
+                // The account destinations (Settings, Billing & Usage,
+                // Members, Help & Feedback, Logout) live in this menu.
                 <UserMenu
                   user={accountUser}
                   onOpenSettings={() => onNavigate('settings')}
+                  buttonRef={workspaceReturnFocusRef}
                 />
-                {/* Quick shortcut — kept visible even with the user menu
-                    present, so Settings stays one click away rather than
-                    buried behind opening the menu first. The status-pill
-                    and signed-out states already show a Settings button
-                    directly, so this only adds value here. Display
-                    settings (theme/8-bit/coding mode) moved to the
-                    floating corner button — see App.jsx. */}
-                <Tooltip content={t('sidebar.settings')}>
-                  <button
-                    ref={workspaceReturnFocusRef}
-                    className="chrome-btn--small shrink-0 ml-auto [-webkit-app-region:no-drag]"
-                    onClick={() => onNavigate('settings')}
-                    aria-label={t('sidebar.openSettings')}
-                  >
-                    {Ico.settings(16)}
-                  </button>
-                </Tooltip>
-              </>
-            ) : (
-              <button
-                ref={workspaceReturnFocusRef}
-                className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
-                onClick={() => onNavigate('settings')}
-                aria-label={t('sidebar.settings')}
-              >
-                <span className="inline-flex shrink-0">{Ico.settings(14)}</span>
-                <span>{t('sidebar.settings')}</span>
-              </button>
-            )}
+              ) : (
+                <button
+                  ref={workspaceReturnFocusRef}
+                  className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
+                  onClick={() => onNavigate('settings')}
+                  aria-label={t('sidebar.settings')}
+                >
+                  <span className="inline-flex shrink-0">{Ico.settings(14)}</span>
+                  <span>{t('sidebar.settings')}</span>
+                </button>
+              )}
+              {displayButton}
+            </div>
+          )}
         </div>
 
         {/* Version is shown on the Settings page — no need to repeat here. */}

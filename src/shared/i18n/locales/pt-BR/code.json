@@ -848,9 +848,6 @@
     "sort": "Ordenar",
     "priority": "Prioridade",
     "lastUpdated": "Última atualização",
-    "searchPlaceholder": "Encontrar uma tarefa",
-    "searchAriaLabel": "Encontrar uma tarefa de código",
-    "noMatch": "Nenhuma tarefa de código corresponde à sua busca.",
     "empty": "Inicie uma tarefa de código para manter aqui a conversa e as alterações dela.",
     "pinned": "Fixadas",
     "archived": "Arquivadas"
@@ -948,6 +945,15 @@
       "needsYou": "{count, plural, one {# tarefa precisa de você →} other {# tarefas precisam de você →}}",
       "on": "Notificações ativadas",
       "off": "Avisar quando estiver ausente"
+    },
+    "bell": {
+      "needsYou": "{count, plural, one {# tarefa precisa de você} other {# tarefas precisam de você}}",
+      "triggerNeedsYou": "Código: {count, plural, one {# tarefa precisa de você} other {# tarefas precisam de você}}",
+      "menuLabel": "Atenção do Código",
+      "trigger": "Notificações do Código",
+      "none": "Nenhuma tarefa do Código precisa de você",
+      "untitled": "Tarefa sem título",
+      "onHint": "Ativado"
     }
   },
   "catalog": {
@@ -1471,10 +1477,7 @@
     "openIsolatedCopy": "Abrir cópia isolada",
     "forkTask": "Bifurcar tarefa",
     "taskSettings": "Configurações da tarefa",
-    "detailsMenuAriaLabel": "Cópia de trabalho e detalhes da tarefa",
-    "showDetailsAriaLabel": "Mostrar detalhes da tarefa para {label}",
     "details": {
-      "title": "Configuração da tarefa",
       "files": "Arquivos",
       "branch": "Branch",
       "computer": "Computador",
@@ -1496,8 +1499,11 @@
     "files": "Arquivos",
     "terminal": "Terminal",
     "reviewChanges": "Revisar alterações",
-    "review": "Revisar",
-    "taskActionsAriaLabel": "Ações da tarefa de código"
+    "taskActionsAriaLabel": "Ações da tarefa de código",
+    "allTasksIn": "Todas as tarefas de {name}",
+    "allTasks": "Todas as tarefas",
+    "detailsMenuShortAriaLabel": "Detalhes da tarefa",
+    "showDetailsShortAriaLabel": "Mostrar detalhes da tarefa"
   },
   "terminal": {
     "status": {

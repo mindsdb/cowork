@@ -848,9 +848,6 @@
     "sort": "Ordina",
     "priority": "Priorità",
     "lastUpdated": "Ultimo aggiornamento",
-    "searchPlaceholder": "Trova un’attività",
-    "searchAriaLabel": "Trova un’attività di codice",
-    "noMatch": "Nessuna attività di codice corrisponde alla ricerca.",
     "empty": "Avvia un’attività di codice per conservare qui la conversazione e le modifiche.",
     "pinned": "Fissate",
     "archived": "Archiviate"
@@ -948,6 +945,15 @@
       "needsYou": "{count, plural, one {# attività ti aspetta →} other {# attività ti aspettano →}}",
       "on": "Notifiche attive",
       "off": "Avvisami quando non ci sono"
+    },
+    "bell": {
+      "needsYou": "{count, plural, one {# attività ti aspetta} other {# attività ti aspettano}}",
+      "triggerNeedsYou": "Codice: {count, plural, one {# attività ti aspetta} other {# attività ti aspettano}}",
+      "menuLabel": "Avvisi di Codice",
+      "trigger": "Notifiche di Codice",
+      "none": "Nessuna attività di Codice ti aspetta",
+      "untitled": "Attività senza titolo",
+      "onHint": "Attivo"
     }
   },
   "catalog": {
@@ -1471,10 +1477,7 @@
     "openIsolatedCopy": "Apri copia isolata",
     "forkTask": "Duplica attività",
     "taskSettings": "Impostazioni attività",
-    "detailsMenuAriaLabel": "Copia di lavoro e dettagli dell’attività",
-    "showDetailsAriaLabel": "Mostra i dettagli dell’attività per {label}",
     "details": {
-      "title": "Configurazione dell’attività",
       "files": "File",
       "branch": "Branch",
       "computer": "Computer",
@@ -1496,8 +1499,11 @@
     "files": "File",
     "terminal": "Terminale",
     "reviewChanges": "Rivedi le modifiche",
-    "review": "Rivedi",
-    "taskActionsAriaLabel": "Azioni dell’attività di codice"
+    "taskActionsAriaLabel": "Azioni dell’attività di codice",
+    "allTasksIn": "Tutte le attività di {name}",
+    "allTasks": "Tutte le attività",
+    "detailsMenuShortAriaLabel": "Dettagli dell’attività",
+    "showDetailsShortAriaLabel": "Mostra dettagli dell’attività"
   },
   "terminal": {
     "status": {

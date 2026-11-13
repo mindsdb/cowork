@@ -848,9 +848,6 @@
     "sort": "並べ替え",
     "priority": "優先度",
     "lastUpdated": "最終更新",
-    "searchPlaceholder": "タスクを検索",
-    "searchAriaLabel": "コーディングタスクを検索",
-    "noMatch": "検索に一致するコーディングタスクはありません。",
     "empty": "コーディングタスクを開始すると、その会話と変更内容がここに保存されます。",
     "pinned": "ピン留め",
     "archived": "アーカイブ済み"
@@ -948,6 +945,15 @@
       "needsYou": "{count, plural, other {#件のタスクが対応を待っています →}}",
       "on": "通知オン",
       "off": "不在時に通知"
+    },
+    "bell": {
+      "needsYou": "{count, plural, other {#件のタスクが対応を待っています}}",
+      "triggerNeedsYou": "コード: {count, plural, other {#件のタスクが対応を待っています}}",
+      "menuLabel": "コードの対応待ち",
+      "trigger": "コードの通知",
+      "none": "対応待ちのコードのタスクはありません",
+      "untitled": "無題のタスク",
+      "onHint": "オン"
     }
   },
   "catalog": {
@@ -1471,10 +1477,7 @@
     "openIsolatedCopy": "分離コピーを開く",
     "forkTask": "タスクをフォーク",
     "taskSettings": "タスクの設定",
-    "detailsMenuAriaLabel": "作業コピーとタスクの詳細",
-    "showDetailsAriaLabel": "{label}のタスクの詳細を表示",
     "details": {
-      "title": "タスクの構成",
       "files": "ファイル",
       "branch": "ブランチ",
       "computer": "コンピュータ",
@@ -1496,8 +1499,11 @@
     "files": "ファイル",
     "terminal": "ターミナル",
     "reviewChanges": "変更をレビュー",
-    "review": "レビュー",
-    "taskActionsAriaLabel": "コーディングタスクの操作"
+    "taskActionsAriaLabel": "コーディングタスクの操作",
+    "allTasksIn": "{name} のすべてのタスク",
+    "allTasks": "すべてのタスク",
+    "detailsMenuShortAriaLabel": "タスクの詳細",
+    "showDetailsShortAriaLabel": "タスクの詳細を表示"
   },
   "terminal": {
     "status": {
