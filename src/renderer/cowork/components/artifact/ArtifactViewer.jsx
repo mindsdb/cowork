@@ -49,6 +49,7 @@ import {
 } from '../../lib/draftLinkRules';
 import { setDraftLinks, useDraftLinks } from '../../../lib/draftLinks';
 import { trackArtifactStatsOpened } from '../../lib/analytics';
+import { UNKNOWN_SHARE_SNAPSHOT, reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
@@ -1245,7 +1246,7 @@ export function ArtifactViewer({
   // Content-Disposition: attachment, through the serve URL on desktop or the
   // authenticated draft URL on an org deployment (ENG-2044).
   const onDownload = async () => {
-    if (!(await downloadArtifactFile(artifact, { actionPath }))) {
+    if (!(await downloadArtifactFile(artifact, { actionPath, entry: 'viewer' }))) {
       setErr(downloadUnavailableMessage(disabledReason || t('viewer.noDownload')));
     }
   };
@@ -1270,10 +1271,16 @@ export function ArtifactViewer({
       // Desktop's path-addressed delete needs a client-side unpublish first.
       // SaaS performs both operations atomically on the scoped server route.
       let leftLive = '';
-      if (needsClientUnpublishBeforeDelete({ orgMode, published: isPublished })) {
+      const before = pub.accessLoaded ? shareSnapshot(pub) : UNKNOWN_SHARE_SNAPSHOT;
+      const clientUnpublishes = needsClientUnpublishBeforeDelete({ orgMode, published: isPublished });
+      if (clientUnpublishes) {
         leftLive = stopSharingNotice(await unpublishArtifact(actionPath));
+        reportWithdrawal(artifact, { entry: 'viewer_delete', before, leftLive: !!leftLive });
       }
       await deleteArtifactAndSync(artifact);
+      // On Web the server takes the page down as part of the delete, and the
+      // delete fails if it cannot, so a delete that succeeded took it down.
+      if (!clientUnpublishes && isPublished) reportWithdrawal(artifact, { entry: 'viewer_delete', before });
       setConfirmDelete(false);
       onDelete?.(actionPath, { notice: leftLive });
       // The artifact is gone but its page is still open to anyone with the
@@ -1389,7 +1396,7 @@ export function ArtifactViewer({
       filename: title || 'file',
     },
     fetchFile: (url, signal) => fetchAuthenticatedResponse(url, { signal }),
-    download: () => downloadArtifactFile(artifact, { actionPath }),
+    download: () => downloadArtifactFile(artifact, { actionPath, entry: 'viewer' }),
     openInDefaultApp: onOpenOS,
     onLoadError: (loadError) => setErr(draftPreviewErrorMessage(loadError, t('viewer.loadFileFailed'))),
   } : null;

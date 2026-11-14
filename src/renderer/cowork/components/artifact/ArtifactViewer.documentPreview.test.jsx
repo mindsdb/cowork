@@ -285,7 +285,7 @@ describe('the document branch', () => {
     expect(await screen.findByText(PREVIEW_FAILED_DOWNLOADED_NOTE)).toBeInTheDocument();
     expect(screen.getByText(PREVIEW_LIMIT_REASONS.maxBytes)).toBeInTheDocument();
     expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
-    expect(downloadArtifactFile).toHaveBeenCalledWith(xlsx, { actionPath: xlsx.canonicalPath });
+    expect(downloadArtifactFile).toHaveBeenCalledWith(xlsx, { actionPath: xlsx.canonicalPath, entry: 'viewer' });
     expect(previewFrames()).toHaveLength(0);
   });
 
