@@ -10,21 +10,22 @@ export function isTransientLockError(err: unknown): boolean {
   return TRANSIENT_LOCK_CODES.has((err as NodeJS.ErrnoException)?.code ?? '');
 }
 
-// Run a sync fs op, retrying on a transient lock with a widening backoff. Async
+// Run an fs op (sync or async), retrying on a transient lock with a widening backoff. Async
 // so it never blocks the main thread; codes outside the set above (ENOENT,
 // ENOTDIR, …) rethrow at once. Caveat: a GENUINELY unwritable target (read-only
 // attribute, restrictive ACL) can also surface as EPERM/EACCES and will burn
 // the full budget before failing — acceptable here, where those are rare and
 // the alternative is missing a real transient lock.
 export async function retryOnTransientLock<T>(
-  op: () => T,
+  op: () => T | Promise<T>,
   opts: { attempts?: number; baseDelayMs?: number } = {},
 ): Promise<T> {
   const attempts = opts.attempts ?? 6;
   const baseDelayMs = opts.baseDelayMs ?? 60;
   for (let i = 0; i < attempts; i++) {
     try {
-      return op();
+      // Awaited so an async op's rejection is caught and retried here too.
+      return await op();
     } catch (err) {
       if (i < attempts - 1 && isTransientLockError(err)) {
         await new Promise((resolve) => setTimeout(resolve, baseDelayMs * (i + 1)));
