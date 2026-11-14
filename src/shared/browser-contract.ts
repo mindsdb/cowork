@@ -143,37 +143,44 @@ export const SIGN_IN_FRAME_HOSTS: readonly string[] = [
     ignoring case, matches either name form. CARD_FIELD_EXEMPT matches the
     number of a card that isn't a payment card, such as a gift or e-gift,
     loyalty, library or insurance card or an identity card (an ID,
-    identification, green, residence, Social Security, Aadhaar, citizen or
-    voter card; an id, or an e-gift card's e, with no letter or digit right
-    before it, so prepaid's id never counts). CARD_FIELD_CONJUNCTION matches
-    text that ends in a join: one or more conjunctions (or, and, &, +, / or
-    a comma), each followed only by spaces or separators (. _ -), then at
-    most one article (a, an, the, your or any) followed by spaces or
-    separators. It doesn't match text that reads as text that doesn't end in
-    a conjunction or an article, then at most one article, then exempt
-    names, each followed by a join. An exempt name is one of
+    identification, green, residence, Social Security, Aadhaar, PAN, citizen
+    or voter card; an id, a pan, or an e-gift card's e, with no letter or
+    digit right before it, so prepaid's id and Japan's pan never count).
+    CARD_FIELD_NAME and CARD_FIELD_EXEMPT take # as a card's number, as in
+    "Card #". CARD_FIELD_CONJUNCTION matches text that ends in a join: one
+    or more conjunctions (or, and, &, +, / or a comma), each followed only
+    by spaces or separators (. _ -), then at most one article (a, an, the,
+    your or any) followed by spaces or separators. The text's names are its
+    text before its first join and between one join and the next, and the
+    pattern doesn't match when each name ends in an exempt name followed
+    only by spaces or separators. An exempt name is one of
     CARD_FIELD_EXEMPT's qualifiers or the name of an ID document (passport,
     license, licence, permit or DL), a contact (phone, telephone, mobile,
     email or username) or a checkout code (promo, promotional, coupon,
     voucher, discount or certificate), alone or followed by card, code or
-    address, and then by a number (number, num, no or #) or not. Or, and, an
-    article and an exempt name count only with no letter or digit right
-    before them. So the card number stays when a conjunction before it joins
-    it to a name that isn't an exempt name: it stays in "Card or gift card
-    number", "Card or eGift card number", "Card or a gift card number",
-    "Payment or rewards card number" and "Card, gift or loyalty card
-    number", and not in "Gift or loyalty card number", "Gift, loyalty, or
-    rewards card number", "Gift card or library card number", "Driver
-    license or ID card number", "Phone number or loyalty card number" or
-    "Gift card number and PIN". CARD_FIELD_PAYMENT matches a word for a payment card
-    with no letter right before or after it: credit, debit, prepaid, CC, ATM,
-    EBT, HSA or FSA, or one of the card networks Visa, Mastercard, Amex,
-    American Express, Discover, Diners, JCB, UnionPay, Maestro, RuPay and
-    Interac. Payment, bank and charge aren't payment words, since they also
-    name a checkout's section. So giftCardNumber, payment[gift_card_number],
-    "Library card number", "ID card number" and "Green card number" are
-    ordinary fields, while giftCardCvv, "Benefits card number", "Credit card
-    or gift card number", creditOrGiftCardNumber, "Visa gift card number",
+    address, and then by a number (number, num, no or #) or not. Or and and
+    count only with no letter or digit right before or after them, and an
+    article and an exempt name only with none right before them. So the card
+    number stays when a conjunction before it joins it to a name that
+    doesn't end in an exempt name: it stays in "Card or gift card number",
+    "Card or eGift card number", "Card or a gift card number", "Payment or
+    rewards card number", "Card, gift or loyalty card number" and "Card or
+    gift certificate or gift card number", and not in "Gift or loyalty card
+    number", "Gift, loyalty, or rewards card number", "Gift card or library
+    card number", "Driver license or ID card number", "Passport, residence
+    permit or ID card number", "Phone number or loyalty card number" or
+    "Gift card number and PIN". The pattern reads each name one way, so a
+    long list costs time in step with its length. CARD_FIELD_PAYMENT matches
+    a word for a payment card with no letter right before or after it:
+    credit, debit, prepaid, CC, ATM, EBT, HSA or FSA, or one of the card
+    networks Visa, Mastercard, Amex, American Express, Discover, Diners,
+    JCB, UnionPay, Maestro, RuPay and Interac. Payment, bank and charge
+    aren't payment words, since they also name a checkout's section. So
+    giftCardNumber, payment[gift_card_number], "Library card number", "Gift
+    card #", "ID card number", "PAN card number" and "Green card number" are
+    ordinary fields, while giftCardCvv, "Card #", "Benefits card number",
+    "Japan card number", "Credit card or gift card number",
+    creditOrGiftCardNumber, "Visa gift card number",
     "Green Dot card number", a field named giftCardNumber with the
     placeholder "Card number" and one with the id member and the placeholder
     "Card number" stay card-named. A card-named field is a secret field: a
@@ -181,9 +188,9 @@ export const SIGN_IN_FRAME_HOSTS: readonly string[] = [
     select or an editing key into it answers 403 password_field, and a page
     read never reads a frame that holds one. The page's world reads it
     (`cardNamed` and `isSecret` in src/main/browser-page-script.ts). */
-export const CARD_FIELD_NAME = /(^|[^a-z0-9]|card|cc)(cvc|cvv2?|csc)([^a-z0-9]|$)|card[\s._-]*(numbers?|num|no)(?![a-z])|(^|[^a-z0-9])cc[\s._-]*(numbers?|num)(?![a-z])|security[\s._-]*code/i;
-export const CARD_FIELD_EXEMPT = /(((?<![a-z0-9])e[\s._-]*)?gift|loyalty|rewards?|library|members?(hip)?|insurance|health|medicare|medicaid|student|transit|sim|national[\s._-]*id|identity|identification|(?<![a-z0-9])id|green|residen(t|ce|cy)|social[\s._-]*security|aadhaa?r|citizen(ship)?|voter)[\s._-]*card[\s._-]*(numbers?|num|no)(?![a-z])/i;
-export const CARD_FIELD_CONJUNCTION = /^(?!([\s\S]*[^&+/,\s._-](?<!(?<![a-z0-9])or)(?<!(?<![a-z0-9])and)(?<!(?<![a-z0-9])a)(?<!(?<![a-z0-9])an)(?<!(?<![a-z0-9])the)(?<!(?<![a-z0-9])your)(?<!(?<![a-z0-9])any))?[\s._-]*((?<![a-z0-9])(a|an|the|your|any)[\s._-]+)?((?<![a-z0-9])((((?<![a-z0-9])e[\s._-]*)?gift|loyalty|rewards?|library|members?(hip)?|insurance|health|medicare|medicaid|student|transit|sim|national[\s._-]*id|identity|identification|(?<![a-z0-9])id|green|residen(t|ce|cy)|social[\s._-]*security|aadhaa?r|citizen(ship)?|voter)|(passport|licen[cs]e|permit|dl|(tele)?phone|mobile|e[\s._-]*mail|user[\s._-]*name|promo(tion(al)?)?|coupon|voucher|discount|certificate))([\s._-]*(card|code|address))?([\s._-]*(numbers?|num|no|#))?[\s._-]*(((?<![a-z0-9])(or|and)|[&+/,])[\s._-]*)+((?<![a-z0-9])(a|an|the|your|any)[\s._-]+)?)+$)[\s\S]*(((?<![a-z0-9])(or|and)|[&+/,])[\s._-]*)+((?<![a-z0-9])(a|an|the|your|any)[\s._-]+)?$/i;
+export const CARD_FIELD_NAME = /(^|[^a-z0-9]|card|cc)(cvc|cvv2?|csc)([^a-z0-9]|$)|card[\s._-]*(numbers?|num|no|#)(?![a-z])|(^|[^a-z0-9])cc[\s._-]*(numbers?|num|#)(?![a-z])|security[\s._-]*code/i;
+export const CARD_FIELD_EXEMPT = /(((?<![a-z0-9])e[\s._-]*)?gift|loyalty|rewards?|library|members?(hip)?|insurance|health|medicare|medicaid|student|transit|sim|national[\s._-]*id|identity|identification|(?<![a-z0-9])id|green|residen(t|ce|cy)|social[\s._-]*security|aadhaa?r|(?<![a-z0-9])pan|citizen(ship)?|voter)[\s._-]*card[\s._-]*(numbers?|num|no|#)(?![a-z])/i;
+export const CARD_FIELD_CONJUNCTION = /^(?![\s._-]*((?![\s._-])(?=((?!((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,]))[\s\S])*(?<![a-z0-9])((((?<![a-z0-9])e[\s._-]*)?gift|loyalty|rewards?|library|members?(hip)?|insurance|health|medicare|medicaid|student|transit|sim|national[\s._-]*id|identity|identification|(?<![a-z0-9])id|green|residen(t|ce|cy)|social[\s._-]*security|aadhaa?r|(?<![a-z0-9])pan|citizen(ship)?|voter)|(passport|licen[cs]e|permit|dl|(tele)?phone|mobile|e[\s._-]*mail|user[\s._-]*name|promo(tion(al)?)?|coupon|voucher|discount|certificate))([\s._-]*(card|code|address))?([\s._-]*(numbers?|num|no|#))?[\s._-]*((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,]))((?!((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,]))[\s\S])*(((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,])[\s._-]*)+)+((?<![a-z0-9])(a|an|the|your|any)[\s._-]+)?$)[\s\S]*(((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,])[\s._-]*)+((?<![a-z0-9])(a|an|the|your|any)[\s._-]+)?$/i;
 export const CARD_FIELD_PAYMENT = /(?<![a-z])(credit|debit|prepaid|cc|atm|ebt|hsa|fsa|visa|master[\s._-]*card|am[\s._-]*ex|american[\s._-]*express|discover|diners|jcb|union[\s._-]*pay|maestro|ru[\s._-]*pay|interac)(?![a-z])/i;
 export const CARD_FIELD_WORD_BREAKS: readonly RegExp[] = [/([a-z0-9])(?=[A-Z])/g, /([A-Z])(?=[A-Z][a-z])/g];
 export const CARD_FIELD_ATTRIBUTES: readonly string[] = ['name', 'id', 'aria-label', 'placeholder'];

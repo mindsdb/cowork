@@ -2,7 +2,7 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CARD_FIELD_ATTRIBUTES, ELEMENTS_PER_FRAME, TEXT_PER_FRAME } from '../shared/browser-contract';
+import { CARD_FIELD_ATTRIBUTES, ELEMENTS_PER_FRAME, FRAME_MIN_READ_PX, TEXT_PER_FRAME } from '../shared/browser-contract';
 import { type FixtureFile, pageShape, problems } from '../../tests/browser-contract-shapes';
 import {
   CARD_FIELD_RULE,
@@ -983,6 +983,60 @@ describe('the isolated-world page read', () => {
     }));
   });
 
+  it("keeps the card number when a name a conjunction joins to it doesn't end in an exempt name, reads # as a card's number and a PAN card's number as ordinary, so a read, a type and a screenshot treat each as page.json's rule does", () => {
+    document.body.innerHTML = `
+      <input data-box id="card-first" aria-label="Card or gift certificate or gift card number" value="4111111111111111">
+      <input data-box id="card-first-split" name="cardOrGiftCertificateOrGiftCardNumber" aria-label="Tender" value="4000056655665556">
+      <input data-box id="card-hash" aria-label="Card #" value="4012888888881881">
+      <input data-box id="japan" aria-label="Japan card number" value="3530111333300000">
+      <input data-box id="worded" aria-label="Passport, residence permit or ID card number" value="R1234567">
+      <input data-box id="mobile-or-loyalty" aria-label="Gift card, mobile phone or loyalty card number" value="7777 0003">
+      <input data-box id="oregon" aria-label="Oregon ID or library card number" value="L1234567">
+      <input data-box id="gift-hash" aria-label="Gift card #" value="6006 3333">
+      <input data-box id="pan" name="panCardNumber" aria-label="PAN card number" value="ABCDE1234F">`;
+    layout();
+    const world = freshWorld();
+    const page = snapshot(world);
+    const byName = Object.fromEntries(page.elements.map((e) => [e.name, e]));
+    for (const name of ['Card or gift certificate or gift card number', 'Tender', 'Card #', 'Japan card number']) {
+      expect(byName[name], name).toEqual({ id: byName[name].id, role: 'textbox', name, value_hidden: true });
+    }
+    expect(byName['Passport, residence permit or ID card number']).toMatchObject({ role: 'textbox', value: 'R1234567' });
+    expect(byName['Gift card, mobile phone or loyalty card number']).toMatchObject({ role: 'textbox', value: '7777 0003' });
+    expect(byName['Oregon ID or library card number']).toMatchObject({ role: 'textbox', value: 'L1234567' });
+    expect(byName['Gift card #']).toMatchObject({ role: 'textbox', value: '6006 3333' });
+    expect(byName['PAN card number']).toMatchObject({ role: 'textbox', value: 'ABCDE1234F' });
+    expect(JSON.stringify(page)).not.toMatch(/4111111111111111|4000056655665556|4012888888881881|3530111333300000/);
+    // A type with focused true reads the same rule where the focus rests.
+    const typing = (field: string) => {
+      (document.getElementById(field) as HTMLElement).focus();
+      return (pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping).cardNamed;
+    };
+    const fields = ['card-first', 'card-first-split', 'card-hash', 'japan', 'worded', 'mobile-or-loyalty', 'oregon', 'gift-hash', 'pan'];
+    expect(fields.map(typing)).toEqual([true, true, true, true, false, false, false, false, false]);
+    // A screenshot blacks out the card-named fields, and no ordinary card's number.
+    expect(secretBoxes().secrets).toEqual(fields.slice(0, 4).map((field) => {
+      const { x, y, width, height } = document.getElementById(field)!.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+  });
+
+  it("answers a long list of e-gift names before a card number at once, since the conjunction pattern reads each name one way", () => {
+    /* The text before the card number holds 4,000 names joined by or, and
+       the last, x, isn't an exempt name, so the card number stays. A
+       conjunction pattern that may read a name's e-gift as text and then the
+       exempt name gift tries both readings of every name: in V8 that took
+       over 2 s for this field. */
+    const field = document.createElement('input');
+    field.setAttribute('aria-label', `${'e-gift or '.repeat(4000)}x or gift card number`);
+    document.body.replaceChildren(field);
+    field.focus();
+    const world = freshWorld();
+    const started = performance.now();
+    expect((pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping).cardNamed).toBe(true);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it("tests the card rule's payment pattern afresh on each field of a read, so the payment word one field's name held never hides the next field's", () => {
     /* PrePaid holds its payment word only before the word split, which reads
        it as Pre Paid. A payment pattern compiled with a g flag would test it
@@ -1712,11 +1766,12 @@ describe('frames', () => {
     fields.forEach(({ attributes }, i) => {
       const field = frameDoc(`card-${i}`).getElementById('field')!;
       for (const [attr, value] of Object.entries(attributes)) field.setAttribute(attr, value);
-      // Sixteen frames to a row, each 60 by 36, all in view.
-      place(document.getElementById(`card-${i}`)!, (i % 16) * 64, Math.floor(i / 16) * 38, 60, 36);
+      // Twenty-four frames to a row, each 40 by 34 (over frame_min_read_px either way), all in view.
+      place(document.getElementById(`card-${i}`)!, (i % 24) * 42, Math.floor(i / 24) * 36, 40, 34);
     });
     expect([window.innerWidth, window.innerHeight]).toEqual([1024, 768]);
-    expect(Math.ceil(fields.length / 16) * 38).toBeLessThan(768);
+    expect(Math.min(40, 34)).toBeGreaterThanOrEqual(FRAME_MIN_READ_PX);
+    expect(Math.ceil(fields.length / 24) * 36).toBeLessThan(768);
     const page = snapshot(freshWorld());
     expect(page.frames).toHaveLength(fields.length);
     const wrong = fields
