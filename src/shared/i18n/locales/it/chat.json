@@ -221,7 +221,8 @@
         "files": "In coda: i messaggi con file vengono eseguiti dopo l’attività corrente.",
         "notRead": "In coda: l’attività è terminata prima di poterlo leggere."
       }
-    }
+    },
+    "reconnecting": "Tentativo di riconnessione"
   },
   "composer": {
     "placeholder": "Ciao capo, come posso aiutarti oggi?",
@@ -279,7 +280,8 @@
       "fixed": "Il progetto è fisso per questa attività",
       "none": "Nessun progetto"
     },
-    "chooseHarness": "Scegli ambiente di esecuzione"
+    "chooseHarness": "Scegli ambiente di esecuzione",
+    "voiceCall": "Chiamata vocale"
   },
   "attachmentThumbnail": {
     "open": "Apri immagine",
@@ -300,7 +302,9 @@
       "title": "Approvi questo passaggio nel browser?",
       "intro": "Può acquistare, inviare, eliminare o confermare qualcosa, e viene eseguito solo se lo approvi.",
       "approved": "Azione del browser approvata",
-      "cancelled": "Azione del browser annullata"
+      "cancelled": "Azione del browser annullata",
+      "typedText": "Testo che digita",
+      "typedTextKeys": "Testo che digita (⏎ indica un a capo, che può inviarlo; ⇥ indica una tabulazione; ⟦U+…⟧ indica un carattere invisibile)"
     },
     "handOver": {
       "title": "Tocca a te nel browser",
@@ -312,6 +316,7 @@
       "finishLater": "Finisci dopo",
       "stop": "Interrompi",
       "noBrowser": "Qui non c’è nessun browser da restituire.",
+      "notOpened": "Il browser non si è aperto. Aprilo e fai di nuovo clic su Fine, continua.",
       "handedBack": "Restituito, ripreso",
       "stopped": "Passaggio interrotto",
       "ended": "Passaggio terminato"
@@ -692,7 +697,14 @@
       "closeIts": "Chiudi il suo browser (schede salvate)",
       "watching": "Qualcuno lo sta guardando"
     },
-    "phoneYourTurnWatching": "Tocca a te: {reason}. {agent} riprende da solo quando è fatto, oppure tocca Fine nel browser."
+    "phoneYourTurnWatching": "Tocca a te: {reason}. {agent} riprende da solo quando è fatto, oppure tocca Fine nel browser.",
+    "handOverFallback": "{agent} ha bisogno di te nel browser",
+    "phoneYourTurn": "Tocca a te: {reason}. Tocca Fine nel browser quando hai finito, poi riduci per continuare.",
+    "phoneQuestion": "{agent} ha una domanda per te. Riduci per rispondere.",
+    "phoneWorking": "Ci sto lavorando…",
+    "phoneDone": "Fatto. Riduci per vedere la risposta.",
+    "phoneMinimize": "Riduci",
+    "talkTo": "Parla con {agent}"
   },
   "voiceCall": {
     "dialogLabel": "Chiamata vocale con {agent}",
@@ -711,6 +723,12 @@
     "ended": "La chiamata è terminata.",
     "close": "Chiudi",
     "endCall": "Termina chiamata",
-    "mute": "Disattiva microfono"
+    "mute": "Disattiva microfono",
+    "orbLabel": "{state, select, starting {Connessione della voce} working {Ci sto lavorando} other {In chiamata}}",
+    "orbShow": "{state, select, starting {Connessione della voce. Mostra la chiamata} working {Ci sto lavorando. Mostra la chiamata} other {In chiamata. Mostra la chiamata}}",
+    "allowMicrophone": "Consenti il microfono nel browser per avviare una chiamata vocale.",
+    "noMicrophone": "Nessun microfono trovato.",
+    "couldNotStart": "Impossibile avviare la chiamata vocale.",
+    "endedReason": "La chiamata è terminata ({reason})."
   }
 }

@@ -264,5 +264,12 @@
   "addon": {
     "moveFailed": "Não foi possível mover essa mensagem para a fila. Tente novamente.",
     "stayQueued": "{agent} não pode recebê-la agora. Ela continua na fila."
+  },
+  "voiceCall": {
+    "backToCall": "Voltar para a chamada com {agent}",
+    "onCall": "Em uma chamada com {agent}",
+    "callBackPending": "{agent} vai ligar de volta quando terminar",
+    "call": "Ligar para {agent}",
+    "anotherCall": "Outra chamada está em andamento"
   }
 }

@@ -28,6 +28,7 @@ import {
   type BrowserLoginAnswer,
   type BrowserViewState,
   type Control,
+  type ControlAnswer,
   type ControlRequest,
   type PageSnapshot,
   type PaneDrawAnswer,
@@ -459,12 +460,14 @@ export class BrowserSessions {
   }
 
   /** POST /sessions/{id}/control: the agent hands the browser to the person,
-      with what the hand-over waits for when it comes back by itself. */
-  control(id: string, request: ControlRequest): Control {
+      with what the hand-over waits for when it comes back by itself, and
+      answers whether it watches for that, as the pane's state says. */
+  control(id: string, request: ControlRequest): ControlAnswer {
     const session = this.ensure(id);
     const control = this.setControl(session, request.holder, request.reason, 'agent', request.waitFor);
+    const watching = session.watch !== null;
     if (session.watch) void this.readWatched(session);
-    return control;
+    return { ...control, watching };
   }
 
   /* One read of a watched hand-over's page, in the isolated world, and the

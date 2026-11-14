@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { submitAnswer } from '../api';
-import { handBackBrowser } from '../lib/browserHandBack';
+import { dropHandBack, handBackBrowser, handedBack } from '../lib/browserHandBack';
 import { useBrowserHandOver } from '../lib/browserHandOverContext';
 import { parseHandOverPrompt } from '../lib/browserHandOverPrompt';
-import Ico from './Icons';
-import Badge from './ui/Badge';
+import { BrowserSitePill } from './BrowserStepPills';
 import ChatCardShell from './ChatCardShell';
 import { MarkdownPlainText } from './markdown/MarkdownContent';
 import { diagnostic } from '../../../shared/diagnostics';
@@ -20,17 +19,42 @@ import { useTranslation } from '../../lib/i18n';
  *
  * `ended`: the card's turn ended with the browser still the person's (left
  * for later, timed out, or no longer live). Done, continue then also carries
- * the task on, as the browser's Done does after such a turn.
+ * the task on, as the browser's Done does after such a turn, and only once
+ * the browser is back: on the web with the pane closed, the hand-back waits
+ * for the viewer, and a turn that started first would meet the browser
+ * still the person's. A viewer that can't open ends that wait: the card says
+ * so and takes Done, continue again, and carries nothing on, since the
+ * browser may still be theirs. The card ends that wait itself when it goes,
+ * or when its hand-over ends or changes, so a viewer that comes later never
+ * runs this Done for a later hand-over.
+ *
+ * Stop also tells the chat (`stopTask`), so a hand-back after it carries
+ * nothing on: the person stopped the task.
  */
 export default function HandOverCard({ step, conversationId, onAnswered, ended = false }) {
   const { t } = useTranslation('chat');
   const q = step?.data || {};
   const parsed = useMemo(() => parseHandOverPrompt(q.prompt), [q.prompt]);
-  const { sessionId, paneShown, openBrowser, continueTask, agentLabel } = useBrowserHandOver();
+  const { sessionId, paneShown, openBrowser, continueTask, stopTask, agentLabel } = useBrowserHandOver();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
-  // A new hand-over, or one that ended, takes clicks again.
-  useEffect(() => { setBusy(false); setProblem(''); }, [q.question_id, ended]);
+  /* The Done, continue this card is working on, until its hand-back went or
+     ended: a token the click checks after each wait, so a click that outlived
+     its card or its hand-over does nothing more. */
+  const waitRef = useRef(null);
+  useEffect(() => {
+    // A new hand-over, or one that ended, takes clicks again.
+    setBusy(false);
+    setProblem('');
+    /* A hand-back this card still waits on ends with it (the card goes, or
+       its hand-over ends or changes), so a later hand-over never gets this
+       Done. */
+    return () => {
+      if (!waitRef.current) return;
+      waitRef.current = null;
+      dropHandBack(sessionId);
+    };
+  }, [q.question_id, ended, sessionId]);
 
   if (!parsed) return null;
   const agent = agentLabel || 'Anton';
@@ -39,6 +63,8 @@ export default function HandOverCard({ step, conversationId, onAnswered, ended =
     if (busy) return;
     setBusy(true);
     setProblem('');
+    const wait = {};
+    waitRef.current = wait;
     let sent;
     try {
       sent = await handBackBrowser(sessionId);
@@ -46,16 +72,34 @@ export default function HandOverCard({ step, conversationId, onAnswered, ended =
       diagnostic('renderer.cowork.hand-over-card', 'WARNING', 'browser_hand_back_failed', error);
       sent = 'none';
     }
+    if (waitRef.current !== wait) return;
     if (sent === 'none') {
+      waitRef.current = null;
       setProblem(t('askUser.handOver.noBrowser'));
       setBusy(false);
       return;
     }
-    // The web viewer isn't framed yet: the pane opens, and Done goes once it is.
-    if (sent === 'waiting') openBrowser();
-    if (ended) continueTask?.();
+    if (sent === 'waiting') {
+      /* The web viewer isn't framed yet: the pane opens, and Done goes once it
+         is. Heard before the pane opens, since a pane that can't open ends
+         the wait at once. Busy meanwhile; Open browser still shows a pane
+         closed again. */
+      const back = handedBack(sessionId);
+      openBrowser();
+      const end = await back;
+      if (waitRef.current !== wait) return;
+      if (end === 'unreachable') {
+        waitRef.current = null;
+        setProblem(t('askUser.handOver.notOpened'));
+        setBusy(false);
+        return;
+      }
+    }
+    waitRef.current = null;
     // Live, the card stays busy until anton retires it.
-    if (ended) setBusy(false);
+    if (!ended) return;
+    continueTask?.();
+    setBusy(false);
   };
 
   const answer = async (value) => {
@@ -63,6 +107,7 @@ export default function HandOverCard({ step, conversationId, onAnswered, ended =
     setBusy(true);
     const result = await submitAnswer(conversationId, q.question_id, { values: [value] });
     if (result?.status === 'error' || result?.status === 'rejected') setBusy(false);
+    else if (value === 'stop') stopTask?.();
     onAnswered?.(result, conversationId, q.question_id);
   };
 
@@ -89,11 +134,8 @@ export default function HandOverCard({ step, conversationId, onAnswered, ended =
       <div className="flex flex-col gap-1.5 text-ink">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <strong className="font-semibold text-ink">{t('askUser.handOver.title')}</strong>
-          {parsed.site ? (
-            <Badge size="sm" icon={Ico.globe(12)} title={parsed.site} className="min-w-0 max-w-[60%]">
-              <span className="truncate">{parsed.site}</span>
-            </Badge>
-          ) : null}
+          {/* Whole, on as many lines as it needs: a phone can't hover for it. */}
+          {parsed.site ? <BrowserSitePill site={parsed.site} size="sm" wrap /> : null}
         </div>
         {/* anton's reason, as the browser's own banner shows it: text, never markdown. */}
         <MarkdownPlainText>{parsed.reason}</MarkdownPlainText>

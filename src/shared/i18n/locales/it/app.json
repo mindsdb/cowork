@@ -264,5 +264,12 @@
   "addon": {
     "moveFailed": "Impossibile spostare il messaggio nella coda. Riprova.",
     "stayQueued": "{agent} non può accettarlo ora. Resta in coda."
+  },
+  "voiceCall": {
+    "backToCall": "Torna alla chiamata con {agent}",
+    "onCall": "In chiamata con {agent}",
+    "callBackPending": "{agent} ti richiamerà quando avrà finito",
+    "call": "Chiama {agent}",
+    "anotherCall": "È in corso un’altra chiamata"
   }
 }

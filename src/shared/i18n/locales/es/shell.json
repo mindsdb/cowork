@@ -360,7 +360,12 @@
     "total": "{count} en total",
     "noTasks": "Aún no hay tareas.",
     "untitledTask": "Tarea sin título",
-    "seeAllTasks": "Ver todas las tareas"
+    "seeAllTasks": "Ver todas las tareas",
+    "recents": "Recientes",
+    "showFewer": "Mostrar menos",
+    "seeAllCount": "Ver todos ({count})",
+    "signedIn": "Sesión iniciada",
+    "logOut": "Cerrar sesión"
   },
   "dispatch": {
     "qrAriaLabel": "Código de vinculación decorativo",

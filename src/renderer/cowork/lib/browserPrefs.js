@@ -11,18 +11,26 @@
 // Also whether the browser shows only when the person is needed
 // (`browser_only_when_needed`, settings.browserOnlyWhenNeeded): anything but
 // an explicit `false` is on (views/ChatView.jsx, lib/browserSteps.js).
+//
+// And when the person last turned approvals off, by cowork-server's clock
+// (`browser_approve_steps_off_at`, settings.browserApproveStepsOffAt, epoch
+// ms): the server stamps it on each save that writes approvals off, from
+// Settings or a held step's card (its Skip approvals), and the app never
+// writes it. The setting is for later steps, so the app approves for the
+// person only a step held after that moment (heldAfterApprovalsOff), by the
+// time the server stamped on the step's card (`held_at_ms`,
+// lib/responseStreamAdapter.js). Every card that was waiting when approvals
+// went off, on any tab or device, stays theirs to answer, after a reload too.
+// A card with no time, or a server that doesn't say when, approves nothing.
 
 import { useSyncExternalStore } from 'react';
 
 // The device-local copy this replaced: dropped once, never read.
 const LEGACY_KEY = 'cowork.browserSteps';
 const listeners = new Set();
-const DEFAULTS = { askToApprove: true, onlyWhenNeeded: true };
+/** @type {{ askToApprove: boolean, onlyWhenNeeded: boolean, approvalsOffAtMs: number | null }} */
+const DEFAULTS = { askToApprove: true, onlyWhenNeeded: true, approvalsOffAtMs: null };
 let current = DEFAULTS;
-/* Held-step cards the person turned approvals off from (the card's Skip
-   approvals): the setting is for later steps, so the app never approves
-   these for them, and each still shows until they answer it. */
-const leftToPerson = new Set();
 // App.jsx's saveSettings, which writes a setting to the server and to App.
 let saver = null;
 
@@ -36,14 +44,46 @@ export function showsOnlyWhenNeeded(settings) {
   return settings?.browserOnlyWhenNeeded !== false;
 }
 
+/**
+ * When `settings` say approvals last went off (epoch ms, the server's clock),
+ * or null when they don't say. The settings rows carry it as a string.
+ *
+ * @param {{ browserApproveStepsOffAt?: unknown } | null | undefined} settings
+ * @returns {number | null}
+ */
+export function approvalsOffAtOf(settings) {
+  const stored = settings?.browserApproveStepsOffAt;
+  if (typeof stored !== 'number' && (typeof stored !== 'string' || !stored.trim())) return null;
+  const ms = Number(stored);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Whether a held step's card was held after approvals last went off, both by
+ * the server's clock: only such a step is the app's to approve. A card with
+ * no time, or no time approvals went off, is not.
+ *
+ * @param {unknown} heldAtMs the card's `held_at_ms`
+ * @param {number | null | undefined} offAtMs
+ * @returns {boolean}
+ */
+export function heldAfterApprovalsOff(heldAtMs, offAtMs) {
+  return Number.isFinite(heldAtMs) && Number.isFinite(offAtMs) && heldAtMs > offAtMs;
+}
+
 export function getBrowserPrefs() {
   return current;
 }
 
 /** Takes the person's settings as they are now (App.jsx, on every change). */
 export function syncBrowserPrefs(settings) {
-  const next = { askToApprove: asksToApprove(settings), onlyWhenNeeded: showsOnlyWhenNeeded(settings) };
-  if (next.askToApprove === current.askToApprove && next.onlyWhenNeeded === current.onlyWhenNeeded) return;
+  const next = {
+    askToApprove: asksToApprove(settings),
+    onlyWhenNeeded: showsOnlyWhenNeeded(settings),
+    approvalsOffAtMs: approvalsOffAtOf(settings),
+  };
+  if (next.askToApprove === current.askToApprove && next.onlyWhenNeeded === current.onlyWhenNeeded
+    && next.approvalsOffAtMs === current.approvalsOffAtMs) return;
   current = { ...current, ...next };
   listeners.forEach((fn) => fn(current));
 }
@@ -57,11 +97,6 @@ export function useBrowserPrefs() {
   return useSyncExternalStore(subscribeBrowserPrefs, getBrowserPrefs, getBrowserPrefs);
 }
 
-/** Whether the person turned approvals off from this card: it stays theirs to answer. */
-export function isLeftToPerson(questionId) {
-  return leftToPerson.has(questionId);
-}
-
 /** App.jsx hands in how settings are saved; returns how to take it back. */
 export function setBrowserSettingSaver(save) {
   saver = save;
@@ -70,16 +105,15 @@ export function setBrowserSettingSaver(save) {
 
 /**
  * Turns Approve browser steps on or off from a held step's card (its Skip
- * approvals), saved like the switch in Settings. Turning it off leaves that
- * card to the person. Resolves with whether the setting was saved.
+ * approvals), saved like the switch in Settings. The server stamps when
+ * approvals went off, after that card was held, so the card stays the
+ * person's to answer. Resolves with whether the setting was saved.
  *
  * @param {boolean} ask
- * @param {string | null} [questionId] the card it was turned off from
  * @returns {Promise<boolean>}
  */
-export async function saveApproveSteps(ask, questionId = null) {
+export async function saveApproveSteps(ask) {
   if (!saver) return false;
-  if (!ask && questionId) leftToPerson.add(questionId);
   try {
     await saver({ browserApproveSteps: ask });
     return true;
@@ -95,6 +129,5 @@ export function forgetLegacyBrowserPrefs() {
 // For tests: back to the defaults.
 export function resetBrowserPrefsForTests() {
   current = DEFAULTS;
-  leftToPerson.clear();
   saver = null;
 }

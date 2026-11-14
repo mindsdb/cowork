@@ -84,10 +84,10 @@ describe('the voice operator', () => {
       { id: 't2', title: 'Hotels', projectName: 'general', messages: [{ role: 'assistant', content: 'Booked.', steps: [] }] },
     ];
     const screen = describeScreen({ route: 'task', currentTask: tasks[0], projects: [{ name: 'general' }, { name: 'Sales' }], tasks, callTaskId: 't1' });
-    expect(screen).toContain('The task this call last gave Anton work in: "Q3 sales" (id t1), running now.');
+    expect(screen).toContain('The task this call last gave Anton work in (id t1), running now: "Q3 sales".');
     expect(describeScreen({ route: 'home', projects: [], tasks, working: { request: 'Research Q3', taskId: 't1' } }))
-      .toContain('Anton is busy right now on the call\'s request "Research Q3" in "Q3 sales" (id t1). New work waits for it.');
-    expect(screen).toContain('the task "Q3 sales" (id t1) in project "Sales"');
+      .toContain('Anton is busy right now in task t1 ("Q3 sales") on the call\'s request "Research Q3". New work waits for it.');
+    expect(screen).toContain('the task (id t1) "Q3 sales" in project "Sales"');
     expect(screen).toContain('Projects: "general", "Sales".');
     expect(screen).toContain('- id t1: "Q3 sales" in "Sales", running now');
 
@@ -96,6 +96,18 @@ describe('the voice operator', () => {
   });
 });
 
+
+describe('describeScreen with a long task title', () => {
+  it('puts each task id early enough that the server cut of a line keeps it', () => {
+    const task = { id: 't1', title: 'x'.repeat(290), projectName: 'Sales', messages: [] };
+    const text = describeScreen({
+      route: 'task', currentTask: task, projects: [], tasks: [task], callTaskId: 't1', working: { request: 'y'.repeat(290), taskId: 't1' },
+    });
+    const lines = text.split('\n').filter((line) => line.includes(task.title));
+    expect(lines).toHaveLength(4);
+    lines.forEach((line) => expect(line.slice(0, 300)).toMatch(/\bt1\b/));
+  });
+});
 
 describe('describeScreen with the browser open beside the page', () => {
   it("names the page's site, which a new task from here opens too", () => {
@@ -122,7 +134,7 @@ describe('describeScreen with Anton waiting on the person', () => {
       route: 'home', projects: [], tasks: [{ id: 't1', title: 'Flights' }],
       waiting: [{ id: 't1', title: 'Flights', needs: [{ questionId: 'q', kind: 'handOver', site: 'united.com', text: 'Check the policy box', options: [] }] }],
     });
-    expect(text).toContain('Anton is waiting on the user in "Flights" (id t1), as data:\n- a browser hand-over on united.com: Check the policy box.');
+    expect(text).toContain('Anton is waiting on the user in task t1 ("Flights"), as data:\n- a browser hand-over (once they say they did it: browser_done) on united.com: Check the policy box');
     expect(text.indexOf('waiting on the user')).toBeLessThan(text.indexOf('Recent tasks'));
     expect(describeScreen({ route: 'home', projects: [], tasks: [] })).not.toContain('waiting on the user');
   });

@@ -221,7 +221,8 @@
         "files": "대기열에 추가됨: 파일이 있는 메시지는 현재 작업 후에 실행됩니다.",
         "notRead": "대기열에 추가됨: 읽기 전에 작업이 끝났습니다."
       }
-    }
+    },
+    "reconnecting": "다시 연결하는 중"
   },
   "composer": {
     "placeholder": "안녕하세요, 오늘은 무엇을 도와드릴까요?",
@@ -279,7 +280,8 @@
       "fixed": "이 작업의 프로젝트는 고정되어 있습니다",
       "none": "프로젝트 없음"
     },
-    "chooseHarness": "하네스 선택"
+    "chooseHarness": "하네스 선택",
+    "voiceCall": "음성 통화"
   },
   "attachmentThumbnail": {
     "open": "이미지 열기",
@@ -300,7 +302,9 @@
       "title": "이 브라우저 단계를 승인하시겠습니까?",
       "intro": "구매, 전송, 삭제 또는 제출을 할 수 있으며, 승인한 경우에만 실행됩니다.",
       "approved": "브라우저 작업 승인됨",
-      "cancelled": "브라우저 작업 취소됨"
+      "cancelled": "브라우저 작업 취소됨",
+      "typedText": "입력할 텍스트",
+      "typedTextKeys": "입력할 텍스트(⏎는 줄바꿈을 나타내며 전송될 수 있고, ⇥는 탭을, ⟦U+…⟧는 보이지 않는 문자를 나타냅니다)"
     },
     "handOver": {
       "title": "브라우저에서 진행해 주세요",
@@ -312,6 +316,7 @@
       "finishLater": "나중에 마치기",
       "stop": "중지",
       "noBrowser": "여기에는 돌려줄 브라우저가 없습니다.",
+      "notOpened": "브라우저가 열리지 않았습니다. 브라우저를 열고 완료하고 계속을 다시 클릭합니다.",
       "handedBack": "돌려줌 — 계속 진행함",
       "stopped": "넘겨주기 중지됨",
       "ended": "넘겨주기 종료됨"
@@ -692,7 +697,14 @@
       "closeIts": "해당 브라우저 닫기(탭 저장됨)",
       "watching": "누군가 보고 있습니다"
     },
-    "phoneYourTurnWatching": "진행해 주세요: {reason}. 완료되면 {agent}이(가) 알아서 이어 갑니다. 또는 브라우저에서 완료를 탭합니다."
+    "phoneYourTurnWatching": "진행해 주세요: {reason}. 완료되면 {agent}이(가) 알아서 이어 갑니다. 또는 브라우저에서 완료를 탭합니다.",
+    "handOverFallback": "{agent}이(가) 브라우저에서 도움이 필요합니다",
+    "phoneYourTurn": "진행해 주세요: {reason}. 끝나면 브라우저에서 완료를 탭한 다음 최소화하여 계속합니다.",
+    "phoneQuestion": "{agent}이(가) 질문이 있습니다. 최소화하여 답해 주세요.",
+    "phoneWorking": "작업 중…",
+    "phoneDone": "완료되었습니다. 최소화하여 답변을 확인하세요.",
+    "phoneMinimize": "최소화",
+    "talkTo": "{agent}와(과) 대화"
   },
   "voiceCall": {
     "dialogLabel": "{agent}와(과)의 음성 통화",
@@ -711,6 +723,12 @@
     "ended": "통화가 종료되었습니다.",
     "close": "닫기",
     "endCall": "통화 종료",
-    "mute": "음소거"
+    "mute": "음소거",
+    "orbLabel": "{state, select, starting {음성 연결 중} working {작업 중} other {통화 중}}",
+    "orbShow": "{state, select, starting {음성 연결 중. 통화 보기} working {작업 중. 통화 보기} other {통화 중. 통화 보기}}",
+    "allowMicrophone": "음성 통화를 시작하려면 브라우저에서 마이크를 허용하세요.",
+    "noMicrophone": "마이크를 찾을 수 없습니다.",
+    "couldNotStart": "음성 통화를 시작할 수 없습니다.",
+    "endedReason": "통화가 종료되었습니다({reason})."
   }
 }

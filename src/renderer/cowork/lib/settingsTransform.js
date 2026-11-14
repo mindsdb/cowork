@@ -77,6 +77,10 @@ export const SETTINGS_KEY_MAP = {
   // Whether the browser pane opens by itself only when the person is needed,
   // with a turn's browser steps as one row (default on; lib/browserPrefs.js).
   browser_only_when_needed: 'browserOnlyWhenNeeded',
+  // When the person last turned approvals off, stamped by the server (epoch
+  // ms, its clock): the app approves only steps held after it
+  // (lib/browserPrefs.js). Read only (WRITE_SKIP).
+  browser_approve_steps_off_at: 'browserApproveStepsOffAt',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
   // Off sends every MindsHub turn to the agent: no Jev routing or checks.
@@ -743,8 +747,9 @@ function backfillProviders(result) {
  * map to a server setting.  JSON-encodes object values.
  */
 /** Keys that are read from the server but never written back — they are
- *  transient UI-only state (e.g. provider test results). */
-const WRITE_SKIP = new Set(['providerStatus', 'providerStatusDetails', 'providerStatusReasons']);
+ *  transient UI-only state (e.g. provider test results), or the server's own
+ *  stamp of when approvals went off. */
+const WRITE_SKIP = new Set(['providerStatus', 'providerStatusDetails', 'providerStatusReasons', 'browserApproveStepsOffAt']);
 
 // Accepted values remain usable if the canonical post-write read fails. Only
 // acknowledged keys enter shared state, and credentials keep the read-side mask.
@@ -767,6 +772,14 @@ export function diffSettingsForWrite(patch, lastFetched) {
   const writes = {};
   for (const [clientKey, value] of Object.entries(patch)) {
     if (WRITE_SKIP.has(clientKey)) continue;
+    /* Approve browser steps goes as given whenever a save carries it (the
+       switch in Settings, a held step's card), whatever this tab last read:
+       the server stamps when approvals went off on each write of off, and
+       the app approves only steps held after that (lib/browserPrefs.js). So
+       a card's Skip approvals reaches the server, and moves that time past
+       the card, even where this tab already reads approvals off, and a card
+       turning them back on is never dropped as unchanged. */
+    const asGiven = clientKey === 'browserApproveSteps' && typeof value === 'boolean';
     const serverKey = CLIENT_TO_SERVER[clientKey];
     if (!serverKey) continue;
     if (value === '***') continue;
@@ -783,7 +796,7 @@ export function diffSettingsForWrite(patch, lastFetched) {
     // The limits switch rides the same rule: it reached the server later.
     if ((clientKey in BUDGET_FIELDS || clientKey === 'limitsEnabled') && !(clientKey in lastFetched)) continue;
     const prev = lastFetched[clientKey];
-    if (prev === value) continue;
+    if (!asGiven && prev === value) continue;
     if (typeof value === 'object' && JSON.stringify(prev) === JSON.stringify(value)) continue;
     if (JSON_FIELDS.has(clientKey) && typeof value === 'object') {
       writes[serverKey] = JSON.stringify(value);

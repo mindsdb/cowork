@@ -329,6 +329,10 @@ describe('a quiet call', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(LINGER_MS + 500); });
     expect(onAway).not.toHaveBeenCalled();
     expect(peer.channel.sent.some((e) => e.type === 'session.close')).toBe(false);
+    // An ordinary call again, as with the call button: well past the quick rule, it stays.
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS * 4); });
+    expect(result.current.lingering).toBe(false);
+    expect(peer.channel.sent.some((e) => e.type === 'session.close')).toBe(false);
   });
 
   it('the call button while it fades makes it an ordinary call again', async () => {

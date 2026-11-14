@@ -3,14 +3,20 @@
 // When work a call gave Anton stops on the person (a browser hand-over, a
 // browser step to approve, an ask_user question), the call says so, or calls
 // back the way finished work does, and the person can answer it by voice
-// through the operator (browser_done, answer_approval, answer_question).
+// through the operator (browser_done, cancel_step, answer_question).
+//
+// A held browser step, and any other card of anton's approval gate (a
+// write, or a live app's launch that picks which app it replaces), is
+// approved only on the screen: by voice the person can only cancel it
+// (cancel_step). The operator hears only their words, and a held step's name
+// comes from the page, so no voice path approves one.
 //
 // Everything here is read from the turn's open AskUser steps. Their text comes
 // from Anton and the websites he uses: it is said and shown to the operator
-// as data, never as instructions, and a typed value never appears in it (the
-// browser step's pills already leave typed text out).
+// as data, never as instructions, and a typed value never appears in it (only
+// a step's site and action are read, never the text a typing step types).
 
-import { BROWSER_APPROVE_VALUE, isAutoApprovedCard } from '../browserApproval';
+import { BROWSER_APPROVE_VALUE, isAutoApprovedCard, isBrowserApprovalCard } from '../browserApproval';
 import { isHandOverCard, parseHandOverPrompt } from '../browserHandOverPrompt';
 import { parseBrowserStepPrompt } from '../browserStepPrompt';
 
@@ -18,6 +24,10 @@ export const APPROVAL_CANCEL_VALUE = 'cancel';
 // How long a new request waits before the call hears of it: a card the app
 // answers for the person, or one the person answers at once, never reaches it.
 export const CALL_NEED_GRACE_MS = 1_500;
+// The operator's snapshot cuts each line at this many characters
+// (MAX_SNAPSHOT_LINE_CHARS in cowork-server's voice operator). A line here can
+// run longer, so whatever a tool needs comes first on each line (the task's
+// id, the tool that answers a request), and each option gets a line of its own.
 const MAX_TEXT = 300;
 
 const clip = (text) => {
@@ -25,9 +35,17 @@ const clip = (text) => {
   return flat.length > MAX_TEXT ? `${flat.slice(0, MAX_TEXT)}…` : flat;
 };
 
+/* A card of anton's approval gate, which only the screen approves: Approve
+   and Cancel, or, by its id, a gate card whose options are the host's own
+   actions beside Cancel (anton's ask_approval_choice), such as which running
+   app a live app's launch stops. Choosing one of those approves the launch.
+   Only the gate mints `write:` ids (a fresh card's, and `write:held:` for a
+   held request), and the browser's commit hold mints `browser:approve:`. */
 const isApprovalCard = (data) => {
   const values = (data?.options || []).map((o) => o?.value);
-  return values.includes(BROWSER_APPROVE_VALUE) && values.includes(APPROVAL_CANCEL_VALUE);
+  if (!values.includes(APPROVAL_CANCEL_VALUE)) return false;
+  const id = String(data?.question_id || '');
+  return values.includes(BROWSER_APPROVE_VALUE) || id.startsWith('write:') || isBrowserApprovalCard(id);
 };
 
 /**
@@ -38,7 +56,7 @@ const isApprovalCard = (data) => {
  * @param {{ badge?: string, status?: string, data?: any } | null | undefined} step
  * @param {{ prefs?: object }} [options]
  * @returns {{ questionId: string, kind: 'handOver' | 'approval' | 'question', site: string,
- *   text: string, watching?: boolean, options: Array<{ value: string, label: string }> } | null}
+ *   text: string, watching?: boolean, options: Array<{ value: string, label: string, detail: string }> } | null}
  */
 export function openNeed(step, { prefs } = {}) {
   const data = step?.data;
@@ -46,7 +64,7 @@ export function openNeed(step, { prefs } = {}) {
   if (isAutoApprovedCard(data, prefs)) return null;
   const options = (data.options || [])
     .filter((o) => o && typeof o.value === 'string')
-    .map((o) => ({ value: o.value, label: String(o.label || o.value) }));
+    .map((o) => ({ value: o.value, label: String(o.label || o.value), detail: typeof o.detail === 'string' ? o.detail : '' }));
   if (isHandOverCard(data)) {
     const { site, reason, watching } = parseHandOverPrompt(data.prompt);
     return { questionId: data.question_id, kind: 'handOver', site, text: clip(reason), watching, options };
@@ -75,9 +93,14 @@ export function openNeeds(steps, options = {}) {
   return (steps || []).map((s) => openNeed(s, options)).filter(Boolean);
 }
 
+// An option as the call says it: its label, and its detail when it has one
+// ("Keep going: Allow up to 100,000,000 more tokens").
+const optionLine = (o) => `"${clip(o.label)}"${o.detail ? `: ${clip(o.detail)}` : ''}`;
+
 /**
  * What the call says Anton needs, in plain words around the request's own
- * text (which is data).
+ * text (which is data). A question's options follow, one per line, each with
+ * its detail.
  *
  * @param {ReturnType<typeof openNeed>} need
  * @param {{ agentLabel?: string, taskTitle?: string }} [where]
@@ -95,11 +118,11 @@ export function describeNeed(need, { agentLabel = 'Anton', taskTitle = '' } = {}
   }
   if (need.kind === 'approval') {
     const on = need.site ? ` on ${need.site}` : '';
-    return `${agentLabel} is waiting for the user's OK to take a browser step${on}${inTask}: "${need.text}". `
-      + 'They can approve or cancel it.';
+    return `${agentLabel} is waiting for the user's OK to take a step${on}${inTask}: "${need.text}". `
+      + 'They approve it on the screen; by voice they can only cancel it.';
   }
-  const picks = need.options.map((o) => `"${clip(o.label)}"`).join(', ');
-  return `${agentLabel} asks the user${inTask}: "${need.text}".${picks ? ` Options: ${picks}.` : ''}`;
+  const picks = need.options.map((o) => `- ${optionLine(o)}`);
+  return [`${agentLabel} asks the user${inTask}: "${need.text}".${picks.length ? ' Options:' : ''}`, ...picks].join('\n');
 }
 
 /**
@@ -113,15 +136,19 @@ export function describeWaiting(waiting, { agentLabel = 'Anton' } = {}) {
   const lines = [];
   (waiting || []).forEach(({ id, title, needs }) => {
     if (!needs?.length) return;
-    lines.push(`${agentLabel} is waiting on the user in "${clip(title) || 'Untitled'}" (id ${id}), as data:`);
+    lines.push(`${agentLabel} is waiting on the user in task ${id} ("${clip(title) || 'Untitled'}"), as data:`);
+    // What answers each comes first, the page's site and the page's or
+    // Anton's text after it: a cut line loses the end of that text, never
+    // the tool.
     needs.forEach((need) => {
+      const on = need.site ? ` on ${need.site}` : '';
       if (need.kind === 'handOver') {
-        lines.push(`- a browser hand-over${need.site ? ` on ${need.site}` : ''}: ${need.text}. Once they say they did it: browser_done.`);
+        lines.push(`- a browser hand-over (once they say they did it: browser_done)${on}: ${need.text}`);
       } else if (need.kind === 'approval') {
-        lines.push(`- a browser step to approve${need.site ? ` on ${need.site}` : ''}: ${need.text}. answer_approval.`);
+        lines.push(`- a step to approve (they approve it on the screen; if they say no or cancel: cancel_step)${on}: ${need.text}`);
       } else {
-        const picks = need.options.map((o) => `"${clip(o.label)}"`).join(', ');
-        lines.push(`- a question: ${need.text}.${picks ? ` Options: ${picks}.` : ''} answer_question.`);
+        lines.push(`- a question (answer_question${need.options.length ? ', with one of the options below' : ''}): ${need.text}`);
+        need.options.forEach((o) => lines.push(`  - option ${optionLine(o)}`));
       }
     });
   });
@@ -147,9 +174,10 @@ export function pickedOption(need, said) {
  * `note(taskIds, steps)` runs on every stream update (the task's ids, aliases
  * included, and its live steps). A request in a task with call work waits
  * `graceMs`, then, if still open: a call that is up says it (`announce`);
- * otherwise, when the call hung up waiting on the work (`callBackDue()`), it
- * calls back once the tab is in sight (`takeCallBack()` then `callBack`). A
- * request answered on screen meanwhile is never said. Each request is
+ * otherwise it goes into the call back that waits for the tab
+ * (lib/voice/seenCallBack.js), beside a result or another request, or, when
+ * the call hung up waiting on the work (`callBackDue()`), starts that call
+ * back. A request answered on screen meanwhile is never said. Each request is
  * considered once.
  *
  * @param {{
@@ -159,20 +187,17 @@ export function pickedOption(need, said) {
  *   announce: (news: string) => boolean,
  *   callBackDue: () => boolean,
  *   canCallBack: () => boolean,
- *   takeCallBack: () => void,
- *   callBack: (news: string) => void,
+ *   seen: ReturnType<typeof import('./seenCallBack').createSeenCallBack>,
  *   agentLabel?: () => string,
  *   graceMs?: number,
- *   doc?: Document | undefined,
  *   prefs?: () => object | undefined,
  * }} deps
  */
 export function createCallNeeds({
-  hasCallWork, stepsOf, titleOf, announce, callBackDue, canCallBack, takeCallBack, callBack,
-  agentLabel = () => 'Anton', graceMs = CALL_NEED_GRACE_MS, doc = typeof document === 'undefined' ? undefined : document,
-  prefs = () => undefined,
+  hasCallWork, stepsOf, titleOf, announce, callBackDue, canCallBack, seen,
+  agentLabel = () => 'Anton', graceMs = CALL_NEED_GRACE_MS, prefs = () => undefined,
 }) {
-  const seen = new Set();
+  const considered = new Set();
   const isOpen = (ids, questionId) => ids.some(
     (tid) => openNeeds(stepsOf(tid), { prefs: prefs() }).some((n) => n.questionId === questionId),
   );
@@ -180,33 +205,19 @@ export function createCallNeeds({
     if (!isOpen(ids, need.questionId)) return;
     const news = describeNeed(need, { agentLabel: agentLabel(), taskTitle: titleOf(ids) || '' });
     if (announce(news)) return;
+    const due = () => isOpen(ids, need.questionId);
+    // A call back already waits for the tab to show: this request goes with it.
+    if (seen.join(news, { asks: true, due })) return;
     if (!callBackDue() || !canCallBack()) return;
-    const now = () => {
-      if (!isOpen(ids, need.questionId) || !callBackDue()) return;
-      takeCallBack();
-      callBack(news);
-    };
-    if (!doc || doc.visibilityState !== 'hidden') {
-      now();
-      return;
-    }
-    // In a tab out of sight the call would start unheard: it waits for the person to come back.
-    const onVisible = () => {
-      if (doc.visibilityState !== 'visible') return;
-      doc.removeEventListener('visibilitychange', onVisible);
-      if (!isOpen(ids, need.questionId)) return;
-      if (announce(news)) return;
-      if (canCallBack()) now();
-    };
-    doc.addEventListener('visibilitychange', onVisible);
+    seen.callBack(news, { asks: true, due });
   };
   return {
     note(taskIds, steps) {
       const ids = (taskIds || []).filter(Boolean);
       if (!ids.some(hasCallWork)) return;
       openNeeds(steps, { prefs: prefs() }).forEach((need) => {
-        if (seen.has(need.questionId)) return;
-        seen.add(need.questionId);
+        if (considered.has(need.questionId)) return;
+        considered.add(need.questionId);
         setTimeout(() => report(ids, need), graceMs);
       });
     },
@@ -216,8 +227,9 @@ export function createCallNeeds({
 /**
  * The operator's actions that answer what Anton waits on, as the person's own
  * click on its card would: `browser_done` (the hand-over card's Done,
- * continue), `answer_approval` (Approve or Cancel) and `answer_question` (one
- * of its options).
+ * continue), `cancel_step` (a held step's Cancel) and `answer_question` (one
+ * of its options). None approves a held browser step: that is the person's
+ * click on the screen alone.
  *
  * @param {{
  *   taskOf: (taskId: string) => { id: string, title?: string, messages?: Array<object> },
@@ -225,13 +237,12 @@ export function createCallNeeds({
  *   sessionOf: (task: object, steps: Array<object> | undefined) => string | null,
  *   handBack: (sessionId: string | null) => Promise<'sent' | 'waiting' | 'none'>,
  *   showBrowser: (task: object, sessionId: string) => void,
- *   approve: (args: { conversationIds: string[], questionId: string }) => Promise<boolean>,
  *   decline: (questionId: string) => Promise<unknown>,
  *   submit: (conversationId: string, questionId: string, answer: object) => Promise<{ status?: string }>,
  *   agentLabel?: string,
  * }} deps
  */
-export function callNeedActions({ taskOf, stepsOf, sessionOf, handBack, showBrowser, approve, decline, submit, agentLabel = 'Anton' }) {
+export function callNeedActions({ taskOf, stepsOf, sessionOf, handBack, showBrowser, decline, submit, agentLabel = 'Anton' }) {
   const needIn = (task, kind) => openNeeds(stepsOf(task.id)).find((n) => n.kind === kind);
   const failed = (result) => result?.status === 'error' || result?.status === 'rejected';
   return {
@@ -241,25 +252,30 @@ export function callNeedActions({ taskOf, stepsOf, sessionOf, handBack, showBrow
       const sessionId = sessionOf(task, stepsOf(task.id));
       const sent = await handBack(sessionId);
       if (sent === 'none') return `"${task.title}" has no browser to hand back.`;
-      // The web viewer takes the hand-back once the pane shows it.
-      if (sent === 'waiting') showBrowser(task, sessionId);
+      /* The web viewer takes the hand-back once the pane shows it, which may
+         not happen (the pane can't open, or is closed first): the call says
+         it hasn't gone yet. */
+      if (sent === 'waiting') {
+        showBrowser(task, sessionId);
+        return `Opening the browser in "${task.title}" to hand it back: it goes once the browser shows, `
+          + `then ${agentLabel} carries on. If it doesn't open, they can click Done in the browser.`;
+      }
       return `Handed the browser back in "${task.title}": ${agentLabel} carries on.`;
     },
-    answer_approval: async ({ task_id: taskId, approve: yes }) => {
+    // Cancels the held step the task has open, as its card's Cancel.
+    cancel_step: async ({ task_id: taskId }) => {
       const task = taskOf(taskId);
       const need = needIn(task, 'approval');
       if (!need) return `Nothing in "${task.title}" is waiting for an approval.`;
-      if (yes === true) {
-        if (!(await approve({ conversationIds: [task.id], questionId: need.questionId }))) {
-          throw new Error("the approval didn't go through; it can be answered on the screen");
-        }
-        return `Approved: ${agentLabel} takes the step.`;
-      }
       await decline(need.questionId);
-      if (failed(await submit(task.id, need.questionId, { values: [APPROVAL_CANCEL_VALUE] }))) {
-        throw new Error("the cancel didn't go through");
+      const result = await submit(task.id, need.questionId, { values: [APPROVAL_CANCEL_VALUE] });
+      if (failed(result)) throw new Error("the cancel didn't go through");
+      /* The card was answered first, maybe approved on the screen a moment
+         ago: nothing was cancelled, and the step may already have run. */
+      if (result?.status === 'not_found' || result?.status === 'already_answered') {
+        return 'That step was already answered on the screen; the screen shows what happened.';
       }
-      return `Cancelled: ${agentLabel} leaves the page as it is.`;
+      return `Cancelled: ${agentLabel} doesn't take that step.`;
     },
     answer_question: async ({ task_id: taskId, option }) => {
       const task = taskOf(taskId);

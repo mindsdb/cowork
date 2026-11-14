@@ -221,7 +221,8 @@
         "files": "已加入队列：带文件的消息会在当前任务之后运行。",
         "notRead": "已加入队列：任务在读取之前就已结束。"
       }
-    }
+    },
+    "reconnecting": "正在尝试重新连接"
   },
   "composer": {
     "placeholder": "老板好，今天有什么可以帮你？",
@@ -279,7 +280,8 @@
       "fixed": "此任务的项目已固定",
       "none": "无项目"
     },
-    "chooseHarness": "选择运行环境"
+    "chooseHarness": "选择运行环境",
+    "voiceCall": "语音通话"
   },
   "attachmentThumbnail": {
     "open": "打开图片",
@@ -300,7 +302,9 @@
       "title": "要批准这个浏览器步骤吗？",
       "intro": "它可能会购买、发送、删除或提交内容，只有在你批准后才会执行。",
       "approved": "已批准浏览器操作",
-      "cancelled": "已取消浏览器操作"
+      "cancelled": "已取消浏览器操作",
+      "typedText": "要输入的文本",
+      "typedTextKeys": "要输入的文本（⏎ 表示换行，可能会发送；⇥ 表示制表符；⟦U+…⟧ 表示不可见字符）"
     },
     "handOver": {
       "title": "请在浏览器中操作",
@@ -312,6 +316,7 @@
       "finishLater": "稍后完成",
       "stop": "停止",
       "noBrowser": "这里没有可交还的浏览器。",
+      "notOpened": "浏览器没有打开。请打开浏览器，然后再次点击“完成并继续”。",
       "handedBack": "已交还 — 已继续",
       "stopped": "已停止交接",
       "ended": "交接已结束"
@@ -692,7 +697,14 @@
       "closeIts": "关闭其浏览器（标签页已保存）",
       "watching": "有人正在查看"
     },
-    "phoneYourTurnWatching": "请操作：{reason}。完成后 {agent} 会自动继续；也可以在浏览器中轻点“完成”。"
+    "phoneYourTurnWatching": "请操作：{reason}。完成后 {agent} 会自动继续；也可以在浏览器中轻点“完成”。",
+    "handOverFallback": "{agent} 需要你在浏览器中操作",
+    "phoneYourTurn": "请操作：{reason}。完成后在浏览器中轻点“完成”，然后最小化以继续。",
+    "phoneQuestion": "{agent} 有个问题要问你。最小化后即可回答。",
+    "phoneWorking": "正在处理…",
+    "phoneDone": "已完成。最小化即可查看回答。",
+    "phoneMinimize": "最小化",
+    "talkTo": "与 {agent} 通话"
   },
   "voiceCall": {
     "dialogLabel": "与 {agent} 语音通话",
@@ -711,6 +723,12 @@
     "ended": "通话已结束。",
     "close": "关闭",
     "endCall": "结束通话",
-    "mute": "静音"
+    "mute": "静音",
+    "orbLabel": "{state, select, starting {正在连接语音} working {正在处理} other {通话中}}",
+    "orbShow": "{state, select, starting {正在连接语音。显示通话} working {正在处理。显示通话} other {通话中。显示通话}}",
+    "allowMicrophone": "请在浏览器中允许使用麦克风，以开始语音通话。",
+    "noMicrophone": "未找到麦克风。",
+    "couldNotStart": "无法开始语音通话。",
+    "endedReason": "通话已结束（{reason}）。"
   }
 }

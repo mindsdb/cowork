@@ -19,6 +19,7 @@ import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
+import { approvalsOffAtOf } from './lib/browserPrefs';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
 import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
@@ -1901,16 +1902,30 @@ async function readSettings({ validate = true } = {}) {
   return result;
 }
 
+/**
+ * @typedef {{ asks: boolean, offAtMs: number | null }} BrowserApprovalSetting
+ */
+
 /* The person's Approve browser steps setting as the server holds it now
-   (browser_approve_steps), read just before the app approves a held browser
-   step for them, so a choice made on another device counts at once: false
-   when they turned approvals off, true otherwise, null when it can't be read. */
+   (browser_approve_steps), with when they last turned it off
+   (browser_approve_steps_off_at, the server's clock), read just before the
+   app approves a held browser step for them, so a choice made on another
+   device counts at once: `asks` false when they turned approvals off,
+   `offAtMs` null when the server doesn't say, and null when it can't be
+   read. Under the settings lock, like fetchSettings, so it reads after a
+   save that started before it (a card's Skip approvals). */
+/** @returns {Promise<BrowserApprovalSetting | null>} */
 export async function readBrowserApproveSteps() {
-  try {
-    return transformSettingsRows(await req('/settings/')).browserApproveSteps !== false;
-  } catch {
-    return null;
-  }
+  const op = _settingsLock.then(async () => {
+    try {
+      const settings = transformSettingsRows(await req('/settings/'));
+      return { asks: settings.browserApproveSteps !== false, offAtMs: approvalsOffAtOf(settings) };
+    } catch {
+      return null;
+    }
+  });
+  _settingsLock = op.catch(() => {});
+  return op;
 }
 
 export async function fetchSettings() {
@@ -3061,6 +3076,7 @@ export async function duplicateLiveApp({ shareId, projectId }) {
  * @property {'none' | 'starting' | 'running' | 'unavailable' | 'not_entitled' | 'organization_off'} status
  * @property {'mindshub' | 'own' | null} [decisions_model]
  * @property {boolean} [can_set_decisions_model]  Whether the caller may set one up: an organization admin, or anyone on a desktop.
+ * @property {boolean} [own_decisions_unused]  The organization set up its own decision model, but this deployment's browser can't ask it.
  */
 
 /**

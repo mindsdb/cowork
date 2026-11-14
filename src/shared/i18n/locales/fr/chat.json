@@ -221,7 +221,8 @@
         "files": "En file d’attente : les messages avec des fichiers sont traités après la tâche en cours.",
         "notRead": "En file d’attente : la tâche s’est terminée avant de pouvoir lire ceci."
       }
-    }
+    },
+    "reconnecting": "Tentative de reconnexion"
   },
   "composer": {
     "placeholder": "Bonjour chef, comment puis-je vous aider aujourd’hui ?",
@@ -279,7 +280,8 @@
       "fixed": "Le projet est fixé pour cette tâche",
       "none": "Aucun projet"
     },
-    "chooseHarness": "Choisir l’environnement d’exécution"
+    "chooseHarness": "Choisir l’environnement d’exécution",
+    "voiceCall": "Appel vocal"
   },
   "attachmentThumbnail": {
     "open": "Ouvrir l’image",
@@ -300,7 +302,9 @@
       "title": "Approuver cette étape dans le navigateur ?",
       "intro": "Elle peut acheter, envoyer, supprimer ou valider quelque chose, et ne s’exécute que si vous l’approuvez.",
       "approved": "Action du navigateur approuvée",
-      "cancelled": "Action du navigateur annulée"
+      "cancelled": "Action du navigateur annulée",
+      "typedText": "Texte saisi",
+      "typedTextKeys": "Texte saisi (⏎ marque un saut de ligne, qui peut l’envoyer ; ⇥ marque une tabulation ; ⟦U+…⟧ désigne un caractère invisible)"
     },
     "handOver": {
       "title": "À vous dans le navigateur",
@@ -312,6 +316,7 @@
       "finishLater": "Finir plus tard",
       "stop": "Arrêter",
       "noBrowser": "Il n’y a aucun navigateur à rendre ici.",
+      "notOpened": "Le navigateur ne s’est pas ouvert. Ouvrez-le et cliquez à nouveau sur Terminé, continuer.",
       "handedBack": "Rendu, reprise",
       "stopped": "Passage de main arrêté",
       "ended": "Passage de main terminé"
@@ -692,7 +697,14 @@
       "closeIts": "Fermer son navigateur (onglets enregistrés)",
       "watching": "Quelqu’un le regarde"
     },
-    "phoneYourTurnWatching": "À vous : {reason}. {agent} reprend de lui-même une fois que c’est fait, ou touchez Terminé dans le navigateur."
+    "phoneYourTurnWatching": "À vous : {reason}. {agent} reprend de lui-même une fois que c’est fait, ou touchez Terminé dans le navigateur.",
+    "handOverFallback": "{agent} a besoin de vous dans le navigateur",
+    "phoneYourTurn": "À vous : {reason}. Touchez Terminé dans le navigateur quand vous avez fini, puis réduisez pour continuer.",
+    "phoneQuestion": "{agent} a une question pour vous. Réduisez pour y répondre.",
+    "phoneWorking": "En cours…",
+    "phoneDone": "Terminé. Réduisez pour voir la réponse.",
+    "phoneMinimize": "Réduire",
+    "talkTo": "Parler à {agent}"
   },
   "voiceCall": {
     "dialogLabel": "Appel vocal avec {agent}",
@@ -711,6 +723,12 @@
     "ended": "L’appel est terminé.",
     "close": "Fermer",
     "endCall": "Terminer l’appel",
-    "mute": "Couper le micro"
+    "mute": "Couper le micro",
+    "orbLabel": "{state, select, starting {Connexion de la voix} working {En cours} other {En appel}}",
+    "orbShow": "{state, select, starting {Connexion de la voix. Afficher l’appel} working {En cours. Afficher l’appel} other {En appel. Afficher l’appel}}",
+    "allowMicrophone": "Autorisez le micro dans votre navigateur pour lancer un appel vocal.",
+    "noMicrophone": "Aucun micro trouvé.",
+    "couldNotStart": "Impossible de lancer l’appel vocal.",
+    "endedReason": "L’appel est terminé ({reason})."
   }
 }

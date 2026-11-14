@@ -40,13 +40,18 @@ function shape(required: Record<string, Check>, optional: Record<string, Check> 
   };
 }
 
-export const controlShape = shape({
-  holder: literal('agent', 'human'),
-  reason: str,
-  since: int,
-  seq: int,
-  by: literal('agent', 'person'),
-});
+export const controlShape = shape(
+  {
+    holder: literal('agent', 'human'),
+    reason: str,
+    since: int,
+    seq: int,
+    by: literal('agent', 'person'),
+  },
+  // Whether the host watches a hand-over for what it waits for (anton's
+  // Control.watching, default false); a host that predates it omits it.
+  { watching: bool },
+);
 
 export const sessionInfoShape = shape(
   { session_id: str, control: controlShape },
