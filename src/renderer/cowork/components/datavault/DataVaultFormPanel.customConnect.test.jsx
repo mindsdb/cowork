@@ -125,6 +125,21 @@ describe('connecting a custom connector', () => {
     expect(getForm(CID).subtitle).toMatch(/proved only that the API answers, not that a key works/);
   });
 
+  it('never sends a key the member typed and then skipped', async () => {
+    api.connectCustomConnector.mockResolvedValue({ id: 9, connector_id: 'open_data', name: 'Open Data', status: 'verified' });
+    setForm(CID, { ...OPTIONAL_SPEC });
+    renderPanel();
+
+    await userEvent.type(await screen.findByLabelText(/^API address/i), 'api.open.example');
+    await userEvent.type(screen.getByLabelText(/^API key/i), KEY);
+    await userEvent.click(screen.getByRole('button', { name: /^skip$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    await waitFor(() => expect(api.connectCustomConnector).toHaveBeenCalled());
+    expect(api.connectCustomConnector.mock.calls[0][1].values).toEqual({});
+    expect(JSON.stringify(api.connectCustomConnector.mock.calls)).not.toContain(KEY);
+  });
+
   it('closes on Cancel without a message to the chat', async () => {
     const { onContinue, onClose } = renderPanel();
 

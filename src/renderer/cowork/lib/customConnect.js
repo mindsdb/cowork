@@ -71,9 +71,9 @@ export function toCustomConnectSpec(spec, check, label, authSummary = null) {
           description: ADDRESS_HELP,
         },
         // The connect route refuses an empty value except for a field the
-        // template marks optional, which alone offers Skip.
+        // template marks optional, and only a secret one, offers Skip.
         ...templateFields.map((f) => {
-          const optional = f.required === false;
+          const optional = f.required === false && f.secret === true;
           return { ...f, required: !optional, skipable: optional };
         }),
       ]
@@ -107,7 +107,7 @@ export function mayConnectThroughChat({ orgMode, connector }) {
 
 /**
  * The connect request body from the form's values: the address apart, the
- * template's own fields as values, empty ones left out.
+ * template's own fields as values, empty or blank ones left out.
  * @param {Record<string, unknown>} values
  * @param {string} name
  * @returns {{name: string, address: string, values: Record<string, string>}}
@@ -116,7 +116,7 @@ export function customConnectPayload(values, name) {
   const fieldValues = {};
   for (const [key, value] of Object.entries(values || {})) {
     if (key === ADDRESS_FIELD) continue;
-    if (typeof value === 'string' && value !== '') fieldValues[key] = value;
+    if (typeof value === 'string' && value.trim() !== '') fieldValues[key] = value;
   }
   const address = typeof values?.[ADDRESS_FIELD] === 'string' ? values[ADDRESS_FIELD].trim() : '';
   return { name, address, values: fieldValues };
@@ -146,23 +146,26 @@ export function describeConnectFailure(err) {
   const sentence = CHECK_FAILURES[err?.code] || err?.message || 'Could not connect.';
   const parts = [sentence];
   if (Number.isInteger(detail.provider_status)) parts.push(`The provider answered ${detail.provider_status}.`);
-  if (typeof detail.excerpt === 'string' && detail.excerpt.trim()) parts.push(`It said: ${detail.excerpt}`);
+  if (err?.code !== 'public_check_failed' && typeof detail.excerpt === 'string' && detail.excerpt.trim()) parts.push(`It said: ${detail.excerpt}`);
   return parts.join(' ');
 }
 
 /**
- * The success screen's subtitle. When the form had optional fields and the
- * member left every one of them out, it says the check proved only that the
- * API answers.
+ * The success screen's subtitle. The connection is keyless when the form had
+ * an optional field and every secret field was left out (skipped, empty or
+ * blank); then it says the check proved only that the API answers. A secret
+ * the member entered always gives the plain text.
  * @param {{fields?: object[]}} spec The custom connect form's spec.
  * @param {Record<string, unknown>} values The values the form submitted.
  * @param {string[]} [skipped] The names of the fields the member skipped.
  * @returns {string}
  */
 export function connectSuccessSubtitle(spec, values, skipped = []) {
-  const optional = (spec?.fields || []).filter((f) => f.name !== ADDRESS_FIELD && f.required === false);
-  const leftOut = (f) => skipped.includes(f.name) || !(typeof values?.[f.name] === 'string' && values[f.name] !== '');
-  return optional.length > 0 && optional.every(leftOut) ? KEYLESS_SUCCESS_SUBTITLE : SUCCESS_SUBTITLE;
+  const fields = (spec?.fields || []).filter((f) => f.name !== ADDRESS_FIELD);
+  const leftOut = (f) => skipped.includes(f.name) || !(typeof values?.[f.name] === 'string' && values[f.name].trim() !== '');
+  const keyless = fields.some((f) => f.required === false)
+    && fields.filter((f) => f.secret === true).every(leftOut);
+  return keyless ? KEYLESS_SUCCESS_SUBTITLE : SUCCESS_SUBTITLE;
 }
 
 export function isCustomConnectionRow(row) {
