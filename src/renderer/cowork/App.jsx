@@ -4,7 +4,8 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
-import { toCloudSpec } from './lib/cloudConnectorSpec';
+import { connectSpecFor, desktopOnlyOffer, mayConnectThroughChat, toCustomConnectionRows } from './lib/customConnect';
+import { composerConnectorList } from './lib/composerConnectors';
 import { toDatasourceRows } from './lib/datasourceConnectionRows';
 import { buildCustomConnectorRequest } from './lib/customConnectorRequest';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
@@ -111,7 +112,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
-         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, listCustomConnections} from './api';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
@@ -1935,21 +1936,22 @@ function AppCore() {
   }, [look]);
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
-  // One list for the composer's per-conversation toggles: the OAuth
-  // connections and the cloud database ones, each keyed by (engine, name),
-  // which is the pair the server filters a turn's grants on.
+  // The custom route the "Coming soon" dialog offers for a connector cloud doesn't run.
+  const [comingSoonOffer, setComingSoonOffer] = useState(null);
+  const [customConnectors, setCustomConnectors] = useState([]);
   const composerConnectors = useMemo(
-    // Only a verified database is offered here: the producer grants exactly
-    // those, so listing a pending or failed one with its toggle on would say a
-    // chat can use something it cannot.
-    () => [...connectors, ...datasourceConnectors.filter((c) => c.status === 'connected')],
-    [connectors, datasourceConnectors],
+    () => composerConnectorList(connectors, datasourceConnectors, customConnectors),
+    [connectors, datasourceConnectors, customConnectors],
   );
   const refreshDatasourceConnectors = useCallback(() => {
     if (!orgMode) return Promise.resolve();
-    return listDatasourceConnections()
+    const databases = listDatasourceConnections()
       .then((rows) => setDatasourceConnectors(toDatasourceRows(rows)))
       .catch(() => setDatasourceConnectors([]));
+    const customs = listCustomConnections()
+      .then((rows) => setCustomConnectors(toCustomConnectionRows(rows)))
+      .catch(() => setCustomConnectors([]));
+    return Promise.all([databases, customs]);
   }, [orgMode]);
   // Connecting or removing a database happens in two other places — the
   // connect form's panel and the connections page — and both already announce
@@ -3212,7 +3214,10 @@ function AppCore() {
     // Microsoft first, so it opens its own form instead of a connect chat.
     if (connector.id === SHAREPOINT_ENGINE) {
       // The SharePoint routes are refused in org mode; offer the desktop app.
-      if (orgMode) setComingSoonFeature(connector.label || 'SharePoint');
+      if (orgMode) {
+        setComingSoonOffer(null);
+        setComingSoonFeature(connector.label || 'SharePoint');
+      }
       else setSharePointSetupOpen(true);
       return;
     }
@@ -3231,13 +3236,22 @@ function AppCore() {
     const label = full?.label || connector.label || connector.id;
     const tempId = 'tmp-connect-' + Date.now();
     const hasLiteralForm = !!(full && full.form);
+    const chatBlocked = !hasLiteralForm && !mayConnectThroughChat({ orgMode, connector });
 
     setTasks((prev) => [{
       id: tempId,
       title: tApp('connect.taskTitle', { name: label }),
       subtitle: tApp('common.justNow'),
-      status: hasLiteralForm ? 'idle' : 'active',
-      messages: hasLiteralForm
+      status: hasLiteralForm || chatBlocked ? 'idle' : 'active',
+      messages: chatBlocked
+        ? [
+            {
+              role: 'assistant',
+              content: `Could not open ${label}. Try again from Connect Apps and Data.`,
+              _client_only: true,
+            },
+          ]
+        : hasLiteralForm
         ? [
             {
               role: 'assistant',
@@ -3306,7 +3320,7 @@ function AppCore() {
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
       };
-      const connectSpec = orgMode ? toCloudSpec(baseSpec, editingConnection) : baseSpec;
+      const connectSpec = connectSpecFor({ full, baseSpec, label, orgMode, editingConnection });
       setDataVaultForm(tempId, connectSpec);
       // Remember where to return if the user closes the connect modal
       // before actually connecting — the connect task above is throwaway
@@ -3321,7 +3335,7 @@ function AppCore() {
           m && m._kind === 'connect_intro' ? { ...m, _form_spec: connectSpec } : m
         ),
       }));
-    } else {
+    } else if (!chatBlocked) {
       // No registry entry — fall back to the chat-agent flow. This IS a real
       // connect attempt (anton drives it), so there's no throwaway task to
       // return from.
@@ -6410,6 +6424,7 @@ function AppCore() {
             onStop={() => handleStopStream({ taskId: currentTask?.id })}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
+            onConnectCustomConnector={(connector) => { void handleConnectorPicked(connector); }}
             onDismissConnectForm={handleConnectFormDismiss}
             onCancelModify={handleCancelModify}
             onDisconnectModify={handleDisconnectFromModify}
@@ -6885,9 +6900,15 @@ function AppCore() {
         // Cloud: the directory also lists connectors only the desktop app can
         // run. Picking one closes the directory and offers the download rather
         // than opening a connect form that couldn't work here.
-        onDesktopOnly={(c) => {
+        onDesktopOnly={(c, { customMatch = null, canBuild = false } = {}) => {
           setConnectorPickerOpen(false);
-          setComingSoonFeature(c?.label || tApp('connect.thisConnector'));
+          const label = c?.label || tApp('connect.thisConnector');
+          setComingSoonOffer(desktopOnlyOffer({
+            connector: c, customMatch, canBuild,
+            connect: (connector) => { void handleConnectorPicked(connector); },
+            build: (name) => sendFromApp(buildCustomConnectorRequest(name)),
+          }));
+          setComingSoonFeature(label);
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);
@@ -6907,7 +6928,8 @@ function AppCore() {
 
       <ComingSoonModal
         feature={comingSoonFeature}
-        onClose={() => setComingSoonFeature(null)}
+        offer={comingSoonOffer}
+        onClose={() => { setComingSoonFeature(null); setComingSoonOffer(null); }}
       />
 
       {!host.isWeb && (

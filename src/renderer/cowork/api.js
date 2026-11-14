@@ -2623,6 +2623,32 @@ export async function retryDatasourceValidation(connectionId) {
   return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
 }
 
+// ── Custom API connections ───────────────────────────────────────────────
+//
+// A member's own custom connector, connected in the cloud only: the server
+// checks the credentials at the address the member typed, then auth stores
+// them. List and delete relay to auth on the member's own credential.
+
+const CUSTOM_CONNECTIONS = '/connectors/custom-connections/';
+
+export async function connectCustomConnector(connectorId, payload) {
+  requireOrgMode('Connecting a custom connector');
+  return req(`/connectors/custom/${encodeURIComponent(connectorId)}/connect`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listCustomConnections() {
+  requireOrgMode('Custom connections');
+  return req(CUSTOM_CONNECTIONS);
+}
+
+export async function deleteCustomConnection(connectionId) {
+  requireOrgMode('Removing a custom connection');
+  return req(`${CUSTOM_CONNECTIONS}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
 // Predefined JSON specs in server/connectors/. Three calls:
 //   list()         → lightweight summaries for the picker UI
 //   get(id)        → the full spec (literal-retrieval, no LLM)
@@ -2661,6 +2687,24 @@ export async function fetchCanBuildCustomConnector() {
     return data?.can_build !== false;
   } catch (err) {
     return err?.status === 404;
+  }
+}
+
+// Save a connector template from its chat card as the caller's own custom
+// connector. The server checks the template again; only org mode has the route.
+export async function saveConnectorDraft(draft) {
+  return req('/connectors/custom', { method: 'POST', body: JSON.stringify(draft) });
+}
+
+// Whether the caller already keeps a custom connector under `id`, which may be
+// an earlier template: true when the spec lookup returns a custom one, false
+// on a 404, null when it can't tell.
+export async function fetchConnectorDraftSaved(id) {
+  try {
+    const spec = await req(`/connectors/specs/${encodeURIComponent(id)}`);
+    return spec?.custom === true;
+  } catch (err) {
+    return err?.status === 404 ? false : null;
   }
 }
 
