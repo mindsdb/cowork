@@ -221,7 +221,8 @@
         "files": "Na fila: mensagens com arquivos são executadas depois da tarefa atual.",
         "notRead": "Na fila: a tarefa terminou antes de conseguir ler isto."
       }
-    }
+    },
+    "reconnecting": "Tentando reconectar"
   },
   "composer": {
     "placeholder": "Olá, chefe. Como posso ajudar hoje?",
@@ -262,7 +263,7 @@
       "openingGoogleDrive": "Abrindo o Google Drive…",
       "addFromGoogleDrive": "Adicionar arquivos do Google Drive",
       "addFromSharePoint": "Adicionar arquivos do SharePoint",
-      "browserTitle": "{agent} pode usar seu navegador compartilhado nesta tarefa. Desativar vale a partir da sua próxima mensagem.",
+      "browserTitle": "{agent} pode usar o modo navegador nesta tarefa. Desativar vale a partir da sua próxima mensagem.",
       "browser": "Navegador",
       "browserOff": "Desativar o navegador nesta tarefa",
       "browserOn": "Ativar o navegador nesta tarefa",
@@ -279,7 +280,8 @@
       "fixed": "O projeto é fixo para esta tarefa",
       "none": "Sem projeto"
     },
-    "chooseHarness": "Escolher ambiente de execução"
+    "chooseHarness": "Escolher ambiente de execução",
+    "voiceCall": "Chamada de voz"
   },
   "attachmentThumbnail": {
     "open": "Abrir imagem",
@@ -290,11 +292,35 @@
     "hintCustom": "…ou digite sua própria resposta abaixo.",
     "hintSelectOnly": "Escolha uma opção acima; uma resposta digitada não será aceita. Pule para digitar outra coisa.",
     "skip": "Pular",
+    "skipApprovals": "Pular aprovações nas próximas etapas",
     "send": "Enviar",
     "skipped": "Pulada.",
     "timedOut": "Sem resposta: o tempo esgotou.",
     "answered": "Resposta:",
-    "noLongerActive": "Esta pergunta não está mais ativa."
+    "noLongerActive": "Esta pergunta não está mais ativa.",
+    "browserStep": {
+      "title": "Aprovar esta etapa no navegador?",
+      "intro": "Ela pode comprar, enviar, excluir ou confirmar algo, e só é executada se você aprovar.",
+      "approved": "Ação do navegador aprovada",
+      "cancelled": "Ação do navegador cancelada",
+      "typedText": "Texto que ele digita",
+      "typedTextKeys": "Texto que ele digita (⏎ marca uma quebra de linha, que pode enviá-lo; ⇥ marca uma tabulação; ⟦U+…⟧ indica um caractere invisível)"
+    },
+    "handOver": {
+      "title": "Sua vez no navegador",
+      "watching": "Faça no navegador e {agent} continua sozinho alguns segundos depois, ou clique em Concluído, continuar.",
+      "manual": "Quando terminar no navegador, clique em Concluído, continuar.",
+      "stillYours": "O navegador ainda é seu. Quando terminar, clique em Concluído, continuar e {agent} retoma dali.",
+      "doneContinue": "Concluído, continuar",
+      "openBrowser": "Abrir navegador",
+      "finishLater": "Terminar depois",
+      "stop": "Parar",
+      "noBrowser": "Não há navegador para devolver aqui.",
+      "notOpened": "O navegador não abriu. Abra-o e clique de novo em Concluído, continuar.",
+      "handedBack": "Devolvido, continuou",
+      "stopped": "Passagem interrompida",
+      "ended": "Passagem encerrada"
+    }
   },
   "codingTerminal": {
     "unavailable": "O terminal integrado não está disponível nesta versão.",
@@ -573,7 +599,7 @@
   },
   "browser": {
     "close": "Fechar navegador",
-    "shared": "Navegador compartilhado",
+    "shared": "Modo navegador",
     "title": "Navegador",
     "unreachable": "Não é possível acessar o navegador",
     "stopped": {
@@ -613,6 +639,7 @@
     "aNewTab": "uma nova aba",
     "yourTurn": "Sua vez em {site}. Clique em Concluído para devolver a {agent}.",
     "yourTurnReason": "Sua vez em {site}: {reason}. Clique em Concluído para devolver a {agent}.",
+    "yourTurnWatching": "Sua vez em {site}: {reason}. {agent} continua sozinho quando estiver feito, ou clique em Concluído.",
     "agentUsing": "{agent} está usando. Assuma o controle para usar você mesmo.",
     "pageReadsNote": "As leituras de página e capturas de tela de {agent} vão para o provedor do modelo que atende o seu turno.",
     "back": "Voltar",
@@ -623,6 +650,94 @@
     "newTab": "Nova aba",
     "closedTitle": "O navegador desta tarefa está fechado",
     "closedDescription": "{agent} o abre de novo quando precisar.",
-    "squeezed": "Aumente a janela para ver a página"
+    "squeezed": "Aumente a janela para ver a página",
+    "minimize": "Minimizar navegador",
+    "expand": "Expandir navegador",
+    "learnWhat": "O que {agent} vê",
+    "opening": "Abrindo seu navegador",
+    "askOrTypeUrl": "Pergunte ou digite uma URL",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Página em branco. Grandes planos?",
+          "subtitle": "Digite um endereço ou diga o que pesquisar."
+        },
+        "wholeInternet": {
+          "title": "A internet inteira, e nenhum lugar para ir.",
+          "subtitle": "Me mostre um lugar que valha a viagem."
+        },
+        "freshTab": {
+          "title": "Energia de aba nova.",
+          "subtitle": "Para onde vamos?"
+        },
+        "quiet": {
+          "title": "Está quieto aqui. Suspeitamente quieto.",
+          "subtitle": "Me dê um site ou uma pesquisa e eu começo."
+        }
+      },
+      "off": "O navegador está desligado para esta tarefa. Ative-o no menu + e {agent} poderá navegar.",
+      "searchPlaceholder": "Pesquise ou cole um link",
+      "searchLabel": "O que pesquisar",
+      "onIt": "Já vou…",
+      "go": "Ir",
+      "addressPlaceholder": "Digite uma URL ou pesquise",
+      "address": "Endereço",
+      "nothingOpen": "Nada aberto ainda",
+      "openingUrl": "Abrindo {url}…",
+      "slow": "Essa página está demorando. Tente de novo ou digite-a na barra de endereço.",
+      "couldNotOpen": "Não foi possível abrir essa página.",
+      "agentOpening": "{agent} está abrindo o navegador…"
+    },
+    "projectBrowsers": {
+      "title": "Navegadores neste projeto",
+      "listFailed": "Não foi possível listar os navegadores.",
+      "failed": "Isso não funcionou.",
+      "looking": "Procurando…",
+      "thisTask": "Esta tarefa",
+      "held": "Você está com este navegador: as abas aparecem quando você devolvê-lo.",
+      "showing": "Exibindo",
+      "closeOthers": "{count, plural, one {Fechar a outra aba (salva para depois)} other {Fechar as outras # abas (salvas para depois)}}",
+      "noneMine": "Nenhum navegador aberto para esta tarefa.",
+      "reopen": "Reabrir {tab}",
+      "saved": "Salva",
+      "otherTasks": "Outras tarefas neste projeto",
+      "tabCount": "{count, plural, one {# aba} other {# abas}}",
+      "goTo": "Ir para o navegador dela",
+      "closeIts": "Fechar o navegador dela (abas salvas)",
+      "watching": "Alguém está assistindo"
+    },
+    "phoneYourTurnWatching": "Sua vez: {reason}. {agent} continua sozinho quando estiver feito, ou toque em Concluído no navegador.",
+    "handOverFallback": "{agent} precisa de você no navegador",
+    "phoneYourTurn": "Sua vez: {reason}. Toque em Concluído no navegador quando terminar e depois minimize para continuar.",
+    "phoneQuestion": "{agent} tem uma pergunta para você. Minimize para responder.",
+    "phoneWorking": "Trabalhando nisso…",
+    "phoneDone": "Pronto. Minimize para ver a resposta.",
+    "phoneMinimize": "Minimizar",
+    "talkTo": "Falar com {agent}"
+  },
+  "voiceCall": {
+    "dialogLabel": "Chamada de voz com {agent}",
+    "connecting": "Conectando…",
+    "ending": "Encerrando…",
+    "working": "Trabalhando nisso…",
+    "listening": "Ouvindo",
+    "talkSoon": "Até logo",
+    "analyzing": "Analisando resultados…",
+    "trying": "Testando {voice}",
+    "connectingVoice": "Conectando a voz…",
+    "voice": "Voz",
+    "voiceAriaLabel": "Voz: {voice}",
+    "changeVoice": "Mudar voz",
+    "muteAndEnd": "Silenciar e encerrar a chamada",
+    "ended": "A chamada terminou.",
+    "close": "Fechar",
+    "endCall": "Encerrar chamada",
+    "mute": "Silenciar",
+    "orbLabel": "{state, select, starting {Conectando a voz} working {Trabalhando nisso} other {Em uma chamada}}",
+    "orbShow": "{state, select, starting {Conectando a voz. Mostrar a chamada} working {Trabalhando nisso. Mostrar a chamada} other {Em uma chamada. Mostrar a chamada}}",
+    "allowMicrophone": "Permita o microfone no seu navegador para iniciar uma chamada de voz.",
+    "noMicrophone": "Nenhum microfone encontrado.",
+    "couldNotStart": "Não foi possível iniciar a chamada de voz.",
+    "endedReason": "A chamada terminou ({reason})."
   }
 }

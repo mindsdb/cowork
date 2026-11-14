@@ -360,7 +360,12 @@
     "total": "{count} au total",
     "noTasks": "Aucune tâche pour l’instant.",
     "untitledTask": "Tâche sans titre",
-    "seeAllTasks": "Voir toutes les tâches"
+    "seeAllTasks": "Voir toutes les tâches",
+    "recents": "Récents",
+    "showFewer": "Afficher moins",
+    "seeAllCount": "Tout voir ({count})",
+    "signedIn": "Connecté",
+    "logOut": "Se déconnecter"
   },
   "dispatch": {
     "qrAriaLabel": "Code d’association décoratif",
@@ -409,5 +414,8 @@
     "confirm": "Se déconnecter",
     "failed": "Impossible de terminer la déconnexion. Veuillez réessayer.",
     "waitNote": "Déconnexion en cours. Vous pouvez fermer cette fenêtre, l’opération se terminera d’elle-même."
+  },
+  "shortcuts": {
+    "showBrowser": "Afficher le navigateur"
   }
 }

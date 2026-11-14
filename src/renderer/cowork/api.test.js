@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles, voiceOperate, readBrowserApproveSteps } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -433,6 +433,66 @@ describe('settings reads and writes settle in the order they started', () => {
     const [, readResult] = await Promise.all([write, read]);
     expect(settled).toEqual(['write', 'read']);
     expect(readResult.navTitle).toBe('Hello World');
+  });
+});
+
+/* The app reads Approve browser steps fresh before it approves a held step,
+   with the server's stamp of when approvals last went off. A card's Skip
+   approvals then writes the switch whatever this tab last read, so the
+   server stamps that time past the card. */
+describe('readBrowserApproveSteps, and the switch it reads', () => {
+  let stored;
+  let puts;
+  beforeEach(() => {
+    stored = { browser_approve_steps: 'false', browser_approve_steps_off_at: '1700000000123' };
+    puts = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      const u = String(url);
+      if (method === 'PUT' && u.endsWith('/settings/')) {
+        const { values } = JSON.parse(options.body);
+        puts.push(values);
+        Object.assign(stored, values);
+        return jsonRes({ updated: Object.keys(values) });
+      }
+      if (method === 'GET' && u.endsWith('/settings/')) {
+        return jsonRes(Object.entries(stored).map(([key, value]) => ({ key, value })));
+      }
+      return jsonRes({});
+    }));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads whether approvals are on and when they last went off, by the server', async () => {
+    expect(await readBrowserApproveSteps()).toEqual({ asks: false, offAtMs: 1_700_000_000_123 });
+    stored.browser_approve_steps = 'true';
+    expect(await readBrowserApproveSteps()).toEqual({ asks: true, offAtMs: 1_700_000_000_123 });
+    // A server that doesn't stamp it.
+    delete stored.browser_approve_steps_off_at;
+    expect(await readBrowserApproveSteps()).toEqual({ asks: true, offAtMs: null });
+  });
+
+  it('is null when the settings cannot be read', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    expect(await readBrowserApproveSteps()).toBeNull();
+  });
+
+  /* This tab read approvals off; the person turned them off again from a
+     card after another device turned them on and off. The write still goes,
+     so the server stamps the new time; the stamp itself is never written. */
+  it('writes approvals off even when this tab already reads them off, and never the stamp', async () => {
+    await fetchSettings();
+    await updateSettings({ browserApproveSteps: false, browserApproveStepsOffAt: 5 });
+    expect(puts).toEqual([{ browser_approve_steps: 'false' }]);
+    expect(stored.browser_approve_steps_off_at).toBe('1700000000123');
+  });
+
+  it('reads after a save started before it', async () => {
+    await fetchSettings();
+    const save = updateSettings({ browserApproveSteps: true });
+    const read = readBrowserApproveSteps();
+    expect(await read).toEqual({ asks: true, offAtMs: 1_700_000_000_123 });
+    await save;
   });
 });
 
@@ -1996,5 +2056,22 @@ describe('SharePoint routes', () => {
     expect(err.message).toBe(detail);
     expect(err.status).toBe(status);
     expect(err.code).not.toBe('sharepoint_unavailable');
+  });
+});
+
+describe('voiceOperate', () => {
+  it("sends the browser's time zone so dates count from the person's today", async () => {
+    globalThis.fetch = vi.fn(async () => jsonRes({ content: 'Done.', tool_calls: [] }));
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    await voiceOperate([{ role: 'user', content: 'Flights the weekend after Thanksgiving.' }], 'Projects: general');
+
+    const [url, init] = globalThis.fetch.mock.calls[0];
+    expect(String(url)).toContain('/voice/operate');
+    expect(JSON.parse(init.body)).toEqual({
+      messages: [{ role: 'user', content: 'Flights the weekend after Thanksgiving.' }],
+      snapshot: 'Projects: general',
+      timezone: zone,
+    });
   });
 });

@@ -42,6 +42,15 @@ describe('responseStreamAdapter — ask_user', () => {
     expect(step.data.answer).toBeNull();
   });
 
+  /* The server's own stamp of when it held the question, never this tab's
+     clock: the app approves a held browser step for the person only if it
+     was held after they turned approvals off. */
+  it('keeps when the server held the question, or null without a stamp', () => {
+    expect(question(reduceStream(initialStreamState(), { ...ASK, at_ms: 1_700_000_000_123 })).data.held_at_ms).toBe(1_700_000_000_123);
+    expect(question(reduceStream(initialStreamState(), ASK)).data.held_at_ms).toBeNull();
+    expect(question(reduceStream(initialStreamState(), { ...ASK, at_ms: '1700000000123' })).data.held_at_ms).toBeNull();
+  });
+
   it('is idempotent — a replayed duplicate does not add a second card', () => {
     const once = reduceStream(initialStreamState(), ASK);
     const twice = reduceStream(once, ASK);
@@ -1142,6 +1151,42 @@ describe('response.browser_session_opened', () => {
   it('ignores an event with no usable session id', () => {
     expect(reduceAll([{ type: 'response.browser_session_opened' }]).steps).toEqual([]);
     expect(reduceAll([{ type: 'response.browser_session_opened', session_id: '../x' }]).steps).toEqual([]);
+  });
+});
+
+describe("the agent's browser tool calls", () => {
+  // The events the server sends for one call: its start names the tool, its
+  // input's end carries the arguments, and tool_done ends it.
+  const progress = (extra) => ({ type: 'response.in_progress', thought_role: 'thought.progress', ...extra });
+  const call = (id, args, at = 1) => [
+    progress({ content: 'browser', tool_use_id: id, at_ms: at }),
+    progress({ content: JSON.stringify(args), tool_use_id: id, at_ms: at + 1 }),
+    progress({ content: 'tool_start: browser', phase: 'tool_start', message: 'browser', tool_use_id: '', at_ms: at + 2 }),
+  ];
+  const done = (id, at) => progress({ content: 'tool_done: browser', phase: 'tool_done', message: 'browser', tool_use_id: id, at_ms: at });
+
+  it('makes each call a step, labelled from its arguments, never keeping them', () => {
+    const state = reduceAll([
+      ...call('c1', { action: 'open', url: 'https://www.united.com/' }), done('c1', 5),
+      ...call('c2', { action: 'act', step: { action: 'type', element: 4, text: 'hunter2' } }, 6),
+    ]);
+    const calls = state.steps.filter((s) => s.badge === 'BrowserAction');
+    expect(calls.map((s) => [s.label, s.status])).toEqual([['Opening united.com', 'completed'], ['Working on the page', 'in_progress']]);
+    expect(JSON.stringify(state.steps)).not.toContain('hunter2');
+  });
+
+  it('ends a call whose tool_done never came when the next starts, and every call when the turn ends', () => {
+    const state = reduceAll([
+      ...call('c1', { action: 'page' }),
+      ...call('c2', { action: 'screenshot' }, 4),
+      { type: 'response.completed', response: { id: 'r', status: 'completed' }, at_ms: 9 },
+    ]);
+    expect(state.steps.filter((s) => s.badge === 'BrowserAction').map((s) => s.status)).toEqual(['completed', 'completed']);
+  });
+
+  it("leaves other tools' events as they were", () => {
+    const state = reduceAll([progress({ content: 'web_search', tool_use_id: 'w1' }), progress({ content: '{"query":"x"}', tool_use_id: 'w1' })]);
+    expect(state.steps).toEqual([]);
   });
 });
 

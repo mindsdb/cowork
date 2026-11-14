@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { BrowserNote } from './BrowserNote';
 import Button from '../ui/Button';
 import EmptyState from '../ui/EmptyState';
 import Spinner from '../ui/Spinner';
@@ -7,7 +8,9 @@ import { embedBrowser } from '../../api';
 import { VIEWER_CLOSED, VIEWER_READY, afterViewerClose, browserViewerTheme, viewerLinkFrom } from '../../lib/browserSession';
 import { host } from '../../../platform/host';
 import { BrowserFrame } from './BrowserFrame';
+import { BlankStartOver, browserRequestFor } from './BlankBrowserPanel';
 import { LocalBrowserStage } from './LocalBrowserStage';
+import { HAND_BACK_MESSAGE, dropHandBack, registerHandBackViewer } from '../../lib/browserHandBack';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The person's browser beside the chat. The agent drives it through its
@@ -34,10 +37,11 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    unreachable or full) is a page that posts VIEWER_CLOSED, and so does the
    starting page's last load before its link lapses; afterViewerClose decides
    what the pane does then. After STARTING_TIMEOUT_MS of waiting, the pane
-   offers to try again. That clock runs on across the new links a close
+   offers to try again, and a hand-back waiting for its viewer ends
+   (lib/browserHandBack.js). That clock runs on across the new links a close
    brings, and starts over only when a viewer gets ready or the person, the
-   tab or the network asks again, so a router that keeps closing still
-   reaches it. */
+   tab, the network or a hand-back (`retrySignal`) asks again, so a router
+   that keeps closing still reaches it. */
 export const STARTING_TIMEOUT_MS = 90_000;
 
 /**
@@ -73,35 +77,56 @@ function postTheme(frame) {
   );
 }
 
+// How long the start page takes to fade out once a page opens (browser-panel.css).
+export const START_FADE_MS = 250;
+
+/** A tab with nothing in it yet, which the start page covers. */
+export function isBlankPage(url) {
+  return url === 'about:blank' || url === 'chrome://newtab/' || url === 'chrome://new-tab-page/';
+}
+
 /* The web pane's note on where things go and what stays. The view and every
    key typed in it cross Cloudflare and MindsDB's browser service. The
    agent's page reads go to the model provider and, with Jev on, to Jev. Sites
    the person signs in to stay signed in for later tasks. The Jev and sign-in
-   lines are Settings' own, so the two surfaces can't drift. The pane can't
-   tell who holds the browser (the viewer posts only that it is ready or
-   closed), so the sign-in line always shows. */
+   lines are Settings' own, so the two surfaces can't drift. The sign-in line
+   shows whoever holds the browser: the pane hears that from the viewer
+   (browser-viewer-control) only to pass it to the chat. */
 export function webPaneNote(agentLabel) {
   return `${i18n.t('browser.webPaneNote', { ns: 'chat', agent: agentLabel })} ${i18n.t('settingsTools:browser.webJevLine')} ${i18n.t('settingsTools:browser.webSignIns')}`;
 }
 
 /**
- * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
+ * @param {{ sessionId: string, agentLabel?: string, onClose: () => void,
+ *   floating?: boolean, extraActions?: import('react').ReactNode }} props
  */
 export function BrowserPanel(props) {
   return host.supportsInAppBrowser ? <LocalBrowserStage {...props} /> : <WebBrowserStage {...props} />;
 }
 
 /**
- * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
+ * @param {{ sessionId: string, agentLabel?: string, onClose: () => void, retrySignal?: number }} props
+ *   `retrySignal`: bumped when a hand-back asks the pane to show its browser.
  */
-function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
+function WebBrowserStage({
+  sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null,
+  taskKey = '', onSend, onOpenUrl, startBlank = false, onPageUrl = null, onDraft = null, retrySignal = 0,
+}) {
   const { t } = useTranslation('chat');
+  const onControlRef = useRef(onControl);
+  onControlRef.current = onControl;
+  const onDraftRef = useRef(onDraft);
+  onDraftRef.current = onDraft;
+  const onPageUrlRef = useRef(onPageUrl);
+  onPageUrlRef.current = onPageUrl;
   const [viewUrl, setViewUrl] = useState(null);
   const [error, setError] = useState(/** @type {PaneStop | null} */ (null));
   const [hidden, setHidden] = useState(tabHidden);
   const [generation, setGeneration] = useState(0);
   const [viewerReady, setViewerReady] = useState(false);
   const [slow, setSlow] = useState(false);
+  // The page the viewer shows, as it reports it: a blank tab gets the start page.
+  const [pageUrl, setPageUrl] = useState('');
   /* Bumped when the starting clock starts over on a request from the
      person, the tab or the network, so the clock restarts even while the
      pane is still waiting. */
@@ -114,9 +139,14 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
   const quickCloses = useRef(0);
   // Whether the current link's viewer said it is ready, for the close handler.
   const readyRef = useRef(false);
+  // Takes this frame's viewer off the hand-back list (lib/browserHandBack.js).
+  const unregisterHandBackRef = useRef(() => {});
+  useEffect(() => () => unregisterHandBackRef.current(), []);
   const frameKey = `${viewUrl}:${generation}`;
 
   const mint = useCallback(async () => {
+    // Still opening: the session comes, and with it the link.
+    if (!sessionId) return;
     mintSeq.current += 1;
     const seq = mintSeq.current;
     setError(null);
@@ -132,6 +162,8 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
     if (seq !== mintSeq.current) return;
     if (failure) {
       setError({ title: unreachable(), description: failure });
+      // No viewer comes for this browser: a hand-back waiting for one ends.
+      dropHandBack(sessionId);
       return;
     }
     mintedAt.current = Date.now();
@@ -153,6 +185,15 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
     if (!tabHidden()) retry();
     return () => { mintSeq.current += 1; };
   }, [retry]);
+
+  /* A hand-back asked for on a pane that gave up on its viewer (slow, or
+     stopped) asks again, as Try again does, so it gets a viewer or ends
+     (lib/browserHandBack.js). A pane that mounts has not given up, so this
+     does nothing then. */
+  useEffect(() => {
+    if (retrySignal && (slow || error)) retry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retrySignal]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -190,9 +231,49 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
         setViewerReady(true);
         setSlow(false);
         postTheme(frameRef.current);
+        // A new viewer: a hand-back waits until it says who holds the browser.
+        unregisterHandBackRef.current();
+        unregisterHandBackRef.current = () => {};
+        return;
+      }
+      // The page the viewer shows, for whoever opened the pane.
+      if (type === 'browser-viewer-url') {
+        const url = String(event.data?.url || '').slice(0, 2048);
+        setPageUrl(url);
+        onPageUrlRef.current?.(url);
+        return;
+      }
+      // A question typed in the viewer's address bar. The viewer is served by
+      // the remote browser, so its text never goes out as the person's own:
+      // it lands in the composer (`onDraft`), for them to read and send.
+      if (type === 'browser-viewer-ask') {
+        const text = String(event.data?.text || '').trim().slice(0, 2000);
+        if (text) onDraftRef.current?.(browserRequestFor(text));
+        return;
+      }
+      // Who holds the browser: 'human' when Anton handed it to the person.
+      if (type === 'browser-viewer-control') {
+        const holder = event.data?.holder === 'human' ? 'human' : 'agent';
+        /* The hand-over card's Done, continue reaches the viewer's Done
+           through this frame (lib/browserHandBack.js), from when the viewer
+           knows the person holds the browser: before that it drops it. With
+           the agent holding it, there is nothing to hand back. */
+        unregisterHandBackRef.current();
+        unregisterHandBackRef.current = registerHandBackViewer(
+          sessionId,
+          holder === 'human' ? () => frameWindow.postMessage({ type: HAND_BACK_MESSAGE }, '*') : null,
+        );
+        onControlRef.current?.(
+          holder,
+          String(event.data?.reason || '').slice(0, 300),
+          event.data?.watching === true,
+        );
         return;
       }
       if (type !== VIEWER_CLOSED) return;
+      // A closed viewer runs no Done: a hand-back waits for the next one.
+      unregisterHandBackRef.current();
+      unregisterHandBackRef.current = () => {};
       const next = afterViewerClose({
         mintedAtMs: mintedAt.current,
         nowMs: Date.now(),
@@ -208,10 +289,12 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
       mintSeq.current += 1;
       setViewUrl(null);
       setError(STOPPED[next.stop]?.() ?? null);
+      // The pane stops asking for a viewer: a hand-back waiting for one ends.
+      dropHandBack(sessionId);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [mint]);
+  }, [mint, sessionId]);
 
   /* Keep the viewer's toolbar in the app's theme as the theme, skin or
      custom accent changes. */
@@ -224,32 +307,69 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
 
   // A new frame (or a fresh link in flight) waits for its own viewer's ready.
   useEffect(() => {
+    unregisterHandBackRef.current();
+    unregisterHandBackRef.current = () => {};
     readyRef.current = false;
     setViewerReady(false);
+    setPageUrl('');
   }, [frameKey]);
 
   /* The starting clock runs while the pane waits. A new link that a close
      brings keeps waiting, so the clock runs on; a ready viewer ends the wait,
      and the next wait starts a new clock. */
   const waiting = !hidden && !viewerReady && !error;
+  /* Opened blank by the person: the start page shows at once, over a stand-in
+     for the viewer's toolbar, while the browser opens underneath, and stays
+     on its blank tab. The viewer fades in when it is ready. */
+  const startsHere = Boolean(onSend || onOpenUrl);
+  const opening = startBlank && startsHere && waiting && !slow;
+  const blankTab = isBlankPage(pageUrl) || (startBlank && !pageUrl);
+  const startOver = startsHere && !error && (opening || (viewUrl && viewerReady && blankTab));
+  /* Once a page opens, the start page fades out rather than vanishing. */
+  const [leaving, setLeaving] = useState(false);
+  const shownRef = useRef(false);
+  useEffect(() => {
+    if (startOver) {
+      shownRef.current = true;
+      setLeaving(false);
+      return undefined;
+    }
+    if (!shownRef.current) return undefined;
+    shownRef.current = false;
+    setLeaving(true);
+    const timer = setTimeout(() => setLeaving(false), START_FADE_MS);
+    return () => clearTimeout(timer);
+  }, [startOver]);
   useEffect(() => {
     if (!waiting) return undefined;
-    const timer = setTimeout(() => setSlow(true), STARTING_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      setSlow(true);
+      /* A viewer that never came in time ends a waiting hand-back, as a
+         viewer that stopped does: an edge error page, or the router's
+         starting page while it reloads, posts nothing at all. Here, when the
+         clock runs out, so a pane that was slow for one browser and then
+         shows another doesn't end the new one's wait. */
+      dropHandBack(sessionId);
+    }, STARTING_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [waiting, waitRound]);
+  }, [waiting, waitRound, sessionId]);
 
   return (
     <BrowserFrame
       hint={t('browser.hint', { agent: agentLabel })}
-      below={<p className="browser-panel__note">{webPaneNote(agentLabel)}</p>}
+      below={<BrowserNote agentLabel={agentLabel}>{webPaneNote(agentLabel)}</BrowserNote>}
       actions={<Button icon size="sm" variant="subtle" aria-label={t('browser.reload')} onClick={retry}>{Ico.reload(14)}</Button>}
       onClose={onClose}
+      floating={floating}
+      extraActions={extraActions}
+      dock={dock}
     >
       {viewUrl && !error && (
         <iframe
           ref={frameRef}
           onLoad={() => postTheme(frameRef.current)}
           key={frameKey}
+          className={startBlank && !viewerReady ? 'browser-panel__view--pending' : undefined}
           title={t('browser.shared')}
           src={viewUrl}
           /* The browser router also sandboxes its viewer with a CSP
@@ -258,6 +378,17 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
           sandbox="allow-forms allow-scripts"
           referrerPolicy="no-referrer"
         />
+      )}
+      {opening && (
+        <div className="browser-panel__ghostbar" role="status" aria-label={t('browser.opening')}>
+          <span className="browser-panel__ghost-button" />
+          <span className="browser-panel__ghost-button" />
+          <span className="browser-panel__ghost-button" />
+          <span className="browser-panel__ghost-address">{t('browser.askOrTypeUrl')}</span>
+        </div>
+      )}
+      {(startOver || leaving) && (
+        <BlankStartOver taskKey={taskKey} agentLabel={agentLabel} onSend={onSend} onOpenUrl={onOpenUrl} leaving={!startOver} />
       )}
       {error ? (
         <EmptyState
@@ -268,7 +399,7 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
           description={error.description}
           action={{ label: t('browser.tryAgain'), onClick: retry }}
         />
-      ) : waiting && (
+      ) : waiting && !opening && (
         <div className="browser-panel__starting" role="status">
           {slow ? (
             <EmptyState

@@ -494,5 +494,12 @@
       "saved": "Enregistrée. Les membres la verront la prochaine fois qu’ils ouvriront l’application ou les Paramètres.",
       "clean": "Aucune modification non enregistrée de l’image de marque"
     }
+  },
+  "voice": {
+    "title": "Voix",
+    "agentTitle": "Agent vocal",
+    "agentHelp": "Parlez avec {agent} depuis le bouton d’appel. Désactivé masque les boutons d’appel et termine l’appel en cours.",
+    "voiceTitle": "Voix",
+    "voiceHelp": "Choisissez-en une pour l’écouter. {agent} dit une courte phrase avec chaque nouvelle voix."
   }
 }

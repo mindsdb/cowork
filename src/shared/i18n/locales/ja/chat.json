@@ -221,7 +221,8 @@
         "files": "キューに追加：ファイル付きのメッセージは現在のタスクの後に実行されます。",
         "notRead": "キューに追加：読み取る前にタスクが終了しました。"
       }
-    }
+    },
+    "reconnecting": "再接続しています"
   },
   "composer": {
     "placeholder": "こんにちは。今日は何をお手伝いしましょうか？",
@@ -262,7 +263,7 @@
       "openingGoogleDrive": "Google Driveを開いています…",
       "addFromGoogleDrive": "Google Driveからファイルを追加",
       "addFromSharePoint": "SharePointからファイルを追加",
-      "browserTitle": "このタスクでは、{agent}が共有ブラウザを使用できます。オフにすると次のメッセージから適用されます。",
+      "browserTitle": "このタスクでは、{agent}がブラウザモードを使用できます。オフにすると次のメッセージから適用されます。",
       "browser": "ブラウザ",
       "browserOff": "このタスクのブラウザをオフにする",
       "browserOn": "このタスクのブラウザをオンにする",
@@ -279,7 +280,8 @@
       "fixed": "このタスクのプロジェクトは固定されています",
       "none": "プロジェクトなし"
     },
-    "chooseHarness": "ハーネスを選択"
+    "chooseHarness": "ハーネスを選択",
+    "voiceCall": "音声通話"
   },
   "attachmentThumbnail": {
     "open": "画像を開く",
@@ -290,11 +292,35 @@
     "hintCustom": "…または、下に回答を入力してください。",
     "hintSelectOnly": "上の選択肢から選んでください。入力した回答は受け付けられません。別の内容を入力するにはスキップしてください。",
     "skip": "スキップ",
+    "skipApprovals": "以降のステップの承認をスキップ",
     "send": "送信",
     "skipped": "スキップしました。",
     "timedOut": "回答がないまま時間切れになりました。",
     "answered": "回答：",
-    "noLongerActive": "この質問は終了しています。"
+    "noLongerActive": "この質問は終了しています。",
+    "browserStep": {
+      "title": "このブラウザのステップを承認しますか？",
+      "intro": "購入、送信、削除、フォームの送信などを行う可能性があり、承認した場合にのみ実行されます。",
+      "approved": "ブラウザの操作を承認しました",
+      "cancelled": "ブラウザの操作をキャンセルしました",
+      "typedText": "入力するテキスト",
+      "typedTextKeys": "入力するテキスト（⏎ は改行を示し、送信されることがあります。⇥ はタブを示します。⟦U+…⟧ は見えない文字を示します）"
+    },
+    "handOver": {
+      "title": "ブラウザでの操作をお願いします",
+      "watching": "ブラウザで操作すると、数秒後に {agent} が自動で再開します。または「完了して続行」をクリックしてください。",
+      "manual": "ブラウザでの操作が終わったら「完了して続行」をクリックしてください。",
+      "stillYours": "ブラウザはまだあなたが操作中です。終わったら「完了して続行」をクリックすると、{agent} がそこから再開します。",
+      "doneContinue": "完了して続行",
+      "openBrowser": "ブラウザを開く",
+      "finishLater": "後で終える",
+      "stop": "停止",
+      "noBrowser": "ここには返すブラウザがありません。",
+      "notOpened": "ブラウザが開きませんでした。ブラウザを開いて、もう一度「完了して続行」をクリックしてください。",
+      "handedBack": "返却済み — 再開しました",
+      "stopped": "引き継ぎを停止しました",
+      "ended": "引き継ぎが終了しました"
+    }
   },
   "codingTerminal": {
     "unavailable": "このビルドでは埋め込みターミナルを利用できません。",
@@ -573,7 +599,7 @@
   },
   "browser": {
     "close": "ブラウザを閉じる",
-    "shared": "共有ブラウザ",
+    "shared": "ブラウザモード",
     "title": "ブラウザ",
     "unreachable": "ブラウザに接続できません",
     "stopped": {
@@ -613,6 +639,7 @@
     "aNewTab": "新しいタブ",
     "yourTurn": "{site}であなたの操作が必要です。終わったら「完了」をクリックして{agent}に戻してください。",
     "yourTurnReason": "{site}であなたの操作が必要です：{reason}。終わったら「完了」をクリックして{agent}に戻してください。",
+    "yourTurnWatching": "{site} での操作をお願いします: {reason}。完了すると {agent} が自動で再開します。または「完了」をクリックしてください。",
     "agentUsing": "{agent}が使用中です。自分で操作するには引き継いでください。",
     "pageReadsNote": "{agent}が読み取ったページ内容とスクリーンショットは、このターンを処理するモデルプロバイダーに送信されます。",
     "back": "戻る",
@@ -623,6 +650,94 @@
     "newTab": "新しいタブ",
     "closedTitle": "このタスクのブラウザは閉じています",
     "closedDescription": "必要になると{agent}が再び開きます。",
-    "squeezed": "ページを表示するにはウィンドウを大きくしてください"
+    "squeezed": "ページを表示するにはウィンドウを大きくしてください",
+    "minimize": "ブラウザを最小化",
+    "expand": "ブラウザを展開",
+    "learnWhat": "{agent}に見えるもの",
+    "opening": "ブラウザを開いています",
+    "askOrTypeUrl": "質問するかURLを入力",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "白紙のページ。大きな計画がありますか？",
+          "subtitle": "アドレスを入力するか、調べたいことを教えてください。"
+        },
+        "wholeInternet": {
+          "title": "インターネット全体が目の前に。でも行き先はまだありません。",
+          "subtitle": "行く価値のある場所を教えてください。"
+        },
+        "freshTab": {
+          "title": "新しいタブ、新しい気分。",
+          "subtitle": "どこへ行きましょうか？"
+        },
+        "quiet": {
+          "title": "静かですね。怪しいほどに。",
+          "subtitle": "サイトか検索語を教えてください。すぐに始めます。"
+        }
+      },
+      "off": "このタスクではブラウザがオフです。＋メニューからオンにすると、{agent}がブラウズできます。",
+      "searchPlaceholder": "検索、またはリンクを貼り付け",
+      "searchLabel": "調べること",
+      "onIt": "対応中…",
+      "go": "移動",
+      "addressPlaceholder": "URLを入力または検索",
+      "address": "アドレス",
+      "nothingOpen": "まだ何も開いていません",
+      "openingUrl": "{url}を開いています…",
+      "slow": "ページの読み込みに時間がかかっています。もう一度お試しいただくか、アドレスバーに入力してください。",
+      "couldNotOpen": "ページを開けませんでした。",
+      "agentOpening": "{agent}がブラウザを開いています…"
+    },
+    "projectBrowsers": {
+      "title": "このプロジェクトのブラウザ",
+      "listFailed": "ブラウザの一覧を取得できませんでした。",
+      "failed": "うまくいきませんでした。",
+      "looking": "確認中…",
+      "thisTask": "このタスク",
+      "held": "このブラウザはあなたが操作中です。返すとタブが表示されます。",
+      "showing": "表示中",
+      "closeOthers": "{count, plural, other {ほかの#個のタブを閉じる（後で使えるよう保存）}}",
+      "noneMine": "このタスクで開いているブラウザはありません。",
+      "reopen": "{tab}を再度開く",
+      "saved": "保存済み",
+      "otherTasks": "このプロジェクトのほかのタスク",
+      "tabCount": "{count, plural, other {#個のタブ}}",
+      "goTo": "そのブラウザに移動",
+      "closeIts": "そのブラウザを閉じる（タブは保存）",
+      "watching": "誰かが閲覧中です"
+    },
+    "phoneYourTurnWatching": "操作をお願いします: {reason}。完了すると {agent} が自動で再開します。またはブラウザで「完了」をタップしてください。",
+    "handOverFallback": "{agent} がブラウザでの操作を必要としています",
+    "phoneYourTurn": "操作をお願いします: {reason}。終わったらブラウザで「完了」をタップし、最小化して続けてください。",
+    "phoneQuestion": "{agent} から質問があります。最小化して回答してください。",
+    "phoneWorking": "対応中…",
+    "phoneDone": "完了しました。最小化して回答を確認してください。",
+    "phoneMinimize": "最小化",
+    "talkTo": "{agent} と話す"
+  },
+  "voiceCall": {
+    "dialogLabel": "{agent}との音声通話",
+    "connecting": "接続中…",
+    "ending": "終了中…",
+    "working": "対応中…",
+    "listening": "聞いています",
+    "talkSoon": "またお話ししましょう",
+    "analyzing": "結果を分析中…",
+    "trying": "{voice}を試しています",
+    "connectingVoice": "音声を接続中…",
+    "voice": "音声",
+    "voiceAriaLabel": "音声：{voice}",
+    "changeVoice": "音声を変更",
+    "muteAndEnd": "ミュートして通話を終了",
+    "ended": "通話が終了しました。",
+    "close": "閉じる",
+    "endCall": "通話を終了",
+    "mute": "ミュート",
+    "orbLabel": "{state, select, starting {音声を接続中} working {対応中} other {通話中}}",
+    "orbShow": "{state, select, starting {音声を接続中。通話を表示} working {対応中。通話を表示} other {通話中。通話を表示}}",
+    "allowMicrophone": "音声通話を始めるには、ブラウザでマイクを許可してください。",
+    "noMicrophone": "マイクが見つかりません。",
+    "couldNotStart": "音声通話を開始できませんでした。",
+    "endedReason": "通話が終了しました（{reason}）。"
   }
 }

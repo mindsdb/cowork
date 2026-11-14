@@ -636,6 +636,10 @@
       "working": "正在处理…",
       "allow": "在本次测试中允许",
       "confirm": "确认并保存"
+    },
+    "browserInstead": {
+      "title": "改用浏览器",
+      "help": "无需连接：你在浏览器模式中登录 {name}，工作在那里完成。比连接更慢。"
     }
   },
   "legacyConnect": {

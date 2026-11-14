@@ -221,7 +221,8 @@
         "files": "Queued: messages with files run after the current task.",
         "notRead": "Queued: the task finished before it could read this."
       }
-    }
+    },
+    "reconnecting": "Trying to reconnect"
   },
   "composer": {
     "placeholder": "Hi Boss, how can I help you today?",
@@ -262,7 +263,7 @@
       "openingGoogleDrive": "Opening Google Drive…",
       "addFromGoogleDrive": "Add files from Google Drive",
       "addFromSharePoint": "Add files from SharePoint",
-      "browserTitle": "{agent} can use your shared browser in this task. Off applies from your next message.",
+      "browserTitle": "{agent} can use browser mode in this task. Off applies from your next message.",
       "browser": "Browser",
       "browserOff": "Turn the browser off for this task",
       "browserOn": "Turn the browser on for this task",
@@ -279,7 +280,8 @@
       "fixed": "Project is fixed for this task",
       "none": "No project"
     },
-    "chooseHarness": "Choose harness"
+    "chooseHarness": "Choose harness",
+    "voiceCall": "Voice call"
   },
   "attachmentThumbnail": {
     "open": "Open image",
@@ -290,11 +292,35 @@
     "hintCustom": "…or type your own answer below.",
     "hintSelectOnly": "Pick an option above — a typed reply won't be accepted. Skip to type something else.",
     "skip": "Skip",
+    "skipApprovals": "Skip approvals for later steps",
     "send": "Send",
     "skipped": "Skipped.",
     "timedOut": "No answer — timed out.",
     "answered": "Answered:",
-    "noLongerActive": "This question is no longer active."
+    "noLongerActive": "This question is no longer active.",
+    "browserStep": {
+      "title": "Approve this browser step?",
+      "intro": "It may buy, send, delete or submit something, and runs only if you approve.",
+      "approved": "Browser action approved",
+      "cancelled": "Browser action cancelled",
+      "typedText": "Text it types",
+      "typedTextKeys": "Text it types (⏎ marks a line break, which can send it; ⇥ marks a tab; ⟦U+…⟧ names an invisible character)"
+    },
+    "handOver": {
+      "title": "Your turn in the browser",
+      "watching": "Do it in the browser and {agent} carries on by itself a few seconds later — or click Done, continue.",
+      "manual": "When you're finished in the browser, click Done, continue.",
+      "stillYours": "The browser is still yours. When you're finished, click Done, continue and {agent} picks up from there.",
+      "doneContinue": "Done, continue",
+      "openBrowser": "Open browser",
+      "finishLater": "Finish later",
+      "stop": "Stop",
+      "noBrowser": "There's no browser to hand back here.",
+      "notOpened": "The browser didn't open. Open it and try Done, continue again.",
+      "handedBack": "Handed back — continued",
+      "stopped": "Hand-over stopped",
+      "ended": "Hand-over ended"
+    }
   },
   "codingTerminal": {
     "unavailable": "Embedded terminal is not available on this build.",
@@ -573,7 +599,7 @@
   },
   "browser": {
     "close": "Close browser",
-    "shared": "Shared browser",
+    "shared": "Browser mode",
     "title": "Browser",
     "unreachable": "The browser isn't reachable",
     "stopped": {
@@ -613,6 +639,7 @@
     "aNewTab": "a new tab",
     "yourTurn": "Your turn on {site}. Click Done to hand it back to {agent}.",
     "yourTurnReason": "Your turn on {site}: {reason}. Click Done to hand it back to {agent}.",
+    "yourTurnWatching": "Your turn on {site}: {reason}. {agent} carries on by itself once it's done — or click Done.",
     "agentUsing": "{agent} is using it. Take over to use it yourself.",
     "pageReadsNote": "{agent}'s page reads and screenshots go to the model provider that serves your turn.",
     "back": "Back",
@@ -623,6 +650,94 @@
     "newTab": "New tab",
     "closedTitle": "This task's browser is closed",
     "closedDescription": "{agent} opens it again when it needs it.",
-    "squeezed": "Make the window bigger to see the page"
+    "squeezed": "Make the window bigger to see the page",
+    "minimize": "Minimize browser",
+    "expand": "Expand browser",
+    "learnWhat": "Learn what {agent} sees",
+    "opening": "Opening your browser",
+    "askOrTypeUrl": "Ask or type a URL",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Blank page. Big plans?",
+          "subtitle": "Type an address, or tell me what to look up."
+        },
+        "wholeInternet": {
+          "title": "The whole internet, and nowhere to be.",
+          "subtitle": "Point me somewhere worth the trip."
+        },
+        "freshTab": {
+          "title": "Fresh tab energy.",
+          "subtitle": "Where are we headed?"
+        },
+        "quiet": {
+          "title": "Quiet in here. Suspiciously quiet.",
+          "subtitle": "Give me a site or a search and I’ll get going."
+        }
+      },
+      "off": "The browser is off for this task. Turn it on from the + menu and {agent} can browse.",
+      "searchPlaceholder": "Search, or paste a link",
+      "searchLabel": "What to look up",
+      "onIt": "On it…",
+      "go": "Go",
+      "addressPlaceholder": "Type a URL or search",
+      "address": "Address",
+      "nothingOpen": "Nothing open yet",
+      "openingUrl": "Opening {url}…",
+      "slow": "That page is taking a while. Try again, or type it in the address bar.",
+      "couldNotOpen": "Couldn’t open that page.",
+      "agentOpening": "{agent} is opening the browser…"
+    },
+    "projectBrowsers": {
+      "title": "Browsers in this project",
+      "listFailed": "Couldn’t list the browsers.",
+      "failed": "That didn’t work.",
+      "looking": "Looking…",
+      "thisTask": "This task",
+      "held": "You have this browser: its tabs show when you hand it back.",
+      "showing": "Showing",
+      "closeOthers": "{count, plural, one {Close the other tab (saved for later)} other {Close the other # tabs (saved for later)}}",
+      "noneMine": "No browser open for this task.",
+      "reopen": "Reopen {tab}",
+      "saved": "Saved",
+      "otherTasks": "Other tasks in this project",
+      "tabCount": "{count, plural, one {# tab} other {# tabs}}",
+      "goTo": "Go to its browser",
+      "closeIts": "Close its browser (tabs saved)",
+      "watching": "Someone is watching it"
+    },
+    "phoneYourTurnWatching": "Your turn: {reason}. {agent} carries on by itself once it's done — or tap Done in the browser.",
+    "handOverFallback": "{agent} needs you in the browser",
+    "phoneYourTurn": "Your turn: {reason}. Tap Done in the browser when you're finished, then minimize to continue.",
+    "phoneQuestion": "{agent} has a question for you. Minimize to answer it.",
+    "phoneWorking": "Working on it…",
+    "phoneDone": "Done. Minimize to see the answer.",
+    "phoneMinimize": "Minimize",
+    "talkTo": "Talk to {agent}"
+  },
+  "voiceCall": {
+    "dialogLabel": "Voice call with {agent}",
+    "connecting": "Connecting…",
+    "ending": "Ending…",
+    "working": "Working on it…",
+    "listening": "Listening",
+    "talkSoon": "Talk soon",
+    "analyzing": "Analyzing results…",
+    "trying": "Trying {voice}",
+    "connectingVoice": "Connecting voice…",
+    "voice": "Voice",
+    "voiceAriaLabel": "Voice: {voice}",
+    "changeVoice": "Change voice",
+    "muteAndEnd": "Mute and end the call",
+    "ended": "The call ended.",
+    "close": "Close",
+    "endCall": "End call",
+    "mute": "Mute",
+    "orbLabel": "{state, select, starting {Connecting voice} working {Working on it} other {On a call}}",
+    "orbShow": "{state, select, starting {Connecting voice. Show the call} working {Working on it. Show the call} other {On a call. Show the call}}",
+    "allowMicrophone": "Allow the microphone in your browser to start a voice call.",
+    "noMicrophone": "No microphone found.",
+    "couldNotStart": "Couldn't start the voice call.",
+    "endedReason": "The call ended ({reason})."
   }
 }

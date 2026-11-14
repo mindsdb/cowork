@@ -360,7 +360,12 @@
     "total": "{count} in totale",
     "noTasks": "Ancora nessuna attività.",
     "untitledTask": "Attività senza titolo",
-    "seeAllTasks": "Vedi tutte le attività"
+    "seeAllTasks": "Vedi tutte le attività",
+    "recents": "Recenti",
+    "showFewer": "Mostra meno",
+    "seeAllCount": "Vedi tutti ({count})",
+    "signedIn": "Accesso effettuato",
+    "logOut": "Esci"
   },
   "dispatch": {
     "qrAriaLabel": "Codice di abbinamento decorativo",
@@ -409,5 +414,8 @@
     "confirm": "Esci",
     "failed": "Impossibile completare la disconnessione. Riprova.",
     "waitNote": "Disconnessione ancora in corso. Puoi chiudere questa finestra: terminerà da sola."
+  },
+  "shortcuts": {
+    "showBrowser": "Mostra il browser"
   }
 }

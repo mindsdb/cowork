@@ -32,6 +32,9 @@ import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } f
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import OrgBrandingFields from './OrgBrandingFields';
 import BrowserSettingsSection from './BrowserSettingsSection';
+import DecisionModelSettingsGroup from './DecisionModelSettingsGroup';
+import VoiceSettingsSection from './VoiceSettingsSection';
+import { llmViaMindsHub } from '../../lib/voice/voicePrefs';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import i18n, { useTranslation } from '../../../lib/i18n';
@@ -1078,6 +1081,10 @@ export default function SettingsView({
   // adding e.g. an Anthropic key "just works" without touching the
   // custom-model controls. Falls back to MindsHub when nothing is
   // configured so the unconfigured baseline still surfaces a row.
+  // Signed in to a MindsHub server for inference: a keyed MindsHub card,
+  // or the platform's sign-in. Then the decision model is Jev there.
+  const mindsConnected = visibleProviders.some((p) => p.type === 'minds-cloud' && providerConfigured(p))
+    || (PLATFORM_UI && Boolean(isSsoConnected));
   const defaultModeProviderType = (() => {
     const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
     if (minds && providerConfigured(minds)) return 'minds-cloud';
@@ -1993,11 +2000,27 @@ export default function SettingsView({
                     {showRouterRoleRow(settings.routing, settings.gate)
                       && RoleRow({ role: 'router', label: t('agent.roles.router') })}
                     {RoleRow({ role: 'coding', label: t('agent.roles.coding') })}
+                    {/* The decision model: Jev when signed in to MindsHub for
+                        inference, else the organization's own endpoint, for
+                        whoever may set it (routing.canSetDecisionModel). */}
+                    <DecisionModelSettingsGroup
+                      embedded
+                      settings={settings}
+                      setSetting={setSetting}
+                      agentLabel={agentLabel || 'Anton'}
+                      mindsConnected={mindsConnected}
+                    />
                   </>
                 );
               })()}
             </SettingsGroup>
           </div>}
+          {/* Without the Model router card, the decision model is a group of its own. */}
+          {!PLATFORM_UI && (
+            <div className="order-3">
+              <DecisionModelSettingsGroup settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} />
+            </div>
+          )}
         </div>
 
         <SettingsGroup title={t('memory.title')}>
@@ -2037,6 +2060,9 @@ export default function SettingsView({
         </SettingsGroup>
 
         <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
+
+        {/* Voice calls run on MindsHub: only when it is the LLM provider. */}
+        {llmViaMindsHub(settings) && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />}
 
         {(hasBudgetSettings || jevSwitchShown) && (
           <SettingsGroup title={t('advanced.title')} collapsible defaultCollapsed>

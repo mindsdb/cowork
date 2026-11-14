@@ -636,6 +636,10 @@
       "working": "Wird ausgeführt…",
       "allow": "Für diesen Test zulassen",
       "confirm": "Bestätigen und speichern"
+    },
+    "browserInstead": {
+      "title": "Stattdessen den Browser verwenden",
+      "help": "Keine Verbindung: Sie melden sich im Browsermodus bei {name} an, und die Arbeit findet dort statt. Langsamer als eine Verbindung."
     }
   },
   "legacyConnect": {

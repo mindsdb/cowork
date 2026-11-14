@@ -636,6 +636,10 @@
       "working": "Elaborazione…",
       "allow": "Consenti per questo test",
       "confirm": "Conferma e salva"
+    },
+    "browserInstead": {
+      "title": "Usa invece il browser",
+      "help": "Nessuna connessione: accedi a {name} in modalità browser e il lavoro si svolge lì. Più lento che connettersi."
     }
   },
   "legacyConnect": {

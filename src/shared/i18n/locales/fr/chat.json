@@ -221,7 +221,8 @@
         "files": "En file d’attente : les messages avec des fichiers sont traités après la tâche en cours.",
         "notRead": "En file d’attente : la tâche s’est terminée avant de pouvoir lire ceci."
       }
-    }
+    },
+    "reconnecting": "Tentative de reconnexion"
   },
   "composer": {
     "placeholder": "Bonjour chef, comment puis-je vous aider aujourd’hui ?",
@@ -262,7 +263,7 @@
       "openingGoogleDrive": "Ouverture de Google Drive…",
       "addFromGoogleDrive": "Ajouter des fichiers depuis Google Drive",
       "addFromSharePoint": "Ajouter des fichiers depuis SharePoint",
-      "browserTitle": "{agent} peut utiliser votre navigateur partagé dans cette tâche. La désactivation s’applique à partir de votre prochain message.",
+      "browserTitle": "{agent} peut utiliser le mode navigateur dans cette tâche. La désactivation s’applique à partir de votre prochain message.",
       "browser": "Navigateur",
       "browserOff": "Désactiver le navigateur pour cette tâche",
       "browserOn": "Activer le navigateur pour cette tâche",
@@ -279,7 +280,8 @@
       "fixed": "Le projet est fixé pour cette tâche",
       "none": "Aucun projet"
     },
-    "chooseHarness": "Choisir l’environnement d’exécution"
+    "chooseHarness": "Choisir l’environnement d’exécution",
+    "voiceCall": "Appel vocal"
   },
   "attachmentThumbnail": {
     "open": "Ouvrir l’image",
@@ -290,11 +292,35 @@
     "hintCustom": "…ou saisissez votre propre réponse ci-dessous.",
     "hintSelectOnly": "Choisissez une option ci-dessus : une réponse saisie ne sera pas acceptée. Passez la question pour écrire autre chose.",
     "skip": "Passer",
+    "skipApprovals": "Ignorer les approbations pour les étapes suivantes",
     "send": "Envoyer",
     "skipped": "Question passée.",
     "timedOut": "Aucune réponse : délai dépassé.",
     "answered": "Réponse :",
-    "noLongerActive": "Cette question n’est plus active."
+    "noLongerActive": "Cette question n’est plus active.",
+    "browserStep": {
+      "title": "Approuver cette étape dans le navigateur ?",
+      "intro": "Elle peut acheter, envoyer, supprimer ou valider quelque chose, et ne s’exécute que si vous l’approuvez.",
+      "approved": "Action du navigateur approuvée",
+      "cancelled": "Action du navigateur annulée",
+      "typedText": "Texte saisi",
+      "typedTextKeys": "Texte saisi (⏎ marque un saut de ligne, qui peut l’envoyer ; ⇥ marque une tabulation ; ⟦U+…⟧ désigne un caractère invisible)"
+    },
+    "handOver": {
+      "title": "À vous dans le navigateur",
+      "watching": "Faites-le dans le navigateur et {agent} reprend de lui-même quelques secondes après, ou cliquez sur Terminé, continuer.",
+      "manual": "Quand vous avez fini dans le navigateur, cliquez sur Terminé, continuer.",
+      "stillYours": "Le navigateur est toujours à vous. Quand vous avez fini, cliquez sur Terminé, continuer et {agent} reprend à partir de là.",
+      "doneContinue": "Terminé, continuer",
+      "openBrowser": "Ouvrir le navigateur",
+      "finishLater": "Finir plus tard",
+      "stop": "Arrêter",
+      "noBrowser": "Il n’y a aucun navigateur à rendre ici.",
+      "notOpened": "Le navigateur ne s’est pas ouvert. Ouvrez-le et cliquez à nouveau sur Terminé, continuer.",
+      "handedBack": "Rendu, reprise",
+      "stopped": "Passage de main arrêté",
+      "ended": "Passage de main terminé"
+    }
   },
   "codingTerminal": {
     "unavailable": "Le terminal intégré n’est pas disponible dans cette version.",
@@ -573,7 +599,7 @@
   },
   "browser": {
     "close": "Fermer le navigateur",
-    "shared": "Navigateur partagé",
+    "shared": "Mode navigateur",
     "title": "Navigateur",
     "unreachable": "Le navigateur est injoignable",
     "stopped": {
@@ -613,6 +639,7 @@
     "aNewTab": "un nouvel onglet",
     "yourTurn": "À vous de jouer sur {site}. Cliquez sur Terminé pour rendre la main à {agent}.",
     "yourTurnReason": "À vous de jouer sur {site} : {reason}. Cliquez sur Terminé pour rendre la main à {agent}.",
+    "yourTurnWatching": "À vous sur {site} : {reason}. {agent} reprend de lui-même une fois que c’est fait, ou cliquez sur Terminé.",
     "agentUsing": "{agent} l’utilise. Prenez la main pour l’utiliser vous-même.",
     "pageReadsNote": "Les lectures de page et captures d’écran de {agent} sont envoyées au fournisseur de modèles qui traite votre tour.",
     "back": "Précédent",
@@ -623,6 +650,94 @@
     "newTab": "Nouvel onglet",
     "closedTitle": "Le navigateur de cette tâche est fermé",
     "closedDescription": "{agent} le rouvrira quand il en aura besoin.",
-    "squeezed": "Agrandissez la fenêtre pour voir la page"
+    "squeezed": "Agrandissez la fenêtre pour voir la page",
+    "minimize": "Réduire le navigateur",
+    "expand": "Agrandir le navigateur",
+    "learnWhat": "Ce que voit {agent}",
+    "opening": "Ouverture de votre navigateur",
+    "askOrTypeUrl": "Posez une question ou saisissez une URL",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Page blanche. De grands projets ?",
+          "subtitle": "Saisissez une adresse, ou dites-moi quoi chercher."
+        },
+        "wholeInternet": {
+          "title": "Tout Internet, et nulle part où aller.",
+          "subtitle": "Indiquez-moi un endroit qui vaut le détour."
+        },
+        "freshTab": {
+          "title": "Un nouvel onglet, une nouvelle énergie.",
+          "subtitle": "Où allons-nous ?"
+        },
+        "quiet": {
+          "title": "C’est calme ici. Étrangement calme.",
+          "subtitle": "Donnez-moi un site ou une recherche, et je m’y mets."
+        }
+      },
+      "off": "Le navigateur est désactivé pour cette tâche. Activez-le depuis le menu + et {agent} pourra naviguer.",
+      "searchPlaceholder": "Recherchez ou collez un lien",
+      "searchLabel": "Quoi chercher",
+      "onIt": "C’est parti…",
+      "go": "Aller",
+      "addressPlaceholder": "Saisissez une URL ou recherchez",
+      "address": "Adresse",
+      "nothingOpen": "Rien d’ouvert pour l’instant",
+      "openingUrl": "Ouverture de {url}…",
+      "slow": "Cette page met du temps. Réessayez, ou saisissez-la dans la barre d’adresse.",
+      "couldNotOpen": "Impossible d’ouvrir cette page.",
+      "agentOpening": "{agent} ouvre le navigateur…"
+    },
+    "projectBrowsers": {
+      "title": "Navigateurs de ce projet",
+      "listFailed": "Impossible de lister les navigateurs.",
+      "failed": "Cela n’a pas fonctionné.",
+      "looking": "Recherche…",
+      "thisTask": "Cette tâche",
+      "held": "Vous avez ce navigateur : ses onglets s’affichent quand vous le rendez.",
+      "showing": "Affiché",
+      "closeOthers": "{count, plural, one {Fermer l’autre onglet (enregistré pour plus tard)} other {Fermer les # autres onglets (enregistrés pour plus tard)}}",
+      "noneMine": "Aucun navigateur ouvert pour cette tâche.",
+      "reopen": "Rouvrir {tab}",
+      "saved": "Enregistré",
+      "otherTasks": "Autres tâches de ce projet",
+      "tabCount": "{count, plural, one {# onglet} other {# onglets}}",
+      "goTo": "Aller à son navigateur",
+      "closeIts": "Fermer son navigateur (onglets enregistrés)",
+      "watching": "Quelqu’un le regarde"
+    },
+    "phoneYourTurnWatching": "À vous : {reason}. {agent} reprend de lui-même une fois que c’est fait, ou touchez Terminé dans le navigateur.",
+    "handOverFallback": "{agent} a besoin de vous dans le navigateur",
+    "phoneYourTurn": "À vous : {reason}. Touchez Terminé dans le navigateur quand vous avez fini, puis réduisez pour continuer.",
+    "phoneQuestion": "{agent} a une question pour vous. Réduisez pour y répondre.",
+    "phoneWorking": "En cours…",
+    "phoneDone": "Terminé. Réduisez pour voir la réponse.",
+    "phoneMinimize": "Réduire",
+    "talkTo": "Parler à {agent}"
+  },
+  "voiceCall": {
+    "dialogLabel": "Appel vocal avec {agent}",
+    "connecting": "Connexion…",
+    "ending": "Fin de l’appel…",
+    "working": "En cours…",
+    "listening": "À l’écoute",
+    "talkSoon": "À bientôt",
+    "analyzing": "Analyse des résultats…",
+    "trying": "Essai de {voice}",
+    "connectingVoice": "Connexion de la voix…",
+    "voice": "Voix",
+    "voiceAriaLabel": "Voix : {voice}",
+    "changeVoice": "Changer de voix",
+    "muteAndEnd": "Couper le micro et terminer l’appel",
+    "ended": "L’appel est terminé.",
+    "close": "Fermer",
+    "endCall": "Terminer l’appel",
+    "mute": "Couper le micro",
+    "orbLabel": "{state, select, starting {Connexion de la voix} working {En cours} other {En appel}}",
+    "orbShow": "{state, select, starting {Connexion de la voix. Afficher l’appel} working {En cours. Afficher l’appel} other {En appel. Afficher l’appel}}",
+    "allowMicrophone": "Autorisez le micro dans votre navigateur pour lancer un appel vocal.",
+    "noMicrophone": "Aucun micro trouvé.",
+    "couldNotStart": "Impossible de lancer l’appel vocal.",
+    "endedReason": "L’appel est terminé ({reason})."
   }
 }

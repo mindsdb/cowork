@@ -19,6 +19,7 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "BROWSER_HAND_BACK": "browser:hand-back",
   "BROWSER_HIDE": "browser:hide",
   "BROWSER_NAVIGATE": "browser:navigate",
+  "BROWSER_OPEN": "browser:open",
   "BROWSER_READY": "browser:ready",
   "BROWSER_REGISTERED": "browser:registered",
   "BROWSER_SET_BOUNDS": "browser:set-bounds",

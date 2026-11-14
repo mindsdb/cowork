@@ -58,7 +58,7 @@ function getOAuthMethod(spec, methodId) {
 
 const FONT_BODY = 'var(--font-body)';
 
-export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose, highlighted = false }) {
+export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose, highlighted = false, onUseBrowser }) {
   const { t } = useTranslation('library');
   const [spec, setSpec] = useState(() => getForm(conversationId));
   const [busy, setBusy] = useState(false);
@@ -1061,6 +1061,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               spec={spec}
               busy={busy}
               onAction={handleAction}
+              onUseBrowser={onUseBrowser}
               conversationId={conversationId}
               userLabel={!spec._is_success ? userLabel : undefined}
               onUserLabelChange={(label) => {

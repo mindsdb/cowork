@@ -360,7 +360,12 @@
     "total": "{count} total",
     "noTasks": "No tasks yet.",
     "untitledTask": "Untitled task",
-    "seeAllTasks": "See all tasks"
+    "seeAllTasks": "See all tasks",
+    "recents": "Recents",
+    "showFewer": "Show fewer",
+    "seeAllCount": "See all {count}",
+    "signedIn": "Signed in",
+    "logOut": "Log out"
   },
   "dispatch": {
     "qrAriaLabel": "Decorative pairing code",
@@ -409,5 +414,8 @@
     "confirm": "Sign out",
     "failed": "Could not finish signing out. Please try again.",
     "waitNote": "Still signing you out. You can close this — it finishes on its own."
+  },
+  "shortcuts": {
+    "showBrowser": "Show browser"
   }
 }

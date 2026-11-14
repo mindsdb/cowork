@@ -221,7 +221,8 @@
         "files": "In coda: i messaggi con file vengono eseguiti dopo l’attività corrente.",
         "notRead": "In coda: l’attività è terminata prima di poterlo leggere."
       }
-    }
+    },
+    "reconnecting": "Tentativo di riconnessione"
   },
   "composer": {
     "placeholder": "Ciao capo, come posso aiutarti oggi?",
@@ -262,7 +263,7 @@
       "openingGoogleDrive": "Apertura di Google Drive…",
       "addFromGoogleDrive": "Aggiungi file da Google Drive",
       "addFromSharePoint": "Aggiungi file da SharePoint",
-      "browserTitle": "{agent} può usare il browser condiviso in questa attività. La disattivazione vale dal tuo prossimo messaggio.",
+      "browserTitle": "{agent} può usare la modalità browser in questa attività. La disattivazione vale dal tuo prossimo messaggio.",
       "browser": "Browser",
       "browserOff": "Disattiva il browser per questa attività",
       "browserOn": "Attiva il browser per questa attività",
@@ -279,7 +280,8 @@
       "fixed": "Il progetto è fisso per questa attività",
       "none": "Nessun progetto"
     },
-    "chooseHarness": "Scegli ambiente di esecuzione"
+    "chooseHarness": "Scegli ambiente di esecuzione",
+    "voiceCall": "Chiamata vocale"
   },
   "attachmentThumbnail": {
     "open": "Apri immagine",
@@ -290,11 +292,35 @@
     "hintCustom": "…oppure scrivi la tua risposta qui sotto.",
     "hintSelectOnly": "Scegli un’opzione qui sopra: una risposta scritta non verrà accettata. Salta per scrivere altro.",
     "skip": "Salta",
+    "skipApprovals": "Salta le approvazioni per i prossimi passaggi",
     "send": "Invia",
     "skipped": "Saltata.",
     "timedOut": "Nessuna risposta: tempo scaduto.",
     "answered": "Risposta:",
-    "noLongerActive": "Questa domanda non è più attiva."
+    "noLongerActive": "Questa domanda non è più attiva.",
+    "browserStep": {
+      "title": "Approvi questo passaggio nel browser?",
+      "intro": "Può acquistare, inviare, eliminare o confermare qualcosa, e viene eseguito solo se lo approvi.",
+      "approved": "Azione del browser approvata",
+      "cancelled": "Azione del browser annullata",
+      "typedText": "Testo che digita",
+      "typedTextKeys": "Testo che digita (⏎ indica un a capo, che può inviarlo; ⇥ indica una tabulazione; ⟦U+…⟧ indica un carattere invisibile)"
+    },
+    "handOver": {
+      "title": "Tocca a te nel browser",
+      "watching": "Fallo nel browser e {agent} riprende da solo qualche secondo dopo, oppure fai clic su Fine, continua.",
+      "manual": "Quando hai finito nel browser, fai clic su Fine, continua.",
+      "stillYours": "Il browser è ancora tuo. Quando hai finito, fai clic su Fine, continua e {agent} riprende da lì.",
+      "doneContinue": "Fine, continua",
+      "openBrowser": "Apri browser",
+      "finishLater": "Finisci dopo",
+      "stop": "Interrompi",
+      "noBrowser": "Qui non c’è nessun browser da restituire.",
+      "notOpened": "Il browser non si è aperto. Aprilo e fai di nuovo clic su Fine, continua.",
+      "handedBack": "Restituito, ripreso",
+      "stopped": "Passaggio interrotto",
+      "ended": "Passaggio terminato"
+    }
   },
   "codingTerminal": {
     "unavailable": "Il terminale integrato non è disponibile in questa build.",
@@ -573,7 +599,7 @@
   },
   "browser": {
     "close": "Chiudi browser",
-    "shared": "Browser condiviso",
+    "shared": "Modalità browser",
     "title": "Browser",
     "unreachable": "Il browser non è raggiungibile",
     "stopped": {
@@ -613,6 +639,7 @@
     "aNewTab": "una nuova scheda",
     "yourTurn": "Tocca a te su {site}. Fai clic su Fine per restituire il controllo a {agent}.",
     "yourTurnReason": "Tocca a te su {site}: {reason}. Fai clic su Fine per restituire il controllo a {agent}.",
+    "yourTurnWatching": "Tocca a te su {site}: {reason}. {agent} riprende da solo quando è fatto, oppure fai clic su Fine.",
     "agentUsing": "{agent} lo sta usando. Prendi il controllo per usarlo tu.",
     "pageReadsNote": "Le letture di pagina e gli screenshot di {agent} vengono inviati al provider del modello che gestisce il tuo turno.",
     "back": "Indietro",
@@ -623,6 +650,94 @@
     "newTab": "Nuova scheda",
     "closedTitle": "Il browser di questa attività è chiuso",
     "closedDescription": "{agent} lo riaprirà quando ne avrà bisogno.",
-    "squeezed": "Allarga la finestra per vedere la pagina"
+    "squeezed": "Allarga la finestra per vedere la pagina",
+    "minimize": "Riduci il browser",
+    "expand": "Espandi il browser",
+    "learnWhat": "Cosa vede {agent}",
+    "opening": "Apertura del tuo browser",
+    "askOrTypeUrl": "Chiedi o digita un URL",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Pagina bianca. Grandi progetti?",
+          "subtitle": "Digita un indirizzo o dimmi cosa cercare."
+        },
+        "wholeInternet": {
+          "title": "Tutto internet, e nessun posto dove andare.",
+          "subtitle": "Indicami un posto che valga il viaggio."
+        },
+        "freshTab": {
+          "title": "Energia da scheda nuova.",
+          "subtitle": "Dove andiamo?"
+        },
+        "quiet": {
+          "title": "C’è silenzio qui. Un silenzio sospetto.",
+          "subtitle": "Dammi un sito o una ricerca e parto subito."
+        }
+      },
+      "off": "Il browser è disattivato per questa attività. Attivalo dal menu + e {agent} potrà navigare.",
+      "searchPlaceholder": "Cerca o incolla un link",
+      "searchLabel": "Cosa cercare",
+      "onIt": "Ci penso io…",
+      "go": "Vai",
+      "addressPlaceholder": "Digita un URL o cerca",
+      "address": "Indirizzo",
+      "nothingOpen": "Ancora niente di aperto",
+      "openingUrl": "Apertura di {url}…",
+      "slow": "La pagina ci sta mettendo un po’. Riprova o digitala nella barra degli indirizzi.",
+      "couldNotOpen": "Impossibile aprire la pagina.",
+      "agentOpening": "{agent} sta aprendo il browser…"
+    },
+    "projectBrowsers": {
+      "title": "Browser in questo progetto",
+      "listFailed": "Impossibile elencare i browser.",
+      "failed": "Non ha funzionato.",
+      "looking": "Ricerca…",
+      "thisTask": "Questa attività",
+      "held": "Hai tu questo browser: le sue schede compaiono quando lo restituisci.",
+      "showing": "Visibile",
+      "closeOthers": "{count, plural, one {Chiudi l’altra scheda (salvata per dopo)} other {Chiudi le altre # schede (salvate per dopo)}}",
+      "noneMine": "Nessun browser aperto per questa attività.",
+      "reopen": "Riapri {tab}",
+      "saved": "Salvata",
+      "otherTasks": "Altre attività in questo progetto",
+      "tabCount": "{count, plural, one {# scheda} other {# schede}}",
+      "goTo": "Vai al suo browser",
+      "closeIts": "Chiudi il suo browser (schede salvate)",
+      "watching": "Qualcuno lo sta guardando"
+    },
+    "phoneYourTurnWatching": "Tocca a te: {reason}. {agent} riprende da solo quando è fatto, oppure tocca Fine nel browser.",
+    "handOverFallback": "{agent} ha bisogno di te nel browser",
+    "phoneYourTurn": "Tocca a te: {reason}. Tocca Fine nel browser quando hai finito, poi riduci per continuare.",
+    "phoneQuestion": "{agent} ha una domanda per te. Riduci per rispondere.",
+    "phoneWorking": "Ci sto lavorando…",
+    "phoneDone": "Fatto. Riduci per vedere la risposta.",
+    "phoneMinimize": "Riduci",
+    "talkTo": "Parla con {agent}"
+  },
+  "voiceCall": {
+    "dialogLabel": "Chiamata vocale con {agent}",
+    "connecting": "Connessione…",
+    "ending": "Chiusura…",
+    "working": "Ci sto lavorando…",
+    "listening": "In ascolto",
+    "talkSoon": "A presto",
+    "analyzing": "Analisi dei risultati…",
+    "trying": "Prova di {voice}",
+    "connectingVoice": "Connessione della voce…",
+    "voice": "Voce",
+    "voiceAriaLabel": "Voce: {voice}",
+    "changeVoice": "Cambia voce",
+    "muteAndEnd": "Disattiva il microfono e termina la chiamata",
+    "ended": "La chiamata è terminata.",
+    "close": "Chiudi",
+    "endCall": "Termina chiamata",
+    "mute": "Disattiva microfono",
+    "orbLabel": "{state, select, starting {Connessione della voce} working {Ci sto lavorando} other {In chiamata}}",
+    "orbShow": "{state, select, starting {Connessione della voce. Mostra la chiamata} working {Ci sto lavorando. Mostra la chiamata} other {In chiamata. Mostra la chiamata}}",
+    "allowMicrophone": "Consenti il microfono nel browser per avviare una chiamata vocale.",
+    "noMicrophone": "Nessun microfono trovato.",
+    "couldNotStart": "Impossibile avviare la chiamata vocale.",
+    "endedReason": "La chiamata è terminata ({reason})."
   }
 }

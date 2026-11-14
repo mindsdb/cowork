@@ -106,6 +106,17 @@ export function conversationUsedBrowser(messages, streamingMsg) {
   return [...(messages || []), streamingMsg].some((m) => browserSessionIdIn(m?.steps) !== null);
 }
 
+/* The newest browser session in the conversation, the streaming turn
+   included, or null: what "show the browser" shows. */
+export function latestBrowserSessionIdIn(messages, streamingMsg = null) {
+  const all = [...(messages || []), streamingMsg];
+  for (let i = all.length - 1; i >= 0; i -= 1) {
+    const id = browserSessionIdIn(all[i]?.steps);
+    if (id) return id;
+  }
+  return null;
+}
+
 /* The messages the browser router's viewer page (its viewer.html) posts to
    the pane: ready once its script runs, and closed, with a close code, when
    its connection closes. Each router refusal of the view is a page that posts
@@ -186,4 +197,75 @@ export function browserViewerTheme(style, theme) {
     if (value) vars[name] = value;
   }
   return { type: 'browser-theme', scheme: theme === 'dark' ? 'dark' : 'light', vars };
+}
+
+/* An address the person typed in the browser pane, as the browser takes it:
+   http or https with a host, https:// added when they typed none. null for
+   anything else (a search, or a scheme such as javascript:). Same rule as the
+   server's person_url. */
+export function typedUrl(raw) {
+  const text = String(raw || '').trim();
+  if (!text || text.length > 4096 || /\s/.test(text)) return null;
+  let address = text;
+  if (!text.includes('://')) {
+    if (/^[A-Za-z][A-Za-z0-9+.-]*:(?!\d)/.test(text)) return null;
+    // A bare word ("tacos") is a search; an address has a dot, a port or is localhost.
+    if (!/^(localhost|[^/?#]+\.[^/?#]+|[^/?#]+:\d+)([/?#]|$)/i.test(text)) return null;
+    address = `https://${text}`;
+  }
+  try {
+    const url = new URL(address);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname ? address : null;
+  } catch {
+    return null;
+  }
+}
+
+/* A page as the app names it in a prompt (a task sent beside the browser,
+   the voice call's view of the screen): only its origin, for http or https.
+   The path, query and fragment are the site's to choose (a redirect can
+   write a whole instruction into a path) and can carry tokens, so they never
+   go into what the agent reads as the person's request. '' for anything else. */
+export function pageOriginForContext(raw) {
+  let url;
+  try {
+    url = new URL(String(raw || ''));
+  } catch {
+    return '';
+  }
+  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !url.hostname) return '';
+  return url.origin;
+}
+
+/* The desktop browser's session for a task: anton's own name for it
+   (cowork-server's task_session with no person, "t-" and 24 hex of
+   sha256(":" + conversation id)), so the person and the agent share tabs. */
+export async function desktopTaskSession(conversationId) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`:${conversationId}`));
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `t-${hex.slice(0, 24)}`;
+}
+
+/* The id of the browser Show browser opens off a task (Home, Projects), kept
+   in this browser's storage so a reload opens the same one instead of
+   another. Kept per signed-in account (`account`, its sub): on the desktop
+   the session is named from the id alone, so two people on one machine
+   would otherwise share one browser. A fresh id when storage is out. */
+const OFF_TASK_BROWSER_KEY = 'cowork.offTaskBrowserId';
+
+export function offTaskBrowserId(allocate, account = '', storage = globalThis.localStorage) {
+  const key = account ? `${OFF_TASK_BROWSER_KEY}:${encodeURIComponent(account)}` : OFF_TASK_BROWSER_KEY;
+  try {
+    const kept = storage?.getItem(key);
+    if (kept && /^[A-Za-z0-9_-]{8,128}$/.test(kept)) return kept;
+  } catch {
+    // Storage blocked: a fresh id for this load.
+  }
+  const id = allocate();
+  try {
+    storage?.setItem(key, id);
+  } catch {
+    // Not kept: the next load opens another.
+  }
+  return id;
 }

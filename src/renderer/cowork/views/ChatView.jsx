@@ -41,11 +41,12 @@ import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
 import AskUserCard from '../components/AskUserCard';
+import HandOverCard from '../components/HandOverCard';
 import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser } from '../api';
+import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser, openBrowserAt } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
@@ -53,8 +54,21 @@ import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
-import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser } from '../lib/browserSession';
+import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser, desktopTaskSession, latestBrowserSessionIdIn } from '../lib/browserSession';
 import { BrowserPanel } from '../components/browser/BrowserPanel';
+import BlankBrowserPanel from '../components/browser/BlankBrowserPanel';
+import ProjectBrowsers from '../components/browser/ProjectBrowsers';
+import { browserInsteadRequest } from '../lib/connectorWebsites';
+import TopShortcuts from '../components/TopShortcuts';
+import VoiceOrb from '../components/VoiceOrb';
+import { isPersonsBrowserTurn, isPositionClickCard } from '../lib/browserApproval';
+import { BROWSER_ACTION_BADGE, groupBrowserSteps } from '../lib/browserSteps';
+import { BROWSER_APPROVAL_BADGE, answeredBrowserStep } from '../lib/browserStepPrompt';
+import { BROWSER_HANDOVER_BADGE, finishedHandOverStep, isHandOverCard } from '../lib/browserHandOverPrompt';
+import { BrowserHandOverContext } from '../lib/browserHandOverContext';
+import { dropHandBack } from '../lib/browserHandBack';
+import { useBrowserPrefs } from '../lib/browserPrefs';
+import Button from '../components/ui/Button';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { useNativeOverlay } from '../lib/nativeOverlay';
 import { nextScrollAnchor } from '../lib/scrollAnchor';
@@ -669,10 +683,17 @@ function justFinished(message) {
   return typeof message?._justFinishedAt === 'number' && Date.now() - message._justFinishedAt < JUST_FINISHED_MS;
 }
 
+/* With Only show the browser when I'm needed, an answered approval and a
+   hand-over handed back or stopped follow the turn's Browser row. */
+const followsBrowserRow = (step) => answeredBrowserStep(step) || finishedHandOverStep(step);
+
 function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false, agentLabel = null, onMoveAddonToQueue = null }) {
+  // Only show the browser when I'm needed (Settings): a turn's browser steps
+  // are one row, labelled by the latest (lib/browserSteps.js).
+  const { onlyWhenNeeded } = useBrowserPrefs();
   const segments = useMemo(
-    () => splitTurnSegments(steps, { startedAt, endedAt, conversationLive, reopenable, reply }),
-    [steps, startedAt, endedAt, conversationLive, reopenable, reply],
+    () => splitTurnSegments(onlyWhenNeeded ? groupBrowserSteps(steps, { follows: followsBrowserRow }) : steps, { startedAt, endedAt, conversationLive, reopenable, reply }),
+    [steps, startedAt, endedAt, conversationLive, reopenable, reply, onlyWhenNeeded],
   );
   const liveIdx = live ? liveSegmentIndex(segments) : -1;
   // The live segment sits right before a pending question, if there is one.
@@ -713,6 +734,14 @@ function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conver
       out.push(
         // Spacing: 4px under a block, 12px between consecutive cards.
         <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          {isHandOverCard(seg.step.data) ? (
+            <HandOverCard
+              step={seg.step}
+              conversationId={conversationId}
+              onAnswered={onAnswered}
+              ended={Boolean(seg.step.data?.answer) || seg.expired}
+            />
+          ) : (
           <AskUserCard
             step={seg.step}
             conversationId={conversationId}
@@ -722,6 +751,7 @@ function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conver
             onAnswered={onAnswered}
             onAnswerAsMessage={onAnswerAsMessage}
           />
+          )}
         </div>,
       );
       prevWasCard = true;
@@ -1227,6 +1257,17 @@ async function waitForServerReady(timeoutMs = 8000) {
 // behind "…").
 // buttons: [{ label, onClick, primary, disabled, busy }]. An empty list hides
 // the row (e.g. reconnect's "done" state).
+// Beside a lost connection's error while the app tries to reach the turn
+// again; the error goes away once it does.
+function Reconnecting() {
+  const { t } = useTranslation('chat');
+  return (
+    <span className="chat-reconnecting" role="status">
+      {t('chatView.reconnecting')}<span className="chat-reconnecting__dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+    </span>
+  );
+}
+
 function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deleting = false }) {
   return (
     <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel} deleting={deleting}>
@@ -1951,9 +1992,12 @@ export function redirectForTask(redirects, taskId) {
 }
 
 // Module-level so the per-task debounce survives switching tasks (ENG-3188).
-const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
+export const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
 
 // ─── Main view ───────────────────────────────────────────────────────────
+/** Sent for the person when they click Done after the turn that handed them the browser ended. */
+export const BROWSER_DONE_MESSAGE = 'Done: I handed the browser back to you. Carry on from where you stopped.';
+
 export default function ChatView({
   task,
   // The last /health snapshot, for the diagnostics a user copies off a failed
@@ -1990,6 +2034,20 @@ export default function ChatView({
   onRemoveGoogleDriveProjectFile,
   disabledConnections,
   onUpdateConnectorMute,
+  onStartVoiceCall = null,
+  // A voice call asked to show this task's browser: {taskId, sessionId, at}.
+  browserRequest = null,
+  // The project's tasks ({id, title}), for the browser pane's list of the
+  // project's browsers, and how to go to another task's browser.
+  projectTasks = null,
+  onOpenTaskBrowser = null,
+  // On a phone: the voice call's card, shown at the top of the chat.
+  phoneCallCard = null,
+  // On a phone: the voice call itself (useVoiceCall's), for the speaking orb
+  // shown in place of the card while the browser is expanded.
+  phoneCall = null,
+  // Bumped by the phone top bar's browser icon: open this task's browser.
+  openBrowserSignal = 0,
   browserSwitch = null,
   onRemoveAttachment,
   onPinTask,
@@ -2064,7 +2122,7 @@ export default function ChatView({
 }) {
   const { t } = useTranslation('chat');
   const scrollRef = useRef(null);
-  const { isNarrow, paneFloats } = useBreakpoint();
+  const { isNarrow, paneFloats, isMobile } = useBreakpoint();
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
@@ -2238,19 +2296,312 @@ export default function ChatView({
      the next message, so the live turn's own session stays viewable, and its
      Browser step stays clickable, until that turn ends. */
   const [shownBrowserId, setShownBrowserId] = useState(null);
+  const shownBrowserRef = useRef(null);
+  shownBrowserRef.current = shownBrowserId;
+  /* Bumped when a hand-back asks the pane to show its browser, so a pane
+     that already gave up on its viewer asks again (BrowserPanel's
+     `retrySignal`). */
+  const [browserRetry, setBrowserRetry] = useState(0);
+  // Bumped by closing the pane and by a task change, so a browser still
+  // opening doesn't show after it, or in another task.
+  const openSeqRef = useRef(0);
   useEffect(() => {
+    openSeqRef.current += 1;
     setShownBrowserId(null);
+    /* A task change takes the pane off this browser, so a hand-back still
+       waiting for its viewer ends, whoever asked for it (the hand-over card,
+       or a voice call's browser_done), and a later hand-over never gets it
+       (lib/browserHandBack.js). Null at first mount, so StrictMode's extra
+       cleanup ends nothing. */
+    return () => dropHandBack(shownBrowserRef.current);
   }, [task.id]);
   const liveBrowserId = browserSessionIdIn(streamingMsg?.steps);
+  /* With Only show the browser when I'm needed on (Settings, the default),
+     the pane doesn't open while the agent browses: only when it's the
+     person's turn, a card the browser asks them (a held step to approve, a
+     sign-in, a CAPTCHA or another hand-over), keyed by that card so each
+     new one opens it again. The browser button opens it at any time. */
+  const { onlyWhenNeeded } = useBrowserPrefs();
+  const personsTurnId = (streamingMsg?.steps || []).find(isPersonsBrowserTurn)?.data?.question_id || null;
+  const personsTurnBrowserId = personsTurnId
+    ? (liveBrowserId || latestBrowserSessionIdIn(visibleMessages, streamingMsg))
+    : null;
   useEffect(() => {
-    if (browserOn && liveBrowserId) setShownBrowserId(liveBrowserId);
-  }, [browserOn, liveBrowserId, task.id]);
+    if (browserOn && liveBrowserId && !onlyWhenNeeded) setShownBrowserId(liveBrowserId);
+  }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded]);
+  useEffect(() => {
+    if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId) return;
+    // A phone push notification is the natural follow-up here once the iPhone app lands.
+    setShownBrowserId(personsTurnBrowserId);
+    setBrowserMinimized(false);
+  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, task.id]);
   const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
+  // A request (a voice call's show_browser or browser_done) applies once:
+  // coming back to the task later doesn't open the pane again. Like the
+  // hand-over card's, it asks a pane that gave up on its viewer to try again.
+  const appliedBrowserRequestRef = useRef(null);
+  useEffect(() => {
+    if (browserRequest?.taskId !== task.id || !browserRequest.sessionId) return;
+    if (appliedBrowserRequestRef.current === browserRequest.at) return;
+    appliedBrowserRequestRef.current = browserRequest.at;
+    setShownBrowserId(browserRequest.sessionId);
+    setBrowserRetry((n) => n + 1);
+  }, [browserRequest, task.id]);
+  /* Show browser on the web shows the pane at once: the start page while the
+     task's browser opens (`openingBrowser`), then that browser, on the blank
+     tab it opened (`blankOpenedId`). */
+  const [openingBrowser, setOpeningBrowser] = useState(false);
+  const [blankOpenedId, setBlankOpenedId] = useState(null);
+  useEffect(() => { setOpeningBrowser(false); setBlankOpenedId(null); }, [task.id]);
   const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
+  const openingBrowserOpen = !pane && openingBrowser && !browserOpen && host.isWeb;
+  /* The top-right Show browser icon, in a task whose browser is off or could
+     not open: a blank page that asks where to go. The real pane takes its
+     place as soon as the turn's Browser step arrives. */
+  const [blankBrowser, setBlankBrowser] = useState(false);
+  useEffect(() => { setBlankBrowser(false); }, [task.id]);
+  useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
+  const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
+  const browserPaneOpen = browserOpen || blankBrowserOpen || openingBrowserOpen;
+  /* On a phone the pane docks at the top of the chat (no taller than half
+     the screen) and minimizes to its header instead of closing. It expands
+     when Anton starts using the browser, and minimizes when the turn ends so
+     the answer shows. */
+  const [browserMinimized, setBrowserMinimized] = useState(false);
+  useEffect(() => { setBrowserMinimized(false); }, [task.id]);
+  useEffect(() => { if (liveBrowserId && !onlyWhenNeeded) setBrowserMinimized(false); }, [liveBrowserId, onlyWhenNeeded]);
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming && isMobile && browserOpen) setBrowserMinimized(true);
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming, isMobile, browserOpen]);
+  const browserDock = isMobile && !pane
+    ? { collapsed: browserMinimized, onToggle: () => setBrowserMinimized((m) => !m) }
+    : null;
+  // Anton handed the browser to the person (the viewer says so): it opens,
+  // and the strip under it says what to do.
+  const [browserHandoff, setBrowserHandoff] = useState(null);
+  // It comes back by itself once the person did what it waits for (the viewer says so).
+  const [handoffWatching, setHandoffWatching] = useState(false);
+  /* Whether a turn ran while the person held the browser: a turn that ended
+     waiting for them can't see Done, so Done carries it on (`onBrowserControl`).
+     A turn still running sees Done itself, and one the person stopped stays
+     stopped: from the composer (`stopTurn`) or the hand-over card's Stop
+     (`stopTask` in the card's context). The card's Stop ends the turn only
+     once anton reads it, so until that turn ends it no longer counts as held
+     (`stoppedFromCardRef`). */
+  const heldThroughTurnRef = useRef(false);
+  const stoppedFromCardRef = useRef(false);
+  const streamingRef = useRef(isStreaming);
+  streamingRef.current = isStreaming;
+  if (browserHandoff && isStreaming && !stoppedFromCardRef.current) heldThroughTurnRef.current = true;
+  useEffect(() => { if (!isStreaming) stoppedFromCardRef.current = false; }, [isStreaming]);
+  useEffect(() => {
+    setBrowserHandoff(null);
+    heldThroughTurnRef.current = false;
+    stoppedFromCardRef.current = false;
+  }, [task.id, shownBrowserId]);
+  const onBrowserControl = (holder, reason, watching = false) => {
+    setHandoffWatching(holder === 'human' && watching);
+    if (holder === 'human') {
+      setBrowserHandoff(reason || tc('browser.handOverFallback', { agent: harnessLabel(task?.harness) || 'Anton' }));
+      setBrowserMinimized(false);
+      if (streamingRef.current && !stoppedFromCardRef.current) heldThroughTurnRef.current = true;
+      return;
+    }
+    setBrowserHandoff(null);
+    const waiting = heldThroughTurnRef.current && !streamingRef.current;
+    heldThroughTurnRef.current = false;
+    if (waiting && onSend) onSend(BROWSER_DONE_MESSAGE);
+  };
+  // Stop: the turn didn't end waiting on the person, so Done carries nothing on.
+  const stopTurn = onStop ? (...args) => {
+    heldThroughTurnRef.current = false;
+    return onStop(...args);
+  } : onStop;
+  const askingUser = (streamingMsg?.steps || []).some(
+    (s) => s.badge === 'AskUser' && !s.data?.answer && !isPositionClickCard(s.data),
+  );
+  const phoneBrowserExpanded = Boolean(browserDock) && browserPaneOpen && !browserMinimized;
+  // While it is expanded the page under it stays put: no scroll, so typing in
+  // the address row can't move the screen.
+  useEffect(() => {
+    if (!phoneBrowserExpanded) return undefined;
+    const root = document.documentElement;
+    root.classList.add('phone-browser-open');
+    // No zoom while it is open: a tap in the browser's own address field
+    // happens inside its frame, where the app's focus-based zoom lock
+    // (useViewportZoomLock) never hears it.
+    const meta = document.querySelector('meta[name="viewport"]');
+    const viewportBefore = meta?.getAttribute('content') || null;
+    meta?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+    // The phone's keyboard, while the composer under the browser has focus:
+    // the composer rides above it (--phone-keyboard, globals.css).
+    const keepTop = () => {
+      window.setTimeout(() => window.scrollTo(0, 0), 0);
+      const vv = window.visualViewport;
+      const keyboard = vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+      root.style.setProperty('--phone-keyboard', `${keyboard}px`);
+    };
+    window.addEventListener('focusin', keepTop);
+    window.visualViewport?.addEventListener('resize', keepTop);
+    return () => {
+      root.classList.remove('phone-browser-open');
+      root.style.removeProperty('--phone-keyboard');
+      if (meta && viewportBefore !== null) meta.setAttribute('content', viewportBefore);
+      window.removeEventListener('focusin', keepTop);
+      window.visualViewport?.removeEventListener('resize', keepTop);
+    };
+  }, [phoneBrowserExpanded]);
   /* The inline pane holds the right-hand column, where a docked rail would
      go, so the rail and its Expand button step aside. A rail that floats
      opens over the pane instead. */
-  const railHidden = browserOpen && !paneFloats && !railFloats;
+  const railHidden = browserPaneOpen && !paneFloats && !railFloats;
+  const latestBrowserId = latestBrowserSessionIdIn(visibleMessages, streamingMsg);
+  // Always there where a browser can show: the browser Anton last used here,
+  // or the blank page.
+  // Only while the shared browser is on for this task (Settings, beta, and the task's own switch).
+  const showBrowserShortcut = !browserPaneOpen && Boolean(browserOn) && (host.isWeb || host.supportsInAppBrowser);
+  // An address typed in the blank page opens in the task's own browser, with
+  // no agent: through the server on the web, the app's own browser on the
+  // desktop. The real pane then shows it.
+  /** `url` null opens the task's browser on a blank tab, where the real pane shows the start page. */
+  const openUrlInTask = async (url) => {
+    const seq = openSeqRef.current;
+    let sessionId;
+    if (host.isWeb) {
+      sessionId = (await openBrowserAt(task.id, url))?.session_id;
+    } else {
+      sessionId = await desktopTaskSession(task.id);
+      await host.inAppBrowser.open(sessionId, url);
+    }
+    if (seq !== openSeqRef.current) return sessionId;
+    if (sessionId) {
+      if (url === null) setBlankOpenedId(sessionId);
+      setShownBrowserId(sessionId);
+    }
+    setOpeningBrowser(false);
+    return sessionId;
+  };
+  useEffect(() => {
+    if (openBrowserSignal) openBrowserFromShortcut();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openBrowserSignal]);
+  // On the web, the project's browsers beside the pane's X.
+  const projectBrowsers = host.isWeb && browserOn && projectTasks ? (
+    <ProjectBrowsers
+      taskId={task.id}
+      tasks={projectTasks}
+      onReopen={(url) => { void openUrlInTask(url).catch(() => {}); }}
+      onOpenTaskBrowser={onOpenTaskBrowser}
+    />
+  ) : null;
+  const openBrowserFromShortcut = () => {
+    setBrowserMinimized(false);
+    if (viewable(latestBrowserId)) {
+      setShownBrowserId(latestBrowserId);
+      return;
+    }
+    /* No browser here yet: open the task's real browser on a blank tab, so
+       the pane is the same one the agent uses, with the start page over the
+       blank tab. The standalone start page stays for a browser that is off or
+       that could not open. */
+    if (!browserOn) {
+      setBlankBrowser(true);
+      return;
+    }
+    if (host.isWeb) setOpeningBrowser(true);
+    const seq = openSeqRef.current;
+    const fallBack = () => {
+      if (seq !== openSeqRef.current) return;
+      setOpeningBrowser(false);
+      setBlankBrowser(true);
+    };
+    openUrlInTask(null).then((id) => { if (!id) fallBack(); }, fallBack);
+  };
+  const browserNode = (
+    <>
+      {(browserOpen || openingBrowserOpen) && (
+        <BrowserPanel
+          sessionId={browserOpen ? shownBrowserId : null}
+          startBlank={openingBrowserOpen || (browserOpen && shownBrowserId === blankOpenedId)}
+          agentLabel={harnessLabel(task?.harness) || 'Anton'}
+          onClose={() => {
+            // A closed pane shows this browser no more: a hand-back waiting for its viewer ends.
+            dropHandBack(shownBrowserId);
+            openSeqRef.current += 1;
+            setOpeningBrowser(false);
+            setShownBrowserId(null);
+          }}
+          extraActions={projectBrowsers}
+          dock={browserDock}
+          onControl={onBrowserControl}
+          retrySignal={browserRetry}
+          taskKey={task.id}
+          onSend={onSend ? (text) => onSend(text) : undefined}
+          onDraft={(text) => setComposerPrefill((prev) => ({ text, bump: (prev?.bump || 0) + 1, append: true }))}
+          onOpenUrl={openUrlInTask}
+        />
+      )}
+      {blankBrowserOpen && (
+        <BlankBrowserPanel
+          taskKey={task.id}
+          agentLabel={harnessLabel(task?.harness) || 'Anton'}
+          browserOn={!!browserOn}
+          onSend={onSend ? (text) => onSend(text) : undefined}
+          onOpenUrl={openUrlInTask}
+          onClose={() => { openSeqRef.current += 1; setBlankBrowser(false); }}
+          dock={browserDock}
+        />
+      )}
+    </>
+  );
+  // A phone's task: the call's card, then the browser, then the chat. With
+  // the browser expanded over the top 80%, the card gives way to a small orb
+  // at its bottom edge, and the strip under it speaks only when Anton needs
+  // the person.
+  const needsUser = browserHandoff && handoffWatching
+    ? tc('browser.phoneYourTurnWatching', { reason: browserHandoff, agent: harnessLabel(task?.harness) || 'Anton' })
+    : browserHandoff
+    ? tc('browser.phoneYourTurn', { reason: browserHandoff })
+    : askingUser ? tc('browser.phoneQuestion', { agent: harnessLabel(task?.harness) || 'Anton' }) : '';
+  // Otherwise the strip says what Anton is doing right now: the live step.
+  const liveSteps = (streamingMsg?.steps || []).filter((s) => s.badge !== 'AskUser' && s.label);
+  const nowDoing = isStreaming
+    ? (liveSteps[liveSteps.length - 1]?.label || tc('browser.phoneWorking'))
+    : tc('browser.phoneDone');
+  const callLive = Boolean(phoneCall && phoneCall.phase !== 'idle' && phoneCall.phase !== 'ended');
+  const phoneDock = browserDock && (phoneCallCard || browserPaneOpen) ? (
+    <div className="chat-phone-dock">
+      {!phoneBrowserExpanded && phoneCallCard}
+      {browserNode}
+      {/* Under the expanded browser: the call's orb (or a button to start
+          one) beside what Anton needs from the person or else what he's
+          doing, and the composer under them (globals.css). */}
+      {phoneBrowserExpanded && (
+        <div className={`phone-browser-strip${needsUser ? ' is-asking' : ''}`}>
+          {callLive ? (
+            <VoiceOrb call={phoneCall} onClick={() => setBrowserMinimized(true)} />
+          ) : onStartVoiceCall ? (
+            <button
+              type="button"
+              className="phone-browser-strip__talk"
+              aria-label={tc('browser.talkTo', { agent: harnessLabel(task?.harness) || 'Anton' })}
+              onClick={() => onStartVoiceCall()}
+            >
+              {Ico.mic(16)}
+            </button>
+          ) : null}
+          <div className="phone-browser-strip__text" role="status" aria-live="polite">
+            <p>{needsUser || nowDoing}</p>
+            {needsUser && <Button size="sm" onClick={() => setBrowserMinimized(true)}>{tc('browser.phoneMinimize')}</Button>}
+          </div>
+        </div>
+      )}
+    </div>
+  ) : null;
+  // The floating Expand button's spot, when it shows; the icons sit beside it.
+  const expandShown = !pane && !railHidden && !(effectiveRailOpen || railOverlayOpen);
   /* The web browser takes a while to wake, so a task that used it starts it
      when it opens and when the person types. The desktop has nothing to
      start. */
@@ -2266,8 +2617,14 @@ export default function ChatView({
      Browser step shows its session in the pane; any other step opens its
      cells in the scratchpad viewer, under its message's key `prefix`. */
   const activateStep = (prefix) => (step) => {
-    if (step?.badge === BROWSER_BADGE) {
-      if (viewable(step.data?.sessionId)) setShownBrowserId(step.data.sessionId);
+    // A Browser step, a browser call, a turn's browser row or a browser step
+    // the person answered shows its browser.
+    if (step?.badge === BROWSER_BADGE || step?.badge === BROWSER_ACTION_BADGE || step?.badge === BROWSER_APPROVAL_BADGE || step?.badge === BROWSER_HANDOVER_BADGE) {
+      const sessionId = step.data?.sessionId || latestBrowserId;
+      if (viewable(sessionId)) {
+        setShownBrowserId(sessionId);
+        setBrowserMinimized(false);
+      }
       return;
     }
     if (prefix) setOpenScratchpadStepId(prefixId(prefix, step.id));
@@ -2454,6 +2811,61 @@ export default function ChatView({
   }, [streamingMsg]);
 
   const deleteInFlight = deletingTurnMessageId != null;
+  /* The hand-over card's browser, pane and carry-on (components/HandOverCard).
+     A turn that ended while the person held the browser carries on from the
+     card's Done, continue as from the browser's Done (onBrowserControl), and
+     only once: the flag that would send it again is cleared first. */
+  const handOverBrowserId = liveBrowserId || latestBrowserId;
+  /* A Done that waits for the pane's viewer is for the hand-over open when
+     it was asked for, and a voice call's browser_done has no card to end its
+     wait. So the wait ends when that hand-over is answered mid-turn (the
+     browser came back another way: nothing is left to hand back), and when
+     the task starts a new turn (whatever waits is for an earlier turn's
+     hand-over). A viewer that comes later then never runs an old Done for
+     the next hand-over. A turn that ends with its hand-over still open
+     leaves the wait alone: that Done still carries the task on
+     (onBrowserControl). */
+  const openHandOverId = (streamingMsg?.steps || [])
+    .find((s) => s.badge === 'AskUser' && !s.data?.answer && isHandOverCard(s.data))?.data?.question_id || null;
+  useEffect(() => {
+    if (!openHandOverId) return undefined;
+    const browser = handOverBrowserId;
+    return () => { if (streamingRef.current) dropHandBack(browser); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openHandOverId]);
+  const turnSeenRef = useRef({ taskId: null, streaming: false });
+  useEffect(() => {
+    const before = turnSeenRef.current;
+    turnSeenRef.current = { taskId: task.id, streaming: isStreaming };
+    if (before.taskId === task.id && !before.streaming && isStreaming) dropHandBack(handOverBrowserId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, isStreaming]);
+  const handOverValue = useMemo(() => ({
+    sessionId: handOverBrowserId,
+    paneShown: browserOpen && !browserMinimized,
+    openBrowser: () => {
+      setBrowserMinimized(false);
+      if (viewable(handOverBrowserId)) {
+        setShownBrowserId(handOverBrowserId);
+        // A pane that already gave up on its viewer asks again, so the hand-back gets one or ends.
+        setBrowserRetry((n) => n + 1);
+      } else {
+        // No pane shows this browser here: a hand-back waiting for its viewer ends.
+        dropHandBack(handOverBrowserId);
+      }
+    },
+    continueTask: onSend ? () => {
+      heldThroughTurnRef.current = false;
+      onSend(BROWSER_DONE_MESSAGE);
+    } : null,
+    stopTask: () => {
+      heldThroughTurnRef.current = false;
+      if (streamingRef.current) stoppedFromCardRef.current = true;
+    },
+    agentLabel: harnessLabel(task?.harness) || 'Anton',
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [handOverBrowserId, browserOpen, browserMinimized, onSend, task?.harness, browserOn, liveBrowserId]);
+
   // The artifact viewer's chat bar (ENG-4227) mirrors the agent's reply to a
   // message it sent into this chat, from these same messages.
   // Quick edits from the artifact viewer, adjacent ones merged into one card.
@@ -2465,6 +2877,7 @@ export default function ChatView({
 
   return (
     <ChatTranscriptContext.Provider value={chatTranscript}>
+    <BrowserHandOverContext.Provider value={handOverValue}>
     <div
       ref={chatRef}
       // minmax(0, 1fr) is critical — bare `1fr` lets the grid track EXPAND
@@ -2479,7 +2892,7 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserPaneOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -2495,7 +2908,7 @@ export default function ChatView({
         // for the "header + scrollable body" layout — the 1fr row pins
         // the scroll area to the column's available height, so the inner
         // overflowY can actually scroll.
-        className={`relative overflow-hidden grid ${pane ? 'grid-rows-[1fr]' : 'grid-rows-[auto_1fr]'} min-w-0 min-h-0`}
+        className={`relative overflow-hidden grid ${pane ? 'grid-rows-[1fr]' : phoneDock ? 'grid-rows-[auto_auto_1fr]' : 'grid-rows-[auto_1fr]'} min-w-0 min-h-0`}
       >
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
@@ -2523,6 +2936,16 @@ export default function ChatView({
             {Ico.panelExpandLeft(16)}
           </button>
         </Tooltip>)}
+
+        {/* Beside it: the browser icon. With the rail open it sits beside
+            its Collapse button instead. */}
+        {!pane && !(effectiveRailOpen || railOverlayOpen) && (
+          <TopShortcuts
+            className="chat-top-shortcuts absolute top-3.5 z-10"
+            style={{ right: expandShown ? 44 : 14 }}
+            onShowBrowser={showBrowserShortcut ? openBrowserFromShortcut : null}
+          />
+        )}
 
         {/* Header — reserve the shell-owned titlebar-safe inset on top so the
             breadcrumbs drop below the macOS traffic lights (and the floating
@@ -2715,6 +3138,8 @@ export default function ChatView({
             onSend?.('Turn this conversation into a reusable skill.');
           }}
         />
+
+        {phoneDock}
 
         {isClaudeCodeTask ? (
           <CodingTerminal
@@ -3233,7 +3658,10 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       kind={t('chatView.kinds.agent')}
                       title={t('chatView.errors.stalledTitle')}
-                      body={t('chatView.errors.stalledBody', { product: productName('Cowork') })}
+                      body={<>
+                        {t('chatView.errors.stalledBody', { product: productName('Cowork') })}
+                        {m._reconnecting && <Reconnecting />}
+                      </>}
                       buttons={resend && !turnMayBeRunning && sendAgain
                         ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
@@ -3338,7 +3766,7 @@ export default function ChatView({
                 return (
                   <AnswerTurn key={messageKey(m, i)} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
                     <Alert variant="danger">
-                      <div>{m.content}</div>
+                      <div>{m.content}{m._reconnecting && <Reconnecting />}</div>
                       {m.requestId && (
                         <div
                           className="mt-1 text-xs flex items-center gap-2 flex-wrap"
@@ -3650,6 +4078,7 @@ export default function ChatView({
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
+            onStartVoiceCall={onStartVoiceCall}
             browserSwitch={browserSwitch}
             onRemoveAttachment={onRemoveAttachment}
             placeholder={t('chatView.composer.replyPlaceholder')}
@@ -3657,7 +4086,7 @@ export default function ChatView({
             modelReadOnly={false}
             hideMeta
             streaming={isStreaming}
-            onStop={onStop}
+            onStop={stopTurn}
             prefill={composerPrefill}
             onOpenSettings={onOpenSettings}
             codingModelDefault={codingModelDefault}
@@ -3670,14 +4099,9 @@ export default function ChatView({
       </div>
 
       {!pane && (<>
-      {/* ─── Shared browser ─── takes the right-hand column while open. */}
-      {browserOpen && (
-        <BrowserPanel
-          sessionId={shownBrowserId}
-          agentLabel={harnessLabel(task?.harness) || 'Anton'}
-          onClose={() => setShownBrowserId(null)}
-        />
-      )}
+      {/* ─── Shared browser ─── takes the right-hand column while open (on
+          a phone it docks at the top of the chat instead: phoneDock). */}
+      {!browserDock && browserNode}
 
       {/* ─── Right rail ─── */}
       {/* On narrow screens: translucent backdrop behind the overlay rail */}
@@ -3715,6 +4139,11 @@ export default function ChatView({
             FLOATING expand button outside is the one hidden via
             .chat-rail-toggle in globals.css. */}
         <div className="chat-rail-close-row flex items-center justify-end flex-shrink-0">
+          {!pane && (
+            <TopShortcuts
+              onShowBrowser={showBrowserShortcut ? openBrowserFromShortcut : null}
+            />
+          )}
           <Tooltip content={t('chatView.header.collapsePanel')}>
             <button
               type="button"
@@ -3825,11 +4254,22 @@ export default function ChatView({
                 onSubmit={onSubmitDataVaultForm}
                 onNavigateToConnectors={onNavigateToConnectors}
                 onClose={onDismissConnectForm}
+                /* Only in a conversation the agent can carry on in the
+                   browser: not a connect form opened from the picker. */
+                onUseBrowser={onSend && browserOn && (host.isWeb || host.supportsInAppBrowser)
+                  && task?.id && !String(task.id).startsWith('tmp-connect-')
+                  ? ({ name, url }) => {
+                    if (onDismissConnectForm) onDismissConnectForm(task.id);
+                    else clearDataVaultForm(task.id);
+                    onSend(browserInsteadRequest(name, url));
+                  }
+                  : undefined}
               />
             </FormErrorBoundary>
         </ModalBody>
       </Modal>
     </div>
+    </BrowserHandOverContext.Provider>
     </ChatTranscriptContext.Provider>
   );
 }

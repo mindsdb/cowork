@@ -1,0 +1,164 @@
+/* The voice call's card (VoiceCallWindow.jsx). Docked, it sits in the
+   sidebar above its footer, where the onboarding steps sit. Otherwise it
+   floats in that corner, and on a phone it is a bar across the top under the
+   top bar, so it never covers the composer. Its colors are the app's tokens,
+   so it follows light and dark; the 8-bit skin squares it off below. */
+.voice-call {
+  position: fixed;
+  z-index: 60;
+  left: 16px;
+  bottom: 16px;
+  width: 300px;
+  padding: 12px 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl, 16px);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.voice-call { --voice-call-x: 22px; }
+/* The X in a circle on the card's corner: ends the call. */
+.voice-call__x {
+  position: absolute;
+  top: calc(var(--voice-call-x) / -2 + 2px);
+  right: calc(var(--voice-call-x) / -2 + 2px);
+  z-index: 1;
+  width: var(--voice-call-x);
+  height: var(--voice-call-x);
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink-3);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.08);
+  cursor: pointer;
+  transition: background var(--dur-hover, 120ms), color var(--dur-hover, 120ms), border-color var(--dur-hover, 120ms);
+}
+.voice-call__x:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
+/* Shown on hover (or keyboard focus) only; always on touch screens, which
+   have no hover, and on an ended call's card. */
+@media (hover: hover) {
+  .voice-call:not(.is-ended) .voice-call__x { opacity: 0; transform: scale(0.85); transition: opacity 140ms ease, transform 140ms ease, background var(--dur-hover, 120ms), color var(--dur-hover, 120ms); }
+  .voice-call:hover .voice-call__x,
+  .voice-call:focus-within .voice-call__x { opacity: 1; transform: none; }
+}
+body[data-skin="8bit"] .voice-call__x { border: 2px solid var(--ink); box-shadow: none; }
+.voice-call--docked {
+  position: relative;
+  inset: auto;
+  width: auto;
+  margin: 6px 14px 8px 10px;
+  border-radius: var(--r-lg, 12px);
+  box-shadow: none;
+}
+.voice-waves { display: block; width: 100%; height: 44px; }
+
+.voice-call__row { display: flex; align-items: center; gap: 10px; }
+.voice-call__who { min-width: 0; flex: 1; }
+.voice-call__title { font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: 0.01em; }
+.voice-call__name { display: flex; align-items: center; gap: 2px; }
+.voice-call__voice { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); cursor: pointer; transition: color .15s ease, background .15s ease; }
+.voice-call__voice:hover, .voice-call__voice[aria-expanded="true"] { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.voice-call__voice svg { transition: transform .2s ease; }
+.voice-call__voice[aria-expanded="true"] svg { transform: rotate(180deg); }
+body[data-skin="8bit"] .voice-call__voice { border-radius: 0; }
+
+/* Mute signs off: once Anton has said goodbye the card folds away. */
+.voice-call.is-closing { animation: voice-call-fold 360ms cubic-bezier(.4, 0, .2, 1) forwards; pointer-events: none; overflow: hidden; }
+/* Faded out while the call still listens a moment (useVoiceCall LINGER_MS):
+   it comes back the same way if anyone speaks or the call button is pressed. */
+.voice-call { transition: opacity 600ms ease, transform 600ms ease; }
+.voice-call.is-lingering { opacity: 0; transform: translateY(8px) scale(.98); pointer-events: none; }
+@keyframes voice-call-fold {
+  0% { opacity: 1; transform: translateY(0) scale(1); max-height: 240px; }
+  60% { opacity: 0; transform: translateY(6px) scale(.97); }
+  100% { opacity: 0; transform: translateY(8px) scale(.96); max-height: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-call.is-closing { animation-duration: 1ms; }
+  .voice-call { transition: none; }
+}
+.voice-call__status { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-3); }
+.voice-call__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: voice-call-dot 2.4s ease-in-out infinite; }
+@keyframes voice-call-dot { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .voice-call__dot { animation: none; } }
+
+.voice-call__controls { display: flex; gap: 6px; flex: 0 0 auto; }
+/* Mute is the composer's Send; muted, it rests like a dormant Send. */
+.voice-call__mic.is-off { background: var(--accent-bg); color: color-mix(in srgb, var(--accent) 70%, transparent); }
+/* End is the composer's Stop. */
+.voice-call__end { background: var(--danger-bg); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); }
+.voice-call__end:hover:not(:disabled) { background: var(--danger); color: #fff; border-color: var(--danger); }
+.voice-call__text-btn { border: 1px solid var(--line); border-radius: var(--r-8, 8px); background: transparent; color: var(--ink-2); font: inherit; font-size: 12px; padding: 5px 10px; cursor: pointer; }
+.voice-call__text-btn:hover { background: var(--surface-2); color: var(--ink); }
+
+/* 8-bit: a hard border and square corners, no shadow; the dot blinks. */
+body[data-skin="8bit"] .voice-call { border: 2px solid var(--ink); border-radius: 0; box-shadow: none; }
+body[data-skin="8bit"] .voice-call__dot { border-radius: 0; animation: voice-call-blink 1s steps(2, jump-none) infinite; }
+@keyframes voice-call-blink { 0% { opacity: 1; } 100% { opacity: 0.2; } }
+body[data-skin="8bit"] .voice-call__text-btn { border-radius: 0; border-width: 2px; border-color: var(--ink); }
+
+@media (max-width: 639.98px) {
+  .voice-call {
+    top: calc(env(safe-area-inset-top, 0px) + 52px);
+    bottom: auto;
+    left: 0;
+    right: 0;
+    width: auto;
+    border-radius: 0 0 16px 16px;
+  }
+  .voice-call__x { top: 8px; right: 8px; }
+}
+
+/* Connecting: one line, no waves, until the session is live. */
+.voice-call.voice-call--connecting { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; padding-top: 11px; padding-bottom: 11px; animation: voice-call-in 220ms ease-out; }
+.voice-call__connecting { font-size: 12.5px; color: var(--ink-2); letter-spacing: 0.01em; }
+.voice-call__spin { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); animation: voice-call-spin .8s linear infinite; }
+@keyframes voice-call-spin { to { transform: rotate(360deg); } }
+@keyframes voice-call-in { from { opacity: 0; transform: translateY(4px); } }
+body[data-skin="8bit"] .voice-call__spin { border-radius: 0; animation: voice-call-blink 1s steps(2, jump-none) infinite; border: 0; background: var(--accent); width: 8px; height: 8px; }
+@media (prefers-reduced-motion: reduce) { .voice-call__spin, .voice-call.voice-call--connecting { animation: none; } }
+
+/* The phone's speaking orb, at the bottom edge of the expanded browser. */
+.voice-orb {
+  --orb-level: 0;
+  position: relative; flex: none;
+  width: 52px; height: 52px; padding: 0; border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: var(--surface); overflow: hidden; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .3), 0 0 calc(var(--orb-level) * 22px) color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.voice-orb__fill {
+  position: absolute; inset: 0; border-radius: 50%; background: var(--accent);
+  transform: scale(calc(0.22 + var(--orb-level) * 0.78)); opacity: calc(0.45 + var(--orb-level) * 0.55);
+}
+.voice-orb.is-working .voice-orb__fill { animation: voice-orb-think 1.6s ease-in-out infinite; }
+.voice-orb.is-starting .voice-orb__fill { opacity: .3; }
+@keyframes voice-orb-think { 50% { transform: scale(.42); } }
+body[data-skin="8bit"] .voice-orb, body[data-skin="8bit"] .voice-orb__fill { border-radius: 0; }
+body[data-skin="8bit"] .voice-orb { border: 2px solid var(--ink); box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .voice-orb.is-working .voice-orb__fill { animation: none; } }
+
+/* The round button that starts a call (VoiceLauncher.jsx), where the card
+   appears: in the sidebar when docked, else in the card's corner. */
+.voice-launcher { position: fixed; z-index: 59; left: 16px; bottom: 16px; }
+.voice-launcher--docked { position: relative; left: auto; bottom: auto; margin: 8px 10px; display: flex; }
+.voice-launcher__button {
+  width: 44px; height: 44px; padding: 0; display: inline-grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--surface); color: var(--ink-2);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.10);
+  cursor: pointer; transition: transform 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.voice-launcher__button:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); transform: scale(1.04); }
+.voice-launcher__button:active { transform: scale(.96); }
+.voice-launcher__button[aria-disabled="true"] { opacity: .5; cursor: default; transform: none; }
+/* A call fading out, still listening: the button glows to bring it back. */
+.voice-launcher__button.is-live { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+@media (max-width: 640px) { .voice-launcher:not(.voice-launcher--docked) { left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); } }
+@media (prefers-reduced-motion: reduce) { .voice-launcher__button { transition: none; } }
+body[data-skin="8bit"] .voice-launcher__button { border: 2px solid var(--ink); border-radius: 0; }

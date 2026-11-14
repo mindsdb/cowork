@@ -494,5 +494,12 @@
       "saved": "Guardado. Los miembros lo verán la próxima vez que abran la app o la Configuración.",
       "clean": "No hay cambios de marca sin guardar"
     }
+  },
+  "voice": {
+    "title": "Voz",
+    "agentTitle": "Agente de voz",
+    "agentHelp": "Habla con {agent} desde el botón de llamada. Desactivado oculta los botones de llamada y termina la llamada en curso.",
+    "voiceTitle": "Voz",
+    "voiceHelp": "Elige una para escucharla. {agent} dice una frase corta con cada voz nueva."
   }
 }

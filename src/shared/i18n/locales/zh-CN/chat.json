@@ -221,7 +221,8 @@
         "files": "已加入队列：带文件的消息会在当前任务之后运行。",
         "notRead": "已加入队列：任务在读取之前就已结束。"
       }
-    }
+    },
+    "reconnecting": "正在尝试重新连接"
   },
   "composer": {
     "placeholder": "老板好，今天有什么可以帮你？",
@@ -262,7 +263,7 @@
       "openingGoogleDrive": "正在打开 Google Drive…",
       "addFromGoogleDrive": "从 Google Drive 添加文件",
       "addFromSharePoint": "从 SharePoint 添加文件",
-      "browserTitle": "{agent} 可以在此任务中使用你的共享浏览器。关闭后从你的下一条消息起生效。",
+      "browserTitle": "{agent} 可以在此任务中使用浏览器模式。关闭后从你的下一条消息起生效。",
       "browser": "浏览器",
       "browserOff": "为此任务关闭浏览器",
       "browserOn": "为此任务开启浏览器",
@@ -279,7 +280,8 @@
       "fixed": "此任务的项目已固定",
       "none": "无项目"
     },
-    "chooseHarness": "选择运行环境"
+    "chooseHarness": "选择运行环境",
+    "voiceCall": "语音通话"
   },
   "attachmentThumbnail": {
     "open": "打开图片",
@@ -290,11 +292,35 @@
     "hintCustom": "…或在下方输入你自己的回答。",
     "hintSelectOnly": "请从上方选择一个选项，输入的回复不会被接受。点击“跳过”可输入其他内容。",
     "skip": "跳过",
+    "skipApprovals": "后续步骤跳过批准",
     "send": "发送",
     "skipped": "已跳过。",
     "timedOut": "未回答：已超时。",
     "answered": "已回答：",
-    "noLongerActive": "此问题已失效。"
+    "noLongerActive": "此问题已失效。",
+    "browserStep": {
+      "title": "要批准这个浏览器步骤吗？",
+      "intro": "它可能会购买、发送、删除或提交内容，只有在你批准后才会执行。",
+      "approved": "已批准浏览器操作",
+      "cancelled": "已取消浏览器操作",
+      "typedText": "要输入的文本",
+      "typedTextKeys": "要输入的文本（⏎ 表示换行，可能会发送；⇥ 表示制表符；⟦U+…⟧ 表示不可见字符）"
+    },
+    "handOver": {
+      "title": "请在浏览器中操作",
+      "watching": "在浏览器中完成后，{agent} 会在几秒后自动继续；也可以点击“完成并继续”。",
+      "manual": "在浏览器中完成后，请点击“完成并继续”。",
+      "stillYours": "浏览器仍由你操作。完成后点击“完成并继续”，{agent} 会从那里接着做。",
+      "doneContinue": "完成并继续",
+      "openBrowser": "打开浏览器",
+      "finishLater": "稍后完成",
+      "stop": "停止",
+      "noBrowser": "这里没有可交还的浏览器。",
+      "notOpened": "浏览器没有打开。请打开浏览器，然后再次点击“完成并继续”。",
+      "handedBack": "已交还 — 已继续",
+      "stopped": "已停止交接",
+      "ended": "交接已结束"
+    }
   },
   "codingTerminal": {
     "unavailable": "此版本不支持内置终端。",
@@ -573,7 +599,7 @@
   },
   "browser": {
     "close": "关闭浏览器",
-    "shared": "共享浏览器",
+    "shared": "浏览器模式",
     "title": "浏览器",
     "unreachable": "无法访问浏览器",
     "stopped": {
@@ -613,6 +639,7 @@
     "aNewTab": "新标签页",
     "yourTurn": "轮到你操作 {site} 了。点击“完成”即可交还给 {agent}。",
     "yourTurnReason": "轮到你操作 {site} 了：{reason}。点击“完成”即可交还给 {agent}。",
+    "yourTurnWatching": "请在 {site} 上操作：{reason}。完成后 {agent} 会自动继续；也可以点击“完成”。",
     "agentUsing": "{agent} 正在使用。接管后即可自己操作。",
     "pageReadsNote": "{agent} 读取的页面内容和截图会发送给为你这一轮提供服务的模型提供商。",
     "back": "后退",
@@ -623,6 +650,94 @@
     "newTab": "新标签页",
     "closedTitle": "此任务的浏览器已关闭",
     "closedDescription": "{agent} 需要时会重新打开它。",
-    "squeezed": "放大窗口以查看页面"
+    "squeezed": "放大窗口以查看页面",
+    "minimize": "最小化浏览器",
+    "expand": "展开浏览器",
+    "learnWhat": "了解 {agent} 能看到什么",
+    "opening": "正在打开你的浏览器",
+    "askOrTypeUrl": "提问或输入网址",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "空白页。有什么大计划？",
+          "subtitle": "输入网址，或告诉我要查什么。"
+        },
+        "wholeInternet": {
+          "title": "整个互联网，却无处可去。",
+          "subtitle": "告诉我一个值得去的地方。"
+        },
+        "freshTab": {
+          "title": "新标签页，新气象。",
+          "subtitle": "我们去哪儿？"
+        },
+        "quiet": {
+          "title": "这里很安静，安静得可疑。",
+          "subtitle": "给我一个网站或搜索词，我马上开始。"
+        }
+      },
+      "off": "此任务的浏览器已关闭。从 + 菜单中打开后，{agent} 就可以浏览网页。",
+      "searchPlaceholder": "搜索或粘贴链接",
+      "searchLabel": "要查找的内容",
+      "onIt": "处理中…",
+      "go": "前往",
+      "addressPlaceholder": "输入网址或搜索",
+      "address": "地址",
+      "nothingOpen": "尚未打开任何内容",
+      "openingUrl": "正在打开 {url}…",
+      "slow": "该页面加载较慢。请重试，或在地址栏中输入。",
+      "couldNotOpen": "无法打开该页面。",
+      "agentOpening": "{agent} 正在打开浏览器…"
+    },
+    "projectBrowsers": {
+      "title": "此项目中的浏览器",
+      "listFailed": "无法列出浏览器。",
+      "failed": "操作未成功。",
+      "looking": "正在查找…",
+      "thisTask": "此任务",
+      "held": "此浏览器由你控制：交还后会显示其标签页。",
+      "showing": "显示中",
+      "closeOthers": "{count, plural, other {关闭其他 # 个标签页（保存以便稍后使用）}}",
+      "noneMine": "此任务没有打开的浏览器。",
+      "reopen": "重新打开 {tab}",
+      "saved": "已保存",
+      "otherTasks": "此项目中的其他任务",
+      "tabCount": "{count, plural, other {# 个标签页}}",
+      "goTo": "前往其浏览器",
+      "closeIts": "关闭其浏览器（标签页已保存）",
+      "watching": "有人正在查看"
+    },
+    "phoneYourTurnWatching": "请操作：{reason}。完成后 {agent} 会自动继续；也可以在浏览器中轻点“完成”。",
+    "handOverFallback": "{agent} 需要你在浏览器中操作",
+    "phoneYourTurn": "请操作：{reason}。完成后在浏览器中轻点“完成”，然后最小化以继续。",
+    "phoneQuestion": "{agent} 有个问题要问你。最小化后即可回答。",
+    "phoneWorking": "正在处理…",
+    "phoneDone": "已完成。最小化即可查看回答。",
+    "phoneMinimize": "最小化",
+    "talkTo": "与 {agent} 通话"
+  },
+  "voiceCall": {
+    "dialogLabel": "与 {agent} 语音通话",
+    "connecting": "正在连接…",
+    "ending": "正在结束…",
+    "working": "正在处理…",
+    "listening": "正在聆听",
+    "talkSoon": "回头聊",
+    "analyzing": "正在分析结果…",
+    "trying": "正在试听 {voice}",
+    "connectingVoice": "正在连接语音…",
+    "voice": "语音",
+    "voiceAriaLabel": "语音：{voice}",
+    "changeVoice": "更换语音",
+    "muteAndEnd": "静音并结束通话",
+    "ended": "通话已结束。",
+    "close": "关闭",
+    "endCall": "结束通话",
+    "mute": "静音",
+    "orbLabel": "{state, select, starting {正在连接语音} working {正在处理} other {通话中}}",
+    "orbShow": "{state, select, starting {正在连接语音。显示通话} working {正在处理。显示通话} other {通话中。显示通话}}",
+    "allowMicrophone": "请在浏览器中允许使用麦克风，以开始语音通话。",
+    "noMicrophone": "未找到麦克风。",
+    "couldNotStart": "无法开始语音通话。",
+    "endedReason": "通话已结束（{reason}）。"
   }
 }

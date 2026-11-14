@@ -650,6 +650,14 @@ a[href],
   20%  { opacity: 1; }
   100% { opacity: 0.25; }
 }
+/* "Trying to reconnect…" beside a lost connection's error. */
+.chat-reconnecting { margin-left: 10px; color: var(--text-muted); white-space: nowrap; }
+.chat-reconnecting__dots span { animation: typing 1.2s infinite both; }
+.chat-reconnecting__dots span:nth-child(2) { animation-delay: 0.2s; }
+.chat-reconnecting__dots span:nth-child(3) { animation-delay: 0.4s; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-reconnecting__dots span { animation: none; }
+}
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
@@ -2686,6 +2694,32 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   transition: background-color var(--dur-hover) ease;
 }
 .mshell__theme-toggle:active { background: var(--surface-2); }
+/* The voice call button beside it: accent while a call runs. */
+.mshell__call.is-live { color: var(--accent); }
+.mshell__call[aria-disabled="true"] { opacity: 0.45; }
+
+/* The drawer's newest chats, under its Chat row: a Recents line with See
+   all at its end, then the chats as subitems on a guide line. */
+.mshell-recents { margin: 6px 0 10px 24px; }
+.mshell-recents__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 4px 6px 14px; }
+.mshell-recents__label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); }
+.mshell-recents__more {
+  border: 0; background: transparent; padding: 2px 4px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 500;
+  color: var(--accent); -webkit-tap-highlight-color: transparent;
+}
+.mshell-recent-chats { padding-left: 4px; border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+.mshell-recent-chat {
+  display: block; width: 100%; padding: 7px 12px 7px 10px; border: 0; border-radius: var(--r-sm, 6px);
+  background: transparent; cursor: pointer; text-align: left; font: inherit; font-size: 13.5px; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-tap-highlight-color: transparent;
+}
+/* Alternating, barely there backgrounds, so each recent reads as its own row. */
+.mshell-recent-chats { display: grid; gap: 2px; }
+.mshell-recent-chat:nth-child(odd) { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
+.mshell-recent-chat:nth-child(even) { background: color-mix(in srgb, var(--ink) 1%, transparent); }
+body[data-skin="8bit"] .mshell-recent-chat { border-radius: 0; }
+.mshell-recent-chat:active, .mshell-recent-chat.is-active { background: var(--surface-2); color: var(--ink); }
+body[data-skin="8bit"] .mshell-recent-chats { border-left-width: 2px; }
 
 /* Hamburger button — three bars that animate into an X when open. */
 .mshell__hamburger {
@@ -2774,6 +2808,19 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 .mshell__drawer.is-open { transform: translateX(0); }
+/* The drawer's footer: who is signed in, and Log out. */
+.mshell__drawer-foot {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line);
+}
+.mshell__drawer-account { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
+.mshell__logout {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px;
+  border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--ink-2);
+  font: inherit; font-size: 13px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.mshell__logout:active { background: var(--danger-bg); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+body[data-skin="8bit"] .mshell__logout { border-radius: 0; border-width: 2px; }
 
 .mshell__drawer-head {
   flex: 0 0 auto;
@@ -3291,6 +3338,8 @@ body[data-theme="dark"] .mshell__drawer-title {
      fullscreen form panel. The mobile shell's hamburger drawer
      covers the same surfaces that the expand button used to. */
   .chat-rail-toggle { display: none !important; }
+  /* The browser and call icons beside it take its place. */
+  .chat-top-shortcuts { right: 14px !important; }
 
   /* Make the rail overlay truly fullscreen on mobile so the data-
      vault form fills the viewport instead of being a 320px-wide
@@ -4243,6 +4292,49 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   .compare-vs-orb { animation: none; }
 }
 
+/* A phone's task: the voice call's card and the docked browser above the
+   chat (ChatView phoneDock). */
+.chat-phone-dock { display: flex; flex-direction: column; min-width: 0; }
+.chat-phone-dock > .voice-call.voice-call--docked {
+  position: relative; inset: auto; top: auto; left: auto; right: auto; bottom: auto;
+  margin: 8px 10px; border-radius: var(--r-lg, 12px);
+}
+.chat-phone-dock > .voice-call .voice-waves { height: 30px; }
+.chat-phone-dock > .voice-call .voice-call__x { top: -6px; right: -6px; }
+
+/* Phone, browser expanded: the page under it doesn't scroll or move, and the
+   strip under the browser says what Anton needs from the person. */
+html.phone-browser-open, html.phone-browser-open body { overflow: hidden; overscroll-behavior: none; }
+.phone-browser-strip {
+  position: fixed; z-index: 71; left: 0; right: 0; top: var(--phone-browser-h, 76dvh); bottom: 0;
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 14px 0;
+  background: var(--bg); border-top: 1px solid var(--line);
+}
+.phone-browser-strip.is-asking { background: var(--surface); }
+.phone-browser-strip__text { flex: 1; min-width: 0; min-height: 40px; display: flex; align-items: center; gap: 10px; }
+.phone-browser-strip__text p {
+  flex: 1; min-width: 0; margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.phone-browser-strip.is-asking .phone-browser-strip__text p { color: var(--ink); }
+.phone-browser-strip .voice-orb { width: 40px; height: 40px; flex: none; }
+/* Starts a voice call from under the browser. */
+.phone-browser-strip__talk {
+  flex: none; display: inline-grid; place-items: center; width: 40px; height: 40px; padding: 0;
+  border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink);
+  cursor: pointer; transition: transform 160ms ease, background 160ms ease;
+}
+.phone-browser-strip__talk:active { transform: scale(.94); background: var(--surface-2); }
+body[data-skin="8bit"] .phone-browser-strip__talk { border: 2px solid var(--ink); border-radius: 0; }
+/* The composer stays, at the foot of the strip (above the keyboard while
+   typing), compact so the line above it still fits. */
+html.phone-browser-open .chat-floating-composer {
+  position: fixed; z-index: 72; left: 10px; right: 10px;
+  bottom: calc(var(--phone-keyboard, 0px) + max(8px, env(safe-area-inset-bottom, 0px)));
+}
+html.phone-browser-open .chat-floating-composer .composer-wrap { padding: 8px 10px 6px; }
+html.phone-browser-open .chat-floating-composer .composer-toolbar { padding-top: 2px; }
 /* Japanese (ENG-4149). Inter and JetBrains Mono have no kana or kanji, so
    name Japanese faces right after them: Latin text keeps the brand faces,
    Japanese text gets a Japanese face instead of whatever the OS falls back to
