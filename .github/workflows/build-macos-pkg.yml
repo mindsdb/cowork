@@ -59,12 +59,20 @@ on:
         required: true
       APPLE_DEV_ID_INSTALLER_CERT_PASSWORD:
         required: true
+      # Notarization uses the App Store Connect API key when it is set, and
+      # falls back to the Apple ID trio otherwise.
+      ASC_API_KEY_ID:
+        required: false
+      ASC_API_ISSUER_ID:
+        required: false
+      ASC_API_KEY_P8_B64:
+        required: false
       APPLE_ID:
-        required: true
+        required: false
       APPLE_APP_SPECIFIC_PASSWORD:
-        required: true
+        required: false
       APPLE_TEAM_ID:
-        required: true
+        required: false
       APPLE_INSTALLER_IDENTITY:
         required: true
       GOOGLE_DRIVE_CLIENT_ID:
@@ -259,6 +267,17 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Baking cowork-server floor $VERSION (build_kind=$BUILD_KIND)"
 
+      - name: Write the notarization API key
+        env:
+          ASC_API_KEY_P8_B64: ${{ secrets.ASC_API_KEY_P8_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "$ASC_API_KEY_P8_B64" ]; then
+            KEY_PATH="$RUNNER_TEMP/notary_api_key.p8"
+            printf '%s' "$ASC_API_KEY_P8_B64" | base64 --decode > "$KEY_PATH"
+            echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+          fi
+
       - name: Build, sign and notarize pkg
         env:
           CSC_FOR_PULL_REQUEST: "true"
@@ -268,6 +287,8 @@ jobs:
           GH_APPLE_ID: ${{ secrets.APPLE_ID }}
           GH_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           GH_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          APPLE_API_KEY_ISSUER: ${{ secrets.ASC_API_ISSUER_ID }}
           INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
           VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
           COWORK_SERVER_REF: ${{ inputs.server_ref }}
@@ -282,6 +303,10 @@ jobs:
           # Also consumed by run-electron-builder.mjs to resolve the shell update feed.
           COWORK_BUILD_KIND: ${{ inputs.build_kind }}
         run: npm run release:mac:pkg:notarized
+
+      - name: Remove the notarization API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/notary_api_key.p8"
 
       - name: Compute artifact name
         id: name
