@@ -946,6 +946,43 @@ describe('the isolated-world page read', () => {
     }));
   });
 
+  it("keeps an ordinary card's number a conjunction and an article join to an e-gift card's, and reads an identification card's number, or a card number an ID document, a contact or a checkout code joins to an identity, loyalty or gift card's, as ordinary, so a read, a type and a screenshot treat each as page.json's rule does", () => {
+    document.body.innerHTML = `
+      <input data-box id="egift-either" aria-label="Card or eGift card number" value="4111111111111111">
+      <input data-box id="article-either" aria-label="Card or a gift card number" value="4000056655665556">
+      <input data-box id="egift-split" name="cardOrEGiftCardNumber" aria-label="Tender" value="4012888888881881">
+      <input data-box id="egift" aria-label="eGift card number" value="6006 1111">
+      <input data-box id="identification" aria-label="State identification card number" value="S1234567">
+      <input data-box id="license-or-id" aria-label="Driver's license or ID card number" value="D7654321">
+      <input data-box id="phone-or-loyalty" aria-label="Phone number or loyalty card number" value="7777 0002">
+      <input data-box id="promo-or-gift" aria-label="Promo code or gift card number" value="6006 2222">`;
+    layout();
+    const world = freshWorld();
+    const page = snapshot(world);
+    const byName = Object.fromEntries(page.elements.map((e) => [e.name, e]));
+    for (const name of ['Card or eGift card number', 'Card or a gift card number', 'Tender']) {
+      expect(byName[name], name).toEqual({ id: byName[name].id, role: 'textbox', name, value_hidden: true });
+    }
+    expect(byName['eGift card number']).toMatchObject({ role: 'textbox', value: '6006 1111' });
+    expect(byName['State identification card number']).toMatchObject({ role: 'textbox', value: 'S1234567' });
+    expect(byName["Driver's license or ID card number"]).toMatchObject({ role: 'textbox', value: 'D7654321' });
+    expect(byName['Phone number or loyalty card number']).toMatchObject({ role: 'textbox', value: '7777 0002' });
+    expect(byName['Promo code or gift card number']).toMatchObject({ role: 'textbox', value: '6006 2222' });
+    expect(JSON.stringify(page)).not.toMatch(/4111111111111111|4000056655665556|4012888888881881/);
+    // A type with focused true reads the same rule where the focus rests.
+    const typing = (field: string) => {
+      (document.getElementById(field) as HTMLElement).focus();
+      return (pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping).cardNamed;
+    };
+    const fields = ['egift-either', 'article-either', 'egift-split', 'egift', 'identification', 'license-or-id', 'phone-or-loyalty', 'promo-or-gift'];
+    expect(fields.map(typing)).toEqual([true, true, true, false, false, false, false, false]);
+    // A screenshot blacks out the card-named fields, and no ordinary card's number.
+    expect(secretBoxes().secrets).toEqual(fields.slice(0, 3).map((field) => {
+      const { x, y, width, height } = document.getElementById(field)!.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+  });
+
   it("tests the card rule's payment pattern afresh on each field of a read, so the payment word one field's name held never hides the next field's", () => {
     /* PrePaid holds its payment word only before the word split, which reads
        it as Pre Paid. A payment pattern compiled with a g flag would test it
