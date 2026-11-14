@@ -63,7 +63,7 @@ describe('the custom connect form', () => {
     },
   );
 
-  it('offers Skip only on a field the template marks optional', () => {
+  it('requires every field and offers Skip on none, whatever the template says', () => {
     const spec = toCustomConnectSpec({
       ...SPEC,
       fields: [
@@ -73,11 +73,11 @@ describe('the custom connect form', () => {
       ],
     }, CHECK, 'Acme CRM');
 
-    expect(spec.fields.map((f) => [f.name, f.skipable])).toEqual([
-      [ADDRESS_FIELD, false],
-      ['api_key', false],
-      ['workspace', true],
-      ['region', false],
+    expect(spec.fields.map((f) => [f.name, f.required, f.skipable])).toEqual([
+      [ADDRESS_FIELD, true, false],
+      ['api_key', true, false],
+      ['workspace', true, false],
+      ['region', true, false],
     ]);
   });
 
