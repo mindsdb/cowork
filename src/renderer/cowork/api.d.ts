@@ -125,6 +125,25 @@ export interface SavedConnectorResult {
 
 export function fetchDatasources(): Promise<{ connections: ConnectorConnection[] }>;
 export function fetchConnector(id: string): Promise<ConnectorSpec>;
+export interface ConnectorDraftField {
+  name: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  placeholder?: string;
+  help?: string;
+}
+export interface ConnectorDraft {
+  connector_id: string;
+  label: string;
+  description?: string;
+  category?: string;
+  help_url?: string;
+  usage_notes?: string;
+  fields: ConnectorDraftField[];
+}
+export function saveConnectorDraft(draft: ConnectorDraft): Promise<unknown>;
+export function fetchConnectorDraftSaved(id: string): Promise<boolean | null>;
 export function fetchSavedConnection(engine: string, name: string): Promise<SavedConnectorConnection>;
 export function deleteDatasource(engine: string, name: string): Promise<unknown>;
 export function validateAndSaveConnector(

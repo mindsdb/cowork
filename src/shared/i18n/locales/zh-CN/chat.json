@@ -624,5 +624,28 @@
     "closedTitle": "此任务的浏览器已关闭",
     "closedDescription": "{agent} 需要时会重新打开它。",
     "squeezed": "放大窗口以查看页面"
+  },
+  "connectorDraft": {
+    "notSaved": "连接器模板 · 未保存",
+    "kept": "你已经有一个使用此 ID 的连接器。再次保存会替换它。",
+    "saved": "已保存。请在“连接应用和数据”中添加你的凭据。",
+    "saveFailed": "无法保存连接器。",
+    "button": {
+      "save": "保存连接器",
+      "saveAgain": "再次保存",
+      "saving": "正在保存…",
+      "done": "已保存"
+    },
+    "modal": {
+      "fieldsTitle": "你需要输入的内容",
+      "usageTitle": "Anton 将如何使用",
+      "helpUrl": "获取位置：{url}"
+    },
+    "field": {
+      "secret": "机密",
+      "required": "必填",
+      "optional": "可选",
+      "example": "示例：{value}"
+    }
   }
 }

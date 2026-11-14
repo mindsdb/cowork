@@ -1,0 +1,87 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+const api = vi.hoisted(() => ({
+  saveConnectorDraft: vi.fn(),
+  fetchConnectorDraftSaved: vi.fn(),
+}));
+vi.mock('../api', () => api);
+
+import ConnectorDraftCard from './ConnectorDraftCard';
+import drafted from '../lib/__fixtures__/connectorDrafted.json';
+
+const connector = drafted.connector;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  api.fetchConnectorDraftSaved.mockResolvedValue(false);
+  api.saveConnectorDraft.mockResolvedValue({});
+});
+
+describe('ConnectorDraftCard', () => {
+  it('saves the template as sent and points to Connect Apps and Data', async () => {
+    render(<ConnectorDraftCard connector={connector} />);
+    expect(screen.getByText('Connector template · not saved')).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save connector' }));
+
+    expect(api.saveConnectorDraft).toHaveBeenCalledWith(connector);
+    expect(await screen.findByText('Saved. Add your credentials in Connect Apps and Data.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Saved' }).disabled).toBe(true);
+  });
+
+  it.each([['Enter', '{Enter}'], ['Space', ' ']])('saves on %s from the Save button and leaves the details closed', async (_name, key) => {
+    render(<ConnectorDraftCard connector={connector} />);
+    screen.getByRole('button', { name: 'Save connector' }).focus();
+
+    await userEvent.keyboard(key);
+
+    expect(api.saveConnectorDraft).toHaveBeenCalledTimes(1);
+    expect(api.saveConnectorDraft).toHaveBeenCalledWith(connector);
+    expect(await screen.findByRole('button', { name: 'Saved' })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('shows the server refusal and lets the member try again', async () => {
+    api.saveConnectorDraft.mockRejectedValue(new Error('label looks like it holds a credential value.'));
+    render(<ConnectorDraftCard connector={connector} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save connector' }));
+
+    expect(await screen.findByText('label looks like it holds a credential value.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save connector' }).disabled).toBe(false);
+  });
+
+  it('lets the member replace a connector kept under the same id with this template', async () => {
+    api.fetchConnectorDraftSaved.mockResolvedValue(true);
+    const corrected = { ...connector, usage_notes: 'Base URL https://api.acme.example/v3.' };
+    render(<ConnectorDraftCard connector={corrected} />);
+
+    const button = await screen.findByRole('button', { name: 'Save again' });
+    expect(api.fetchConnectorDraftSaved).toHaveBeenCalledWith('acme_crm');
+    expect(screen.getByText('You already keep a connector with this id. Saving again replaces it.')).toBeTruthy();
+    expect(button.disabled).toBe(false);
+
+    await userEvent.click(button);
+
+    expect(api.saveConnectorDraft).toHaveBeenCalledWith(corrected);
+    expect(await screen.findByRole('button', { name: 'Saved' })).toBeTruthy();
+  });
+
+  it('shows every model-written text as plain text, the help address not as a link', async () => {
+    const marked = {
+      ...connector,
+      label: '**Acme** [crm](https://evil.example)',
+      usage_notes: '<img src=x onerror=alert(1)> **bold**',
+    };
+    render(<ConnectorDraftCard connector={marked} />);
+    await userEvent.click(screen.getByText(marked.label));
+
+    expect(screen.getAllByText(marked.label).length).toBeGreaterThan(0);
+    expect(screen.getByText(marked.usage_notes)).toBeTruthy();
+    expect(screen.getByText(`Where to find them: ${connector.help_url}`)).toBeTruthy();
+    expect(document.querySelector('a')).toBeNull();
+    expect(document.querySelector('img')).toBeNull();
+  });
+});
