@@ -115,6 +115,7 @@ describe('ConnectorPicker grouping', () => {
     fireEvent.click(within(desktop).getByText('Slack'));
     expect(onDesktopOnly).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'slack' }),
+      { customMatch: null, canBuild: false },
     );
     expect(onPick).not.toHaveBeenCalled();
   });

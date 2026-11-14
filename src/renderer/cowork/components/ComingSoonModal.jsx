@@ -17,7 +17,9 @@ import { useTranslation } from '../../lib/i18n';
 // for attribution.
 const DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-web';
 
-export default function ComingSoonModal({ feature, onClose }) {
+// `offer`, when set, replaces the download with a way to connect the API now:
+// { label, onAccept }, worded by the caller.
+export default function ComingSoonModal({ feature, onClose, offer = null }) {
   const { t } = useTranslation('shell');
   return (
     <Modal
@@ -34,7 +36,9 @@ export default function ComingSoonModal({ feature, onClose }) {
       <ModalBody>
         <p className="s-body">
           {PLATFORM_UI
-            ? (feature ? t('comingSoon.cloudBodyNamed', { feature }) : t('comingSoon.cloudBody'))
+            ? (offer
+              ? `${feature || 'This feature'} isn’t available on Cloud just yet. You can connect it now as a custom connector.`
+              : (feature ? t('comingSoon.cloudBodyNamed', { feature }) : t('comingSoon.cloudBody')))
             : (feature ? t('comingSoon.unavailableBodyNamed', { feature }) : t('comingSoon.unavailableBody'))}
         </p>
       </ModalBody>
@@ -48,15 +52,27 @@ export default function ComingSoonModal({ feature, onClose }) {
             </Button>
           )}
         >
-          <Button
-            variant="primary"
-            onClick={() => {
-              host.openExternal(DOWNLOAD_URL);
-              onClose();
-            }}
-          >
-            {t('comingSoon.download')}
-          </Button>
+          {offer ? (
+            <Button
+              variant="primary"
+              onClick={() => {
+                onClose();
+                offer.onAccept();
+              }}
+            >
+              {offer.label}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={() => {
+                host.openExternal(DOWNLOAD_URL);
+                onClose();
+              }}
+            >
+              {t('comingSoon.download')}
+            </Button>
+          )}
         </ModalFooter>
       ) : (
         <ModalFooter>

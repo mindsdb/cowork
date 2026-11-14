@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   ADDRESS_FIELD,
   keySentAs,
   connectSpecFor,
+  desktopOnlyOffer,
   mayConnectThroughChat,
   customConnectPayload,
   describeConnectFailure,
@@ -73,6 +74,7 @@ describe('the custom connect form', () => {
 
     expect(spec.fields).toEqual([]);
     expect(spec.form_warning).toMatch(/no connection check, so it cannot be connected/);
+    expect(spec.form_warning).toMatch(/if it takes none, Anton can use it without a connector/);
     expect(spec._custom_connect.hasCheck).toBe(false);
     expect(spec.actions).toEqual([{ id: 'cancel', label: 'Close', kind: 'cancel' }]);
   });
@@ -200,5 +202,38 @@ describe('a connector whose form could not be loaded', () => {
   it('may still fall back for any other connector, and on desktop', () => {
     expect(mayConnectThroughChat({ orgMode: true, connector: { id: 'gmail' } })).toBe(true);
     expect(mayConnectThroughChat({ orgMode: false, connector: { id: 'acme_crm', custom: true } })).toBe(true);
+  });
+});
+
+describe('the offer for a connector cloud does not run yet', () => {
+  const HASDATA_CUSTOM = { id: 'hasdata_custom', label: 'HasData', custom: true };
+
+  it("connects the member's own custom one first", () => {
+    const connect = vi.fn();
+    const build = vi.fn();
+    const offer = desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: HASDATA_CUSTOM, canBuild: true, connect, build });
+
+    expect(offer.label).toBe('Connect your custom HasData');
+    offer.onAccept();
+    expect(connect).toHaveBeenCalledWith(HASDATA_CUSTOM);
+    expect(build).not.toHaveBeenCalled();
+  });
+
+  it('offers to build one, naming the connector, when there is none', () => {
+    const build = vi.fn();
+    const offer = desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: null, canBuild: true, connect: vi.fn(), build });
+
+    expect(offer.label).toBe('Build a custom connector');
+    offer.onAccept();
+    expect(build).toHaveBeenCalledWith('HasData');
+  });
+
+  it('offers nothing for SharePoint, which has its own form', () => {
+    const custom = { id: 'sharepoint_custom', label: 'SharePoint', custom: true };
+    expect(desktopOnlyOffer({ connector: { id: 'sharepoint', label: 'SharePoint' }, customMatch: custom, canBuild: true, connect: vi.fn(), build: vi.fn() })).toBeNull();
+  });
+
+  it('offers nothing when no custom one exists and none can be built', () => {
+    expect(desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: null, canBuild: false, connect: vi.fn(), build: vi.fn() })).toBeNull();
   });
 });

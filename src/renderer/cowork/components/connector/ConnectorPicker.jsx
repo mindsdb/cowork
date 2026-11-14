@@ -248,6 +248,14 @@ function BuildCustomTile({ onBuildCustom }) {
   );
 }
 
+// The member's own template for a connector cloud doesn't offer: cowork-server
+// gives it the built-in's id plus `_custom` (custom_id_for).
+export function customMatchFor(connectors, connector) {
+  if (!connector?.id) return null;
+  const id = `${connector.id}_custom`;
+  return (connectors || []).find((c) => c?.custom && c.id === id) || null;
+}
+
 // Substring match across the metadata a user sees: label, description,
 // category and aliases. `q` is already lowercased.
 function matchesSearch(connector, q) {
@@ -490,6 +498,12 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
                   : t('connectorPicker.noneAvailable')}
             </div>
           ))}
+          {/* First, so a member who doesn't find their system sees the way to add it without scrolling. */}
+          {canBuildCustom && !loading && !error && !(trimmedQuery && filtered.length === 0) && (
+            <div className={`${GRID} mb-6`}>
+              <BuildCustomTile onBuildCustom={onBuildCustom} />
+            </div>
+          )}
           {/* Body — two modes:
                 • sortBy=default → Featured section first (when not
                   searching/filtering), then category sections.
@@ -550,16 +564,15 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
               ))}
             </>
           )}
-          {canBuildCustom && !loading && !error && !(trimmedQuery && filtered.length === 0) && (
-            <div className={GRID}>
-              <BuildCustomTile onBuildCustom={onBuildCustom} />
-            </div>
-          )}
           {PLATFORM_UI && <ConnectorSection
             title={t('connectorPicker.desktopOnly')}
             count={desktopOnly.length}
             connectors={desktopOnly}
-            onPick={onDesktopOnly}
+            onPick={(connector) => onDesktopOnly?.(connector, {
+              customMatch: customMatchFor(connectors, connector),
+              // Only a key or token API can be stood in for by a custom connector.
+              canBuild: canBuildCustom && Boolean(connector?.api_key),
+            })}
           />}
         </ModalBody>
     </Modal>
