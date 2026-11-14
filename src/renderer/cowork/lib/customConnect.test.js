@@ -6,6 +6,7 @@ import {
   connectSpecFor,
   desktopOnlyOffer,
   mayConnectThroughChat,
+  connectSuccessSubtitle,
   customConnectPayload,
   describeConnectFailure,
   isCustomConnectionRow,
@@ -63,7 +64,7 @@ describe('the custom connect form', () => {
     },
   );
 
-  it('requires every field and offers Skip on none, whatever the template says', () => {
+  it('keeps a field the template marks optional optional with Skip, and requires every other', () => {
     const spec = toCustomConnectSpec({
       ...SPEC,
       fields: [
@@ -76,7 +77,7 @@ describe('the custom connect form', () => {
     expect(spec.fields.map((f) => [f.name, f.required, f.skipable])).toEqual([
       [ADDRESS_FIELD, true, false],
       ['api_key', true, false],
-      ['workspace', true, false],
+      ['workspace', false, true],
       ['region', true, false],
     ]);
   });
@@ -115,6 +116,17 @@ describe('the connect request', () => {
 });
 
 describe('a refused connect', () => {
+  it('says the public check path did not answer and that no key was sent', () => {
+    const err = Object.assign(new Error(''), {
+      code: 'public_check_failed',
+      body: { detail: { code: 'public_check_failed', provider_status: 404, excerpt: '' } },
+    });
+
+    expect(describeConnectFailure(err)).toBe(
+      'The public check path did not answer, and no key was sent. Check the address, or connect with a key. The provider answered 404.',
+    );
+  });
+
   it('names a failed check and shows the provider status and excerpt as text', () => {
     const err = Object.assign(new Error(''), {
       code: 'authentication_failed',
@@ -253,5 +265,38 @@ describe('the offer for a connector cloud does not run yet', () => {
 
   it('offers nothing when no custom one exists and none can be built', () => {
     expect(desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: null, canBuild: false, connect: vi.fn(), build: vi.fn() })).toBeNull();
+  });
+});
+
+describe('the success screen after a connect', () => {
+  const optionalSpec = toCustomConnectSpec({
+    ...SPEC,
+    fields: [{ name: 'api_key', label: 'API key', type: 'password', secret: true, required: false }],
+  }, CHECK, 'Acme CRM');
+
+  it('says the check proved only that the API answers when every optional field was skipped', () => {
+    expect(connectSuccessSubtitle(optionalSpec, {}, ['api_key'])).toMatch(/proved only that the API answers, not that a key works/);
+  });
+
+  it('keeps the plain message when the optional key was entered', () => {
+    expect(connectSuccessSubtitle(optionalSpec, { api_key: 'k' }, [])).toMatch(/your credentials are stored/);
+  });
+
+  it('keeps the plain message when only some optional fields were skipped', () => {
+    const two = toCustomConnectSpec({
+      ...SPEC,
+      fields: [
+        { name: 'api_key', label: 'API key', type: 'password', secret: true, required: false },
+        { name: 'token', label: 'Token', type: 'password', secret: true, required: false },
+      ],
+    }, CHECK, 'Acme CRM');
+
+    expect(connectSuccessSubtitle(two, { token: 't' }, ['api_key'])).toMatch(/your credentials are stored/);
+  });
+
+  it('keeps the plain message when the form had no optional field', () => {
+    const required = toCustomConnectSpec(SPEC, CHECK, 'Acme CRM');
+
+    expect(connectSuccessSubtitle(required, { api_key: 'k' }, [])).toMatch(/your credentials are stored/);
   });
 });
