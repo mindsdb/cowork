@@ -69,7 +69,7 @@ describe('the custom connect form', () => {
       ...SPEC,
       fields: [
         ...SPEC.fields,
-        { name: 'workspace', label: 'Workspace', type: 'text', secret: false, required: false },
+        { name: 'workspace', label: 'Workspace', type: 'password', secret: true, required: false },
         { name: 'region', label: 'Region', type: 'text', secret: false },
       ],
     }, CHECK, 'Acme CRM');
@@ -80,6 +80,15 @@ describe('the custom connect form', () => {
       ['workspace', false, true],
       ['region', true, false],
     ]);
+  });
+
+  it('requires an optional field that is not secret', () => {
+    const spec = toCustomConnectSpec({
+      ...SPEC,
+      fields: [{ name: 'workspace', label: 'Workspace', type: 'text', secret: false, required: false }],
+    }, CHECK, 'Acme CRM');
+
+    expect(spec.fields.find((f) => f.name === 'workspace')).toMatchObject({ required: true, skipable: false });
   });
 
   it('says nothing of the key when the template cannot be connected', () => {
@@ -108,6 +117,12 @@ describe('the connect request', () => {
     });
   });
 
+  it('leaves a blank value out of the payload', () => {
+    const values = { [ADDRESS_FIELD]: 'api.acme.example', api_key: '   ' };
+
+    expect(customConnectPayload(values, 'Acme').values).toEqual({});
+  });
+
   it('keeps a template field whatever its name; the connection name travels apart', () => {
     const values = { [ADDRESS_FIELD]: 'api.acme.example', api_key: 'k', user_label: 'tenant-7' };
 
@@ -116,6 +131,15 @@ describe('the connect request', () => {
 });
 
 describe('a refused connect', () => {
+  it('shows no excerpt for a failed public check, even when the server sends one', () => {
+    const err = Object.assign(new Error(''), {
+      code: 'public_check_failed',
+      body: { detail: { code: 'public_check_failed', provider_status: 500, excerpt: 'secret-looking body' } },
+    });
+
+    expect(describeConnectFailure(err)).not.toMatch(/It said/);
+  });
+
   it('says the public check path did not answer and that no key was sent', () => {
     const err = Object.assign(new Error(''), {
       code: 'public_check_failed',
@@ -269,6 +293,39 @@ describe('the offer for a connector cloud does not run yet', () => {
 });
 
 describe('the success screen after a connect', () => {
+  const basicSpec = toCustomConnectSpec({
+    ...SPEC,
+    fields: [
+      { name: 'username', label: 'Username', type: 'password', secret: true, required: true },
+      { name: 'password', label: 'Password', type: 'password', secret: true, required: false },
+    ],
+  }, CHECK, 'Acme CRM');
+
+  it('keeps the plain message when a required secret was entered beside a skipped password', () => {
+    expect(connectSuccessSubtitle(basicSpec, { username: 'u' }, ['password'])).toMatch(/your credentials are stored/);
+  });
+
+  it('keeps the plain message when a required org token was entered beside a skipped api key', () => {
+    const spec = toCustomConnectSpec({
+      ...SPEC,
+      fields: [
+        { name: 'org_token', label: 'Org token', type: 'password', secret: true, required: true },
+        { name: 'api_key', label: 'API key', type: 'password', secret: true, required: false },
+      ],
+    }, CHECK, 'Acme CRM');
+
+    expect(connectSuccessSubtitle(spec, { org_token: 't' }, ['api_key'])).toMatch(/your credentials are stored/);
+  });
+
+  it('counts a blank optional value as skipped', () => {
+    const spec = toCustomConnectSpec({
+      ...SPEC,
+      fields: [{ name: 'api_key', label: 'API key', type: 'password', secret: true, required: false }],
+    }, CHECK, 'Acme CRM');
+
+    expect(connectSuccessSubtitle(spec, { api_key: '   ' }, [])).toMatch(/proved only that the API answers/);
+  });
+
   const optionalSpec = toCustomConnectSpec({
     ...SPEC,
     fields: [{ name: 'api_key', label: 'API key', type: 'password', secret: true, required: false }],
