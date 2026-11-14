@@ -629,12 +629,14 @@
     "notSaved": "Plantilla de conector · sin guardar",
     "kept": "Ya tienes un conector con este id. Guardar de nuevo lo reemplaza.",
     "saved": "Guardado. Agrega tus credenciales en Conectar apps y datos.",
+    "savedConnect": "Guardado. Conéctalo para agregar tus credenciales.",
     "saveFailed": "No se pudo guardar el conector.",
     "button": {
       "save": "Guardar conector",
       "saveAgain": "Guardar de nuevo",
       "saving": "Guardando…",
-      "done": "Guardado"
+      "done": "Guardado",
+      "connect": "Conectar"
     },
     "modal": {
       "fieldsTitle": "Lo que vas a ingresar",

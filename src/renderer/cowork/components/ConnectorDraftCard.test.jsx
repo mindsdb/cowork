@@ -31,6 +31,19 @@ describe('ConnectorDraftCard', () => {
     expect(screen.getByRole('button', { name: 'Saved' }).disabled).toBe(true);
   });
 
+  it('offers Connect once saved, which opens the connector without saving again', async () => {
+    const onConnect = vi.fn();
+    render(<ConnectorDraftCard connector={connector} onConnect={onConnect} />);
+    expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save connector' }));
+    expect(await screen.findByText('Saved. Connect it to add your credentials.')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(onConnect).toHaveBeenCalledWith({ id: 'acme_crm', label: connector.label, custom: true });
+    expect(api.saveConnectorDraft).toHaveBeenCalledTimes(1);
+  });
+
   it.each([['Enter', '{Enter}'], ['Space', ' ']])('saves on %s from the Save button and leaves the details closed', async (_name, key) => {
     render(<ConnectorDraftCard connector={connector} />);
     screen.getByRole('button', { name: 'Save connector' }).focus();
@@ -40,6 +53,18 @@ describe('ConnectorDraftCard', () => {
     expect(api.saveConnectorDraft).toHaveBeenCalledTimes(1);
     expect(api.saveConnectorDraft).toHaveBeenCalledWith(connector);
     expect(await screen.findByRole('button', { name: 'Saved' })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('connects on Enter from the Connect button without opening the details', async () => {
+    const onConnect = vi.fn();
+    render(<ConnectorDraftCard connector={connector} onConnect={onConnect} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Save connector' }));
+    screen.getByRole('button', { name: 'Connect' }).focus();
+
+    await userEvent.keyboard('{Enter}');
+
+    expect(onConnect).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 

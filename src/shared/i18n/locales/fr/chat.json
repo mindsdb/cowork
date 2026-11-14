@@ -629,12 +629,14 @@
     "notSaved": "Modèle de connecteur · non enregistré",
     "kept": "Vous avez déjà un connecteur avec cet id. L’enregistrer à nouveau le remplace.",
     "saved": "Enregistré. Ajoutez vos identifiants dans Connecter des applications et des données.",
+    "savedConnect": "Enregistré. Connectez-le pour ajouter vos identifiants.",
     "saveFailed": "Impossible d’enregistrer le connecteur.",
     "button": {
       "save": "Enregistrer le connecteur",
       "saveAgain": "Enregistrer à nouveau",
       "saving": "Enregistrement…",
-      "done": "Enregistré"
+      "done": "Enregistré",
+      "connect": "Connecter"
     },
     "modal": {
       "fieldsTitle": "Ce que vous allez saisir",

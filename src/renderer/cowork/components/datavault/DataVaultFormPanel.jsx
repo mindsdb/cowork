@@ -26,7 +26,8 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { allowConnectorTestHost, cancelConnectorTest, confirmConnectorTest, createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, fetchSubmissionReplaces, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { allowConnectorTestHost, cancelConnectorTest, confirmConnectorTest, connectCustomConnector, createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, fetchSubmissionReplaces, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { customConnectPayload, describeConnectFailure } from '../../lib/customConnect';
 import { buildDatasourcePayload, describeConnectionState } from '../../lib/datasourceSubmission';
 import { host } from '../../../platform/host';
 import { PLATFORM_UI } from '../../../lib/deployment';
@@ -242,6 +243,38 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         onNavigateToConnectors?.();
       }
       handleClose();
+      return;
+    }
+
+    // A custom connector connects through its own check, never through the
+    // chat: Cancel only closes the panel and nothing reaches the turn.
+    if (spec._custom_connect) {
+      if (kind === 'cancel') {
+        handleClose();
+        return;
+      }
+      setBusy(true);
+      try {
+        const connection = await connectCustomConnector(
+          spec._custom_connect.connectorId,
+          customConnectPayload(values, userLabel.trim() || spec._custom_connect.label),
+        );
+        patchForm(conversationId, {
+          form_id: spec.form_id,
+          _is_probing: false,
+          form_error: '',
+          _is_success: true,
+          // The form's Connect and Cancel would override the success screen's own buttons.
+          actions: null,
+          title: `Connected ${connection?.name || spec._custom_connect.label}`,
+          subtitle: 'The check passed and your credentials are stored. You can see them in Connect Apps and Data.',
+        });
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      } catch (e) {
+        patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: describeConnectFailure(e) });
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 

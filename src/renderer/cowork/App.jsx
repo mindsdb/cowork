@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
-import { toCloudSpec } from './lib/cloudConnectorSpec';
+import { connectSpecFor, mayConnectThroughChat } from './lib/customConnect';
 import { toDatasourceRows } from './lib/datasourceConnectionRows';
 import { buildCustomConnectorRequest } from './lib/customConnectorRequest';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
@@ -3231,13 +3231,22 @@ function AppCore() {
     const label = full?.label || connector.label || connector.id;
     const tempId = 'tmp-connect-' + Date.now();
     const hasLiteralForm = !!(full && full.form);
+    const chatBlocked = !hasLiteralForm && !mayConnectThroughChat({ orgMode, connector });
 
     setTasks((prev) => [{
       id: tempId,
       title: tApp('connect.taskTitle', { name: label }),
       subtitle: tApp('common.justNow'),
-      status: hasLiteralForm ? 'idle' : 'active',
-      messages: hasLiteralForm
+      status: hasLiteralForm || chatBlocked ? 'idle' : 'active',
+      messages: chatBlocked
+        ? [
+            {
+              role: 'assistant',
+              content: `Could not open ${label}. Try again from Connect Apps and Data.`,
+              _client_only: true,
+            },
+          ]
+        : hasLiteralForm
         ? [
             {
               role: 'assistant',
@@ -3306,7 +3315,7 @@ function AppCore() {
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
       };
-      const connectSpec = orgMode ? toCloudSpec(baseSpec, editingConnection) : baseSpec;
+      const connectSpec = connectSpecFor({ full, baseSpec, label, orgMode, editingConnection });
       setDataVaultForm(tempId, connectSpec);
       // Remember where to return if the user closes the connect modal
       // before actually connecting — the connect task above is throwaway
@@ -3321,7 +3330,7 @@ function AppCore() {
           m && m._kind === 'connect_intro' ? { ...m, _form_spec: connectSpec } : m
         ),
       }));
-    } else {
+    } else if (!chatBlocked) {
       // No registry entry — fall back to the chat-agent flow. This IS a real
       // connect attempt (anton drives it), so there's no throwaway task to
       // return from.
@@ -6410,6 +6419,7 @@ function AppCore() {
             onStop={() => handleStopStream({ taskId: currentTask?.id })}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
+            onConnectCustomConnector={(connector) => { void handleConnectorPicked(connector); }}
             onDismissConnectForm={handleConnectFormDismiss}
             onCancelModify={handleCancelModify}
             onDisconnectModify={handleDisconnectFromModify}

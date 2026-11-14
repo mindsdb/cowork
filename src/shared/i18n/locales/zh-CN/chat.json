@@ -629,12 +629,14 @@
     "notSaved": "连接器模板 · 未保存",
     "kept": "你已经有一个使用此 ID 的连接器。再次保存会替换它。",
     "saved": "已保存。请在“连接应用和数据”中添加你的凭据。",
+    "savedConnect": "已保存。连接它以添加你的凭据。",
     "saveFailed": "无法保存连接器。",
     "button": {
       "save": "保存连接器",
       "saveAgain": "再次保存",
       "saving": "正在保存…",
-      "done": "已保存"
+      "done": "已保存",
+      "connect": "连接"
     },
     "modal": {
       "fieldsTitle": "你需要输入的内容",

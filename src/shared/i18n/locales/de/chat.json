@@ -629,12 +629,14 @@
     "notSaved": "Connector-Vorlage · nicht gespeichert",
     "kept": "Sie haben bereits einen Connector mit dieser ID. Erneutes Speichern ersetzt ihn.",
     "saved": "Gespeichert. Fügen Sie Ihre Zugangsdaten unter „Apps und Daten verbinden“ hinzu.",
+    "savedConnect": "Gespeichert. Verbinden Sie ihn, um Ihre Zugangsdaten hinzuzufügen.",
     "saveFailed": "Der Connector konnte nicht gespeichert werden.",
     "button": {
       "save": "Connector speichern",
       "saveAgain": "Erneut speichern",
       "saving": "Wird gespeichert…",
-      "done": "Gespeichert"
+      "done": "Gespeichert",
+      "connect": "Verbinden"
     },
     "modal": {
       "fieldsTitle": "Was Sie eingeben",
