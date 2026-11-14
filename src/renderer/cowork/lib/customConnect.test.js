@@ -63,6 +63,24 @@ describe('the custom connect form', () => {
     },
   );
 
+  it('offers Skip only on a field the template marks optional', () => {
+    const spec = toCustomConnectSpec({
+      ...SPEC,
+      fields: [
+        ...SPEC.fields,
+        { name: 'workspace', label: 'Workspace', type: 'text', secret: false, required: false },
+        { name: 'region', label: 'Region', type: 'text', secret: false },
+      ],
+    }, CHECK, 'Acme CRM');
+
+    expect(spec.fields.map((f) => [f.name, f.skipable])).toEqual([
+      [ADDRESS_FIELD, false],
+      ['api_key', false],
+      ['workspace', true],
+      ['region', false],
+    ]);
+  });
+
   it('says nothing of the key when the template cannot be connected', () => {
     const spec = toCustomConnectSpec(SPEC, null, 'Acme CRM', { type: 'header', names: ['X-Api-Key'] });
 
