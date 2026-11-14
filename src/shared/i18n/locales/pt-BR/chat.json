@@ -624,5 +624,16 @@
     "closedTitle": "O navegador desta tarefa está fechado",
     "closedDescription": "{agent} o abre de novo quando precisar.",
     "squeezed": "Aumente a janela para ver a página"
+  },
+  "notionPicker": {
+    "title": "Adicionar páginas do Notion",
+    "subtitle": "Pesquise no seu Notion e escolha páginas para esta mensagem.",
+    "searchPlaceholder": "Pesquisar páginas do Notion…",
+    "searchAriaLabel": "Pesquisar páginas do Notion",
+    "minQuery": "{count, plural, one {Digite pelo menos # caractere para pesquisar.} other {Digite pelo menos # caracteres para pesquisar.}}",
+    "noResults": "Nenhuma página encontrada.",
+    "database": "Banco de dados",
+    "cancel": "Cancelar",
+    "add": "{count, plural, =0 {Adicionar página} one {Adicionar página} other {Adicionar # páginas}}"
   }
 }

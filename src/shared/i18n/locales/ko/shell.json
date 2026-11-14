@@ -53,6 +53,8 @@
       "openNamedInDrive": "Google Drive에서 ‘{name}’ 열기",
       "untitled": "제목 없음",
       "openInDrive": "Google Drive에서 열기",
+      "openNamedInNotion": "Notion에서 ‘{name}’ 열기",
+      "openInNotion": "Notion에서 열기",
       "removeFromProjectFiles": "프로젝트 파일에서 제거",
       "removeFromProjectFilesAriaLabel": "프로젝트 파일에서 {name} 제거",
       "loadAttachmentsFailed": "첨부 파일을 불러오지 못했습니다",

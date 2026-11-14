@@ -16,6 +16,7 @@ import { isAntonConfigError } from './lib/antonErrors';
 import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
+import { withoutNotionPageNotes, stripNotionPageNoteFromTitle } from './lib/notionPageNote';
 import { currentServerLocale } from '../lib/i18n';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
@@ -363,7 +364,7 @@ function _failedEventMeta(events) {
 function _hydrateAssistantEvents(messages) {
   if (!Array.isArray(messages)) return messages || [];
   const out = [];
-  for (const m of messages) {
+  for (const m of withoutNotionPageNotes(messages)) {
     if (m?.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
       out.push(m);
       continue;
@@ -450,7 +451,7 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
      names. */
   return {
     id: conv.id,
-    title: conv.title || conv.preview || conv.id || 'Untitled task',
+    title: stripNotionPageNoteFromTitle(conv.title || conv.preview) || conv.id || 'Untitled task',
     // The server sends no subtitle. A row ages from updatedAt when it renders;
     // an age stamped here goes stale, and chatTaskRow shows it as a second line.
     subtitle: '',
@@ -674,7 +675,7 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
   try {
     const raw = await req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }), { timeoutMs });
     const page = _pageFromItemsResponse(raw);
-    return { messages: page.items, hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
+    return { messages: withoutNotionPageNotes(page.items), hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
   } catch {
     return null;
   }
@@ -2441,6 +2442,17 @@ export async function deleteDatasource(engine, name) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
+// Merges entries into a connection's persisted `_picked_files` list and
+// returns the merged list. Drive saves through host.pickDriveFiles; Notion
+// pages call this directly, since there is no picker grant to record.
+export async function savePickedFiles(engine, name, files) {
+  const data = await req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files`, {
+    method: 'PATCH',
+    body: JSON.stringify({ files }),
+  });
+  return Array.isArray(data?.files) ? data.files : [];
+}
+
 // Untags one file from `project` in a connection's persisted
 // `_picked_files` grant — the "un-pick" counterpart to the PATCH the
 // Google Picker flow calls. Used by the Project files rail to remove a
@@ -2449,6 +2461,27 @@ export async function deleteDatasource(engine, name) {
 export async function deletePickedFile(engine, name, fileId, project) {
   const qs = new URLSearchParams({ project });
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
+}
+
+// Pages and databases matching `query` in one Notion connection's workspace,
+// for the chat's "Add pages from Notion" picker.
+export async function searchNotionPages(name, query, { signal } = {}) {
+  const data = await req('/connectors/notion/search', {
+    method: 'POST',
+    body: JSON.stringify({ name, query }),
+    signal,
+  });
+  return Array.isArray(data?.results) ? data.results : [];
+}
+
+// A picked page's title and text (capped server-side; `truncated` says so),
+// sent with the chat message so the agent doesn't have to fetch it itself.
+export async function fetchNotionPage(name, page, { signal } = {}) {
+  return req('/connectors/notion/fetch', {
+    method: 'POST',
+    body: JSON.stringify({ name, page }),
+    signal,
+  });
 }
 
 // Modify-flow read: returns the saved connection as

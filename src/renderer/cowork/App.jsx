@@ -70,6 +70,8 @@ import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useNotionPagePicker } from './hooks/useNotionPagePicker';
+import NotionPagePickerModal from './components/NotionPagePickerModal';
 import { useAccountUser } from './hooks/useAccountUser';
 import { LiveAppAvailabilityWatcher } from './hooks/useLiveAppAvailability';
 import { skillScopeKey } from './lib/accountUser';
@@ -112,6 +114,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
          SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
+import { describeNotionReferencePages, loadNotionPageTexts } from './lib/notionReferencePages';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
@@ -241,9 +244,10 @@ function isPendingFileAttachment(a) {
 // directly via the connector's persisted `_picked_files` grant (see
 // cowork-server's harness integration_guidance), independent of any one
 // message. The chip is a visual confirmation only, so it must never be
-// resolved to an upload or sent as a real attachment id.
+// resolved to an upload or sent as a real attachment id. Notion pages work the
+// same way: the agent reads them with its notion-fetch tool.
 function isReferenceOnlyAttachment(a) {
-  return !!(a && a.source === 'gdrive');
+  return !!(a && (a.source === 'gdrive' || a.source === 'notion'));
 }
 
 // Activation gate (ENG-736): fire from the chat send/reply terminal handlers,
@@ -481,14 +485,20 @@ async function resolveComposerAttachmentsForSend(projectName, sessionId, attachm
 // one of them. Named explicitly here so Anton can resolve the
 // reference — same hidden-context pattern as describeConnectFormState.
 function describeGoogleDriveReferenceFiles(reference) {
-  if (!reference?.length) return '';
-  const lines = reference.map((f) => `- ${f.name || 'untitled'} (Drive file id: ${f.driveFileId || f.id})`);
+  const drive = (reference || []).filter((a) => a.source === 'gdrive');
+  if (!drive.length) return '';
+  const lines = drive.map((f) => `- ${f.name || 'untitled'} (Drive file id: ${f.driveFileId || f.id})`);
   return [
     '[Google Drive files added via the picker for this message — Anton-only context, do not echo back]',
     'The user just added the following Google Drive file(s). When they refer to "this file"/"these files" '
       + 'in the message above, they mean these — read them with files.get(fileId=...):',
     ...lines,
   ].join('\n');
+}
+
+function describeReferenceAttachments(reference, notionTexts) {
+  return [describeGoogleDriveReferenceFiles(reference), describeNotionReferencePages(reference, notionTexts)]
+    .filter(Boolean).join('\n\n');
 }
 
 const ACCENT_VARS = {
@@ -3349,6 +3359,18 @@ function AppCore() {
     setRoute,
   });
 
+  const {
+    notionPicker,
+    notionConnectPrompt,
+    resolveNotionPicker,
+    cancelNotionPicker,
+    confirmNotionConnect,
+    cancelNotionConnect,
+    handleAddNotionPages,
+    handleAddNotionProjectPages,
+    fetchNotionProjectPages,
+    removeNotionProjectPage,
+  } = useNotionPagePicker({ selectedProject, setComposerAttachments });
   const { startSharePointImport, sharePointModals } = useSharePointImport({
     connections: connectors,
     projects,
@@ -3862,7 +3884,8 @@ function AppCore() {
       hasPendingFiles ? taskId : null,
       rawComposer,
     );
-    const sendText = reference.length ? `${text}\n\n${describeGoogleDriveReferenceFiles(reference)}` : text;
+    const notionTexts = await loadNotionPageTexts(reference);
+    const sendText = reference.length ? `${text}\n\n${describeReferenceAttachments(reference, notionTexts)}` : text;
     setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
@@ -4160,6 +4183,21 @@ function AppCore() {
   // repair), so analytics can tell it from one they typed.
   const sendFromApp = (text, meta) => sendWithStartVia('app', () => handleSendFromHome(text, meta));
 
+  // The home composer clears only once a send resolves, which can take ~10s
+  // while attached Notion pages load, so a second Enter would open a second
+  // chat with the same text. The Composer itself can't guard this: one
+  // Composer serves every chat, and other chats must still queue meanwhile.
+  const homeComposerSendingRef = useRef(false);
+  const sendFromHomeComposer = async (text, meta) => {
+    if (homeComposerSendingRef.current) return false;
+    homeComposerSendingRef.current = true;
+    try {
+      return await handleSendFromHome(text, meta);
+    } finally {
+      homeComposerSendingRef.current = false;
+    }
+  };
+
   // Send inside an existing task
   //
   // Answers `true` when the text is on its way — a stream started, or it was
@@ -4398,9 +4436,9 @@ function AppCore() {
     // collapses to null, so it sends no effort.
     const taskEffort = (opts.effortOverride ?? targetTask.reasoningEffort) || null;
 
-    let sendingAttachments, attachmentIds, driveReference;
+    let sendingAttachments, attachmentIds, referenceAttachments;
     try {
-      ({ merged: sendingAttachments, attachmentIds, reference: driveReference } = await resolveComposerAttachmentsForSend(
+      ({ merged: sendingAttachments, attachmentIds, reference: referenceAttachments } = await resolveComposerAttachmentsForSend(
         taskProjectName,
         id,
         // A drained queued item carries its own attachments; only a
@@ -4434,6 +4472,9 @@ function AppCore() {
       });
       throw err;
     }
+    // Before the Thinking placeholder: its Stop button can't cancel this
+    // wait, and the turn would start once it ended.
+    const notionTexts = await loadNotionPageTexts(referenceAttachments);
 
     setTasks((prev) => prev.map((t) =>
       t.id === id
@@ -4518,8 +4559,8 @@ function AppCore() {
      // keeps the original text — Anton-only context, never shown.
     const connectFormState = getDataVaultFormState(id);
     const connectContext = describeConnectFormState(connectFormState);
-    const driveContext = describeGoogleDriveReferenceFiles(driveReference);
-    const hiddenContext = [connectContext, driveContext].filter(Boolean).join('\n\n');
+    const referenceContext = describeReferenceAttachments(referenceAttachments, notionTexts);
+    const hiddenContext = [connectContext, referenceContext].filter(Boolean).join('\n\n');
     const sendText = hiddenContext ? `${text}\n\n${hiddenContext}` : text;
 
     // Tag this task as currently streaming so reconcileTaskMessages
@@ -6299,7 +6340,7 @@ function AppCore() {
             activeTasks={activeTasks}
             onSelectTask={selectTask}
             onClearActive={clearActive}
-            onSend={handleSendFromHome}
+            onSend={sendFromHomeComposer}
             project={canRunProject(selectedProject) ? selectedProject : null}
             onProjectChange={setSelectedProject}
             model={selectedModel}
@@ -6314,6 +6355,7 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
@@ -6388,10 +6430,14 @@ function AppCore() {
             connectors={composerConnectors}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
+            onAddNotionProjectPages={handleAddNotionProjectPages}
+            onFetchNotionProjectPages={fetchNotionProjectPages}
+            onRemoveNotionProjectPage={removeNotionProjectPage}
             disabledConnections={currentTask?.disabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
@@ -6504,7 +6550,7 @@ function AppCore() {
               // Sending from project detail = same path as home, but
               // selectedProject is already pinned to this project so
               // the new task lands in the right workspace.
-              return handleSendFromHome(text, meta);
+              return sendFromHomeComposer(text, meta);
             }}
             codingModeEnabled={false}
             onSelectTask={selectTask}
@@ -6517,10 +6563,14 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
+            onAddNotionProjectPages={handleAddNotionProjectPages}
+            onFetchNotionProjectPages={fetchNotionProjectPages}
+            onRemoveNotionProjectPage={removeNotionProjectPage}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
@@ -7049,6 +7099,23 @@ function AppCore() {
           </div>
         </ModalBody>
       </Modal>
+
+      {/* Composer "+" → "Add pages from Notion" — see useNotionPagePicker. */}
+      <ConfirmModal
+        open={!!notionConnectPrompt}
+        title={tApp('notion.connectTitle')}
+        message={tApp('notion.connectMessage')}
+        confirmLabel={tApp('common.connect')}
+        cancelLabel={tApp('common.cancel')}
+        onConfirm={confirmNotionConnect}
+        onClose={cancelNotionConnect}
+      />
+      <NotionPagePickerModal
+        open={!!notionPicker}
+        connections={notionPicker?.connections}
+        onClose={cancelNotionPicker}
+        onConfirm={resolveNotionPicker}
+      />
 
       {/* OTA update overlay — shown during auto-update download/reload */}
       {updateCurtainUp && (

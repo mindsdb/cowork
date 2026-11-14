@@ -624,5 +624,16 @@
     "closedTitle": "This task's browser is closed",
     "closedDescription": "{agent} opens it again when it needs it.",
     "squeezed": "Make the window bigger to see the page"
+  },
+  "notionPicker": {
+    "title": "Add pages from Notion",
+    "subtitle": "Search your Notion and pick pages for this message.",
+    "searchPlaceholder": "Search Notion pages…",
+    "searchAriaLabel": "Search Notion pages",
+    "minQuery": "{count, plural, one {Type at least # character to search.} other {Type at least # characters to search.}}",
+    "noResults": "No pages found.",
+    "database": "Database",
+    "cancel": "Cancel",
+    "add": "{count, plural, =0 {Add page} one {Add page} other {Add # pages}}"
   }
 }

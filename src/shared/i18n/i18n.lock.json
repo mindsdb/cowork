@@ -2583,6 +2583,74 @@
       "text": "58ae1e4f792a"
     }
   },
+  "app:notion.connectMessage": {
+    "de": {
+      "from": "4997c38ce980",
+      "text": "098244547be2"
+    },
+    "es": {
+      "from": "4997c38ce980",
+      "text": "b4e030afd792"
+    },
+    "fr": {
+      "from": "4997c38ce980",
+      "text": "5e1365bad419"
+    },
+    "it": {
+      "from": "4997c38ce980",
+      "text": "3555217f4e7f"
+    },
+    "ja": {
+      "from": "4997c38ce980",
+      "text": "4f826f394d7c"
+    },
+    "ko": {
+      "from": "4997c38ce980",
+      "text": "ff251817e497"
+    },
+    "pt-BR": {
+      "from": "4997c38ce980",
+      "text": "8fca56a51375"
+    },
+    "zh-CN": {
+      "from": "4997c38ce980",
+      "text": "e2a17c837d3c"
+    }
+  },
+  "app:notion.connectTitle": {
+    "de": {
+      "from": "dbfd97aa4a1c",
+      "text": "40bf1761ef68"
+    },
+    "es": {
+      "from": "dbfd97aa4a1c",
+      "text": "51f7ee5ccc4d"
+    },
+    "fr": {
+      "from": "dbfd97aa4a1c",
+      "text": "f020a5672231"
+    },
+    "it": {
+      "from": "dbfd97aa4a1c",
+      "text": "c76e96f1a2b5"
+    },
+    "ja": {
+      "from": "dbfd97aa4a1c",
+      "text": "edd84edce2ce"
+    },
+    "ko": {
+      "from": "dbfd97aa4a1c",
+      "text": "da983d520de2"
+    },
+    "pt-BR": {
+      "from": "dbfd97aa4a1c",
+      "text": "32cd742ab75f"
+    },
+    "zh-CN": {
+      "from": "dbfd97aa4a1c",
+      "text": "44ca2f20fc99"
+    }
+  },
   "app:oauth.reconnectNeeded": {
     "de": {
       "from": "cc4f56eafa40",
@@ -38485,6 +38553,312 @@
     "zh-CN": {
       "from": "2f77668a9dfb",
       "text": "4da199fae933"
+    }
+  },
+  "chat:notionPicker.add": {
+    "de": {
+      "from": "19873c8f4d4c",
+      "text": "b0804f6b39c3"
+    },
+    "es": {
+      "from": "19873c8f4d4c",
+      "text": "b6bd1f31d483"
+    },
+    "fr": {
+      "from": "19873c8f4d4c",
+      "text": "67e3eec24c1f"
+    },
+    "it": {
+      "from": "19873c8f4d4c",
+      "text": "30524446e2ad"
+    },
+    "ja": {
+      "from": "19873c8f4d4c",
+      "text": "f4d786ab8f11"
+    },
+    "ko": {
+      "from": "19873c8f4d4c",
+      "text": "053699e50bbb"
+    },
+    "pt-BR": {
+      "from": "19873c8f4d4c",
+      "text": "b1fd2431ac96"
+    },
+    "zh-CN": {
+      "from": "19873c8f4d4c",
+      "text": "792ad184d432"
+    }
+  },
+  "chat:notionPicker.cancel": {
+    "de": {
+      "from": "19766ed6ccb2",
+      "text": "f7ff1178af20"
+    },
+    "es": {
+      "from": "19766ed6ccb2",
+      "text": "bb9dbb406dcb"
+    },
+    "fr": {
+      "from": "19766ed6ccb2",
+      "text": "46ad3916f6a0"
+    },
+    "it": {
+      "from": "19766ed6ccb2",
+      "text": "18c9d912a210"
+    },
+    "ja": {
+      "from": "19766ed6ccb2",
+      "text": "bca84ea5c65f"
+    },
+    "ko": {
+      "from": "19766ed6ccb2",
+      "text": "be876433993a"
+    },
+    "pt-BR": {
+      "from": "19766ed6ccb2",
+      "text": "bb9dbb406dcb"
+    },
+    "zh-CN": {
+      "from": "19766ed6ccb2",
+      "text": "2cd0f3be8738"
+    }
+  },
+  "chat:notionPicker.database": {
+    "de": {
+      "from": "fa7fe67124e9",
+      "text": "4cc80701da55"
+    },
+    "es": {
+      "from": "fa7fe67124e9",
+      "text": "096e3b013afa"
+    },
+    "fr": {
+      "from": "fa7fe67124e9",
+      "text": "2496bf94b4b4"
+    },
+    "it": {
+      "from": "fa7fe67124e9",
+      "text": "fa7fe67124e9"
+    },
+    "ja": {
+      "from": "fa7fe67124e9",
+      "text": "24be0ba6677a"
+    },
+    "ko": {
+      "from": "fa7fe67124e9",
+      "text": "cb53ca6fdafa"
+    },
+    "pt-BR": {
+      "from": "fa7fe67124e9",
+      "text": "a640e78f99b2"
+    },
+    "zh-CN": {
+      "from": "fa7fe67124e9",
+      "text": "263200d7d529"
+    }
+  },
+  "chat:notionPicker.minQuery": {
+    "de": {
+      "from": "59bc450398e4",
+      "text": "79b30ba2be1f"
+    },
+    "es": {
+      "from": "59bc450398e4",
+      "text": "0d9039c2e21c"
+    },
+    "fr": {
+      "from": "59bc450398e4",
+      "text": "07e586a5ad98"
+    },
+    "it": {
+      "from": "59bc450398e4",
+      "text": "33b1e3146421"
+    },
+    "ja": {
+      "from": "59bc450398e4",
+      "text": "a2b2292afa68"
+    },
+    "ko": {
+      "from": "59bc450398e4",
+      "text": "5fdeeeb48810"
+    },
+    "pt-BR": {
+      "from": "59bc450398e4",
+      "text": "092542363bd5"
+    },
+    "zh-CN": {
+      "from": "59bc450398e4",
+      "text": "073f5874acd7"
+    }
+  },
+  "chat:notionPicker.noResults": {
+    "de": {
+      "from": "3c35fb2cfcbe",
+      "text": "af49d155b7a2"
+    },
+    "es": {
+      "from": "3c35fb2cfcbe",
+      "text": "632ed604f87e"
+    },
+    "fr": {
+      "from": "3c35fb2cfcbe",
+      "text": "6c55f268dcad"
+    },
+    "it": {
+      "from": "3c35fb2cfcbe",
+      "text": "85ab8775ff53"
+    },
+    "ja": {
+      "from": "3c35fb2cfcbe",
+      "text": "84520e68aecb"
+    },
+    "ko": {
+      "from": "3c35fb2cfcbe",
+      "text": "50b402fca2b0"
+    },
+    "pt-BR": {
+      "from": "3c35fb2cfcbe",
+      "text": "63e8ff6b1441"
+    },
+    "zh-CN": {
+      "from": "3c35fb2cfcbe",
+      "text": "8799d2b231a9"
+    }
+  },
+  "chat:notionPicker.searchAriaLabel": {
+    "de": {
+      "from": "41b597827cc7",
+      "text": "79e7a01a6c8f"
+    },
+    "es": {
+      "from": "41b597827cc7",
+      "text": "dfad3006856b"
+    },
+    "fr": {
+      "from": "41b597827cc7",
+      "text": "dca12eddbdb9"
+    },
+    "it": {
+      "from": "41b597827cc7",
+      "text": "892317d241be"
+    },
+    "ja": {
+      "from": "41b597827cc7",
+      "text": "275e7b00d175"
+    },
+    "ko": {
+      "from": "41b597827cc7",
+      "text": "a807bd4fc5da"
+    },
+    "pt-BR": {
+      "from": "41b597827cc7",
+      "text": "37d32bd76d92"
+    },
+    "zh-CN": {
+      "from": "41b597827cc7",
+      "text": "19028e87e70c"
+    }
+  },
+  "chat:notionPicker.searchPlaceholder": {
+    "de": {
+      "from": "1319dd41bb09",
+      "text": "0a02d42fd67e"
+    },
+    "es": {
+      "from": "1319dd41bb09",
+      "text": "9e390cdd1ae5"
+    },
+    "fr": {
+      "from": "1319dd41bb09",
+      "text": "91bc96d6ac27"
+    },
+    "it": {
+      "from": "1319dd41bb09",
+      "text": "c75a6318fb4d"
+    },
+    "ja": {
+      "from": "1319dd41bb09",
+      "text": "e8eab20e10f3"
+    },
+    "ko": {
+      "from": "1319dd41bb09",
+      "text": "e4566eee8655"
+    },
+    "pt-BR": {
+      "from": "1319dd41bb09",
+      "text": "ae0b58c58e81"
+    },
+    "zh-CN": {
+      "from": "1319dd41bb09",
+      "text": "d3a2a5bdebd2"
+    }
+  },
+  "chat:notionPicker.subtitle": {
+    "de": {
+      "from": "8d3a55aa671a",
+      "text": "1dd8ca006f76"
+    },
+    "es": {
+      "from": "8d3a55aa671a",
+      "text": "cb396e1c96d4"
+    },
+    "fr": {
+      "from": "8d3a55aa671a",
+      "text": "606035b706bb"
+    },
+    "it": {
+      "from": "8d3a55aa671a",
+      "text": "846414dd88b1"
+    },
+    "ja": {
+      "from": "8d3a55aa671a",
+      "text": "abf8fd62e9dd"
+    },
+    "ko": {
+      "from": "8d3a55aa671a",
+      "text": "98770c30d4c3"
+    },
+    "pt-BR": {
+      "from": "8d3a55aa671a",
+      "text": "63cd9d101b38"
+    },
+    "zh-CN": {
+      "from": "8d3a55aa671a",
+      "text": "9f700dc61018"
+    }
+  },
+  "chat:notionPicker.title": {
+    "de": {
+      "from": "4647782fa154",
+      "text": "682d9f4d0595"
+    },
+    "es": {
+      "from": "4647782fa154",
+      "text": "d27353840d96"
+    },
+    "fr": {
+      "from": "4647782fa154",
+      "text": "122d024d356f"
+    },
+    "it": {
+      "from": "4647782fa154",
+      "text": "671218c391ac"
+    },
+    "ja": {
+      "from": "4647782fa154",
+      "text": "16922224e476"
+    },
+    "ko": {
+      "from": "4647782fa154",
+      "text": "996dba4ad73f"
+    },
+    "pt-BR": {
+      "from": "4647782fa154",
+      "text": "1aa8c8b6f37a"
+    },
+    "zh-CN": {
+      "from": "4647782fa154",
+      "text": "d52946292734"
     }
   },
   "chat:phaseProgress.artifact": {
@@ -157011,6 +157385,40 @@
       "text": "bac4d858e799"
     }
   },
+  "shell:rail.context.openInNotion": {
+    "de": {
+      "from": "fbb3c9b875f4",
+      "text": "a046b136fa07"
+    },
+    "es": {
+      "from": "fbb3c9b875f4",
+      "text": "4ddc54c4eb19"
+    },
+    "fr": {
+      "from": "fbb3c9b875f4",
+      "text": "36726065e75e"
+    },
+    "it": {
+      "from": "fbb3c9b875f4",
+      "text": "3e3a13f47da9"
+    },
+    "ja": {
+      "from": "fbb3c9b875f4",
+      "text": "9d516a8b5ad5"
+    },
+    "ko": {
+      "from": "fbb3c9b875f4",
+      "text": "295c7b5d01c4"
+    },
+    "pt-BR": {
+      "from": "fbb3c9b875f4",
+      "text": "450074b44fa6"
+    },
+    "zh-CN": {
+      "from": "fbb3c9b875f4",
+      "text": "fc6de5008fc6"
+    }
+  },
   "shell:rail.context.openNamedInDrive": {
     "de": {
       "from": "af2e378f4f35",
@@ -157043,6 +157451,40 @@
     "zh-CN": {
       "from": "af2e378f4f35",
       "text": "ff4d7d94fcd5"
+    }
+  },
+  "shell:rail.context.openNamedInNotion": {
+    "de": {
+      "from": "8cc0c6dbaf06",
+      "text": "ec646e9ef509"
+    },
+    "es": {
+      "from": "8cc0c6dbaf06",
+      "text": "dfaaa7cf35a4"
+    },
+    "fr": {
+      "from": "8cc0c6dbaf06",
+      "text": "a864a2c96cc0"
+    },
+    "it": {
+      "from": "8cc0c6dbaf06",
+      "text": "bf789e29e2dd"
+    },
+    "ja": {
+      "from": "8cc0c6dbaf06",
+      "text": "f196ed9de97f"
+    },
+    "ko": {
+      "from": "8cc0c6dbaf06",
+      "text": "0418656344e6"
+    },
+    "pt-BR": {
+      "from": "8cc0c6dbaf06",
+      "text": "1147e77cda76"
+    },
+    "zh-CN": {
+      "from": "8cc0c6dbaf06",
+      "text": "d827c3175519"
     }
   },
   "shell:rail.context.projectFiles": {

@@ -53,6 +53,8 @@
       "openNamedInDrive": "「{name}」をGoogle ドライブで開く",
       "untitled": "無題",
       "openInDrive": "Google ドライブで開く",
+      "openNamedInNotion": "「{name}」をNotionで開く",
+      "openInNotion": "Notionで開く",
       "removeFromProjectFiles": "プロジェクトファイルから削除",
       "removeFromProjectFilesAriaLabel": "{name}をプロジェクトファイルから削除",
       "loadAttachmentsFailed": "添付ファイルを読み込めませんでした",

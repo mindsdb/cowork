@@ -53,6 +53,8 @@
       "openNamedInDrive": "Open \"{name}\" in Google Drive",
       "untitled": "untitled",
       "openInDrive": "Open in Google Drive",
+      "openNamedInNotion": "Open \"{name}\" in Notion",
+      "openInNotion": "Open in Notion",
       "removeFromProjectFiles": "Remove from project files",
       "removeFromProjectFilesAriaLabel": "Remove {name} from project files",
       "loadAttachmentsFailed": "Could not load attachments",

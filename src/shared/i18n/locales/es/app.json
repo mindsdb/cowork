@@ -264,5 +264,9 @@
   "addon": {
     "moveFailed": "No se pudo mover ese mensaje a la cola. Inténtalo de nuevo.",
     "stayQueued": "{agent} no puede recibirlo ahora. Se queda en la cola."
+  },
+  "notion": {
+    "connectTitle": "¿Conectar Notion?",
+    "connectMessage": "Necesitas conectar tu espacio de trabajo de Notion para añadir páginas de Notion."
   }
 }

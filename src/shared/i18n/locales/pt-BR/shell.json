@@ -53,6 +53,8 @@
       "openNamedInDrive": "Abrir \"{name}\" no Google Drive",
       "untitled": "sem título",
       "openInDrive": "Abrir no Google Drive",
+      "openNamedInNotion": "Abrir \"{name}\" no Notion",
+      "openInNotion": "Abrir no Notion",
       "removeFromProjectFiles": "Remover dos arquivos do projeto",
       "removeFromProjectFilesAriaLabel": "Remover {name} dos arquivos do projeto",
       "loadAttachmentsFailed": "Não foi possível carregar os anexos",

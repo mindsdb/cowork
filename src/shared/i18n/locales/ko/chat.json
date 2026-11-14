@@ -624,5 +624,16 @@
     "closedTitle": "이 작업의 브라우저가 닫혔습니다",
     "closedDescription": "{agent}이(가) 필요할 때 다시 엽니다.",
     "squeezed": "페이지를 보려면 창을 더 크게 만드세요"
+  },
+  "notionPicker": {
+    "title": "Notion에서 페이지 추가",
+    "subtitle": "Notion을 검색하여 이 메시지에 추가할 페이지를 선택하세요.",
+    "searchPlaceholder": "Notion 페이지 검색…",
+    "searchAriaLabel": "Notion 페이지 검색",
+    "minQuery": "{count, plural, other {검색하려면 #자 이상 입력하세요.}}",
+    "noResults": "페이지를 찾을 수 없습니다.",
+    "database": "데이터베이스",
+    "cancel": "취소",
+    "add": "{count, plural, =0 {페이지 추가} other {페이지 #개 추가}}"
   }
 }
