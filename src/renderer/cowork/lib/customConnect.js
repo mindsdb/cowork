@@ -63,10 +63,13 @@ export function toCustomConnectSpec(spec, check, label, authSummary = null) {
           type: 'text',
           required: true,
           secret: false,
+          skipable: false,
           placeholder: '',
           description: ADDRESS_HELP,
         },
-        ...templateFields,
+        // The connect route refuses any empty required value, so only a field
+        // the template marks optional may offer Skip.
+        ...templateFields.map((f) => ({ ...f, skipable: f?.required === false })),
       ]
       : [],
   };

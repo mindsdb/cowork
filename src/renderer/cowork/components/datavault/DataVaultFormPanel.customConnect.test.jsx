@@ -94,6 +94,13 @@ describe('connecting a custom connector', () => {
     expect(onContinue).not.toHaveBeenCalled();
   });
 
+  it('offers no Skip on fields the connect route requires', async () => {
+    renderPanel();
+
+    expect(await screen.findByLabelText(/^API key/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^skip$/i })).toBeNull();
+  });
+
   it('closes on Cancel without a message to the chat', async () => {
     const { onContinue, onClose } = renderPanel();
 
