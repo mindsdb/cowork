@@ -118,7 +118,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest # unit/component only — no native/Electron dep
-    timeout-minutes: 15
+    # 560 to 800 s on a typical runner; a slow one passes 900 s.
+    timeout-minutes: 25
     env:
       COWORK_SERVER_CHANNEL: ''
       ANTHROPIC_API_KEY: ''
@@ -140,6 +141,10 @@ jobs:
         run: npm run test:windows-setup-contract
       - name: Cowork purity guard (no direct bridge access)
         run: npm run check:cowork-purity
+      - name: Translations in step with English (ENG-4149)
+        run: npm run check:i18n
+      - name: Translation check rules
+        run: npm run test:i18n-check
       - name: Unit + component tests + coverage
         run: npm run test:coverage
       - name: Coverage summary

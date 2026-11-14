@@ -89,3 +89,14 @@ describe('token_cap_hit impression on a credit block', () => {
     expect(state.errorCode).toBe('token_limit');
   });
 });
+
+describe('artifact_built', () => {
+  it('names the artifact it built, so a share can be traced back to its build', () => {
+    trackArtifactBuilt.mockClear();
+    reduceStream(initialStreamState(), {
+      type: 'response.artifact_created',
+      artifact: { id: '0123456789abcdef0123456789abcdef', type: 'html', slug: 'report' },
+    }, Date.now);
+    expect(trackArtifactBuilt).toHaveBeenCalledWith('html', '0123456789abcdef0123456789abcdef');
+  });
+});

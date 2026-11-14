@@ -7,8 +7,13 @@
  * come from the server's `exportFormats`, so an older server, which sends
  * none, shows no Export at all.
  */
-import { downloadArtifactFile } from './artifactDownload';
+import { host } from '../../platform/host';
+import { MOBILE_DOWNLOAD_NOTE } from './browserDownload';
+import { saveArtifactFile } from './artifactDownload';
 import { requestArtifactExport } from './artifactWorkspaceApi';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.artifactExport.${key}`, { ns: 'projects', ...vars });
 
 /** @typedef {import('../components/artifact').ArtifactExportFormat} ArtifactExportFormat */
 /** @typedef {import('../components/artifact').ArtifactExportResult} ArtifactExportResult */
@@ -28,19 +33,19 @@ export const EXPORT_FORMAT_LABELS = new Map([
   ['pdf', 'PDF'],
 ]);
 
-const CANNOT_EXPORT = "This file can't be exported.";
+const CANNOT_EXPORT = 'cannotExport';
 
-/** @type {ReadonlyMap<number, string>} */
+/** Message keys by status. @type {ReadonlyMap<number, string>} */
 const FAILURE_MESSAGES = new Map([
   [413, CANNOT_EXPORT],
   [422, CANNOT_EXPORT],
-  [429, 'An export is already running; try again in a moment.'],
-  [503, 'PDF export is busy; try again.'],
-  [504, 'PDF export took too long.'],
+  [429, 'alreadyRunning'],
+  [503, 'pdfBusy'],
+  [504, 'pdfTooLong'],
 ]);
 
 /** The message for any failed answer without its own row, and for no answer at all. */
-const EXPORT_FAILED = "Couldn't export this file.";
+const EXPORT_FAILED = 'failed';
 
 /**
  * The formats Export lists, in the server's order. The workspace route
@@ -63,7 +68,7 @@ export function artifactExportFormats(workspace, artifact) {
  * @returns {string}
  */
 function exportFailureMessage(status) {
-  return FAILURE_MESSAGES.get(status) ?? EXPORT_FAILED;
+  return tr(FAILURE_MESSAGES.get(status) ?? EXPORT_FAILED);
 }
 
 /**
@@ -74,14 +79,13 @@ function exportFailureMessage(status) {
  */
 function omittedReferencesMessage(count) {
   if (!(count > 0)) return '';
-  return count === 1
-    ? '1 item outside this artifact was left out.'
-    : `${count} items outside this artifact were left out.`;
+  return tr('omittedReferences', { count });
 }
 
 /**
  * Saves the exported file and resolves whether it saved, through
- * downloadArtifactFile with both URLs. Web fetches the draft URL with the
+ * saveArtifactFile with both URLs. It reports no download: the caller reports
+ * the export itself. Web fetches the draft URL with the
  * bearer, and the serve URL only when the server sent no draft URL. Desktop
  * saves through the serve URL, and through the drafts route when the server
  * sent an empty one.
@@ -90,7 +94,7 @@ function omittedReferencesMessage(count) {
  * @returns {Promise<boolean>}
  */
 export async function saveExportedFile(result) {
-  return downloadArtifactFile({ serveUrl: result.serveUrl, draftUrl: result.draftUrl }, { actionPath: result.filename });
+  return saveArtifactFile({ serveUrl: result.serveUrl, draftUrl: result.draftUrl }, { actionPath: result.filename });
 }
 
 /**
@@ -102,6 +106,7 @@ export async function saveExportedFile(result) {
  * @returns {Promise<ExportNotice | null>}
  */
 export async function runArtifactExport(draftUrl, format) {
+  if (host.isMobileShell) return { tone: 'error', text: MOBILE_DOWNLOAD_NOTE };
   let result;
   try {
     result = await requestArtifactExport(draftUrl, format);
@@ -112,7 +117,7 @@ export async function runArtifactExport(draftUrl, format) {
   const omitted = omittedReferencesMessage(result.omittedCount);
   const saved = await saveExportedFile(result).catch(() => false);
   if (!saved) {
-    const notSaved = `Exported ${result.filename}, but couldn't download it.`;
+    const notSaved = tr('notSaved', { filename: result.filename });
     return { tone: 'error', text: [notSaved, omitted].filter(Boolean).join(' ') };
   }
   return omitted ? { tone: 'info', text: omitted } : null;

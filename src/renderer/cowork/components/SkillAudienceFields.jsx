@@ -22,7 +22,7 @@ import {
   AUDIENCE_CHOICE,
   SHARED_KIND,
   alwaysOnHelp,
-  ALWAYS_ON_LABEL,
+  alwaysOnLabel,
   alwaysOnLockReason,
   canBeAlwaysOn,
   namesDefaultTeam,
@@ -30,19 +30,20 @@ import {
   withoutDefaultTeam,
 } from '../lib/orgSharing';
 import { LOAD_STATUS } from '../lib/sharingContract';
+import { useTranslation } from '../../lib/i18n';
 
 /** The "Always include in every task" switch with its help line; disabled,
     with `lockReason` on hover, when the caller may not change it. */
 export function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
   const control = (
     <div className="flex items-center justify-between gap-3">
-      <span className="font-body text-[13px] font-semibold text-ink">{ALWAYS_ON_LABEL}</span>
+      <span className="font-body text-[13px] font-semibold text-ink">{alwaysOnLabel()}</span>
       <Switch
         size="sm"
         checked={checked}
         onCheckedChange={onCheckedChange}
         disabled={!!lockReason}
-        aria-label={ALWAYS_ON_LABEL}
+        aria-label={alwaysOnLabel()}
       />
     </div>
   );
@@ -79,6 +80,7 @@ export function skillAudienceMode(access, teams = []) {
  * }} props
  */
 export function SkillAudienceFields({ value, onChange, capabilities, orgName = null, canEdit, onPendingChange = () => {} }) {
+  const { t } = useTranslation('library');
   const access = value;
   // Teams load only while the fields are shown.
   const teamsState = useMindsHubTeams(true);
@@ -139,7 +141,7 @@ export function SkillAudienceFields({ value, onChange, capabilities, orgName = n
 
   return (
     <AudiencePanel
-      ariaLabel="Who can use this skill"
+      ariaLabel={t('share.whoCanUseSkill')}
       value={mode}
       onValueChange={(next) => {
         setMode(next);

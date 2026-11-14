@@ -17,11 +17,13 @@ import {
   fetchProjects,
 } from '../api';
 import { Select } from '../components/ui';
+import { useTranslation } from '../../lib/i18n';
 
 const TRIGGERS = ['always', 'mention_only', 'regex'];
 const BLANK = { channel_type: '', external_group_id: '', display_name: '', trigger_rule: 'always', trigger_pattern: '', anton_project_id: '' };
 
 export default function ChannelBindings({ plugins = [], channelType = null, refreshToken = 0 }) {
+  const { t } = useTranslation('settingsTools');
   const [bindings, setBindings] = useState([]);
   const [projects, setProjects] = useState([]);
   const [edits, setEdits] = useState({});   // id -> partial patch
@@ -59,21 +61,21 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
       await updateChannelBinding(b.id, patch);
       await refresh();
     } catch (err) {
-      setError(err?.message || 'Save failed');
+      setError(err?.message || t('channelBindings.saveFailed'));
     }
   }
 
   async function removeRow(b) {
     setError('');
     try { await deleteChannelBinding(b.id); await refresh(); }
-    catch (err) { setError(err?.message || 'Delete failed'); }
+    catch (err) { setError(err?.message || t('channelBindings.deleteFailed')); }
   }
 
   async function addRow() {
     setError('');
     const type = channelType || draft.channel_type;
     if (!type || !draft.external_group_id.trim()) {
-      setError(channelType ? 'Enter the chat/group id.' : 'Pick a channel and enter the chat/group id.');
+      setError(channelType ? t('channelBindings.enterChatId') : t('channelBindings.pickChannel'));
       return;
     }
     const payload = { channel_type: type, external_group_id: draft.external_group_id.trim(), trigger_rule: draft.trigger_rule };
@@ -85,7 +87,7 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
       setDraft(BLANK);
       await refresh();
     } catch (err) {
-      setError(err?.message || 'Add failed');
+      setError(err?.message || t('channelBindings.addFailed'));
     }
   }
 
@@ -93,9 +95,9 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
 
   return (
     <section className="channels-routes">
-      <h2 className="channels-routes-title">Routes</h2>
+      <h2 className="channels-routes-title">{t('channelBindings.title')}</h2>
       <p className="channels-intro">
-        Which chats reach the agent. New chats are added automatically on first message; edit or remove them here.
+        {t('channelBindings.intro')}
       </p>
 
       {error ? <p className="channels-error">{error}</p> : null}
@@ -106,46 +108,46 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
             style={{ flex: '1 1 140px', minWidth: 120 }}
             value={draft.channel_type}
             onValueChange={(v) => setDraft({ ...draft, channel_type: v })}
-            ariaLabel="Channel"
+            ariaLabel={t('channelBindings.channelAriaLabel')}
             options={[
-              { value: '', label: 'Channel…' },
+              { value: '', label: t('channelBindings.channelPlaceholder') },
               ...plugins.map((p) => ({ value: p.channel_type, label: p.display_name })),
             ]}
           />
         )}
-        <input className="channels-input" placeholder="chat / group id"
+        <input className="channels-input" placeholder={t('channelBindings.chatIdPlaceholder')}
           value={draft.external_group_id}
           onChange={(e) => setDraft({ ...draft, external_group_id: e.target.value })} />
         <Select
           style={{ flex: '1 1 140px', minWidth: 120 }}
           value={draft.trigger_rule}
           onValueChange={(v) => setDraft({ ...draft, trigger_rule: v })}
-          ariaLabel="Trigger rule"
-          options={TRIGGERS.map((t) => ({ value: t, label: t }))}
+          ariaLabel={t('channelBindings.triggerAriaLabel')}
+          options={TRIGGERS.map((rule) => ({ value: rule, label: t(`channelBindings.trigger.${rule}`) }))}
         />
         <Select
           style={{ flex: '1 1 140px', minWidth: 120 }}
           value={draft.anton_project_id}
           onValueChange={(v) => setDraft({ ...draft, anton_project_id: v })}
-          ariaLabel="Project"
+          ariaLabel={t('channelBindings.projectAriaLabel')}
           options={[
-            { value: '', label: 'Project: default' },
+            { value: '', label: t('channelBindings.projectDefaultOption') },
             ...projects.map((p) => ({ value: p.id, label: projectLabel(p) })),
           ]}
         />
         <Button variant="primary" onClick={addRow}>
-          {Ico.plus(14)}<span>Add</span>
+          {Ico.plus(14)}<span>{t('channelBindings.add')}</span>
         </Button>
       </div>
 
       {loading ? (
-        <p className="channels-muted">Loading routes…</p>
+        <p className="channels-muted">{t('channelBindings.loading')}</p>
       ) : rows.length === 0 ? (
-        <p className="channels-muted">No routes yet — message the bot and one appears here.</p>
+        <p className="channels-muted">{t('channelBindings.empty')}</p>
       ) : (
         <table className="channels-route-table">
           <thead>
-            <tr>{channelType ? null : <th>Channel</th>}<th>Chat</th><th>Label</th><th>Trigger</th><th>Project</th><th>Instructions</th><th></th></tr>
+            <tr>{channelType ? null : <th>{t('channelBindings.columns.channel')}</th>}<th>{t('channelBindings.columns.chat')}</th><th>{t('channelBindings.columns.label')}</th><th>{t('channelBindings.columns.trigger')}</th><th>{t('channelBindings.columns.project')}</th><th>{t('channelBindings.columns.instructions')}</th><th></th></tr>
           </thead>
           <tbody>
             {rows.map((b) => {
@@ -164,11 +166,11 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
                       size="sm"
                       value={rule}
                       onValueChange={(v) => editField(b.id, 'trigger_rule', v)}
-                      ariaLabel="Trigger rule"
-                      options={TRIGGERS.map((t) => ({ value: t, label: t }))}
+                      ariaLabel={t('channelBindings.triggerAriaLabel')}
+                      options={TRIGGERS.map((rule) => ({ value: rule, label: t(`channelBindings.trigger.${rule}`) }))}
                     />
                     {rule === 'regex' ? (
-                      <input className="channels-input channels-input-sm" placeholder="pattern"
+                      <input className="channels-input channels-input-sm" placeholder={t('channelBindings.patternPlaceholder')}
                         value={rowValue(b, 'trigger_pattern')}
                         onChange={(e) => editField(b.id, 'trigger_pattern', e.target.value)} />
                     ) : null}
@@ -178,25 +180,25 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
                       size="sm"
                       value={rowValue(b, 'anton_project_id') || ''}
                       onValueChange={(v) => editField(b.id, 'anton_project_id', v || null)}
-                      ariaLabel="Project"
+                      ariaLabel={t('channelBindings.projectAriaLabel')}
                       options={[
-                        { value: '', label: 'default' },
+                        { value: '', label: t('channelBindings.defaultOption') },
                         ...projects.map((p) => ({ value: p.id, label: projectLabel(p) })),
                       ]}
                     />
                   </td>
                   <td>
                     <textarea className="channels-input channels-input-sm" rows={1}
-                      placeholder="persona / tone for this chat"
+                      placeholder={t('channelBindings.instructionsPlaceholder')}
                       value={rowValue(b, 'instructions')}
                       onChange={(e) => editField(b.id, 'instructions', e.target.value)} />
                   </td>
                   <td className="channels-route-actions">
                     {dirty ? (
-                      <Button variant="primary" size="sm" onClick={() => saveRow(b)}>Save</Button>
+                      <Button variant="primary" size="sm" onClick={() => saveRow(b)}>{t('channelBindings.save')}</Button>
                     ) : null}
-                    <Tooltip content="Remove route">
-                      <Button variant="danger" size="sm" icon onClick={() => removeRow(b)} aria-label="Remove route">
+                    <Tooltip content={t('channelBindings.removeRoute')}>
+                      <Button variant="danger" size="sm" icon onClick={() => removeRow(b)} aria-label={t('channelBindings.removeRoute')}>
                         {Ico.power(14)}
                       </Button>
                     </Tooltip>

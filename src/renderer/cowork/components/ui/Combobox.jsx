@@ -43,11 +43,14 @@
 //     always-present row below the model list (ModelSelect's "Effort"
 //     footer) rather than another filterable option.
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useCloseOnFrameFocus } from './useCloseOnFrameFocus';
 import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
 import { ChevronsUpDown, Check, Search } from 'lucide-react';
 import { Icon } from './Icon';
 import { cn } from '../../lib/cn';
+import { useNativeOverlay } from '../../lib/nativeOverlay';
+import { useTranslation } from '../../../lib/i18n';
 import Spinner from './Spinner.jsx';
 import { PickerMenuHeading, triggerVariants } from './Select.jsx';
 
@@ -72,11 +75,11 @@ export function Combobox({
   filter,
   renderValue,
   footer,
-  placeholder = 'Select',
-  searchPlaceholder = 'Search',
-  searchAriaLabel = 'Search',
+  placeholder: placeholderProp,
+  searchPlaceholder: searchPlaceholderProp,
+  searchAriaLabel: searchAriaLabelProp,
   menuLabel,
-  emptyText = 'No results',
+  emptyText: emptyTextProp,
   variant = 'field',
   size = 'md',
   disabled = false,
@@ -99,6 +102,11 @@ export function Combobox({
   disableAnchorTracking = false,
   ...rest
 }) {
+  const { t } = useTranslation('shell');
+  const placeholder = placeholderProp === undefined ? t('ui.combobox.placeholder') : placeholderProp;
+  const searchPlaceholder = searchPlaceholderProp === undefined ? t('ui.combobox.search') : searchPlaceholderProp;
+  const searchAriaLabel = searchAriaLabelProp === undefined ? t('ui.combobox.search') : searchAriaLabelProp;
+  const emptyText = emptyTextProp === undefined ? t('ui.combobox.empty') : emptyTextProp;
   const entries = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
   // The controlled selection as an item object (Combobox deals in items,
@@ -110,6 +118,19 @@ export function Combobox({
     return entries.find((o) => o.value === value) || { value, label: String(value) };
   }, [entries, value]);
   const { contains } = BaseCombobox.useFilter();
+  /* An open popup counts as an overlay, so the desktop browser pane's
+     native view steps aside rather than draw over it. */
+  const [popupOpen, setPopupOpen] = useState(false);
+  useNativeOverlay(open ?? popupOpen);
+  // Controlled or not is decided at mount, as Base UI decides it: a caller
+  // that starts uncontrolled and later passes `open` is still ignored.
+  const controlledRef = useRef(open !== undefined);
+  const shownOpen = controlledRef.current ? open : popupOpen;
+  // A click into the artifact preview (an iframe) is outside the popup too.
+  useCloseOnFrameFocus(shownOpen, () => {
+    onOpenChange?.(false, { reason: 'frame-focus' });
+    setPopupOpen(false);
+  });
 
   return (
     <BaseCombobox.Root
@@ -119,8 +140,14 @@ export function Combobox({
       // only changes the value on user action, never when the item list
       // shrinks under it. Pinned in Combobox.test.jsx.
       onValueChange={(item) => onValueChange?.(item ? item.value : '')}
-      open={open}
-      onOpenChange={onOpenChange}
+      // Controlled either way: by the caller, or by the state Base UI's own
+      // changes keep, so a close from outside (the iframe focus) can land.
+      open={shownOpen}
+      onOpenChange={(next, details) => {
+        // The caller may cancel the change, and then the popup stays as it is.
+        onOpenChange?.(next, details);
+        if (!details?.isCanceled) setPopupOpen(next);
+      }}
       isItemEqualToValue={(a, b) => a?.value === b?.value}
       itemToStringLabel={(item) => item?.label ?? ''}
       // Default: match on the display label OR the raw id, across every
@@ -168,7 +195,7 @@ export function Combobox({
               // popup's rounded corners. The 320px floor keeps the longest
               // catalog names on one line under a compact trigger such as the
               // composer's model pill; at 240px they truncated (ENG-2591).
-              'flex flex-col overflow-hidden w-[max(var(--anchor-width),320px)] max-w-[var(--available-width)]',
+              'flex flex-col overflow-hidden w-[max(var(--anchor-width),380px)] max-w-[var(--available-width)]',
               // Same bordered-popup treatment as Select/Menu. `border-solid`
               // is load-bearing: preflight is disabled, so a bare `border`
               // sets width but leaves style at the UA default `none`.
@@ -230,7 +257,7 @@ export function Combobox({
                         key={item.value}
                         value={item}
                         disabled={item.disabled}
-                        title={item.title}
+                        title={item.title ?? (typeof item.label === 'string' ? (item.note ? `${item.label} (${item.note})` : item.label) : undefined)}
                         className={cn(
                           'grid items-center gap-[6px]',
                           (item.icon || item.tag || item.action) ? 'grid-cols-[16px_1fr_auto]' : 'grid-cols-[16px_1fr]',
@@ -243,10 +270,11 @@ export function Combobox({
                         <span className={cn('inline-flex justify-center', item.icon ? 'text-ink-3' : 'text-accent')}>
                           {item.icon || <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>}
                         </span>
-                        {/* Wraps rather than truncates: a name is the one
-                            thing a row must show in full, and a locked row's
-                            tag plus action can leave it under 100px. */}
-                        <span className="min-w-0 break-words">
+                        {/* One line: a long name ends in an ellipsis and
+                            shows in full on hover (the row's title). The
+                            popup is wide enough that a locked row's tag
+                            plus action still leaves room for the name. */}
+                        <span className="min-w-0 truncate whitespace-nowrap">
                           {item.label}
                           {item.note && <span className="text-ink-4"> ({item.note})</span>}
                         </span>

@@ -28,6 +28,9 @@
 import { useEffect, useState } from 'react';
 import { isEmailShaped } from '../lib/emailAddress';
 import { mindsHubFailureText } from '../lib/orgSharing';
+import i18n from '../../lib/i18n';
+
+const reasonText = (key, vars) => i18n.t(`recipients.reason.${key}`, { ns: 'library', ...vars });
 import { LOAD_STATUS } from '../lib/sharingContract';
 import { DIRECTORY_MAX_AGE_MS, directoryAnswered } from './useOrgSharing';
 
@@ -123,11 +126,11 @@ export function useRecipientTokens({
     const unchecked = refreshFailed ? tokens.filter(unmatched) : unanswered;
     setHeld(null);
     showText(unchecked.join(' '));
-    const notInOrg = `not in ${org}`;
+    const notInOrg = reasonText('notInOrg', { org });
     const answers = tokens.filter((raw) => !unchecked.includes(raw)).map((raw) => {
       const email = raw.toLowerCase();
-      if (!isEmail(email)) return { raw, reason: 'not an email' };
-      if (isOwnEmail(email)) return { raw: email, reason: "that's you" };
+      if (!isEmail(email)) return { raw, reason: reasonText('notEmail') };
+      if (isOwnEmail(email)) return { raw: email, reason: reasonText('self') };
       if (emailsOnly) return { email };
       const person = findByEmail(email);
       if (person) return { person };
@@ -152,9 +155,9 @@ export function useRecipientTokens({
       emit({ userIds: next.userIds, emails: next.emails });
     }
     const uncheckedReason = mindsHubFailureText(refreshFailed ? directory.failure : directory.lookupFailure, {
-      unreachable: `couldn't check who is in ${org}, try again`,
-      refused: `MindsHub refused to check who is in ${org}`,
-      throttled: 'MindsHub is limiting requests, try again in a minute',
+      unreachable: reasonText('uncheckedUnreachable', { org }),
+      refused: reasonText('uncheckedRefused', { org }),
+      throttled: reasonText('uncheckedThrottled'),
     });
     setNotAdded([...refused, ...unchecked.map((raw) => ({ raw: raw.toLowerCase(), reason: uncheckedReason }))]);
   };

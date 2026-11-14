@@ -5,6 +5,7 @@ import { host } from '../../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../../shared/server-status';
 import { scrubLog } from '../../lib/diagnostics';
 import { Section, SettingsSectionPanel } from './settingsLayout';
+import { sharedTranslator, useTranslation } from '../../../lib/i18n';
 
 // Port / Exit / Started chips in the status card.
 const CHIP_CLASS = 'py-1.5 px-2.5 rounded-md bg-surface-2 border border-solid border-line';
@@ -22,6 +23,7 @@ export default function BackendSection({
   onStartServer,
   onStopServer,
 }) {
+  const { t } = useTranslation('settingsSystem');
   const [diag, setDiag] = useState(null);
   const [diagBusy, setDiagBusy] = useState(false);
 
@@ -90,8 +92,8 @@ export default function BackendSection({
       <SettingsSectionPanel>
         <div className="py-8 px-0 flex flex-col items-center justify-center gap-2.5 text-center text-ink-3 text-[13px]">
           <span className="text-[32px] leading-none">☁</span>
-          <div className="font-semibold text-ink text-base">Backend is managed server-side</div>
-          <div className="max-w-[320px]">The Python backend runs on the server — it isn't controllable from this interface.</div>
+          <div className="font-semibold text-ink text-base">{t('backend.web.title')}</div>
+          <div className="max-w-[320px]">{t('backend.web.body')}</div>
         </div>
       </SettingsSectionPanel>
     );
@@ -114,13 +116,13 @@ export default function BackendSection({
     kind: errorKind,
     exitCode: diag?.lastExitCode ?? null,
     stopIntentional: diag?.lastStopIntentional ?? null,
-  });
+  }, sharedTranslator('app'));
   const failureCopy = backendFailureCopy({
     kind: errorKind,
     hasLog: log.length > 0,
     port: port ?? null,
     portHolderPid: diag?.portHolderPid ?? null,
-  });
+  }, sharedTranslator('app'));
 
   const state = serverBusy
     ? (serverBusyKind === 'stopping' ? 'stopping' : 'starting')
@@ -132,30 +134,30 @@ export default function BackendSection({
     : 'failed';
 
   const STATUS_META = {
-    online: { title: 'MindsHub backend is running', subtitle: 'The local Python server is responding to /health.', iconColor: 'var(--success)', iconBgMix: 'var(--success)' },
-    starting: { title: 'MindsHub backend is starting…', subtitle: 'Spawning the local Python server. This usually takes a few seconds.', iconColor: 'var(--accent)', iconBgMix: 'var(--accent)' },
-    stopping: { title: 'MindsHub backend is stopping…', subtitle: 'Waiting for the local Python server to terminate.', iconColor: 'var(--ink-3)', iconBgMix: 'var(--ink-3)' },
+    online: { title: t('backend.status.online.title'), subtitle: t('backend.status.online.subtitle'), iconColor: 'var(--success)', iconBgMix: 'var(--success)' },
+    starting: { title: t('backend.status.starting.title'), subtitle: t('backend.status.starting.subtitle'), iconColor: 'var(--accent)', iconBgMix: 'var(--accent)' },
+    stopping: { title: t('backend.status.stopping.title'), subtitle: t('backend.status.stopping.subtitle'), iconColor: 'var(--ink-3)', iconBgMix: 'var(--ink-3)' },
     offline: offlineKind === 'stopped'
-      ? { title: 'MindsHub backend is stopped', subtitle: 'You stopped the local Python server. Click "Start backend" below to bring it back up.', iconColor: 'var(--ink-3)', iconBgMix: 'var(--ink-3)' }
-      : { title: 'MindsHub backend isn\'t running', subtitle: "The local Python server didn't start. The most recent error and log tail are captured below.", iconColor: 'var(--danger)', iconBgMix: 'var(--danger)' },
+      ? { title: t('backend.status.stopped.title'), subtitle: t('backend.status.stopped.subtitle'), iconColor: 'var(--ink-3)', iconBgMix: 'var(--ink-3)' }
+      : { title: t('backend.status.failed.title'), subtitle: t('backend.status.failed.subtitle'), iconColor: 'var(--danger)', iconBgMix: 'var(--danger)' },
   }[state];
 
   const backendFooter = (
     <>
-      <Tooltip content="Refresh diagnostics">
+      <Tooltip content={t('backend.refreshTooltip')}>
         <Button onClick={refreshDiag}>
-          {Ico.refresh(14)}Refresh
+          {Ico.refresh(14)}{t('backend.refresh')}
         </Button>
       </Tooltip>
       {(onStartServer || onStopServer) && state !== 'offline' && (
         <Button onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}>
-          {(diagBusy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
+          {(diagBusy && serverBusyKind === 'stopping') ? t('backend.stopping') : t('backend.stop')}
         </Button>
       )}
       {(onStartServer || onStopServer) && (
         <Button variant="primary" onClick={state === 'offline' ? handleBackendStart : handleBackendRestart}
           disabled={diagBusy || serverBusy || (state === 'offline' ? !onStartServer : !(onStartServer && onStopServer))}
-        >{diagBusy ? (state === 'offline' ? 'Starting…' : 'Restarting…') : (state === 'offline' ? 'Start backend' : 'Restart backend')}</Button>
+        >{diagBusy ? (state === 'offline' ? t('backend.starting') : t('backend.restarting')) : (state === 'offline' ? t('backend.start') : t('backend.restart'))}</Button>
       )}
     </>
   );
@@ -166,7 +168,7 @@ export default function BackendSection({
 
         {/* Status card — status header + port + logs */}
         <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] overflow-hidden">
-          <div className="py-2.5 px-4 border-b border-x-0 border-t-0 border-solid border-line section-label">Status</div>
+          <div className="py-2.5 px-4 border-b border-x-0 border-t-0 border-solid border-line section-label">{t('backend.statusHeading')}</div>
 
           {/* Status summary row */}
           <div className="flex items-start gap-3 py-[14px] px-4">
@@ -189,18 +191,18 @@ export default function BackendSection({
           {/* Port + exit code + last attempt chips */}
           <div className="flex gap-2 pt-0 px-4 pb-[14px] text-xs tabular-nums">
             <div className={CHIP_CLASS}>
-              <span className={CHIP_LABEL_CLASS}>Port</span>
+              <span className={CHIP_LABEL_CLASS}>{t('backend.port')}</span>
               <span className="text-ink">{port ?? '—'}</span>
             </div>
             {state === 'offline' && (
               <div className={CHIP_CLASS}>
-                <span className={CHIP_LABEL_CLASS}>Exit</span>
+                <span className={CHIP_LABEL_CLASS}>{t('backend.exit')}</span>
                 <span className="text-ink">{exitLabel}</span>
               </div>
             )}
             {startedAt && (
               <div className={CHIP_CLASS}>
-                <span className={CHIP_LABEL_CLASS}>Started</span>
+                <span className={CHIP_LABEL_CLASS}>{t('backend.started')}</span>
                 <span className="text-ink">{startedAt}</span>
               </div>
             )}
@@ -212,20 +214,20 @@ export default function BackendSection({
               {error ? (
                 <Alert variant="danger" className="font-[family-name:var(--font-mono)] break-words">{error}</Alert>
               ) : (
-                <div className="py-2.5 px-3 rounded-lg bg-surface-2 border border-solid border-line text-ink-3 text-sm leading-[1.5]">No specific start error was captured. Check the log tail — the process may have died after starting.</div>
+                <div className="py-2.5 px-3 rounded-lg bg-surface-2 border border-solid border-line text-ink-3 text-sm leading-[1.5]">{t('backend.noStartError')}</div>
               )}
             </div>
           )}
 
           {/* Recent log */}
           <div className="border-t border-x-0 border-b-0 border-solid border-line pt-2.5 px-4 pb-[14px]">
-            <div className="section-label mb-1.5">Log</div>
+            <div className="section-label mb-1.5">{t('backend.log')}</div>
             {/* ENG-1320: grow to fill the modal instead of a fixed 200px cap
                 that squeezed a long log into a tiny scroller while the panel
                 had room to spare. Viewport-relative so it scales with the
                 modal (min(820px, 88vh)); still capped + scrollable so a very
                 long log can't push the section controls off-screen. */}
-            <pre className="m-0 py-2.5 px-3 bg-surface-2 border border-solid border-line rounded-lg font-[family-name:var(--font-mono)] text-[11.5px] leading-[1.55] text-ink-2 max-h-[min(520px,52vh)] overflow-auto whitespace-pre-wrap break-words select-text">{log || '(no log captured yet)'}</pre>
+            <pre className="m-0 py-2.5 px-3 bg-surface-2 border border-solid border-line rounded-lg font-[family-name:var(--font-mono)] text-[11.5px] leading-[1.55] text-ink-2 max-h-[min(520px,52vh)] overflow-auto whitespace-pre-wrap break-words select-text">{log || t('backend.noLog')}</pre>
           </div>
         </div>
 

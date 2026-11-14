@@ -182,6 +182,46 @@ describe('CodeComposer', () => {
     expect(click).toHaveBeenCalledOnce();
   });
 
+  it('returns focus to the text box when the file dialog closes', async () => {
+    const user = userEvent.setup();
+    const { container } = renderComposer();
+    const input = container.querySelector('input[type=file]') as HTMLInputElement;
+    const textbox = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Files and folders' }));
+    fireEvent.change(input, { target: { files: [new File(['x'], 'notes.md', { type: 'text/markdown' })] } });
+    expect(textbox).toHaveFocus();
+
+    screen.getByRole('button', { name: 'Add to prompt' }).focus();
+    input.dispatchEvent(new Event('cancel'));
+    expect(textbox).toHaveFocus();
+  });
+
+  it('keeps the text box usable while a follow-up is being sent', async () => {
+    const user = userEvent.setup();
+    let fail: (error: Error) => void = () => {};
+    const onSend = vi.fn(() => new Promise<void>((_, reject) => { fail = reject; }));
+    const props = {
+      session: baseSession, busy: false, onSend, onStop: vi.fn(async () => {}), commands,
+      onClientCommand: vi.fn(), onPermissionChange: vi.fn(async () => {}),
+    };
+    const { rerender } = render(<CodeComposer {...props} />);
+    const textbox = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    await user.type(textbox, 'first{Enter}');
+    rerender(<CodeComposer {...props} busy />);
+    expect(textbox).toBeEnabled();
+    expect(textbox).toHaveFocus();
+    await user.keyboard('second');
+    expect(textbox).toHaveValue('second');
+    await user.keyboard('{Enter}');
+    expect(onSend).toHaveBeenCalledOnce();
+
+    // A failed send puts its text back without dropping what was typed since.
+    fail(new Error('offline'));
+    rerender(<CodeComposer {...props} />);
+    await waitFor(() => expect(textbox).toHaveValue('first\nsecond'));
+  });
+
   it('puts searchable MindsHub skills ahead of agent commands', async () => {
     vi.spyOn(codingApi, 'skillLibrary').mockResolvedValue({
       sources: [],
@@ -325,6 +365,27 @@ describe('CodeComposer', () => {
     expect(onSend).toHaveBeenCalledWith('/status', 'turn', []);
   });
 
+  it('keeps text typed while a slash command is pending when the command fails', async () => {
+    let fail: (error: Error) => void = () => {};
+    const onSend = vi.fn(() => new Promise<void>((_, reject) => { fail = reject; }));
+    const props = {
+      session: { ...baseSession, status: 'completed' as const }, busy: false, onSend, onStop: vi.fn(async () => {}), commands,
+      onClientCommand: vi.fn(), onPermissionChange: vi.fn(async () => {}),
+    };
+    const { rerender } = render(<CodeComposer {...props} />);
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+
+    fireEvent.change(input, { target: { value: '/status' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledWith('/status', 'turn', []);
+    rerender(<CodeComposer {...props} busy />);
+    fireEvent.change(input, { target: { value: 'keep this draft' } });
+
+    fail(new Error('temporarily unavailable'));
+    rerender(<CodeComposer {...props} />);
+    await waitFor(() => expect(input).toHaveValue('/status\nkeep this draft'));
+  });
+
   it('queues messages by default while the agent is working', async () => {
     const { onSend } = renderComposer();
     fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), {
@@ -459,6 +520,21 @@ describe('CodeComposer drafts', () => {
     renderComposer(completed);
     expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toHaveValue('half-written instruction');
     expect(screen.getByText('notes.md')).toBeInTheDocument();
+  });
+
+  it('keeps the unsent text across a reload', async () => {
+    const first = renderComposer(completed, [], { id: 1, item: attachment });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), { target: { value: 'survive a reload' } });
+    first.unmount();
+    window.dispatchEvent(new Event('pagehide'));
+
+    // A reload starts with fresh module state and only localStorage left.
+    vi.resetModules();
+    const { CodeComposer: Reloaded } = await import('./CodeComposer');
+    render(<Reloaded session={completed} busy={false} onSend={vi.fn(async () => {})} onStop={vi.fn(async () => {})}
+      commands={commands} onClientCommand={vi.fn()} onPermissionChange={vi.fn(async () => {})} />);
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toHaveValue('survive a reload');
+    expect(screen.queryByText('notes.md')).not.toBeInTheDocument();
   });
 
   it('forgets the draft once it has been sent', async () => {

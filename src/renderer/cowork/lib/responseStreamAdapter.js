@@ -1,5 +1,12 @@
+import { applyAddonEvent } from './addons';
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
+import { artifactIdentity } from './artifactIdentity';
+import { browserStep, withBrowserStep } from './browserSession';
 import { parseFigureSources } from './figureSources';
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when the event is reduced (never at import). */
+const tr = (key, vars) => i18n.t(`messages.responseStream.${key}`, { ns: 'projects', ...vars });
 
 // Anton /v1/responses → ThinkingStep adapter.
 //
@@ -23,10 +30,16 @@ import { parseFigureSources } from './figureSources';
 //                                 the user, or the turn ends. `.done` ends
 //                                 it, `.cleared` takes it off screen. Never
 //                                 persisted, so only a live turn has one.
+//   response.browser_session_opened — the agent opened the person's
+//                                 browser; carries `session_id` only → one
+//                                 Browser step per session
 //   response.artifact_created   — an artifact this turn produced (any type);
 //                                 carries an `artifact` payload → one card
 //   response.figure_sources     — where each figure in the final answer came
 //                                 from; sent once, before response.completed
+//   response.artifact_check     — the agent asks the open preview to check an
+//                                 artifact; answered by lib/artifactCheck,
+//                                 never a step
 //   response.completed | failed — terminal
 //
 // We collapse each scratchpad cell (start → end → progress → result) into
@@ -56,6 +69,17 @@ export function visibleFirstTake(firstTake) {
   return firstTake && !firstTake.cleared && firstTake.text ? firstTake : null;
 }
 
+/**
+ * When a turn that ran on screen ended, for its finished "Worked for" time.
+ * The live counter ticks on this machine's clock until the terminal event
+ * arrives, so the finished time runs at least that long: ending at the
+ * server's stamp alone would come out shorter by however late the event
+ * arrived, and the time would visibly drop as the turn finished.
+ */
+export function liveTurnEndedAt(endedAt, now = Date.now()) {
+  return Math.max(endedAt ?? 0, now);
+}
+
 export function initialStreamState() {
   return {
     responseId: null,
@@ -63,6 +87,8 @@ export function initialStreamState() {
     /** 'pending' | 'thinking' | 'streaming' | 'done' | 'error' */
     status: 'pending',
     startedAt: null,
+    /** When the turn finished, off its terminal event; null while it runs. */
+    endedAt: null,
     /** ThinkingStep[] in order */
     steps: [],
     /** Live "train of thought" text that isn't part of the final answer
@@ -238,11 +264,11 @@ function toolCallLabel(name, args) {
 /** Truncate accumulated thought/reasoning text to its last meaningful
  *  line, for display as a single live "current thought" line. */
 export function truncateLabel(text) {
-  if (!text) return 'Reasoning…';
+  if (!text) return tr('reasoning');
   // Take the last meaningful line (reasoning streams append).
   const lines = text.trim().split('\n').filter(Boolean);
   const last = lines[lines.length - 1] || '';
-  return last.length > 80 ? last.slice(0, 77) + '…' : last || 'Reasoning…';
+  return last.length > 80 ? last.slice(0, 77) + '…' : last || tr('reasoning');
 }
 
 // ── Narration vs answer (ENG-3554) ─────────────────────────────────
@@ -320,7 +346,8 @@ export function standInPhrase(seed) {
   const text = String(seed ?? '');
   let hash = 0;
   for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-  return STAND_IN_PHRASES[hash % STAND_IN_PHRASES.length];
+  const index = hash % STAND_IN_PHRASES.length;
+  return tr(`standIn.${index}`, { defaultValue: STAND_IN_PHRASES[index] });
 }
 
 /** What a step shows: a Note's stand-in phrase when it has one, else its label. */
@@ -504,6 +531,11 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // collapses every `now()` to the same JS-tick value and reasoning
   // / execution durations all read as 0ms. Falls back to the live
   // clock when an event lacks `at_ms` (older persisted streams).
+  // A preview check the agent asked for (ENG-4207) is answered by
+  // lib/artifactCheck, never shown: it is not a step, and it is not news
+  // about the turn either, so it leaves even a model-wait line in place.
+  if (type === 'response.artifact_check') return state;
+
   const eventTs = (typeof event.at_ms === 'number' && Number.isFinite(event.at_ms))
     ? event.at_ms
     : now();
@@ -514,6 +546,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
    * without a model-wait line over it, and a reasoning delta starts a fresh
    * burst instead of appending to the status. */
   if (state.currentThought?.kind === 'model_wait'
+    // A message the person added is not news from the model.
+    && type !== 'response.addon'
     && !(type === 'response.in_progress'
       && event.thought_role === 'thought.progress'
       && event.phase === 'model_wait')) {
@@ -542,6 +576,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'done',
+      endedAt: eventTs,
       currentThought: null,
       firstTake: CLEARED_TAKE,
       assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
@@ -574,12 +609,13 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     //                                 so it was a paywall impression with no
     //                                 impression event at all.
     //
-    // Four codes are deliberately NOT counted. `model_disabled` — an admin
+    // Five codes are deliberately NOT counted. `model_disabled` — an admin
     // turned the model off, and credits do not unlock it, so it is not upgrade
     // intent. `rate_limited` — a velocity limit was never upgrade intent, and
     // counting it would inflate the signal with users who already pay.
     // `free_serving_paused`: a fleet-wide pause of free Air, not this user's cap.
     // `model_restricted`: an org admin's model rule, which credits do not lift.
+    // `budget_exceeded`: the org's spent budget, which credits do not lift either.
     //
     // One event carrying `reason` rather than three events, so the impression
     // stays a single series and keeps this once-per-receipt guarantee.
@@ -593,7 +629,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'error',
-      error: event.error || event.message || 'Response failed',
+      endedAt: eventTs,
+      error: event.error || event.message || tr('responseFailed'),
       // Stable wire code (e.g. 'token_limit') so the renderer can show a
       // richer affordance — the out-of-credits card — instead of plain text.
       errorCode: event.code || null,
@@ -685,6 +722,14 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     });
   }
 
+  /* The agent opened the person's shared browser: a Browser step that names
+     the session, which the chat's pane can show and a click reopens. */
+  if (type === 'response.browser_session_opened') {
+    const step = browserStep(event, eventTs);
+    if (!step) return state;
+    return { ...state, steps: withBrowserStep(state.steps, step) };
+  }
+
   // Inline artifact card. The harness emits one of these at turn end for
   // every artifact the turn produced (any type — HTML, dataset, doc,
   // image…), detected via the artifacts-dir diff, and replays them
@@ -699,7 +744,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     const filePath = art.file_path || art.path || '';
     const step = {
       id: `artifact-${art.slug || state.steps.length + 1}`,
-      label: art.title || art.slug || 'Artifact',
+      label: art.title || art.slug || tr('artifact'),
       badge: 'Artifact',
       icon: 'sparkle',
       status: 'completed',
@@ -735,7 +780,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _scratchpadTabId: null,
     };
     if (!replay) {
-      try { _trackArtifactBuilt(art.type || 'unknown'); }
+      try { _trackArtifactBuilt(art.type || 'unknown', artifactIdentity(art) || art.id || ''); }
       catch { /* analytics must never break streaming */ }
     }
     return { ...state, steps: [...state.steps, step] };
@@ -758,7 +803,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     }
     const step = {
       id: `skill-${sk.slug || state.steps.length + 1}`,
-      label: sk.name || sk.slug || 'Skill',
+      label: sk.name || sk.slug || tr('skill'),
       badge: 'Skill',
       icon: 'cube',
       status: 'completed',
@@ -810,7 +855,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       // Fixed text, not the prompt: the prompt can be a long markdown brief,
       // and this label is the collapsed ThinkingBlock header while the
       // question is open. The card renders the full prompt from data.prompt.
-      label: 'Question for you',
+      label: tr('questionForYou'),
       badge: 'AskUser',
       icon: 'question',
       status: 'in_progress',
@@ -870,6 +915,17 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return found ? { ...state, steps } : state;
   }
 
+  /* A message the person sent while this turn ran (ENG-4194): added to the
+     running task, read by Anton, or handed back unread at turn end. The app
+     injects the same event for its own request (`sending`, then `added`), so
+     the row shows the moment Enter is pressed. Every add-on the server
+     relays shows, live or replayed (ENG-4208); only acting on one is limited
+     to this client's own. See lib/addons.js. */
+  if (type === 'response.addon') {
+    const steps = applyAddonEvent(state.steps, event, eventTs);
+    return steps === state.steps ? state : { ...state, steps };
+  }
+
   /* The figures of the final answer and the steps they came from. Sent once,
      just before response.completed, and replayed from the saved events on
      reload; the chat marks each figure once the answer is finished. */
@@ -919,7 +975,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     const id = `step-${state.steps.length + 1}`;
     const step = {
       id,
-      label: 'Running code',
+      label: tr('runningCode'),
       badge: 'Script',
       icon: 'code',
       status: 'in_progress',
@@ -968,7 +1024,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       ? (target.executionStartedAt || eventTs)
       : eventTs;
     const patch = {
-      label: oneLiner || name || 'Running code',
+      label: oneLiner || name || tr('runningCode'),
       data: parsed || { one_line_description: oneLiner, name, code, _truncated: true },
       _scratchpadTabId: name || null,
       executionStartedAt,
@@ -1014,7 +1070,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // ThinkingBlock shows tool activity.
   if (role === 'thought.tool_call.start') {
     const id = `step-${state.steps.length + 1}`;
-    const toolName = event.content || 'Tool call';
+    const toolName = event.content || tr('toolCall');
     const args = event.args || {};
     const label = toolCallLabel(toolName, args);
     const step = {
@@ -1178,7 +1234,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // bottom of this block and is discarded as noise — which is exactly why
     // this needs an explicit branch.
     if (phase === 'rate_limited') {
-      const text = event.message || event.content || 'Rate limited — waiting';
+      const text = event.message || event.content || tr('rateLimitedWaiting');
       // A fresh burst, not an append: this interrupts whatever the model was
       // narrating, and the next real reasoning delta should replace it.
       return { ...state, currentThought: { text, startedAt: eventTs } };
@@ -1192,7 +1248,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     if (phase === 'model_wait') {
       return {
         ...state,
-        currentThought: { text: event.message || 'Waiting for the model', startedAt: eventTs, kind: 'model_wait' },
+        currentThought: { text: event.message || tr('waitingForModel'), startedAt: eventTs, kind: 'model_wait' },
       };
     }
 

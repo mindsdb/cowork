@@ -10,12 +10,13 @@ import Button from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 
 function defaultComputerName(platform: string): string {
-  if (platform === 'darwin') return 'My Mac';
-  if (platform === 'windows') return 'My Windows PC';
-  return 'My Linux computer';
+  if (platform === 'darwin') return i18n.t('settingsTools:connectComputer.defaultNameMac');
+  if (platform === 'windows') return i18n.t('settingsTools:connectComputer.defaultNameWindows');
+  return i18n.t('settingsTools:connectComputer.defaultNameLinux');
 }
 
 
@@ -39,6 +40,7 @@ export function shellSafeComputerName(name: string): string {
 
 
 export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation('settingsTools');
   const [platform, setPlatform] = useState('darwin');
   const [name, setName] = useState('');
   const [token, setToken] = useState('');
@@ -58,7 +60,7 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
       setToken(result.registration_token);
       setExpiresIn(result.expires_in_seconds);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not create a connection code.');
+      setError(reason instanceof Error ? reason.message : i18n.t('settingsTools:connectComputer.createFailed'));
     } finally {
       setLoading(false);
     }
@@ -84,9 +86,10 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
   const expired = Boolean(token) && expiresIn === 0;
   const command = useMemo(() => {
     if (!token || expired || controlPlaneIsLocal) return '';
-    const computerName = shellSafeComputerName(name) || defaultComputerName(platform);
+    const computerName = shellSafeComputerName(name) || shellSafeComputerName(defaultComputerName(platform));
     return `cowork-code-runtime --server "${controlPlaneOrigin}" --code "${token}" --name "${computerName}"`;
-  }, [controlPlaneIsLocal, controlPlaneOrigin, expired, name, platform, token]);
+    // t changes with the language, and the default name with it.
+  }, [controlPlaneIsLocal, controlPlaneOrigin, expired, name, platform, token, t]);
 
   const minutes = Math.floor(expiresIn / 60);
   const seconds = String(expiresIn % 60).padStart(2, '0');
@@ -101,14 +104,14 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
     >
       <ModalHeader
         id="connect-computer-title"
-        title="Connect a computer"
-        subtitle="Run Code tasks on another Mac, Windows, or Linux computer."
+        title={t('connectComputer.title')}
+        subtitle={t('connectComputer.subtitle')}
         onClose={onClose}
       />
       <ModalBody padding="18px">
         <div className="grid gap-3.5">
           <label className="grid gap-1.5 text-sm font-medium text-ink">
-            Computer type
+            {t('connectComputer.computerType')}
             <Select
               value={platform}
               onValueChange={setPlatform}
@@ -117,33 +120,33 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
                 { value: 'windows', label: 'Windows' },
                 { value: 'linux', label: 'Linux' },
               ]}
-              ariaLabel="Computer type"
+              ariaLabel={t('connectComputer.computerType')}
             />
           </label>
           <label className="grid gap-1.5 text-sm font-medium text-ink">
-            Name
+            {t('connectComputer.name')}
             <Input value={name} onChange={setName} placeholder={defaultComputerName(platform)} />
           </label>
 
           <div className="rounded-[10px] border border-solid border-line bg-surface-2 p-3.5">
             <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold text-ink">Run on the other computer</div>
-              {command && <span className="text-xs tabular-nums text-ink-4">Expires in {minutes}:{seconds}</span>}
+              <div className="text-sm font-semibold text-ink">{t('connectComputer.runOnOther')}</div>
+              {command && <span className="text-xs tabular-nums text-ink-4">{t('connectComputer.expiresIn', { minutes: String(minutes), seconds })}</span>}
             </div>
             {controlPlaneIsLocal ? (
               <div role="status" className="rounded-lg border border-solid border-line bg-bg p-3 text-sm leading-5 text-ink-3">
-                This desktop currently uses a private local Code service, so another computer cannot reach it. Connect through a hosted control plane or configure a reachable development control-plane URL first.
+                {t('connectComputer.localOnly')}
               </div>
             ) : (
               <>
-                <p className="m-0 mb-3 text-sm leading-5 text-ink-3">Open its terminal and run this once. The runtime remembers the connection.</p>
+                <p className="m-0 mb-3 text-sm leading-5 text-ink-3">{t('connectComputer.runOnce')}</p>
                 <div className="flex items-start gap-2 rounded-lg border border-solid border-line bg-bg p-2.5">
-                  <code className="min-w-0 flex-1 select-text break-all text-xs leading-5 text-ink-2">{loading ? 'Creating connection code…' : expired ? 'This connection code has expired.' : command}</code>
+                  <code className="min-w-0 flex-1 select-text break-all text-xs leading-5 text-ink-2">{loading ? t('connectComputer.creatingCode') : expired ? t('connectComputer.codeExpired') : command}</code>
                   <Button
                     icon
                     size="sm"
                     variant="subtle"
-                    aria-label="Copy connection command"
+                    aria-label={t('connectComputer.copyAriaLabel')}
                     disabled={!command}
                     onClick={async () => {
                       const ok = await copyText(command);
@@ -153,10 +156,10 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
                     <Icon of={Copy} size={14} />
                   </Button>
                 </div>
-                {copied && command && <div className="mt-2 text-xs text-[var(--ok)]">Copied</div>}
+                {copied && command && <div className="mt-2 text-xs text-[var(--ok)]">{t('connectComputer.copied')}</div>}
                 {!loading && expiresIn === 0 && (
                   <Button size="sm" variant="subtle" className="mt-2" onClick={() => void createCode()}>
-                    <Icon of={RotateCw} size={12} /> New code
+                    <Icon of={RotateCw} size={12} /> {t('connectComputer.newCode')}
                   </Button>
                 )}
               </>
@@ -165,7 +168,7 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
           {error && <div role="alert" className="text-sm text-[var(--danger)]">{error}</div>}
         </div>
       </ModalBody>
-      <ModalFooter><Button variant="primary" onClick={onClose}>Done</Button></ModalFooter>
+      <ModalFooter><Button variant="primary" onClick={onClose}>{t('connectComputer.done')}</Button></ModalFooter>
     </Modal>
   );
 }

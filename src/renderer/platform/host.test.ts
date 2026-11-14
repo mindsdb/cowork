@@ -461,6 +461,38 @@ describe('electron mode (bridge present)', () => {
     expect(host.codeModeAvailable).toBe(false);
   });
 
+  it('hears the in-app browser registration only on a shell that hosts the browser', async () => {
+    const stop = vi.fn();
+    const subscribe = vi.fn(() => stop);
+    const cb = vi.fn();
+    (window as unknown as Record<string, unknown>).antontron = { supportsInAppBrowser: true, browser: {}, onBrowserRegistered: subscribe };
+    let host = await importHost();
+    expect(host.host.onInAppBrowserRegistered(cb)).toBe(stop);
+    expect(subscribe).toHaveBeenCalledWith(cb);
+
+    subscribe.mockClear();
+    for (const bridge of [{ supportsInAppBrowser: false, onBrowserRegistered: subscribe }, { supportsInAppBrowser: true, browser: {} }]) {
+      (window as unknown as Record<string, unknown>).antontron = bridge;
+      host = await importHost();
+      expect(host.onInAppBrowserRegistered(cb)).toEqual(expect.any(Function));
+    }
+    delete (window as unknown as Record<string, unknown>).antontron;
+    host = await importHost();
+    expect(host.onInAppBrowserRegistered(cb)).toEqual(expect.any(Function));
+    expect(subscribe).not.toHaveBeenCalled();
+  });
+
+  it('answers that nothing exists or draws where no shell hosts the in-app browser', async () => {
+    const bounds = { x: 0, y: 0, width: 800, height: 800 };
+    for (const bridge of [undefined, { supportsInAppBrowser: false }]) {
+      if (bridge) (window as unknown as Record<string, unknown>).antontron = bridge;
+      else delete (window as unknown as Record<string, unknown>).antontron;
+      const host = await importHost();
+      await expect(host.inAppBrowser.show('t-a', bounds)).resolves.toEqual({ exists: false, drawn: false });
+      await expect(host.inAppBrowser.setBounds(bounds)).resolves.toEqual({ drawn: false });
+    }
+  });
+
   it('supportsDocumentPreview is true only when the bridge reports literal true', async () => {
     (window as unknown as Record<string, unknown>).antontron = { supportsDocumentPreview: true };
     const host = await importHost();
@@ -1554,5 +1586,24 @@ describe('checkConfigured() on web reads draft_links from /health', () => {
     stubHealth({ config_ready: true, ...flag });
     const host = await importHost();
     await expect(host.checkConfigured()).resolves.toMatchObject({ draftLinks: false });
+  });
+});
+
+describe('setScheduleKeepAwake()', () => {
+  it('passes the state to the bridge on Electron', async () => {
+    const setScheduleKeepAwake = vi.fn(async () => {});
+    (window as unknown as Record<string, unknown>).antontron = { setScheduleKeepAwake };
+    const host = await importHost();
+    host.setScheduleKeepAwake(true);
+    host.setScheduleKeepAwake(false);
+    expect(setScheduleKeepAwake.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('does nothing on web or on a shell without the channel', async () => {
+    let host = await importHost();
+    expect(() => host.setScheduleKeepAwake(true)).not.toThrow();
+    (window as unknown as Record<string, unknown>).antontron = {};
+    host = await importHost();
+    expect(() => host.setScheduleKeepAwake(true)).not.toThrow();
   });
 });

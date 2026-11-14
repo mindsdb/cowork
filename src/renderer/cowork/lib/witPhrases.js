@@ -2,6 +2,11 @@
 // pseudo-randomly per phase instance and rotated every ~13s while
 // the phase is active. Stable per-key picks so the same phase doesn't
 // flip its phrase on every render of the parent.
+//
+// PHRASES stays English (it is the source and the tests' reference);
+// pickPhrase returns the picked phrase in the viewer's language.
+
+import i18n from '../../lib/i18n';
 
 export const PHRASES = {
   thinking: [
@@ -68,5 +73,6 @@ export function pickPhrase(bank, key, tick = 0) {
   const list = PHRASES[bank] || [];
   if (list.length === 0) return '';
   const start = hash(String(key)) % list.length;
-  return list[(start + tick) % list.length];
+  const index = (start + tick) % list.length;
+  return i18n.t(`messages.witPhrases.${bank}.${index}`, { ns: 'projects', defaultValue: list[index] });
 }

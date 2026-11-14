@@ -1,0 +1,754 @@
+{
+  "documentPreview": {
+    "failed": "No se pudo previsualizar este archivo",
+    "failedDownloaded": "No se pudo previsualizar este archivo; se descargó en su lugar.",
+    "downloadFailed": "No se pudo descargar este archivo.",
+    "download": "Descargar",
+    "open": "Abrir",
+    "frameTitle": "Vista previa de {filename}",
+    "loading": "Cargando vista previa…",
+    "reasons": {
+      "tooLarge": "Demasiado grande para previsualizar.",
+      "zipLimit": "Al descomprimirse, el archivo supera los límites de la vista previa.",
+      "parseFailed": "No se puede leer el archivo.",
+      "unsupported": "El archivo usa algo que la vista previa no admite.",
+      "timeout": "La vista previa tardó demasiado.",
+      "internal": "La vista previa se detuvo por un error inesperado."
+    },
+    "limits": {
+      "maxBytes": "Demasiado grande para previsualizar: el archivo supera los {mib} MiB, el límite de la vista previa.",
+      "maxInflatedBytes": "Demasiado grande para previsualizar: al descomprimirse, el archivo supera los {mib} MiB, el límite de la vista previa.",
+      "maxZipEntryInflatedBytes": "Demasiado grande para previsualizar: una parte del archivo supera los {mib} MiB al descomprimirse, el límite de la vista previa.",
+      "maxZipEntries": "Demasiado grande para previsualizar: el archivo tiene más de {count, number} partes, el límite de la vista previa.",
+      "maxDocxNodes": "Demasiado grande para previsualizar: el documento generaría más de {count, number} elementos, el límite de la vista previa.",
+      "readyTimeoutMs": "La vista previa tardó demasiado: no empezó en {seconds} segundos, el límite de la vista previa.",
+      "progressTimeoutMs": "La vista previa tardó demasiado: no avanzó durante {seconds} segundos, el límite de la vista previa."
+    },
+    "truncatedMobile": {
+      "xlsx": "Se muestran hasta {rows, number} filas y {columns, number} columnas de cada hoja.",
+      "pptx": "{count, plural, one {Se muestra la primera diapositiva.} other {Se muestran las primeras # diapositivas.}}",
+      "pdf": "Se muestran las primeras {pages, number} páginas.",
+      "docx": "Se muestra parte de este documento."
+    },
+    "truncated": {
+      "xlsx": "Se muestran hasta {rows, number} filas y {columns, number} columnas de cada hoja. {action, select, download {Descargar} other {Abrir}} muestra la hoja completa.",
+      "pptx": "{count, plural, one {Se muestra la primera diapositiva.} other {Se muestran las primeras # diapositivas.}} {action, select, download {Descargar} other {Abrir}} muestra la presentación completa.",
+      "pdf": "Se muestran las primeras {pages, number} páginas. {action, select, download {Descargar} other {Abrir}} muestra el archivo completo.",
+      "docx": "Se muestra parte de este documento. {action, select, download {Descargar} other {Abrir}} muestra el archivo completo."
+    }
+  },
+  "common": {
+    "done": "Listo",
+    "cancel": "Cancelar",
+    "delete": "Eliminar"
+  },
+  "icon": {
+    "untitled": "Sin título",
+    "file": "archivo"
+  },
+  "status": {
+    "badge": {
+      "public": "Público",
+      "password": "Contraseña",
+      "restricted": "Restringido"
+    },
+    "hint": {
+      "notSharedYet": "Aún no se comparte. Ábrelo y elige Compartir para obtener un enlace web.",
+      "notShareable": "No se comparte. Solo las páginas web y los documentos Markdown se pueden compartir como enlace.",
+      "orgRestricted": "Restringido. Abre Compartir para ver quién puede abrir el enlace.",
+      "ownerOnly": "Compartido, pero solo tú puedes abrir el enlace.",
+      "chosenPeople": "Compartido. Solo las personas que elegiste pueden abrir el enlace.",
+      "unknown": "Compartido. No se pudo confirmar quién puede abrir el enlace, así que se trata como restringido."
+    },
+    "sharingFailed": "No se pudo compartir",
+    "couldNotShare": "No se pudo compartir.",
+    "tryAgain": "Reintentar",
+    "sharing": "Compartiendo…",
+    "updating": "Actualizando…",
+    "stoppingSharing": "Dejando de compartir…",
+    "deleting": "Eliminando…",
+    "notShared": "No compartido",
+    "draft": "Borrador",
+    "unsharedChanges": "Cambios sin compartir"
+  },
+  "liveAppShare": {
+    "title": "Permitir que otros dupliquen esta app",
+    "audienceNote": {
+      "one": "Verá tu correo junto a la app y podrá duplicarla hasta que lo detengas.",
+      "everyone": "Todos en este stack, incluidas las personas que se unan después, verán tu correo junto a la app y podrán duplicarla hasta que lo detengas."
+    },
+    "copyNote": "Cada copia es la app tal como está al duplicarla, con los cambios que hagas antes, y usa las conexiones de su nuevo dueño. Al detenerlo se conservan las copias ya hechas. Nadie más abre tu app en ejecución.",
+    "loadSharesFailed": "No se pudo cargar con quién se comparte esta app. Cierra y vuelve a abrir este diálogo para reintentar.",
+    "shareFailed": "No se pudo permitir que dupliquen esta app.",
+    "stopped": "{who} ya no puede duplicarla.",
+    "stopFailed": "No se pudo detener.",
+    "done": "{who} ya puede duplicarla. La encontrará en \"{section}\" en su página de Artefactos en vivo, con tu correo.",
+    "whoCanDuplicate": "Quién puede duplicarla",
+    "oneColleague": "Un colega",
+    "colleagueEmail": "Correo del colega",
+    "stopAriaLabel": "Dejar de permitir que {who} la duplique",
+    "stopping": "Deteniendo…",
+    "stop": "Detener",
+    "allowing": "Permitiendo…",
+    "allow": "Permitir"
+  },
+  "comments": {
+    "toolbar": {
+      "ariaLabel": "Barra de comentarios",
+      "comment": "Comentar: haz clic en un elemento (⌥ selecciona el contenedor)",
+      "inbox": "Bandeja de comentarios",
+      "hideComment": "Ocultar comentarios",
+      "showComment": "Mostrar comentarios",
+      "close": "Cerrar comentarios"
+    },
+    "composer": {
+      "placeholder": "Agrega un comentario…",
+      "ariaLabel": "Agregar un comentario",
+      "send": "Enviar"
+    },
+    "panel": {
+      "title": "Comentarios",
+      "close": "Cerrar panel de comentarios",
+      "expired": "La sesión expiró: recarga para ver comentarios nuevos.",
+      "filter": "Filtrar comentarios",
+      "tabs": {
+        "open": "Abiertos",
+        "resolved": "Resueltos",
+        "all": "Todos"
+      },
+      "empty": {
+        "open": "No hay comentarios abiertos",
+        "resolved": "No hay comentarios resueltos",
+        "all": "Aún no hay comentarios"
+      },
+      "reportIssue": "Reporta un problema…",
+      "deleteTitle": "¿Eliminar este hilo de comentarios?",
+      "deleteMessage": "Todo el hilo de comentarios se eliminará de forma permanente."
+    },
+    "card": {
+      "anonymous": "Anónimo",
+      "justNow": "ahora mismo",
+      "minutesAgo": "{count, plural, one {hace # min} other {hace # min}}",
+      "hoursAgo": "{count, plural, one {hace # hora} other {hace # horas}}",
+      "daysAgo": "{count, plural, one {hace # día} other {hace # días}}",
+      "replies": "{count, plural, one {# respuesta} other {# respuestas}}",
+      "edited": "(editado)",
+      "unattachedTip": "La parte del artefacto a la que se refería este comentario ya no está disponible.",
+      "generalTip": "Comentario general sobre todo el artefacto.",
+      "hiddenTip": "Este comentario se refiere a otra diapositiva, pestaña o sección oculta.",
+      "notVisible": "no visible",
+      "general": "general",
+      "notAttached": "sin anclar",
+      "agentWorking": "El agente está trabajando…",
+      "starting": "Iniciando…",
+      "addressWithAgent": "Resolver con el agente",
+      "reopenComment": "Reabrir comentario",
+      "resolveComment": "Resolver comentario",
+      "reopen": "Reabrir",
+      "markResolved": "Marcar como resuelto",
+      "resolve": "Resolver",
+      "more": "Más"
+    },
+    "errors": {
+      "load": "No se pudieron cargar los comentarios",
+      "post": "No se pudo publicar",
+      "reply": "No se pudo responder",
+      "update": "No se pudo actualizar",
+      "edit": "No se pudo editar",
+      "delete": "No se pudo eliminar",
+      "markRead": "No se pudieron marcar los comentarios como leídos"
+    }
+  },
+  "export": {
+    "formatsAriaLabel": "Formatos de exportación",
+    "exporting": "Exportando…",
+    "export": "Exportar"
+  },
+  "modeTabs": {
+    "ariaLabel": "Modo del artefacto",
+    "preview": "Vista previa",
+    "source": "Código fuente",
+    "review": "Revisar",
+    "editDisabled": "Solo el dueño del artefacto puede editarlo",
+    "reviewDisabled": "La revisión no está disponible para este artefacto",
+    "unavailable": "{label} no disponible: {reason}"
+  },
+  "selectionComment": {
+    "ariaLabel": "Comentar el texto seleccionado",
+    "placeholder": "¿Qué debería cambiar aquí?",
+    "comment": "Comentar"
+  },
+  "revisionBar": {
+    "draft": "Borrador",
+    "draftRevision": "Borrador · Revisión {number}",
+    "saving": "Guardando…",
+    "conflict": "Hay una revisión más reciente",
+    "unsaved": "Cambios sin guardar",
+    "saved": "Guardado",
+    "upToDate": "Al día",
+    "viewOnly": "Solo lectura · Solo el dueño puede editar",
+    "compare": "Comparar con una revisión",
+    "history": "Historial",
+    "option": "Revisión {number} · {summary}{current, select, yes { (actual)} other {}}",
+    "discard": "Descartar",
+    "saveTooltip": "Guardar revisión (⌘S)",
+    "save": "Guardar"
+  },
+  "sourceEditor": {
+    "source": "Código fuente del artefacto",
+    "sourceLabel": "Código fuente",
+    "editAriaLabel": "Editar {path}",
+    "markdownPreview": "Vista previa de Markdown",
+    "preview": "Vista previa",
+    "live": "Se actualiza mientras escribes"
+  },
+  "comparison": {
+    "noText": "Sin texto",
+    "summary": "Resumen del contenido modificado",
+    "before": "Antes",
+    "after": "Después",
+    "more": "+{count} más",
+    "side": "Lado de la comparación",
+    "beforeLabel": "Antes · {label}",
+    "afterLabel": "Después · {label}",
+    "loadingPage": "Cargando página…",
+    "beforeFrame": "Artefacto antes: {label}",
+    "afterFrame": "Artefacto después: {label}",
+    "revision": "Revisión {number}",
+    "textChanges": "{count, plural, one {# cambio de texto} other {# cambios de texto}}",
+    "changedLines": "{count, plural, one {# línea modificada} other {# líneas modificadas}}",
+    "earlier": "Anterior",
+    "current": "Actual",
+    "agentSuggestion": "Sugerencia del agente",
+    "revisionHistory": "Historial de revisiones",
+    "reviewChange": "Revisa el cambio antes de resolver",
+    "compareWith": "Comparar {label}",
+    "earlierDraft": "borrador anterior",
+    "visual": "Comparación visual",
+    "advanced": "Avanzado",
+    "close": "Cerrar comparación",
+    "reject": "Rechazar y restaurar",
+    "accept": "Aceptar y resolver",
+    "restore": "Restaurar como nueva revisión"
+  },
+  "htmlEditor": {
+    "blockGone": "El bloque de texto seleccionado ya no está disponible.",
+    "updateFailed": "No se pudo actualizar este texto.",
+    "advancedMode": "Modo avanzado: los cambios se siguen guardando como revisión",
+    "selected": "{label} seleccionado: escribe para cambiarlo",
+    "preparing": "Preparando el texto editable…",
+    "noEditable": "No se encontró texto editable directamente",
+    "clickToEdit": "Haz clic en cualquier texto del artefacto para editarlo",
+    "htmlSource": "Código HTML",
+    "editing": "Editando artefacto",
+    "back": "Volver al artefacto",
+    "sourceAriaLabel": "Código HTML del artefacto",
+    "canvasTitle": "Editar el artefacto en el lienzo",
+    "elements": {
+      "heading": "Título",
+      "paragraph": "Párrafo",
+      "listItem": "Elemento de lista",
+      "buttonLabel": "Texto del botón",
+      "caption": "Leyenda",
+      "text": "Texto"
+    }
+  },
+  "workspace": {
+    "noWorkspace": "Este artefacto se creó antes de que existiera la edición",
+    "noDraftAccess": "El dueño no compartió este borrador para revisión",
+    "commentsDown": "Los comentarios no están disponibles ahora. Vuelve a abrir el artefacto para reintentar.",
+    "previewOnly": "Solo vista previa: {product} no puede editar este tipo de archivo.",
+    "openReviewFailed": "No se pudo abrir este artefacto para revisión",
+    "loadSuggestionFailed": "No se pudo cargar la sugerencia del agente",
+    "loadSourceFailed": "No se pudo cargar el código editable",
+    "saveFailed": "No se pudieron guardar los cambios",
+    "loadRevisionFailed": "No se pudo cargar la revisión",
+    "restoreFailed": "No se pudo restaurar la revisión",
+    "noSourceToRestore": "Este artefacto no tiene código editable en el cual restaurar",
+    "agentNoChange": "El agente terminó sin cambiar este artefacto. El comentario sigue abierto.",
+    "changedWhileAgent": "El artefacto cambió mientras el agente trabajaba. Revisa la última revisión antes de reintentar.",
+    "resolvedSuggestionOpen": "El comentario se resolvió, pero su sugerencia del agente sigue abierta.",
+    "suggestionClosed": "Esa sugerencia ya no está abierta, así que no había nada que decidir."
+  },
+  "publish": {
+    "ownedByOther": "Otro dueño publicó este artefacto.",
+    "linkLeftLive": {
+      "unrecorded": "Este enlace se compartió antes de que {product} registrara quién comparte cada página, así que {product} no puede actualizarlo ni retirarlo. Actualizar comparte un enlace nuevo, y dejar de compartir o eliminar el artefacto deja este abierto para cualquiera que lo tenga. Pide a tu administrador que lo quite.",
+      "otherArtifact": "No se retiró nada: el registro de este artefacto apuntaba a la página de otro artefacto, {link}.",
+      "notTakenDown": "{product} no pudo retirar esta página, así que cualquiera con el enlace aún puede abrirla: {link}. Se compartió antes de que {product} registrara quién comparte cada página. Pide a tu administrador que la quite.",
+      "replaced": "Se compartió en un enlace nuevo. El enlace anterior, {link}, aún muestra la versión anterior, porque se compartió antes de que {product} registrara quién comparte cada página. Pide a tu administrador que lo quite."
+    },
+    "errors": {
+      "mindsApiKey": "Configura tu clave de API de Minds en Configuración para compartir.",
+      "sharingFailed": "No se pudo compartir: {message}",
+      "noUrl": "Compartir no devolvió ninguna URL.",
+      "updateFailed": "No se pudo actualizar: {message}",
+      "stopFailed": "No se pudo dejar de compartir: {message}",
+      "rollBackFailed": "No se pudo restaurar la versión: {message}"
+    },
+    "access": {
+      "publicTitle": "Público",
+      "publicDesc": "Cualquier persona en internet con la URL",
+      "publicDescShared": "Cualquier persona con la URL",
+      "passwordTitle": "Protegido con contraseña",
+      "passwordDesc": "Cualquier persona en internet con la contraseña",
+      "passwordDescShared": "Cualquier persona con la URL y la contraseña",
+      "restrictedTitle": "Restringido",
+      "restrictedDesc": "Aún no se sabe quién puede abrir el enlace",
+      "specificTitle": "Personas específicas",
+      "specificDesc": "Solo las personas que indiques"
+    },
+    "whoCanAccess": "Quién puede acceder a tu app",
+    "addPassword": "Agrega una contraseña",
+    "hide": "Ocultar",
+    "show": "Mostrar",
+    "hidePassword": "Ocultar contraseña",
+    "showPassword": "Mostrar contraseña",
+    "copied": "Copiado",
+    "copyUrl": "Copiar URL",
+    "notify": {
+      "ariaLabel": "Avisar a las personas nuevas",
+      "question": "{count, plural, one {¿Avisar por correo a 1 persona nueva?} other {¿Avisar por correo a # personas nuevas?}}",
+      "dontNotify": "No avisar",
+      "notify": "Avisar"
+    },
+    "saving": "Guardando…",
+    "version": "Versión {number}",
+    "live": "Publicada",
+    "rollingBack": "Restaurando…",
+    "makeLive": "Publicar esta",
+    "shared": "Compartido",
+    "share": "Compartir",
+    "shareToWeb": "Compartir en la web",
+    "sharingBusy": "Compartiendo",
+    "websiteUrl": "URL del sitio",
+    "change": "Cambiar",
+    "changePassword": "Cambiar contraseña",
+    "versionHistoryCount": "Historial de versiones ({count})",
+    "versionHistory": "Historial de versiones",
+    "dismiss": "Descartar",
+    "newPassword": "Nueva contraseña",
+    "versionsNote": "Publicar una versión cambia lo que ven los visitantes en tu URL. Los archivos de tu espacio de trabajo no cambian.",
+    "stopSharing": "Dejar de compartir",
+    "loadingAccess": "Cargando el acceso actual…",
+    "update": "Actualizar",
+    "load": {
+      "sharingSettings": "la configuración de uso compartido",
+      "currentAccess": "el acceso actual"
+    }
+  },
+  "previewErrors": {
+    "reported": "{count, plural, one {La vista previa informó # error} other {La vista previa informó # errores}}",
+    "line": "línea {line}",
+    "title": "Errores de la vista previa",
+    "ariaLabel": "Errores de la vista previa, {count}",
+    "kind": {
+      "rejection": "Rechazo de promesa no gestionado",
+      "console": "Error de consola",
+      "http": "Error del servidor"
+    }
+  },
+  "liveAppPreview": {
+    "failure": "No se pudo conectar con esta app. Recarga para reintentar o ábrela en tu navegador.",
+    "privacy": "Tu navegador limita el almacenamiento o las cookies en apps incrustadas. Abre esta app en tu navegador para usarla.",
+    "popupBlocked": "Permite la ventana de inicio de sesión o abre esta app en tu navegador.",
+    "title": "Vista previa de la app en vivo",
+    "connecting": "Conectando la vista previa de la app…",
+    "signInBody": "Muestra aquí esta app en ejecución. Se abre una ventana pequeña para conectarla y te pide iniciar sesión si hace falta.",
+    "showHere": "Mostrar la app aquí",
+    "openInBrowser": "Abrir en el navegador"
+  },
+  "previewUtils": {
+    "transportFailure": "No se pudo conectar con el servidor para cargar esta vista previa. Revisa la conexión y recarga.",
+    "loadFailed": "No se pudo cargar la vista previa",
+    "sessionExpired": "Tu sesión expiró: recarga la página e inténtalo de nuevo.",
+    "noAccess": "No tienes acceso a este borrador.",
+    "loadFailedStatus": "No se pudo cargar esta vista previa (HTTP {status}).",
+    "truncated": "La vista previa está recortada.",
+    "csvShownUnknownTotal": "{count, plural, one {Se muestra la primera fila. El archivo completo es más grande que la vista previa.} other {Se muestran las primeras # filas. El archivo completo es más grande que la vista previa.}}",
+    "csvShownOfTotal": "Se muestran las primeras {count, number} de {total, number} filas."
+  },
+  "header": {
+    "showInFinder": "Mostrar en Finder",
+    "showInFolder": "Mostrar en la carpeta",
+    "cannotEdit": "Este artefacto no se puede editar aquí",
+    "refreshForEditing": "Actualiza el artefacto para cargar las herramientas de edición",
+    "loadingEditing": "Cargando herramientas de edición…",
+    "refreshForReview": "Actualiza el artefacto para cargar las herramientas de revisión",
+    "loadingReview": "Cargando herramientas de revisión…",
+    "openInTab": "Abrir en una pestaña del navegador",
+    "hideComments": "Ocultar comentarios",
+    "commentsUnread": "Comentarios, {count} sin leer",
+    "waitingForPort": "Esperando el puerto del backend…",
+    "openOptions": "Opciones para abrir",
+    "moreWaysToOpen": "Más formas de abrir",
+    "artifactActions": "Acciones del artefacto",
+    "moreActions": "Más acciones",
+    "reloadPreview": "Recargar vista previa",
+    "close": "Cerrar"
+  },
+  "body": {
+    "previewWatermark": "Vista previa",
+    "downloadFull": "Descargar archivo completo",
+    "openFullInOs": "Abrir archivo completo en el sistema",
+    "imageFailed": "No se pudo cargar la imagen.",
+    "artifactPreview": "Vista previa del artefacto",
+    "rejectFailed": "No se pudo rechazar el cambio del agente. Inténtalo de nuevo.",
+    "resolveFailed": "El cambio se aceptó, pero no se pudo resolver el comentario. Intenta resolverlo de nuevo.",
+    "acceptFailed": "No se pudo aceptar el cambio del agente. Inténtalo de nuevo.",
+    "restoreTitle": "¿Restaurar la versión anterior?",
+    "restoreMessage": "Este artefacto cambió después de la edición del agente. Restaurar la versión anterior también descartará todo lo escrito desde entonces.",
+    "restoreAnyway": "Restaurar de todos modos",
+    "restoring": "Restaurando…",
+    "restoreFailed": "No se pudo restaurar la versión anterior. Inténtalo de nuevo."
+  },
+  "viewer": {
+    "closePrompt": {
+      "unsaved": {
+        "title": "¿Descartar cambios?",
+        "message": "Se perderán tus ediciones sin guardar de este artefacto.",
+        "confirmLabel": "Descartar cambios"
+      },
+      "saving": {
+        "title": "¿Cerrar mientras se guarda?",
+        "message": "Aún se está guardando. Si cierras ahora, podrías perder tus ediciones sin guardar.",
+        "confirmLabel": "Cerrar de todos modos"
+      }
+    },
+    "keepEditing": "Seguir editando",
+    "newFeedback": "Llegaron comentarios nuevos. Abre Revisar para ver el problema.",
+    "agentCouldNotStart": "El agente no pudo empezar con este comentario. Verifica que haya un proveedor de agente conectado y que puedas ejecutar tareas en este proyecto, y vuelve a intentarlo.",
+    "sendToAgentFailed": "No se pudo enviar este comentario al agente",
+    "noContent": "La vista previa no devolvió contenido",
+    "noArtifactDir": "El montaje de la vista previa no devolvió la carpeta del artefacto",
+    "backendFailed": "El backend no pudo iniciarse",
+    "proxyUnavailable": "El proxy de la vista previa no está disponible",
+    "noMountUrl": "El montaje de la vista previa no devolvió ninguna URL",
+    "loadFailed": "No se pudo cargar el artefacto",
+    "portNotReady": "El puerto del backend aún no está disponible: la vista previa sigue cargando.",
+    "remoteNoUrl": "Este artefacto se sirve desde un servidor remoto y aún no tiene una URL para abrir.",
+    "openArtifactFailed": "No se pudo abrir el artefacto.",
+    "agentCouldNotLaunch": "El agente no pudo iniciar esta app. Verifica que haya un proveedor de agente conectado y que puedas ejecutar tareas en este proyecto, y vuelve a intentarlo.",
+    "askLaunchFailed": "No se pudo pedir al agente que inicie esta app",
+    "popupBlocked": "El navegador bloqueó la pestaña nueva. Permite las ventanas emergentes para este sitio y vuelve a intentarlo.",
+    "openInBrowserFailed": "No se pudo abrir este artefacto en un navegador.",
+    "noDownload": "Este artefacto aún no tiene un archivo descargable.",
+    "deleteFailed": "No se pudo eliminar",
+    "loadFileFailed": "No se pudo cargar este archivo",
+    "loadDraftFailed": "No se pudo cargar este borrador",
+    "noLocalPath": "Este artefacto no tiene una ruta de archivo local.",
+    "openFolderFailed": "No se pudo abrir la carpeta.",
+    "openFailed": "No se pudo abrir",
+    "conflict": "Este borrador cambió en otro lugar. Tu texto sigue aquí; recarga la última revisión antes de guardar.",
+    "linkExpired": "El enlace de esta vista previa expiró, así que las páginas y archivos que abra a partir de ahora podrían no cargar. Recarga para obtener un enlace nuevo.",
+    "suggestionSuperseded": "Sigue abierta una sugerencia del agente de antes de tu última edición.",
+    "suggestionWaiting": "Una sugerencia del agente espera tu decisión.",
+    "openSuggestionFailed": "No se pudo abrir esa sugerencia.",
+    "viewChange": "Ver cambio",
+    "blockedFor": "Una sugerencia del agente para “{comment}” sigue esperando una decisión.",
+    "blockedFile": "Una sugerencia del agente en este archivo sigue esperando una decisión.",
+    "discardPending": "Descartar la sugerencia pendiente",
+    "discardTitle": "¿Descartar esta sugerencia?",
+    "discardMessage": "El cambio del agente queda en el historial del artefacto, pero la sugerencia se cierra y no se aplicará.",
+    "discardFailed": "No se pudo descartar esa sugerencia.",
+    "deleteTitle": "¿Eliminar artefacto?",
+    "deleteMessage": "\"{title}\" se eliminará de forma permanente. No se puede deshacer.",
+    "changedElsewhere": "Este artefacto cambió. Volver a cargar"
+  },
+  "artifactsView": {
+    "sort": {
+      "published": "Compartidos primero",
+      "recent": "Recientes",
+      "oldest": "Más antiguos",
+      "title": "Título (A–Z)",
+      "type": "Tipo"
+    },
+    "shareProtected": "Compartir con contraseña",
+    "shareRestricted": "Compartir restringido",
+    "downloadFailed": "No se pudo descargar este artefacto.",
+    "menu": "Menú del artefacto",
+    "openProject": "Abrir {project}",
+    "openSharedLink": "Abrir enlace compartido",
+    "openViewer": "Abrir visor",
+    "showInExplorer": "Mostrar en el Explorador",
+    "deleteItem": "Eliminar artefacto",
+    "onlyHtmlMd": "Solo se pueden compartir artefactos HTML y Markdown.",
+    "sharedToast": "{mode, select, password {Compartido (con contraseña): {url}} restricted {Compartido (restringido): {url}} other {Compartido: {url}}}",
+    "mindsApiKey": "Configura tu clave de API de Minds en Configuración para compartir artefactos.",
+    "stoppedOnMindsHub": "Se dejó de compartir en MindsHub.",
+    "stopped": "Se dejó de compartir.",
+    "updated": "Se actualizó la versión compartida.",
+    "ownerOnlyDelete": "Solo el dueño del artefacto puede eliminarlo.",
+    "deleted": "Eliminado.",
+    "deleteFailed": "No se pudo eliminar: {message}",
+    "title": "Artefactos en vivo",
+    "subtitle": "Documentos, paneles y código que produce {agent}. Para obtener un enlace web de una página o documento, ábrelo y elige Compartir.",
+    "duplicated": "Se duplicó en tu proyecto General.",
+    "search": "Buscar artefactos",
+    "emptyTitle": "Aún no hay artefactos",
+    "emptyBody": "Cuando {agent} cree documentos, paneles o resultados de código, aparecerán aquí.",
+    "working": "Procesando…"
+  },
+  "compare": {
+    "refused": "Este lado aún trabajaba en su último turno, así que no recibió tu mensaje. Lo dejamos de nuevo en el cuadro de abajo.",
+    "loadFailed": "No se pudieron cargar las comparaciones.",
+    "loadOlderFailed": "No se pudieron cargar las comparaciones anteriores.",
+    "pageTitle": "Comparar modelos",
+    "updateNeeded": "Se necesita una actualización",
+    "updateNeededWeb": "El servidor de este espacio de trabajo aún no puede ejecutar comparaciones. Aparecerán aquí cuando se actualice.",
+    "updateNeededDesktop": "El servidor de esta versión de la app aún no puede ejecutar comparaciones. Reinicia la app para actualizarla.",
+    "verdictFilters": {
+      "all": "Cualquier ganador",
+      "none": "Sin ganador aún",
+      "judged": "Con ganador"
+    },
+    "sorts": {
+      "recent": "Más recientes",
+      "oldest": "Más antiguas",
+      "prompt": "Instrucción (A–Z)"
+    },
+    "tie": "Empate",
+    "neither": "Ninguno",
+    "columns": {
+      "prompt": "Instrucción",
+      "models": "Modelos",
+      "turns": "Turnos",
+      "cost": "Costo",
+      "winner": "Ganador",
+      "started": "Inicio",
+      "turn": "Turno",
+      "time": "Tiempo",
+      "input": "Tokens de entrada",
+      "output": "Tokens de salida",
+      "total": "Total"
+    },
+    "allModels": "Todos los modelos",
+    "newComparison": "Nueva comparación",
+    "historyTitle": "Comparaciones",
+    "historySubtitle": "Consulta tus comparaciones de modelos anteriores.",
+    "search": "Buscar instrucciones y modelos",
+    "modelFilter": "Modelo",
+    "openComparison": "Abrir comparación: {title}",
+    "costTitle": "Estimado a precio de lista, según la última lectura",
+    "costAria": "Costo estimado {cost}",
+    "costUnread": "Costo aún no leído",
+    "noMatch": "Ninguna comparación coincide.",
+    "loading": "Cargando…",
+    "showOlder": "Mostrar comparaciones anteriores",
+    "modelSide": "Modelo {side}",
+    "chooseModel": "Elige un modelo",
+    "startFailed": "No se pudo iniciar la comparación.",
+    "vs": "VS",
+    "newTitle": "Compara dos modelos",
+    "newSubtitle": "Da la misma tarea a dos modelos y compara sus respuestas y su velocidad lado a lado.",
+    "taskPlaceholder": "¿Qué deben hacer ambos modelos?",
+    "taskAria": "Tarea para ambos modelos",
+    "addFiles": "Agregar archivos",
+    "files": "{count, plural, one {# archivo} other {# archivos}}",
+    "noProject": "Sin proyecto",
+    "start": "Iniciar comparación",
+    "swap": "Intercambiar lados",
+    "isolationNote": "Cada modelo trabaja en su propia copia de los archivos. Nada se publica ni se envía por apps de mensajería hasta que continúes con un lado.",
+    "examplesLabel": "Comparaciones de ejemplo",
+    "loadSideFailed": "No se pudo cargar este lado.",
+    "loadOneFailed": "No se pudo cargar esta comparación.",
+    "attachFailed": "No se pudieron adjuntar los archivos.",
+    "verdictFailed": "No se pudo guardar el veredicto.",
+    "deleteFailed": "No se pudo eliminar la comparación.",
+    "comparison": "Comparación",
+    "actions": "Acciones de la comparación",
+    "deleteComparison": "Eliminar comparación",
+    "byline": "{a} vs. {b} · Iniciada {started}",
+    "combinedCostTitle": "Ambos lados juntos, estimado a precio de lista. Incluye las llamadas que el agente hace por su cuenta, como revisar su respuesta.",
+    "firstSendFailed": "La tarea no se envió a ningún modelo. {error}",
+    "diverged": "Los lados se separaron en el turno {turn}: desde ahí no se les pidió lo mismo.",
+    "followUp": "Mensaje de seguimiento",
+    "checking": "Verificando…",
+    "checkAgain": "Verificar de nuevo",
+    "addFunds": "Agregar fondos",
+    "followUpBoth": "Haz una pregunta de seguimiento a ambos modelos…",
+    "followUpOne": "Haz una pregunta de seguimiento a {name}…",
+    "bothGet": "Ambos modelos reciben este mensaje.",
+    "onlyOneGets": "Solo {name} recibe esto; los dos lados se separarán.",
+    "deleteTitle": "¿Eliminar esta comparación?",
+    "deleteMessage": "Se eliminan ambos lados y todo lo que crearon. Un lado que continuaste como tarea se conserva.",
+    "whichBetter": "¿Qué respuesta fue mejor?",
+    "turn": "Turno {turn}",
+    "side": "Lado {side}",
+    "continueTooltip": "Continuar con este modelo como una tarea normal",
+    "continue": "Continuar",
+    "sideStatus": "Estado del lado {side}",
+    "allTurns": "Todos los turnos: {duration}",
+    "noActivity": "sin actividad nueva durante {duration}",
+    "lastTurn": "{duration} último turno",
+    "effort": "esfuerzo {effort}",
+    "costToggle": "Costo estimado del lado {side}: {cost}. {open, select, yes {Ocultar} other {Mostrar}} uso por turno",
+    "total": "total",
+    "retry": "Reintentar",
+    "bothModels": "Ambos modelos",
+    "sendTo": "Enviar a",
+    "usageByTurn": "Uso por turno",
+    "usageSummary": "{count, plural, one {# turno} other {# turnos}} · {tokens} tokens",
+    "sideUsage": "Uso por turno del lado {side}",
+    "listPriceNote": "Estimado a precio de lista. Incluye las llamadas que el agente hace por su cuenta, como revisar su respuesta.",
+    "carryIncomplete": "Algunos archivos que creó {name} siguen en esta comparación y no llegaron a la tarea.",
+    "copyRestFailed": "No se pudieron copiar los archivos restantes.",
+    "copyRest": "Copiar los archivos restantes",
+    "continueWith": "Continuar con {name}",
+    "partialCarry": "La tarea está lista, pero algunos archivos que creó {name} no se copiaron, así que siguen en esta comparación. Reintenta para traer el resto a la tarea.",
+    "continueBody": "Este lado se convierte en una tarea normal en el proyecto que elijas, con su historial y artefactos. Los archivos que creó o modificó van a una carpeta nueva allí, con el nombre de esta comparación y {name}, para que no se sobrescriba nada del proyecto. La comparación conserva lo que se comparó.",
+    "projectToContinue": "Proyecto donde continuar",
+    "openTask": "Abrir la tarea",
+    "continueFailed": "No se pudo continuar con este modelo.",
+    "examples": {
+      "website": {
+        "pillLabel": "Crear sitio web",
+        "hint": "Compara gusto y pulido en el diseño",
+        "prompt": "Crea una landing page para una suscripción de café inventada llamada Night Owl Roasters, como un único archivo HTML: una portada con una llamada a la acción clara, tres planes con precios, testimonios de clientes y preguntas frecuentes. Haz que parezca un producto real lanzado este año."
+      },
+      "games": {
+        "pillLabel": "Crear juegos",
+        "hint": "Compara la programación creativa y si de verdad funciona",
+        "prompt": "Haz un pequeño juego de navegador en un único archivo HTML: el jugador esquiva obstáculos que caen, la velocidad aumenta con el tiempo y hay un marcador y un botón para reiniciar. Mantén el código enfocado y asegúrate de que se pueda jugar."
+      },
+      "visualization": {
+        "pillLabel": "Visualización",
+        "hint": "Compara la elección de gráficos y las conclusiones sacadas de los datos",
+        "prompt": "Inventa un año realista de datos de ventas mensuales para una tienda en línea en tres regiones y cuatro líneas de producto, y luego crea un panel de una página con los gráficos que mejor cuenten su historia. Termina con las tres conclusiones más importantes."
+      },
+      "spreadsheet": {
+        "pillLabel": "Hoja de cálculo",
+        "hint": "Compara la exactitud numérica",
+        "prompt": "Crea una hoja de cálculo que proyecte tres años de ingresos de un producto SaaS que empieza con 200 clientes a $49 al mes, con crecimiento, cancelaciones y un aumento de precio en el segundo año como supuestos explícitos. Agrega una hoja que verifique que los totales cuadren."
+      },
+      "research": {
+        "pillLabel": "Investigación amplia",
+        "hint": "Compara la precisión y las fuentes",
+        "prompt": "Investiga en qué punto están hoy las baterías de estado sólido para autos eléctricos: quién está más cerca de la producción en masa, qué falta resolver y plazos realistas. Cita tus fuentes y di claramente qué es incierto."
+      },
+      "slides": {
+        "pillLabel": "Crear diapositivas",
+        "hint": "Compara la estructura y la narrativa",
+        "prompt": "Crea una presentación de seis diapositivas para inversionistas de una app ficticia que ayuda a restaurantes pequeños a reducir el desperdicio de comida: el problema, la solución, cómo funciona, el mercado, el modelo de negocio y lo que se pide."
+      },
+      "reasoning": {
+        "pillLabel": "Razonamiento",
+        "hint": "Compara cómo piensa un problema a fondo",
+        "prompt": "Cinco personas deben dar cada una una charla de 30 minutos entre las 9:00 y las 12:00 en dos salas. Ana y Ben no pueden coincidir, Carla debe hablar antes que Ben, Dev solo después de las 10:30 y Eli necesita la misma sala que Ana. Encuentra un horario, explica el razonamiento y compruébalo contra cada regla."
+      },
+      "writing": {
+        "pillLabel": "Redacción",
+        "hint": "Compara el tono y el seguimiento de instrucciones",
+        "prompt": "Escribe el anuncio de lanzamiento de un nuevo modo oscuro en una app de notas en tres versiones: un tuit de menos de 280 caracteres, un correo amigable de menos de 120 palabras y una entrada del registro de cambios de menos de 50 palabras. Cada una debe sonar adecuada para su canal."
+      }
+    }
+  },
+  "quickEdit": {
+    "ariaLabel": "Edición rápida",
+    "inputLabel": "Pide un cambio",
+    "placeholder": "Pide un cambio…",
+    "send": "Enviar",
+    "route": {
+      "edit": "Editando directamente…",
+      "agent": "Pasando esto al agente…"
+    },
+    "stage": {
+      "routing": "Pensando cómo hacerlo…",
+      "reading": "Leyendo el artefacto…",
+      "writing": "Escribiendo el cambio…",
+      "checking": "Comprobando la vista previa…",
+      "fixing": "Corrigiendo lo que encontró la comprobación…"
+    },
+    "handingOff": "Enviando al chat…",
+    "applied": "Hecho.",
+    "undo": "Deshacer",
+    "undoing": "Deshaciendo…",
+    "undone": "Deshecho.",
+    "noop": "No cambió nada.",
+    "failed": "Ese cambio no se pudo hacer aquí.",
+    "askAgent": "Preguntar al agente",
+    "errors": {
+      "stale": "Este artefacto cambió desde que lo abriste. Se ha vuelto a cargar; inténtalo de nuevo.",
+      "busy": "Otro cambio en este artefacto sigue en curso. Inténtalo de nuevo cuando termine.",
+      "failed": "No se pudo hacer el cambio.",
+      "stopped": "El cambio se detuvo antes de terminar.",
+      "chatFailed": "No se pudo continuar en el chat. Inténtalo de nuevo desde el chat.",
+      "filesChanged": "Los archivos de este cambio se modificaron de nuevo después, así que no se puede deshacer aquí.",
+      "filesChangedNamed": "{paths} cambió de nuevo después, así que este cambio no se puede deshacer aquí.",
+      "alreadyUndone": "Este cambio ya se deshizo.",
+      "repairPending": "Una sugerencia del agente para este artefacto espera tu decisión. Acéptala o descártala primero.",
+      "undoGone": "Este cambio ya no se puede deshacer aquí. Usa el historial para volver atrás."
+    },
+    "placeholderChat": "Pregunta sobre este artefacto o cámbialo…",
+    "openInChat": "Abrir en el chat",
+    "needsAnswer": "Necesita tu respuesta en el chat",
+    "workingInChat": "Trabajando en el chat…",
+    "sentToChat": "Enviado al chat.",
+    "chatStopped": "El turno del chat se detuvo antes de responder.",
+    "unsavedConfirm": {
+      "title": "Tienes cambios sin guardar. ¿Guardarlos antes de enviar?",
+      "save": "Guardar y enviar",
+      "discard": "Descartar y enviar",
+      "cancel": "Cancelar",
+      "saveFailed": "No se pudieron guardar tus cambios, así que no se envió nada."
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "Estadísticas",
+      "hide": "Ocultar estadísticas"
+    },
+    "title": "Estadísticas",
+    "close": "Cerrar el panel de estadísticas",
+    "loading": "Cargando estadísticas",
+    "retry": "Reintentar",
+    "trackViews": "Contar visitas",
+    "trackingOff": "El seguimiento está desactivado. Actívalo para empezar a contar visitas.",
+    "metrics": {
+      "viewsInPeriod": "Visitas (30 días)",
+      "uniqueViewers": "Visitantes únicos (30 días)",
+      "totalViews": "Visitas totales",
+      "lastViewed": "Última visita"
+    },
+    "daysInUtc": "Días en UTC",
+    "chartLabel": "Visitas por día",
+    "viewers": {
+      "email": "Correo electrónico",
+      "lastSeen": "Última visita",
+      "restrictedOnly": "Los nombres de quienes lo ven solo se registran cuando el acceso es restringido."
+    },
+    "noViews": "Aún no hay visitas",
+    "errors": {
+      "otherAccount": "Las estadísticas no están disponibles para esta cuenta.",
+      "unavailable": "Las estadísticas no están disponibles para este artefacto.",
+      "reconnect": "Vuelve a conectar MindsHub para ver las estadísticas.",
+      "temporarilyUnavailable": "Las estadísticas no están disponibles temporalmente.",
+      "loadFailed": "No se pudieron cargar las estadísticas."
+    }
+  },
+  "refPill": {
+    "open": "Abrir {title}"
+  },
+  "quickEditCard": {
+    "title": "Editado en el visor",
+    "count": "{count, plural, one {# cambio} other {# cambios}}",
+    "undone": "Deshecho",
+    "showAll": "{count, plural, other {Mostrar los #}}",
+    "showFewer": "Mostrar menos"
+  },
+  "layers": {
+    "ariaLabel": "Capas del visor",
+    "source": "Edición en vivo",
+    "comments": "Comentarios",
+    "sourceOffPrompt": {
+      "title": "¿Desactivar Edición en vivo?",
+      "message": "Se descartarán los cambios no guardados en Edición en vivo.",
+      "confirmLabel": "Descartar cambios"
+    }
+  },
+  "address": {
+    "draft": "Borrador",
+    "copy": "Copiar dirección",
+    "copied": "Copiado"
+  }
+}

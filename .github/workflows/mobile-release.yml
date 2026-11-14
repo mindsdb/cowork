@@ -1,0 +1,125 @@
+name: Mobile release
+
+# Signed store builds of the Capacitor shell in mobile/ (ENG-4023): iOS to
+# TestFlight (build-ios.yml) and Android to Play internal testing
+# (build-android.yml), in one run.
+#
+#   push a `mobile-v<version>` tag  -> production (cowork.mindshub.ai), both
+#                                      platforms; the tag must equal
+#                                      mobile-v + mobile/package.json's version
+#   workflow_dispatch               -> staging (default) or prod, both
+#                                      platforms or just one, from any ref
+#
+# The two platform jobs are independent: one failing (say, its secrets aren't
+# set up yet) doesn't stop the other. Promotion to the stores is manual.
+# Setup and secrets: mobile/README.md, "Releasing".
+#
+# No `pull_request` trigger: the PR pipeline is dev-build-deploy.yml alone, and
+# the unsigned PR build is mobile-smoke.yml, called from it.
+#
+# run-tree-ok: the other `push` workflows filter on branches (main, staging) or on `ui-v*` tags (publish-ui.yml), so none fires for a `mobile-v*` tag; this file is the single entry point for a mobile tag.
+on:
+  push:
+    tags:
+      - 'mobile-v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Backend the app loads
+        type: choice
+        options:
+          - staging
+          - prod
+        default: staging
+      platform:
+        description: Which apps to build
+        type: choice
+        options:
+          - both
+          - ios
+          - android
+        default: both
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Never cancel a build that may be halfway through an upload.
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      environment: ${{ steps.plan.outputs.environment }}
+      ios: ${{ steps.plan.outputs.ios }}
+      android: ${{ steps.plan.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: mobile/package.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Plan
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_ENV: ${{ inputs.environment }}
+          INPUT_PLATFORM: ${{ inputs.platform }}
+        run: |
+          set -euo pipefail
+          version="$(jq -r .version mobile/package.json)"
+          if [ "$EVENT" = "push" ]; then
+            if [ "$REF_NAME" != "mobile-v$version" ]; then
+              echo "::error::Tag $REF_NAME does not match mobile/package.json version $version (expected mobile-v$version). Bump package.json, merge, then tag that commit."
+              exit 1
+            fi
+            env=prod platform=both
+          else
+            env="${INPUT_ENV:-staging}" platform="${INPUT_PLATFORM:-both}"
+          fi
+          {
+            echo "environment=$env"
+            echo "ios=$([ "$platform" != android ] && echo true || echo false)"
+            echo "android=$([ "$platform" != ios ] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+          echo "### Mobile release $version, build $GITHUB_RUN_NUMBER, $env, platform: $platform" >> "$GITHUB_STEP_SUMMARY"
+
+  ios:
+    needs: [plan]
+    if: needs.plan.outputs.ios == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-ios.yml
+    with:
+      environment: ${{ needs.plan.outputs.environment }}
+    secrets:
+      IOS_DIST_CERT_B64: ${{ secrets.IOS_DIST_CERT_B64 }}
+      IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+      IOS_PROFILE_APP_B64: ${{ secrets.IOS_PROFILE_APP_B64 }}
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_P8_B64: ${{ secrets.ASC_API_KEY_P8_B64 }}
+
+  android:
+    needs: [plan]
+    if: needs.plan.outputs.android == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-android.yml
+    with:
+      environment: ${{ needs.plan.outputs.environment }}
+    secrets:
+      ANDROID_UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      PLAY_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON_B64 }}
+      GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}

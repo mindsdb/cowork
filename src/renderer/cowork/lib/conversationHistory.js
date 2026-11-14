@@ -6,11 +6,17 @@
 // Their side-effecting counterparts stay in App.jsx: `openStreamedForm`
 // (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
 // (async, hits the API) — the latter just calls `applySessionMessages` here.
+import { withQuickEditGroup } from './quickEditGroup';
 import { answerBody, initialStreamState, reduceStream } from './responseStreamAdapter';
+import { foldAddonMessages } from './addons';
 import { rebaseFigureSources } from './figureSources';
 import { isAntonConfigError, normalizeAntonError } from './antonErrors';
 
-const THINKING_PLACEHOLDER = 'Thinking...';
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.conversationHistory.${key}`, { ns: 'projects', ...vars });
+const thinkingPlaceholder = () => tr('thinkingDots');
 
 export function stripStreaming(messages) {
   return messages.filter((m) => m.role !== '_streaming');
@@ -50,7 +56,7 @@ export function reconcileTaskMessages(messages, isLive, isServerInFlight = false
     const hasContent = messages.length > 0 && messages.some(
       (m) => m && (m.role === 'assistant' || m.role === '_streaming'),
     );
-    if (!hasContent) return withThinkingPlaceholder(messages, { label: 'Running task…' });
+    if (!hasContent) return withThinkingPlaceholder(messages, { label: tr('runningTask') });
     return messages;
   }
   const cleaned = messages
@@ -89,7 +95,7 @@ export function withThinkingPlaceholder(messages, opts = {}) {
   // `_streaming` stub (primary render via the existing streaming
   // branch) carry the same string, so whichever lands in the
   // viewport reads consistently.
-  const label = opts.label || 'Thinking…';
+  const label = opts.label || tr('thinking');
   // Two rows:
   //   1. The activity placeholder — kept so any code path that
   //      consumes it (rail Progress card today, future surfaces) sees
@@ -159,11 +165,11 @@ export function describeActivity(event, agentName = 'Anton') {
 
   const phase = humanizeToken(event?.phase);
   const normalizedPhase = phase.toLowerCase();
-  if (normalizedPhase === 'reasoning') return THINKING_PLACEHOLDER;
-  if (normalizedPhase === 'reasoning done') return 'Finished reasoning';
-  if (normalizedPhase === 'context') return 'Updated context';
+  if (normalizedPhase === 'reasoning') return thinkingPlaceholder();
+  if (normalizedPhase === 'reasoning done') return tr('finishedReasoning');
+  if (normalizedPhase === 'context') return tr('updatedContext');
 
-  return phase ? `${agentName} is ${phase}` : `${agentName} is working`;
+  return phase ? tr('agentPhase', { agent: agentName, phase }) : tr('agentWorking', { agent: agentName });
 }
 
 // ─── Per-turn step persistence ───────────────────────────────────────────
@@ -264,11 +270,14 @@ export function reduceServerEvents(events, fallbackStartedAt) {
   return {
     steps: state.steps || [],
     startedAt: state.startedAt || fallbackStartedAt || null,
+    endedAt: state.endedAt || null,
     figureSources: state.figureSources,
     // 'done' once the persisted events carried response.completed,
     // 'error' on response.failed — the authoritative "this turn
     // finished" signal from the detached stream buffer.
     status: state.status,
+    // The turn's response id, which a saved add-on names (ENG-4194).
+    responseId: state.responseId || null,
     incompleteReason: state.incompleteReason,
     // What the live turn showed as its answer: the last round's text, with
     // earlier rounds' narration in the steps as Notes (ENG-3554). The saved
@@ -279,6 +288,25 @@ export function reduceServerEvents(events, fallbackStartedAt) {
       ? rebaseFigureSources(state.figureSources, state.answerText, answerBody(state), state.bodyTextMap)
       : null,
   };
+}
+
+/**
+ * The answer a finished turn showed live, to put in place of its saved
+ * content: `{ content, figureSources }`, or null to keep the saved content.
+ *
+ * The saved content joins every round's text, so a turn that narrated before
+ * its tool calls ("I'll pull the prices…") would otherwise show that
+ * narration at the top of its answer as well as in its Notes (ENG-3554,
+ * ENG-4194). Only when the replay produced an answer: an older event log
+ * without the text keeps the saved content. Every path that replays saved
+ * events (a conversation's first page, a refetch after a turn ends, an older
+ * page) must apply it, or the same turn reads differently depending on how it
+ * was loaded.
+ */
+export function replayedAnswer(reduced, content) {
+  if (!reduced || (reduced.status !== 'done' && reduced.status !== 'error')) return null;
+  if (typeof content !== 'string' || !reduced.answer?.trim() || reduced.answer === content) return null;
+  return { content: reduced.answer, figureSources: reduced.answerFigureSources };
 }
 
 export function failedEventMeta(events) {
@@ -330,6 +358,12 @@ export function hydrateMessagesFromServerEvents(messages) {
       out.push(m);
       continue;
     }
+    // A quick-edit group (ENG-4227) is a card, not a turn to replay.
+    const group = withQuickEditGroup(m);
+    if (group) {
+      out.push(group);
+      continue;
+    }
     const reduced = reduceServerEvents(m.events, m.startedAt);
     const { events: _drop, ...rest } = m;
     if (!reduced) {
@@ -338,19 +372,14 @@ export function hydrateMessagesFromServerEvents(messages) {
     }
     const turnComplete = reduced.status === 'done' || reduced.status === 'error';
     const completeFlag = turnComplete ? { _turnComplete: true } : {};
-    // A finished turn shows the same answer it showed live. Only when the
-    // replay produced one: an older event log without the text keeps the
-    // saved content.
-    const liveAnswer = turnComplete && typeof rest.content === 'string' && reduced.answer.trim()
-      && reduced.answer !== rest.content
-      ? { content: reduced.answer, figureSources: reduced.answerFigureSources }
-      : null;
+    const liveAnswer = replayedAnswer(reduced, rest.content);
     out.push({
       ...rest,
+      ...(reduced.responseId ? { _responseId: reduced.responseId } : {}),
       ...completeFlag,
       ...(reduced.incompleteReason ? { incompleteReason: reduced.incompleteReason } : {}),
       ...(reduced.steps.length > 0
-        ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt }
+        ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt, endedAt: rest.endedAt || reduced.endedAt }
         : {}),
       ...(reduced.figureSources ? { figureSources: reduced.figureSources } : {}),
       ...(liveAnswer || {}),
@@ -358,7 +387,7 @@ export function hydrateMessagesFromServerEvents(messages) {
     if (reduced.status === 'error') {
       const failed = failedEventMeta(m.events);
       const code = failed?.code || null;
-      const errText = failed?.message || 'An unexpected error occurred.';
+      const errText = failed?.message || tr('unexpectedError');
       if (isAntonConfigError(errText, { code })) {
         out.push({ role: 'provider_required' });
       } else {
@@ -377,7 +406,8 @@ export function hydrateMessagesFromServerEvents(messages) {
       }
     }
   }
-  return out;
+  // Messages added to a running turn (ENG-4194) render inside that turn.
+  return foldAddonMessages(out);
 }
 
 export function applySessionMessages(

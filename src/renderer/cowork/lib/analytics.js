@@ -18,8 +18,10 @@ import { diagnostic } from '../../../shared/diagnostics';
 //
 // Every product event this module emits is registered in EVENTS below.
 
-import { host } from '../../platform/host';
+import { host, onMindsHubCredentialChanged } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
+import { startCreditsFlow } from './creditsFlow';
+import { subscribeOrganizationChanges } from './organizationChanges';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
@@ -28,10 +30,35 @@ import { decodeJwtPayload } from './jwtClaims';
 // so it lives inline in the merge rather than here.
 const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
-  ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
+  ARTIFACT_BUILT:           'artifact_built',           // { artifact_type, artifact_id (cowork artifact uuid; absent from builds before it was added) }
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
-  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — only on the first task within 30 min of a console handoff
-  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
+  ARTIFACT_STATS_OPENED:    'artifact_stats_opened',    // { artifact_id (cowork artifact uuid, bare hex; not the id artifact_published sends, which prefers report_id), access_mode: 'public'|'password'|'restricted'|null, has_views }
+  // The sharing events below all carry { artifact_id (cowork artifact uuid,
+  // as artifact_stats_opened), artifact_type, entry, report_id,
+  // sso_organization_id, acting_organization_id }. report_id is the published
+  // page's id: the save's answer when there is one, else the card's
+  // (cowork-server's `reportId`); '' when the artifact has no live page, or its
+  // server predates the card field. acting_organization_id is the organization
+  // the action ran under (actingOrganizationId); sso_organization_id is the
+  // signed-in session's, which on Desktop can differ.
+  // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'rail'|'rail_delete'|'other'.
+  // Deleting a shared artifact reports a pull-back on both surfaces: on Desktop
+  // after the client's own unpublish, on Web after the delete succeeds, since
+  // the server's delete takes the page down or fails.
+  // Audiences are categories and counts only, never an email, name or password.
+  ARTIFACT_SHARE_OPENED:    'artifact_share_opened',    // { is_shared: true|false|null (null while Web still reads who has access) } — the Share panel or dialog opened
+  // Every successful save that changes who can open the artifact, while it
+  // reached someone besides its owner before or after: a first share
+  // (was_shared false → is_shared true), a change (true → true) or a pull-back
+  // (true → false, Stop sharing included). Saving the same access again, or a
+  // save that leaves it reaching only its owner, sends nothing. was_shared is
+  // null when the panel didn't know the audience before the save.
+  ARTIFACT_ACCESS_CHANGED:  'artifact_access_changed',  // { was_shared, is_shared, was_audience, audience: 'unpublished'|'public'|'password'|'only_me'|'organization'|'specific'|'unknown', org_wide, team_count, people_count, notified }
+  ARTIFACT_ACCESS_CHANGE_FAILED: 'artifact_access_change_failed', // { reason: 'share_org_not_allowed'|'owned_by_other'|'left_live'|'error' } — never counted as a share; 'left_live' is a Stop sharing or delete whose page the server could not take down, so nobody lost access
+  ARTIFACT_LINK_COPIED:     'artifact_link_copied',     // {} — only when the copy succeeded
+  ARTIFACT_DOWNLOADED:      'artifact_downloaded',      // { kind: 'file'|'export', format? ('pdf'|'docx'|'html', exports only) } — only when the file was saved
+  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id?, entry_placement? } — only on the first task within 30 min of a console handoff
+  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, entry_placement? } — Home composer interactive after a console handoff
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
   EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
@@ -105,7 +132,7 @@ const EVENTS = {
   // prefix exists to stop the unprefixed name reading as authoritative, and
   // ENG-2206 remains open for a subject carried on the gateway denial itself.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
-  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent. 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version, ui_version, server_version } desktop, per launch (ENG-921). One row per layer's running version, so adoption per layer needs no join
@@ -141,7 +168,19 @@ const EVENTS = {
   COMPARISON_VERDICT_RECORDED:'comparison_verdict_recorded', // { comparison_id, turn_index, winner, winner_model?, other_model?, changed, ...cost }
   COMPARISON_CONTINUED:     'comparison_continued',     // { comparison_id, side, model, other_model, turns, carried_all, chose_winner?, ...cost }
   // ...cost: cost_a_usd?, cost_b_usd?, cost_total_usd?, cost_partial, cost_stale?, tokens_a?, tokens_b?, cheaper_side?: 'a'|'b'|'same' (complete figures only)
+  // A message sent while a turn runs (ENG-4194). Never carries its text.
+  ADDON_ADDED:              'addon_added',              // { decided_by: 'jev'|'user', via: 'send'|'queue' } — joined the running task
+  ADDON_QUEUED:             'addon_queued',             // { reason } — queued as the next task: the server's reason, or 'attachments'|'no_conversation'|'no_live_stream'|'turn_ending'|'not_found'|'unsupported'|'timeout'|'error'|'unknown'
+  ADDON_OVERRIDDEN:         'addon_overridden',         // { direction: 'to_queue'|'to_task', outcome, decided_by? } — the person moved a message against where it landed; decided_by 'jev' on to_queue is the accuracy signal
 };
+
+const ORG_STAMPED_EVENTS = new Set([
+  EVENTS.ARTIFACT_SHARE_OPENED,
+  EVENTS.ARTIFACT_ACCESS_CHANGED,
+  EVENTS.ARTIFACT_ACCESS_CHANGE_FAILED,
+  EVENTS.ARTIFACT_LINK_COPIED,
+  EVENTS.ARTIFACT_DOWNLOADED,
+]);
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
 const POSTHOG_KEY =
@@ -235,6 +274,66 @@ const identity = {
   distinctId: null,
   cacheExpiry: 0,
 };
+// An in-place organization switch (a desktop shell that switches without
+// reloading the document) re-reads the token on the next event, so the
+// organization the events name is the one switched to.
+subscribeOrganizationChanges(() => { identity.cacheExpiry = 0; });
+
+// The organization a Desktop's MindsHub work runs under, read from the sidecar.
+// A key the person pasted wins over their sign-in, and it can belong to another
+// organization than the one they are signed in to, so the session's
+// organization is not always the one that acted. Only answers the sidecar named
+// are kept; anything else is asked again at the next event.
+const credentialOrg = { id: undefined, expiry: 0, generation: 0 };
+function forgetCredentialOrganization() {
+  credentialOrg.id = undefined;
+  credentialOrg.expiry = 0;
+  credentialOrg.generation += 1;
+}
+subscribeOrganizationChanges(forgetCredentialOrganization);
+// A pasted or removed key reaches the renderer only as this signal. Attached on
+// first use rather than at import, so a module that never sends a sharing event
+// never subscribes.
+let credentialListenerAttached = false;
+function listenForCredentialChanges() {
+  if (credentialListenerAttached) return;
+  credentialListenerAttached = true;
+  try {
+    onMindsHubCredentialChanged(forgetCredentialOrganization);
+  } catch { /* no bridge: nothing changes the credential under us */ }
+}
+
+const CREDENTIAL_ORG_TIMEOUT_MS = 3000;
+
+async function credentialOrganizationId() {
+  listenForCredentialChanges();
+  if (Date.now() < credentialOrg.expiry) return credentialOrg.id;
+  const generation = credentialOrg.generation;
+  try {
+    const res = await fetch(`${host.getApiOrigin()}/api/v1/runtime-credential/minds/organization`, {
+      signal: AbortSignal.timeout(CREDENTIAL_ORG_TIMEOUT_MS),
+    });
+    if (!res.ok) return undefined;
+    const body = await res.json();
+    const id = typeof body?.organizationId === 'string' && body.organizationId ? body.organizationId : undefined;
+    if (id && generation === credentialOrg.generation) {
+      credentialOrg.id = id;
+      credentialOrg.expiry = Date.now() + 5 * 60 * 1000;
+    }
+    return id;
+  } catch {
+    return undefined;
+  }
+}
+
+// The organization the person acted in. On Web that is the session's: every
+// request carries the session token. On Desktop it is the held credential's,
+// and absent when the sidecar cannot say (an older sidecar, MindsHub
+// unreachable, or no MindsHub credential at all).
+function actingOrganizationId() {
+  if (host.isElectron) return credentialOrganizationId();
+  return Promise.resolve(identity.personProps.organization_id);
+}
 // Synchronous guard against the merge firing twice when two events resolve
 // identity in the same tick, before the async localStorage marker is written.
 // Entries are cleared on failure so a later event can still retry.
@@ -527,7 +626,7 @@ function capture(event, properties = {}, envelope = {}) {
     return Promise.resolve(false);
   }
   return getDistinctId()
-    .then((distinctId) => {
+    .then(async (distinctId) => {
       // Before sign-in, fall back to the anonymous device id so pre-login events
       // are captured instead of dropped; they merge into the account on first
       // sign-in (see mergeAnonIntoAccount).
@@ -583,9 +682,9 @@ function capture(event, properties = {}, envelope = {}) {
       // than absent: a filter on the property counts the row and the column looks
       // populated. `app_version` and `is_internal` follow the same rule.
       //
-      // Still stale for up to five minutes after an in-place org switch, because
-      // getDistinctId returns early on its own cache and never re-resolves inside
-      // the window. forgetIdentity fixes the post-expiry case only.
+      // An in-place org switch expires the identity cache (the
+      // subscribeOrganizationChanges call above), and a switch that reloads the
+      // document starts a fresh one, so neither replays the previous org.
       if (event === EVENTS.TOKEN_CAP_HIT) {
         if (identity.personProps.organization_id) {
           eventProps.sso_organization_id = identity.personProps.organization_id;
@@ -593,6 +692,18 @@ function capture(event, properties = {}, envelope = {}) {
         if (identity.personProps.plan_tier) {
           eventProps.sso_plan_tier = identity.personProps.plan_tier;
         }
+      }
+      // The sharing events carry the session's organisation too, because a
+      // person who switches organisations would otherwise be read against the
+      // last one their profile names. The same session caveats apply, so they
+      // also carry `acting_organization_id`, the organization the action ran
+      // under (actingOrganizationId).
+      if (ORG_STAMPED_EVENTS.has(event) && identity.personProps.organization_id) {
+        eventProps.sso_organization_id = identity.personProps.organization_id;
+      }
+      if (ORG_STAMPED_EVENTS.has(event)) {
+        const acting = await actingOrganizationId();
+        if (acting) eventProps.acting_organization_id = acting;
       }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.
@@ -612,8 +723,10 @@ export function trackDataSourceConnected(sourceType) {
   capture(EVENTS.DATA_SOURCE_CONNECTED, { source_type: sourceType || 'unknown' });
 }
 
-export function trackArtifactBuilt(artifactType) {
-  capture(EVENTS.ARTIFACT_BUILT, { artifact_type: artifactType || 'unknown' });
+export function trackArtifactBuilt(artifactType, artifactId) {
+  const props = { artifact_type: artifactType || 'unknown' };
+  if (artifactId) props.artifact_id = artifactId;
+  capture(EVENTS.ARTIFACT_BUILT, props);
 }
 
 export function trackArtifactPublished(artifactId, visibility) {
@@ -621,6 +734,63 @@ export function trackArtifactPublished(artifactId, visibility) {
     artifact_id: artifactId || '',
     visibility: visibility || 'public',
   });
+}
+
+// Fires after the first successful load of each Stats panel open. access_mode
+// is null until the viewer knows the real mode, because usePublish reports
+// 'public' as its default before that.
+export function trackArtifactStatsOpened({ artifactId, accessMode = null, hasViews = false } = {}) {
+  capture(EVENTS.ARTIFACT_STATS_OPENED, {
+    artifact_id: artifactId || '',
+    access_mode: accessMode || null,
+    has_views: !!hasViews,
+  });
+}
+
+// The sharing events. Callers go through lib/artifactShareAnalytics, which
+// reads the artifact and its audience; these only shape the wire properties.
+function artifactProps({ artifactId, artifactType, entry, reportId }) {
+  return {
+    artifact_id: artifactId || '',
+    artifact_type: artifactType || 'unknown',
+    entry: entry || 'other',
+    report_id: reportId || '',
+  };
+}
+
+export function trackArtifactShareOpened({ isShared = null, ...ref } = {}) {
+  capture(EVENTS.ARTIFACT_SHARE_OPENED, {
+    ...artifactProps(ref),
+    is_shared: typeof isShared === 'boolean' ? isShared : null,
+  });
+}
+
+export function trackArtifactAccessChanged({ before, after, notified = false, ...ref } = {}) {
+  capture(EVENTS.ARTIFACT_ACCESS_CHANGED, {
+    ...artifactProps(ref),
+    was_shared: typeof before?.shared === 'boolean' ? before.shared : null,
+    is_shared: typeof after?.shared === 'boolean' ? after.shared : null,
+    was_audience: before?.audience || 'unknown',
+    audience: after?.audience || 'unknown',
+    org_wide: after?.orgWide ?? null,
+    team_count: after?.teamCount ?? null,
+    people_count: after?.peopleCount ?? null,
+    notified: !!notified,
+  });
+}
+
+export function trackArtifactAccessChangeFailed({ reason = 'error', ...ref } = {}) {
+  capture(EVENTS.ARTIFACT_ACCESS_CHANGE_FAILED, { ...artifactProps(ref), reason });
+}
+
+export function trackArtifactLinkCopied(ref = {}) {
+  capture(EVENTS.ARTIFACT_LINK_COPIED, artifactProps(ref));
+}
+
+export function trackArtifactDownloaded({ kind = 'file', format = '', ...ref } = {}) {
+  const props = { ...artifactProps(ref), kind };
+  if (kind === 'export' && format) props.format = format;
+  capture(EVENTS.ARTIFACT_DOWNLOADED, props);
 }
 
 // Where the next task came from, when Home was opened by a console link. Held
@@ -632,11 +802,21 @@ export function trackArtifactPublished(artifactId, visibility) {
 const ENTRY_ATTRIBUTION_TTL_MS = 30 * 60 * 1000;
 let pendingEntryAttribution = null;
 
-export function setEntryAttribution(entrySource, exampleId) {
+export function setEntryAttribution(entrySource, exampleId, placement) {
   pendingEntryAttribution = entrySource
-    ? { entry_source: entrySource, example_id: exampleId || null, at: Date.now() }
+    ? {
+      entry_source: entrySource,
+      example_id: exampleId || null,
+      entry_placement: placement || null,
+      at: Date.now(),
+    }
     : null;
 }
+
+// The console surface a handoff came from, as an event property, only when the
+// link named one; absent rather than null so a missing placement reads as
+// "not recorded", the same as before the console sent it.
+const placementProps = (placement) => (placement ? { entry_placement: placement } : {});
 
 export function trackAgentSessionStarted() {
   const pending = pendingEntryAttribution;
@@ -644,7 +824,13 @@ export function trackAgentSessionStarted() {
   const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
   capture(
     EVENTS.AGENT_SESSION_STARTED,
-    fresh ? { entry_source: pending.entry_source, example_id: pending.example_id } : {}
+    fresh
+      ? {
+        entry_source: pending.entry_source,
+        example_id: pending.example_id,
+        ...placementProps(pending.entry_placement),
+      }
+      : {}
   );
 }
 
@@ -710,17 +896,19 @@ export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
   };
   if (start?.example_id) props.example_id = start.example_id;
   if (start?.added_chars != null) props.added_chars = start.added_chars;
+  Object.assign(props, placementProps(entry?.entry_placement));
   capture(EVENTS.NEW_TASK_MESSAGE_SENT, props);
 }
 
 // The console handoff's arrival: the Home composer is on screen and usable,
 // with the sample in it (`prefilled`) or empty. Separate from the console's
 // click, which only says the user asked to come here.
-export function trackComposerReady(entrySource, exampleId, prefilled) {
+export function trackComposerReady(entrySource, exampleId, prefilled, placement) {
   capture(EVENTS.COMPOSER_READY, {
     entry_source: entrySource,
     example_id: exampleId || null,
     prefilled: Boolean(prefilled),
+    ...placementProps(placement),
   });
 }
 
@@ -775,6 +963,9 @@ export function trackTurnFailed(conversationId, event) {
 //   free_serving_paused       free MindsHub Air is paused for everyone by the
 //                             daily spend fuse; NOT paired with token_cap_hit,
 //                             because it is not this user's cap
+//   budget_exceeded           the org's spending budget is used up; "View
+//                             budgets" opens the Budgets tab. NOT paired with
+//                             token_cap_hit: credits do not lift a budget
 //   model_access_denied       legacy per-model credit denial (pre-wallet gateways)
 //   model_disabled            legacy admin-disabled model; credits do not unlock it
 //   key_provisioning_refused  MindsHub would not mint an LLM key on reconnect
@@ -789,6 +980,9 @@ export function trackTurnFailed(conversationId, event) {
 //                             back included_allowance_exhausted
 //   free_air_paused_notice    Settings, after a minds-cloud provider test hit
 //                             the daily free-Air spend fuse; not this user's cap
+//   budget_notice             Settings, after a minds-cloud provider test came
+//                             back budget_exceeded, or the hint under a current
+//                             model the spent budget stops
 //   locked_model_hint         Settings, the "<model> needs credits" hint under a
 //                             model the wallet cannot pay for
 //   nav                       the Billing & Usage item in the user menu
@@ -808,6 +1002,8 @@ export function trackTurnFailed(conversationId, event) {
 // `kind` names which in-chat usage notice was clicked ('free_low', 'free_used',
 // 'auto_top_up_failed'), so `usage_alert` can be split by notice.
 export function trackBillingOpened(trigger, workspaceMode, kind) {
+  // Every billing link passes here, so it is where the post-payment availability follow-up arms.
+  startCreditsFlow();
   capture(EVENTS.BILLING_OPENED, {
     trigger: trigger || 'unknown',
     workspace_mode: workspaceMode || undefined,
@@ -888,6 +1084,39 @@ export function trackComparisonStarted(comparison, { fileCount = 0, exampleId = 
     from_project: Boolean(comparison.sourceProjectId),
     file_count: fileCount,
     example_id: exampleId || undefined,
+  });
+}
+
+// Mid-task messages (ENG-4194). Ids and reasons only, never the text.
+export function trackAddonAdded(decidedBy, via) {
+  capture(EVENTS.ADDON_ADDED, { decided_by: decidedBy === 'user' ? 'user' : 'jev', via: via === 'queue' ? 'queue' : 'send' });
+}
+
+// Reasons are reported from a fixed list: the server's own reason strings are
+// not ours to forward as-is, and anything new reads as 'unknown'.
+const ADDON_QUEUED_REASONS = new Set([
+  // The app's own.
+  'empty', 'attachments', 'no_conversation', 'no_live_stream', 'turn_ending',
+  'not_found', 'unsupported', 'timeout', 'error', 'returned',
+  // The server's `queued` reasons.
+  'jev', 'next_task', 'low_confidence', 'new_request', 'jev_off', 'jev_error', 'jev_timeout',
+  'too_many', 'too_large', 'rate_limited', 'busy', 'internal', 'redis_error', 'pod_timeout',
+]);
+const ADDON_OVERRIDE_OUTCOMES = new Set([
+  'added', 'withdrawn', 'already_read', ...ADDON_QUEUED_REASONS,
+]);
+
+const allowed = (value, list) => (list.has(value) ? value : 'unknown');
+
+export function trackAddonQueued(reason) {
+  capture(EVENTS.ADDON_QUEUED, { reason: allowed(reason, ADDON_QUEUED_REASONS) });
+}
+
+export function trackAddonOverridden(direction, outcome, decidedBy) {
+  capture(EVENTS.ADDON_OVERRIDDEN, {
+    direction: direction === 'to_task' ? 'to_task' : 'to_queue',
+    outcome: allowed(outcome, ADDON_OVERRIDE_OUTCOMES),
+    ...(decidedBy ? { decided_by: decidedBy === 'user' ? 'user' : 'jev' } : {}),
   });
 }
 
