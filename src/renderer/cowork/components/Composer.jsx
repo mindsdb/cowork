@@ -1383,7 +1383,7 @@ export default function Composer({
                                 <span className="inline-flex text-ink-2 shrink-0">{Ico.link(14)}</span>
                                 <span className="flex-[1_1_120px] min-w-0 flex flex-col items-start gap-0.5">
                                   <span className="font-medium">{c.name}</span>
-                                  <span className="text-xs text-ink-3">{c.displayName || c.engine}</span>
+                                  <span className="text-xs text-ink-3">{c.display_name || c.engine}</span>
                                 </span>
                                 {canMuteConnectors ? (
                                   <button

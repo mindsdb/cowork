@@ -28,6 +28,7 @@ import {
 import { normalizeExternalBrowserUrl } from '../../shared/external-url';
 import { guardRestart, type GuardedRestartResult } from './restart-guard';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
+import { isMobileShell, mobileShell } from '../lib/mobileShell';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -43,6 +44,11 @@ const bridge: any =
 
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
+
+// Inside the mobile app (ENG-4023): a web build running in the
+// iOS/Android shell's webview. Always also `isWeb`. Use it to hide what makes
+// no sense on a phone (installers, "get the desktop app" offers).
+export { isMobileShell, mobileShell };
 
 // Static deployment capability. The user's opt-in is intentionally owned by
 // the renderer and stored per device; this flag only answers whether this
@@ -1925,6 +1931,8 @@ export async function decideAccountOwnership(
 export const host = {
   isWeb,
   isElectron,
+  isMobileShell,
+  mobileShell,
   codeModeAvailable,
   supportsDocumentPreview,
   supportsInAppBrowser,

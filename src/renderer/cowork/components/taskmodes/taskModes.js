@@ -6,10 +6,14 @@
 // brand-adapted where they name the product. Website has no sample prompts on
 // Manus (it shows a category flow instead), so those prompts are authored in
 // the same style from Manus's website categories.
-// The samples that start from the person's own file, notes or inbox, and the
-// habit tracker, are ours, not Manus's. A sample with `plain: true` sits in a
-// mode its instruction does not fit (a weekly update is not a slide deck), and
-// the person is expected to add to it, so it is sent as written even then.
+// The samples that start from the person's own file, notes or inbox, the
+// habit tracker, and the work samples that write their own realistic sample
+// to work on (a contract, a call transcript, a project plan) are ours, not
+// Manus's. Those lead with the sample on purpose: asked for a file first, the
+// free-tier model stops and waits, and a first click must still produce
+// something. A sample with `plain: true` sits in a mode its instruction does
+// not fit (a weekly update is not a slide deck), and the person is expected to
+// add to it, so it is sent as written even then.
 //
 // `icon` is an Icons.jsx key (resolved dynamically — keep keys in sync with
 // that file). `samplesVariant` mirrors Manus: slides + visualization render
@@ -82,6 +86,18 @@ export const TASK_MODES = [
       {
         label: 'Build a company blog',
         prompt: 'Build a blog home page with a clean article layout, category filters, and a few placeholder posts.',
+      },
+      {
+        label: 'Build a project status page',
+        prompt: 'Build a web page with a status update for a website redesign: five milestones with owners and dates, a progress bar at 60%, and a short risks section.',
+      },
+      {
+        label: 'Build a team offsite invitation page',
+        prompt: 'Build a web page inviting the team to an offsite on Friday 4 December in Lisbon, with the agenda, travel notes and a packing list.',
+      },
+      {
+        label: 'Build a feature announcement page',
+        prompt: "Build a web page announcing a new 'shared calendars' feature, with a headline, three benefits and a short FAQ.",
       },
     ],
   },
@@ -163,6 +179,11 @@ export const TASK_MODES = [
         label: 'Clean up my spreadsheet and chart it',
         prompt: "I'm going to attach a spreadsheet or CSV. Clean it up (duplicates, blanks, odd dates), tell me what you changed, and chart the main trend.",
       },
+      {
+        label: 'Pull key terms out of a contract',
+        prompt: 'Write a realistic sample vendor services contract, then extract its key terms into a table: parties, start and end dates, renewal and notice period, payment terms, liability cap, termination rights. Flag anything unusual or one-sided. Afterwards I\'ll attach my own contract for the same treatment.',
+        plain: true,
+      },
     ],
   },
   {
@@ -189,6 +210,14 @@ export const TASK_MODES = [
       {
         label: 'Analyze competitor landscape across market segments',
         prompt: 'Visualize a competitor landscape comparing five companies on market share, pricing, and growth, using bar and bubble charts with sample data.',
+      },
+      {
+        label: 'Build a project rollout timeline',
+        prompt: 'Build a project rollout timeline as a swimlane Gantt chart grouped by phase, with an owner color per team and a status column. Clicking an item opens its details. Use a sample 12-week project I can replace with mine.',
+      },
+      {
+        label: 'Map a process as a diagram',
+        prompt: 'Build a left-to-right process diagram with two swimlanes (a person and an AI agent), steps, diamond checkpoints between steps, and details on hover. Draw every arrow from the actual positions of the shapes it connects, so each arrow starts and ends on a shape. Use a sample process I can replace with mine.',
       },
     ],
   },
@@ -234,6 +263,20 @@ export const TASK_MODES = [
       {
         label: 'Review what is on my plate this week',
         prompt: "What's on my plate this week? Look through my recent Gmail and list my main work items with a priority and timing for each. Read only: don't send, delete or change anything.",
+        plain: true,
+      },
+      {
+        label: 'Research a prospect and draft outreach',
+        prompt: 'Fernhill Freight is a made-up company for this example: a 900-person regional trucking and warehousing business in the US Midwest that is growing an e-commerce fulfillment line. Research what companies like it are dealing with right now, then write a one-page brief for a first conversation with their Head of Revenue Operations: what the company does, what is happening in its industry, likely priorities for this person, and two angles for a conversation. Then draft a short, personalized first email.',
+      },
+      {
+        label: 'Coach me on a deal from a call transcript',
+        prompt: 'Write a realistic sample sales call transcript (about a page, with speaker turns), then score the deal on budget, authority, need and timing with a quote as evidence for each, list the risks and open questions, suggest next steps, and draft the follow-up email. Afterwards I\'ll paste a real transcript.',
+        plain: true,
+      },
+      {
+        label: 'Turn meeting notes into action items',
+        prompt: "I'm going to paste a meeting transcript or rough notes (if I don't, use a realistic sample). Pull out decisions, action items with owners and due dates, and open questions, then draft a short recap email I can send to attendees.",
         plain: true,
       },
     ],

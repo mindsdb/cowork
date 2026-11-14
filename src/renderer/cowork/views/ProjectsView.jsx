@@ -444,7 +444,9 @@ function ProjectDetail({
         />
 
         <div data-scroll="true" className="min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[60px] bg-transparent [-webkit-app-region:no-drag]">
-          <div className="max-w-[720px] mx-auto flex flex-col gap-7">
+          {/* Composer caps itself at --composer-max-width (640px by default);
+              widen it to match the task list below. */}
+          <div className="max-w-[720px] mx-auto flex flex-col gap-7 [--composer-max-width:720px]">
             <div className="flex flex-col gap-2">
               <SharedResourceAttribution resource={project} />
               <Composer

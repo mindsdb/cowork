@@ -1,5 +1,6 @@
 import { applyAddonEvent } from './addons';
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
+import { artifactIdentity } from './artifactIdentity';
 import { browserStep, withBrowserStep } from './browserSession';
 import { BROWSER_ACTION_BADGE, BROWSER_TOOL, browserActionLabel, browserActionStep } from './browserSteps';
 import { parseFigureSources } from './figureSources';
@@ -37,6 +38,9 @@ const tr = (key, vars) => i18n.t(`messages.responseStream.${key}`, { ns: 'projec
 //                                 carries an `artifact` payload → one card
 //   response.figure_sources     — where each figure in the final answer came
 //                                 from; sent once, before response.completed
+//   response.artifact_check     — the agent asks the open preview to check an
+//                                 artifact; answered by lib/artifactCheck,
+//                                 never a step
 //   response.completed | failed — terminal
 //
 // We collapse each scratchpad cell (start → end → progress → result) into
@@ -528,6 +532,11 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // collapses every `now()` to the same JS-tick value and reasoning
   // / execution durations all read as 0ms. Falls back to the live
   // clock when an event lacks `at_ms` (older persisted streams).
+  // A preview check the agent asked for (ENG-4207) is answered by
+  // lib/artifactCheck, never shown: it is not a step, and it is not news
+  // about the turn either, so it leaves even a model-wait line in place.
+  if (type === 'response.artifact_check') return state;
+
   const eventTs = (typeof event.at_ms === 'number' && Number.isFinite(event.at_ms))
     ? event.at_ms
     : now();
@@ -772,7 +781,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _scratchpadTabId: null,
     };
     if (!replay) {
-      try { _trackArtifactBuilt(art.type || 'unknown'); }
+      try { _trackArtifactBuilt(art.type || 'unknown', artifactIdentity(art) || art.id || ''); }
       catch { /* analytics must never break streaming */ }
     }
     return { ...state, steps: [...state.steps, step] };

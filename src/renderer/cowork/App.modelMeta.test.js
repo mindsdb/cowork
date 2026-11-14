@@ -29,3 +29,35 @@ describe("App's picker metadata", () => {
     expect(deps).toContain('settings.modelDisabledReasons');
   });
 });
+
+// ENG-4147: one throttled availability re-check, merged into current settings, feeding the triggers.
+describe("App's model availability re-check", () => {
+  const start = APP.indexOf('createAvailabilityRefresher({');
+  const block = APP.slice(start, APP.indexOf('const modelMeta = useMemo(', start));
+
+  it('is built once from the shared refresher, fetching with refresh and the requested scope', () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(block).toContain('fetchRecommendedModels({ refresh: true, scope })');
+  });
+
+  it('merges inside the setSettings updater and skips a no-op merge', () => {
+    expect(block).toMatch(/setSettings\(\(prev\) => \{\s*const merged = mergeRecommendedModels\(prev, data/);
+    expect(block).toContain('!mergeChangesNothing(prev, merged)');
+  });
+
+  it("gives pickers the 'all' scope and the triggers the 'minds' scope", () => {
+    expect(block).toContain('refresh(REFRESH_SCOPE.all)');
+    expect(block).toContain('refresh(REFRESH_SCOPE.minds)');
+    const meta = APP.slice(APP.indexOf('const modelMeta = useMemo('));
+    expect(meta).toContain('onRefresh: refreshModelAvailability');
+  });
+
+  it('feeds the triggers the credit-lock refresh and the reason map', () => {
+    const hook = APP.slice(APP.indexOf('useModelAvailabilityTriggers({'), APP.indexOf('});', APP.indexOf('useModelAvailabilityTriggers({')));
+    expect(hook).toContain('refresh: refreshCreditLocks');
+    expect(hook).toContain('modelDisabledReasons: settings.modelDisabledReasons');
+    expect(hook).toContain('usage: hubUsage');
+    expect(hook).toContain("mindsIds: settings.recommendedModels?.['minds-cloud']");
+    expect(hook).toContain('canNarrowRefresh: () => serverHonorsRefreshScope(REFRESH_SCOPE.minds)');
+  });
+});

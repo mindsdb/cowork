@@ -493,7 +493,10 @@
         "1": "Landingpage für eine Produkteinführung erstellen",
         "2": "Dashboard-Website erstellen",
         "3": "Portfolio-Website erstellen",
-        "4": "Unternehmensblog erstellen"
+        "4": "Unternehmensblog erstellen",
+        "5": "Projektstatusseite erstellen",
+        "6": "Einladungsseite für ein Team-Offsite erstellen",
+        "7": "Seite für eine Funktionsankündigung erstellen"
       }
     },
     "apps": {
@@ -522,7 +525,8 @@
         "2": "Due-Diligence-Checkliste für eine Übernahme erstellen",
         "3": "Führende VLM-Modelle anhand von Hugging-Face-Daten vergleichen",
         "4": "IRR für Investitions-Cashflows berechnen",
-        "5": "Meine Tabelle bereinigen und als Diagramm darstellen"
+        "5": "Meine Tabelle bereinigen und als Diagramm darstellen",
+        "6": "Wichtige Vertragsbedingungen herausziehen"
       }
     },
     "visualization": {
@@ -533,7 +537,9 @@
         "0": "Wöchentliche Vertriebsaktivität als Heatmap darstellen",
         "1": "Kundenabwanderung analysieren und Erkenntnisse ableiten",
         "2": "Monatliche KPIs über Abteilungen hinweg verfolgen",
-        "3": "Wettbewerbsumfeld über Marktsegmente hinweg analysieren"
+        "3": "Wettbewerbsumfeld über Marktsegmente hinweg analysieren",
+        "4": "Zeitplan für einen Projekt-Rollout erstellen",
+        "5": "Einen Prozess als Diagramm darstellen"
       }
     },
     "wide-research": {
@@ -548,7 +554,10 @@
         "4": "Kunden-Personas und Customer Journey Maps recherchieren",
         "5": "Ein Dokument zusammenfassen und meine Antwort entwerfen",
         "6": "Ein lokales Modell wählen, das zu meinem Computer passt",
-        "7": "Überblick, was diese Woche bei mir ansteht"
+        "7": "Überblick, was diese Woche bei mir ansteht",
+        "8": "Einen Interessenten recherchieren und die Erstansprache entwerfen",
+        "9": "Mich anhand eines Gesprächstranskripts zu einem Deal beraten",
+        "10": "Besprechungsnotizen in Aufgaben umwandeln"
       }
     },
     "games": {

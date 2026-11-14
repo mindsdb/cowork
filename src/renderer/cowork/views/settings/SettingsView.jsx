@@ -915,7 +915,7 @@ export default function SettingsView({
   // Per-role "refetching model list on dropdown open" flag — drives the
   // trigger's spinner so a still-open dropdown showing possibly-stale
   // locked/unlocked state doesn't read as done loading.
-  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
+  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false, codingAgent: false });
   // Start by distrusting a persisted provider failure. The mount-time check
   // below decides whether it is still real before failure UI is shown. A deployment
   // with testing disabled keeps the stored result without running connectivity tests.
@@ -927,6 +927,24 @@ export default function SettingsView({
   // session — the one open where the wallet state is most likely to be stale.
   const modelOpenState = useRef({});
   const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: -Infinity });
+  // Opening a model picker re-checks the wallet, so a top-up made in the browser unlocks
+  // its models here. The popup opens on the list we hold and reconciles when this lands.
+  const refreshModelsOnOpen = (role, isOpen) => {
+    if (!isOpen || modelRefreshing[role]) return;
+    const openState = modelOpenFor(role);
+    if (performance.now() - openState.refreshedAt < MODEL_REFRESH_TTL_MS) return;
+    setModelRefreshing((m) => ({ ...m, [role]: true }));
+    // Unsequenced against App's refresher; both write the same fresh server answer, so order rarely matters.
+    fetchRecommendedModels({ refresh: true }).then((data) => {
+      // keepOrder: the dropdown is open on this list; an empty response leaves it alone.
+      const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
+      if (!merged) return;
+      for (const [key, value] of Object.entries(merged)) setSettingProp(key, value);
+      openState.refreshedAt = performance.now();
+    }).catch(() => { }).finally(() => {
+      setModelRefreshing((m) => ({ ...m, [role]: false }));
+    });
+  };
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -1904,41 +1922,7 @@ export default function SettingsView({
                                       writeOverride({ providerType: curType, model: next });
                                     }
                                   }}
-                                  onOpenChange={(isOpen) => {
-                                    // Opening re-checks the wallet, so a top-up made in an
-                                    // external tab unlocks its models here without an app restart.
-                                    // The popup opens immediately on the list we already hold and
-                                    // reconciles in place when the response lands, rather than
-                                    // withholding itself until then: the trigger is a click target,
-                                    // and a click that produces nothing for the length of a network
-                                    // round trip reads as a broken control. Briefly showing a
-                                    // model as locked that a top-up has just unlocked is safe —
-                                    // this list is an affordance, not the authority. Auth decides
-                                    // at request time, so a stale row can mislead for a moment but
-                                    // can never let a turn through that shouldn't run.
-                                    if (!isOpen) return;
-                                    const openState = modelOpenFor(role);
-                                    if (modelRefreshing[role]) return;
-                                    // Don't re-pay the round trip for a re-open moments later.
-                                    if (performance.now() - openState.refreshedAt < MODEL_REFRESH_TTL_MS) return;
-                                    setModelRefreshing((m) => ({ ...m, [role]: true }));
-                                    fetchRecommendedModels({ refresh: true }).then((data) => {
-                                      // Same merge rule as the mount-time load: an empty list or
-                                      // map in the response leaves what we have alone. The
-                                      // endpoint answers 200 with empty buckets when the MindsHub
-                                      // fetch itself failed, and assigning those straight through
-                                      // would empty the dropdown the user just clicked (for every
-                                      // role — the keys are shared) until the app restarts.
-                                      // keepOrder: the dropdown is open on the list we hold
-                                      // when this lands; a reordered list jumps under the cursor.
-                                      const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
-                                      if (!merged) return;
-                                      for (const [key, value] of Object.entries(merged)) setSettingProp(key, value);
-                                      openState.refreshedAt = performance.now();
-                                    }).catch(() => { }).finally(() => {
-                                      setModelRefreshing((m) => ({ ...m, [role]: false }));
-                                    });
-                                  }}
+                                  onOpenChange={(isOpen) => refreshModelsOnOpen(role, isOpen)}
                                   loading={modelRefreshing[role]}
                                   title={t('agent.modelHint', { role })}
                                   options={modelOptions}
@@ -2328,6 +2312,8 @@ export default function SettingsView({
       available={codeModeAccess.available}
       enabled={codeModeAccess.enabled}
       onEnabledChange={codeModeAccess.setEnabled}
+      onModelMenuOpenChange={(isOpen) => refreshModelsOnOpen('codingAgent', isOpen)}
+      modelRefreshing={modelRefreshing.codingAgent}
     />
   );
 

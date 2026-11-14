@@ -20,7 +20,11 @@ export function useViewportZoomLock(isMobile) {
     const meta = document.querySelector('meta[name="viewport"]');
     if (!meta) return undefined;
     const original = meta.getAttribute('content') || '';
-    const ZOOM_LOCK = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+    // The mobile app (ENG-4023) sets viewport-fit=cover so the safe-area
+    // insets apply; the lock keeps it, or the page would jump out from under
+    // the notch on every focus.
+    const ZOOM_LOCK = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no'
+      + (/viewport-fit\s*=\s*cover/.test(original) ? ', viewport-fit=cover' : '');
 
     // Only the input types that actually trigger iOS auto-zoom — skip
     // checkboxes / dates / file pickers / buttons (no text caret, no

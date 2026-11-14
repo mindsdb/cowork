@@ -6,6 +6,7 @@
 // Their side-effecting counterparts stay in App.jsx: `openStreamedForm`
 // (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
 // (async, hits the API) — the latter just calls `applySessionMessages` here.
+import { withQuickEditGroup } from './quickEditGroup';
 import { answerBody, initialStreamState, reduceStream } from './responseStreamAdapter';
 import { foldAddonMessages } from './addons';
 import { rebaseFigureSources } from './figureSources';
@@ -355,6 +356,12 @@ export function hydrateMessagesFromServerEvents(messages) {
   for (const m of messages) {
     if (!m || m.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
       out.push(m);
+      continue;
+    }
+    // A quick-edit group (ENG-4227) is a card, not a turn to replay.
+    const group = withQuickEditGroup(m);
+    if (group) {
+      out.push(group);
       continue;
     }
     const reduced = reduceServerEvents(m.events, m.startedAt);

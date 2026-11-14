@@ -1,10 +1,15 @@
+import { downloadUnavailableMessage } from '../../lib/browserDownload';
 // Inline preview modal for artifacts. Renders the artifact's content in a
 // sandboxed iframe (HTML / fullstack) or inline (md / csv / txt). The top
 // bar has three responsive zones:
 //
 //   left   — artifact title (truncated)
-//   middle — Preview / Edit / Review modes
-//   right  — comments · Publish control · ⋯ menu · close
+//   middle — Preview / Source / Review modes
+//   right  — comments · stats · Publish control · ⋯ menu · close
+//
+// With quick edits on (capabilities.canQuickEdit, ENG-4227), Preview carries a
+// chat bar at the bottom: the user asks for a change and the server makes it
+// directly or hands it to the artifact's chat (quickEdit/useQuickEdit).
 //
 // Publish/unpublish/update/change-access all live in the <PublishMenu>
 // popover, backed by the usePublish state machine — so this component is
@@ -14,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   allocateConversationId,
   mountArtifactPreview,
+  sendablePicks,
   previewArtifact,
   unpublishArtifact,
   artifactServeUrl,
@@ -33,6 +39,7 @@ import {
   createDraftLink,
   loadArtifactDraftText,
   loadArtifactDraftDocument,
+  loadArtifactRevisions,
 } from '../../lib/artifactWorkspaceApi';
 import {
   RefusedDraftLink,
@@ -41,6 +48,8 @@ import {
   draftLinksWithdrawal,
 } from '../../lib/draftLinkRules';
 import { setDraftLinks, useDraftLinks } from '../../../lib/draftLinks';
+import { trackArtifactStatsOpened } from '../../lib/analytics';
+import { UNKNOWN_SHARE_SNAPSHOT, reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
@@ -60,6 +69,20 @@ import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
+import { usePreviewCheckTarget } from './usePreviewCheckTarget';
+import { usePreviewReloadTransition } from './usePreviewReloadTransition';
+import { useViewerLayers } from './useViewerLayers';
+import { ViewerLayerToggle, ViewerLayerToggles } from './ViewerLayerToggle';
+import { QuickEditBar } from './quickEdit/QuickEditBar';
+import { useQuickEdit } from './quickEdit/useQuickEdit';
+import { countUserPrompts } from '../../lib/quickEditPrompt';
+import { useChatTranscript } from '../../lib/chatTranscriptContext';
+import { requestConversationRefresh } from '../../lib/conversationRefresh';
+import { useModelPickerContext } from '../../lib/modelPickerContext';
+import { ModelEffortPicker, pickedEffort } from '../ModelEffortPicker';
+import { MODEL_ROUTER } from '../../lib/modelCatalog';
+import { useArtifactStats } from './stats/useArtifactStats';
+import { useStatsUiEnabled } from './stats/statsUiAccess';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import { useTranslation } from '../../../lib/i18n';
@@ -201,9 +224,20 @@ export function ArtifactViewer({
   const liveAppAddress = liveAppNotice?.address || '';
   // Comments chrome state. The top bar owns ONE switch (commentsOpen) that
   // shows/hides the floating comments toolbar; the toolbar owns the rest —
-  // comment-placement mode, the inbox sidebar, marker visibility, leaving.
+  // comment-placement mode, marker visibility, leaving.
   const [commentsOpen, setCommentsOpen] = useState(false);
-  const [inboxOpen, setInboxOpen] = useState(false);
+  // The docked side panel: the comments inbox or Stats, never both.
+  const [sidePanel, setSidePanel] = useState(null);
+  const inboxOpen = sidePanel === 'comments';
+  // The inbox controls keep their boolean interface. Opening the inbox
+  // replaces Stats; closing it leaves Stats alone.
+  const setInboxOpen = useCallback((next) => {
+    setSidePanel((current) => {
+      const value = typeof next === 'function' ? next(current === 'comments') : next;
+      if (value) return 'comments';
+      return current === 'comments' ? null : current;
+    });
+  }, []);
   const [markersShown, setMarkersShown] = useState(true);
   const [repairBusy, setRepairBusy] = useState(false);
   const [textSelection, setTextSelection] = useState(null);
@@ -250,6 +284,15 @@ export function ArtifactViewer({
     onChange: reportChange,
     previewOnly: !!documentType,
   });
+  // The viewer's layers over its one preview (ENG-4227): Live edit (the
+  // quick-edit bar), Source (the code editor) and Comments, each a header
+  // toggle, remembered on this device.
+  const { layers, setLayer } = useViewerLayers();
+  // The bar takes the caret when the viewer opens (QuickEditBar), once per open.
+  const [barFocusRequest, setBarFocusRequest] = useState(0);
+  const barFocusUsed = useRef(0);
+  useEffect(() => { if (open) setBarFocusRequest((n) => n + 1); }, [open, artifact?.id]);
+  const [sourceOffPrompt, setSourceOffPrompt] = useState(false);
   // Fallback target for a repair: a brand-new chat. Used when the viewer has no
   // host chat (opened from the artifacts list) and the host either offers no
   // resolver or can't reach the chat that created the artifact.
@@ -380,31 +423,41 @@ export function ArtifactViewer({
   });
 
   // One switch for the whole comments chrome. Opening resets to the default
-  // sub-state (markers on, inbox closed); closing also drops the iframe out of
+  // sub-state (markers on, no side panel); closing also drops the iframe out of
   // comment-placement mode so no pin cursor lingers on a "plain" preview.
+  // Either way Stats closes, since it shares the docked slot.
   const toggleComments = () => {
-    setCommentsOpen((was) => {
-      if (was) layer.exitMode();
-      setInboxOpen(false);
-      setMarkersShown(true);
-      return !was;
-    });
+    setLayer('comments', !(layers.comments && commentsEnabled));
   };
 
-  useEffect(() => {
-    if (workspace.mode === 'review' && commentsEnabled) {
-      setFeedbackNotice('');
-      setCommentsOpen(true);
-      setInboxOpen(true);
+  // Stats turns comment mode off, so no markers are drawn beside it and at
+  // most one header switch is on.
+  const toggleStats = () => {
+    if (sidePanel === 'stats') {
+      setSidePanel(null);
       return;
     }
-    if (workspace.mode === 'edit') {
-      layer.exitMode();
-      setCommentsOpen(false);
-      setInboxOpen(false);
+    layer.exitMode();
+    setLayer('comments', false);
+    setSidePanel('stats');
+  };
+
+  // The Comments layer drives the comments chrome. Turned on (or restored on
+  // open, once comments are available) it opens with the inbox and markers;
+  // turned off it leaves comment mode and closes the inbox.
+  useEffect(() => {
+    if (open && layers.comments && commentsEnabled) {
+      setFeedbackNotice('');
+      setMarkersShown(true);
+      setCommentsOpen(true);
+      setSidePanel('comments');
+      return;
     }
-    if (workspace.mode !== 'review') setTextSelection(null);
-  }, [commentsEnabled, layer.exitMode, workspace.mode]);
+    layer.exitMode();
+    setCommentsOpen(false);
+    setSidePanel((current) => (current === 'comments' ? null : current));
+    setTextSelection(null);
+  }, [open, layers.comments, commentsEnabled, layer.exitMode]);
 
   useEffect(() => {
     if (!open || workspace.repair?.status !== 'queued') return undefined;
@@ -480,7 +533,7 @@ export function ArtifactViewer({
   };
 
   const captureTextSelection = () => {
-    if (workspace.mode !== 'review' || !commentsEnabled) return;
+    if (!commentsOpen || !commentsEnabled) return;
     const selection = window.getSelection?.();
     const quote = selection?.toString().trim();
     const root = textContentRef.current;
@@ -578,6 +631,38 @@ export function ArtifactViewer({
   const authorship = artifactAuthorship(
     (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
   );
+
+  // Stats are for the owner of a published artifact only, and only where the
+  // hidden Stats UI is turned on. The header applies the same rule to its button.
+  const statsUiEnabled = useStatsUiEnabled();
+  const statsAvailable = statsUiEnabled && !!pub.publishedUrl && canManage;
+  const statsOpen = open && statsAvailable && sidePanel === 'stats';
+  const stats = useArtifactStats(artifact, { enabled: statsOpen });
+  // Stats closes when it stops being available and with the viewer, so the
+  // next artifact does not open and report it unasked. The comments inbox
+  // keeps its state across closes.
+  useEffect(() => {
+    if (sidePanel === 'stats' && (!open || !statsAvailable)) setSidePanel(null);
+  }, [open, sidePanel, statsAvailable]);
+  // One event per open and artifact, after its first successful load. The
+  // viewer outlives an artifact switch, so the ref holds which artifact was
+  // reported rather than a flag. The hook returns no data for an artifact it
+  // has not loaded yet, so a switch never reports the previous numbers.
+  const statsIdentity = artifactIdentity(artifact) || artifact?.id || '';
+  const statsTrackedRef = useRef(null);
+  useEffect(() => {
+    if (!statsOpen) {
+      statsTrackedRef.current = null;
+      return;
+    }
+    if (statsTrackedRef.current === statsIdentity || !stats.data) return;
+    statsTrackedRef.current = statsIdentity;
+    trackArtifactStatsOpened({
+      artifactId: statsIdentity,
+      accessMode: pub.accessLoaded ? pub.accessMode : null,
+      hasViews: (stats.data.total_views || 0) > 0,
+    });
+  }, [statsOpen, stats.data, statsIdentity, pub.accessLoaded, pub.accessMode]);
 
   // Image artifacts skip the HTML mount pipeline entirely (there's no server
   // dir to register for iframe serving) and load straight from the artifact's
@@ -884,6 +969,177 @@ export function ArtifactViewer({
     return saved;
   }, [onReload, workspace.save]);
 
+  // The agent's preview check (ENG-4207): while this viewer shows an iframe
+  // preview, a check for its slug reloads it here and reports what it saw.
+  // Not gated on previewUrl/previewDoc: a reload clears both for a moment,
+  // and the check must not lose its viewer to its own reload. Live apps,
+  // documents, images and text have no diagnostics to report, so a check for
+  // them answers "unavailable".
+  const framedPreview = open && hasPreviewSource && !isImage && !isText && !showDocumentPreview && !liveAppView;
+  // A quick edit's reloads (its preview check, the applied edit, its Undo)
+  // cover the preview while it reloads instead of flashing it blank
+  // (usePreviewReloadTransition). Other reloads stay as they were.
+  const previewReload = usePreviewReloadTransition({ enabled: framedPreview, iframeReady });
+  const reloadPreviewSmoothly = useCallback(() => {
+    void previewReload.reload(onReload);
+  }, [onReload, previewReload.reload]);
+  usePreviewCheckTarget({
+    slug: artifact?.slug || artifactFolder.split(/[\\/]/).filter(Boolean).pop() || '',
+    enabled: framedPreview,
+    reload: reloadPreviewSmoothly,
+    iframeReady,
+    errors: diagnostics.errors,
+  });
+
+  // The chat the viewer sits in, when it does: the bar mirrors the agent's
+  // reply to a message it handed to that chat from the same task state the
+  // transcript renders (no second stream). Another chat's messages are not it.
+  const chatTranscript = useChatTranscript();
+  const chatMessages = chatTranscript
+    && (!conversationId || String(chatTranscript.conversationId || '') === String(conversationId))
+    ? chatTranscript.messages
+    : null;
+
+  // A turn in this chat may change the artifact (a bar message the agent took
+  // over, or any other turn). When one ends, ask for the head revision once:
+  // if it moved since the turn began, show the new content (behind the reload
+  // cover) and refresh the revision line, or, over unsaved editor text, say
+  // so instead of reloading. The signal is the chat's own live row, so
+  // nothing polls.
+  const chatLive = !!chatMessages?.some((m) => m?.role === '_streaming');
+  const [changedElsewhere, setChangedElsewhere] = useState(false);
+  useEffect(() => { setChangedElsewhere(false); }, [open, artifact?.id]);
+  const turnWatchRef = useRef({ live: false, startHead: null });
+  const latestRef = useRef({});
+  latestRef.current = { workspace, artifact };
+  useEffect(() => {
+    const watch = turnWatchRef.current;
+    if (!open) {
+      watch.live = chatLive;
+      return;
+    }
+    if (chatLive && !watch.live) watch.startHead = workspace.currentRevision?.id || null;
+    if (!chatLive && watch.live) {
+      const startHead = watch.startHead;
+      void (async () => {
+        let head = null;
+        try {
+          const { workspace: ws, artifact: card } = latestRef.current;
+          const data = await loadArtifactRevisions(card, ws.source?.path || null);
+          head = data?.revisions?.[0]?.id || null;
+        } catch {
+          return;
+        }
+        const { workspace: ws, artifact: card } = latestRef.current;
+        // Unchanged, or already shown (an applied quick edit refreshed it).
+        if (!head || head === startHead || head === (ws.currentRevision?.id || null)) return;
+        if (ws.dirty) {
+          setChangedElsewhere(true);
+          return;
+        }
+        void previewReload.reload(() => {
+          onReload();
+          reportChange({ ...card, mtime: Date.now() / 1000 });
+        });
+        try { await ws.load(); } catch { /* the preview shows the change either way */ }
+      })();
+    }
+    watch.live = chatLive;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatLive, open]);
+  const reloadChangedElsewhere = () => {
+    setChangedElsewhere(false);
+    void previewReload.reload(() => {
+      onReload();
+      reportChange({ ...artifact, mtime: Date.now() / 1000 });
+    });
+    void workspace.load().catch(() => {});
+  };
+  // The bar's model and effort, picked with the composer's own picker and
+  // catalog. Effort null is "no pick": medium where the model offers it.
+  const modelPicker = useModelPickerContext();
+  const [barModel, setBarModel] = useState(MODEL_ROUTER);
+  const [barEffort, setBarEffort] = useState(null);
+
+  // Quick edits (ENG-4227): offered in Preview to whoever can edit, when the
+  // server turned them on. A file the viewer only previews has nothing to edit.
+  const canQuickEdit = workspace.capabilities?.canQuickEdit === true
+    && workspace.capabilities?.canEdit !== false
+    && !documentType;
+  // The chat the artifact belongs to, chosen the way a comment repair chooses
+  // it: this chat, else the one that made the artifact.
+  const resolveArtifactConversation = async () => conversationId
+    || (resolveRepairConversation ? await resolveRepairConversation(artifact) : '')
+    || '';
+  const quickEdit = useQuickEdit(artifact, {
+    enabled: open && canQuickEdit,
+    // Without a decisions model every message goes to the chat. An older
+    // server that sends no flag edits directly, as it did before the flag.
+    direct: workspace.capabilities?.quickEditDirect !== false,
+    headRevisionId: workspace.currentRevision?.id || null,
+    resolveConversation: async () => (await resolveArtifactConversation()) || null,
+    // Same send the comment repair uses, with a fresh chat as the last resort.
+    continueInChat: async (prompt) => {
+      if (!onAddressWithAgent) return false;
+      const target = (await resolveArtifactConversation()) || repairConversationId;
+      const started = await onAddressWithAgent({ artifact, prompt, conversationId: target });
+      return started !== false;
+    },
+    countInChat: (prompt) => countUserPrompts(chatMessages, prompt),
+    picks: () => {
+      const { model, reasoningEffort } = sendablePicks(
+        barModel?.id,
+        pickedEffort({ model: barModel, effort: barEffort, modelMeta: modelPicker?.modelMeta }),
+      );
+      return { model, reasoningEffort };
+    },
+    // As after a Source save: the host hears of the new content (its card
+    // and any URL it derives), and the preview reloads in the same render.
+    onApplied: async ({ previewFresh = false } = {}) => {
+      // The server keeps the edit (or its undo) in the chat's quick-edit card;
+      // the open chat fetches it again to show it.
+      if (conversationId) requestConversationRefresh(conversationId);
+      const loading = workspace.load().catch(() => { /* the preview shows the change either way */ });
+      // The edit's own preview check already reloaded the preview after its
+      // last write: a second reload would only flash the same page.
+      if (!previewFresh) {
+        // As after a Source save: the host hears of the new content and the
+        // preview reloads, in one render, behind the reload cover. Not
+        // awaited: the bar is free again while the cover fades.
+        void previewReload.reload(() => {
+          onReload();
+          reportChange({ ...artifact, mtime: Date.now() / 1000 });
+        });
+      }
+      await loading;
+    },
+    onStale: () => { void workspace.load(); },
+  });
+
+  // Live edit (`source`): the code editor, in the preview's place at any
+  // width. Turning it off with unsaved text asks first.
+  const canSource = !!workspace.source && workspace.capabilities?.canEdit !== false;
+  const sourceOn = layers.source && canSource;
+  const setSourceLayer = (on) => {
+    if (!on && workspace.dirty) {
+      setSourceOffPrompt(true);
+      return;
+    }
+    setLayer('source', on);
+  };
+  // `workspace.mode` and `setMode`, for the callers that still speak modes:
+  // 'edit' is Source on, 'review' Comments on, 'preview' neither.
+  const viewerMode = sourceOn ? 'edit' : (commentsOpen ? 'review' : 'preview');
+  const setViewerMode = (mode) => {
+    if (mode === 'edit') setLayer('source', true);
+    else if (mode === 'review') setLayer('comments', true);
+    else {
+      setSourceLayer(false);
+      setLayer('comments', false);
+    }
+  };
+  const workspaceView = { ...workspace, mode: viewerMode, setMode: setViewerMode };
+
   if (!open || !artifact) return null;
 
   const title = artifact.title || artifact.path?.split('/').pop();
@@ -1053,8 +1309,8 @@ export function ArtifactViewer({
   // Content-Disposition: attachment, through the serve URL on desktop or the
   // authenticated draft URL on an org deployment (ENG-2044).
   const onDownload = async () => {
-    if (!(await downloadArtifactFile(artifact, { actionPath }))) {
-      setErr(disabledReason || t('viewer.noDownload'));
+    if (!(await downloadArtifactFile(artifact, { actionPath, entry: 'viewer' }))) {
+      setErr(downloadUnavailableMessage(disabledReason || t('viewer.noDownload')));
     }
   };
 
@@ -1078,10 +1334,16 @@ export function ArtifactViewer({
       // Desktop's path-addressed delete needs a client-side unpublish first.
       // SaaS performs both operations atomically on the scoped server route.
       let leftLive = '';
-      if (needsClientUnpublishBeforeDelete({ orgMode, published: isPublished })) {
+      const before = pub.accessLoaded ? shareSnapshot(pub) : UNKNOWN_SHARE_SNAPSHOT;
+      const clientUnpublishes = needsClientUnpublishBeforeDelete({ orgMode, published: isPublished });
+      if (clientUnpublishes) {
         leftLive = stopSharingNotice(await unpublishArtifact(actionPath));
+        reportWithdrawal(artifact, { entry: 'viewer_delete', before, leftLive: !!leftLive });
       }
       await deleteArtifactAndSync(artifact);
+      // On Web the server takes the page down as part of the delete, and the
+      // delete fails if it cannot, so a delete that succeeded took it down.
+      if (!clientUnpublishes && isPublished) reportWithdrawal(artifact, { entry: 'viewer_delete', before });
       setConfirmDelete(false);
       onDelete?.(actionPath, { notice: leftLive });
       // The artifact is gone but its page is still open to anyone with the
@@ -1111,11 +1373,52 @@ export function ArtifactViewer({
     onClose?.();
   };
 
+  // The layer toggles on the revision line, before History: Live edit (the
+  // code editor; `source` inside) and Comments, each only where allowed.
+  const layerControls = canSource || commentsEnabled ? (
+    <ViewerLayerToggles label={t('layers.ariaLabel')}>
+      {canSource && (
+        <ViewerLayerToggle
+          icon={Ico.edit(14)}
+          label={t('layers.source')}
+          pressed={sourceOn}
+          onToggle={(on) => setSourceLayer(on)}
+        />
+      )}
+      {commentsEnabled && (
+        <ViewerLayerToggle
+          icon={Ico.chats(14)}
+          label={t('layers.comments')}
+          pressed={!!commentsOpen}
+          onToggle={() => toggleComments()}
+          badge={comments.unreadCount}
+          badgeLabel={t('header.commentsUnread', { count: comments.unreadCount })}
+        />
+      )}
+    </ViewerLayerToggles>
+  ) : null;
+  // The address pill: where this artifact can be opened. A published page or
+  // a running live app has its own address; a draft has the address the
+  // browser-tab action opens, or none until a signed link is minted.
+  const addressModel = liveAppView && liveAppAddress
+    ? { kind: 'live', url: liveAppAddress, fallback: title }
+    : isPublished
+      ? { kind: 'published', url: pub.publishedUrl, fallback: title }
+      // Embedded content (data:/blob:) is no address to read or copy.
+      : { kind: 'draft', url: draftLinkRef || /^(?:data|blob):/i.test(browserTabUrl) ? '' : browserTabUrl, fallback: artifact.slug || title };
   const headerReview = {
     enabled: commentsEnabled,
     open: commentsOpen,
     controller: comments,
     onToggle: toggleComments,
+  };
+  const headerStats = statsUiEnabled ? { open: sidePanel === 'stats', onToggle: toggleStats } : null;
+  const bodyStats = {
+    open: statsOpen,
+    controller: stats,
+    accessMode: pub.accessMode,
+    accessLoaded: !!pub.accessLoaded,
+    onClose: () => setSidePanel(null),
   };
   const publication = {
     canManage,
@@ -1156,7 +1459,7 @@ export function ArtifactViewer({
       filename: title || 'file',
     },
     fetchFile: (url, signal) => fetchAuthenticatedResponse(url, { signal }),
-    download: () => downloadArtifactFile(artifact, { actionPath }),
+    download: () => downloadArtifactFile(artifact, { actionPath, entry: 'viewer' }),
     openInDefaultApp: onOpenOS,
     onLoadError: (loadError) => setErr(draftPreviewErrorMessage(loadError, t('viewer.loadFileFailed'))),
   } : null;
@@ -1190,6 +1493,8 @@ export function ArtifactViewer({
     iframeReady,
     setIframeReady,
     onReload,
+    // The quick-edit reload cover: 'idle' | 'covering' | 'waiting' | 'revealing'.
+    reloadPhase: previewReload.phase,
   };
   const bodyReview = {
     layer,
@@ -1222,16 +1527,19 @@ export function ArtifactViewer({
       <ArtifactViewerHeader
         title={title}
         authorship={authorship}
-        workspace={workspace}
+        workspace={workspaceView}
         review={headerReview}
+        stats={headerStats}
         publication={publication}
         actions={artifactActions}
         diagnostics={diagnostics}
+        address={addressModel}
         onClose={requestClose}
       />
 
       {workspace.currentRevision && (
         <ArtifactRevisionBar
+          layerControls={layerControls}
           revision={workspace.currentRevision}
           revisions={workspace.revisions}
           status={workspace.status}
@@ -1241,6 +1549,15 @@ export function ArtifactViewer({
           onDiscard={workspace.discard}
           onCompare={workspace.compareRevision}
         />
+      )}
+      {/* No revision line to sit on (a published page someone reviews, say):
+          the toggles get a line of their own. */}
+      {!workspace.currentRevision && layerControls && (
+        <div className="artifact-revision-bar is-centered is-layers-only">
+          <span />
+          <div className="artifact-revision-center">{layerControls}</div>
+          <span />
+        </div>
       )}
       {(workspace.error || workspace.conflict) && (
         <div className="artifact-workspace-notice" role="alert">
@@ -1252,6 +1569,11 @@ export function ArtifactViewer({
       {tabError && (
         <div className="artifact-workspace-notice" role="alert">{tabError}</div>
       )}
+      {changedElsewhere && (
+        <button type="button" className="artifact-feedback-notice" onClick={reloadChangedElsewhere}>
+          {Ico.reload(14)} <span>{t('viewer.changedElsewhere')}</span>
+        </button>
+      )}
       {draftLinkExpired && (
         <button type="button" className="artifact-feedback-notice" onClick={onReload}>
           {Ico.reload(14)} <span>{t('viewer.linkExpired')}</span>
@@ -1261,7 +1583,7 @@ export function ArtifactViewer({
         <button
           type="button"
           className="artifact-feedback-notice"
-          onClick={() => workspace.setMode('review')}
+          onClick={() => setLayer('comments', true)}
         >
           {Ico.chats(14)} <span>{feedbackNotice}</span>
         </button>
@@ -1343,10 +1665,57 @@ export function ArtifactViewer({
       )}
 
       <ArtifactViewerBody
-        workspace={{ ...workspace, save: saveWorkspace }}
+        layers={{ source: sourceOn }}
+        workspace={{ ...workspaceView, save: saveWorkspace }}
         preview={previewModel}
         review={bodyReview}
+        stats={bodyStats}
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
+      />
+
+      {canQuickEdit && (
+        <QuickEditBar
+          controller={quickEdit}
+          chatMessages={chatMessages}
+          // Messages go to the chat without a decisions model, and the chat
+          // has its own picker, so the bar shows none then.
+          picker={quickEdit.direct && modelPicker ? (
+            <ModelEffortPicker
+              models={modelPicker.models}
+              modelMeta={modelPicker.modelMeta}
+              model={barModel}
+              onModelChange={(next) => { setBarModel(next); setBarEffort(null); }}
+              effort={barEffort}
+              onEffortChange={setBarEffort}
+            />
+          ) : null}
+          // Unsaved editor text: sending asks to save or discard it first,
+          // so the edit never lands on top of it.
+          unsaved={!!workspace.dirty}
+          onSaveUnsaved={async () => {
+            const saved = await saveWorkspace();
+            return saved?.revision?.id || null;
+          }}
+          onDiscardUnsaved={workspace.discard}
+          focusRequest={barFocusRequest}
+          focusUsed={barFocusUsed}
+          onOpenChat={onClose}
+        />
+      )}
+
+      <ConfirmModal
+        open={sourceOffPrompt}
+        title={t('layers.sourceOffPrompt.title')}
+        message={t('layers.sourceOffPrompt.message')}
+        confirmLabel={t('layers.sourceOffPrompt.confirmLabel')}
+        cancelLabel={t('viewer.keepEditing')}
+        destructive
+        onClose={() => setSourceOffPrompt(false)}
+        onConfirm={() => {
+          setSourceOffPrompt(false);
+          workspace.discard();
+          setLayer('source', false);
+        }}
       />
 
       <ConfirmModal

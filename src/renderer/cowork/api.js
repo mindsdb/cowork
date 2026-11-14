@@ -9,13 +9,14 @@ import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // origin. Routing through host keeps the port in one place.
 
 import { iterateSSE } from './lib/responseStreamAdapter';
+import { noteRefreshScopes } from './lib/modelRefresh';
 import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
+import { withQuickEditGroup } from './lib/quickEditGroup';
 import { isAntonConfigError } from './lib/antonErrors';
 import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { currentServerLocale } from '../lib/i18n';
-import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
@@ -368,6 +369,12 @@ function _hydrateAssistantEvents(messages) {
       out.push(m);
       continue;
     }
+    // A quick-edit group (ENG-4227) is a card, not a turn to replay.
+    const group = withQuickEditGroup(m);
+    if (group) {
+      out.push(group);
+      continue;
+    }
     const state = reduceServerEvents(m.events, null);
     const { events: _drop, ...rest } = m;
     // The turn's response id, so an add-on saved against it can find it.
@@ -418,10 +425,9 @@ function _hydrateAssistantEvents(messages) {
 }
 
 function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } = {}) {
-  // Server stores conversations under <project>/.anton/episodes/ and
-  // returns the project NAME on each conversation meta. We carry both:
-  //   projectName — the canonical id from the server
-  //   projectPath — resolved later from the projects list (App.jsx)
+  // The server returns each conversation's project by name, id and folder:
+  // projectName, projectId and projectPath below. The id is the stable one;
+  // a rename changes the name.
   //
   // Each assistant message may carry an `events` array — the SSE log
   // captured server-side for that turn. Replaying it through the live
@@ -439,10 +445,16 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
       .map((x) => ({ engine: x.engine.trim(), name: x.name.trim() }))
     : undefined;
 
+  /* `conv` is cowork-server's ConversationListItem, which both
+     GET /conversations/ and GET /conversations/{id} send in camelCase
+     (CamelResponse), so its two-word fields are read by their camelCase
+     names. */
   return {
     id: conv.id,
     title: conv.title || conv.preview || conv.id || 'Untitled task',
-    subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
+    // The server sends no subtitle. A row ages from updatedAt when it renders;
+    // an age stamped here goes stale, and chatTaskRow shows it as a second line.
+    subtitle: '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
     // 'loading' until a real fetch resolves — every sidebar-listed
@@ -453,10 +465,11 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
     // conversation-list caller (fetchSessions) passes 'loading' explicitly.
     messagesStatus,
     projectName: conv.project || null,
-    projectId: conv.project_id || null,
-    projectPath: conv.project_path || null,
+    projectId: conv.projectId || null,
+    projectPath: conv.projectPath || null,
     harness: conv.harness || null,
     model: conv.model || null,
+    reasoningEffort: conv.reasoningEffort || null,
     attachments: [],
     disabledConnections,
     // Kept on this device, like the mutes (lib/taskBrowser).
@@ -468,8 +481,8 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
     // conversations created by `_run_schedule`; null for chat-
     // initiated conversations.
     scheduledId: conv.scheduled_id || conv.scheduledId || null,
-    updatedAt: conv.updated_at || conv.updatedAt || null,
-    createdAt: conv.created_at || conv.createdAt || null,
+    updatedAt: conv.updatedAt || null,
+    createdAt: conv.createdAt || null,
   };
 }
 
@@ -772,7 +785,24 @@ function turnStreamController(onEvent) {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+/**
+ * The model and effort a request may carry, by the same rule every turn
+ * follows. MODEL_ROUTER_ID never leaves the renderer (null is "this account's
+ * Settings decide"); without platform UI only the operator's picker sends
+ * picks. A per-task effort goes with platform UI on, and under the operator's
+ * picker for an effort it lets users pick on the model sent; otherwise none,
+ * so the request cannot override role settings. The viewer's chat bar
+ * (ENG-4227) sends its picks through this too.
+ */
+export function sendablePicks(model, reasoningEffort) {
+  const sendsPicks = PLATFORM_UI || modelPickerMode() !== 'off';
+  const sentModel = (sendsPicks && model && model !== MODEL_ROUTER_ID) ? model : null;
+  const sendsEffort = Boolean(reasoningEffort)
+    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
+  return { sendsPicks, model: sentModel, reasoningEffort: sendsEffort ? reasoningEffort : null };
+}
+
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
@@ -796,13 +826,8 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // picker (lib/modelPicker) sends a model, and App hands it only the
   // models that picker offers. With it off, all callers use
   // operator-configured role settings, including restored tasks.
-  const sentModel = ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null;
-  // A per-task effort is available with platform UI on, and under the
-  // operator's picker for an effort it lets users pick on the model this
-  // question sends, a retried task's saved effort included. Omit the key
-  // otherwise so this request cannot override role settings.
-  const sendsEffort = Boolean(reasoningEffort)
-    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
+  const { sendsPicks, model: sentModel, reasoningEffort: sentEffort } = sendablePicks(model, reasoningEffort);
+  const sendsEffort = sentEffort !== null;
   (async () => {
     try {
       bumpIdle();
@@ -817,7 +842,11 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // may still hold at a harness this build has no control left to
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
-          ...(sendsEffort ? { reasoning_effort: reasoningEffort } : {}),
+          ...(sendsEffort ? { reasoning_effort: sentEffort } : {}),
+          // The picks this question goes back to the default on (App's
+          // turnResetPicks), so the server clears the saved ones. Only where
+          // this client sends picks at all, and only when there is one.
+          ...(sendsPicks && resetPicks.length ? { reset_picks: resetPicks } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
@@ -1276,6 +1305,25 @@ export async function submitAnswer(conversationId, questionId, answer) {
     if (status === 409) return { status: 'already_answered' };
     if (status === 400) return { status: 'rejected' };
     return { status: 'error' };
+  }
+}
+
+/**
+ * Answer a preview check the running turn asked for (`response.artifact_check`,
+ * ENG-4207). `body` is `{ status: 'passed' | 'failed' | 'unavailable', errors,
+ * ms }`. Never throws: a lost answer only makes the server wait out the
+ * check's own timeout, so there is nothing for the caller to do about it.
+ */
+export async function submitArtifactCheck(checkId, body) {
+  if (!checkId) return { status: 'not_found' };
+  try {
+    return await req(`/artifacts/checks/${encodeURIComponent(checkId)}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+    });
+  } catch (err) {
+    return { status: err?.status === 404 ? 'not_found' : 'error' };
   }
 }
 
@@ -1747,15 +1795,16 @@ let _settingsLock = Promise.resolve();
    the `reasoning_efforts`/`default_reasoning_effort` it advertises) and merges a
    static effort catalog for direct providers. Returns null on any failure so the
    caller keeps the static lists baked into transformSettingsRows. */
-export async function fetchRecommendedModels({ refresh = false } = {}) {
+export async function fetchRecommendedModels({ refresh = false, scope = 'all' } = {}) {
   try {
-    // `refresh` bypasses the server's fetch_minds_models cache (up to a
-    // 5-minute TTL) — the model dropdown passes it on open so a wallet top-up
-    // isn't masked by the cached `enabled` map. A cached *failure* is still
-    // honored server-side, so this can't cost every open an HTTP timeout while
-    // MindsHub is down.
-    const data = await req(`/settings/recommended-models${refresh ? '?refresh=true' : ''}`);
-    if (data && typeof data === 'object') return data;
+    // `refresh` skips the server's short listing cache, so a wallet top-up shows at once.
+    // scope 'minds' forces only the MindsHub leg; a BYO endpoint keeps its cache.
+    const query = refresh ? `?refresh=true${scope === 'minds' ? '&refresh_scope=minds' : ''}` : '';
+    const data = await req(`/settings/recommended-models${query}`);
+    if (data && typeof data === 'object') {
+      noteRefreshScopes(data.refreshScopes);
+      return data;
+    }
   } catch { /* fall back to static lists */ }
   return null;
 }
@@ -2945,6 +2994,21 @@ export async function activateArtifactVersion(path, md5) {
   return req('/publish/activate', { method: 'POST', body: JSON.stringify({ path, md5 }) });
 }
 
+// View stats of a published artifact for its owner. Same path addressing as
+// /publish/versions; an empty path would only earn a 400, so it is refused here.
+export async function fetchPublishStats(path) {
+  if (!path) throw new Error('Artifact has no path');
+  return req(`/publish/stats?path=${encodeURIComponent(path)}`);
+}
+
+export async function setPublishTracking(path, enabled) {
+  if (!path) throw new Error('Artifact has no path');
+  return req('/publish/stats/tracking', {
+    method: 'PUT',
+    body: JSON.stringify({ path, enabled }),
+  });
+}
+
 // The path to send to publish/unpublish for an artifact. Prefer the
 // artifact *folder* so folder-based artifacts publish as a unit — the
 // server resolves the primary file for static artifacts and treats
@@ -3955,4 +4019,25 @@ export function openCommentsStream(userDir, reportId, since, { onEvent, onError,
     }
   })();
   return ctrl;
+}
+
+// Push notifications for the mobile app (ENG-4023, lib/mobilePush.ts). The
+// device token is the APNs device token on iOS and the FCM registration token
+// on Android. Both answer 204. A server without push answers 404/405/501; the
+// error carries `status` so the caller can tell that apart from a failure.
+export async function registerPushDevice({ token, platform, appVersion = null, environment = null }) {
+  return req('/push/devices', {
+    method: 'POST',
+    body: JSON.stringify({ token, platform, app_version: appVersion, environment }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+// Sign-out runs this before the tokens are cleared, so keep it short.
+export async function unregisterPushDevice(token, { timeoutMs = 3_000 } = {}) {
+  return req('/push/devices', {
+    method: 'DELETE',
+    body: JSON.stringify({ token }),
+    timeoutMs,
+  });
 }

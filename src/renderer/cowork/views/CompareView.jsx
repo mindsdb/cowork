@@ -581,6 +581,8 @@ function SidePicker({ label, value, onChange, models, modelMeta }) {
         className="meta-pill flex-1 min-w-0 justify-between"
         ariaLabel={t('compare.modelSide', { side: label.toUpperCase() })}
         placeholder={t('compare.chooseModel')}
+        // Opening re-checks the wallet (App throttles it), so a top-up unlocks rows here too.
+        onOpenChange={(opened) => { if (opened) Promise.resolve(modelMeta?.onRefresh?.()).catch(() => {}); }}
         {...(efforts ? {
           modelEfforts: efforts,
           effort: value.reasoningEffort,

@@ -493,7 +493,10 @@
         "1": "Créer une page d’accueil pour un lancement de produit",
         "2": "Créer un site de tableau de bord",
         "3": "Créer un site portfolio",
-        "4": "Créer un blog d’entreprise"
+        "4": "Créer un blog d’entreprise",
+        "5": "Créer une page d’état d’avancement du projet",
+        "6": "Créer une page d’invitation à un séminaire d’équipe",
+        "7": "Créer une page d’annonce de fonctionnalité"
       }
     },
     "apps": {
@@ -522,7 +525,8 @@
         "2": "Créer une checklist de due diligence pour une acquisition",
         "3": "Comparer les meilleurs modèles VLM avec les données Hugging Face",
         "4": "Calculer le TRI de flux de trésorerie d’investissement",
-        "5": "Nettoyer ma feuille de calcul et en faire un graphique"
+        "5": "Nettoyer ma feuille de calcul et en faire un graphique",
+        "6": "Extraire les clauses clés d’un contrat"
       }
     },
     "visualization": {
@@ -533,7 +537,9 @@
         "0": "Afficher l’activité commerciale hebdomadaire sous forme de carte thermique",
         "1": "Analyser l’attrition des clients et en tirer des enseignements",
         "2": "Suivre les KPI mensuels de chaque service",
-        "3": "Analyser le paysage concurrentiel par segment de marché"
+        "3": "Analyser le paysage concurrentiel par segment de marché",
+        "4": "Créer un calendrier de déploiement de projet",
+        "5": "Représenter un processus sous forme de diagramme"
       }
     },
     "wide-research": {
@@ -548,7 +554,10 @@
         "4": "Étudier les personas clients et leurs parcours",
         "5": "Résumer un document et rédiger ma réponse",
         "6": "Choisir un modèle local adapté à mon ordinateur",
-        "7": "Faire le point sur ce qui m’attend cette semaine"
+        "7": "Faire le point sur ce qui m’attend cette semaine",
+        "8": "Se renseigner sur un prospect et rédiger une prise de contact",
+        "9": "Me conseiller sur une affaire à partir de la transcription d’un appel",
+        "10": "Transformer des notes de réunion en actions à mener"
       }
     },
     "games": {

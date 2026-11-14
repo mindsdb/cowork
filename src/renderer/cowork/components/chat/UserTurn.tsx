@@ -20,6 +20,7 @@ export const USER_CLAMP_MAX_PX = 176;
 export function UserTurn({
   content,
   children,
+  footer,
   attachments,
   actions,
   deleting = false,
@@ -28,6 +29,9 @@ export function UserTurn({
 }: {
   content: string;
   children?: ReactNode;
+  /** Inside the bubble, under the message: a chip such as the artifact a
+   *  message from the viewer's chat bar was about (ENG-4227). */
+  footer?: ReactNode;
   attachments?: ReactNode;
   actions?: ReactNode;
   deleting?: boolean;
@@ -87,6 +91,7 @@ export function UserTurn({
               {collapsed ? t('userTurn.showMore') : t('userTurn.showLess')}
             </button>
           )}
+          {footer}
         </div>
         {attachments}
         {actions}

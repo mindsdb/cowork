@@ -24,6 +24,12 @@
       "readyTimeoutMs": "The preview took too long: it didn't start within {seconds} seconds, the preview limit.",
       "progressTimeoutMs": "The preview took too long: it made no progress for {seconds} seconds, the preview limit."
     },
+    "truncatedMobile": {
+      "xlsx": "Showing up to {rows, number} rows and {columns, number} columns of each sheet.",
+      "pptx": "{count, plural, one {Showing the first slide.} other {Showing the first # slides.}}",
+      "pdf": "Showing the first {pages, number} pages.",
+      "docx": "Showing part of this document."
+    },
     "truncated": {
       "xlsx": "Showing up to {rows, number} rows and {columns, number} columns of each sheet. {action, select, download {Download} other {Open}} has the full sheet.",
       "pptx": "{count, plural, one {Showing the first slide.} other {Showing the first # slides.}} {action, select, download {Download} other {Open}} has the full deck.",
@@ -161,7 +167,7 @@
   "modeTabs": {
     "ariaLabel": "Artifact mode",
     "preview": "Preview",
-    "edit": "Edit",
+    "source": "Source",
     "review": "Review",
     "editDisabled": "Only the artifact owner can edit",
     "reviewDisabled": "Review is not available for this artifact",
@@ -335,7 +341,12 @@
     "reported": "{count, plural, one {The preview reported # error} other {The preview reported # errors}}",
     "line": "line {line}",
     "title": "Preview errors",
-    "ariaLabel": "Preview errors, {count}"
+    "ariaLabel": "Preview errors, {count}",
+    "kind": {
+      "rejection": "Unhandled promise rejection",
+      "console": "Console error",
+      "http": "Server error"
+    }
   },
   "liveAppPreview": {
     "failure": "Couldn't connect to this app. Reload to try again, or open it in your browser.",
@@ -441,7 +452,8 @@
     "discardMessage": "The agent's change stays in this artifact's history, but the suggestion is closed and will not be applied.",
     "discardFailed": "Could not discard that suggestion.",
     "deleteTitle": "Delete artifact?",
-    "deleteMessage": "\"{title}\" will be permanently deleted. This cannot be undone."
+    "deleteMessage": "\"{title}\" will be permanently deleted. This cannot be undone.",
+    "changedElsewhere": "This artifact changed. Reload"
   },
   "artifactsView": {
     "sort": {
@@ -630,5 +642,113 @@
         "prompt": "Write a launch announcement for a new dark mode in a note-taking app in three versions: a tweet under 280 characters, a friendly email under 120 words, and a changelog entry under 50 words. Each should sound right for its channel."
       }
     }
+  },
+  "quickEdit": {
+    "ariaLabel": "Quick edit",
+    "inputLabel": "Ask for a change",
+    "placeholder": "Ask for a change…",
+    "send": "Send",
+    "route": {
+      "edit": "Editing directly…",
+      "agent": "Handing this to the agent…"
+    },
+    "stage": {
+      "routing": "Working out how to do this…",
+      "reading": "Reading the artifact…",
+      "writing": "Writing the change…",
+      "checking": "Checking the preview…",
+      "fixing": "Fixing what the check found…"
+    },
+    "handingOff": "Sending to the chat…",
+    "applied": "Done.",
+    "undo": "Undo",
+    "undoing": "Undoing…",
+    "undone": "Undone.",
+    "noop": "Nothing changed.",
+    "failed": "That change couldn't be made here.",
+    "askAgent": "Ask the agent instead",
+    "errors": {
+      "stale": "This artifact changed since you opened it. It has been reloaded; try again.",
+      "busy": "Another change to this artifact is still running. Try again when it finishes.",
+      "failed": "The change could not be made.",
+      "stopped": "The change stopped before it finished.",
+      "chatFailed": "Couldn't continue in the chat. Try again from the chat.",
+      "filesChanged": "Files this change touched were changed again since, so it can't be undone here.",
+      "filesChangedNamed": "{paths} changed again since, so this change can't be undone here.",
+      "alreadyUndone": "This change was already undone.",
+      "repairPending": "An agent suggestion for this artifact is waiting for your decision. Accept or discard it first.",
+      "undoGone": "This change can no longer be undone here. Use History to go back."
+    },
+    "placeholderChat": "Ask about or change this artifact…",
+    "openInChat": "Open in chat",
+    "needsAnswer": "Needs your answer in the chat",
+    "workingInChat": "Working in the chat…",
+    "sentToChat": "Sent to the chat.",
+    "chatStopped": "The chat turn stopped before it answered.",
+    "unsavedConfirm": {
+      "title": "You have unsaved changes. Save them before sending?",
+      "save": "Save and send",
+      "discard": "Discard and send",
+      "cancel": "Cancel",
+      "saveFailed": "Your changes couldn't be saved, so nothing was sent."
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "Stats",
+      "hide": "Hide stats"
+    },
+    "title": "Stats",
+    "close": "Close stats panel",
+    "loading": "Loading stats",
+    "retry": "Retry",
+    "trackViews": "Track views",
+    "trackingOff": "Tracking is off. Turn it on to start counting views.",
+    "metrics": {
+      "viewsInPeriod": "Views (30 days)",
+      "uniqueViewers": "Unique viewers (30 days)",
+      "totalViews": "Total views",
+      "lastViewed": "Last viewed"
+    },
+    "daysInUtc": "Days in UTC",
+    "chartLabel": "Views per day",
+    "viewers": {
+      "email": "Email",
+      "lastSeen": "Last seen",
+      "restrictedOnly": "Viewer names are recorded only when sharing is restricted."
+    },
+    "noViews": "No views yet",
+    "errors": {
+      "otherAccount": "Stats are not available for this account.",
+      "unavailable": "Stats are not available for this artifact.",
+      "reconnect": "Reconnect MindsHub to see stats.",
+      "temporarilyUnavailable": "Stats are temporarily unavailable.",
+      "loadFailed": "Could not load stats."
+    }
+  },
+  "refPill": {
+    "open": "Open {title}"
+  },
+  "quickEditCard": {
+    "title": "Edited in the viewer",
+    "count": "{count, plural, one {# change} other {# changes}}",
+    "undone": "Undone",
+    "showAll": "{count, plural, other {Show all #}}",
+    "showFewer": "Show fewer"
+  },
+  "layers": {
+    "ariaLabel": "Viewer layers",
+    "source": "Live edit",
+    "comments": "Comments",
+    "sourceOffPrompt": {
+      "title": "Turn off Live edit?",
+      "message": "Your unsaved changes in Live edit will be discarded.",
+      "confirmLabel": "Discard changes"
+    }
+  },
+  "address": {
+    "draft": "Draft",
+    "copy": "Copy address",
+    "copied": "Copied"
   }
 }

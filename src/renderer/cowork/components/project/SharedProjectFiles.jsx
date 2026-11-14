@@ -1,3 +1,5 @@
+import { host } from '../../../platform/host';
+import { downloadBlob, MOBILE_DOWNLOAD_NOTE } from '../../lib/browserDownload';
 import { useEffect, useRef, useState } from 'react';
 import { downloadSharedProjectFile, listSharedProjectFiles, readSharedProjectFile } from '../../api';
 import { projectLabel } from '../../lib/projectLabel';
@@ -67,14 +69,13 @@ export default function SharedProjectFiles({ project, onShowAll }) {
   };
 
   const download = async () => {
+    if (host.isMobileShell) {
+      setFileError(MOBILE_DOWNLOAD_NOTE);
+      return;
+    }
     try {
       const blob = await downloadSharedProjectFile(project.id, selected.path);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = selected.name;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadBlob(blob, selected.name);
     } catch {
       setContent(null);
       setFileError(t('sharedProjectFiles.downloadUnavailable'));
