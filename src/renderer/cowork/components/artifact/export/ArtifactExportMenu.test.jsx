@@ -171,3 +171,38 @@ describe('a button that unmounts', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe('reporting an export', () => {
+  async function exportWordWith(onExported) {
+    const user = userEvent.setup();
+    render(<ArtifactExportMenu draftUrl={DRAFT_URL} formats={['html', 'docx']} onExported={onExported} />);
+    await user.click(screen.getByRole('button', { name: /^Export/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Word' }));
+  }
+
+  afterEach(cleanup);
+
+  it('reports the format once the file is saved', async () => {
+    const onExported = vi.fn();
+    answer(200, exportResult());
+    await exportWordWith(onExported);
+    await waitFor(() => expect(onExported).toHaveBeenCalledWith('docx'));
+    expect(onExported).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports nothing when the export or its save failed', async () => {
+    const onExported = vi.fn();
+    answer(503, {});
+    await exportWordWith(onExported);
+    await screen.findByRole('status');
+    await waitFor(() => expect(mocks.authFetch).toHaveBeenCalledTimes(1));
+    cleanup();
+
+    answer(200, exportResult());
+    mocks.downloadAuthenticatedResource.mockResolvedValue(false);
+    await exportWordWith(onExported);
+    await waitFor(() => expect(mocks.downloadAuthenticatedResource).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole('status').textContent).not.toBe(''));
+    expect(onExported).not.toHaveBeenCalled();
+  });
+});
