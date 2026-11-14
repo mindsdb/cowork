@@ -60,7 +60,7 @@
     "signOutHelp": "Efface les cookies, connexions et le cache de ce navigateur, et ferme ses onglets. Les onglets enregistrés sont conservés.",
     "signOutUnconfirmed": "La déconnexion n’a pas été confirmée à temps. Elle a peut-être abouti. Déconnectez-vous à nouveau pour en être sûr.",
     "pageContent": "{mindshub, select, yes {Quand {agent} lit une page, son texte et une capture d’écran sont envoyés au fournisseur de modèles qui traite votre requête, soit MindsHub quand vous êtes connecté.} other {Quand {agent} lit une page, son texte et une capture d’écran sont envoyés au fournisseur de modèles qui traite votre requête.}}",
-    "webJevLine": "Lorsque « Réponses rapides avec Jev » est activé, Jev reçoit aussi l’objectif de chaque étape de navigation, l’adresse de la page, son titre, le nom des éléments et ses 1 500 premiers caractères, ainsi que les étapes récentes, adresses précédentes comprises, mais jamais les valeurs des champs ni ce que vous tapez.",
+    "webJevLine": "Lorsque « Réponses rapides avec Jev » est activé, Jev reçoit aussi l’objectif de chaque étape de navigation, l’adresse de la page, son titre, le nom des éléments et ses 1 500 premiers caractères, ainsi que les étapes récentes, adresses précédentes comprises.",
     "usageEventsHelp": "{agent} envoie à MindsDB des événements d’utilisation anonymes, avec un identifiant d’installation, y compris ceux du navigateur, mais jamais le texte ni l’adresse des pages. Si vous désactivez cette option, l’envoi s’arrête au prochain redémarrage de l’app.",
     "signedOut": "Déconnecté de tous les sites.",
     "clearFailed": "Impossible d’effacer les données du navigateur. Réessayez.",
@@ -73,7 +73,7 @@
     "usageEventsTitle": "Événements d’utilisation",
     "sendUsageEvents": "Envoyer des événements d’utilisation anonymes",
     "approveStepsTitle": "Approuver les étapes du navigateur",
-    "approveStepsHelp": "Activé : {agent} attend votre accord avant une étape qui engage quelque chose, comme un achat, un message ou un formulaire. Désactivé : {agent} continue.",
+    "approveStepsHelp": "Activé : {agent} attend votre accord avant une étape qui engage quelque chose, comme un achat, un message ou un formulaire. Désactivé : {agent} continue pour les étapes suivantes ; une étape déjà en attente demande toujours votre accord.",
     "onlyWhenNeededTitle": "N'afficher le navigateur que lorsque j'en ai besoin",
     "onlyWhenNeededHelp": "Désactivez cette option pour toujours voir le navigateur et regarder {agent} naviguer. Amusant pour certains, fastidieux pour d'autres.",
     "onlyWhenNeededLearn": "À propos de l'affichage du navigateur uniquement en cas de besoin",
@@ -87,7 +87,8 @@
     "decisionsTesting": "Test en cours…",
     "decisionsFailed": "Le modèle de décision n'a pas répondu comme prévu ({error}). Vérifiez l'endpoint et la clé.",
     "decisionsUntested": "Impossible de tester le modèle de décision. Réessayez.",
-    "ownDecisionsLine": "Le modèle de décision de votre organisation reçoit aussi l’objectif de chaque étape de navigation, l’adresse de la page, son titre, le nom des éléments et ses 1 500 premiers caractères, ainsi que les étapes récentes, adresses précédentes comprises, mais jamais les valeurs des champs ni ce que vous tapez."
+    "ownDecisionsLine": "Le modèle de décision de votre organisation reçoit aussi l’objectif de chaque étape de navigation, l’adresse de la page, son titre, le nom des éléments et ses 1 500 premiers caractères, ainsi que les étapes récentes, adresses précédentes comprises.",
+    "ownDecisionsUnused": "Le modèle de décision de votre organisation ne peut pas encore choisir les étapes de navigation ici. D’ici là, le navigateur a besoin de Jev sur MindsHub."
   },
   "codingAgent": {
     "loadFailed": "Impossible de charger les options de l’agent de code.",

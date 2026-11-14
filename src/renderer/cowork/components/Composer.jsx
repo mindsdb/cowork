@@ -1318,7 +1318,7 @@ export default function Composer({
                         onStartVoiceCall();
                       }}
                     >
-                      {Ico.call(14)} Voice call
+                      {Ico.call(14)} {t('composer.voiceCall')}
                     </button>
                   )}
                   <button

@@ -221,7 +221,8 @@
         "files": "In der Warteschlange: Nachrichten mit Dateien laufen nach der aktuellen Aufgabe.",
         "notRead": "In der Warteschlange: Die Aufgabe war fertig, bevor sie das lesen konnte."
       }
-    }
+    },
+    "reconnecting": "Verbindung wird wiederhergestellt"
   },
   "composer": {
     "placeholder": "Hallo Boss, wie kann ich Ihnen heute helfen?",
@@ -279,7 +280,8 @@
       "fixed": "Das Projekt ist für diese Aufgabe festgelegt",
       "none": "Kein Projekt"
     },
-    "chooseHarness": "Harness wählen"
+    "chooseHarness": "Harness wählen",
+    "voiceCall": "Sprachanruf"
   },
   "attachmentThumbnail": {
     "open": "Bild öffnen",
@@ -300,7 +302,9 @@
       "title": "Diesen Browser-Schritt bestätigen?",
       "intro": "Er kann etwas kaufen, senden, löschen oder absenden und wird nur ausgeführt, wenn Sie ihn bestätigen.",
       "approved": "Browser-Aktion bestätigt",
-      "cancelled": "Browser-Aktion abgebrochen"
+      "cancelled": "Browser-Aktion abgebrochen",
+      "typedText": "Text, den er eingibt",
+      "typedTextKeys": "Text, den er eingibt (⏎ markiert einen Zeilenumbruch, der ihn absenden kann; ⇥ markiert einen Tabulator; ⟦U+…⟧ bezeichnet ein unsichtbares Zeichen)"
     },
     "handOver": {
       "title": "Sie sind im Browser dran",
@@ -312,6 +316,7 @@
       "finishLater": "Später fertig machen",
       "stop": "Stoppen",
       "noBrowser": "Hier gibt es keinen Browser zum Zurückgeben.",
+      "notOpened": "Der Browser hat sich nicht geöffnet. Öffnen Sie ihn und klicken Sie noch einmal auf Fertig, weiter.",
       "handedBack": "Zurückgegeben – weiter",
       "stopped": "Übergabe gestoppt",
       "ended": "Übergabe beendet"
@@ -692,7 +697,14 @@
       "closeIts": "Browser schließen (Tabs gespeichert)",
       "watching": "Jemand sieht gerade zu"
     },
-    "phoneYourTurnWatching": "Sie sind dran: {reason}. {agent} macht von selbst weiter, sobald es erledigt ist – oder tippen Sie im Browser auf Fertig."
+    "phoneYourTurnWatching": "Sie sind dran: {reason}. {agent} macht von selbst weiter, sobald es erledigt ist – oder tippen Sie im Browser auf Fertig.",
+    "handOverFallback": "{agent} braucht Sie im Browser",
+    "phoneYourTurn": "Sie sind dran: {reason}. Tippen Sie im Browser auf Fertig, wenn Sie fertig sind, und minimieren Sie dann, um fortzufahren.",
+    "phoneQuestion": "{agent} hat eine Frage an Sie. Minimieren Sie, um sie zu beantworten.",
+    "phoneWorking": "In Arbeit…",
+    "phoneDone": "Fertig. Minimieren Sie, um die Antwort zu sehen.",
+    "phoneMinimize": "Minimieren",
+    "talkTo": "Mit {agent} sprechen"
   },
   "voiceCall": {
     "dialogLabel": "Sprachanruf mit {agent}",
@@ -711,6 +723,12 @@
     "ended": "Der Anruf wurde beendet.",
     "close": "Schließen",
     "endCall": "Anruf beenden",
-    "mute": "Stummschalten"
+    "mute": "Stummschalten",
+    "orbLabel": "{state, select, starting {Sprache wird verbunden} working {In Arbeit} other {Im Anruf}}",
+    "orbShow": "{state, select, starting {Sprache wird verbunden. Anruf anzeigen} working {In Arbeit. Anruf anzeigen} other {Im Anruf. Anruf anzeigen}}",
+    "allowMicrophone": "Erlauben Sie das Mikrofon in Ihrem Browser, um einen Sprachanruf zu starten.",
+    "noMicrophone": "Kein Mikrofon gefunden.",
+    "couldNotStart": "Der Sprachanruf konnte nicht gestartet werden.",
+    "endedReason": "Der Anruf wurde beendet ({reason})."
   }
 }

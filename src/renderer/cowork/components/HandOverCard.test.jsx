@@ -4,8 +4,12 @@ import userEvent from '@testing-library/user-event';
 
 const submitAnswer = vi.fn(async () => ({ status: 'accepted' }));
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), submitAnswer: (...args) => submitAnswer(...args) }));
-const handBack = vi.hoisted(() => ({ fn: null }));
-vi.mock('../lib/browserHandBack', () => ({ handBackBrowser: (...args) => handBack.fn(...args) }));
+const handBack = vi.hoisted(() => ({ fn: null, handed: null, drop: null }));
+vi.mock('../lib/browserHandBack', () => ({
+  handBackBrowser: (...args) => handBack.fn(...args),
+  handedBack: (...args) => handBack.handed(...args),
+  dropHandBack: (...args) => handBack.drop(...args),
+}));
 
 import HandOverCard from './HandOverCard';
 import { BrowserHandOverContext } from '../lib/browserHandOverContext';
@@ -24,19 +28,28 @@ const step = (watching = true) => ({
   },
 });
 
-function show({ watching = true, ended = false, paneShown = true, continueTask = vi.fn(), openBrowser = vi.fn(), onAnswered = vi.fn() } = {}) {
-  render(
-    <BrowserHandOverContext.Provider value={{ sessionId: 't-abc', paneShown, openBrowser, continueTask, agentLabel: 'Anton' }}>
-      <HandOverCard step={step(watching)} conversationId="c1" ended={ended} onAnswered={onAnswered} />
-    </BrowserHandOverContext.Provider>,
+function show({
+  watching = true, ended = false, paneShown = true, continueTask = vi.fn(), openBrowser = vi.fn(), onAnswered = vi.fn(), stopTask = vi.fn(),
+} = {}) {
+  const card = (isEnded) => (
+    <BrowserHandOverContext.Provider value={{ sessionId: 't-abc', paneShown, openBrowser, continueTask, stopTask, agentLabel: 'Anton' }}>
+      <HandOverCard step={step(watching)} conversationId="c1" ended={isEnded} onAnswered={onAnswered} />
+    </BrowserHandOverContext.Provider>
   );
-  return { continueTask, openBrowser, onAnswered };
+  const view = render(card(ended));
+  return {
+    continueTask, openBrowser, onAnswered, stopTask, unmount: view.unmount,
+    // The same card, its hand-over now ended (or not).
+    setEnded: (isEnded) => view.rerender(card(isEnded)),
+  };
 }
 
 const flush = () => act(async () => {});
 
 beforeEach(() => {
   handBack.fn = vi.fn(async () => 'sent');
+  handBack.handed = vi.fn(async () => 'sent');
+  handBack.drop = vi.fn();
   submitAnswer.mockClear();
 });
 afterEach(() => vi.restoreAllMocks());
@@ -92,6 +105,106 @@ describe('HandOverCard', () => {
     await flush();
     expect(handBack.fn).toHaveBeenCalledWith('t-abc');
     expect(continueTask).toHaveBeenCalledTimes(1);
+  });
+
+  /* On the web with the pane closed the hand-back waits for the viewer: a
+     turn started first would meet the browser still the person's. */
+  it('after its turn ended, carries the task on only once a waiting hand-back went', async () => {
+    handBack.fn = vi.fn(async () => 'waiting');
+    let went;
+    handBack.handed = vi.fn(() => new Promise((resolve) => { went = resolve; }));
+    const { continueTask, openBrowser } = show({ ended: true, paneShown: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Done, continue' }));
+    await flush();
+    expect(openBrowser).toHaveBeenCalled();
+    expect(handBack.handed).toHaveBeenCalledWith('t-abc');
+    expect(continueTask).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Done, continue' })).toBeDisabled();
+    await act(async () => { went('sent'); });
+    expect(continueTask).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Done, continue' })).not.toBeDisabled();
+  });
+
+  /* The pane couldn't open the viewer (no link, no browser free, the task
+     cap, or no pane for this browser): the browser may still be the
+     person's, so the card carries nothing on and takes Done, continue again. */
+  it.each([true, false])('says so when the browser never opened for the hand-back (ended: %s)', async (ended) => {
+    handBack.fn = vi.fn(async () => 'waiting');
+    let ends;
+    const order = [];
+    handBack.handed = vi.fn(() => { order.push('heard'); return new Promise((resolve) => { ends = resolve; }); });
+    const openBrowser = vi.fn(() => order.push('opened'));
+    const { continueTask } = show({ ended, paneShown: false, openBrowser });
+    fireEvent.click(screen.getByRole('button', { name: 'Done, continue' }));
+    await flush();
+    // Heard before the pane opens: a pane that can't open ends the wait at once.
+    expect(order).toEqual(['heard', 'opened']);
+    expect(screen.getByRole('button', { name: 'Done, continue' })).toBeDisabled();
+    await act(async () => { ends('unreachable'); });
+    expect(screen.getByRole('alert')).toHaveTextContent("The browser didn't open. Open it and try Done, continue again.");
+    expect(screen.getByRole('button', { name: 'Done, continue' })).not.toBeDisabled();
+    expect(continueTask).not.toHaveBeenCalled();
+  });
+
+  /* A card that goes while its hand-back waits ends that wait, so a viewer
+     that comes later never runs this Done for a later hand-over. */
+  it('ends a waiting hand-back when the card goes, and carries nothing on', async () => {
+    handBack.fn = vi.fn(async () => 'waiting');
+    let went;
+    handBack.handed = vi.fn(() => new Promise((resolve) => { went = resolve; }));
+    const { continueTask, unmount } = show({ ended: true, paneShown: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Done, continue' }));
+    await flush();
+    expect(handBack.drop).not.toHaveBeenCalled();
+    unmount();
+    expect(handBack.drop).toHaveBeenCalledWith('t-abc');
+    // dropHandBack settles the wait as unreachable; the card is gone either way.
+    await act(async () => { went('unreachable'); });
+    expect(continueTask).not.toHaveBeenCalled();
+  });
+
+  it("ends a waiting hand-back when the card's hand-over ends meanwhile, and takes Done, continue again", async () => {
+    handBack.fn = vi.fn(async () => 'waiting');
+    let went;
+    handBack.handed = vi.fn(() => new Promise((resolve) => { went = resolve; }));
+    const { continueTask, setEnded } = show({ ended: false, paneShown: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Done, continue' }));
+    await flush();
+    expect(screen.getByRole('button', { name: 'Done, continue' })).toBeDisabled();
+    // The hand-over times out while the pane is still opening.
+    setEnded(true);
+    await flush();
+    expect(handBack.drop).toHaveBeenCalledWith('t-abc');
+    await act(async () => { went('unreachable'); });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Done, continue' })).not.toBeDisabled();
+    expect(continueTask).not.toHaveBeenCalled();
+  });
+
+  it('ends nothing when the card goes with no hand-back waiting', async () => {
+    const { unmount } = show({ ended: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Done, continue' }));
+    await flush();
+    unmount();
+    expect(handBack.drop).not.toHaveBeenCalled();
+  });
+
+  it("Stop tells the chat, so a later hand-back doesn't carry the stopped task on", async () => {
+    const { stopTask } = show();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Stop' }));
+    await flush();
+    expect(stopTask).toHaveBeenCalledTimes(1);
+    expect(submitAnswer).toHaveBeenCalledWith('c1', 'browser:0123456789abcdef', { values: ['stop'] });
+  });
+
+  it('shows a long site whole on the card, wrapping instead of cutting it', () => {
+    show();
+    const site = screen.getByText('united.com');
+    expect(site.className).not.toContain('truncate');
+    expect(site.parentElement.className).toContain('whitespace-normal');
+    expect(site.parentElement.className).not.toMatch(/max-w-\[(45|60)%\]/);
   });
 
   it('says so when there is no browser to hand back', async () => {

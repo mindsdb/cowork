@@ -360,7 +360,12 @@
     "total": "共 {count} 个",
     "noTasks": "暂无任务。",
     "untitledTask": "未命名任务",
-    "seeAllTasks": "查看所有任务"
+    "seeAllTasks": "查看所有任务",
+    "recents": "最近",
+    "showFewer": "收起",
+    "seeAllCount": "查看全部 {count} 个",
+    "signedIn": "已登录",
+    "logOut": "退出登录"
   },
   "dispatch": {
     "qrAriaLabel": "装饰性配对码",

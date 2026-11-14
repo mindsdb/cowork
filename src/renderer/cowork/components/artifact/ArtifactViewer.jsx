@@ -498,6 +498,45 @@ export function ArtifactViewer({
     ? ((artifact?.ext || '').toLowerCase() || artifactExtension(actionPath))
     : '';
 
+  /* A page previewed by URL (the desktop, and the web with draft links)
+     shows in a frame this page can't read: sandboxed without same-origin
+     access, and on the web on the draft host. Its HTML is read the way a
+     text preview is, for the operator below: through the drafts route when
+     the draft can carry the person's credential, else the desktop's file
+     preview. Only once the operator first asks, so a page opened outside a
+     call is read once, for its frame. */
+  const readsPreviewSource = open && previewKind === 'static' && !!previewUrl
+    && (draftPreviewUrl ? canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin()) : !host.isWeb);
+  /* The page's HTML as read so far (`html`) and whether the read is still on
+     its way (`reading`), for the page shown now: the first call starts the
+     read. Null when the page needs none. */
+  const previewSourceRef = useRef(null);
+  useEffect(() => {
+    previewSourceRef.current = null;
+    if (!readsPreviewSource) return undefined;
+    let cancelled = false;
+    let source = null;
+    const read = async () => (draftPreviewUrl ? loadArtifactDraftText(draftPreviewUrl) : previewArtifact(actionPath));
+    previewSourceRef.current = () => {
+      if (source) return source;
+      source = { html: '', reading: true };
+      read()
+        .then((data) => {
+          if (typeof data?.content === 'string') source.html = data.content;
+        })
+        .catch((error) => {
+          // The operator then says no text of it can be read.
+          if (!cancelled) diagnostic('renderer.cowork.components.artifact.ArtifactViewer', 'WARNING', 'artifact_screen_text_read_failed', error);
+        })
+        .finally(() => { source.reading = false; });
+      return source;
+    };
+    return () => {
+      cancelled = true;
+      previewSourceRef.current = null;
+    };
+  }, [readsPreviewSource, previewUrl, draftPreviewUrl, actionPath]);
+
   /* What a voice call's operator reads of this artifact while it is open
      (lib/voice/screenArtifacts.js): its title, its type and the text it
      shows, read when the operator asks. */
@@ -513,8 +552,10 @@ export function ArtifactViewer({
         try { visible = iframeRef.current?.contentDocument?.body?.innerText || ''; } catch { visible = ''; }
       }
       if (!visible && doc) visible = htmlText(doc);
+      const source = visible ? null : previewSourceRef.current?.();
+      if (source) visible = htmlText(source.html);
       const type = shown.type || (ext || artifactExtension(shown.path || '')).replace(/^\./, '');
-      return { title: shown.title || shown.path?.split('/').pop() || '', type, text: visible };
+      return { title: shown.title || shown.path?.split('/').pop() || '', type, text: visible, reading: Boolean(source?.reading) };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, artifact?.path]);

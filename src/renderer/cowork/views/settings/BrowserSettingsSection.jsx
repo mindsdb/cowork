@@ -42,9 +42,14 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    desktop) turns the switch on to see the endpoint and API key fields, the
    organization's own decision_model_url and decision_model_api_key; the
    switch turns on once a test decision answers, and the fields save with the
-   form. Anyone else reads a note to ask their admin. On the web the browser
-   runs in MindsDB's cloud, which takes only a MindsHub credential, so there
-   is no group where MindsHub isn't the LLM provider.
+   form. Anyone else reads a note to ask their admin. Where the organization
+   set up its own decision model but this deployment's browser can't ask it
+   (the status's `own_decisions_unused`), everyone reads one line instead,
+   saying so and that the browser needs Jev on MindsHub until then, as the
+   server's 400 on turning it on says: setting one up again changes nothing,
+   so no fields show. On the web the browser runs in MindsDB's cloud, which
+   takes only a MindsHub credential, so there is no group where MindsHub
+   isn't the LLM provider.
 
    The group says what the browser does with the person's data, as it runs
    today: where websites see the browser come from, how long sign-ins are kept
@@ -187,7 +192,10 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
   const offered = status?.available === true && !(host.isWeb && !llmViaMindsHub(settings));
   // No decisions model, and none tested here since.
   const needsDecisions = status !== null && !hasDecisionsModel(status) && !decisionTest.passed;
-  const canSetDecisions = status?.can_set_decisions_model === true;
+  // The organization's own decision model is set up, but this browser can't ask it.
+  const ownDecisionsUnused = needsDecisions && status?.own_decisions_unused === true;
+  // Setting up another changes nothing then, so nobody may.
+  const canSetDecisions = status?.can_set_decisions_model === true && !ownDecisionsUnused;
   const decisionUrl = (settings.decisionModelUrl ?? '').trim();
   const decisionKey = settings.decisionModelApiKey ?? '';
   const refused = status?.status === 'not_entitled' || status?.status === 'organization_off';
@@ -282,9 +290,13 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
   );
 
   /* Why the switch is off without a decisions model, and what to do: the
-     fields for whoever may set one up, a note to ask an admin for anyone else. */
+     fields for whoever may set one up, a note to ask an admin for anyone else.
+     An organization model this browser can't ask gets its own line, and no
+     fields. */
   let decisionsNote = null;
-  if (needsDecisions) {
+  if (ownDecisionsUnused) {
+    decisionsNote = t('browser.ownDecisionsUnused');
+  } else if (needsDecisions) {
     const removed = settings.browserEnabled === true ? `${t('browser.decisionsRemoved')} ` : '';
     decisionsNote = canSetDecisions
       ? `${removed}${t('browser.decisionsSetUp', { agent: agentLabel })}`

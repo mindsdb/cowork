@@ -13,7 +13,7 @@
  * per module registry, so the host's platform cannot vary between tests there.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
 const workspaceMock = vi.hoisted(() => ({
   supported: false,
@@ -97,6 +97,7 @@ vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 import { ArtifactViewer } from './ArtifactViewer';
+import { artifactsOnScreen } from '../../lib/voice/screenArtifacts';
 
 const artifact = {
   id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
@@ -117,6 +118,26 @@ describe('ArtifactViewer draft HTML preview on Desktop (ENG-2818)', () => {
       contentType: 'text/html; charset=utf-8',
       isHtml: true,
     });
+  });
+
+  /* The navigated frame has no same-origin access, so a voice call reads the
+     page from the draft's HTML, read as a text preview is, once the call's
+     operator first asks: opening the page outside a call reads it only for
+     its frame. */
+  it("gives a voice call the draft's text, which the frame can't give it, once the call asks", async () => {
+    loadArtifactDraftText.mockReset();
+    loadArtifactDraftText.mockResolvedValue({ content: '<body><h1>Launch brief</h1><p>Ships Monday.</p></body>', truncated: false, mime: 'text/html' });
+    const { unmount } = render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    expect(loadArtifactDraftText).not.toHaveBeenCalled();
+
+    expect(artifactsOnScreen()[0]).toMatchObject({ title: 'Launch brief', text: '', reading: true });
+    await waitFor(() => expect(artifactsOnScreen()[0]?.text).toMatch(/Launch brief\s+Ships Monday\./));
+    expect(artifactsOnScreen()[0].reading).toBe(false);
+    expect(loadArtifactDraftText).toHaveBeenCalledTimes(1);
+    expect(loadArtifactDraftText).toHaveBeenCalledWith(artifact.draftUrl);
+    unmount();
+    expect(artifactsOnScreen()).toEqual([]);
   });
 
   /*

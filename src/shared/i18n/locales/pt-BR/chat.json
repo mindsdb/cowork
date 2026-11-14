@@ -221,7 +221,8 @@
         "files": "Na fila: mensagens com arquivos são executadas depois da tarefa atual.",
         "notRead": "Na fila: a tarefa terminou antes de conseguir ler isto."
       }
-    }
+    },
+    "reconnecting": "Tentando reconectar"
   },
   "composer": {
     "placeholder": "Olá, chefe. Como posso ajudar hoje?",
@@ -279,7 +280,8 @@
       "fixed": "O projeto é fixo para esta tarefa",
       "none": "Sem projeto"
     },
-    "chooseHarness": "Escolher ambiente de execução"
+    "chooseHarness": "Escolher ambiente de execução",
+    "voiceCall": "Chamada de voz"
   },
   "attachmentThumbnail": {
     "open": "Abrir imagem",
@@ -300,7 +302,9 @@
       "title": "Aprovar esta etapa no navegador?",
       "intro": "Ela pode comprar, enviar, excluir ou confirmar algo, e só é executada se você aprovar.",
       "approved": "Ação do navegador aprovada",
-      "cancelled": "Ação do navegador cancelada"
+      "cancelled": "Ação do navegador cancelada",
+      "typedText": "Texto que ele digita",
+      "typedTextKeys": "Texto que ele digita (⏎ marca uma quebra de linha, que pode enviá-lo; ⇥ marca uma tabulação; ⟦U+…⟧ indica um caractere invisível)"
     },
     "handOver": {
       "title": "Sua vez no navegador",
@@ -312,6 +316,7 @@
       "finishLater": "Terminar depois",
       "stop": "Parar",
       "noBrowser": "Não há navegador para devolver aqui.",
+      "notOpened": "O navegador não abriu. Abra-o e clique de novo em Concluído, continuar.",
       "handedBack": "Devolvido, continuou",
       "stopped": "Passagem interrompida",
       "ended": "Passagem encerrada"
@@ -692,7 +697,14 @@
       "closeIts": "Fechar o navegador dela (abas salvas)",
       "watching": "Alguém está assistindo"
     },
-    "phoneYourTurnWatching": "Sua vez: {reason}. {agent} continua sozinho quando estiver feito, ou toque em Concluído no navegador."
+    "phoneYourTurnWatching": "Sua vez: {reason}. {agent} continua sozinho quando estiver feito, ou toque em Concluído no navegador.",
+    "handOverFallback": "{agent} precisa de você no navegador",
+    "phoneYourTurn": "Sua vez: {reason}. Toque em Concluído no navegador quando terminar e depois minimize para continuar.",
+    "phoneQuestion": "{agent} tem uma pergunta para você. Minimize para responder.",
+    "phoneWorking": "Trabalhando nisso…",
+    "phoneDone": "Pronto. Minimize para ver a resposta.",
+    "phoneMinimize": "Minimizar",
+    "talkTo": "Falar com {agent}"
   },
   "voiceCall": {
     "dialogLabel": "Chamada de voz com {agent}",
@@ -711,6 +723,12 @@
     "ended": "A chamada terminou.",
     "close": "Fechar",
     "endCall": "Encerrar chamada",
-    "mute": "Silenciar"
+    "mute": "Silenciar",
+    "orbLabel": "{state, select, starting {Conectando a voz} working {Trabalhando nisso} other {Em uma chamada}}",
+    "orbShow": "{state, select, starting {Conectando a voz. Mostrar a chamada} working {Trabalhando nisso. Mostrar a chamada} other {Em uma chamada. Mostrar a chamada}}",
+    "allowMicrophone": "Permita o microfone no seu navegador para iniciar uma chamada de voz.",
+    "noMicrophone": "Nenhum microfone encontrado.",
+    "couldNotStart": "Não foi possível iniciar a chamada de voz.",
+    "endedReason": "A chamada terminou ({reason})."
   }
 }

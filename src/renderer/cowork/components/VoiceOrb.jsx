@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from '../../lib/i18n';
 import './voice-call.css';
 
 /* The voice call on a phone while the browser covers the screen: one small
@@ -15,6 +16,7 @@ const level = (analyser, buf) => {
 };
 
 export default function VoiceOrb({ call, onClick }) {
+  const { t } = useTranslation('chat');
   const ref = useRef(null);
   useEffect(() => {
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -32,14 +34,14 @@ export default function VoiceOrb({ call, onClick }) {
     return () => cancelAnimationFrame(frame);
   }, [call]);
 
-  const label = call.phase === 'starting' ? 'Connecting voice' : call.working ? 'Working on it' : 'On a call';
+  const state = call.phase === 'starting' ? 'starting' : call.working ? 'working' : 'onCall';
   return (
     <button
       ref={ref}
       type="button"
       className={`voice-orb${call.working ? ' is-working' : ''}${call.phase === 'starting' ? ' is-starting' : ''}`}
-      aria-label={`${label}. Show the call`}
-      title={label}
+      aria-label={t('voiceCall.orbShow', { state })}
+      title={t('voiceCall.orbLabel', { state })}
       onClick={onClick}
     >
       <span className="voice-orb__fill" aria-hidden="true" />

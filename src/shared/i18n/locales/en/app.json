@@ -264,5 +264,12 @@
   "addon": {
     "moveFailed": "Could not move that message to the queue. Please try again.",
     "stayQueued": "{agent} could not take it now. It stays in the queue."
+  },
+  "voiceCall": {
+    "backToCall": "Back to the call with {agent}",
+    "onCall": "On a call with {agent}",
+    "callBackPending": "{agent} will call you back when it's done",
+    "call": "Call {agent}",
+    "anotherCall": "Another call is running"
   }
 }

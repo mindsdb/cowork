@@ -10,7 +10,7 @@ import { host } from '../../../platform/host';
 import { BrowserFrame } from './BrowserFrame';
 import { BlankStartOver, browserRequestFor } from './BlankBrowserPanel';
 import { LocalBrowserStage } from './LocalBrowserStage';
-import { HAND_BACK_MESSAGE, registerHandBackViewer } from '../../lib/browserHandBack';
+import { HAND_BACK_MESSAGE, dropHandBack, registerHandBackViewer } from '../../lib/browserHandBack';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The person's browser beside the chat. The agent drives it through its
@@ -37,10 +37,11 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    unreachable or full) is a page that posts VIEWER_CLOSED, and so does the
    starting page's last load before its link lapses; afterViewerClose decides
    what the pane does then. After STARTING_TIMEOUT_MS of waiting, the pane
-   offers to try again. That clock runs on across the new links a close
+   offers to try again, and a hand-back waiting for its viewer ends
+   (lib/browserHandBack.js). That clock runs on across the new links a close
    brings, and starts over only when a viewer gets ready or the person, the
-   tab or the network asks again, so a router that keeps closing still
-   reaches it. */
+   tab, the network or a hand-back (`retrySignal`) asks again, so a router
+   that keeps closing still reaches it. */
 export const STARTING_TIMEOUT_MS = 90_000;
 
 /**
@@ -104,11 +105,12 @@ export function BrowserPanel(props) {
 }
 
 /**
- * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
+ * @param {{ sessionId: string, agentLabel?: string, onClose: () => void, retrySignal?: number }} props
+ *   `retrySignal`: bumped when a hand-back asks the pane to show its browser.
  */
 function WebBrowserStage({
   sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null,
-  taskKey = '', onSend, onOpenUrl, startBlank = false, onPageUrl = null, onDraft = null,
+  taskKey = '', onSend, onOpenUrl, startBlank = false, onPageUrl = null, onDraft = null, retrySignal = 0,
 }) {
   const { t } = useTranslation('chat');
   const onControlRef = useRef(onControl);
@@ -160,6 +162,8 @@ function WebBrowserStage({
     if (seq !== mintSeq.current) return;
     if (failure) {
       setError({ title: unreachable(), description: failure });
+      // No viewer comes for this browser: a hand-back waiting for one ends.
+      dropHandBack(sessionId);
       return;
     }
     mintedAt.current = Date.now();
@@ -181,6 +185,15 @@ function WebBrowserStage({
     if (!tabHidden()) retry();
     return () => { mintSeq.current += 1; };
   }, [retry]);
+
+  /* A hand-back asked for on a pane that gave up on its viewer (slow, or
+     stopped) asks again, as Try again does, so it gets a viewer or ends
+     (lib/browserHandBack.js). A pane that mounts has not given up, so this
+     does nothing then. */
+  useEffect(() => {
+    if (retrySignal && (slow || error)) retry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retrySignal]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -218,12 +231,9 @@ function WebBrowserStage({
         setViewerReady(true);
         setSlow(false);
         postTheme(frameRef.current);
-        /* The hand-over card's Done, continue reaches the viewer's Done
-           through this frame (lib/browserHandBack.js). */
+        // A new viewer: a hand-back waits until it says who holds the browser.
         unregisterHandBackRef.current();
-        unregisterHandBackRef.current = registerHandBackViewer(sessionId, () => {
-          frameWindow.postMessage({ type: HAND_BACK_MESSAGE }, '*');
-        });
+        unregisterHandBackRef.current = () => {};
         return;
       }
       // The page the viewer shows, for whoever opened the pane.
@@ -243,14 +253,27 @@ function WebBrowserStage({
       }
       // Who holds the browser: 'human' when Anton handed it to the person.
       if (type === 'browser-viewer-control') {
+        const holder = event.data?.holder === 'human' ? 'human' : 'agent';
+        /* The hand-over card's Done, continue reaches the viewer's Done
+           through this frame (lib/browserHandBack.js), from when the viewer
+           knows the person holds the browser: before that it drops it. With
+           the agent holding it, there is nothing to hand back. */
+        unregisterHandBackRef.current();
+        unregisterHandBackRef.current = registerHandBackViewer(
+          sessionId,
+          holder === 'human' ? () => frameWindow.postMessage({ type: HAND_BACK_MESSAGE }, '*') : null,
+        );
         onControlRef.current?.(
-          event.data?.holder === 'human' ? 'human' : 'agent',
+          holder,
           String(event.data?.reason || '').slice(0, 300),
           event.data?.watching === true,
         );
         return;
       }
       if (type !== VIEWER_CLOSED) return;
+      // A closed viewer runs no Done: a hand-back waits for the next one.
+      unregisterHandBackRef.current();
+      unregisterHandBackRef.current = () => {};
       const next = afterViewerClose({
         mintedAtMs: mintedAt.current,
         nowMs: Date.now(),
@@ -266,6 +289,8 @@ function WebBrowserStage({
       mintSeq.current += 1;
       setViewUrl(null);
       setError(STOPPED[next.stop]?.() ?? null);
+      // The pane stops asking for a viewer: a hand-back waiting for one ends.
+      dropHandBack(sessionId);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -317,9 +342,17 @@ function WebBrowserStage({
   }, [startOver]);
   useEffect(() => {
     if (!waiting) return undefined;
-    const timer = setTimeout(() => setSlow(true), STARTING_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      setSlow(true);
+      /* A viewer that never came in time ends a waiting hand-back, as a
+         viewer that stopped does: an edge error page, or the router's
+         starting page while it reloads, posts nothing at all. Here, when the
+         clock runs out, so a pane that was slow for one browser and then
+         shows another doesn't end the new one's wait. */
+      dropHandBack(sessionId);
+    }, STARTING_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [waiting, waitRound]);
+  }, [waiting, waitRound, sessionId]);
 
   return (
     <BrowserFrame

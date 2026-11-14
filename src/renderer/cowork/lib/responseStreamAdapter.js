@@ -860,6 +860,11 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         select: event.select === 'many' ? 'many' : 'one',
         allow_custom: event.allow_custom !== false,
         timeout_s: event.timeout_s ?? null,
+        // When the server held it (its clock, also on a replay), or null for
+        // an event without one: the app approves a held browser step for the
+        // person only if it was held after they turned approvals off
+        // (lib/browserPrefs.js), never by this tab's clock.
+        held_at_ms: Number.isFinite(event.at_ms) ? event.at_ms : null,
         answer: null,
       },
       output: null,

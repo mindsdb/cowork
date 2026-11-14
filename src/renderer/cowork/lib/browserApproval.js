@@ -14,7 +14,7 @@
 
 import { diagnostic } from '../../../shared/diagnostics';
 import { approveBrowserStep, declineBrowserStep, readBrowserApproveSteps } from '../api';
-import { getBrowserPrefs, isLeftToPerson } from './browserPrefs';
+import { getBrowserPrefs, heldAfterApprovalsOff } from './browserPrefs';
 import i18n from '../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(`messages.browserApproval.${key}`, { ns: 'projects', ...vars });
@@ -147,17 +147,18 @@ export function isBrowserStepCard(data) {
 /**
  * Whether the app approves this card for the person and keeps it out of
  * sight: a click by position always; a held browser step only once the
- * person turned Approve browser steps off (Settings > Shared browser). While
- * they approve steps, the default, a held step's card shows.
+ * person turned Approve browser steps off (Settings > Shared browser), and
+ * only one held after that (lib/browserPrefs.js). While they approve steps,
+ * the default, a held step's card shows, and so does every card that was
+ * waiting when they turned approvals off, the card they did it from included.
  *
- * @param {Parameters<typeof isBrowserStepCard>[0]} data
- * @param {{ askToApprove?: boolean }} [prefs]
+ * @param {Parameters<typeof isBrowserStepCard>[0] & { held_at_ms?: unknown }} data
+ * @param {{ askToApprove?: boolean, approvalsOffAtMs?: number | null }} [prefs]
  * @returns {boolean}
  */
 export function isAutoApprovedCard(data, prefs = getBrowserPrefs()) {
   if (isPositionClickCard(data)) return true;
-  // A card the person turned approvals off from is still theirs to answer.
-  return prefs.askToApprove === false && isBrowserStepCard(data) && !isLeftToPerson(data?.question_id);
+  return prefs.askToApprove === false && isBrowserStepCard(data) && heldAfterApprovalsOff(data?.held_at_ms, prefs.approvalsOffAtMs);
 }
 
 /**
@@ -202,16 +203,52 @@ export async function autoApprovePositionClick({ conversationIds, questionId, is
 
 /**
  * Approves a card for the person (autoApprovePositionClick) only once the
- * server confirms they turned Approve browser steps off: a choice made on
- * another device since this tab read settings counts at once, and a setting
- * that can't be read leaves the card to the person.
+ * server confirms they turned Approve browser steps off before the card was
+ * held (`heldAtMs`, the card's `held_at_ms`): a choice made on another device
+ * since this tab read settings counts at once. A card that was waiting when
+ * approvals went off, on any device, is `kept` for the person, and a setting
+ * that can't be read leaves the card to them too.
  *
- * @param {Parameters<typeof autoApprovePositionClick>[0] & { readAsks?: typeof readBrowserApproveSteps }} args
- * @returns {Promise<'approved' | 'failed' | 'asks' | 'unread'>}
+ * @param {Parameters<typeof autoApprovePositionClick>[0] & {
+ *   heldAtMs?: unknown, readAsks?: typeof readBrowserApproveSteps }} args
+ * @returns {Promise<'approved' | 'failed' | 'asks' | 'kept' | 'unread'>}
  */
-export async function approveIfApprovalsOff({ readAsks = readBrowserApproveSteps, ...args }) {
-  const asks = await readAsks();
-  if (asks === null) return 'unread';
-  if (asks) return 'asks';
+export async function approveIfApprovalsOff({ heldAtMs, readAsks = readBrowserApproveSteps, ...args }) {
+  const setting = await readAsks();
+  if (setting === null) return 'unread';
+  if (setting.asks) return 'asks';
+  if (!heldAfterApprovalsOff(heldAtMs, setting.offAtMs)) return 'kept';
   return (await autoApprovePositionClick(args)) ? 'approved' : 'failed';
+}
+
+/**
+ * Approves for the person, once each, the unanswered cards among a stream's
+ * steps that the app approves (isAutoApprovedCard): a click by position at
+ * once (autoApprovePositionClick), a held browser step only once the server
+ * confirms approvals went off before the card was held (approveIfApprovalsOff,
+ * with the card's `held_at_ms`). Every card it starts on goes into `seen`
+ * before anything is awaited, so a stream event that repeats the card never
+ * approves it twice. A card the approval doesn't land on shows after
+ * POSITION_AUTO_APPROVE_MS (components/AskUserCard.jsx), so the person can
+ * still answer it; a failure here is not reported.
+ *
+ * @param {{ taskIds: Array<string | null | undefined>,
+ *   steps: Array<{ badge?: string, data?: object }> | null | undefined,
+ *   seen: Set<string>, isWeb: boolean,
+ *   submit: Parameters<typeof autoApprovePositionClick>[0]['submit'],
+ *   readAsks?: typeof readBrowserApproveSteps }} args
+ * @returns {Promise<void>} settles once every approval it started has
+ */
+export async function approveCardsForPerson({ taskIds, steps, seen, isWeb, submit, readAsks }) {
+  const approvals = [];
+  for (const step of steps || []) {
+    const questionId = step.badge === 'AskUser' && !step.data?.answer ? step.data?.question_id : null;
+    if (!questionId || seen.has(questionId) || !isAutoApprovedCard(step.data)) continue;
+    seen.add(questionId);
+    const approval = { conversationIds: taskIds, questionId, isWeb, submit };
+    approvals.push(isPositionClickCard(step.data)
+      ? autoApprovePositionClick(approval)
+      : approveIfApprovalsOff({ ...approval, heldAtMs: step.data.held_at_ms, readAsks }));
+  }
+  await Promise.allSettled(approvals);
 }

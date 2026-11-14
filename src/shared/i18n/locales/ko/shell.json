@@ -360,7 +360,12 @@
     "total": "총 {count}개",
     "noTasks": "아직 작업이 없습니다.",
     "untitledTask": "제목 없는 작업",
-    "seeAllTasks": "모든 작업 보기"
+    "seeAllTasks": "모든 작업 보기",
+    "recents": "최근",
+    "showFewer": "간단히 보기",
+    "seeAllCount": "모두 보기({count})",
+    "signedIn": "로그인됨",
+    "logOut": "로그아웃"
   },
   "dispatch": {
     "qrAriaLabel": "장식용 페어링 코드",

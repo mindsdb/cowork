@@ -64,7 +64,9 @@ export function describeScreen({
 }) {
   const lines = [];
   if (route === 'task' && currentTask) {
-    lines.push(`On screen: the task "${currentTask.title || 'Untitled'}" (id ${currentTask.id}) in project "${currentTask.projectName || 'general'}".`);
+    // Each id comes before the text around it: the server cuts every snapshot
+    // line to a fixed length, and a long title must not cut off the id.
+    lines.push(`On screen: the task (id ${currentTask.id}) "${currentTask.title || 'Untitled'}" in project "${currentTask.projectName || 'general'}".`);
   } else if (route === 'projects' && selectedProject) {
     lines.push(`On screen: the project "${selectedProject.name}".`);
   } else {
@@ -78,10 +80,10 @@ export function describeScreen({
   // What Anton waits on the person for, which they can answer on the call.
   lines.push(...describeWaiting(waiting));
   const callTask = callTaskId && (tasks || []).find((t) => t.id === callTaskId);
-  if (callTask) lines.push(`The task this call last gave Anton work in: "${callTask.title || 'Untitled'}" (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}.`);
+  if (callTask) lines.push(`The task this call last gave Anton work in (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}: "${callTask.title || 'Untitled'}".`);
   if (working) {
     const where = (tasks || []).find((t) => t.id === working.taskId);
-    lines.push(`Anton is busy right now on the call's request "${working.request}"${where ? ` in "${where.title || 'Untitled'}" (id ${where.id})` : ''}. New work waits for it.`);
+    lines.push(`Anton is busy right now${where ? ` in task ${where.id} ("${where.title || 'Untitled'}")` : ''} on the call's request "${working.request}". New work waits for it.`);
   }
   lines.push(`Projects: ${(projects || []).map((p) => `"${p.name}"`).join(', ') || 'none'}.`);
   const recent = (tasks || []).slice(0, maxTasks);

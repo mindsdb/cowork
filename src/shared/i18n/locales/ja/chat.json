@@ -221,7 +221,8 @@
         "files": "キューに追加：ファイル付きのメッセージは現在のタスクの後に実行されます。",
         "notRead": "キューに追加：読み取る前にタスクが終了しました。"
       }
-    }
+    },
+    "reconnecting": "再接続しています"
   },
   "composer": {
     "placeholder": "こんにちは。今日は何をお手伝いしましょうか？",
@@ -279,7 +280,8 @@
       "fixed": "このタスクのプロジェクトは固定されています",
       "none": "プロジェクトなし"
     },
-    "chooseHarness": "ハーネスを選択"
+    "chooseHarness": "ハーネスを選択",
+    "voiceCall": "音声通話"
   },
   "attachmentThumbnail": {
     "open": "画像を開く",
@@ -300,7 +302,9 @@
       "title": "このブラウザのステップを承認しますか？",
       "intro": "購入、送信、削除、フォームの送信などを行う可能性があり、承認した場合にのみ実行されます。",
       "approved": "ブラウザの操作を承認しました",
-      "cancelled": "ブラウザの操作をキャンセルしました"
+      "cancelled": "ブラウザの操作をキャンセルしました",
+      "typedText": "入力するテキスト",
+      "typedTextKeys": "入力するテキスト（⏎ は改行を示し、送信されることがあります。⇥ はタブを示します。⟦U+…⟧ は見えない文字を示します）"
     },
     "handOver": {
       "title": "ブラウザでの操作をお願いします",
@@ -312,6 +316,7 @@
       "finishLater": "後で終える",
       "stop": "停止",
       "noBrowser": "ここには返すブラウザがありません。",
+      "notOpened": "ブラウザが開きませんでした。ブラウザを開いて、もう一度「完了して続行」をクリックしてください。",
       "handedBack": "返却済み — 再開しました",
       "stopped": "引き継ぎを停止しました",
       "ended": "引き継ぎが終了しました"
@@ -692,7 +697,14 @@
       "closeIts": "そのブラウザを閉じる（タブは保存）",
       "watching": "誰かが閲覧中です"
     },
-    "phoneYourTurnWatching": "操作をお願いします: {reason}。完了すると {agent} が自動で再開します。またはブラウザで「完了」をタップしてください。"
+    "phoneYourTurnWatching": "操作をお願いします: {reason}。完了すると {agent} が自動で再開します。またはブラウザで「完了」をタップしてください。",
+    "handOverFallback": "{agent} がブラウザでの操作を必要としています",
+    "phoneYourTurn": "操作をお願いします: {reason}。終わったらブラウザで「完了」をタップし、最小化して続けてください。",
+    "phoneQuestion": "{agent} から質問があります。最小化して回答してください。",
+    "phoneWorking": "対応中…",
+    "phoneDone": "完了しました。最小化して回答を確認してください。",
+    "phoneMinimize": "最小化",
+    "talkTo": "{agent} と話す"
   },
   "voiceCall": {
     "dialogLabel": "{agent}との音声通話",
@@ -711,6 +723,12 @@
     "ended": "通話が終了しました。",
     "close": "閉じる",
     "endCall": "通話を終了",
-    "mute": "ミュート"
+    "mute": "ミュート",
+    "orbLabel": "{state, select, starting {音声を接続中} working {対応中} other {通話中}}",
+    "orbShow": "{state, select, starting {音声を接続中。通話を表示} working {対応中。通話を表示} other {通話中。通話を表示}}",
+    "allowMicrophone": "音声通話を始めるには、ブラウザでマイクを許可してください。",
+    "noMicrophone": "マイクが見つかりません。",
+    "couldNotStart": "音声通話を開始できませんでした。",
+    "endedReason": "通話が終了しました（{reason}）。"
   }
 }

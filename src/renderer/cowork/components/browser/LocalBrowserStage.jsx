@@ -35,7 +35,13 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    task, waits for main's answer to its own show.
 
    The person can click and type in the view at any time. Take over tells the
-   agent to stop; only Done hands the browser back, and the agent waits for it. */
+   agent to stop; only Done hands the browser back, and the agent waits for it.
+
+   Each change of who holds the browser goes to `onControl(holder, reason,
+   watching)`, as the web viewer's does (BrowserPanel), so the chat can carry
+   a task on when the browser comes back after its turn ended: from the
+   pane's Done, the card's Done, continue, or a watched hand-over that came
+   back by itself. */
 
 /**
  * @typedef {import('../../../../shared/browser-contract').BrowserViewState} BrowserViewState
@@ -143,7 +149,7 @@ export function downloadLine(download) {
 
 export function LocalBrowserStage({
   sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null,
-  taskKey = '', onSend, onOpenUrl, onPageUrl = null,
+  taskKey = '', onSend, onOpenUrl, onPageUrl = null, onControl = null,
 }) {
   const { t } = useTranslation('chat');
   const browser = host.inAppBrowser;
@@ -175,6 +181,16 @@ export function LocalBrowserStage({
   onPageUrlRef.current = onPageUrl;
   const shownUrl = state?.url ?? '';
   useEffect(() => { onPageUrlRef.current?.(shownUrl); }, [shownUrl]);
+  // Who holds the browser, reported once per change (state arrives on every page change too).
+  const onControlRef = useRef(onControl);
+  onControlRef.current = onControl;
+  const holder = state && state.open !== false ? state.control.holder : null;
+  const controlReason = state?.control.reason ?? '';
+  const controlWatching = state?.watching === true;
+  useEffect(() => {
+    if (!holder) return;
+    onControlRef.current?.(holder === 'human' ? 'human' : 'agent', controlReason.slice(0, 300), controlWatching);
+  }, [holder, controlReason, controlWatching]);
   const startPage = Boolean(state) && !closed && !signIn && !state.url && !state.loading && Boolean(onSend || onOpenUrl);
   const mayDraw = !overlayOpen && !signIn && !startPage;
   // Whether the view may draw now, for the pane's effect below to read.

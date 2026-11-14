@@ -110,7 +110,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
-         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchVoiceStatus} from './api';
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchVoiceStatus, readBrowserApproveSteps} from './api';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
@@ -167,6 +167,7 @@ import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
 import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import { artifactsOnScreen } from './lib/voice/screenArtifacts';
+import { createSeenCallBack } from './lib/voice/seenCallBack';
 import {
   callNeedActions, createCallNeeds, openNeeds,
 } from './lib/voice/callNeeds';
@@ -178,7 +179,7 @@ import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePre
 import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
 import {
-  approveIfApprovalsOff, autoApprovePositionClick, browserApprovalIds, declineBrowserApproval, isAutoApprovedCard, isPositionClickCard,
+  approveCardsForPerson, browserApprovalIds, declineBrowserApproval, isAutoApprovedCard,
 } from './lib/browserApproval';
 import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
@@ -671,8 +672,12 @@ function AppCore() {
   // Approve browser steps is the person's setting (lib/browserPrefs.js): the
   // cards read it as it changes here, and the old device-only copy goes.
   useEffect(() => {
-    syncBrowserPrefs({ browserApproveSteps: settings.browserApproveSteps, browserOnlyWhenNeeded: settings.browserOnlyWhenNeeded });
-  }, [settings.browserApproveSteps, settings.browserOnlyWhenNeeded]);
+    syncBrowserPrefs({
+      browserApproveSteps: settings.browserApproveSteps,
+      browserOnlyWhenNeeded: settings.browserOnlyWhenNeeded,
+      browserApproveStepsOffAt: settings.browserApproveStepsOffAt,
+    });
+  }, [settings.browserApproveSteps, settings.browserOnlyWhenNeeded, settings.browserApproveStepsOffAt]);
   useEffect(() => { forgetLegacyBrowserPrefs(); }, []);
   // Whether this session's settings have arrived from the server, so a choice
   // that depends on them (such as the models an operator offers) is final.
@@ -760,6 +765,8 @@ function AppCore() {
   // The call hung up while Anton worked on its requests: it calls back with the result.
   const callBackRef = useRef(false);
   const callBackSeenRef = useRef({ canCallBack: false });
+  // The call back for finished work, once the tab is in sight (lib/voice/seenCallBack.js).
+  const seenCallBackRef = useRef(null);
   const [callBackPending, setCallBackPending] = useState(false);
   // What the call's work stops on the person for (lib/voice/callNeeds.js),
   // and the stream's hook for it, set each render below.
@@ -773,6 +780,18 @@ function AppCore() {
     busy: () => callWorkRef.current.busy(),
     onAway: () => { callBackRef.current = true; setCallBackPending(true); },
   });
+  if (!seenCallBackRef.current) {
+    // The call as this render has it (callNeedsSeenRef, refreshed below).
+    seenCallBackRef.current = createSeenCallBack({
+      announce: (news, { asks }) => callNeedsSeenRef.current.voiceCall.announce(news, { asks }),
+      canCallBack: () => callBackSeenRef.current.canCallBack,
+      take: () => {
+        callBackRef.current = false;
+        setCallBackPending(false);
+      },
+      callBack: (news, { asks }) => { void callNeedsSeenRef.current.voiceCall.callBack(news, getVoicePrefs().voice, { asks }); },
+    });
+  }
   // Settings > Voice (lib/voice/voicePrefs.js): off hides every call button
   // and ends a call; a new voice moves a call to it at once, or, with no
   // call, says a short line in it.
@@ -1502,28 +1521,16 @@ function AppCore() {
   // something else or leaving them queued to deadlock.
   // Clicks by position are approved for the person whatever the setting,
   // and so are held browser steps with Approve browser steps off (Settings >
-  // Shared browser): once per card, never shown (lib/browserApproval.js). For
-  // a held step the setting is read fresh from the server first, so approvals
-  // turned on from another device since this tab read settings count: then
-  // the card shows. A card the approval didn't land on shows after
-  // POSITION_AUTO_APPROVE_MS, so the person can still answer it.
+  // Shared browser), held after they turned it off: once per card, never
+  // shown (lib/browserApproval.js approveCardsForPerson). For a held step the
+  // setting is read fresh from the server first, and this tab takes what it
+  // read, so approvals turned on, or off again later, on another device since
+  // this tab read settings count: then the card shows.
   const autoApprovedRef = useRef(new Set());
-  const approvePositionClicks = (taskIds, steps) => {
-    (steps || []).forEach((s) => {
-      const questionId = s.badge === 'AskUser' && !s.data?.answer ? s.data?.question_id : null;
-      if (!questionId || autoApprovedRef.current.has(questionId) || !isAutoApprovedCard(s.data)) return;
-      autoApprovedRef.current.add(questionId);
-      const approval = { conversationIds: taskIds, questionId, isWeb: host.isWeb, submit: submitAnswer };
-      if (isPositionClickCard(s.data)) {
-        void autoApprovePositionClick(approval).catch(() => false);
-        return;
-      }
-      void approveIfApprovalsOff(approval)
-        .then((outcome) => {
-          if (outcome === 'asks') setSettings((prev) => ({ ...prev, browserApproveSteps: true }));
-        })
-        .catch(() => false);
-    });
+  const readApproveStepsHere = async () => {
+    const setting = await readBrowserApproveSteps();
+    if (setting) setSettings((prev) => ({ ...prev, browserApproveSteps: setting.asks, browserApproveStepsOffAt: setting.offAtMs }));
+    return setting;
   };
 
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
@@ -1539,7 +1546,9 @@ function AppCore() {
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
-    approvePositionClicks(taskIds, steps);
+    void approveCardsForPerson({
+      taskIds, steps, seen: autoApprovedRef.current, isWeb: host.isWeb, submit: submitAnswer, readAsks: readApproveStepsHere,
+    });
     noteCallNeedsRef.current?.(taskIds, steps);
     // Mid-task messages (ENG-4194): queue the ones this client added that the
     // turn handed back, and drop queued copies the turn took after all —
@@ -5028,30 +5037,21 @@ function AppCore() {
     // A call that is up (or connecting, or fading out) says it; one hanging up
     // or gone refuses it, and the call back below takes over.
     if (voiceCall.announce(news)) return;
+    // A call back already waits for the tab to show: this news goes with it.
+    if (seenCallBackRef.current.join(news)) return;
     if (!callBackRef.current) return;
     callBackRef.current = false;
     setCallBackPending(false);
     if (!callBackSeenRef.current.canCallBack) return;
     // In a tab out of sight the call would start unheard: it waits for the person to come back.
-    const callBackNow = () => void voiceCall.callBack(news, getVoicePrefs().voice);
-    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
-      callBackNow();
-      return;
-    }
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      document.removeEventListener('visibilitychange', onVisible);
-      // A call started meanwhile hears it; otherwise call back if it still may.
-      if (voiceCall.announce(news)) return;
-      if (callBackSeenRef.current.canCallBack) callBackNow();
-    };
-    document.addEventListener('visibilitychange', onVisible);
+    seenCallBackRef.current.callBack(news);
   };
   /* Work the call gave Anton stopped on the person: a browser hand-over, a
      browser step to approve, or a question. The call says what he needs while
-     it is up, or calls back as finished work does, with the same rules (a
-     tab out of sight waits, the microphone stays off until Anton speaks). A
-     request answered on screen first, within the grace or while the tab
+     it is up, or calls back as finished work does, in the same call back (a
+     tab out of sight waits, and a result or another request that comes
+     meanwhile is said with it; the microphone stays off until Anton speaks).
+     A request answered on screen first, within the grace or while the tab
      waits, is never called about. The call back leaves the work's own call
      back armed: it hangs up when quiet with the work still running, and the
      result calls back again. */
@@ -5063,11 +5063,7 @@ function AppCore() {
       announce: (news) => callNeedsSeenRef.current.voiceCall.announce(news, { asks: true }),
       callBackDue: () => callBackRef.current,
       canCallBack: () => callBackSeenRef.current.canCallBack,
-      takeCallBack: () => {
-        callBackRef.current = false;
-        setCallBackPending(false);
-      },
-      callBack: (news) => { void callNeedsSeenRef.current.voiceCall.callBack(news, getVoicePrefs().voice, { asks: true }); },
+      seen: seenCallBackRef.current,
       agentLabel: () => callNeedsSeenRef.current.agentLabel,
     });
   }
@@ -5233,7 +5229,8 @@ function AppCore() {
       return `Showing the browser from "${task.title}".`;
     },
     // What Anton waits on, answered by voice as the person's own click on its
-    // card would (lib/voice/callNeeds.js).
+    // card would (lib/voice/callNeeds.js). A held browser step can only be
+    // cancelled this way: it is approved on the screen alone.
     ...callNeedActions({
       taskOf: callTask,
       stepsOf: (tid) => liveStepsRef.current[tid],
@@ -5243,9 +5240,6 @@ function AppCore() {
         selectTask(task.id);
         setBrowserRequest({ taskId: task.id, sessionId, at: Date.now() });
       },
-      approve: ({ conversationIds, questionId }) => autoApprovePositionClick({
-        conversationIds, questionId, isWeb: host.isWeb, submit: submitAnswer,
-      }),
       decline: async (questionId) => {
         const held = host.isWeb ? browserApprovalIds(questionId) : null;
         if (held) await declineBrowserApproval(held);
@@ -5353,17 +5347,17 @@ function AppCore() {
     voiceCallShortcut = null;
   } else if (voiceCall.lingering) {
     // Fading out, still listening: the button brings the call back as an ordinary one.
-    voiceCallShortcut = { label: `Back to the call with ${agentLabel}`, live: true, onClick: () => voiceCall.resume() };
+    voiceCallShortcut = { label: tApp('voiceCall.backToCall', { agent: agentLabel }), live: true, onClick: () => voiceCall.resume() };
   } else if (voiceCallRunning(voiceCall.phase)) {
-    voiceCallShortcut = { label: `On a call with ${agentLabel}`, live: true };
+    voiceCallShortcut = { label: tApp('voiceCall.onCall', { agent: agentLabel }), live: true };
   } else if (startVoiceCall) {
     voiceCallShortcut = {
-      label: callBackPending ? `${agentLabel} will call you back when it's done` : `Call ${agentLabel}`,
+      label: callBackPending ? tApp('voiceCall.callBackPending', { agent: agentLabel }) : tApp('voiceCall.call', { agent: agentLabel }),
       onClick: () => { if (voiceCall.phase === 'ended') voiceCall.dismiss(); startVoiceCall(); },
     };
   } else if (voiceAvailable) {
     voiceCallShortcut = {
-      label: 'Another call is running',
+      label: tApp('voiceCall.anotherCall'),
       disabled: true,
     };
   }
