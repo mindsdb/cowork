@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import Ico from '../Icons';
 import { Button, Spinner } from '../ui';
 import { host } from '../../../platform/host';
@@ -7,8 +7,6 @@ import { ConfirmModal } from '../ConfirmModal';
 import { CommentsPanel, CommentsToolbar } from './comments';
 import { useDraftImageLoader } from './draftImages';
 import { StatsPanel } from './stats/StatsPanel';
-import { ArtifactComparison } from './workspace/ArtifactComparison';
-import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
 import { LiveAppPreview } from './LiveAppPreview';
 import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
@@ -16,6 +14,13 @@ import { launchLiveAppLabel } from '../../lib/liveAppState';
 import { DocumentPreview } from '../../preview/DocumentPreview';
 import { csvPreviewNotice } from './artifactPreviewUtils';
 import { useTranslation } from '../../../lib/i18n';
+
+// The editor and comparison pull in parse5 for the HTML visual editor, which
+// most sessions never open, so they load with the first artifact viewer.
+const ArtifactComparison = lazy(() => import('./workspace/ArtifactComparison')
+  .then((m) => ({ default: m.ArtifactComparison })));
+const ArtifactSourceEditor = lazy(() => import('./workspace/ArtifactSourceEditor')
+  .then((m) => ({ default: m.ArtifactSourceEditor })));
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -176,14 +181,16 @@ export function ArtifactViewerBody({
   }, [editorKey, iframeReady, retainedEditorKey, showEditor]);
 
   const sourceEditor = workspace.source ? (
-    <ArtifactSourceEditor
-      source={workspace.source}
-      value={workspace.draft}
-      onChange={workspace.setDraft}
-      onSave={(content) => workspace.save('Edited artifact', content)}
-      draftUrl={draftPreviewUrl}
-      loadImage={loadDraftImage}
-    />
+    <Suspense fallback={null}>
+      <ArtifactSourceEditor
+        source={workspace.source}
+        value={workspace.draft}
+        onChange={workspace.setDraft}
+        onSave={(content) => workspace.save('Edited artifact', content)}
+        draftUrl={draftPreviewUrl}
+        loadImage={loadDraftImage}
+      />
+    </Suspense>
   ) : null;
 
   const previewContent = err ? (
@@ -368,54 +375,56 @@ export function ArtifactViewerBody({
             onClose={stats.onClose}
           />
         )}
-        <ArtifactComparison
-          comparison={workspace.comparison}
-          busy={repairBusy || workspace.status === 'saving'}
-          contentType={workspace.source?.contentType}
-          baseUrl={draftPreviewUrl}
-          onClose={() => workspace.setComparison(null)}
-          onRestore={workspace.restoreRevision}
-          onReject={async () => {
-            setRepairBusy(true);
-            try {
-              // No confirmed head on the first attempt: a superseded repair is
-              // refused here rather than quietly reverting the later work.
-              await workspace.decideRepair('rejected');
-            } catch (decisionError) {
-              if (decisionError?.status === 409) {
-                setConfirmRejectHead(workspace.currentRevision?.id || null);
-              } else {
-                setErr(decisionError?.message || t('body.rejectFailed'));
+        <Suspense fallback={null}>
+          <ArtifactComparison
+            comparison={workspace.comparison}
+            busy={repairBusy || workspace.status === 'saving'}
+            contentType={workspace.source?.contentType}
+            baseUrl={draftPreviewUrl}
+            onClose={() => workspace.setComparison(null)}
+            onRestore={workspace.restoreRevision}
+            onReject={async () => {
+              setRepairBusy(true);
+              try {
+                // No confirmed head on the first attempt: a superseded repair is
+                // refused here rather than quietly reverting the later work.
+                await workspace.decideRepair('rejected');
+              } catch (decisionError) {
+                if (decisionError?.status === 409) {
+                  setConfirmRejectHead(workspace.currentRevision?.id || null);
+                } else {
+                  setErr(decisionError?.message || t('body.rejectFailed'));
+                }
+              } finally {
+                setRepairBusy(false);
               }
-            } finally {
-              setRepairBusy(false);
-            }
-          }}
-          onAccept={async () => {
-            const threadId = workspace.repair?.commentThreadId;
-            setRepairBusy(true);
-            try {
-              // Only resolve the comment once the decision actually landed;
-              // an ignored call used to look identical to a successful one.
-              const outcome = await workspace.decideRepair('accepted');
-              // The hook owns the message for this case; repeating it here put
-              // the same sentence in two banners at once.
-              if (!outcome?.decided) return;
-              const resolved = threadId
-                ? await comments.setStatus(threadId, 'resolved')
-                : true;
-              if (!resolved) {
-                setErr(t('body.resolveFailed'));
+            }}
+            onAccept={async () => {
+              const threadId = workspace.repair?.commentThreadId;
+              setRepairBusy(true);
+              try {
+                // Only resolve the comment once the decision actually landed;
+                // an ignored call used to look identical to a successful one.
+                const outcome = await workspace.decideRepair('accepted');
+                // The hook owns the message for this case; repeating it here put
+                // the same sentence in two banners at once.
+                if (!outcome?.decided) return;
+                const resolved = threadId
+                  ? await comments.setStatus(threadId, 'resolved')
+                  : true;
+                if (!resolved) {
+                  setErr(t('body.resolveFailed'));
+                }
+                await workspace.load();
+                onReload();
+              } catch (decisionError) {
+                setErr(decisionError?.message || t('body.acceptFailed'));
+              } finally {
+                setRepairBusy(false);
               }
-              await workspace.load();
-              onReload();
-            } catch (decisionError) {
-              setErr(decisionError?.message || t('body.acceptFailed'));
-            } finally {
-              setRepairBusy(false);
-            }
-          }}
-        />
+            }}
+          />
+        </Suspense>
         <ConfirmModal
           open={confirmRejectHead !== null}
           title={t('body.restoreTitle')}

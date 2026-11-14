@@ -118,7 +118,7 @@ export default function CodeView({
   const { t } = useTranslation('code');
   const isBillingOwner = !!useHubUsageContext()?.usage?.isBillingOwner;
   const [filesOpen, setFilesOpen] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
+  const [reviewOpen, setReviewOpen] = useState(() => import.meta.env.DEV && codeFixtureReviewOpen());
   const openReview = useCallback(() => {
     setReviewOpen(true);
     setFilesOpen(false);
@@ -226,7 +226,7 @@ export default function CodeView({
   const project = useProjectActions(session?.id, active);
 
   useEffect(() => {
-    setReviewOpen(codeFixtureReviewOpen());
+    setReviewOpen(import.meta.env.DEV && codeFixtureReviewOpen());
     setFilesOpen(false);
     setPreviewOpen(false);
     setTerminalFocusId(null);
