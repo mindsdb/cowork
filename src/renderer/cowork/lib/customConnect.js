@@ -16,6 +16,9 @@ const ADDRESS_HELP = "Only the host your provider's documentation gives for its 
 const TEMPLATE_NOTE = 'Anton wrote the field names and help below. Check them against your provider before entering a key.';
 const NO_CHECK_NOTE = 'This connector has no connection check, so it cannot be connected. If the API takes a key, ask Anton to build it again; if it takes none, Anton can use it without a connector.';
 
+const SUCCESS_SUBTITLE = 'The check passed and your credentials are stored. You can see them in Connect Apps and Data.';
+const KEYLESS_SUCCESS_SUBTITLE = 'The check passed and the connection is stored. With no key, the check proved only that the API answers, not that a key works. You can see it in Connect Apps and Data.';
+
 const MARKER = '__custom_connection__';
 
 /**
@@ -67,9 +70,12 @@ export function toCustomConnectSpec(spec, check, label, authSummary = null) {
           placeholder: '',
           description: ADDRESS_HELP,
         },
-        // The connect route refuses any empty value, so every field is
-        // required and none offers Skip.
-        ...templateFields.map((f) => ({ ...f, required: true, skipable: false })),
+        // The connect route refuses an empty value except for a field the
+        // template marks optional, which alone offers Skip.
+        ...templateFields.map((f) => {
+          const optional = f.required === false;
+          return { ...f, required: !optional, skipable: optional };
+        }),
       ]
       : [],
   };
@@ -117,6 +123,7 @@ export function customConnectPayload(values, name) {
 }
 
 const CHECK_FAILURES = {
+  public_check_failed: 'The public check path did not answer, and no key was sent. Check the address, or connect with a key.',
   check_not_protected: 'The check answered without your key, so it cannot prove the key works. Ask Anton to build the connector again with an endpoint that needs the key.',
   authentication_failed: 'The provider refused these credentials.',
   provider_error: 'The provider answered with an error.',
@@ -141,6 +148,21 @@ export function describeConnectFailure(err) {
   if (Number.isInteger(detail.provider_status)) parts.push(`The provider answered ${detail.provider_status}.`);
   if (typeof detail.excerpt === 'string' && detail.excerpt.trim()) parts.push(`It said: ${detail.excerpt}`);
   return parts.join(' ');
+}
+
+/**
+ * The success screen's subtitle. When the form had optional fields and the
+ * member left every one of them out, it says the check proved only that the
+ * API answers.
+ * @param {{fields?: object[]}} spec The custom connect form's spec.
+ * @param {Record<string, unknown>} values The values the form submitted.
+ * @param {string[]} [skipped] The names of the fields the member skipped.
+ * @returns {string}
+ */
+export function connectSuccessSubtitle(spec, values, skipped = []) {
+  const optional = (spec?.fields || []).filter((f) => f.name !== ADDRESS_FIELD && f.required === false);
+  const leftOut = (f) => skipped.includes(f.name) || !(typeof values?.[f.name] === 'string' && values[f.name] !== '');
+  return optional.length > 0 && optional.every(leftOut) ? KEYLESS_SUCCESS_SUBTITLE : SUCCESS_SUBTITLE;
 }
 
 export function isCustomConnectionRow(row) {
