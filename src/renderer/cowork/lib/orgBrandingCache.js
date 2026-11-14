@@ -52,6 +52,9 @@ export function cacheOrgBranding(branding) {
     if (!branding || typeof branding !== 'object') return;
     const key = storageKey();
     if (key === null) return;
+    /* Nothing secret is stored: the image URLs passed trustedAuthImageUrl
+       (src/shared/brand-image-url.ts), so each one is https on the auth host
+       with no embedded credentials, the same URL the page's <img> loads. */
     globalThis.localStorage?.setItem(key, JSON.stringify({
       version: CACHE_VERSION,
       organizationEpoch,

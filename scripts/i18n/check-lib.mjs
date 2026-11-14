@@ -181,8 +181,12 @@ export function updateLock(catalogs, lock = {}, { accept = [] } = {}) {
 
 /* English hard-coded in JSX: text between tags, and the attributes people
    read. A heuristic — it looks for capitalised words — so it is a ratchet
-   on the total, not a per-line gate. */
-const JSX_TEXT = />\s*([A-Z][a-z]+(?:[ ,.'’!?:;-]+[A-Za-z][A-Za-z'’]*)+[.!?…]?)\s*(?=[<{])/g;
+   on the total, not a per-line gate.
+   JSX_TEXT: a capitalised word, a separator, then any letters and
+   separators, ending on a letter and its trailing apostrophes. The letter
+   and separator classes don't overlap, so each line splits one way only and
+   a failed match can't backtrack exponentially. */
+const JSX_TEXT = />\s*([A-Z][a-z]+[ ,.'’!?:;-][ ,.'’!?:;A-Za-z-]*[A-Za-z]['’]*[.!?…]?)\s*(?=[<{])/g;
 const ATTRIBUTE = /\b(?:title|subtitle|placeholder|aria-label|ariaLabel|alt|label|description)=(?:"([A-Z][^"]*[a-z][^"]*)"|'([A-Z][^']*[a-z][^']*)')/g;
 
 export function findLiterals(source, allow = new Set()) {
