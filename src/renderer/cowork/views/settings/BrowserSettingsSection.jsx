@@ -25,7 +25,7 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    registration. A focus or a visible tab while a read is still out waits for
    that read, so its time limit still passes.
 
-   One switch, on by default, saved with the rest of the form. Each task can
+   One switch, off by default, saved with the rest of the form. Each task can
    still switch the browser off from the composer's + menu.
 
    The group says what the browser does with the person's data, as it runs
@@ -179,7 +179,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
 
   const browserSwitch = (
     <Switch
-      checked={settings.browserEnabled ?? true}
+      checked={settings.browserEnabled === true}
       onCheckedChange={(v) => setSetting('browserEnabled', v)}
       aria-label={t('browser.sharedBrowser')}
     />
