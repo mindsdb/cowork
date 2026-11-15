@@ -41,10 +41,13 @@ export interface FakeFrame {
   inControl?: boolean;
   /** What the frame's own world finds for a screenshot, in its own viewport's pixels. */
   secrets?: Partial<FoundSecrets>;
-  /** The frame's owner element in the page: its content and border boxes in
-      the page's viewport, or null when it draws nothing. `quad` is its
-      content quad when a transform turns it. The frame's own viewport is
-      its content box's size unless `secrets.viewport` says otherwise. */
+  /** The frame's owner element: its content and border boxes in the
+      viewport of the process that holds it, as DOM.getBoxModel gives them on
+      that process's session (the page's viewport for an owner in the page's
+      process, that frame's own for one inside a frame of another site), or
+      null when it draws nothing. `quad` is its content quad when a transform
+      turns it. The frame's own viewport is its content box's size unless
+      `secrets.viewport` says otherwise. */
   owner?: { content: Box; border: Box; quad?: number[] } | null;
   /** The frame's world never answers. */
   hangs?: boolean;
@@ -125,6 +128,13 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
     for (let at = frame(inner.parentId); at; at = frame(at.parentId)) if (at.remote) return at;
     return undefined;
   };
+  /* The frame of another process whose session reaches a frame's owner
+     element: the frame it sits in when that is one, else the nearest one
+     above, none for an owner in the page's own process. */
+  const ownerProcess = (owned: FakeFrame): FakeFrame | undefined => {
+    const parent = frame(owned.parentId);
+    return parent?.remote ? parent : parent && remoteAbove(parent);
+  };
   const tree = (root: FakeFrame): unknown => ({
     frame: { id: root.id, url: root.url, ...(root.parentId ? { parentId: root.parentId } : {}), securityOrigin: root.origin ?? new URL(root.url).origin },
     childFrames: model.frames.filter((f) => f.parentId === root.id && !f.remote).map(tree),
@@ -185,13 +195,15 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         return { object: { type: 'object', subtype: 'node', objectId: `root:${root.frame.id}:${root.level}` } };
       }
       case 'DOM.getFrameOwner': {
+        // Only the session of the process that holds the owner element finds it.
         const owned = frame(params.frameId);
-        if (!owned) throw new Error('Frame with the given id was not found.');
+        if (!owned || ownerProcess(owned) !== frameOfSession(sessionId)) throw new Error('Frame with the given id was not found.');
         return { backendNodeId: 1000 + model.frames.indexOf(owned) };
       }
       case 'DOM.getBoxModel': {
         const owned = model.frames[Number(params.backendNodeId) - 1000];
-        if (!owned?.owner) throw new Error('Could not compute box model.');
+        if (!owned || ownerProcess(owned) !== frameOfSession(sessionId)) throw new Error('Could not find node with given id');
+        if (!owned.owner) throw new Error('Could not compute box model.');
         return { model: { content: owned.owner.quad ?? quad(owned.owner.content), border: quad(owned.owner.border) } };
       }
       case 'Page.createIsolatedWorld': {

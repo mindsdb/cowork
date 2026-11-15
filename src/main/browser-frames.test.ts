@@ -8,7 +8,7 @@ const STRIPE = { id: 'card', url: 'https://js.stripe.com/v3/elements-inner-card'
 const WIDGET = { id: 'widget', url: 'https://login.other.test/embed', parentId: MAIN_FRAME, remote: true };
 
 describe('DebuggerSession', () => {
-  it("refuses, before it reaches the debugger, a method off the allow-list, one that makes Chromium report to the protocol, and anything but a world's reads on a frame's session", async () => {
+  it("refuses, before it reaches the debugger, a method off the allow-list, one that makes Chromium report to the protocol, and anything but a world's reads and its frames' owners' boxes on a frame's session", async () => {
     const dbg = fakeCdpDebugger({ frames: [WIDGET] });
     await withDebugger(dbg, async (session) => {
       for (const method of ['Runtime.enable', 'Page.enable', 'Network.enable', 'Debugger.enable', 'Runtime.callFunctionOn', 'Page.navigate']) {
@@ -176,6 +176,63 @@ describe('FrameReads.frameMasks', () => {
     expect(masks).toEqual(expect.arrayContaining([box(0, 50, 100, 40), box(100, 260, 100, 40)]));
   });
 
+  it("blacks out whole each secret frame a frame keeps where its own world's search can't reach (a closed shadow root), placed through the frame's own view, and leaves an ordinary frame there unmasked", async () => {
+    /* An owner's boxes as the session of the process that holds it gives them. */
+    const at = (x: number, y: number, width: number, height: number) => ({ content: box(x, y, width, height), border: box(x, y, width, height) });
+    const dbg = fakeCdpDebugger({
+      frames: [
+        // Another site's donation form, drawn at (0, 200), whose own world counts no frame owner: it keeps its frames in a closed shadow root.
+        { id: 'donate', url: 'https://donate.other.test/wrapper', parentId: MAIN_FRAME, remote: true, owner: owner(0, 200) },
+        // A vendor's card frame and a payment provider's frame there, their owners placed in the form's own view.
+        { id: 'vault', url: 'https://vault.vendor.test/card', parentId: 'donate', remote: true, holds: true, owner: at(10, 40, 100, 20) },
+        { id: 'adyen', url: 'https://checkoutshopper-test.adyen.com/card', parentId: 'donate', remote: true, owner: at(10, 70, 100, 20) },
+        // An ad there holds no secret.
+        { id: 'slot', url: 'https://ads.third.test/slot', parentId: 'donate', remote: true, owner: at(120, 10, 60, 60) },
+        // A frame of another origin of the page's site, in the page's process at (300, 0), that keeps a card frame so: its owner is placed in the page's view.
+        { id: 'sibling', url: 'https://b.a.test/', parentId: MAIN_FRAME, origin: 'https://b.a.test', owner: owner(300, 0) },
+        { id: 'card', url: 'https://vault.vendor.test/card2', parentId: 'sibling', remote: true, holds: true, owner: at(310, 20, 80, 20) },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toHaveLength(3);
+    expect(masks).toEqual(expect.arrayContaining([box(10, 240, 100, 20), box(10, 270, 100, 20), box(310, 20, 80, 20)]));
+    expect(sentOf(dbg, 'DOM.getFrameOwner').filter(({ params }) => ['vault', 'adyen'].includes(String(params.frameId))).map(({ sessionId }) => sessionId)).toEqual(['session-donate', 'session-donate']);
+    expect(dbg.sent.filter(([, , sessionId]) => sessionId === 'session-adyen')).toEqual([]);
+  });
+
+  it("reads a frame of that frame's origin there for its own secret fields, so one its search entered is never blacked out whole, and blacks out whole the secret frame it keeps in a closed shadow root", async () => {
+    const at = (x: number, y: number, width: number, height: number) => ({ content: box(x, y, width, height), border: box(x, y, width, height) });
+    const dbg = fakeCdpDebugger({
+      frames: [
+        // Another site's donation form, at (0, 200), whose search counts and enters its one billing frame, and finds the field in it.
+        { id: 'donate', url: 'https://donate.other.test/wrapper', parentId: MAIN_FRAME, remote: true, owner: owner(0, 200), secrets: { owners: 1, secrets: [box(15, 35, 50, 10)] } },
+        // The billing frame, of the form's origin and in its process, holds a password field and keeps a card frame in a closed shadow root.
+        { id: 'billing', url: 'https://donate.other.test/billing', parentId: 'donate', owner: at(10, 30, 180, 60), secrets: { secrets: [box(5, 5, 50, 10)] } },
+        { id: 'vault', url: 'https://vault.vendor.test/card', parentId: 'billing', remote: true, holds: true, owner: at(10, 60, 100, 20) },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toEqual(expect.arrayContaining([box(15, 235, 50, 10), box(10, 260, 100, 20)]));
+    expect(masks).not.toContainEqual(box(10, 230, 180, 60));
+  });
+
+  it("blacks out whole a frame that keeps a secret frame where its world's search can't reach when the debugger can't place that frame's owner, and looks no further where the search counted every frame", async () => {
+    const dbg = fakeCdpDebugger({
+      frames: [
+        // The card frame's owner draws no box the debugger can give.
+        { id: 'donate', url: 'https://donate.other.test/wrapper', parentId: MAIN_FRAME, remote: true, owner: owner(0, 200) },
+        { id: 'vault', url: 'https://vault.vendor.test/card', parentId: 'donate', remote: true, holds: true, owner: null },
+        // A checkout whose world found its one frame and blacks it out whole.
+        { id: 'checkout', url: 'https://checkout.other.test/', parentId: MAIN_FRAME, remote: true, owner: owner(300, 0), secrets: { owners: 1, otherSiteFrames: [box(0, 0, 100, 50)] } },
+        { id: 'fields', url: 'https://vault.vendor.test/card2', parentId: 'checkout', remote: true, holds: true },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toHaveLength(2);
+    expect(masks).toEqual(expect.arrayContaining([box(-2, 198, 204, 104), box(300, 0, 100, 50)]));
+    expect(sentOf(dbg, 'Page.createIsolatedWorld').map(({ params }) => params.frameId)).not.toContain('fields');
+  });
+
   it("blacks out whole a payment provider's frame, which no world opens in, and keeps each mask inside its frame", async () => {
     const dbg = fakeCdpDebugger({
       frames: [
@@ -297,6 +354,28 @@ describe('FrameReads.frameSecrets', () => {
     for (const payment of ['session-card', 'session-paypal']) expect(dbg.sent.filter(([, , sessionId]) => sessionId === payment), payment).toEqual([]);
     expect(worldsOf(dbg).map(([frameId]) => frameId)).not.toEqual(expect.arrayContaining(['card']));
     expect(worldsOf(dbg).map(([frameId]) => frameId)).not.toEqual(expect.arrayContaining(['paypal']));
+  });
+
+  it("finds a payment frame or a card field in a frame another site's frame keeps where its own world finds none (a closed shadow root), through the frames the debugger knows in it, and none in an ad holding an ad there", async () => {
+    const frames: FakeFrame[] = [
+      // A donation form of another site whose world sees no frame: it keeps a vendor's card frame in a closed shadow root.
+      { id: 'donate', url: 'https://donate.other.test/wrapper', parentId: MAIN_FRAME, remote: true, holds: false, path: [0] },
+      { id: 'vault', url: 'https://vault.vendor.test/card', parentId: 'donate', remote: true, holds: true },
+      // The same with a payment provider's frame.
+      { id: 'pay', url: 'https://donate.other.test/pay', parentId: MAIN_FRAME, remote: true, holds: false, path: [1] },
+      { id: 'adyen', url: 'https://checkoutshopper-test.adyen.com/card', parentId: 'pay', remote: true },
+      // A billing form of another site that keeps a frame of its own origin, in its process, holding a card field.
+      { id: 'billing', url: 'https://billing.other.test/', parentId: MAIN_FRAME, remote: true, holds: false, path: [2] },
+      { id: 'number', url: 'https://billing.other.test/number', parentId: 'billing', holds: true },
+      // An ad whose world finds nothing, holding another ad.
+      { id: 'ad', url: 'https://ads.other.test/banner', parentId: MAIN_FRAME, remote: true, holds: false, path: [3] },
+      { id: 'slot', url: 'https://ads.third.test/slot', parentId: 'ad', remote: true, holds: false },
+    ];
+    const dbg = fakeCdpDebugger({ frames });
+    const found = await secrets(dbg, look(frames.filter((frame) => frame.path)));
+    expect([...found.frames].sort()).toEqual([0, 1, 2]);
+    expect(worldsOf(dbg)).toEqual(expect.arrayContaining([['vault', 'session-vault'], ['number', 'session-billing']]));
+    expect(dbg.sent.filter(([, , sessionId]) => sessionId === 'session-adyen')).toEqual([]);
   });
 
   it("finds a card field in a frame inside another site's frame as soon as its world answers, though a frame beside it never answers", async () => {

@@ -30,21 +30,28 @@
  * below the main one, each read in its frame's own world, as the web pod's
  * frameMasks reads them: those the world can't search, and those it does,
  * since its search can't reach a frame in a closed shadow root. A frame that
- * can't be read is blacked out whole.
+ * can't be read is blacked out whole. Inside a frame the world can't
+ * search, a frame that frame's own search can't reach (one in a closed
+ * shadow root there) is read too: one of its origin for its secret fields,
+ * and any other, when it is secret, blacked out whole where the debugger
+ * places its owner.
  *
  * `frameSecrets`: page.json's frame `secret` for the frames a page read's
  * world can't look into: whether each one, or a frame inside it at any
  * depth, is a payment provider's frame or holds a secret, card-named or
- * sign-in field, read in each frame's own world, a frame of yet another
- * site inside another site's attached through that frame's session.
+ * sign-in field, read in each frame's own world and in each frame the
+ * debugger knows inside it, one in a closed shadow root included, a frame
+ * of yet another site inside another site's attached through that frame's
+ * session.
  *
  * Every command goes out through `DebuggerSession.send`, which checks it
  * first: only the methods in ALLOWED_CDP_METHODS; input and the page reads on
  * the page's own session, a frame's session only auto-attaching its own
- * frames of other sites, and opening and reading its world and the nodes
- * that world answers; Runtime.evaluate and
- * Runtime.callFunctionOn only in an isolated world this attach made with
- * Page.createIsolatedWorld, and DOM.resolveNode only into one, never in the
+ * frames of other sites, opening and reading its world and the nodes that
+ * world answers, and placing the elements that hold its frames;
+ * Runtime.evaluate and Runtime.callFunctionOn only in an isolated world
+ * this attach made with Page.createIsolatedWorld, and DOM.resolveNode only
+ * into one, never in the
  * page's own world, so the page's scripts never meet them; never a world
  * with universal access, nor one in a
  * frame whose address isn't known or that is a payment provider's frame or
@@ -96,7 +103,9 @@ export const ALLOWED_CDP_METHODS: ReadonlySet<string> = new Set([
 
 /* What a frame's own session may send: its frame tree, an auto-attach to
    the frames of other sites in it (attachFrames), opening and reading the
-   isolated world it reads in, and the nodes that world answers. */
+   isolated world it reads in, the nodes that world answers, and where the
+   elements that hold its own frames draw them (ownerBoxes), which the
+   debugger finds inside closed shadow roots too. */
 const FRAME_SESSION_METHODS: ReadonlySet<string> = new Set([
   'Target.setAutoAttach',
   'Page.getFrameTree',
@@ -106,6 +115,8 @@ const FRAME_SESSION_METHODS: ReadonlySet<string> = new Set([
   'Runtime.releaseObject',
   'DOM.describeNode',
   'DOM.resolveNode',
+  'DOM.getFrameOwner',
+  'DOM.getBoxModel',
 ]);
 
 /* How many closed shadow roots deep a read of the focus follows it. A focus
@@ -381,27 +392,39 @@ export class DebuggerSession {
     await this.send('Runtime.releaseObject', { objectId }, this.frames.get(frameId)?.session).catch(() => {});
   }
 
-  /** The frames a screenshot reads in their own worlds (frameMasks): each
-      frame the page's isolated world searches for secrets (secretBoxes in
-      browser-page-script.ts: below the main one, each frame of the main
-      frame's origin in the page's process that is no payment frame, `depth`
-      deep, as ElectronTab.searchedFrames counts them), marked `searched`,
-      since that search can't reach one in a closed shadow root; and each
-      child of a frame it searches that it doesn't search itself. Call it
-      once mainFrame and attachFrames have answered. */
-  framesToRead(main: string, depth: number): Array<{ id: string; searched: boolean }> {
-    const origin = this.frames.get(main)?.origin;
+  /** The frames whose owners sit in the documents a search for secrets in
+      frame `from`'s isolated world covers (secretBoxes in
+      browser-page-script.ts, `depth` deep): each frame of `from`'s origin
+      in its process that is no payment frame, which it enters, marked
+      `searched`, since that search can't reach one in a closed shadow root;
+      and each child of a frame it searches that it doesn't search itself.
+      From the main frame, these are the frames a screenshot reads in their
+      own worlds (frameMasks), and the ones it searches are those
+      ElectronTab.searchedFrames counts. Call it once `from`'s frame tree
+      (mainFrame, or its world's read) and attachFrames(`from`) have
+      answered. */
+  framesToRead(from: string, depth: number): Array<{ id: string; searched: boolean }> {
+    const top = this.frames.get(from);
     const found: Array<{ id: string; searched: boolean }> = [];
     const visit = (parent: string, level: number) => {
       for (const [id, frame] of this.frames) {
         if (frame.parentId !== parent) continue;
-        const searched = level < depth && frame.session === undefined && !!origin && frame.origin === origin && !isPaymentAddress(frame.url);
+        const searched = level < depth && frame.session === top?.session && !!top?.origin && frame.origin === top.origin && !isPaymentAddress(frame.url);
         found.push({ id, searched });
         if (searched) visit(id, level + 1);
       }
     };
-    visit(main, 0);
+    visit(from, 0);
     return found;
+  }
+
+  /** Whether frame `frameId` runs in a process of its own: a frame of
+      another site, which auto-attach gave its own session, so the boxes
+      that session gives (ownerBoxes) are in its own viewport, not the
+      page's. */
+  ownView(frameId: string): boolean {
+    const frame = this.frames.get(frameId);
+    return frame?.session !== undefined && frame.session !== this.frames.get(frame.parentId ?? '')?.session;
   }
 
   /** Frame `frameId`'s address now, from its frame tree: the page's, or a
@@ -416,12 +439,16 @@ export class DebuggerSession {
     return url;
   }
 
-  /** The content quad and border box, in the page's viewport, of the
-      element that holds frame `frameId`, as drawn, its transforms applied.
-      It fails for one that draws nothing. */
+  /** The content quad and border box of the element that holds frame
+      `frameId`, as drawn, its transforms applied, read on the session of
+      the process that holds that element, inside a closed shadow root too:
+      in the page's viewport for an element in the page's process, and in
+      the own viewport of the frame of another site it sits in otherwise
+      (ownView). It fails for one that draws nothing. */
   async ownerBoxes(frameId: string): Promise<{ content: number[]; border: Box }> {
-    const { backendNodeId } = await this.send<{ backendNodeId: number }>('DOM.getFrameOwner', { frameId });
-    const { model } = await this.send<{ model: { content: number[]; border: number[] } }>('DOM.getBoxModel', { backendNodeId });
+    const session = this.frames.get(this.frames.get(frameId)?.parentId ?? '')?.session;
+    const { backendNodeId } = await this.send<{ backendNodeId: number }>('DOM.getFrameOwner', { frameId }, session);
+    const { model } = await this.send<{ model: { content: number[]; border: number[] } }>('DOM.getBoxModel', { backendNodeId }, session);
     return { content: model.content, border: quadBox(model.border) };
   }
 
@@ -687,35 +714,20 @@ export class FrameReads {
     }
   }
 
-  /**
-   * page.json's frame `secret` for what a page read's world couldn't look
-   * into (SecretLook), until `deadline` (epoch ms). A frame is secret when
-   * it is on a payment provider's host (no world opens there, and nothing
-   * is sent to its session), or its own world finds a private field or a
-   * payment frame in its document or a frame it enters (frameSecret in
-   * browser-page-script.ts); where that world meets a frame it can't look
-   * into, or doesn't answer, each frame in it is looked into in turn, at
-   * any depth, a frame of yet another site attached through its own
-   * session (attachFrames). A listed frame is named by its owner's path,
-   * which the main frame's world here follows to the owner while its
-   * address is the one the read listed (frameOwner), and DOM.describeNode
-   * names the frame it holds; an unplaced one, by its address among the
-   * page's own frames, or among those of the frames the read read, where
-   * any frame of that address found secret marks it. What isn't found by
-   * the deadline (a frame whose world doesn't answer in time, an owner the
-   * page moved, a frame the debugger can't name) is left out, as page.json
-   * lets a host leave out a frame it can't look into within
-   * frames_phase_ms.
-   */
-  async frameSecrets(look: SecretLook, deadline: number): Promise<LookedFrames> {
-    const frames = new Set<number>();
-    const unplaced = new Set<string>();
-    const nestedUnplaced = new Set<string>();
-    const found = (): LookedFrames => ({ frames: new Set(frames), unplaced: new Set(unplaced), nestedUnplaced: new Set(nestedUnplaced) });
-    if (deadline <= Date.now()) return found();
+  /* page.json's frame `secret` for frames this attach knows, each looked
+     into once per look (frameSecrets, frameMasks). A frame is secret when
+     it is on a payment provider's host (no world opens there, and nothing
+     is sent to its session), or its own world finds a private field or a
+     payment frame in its document or a frame it enters (frameSecret in
+     browser-page-script.ts). Where that world finds none, or doesn't
+     answer, each frame the debugger knows in it is looked into in turn, at
+     any depth, a frame of yet another site attached through its own
+     session (attachFrames): the world can't look into another site's
+     frame, nor see one in a closed shadow root. `anySecret` answers
+     whether any of `frameIds` is found secret, as soon as one is, so a
+     frame beside it whose world never answers doesn't hold the answer. */
+  private secretLooks(): { secretIn: (frameId: string) => Promise<boolean>; anySecret: (frameIds: string[]) => Promise<boolean> } {
     const looks = new Map<string, Promise<boolean>>();
-    /* Whether any of `frameIds` is found secret, as soon as one is, so a
-       frame beside it whose world never answers doesn't hold the answer. */
     const anySecret = (frameIds: string[]): Promise<boolean> => Promise.any(frameIds.map(async (frameId) => {
       if (!(await secretIn(frameId))) throw new Error('no secret found');
     })).then(() => true, () => false);
@@ -725,7 +737,7 @@ export class FrameReads {
         looking = (async () => {
           if (isPaymentAddress(this.session.knownAddress(frameId) ?? await this.session.frameAddress(frameId))) return true;
           const own = await this.session.read<boolean | null>(frameId, { kind: 'frameSecret', paymentHosts: PAYMENT_FRAME_HOSTS }).catch(() => null);
-          if (own !== null) return own;
+          if (own === true) return true;
           await this.session.attachFrames(frameId);
           return anySecret(this.session.childFrames(frameId).map(({ id }) => id));
         })().catch(() => false);
@@ -733,6 +745,32 @@ export class FrameReads {
       }
       return looking;
     };
+    return { secretIn, anySecret };
+  }
+
+  /**
+   * page.json's frame `secret` for what a page read's world couldn't look
+   * into (SecretLook), until `deadline` (epoch ms), each frame looked into
+   * as secretLooks says: a frame its own world finds nothing in is still
+   * secret when the debugger knows a secret frame in it, one kept in a
+   * closed shadow root there among them. A listed frame is named by its
+   * owner's path, which the main frame's world here follows to the owner
+   * while its address is the one the read listed (frameOwner), and
+   * DOM.describeNode names the frame it holds; an unplaced one, by its
+   * address among the page's own frames, or among those of the frames the
+   * read read, where any frame of that address found secret marks it. What
+   * isn't found by the deadline (a frame whose world doesn't answer in
+   * time, an owner the page moved, a frame the debugger can't name) is
+   * left out, as page.json lets a host leave out a frame it can't look into
+   * within frames_phase_ms.
+   */
+  async frameSecrets(look: SecretLook, deadline: number): Promise<LookedFrames> {
+    const frames = new Set<number>();
+    const unplaced = new Set<string>();
+    const nestedUnplaced = new Set<string>();
+    const found = (): LookedFrames => ({ frames: new Set(frames), unplaced: new Set(unplaced), nestedUnplaced: new Set(nestedUnplaced) });
+    if (deadline <= Date.now()) return found();
+    const { secretIn, anySecret } = this.secretLooks();
     const sameAddress = (url: string) => (frame: { url: string }) => withoutFragment(frame.url) === withoutFragment(url);
     const work = async () => {
       const main = await this.session.mainFrame();
@@ -771,25 +809,73 @@ export class FrameReads {
    * that world's to black out. A field both reads find is blacked out twice,
    * which shows the same. A frame that can't be read (a payment provider's
    * frame, where no world opens, or one that doesn't answer within
-   * FRAME_READ_MS) is blacked out whole. A frame whose owner draws nothing
-   * has nothing to black out.
+   * FRAME_READ_MS, the look into the frames it holds included) is blacked
+   * out whole. A frame whose owner draws nothing has nothing to black out.
+   * In a frame the page's world can't search, the frames that frame's own
+   * search can't reach (one in a closed shadow root there) are read too
+   * (hiddenSecretFrames): one of its origin for the secret fields of its own
+   * document, and any other, when it is secret (secretLooks), blacked out
+   * whole where the debugger places its owner; the frame that holds them is
+   * blacked out whole when the debugger can't place one.
    */
   async frameMasks(): Promise<Box[]> {
     const main = await this.session.mainFrame();
     await this.session.attachFrames();
+    const { secretIn } = this.secretLooks();
     const masks = await Promise.all(this.session.framesToRead(main, SECRET_SEARCH_DEPTH).map(async ({ id: frameId, searched }) => {
       const owner = await this.session.ownerBoxes(frameId).catch(() => null);
       if (!owner) return [];
       const depth = searched ? 0 : SECRET_SEARCH_DEPTH;
-      const read = this.session.read<FoundSecrets>(frameId, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth });
-      const found = await withTimeout(read, FRAME_READ_MS).catch(() => null);
-      const place = found && throughQuad(owner.content, found.viewport);
-      if (!found || !place) return [owner.border];
+      const read = async () => {
+        const found = await this.session.read<FoundSecrets>(frameId, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth });
+        return { found, hidden: searched ? [] : await this.hiddenSecretFrames(frameId, found.owners, secretIn) };
+      };
+      const answer = await withTimeout(read(), FRAME_READ_MS).catch(() => null);
+      const place = answer && throughQuad(owner.content, answer.found.viewport);
+      if (!answer || !place || !answer.hidden) return [owner.border];
+      const { found } = answer;
+      const hidden = this.session.ownView(frameId) ? answer.hidden.map(place) : answer.hidden;
       const content = quadBox(owner.content);
       return [...found.secrets, ...found.paymentFrames, ...found.mirroredFrames, ...(searched ? [] : found.otherSiteFrames)]
-        .map((box) => clip(place(box), content))
+        .map(place)
+        .concat(hidden)
+        .map((box) => clip(box, content))
         .filter((box): box is Box => box !== null);
     }));
     return masks.flat();
+  }
+
+  /* What a screenshot blacks out in frame `frameId` that its own world's
+     search for secrets may not have reached, as the debugger places it
+     (ownerBoxes: in the frame's own view when it runs in a process of its
+     own, else in the page's), or null when something there can't be
+     placed. That search counts the frame owners it finds in the documents
+     it searches (FoundSecrets' `owners`) and reaches none in a closed
+     shadow root, while the debugger knows each frame there (framesToRead
+     from the frame, its frames of other sites auto-attached). When the
+     debugger knows no more of them than the search counted, the search
+     found every one, and nothing more is looked into. Otherwise, as for the
+     page's own frames: each frame of its origin the search would enter is
+     read for the secret fields and payment frames of its own document in
+     its own world, placed through its owner, so one the search did reach
+     is never blacked out whole; and each other frame there that is secret
+     (`secretIn`) is blacked out whole, its owner's border box. */
+  private async hiddenSecretFrames(frameId: string, owners: number, secretIn: (frameId: string) => Promise<boolean>): Promise<Box[] | null> {
+    await this.session.attachFrames(frameId);
+    const inside = this.session.framesToRead(frameId, SECRET_SEARCH_DEPTH);
+    if (inside.length <= owners) return [];
+    const masks = await Promise.all(inside.map(async ({ id, searched }): Promise<Box[] | null> => {
+      if (!searched) return (await secretIn(id)) ? this.session.ownerBoxes(id).then(({ border }) => [border], () => null) : [];
+      const found = await this.session.read<FoundSecrets>(id, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth: 0 });
+      const shown = [...found.secrets, ...found.paymentFrames, ...found.mirroredFrames];
+      if (!shown.length) return [];
+      const owner = await this.session.ownerBoxes(id).catch(() => null);
+      if (!owner) return null;
+      const place = throughQuad(owner.content, found.viewport);
+      if (!place) return [owner.border];
+      const content = quadBox(owner.content);
+      return shown.map((box) => clip(place(box), content)).filter((box): box is Box => box !== null);
+    }));
+    return masks.every((mask): mask is Box[] => mask !== null) ? masks.flat() : null;
   }
 }
