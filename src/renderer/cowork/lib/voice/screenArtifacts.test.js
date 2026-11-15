@@ -31,6 +31,13 @@ describe('artifacts on screen, for the voice operator', () => {
     expect(describeArtifacts([{ title: 'Chart', type: 'png', text: '' }])).toEqual(['Open artifact: "Chart" (png). No text of it can be read.']);
   });
 
+  it("says when an artifact's text is still being read, so the operator can ask again", () => {
+    expect(describeArtifacts([{ title: 'Report', type: 'html', text: '', reading: true }]))
+      .toEqual(['Open artifact: "Report" (html). Its text is still being read: ask again in a moment.']);
+    expect(describeArtifacts([{ title: 'Report', type: 'html', text: 'Q3', reading: true }]))
+      .toEqual(['Open artifact: "Report" (html). The start of its visible text:', '| Q3']);
+  });
+
   it("reads an HTML document's visible text without its scripts or styles", () => {
     expect(htmlText('<html><head><style>p{}</style></head><body><h1>Hi</h1><script>steal()</script><p>there</p></body></html>').replace(/\s+/g, ' ').trim())
       .toBe('Hi there');

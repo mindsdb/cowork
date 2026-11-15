@@ -93,6 +93,7 @@ import {
   ThumbsUp,
   Trash2,
   TriangleAlert,
+  Undo2,
   Upload,
   UserPlus,
   UserRound,
@@ -207,6 +208,7 @@ const Ico = {
   openFolder:   ico(FolderOpen),
   // Manual reload of the preview.
   reload:       ico(RefreshCw),
+  undo:         ico(Undo2, 14),
   // Errors the previewed page reported about itself (ENG-3002).
   warning:      ico(TriangleAlert),
   // "Open in the default browser".

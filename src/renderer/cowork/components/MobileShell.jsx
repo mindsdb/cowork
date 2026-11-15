@@ -377,7 +377,7 @@ export default function MobileShell({
             {tasksList.length > 0 && (
               <div className="mshell-recents">
                 <div className="mshell-recents__head">
-                  <span className="mshell-recents__label">Recents</span>
+                  <span className="mshell-recents__label">{t('mobile.recents')}</span>
                   {tasksList.length > RECENT_CHATS && (
                     <button
                       type="button"
@@ -385,7 +385,7 @@ export default function MobileShell({
                       aria-expanded={allChats}
                       onClick={() => setAllChats((v) => !v)}
                     >
-                      {allChats ? 'Show fewer' : `See all ${tasksList.length}`}
+                      {allChats ? t('mobile.showFewer') : t('mobile.seeAllCount', { count: tasksList.length })}
                     </button>
                   )}
                 </div>
@@ -397,7 +397,7 @@ export default function MobileShell({
                       className={`mshell-recent-chat${route === 'task' && currentTask?.id === task.id ? ' is-active' : ''}`}
                       onClick={() => handleTaskTap(task.id)}
                     >
-                      {task.title || 'Untitled task'}
+                      {task.title || t('mobile.untitledTask')}
                     </button>
                   ))}
                 </div>
@@ -525,10 +525,10 @@ export default function MobileShell({
         {accountUser && (
           <div className="mshell__drawer-foot">
             <span className="mshell__drawer-account" title={accountUser.email || ''}>
-              {accountUser.email || accountUser.name || 'Signed in'}
+              {accountUser.email || accountUser.name || t('mobile.signedIn')}
             </span>
             <button type="button" className="mshell__logout" onClick={() => setLogoutOpen(true)}>
-              Log out
+              {t('mobile.logOut')}
             </button>
           </div>
         )}
@@ -538,12 +538,12 @@ export default function MobileShell({
         title={LOGOUT_CONFIRM_COPY.title}
         message={LOGOUT_CONFIRM_COPY.message}
         confirmLabel={LOGOUT_CONFIRM_COPY.confirmLabel}
-        cancelLabel="Cancel"
+        cancelLabel={t('common.cancel')}
         destructive
         busy={loggingOut}
         dismissableWhileBusy
         note={waitNote}
-        busyLabel="Signing out…"
+        busyLabel={t('userMenu.signingOut')}
         onConfirm={logout}
         onClose={() => setLogoutOpen(false)}
       />

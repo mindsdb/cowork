@@ -6,7 +6,7 @@ vi.mock('../../api', () => ({ embedBrowser: (...args) => embedBrowser(...args) }
 
 import { BrowserPanel, START_FADE_MS, STARTING_TIMEOUT_MS, isBlankPage, webPaneNote } from './BrowserPanel';
 import { QUICK_CLOSE_MS } from '../../lib/browserSession';
-import { handBackBrowser, resetHandBack } from '../../lib/browserHandBack';
+import { handBackBrowser, handedBack, resetHandBack } from '../../lib/browserHandBack';
 import { WEB_JEV_LINE, WEB_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 
 const VIEW = `${window.location.origin}/browser/sessions/t-abc/view?et=tok`;
@@ -98,16 +98,25 @@ describe('BrowserPanel', () => {
       expect(onControl).toHaveBeenLastCalledWith('human', 'tick the policy box', true);
     });
 
-    it("hands the card's Done, continue to its own viewer once it is ready, and only then", async () => {
+    /* The viewer says it is ready before its connection says who holds the
+       browser, and drops a hand-back until it knows the person does. */
+    it("hands the card's Done, continue to its own viewer once it knows the person holds the browser, and only then", async () => {
       resetHandBack();
       render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
       await flush();
       const win = frameWindow();
-      // Not ready yet: the hand-back waits for the viewer.
+      // Not there yet: the hand-back waits for the viewer.
       expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
-      expect(win.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      let back = false;
+      void handedBack('t-abc').then(() => { back = true; });
       messageFrom(win, { type: 'browser-viewer-ready' });
+      await flush();
+      expect(win.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      expect(back).toBe(false);
+      messageFrom(win, { type: 'browser-viewer-control', holder: 'human', reason: 'sign in' });
+      await flush();
       expect(win.postMessage).toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      expect(back).toBe(true);
       win.postMessage.mockClear();
       expect(await handBackBrowser('t-abc', { desktop: false })).toBe('sent');
       expect(win.postMessage).toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
@@ -116,6 +125,204 @@ describe('BrowserPanel', () => {
       expect(await handBackBrowser('t-other', { desktop: false })).toBe('waiting');
       expect(win.postMessage).not.toHaveBeenCalled();
       resetHandBack();
+    });
+
+    it('settles a waiting hand-back when the viewer says the browser is back with the agent', async () => {
+      resetHandBack();
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      const win = frameWindow();
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      let back = false;
+      void handedBack('t-abc').then(() => { back = true; });
+      // The watch handed it back before the viewer connected: nothing is left to send.
+      messageFrom(win, { type: 'browser-viewer-control', holder: 'agent' });
+      await flush();
+      expect(back).toBe(true);
+      expect(win.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      // A Done asked for now has nothing to hand back, and nothing waits:
+      // Anton's next hand-over doesn't get it.
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('sent');
+      messageFrom(win, { type: 'browser-viewer-control', holder: 'human', reason: 'enter the code' });
+      await flush();
+      expect(win.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      resetHandBack();
+    });
+
+    it("holds a hand-back from a viewer that closed or reloaded until the new one says who holds the browser", async () => {
+      resetHandBack();
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      const win = frameWindow();
+      messageFrom(win, { type: 'browser-viewer-ready' });
+      messageFrom(win, { type: 'browser-viewer-control', holder: 'human', reason: 'sign in' });
+      // The viewer loads again: until it says who holds the browser, it would drop a Done.
+      messageFrom(win, { type: 'browser-viewer-ready' });
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      expect(win.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      messageFrom(win, { type: 'browser-viewer-control', holder: 'human', reason: 'sign in' });
+      await flush();
+      expect(win.postMessage).toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      // A viewer whose connection closed runs no Done either.
+      win.postMessage.mockClear();
+      messageFrom(win, { type: 'browser-viewer-closed', code: 4401 });
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      expect(win.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      resetHandBack();
+    });
+
+    /* With the pane closed, the hand-over card's Done, continue opens it and
+       waits for its viewer. A pane that gets no viewer ends that wait, so
+       the card isn't left busy and nothing is left to hand back a later
+       hand-over. */
+    it('ends a waiting hand-back when the browser gives the pane no link', async () => {
+      resetHandBack();
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      const end = handedBack('t-abc');
+      embedBrowser.mockRejectedValue(new Error('No such browser.'));
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      await expect(end).resolves.toBe('unreachable');
+      // Nothing left waiting: handedBack answers at once.
+      await expect(handedBack('t-abc')).resolves.toBe('sent');
+      resetHandBack();
+    });
+
+    it.each([4503, 4429])('ends a waiting hand-back when the viewer stops on %s', async (code) => {
+      resetHandBack();
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      const win = frameWindow();
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      const end = handedBack('t-abc');
+      messageFrom(win, { type: 'browser-viewer-closed', code });
+      await flush();
+      await expect(end).resolves.toBe('unreachable');
+      await expect(handedBack('t-abc')).resolves.toBe('sent');
+      resetHandBack();
+    });
+
+    /* An edge error page, or the router's starting page while it reloads,
+       loads the frame and posts nothing: the starting clock running out
+       ends the wait, as a viewer that stopped does. */
+    it('ends a waiting hand-back when the viewer never comes in time', async () => {
+      resetHandBack();
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      let end = null;
+      void handedBack('t-abc').then((value) => { end = value; });
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      const win = frameWindow();
+      fireEvent.load(screen.getByTitle('Browser mode'));
+      act(() => { vi.advanceTimersByTime(STARTING_TIMEOUT_MS - 1); });
+      await flush();
+      expect(end).toBeNull();
+      act(() => { vi.advanceTimersByTime(1); });
+      await flush();
+      expect(end).toBe('unreachable');
+      expect(screen.getByText('Your browser is taking longer than usual')).toBeInTheDocument();
+      // A viewer that comes after that runs no Done: a later hand-over isn't handed back by it.
+      messageFrom(win, { type: 'browser-viewer-control', holder: 'human', reason: 'sign in' });
+      await flush();
+      expect(win.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      resetHandBack();
+    });
+
+    /* A pane slow for one browser that then shows another starts that one's
+       clock over, and its wait goes on. */
+    it("keeps another browser's waiting hand-back when the pane was slow before it showed that browser", async () => {
+      resetHandBack();
+      const { rerender } = render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      act(() => { vi.advanceTimersByTime(STARTING_TIMEOUT_MS); });
+      expect(screen.getByText('Your browser is taking longer than usual')).toBeInTheDocument();
+      expect(await handBackBrowser('t-next', { desktop: false })).toBe('waiting');
+      let end = null;
+      void handedBack('t-next').then((value) => { end = value; });
+      embedBrowser.mockResolvedValue({ ...link(2), session_id: 't-next', view_url: `${window.location.origin}/browser/sessions/t-next/view?et=tok2` });
+      rerender(<BrowserPanel sessionId="t-next" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      expect(end).toBeNull();
+      const win = frameWindow();
+      messageFrom(win, { type: 'browser-viewer-control', holder: 'human', reason: 'sign in' });
+      await flush();
+      expect(win.postMessage).toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      expect(end).toBe('sent');
+      resetHandBack();
+    });
+
+    it('keeps a waiting hand-back while the pane asks for a new viewer', async () => {
+      resetHandBack();
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      let end = null;
+      void handedBack('t-abc').then((value) => { end = value; });
+      // A first quick close mints again rather than stopping.
+      embedBrowser.mockResolvedValue(link(2));
+      messageFrom(frameWindow(), { type: 'browser-viewer-closed', code: 4401 });
+      await flush();
+      expect(end).toBeNull();
+      const win = frameWindow();
+      messageFrom(win, { type: 'browser-viewer-control', holder: 'human', reason: 'sign in' });
+      await flush();
+      expect(win.postMessage).toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      expect(end).toBe('sent');
+      resetHandBack();
+    });
+
+    /* A hand-back asked for after the pane gave up on its viewer: nothing
+       would end it, so the hand-over card's request to show the browser
+       (`retrySignal`) asks again, as Try again does. */
+    it('asks a slow pane again for a hand-back, and ends the wait if the viewer still never comes', async () => {
+      resetHandBack();
+      const { rerender } = render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      act(() => { vi.advanceTimersByTime(STARTING_TIMEOUT_MS); });
+      expect(screen.getByText('Your browser is taking longer than usual')).toBeInTheDocument();
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      let end = null;
+      void handedBack('t-abc').then((value) => { end = value; });
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
+      rerender(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} retrySignal={1} />);
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('Your browser is taking longer than usual')).toBeNull();
+      act(() => { vi.advanceTimersByTime(STARTING_TIMEOUT_MS - 1); });
+      await flush();
+      expect(end).toBeNull();
+      act(() => { vi.advanceTimersByTime(1); });
+      await flush();
+      expect(end).toBe('unreachable');
+      resetHandBack();
+    });
+
+    it('asks a stopped pane again for a hand-back, and ends the wait at once if the browser gives no link', async () => {
+      resetHandBack();
+      const { rerender } = render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      messageFrom(frameWindow(), { type: 'browser-viewer-closed', code: 4503 });
+      await flush();
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      let end = null;
+      void handedBack('t-abc').then((value) => { end = value; });
+      embedBrowser.mockRejectedValue(new Error('No such browser.'));
+      rerender(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} retrySignal={1} />);
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      expect(end).toBe('unreachable');
+      resetHandBack();
+    });
+
+    it('mints nothing more for a hand-back when the pane has not given up', async () => {
+      const { rerender } = render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} retrySignal={3} />);
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
+      rerender(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} retrySignal={4} />);
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
     });
 
     it('covers a blank tab with the start page, and gets out of the way once a page opens', async () => {

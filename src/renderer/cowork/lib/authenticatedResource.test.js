@@ -22,6 +22,7 @@ import {
 describe('authenticated private file resources', () => {
   beforeEach(() => {
     mocks.host.isWeb = true;
+  mocks.host.isMobileShell = false;
     mocks.authFetch.mockReset();
     mocks.host.openExternal.mockReset();
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:private-file');
@@ -183,4 +184,12 @@ describe('authenticated private file resources', () => {
     expect(click).not.toHaveBeenCalled();
     expect(mocks.host.openExternal).not.toHaveBeenCalled();
   });
+});
+
+it('refuses mobile download/open fallbacks before fetching private bytes', async () => {
+  mocks.host.isMobileShell = true;
+  mocks.authFetch.mockClear();
+  await expect(downloadAuthenticatedResource('/api/v1/private/raw', 'report.bin')).resolves.toBe(false);
+  await expect(openAuthenticatedResource('/api/v1/private/raw')).resolves.toBe(false);
+  expect(mocks.authFetch).not.toHaveBeenCalled();
 });

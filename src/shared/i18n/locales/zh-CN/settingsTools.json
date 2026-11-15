@@ -60,7 +60,7 @@
     "signOutHelp": "清除此浏览器的 Cookie、登录信息和缓存，并关闭其标签页。已保存的标签页会保留。",
     "signOutUnconfirmed": "未能及时确认退出登录。操作可能已完成；为确保生效，请再次退出登录。",
     "pageContent": "{mindshub, select, yes {{agent} 读取网页时，网页文本和一张截图会发送给处理你本轮对话的模型提供商（登录后为 MindsHub）。} other {{agent} 读取网页时，网页文本和一张截图会发送给处理你本轮对话的模型提供商。}}",
-    "webJevLine": "开启“Jev 快速回答”后，Jev 还会收到每个浏览器步骤的目标、网页的地址、标题、元素名称和前 1,500 个字符，以及最近的步骤（包括之前访问的地址），但不包括字段值或你输入的内容。",
+    "webJevLine": "开启“Jev 快速回答”后，Jev 还会收到每个浏览器步骤的目标、网页的地址、标题、元素名称和前 1,500 个字符，以及最近的步骤（包括之前访问的地址）。",
     "usageEventsHelp": "{agent} 会向 MindsDB 发送匿名使用事件（包括浏览器的使用事件），附带一个安装 ID，绝不包含网页文本或地址。关闭后，将从下次重启应用起停止发送。",
     "signedOut": "已退出所有网站。",
     "clearFailed": "无法清除浏览器数据，请重试。",
@@ -73,7 +73,7 @@
     "usageEventsTitle": "使用事件",
     "sendUsageEvents": "发送匿名使用事件",
     "approveStepsTitle": "批准浏览器步骤",
-    "approveStepsHelp": "开启：在执行购买、发送消息或提交表单等会产生实际结果的步骤前，{agent} 会等待你确认。关闭：{agent} 直接继续。",
+    "approveStepsHelp": "开启：在执行购买、发送消息或提交表单等会产生实际结果的步骤前，{agent} 会等待你确认。关闭：{agent} 直接继续之后的步骤；已在等待的步骤仍会请你确认。",
     "onlyWhenNeededTitle": "仅在需要我时显示浏览器",
     "onlyWhenNeededHelp": "关闭后会一直显示浏览器，你可以看着 {agent} 浏览。有人觉得有趣，有人觉得乏味。",
     "onlyWhenNeededLearn": "关于仅在需要时显示浏览器",
@@ -87,7 +87,8 @@
     "decisionsTesting": "正在测试…",
     "decisionsFailed": "决策模型未按预期响应（{error}）。请检查端点和密钥。",
     "decisionsUntested": "无法测试决策模型。请重试。",
-    "ownDecisionsLine": "你组织的决策模型还会收到每个浏览器步骤的目标、网页的地址、标题、元素名称和前 1,500 个字符，以及最近的步骤（包括之前访问的地址），但不包括字段值或你输入的内容。"
+    "ownDecisionsLine": "你组织的决策模型还会收到每个浏览器步骤的目标、网页的地址、标题、元素名称和前 1,500 个字符，以及最近的步骤（包括之前访问的地址）。",
+    "ownDecisionsUnused": "你组织的决策模型暂时还不能在这里选择浏览器步骤。在此之前，浏览器需要使用 MindsHub 上的 Jev。"
   },
   "codingAgent": {
     "loadFailed": "无法加载编程智能体选项。",

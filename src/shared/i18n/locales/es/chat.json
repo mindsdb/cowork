@@ -221,7 +221,8 @@
         "files": "En cola: los mensajes con archivos se ejecutan después de la tarea actual.",
         "notRead": "En cola: la tarea terminó antes de poder leerlo."
       }
-    }
+    },
+    "reconnecting": "Intentando reconectar"
   },
   "composer": {
     "placeholder": "Hola, jefe. ¿En qué te puedo ayudar hoy?",
@@ -279,7 +280,8 @@
       "fixed": "El proyecto es fijo para esta tarea",
       "none": "Sin proyecto"
     },
-    "chooseHarness": "Elegir entorno de ejecución"
+    "chooseHarness": "Elegir entorno de ejecución",
+    "voiceCall": "Llamada de voz"
   },
   "attachmentThumbnail": {
     "open": "Abrir imagen",
@@ -300,7 +302,9 @@
       "title": "¿Apruebas este paso en el navegador?",
       "intro": "Puede comprar, enviar, eliminar o confirmar algo, y solo se ejecuta si lo apruebas.",
       "approved": "Acción del navegador aprobada",
-      "cancelled": "Acción del navegador cancelada"
+      "cancelled": "Acción del navegador cancelada",
+      "typedText": "Texto que escribe",
+      "typedTextKeys": "Texto que escribe (⏎ marca un salto de línea, que puede enviarlo; ⇥ marca una tabulación; ⟦U+…⟧ indica un carácter invisible)"
     },
     "handOver": {
       "title": "Te toca en el navegador",
@@ -312,6 +316,7 @@
       "finishLater": "Terminar después",
       "stop": "Detener",
       "noBrowser": "Aquí no hay ningún navegador que devolver.",
+      "notOpened": "El navegador no se abrió. Ábrelo y vuelve a hacer clic en Listo, continuar.",
       "handedBack": "Devuelto, continuó",
       "stopped": "Traspaso detenido",
       "ended": "Traspaso terminado"
@@ -488,7 +493,10 @@
         "1": "Crear una landing page para un lanzamiento",
         "2": "Crear un sitio web tipo panel",
         "3": "Crear un sitio web de portafolio",
-        "4": "Crear un blog para la empresa"
+        "4": "Crear un blog para la empresa",
+        "5": "Crear una página de estado del proyecto",
+        "6": "Crear una invitación para un offsite del equipo",
+        "7": "Crear una página para anunciar una función"
       }
     },
     "apps": {
@@ -517,7 +525,8 @@
         "2": "Crear una lista de verificación para due diligence de adquisición",
         "3": "Comparar los mejores modelos VLM con datos de Hugging Face",
         "4": "Calcular la TIR de flujos de caja de inversión",
-        "5": "Limpiar mi hoja de cálculo y graficarla"
+        "5": "Limpiar mi hoja de cálculo y graficarla",
+        "6": "Extraer los términos clave de un contrato"
       }
     },
     "visualization": {
@@ -528,7 +537,9 @@
         "0": "Mostrar la actividad de ventas semanal en un mapa de calor",
         "1": "Generar un análisis de abandono de clientes",
         "2": "Seguir KPI mensuales por departamento",
-        "3": "Analizar competidores por segmento de mercado"
+        "3": "Analizar competidores por segmento de mercado",
+        "4": "Crear un cronograma de implementación del proyecto",
+        "5": "Representar un proceso como diagrama"
       }
     },
     "wide-research": {
@@ -543,7 +554,10 @@
         "4": "Investigar perfiles de clientes y mapas de recorrido",
         "5": "Resumir un documento y redactar mi respuesta",
         "6": "Elegir un modelo local adecuado para mi computadora",
-        "7": "Revisar mis pendientes de esta semana"
+        "7": "Revisar mis pendientes de esta semana",
+        "8": "Investigar un prospecto y redactar el primer contacto",
+        "9": "Asesorarme sobre una venta a partir de la transcripción de una llamada",
+        "10": "Convertir notas de reunión en tareas pendientes"
       }
     },
     "games": {
@@ -692,7 +706,14 @@
       "closeIts": "Cerrar su navegador (pestañas guardadas)",
       "watching": "Alguien lo está viendo"
     },
-    "phoneYourTurnWatching": "Te toca: {reason}. {agent} sigue solo cuando esté hecho, o toca Listo en el navegador."
+    "phoneYourTurnWatching": "Te toca: {reason}. {agent} sigue solo cuando esté hecho, o toca Listo en el navegador.",
+    "handOverFallback": "{agent} te necesita en el navegador",
+    "phoneYourTurn": "Te toca: {reason}. Toca Listo en el navegador cuando termines y luego minimiza para continuar.",
+    "phoneQuestion": "{agent} tiene una pregunta para ti. Minimiza para responderla.",
+    "phoneWorking": "Trabajando en ello…",
+    "phoneDone": "Listo. Minimiza para ver la respuesta.",
+    "phoneMinimize": "Minimizar",
+    "talkTo": "Hablar con {agent}"
   },
   "voiceCall": {
     "dialogLabel": "Llamada de voz con {agent}",
@@ -711,6 +732,12 @@
     "ended": "La llamada terminó.",
     "close": "Cerrar",
     "endCall": "Terminar llamada",
-    "mute": "Silenciar"
+    "mute": "Silenciar",
+    "orbLabel": "{state, select, starting {Conectando la voz} working {Trabajando en ello} other {En una llamada}}",
+    "orbShow": "{state, select, starting {Conectando la voz. Mostrar la llamada} working {Trabajando en ello. Mostrar la llamada} other {En una llamada. Mostrar la llamada}}",
+    "allowMicrophone": "Permite el micrófono en tu navegador para iniciar una llamada de voz.",
+    "noMicrophone": "No se encontró ningún micrófono.",
+    "couldNotStart": "No se pudo iniciar la llamada de voz.",
+    "endedReason": "La llamada terminó ({reason})."
   }
 }

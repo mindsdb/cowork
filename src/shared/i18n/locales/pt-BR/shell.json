@@ -360,7 +360,12 @@
     "total": "{count} no total",
     "noTasks": "Ainda não há tarefas.",
     "untitledTask": "Tarefa sem título",
-    "seeAllTasks": "Ver todas as tarefas"
+    "seeAllTasks": "Ver todas as tarefas",
+    "recents": "Recentes",
+    "showFewer": "Mostrar menos",
+    "seeAllCount": "Ver todos ({count})",
+    "signedIn": "Conectado",
+    "logOut": "Sair"
   },
   "dispatch": {
     "qrAriaLabel": "Código de pareamento decorativo",

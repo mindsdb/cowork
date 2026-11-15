@@ -467,8 +467,8 @@ export default function HomeView({
     const exampleId = sample ? sampleId(sample.label) : (ownWork ? OWN_WORK_START : null);
     // The task is credited to the example only if the example was placed; a
     // kept draft of the user's own is not the example's doing.
-    setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null);
-    trackComposerReady(handoff.entrySource, exampleId, prefilled);
+    setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null, handoff.placement);
+    trackComposerReady(handoff.entrySource, exampleId, prefilled, handoff.placement);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerUsable]);
 

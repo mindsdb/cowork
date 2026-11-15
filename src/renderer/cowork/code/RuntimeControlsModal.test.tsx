@@ -323,3 +323,32 @@ it('keeps the draft editable but blocks Apply while a turn is active', async () 
   await user.click(enabledApply);
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ web_search: true }));
 });
+
+it('re-checks model availability when the model picker opens', async () => {
+  const user = userEvent.setup();
+  const onRefresh = vi.fn(async () => {});
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'fable',
+        permission_mode: 'supervised',
+        reasoning_effort: 'high',
+        service_tier: 'standard',
+        personality: 'pragmatic',
+        network_access: false,
+        web_search: false,
+        additional_dirs: [],
+      }}
+      models={[{ id: 'fable', name: 'Claude Fable 5' }]}
+      modelMeta={{ modelEnabled: { fable: true }, onRefresh }}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={vi.fn(async () => {})}
+    />,
+  );
+
+  await user.click(screen.getByRole('combobox', { name: 'Task model' }));
+  expect(onRefresh).toHaveBeenCalledTimes(1);
+});

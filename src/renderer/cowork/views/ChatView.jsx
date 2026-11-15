@@ -1,3 +1,4 @@
+import { downloadUnavailableMessage } from '../lib/browserDownload';
 import { diagnostic } from '../../../shared/diagnostics';
 /* Anton Chat — Direction A: Conservative.
    Near-1:1 port of docs/design-guidelines/chat.html (ChatConservative).
@@ -17,6 +18,10 @@ import { CircleAlert } from 'lucide-react';
 import { Icon } from '../components/ui/Icon';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
+import { parseQuickEditPrompt } from '../lib/quickEditPrompt';
+import { planQuickEditCards } from '../lib/quickEditGroup';
+import { QuickEditGroupCard } from '../components/chat/QuickEditGroupCard';
+import { ArtifactRefPill } from '../components/artifacts/ArtifactRefPill';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
 import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
@@ -27,6 +32,7 @@ import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { FirstTake } from '../components/thinking/FirstTake';
 import { stepDisplayLabel } from '../lib/responseStreamAdapter';
 import { OrbitProvider } from '../lib/orbitRegistry';
+import { ChatTranscriptContext } from '../lib/chatTranscriptContext';
 import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
@@ -60,6 +66,7 @@ import { BROWSER_ACTION_BADGE, groupBrowserSteps } from '../lib/browserSteps';
 import { BROWSER_APPROVAL_BADGE, answeredBrowserStep } from '../lib/browserStepPrompt';
 import { BROWSER_HANDOVER_BADGE, finishedHandOverStep, isHandOverCard } from '../lib/browserHandOverPrompt';
 import { BrowserHandOverContext } from '../lib/browserHandOverContext';
+import { dropHandBack } from '../lib/browserHandBack';
 import { useBrowserPrefs } from '../lib/browserPrefs';
 import Button from '../components/ui/Button';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
@@ -329,11 +336,16 @@ function AddonRow({ step, agentLabel, onMoveToQueue }) {
 
 // The user's side of a Cowork turn: the shared UserTurn bubble, plus the
 // attachments and artifact-repair card only Cowork messages carry.
-function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projectName, projectId, conversationId, turnId, streaming = false, deleting = false, addonLabel = null }) {
+function CoworkUserTurn({ content: rawContent, attachments, onDelete, onEdit, isLast, projectName, projectId, conversationId, turnId, streaming = false, deleting = false, addonLabel = null, onOpenArtifact = null }) {
   // An "Address with agent" handoff is a machine prompt — ids, a base revision
   // and the raw thread JSON — so it renders as a card rather than as the wall of
   // identifiers it literally is. Null for every ordinary message.
   const { t } = useTranslation('chat');
+  // A message from the artifact viewer's chat bar (ENG-4227) ends in
+  // "(About the artifact `<slug>`.)" for the agent; the turn shows the user's
+  // words and names the artifact as a pill under them instead.
+  const aboutArtifact = parseQuickEditPrompt(rawContent);
+  const content = aboutArtifact ? aboutArtifact.text : rawContent;
   const repair = parseArtifactRepairPrompt(content);
   const attachmentRows = attachments?.map((a) => {
     // Image attachments preview inline as a thumbnail (fetched as a
@@ -366,6 +378,11 @@ function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projec
       </div>
     );
   });
+  const artifactPill = aboutArtifact ? (
+    <div className="user-turn-artifact-ref">
+      <ArtifactRefPill slug={aboutArtifact.slug} onOpen={onOpenArtifact} />
+    </div>
+  ) : null;
   const actions = deleting ? (
     <span
       // Primary ink, not the usual meta grey: the turn around it is at
@@ -392,6 +409,7 @@ function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projec
       turnId={turnId}
       deleting={deleting}
       attachments={attachmentRows}
+      footer={artifactPill}
       actions={shownActions}
     >
       {repair ? <ArtifactRepairCard repair={repair} projectId={projectId} streaming={streaming} /> : null}
@@ -1015,8 +1033,8 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
       showStatus('error', t('chatView.artifactCard.deletedStatus'));
       return;
     }
-    if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
-      showStatus('error', t('chatView.artifactCard.noDownloadableFile'));
+    if (!(await downloadArtifactFile(artifact, { actionPath: path, entry: 'chat' }))) {
+      showStatus('error', downloadUnavailableMessage(t('chatView.artifactCard.noDownloadableFile')));
       return;
     }
     showStatus(doneKind, doneText);
@@ -1242,9 +1260,10 @@ async function waitForServerReady(timeoutMs = 8000) {
 // Beside a lost connection's error while the app tries to reach the turn
 // again; the error goes away once it does.
 function Reconnecting() {
+  const { t } = useTranslation('chat');
   return (
     <span className="chat-reconnecting" role="status">
-      Trying to reconnect<span className="chat-reconnecting__dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+      {t('chatView.reconnecting')}<span className="chat-reconnecting__dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
     </span>
   );
 }
@@ -2277,12 +2296,24 @@ export default function ChatView({
      the next message, so the live turn's own session stays viewable, and its
      Browser step stays clickable, until that turn ends. */
   const [shownBrowserId, setShownBrowserId] = useState(null);
+  const shownBrowserRef = useRef(null);
+  shownBrowserRef.current = shownBrowserId;
+  /* Bumped when a hand-back asks the pane to show its browser, so a pane
+     that already gave up on its viewer asks again (BrowserPanel's
+     `retrySignal`). */
+  const [browserRetry, setBrowserRetry] = useState(0);
   // Bumped by closing the pane and by a task change, so a browser still
   // opening doesn't show after it, or in another task.
   const openSeqRef = useRef(0);
   useEffect(() => {
     openSeqRef.current += 1;
     setShownBrowserId(null);
+    /* A task change takes the pane off this browser, so a hand-back still
+       waiting for its viewer ends, whoever asked for it (the hand-over card,
+       or a voice call's browser_done), and a later hand-over never gets it
+       (lib/browserHandBack.js). Null at first mount, so StrictMode's extra
+       cleanup ends nothing. */
+    return () => dropHandBack(shownBrowserRef.current);
   }, [task.id]);
   const liveBrowserId = browserSessionIdIn(streamingMsg?.steps);
   /* With Only show the browser when I'm needed on (Settings, the default),
@@ -2305,14 +2336,16 @@ export default function ChatView({
     setBrowserMinimized(false);
   }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, task.id]);
   const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
-  // A request (a voice call's show_browser) applies once: coming back to the
-  // task later doesn't open the pane again.
+  // A request (a voice call's show_browser or browser_done) applies once:
+  // coming back to the task later doesn't open the pane again. Like the
+  // hand-over card's, it asks a pane that gave up on its viewer to try again.
   const appliedBrowserRequestRef = useRef(null);
   useEffect(() => {
     if (browserRequest?.taskId !== task.id || !browserRequest.sessionId) return;
     if (appliedBrowserRequestRef.current === browserRequest.at) return;
     appliedBrowserRequestRef.current = browserRequest.at;
     setShownBrowserId(browserRequest.sessionId);
+    setBrowserRetry((n) => n + 1);
   }, [browserRequest, task.id]);
   /* Show browser on the web shows the pane at once: the start page while the
      task's browser opens (`openingBrowser`), then that browser, on the blank
@@ -2353,18 +2386,27 @@ export default function ChatView({
   /* Whether a turn ran while the person held the browser: a turn that ended
      waiting for them can't see Done, so Done carries it on (`onBrowserControl`).
      A turn still running sees Done itself, and one the person stopped stays
-     stopped (`stopTurn`). */
+     stopped: from the composer (`stopTurn`) or the hand-over card's Stop
+     (`stopTask` in the card's context). The card's Stop ends the turn only
+     once anton reads it, so until that turn ends it no longer counts as held
+     (`stoppedFromCardRef`). */
   const heldThroughTurnRef = useRef(false);
+  const stoppedFromCardRef = useRef(false);
   const streamingRef = useRef(isStreaming);
   streamingRef.current = isStreaming;
-  if (browserHandoff && isStreaming) heldThroughTurnRef.current = true;
-  useEffect(() => { setBrowserHandoff(null); heldThroughTurnRef.current = false; }, [task.id, shownBrowserId]);
+  if (browserHandoff && isStreaming && !stoppedFromCardRef.current) heldThroughTurnRef.current = true;
+  useEffect(() => { if (!isStreaming) stoppedFromCardRef.current = false; }, [isStreaming]);
+  useEffect(() => {
+    setBrowserHandoff(null);
+    heldThroughTurnRef.current = false;
+    stoppedFromCardRef.current = false;
+  }, [task.id, shownBrowserId]);
   const onBrowserControl = (holder, reason, watching = false) => {
     setHandoffWatching(holder === 'human' && watching);
     if (holder === 'human') {
-      setBrowserHandoff(reason || 'Anton needs you in the browser');
+      setBrowserHandoff(reason || tc('browser.handOverFallback', { agent: harnessLabel(task?.harness) || 'Anton' }));
       setBrowserMinimized(false);
-      if (streamingRef.current) heldThroughTurnRef.current = true;
+      if (streamingRef.current && !stoppedFromCardRef.current) heldThroughTurnRef.current = true;
       return;
     }
     setBrowserHandoff(null);
@@ -2484,10 +2526,17 @@ export default function ChatView({
           sessionId={browserOpen ? shownBrowserId : null}
           startBlank={openingBrowserOpen || (browserOpen && shownBrowserId === blankOpenedId)}
           agentLabel={harnessLabel(task?.harness) || 'Anton'}
-          onClose={() => { openSeqRef.current += 1; setOpeningBrowser(false); setShownBrowserId(null); }}
+          onClose={() => {
+            // A closed pane shows this browser no more: a hand-back waiting for its viewer ends.
+            dropHandBack(shownBrowserId);
+            openSeqRef.current += 1;
+            setOpeningBrowser(false);
+            setShownBrowserId(null);
+          }}
           extraActions={projectBrowsers}
           dock={browserDock}
           onControl={onBrowserControl}
+          retrySignal={browserRetry}
           taskKey={task.id}
           onSend={onSend ? (text) => onSend(text) : undefined}
           onDraft={(text) => setComposerPrefill((prev) => ({ text, bump: (prev?.bump || 0) + 1, append: true }))}
@@ -2514,13 +2563,13 @@ export default function ChatView({
   const needsUser = browserHandoff && handoffWatching
     ? tc('browser.phoneYourTurnWatching', { reason: browserHandoff, agent: harnessLabel(task?.harness) || 'Anton' })
     : browserHandoff
-    ? `Your turn: ${browserHandoff}. Tap Done in the browser when you're finished, then minimize to continue.`
-    : askingUser ? `${harnessLabel(task?.harness) || 'Anton'} has a question for you. Minimize to answer it.` : '';
+    ? tc('browser.phoneYourTurn', { reason: browserHandoff })
+    : askingUser ? tc('browser.phoneQuestion', { agent: harnessLabel(task?.harness) || 'Anton' }) : '';
   // Otherwise the strip says what Anton is doing right now: the live step.
   const liveSteps = (streamingMsg?.steps || []).filter((s) => s.badge !== 'AskUser' && s.label);
   const nowDoing = isStreaming
-    ? (liveSteps[liveSteps.length - 1]?.label || 'Working on it…')
-    : 'Done. Minimize to see the answer.';
+    ? (liveSteps[liveSteps.length - 1]?.label || tc('browser.phoneWorking'))
+    : tc('browser.phoneDone');
   const callLive = Boolean(phoneCall && phoneCall.phase !== 'idle' && phoneCall.phase !== 'ended');
   const phoneDock = browserDock && (phoneCallCard || browserPaneOpen) ? (
     <div className="chat-phone-dock">
@@ -2537,7 +2586,7 @@ export default function ChatView({
             <button
               type="button"
               className="phone-browser-strip__talk"
-              aria-label={`Talk to ${harnessLabel(task?.harness) || 'Anton'}`}
+              aria-label={tc('browser.talkTo', { agent: harnessLabel(task?.harness) || 'Anton' })}
               onClick={() => onStartVoiceCall()}
             >
               {Ico.mic(16)}
@@ -2545,7 +2594,7 @@ export default function ChatView({
           ) : null}
           <div className="phone-browser-strip__text" role="status" aria-live="polite">
             <p>{needsUser || nowDoing}</p>
-            {needsUser && <Button size="sm" onClick={() => setBrowserMinimized(true)}>Minimize</Button>}
+            {needsUser && <Button size="sm" onClick={() => setBrowserMinimized(true)}>{tc('browser.phoneMinimize')}</Button>}
           </div>
         </div>
       )}
@@ -2767,22 +2816,67 @@ export default function ChatView({
      card's Done, continue as from the browser's Done (onBrowserControl), and
      only once: the flag that would send it again is cleared first. */
   const handOverBrowserId = liveBrowserId || latestBrowserId;
+  /* A Done that waits for the pane's viewer is for the hand-over open when
+     it was asked for, and a voice call's browser_done has no card to end its
+     wait. So the wait ends when that hand-over is answered mid-turn (the
+     browser came back another way: nothing is left to hand back), and when
+     the task starts a new turn (whatever waits is for an earlier turn's
+     hand-over). A viewer that comes later then never runs an old Done for
+     the next hand-over. A turn that ends with its hand-over still open
+     leaves the wait alone: that Done still carries the task on
+     (onBrowserControl). */
+  const openHandOverId = (streamingMsg?.steps || [])
+    .find((s) => s.badge === 'AskUser' && !s.data?.answer && isHandOverCard(s.data))?.data?.question_id || null;
+  useEffect(() => {
+    if (!openHandOverId) return undefined;
+    const browser = handOverBrowserId;
+    return () => { if (streamingRef.current) dropHandBack(browser); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openHandOverId]);
+  const turnSeenRef = useRef({ taskId: null, streaming: false });
+  useEffect(() => {
+    const before = turnSeenRef.current;
+    turnSeenRef.current = { taskId: task.id, streaming: isStreaming };
+    if (before.taskId === task.id && !before.streaming && isStreaming) dropHandBack(handOverBrowserId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, isStreaming]);
   const handOverValue = useMemo(() => ({
     sessionId: handOverBrowserId,
     paneShown: browserOpen && !browserMinimized,
     openBrowser: () => {
       setBrowserMinimized(false);
-      if (viewable(handOverBrowserId)) setShownBrowserId(handOverBrowserId);
+      if (viewable(handOverBrowserId)) {
+        setShownBrowserId(handOverBrowserId);
+        // A pane that already gave up on its viewer asks again, so the hand-back gets one or ends.
+        setBrowserRetry((n) => n + 1);
+      } else {
+        // No pane shows this browser here: a hand-back waiting for its viewer ends.
+        dropHandBack(handOverBrowserId);
+      }
     },
     continueTask: onSend ? () => {
       heldThroughTurnRef.current = false;
       onSend(BROWSER_DONE_MESSAGE);
     } : null,
+    stopTask: () => {
+      heldThroughTurnRef.current = false;
+      if (streamingRef.current) stoppedFromCardRef.current = true;
+    },
     agentLabel: harnessLabel(task?.harness) || 'Anton',
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [handOverBrowserId, browserOpen, browserMinimized, onSend, task?.harness, browserOn, liveBrowserId]);
 
+  // The artifact viewer's chat bar (ENG-4227) mirrors the agent's reply to a
+  // message it sent into this chat, from these same messages.
+  // Quick edits from the artifact viewer, adjacent ones merged into one card.
+  const quickEditPlan = planQuickEditCards(visibleMessages);
+  const chatTranscript = useMemo(
+    () => ({ conversationId: task?.id || null, messages: task?.messages || [] }),
+    [task?.id, task?.messages],
+  );
+
   return (
+    <ChatTranscriptContext.Provider value={chatTranscript}>
     <BrowserHandOverContext.Provider value={handOverValue}>
     <div
       ref={chatRef}
@@ -3111,6 +3205,8 @@ export default function ChatView({
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
+                // An old quick-edit request: the card after it shows it.
+                if (quickEditPlan.hidden.has(i)) return null;
                 const orphan = isOrphanUser(i);
                 // A question the server never saw has no id; it is removed
                 // locally, by the row itself, once nothing is streaming.
@@ -3137,6 +3233,7 @@ export default function ChatView({
                     deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
                     addonLabel={m._addon ? t(`chatView.addon.${addonRowLabel('saved').key}`, { agent: agentLabel || 'Anton' }) : null}
+                    onOpenArtifact={handleArtifactOpen}
                     onEdit={pane ? null : (text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
@@ -3697,6 +3794,18 @@ export default function ChatView({
                   />
                 );
               }
+              // Quick edits from the artifact viewer's bar (ENG-4227): one
+              // card per burst, without a turn's toolbar or agent label.
+              // Adjacent cards are drawn as one, at the first (planQuickEditCards).
+              if (quickEditPlan.hidden.has(i)) return null;
+              const quickEditGroup = quickEditPlan.cards.get(i);
+              if (quickEditGroup) {
+                return (
+                  <div key={messageKey(m, i)} className={deletingThisTurn ? 'opacity-60' : undefined}>
+                    <QuickEditGroupCard group={quickEditGroup} onOpenArtifact={handleArtifactOpen} />
+                  </div>
+                );
+              }
               // A turn that failed before producing anything renders no
               // bubble — the blank block above billing cards (ENG-1304).
               // Same predicate keeps isOrphanUser's delete affordance honest.
@@ -4161,5 +4270,6 @@ export default function ChatView({
       </Modal>
     </div>
     </BrowserHandOverContext.Provider>
+    </ChatTranscriptContext.Provider>
   );
 }

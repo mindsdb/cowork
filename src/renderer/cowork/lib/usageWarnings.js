@@ -222,6 +222,14 @@ export function isBalanceEmpty(balance) {
   return !!balance && (balance.alert === 'depleted' || balance.canConsume === false);
 }
 
+/** What in a usage read decides model locks, as a comparable string (null if unknown). Prefers
+ *  `walletCanConsume` (set for members too; never shown in UI), else the balance (ENG-4147). */
+export function modelAccessSignature(usage) {
+  if (!usage?.reachable) return null;
+  const walletEmpty = typeof usage.walletCanConsume === 'boolean' ? !usage.walletCanConsume : isBalanceEmpty(usage.balance);
+  return `${walletEmpty}|${freeAllowanceState(usage).status}`;
+}
+
 /** What a stop on `included_allowance_exhausted` says, for the stopped-task
  *  card and the Settings probe notice alike. The drained-wallet card's
  *  spent-allowance branch describes the same state, so it uses this too.

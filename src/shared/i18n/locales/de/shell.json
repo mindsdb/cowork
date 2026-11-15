@@ -360,7 +360,12 @@
     "total": "{count} insgesamt",
     "noTasks": "Noch keine Aufgaben.",
     "untitledTask": "Unbenannte Aufgabe",
-    "seeAllTasks": "Alle Aufgaben anzeigen"
+    "seeAllTasks": "Alle Aufgaben anzeigen",
+    "recents": "Zuletzt verwendet",
+    "showFewer": "Weniger anzeigen",
+    "seeAllCount": "Alle {count} anzeigen",
+    "signedIn": "Angemeldet",
+    "logOut": "Abmelden"
   },
   "dispatch": {
     "qrAriaLabel": "Dekorativer Kopplungscode",

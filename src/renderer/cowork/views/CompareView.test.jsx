@@ -21,9 +21,9 @@ vi.mock('../../platform/host', () => ({
 // Base UI pickers are not drivable in happy-dom; a native select stands in so
 // the test exercises what the screen does with a pick, not the popup.
 vi.mock('../components/ModelSelect.jsx', () => ({
-  default: ({ value, onValueChange, options, modelEfforts, effort, onEffortChange }) => (
+  default: ({ value, onValueChange, options, modelEfforts, effort, onEffortChange, onOpenChange }) => (
     <span>
-      <select aria-label="model" value={value} onChange={(e) => onValueChange(e.target.value)}>
+      <select aria-label="model" value={value} onFocus={() => onOpenChange?.(true)} onChange={(e) => onValueChange(e.target.value)}>
         <option value="">—</option>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -267,6 +267,15 @@ describe('CompareView', () => {
       meta?.remove();
       deployment.PLATFORM_UI = true;
     }
+  });
+
+  it('re-checks model availability when a side picker opens', async () => {
+    mockHistory([]);
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    render(<CompareView models={models} modelMeta={{ modelEnabled: {}, onRefresh }} projects={projects} />);
+    const [modelA] = await screen.findAllByLabelText('model');
+    fireEvent.focus(modelA);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
   it('will not start a comparison a side could not pay for', async () => {

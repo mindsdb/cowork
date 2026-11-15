@@ -551,6 +551,27 @@ describe('the desktop browser pane', () => {
     expect(calls('handBack')).toEqual([['handBack', 't-abc']]);
   });
 
+  /* As the web viewer does, so the chat carries on a task whose turn ended
+     while the person held the browser, however the browser came back. */
+  it('reports who holds the browser to the chat, once per change', async () => {
+    const onControl = vi.fn();
+    render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} onControl={onControl} />);
+    emit(state());
+    expect(onControl.mock.calls).toEqual([['agent', '', false]]);
+    // A page change alone is no change of hands.
+    emit(state({ url: 'https://shop.example.test/checkout', loading: true }));
+    expect(onControl).toHaveBeenCalledTimes(1);
+    emit(state({ watching: true, control: { holder: 'human', reason: 'Tick the policy box', since: 2, seq: 1, by: 'agent' } }));
+    expect(onControl).toHaveBeenLastCalledWith('human', 'Tick the policy box', true);
+    // The watch hands it back by itself, as the person's Done.
+    emit(state({ control: { holder: 'agent', reason: '', since: 3, seq: 2, by: 'person' } }));
+    expect(onControl).toHaveBeenLastCalledWith('agent', '', false);
+    expect(onControl).toHaveBeenCalledTimes(3);
+    // A closed browser holds nothing.
+    emit({ ...state(), open: false });
+    expect(onControl).toHaveBeenCalledTimes(3);
+  });
+
   it("says sign-ins stay, in Settings' words, while the person holds the browser", async () => {
     render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} />);
     const providerLine = "Cowork's page reads and screenshots go to the model provider that serves your turn.";

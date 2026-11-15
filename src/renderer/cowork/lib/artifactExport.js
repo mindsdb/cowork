@@ -7,7 +7,9 @@
  * come from the server's `exportFormats`, so an older server, which sends
  * none, shows no Export at all.
  */
-import { downloadArtifactFile } from './artifactDownload';
+import { host } from '../../platform/host';
+import { MOBILE_DOWNLOAD_NOTE } from './browserDownload';
+import { saveArtifactFile } from './artifactDownload';
 import { requestArtifactExport } from './artifactWorkspaceApi';
 import i18n from '../../lib/i18n';
 
@@ -82,7 +84,8 @@ function omittedReferencesMessage(count) {
 
 /**
  * Saves the exported file and resolves whether it saved, through
- * downloadArtifactFile with both URLs. Web fetches the draft URL with the
+ * saveArtifactFile with both URLs. It reports no download: the caller reports
+ * the export itself. Web fetches the draft URL with the
  * bearer, and the serve URL only when the server sent no draft URL. Desktop
  * saves through the serve URL, and through the drafts route when the server
  * sent an empty one.
@@ -91,7 +94,7 @@ function omittedReferencesMessage(count) {
  * @returns {Promise<boolean>}
  */
 export async function saveExportedFile(result) {
-  return downloadArtifactFile({ serveUrl: result.serveUrl, draftUrl: result.draftUrl }, { actionPath: result.filename });
+  return saveArtifactFile({ serveUrl: result.serveUrl, draftUrl: result.draftUrl }, { actionPath: result.filename });
 }
 
 /**
@@ -103,6 +106,7 @@ export async function saveExportedFile(result) {
  * @returns {Promise<ExportNotice | null>}
  */
 export async function runArtifactExport(draftUrl, format) {
+  if (host.isMobileShell) return { tone: 'error', text: MOBILE_DOWNLOAD_NOTE };
   let result;
   try {
     result = await requestArtifactExport(draftUrl, format);

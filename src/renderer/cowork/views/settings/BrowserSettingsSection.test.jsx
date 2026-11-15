@@ -628,6 +628,51 @@ describe('BrowserSettingsSection', () => {
       expect(testDecisionModel).toHaveBeenCalledWith({ url: 'https://decide.example.test/d', apiKey: '***', model: 'jev-own' });
     });
 
+    describe("when the organization's own decision model can't pick the steps here", () => {
+      const OWN_UNUSED = { ...NO_DECISIONS, own_decisions_unused: true };
+      const OWN_UNUSED_LINE = "Your organization's decision model can't pick browser steps here yet. Until it can, the browser needs Jev on MindsHub.";
+
+      it.each([
+        ['an admin', { ...OWN_UNUSED, can_set_decisions_model: true }],
+        ['a member', OWN_UNUSED],
+      ])('tells %s so, with no prompt to set one up, no fields and a switch that stays off', async (_who, status) => {
+        fetchBrowseStatus.mockResolvedValue(status);
+        renderSection({ browserEnabled: true, decisionModelUrl: 'https://decide.example.test/d', decisionModelApiKey: '***' });
+        expect(await screen.findByText(OWN_UNUSED_LINE)).toBeInTheDocument();
+        expect(screen.queryByText(/needs a decision model/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Ask your admin/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/no decision model anymore/)).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Decision model endpoint')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Test and turn on' })).not.toBeInTheDocument();
+        const browserSwitch = screen.getByRole('switch', { name: 'Browser mode' });
+        expect(browserSwitch).not.toBeChecked();
+        expect(browserSwitch).toHaveAttribute('aria-disabled', 'true');
+      });
+
+      it.each([
+        ['an admin to set one up, with the fields', ADMIN, /^Off: there's no decision model anymore\. To pick its steps quickly, Cowork needs a decision model\./, 1],
+        ['a member to ask their admin', NO_DECISIONS, /^Off: there's no decision model anymore\. Ask your admin/, 0],
+      ])('without the flag, still tells %s', async (_who, status, prompt, endpointFields) => {
+        for (const answer of [status, { ...status, own_decisions_unused: false }]) {
+          fetchBrowseStatus.mockResolvedValue(answer);
+          const { unmount } = renderSection({ browserEnabled: true });
+          expect(await screen.findByText(prompt)).toBeInTheDocument();
+          expect(screen.queryByText(OWN_UNUSED_LINE)).not.toBeInTheDocument();
+          expect(screen.queryAllByLabelText('Decision model endpoint')).toHaveLength(endpointFields);
+          unmount();
+        }
+      });
+
+      it('says nothing of it while Jev on MindsHub picks the steps', async () => {
+        fetchBrowseStatus.mockResolvedValue({ ...AVAILABLE, decisions_model: 'mindshub', can_set_decisions_model: true, own_decisions_unused: true });
+        renderSection({ browserEnabled: true });
+        expect(await screen.findByRole('switch', { name: 'Approve browser steps' })).toBeInTheDocument();
+        expect(screen.getByRole('switch', { name: 'Browser mode' })).toBeChecked();
+        expect(screen.queryByText(OWN_UNUSED_LINE)).not.toBeInTheDocument();
+      });
+    });
+
     it('shows the browser as before with a decisions model, and on a server that predates the field', async () => {
       for (const status of [{ ...AVAILABLE, decisions_model: 'own' }, AVAILABLE]) {
         fetchBrowseStatus.mockResolvedValue(status);

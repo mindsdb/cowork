@@ -360,7 +360,12 @@
     "total": "合計{count}件",
     "noTasks": "タスクはまだありません。",
     "untitledTask": "無題のタスク",
-    "seeAllTasks": "すべてのタスクを表示"
+    "seeAllTasks": "すべてのタスクを表示",
+    "recents": "最近",
+    "showFewer": "表示を減らす",
+    "seeAllCount": "すべて表示（{count}）",
+    "signedIn": "サインイン済み",
+    "logOut": "ログアウト"
   },
   "dispatch": {
     "qrAriaLabel": "装飾用のペアリングコード",

@@ -24,6 +24,12 @@
       "readyTimeoutMs": "미리 보기에 시간이 너무 오래 걸렸습니다. 미리 보기 한도인 {seconds}초 안에 시작되지 않았습니다.",
       "progressTimeoutMs": "미리 보기에 시간이 너무 오래 걸렸습니다. 미리 보기 한도인 {seconds}초 동안 진행되지 않았습니다."
     },
+    "truncatedMobile": {
+      "xlsx": "각 시트에서 최대 {rows, number}행, {columns, number}열까지 표시합니다.",
+      "pptx": "{count, plural, other {처음 #개 슬라이드를 표시합니다.}}",
+      "pdf": "처음 {pages, number}페이지를 표시합니다.",
+      "docx": "이 문서의 일부를 표시합니다."
+    },
     "truncated": {
       "xlsx": "각 시트에서 최대 {rows, number}행, {columns, number}열까지 표시합니다. 전체 시트는 {action, select, download {다운로드하여} other {‘열기’로}} 확인할 수 있습니다.",
       "pptx": "{count, plural, other {처음 #개 슬라이드를 표시합니다.}} 전체 슬라이드는 {action, select, download {다운로드하여} other {‘열기’로}} 확인할 수 있습니다.",
@@ -161,7 +167,7 @@
   "modeTabs": {
     "ariaLabel": "아티팩트 모드",
     "preview": "미리 보기",
-    "edit": "편집",
+    "source": "소스",
     "review": "검토",
     "editDisabled": "아티팩트 소유자만 편집할 수 있습니다",
     "reviewDisabled": "이 아티팩트에서는 검토를 사용할 수 없습니다",
@@ -335,7 +341,12 @@
     "reported": "{count, plural, other {미리 보기에서 오류 #개가 보고되었습니다}}",
     "line": "{line}행",
     "title": "미리 보기 오류",
-    "ariaLabel": "미리 보기 오류, {count}개"
+    "ariaLabel": "미리 보기 오류, {count}개",
+    "kind": {
+      "rejection": "처리되지 않은 Promise 거부",
+      "console": "콘솔 오류",
+      "http": "서버 오류"
+    }
   },
   "liveAppPreview": {
     "failure": "이 앱에 연결하지 못했습니다. 다시 불러와서 다시 시도하거나 브라우저에서 여세요.",
@@ -441,7 +452,8 @@
     "discardMessage": "에이전트의 변경 사항은 이 아티팩트의 기록에 남지만, 제안은 닫히고 적용되지 않습니다.",
     "discardFailed": "해당 제안을 취소하지 못했습니다.",
     "deleteTitle": "아티팩트를 삭제할까요?",
-    "deleteMessage": "‘{title}’이(가) 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다."
+    "deleteMessage": "‘{title}’이(가) 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+    "changedElsewhere": "이 아티팩트가 변경되었습니다. 다시 불러오기"
   },
   "artifactsView": {
     "sort": {
@@ -630,5 +642,113 @@
         "prompt": "메모 앱의 새 다크 모드 출시 공지를 세 가지 버전으로 작성해 주세요. 280자 이내의 트윗, 120단어 이내의 친근한 이메일, 50단어 이내의 변경 로그 항목입니다. 각각 해당 채널에 어울리는 톤이어야 합니다."
       }
     }
+  },
+  "quickEdit": {
+    "ariaLabel": "빠른 편집",
+    "inputLabel": "변경 요청",
+    "placeholder": "변경 요청…",
+    "send": "보내기",
+    "route": {
+      "edit": "직접 편집하는 중…",
+      "agent": "에이전트에게 넘기는 중…"
+    },
+    "stage": {
+      "routing": "진행 방법을 정하는 중…",
+      "reading": "아티팩트를 읽는 중…",
+      "writing": "변경 사항을 작성하는 중…",
+      "checking": "미리보기를 확인하는 중…",
+      "fixing": "확인에서 발견된 문제를 고치는 중…"
+    },
+    "handingOff": "채팅으로 보내는 중…",
+    "applied": "완료했습니다.",
+    "undo": "실행 취소",
+    "undoing": "실행 취소하는 중…",
+    "undone": "실행 취소했습니다.",
+    "noop": "변경된 내용이 없습니다.",
+    "failed": "이 변경은 여기서 할 수 없습니다.",
+    "askAgent": "대신 에이전트에게 요청",
+    "errors": {
+      "stale": "연 이후 이 아티팩트가 변경되었습니다. 다시 불러왔으니 다시 시도하세요.",
+      "busy": "이 아티팩트의 다른 변경이 아직 진행 중입니다. 끝난 후 다시 시도하세요.",
+      "failed": "변경할 수 없습니다.",
+      "stopped": "변경이 끝나기 전에 중단되었습니다.",
+      "chatFailed": "채팅에서 계속할 수 없습니다. 채팅에서 다시 시도하세요.",
+      "filesChanged": "이 변경이 건드린 파일이 이후 다시 변경되어 여기서 실행 취소할 수 없습니다.",
+      "filesChangedNamed": "{paths}이(가) 이후 다시 변경되어 이 변경을 여기서 실행 취소할 수 없습니다.",
+      "alreadyUndone": "이 변경은 이미 실행 취소되었습니다.",
+      "repairPending": "이 아티팩트에 대한 에이전트 제안이 결정을 기다리고 있습니다. 먼저 수락하거나 버리세요.",
+      "undoGone": "이 변경은 더 이상 여기서 실행 취소할 수 없습니다. 기록에서 되돌리세요."
+    },
+    "placeholderChat": "이 아티팩트에 대해 묻거나 변경 요청…",
+    "openInChat": "채팅에서 열기",
+    "needsAnswer": "채팅에서 답변이 필요합니다",
+    "workingInChat": "채팅에서 작업 중…",
+    "sentToChat": "채팅으로 보냈습니다.",
+    "chatStopped": "채팅 턴이 답변 전에 중단되었습니다.",
+    "unsavedConfirm": {
+      "title": "저장하지 않은 변경 사항이 있습니다. 보내기 전에 저장할까요?",
+      "save": "저장하고 보내기",
+      "discard": "버리고 보내기",
+      "cancel": "취소",
+      "saveFailed": "변경 사항을 저장하지 못해 아무것도 보내지 않았습니다."
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "통계",
+      "hide": "통계 숨기기"
+    },
+    "title": "통계",
+    "close": "통계 패널 닫기",
+    "loading": "통계 불러오는 중",
+    "retry": "다시 시도",
+    "trackViews": "조회수 집계",
+    "trackingOff": "집계가 꺼져 있습니다. 켜면 조회수 집계가 시작됩니다.",
+    "metrics": {
+      "viewsInPeriod": "조회수(30일)",
+      "uniqueViewers": "순 방문자(30일)",
+      "totalViews": "총 조회수",
+      "lastViewed": "마지막 조회"
+    },
+    "daysInUtc": "날짜는 UTC 기준",
+    "chartLabel": "일별 조회수",
+    "viewers": {
+      "email": "이메일",
+      "lastSeen": "마지막 방문",
+      "restrictedOnly": "방문자 이름은 공유가 제한된 경우에만 기록됩니다."
+    },
+    "noViews": "아직 조회수가 없습니다",
+    "errors": {
+      "otherAccount": "이 계정에서는 통계를 사용할 수 없습니다.",
+      "unavailable": "이 아티팩트에서는 통계를 사용할 수 없습니다.",
+      "reconnect": "통계를 보려면 MindsHub를 다시 연결하세요.",
+      "temporarilyUnavailable": "통계를 일시적으로 사용할 수 없습니다.",
+      "loadFailed": "통계를 불러올 수 없습니다."
+    }
+  },
+  "refPill": {
+    "open": "{title} 열기"
+  },
+  "quickEditCard": {
+    "title": "뷰어에서 편집함",
+    "count": "{count, plural, other {변경 #개}}",
+    "undone": "실행 취소됨",
+    "showAll": "{count, plural, other {모두 보기(#개)}}",
+    "showFewer": "간단히 보기"
+  },
+  "layers": {
+    "ariaLabel": "뷰어 레이어",
+    "source": "실시간 편집",
+    "comments": "댓글",
+    "sourceOffPrompt": {
+      "title": "실시간 편집을 끌까요?",
+      "message": "실시간 편집에서 저장하지 않은 변경 사항이 삭제됩니다.",
+      "confirmLabel": "변경 사항 삭제"
+    }
+  },
+  "address": {
+    "draft": "초안",
+    "copy": "주소 복사",
+    "copied": "복사됨"
   }
 }
