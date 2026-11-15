@@ -1037,6 +1037,78 @@ describe('the isolated-world page read', () => {
     expect(performance.now() - started).toBeLessThan(1000);
   });
 
+  it("reads a card number joined to an identifier's number, a name, a barcode or an SSN as ordinary unless that name holds card or cc, so a read, a type and a screenshot treat each as page.json's rule does", () => {
+    document.body.innerHTML = `
+      <input data-box id="card-account" aria-label="Card account number or gift card number" value="4111111111111111">
+      <input data-box id="card-account-split" name="cardAccountNumberOrGiftCardNumber" aria-label="Tender" value="4000056655665556">
+      <input data-box id="cc-no" aria-label="CC no. or gift card number" value="4012888888881881">
+      <input data-box id="platinum" aria-label="Platinum or gift card number" value="3530111333300000">
+      <input data-box id="number-alone" aria-label="Number or gift card number" value="5555555555554444">
+      <input data-box id="visa-number" aria-label="Visa number or gift card number" value="4242424242424242">
+      <input data-box id="account" aria-label="Account number or rewards card number" value="AC-1001">
+      <input data-box id="a-number" aria-label="A-number or green card number" value="A123456789">
+      <input data-box id="iccid" aria-label="ICCID or SIM card number" value="8901260123456789012">
+      <input data-box id="account-hash" aria-label="Account# or rewards card number" value="AC-1002">
+      <input data-box id="order-no" aria-label="Order no. or gift card number" value="ORD-77">
+      <input data-box id="account-split" name="accountNumberOrRewardsCardNumber" aria-label="Rewards" value="RW-9">
+      <input data-box id="barcode" aria-label="Barcode or library card number" value="21234000123456">
+      <input data-box id="last-name" aria-label="Last name or library card number" value="Rivera">
+      <input data-box id="ssn" aria-label="SSN or green card number" value="SRC1234567890">`;
+    layout();
+    const world = freshWorld();
+    const page = snapshot(world);
+    const byName = Object.fromEntries(page.elements.map((e) => [e.name, e]));
+    const named = [
+      'Card account number or gift card number', 'Tender', 'CC no. or gift card number', 'Platinum or gift card number',
+      'Number or gift card number', 'Visa number or gift card number',
+    ];
+    for (const name of named) {
+      expect(byName[name], name).toEqual({ id: byName[name].id, role: 'textbox', name, value_hidden: true });
+    }
+    for (const [name, value] of [
+      ['Account number or rewards card number', 'AC-1001'], ['A-number or green card number', 'A123456789'],
+      ['ICCID or SIM card number', '8901260123456789012'], ['Account# or rewards card number', 'AC-1002'],
+      ['Order no. or gift card number', 'ORD-77'], ['Rewards', 'RW-9'], ['Barcode or library card number', '21234000123456'],
+      ['Last name or library card number', 'Rivera'], ['SSN or green card number', 'SRC1234567890'],
+    ]) {
+      expect(byName[name], name).toMatchObject({ role: 'textbox', value });
+    }
+    expect(JSON.stringify(page)).not.toMatch(/4111111111111111|4000056655665556|4012888888881881|3530111333300000|5555555555554444|4242424242424242/);
+    // A type with focused true reads the same rule where the focus rests.
+    const typing = (field: string) => {
+      (document.getElementById(field) as HTMLElement).focus();
+      return (pageWorld(document, world, { kind: 'focusedTyping' }) as FocusedTyping).cardNamed;
+    };
+    const fields = [
+      'card-account', 'card-account-split', 'cc-no', 'platinum', 'number-alone', 'visa-number',
+      'account', 'a-number', 'iccid', 'account-hash', 'order-no', 'account-split', 'barcode', 'last-name', 'ssn',
+    ];
+    expect(fields.map(typing)).toEqual(fields.map((_, i) => i < named.length));
+    // A screenshot blacks out the card-named fields, and no ordinary card's number.
+    expect(secretBoxes().secrets).toEqual(fields.slice(0, named.length).map((field) => {
+      const { x, y, width, height } = document.getElementById(field)!.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+  });
+
+  it("answers a long run of joins before an exempt card's number at once, in every attribute, since the conjunction pattern reads the last join from one start", () => {
+    /* Each text before the gift card's number is a run of joins with no
+       join at its end, so the number goes and the field is ordinary. Every
+       attribute holds it, so the rule tests the conjunction pattern on it
+       eight times: each value and its split form. A pattern whose last join
+       may start after any character tries each start in turn: in V8, ', '
+       4,000 times and then x took 0.25 s a test, 2 s for this field. */
+    for (const run of [`${', '.repeat(4000)}x`, `${'or '.repeat(4000)}x`, `${'and/or '.repeat(2000)}x`, `${' ,- '.repeat(3000)}x`]) {
+      const field = document.createElement('input');
+      for (const attr of CARD_FIELD_ATTRIBUTES) field.setAttribute(attr, `${run}gift card number`);
+      document.body.replaceChildren(field);
+      field.focus();
+      const started = performance.now();
+      expect((pageWorld(document, freshWorld(), { kind: 'focusedTyping' }) as FocusedTyping).cardNamed, run.slice(0, 20)).toBe(false);
+      expect(performance.now() - started, run.slice(0, 20)).toBeLessThan(1000);
+    }
+  });
+
   it("tests the card rule's payment pattern afresh on each field of a read, so the payment word one field's name held never hides the next field's", () => {
     /* PrePaid holds its payment word only before the word split, which reads
        it as Pre Paid. A payment pattern compiled with a g flag would test it
