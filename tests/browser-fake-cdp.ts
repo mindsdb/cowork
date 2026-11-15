@@ -48,6 +48,15 @@ export interface FakeFrame {
   owner?: { content: Box; border: Box; quad?: number[] } | null;
   /** The frame's world never answers. */
   hangs?: boolean;
+  /** What the frame's own world answers a look for a secret (frameSecret):
+      true when it finds a secret, card-named or sign-in field or a payment
+      frame in its document or a frame it enters, null when it finds none
+      but meets a frame it can't enter, false (the default) otherwise. */
+  holds?: boolean | null;
+  /** Where its owner sits as a page read lists it (RawFrame's `path`): the
+      main frame's world answers that owner for this path and the frame's
+      address (frameOwner). */
+  path?: number[];
 }
 
 /** What DOM.getNodeForLocation finds at a document point: the node's frame,
@@ -110,6 +119,12 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
   const sessionOf = (frame: FakeFrame) => `session-${frame.id}`;
   const frameOfSession = (sessionId: string | undefined) => model.frames.find((f) => f.remote && sessionOf(f) === sessionId);
   const frame = (id: unknown) => model.frames.find((f) => f.id === id);
+  /* The nearest frame of another process a frame sits in, whose session
+     auto-attaches it, or none for one the page's own session does. */
+  const remoteAbove = (inner: FakeFrame): FakeFrame | undefined => {
+    for (let at = frame(inner.parentId); at; at = frame(at.parentId)) if (at.remote) return at;
+    return undefined;
+  };
   const tree = (root: FakeFrame): unknown => ({
     frame: { id: root.id, url: root.url, ...(root.parentId ? { parentId: root.parentId } : {}), securityOrigin: root.origin ?? new URL(root.url).origin },
     childFrames: model.frames.filter((f) => f.parentId === root.id && !f.remote).map(tree),
@@ -117,12 +132,18 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
 
   const answer = (method: string, params: Record<string, unknown>, sessionId: string | undefined): unknown => {
     switch (method) {
-      case 'Target.setAutoAttach':
-        for (const remote of model.frames.filter((f) => f.remote)) {
+      case 'Target.setAutoAttach': {
+        /* As Chromium attaches them: each frame of another process whose
+           nearest such frame above it is this session's, none for the
+           page's own. */
+        const above = sessionId === undefined ? undefined : frameOfSession(sessionId);
+        if (sessionId !== undefined && !above) throw new Error('No session with given id');
+        for (const remote of model.frames.filter((f) => f.remote && remoteAbove(f) === above)) {
           const event = { sessionId: sessionOf(remote), targetInfo: { targetId: remote.id, type: 'iframe', url: remote.url, parentFrameId: remote.parentId } };
           for (const listener of listeners) listener({}, 'Target.attachedToTarget', event, sessionId ?? '');
         }
         return {};
+      }
       case 'Page.getFrameTree': {
         const root = sessionId === undefined ? frame(MAIN_FRAME)! : frameOfSession(sessionId);
         if (!root) throw new Error('No session with given id');
@@ -139,6 +160,8 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
       }
       case 'DOM.describeNode': {
         if (params.objectId === 'focused-owner') return { node: { localName: 'iframe', nodeName: 'IFRAME', frameId: model.focusedOwnerOf } };
+        const listed = /^owner:(.+)$/.exec(String(params.objectId ?? ''));
+        if (listed) return { node: { localName: 'iframe', nodeName: 'IFRAME', frameId: listed[1] } };
         const entry = /^(?:entry|focused):(.+):(\d+)$/.exec(String(params.objectId ?? ''));
         if (entry) return { node: { localName: 'input', nodeName: 'INPUT', backendNodeId: Number(entry[2]) } };
         // The element the focus stops on in a frame, at a closed-root level: its closed root, when it keeps one.
@@ -204,6 +227,13 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         if (expression.includes('"kind":"focusedEntry"')) return node(target.entry === undefined ? null : `entry:${target.id}:${target.entry}`);
         if (expression.includes('"kind":"focusedNode"')) return node(target.focused === undefined ? null : `focused:${target.id}:${target.focused}`);
         if (expression.includes('"kind":"focusedSecret"')) return { result: { type: 'object', value: focus } };
+        const owner = /\{"kind":"frameOwner","path":(\[[\d,]*\]),"url":("(?:[^"\\]|\\.)*")\}/.exec(expression);
+        if (owner) {
+          const [path, url] = [owner[1], JSON.parse(owner[2]) as string];
+          const held = model.frames.find((f) => JSON.stringify(f.path) === path && f.url === url);
+          return node(held ? `owner:${held.id}` : null);
+        }
+        if (expression.includes('"kind":"frameSecret"')) return { result: { type: 'object', value: target.holds === undefined ? false : target.holds } };
         if (expression.includes('"kind":"focusedTyping"')) return { result: { type: 'object', value: { cardNamed: target.cardNamed === true, inControl: target.inControl === true } } };
         if (expression.includes('"kind":"secretBoxes"')) {
           const viewport = target.owner ? { width: target.owner.content.width, height: target.owner.content.height } : SECRETS_NONE.viewport;

@@ -62,6 +62,8 @@ import {
   type HitTestResult,
   isPaymentAddress,
   type LocateResult,
+  type LookedFrames,
+  NOTHING_LOOKED,
   PAGE_READ_TIMEOUT_MS,
   PAGE_WORLD_ID,
   pageAnswer,
@@ -71,6 +73,8 @@ import {
   type RawSnapshot,
   screenshotMasks,
   SECRET_SEARCH_DEPTH,
+  type SecretLook,
+  secretLook,
   type SelectResult,
   type TypingFocus,
 } from './browser-page-script';
@@ -124,7 +128,8 @@ function withTimeout<T>(work: Promise<T>, ms: number, onTimeout: () => Error): P
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /* A frame as a page read lists it, with nothing the world read there. */
-const unread = (frame: RawFrame): RawFrame => ({ url: frame.url, read: false, box: frame.box, at: frame.at, offscreen: frame.offscreen });
+const unread = (frame: RawFrame): RawFrame =>
+  ({ url: frame.url, read: false, box: frame.box, at: frame.at, offscreen: frame.offscreen, secret: frame.secret, path: frame.path });
 
 const tookOver = () => new BridgeError('human_in_control', 'The person took over the browser.');
 
@@ -376,15 +381,21 @@ export class ElectronTab implements TabView {
      FRAME_READ_RULES.read (FRAMES_READ) the look keeps read stay read
      (keepSeen). Asked for no frame reads (PageReadOptions' `frames` false,
      the hand-over watch's), the world lists every frame unread, so nothing
-     is looked at. Asked for the focus, the read carries `focus` when the
-     debugger names the node the focus rests on (focusToken); otherwise it
-     never attaches the debugger. */
+     is looked at, and that read never reaches anton. Otherwise each frame
+     the world couldn't look into for page.json's frame `secret`
+     (secretLook) is looked into through the debugger, FRAMES_PHASE_MS from
+     the read's start at most. Asked for the focus, the read carries
+     `focus` when the debugger names the node the focus rests on. Neither
+     asked, it never attaches the debugger (throughDebugger). */
   async read(maxText: number, options: PageReadOptions = {}): Promise<PageSnapshot> {
+    const deadline = Date.now() + FRAMES_PHASE_MS;
     const rules = options.frames === false ? { ...FRAME_READ_RULES, read: 0 } : FRAME_READ_RULES;
     const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: rules });
     const inside = this.framesInside(new Set(raw.frames.filter((frame) => frame.read).map((frame) => frame.url)));
-    const [frames, focus] = await Promise.all([this.keepSeen(raw.frames, raw.viewport), options.focus ? this.focusToken() : null]);
-    const page = pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls(), inside);
+    const childFrameUrls = this.childFrameUrls();
+    const look = options.frames === false ? null : secretLook(raw, childFrameUrls, inside);
+    const [frames, { focus, looked }] = await Promise.all([this.keepSeen(raw.frames, raw.viewport), this.throughDebugger(options.focus === true, look, deadline)]);
+    const page = pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), childFrameUrls, inside, looked);
     return focus === null ? page : { ...page, focus };
   }
 
@@ -395,13 +406,22 @@ export class ElectronTab implements TabView {
     return this.inWorld<HandbackElement | null>({ kind: 'handbackElement', id });
   }
 
-  /* page.json's `focus`, read through the debugger for this read only
+  /* What a page read reads through the debugger, in one attach for this
+     read only: page.json's `focus` when `focus` is asked
      (FrameReads.focusToken, which names a frame's element when the focus is
-     inside a frame it can't read), or null when nothing has the focus, the
-     debugger can't be had (something else holds it, or the person took
-     over and it was detached) or the read fails or times out. */
-  private focusToken(): Promise<string | null> {
-    return withDebugger(this.contents.debugger, (session) => new FrameReads(session).focusToken()).catch(() => null);
+     inside a frame it can't read), null when nothing has the focus; and
+     page.json's frame `secret` for `look` (FrameReads.frameSecrets), until
+     `deadline`. Neither when the debugger can't be had (something else
+     holds it, or the person took over and it was detached) or the read
+     fails; the focus, too, when its read times out. */
+  private async throughDebugger(focus: boolean, look: SecretLook | null, deadline: number): Promise<{ focus: string | null; looked: LookedFrames }> {
+    const none = { focus: null, looked: NOTHING_LOOKED };
+    if (!focus && !look) return none;
+    return withDebugger(this.contents.debugger, async (session) => {
+      const reads = new FrameReads(session);
+      const [token, looked] = await Promise.all([focus ? reads.focusToken() : null, look ? reads.frameSecrets(look, deadline) : NOTHING_LOOKED]);
+      return { focus: token, looked };
+    }).catch(() => none);
   }
 
   /* The frames the page's world read, kept read as the web pod reads them:

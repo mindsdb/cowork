@@ -301,16 +301,22 @@ export interface FramePoint {
 /** A rendered child frame. `url` is origin and path for http and https,
     about:blank or about:srcdoc, otherwise the scheme alone. A placed frame
     has its `box` and `at`; `box` is null, with no `at`, for a frame the host
-    can't place. Only a read frame carries what it holds. */
+    can't place. Only a read frame carries what it holds. `secret` is true,
+    read or not, when the frame, or a frame inside it at any depth, is on a
+    PAYMENT_FRAME_HOSTS host or holds a secret, card-named or sign-in field,
+    and left out for any other frame and for one the host couldn't look into
+    within FRAMES_PHASE_MS; anton watches no hand-over on a page that lists
+    one. */
 export type PageFrame =
-  | { url: string; read: false; box: null }
-  | { url: string; read: false; box: FrameBox; at: FramePoint; offscreen?: true }
+  | { url: string; read: false; box: null; secret?: true }
+  | { url: string; read: false; box: FrameBox; at: FramePoint; offscreen?: true; secret?: true }
   | {
     url: string;
     read: true;
     box: FrameBox;
     at: FramePoint;
     offscreen?: true;
+    secret?: true;
     elements: PageFrameElement[];
     text: string;
     truncated: boolean;

@@ -1368,9 +1368,9 @@ describe('frames', () => {
     place(document.getElementById('hidden')!, 10, 340, 300, 100);
     const raw = snapshot(freshWorld());
     expect(raw.frames).toEqual([
-      { url: 'https://shop.other.test/buy', read: false, box: { x: 10, y: 10, width: 300, height: 100 }, at: { x: 10, y: 10 }, offscreen: false },
-      { url: 'about:srcdoc', read: false, box: { x: 10, y: 120, width: 300, height: 100 }, at: { x: 10, y: 120 }, offscreen: false },
-      { url: 'https://ads.example.test/', read: false, box: { x: 10, y: 230, width: 300, height: 100 }, at: { x: 10, y: 230 }, offscreen: false },
+      { url: 'https://shop.other.test/buy', read: false, box: { x: 10, y: 10, width: 300, height: 100 }, at: { x: 10, y: 10 }, offscreen: false, secret: null, path: [0] },
+      { url: 'about:srcdoc', read: false, box: { x: 10, y: 120, width: 300, height: 100 }, at: { x: 10, y: 120 }, offscreen: false, secret: false, path: [1] },
+      { url: 'https://ads.example.test/', read: false, box: { x: 10, y: 230, width: 300, height: 100 }, at: { x: 10, y: 230 }, offscreen: false, secret: null, path: [2] },
     ]);
     expect(JSON.stringify(raw)).not.toContain('Readable');
     expect(pageAnswer(raw, [], [], []).frames.map((frame) => frame.box)).toEqual([
@@ -1625,6 +1625,90 @@ describe('frames', () => {
     expect(JSON.stringify(page)).not.toMatch(/4242|Choose an account|Allow access|Card/);
   });
 
+  it("marks secret each frame it lists, read or not, that holds a secret, card-named or sign-in field or sits on a payment host, or holds such a frame at any depth, and none it finds holds neither; one where it meets another site's frame it leaves to main's look", async () => {
+    document.body.innerHTML = `
+      <iframe id="card" srcdoc="<p>Card details</p><input name='cardnumber' placeholder='Card number'>"></iframe>
+      <iframe id="signin" srcdoc="<input type='email' autocomplete='username'><input type='password'>"></iframe>
+      <iframe id="pay" srcdoc="<p>Card details</p><label>Billing ZIP code <input name='zip'></label><iframe id='stripe' src='https://js.stripe.com/v3/elements-inner-card'></iframe>"></iframe>
+      <iframe id="tiny" srcdoc="<iframe src='https://js.stripe.com/v3/elements-inner-card'></iframe>"></iframe>
+      <iframe id="deep" srcdoc="<p>Payment</p><iframe id='fields' srcdoc=&quot;<input autocomplete='cc-number'>&quot;></iframe>"></iframe>
+      <iframe id="news" srcdoc="<p>Get the weekly digest</p><input type='email' autocomplete='email' placeholder='Your email'><button>Subscribe</button>"></iframe>
+      <iframe id="chat" srcdoc="<p>Chat with us</p><textarea placeholder='Type a message'></textarea><button>Send</button>"></iframe>
+      <iframe id="reviews" srcdoc="<p>Reviews</p><iframe id='video' src='https://video.other.test/embed/7'></iframe>"></iframe>
+      <iframe id="ad" src="https://ads.other.test/banner"></iframe>
+      <iframe id="gsi" src="https://accounts.google.com/gsi/button"></iframe>`;
+    await framesLoad();
+    await framesLoad();
+    const ids = ['card', 'signin', 'pay', 'tiny', 'deep', 'news', 'chat', 'reviews', 'ad', 'gsi'];
+    // The tiny frame is under 32 px tall, so it is never read, but still looked into.
+    ids.forEach((id, i) => place(document.getElementById(id)!, 0, i * 60, 300, id === 'tiny' ? 20 : 56));
+    place(frameDoc('pay').getElementById('stripe')!, 10, 10, 200, 40);
+    place(frameDoc('deep').getElementById('fields')!, 10, 10, 200, 40);
+    place(frameDoc('reviews').getElementById('video')!, 10, 10, 200, 40);
+    const raw = snapshot(freshWorld());
+    expect(raw.frames.map(({ url, read, secret, path }) => [url, read, secret, path])).toEqual([
+      ['about:srcdoc', false, true, [0]],
+      ['about:srcdoc', false, true, [1]],
+      ['about:srcdoc', true, true, [2]],
+      ['about:srcdoc', false, true, [3]],
+      ['about:srcdoc', true, true, [4]],
+      ['about:srcdoc', true, false, [5]],
+      ['about:srcdoc', true, false, [6]],
+      // Another site's frame inside: this world can't look into it.
+      ['about:srcdoc', true, null, [7]],
+      ['https://ads.other.test/banner', false, null, [8]],
+      ['https://accounts.google.com/gsi/button', false, null, [9]],
+      // The frames inside the frames it read.
+      ['https://js.stripe.com/v3/elements-inner-card', false, true, [2, 0]],
+      ['about:srcdoc', false, true, [4, 0]],
+      ['https://video.other.test/embed/7', false, null, [7, 0]],
+    ]);
+    const answer = pageAnswer(raw, [], [], []);
+    expect(answer.frames.map((frame) => ('secret' in frame ? frame.secret : 'none'))).toEqual([
+      true, true, true, true, true, 'none', 'none', 'none', 'none', 'none', true, true, 'none',
+    ]);
+    expect(problems(pageShape, answer)).toEqual([]);
+  });
+
+  it("answers a frame's own look for a secret, as the debugger asks it in that frame's own world: found, none, or none it could finish where another site's frame sits inside", async () => {
+    const look = () => pageWorld(document, freshWorld(), { kind: 'frameSecret', paymentHosts: [...FRAME_READ_RULES.paymentHosts] });
+    const cases: Array<[string, boolean | null]> = [
+      ["<p>Pay</p><label>Card number <input name='cardnumber'></label>", true],
+      ["<input type='password'>", true],
+      ["<input autocomplete='username'>", true],
+      ["<iframe src='https://js.stripe.com/v3/elements-inner-card'></iframe>", true],
+      ["<iframe srcdoc=\"<input autocomplete='cc-csc'>\"></iframe>", true],
+      ["<input type='email' autocomplete='email' placeholder='Your email'><button>Subscribe</button>", false],
+      ["<textarea placeholder='Type a message'></textarea><button>Send</button>", false],
+      ["<div role='button'>Sign in with Google</div>", false],
+      ["<p>Ad</p><iframe src='https://ads.other.test/slot'></iframe>", null],
+    ];
+    for (const [body, found] of cases) {
+      document.body.innerHTML = body;
+      await framesLoad();
+      expect(look(), body).toBe(found);
+    }
+  });
+
+  it("answers the frame owner at a listed frame's path while its address is still the one the read listed, for the debugger to name the frame it holds, and none once it moved", async () => {
+    document.body.innerHTML = `
+      <iframe id="ad" src="https://ads.other.test/banner"></iframe>
+      <iframe id="panel" srcdoc="<p>Panel</p><iframe id='vault' src='https://vault.other.test/card'></iframe>"></iframe>`;
+    await framesLoad();
+    place(document.getElementById('ad')!, 0, 0, 300, 100);
+    place(document.getElementById('panel')!, 0, 120, 300, 200);
+    place(frameDoc('panel').getElementById('vault')!, 10, 10, 200, 40);
+    const raw = snapshot(freshWorld());
+    const ownerOf = (frame: RawFrame) => pageWorld(document, freshWorld(), { kind: 'frameOwner', path: frame.path, url: frame.url });
+    const [ad, , vault] = raw.frames;
+    expect(ownerOf(ad)).toBe(document.getElementById('ad'));
+    expect(ownerOf(vault)).toBe(frameDoc('panel').getElementById('vault'));
+    // The page put another frame first: the path now names another address.
+    document.body.insertAdjacentHTML('afterbegin', '<iframe src="https://chat.other.test/w"></iframe>');
+    expect(ownerOf(ad)).toBeNull();
+    expect(pageWorld(document, freshWorld(), { kind: 'frameOwner', path: [7], url: ad.url })).toBeNull();
+  });
+
   it("starts no frame read once FRAME_READ_RULES.phaseMs has passed since its first, and lists the rest unread with their boxes", async () => {
     document.body.innerHTML = Array.from({ length: 6 }, (_, i) => `<iframe id="f${i}" srcdoc="<p>Plain ${i}</p>"></iframe>`).join('');
     await framesLoad();
@@ -1859,7 +1943,7 @@ describe('frames', () => {
     const world = freshWorld();
     expect(snapshot(world).frames.map((frame) => frame.read)).toEqual([true]);
     const watched = pageWorld(document, world, { kind: 'snapshot', maxText: 0, maxElements: 300, frames: { ...FRAME_READ_RULES, read: 0 } }) as RawSnapshot;
-    expect(watched.frames).toEqual([{ url: 'about:srcdoc', read: false, box: { x: 10, y: 10, width: 400, height: 200 }, at: { x: 10, y: 10 }, offscreen: false }]);
+    expect(watched.frames).toEqual([{ url: 'about:srcdoc', read: false, box: { x: 10, y: 10, width: 400, height: 200 }, at: { x: 10, y: 10 }, offscreen: false, secret: false, path: [0] }]);
     expect(JSON.stringify(watched)).not.toMatch(/weekly digest|Subscribe/);
   });
 
@@ -2018,7 +2102,7 @@ describe('the page answer', () => {
   });
 
   it("lists a frame inside a frame the read read that the frame's DOM doesn't place, as one in a closed shadow root there, by the frame tree, unread and with no box", () => {
-    const panel = { url: 'https://news.example.test/panel', read: true as const, box: { x: 0, y: 0, width: 400, height: 300 }, at: { x: 0, y: 0 }, offscreen: false, elements: [], text: 'Embedded account panel', truncated: false };
+    const panel = { url: 'https://news.example.test/panel', read: true as const, box: { x: 0, y: 0, width: 400, height: 300 }, at: { x: 0, y: 0 }, offscreen: false, secret: false, path: [0], elements: [], text: 'Embedded account panel', truncated: false };
     const owners = { frameOwners: [{ url: panel.url, visible: true, framed: true }], nestedOwners: [{ url: 'https://other.test/radios', visible: true, framed: true }] };
     const answer = pageAnswer(raw({ ...owners, frames: [panel] }), [], [panel.url], ['https://other.test/radios', 'https://other.test/sealed']);
     expect(answer.frames.slice(1)).toEqual([{ url: 'https://other.test/sealed', read: false, box: null }]);
@@ -2030,8 +2114,8 @@ describe('the page answer', () => {
     const answer = pageAnswer(raw({
       frameOwners: [{ url: 'https://forms.example.test/newsletter?u=ada', visible: true, framed: true }, { url: 'data:text/html,hi', visible: true, framed: true }],
       frames: [
-        { url: 'https://forms.example.test/newsletter?u=ada#top', read: true, box: { x: 160, y: 300.4, width: 875, height: 280 }, at: { x: 160, y: 300.4 }, offscreen: false, elements: [{ role: 'button', name: 'Subscribe' }], text: 'Get the weekly digest.', truncated: false },
-        { url: 'data:text/html,hi', read: false, box: { x: 0, y: 1600, width: 160, height: 160 }, at: { x: 0, y: 1600 }, offscreen: true },
+        { url: 'https://forms.example.test/newsletter?u=ada#top', read: true, box: { x: 160, y: 300.4, width: 875, height: 280 }, at: { x: 160, y: 300.4 }, offscreen: false, secret: false, path: [0], elements: [{ role: 'button', name: 'Subscribe' }], text: 'Get the weekly digest.', truncated: false },
+        { url: 'data:text/html,hi', read: false, box: { x: 0, y: 1600, width: 160, height: 160 }, at: { x: 0, y: 1600 }, offscreen: true, secret: null, path: [1] },
       ],
     }), [], ['https://forms.example.test/newsletter?u=ada', 'data:text/html,hi'], []);
     expect(answer.frames).toEqual([
@@ -2045,7 +2129,7 @@ describe('the page answer', () => {
     // 1536 CSS pixels in a 1024-pixel screenshot: 1.5 CSS pixels a screenshot pixel.
     const answer = pageAnswer(raw({
       viewport: { width: 1536, height: 900 },
-      frames: [{ url: 'https://shop.other.test/buy', read: false, box: { x: 150.6, y: 75.3, width: 300, height: 150 }, at: { x: 150.6, y: 75.3 }, offscreen: false }],
+      frames: [{ url: 'https://shop.other.test/buy', read: false, box: { x: 150.6, y: 75.3, width: 300, height: 150 }, at: { x: 150.6, y: 75.3 }, offscreen: false, secret: null, path: [0] }],
     }), [], [], []);
     // CSS x 150.6 to 450.6 is screenshot x 100.4 to 300.4: an integer click at 300 lands at CSS 450, in the frame.
     expect(answer.frames).toEqual([{ url: 'https://shop.other.test/buy', read: false, box: { x: 100, y: 50, width: 201, height: 101 }, at: { x: 151, y: 75 } }]);
@@ -2055,11 +2139,12 @@ describe('the page answer', () => {
     const answer = pageAnswer(raw({
       viewport: { width: 1536, height: 900 },
       frameOwners: [{ url: 'https://shop.other.test/buy', visible: true, framed: true }],
-      frames: [{ url: 'https://shop.other.test/buy', read: false, box: { x: 150.6, y: 75.3, width: 300, height: 150 }, at: { x: 150.6, y: 1275.3 }, offscreen: false }],
+      frames: [{ url: 'https://shop.other.test/buy', read: false, box: { x: 150.6, y: 75.3, width: 300, height: 150 }, at: { x: 150.6, y: 1275.3 }, offscreen: false, secret: null, path: [0] }],
     }), [], ['https://shop.other.test/buy', 'https://js.stripe.com/v3/x'], []);
     expect(answer.frames).toEqual([
       { url: 'https://shop.other.test/buy', read: false, box: { x: 100, y: 50, width: 201, height: 101 }, at: { x: 151, y: 1275 } },
-      { url: 'https://js.stripe.com/v3/x', read: false, box: null },
+      // A payment provider's frame is marked by its address.
+      { url: 'https://js.stripe.com/v3/x', read: false, box: null, secret: true },
     ]);
     expect(problems(pageShape, answer)).toEqual([]);
   });
@@ -2067,7 +2152,7 @@ describe('the page answer', () => {
   it("lists a frame the page's DOM doesn't place, as one in a closed shadow root, unread and with no box", () => {
     const answer = pageAnswer(raw({ frameOwners: [{ url: 'https://ads.example.test/', visible: true, framed: true }] }), [], ['https://ads.example.test/', 'https://js.stripe.com/v3/x', 'about:srcdoc'], []);
     expect(answer.frames).toEqual([
-      { url: 'https://js.stripe.com/v3/x', read: false, box: null },
+      { url: 'https://js.stripe.com/v3/x', read: false, box: null, secret: true },
       { url: 'about:srcdoc', read: false, box: null },
     ]);
   });
@@ -2098,7 +2183,7 @@ describe('the page answer', () => {
   it("never passes on a check frame's content", () => {
     const answer = pageAnswer(raw({
       frameOwners: [{ url: 'https://challenges.cloudflare.com/x', visible: true, framed: true }],
-      frames: [{ url: 'https://challenges.cloudflare.com/x', read: true, box: { x: 0, y: 0, width: 300, height: 65 }, at: { x: 0, y: 0 }, offscreen: false, elements: [{ role: 'checkbox', name: 'Verify you are human' }], text: 'Verify', truncated: false }],
+      frames: [{ url: 'https://challenges.cloudflare.com/x', read: true, box: { x: 0, y: 0, width: 300, height: 65 }, at: { x: 0, y: 0 }, offscreen: false, secret: false, path: [0], elements: [{ role: 'checkbox', name: 'Verify you are human' }], text: 'Verify', truncated: false }],
     }), [], ['https://challenges.cloudflare.com/x'], []);
     expect(answer.frames).toEqual([{ url: 'https://challenges.cloudflare.com/x', read: false, box: { x: 0, y: 0, width: 192, height: 42 }, at: { x: 0, y: 0 } }]);
   });

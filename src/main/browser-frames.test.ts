@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { type FakeCdpDebugger, fakeCdpDebugger, MAIN_FRAME, sentOf } from '../../tests/browser-fake-cdp';
+import { FRAMES_PHASE_MS } from '../shared/browser-contract';
+import { type FakeCdpDebugger, fakeCdpDebugger, type FakeFrame, MAIN_FRAME, sentOf } from '../../tests/browser-fake-cdp';
 import { type DebuggerSession, FRAME_READ_MS, FrameReads, withDebugger } from './browser-frames';
+import type { SecretLook } from './browser-page-script';
 
 const STRIPE = { id: 'card', url: 'https://js.stripe.com/v3/elements-inner-card', parentId: MAIN_FRAME, remote: true };
 const WIDGET = { id: 'widget', url: 'https://login.other.test/embed', parentId: MAIN_FRAME, remote: true };
@@ -60,6 +62,8 @@ describe('DebuggerSession', () => {
       await expect(session.send('Page.createIsolatedWorld', { frameId: 'widget' })).rejects.toThrow(/address is not known/);
       await session.mainFrame();
       await session.attachFrames();
+      // The frames of another site inside the card's frame, which only its own session attaches.
+      await session.attachFrames('card');
       for (const frameId of ['card', 'inner']) {
         await expect(session.send('Page.createIsolatedWorld', { frameId }, `session-${frameId}`), frameId).rejects.toThrow(/payment provider's frame/);
       }
@@ -241,5 +245,107 @@ describe('FrameReads.focusToken', () => {
     expect(await token(fakeCdpDebugger())).toBeNull();
     const hung = fakeCdpDebugger({ main: { focus: onFrame, focused: 61 }, frames: [{ ...WIDGET, hangs: true }], focusedOwnerOf: 'widget' });
     expect(await token(hung)).toBeNull();
+  });
+});
+
+describe('FrameReads.frameSecrets', () => {
+  /* What a page read's world left for the debugger: each listed frame by its place, its owner's path and its address. */
+  const look = (frames: FakeFrame[], more: Partial<SecretLook> = {}): SecretLook => ({
+    frames: frames.map((frame, at) => ({ at, path: frame.path!, url: frame.url })), unplaced: [], nestedUnplaced: [], readUrls: [], ...more,
+  });
+  const secrets = (dbg: FakeCdpDebugger, request: SecretLook, ms: number = FRAMES_PHASE_MS) =>
+    withDebugger(dbg, (session) => new FrameReads(session).frameSecrets(request, Date.now() + ms));
+  const worldsOf = (dbg: FakeCdpDebugger) => sentOf(dbg, 'Page.createIsolatedWorld').map(({ params, sessionId }) => [params.frameId, sessionId]);
+
+  it("finds a card field in another site's frame on a host on no list, in a frame of the shop's own other host in the page's process, and a framed sign-in form, each in its own world, and none in an ad, a video, a chat widget, a Google sign-in button or a newsletter box", async () => {
+    const frames: FakeFrame[] = [
+      { id: 'vault', url: 'https://vault.vendor.test/card', parentId: MAIN_FRAME, remote: true, holds: true, path: [0] },
+      { id: 'pci', url: 'https://secure.a.test/payments/card', parentId: MAIN_FRAME, origin: 'https://secure.a.test', holds: true, path: [1] },
+      { id: 'signin', url: 'https://login.partner.test/frame', parentId: MAIN_FRAME, remote: true, holds: true, path: [2] },
+      { id: 'ad', url: 'https://ads.other.test/banner', parentId: MAIN_FRAME, remote: true, path: [3] },
+      { id: 'video', url: 'https://video.other.test/embed/7', parentId: MAIN_FRAME, remote: true, path: [4] },
+      { id: 'chat', url: 'https://chat.other.test/widget', parentId: MAIN_FRAME, remote: true, path: [5] },
+      { id: 'gsi', url: 'https://accounts.google.com/gsi/button', parentId: MAIN_FRAME, remote: true, path: [6] },
+      { id: 'news', url: 'https://forms.other.test/newsletter', parentId: MAIN_FRAME, remote: true, path: [7] },
+    ];
+    const dbg = fakeCdpDebugger({ frames });
+    const found = await secrets(dbg, look(frames));
+    expect([...found.frames].sort()).toEqual([0, 1, 2]);
+    expect(worldsOf(dbg)).toEqual(expect.arrayContaining([
+      [MAIN_FRAME, undefined], ['vault', 'session-vault'], ['pci', undefined], ['signin', 'session-signin'], ['gsi', 'session-gsi'], ['news', 'session-news'],
+    ]));
+  });
+
+  it("finds a payment frame or a card field in a frame of yet another site inside another site's frame, through that frame's own auto-attach, and opens no world in, or attaches inside, a payment frame", async () => {
+    const frames: FakeFrame[] = [
+      // A donation form of another site whose card fields are a payment provider's frames.
+      { id: 'donate', url: 'https://donate.other.test/form', parentId: MAIN_FRAME, remote: true, holds: null, path: [0] },
+      { id: 'card', url: 'https://js.stripe.com/v3/elements-inner-card', parentId: 'donate', remote: true },
+      // A checkout of another site whose card field is a vendor's frame on no list.
+      { id: 'checkout', url: 'https://checkout.other.test/', parentId: MAIN_FRAME, remote: true, holds: null, path: [1] },
+      { id: 'fields', url: 'https://vault.vendor.test/card', parentId: 'checkout', remote: true, holds: true },
+      // An ad that holds another ad.
+      { id: 'ad', url: 'https://ads.other.test/banner', parentId: MAIN_FRAME, remote: true, holds: null, path: [2] },
+      { id: 'slot', url: 'https://ads.third.test/slot', parentId: 'ad', remote: true, holds: false },
+      // A payment provider's frame on the page itself.
+      { id: 'paypal', url: 'https://www.paypal.com/smart/buttons', parentId: MAIN_FRAME, remote: true, holds: false, path: [3] },
+    ];
+    const dbg = fakeCdpDebugger({ frames });
+    const found = await secrets(dbg, look(frames.filter((frame) => frame.path)));
+    expect([...found.frames].sort()).toEqual([0, 1, 3]);
+    expect(sentOf(dbg, 'Target.setAutoAttach').map(({ sessionId }) => sessionId)).toEqual(expect.arrayContaining([undefined, 'session-donate', 'session-checkout', 'session-ad']));
+    for (const payment of ['session-card', 'session-paypal']) expect(dbg.sent.filter(([, , sessionId]) => sessionId === payment), payment).toEqual([]);
+    expect(worldsOf(dbg).map(([frameId]) => frameId)).not.toEqual(expect.arrayContaining(['card']));
+    expect(worldsOf(dbg).map(([frameId]) => frameId)).not.toEqual(expect.arrayContaining(['paypal']));
+  });
+
+  it("finds a card field in a frame inside another site's frame as soon as its world answers, though a frame beside it never answers", async () => {
+    const frames: FakeFrame[] = [
+      { id: 'checkout', url: 'https://checkout.other.test/', parentId: MAIN_FRAME, remote: true, holds: null, path: [0] },
+      { id: 'tracker', url: 'https://ads.third.test/pixel', parentId: 'checkout', remote: true, hangs: true },
+      { id: 'fields', url: 'https://vault.vendor.test/card', parentId: 'checkout', remote: true, holds: true },
+    ];
+    const found = await secrets(fakeCdpDebugger({ frames }), look(frames.filter((frame) => frame.path)));
+    expect([...found.frames]).toEqual([0]);
+  });
+
+  it("looks into a frame the page's DOM can't place by its address, among the page's own frames, or among those of a frame the read read", async () => {
+    const dbg = fakeCdpDebugger({
+      frames: [
+        { id: 'sealed', url: 'https://vault.vendor.test/card', parentId: MAIN_FRAME, remote: true, holds: true },
+        { id: 'quiet', url: 'https://ads.other.test/x', parentId: MAIN_FRAME, remote: true },
+        { id: 'panel', url: 'https://a.test/panel', parentId: MAIN_FRAME, origin: 'https://a.test' },
+        { id: 'login', url: 'https://login.other.test/frame#step', parentId: 'panel', remote: true, holds: true },
+        // The same address directly in the page: not inside the frame read.
+        { id: 'elsewhere', url: 'https://forms.other.test/quiet', parentId: MAIN_FRAME, remote: true, holds: true },
+        { id: 'inside', url: 'https://forms.other.test/quiet', parentId: 'panel', remote: true },
+      ],
+    });
+    const found = await secrets(dbg, look([], {
+      unplaced: ['https://vault.vendor.test/card', 'https://ads.other.test/x'],
+      nestedUnplaced: ['https://login.other.test/frame', 'https://forms.other.test/quiet'],
+      readUrls: ['https://a.test/panel'],
+    }));
+    expect([...found.unplaced]).toEqual(['https://vault.vendor.test/card']);
+    expect([...found.nestedUnplaced]).toEqual(['https://login.other.test/frame']);
+  });
+
+  it("leaves out a frame its look doesn't finish by the deadline it is given, and one whose owner the page has moved since the read", async () => {
+    const frames: FakeFrame[] = [
+      { id: 'slow', url: 'https://vault.vendor.test/card', parentId: MAIN_FRAME, remote: true, holds: true, hangs: true, path: [0] },
+      { id: 'moved', url: 'https://login.other.test/frame', parentId: MAIN_FRAME, remote: true, holds: true, path: [5] },
+      { id: 'card', url: 'https://secure.other.test/card', parentId: MAIN_FRAME, remote: true, holds: true, path: [2] },
+    ];
+    const dbg = fakeCdpDebugger({ frames });
+    const listed = look(frames);
+    listed.frames[1].path = [1];
+    const started = Date.now();
+    const found = await secrets(dbg, listed, 300);
+    expect(Date.now() - started).toBeLessThan(FRAMES_PHASE_MS);
+    expect([...found.frames]).toEqual([2]);
+    // Past the deadline already: nothing is sent.
+    const late = fakeCdpDebugger({ frames });
+    expect([...(await secrets(late, look(frames), 0)).frames]).toEqual([]);
+    expect(late.sent).toEqual([]);
   });
 });

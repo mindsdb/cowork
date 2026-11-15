@@ -255,7 +255,7 @@ describe('ElectronTab', () => {
     expect(contents.attached).toBe(false);
   });
 
-  it("reads the page with no debugger unless asked for the focus, as the hand-over watch reads it every second outside the session's queue", async () => {
+  it("reads the page with no debugger unless asked for the focus or a look into a frame it lists, as the hand-over watch reads it every second outside the session's queue", async () => {
     const { tab, contents } = setup();
     contents.debugger.page.frames[0].focused = 7;
     const watched = await tab.read(0);
@@ -285,7 +285,7 @@ describe('ElectronTab', () => {
     const { tab, contents } = setup();
     contents.mainFrame.frames = [{ url: 'https://js.stripe.com/v3/elements-inner-card' }];
     const page = await tab.read(100);
-    expect(page.frames).toEqual([{ url: 'https://js.stripe.com/v3/elements-inner-card', read: false, box: null }]);
+    expect(page.frames).toEqual([{ url: 'https://js.stripe.com/v3/elements-inner-card', read: false, box: null, secret: true }]);
     const [snapshot] = worldCalls(contents, 'snapshot');
     expect(snapshot[1][0].code).toContain('"paymentHosts":["stripe.com",');
     expect(snapshot[1][0].code).toContain('"read":5');
@@ -309,6 +309,82 @@ describe('ElectronTab', () => {
       ['https://a.test/ad', false, false],
       ['https://other.test/sealed', false, true],
     ]);
+  });
+
+  describe("a page read's secret marks on its frames", () => {
+    const placed = (url: string, y: number, secret: boolean | null, path: number[]) =>
+      ({ url, read: false, box: { x: 0, y, width: 400, height: 100 }, at: { x: 0, y }, offscreen: false, secret, path });
+    const marks = (frames: Array<{ secret?: true }>) => frames.map((frame) => ('secret' in frame ? frame.secret : 'none'));
+
+    it("marks secret each frame the page's world found one in, and each it couldn't look into that the debugger finds one in, in the same attach as the focus; the hand-over watch's read attaches none", async () => {
+      const { tab, contents } = setup();
+      contents.frames = [
+        // Another site's card field, a frame the page's world found a card field in, an ad, and a newsletter box it read.
+        placed('https://vault.vendor.test/card', 0, null, [0]),
+        placed('about:srcdoc', 120, true, [1]),
+        placed('https://ads.other.test/banner', 240, null, [2]),
+        placed('https://a.test/newsletter', 360, false, [3]),
+      ];
+      const page = contents.debugger.page;
+      page.frames[0].focused = 7;
+      page.frames.push(
+        { id: 'vault', url: 'https://vault.vendor.test/card', parentId: MAIN_FRAME, remote: true, holds: true, path: [0] },
+        { id: 'ad', url: 'https://ads.other.test/banner', parentId: MAIN_FRAME, remote: true, holds: null, path: [2] },
+        { id: 'slot', url: 'https://ads.third.test/slot', parentId: 'ad', remote: true },
+      );
+      const read = await tab.read(100, { focus: true });
+      expect(marks(read.frames)).toEqual([true, true, 'none', 'none']);
+      expect(read.focus).toBe(`${MAIN_FRAME}:7`);
+      expect(contents.attaches).toBe(1);
+      expect(contents.attached).toBe(false);
+      // The hand-over watch's read never reaches anton, and attaches nothing.
+      const watched = await tab.read(0, { frames: false });
+      expect(marks(watched.frames)).toEqual(['none', true, 'none', 'none']);
+      expect(contents.attaches).toBe(1);
+      // Something else holds the debugger: what the page's world found stays.
+      contents.debugger.attach();
+      expect(marks((await tab.read(100, { focus: true })).frames)).toEqual(['none', true, 'none', 'none']);
+      contents.debugger.detach();
+    });
+
+    it("marks a frame the page's DOM can't place by its address when it is a payment provider's, and by the debugger's look among the page's frames otherwise", async () => {
+      const { tab, contents } = setup();
+      contents.mainFrame.frames = [{ url: 'https://js.stripe.com/v3/elements-inner-card' }, { url: 'https://vault.vendor.test/card' }, { url: 'https://ads.other.test/x' }];
+      contents.debugger.page.frames.push(
+        { id: 'card', url: 'https://js.stripe.com/v3/elements-inner-card', parentId: MAIN_FRAME, remote: true },
+        { id: 'vault', url: 'https://vault.vendor.test/card', parentId: MAIN_FRAME, remote: true, holds: true },
+        { id: 'ad', url: 'https://ads.other.test/x', parentId: MAIN_FRAME, remote: true },
+      );
+      const read = await tab.read(100, { focus: true });
+      expect(read.frames.map((frame) => [frame.url, 'secret' in frame])).toEqual([
+        ['https://js.stripe.com/v3/elements-inner-card', true],
+        ['https://vault.vendor.test/card', true],
+        ['https://ads.other.test/x', false],
+      ]);
+    });
+
+    it(`gives the debugger's look FRAMES_PHASE_MS from the read's start, and leaves out a frame it hasn't looked into by then`, async () => {
+      const { tab, contents } = setup();
+      contents.frames = [placed('https://vault.vendor.test/card', 0, null, [0]), placed('https://secure.other.test/card', 120, null, [1])];
+      contents.debugger.page.frames.push(
+        { id: 'slow', url: 'https://vault.vendor.test/card', parentId: MAIN_FRAME, remote: true, holds: true, hangs: true, path: [0] },
+        { id: 'quick', url: 'https://secure.other.test/card', parentId: MAIN_FRAME, remote: true, holds: true, path: [1] },
+      );
+      // The page's world answers the read 1.5 s in.
+      const answer = contents.executeJavaScriptInIsolatedWorld.getMockImplementation()!;
+      contents.executeJavaScriptInIsolatedWorld.mockImplementationOnce((world: number, scripts: Array<{ code: string }>) =>
+        new Promise((resolve) => { setTimeout(() => resolve(answer(world, scripts)), 1_500); }));
+      vi.useFakeTimers();
+      try {
+        let done = false;
+        const page = tab.read(100, { focus: true }).finally(() => { done = true; });
+        await vi.advanceTimersByTimeAsync(FRAMES_PHASE_MS);
+        expect(done).toBe(true);
+        expect(marks((await page).frames)).toEqual(['none', true]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe("a page read's look at the frames it read", () => {

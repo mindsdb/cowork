@@ -103,6 +103,8 @@ const frameShape = shape(
     offscreen: bool,
     // The frame element's top-left in its document's content coordinates, in CSS pixels: no scroll changes it.
     at: shape({ x: int, y: int }),
+    // The frame, or one inside it, holds a payment frame or a secret, card-named or sign-in field: sent true, else left out.
+    secret: literal(true),
     elements: list(frameElementShape),
     text: str,
     truncated: bool,

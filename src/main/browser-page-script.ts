@@ -61,6 +61,10 @@
  * (browser-view.ts). A read
  * frame's elements have no id and no field value, and no editor's text
  * reaches its text or a name there; each frame inside it is listed, unread.
+ * Every frame it lists, read or not, is looked into for page.json's frame
+ * `secret`: a payment frame, or a secret, card-named or sign-in field, in
+ * it or in a frame inside it at any depth; main looks through the debugger
+ * where this world meets a frame of another origin (browser-frames.ts).
  * A frame from another site can't be read
  * from here: this world runs in the view's main frame, and the page's DOM
  * gives it no way into another site's document, and a page read opens no
@@ -228,10 +232,29 @@ export const FRAME_READ_RULES: FrameReadRules = {
     (the document's own for a frame the read reaches, else its owner's src), its
     content box in viewport CSS pixels, its content box's top-left in its own
     document's content in CSS pixels, which no scroll changes (page.json's
-    `at`), and what a read frame holds. */
+    `at`), and what a read frame holds. `secret` is what this world found
+    of page.json's frame `secret`: true when the frame, or one inside it at
+    any depth, is on a payment host or holds a private field, null when it
+    found neither but met a frame it can't look into (another origin's, or
+    one awaiting its load), which the debugger then looks into
+    (FrameReads.frameSecrets in browser-frames.ts), and false otherwise.
+    `path` names its owner for that look: its place among the frame owners
+    of the page's document, then among those of the frame read it sits in
+    (`frameOwner`). */
 export type RawFrame =
-  | { url: string; read: false; box: Box; at: ViewPoint; offscreen: boolean }
-  | { url: string; read: true; box: Box; at: ViewPoint; offscreen: boolean; elements: PageFrameElement[]; text: string; truncated: boolean };
+  | { url: string; read: false; box: Box; at: ViewPoint; offscreen: boolean; secret: boolean | null; path: number[] }
+  | {
+    url: string;
+    read: true;
+    box: Box;
+    at: ViewPoint;
+    offscreen: boolean;
+    secret: boolean | null;
+    path: number[];
+    elements: PageFrameElement[];
+    text: string;
+    truncated: boolean;
+  };
 
 /** Where the focus is for a key: on a secret field, in a frame from
     another site, whose fields this world can't read, or on an element that
@@ -320,6 +343,16 @@ export type PageWorldRequest =
   | { kind: 'changeMark'; token: number; at: ViewPoint | null }
   | { kind: 'changeStop'; token: number }
   | { kind: 'secretBoxes'; paymentHosts: readonly string[]; depth: number }
+  /* page.json's frame `secret` for this document, as the debugger reads it
+     in a frame's own world (FrameReads.frameSecrets): true when it, or a
+     frame inside it this world enters, is on one of `paymentHosts` or holds
+     a private field; null when it finds neither but meets a frame it can't
+     look into; false otherwise. It answers by value. */
+  | { kind: 'frameSecret'; paymentHosts: readonly string[] }
+  /* The frame owner at `path` (RawFrame's `path`), when its address is
+     still `url`, or null. It answers an element, for the debugger to name
+     the frame it holds (browser-frames.ts). */
+  | { kind: 'frameOwner'; path: number[]; url: string }
   /* Element `id`'s state for a hand-over's watch (HandbackElement), or null
      once it left the page. */
   | { kind: 'handbackElement'; id: number }
@@ -906,8 +939,55 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
      secret field (password, one-time code, card, or one named for a card:
      isSecret), or a sign-in field. */
   const SIGN_IN_AUTOCOMPLETE = /(^|\s)(username|webauthn)(\s|$)/;
-  const holdsPrivateField = (root: Node): boolean => elementsIn(root).some((el) => isField(el) && (
-    isSecret(el) || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase())));
+  const privateField = (el: Element): boolean => isField(el) && (
+    isSecret(el) || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase()));
+  const holdsPrivateField = (root: Node): boolean => elementsIn(root).some(privateField);
+
+  /* page.json's frame `secret` for document `d`: true when it is on one of
+     `paymentHosts`, or it or a frame inside it at any depth holds a private
+     field or is on one (secretInside); null when it finds neither but meets
+     a frame it can't look into, which the debugger looks into in that
+     frame's own world (browser-frames.ts); false otherwise. */
+  const secretIn = (d: Document, paymentHosts: readonly string[]): boolean | null => {
+    if (hostIn(String(d.location?.href || ''), paymentHosts)) return true;
+    let unseen = false;
+    for (const el of elementsIn(d)) {
+      if (!FRAME_TAGS.has(tagOf(el))) {
+        if (privateField(el)) return true;
+        continue;
+      }
+      const found = secretInside(el, paymentHosts);
+      if (found) return true;
+      if (found === null) unseen = true;
+    }
+    return unseen ? null : false;
+  };
+  /* secretIn for the frame that frame owner `owner` holds: true when the address
+     it names is on one of `paymentHosts`; null when this world can't reach
+     its document (another origin's, or one awaiting its load), unless it
+     holds no frame (an SVG iframe, an object showing no page); otherwise
+     its document's. An embed never says whether it holds one. */
+  const secretInside = (owner: Element, paymentHosts: readonly string[]): boolean | null => {
+    if (hostIn(sourceOf(owner), paymentHosts)) return true;
+    const inner = frameDocOf(owner);
+    if (inner && !awaitingLoad(owner, inner)) return secretIn(inner, paymentHosts);
+    return holdsFrame(owner) || tagOf(owner) === 'embed' ? null : false;
+  };
+
+  /* The frame owners under `root` in page order, as `collect` lists them. */
+  const ownersIn = (root: Node | null): Element[] => (root ? elementsIn(root).filter((el) => FRAME_TAGS.has(tagOf(el))) : []);
+  /* The frame owner at `path` (RawFrame's `path`: its place among the frame
+     owners of the page's document, then among those of the frame read it
+     sits in), when its address (addressOf) is still `url`, or null. */
+  const ownerAt = (path: number[], url: string): Element | null => {
+    let owner: Element | null = null;
+    for (const at of path) {
+      const d: Document | null = owner ? frameDocOf(owner) : doc;
+      owner = ownersIn(d && (d.body || d.documentElement))[at] ?? null;
+      if (!owner) return null;
+    }
+    return owner && addressOf(owner) === url ? owner : null;
+  };
 
   /* An element's parent as it is drawn: the slot it is assigned to, its
      parent, or a shadow root's host. */
@@ -1104,18 +1184,21 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
      draws it (throughOwner): a key may reach a control there, which anton
      can see only as a frame it wasn't shown. `nestedOwners` gives main all
      of those owners, a hidden one included, to count against the frame tree
-     (pageAnswer). */
+     (pageAnswer). Every frame listed, read or not, is looked into for
+     page.json's frame `secret` (secretInside), and named by its owner's
+     path for the debugger's look where this one meets a frame it can't
+     look into. */
   const readFrames = (owners: Element[], rules: FrameReadRules): { frames: RawFrame[]; nestedOwners: DomFrame[] } => {
     const nested: RawFrame[] = [];
     const nestedOwners: DomFrame[] = [];
-    const placed = owners
-      .filter((owner) => takesClicks(owner, boxOf(owner)))
-      .map((owner) => {
-        const box = contentBox(owner);
-        return { owner, box, at: contentAt(owner, box), offscreen: !inView(box) };
-      });
+    const placed = owners.flatMap((owner, index) => {
+      if (!takesClicks(owner, boxOf(owner))) return [];
+      const box = contentBox(owner);
+      return [{ owner, box, at: contentAt(owner, box), offscreen: !inView(box), path: [index] }];
+    });
     const deadline = win.performance.now() + rules.phaseMs;
-    const frames = [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, at, offscreen }): RawFrame => {
+    const frames = [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, at, offscreen, path }): RawFrame => {
+      const secret = secretInside(owner, rules.paymentHosts);
       const inner = frameDocOf(owner);
       const url = addressOf(owner);
       const src = sourceOf(owner);
@@ -1126,24 +1209,31 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       if (rules.read <= 0 || !inner || awaitingLoad(owner, inner) || offscreen || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
         || drawnScale(owner) < FRAME_MIN_SCALE || refusedAddress(src) || refusedAddress(url) || win.performance.now() > deadline
         || drawnUnreadable(owner) || !hitsOwner(owner, box) || holdsPrivateField(inner)) {
-        return { url, read: false, box, at, offscreen };
+        return { url, read: false, box, at, offscreen, secret, path };
       }
       const view = { width: inner.defaultView?.innerWidth ?? 0, height: inner.defaultView?.innerHeight ?? 0 };
       const { candidates, owners: inside } = collect(inner.body || inner.documentElement, view);
       const into = throughOwner(owner);
-      for (const frame of inside) {
+      inside.forEach((frame, index) => {
         const own = contentBox(frame);
         const drawn = into(own);
         const clickable = takesClicks(frame, boxOf(frame));
         nestedOwners.push({ url: sourceOf(frame), visible: clickable && shown(frame, boxOf(frame)) && inView(drawn), framed: holdsFrame(frame) });
-        if (clickable) nested.push({ url: addressOf(frame), read: false, box: drawn, at: contentAt(frame, own), offscreen: !inView(drawn) });
-      }
+        if (clickable) {
+          nested.push({
+            url: addressOf(frame), read: false, box: drawn, at: contentAt(frame, own), offscreen: !inView(drawn),
+            secret: secretInside(frame, rules.paymentHosts), path: [...path, index],
+          });
+        }
+      });
       return {
         url,
         read: true,
         box,
         at,
         offscreen,
+        secret,
+        path,
         elements: listed(candidates, rules.elements).map(({ el, role, visible }) => describeInFrame(el, role, !visible)),
         text: pageText(inner, rules.text),
         truncated: candidates.length > rules.elements,
@@ -1729,6 +1819,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       return { ok: true };
     case 'secretBoxes':
       return secretBoxes(request.paymentHosts, request.depth);
+    case 'frameSecret':
+      return secretIn(doc, request.paymentHosts);
+    case 'frameOwner':
+      return ownerAt(request.path, request.url);
     case 'watch':
       world.observer ??= new MutationObserver(onMutations);
       watchRoot(doc);
@@ -1788,13 +1882,54 @@ function unplacedFrames(childFrameUrls: string[], owners: DomFrame[]): string[] 
   return unmatched.length ? unmatched : childFrameUrls;
 }
 
+/** What a page read leaves to the debugger's look for page.json's frame
+    `secret` (FrameReads.frameSecrets in browser-frames.ts): each frame the
+    page's world listed and met a frame in that it can't look into
+    (RawFrame's `secret` null), by its place in the read's frames, its
+    owner's path and its address as the world listed it; and the frames the
+    answer lists unplaced (unplacedFrames), but for a payment provider's,
+    which its address marks: the main frame's own by address (`unplaced`),
+    and those inside the frames the read read (`nestedUnplaced`), with those
+    frames' addresses (`readUrls`). */
+export interface SecretLook {
+  frames: Array<{ at: number; path: number[]; url: string }>;
+  unplaced: string[];
+  nestedUnplaced: string[];
+  readUrls: string[];
+}
+
+/** What the debugger's look found secret: the read's frames by their place
+    in its list, and the unplaced frames' addresses. */
+export interface LookedFrames {
+  frames: ReadonlySet<number>;
+  unplaced: ReadonlySet<string>;
+  nestedUnplaced: ReadonlySet<string>;
+}
+
+export const NOTHING_LOOKED: LookedFrames = { frames: new Set(), unplaced: new Set(), nestedUnplaced: new Set() };
+
+/** The look a page read leaves to the debugger (SecretLook) for the frames
+    `pageAnswer` lists from the same arguments, or null when none is left. */
+export function secretLook(raw: RawSnapshot, childFrameUrls: string[], nestedFrameUrls: string[]): SecretLook | null {
+  const look: SecretLook = {
+    frames: raw.frames.flatMap((frame, at) => (frame.secret === null ? [{ at, path: frame.path, url: frame.url }] : [])),
+    unplaced: unplacedFrames(childFrameUrls, raw.frameOwners).filter((url) => !isPaymentAddress(url)),
+    nestedUnplaced: unplacedFrames(nestedFrameUrls, raw.nestedOwners).filter((url) => !isPaymentAddress(url)),
+    readUrls: raw.frames.filter((frame) => frame.read).map((frame) => frame.url),
+  };
+  return look.frames.length || look.unplaced.length || look.nestedUnplaced.length ? look : null;
+}
+
 /** The page answer anton reads: the read without main's own fields, with the
     checks the person can see, and the page's child frames (`childFrameUrls`,
     the main frame's direct children) in screenshot pixels, with the frames
     inside the frames the read read (`nestedFrameUrls`, by the frame tree)
     that the read couldn't place, as one in a closed shadow root there,
-    listed unread with no box. A check frame's content never leaves main. */
-export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrameUrls: string[], nestedFrameUrls: string[]): PageSnapshot {
+    listed unread with no box. A check frame's content never leaves main.
+    Each frame is marked secret (page.json's frame `secret`) that the page's
+    world found secret, that `looked` holds, or, for one the read couldn't
+    place, that is on a payment provider's address. */
+export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrameUrls: string[], nestedFrameUrls: string[], looked: LookedFrames = NOTHING_LOOKED): PageSnapshot {
   const scale = screenshotScale(raw.viewport.width);
   /* Outward to whole pixels, as renderScreenshot's masks: a click at any
      screenshot point that lands in the frame is inside its box. */
@@ -1803,19 +1938,25 @@ export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrame
     const y = Math.floor(box.y / scale);
     return { x, y, width: Math.ceil((box.x + box.width) / scale) - x, height: Math.ceil((box.y + box.height) / scale) - y };
   };
-  const frames = raw.frames.map((frame): PageFrame => {
+  const marked = (secret: boolean) => (secret ? { secret: true as const } : {});
+  const frames = raw.frames.map((frame, at): PageFrame => {
     const where = {
       url: frameAddress(frame.url),
       box: inShot(frame.box),
       // Whole CSS pixels, so a fraction a layout or a zoom leaves never reads as a move.
       at: { x: Math.round(frame.at.x), y: Math.round(frame.at.y) },
       ...(frame.offscreen ? { offscreen: true as const } : {}),
+      ...marked(frame.secret === true || looked.frames.has(at)),
     };
     if (!frame.read || challengeKind(frame.url) !== null) return { ...where, read: false };
     return { ...where, read: true, elements: frame.elements, text: frame.text, truncated: frame.truncated };
   });
-  for (const url of unplacedFrames(childFrameUrls, raw.frameOwners)) frames.push({ url: frameAddress(url), read: false, box: null });
-  for (const url of unplacedFrames(nestedFrameUrls, raw.nestedOwners)) frames.push({ url: frameAddress(url), read: false, box: null });
+  for (const url of unplacedFrames(childFrameUrls, raw.frameOwners)) {
+    frames.push({ url: frameAddress(url), read: false, box: null, ...marked(isPaymentAddress(url) || looked.unplaced.has(url)) });
+  }
+  for (const url of unplacedFrames(nestedFrameUrls, raw.nestedOwners)) {
+    frames.push({ url: frameAddress(url), read: false, box: null, ...marked(isPaymentAddress(url) || looked.nestedUnplaced.has(url)) });
+  }
   return {
     url: raw.url,
     title: raw.title,

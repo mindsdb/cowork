@@ -32,10 +32,17 @@
  * since its search can't reach a frame in a closed shadow root. A frame that
  * can't be read is blacked out whole.
  *
+ * `frameSecrets`: page.json's frame `secret` for the frames a page read's
+ * world can't look into: whether each one, or a frame inside it at any
+ * depth, is a payment provider's frame or holds a secret, card-named or
+ * sign-in field, read in each frame's own world, a frame of yet another
+ * site inside another site's attached through that frame's session.
+ *
  * Every command goes out through `DebuggerSession.send`, which checks it
  * first: only the methods in ALLOWED_CDP_METHODS; input and the page reads on
- * the page's own session, a frame's session only opening and reading its
- * world and the nodes that world answers; Runtime.evaluate and
+ * the page's own session, a frame's session only auto-attaching its own
+ * frames of other sites, and opening and reading its world and the nodes
+ * that world answers; Runtime.evaluate and
  * Runtime.callFunctionOn only in an isolated world this attach made with
  * Page.createIsolatedWorld, and DOM.resolveNode only into one, never in the
  * page's own world, so the page's scripts never meet them; never a world
@@ -56,10 +63,12 @@ import {
   type FocusedTyping,
   type FoundSecrets,
   isPaymentAddress,
+  type LookedFrames,
   pageWorldFunction,
   pageWorldSource,
   type PageWorldRequest,
   SECRET_SEARCH_DEPTH,
+  type SecretLook,
   type ViewPoint,
 } from './browser-page-script';
 
@@ -85,9 +94,11 @@ export const ALLOWED_CDP_METHODS: ReadonlySet<string> = new Set([
   'DOM.getBoxModel',
 ]);
 
-/* What a frame's own session may send: its frame tree, opening and reading
-   the isolated world it reads in, and the nodes that world answers. */
+/* What a frame's own session may send: its frame tree, an auto-attach to
+   the frames of other sites in it (attachFrames), opening and reading the
+   isolated world it reads in, and the nodes that world answers. */
 const FRAME_SESSION_METHODS: ReadonlySet<string> = new Set([
+  'Target.setAutoAttach',
   'Page.getFrameTree',
   'Page.createIsolatedWorld',
   'Runtime.evaluate',
@@ -182,6 +193,13 @@ function clip(box: Box, within: Box): Box | null {
   return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
 }
 
+/* An address without its fragment, which Chromium's frame tree leaves out
+   of a frame's url while the page's own frame list keeps it. */
+function withoutFragment(address: string): string {
+  const hash = address.indexOf('#');
+  return hash === -1 ? address : address.slice(0, hash);
+}
+
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const late = new Promise<never>((_resolve, reject) => {
@@ -194,7 +212,8 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
     made, and the checks every command passes. */
 export class DebuggerSession {
   private main: Promise<string> | null = null;
-  private attached: Promise<unknown> | null = null;
+  /* Each session's auto-attach, by session ('' for the page's own). */
+  private readonly attached = new Map<string, Promise<unknown>>();
   private readonly frames = new Map<string, KnownFrame>();
   /* The worlds this attach made, by session ('' for the page's own). */
   private readonly worlds = new Map<string, Set<number>>();
@@ -294,10 +313,30 @@ export class DebuggerSession {
   }
 
   /** Gives each frame of another site its own session, once per attach,
-      without pausing any. */
-  async attachFrames(): Promise<void> {
-    this.attached ??= this.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
-    await this.attached;
+      without pausing any: those the page's own process holds, or, with
+      `inFrame`, those the process of frame `inFrame` holds. Chromium
+      attaches to a session only the frames of another process nearest it,
+      so a frame of yet another site inside another site's frame is
+      attached through that frame's session. */
+  async attachFrames(inFrame?: string): Promise<void> {
+    const session = inFrame === undefined ? undefined : this.frames.get(inFrame)?.session;
+    const key = session ?? '';
+    if (!this.attached.has(key)) {
+      this.attached.set(key, this.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, session));
+    }
+    await this.attached.get(key);
+  }
+
+  /** Frame `frameId`'s address as this attach last learned it, or null for
+      a frame it doesn't know. */
+  knownAddress(frameId: string): string | null {
+    return this.frames.get(frameId)?.url ?? null;
+  }
+
+  /** The frames this attach knows of that sit directly in frame `parentId`,
+      with their addresses. */
+  childFrames(parentId: string): Array<{ id: string; url: string }> {
+    return [...this.frames].filter(([, frame]) => frame.parentId === parentId).map(([id, frame]) => ({ id, url: frame.url }));
   }
 
   /* The service's isolated world in frame `frameId`, opened once per attach
@@ -646,6 +685,75 @@ export class FrameReads {
     } finally {
       if (from !== null) await this.session.release(frameId, from);
     }
+  }
+
+  /**
+   * page.json's frame `secret` for what a page read's world couldn't look
+   * into (SecretLook), until `deadline` (epoch ms). A frame is secret when
+   * it is on a payment provider's host (no world opens there, and nothing
+   * is sent to its session), or its own world finds a private field or a
+   * payment frame in its document or a frame it enters (frameSecret in
+   * browser-page-script.ts); where that world meets a frame it can't look
+   * into, or doesn't answer, each frame in it is looked into in turn, at
+   * any depth, a frame of yet another site attached through its own
+   * session (attachFrames). A listed frame is named by its owner's path,
+   * which the main frame's world here follows to the owner while its
+   * address is the one the read listed (frameOwner), and DOM.describeNode
+   * names the frame it holds; an unplaced one, by its address among the
+   * page's own frames, or among those of the frames the read read, where
+   * any frame of that address found secret marks it. What isn't found by
+   * the deadline (a frame whose world doesn't answer in time, an owner the
+   * page moved, a frame the debugger can't name) is left out, as page.json
+   * lets a host leave out a frame it can't look into within
+   * frames_phase_ms.
+   */
+  async frameSecrets(look: SecretLook, deadline: number): Promise<LookedFrames> {
+    const frames = new Set<number>();
+    const unplaced = new Set<string>();
+    const nestedUnplaced = new Set<string>();
+    const found = (): LookedFrames => ({ frames: new Set(frames), unplaced: new Set(unplaced), nestedUnplaced: new Set(nestedUnplaced) });
+    if (deadline <= Date.now()) return found();
+    const looks = new Map<string, Promise<boolean>>();
+    /* Whether any of `frameIds` is found secret, as soon as one is, so a
+       frame beside it whose world never answers doesn't hold the answer. */
+    const anySecret = (frameIds: string[]): Promise<boolean> => Promise.any(frameIds.map(async (frameId) => {
+      if (!(await secretIn(frameId))) throw new Error('no secret found');
+    })).then(() => true, () => false);
+    const secretIn = (frameId: string): Promise<boolean> => {
+      let looking = looks.get(frameId);
+      if (!looking) {
+        looking = (async () => {
+          if (isPaymentAddress(this.session.knownAddress(frameId) ?? await this.session.frameAddress(frameId))) return true;
+          const own = await this.session.read<boolean | null>(frameId, { kind: 'frameSecret', paymentHosts: PAYMENT_FRAME_HOSTS }).catch(() => null);
+          if (own !== null) return own;
+          await this.session.attachFrames(frameId);
+          return anySecret(this.session.childFrames(frameId).map(({ id }) => id));
+        })().catch(() => false);
+        looks.set(frameId, looking);
+      }
+      return looking;
+    };
+    const sameAddress = (url: string) => (frame: { url: string }) => withoutFragment(frame.url) === withoutFragment(url);
+    const work = async () => {
+      const main = await this.session.mainFrame();
+      await this.session.attachFrames();
+      const own = this.session.childFrames(main);
+      const insideRead = own.filter((frame) => look.readUrls.some((url) => sameAddress(url)(frame))).flatMap(({ id }) => this.session.childFrames(id));
+      await Promise.all([
+        ...look.frames.map(async ({ at, path, url }) => {
+          const frameId = await this.session.frameOf(main, { kind: 'frameOwner', path, url });
+          if (frameId !== null && await secretIn(frameId)) frames.add(at);
+        }),
+        ...look.unplaced.map(async (url) => {
+          if (await anySecret(own.filter(sameAddress(url)).map(({ id }) => id))) unplaced.add(url);
+        }),
+        ...look.nestedUnplaced.map(async (url) => {
+          if (await anySecret(insideRead.filter(sameAddress(url)).map(({ id }) => id))) nestedUnplaced.add(url);
+        }),
+      ].map((each) => each.catch(() => {})));
+    };
+    await withTimeout(work(), deadline - Date.now()).catch(() => {});
+    return found();
   }
 
   /**
