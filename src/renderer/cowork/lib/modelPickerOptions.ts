@@ -31,6 +31,8 @@ export interface ModelPickerOption {
   locked?: boolean;
   /** An org admin's model rule closes this row; no credits action applies. */
   restricted?: boolean;
+  /** The org's spending budget is used up; no credits action applies. */
+  budgetReached?: boolean;
   /** Row tooltip. */
   title?: string;
 }
@@ -76,7 +78,8 @@ export function buildModelPickerOptions(
       value: model.id,
       label: model.name,
       /* Availability is the only row tag: "Needs credits" for the
-         wallet or the allowance, "Restricted" for an admin's model rule, from
+         wallet or the allowance, "Restricted" for an admin's model rule,
+         "Budget reached" for the org's spent budget, from
          the helper the Settings builder shares. Version state is a muted note,
          not a pill: pills on most rows pushed long names into an ellipsis. */
       ...unavailableModelFields(modelEnabled, modelDisabledReasons, model.id),

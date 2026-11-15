@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 vi.mock('../../../lib/deployment', () => ({ PLATFORM_UI: false }));
@@ -8,6 +8,9 @@ vi.mock('../../api', () => ({
   revealSettingKey: vi.fn(async () => ''),
   fetchRecommendedModels: vi.fn(async () => ({})),
   testProviders: vi.fn(async () => ({})),
+  // No answer: the shared browser's group stays away unless a test offers it.
+  fetchBrowseStatus: vi.fn(async () => undefined),
+  updateSettings: vi.fn(async () => ({})),
 }));
 vi.mock('../../../platform/host', () => ({
   host: { isWeb: true, isElectron: false, isMac: () => false, openExternal: vi.fn() },
@@ -18,6 +21,7 @@ vi.mock('../../lib/analytics', () => ({ resetDeviceIdentity: vi.fn(), trackBilli
 vi.mock('../ChannelsView', () => ({ default: () => <div>Channels</div> }));
 
 import SettingsView, { MindsProbeNotice, UnavailableModelHint } from './SettingsView';
+import { fetchBrowseStatus } from '../../api';
 import { navItemsForHost } from './settingsNavigation';
 
 const minds = { type: 'minds-cloud', apiKey: '***', mindsUrl: 'https://api.mindshub.ai' };
@@ -88,4 +92,15 @@ it.each(['no_credits', 'allowance_used', 'paused', 'slow_down', 'billing_unavail
 it('keeps "Show where figures came from" in Appearance on a build without the platform UI', () => {
   renderSettings({ ...settings, showFigureSources: true }, undefined, 'appearance');
   expect(screen.getByLabelText('Show where figures came from')).toBeChecked();
+});
+
+it('puts the shared browser in its own group after Memory, not inside it', async () => {
+  fetchBrowseStatus.mockResolvedValueOnce({ enabled: true, available: true, status: 'running' });
+  renderSettings();
+  const toggle = await screen.findByRole('switch', { name: 'Shared browser' });
+  const memory = screen.getByRole('heading', { name: 'Memory', exact: true }).parentElement;
+  expect(within(memory).queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
+  const group = screen.getByRole('heading', { level: 2, name: 'Shared browser' }).parentElement;
+  expect(within(group).getByRole('switch', { name: 'Shared browser' })).toBe(toggle);
+  expect(memory.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

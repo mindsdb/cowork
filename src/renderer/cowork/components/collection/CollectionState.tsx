@@ -32,6 +32,7 @@ import { EmptyState } from '../ui/EmptyState';
 import type { EmptyStateProps } from '../ui/EmptyState';
 import { cn } from '../../lib/cn';
 import { ListGroup } from './ListGroup';
+import { useTranslation } from '../../../lib/i18n';
 
 // One shimmer bar. The `background` stays inline: the shorthand resets
 // background-image, which keeps .collection-shimmer's gradient suppressed
@@ -109,7 +110,7 @@ export function CollectionState({
   query = '',
   onClear,
   noMatchTitle,
-  clearLabel = 'Clear search',
+  clearLabel,
   skeleton = 'cards',
   skeletonCount = 6,
   skeletonClassName,
@@ -117,11 +118,12 @@ export function CollectionState({
   empty,
   children,
 }: CollectionStateProps) {
+  const { t } = useTranslation('library');
   if (loading) {
     const items = Array.from({ length: skeletonCount });
     if (skeleton === 'group') {
       return (
-        <ListGroup aria-busy="true" aria-label="Loading" className={skeletonClassName}>
+        <ListGroup aria-busy="true" aria-label={t('collection.loading')} className={skeletonClassName}>
           {items.map((_, i) => <SkeletonGroupRow key={i} />)}
         </ListGroup>
       );
@@ -129,7 +131,7 @@ export function CollectionState({
     return (
       <div
         aria-busy="true"
-        aria-label="Loading"
+        aria-label={t('collection.loading')}
         className={cn(skeleton === 'cards' && skeletonGridClassName, skeletonClassName)}
       >
         {items.map((_, i) => (skeleton === 'cards' ? <SkeletonCard key={i} /> : <SkeletonRow key={i} />))}
@@ -146,8 +148,8 @@ export function CollectionState({
       <div className={cn(FRAME, frameClassName)}>
         <EmptyState
           icon={Ico.search(20)}
-          title={noMatchTitle ?? (q ? `No results for “${q}”` : 'No results')}
-          action={onClear && { label: clearLabel, onClick: onClear }}
+          title={noMatchTitle ?? (q ? t('collection.noResultsFor', { query: q }) : t('collection.noResults'))}
+          action={onClear && { label: clearLabel ?? t('collection.clearSearch'), onClick: onClear }}
           style={{ minHeight: 240 }}
         />
       </div>

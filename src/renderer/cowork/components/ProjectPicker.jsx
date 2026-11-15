@@ -12,6 +12,7 @@ import Ico from './Icons';
 import { Tooltip } from './ui';
 import NewProjectModal from './project/NewProjectModal';
 import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
+import { useTranslation } from '../../lib/i18n';
 
 export default function ProjectPicker({
   projects = [],
@@ -24,6 +25,7 @@ export default function ProjectPicker({
   open: openProp,
   onOpenChange,
 }) {
+  const { t } = useTranslation('projects');
   const [openState, setOpenState] = useState(false);
   const controlled = openProp !== undefined;
   const open = controlled ? openProp : openState;
@@ -93,7 +95,7 @@ export default function ProjectPicker({
       if (created) onChange?.(created);
       setOpen(false);
     } catch (e) {
-      setProjectMenuError(e?.message || 'Could not create project.');
+      setProjectMenuError(e?.message || t('projectPicker.couldNotCreate'));
     } finally {
       setProjectMenuBusy(false);
     }
@@ -122,15 +124,15 @@ export default function ProjectPicker({
       ref={wrapRef}
       className="relative inline-flex"
     >
-      <Tooltip content="Choose project">
+      <Tooltip content={t('projectPicker.choose')}>
         <button
           ref={projectPillRef}
           className="meta-pill"
-          aria-label="Choose project"
+          aria-label={t('projectPicker.choose')}
           onClick={() => setOpen(!open)}
         >
           {Ico.folder(14)}
-          <span>{project ? projectLabel(project) : 'Work in a project'}</span>
+          <span>{project ? projectLabel(project) : t('projectPicker.workInProject')}</span>
           <span className="inline-flex text-ink-4">{Ico.chevDown(14)}</span>
         </button>
       </Tooltip>
@@ -168,7 +170,7 @@ export default function ProjectPicker({
                   setProjectSearch(e.target.value);
                   setProjectMenuError('');
                 }}
-                placeholder={onCreateProject ? 'Search or create…' : 'Search projects…'}
+                placeholder={onCreateProject ? t('projectPicker.searchOrCreate') : t('projectPicker.searchProjects')}
                 disabled={projectMenuBusy}
                 spellCheck={false}
                 autoCapitalize="none"
@@ -206,8 +208,8 @@ export default function ProjectPicker({
             {_filteredProjects.length === 0 ? (
               <div className="py-[10px] px-3 text-[12px] text-ink-3">
                 {_projectSearchTrimmed
-                  ? `No project matches “${_projectSearchTrimmed}”.`
-                  : 'No projects yet.'}
+                  ? t('projectPicker.noMatch', { query: _projectSearchTrimmed })
+                  : t('projectPicker.noProjects')}
               </div>
             ) : _filteredProjects.map((p) => (
               <button
@@ -258,10 +260,10 @@ export default function ProjectPicker({
                 <span className="inline-flex text-[var(--primary-700)]">{Ico.plus(14)}</span>
                 <span className="flex-1 truncate">
                   {projectMenuBusy
-                    ? 'Creating…'
+                    ? t('projectPicker.creating')
                     : (_canCreateFromSearch
-                        ? <>Create <strong className="font-semibold">“{_projectSearchTrimmed}”</strong></>
-                        : 'New project')}
+                        ? <>{t('projectPicker.createPrefix')} <strong className="font-semibold">{t('projectPicker.quotedName', { name: _projectSearchTrimmed })}</strong></>
+                        : t('projectPicker.newProject'))}
                 </span>
               </button>
             </>

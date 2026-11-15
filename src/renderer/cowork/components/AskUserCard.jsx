@@ -1,10 +1,20 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { submitAnswer } from '../api';
+import {
+  BROWSER_APPROVE_VALUE,
+  unreadableApproval,
+  browserApprovalIds,
+  declineBrowserApproval,
+  isBrowserApprovalCard,
+  recordBrowserApproval,
+} from '../lib/browserApproval';
+import { host } from '../../platform/host';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 import ChatCardShell from './ChatCardShell';
 import { cn } from '../lib/cn';
 import Ico from './Icons';
 import Kbd from './ui/Kbd';
+import { useTranslation } from '../../lib/i18n';
 
 // An option button. Hover is `enabled:` only and the cursor resets when
 // disabled: `hover:` also matches a disabled button, and globals.css gives
@@ -27,12 +37,18 @@ const OPTION_SELECTED = 'bg-accent-bg text-ink font-medium';
  * broker waits on it, so a pick goes out as a normal message instead.
  */
 export default function AskUserCard({ step, conversationId, onAnswered, onAnswerAsMessage, expired = false, reopened = false, lateAnswer = null }) {
+  const { t } = useTranslation('chat');
   const q = step?.data || {};
   const answer = lateAnswer || q.answer || null;
   const isMany = q.select === 'many';
   const [picked, setPicked] = useState([]);
   const [gone, setGone] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Why the browser refused the person's approval of a held step, if it did.
+  const [refusal, setRefusal] = useState('');
+  /* The held step whose approval the browser has recorded for this card, so
+     an Approve after a card answer that failed doesn't record it again. */
+  const recordedApproval = useRef(null);
   const promptId = useId();
 
   const settled = !reopened && (Boolean(answer) || expired || gone);
@@ -71,8 +87,8 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
   // the options group's aria-labelledby instead.
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => {
-    setAnnouncement(settled ? '' : 'The agent is asking a question');
-  }, [settled]);
+    setAnnouncement(settled ? '' : t('askUser.announcement'));
+  }, [settled, t]);
 
   const send = async (payload) => {
     if (settled || busy) return;
@@ -83,6 +99,33 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       onAnswerAsMessage?.(payload.values.map(labelOf).join(', '));
       return;
     }
+    /* The commit hold on the web: on Approve the browser records the approval
+       first, and the card is answered only once it has. Any other answer
+       declines the held step first, which also drops an approval recorded
+       before, and the card is answered whatever the decline answers. */
+    if (host.isWeb && isBrowserApprovalCard(q.question_id)) {
+      const held = browserApprovalIds(q.question_id);
+      const approving = payload.values?.length === 1 && payload.values[0] === BROWSER_APPROVE_VALUE;
+      if (approving && !held) {
+        setRefusal(unreadableApproval());
+        setBusy(false);
+        return;
+      }
+      if (approving && recordedApproval.current !== held.pendingId) {
+        const recorded = await recordBrowserApproval(held);
+        if (!recorded.ok) {
+          setRefusal(recorded.message);
+          setBusy(false);
+          return;
+        }
+        recordedApproval.current = held.pendingId;
+      }
+      if (!approving && held) {
+        recordedApproval.current = null;
+        await declineBrowserApproval(held);
+      }
+    }
+    setRefusal('');
     const result = await submitAnswer(conversationId, q.question_id, payload);
     // `busy` is cleared ONLY for a failure the user can retry. On success the
     // card stays disabled until `settled` flips, which needs the
@@ -130,13 +173,13 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
     leading: (
       <span className="font-body text-xs leading-snug text-ink-4">
         {q.allow_custom || reopened
-          ? '…or type your own answer below.'
-          : 'Pick an option above — a typed reply won\'t be accepted. Skip to type something else.'}
+          ? t('askUser.hintCustom')
+          : t('askUser.hintSelectOnly')}
       </span>
     ),
-    secondary: reopened ? null : { label: 'Skip', onClick: () => send({ skipped: true }), disabled: busy },
+    secondary: reopened ? null : { label: t('askUser.skip'), onClick: () => send({ skipped: true }), disabled: busy },
     primary: isMany
-      ? { label: 'Send', onClick: () => send({ values: picked }), disabled: picked.length === 0 || busy }
+      ? { label: t('askUser.send'), onClick: () => send({ values: picked }), disabled: picked.length === 0 || busy }
       : null,
   };
 
@@ -148,18 +191,18 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       actions={actions}
       footer={settled ? (
         <>
-          {answer?.status === 'cancelled' ? <div className="text-xs text-ink-4">Skipped.</div> : null}
-          {answer?.status === 'timeout' ? <div className="text-xs text-ink-4">No answer — timed out.</div> : null}
+          {answer?.status === 'cancelled' ? <div className="text-xs text-ink-4">{t('askUser.skipped')}</div> : null}
+          {answer?.status === 'timeout' ? <div className="text-xs text-ink-4">{t('askUser.timedOut')}</div> : null}
           {/* Body text, not a status caption: a composer-typed answer is not
               echoed as a user message anywhere else. The bold prefix (styled
               like markdown bold) sets it apart from the prompt, which uses the
               same prose style. */}
           {answerText ? (
             <MarkdownPlainText>
-              <strong className="font-semibold text-ink">Answered:</strong> {answerText}
+              <strong className="font-semibold text-ink">{t('askUser.answered')}</strong> {answerText}
             </MarkdownPlainText>
           ) : null}
-          {expired || gone ? <div className="text-xs text-ink-4">This question is no longer active.</div> : null}
+          {expired || gone ? <div className="text-xs text-ink-4">{t('askUser.noLongerActive')}</div> : null}
         </>
       ) : null}
     >
@@ -236,6 +279,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
         })}
       </div>
 
+      {refusal && !settled ? <div role="alert" className="mt-2 text-xs text-danger">{refusal}</div> : null}
     </ChatCardShell>
   );
 }

@@ -15,6 +15,7 @@ import { diagnostic } from '../../shared/diagnostics';
 // so call sites can branch / hide affordances.
 
 import type { MindsOrg } from '../../shared/minds-orgs';
+import type { InAppBrowserBridge } from '../../shared/browser-contract';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
 import type { UpdatePhaseEntry } from '../../shared/update-journal-types';
@@ -27,6 +28,7 @@ import {
 import { normalizeExternalBrowserUrl } from '../../shared/external-url';
 import { guardRestart, type GuardedRestartResult } from './restart-guard';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
+import { isMobileShell, mobileShell } from '../lib/mobileShell';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -43,6 +45,11 @@ const bridge: any =
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
 
+// Inside the mobile app (ENG-4023): a web build running in the
+// iOS/Android shell's webview. Always also `isWeb`. Use it to hide what makes
+// no sense on a phone (installers, "get the desktop app" offers).
+export { isMobileShell, mobileShell };
+
 // Static deployment capability. The user's opt-in is intentionally owned by
 // the renderer and stored per device; this flag only answers whether this
 // shell is allowed to offer Code at all. Web has no bridge, so hosted Cowork
@@ -56,6 +63,43 @@ export const codeModeAvailable: boolean =
    files in the default app. */
 export const supportsDocumentPreview: boolean =
   isWeb || bridge.supportsDocumentPreview === true;
+
+/* Whether this shell hosts the in-app browser: Electron's own Chromium, shown
+   natively in the browser pane. Only a desktop shell whose preload reports
+   exactly true and exposes the browser bridge does, so an older shell shows no
+   desktop pane. The web shows the browser router's viewer instead. */
+export const supportsInAppBrowser: boolean =
+  isElectron && bridge.supportsInAppBrowser === true && typeof bridge.browser === 'object' && bridge.browser !== null;
+
+const NO_BROWSER: InAppBrowserBridge = {
+  ready: async () => {},
+  show: async () => ({ exists: false, drawn: false }),
+  hide: async () => {},
+  setBounds: async () => ({ drawn: false }),
+  back: async () => {},
+  forward: async () => {},
+  reload: async () => {},
+  activateTab: async () => {},
+  takeOver: async () => {},
+  handBack: async () => {},
+  answerLogin: async () => {},
+  answerDownload: async () => {},
+  clearData: async () => ({ ok: false }),
+  onState: () => () => {},
+};
+
+/** The in-app browser's bridge, or one that does nothing where there is none. */
+export const inAppBrowser: InAppBrowserBridge = supportsInAppBrowser ? bridge.browser : NO_BROWSER;
+
+/* Main says the local server took the in-app browser's registration, so
+   GET /browse/status can answer differently from then on. It never fires on
+   the web, or on a shell without the in-app browser. */
+export function onInAppBrowserRegistered(cb: () => void): () => void {
+  if (supportsInAppBrowser && typeof bridge.onBrowserRegistered === 'function') {
+    return bridge.onBrowserRegistered(cb);
+  }
+  return () => {};
+}
 
 // ---- Platform identity --------------------------------------------------
 
@@ -745,6 +789,14 @@ export async function drainUpdateJournal(): Promise<UpdatePhaseEntry[]> {
     return Array.isArray(entries) ? entries : [];
   }
   return [];
+}
+
+// Hold off system sleep while a scheduled run is in flight or about to fire
+// (src/main/keep-awake.ts). A no-op on web and on shells older than the channel.
+export function setScheduleKeepAwake(active: boolean): void {
+  if (isElectron && typeof bridge.setScheduleKeepAwake === 'function') {
+    void bridge.setScheduleKeepAwake(active);
+  }
 }
 
 export async function ackUpdateJournal(ids: string[]): Promise<void> {
@@ -1628,6 +1680,40 @@ export async function mindshubListOrgs(): Promise<MindsOrgList> {
   return { orgs: result.orgs, activeOrgId: result.activeOrgId, reachable: true };
 }
 
+/** The org's images as data: URIs, each null when unset or not loadable. */
+export interface DesktopBrandImages {
+  iconUrl: string | null;
+  logoUrl: string | null;
+  logoDarkUrl: string | null;
+}
+
+/**
+ * Desktop only: hand main the org's image URLs (from org-branding); main
+ * downloads them from the auth host, sets the app icon, and returns data:
+ * URIs, since this page loads no remote images. null puts the stock app icon
+ * back. Web shows the URLs directly and gets null here.
+ */
+export async function mindshubBrandImages(
+  urls: { iconUrl: string | null; logoUrl: string | null; logoDarkUrl: string | null } | null,
+): Promise<DesktopBrandImages | null> {
+  if (!isElectron || typeof bridge.mindshubBrandImages !== 'function') return null;
+  try {
+    return (await bridge.mindshubBrandImages(urls)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Desktop only: org id → icon URL in, org id → data: URI out (main downloads them). */
+export async function mindshubOrgIconUris(urls: Record<string, string>): Promise<Record<string, string>> {
+  if (!isElectron || typeof bridge.mindshubOrgIconUris !== 'function') return {};
+  try {
+    return (await bridge.mindshubOrgIconUris(urls)) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
   if (isElectron) {
     if (typeof bridge.mindshubSwitchOrg === 'function') {
@@ -1717,6 +1803,23 @@ export async function getKeychainPref(): Promise<boolean> {
 export async function setKeychainPref(enabled: boolean): Promise<boolean> {
   if (isElectron && typeof bridge.setKeychainPref === 'function') {
     return (await bridge.setKeychainPref(enabled)).ok;
+  }
+  return false;
+}
+
+// Whether the desktop's agent sends its anonymous usage events, the shared
+// browser's included (COWORK_USAGE_EVENTS in the account's dotenv; on unless
+// turned off). Null where the shell can't say: the web, or an older shell.
+export async function getUsageEventsPref(): Promise<boolean | null> {
+  if (isElectron && typeof bridge.getUsageEventsPref === 'function') {
+    return (await bridge.getUsageEventsPref()).enabled;
+  }
+  return null;
+}
+
+export async function setUsageEventsPref(enabled: boolean): Promise<boolean> {
+  if (isElectron && typeof bridge.setUsageEventsPref === 'function') {
+    return (await bridge.setUsageEventsPref(enabled)).ok;
   }
   return false;
 }
@@ -1827,8 +1930,13 @@ export async function decideAccountOwnership(
 export const host = {
   isWeb,
   isElectron,
+  isMobileShell,
+  mobileShell,
   codeModeAvailable,
   supportsDocumentPreview,
+  supportsInAppBrowser,
+  inAppBrowser,
+  onInAppBrowserRegistered,
   getPlatform,
   isMac,
   getApiOrigin,
@@ -1877,6 +1985,7 @@ export const host = {
   applyUpdate,
   drainUpdateJournal,
   ackUpdateJournal,
+  setScheduleKeepAwake,
   checkForUpdates,
   getShellUpdate,
   getShellSupport,
@@ -1899,6 +2008,8 @@ export const host = {
   onMindsHubAuthChanged,
   getKeychainPref,
   setKeychainPref,
+  getUsageEventsPref,
+  setUsageEventsPref,
   getAccessToken,
   logout,
   keychainRevoke,

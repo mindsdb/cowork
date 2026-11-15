@@ -16,6 +16,12 @@ describe('selectNextQueuedTask', () => {
     expect(selectNextQueuedTask({ a: [] }, ['a'], 'a')).toBeNull();
   });
 
+  it('skips a queue holding only paused messages (ENG-4194)', () => {
+    const queues = { a: [{ ...item('a1'), paused: true }], b: [item('b1')] };
+    expect(selectNextQueuedTask(queues, ['a', 'b'], 'a')).toBe('b');
+    expect(selectNextQueuedTask({ a: queues.a }, ['a'], 'a')).toBeNull();
+  });
+
   it('prefers the finishing task when it still has queued messages (FIFO on its own follow-ups)', () => {
     const queues = { a: [item('a1')], b: [item('b1')] };
     expect(selectNextQueuedTask(queues, ['a', 'b'], 'a')).toBe('a');

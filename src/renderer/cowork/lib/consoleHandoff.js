@@ -4,6 +4,8 @@
 //   /?from=console                                   empty composer
 //   /?from=console&mode=games&sample=classic-snake-game
 //   /?from=console&start=own-work                    the first onboarding step
+//   /?from=console&mode=games&sample=…&placement=gallery
+//                                                    …and where in the console it came from
 //
 // The URL names a sample, or a start the app owns, by id and never carries
 // prompt text. It has to be captured before the Keycloak redirect, because
@@ -19,12 +21,16 @@ export const CONSOLE_ENTRY_SOURCE = 'console';
 // Long enough to cover a real login round trip, short enough that a handoff
 // abandoned mid-login does not prefill a composer the user opens much later.
 const MAX_AGE_MS = 10 * 60 * 1000;
-const HANDOFF_PARAMS = ['from', 'mode', 'sample', 'start'];
+const HANDOFF_PARAMS = ['from', 'mode', 'sample', 'start', 'placement'];
 
 // Starts a link may ask for. Anything else is dropped, so a bad link opens an
 // empty composer.
 export const OWN_WORK_START = 'own-work';
 const STARTS = [OWN_WORK_START];
+
+// Where in the console the link was clicked, so a task can be credited to the
+// surface that led to it. Only these are kept; anything else reads as unknown.
+export const PLACEMENTS = ['gallery'];
 
 // Sample ids are derived from their labels so the catalog needs no second key.
 // Renaming a label the console links to changes its id; the console's links are
@@ -63,11 +69,13 @@ export function captureConsoleHandoff(loc = window.location, storage = sessionSt
 
   const match = findSample(params.get('mode'), params.get('sample'));
   const start = STARTS.includes(params.get('start')) ? params.get('start') : null;
+  const placement = PLACEMENTS.includes(params.get('placement')) ? params.get('placement') : null;
   const handoff = {
     entrySource: CONSOLE_ENTRY_SOURCE,
     modeId: match ? match.mode.id : null,
     sampleId: match ? sampleId(match.sample.label) : null,
     start,
+    placement,
     at: Date.now(),
   };
   try { storage?.setItem(STORAGE_KEY, JSON.stringify(handoff)); } catch {}
@@ -94,5 +102,6 @@ export function takeConsoleHandoff(storage = sessionStore(), now = Date.now()) {
   const match = handoff.modeId ? findSample(handoff.modeId, handoff.sampleId) : null;
   // A sample wins over a start: the link asked for a specific example.
   const start = !match && STARTS.includes(handoff.start) ? handoff.start : null;
-  return { entrySource: handoff.entrySource, mode: match?.mode ?? null, sample: match?.sample ?? null, start };
+  const placement = PLACEMENTS.includes(handoff.placement) ? handoff.placement : null;
+  return { entrySource: handoff.entrySource, mode: match?.mode ?? null, sample: match?.sample ?? null, start, placement };
 }

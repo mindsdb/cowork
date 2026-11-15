@@ -36,6 +36,7 @@ import { useHubWorkspaces } from '../hooks/useHubWorkspaces';
 import { tileLetter, tileStyle } from '../lib/letterTile';
 import { openExternal } from '../../platform/host';
 import { MINDS_WORKSPACES_URL } from '../../lib/mindsUrls';
+import { useTranslation } from '../../lib/i18n';
 
 // The letter square. Colour is hashed from the id, not the name, so a rename
 // keeps the tile people recognise (see lib/letterTile).
@@ -51,11 +52,12 @@ export function WorkspaceTile({ id, name, size = 18 }) {
   );
 }
 
-const workspaceName = (workspace) => workspace?.displayName || 'Workspace';
+const workspaceName = (workspace, t) => workspace?.displayName || t('workspace.label');
 
 export function WorkspaceSelector({ user, returnFocusRef }) {
   const { enabled, reachable, workspaces, activeWorkspaceId, switching, switchWorkspace } =
     useHubWorkspaces(user);
+  const { t } = useTranslation('shell');
   const toastManager = useToastManager();
   const preserveFocusOnRemoval = useCallback((element) => {
     // React 19 calls this cleanup before removing the focused trigger. A delayed
@@ -84,8 +86,8 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
       toastManager.add({
         title:
           err?.status === 409
-            ? 'That workspace has been archived. Pick another one.'
-            : 'We could not switch workspace. Please try again.',
+            ? t('workspace.archived')
+            : t('workspace.switchFailed'),
         type: 'danger',
       });
     }
@@ -114,20 +116,20 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
   // archived under you.
   if (!enabled || !reachable || !active || workspaces.length < 2) return null;
 
-  const activeName = workspaceName(active);
+  const activeName = workspaceName(active, t);
 
   const items = [
     {
       id: 'workspace-group',
       heading: (
         <div className="section-label">
-          Workspace
+          {t('workspace.label')}
         </div>
       ),
     },
     ...workspaces.map((workspace) => {
       const isActive = workspace.id === active.id;
-      const name = workspaceName(workspace);
+      const name = workspaceName(workspace, t);
       return {
         id: `workspace-${workspace.id}`,
         icon: <WorkspaceTile id={workspace.id} name={name} />,
@@ -158,9 +160,9 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
     {
       id: 'manage-workspaces',
       icon: <Icon of={Settings2} size={14} />,
-      label: 'Manage workspaces',
+      label: t('workspace.manage'),
       hint: <Icon of={ArrowUpRight} size={12} />,
-      title: 'Opens in your browser',
+      title: t('common.opensInBrowser'),
       onClick: () => openExternal(MINDS_WORKSPACES_URL),
     },
   ];
@@ -169,7 +171,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
     <button
       type="button"
       data-workspace-selector
-      aria-label={`Workspace: ${activeName}`}
+      aria-label={t('workspace.triggerAriaLabel', { name: activeName })}
       // Bordered and surface-filled so it reads as a control rather than a
       // heading. `no-drag` because the whole window is a drag region.
       className="w-full flex items-center gap-2 h-9 px-2.5 rounded-lg border border-solid border-line bg-surface text-left cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] [-webkit-app-region:no-drag]"
@@ -192,7 +194,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
         side="top"
         align="start"
         width={248}
-        ariaLabel="Workspace"
+        ariaLabel={t('workspace.label')}
       />
     </div>
   );

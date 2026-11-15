@@ -4,6 +4,7 @@
 
 import { RailCard } from './RailCard';
 import { PhaseProgress } from '../thinking/PhaseProgress';
+import { useTranslation } from '../../../lib/i18n';
 
 export function ProgressBox({
   steps = [],
@@ -12,8 +13,9 @@ export function ProgressBox({
   onActivateStep,
   defaultOpen = true,
 }) {
+  const { t } = useTranslation('shell');
   return (
-    <RailCard title="Progress" defaultOpen={defaultOpen}>
+    <RailCard title={t('rail.progress.title')} defaultOpen={defaultOpen}>
       <PhaseProgress
         steps={steps}
         streamStatus={streamStatus || (steps.length ? 'done' : null)}

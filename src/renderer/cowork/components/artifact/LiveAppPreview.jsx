@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { createLiveAppPreview, keepLiveAppPreview, revokeLiveAppPreview } from '../../api';
 import { registerLiveAppPreview } from '../../lib/liveAppPreview';
 import { Button, Spinner } from '../ui';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
-const FAILURE = "Couldn't connect to this app. Reload to try again, or open it in your browser.";
-const PRIVACY = 'Your browser limits storage or cookies in embedded apps. Open this app in your browser to use it.';
+const FAILURE = () => i18n.t('liveAppPreview.failure', { ns: 'artifacts' });
+const PRIVACY = () => i18n.t('liveAppPreview.privacy', { ns: 'artifacts' });
 // The server keeps a lease 60 s past its last renewal. A refusal ends the pane
 // at once; a network blip or a server error is retried while time remains.
 const RENEW_MS = 15000;
@@ -12,10 +13,11 @@ const RETRY_MS = 3000;
 const GIVE_UP_MS = 45000;
 const FINAL = new Set([401, 403, 404]);
 // A refusal sentence from the server or its trusted bridge page, never a long one.
-const sentence = (message) => (typeof message === 'string' && message && message.length <= 200 ? message : FAILURE);
+const sentence = (message) => (typeof message === 'string' && message && message.length <= 200 ? message : FAILURE());
 
 /** The trusted bootstrap receives the intent; app code receives no credential. */
 export function LiveAppPreview({ origin, launchId, reloadKey, onOpen }) {
+  const { t } = useTranslation('artifacts');
   const frame = useRef(null);
   const popup = useRef(null);
   const cancel = useRef(null);
@@ -36,7 +38,7 @@ export function LiveAppPreview({ origin, launchId, reloadKey, onOpen }) {
       clearTimeout(timer);
       popup.current?.close();
       setLease(null);
-      if (failed) setFailure(FAILURE);
+      if (failed) setFailure(FAILURE());
     };
     cancel.current = () => stop(false);
     const unregister = registerLiveAppPreview(() => stop());
@@ -62,7 +64,7 @@ export function LiveAppPreview({ origin, launchId, reloadKey, onOpen }) {
         setLease(current);
         timer = setTimeout(renew, RENEW_MS);
       } catch (error) {
-        if (!closed) setFailure(error?.status ? sentence(error.message) : FAILURE);
+        if (!closed) setFailure(error?.status ? sentence(error.message) : FAILURE());
       }
     };
     void start();
@@ -96,7 +98,7 @@ export function LiveAppPreview({ origin, launchId, reloadKey, onOpen }) {
     };
     const deadline = () => {
       clearTimeout(timeout);
-      timeout = setTimeout(() => settle('failed', FAILURE), 10000);
+      timeout = setTimeout(() => settle('failed', FAILURE()), 10000);
     };
     const send = (target, event, extra = {}) => target?.postMessage({
       type: 'live-app-preview', event, nonce, launchId, ...extra,
@@ -118,8 +120,8 @@ export function LiveAppPreview({ origin, launchId, reloadKey, onOpen }) {
       if (data.event === 'ready' && phase === 'loading') send(event.source, 'intent', { token: lease.intent });
       else if (data.event === 'sign-in' && phase === 'loading') settle('sign-in');
       else if (data.event === 'connected' && phase === 'loading') settle('connected');
-      else if (data.event === 'storage-blocked' || data.event === 'cookie-blocked') settle('failed', PRIVACY);
-      else if (data.event === 'failed') settle('failed', FAILURE);
+      else if (data.event === 'storage-blocked' || data.event === 'cookie-blocked') settle('failed', PRIVACY());
+      else if (data.event === 'failed') settle('failed', FAILURE());
     };
     window.addEventListener('message', receive);
     settle('loading');
@@ -144,7 +146,7 @@ export function LiveAppPreview({ origin, launchId, reloadKey, onOpen }) {
       '_blank', 'popup,width=600,height=720');
     if (!popup.current) {
       cancel.current?.();
-      setView({ phase: 'failed', message: 'Allow the sign-in window, or open this app in your browser.' });
+      setView({ phase: 'failed', message: t('liveAppPreview.popupBlocked') });
     }
   };
   const failed = Boolean(failure) || view.phase === 'failed';
@@ -154,7 +156,7 @@ export function LiveAppPreview({ origin, launchId, reloadKey, onOpen }) {
       {lease && connection && !failed && <iframe
         key={connection.nonce}
         ref={frame}
-        title="Live app preview"
+        title={t('liveAppPreview.title')}
         src={connection.src}
         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"
         allow="clipboard-write"
@@ -163,10 +165,10 @@ export function LiveAppPreview({ origin, launchId, reloadKey, onOpen }) {
       />}
       {!connected && <div role="status" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
         <div style={{ display: 'grid', justifyItems: 'center', gap: 12, maxWidth: 460, textAlign: 'center', fontSize: 13, color: 'var(--ink-2)' }}>
-          {!failed && view.phase === 'loading' && <><Spinner /><span>Connecting app preview…</span></>}
-          {!failed && view.phase === 'sign-in' && <><span>Show this running app here. A small window opens to connect it, and asks you to sign in if needed.</span><Button onClick={signIn}>Show the app here</Button></>}
+          {!failed && view.phase === 'loading' && <><Spinner /><span>{t('liveAppPreview.connecting')}</span></>}
+          {!failed && view.phase === 'sign-in' && <><span>{t('liveAppPreview.signInBody')}</span><Button onClick={signIn}>{t('liveAppPreview.showHere')}</Button></>}
           {failed && <span>{failure || view.message}</span>}
-          <Button onClick={onOpen}>Open in browser</Button>
+          <Button onClick={onOpen}>{t('liveAppPreview.openInBrowser')}</Button>
         </div>
       </div>}
     </div>

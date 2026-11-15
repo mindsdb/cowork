@@ -22,6 +22,7 @@ import {
   type DeveloperProvider,
 } from './developerTools';
 import { WorkItemPicker } from './WorkItemPicker';
+import { useTranslation } from '../../lib/i18n';
 
 const SEARCH_DELAY_MS = 250;
 
@@ -44,6 +45,7 @@ export function TaskSourceLinks({
   onAddingChange: (adding: boolean) => void;
   busy: boolean;
 }) {
+  const { t } = useTranslation('code');
   const [open, setOpen] = useState(false);
   const [provider, setProvider] = useState<DeveloperProvider>('github');
   const [query, setQuery] = useState('');
@@ -110,7 +112,7 @@ export function TaskSourceLinks({
     if (busy || addInFlight.current) return;
     const parsed = parseDeveloperSourceUrl(sourceUrl);
     if (!parsed) {
-      setError('Paste a GitHub or Linear issue or pull-request link.');
+      setError(t('taskSourceLinks.invalidLink'));
       setOpen(true);
       return;
     }
@@ -118,7 +120,7 @@ export function TaskSourceLinks({
       || connectionForSource(connections, parsed, connectionName)
       || connectionForSource(connections, parsed);
     if (!connection) {
-      setError(`Choose the ${developerProviderLabel(parsed.provider)} account to use.`);
+      setError(t('taskSourceLinks.chooseAccount', { provider: developerProviderLabel(parsed.provider) }));
       setOpen(true);
       return;
     }
@@ -140,13 +142,13 @@ export function TaskSourceLinks({
       setOpen(false);
     } catch (reason) {
       if (!mounted.current) return;
-      setError(reason instanceof Error ? reason.message : 'Could not load that work item.');
+      setError(reason instanceof Error ? reason.message : t('taskSourceLinks.loadFailed'));
       setOpen(true);
     } finally {
       addInFlight.current = false;
       if (mounted.current) setAdding(false);
     }
-  }, [busy, connectionName, connections, ensureProjectConnection, onChange, project, value]);
+  }, [busy, connectionName, connections, ensureProjectConnection, onChange, project, t, value]);
 
   useEffect(() => {
     if (!open || !connectionName || busy || adding) return undefined;
@@ -166,19 +168,19 @@ export function TaskSourceLinks({
       } catch (reason) {
         if (active) {
           setItems([]);
-          setError(reason instanceof Error ? reason.message : 'Could not search connected work.');
+          setError(reason instanceof Error ? reason.message : t('taskSourceLinks.searchFailed'));
         }
       } finally {
         if (active) setSearching(false);
       }
     }, SEARCH_DELAY_MS);
     return () => { active = false; window.clearTimeout(timer); setSearching(false); };
-  }, [adding, busy, connectionName, open, project, provider, providerConnections, query]);
+  }, [adding, busy, connectionName, open, project, provider, providerConnections, query, t]);
 
   return (
     <div className="code-task-sources">
       {value.length > 0 && (
-        <div className="code-source-contexts" aria-label="Linked work">
+        <div className="code-source-contexts" aria-label={t('taskSourceLinks.linkedAriaLabel')}>
           {value.map((context) => (
             <div className="code-source-card" key={`${context.provider}:${context.url}`}>
               <span className="code-source-card__provider">{sourceProviderLabel(context.provider)}</span>
@@ -187,7 +189,7 @@ export function TaskSourceLinks({
                 <span>{context.title}</span>
                 {sourceContextMeta(context) && <small>{sourceContextMeta(context)}</small>}
               </span>
-              <Button icon size="xxs" variant="subtle" disabled={busy || adding} aria-label={`Remove ${sourceContextLabel(context)}`} onClick={() => onChange(value.filter((item) => item.url !== context.url))}>{Ico.close(12)}</Button>
+              <Button icon size="xxs" variant="subtle" disabled={busy || adding} aria-label={t('taskSourceLinks.remove', { label: sourceContextLabel(context) })} onClick={() => onChange(value.filter((item) => item.url !== context.url))}>{Ico.close(12)}</Button>
             </div>
           ))}
         </div>
@@ -222,7 +224,7 @@ export function TaskSourceLinks({
         />
       )}
       <Button size="sm" variant="subtle" className="code-add-source" onClick={() => { setOpen((current) => !current); setError(''); }} disabled={busy || adding}>
-        {Ico.link(12)} {value.length ? 'Add another issue or PR' : 'Add issue or PR'}
+        {Ico.link(12)} {value.length ? t('taskSourceLinks.addAnother') : t('taskSourceLinks.add')}
       </Button>
     </div>
   );

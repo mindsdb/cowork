@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveUpdateBanner, shellAutoOwnsBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES } from './update-banner';
+import { deriveUpdateBanner, restartUnderway, shellAutoOwnsBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES } from './update-banner';
 import { transitionShellUpdate, type ShellUpdateSnapshot } from '../main/shell-update-state';
 
 describe('deriveUpdateBanner', () => {
@@ -245,5 +245,22 @@ describe('deriveUpdateBanner', () => {
       // …but the Retry affordance survives when nothing else is pending.
       expect(deriveUpdateBanner({ shellAuto: s })).toMatchObject({ kind: 'shell-auto', actionLabel: 'Retry' });
     });
+  });
+});
+
+describe('restartUnderway', () => {
+  it('is true while an OTA apply downloads or reloads, or the shell installs', () => {
+    expect(restartUnderway({ ota: { phase: 'downloading' } })).toBe(true);
+    expect(restartUnderway({ ota: { phase: 'reloading' } })).toBe(true);
+    expect(restartUnderway({ shellAuto: { phase: 'installing' } })).toBe(true);
+  });
+
+  it('is false while an update is only offered, failed, or absent', () => {
+    expect(restartUnderway({})).toBe(false);
+    expect(restartUnderway({ ota: null, shellAuto: null })).toBe(false);
+    expect(restartUnderway({ ota: { phase: 'available' } })).toBe(false);
+    expect(restartUnderway({ ota: { phase: 'error' } })).toBe(false);
+    expect(restartUnderway({ shellAuto: { phase: 'ready-to-install' } })).toBe(false);
+    expect(restartUnderway({ shellAuto: { phase: 'downloading' } })).toBe(false);
   });
 });

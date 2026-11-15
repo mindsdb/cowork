@@ -104,6 +104,20 @@ export default defineConfig({
            read as no on the desktop too, and a control that wrongly appears
            looks like a working feature until its request is refused. */
         'src/renderer/cowork/lib/skillSharing.js': { statements: 100, branches: 100 },
+        /* The desktop in-app browser's guards: the bridge's request checks,
+           the profile's lockdown and destination refusals, the host's
+           downloads and account moves, and the tasks' control and caps. A
+           refusal that stops firing looks like a browser that works, so the
+           branch table is what proves each one still does. */
+        'src/main/browser-bridge.ts': { statements: 86, branches: 78 },
+        'src/main/browser-profile.ts': { statements: 91, branches: 88 },
+        'src/main/browser-host.ts': { statements: 89, branches: 78 },
+        'src/main/browser-sessions.ts': { statements: 94, branches: 84 },
+        /* The web commit hold's card and the web pane's viewer link. A card
+           answered without the browser's approval, or a frame for another
+           session's viewer, looks like a working page. */
+        'src/renderer/cowork/lib/browserApproval.js': { statements: 98, branches: 95 },
+        'src/renderer/cowork/lib/browserSession.js': { statements: 98, branches: 95 },
       },
     },
     projects: [
@@ -148,6 +162,7 @@ export default defineConfig({
             'src/renderer/cowork/components/artifact/ArtifactViewerBody.liveApp.test.jsx',
             'src/renderer/cowork/components/WorkspaceSelector.test.jsx',
             'src/renderer/cowork/App.appearancePreview.test.jsx',
+            'src/renderer/cowork/App.updateRestart.test.jsx',
             'src/renderer/cowork/views/settings/SettingsView.providerTestPending.test.jsx',
             'src/renderer/cowork/views/settings/SettingsView.providerTesting.test.jsx',
             'src/renderer/cowork/views/settings/useSettingsDraft.test.jsx',
@@ -157,6 +172,13 @@ export default defineConfig({
             'src/renderer/cowork/code/CodeView.test.tsx',
             'src/renderer/cowork/code/NewTaskPanel.test.tsx',
             'src/renderer/cowork/code/ProjectSettingsModal.test.tsx',
+            // The artifact viewer's Stats panel, its hook and the side-panel
+            // switching that the panel added to the viewer.
+            'src/renderer/cowork/components/artifact/stats/useArtifactStats.test.jsx',
+            'src/renderer/cowork/components/artifact/stats/StatsChart.test.jsx',
+            'src/renderer/cowork/components/artifact/stats/StatsPanel.test.jsx',
+            'src/renderer/cowork/components/artifact/ArtifactViewerHeader.stats.test.jsx',
+            'src/renderer/cowork/components/artifact/ArtifactViewer.sidePanel.test.jsx',
           ],
           setupFiles: ['tests/setup-env.ts', 'tests/setup-renderer.ts'],
         },

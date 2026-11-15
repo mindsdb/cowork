@@ -1,0 +1,30 @@
+{
+  "picker": {
+    "placeholder": "モデルを選択",
+    "empty": "モデルが見つかりません",
+    "searchAriaLabel": "モデルを検索",
+    "unavailable": "利用不可",
+    "addCredits": "クレジットを追加",
+    "addCreditsTooltip": "このモデルを使用するにはクレジットを追加してください"
+  },
+  "groups": {
+    "openWeight": "オープンウェイト",
+    "other": "その他"
+  },
+  "effort": {
+    "label": "推論レベル",
+    "description": "レベルを上げるとより丁寧な回答が得られますが、時間がかかり、利用上限の消費も早くなります。",
+    "default": "デフォルト",
+    "levels": {
+      "none": "なし",
+      "minimal": "最小",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高",
+      "max": "最大",
+      "fast": "高速",
+      "slow": "低速"
+    }
+  }
+}

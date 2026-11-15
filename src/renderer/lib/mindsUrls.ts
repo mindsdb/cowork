@@ -105,6 +105,8 @@ export const MINDS_ADD_FUNDS_URL = `${MINDS_BILLING_URL}?exhausted=1`;
    the console's auto top up controls call owner-only wallet endpoints, and a
    member who follows this link gets a dialog they cannot submit. */
 export const MINDS_AUTO_TOP_UP_URL = `${MINDS_BILLING_URL}?autoTopUp=1`;
+// The org's spending budgets; an owner or admin raises a spent one here.
+export const MINDS_BUDGETS_URL = `${MINDS_BILLING_URL}?tab=budgets`;
 export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 
 // Console settings pages the sidebar user menu deep-links to (ENG-1408) —

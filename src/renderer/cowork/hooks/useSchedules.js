@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   fetchSchedules,
   createSchedule,
@@ -8,9 +8,8 @@ import {
   resumeSchedule,
 } from '../api';
 
-// Scheduled-task data and its CRUD lifecycle: the schedule list, the flat
-// session→schedule runs index, a refresh that writes both, and the
-// create/update/delete/pause/resume handlers (each refreshes so the list
+// Scheduled-task data and its CRUD lifecycle: the schedule list, a refresh
+// that writes it, and the create/update/delete/pause/resume handlers (each refreshes so the list
 // reflects the server immediately).
 //
 // Deliberately scoped to schedule *data*. Three schedule-adjacent things
@@ -21,24 +20,34 @@ import {
 //     the router in several places)
 //   - `handleRunScheduleNow` (navigates to the new run and refreshes the app)
 export function useSchedules() {
+  // Which conversations are a schedule's runs comes with each conversation
+  // (`scheduledId`), not with this list, so the list stays the same size
+  // however long a schedule's history.
   const [scheduled, setScheduled] = useState([]);
-  // Flat session→schedule map sourced from `GET /v1/schedules`.
-  // Lets TasksView collapse all conversations belonging to one
-  // schedule into a single grouped row instead of listing each
-  // execution separately.
-  const [scheduleRunsIndex, setScheduleRunsIndex] = useState({});
+
+  const lastListRef = useRef([]);
 
   const refreshSchedules = useCallback(async () => {
     const data = await fetchSchedules();
+    if (!data) {
+      // A failed read keeps what was last known, so a run in flight still
+      // holds the machine awake. A new list (same items) says it again: the
+      // shell lets a hold lapse when it stops hearing it.
+      const kept = [...lastListRef.current];
+      setScheduled(kept);
+      return kept;
+    }
     const list = data.schedules || [];
+    lastListRef.current = list;
     setScheduled(list);
-    setScheduleRunsIndex(data.runs_index || {});
     return list;
   }, []);
 
+  // Returns the created schedule, so a caller can run it once at once.
   const handleCreateSchedule = async (payload) => {
-    await createSchedule(payload);
+    const created = await createSchedule(payload);
     await refreshSchedules();
+    return created;
   };
 
   const handleUpdateSchedule = async (id, payload) => {
@@ -63,7 +72,6 @@ export function useSchedules() {
 
   return {
     scheduled,
-    scheduleRunsIndex,
     refreshSchedules,
     handleCreateSchedule,
     handleUpdateSchedule,

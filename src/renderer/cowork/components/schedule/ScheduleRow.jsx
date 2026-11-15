@@ -10,32 +10,38 @@ import { Button, Spinner, Tooltip } from '../ui';
 import { ItemActions, ListItem, StatusDot } from '../collection';
 import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
-import { scheduleStatusBadge } from './ScheduleStatusBadge';
+import { scheduleState, scheduleStatusBadge } from './ScheduleStatusBadge';
+import { dateLocale, describeWhen, whenFromDate } from '../../lib/scheduleWhen';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 function absoluteTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString(dateLocale(), {
     weekday: 'short', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
   });
 }
 
 function cadenceLabel(cadence) {
-  return {
-    once:     'One-off',
-    hourly:   'Hourly',
-    daily:    'Daily',
-    weekdays: 'Weekdays',
-    weekly:   'Weekly',
-  }[cadence] || cadence;
+  const key = {
+    once:     'once',
+    every_15_minutes: 'every15',
+    every_30_minutes: 'every30',
+    hourly:   'hourly',
+    daily:    'daily',
+    weekdays: 'weekdays',
+    weekly:   'weekly',
+  }[cadence];
+  return key ? i18n.t(`scheduleRow.cadence.${key}`, { ns: 'projects' }) : cadence;
 }
 
 export default function ScheduleRow({
   task, busy = false, projects = [], onOpenProject,
-  onOpen, onRunNow, onPause, onResume, onEdit, onDelete,
+  onOpen, onRunNow, onStopRun, onPause, onResume, onEdit, onDelete,
 }) {
+  const { t } = useTranslation('projects');
   // Resolve the project name from the stored id (server keys by UUID, ENG-1255).
   const projectMatch = task.projectId
     ? projects.find((p) => p.id === task.projectId) || null
@@ -44,7 +50,6 @@ export default function ScheduleRow({
   // local because its rows match a project by name; this item resolves by
   // `task.projectId` above, so it needs the slug for nothing (ENG-1676).
   const projectDisplay = projectLabel(projectMatch) || '';
-  const missed = Number(task.missedRuns) || 0;
   const status = scheduleStatusBadge(task);
 
   // A fixed cap so a long name truncates. The row's meta sizes to its content
@@ -55,7 +60,7 @@ export default function ScheduleRow({
       <span className="inline-flex shrink-0">{Ico.folder(12)}</span>
       {projectMatch && typeof onOpenProject === 'function' ? (
         <ItemActions className="min-w-0 shrink">
-          <Tooltip content={`Open ${projectDisplay}`}>
+          <Tooltip content={t('scheduleRow.openProject', { project: projectDisplay })}>
             <button
               type="button"
               onClick={() => onOpenProject(projectMatch)}
@@ -69,29 +74,37 @@ export default function ScheduleRow({
     </span>
   );
 
-  // Enabled tasks show the next run; paused ones show the cadence.
-  const when = (
-    <span title={task.enabled ? absoluteTime(task.nextRunAt) : undefined} className="whitespace-nowrap">
-      {task.enabled
-        ? <>Next <span className="text-ink-3">{relativeTime(task.nextRunAt) ?? '—'}</span></>
-        : cadenceLabel(task.cadence)}
-    </span>
-  );
-  // Badge variants (accent, muted, danger, success) are StatusDot tones.
+  // The schedule in words, then when it next runs: the row's second line.
+  const state = scheduleState(task);
+  const sentence = task.nextRunAt && !Number.isNaN(new Date(task.nextRunAt).getTime())
+    ? describeWhen(whenFromDate(task.nextRunAt, task.cadence))
+    : cadenceLabel(task.cadence);
+  const next = state === 'active' && !task.running ? relativeTime(task.nextRunAt) : null;
+  const description = next ? t('scheduleRow.descriptionWithNext', { sentence, next }) : sentence;
+  // Badge variants (accent, muted, warning, danger, success) are StatusDot tones.
   const statusDot = <StatusDot tone={status.variant}>{status.label}</StatusDot>;
 
   return (
     <ListItem
       leading={Ico.clock(16)}
-      title={task.title || 'Untitled schedule'}
-      description={task.prompt || undefined}
+      title={task.title || t('scheduleCommon.untitled')}
+      description={<span title={absoluteTime(task.nextRunAt) || undefined}>{description}</span>}
       onActivate={() => onOpen?.(task)}
       actions={(
           <>
-            <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
-              {busy ? <Spinner /> : Ico.send(14)}
-              Run
-            </Button>
+            {/* While a run is going there is nothing to start: the same
+                place stops it instead. */}
+            {task.running ? (
+              <Button variant="subtle" size="sm" onClick={() => onStopRun?.(task)} disabled={busy}>
+                {busy ? <Spinner /> : Ico.stop(12)}
+                {t('scheduleRow.stop')}
+              </Button>
+            ) : (
+              <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
+                {busy ? <Spinner /> : Ico.play(12)}
+                {t('scheduleRow.run')}
+              </Button>
+            )}
             <OverflowMenu
               items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
               disabled={busy}
@@ -104,10 +117,6 @@ export default function ScheduleRow({
       meta={(
         <>
           {project}
-          {/* Runs that slipped while the app was closed; cleared on the next run. */}
-          {missed > 0 && <span className="whitespace-nowrap">Missed {missed}</span>}
-          {task.enabled && <span>{cadenceLabel(task.cadence)}</span>}
-          {when}
           {statusDot}
         </>
       )}
@@ -118,12 +127,13 @@ export default function ScheduleRow({
 // Overflow-menu items for the row. Delete routes to the
 // caller's confirm flow (a ConfirmModal), not an inline delete.
 export function taskMenuItems({ task, onEdit, onPause, onResume, onDelete }) {
+  const t = (key) => i18n.t(key, { ns: 'projects' });
   return [
-    { id: 'edit', label: 'Edit', icon: Ico.edit ? Ico.edit(14) : null, onClick: () => onEdit?.(task) },
+    { id: 'edit', label: t('scheduleCommon.edit'), icon: Ico.edit ? Ico.edit(14) : null, onClick: () => onEdit?.(task) },
     task.enabled
-      ? { id: 'pause', label: 'Pause', icon: Ico.pause ? Ico.pause(14) : null, onClick: () => onPause?.(task) }
-      : { id: 'resume', label: 'Resume', icon: Ico.power ? Ico.power(14) : null, onClick: () => onResume?.(task) },
+      ? { id: 'pause', label: t('scheduleRow.pause'), icon: Ico.pause ? Ico.pause(14) : null, onClick: () => onPause?.(task) }
+      : { id: 'resume', label: t('scheduleRow.resume'), icon: Ico.power ? Ico.power(14) : null, onClick: () => onResume?.(task) },
     { separator: true },
-    { id: 'delete', label: 'Delete', icon: Ico.trash ? Ico.trash(14) : null, danger: true, onClick: () => onDelete?.(task) },
+    { id: 'delete', label: t('scheduleCommon.delete'), icon: Ico.trash ? Ico.trash(14) : null, danger: true, onClick: () => onDelete?.(task) },
   ];
 }

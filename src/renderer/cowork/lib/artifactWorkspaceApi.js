@@ -1,6 +1,10 @@
 import { authFetch, BASE } from '../api';
+import { iterateSSE } from './responseStreamAdapter';
 import { host } from '../../platform/host';
 import { artifactIdentity } from './artifactIdentity';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.artifactWorkspaceApi.${key}`, { ns: 'projects', ...vars });
 
 function artifactRef(artifact) {
   const artifactId = artifactIdentity(artifact);
@@ -18,22 +22,24 @@ async function request(path, options = {}) {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
-  if (!response.ok) {
-    let payload = null;
-    try { payload = await response.json(); } catch { /* response may be empty */ }
-    const detail = payload?.detail;
-    const message = typeof detail === 'string'
-      ? detail
-      : (detail?.message || payload?.message || `Request failed (${response.status})`);
-    const error = new Error(message);
-    error.status = response.status;
-    error.detail = detail;
-    // Same field `responseError` in api.js sets, so callers branch on one shape.
-    error.code = payload?.code || detail?.code || null;
-    throw error;
-  }
+  if (!response.ok) throw await failure(response);
   if (response.status === 204) return { ok: true };
   return response.json();
+}
+
+async function failure(response) {
+  let payload = null;
+  try { payload = await response.json(); } catch { /* response may be empty */ }
+  const detail = payload?.detail;
+  const message = typeof detail === 'string'
+    ? detail
+    : (detail?.message || payload?.message || tr('requestFailed', { status: response.status }));
+  const error = new Error(message);
+  error.status = response.status;
+  error.detail = detail;
+  // Same field `responseError` in api.js sets, so callers branch on one shape.
+  error.code = payload?.code || detail?.code || null;
+  return error;
 }
 
 export function canUseArtifactWorkspace(artifact) {
@@ -123,7 +129,7 @@ export async function loadArtifactDraftText(draftUrl, { withCredentials = true, 
     // The status has to travel on the error, not only inside its message: the
     // viewer maps 401 and 403 to their own copy and cannot read a number back
     // out of a sentence.
-    const error = new Error(`Could not load private draft (${response.status})`);
+    const error = new Error(tr('draftLoadFailed', { status: response.status }));
     error.status = response.status;
     throw error;
   }
@@ -153,7 +159,7 @@ export async function loadArtifactDraftDocument(draftUrl) {
   const url = resolveSameOriginDraftUrl(draftUrl);
   const response = await authFetch(url);
   if (!response.ok) {
-    const error = new Error(`Could not load private draft (${response.status})`);
+    const error = new Error(tr('draftLoadFailed', { status: response.status }));
     error.status = response.status;
     throw error;
   }
@@ -238,6 +244,50 @@ export function loadArtifactRevision(artifact, revisionId) {
   return request(`${ref.base}/revisions/${encodeURIComponent(revisionId)}`);
 }
 
+/*
+ * A quick edit from the viewer's chat bar (ENG-4227). The server routes the
+ * request, runs the artifact editor directly when the change only needs the
+ * artifact's own files, and streams `route`, `progress`, `check_request`,
+ * `done` and `error` events. Each parsed event is handed to `onEvent` with its
+ * SSE event name as `type`. A refused request (409 busy or stale, 403, ...)
+ * throws before any event, in the same error shape as every request here.
+ * Resolves when the stream ends; aborting `signal` ends it early.
+ *
+ * body: { message, history, expectedRevisionId, conversationId, forceRoute }
+ */
+export async function streamQuickEdit(artifact, body, { signal, onEvent } = {}) {
+  const ref = artifactRef(artifact);
+  if (!ref) throw new Error('Artifact has no full identity');
+  const response = await authFetch(`${BASE}${ref.base}/quick-edits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok) throw await failure(response);
+  for await (const event of iterateSSE(response)) {
+    if (signal?.aborted) return;
+    onEvent?.(event);
+  }
+}
+
+/*
+ * Undo one applied quick edit (ENG-4227): the server puts back every file it
+ * changed and removes those it created, all or nothing, and answers
+ * `{ editId, restored, removed, revision | null }`. `expectedRevisionId` is
+ * the edit's `done.revisionId`, or null. 409s carry a `reason`
+ * (files_changed with `paths`, already_undone, quick_edit_running) or, when
+ * stale, `currentRevision`; 404 means the undo is no longer kept.
+ */
+export function undoQuickEdit(artifact, editId, { expectedRevisionId = null } = {}) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/quick-edits/${encodeURIComponent(editId)}/undo`, {
+    method: 'POST',
+    body: JSON.stringify({ expectedRevisionId }),
+  });
+}
+
 export function restoreArtifactRevision(artifact, revisionId, expectedRevisionId) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
@@ -290,6 +340,23 @@ export function setArtifactAccess(artifact, access) {
   return request(`${ref.base}/access`, {
     method: 'PUT',
     body: JSON.stringify({ access }),
+  });
+}
+
+// Owner-only, like loadArtifactAccess above: view counts of the published
+// artifact and, on a restricted link, who opened it.
+export function loadArtifactStats(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/stats`);
+}
+
+export function setArtifactTracking(artifact, enabled) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/stats/tracking`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
   });
 }
 

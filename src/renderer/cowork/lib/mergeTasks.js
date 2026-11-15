@@ -4,8 +4,8 @@
 //   - local wins the live conversation surface while streaming
 //   - updatedAt takes the newer of (local, server) so a mid-stream refresh
 //     can't slide a just-revived task down the list (ENG-961)
-//   - the per-task model pin is client-only state (the server always returns
-//     model: null), so every merge path carries the local value
+//   - the per-task model and effort picks live on the task until a send saves
+//     them on the server, so every merge path carries the local value
 export function mergeTasksFromServer(serverTasks, localTasks) {
   const local = Array.isArray(localTasks) ? localTasks : [];
   if (!Array.isArray(serverTasks)) return local;
@@ -25,11 +25,14 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
   const merged = serverTasks.map((server) => {
     const l = localById.get(server.id);
     if (!l) return server;
-    // The per-task model pin is client-only state — _conversationToTask
-    // always returns model: null, so spreading `...server` below would wipe
-    // a pin (e.g. the card's Switch to MindsHub Air, ENG-1304) on the next
-    // fetchSessions. Carry the local value through every merge path.
+    /* A model or effort pick lands on the task the moment the pill changes,
+       but the server saves it only with the next send (record_turn_picks in
+       cowork-server), so the list still holds the previous pick until then.
+       Spreading `...server` below would wipe a pick (e.g. the card's Switch to
+       MindsHub Air) on the next fetchSessions, which every task open runs.
+       Carry the local value through every merge path. */
     const model = l.model ?? server.model ?? null;
+    const reasoningEffort = l.reasoningEffort ?? server.reasoningEffort ?? null;
     // Same story for the in-chat usage alerts (ENG-1782): client-only, the
     // server never has them, and a fetchSessions must not drop the card that
     // explains why a task moved onto the balance while it ran.
@@ -70,7 +73,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
       // races between user-click-send and the first SSE event must
       // not overwrite the bump.
       return {
-        ...server, model, usageNotices, messagesStatus, hasMoreMessages, messagesCursor, disabledConnections,
+        ...server, model, reasoningEffort, usageNotices, messagesStatus, hasMoreMessages, messagesCursor, disabledConnections,
         updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
       };
     }
@@ -78,6 +81,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
       return {
         ...server,
         model,
+        reasoningEffort,
         usageNotices,
         messagesStatus,
         hasMoreMessages,
@@ -92,6 +96,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
     return {
       ...server,
       model,
+      reasoningEffort,
       usageNotices,
       messagesStatus,
       hasMoreMessages,

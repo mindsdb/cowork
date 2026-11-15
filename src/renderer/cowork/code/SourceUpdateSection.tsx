@@ -8,6 +8,7 @@ import Select from '../components/ui/Select';
 import type { DeliveryRecord, SourceContext } from './api';
 import { sourceContextLabel, sourceProviderLabel } from './developerTools';
 import { SafeCodeExternalLink } from './SafeCodeExternalLink';
+import { useTranslation } from '../../lib/i18n';
 
 type UpdateAction = 'progress' | 'result';
 
@@ -39,6 +40,7 @@ export function SourceUpdateSection({
   onPublish: (target: SourceContext, text: string, action: UpdateAction) => Promise<void>;
   onComplete: (target: SourceContext) => Promise<void>;
 }) {
+  const { t } = useTranslation('code');
   const [activeUrl, setActiveUrl] = useState('');
   const [text, setText] = useState('');
   const [action, setAction] = useState<UpdateAction>('result');
@@ -65,8 +67,8 @@ export function SourceUpdateSection({
   };
 
   return (
-    <section className="code-source-updates" aria-label="Linked work updates">
-      <header><strong>Linked work</strong></header>
+    <section className="code-source-updates" aria-label={t('sourceUpdate.ariaLabel')}>
+      <header><strong>{t('sourceUpdate.title')}</strong></header>
       <div className="code-source-update-list">
         {contexts.map((context) => {
           const delivery = latestDeliveryFor(context, deliveries);
@@ -83,9 +85,9 @@ export function SourceUpdateSection({
                   {Ico.externalLink(12)}
                 </SafeCodeExternalLink>
                 <div className="code-source-update__actions">
-                  {canComplete && <Button size="sm" variant="subtle" disabled={busy} onClick={() => setCompletionContext(context)}>Complete issue</Button>}
+                  {canComplete && <Button size="sm" variant="subtle" disabled={busy} onClick={() => setCompletionContext(context)}>{t('sourceUpdate.completeIssue')}</Button>}
                   <Button size="sm" variant="subtle" disabled={busy} onClick={() => isActive ? setActiveUrl('') : openComposer(context)}>
-                    {isActive ? 'Cancel' : delivery?.status === 'published' ? 'Post another' : 'Post update'}
+                    {isActive ? t('sourceUpdate.cancel') : delivery?.status === 'published' ? t('sourceUpdate.postAnother') : t('sourceUpdate.postUpdate')}
                   </Button>
                 </div>
               </div>
@@ -94,7 +96,7 @@ export function SourceUpdateSection({
                   className={`code-source-update__receipt is-${delivery.status}`}
                   value={delivery.external_url}
                 >
-                  <span><i aria-hidden="true" /> {delivery.status !== 'published' ? 'Needs attention' : delivery.action === 'complete_source' ? 'Completed' : 'Posted'}</span>
+                  <span><i aria-hidden="true" /> {delivery.status !== 'published' ? t('sourceUpdate.needsAttention') : delivery.action === 'complete_source' ? t('sourceUpdate.completed') : t('sourceUpdate.posted')}</span>
                   <small>{deliveryTime(delivery.created_at)}{delivery.detail ? ` · ${delivery.detail}` : ''}</small>
                 </SafeCodeExternalLink>
               )}
@@ -103,7 +105,7 @@ export function SourceUpdateSection({
                   <Textarea
                     value={text}
                     onChange={setText}
-                    placeholder={`Write an update for ${sourceContextLabel(activeContext)}…`}
+                    placeholder={t('sourceUpdate.placeholder', { target: sourceContextLabel(activeContext) })}
                     rows={4}
                     autoFocus
                     disabled={busy}
@@ -112,18 +114,18 @@ export function SourceUpdateSection({
                     <Select
                       value={action}
                       onValueChange={(value) => { if (value === 'progress' || value === 'result') setAction(value); }}
-                      options={[{ value: 'progress', label: 'Progress' }, { value: 'result', label: 'Final result' }]}
+                      options={[{ value: 'progress', label: t('sourceUpdate.progress') }, { value: 'result', label: t('sourceUpdate.finalResult') }]}
                       size="sm"
-                      ariaLabel="Update type"
+                      ariaLabel={t('sourceUpdate.typeAriaLabel')}
                       minWidth={104}
                     />
                     <div>
-                      {suggestedUpdate && !text && <Button size="sm" variant="subtle" onClick={() => setText(suggestedUpdate)}>Use latest summary</Button>}
+                      {suggestedUpdate && !text && <Button size="sm" variant="subtle" onClick={() => setText(suggestedUpdate)}>{t('sourceUpdate.useLatestSummary')}</Button>}
                       <Button size="sm" variant="primary" disabled={busy || !text.trim()} onClick={async () => {
                         await onPublish(activeContext, text.trim(), action);
                         setText('');
                         setActiveUrl('');
-                      }}>Post to {sourceProviderLabel(activeContext.provider)}</Button>
+                      }}>{t('sourceUpdate.postTo', { provider: sourceProviderLabel(activeContext.provider) })}</Button>
                     </div>
                   </footer>
                 </div>
@@ -134,11 +136,11 @@ export function SourceUpdateSection({
       </div>
       <ConfirmModal
         open={completionContext !== null}
-        title={`Complete ${completionContext ? sourceContextLabel(completionContext) : 'issue'}?`}
+        title={t('sourceUpdate.completeConfirm.title', { target: completionContext ? sourceContextLabel(completionContext) : t('sourceUpdate.completeConfirm.issue') })}
         message={completionContext?.provider === 'linear'
-          ? 'Move this Linear issue to the team’s completed state.'
-          : 'Close this GitHub issue. Its discussion and history remain available.'}
-        confirmLabel="Complete issue"
+          ? t('sourceUpdate.completeConfirm.linearMessage')
+          : t('sourceUpdate.completeConfirm.githubMessage')}
+        confirmLabel={t('sourceUpdate.completeConfirm.confirm')}
         busy={busy}
         onClose={() => { if (!busy) setCompletionContext(null); }}
         onConfirm={async () => {

@@ -1,0 +1,32 @@
+import { describe, expect, it } from 'vitest';
+import { shouldKeepAwake } from './scheduleKeepAwake';
+
+const now = Date.parse('2026-10-14T09:00:00Z');
+const windowMs = 11 * 60 * 1000;
+const at = (minutes) => new Date(now + minutes * 60 * 1000).toISOString();
+
+describe('shouldKeepAwake', () => {
+  it.each([
+    ['a run in flight', [{ running: true, state: 'active', nextRunAt: at(600) }], true],
+    ['a paused task still finishing its run', [{ running: true, state: 'paused', nextRunAt: at(600) }], true],
+    ['a schedule due inside the window', [{ state: 'active', nextRunAt: at(10) }], true],
+    ['an overdue schedule', [{ state: 'active', nextRunAt: at(-3) }], true],
+    ['a schedule due later', [{ state: 'active', nextRunAt: at(60) }], false],
+    ['a finished one-off', [{ state: 'done', cadence: 'once', nextRunAt: at(-60) }], false],
+    ['a paused schedule due now', [{ state: 'paused', nextRunAt: at(1) }], false],
+    ['an auto-paused schedule', [{ state: 'auto_paused', nextRunAt: at(1) }], false],
+    ['a missed one-off', [{ state: 'missed', cadence: 'once', nextRunAt: at(-120) }], false],
+    ['an older server without state', [{ enabled: true, nextRunAt: at(10) }], true],
+    ['a 15-minute task between runs', [{ state: 'active', cadence: 'every_15_minutes', nextRunAt: at(14) }], true],
+    ['a 30-minute task between runs', [{ state: 'active', cadence: 'every_30_minutes', nextRunAt: at(29) }], true],
+    ['an hourly task between runs', [{ state: 'active', cadence: 'hourly', nextRunAt: at(59) }], false],
+    ['a paused 15-minute task', [{ state: 'paused', cadence: 'every_15_minutes', nextRunAt: at(14) }], false],
+    ['no schedules', [], false],
+  ])('%s', (_name, schedules, expected) => {
+    expect(shouldKeepAwake(schedules, { now, windowMs })).toBe(expected);
+  });
+
+  it('never holds the machine awake once the user turns it off', () => {
+    expect(shouldKeepAwake([{ running: true, state: 'active' }], { now, windowMs, enabled: false })).toBe(false);
+  });
+});

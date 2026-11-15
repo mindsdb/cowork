@@ -84,6 +84,9 @@ import {
   turnsOf,
   verdictLabel,
 } from '../lib/compareSides';
+import i18n, { useTranslation } from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`compare.${key}`, { ns: 'artifacts', ...vars });
 
 // Web turns do not carry a reasoning effort yet, so offering the pick there
 // would show a setting that does nothing. When they do, a build under an
@@ -97,7 +100,7 @@ const EMPTY_START = '__empty__';
 // with the turn and drawn by the transcript as its error card, so repeating it
 // above the pane would show it twice.
 const TRANSPORT_ERRORS = new Set(['stream_error', 'reconnect_error', 'stalled', 'interrupted']);
-const REFUSED_MESSAGE = "This side was still working on its last turn, so it didn't get your message. It's back in the box below.";
+const REFUSED_MESSAGE = () => tr('refused');
 // The stream stopped, not the turn: it may still be running. `stalled` is not
 // here because the tail cancels a stalled turn before reporting it.
 const DROPPED_STREAM = new Set(['stream_error', 'reconnect_error', 'interrupted']);
@@ -142,6 +145,7 @@ const NOTICE_VARIANT = { danger: 'danger', warning: 'warning', info: 'info' };
 // either screen stays closed on both. One that blocks Start has no close: it
 // is the only explanation for the disabled button.
 function CreditNotice({ notice, isBillingOwner, trigger }) {
+  const { t } = useTranslation('artifacts');
   const [dismissed, dismiss] = useUsageBarDismiss();
   if (!notice) return null;
   const key = notice.dismissKey ?? notice.kind;
@@ -153,8 +157,8 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
         <button
           type="button"
           onClick={() => dismiss(key)}
-          aria-label="Dismiss"
-          title="Dismiss"
+          aria-label={t('publish.dismiss')}
+          title={t('publish.dismiss')}
           className="absolute top-1.5 right-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md border-0 bg-transparent text-[color:inherit] opacity-70 cursor-pointer hover:opacity-100 hover:bg-[rgba(127,127,127,0.12)]"
         >
           <X size={14} strokeWidth={1.5} aria-hidden="true" />
@@ -241,6 +245,7 @@ const STATUS_DOT = {
 };
 
 export default function CompareView({ models = [], modelMeta, projects = [], agentLabel, onOpenTask, onOpenSettings }) {
+  const { t } = useTranslation('artifacts');
   useEffect(() => { trackCompareViewOpened(); }, []);
   const [comparisons, setComparisons] = useState(undefined);
   const [hasMore, setHasMore] = useState(false);
@@ -259,7 +264,7 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
       setHasMore(!!page?.hasMore);
       setLoadError('');
     } catch (err) {
-      setLoadError(err?.message || 'Could not load comparisons.');
+      setLoadError(err?.message || t('compare.loadFailed'));
     }
   }, []);
 
@@ -276,7 +281,7 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
         setHasMore(page.hasMore);
       }
     } catch (err) {
-      setLoadError(err?.message || 'Could not load older comparisons.');
+      setLoadError(err?.message || t('compare.loadOlderFailed'));
     } finally {
       setLoadingOlder(false);
     }
@@ -287,15 +292,15 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
   if (comparisons === null) {
     return (
       <div className="flex-1 min-h-0 flex flex-col">
-        <PageHeader title="Compare Models" />
+        <PageHeader title={t('compare.pageTitle')} />
         <EmptyState
           icon={Ico.columns(32)}
-          title="Update needed"
+          title={t('compare.updateNeeded')}
           // Desktop updates its own server on restart; on web the server is
           // hosted, so there is nothing for the user to restart.
           description={host.isWeb
-            ? "This workspace's server can't run comparisons yet. They'll appear here once it's updated."
-            : "This version of the app's server can't run comparisons yet. Restart the app to update it."}
+            ? t('compare.updateNeededWeb')
+            : t('compare.updateNeededDesktop')}
         />
       </div>
     );
@@ -356,17 +361,10 @@ const HISTORY_GRID = 'minmax(0, 2.4fr) minmax(0, 2fr) 64px 72px 170px 72px 16px'
 // by eye stops being quick.
 const FILTER_THRESHOLD = 10;
 
-const VERDICT_FILTERS = [
-  { id: 'all', label: 'Any winner' },
-  { id: 'none', label: 'No winner yet' },
-  { id: 'judged', label: 'Has a winner' },
-];
+// Labels are compare.verdictFilters.<id> and compare.sorts.<id>.
+const VERDICT_FILTERS = ['all', 'none', 'judged'];
 
-const SORTS = [
-  { id: 'recent', label: 'Newest' },
-  { id: 'oldest', label: 'Oldest' },
-  { id: 'prompt', label: 'Prompt (A–Z)' },
-];
+const SORTS = ['recent', 'oldest', 'prompt'];
 
 function ModelTag({ id, name }) {
   return (
@@ -380,14 +378,16 @@ function ModelTag({ id, name }) {
 // The "Winner" column: the model's name, Tie, Neither, or a quiet dash while
 // nobody has said.
 function WinnerChip({ verdict, names }) {
-  if (!verdict) return <span className="text-ink-4" aria-label="No winner yet">—</span>;
+  const { t } = useTranslation('artifacts');
+  if (!verdict) return <span className="text-ink-4" aria-label={t('compare.verdictFilters.none')}>—</span>;
   if (verdict === 'a' || verdict === 'b') {
     return <Badge variant="accent" className="max-w-full truncate" title={names[verdict]}>{names[verdict]}</Badge>;
   }
-  return <Badge>{verdict === 'tie' ? 'Tie' : 'Neither'}</Badge>;
+  return <Badge>{verdict === 'tie' ? t('compare.tie') : t('compare.neither')}</Badge>;
 }
 
 function HistoryHeaderRow() {
+  const { t } = useTranslation('artifacts');
   const Cell = ({ children, center = false }) => (
     <div className={`font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase${center ? ' text-center' : ''}`}>{children}</div>
   );
@@ -396,12 +396,12 @@ function HistoryHeaderRow() {
       className="grid gap-[14px] py-[10px] px-[14px] border-b border-t-0 border-x-0 border-solid border-line"
       style={{ gridTemplateColumns: HISTORY_GRID }}
     >
-      <Cell>Prompt</Cell>
-      <Cell>Models</Cell>
-      <Cell center>Turns</Cell>
-      <Cell>Cost</Cell>
-      <Cell>Winner</Cell>
-      <Cell>Started</Cell>
+      <Cell>{t('compare.columns.prompt')}</Cell>
+      <Cell>{t('compare.columns.models')}</Cell>
+      <Cell center>{t('compare.columns.turns')}</Cell>
+      <Cell>{t('compare.columns.cost')}</Cell>
+      <Cell>{t('compare.columns.winner')}</Cell>
+      <Cell>{t('compare.columns.started')}</Cell>
       <Cell />
     </div>
   );
@@ -410,7 +410,7 @@ function HistoryHeaderRow() {
 function modelFilterOptions(rows, models) {
   const ids = [...new Set(rows.flatMap((c) => (c.sides || []).map((s) => s.model)).filter(Boolean))];
   return [
-    { id: 'all', label: 'All models' },
+    { id: 'all', label: tr('allModels') },
     ...ids.map((id) => ({ id, label: modelName(models, id) })).sort((x, y) => x.label.localeCompare(y.label)),
   ];
 }
@@ -433,6 +433,7 @@ export function filterComparisons(rows, { query = '', verdict = 'all', sort = 'r
 }
 
 function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false, onLoadOlder, error, models, onNew, onOpen }) {
+  const { t } = useTranslation('artifacts');
   const [query, setQuery] = useState('');
   const [verdict, setVerdict] = useState('all');
   const [model, setModel] = useState('all');
@@ -443,13 +444,13 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
     ? filterComparisons(all, { query, verdict, sort, model }, (id) => modelName(models, id))
     : all;
   const newButton = (
-    <Button variant="primary" onClick={onNew}>{Ico.plus(14)} New comparison</Button>
+    <Button variant="primary" onClick={onNew}>{Ico.plus(14)} {t('compare.newComparison')}</Button>
   );
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <PageHeader
-        title="Comparisons"
-        subtitle="View your past model comparisons."
+        title={t('compare.historyTitle')}
+        subtitle={t('compare.historySubtitle')}
         actions={newButton}
       />
       <div className="flex-1 min-h-0 overflow-y-auto pb-8">
@@ -458,10 +459,10 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
           {comparisons === undefined && !error && <div className="py-10 text-center"><Spinner /></div>}
           {filtering && (
             <div className="flex items-center gap-2.5 flex-wrap">
-              <SearchInput value={query} onChange={setQuery} placeholder="Search prompts and models" shortcut="" />
-              <SortPill label="Model" value={model} onChange={setModel} options={modelFilterOptions(all, models)} />
-              <SortPill label="Winner" value={verdict} onChange={setVerdict} options={VERDICT_FILTERS} />
-              <SortPill value={sort} onChange={setSort} options={SORTS} />
+              <SearchInput value={query} onChange={setQuery} placeholder={t('compare.search')} shortcut="" />
+              <SortPill label={t('compare.modelFilter')} value={model} onChange={setModel} options={modelFilterOptions(all, models)} />
+              <SortPill label={t('compare.columns.winner')} value={verdict} onChange={setVerdict} options={VERDICT_FILTERS.map((id) => ({ id, label: t(`compare.verdictFilters.${id}`) }))} />
+              <SortPill value={sort} onChange={setSort} options={SORTS.map((id) => ({ id, label: t(`compare.sorts.${id}`) }))} />
             </div>
           )}
           {all.length > 0 && (
@@ -477,7 +478,7 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
                     key={c.id}
                     as="div"
                     onActivate={() => onOpen(c.id)}
-                    aria-label={`Open comparison: ${c.title}`}
+                    aria-label={t('compare.openComparison', { title: c.title })}
                     className="group grid gap-[14px] py-3 px-[14px] items-center cursor-pointer transition-colors hover:bg-surface-2"
                     style={{ gridTemplateColumns: HISTORY_GRID }}
                   >
@@ -490,8 +491,8 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
                     <span className="text-ink-3 font-mono text-xs text-center" title={turns.title}>{turns.text}</span>
                     <span
                       className="text-ink-3 font-mono text-xs tabular-nums"
-                      title={cost ? 'Estimated at list price, as last read' : undefined}
-                      aria-label={cost ? `Estimated cost ${cost}` : 'Cost not read yet'}
+                      title={cost ? t('compare.costTitle') : undefined}
+                      aria-label={cost ? t('compare.costAria', { cost }) : t('compare.costUnread')}
                     >
                       {cost ?? '—'}
                     </span>
@@ -502,14 +503,14 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
                 );
               })}
               {rows.length === 0 && (
-                <div className="py-10 text-center text-[13px] text-ink-4">No comparisons match.</div>
+                <div className="py-10 text-center text-[13px] text-ink-4">{t('compare.noMatch')}</div>
               )}
             </div>
           )}
           {hasMore && (
             <div className="flex justify-center">
               <Button size="sm" onClick={onLoadOlder} disabled={loadingOlder}>
-                {loadingOlder ? 'Loading…' : 'Show older comparisons'}
+                {loadingOlder ? t('compare.loading') : t('compare.showOlder')}
               </Button>
             </div>
           )}
@@ -523,63 +524,27 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
 // works with nothing attached, since most comparisons start empty, and asks
 // for one focused output: a model that tries to write everything in a single
 // reply runs out of output budget, which then reads as the model failing.
+// Each example's label, hint and prompt are read through i18n
+// (compare.examples.<id>), so they follow the current language.
+function example(id, icon) {
+  return {
+    id,
+    icon,
+    get pillLabel() { return tr(`examples.${id}.pillLabel`); },
+    get hint() { return tr(`examples.${id}.hint`); },
+    get prompt() { return tr(`examples.${id}.prompt`); },
+  };
+}
+
 export const EXAMPLES = [
-  {
-    id: 'website',
-    pillLabel: 'Build website',
-    icon: 'appWindow',
-    hint: 'Compares design taste and polish',
-    prompt: 'Build a landing page for a made-up coffee subscription called Night Owl Roasters, as a single HTML file: a hero with a clear call to action, three plans with prices, customer quotes, and an FAQ. Make it look like a real product launched this year.',
-  },
-  {
-    id: 'games',
-    pillLabel: 'Create games',
-    icon: 'gamepad',
-    hint: 'Compares creative coding, and whether it actually runs',
-    prompt: 'Make a small browser game in a single HTML file: the player dodges falling obstacles, the speed rises over time, and there is a score and a restart button. Keep the code focused and make sure it plays.',
-  },
-  {
-    id: 'visualization',
-    pillLabel: 'Visualization',
-    icon: 'chartColumn',
-    hint: 'Compares chart choices and the insight drawn from data',
-    prompt: 'Invent a realistic year of monthly sales data for an online store across three regions and four product lines, then build a one-page dashboard with the charts that best tell its story. Finish with the three most important insights.',
-  },
-  {
-    id: 'spreadsheet',
-    pillLabel: 'Spreadsheet',
-    icon: 'table',
-    hint: 'Compares numerical correctness',
-    prompt: 'Build a spreadsheet forecasting three years of revenue for a SaaS product starting at 200 customers at $49 a month, with growth, churn and a price rise in year two as explicit assumptions. Add a sheet that checks the totals add up.',
-  },
-  {
-    id: 'research',
-    pillLabel: 'Wide Research',
-    icon: 'telescope',
-    hint: 'Compares accuracy and sourcing',
-    prompt: 'Research where solid-state batteries for electric cars stand today: who is closest to mass production, what is still unsolved, and realistic timelines. Cite your sources and say clearly what is uncertain.',
-  },
-  {
-    id: 'slides',
-    pillLabel: 'Create slides',
-    icon: 'presentation',
-    hint: 'Compares structure and storytelling',
-    prompt: 'Create a six-slide pitch deck for a fictional app that helps small restaurants cut food waste: the problem, the solution, how it works, the market, the business model, and the ask.',
-  },
-  {
-    id: 'reasoning',
-    pillLabel: 'Reasoning',
-    icon: 'brain',
-    hint: 'Compares thinking a problem through',
-    prompt: 'Five people must each give one 30-minute talk between 9:00 and 12:00 in two rooms. Ana and Ben cannot overlap, Carla must talk before Ben, Dev only after 10:30, and Eli needs the same room as Ana. Find a schedule, explain the reasoning, and check it against every rule.',
-  },
-  {
-    id: 'writing',
-    pillLabel: 'Writing',
-    icon: 'edit',
-    hint: 'Compares tone and following instructions',
-    prompt: 'Write a launch announcement for a new dark mode in a note-taking app in three versions: a tweet under 280 characters, a friendly email under 120 words, and a changelog entry under 50 words. Each should sound right for its channel.',
-  },
+  example('website', 'appWindow'),
+  example('games', 'gamepad'),
+  example('visualization', 'chartColumn'),
+  example('spreadsheet', 'table'),
+  example('research', 'telescope'),
+  example('slides', 'presentation'),
+  example('reasoning', 'brain'),
+  example('writing', 'edit'),
 ];
 
 function SideIcon({ model, name }) {
@@ -589,6 +554,7 @@ function SideIcon({ model, name }) {
 }
 
 function SidePicker({ label, value, onChange, models, modelMeta }) {
+  const { t } = useTranslation('artifacts');
   // Under an operator's picker, only the models the operator offers, as in
   // the composer.
   const options = useMemo(
@@ -613,8 +579,10 @@ function SidePicker({ label, value, onChange, models, modelMeta }) {
         options={options}
         variant="unstyled"
         className="meta-pill flex-1 min-w-0 justify-between"
-        ariaLabel={`Model ${label.toUpperCase()}`}
-        placeholder="Choose a model"
+        ariaLabel={t('compare.modelSide', { side: label.toUpperCase() })}
+        placeholder={t('compare.chooseModel')}
+        // Opening re-checks the wallet (App throttles it), so a top-up unlocks rows here too.
+        onOpenChange={(opened) => { if (opened) Promise.resolve(modelMeta?.onRefresh?.()).catch(() => {}); }}
         {...(efforts ? {
           modelEfforts: efforts,
           effort: value.reasoningEffort,
@@ -626,6 +594,7 @@ function SidePicker({ label, value, onChange, models, modelMeta }) {
 }
 
 function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
+  const { t } = useTranslation('artifacts');
   const [prompt, setPrompt] = useState('');
   const [sides, setSides] = useState({ a: { model: '', reasoningEffort: '' }, b: { model: '', reasoningEffort: '' } });
   const [source, setSource] = useState(EMPTY_START);
@@ -660,28 +629,28 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
       });
       onStarted(comparison, { comparisonId: comparison.id, text: prompt.trim(), files });
     } catch (err) {
-      setError(err?.message || 'Could not start the comparison.');
+      setError(err?.message || t('compare.startFailed'));
       setBusy(false);
     }
   };
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      {onCancel && <PageHeader onBack={onCancel} backLabel="Comparisons" current="New comparison" />}
+      {onCancel && <PageHeader onBack={onCancel} backLabel={t('compare.historyTitle')} current={t('compare.newComparison')} />}
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center px-7 pb-12">
         <div className="w-full max-w-[640px] flex flex-col items-center gap-5">
           <div className="flex items-center gap-5" aria-hidden>
             <span className="compare-vs-orb inline-grid place-items-center w-16 h-16 rounded-full bg-surface border border-solid border-line">
               <SideIcon model={sides.a.model} name={nameA} />
             </span>
-            <span className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink-3 tracking-[0.08em]">VS</span>
+            <span className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink-3 tracking-[0.08em]">{t('compare.vs')}</span>
             <span className="compare-vs-orb compare-vs-orb--right inline-grid place-items-center w-16 h-16 rounded-full bg-surface border border-solid border-line">
               <SideIcon model={sides.b.model} name={nameB} />
             </span>
           </div>
           <div className="text-center">
-            <h1 className="m-0 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-[-0.004em] text-strong">Compare two models</h1>
-            <p className="mt-2 mb-0 text-[14px] text-ink-3">Give the same task to two models and compare their answers and speed side by side.</p>
+            <h1 className="m-0 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-[-0.004em] text-strong">{t('compare.newTitle')}</h1>
+            <p className="mt-2 mb-0 text-[14px] text-ink-3">{t('compare.newSubtitle')}</p>
           </div>
 
           <ComposerFrame className="composer-wrap w-full">
@@ -692,8 +661,8 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); start(); }
               }}
               rows={3}
-              placeholder="What should both models do?"
-              aria-label="Task for both models"
+              placeholder={t('compare.taskPlaceholder')}
+              aria-label={t('compare.taskAria')}
               className="block w-full border-0 outline-0 resize-none bg-transparent font-[family-name:var(--font-sans)] text-[length:var(--text-md)] leading-[1.5] text-strong px-[18px] pt-4 pb-1 min-h-[88px] placeholder:text-[color:var(--frost-500)]"
             />
             <div className="composer-toolbar">
@@ -706,7 +675,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
               />
               <button type="button" className="meta-pill" onClick={() => fileInput.current?.click()}>
                 {Ico.attach(14)}
-                <span>{files.length === 0 ? 'Add files' : files.length === 1 ? files[0].name : `${files.length} files`}</span>
+                <span>{files.length === 0 ? t('compare.addFiles') : files.length === 1 ? files[0].name : t('compare.files', { count: files.length })}</span>
               </button>
               {/* Home's project picker. Picking a project gives each model its
                   own copy of that project's files to work on. */}
@@ -714,14 +683,14 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
                 projects={projects}
                 project={projects.find((p) => String(p.id) === source) || null}
                 onChange={(picked) => setSource(picked ? String(picked.id) : EMPTY_START)}
-                noneLabel="No project"
+                noneLabel={t('compare.noProject')}
               />
               <span className="flex-1" />
-              <Tooltip content="Start comparison">
+              <Tooltip content={t('compare.start')}>
                 <button
                   type="button"
                   className="send-btn"
-                  aria-label="Start comparison"
+                  aria-label={t('compare.start')}
                   disabled={!ready}
                   onClick={start}
                 >
@@ -733,11 +702,11 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
 
           <div className="w-full flex items-center gap-2 max-sm:flex-col">
             <SidePicker label="a" value={sides.a} onChange={(next) => setSides((prev) => ({ ...prev, a: next }))} models={models} modelMeta={modelMeta} />
-            <Tooltip content="Swap sides">
+            <Tooltip content={t('compare.swap')}>
               <Button
                 icon
                 variant="subtle"
-                aria-label="Swap sides"
+                aria-label={t('compare.swap')}
                 onClick={() => setSides((prev) => ({ a: prev.b, b: prev.a }))}
               >
                 {Ico.swap(16)}
@@ -749,15 +718,14 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
           <CreditNotice notice={creditNotice} isBillingOwner={credits.isBillingOwner} trigger="compare_start" />
           {error && <Alert variant="danger" className="w-full">{error}</Alert>}
           <Button variant="primary" size="lg" disabled={!ready} onClick={start}>
-            {busy ? 'Starting…' : <>Start comparison {Ico.chevRight(14)}</>}
+            {busy ? t('comments.card.starting') : <>{t('compare.start')} {Ico.chevRight(14)}</>}
           </Button>
           <p className="m-0 text-xs text-ink-4 text-center max-w-[520px]">
-            Each model works on its own copy of the files. Nothing is published or sent through
-            messaging apps until you continue with one side.
+            {t('compare.isolationNote')}
           </p>
 
           {!prompt.trim() && (
-            <TaskModePills modes={EXAMPLES} label="Example comparisons" onPick={(example) => setPrompt(example.prompt)} />
+            <TaskModePills modes={EXAMPLES} label={t('compare.examplesLabel')} onPick={(example) => setPrompt(example.prompt)} />
           )}
         </div>
       </div>
@@ -852,11 +820,11 @@ function useComparisonSides(comparison, { onRefused } = {}) {
           // not find one leaves the side unknown rather than ready.
           const unfound = () => {
             settle(label, 'unknown');
-            finish(REFUSED_MESSAGE);
+            finish(REFUSED_MESSAGE());
           };
           Promise.resolve(followRunningRef.current?.(label)).then((result) => {
             if (result !== 'attached') unfound();
-            else setErrors((prev) => ({ ...prev, [label]: REFUSED_MESSAGE }));
+            else setErrors((prev) => ({ ...prev, [label]: REFUSED_MESSAGE() }));
           }, unfound);
           return;
         }
@@ -910,7 +878,7 @@ function useComparisonSides(comparison, { onRefused } = {}) {
     setReady((prev) => ({ ...prev, [label]: false }));
     const task = await refresh(label);
     if (!task) {
-      setErrors((prev) => ({ ...prev, [label]: "Couldn't load this side." }));
+      setErrors((prev) => ({ ...prev, [label]: tr('loadSideFailed') }));
       return null;
     }
     settle(label, await followRunning(label));
@@ -963,6 +931,7 @@ function useComparisonSides(comparison, { onRefused } = {}) {
 }
 
 function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask, onOpenSettings }) {
+  const { t } = useTranslation('artifacts');
   const [comparison, setComparison] = useState(null);
   const [error, setError] = useState('');
   const [target, setTarget] = useState('both');
@@ -979,7 +948,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
     try {
       setComparison(await fetchComparison(comparisonId));
     } catch (err) {
-      setError(err?.message || 'Could not load this comparison.');
+      setError(err?.message || t('compare.loadOneFailed'));
     }
   }, [comparisonId]);
 
@@ -1019,7 +988,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
         const uploaded = await uploadAttachments(files, { projectName: tasks[label]?.projectName, sessionId: sides[label].conversationId });
         attachmentIds[label] = uploaded.map((a) => a.id).filter(Boolean);
       } catch (err) {
-        setError(err?.message || 'Could not attach the files.');
+        setError(err?.message || t('compare.attachFailed'));
         return false;
       }
     }
@@ -1101,7 +1070,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
         cost: comparisonCostProps(usage, { a: turns.a.length, b: turns.b.length }),
       });
     } catch (err) {
-      setError(err?.message || 'Could not save the verdict.');
+      setError(err?.message || t('compare.verdictFailed'));
     } finally {
       setJudging(false);
     }
@@ -1113,7 +1082,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
       await deleteComparison(comparisonId);
       onDeleted();
     } catch (err) {
-      setError(err?.message || 'Could not delete the comparison.');
+      setError(err?.message || t('compare.deleteFailed'));
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -1122,7 +1091,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   if (!comparison) {
     return (
       <div className="flex-1 min-h-0 flex flex-col">
-        <PageHeader onBack={onBack} backLabel="Comparisons" current="Comparison" />
+        <PageHeader onBack={onBack} backLabel={t('compare.historyTitle')} current={t('compare.comparison')} />
         {error ? <div className="px-7"><Alert variant="danger">{error}</Alert></div> : <div className="py-10 text-center"><Spinner /></div>}
       </div>
     );
@@ -1132,14 +1101,14 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
     <div className="flex-1 min-h-0 flex flex-col">
       <PageHeader
         onBack={onBack}
-        backLabel="Comparisons"
+        backLabel={t('compare.historyTitle')}
         actions={(
           <OverflowMenu
-            label="Comparison actions"
+            label={t('compare.actions')}
             icon={Ico.moreVert(16)}
             triggerClassName="h-8 w-8 justify-center rounded-lg hover:bg-surface-2"
             items={[
-              { id: 'delete', label: 'Delete comparison', icon: Ico.trash(14), danger: true, onClick: () => setConfirmDelete(true) },
+              { id: 'delete', label: t('compare.deleteComparison'), icon: Ico.trash(14), danger: true, onClick: () => setConfirmDelete(true) },
             ]}
           />
         )}
@@ -1149,10 +1118,10 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
           {comparison.title}
         </h1>
         <span className="text-[12.5px] text-ink-3">
-          {names.a} vs {names.b} · Started {relativeAge(comparison.createdAt) || 'just now'}
+          {t('compare.byline', { a: names.a, b: names.b, started: relativeAge(comparison.createdAt) || t('comments.card.justNow') })}
           {combined && (
-            <span title="Both sides together, estimated at list price. Includes the calls the agent makes on its own, such as checking its answer.">
-              {' · '}Estimated cost {combined.text}
+            <span title={t('compare.combinedCostTitle')}>
+              {' · '}{t('compare.costAria', { cost: combined.text })}
             </span>
           )}
         </span>
@@ -1161,15 +1130,15 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
         <div className="px-7 pb-2">
           <Alert variant="danger">
             <span className="flex flex-wrap items-center gap-3">
-              <span>{firstSendFailed ? `The task wasn't sent to either model. ${error}` : error}</span>
-              {firstSendFailed && <Button size="sm" onClick={sendFirst}>Try again</Button>}
+              <span>{firstSendFailed ? t('compare.firstSendFailed', { error }) : error}</span>
+              {firstSendFailed && <Button size="sm" onClick={sendFirst}>{t('status.tryAgain')}</Button>}
             </span>
           </Alert>
         </div>
       )}
       {diverged !== null && (
         <div className="px-7 pb-2 text-xs text-ink-3" role="status">
-          The sides diverged at turn {diverged + 1}: from there on they were not asked the same thing.
+          {t('compare.diverged', { turn: diverged + 1 })}
         </div>
       )}
       <div className="flex-1 min-h-0 grid grid-cols-2 max-md:grid-cols-1 gap-3 px-4">
@@ -1233,7 +1202,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
           {block ? (
             // A message cannot go out right now. Say so where the text box
             // would be, rather than showing a box that looks usable.
-            <div role="status" aria-label="Follow-up message" className="flex items-center gap-2 min-h-[56px] px-[18px] text-[13.5px] text-ink-2">
+            <div role="status" aria-label={t('compare.followUp')} className="flex items-center gap-2 min-h-[56px] px-[18px] text-[13.5px] text-ink-2">
               {!block.canSwitch && !block.action && (starting === 'loading' || starting === 'sending' || SIDE_LABELS.some((l) => sideState[l].busy)) && <Spinner />}
               <span className="flex-1">{block.message}</span>
               {block.action === 'recheck' && (
@@ -1249,12 +1218,12 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
                     }
                   }}
                 >
-                  {rechecking ? 'Checking…' : 'Check again'}
+                  {rechecking ? t('compare.checking') : t('compare.checkAgain')}
                 </Button>
               )}
               {block.action === 'addFunds' && (
                 <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up')}>
-                  Add funds
+                  {t('compare.addFunds')}
                 </Button>
               )}
               {block.canSwitch && <SendToPicker target={target} names={names} onChange={setTarget} />}
@@ -1265,8 +1234,8 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 rows={2}
-                placeholder={target === 'both' ? 'Ask a follow-up question to both models…' : `Ask ${names[target]} a follow-up…`}
-                aria-label="Follow-up message"
+                placeholder={target === 'both' ? t('compare.followUpBoth') : t('compare.followUpOne', { name: names[target] })}
+                aria-label={t('compare.followUp')}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
                 }}
@@ -1274,11 +1243,11 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
               />
               <div className="composer-toolbar">
                 <span className="text-xs text-ink-4 px-2 truncate">
-                  {target === 'both' ? 'Both models get this message.' : `Only ${names[target]} gets this; the two will diverge.`}
+                  {target === 'both' ? t('compare.bothGet') : t('compare.onlyOneGets', { name: names[target] })}
                 </span>
                 <span className="flex-1" />
                 <SendToPicker target={target} names={names} onChange={setTarget} />
-                <button type="button" className="send-btn" aria-label="Send" disabled={!draft.trim()} onClick={submit}>
+                <button type="button" className="send-btn" aria-label={t('comments.composer.send')} disabled={!draft.trim()} onClick={submit}>
                   {Ico.send(16)}
                 </button>
               </div>
@@ -1288,9 +1257,9 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
       </div>
       <ConfirmModal
         open={confirmDelete}
-        title="Delete this comparison?"
-        message="Both sides and everything they built are removed. A side you continued as a task stays."
-        confirmLabel="Delete"
+        title={t('compare.deleteTitle')}
+        message={t('compare.deleteMessage')}
+        confirmLabel={t('common.delete')}
         destructive
         busy={deleting}
         onConfirm={doDelete}
@@ -1339,15 +1308,16 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
 // a check, and "Saved" once the server has it -- read from the comparison the
 // server returned, so it never claims a save that did not happen.
 function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoose }) {
+  const { t } = useTranslation('artifacts');
   return (
     <div
       role="group"
-      aria-label="Which answer was better?"
+      aria-label={t('compare.whichBetter')}
       className="flex items-center gap-3 flex-wrap px-4 py-2.5 rounded-[12px] border border-solid border-line bg-surface"
     >
       <span className="flex items-baseline gap-2">
-        <span className="text-[13.5px] font-medium text-ink">Which answer was better?</span>
-        {showTurn && <span className="text-xs text-ink-4">Turn {turnIndex + 1}</span>}
+        <span className="text-[13.5px] font-medium text-ink">{t('compare.whichBetter')}</span>
+        {showTurn && <span className="text-xs text-ink-4">{t('compare.turn', { turn: turnIndex + 1 })}</span>}
       </span>
       <span className="flex-1" />
       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1376,7 +1346,7 @@ function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoos
       </div>
       {chosen && (
         <span className="text-xs text-ink-4 inline-flex items-center gap-1" role="status">
-          {Ico.check(12)} Saved
+          {Ico.check(12)} {t('revisionBar.saved')}
         </span>
       )}
     </div>
@@ -1384,6 +1354,7 @@ function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoos
 }
 
 function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUsage, onRetryLoad, onOpenSettings, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue, onCopyRest }) {
+  const { t } = useTranslation('artifacts');
   const last = turns[turns.length - 1];
   const total = totalDurationMs(turns);
   const status = sideStatus(turns, { busy, continued: !!side?.continuedAt });
@@ -1396,7 +1367,7 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
   const lastTurnMs = last ? turnDurationMs(last) : null;
   return (
     <section
-      aria-label={`Side ${label.toUpperCase()}`}
+      aria-label={t('compare.side', { side: label.toUpperCase() })}
       className="min-h-0 flex flex-col rounded-[14px] border border-solid border-line bg-surface overflow-hidden"
     >
       <header className="flex flex-col gap-1 px-4 py-2.5 border-b border-x-0 border-t-0 border-solid border-line">
@@ -1409,10 +1380,10 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
           </span>
           <ProviderIcon maker={makerOf(side?.model, name)} size={16} />
           <h2 className="m-0 flex-1 min-w-0 text-[16px] leading-6 font-semibold text-ink truncate" title={name}>{name}</h2>
-          {busy && <Button size="xs" variant="subtle" onClick={onStop}>Stop</Button>}
+          {busy && <Button size="xs" variant="subtle" onClick={onStop}>{t('liveAppShare.stop')}</Button>}
           {!busy && !side?.continuedAt && turns.length > 0 && (
-            <Tooltip content="Continue with this model as a normal task">
-              <Button size="sm" onClick={onContinue}>Continue</Button>
+            <Tooltip content={t('compare.continueTooltip')}>
+              <Button size="sm" onClick={onContinue}>{t('compare.continue')}</Button>
             </Tooltip>
           )}
         </div>
@@ -1420,8 +1391,8 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
           <span
             className="flex flex-1 items-center gap-1.5 text-[12px] text-ink-3 min-w-0"
             role="status"
-            aria-label={`Side ${label.toUpperCase()} status`}
-            title={total.counted > 1 ? `All turns: ${formatDuration(total.total)}` : undefined}
+            aria-label={t('compare.sideStatus', { side: label.toUpperCase() })}
+            title={total.counted > 1 ? t('compare.allTurns', { duration: formatDuration(total.total) }) : undefined}
           >
             {status.tone === 'working'
               ? <span aria-hidden className="inline-flex"><Spinner /></span>
@@ -1429,9 +1400,9 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
             <span className="truncate">
               {status.label}
               {status.tone === 'working' && runningFor !== null && ` · ${formatDuration(runningFor)}`}
-              {silent !== null && ` · no new activity for ${formatDuration(silent)}`}
-              {status.tone !== 'working' && lastTurnMs !== null && ` · ${formatDuration(lastTurnMs)}${turns.length > 1 ? ' last turn' : ''}`}
-              {side?.reasoningEffort && !name.includes(side.reasoningEffort) && ` · ${side.reasoningEffort} effort`}
+              {silent !== null && ` · ${t('compare.noActivity', { duration: formatDuration(silent) })}`}
+              {status.tone !== 'working' && lastTurnMs !== null && ` · ${turns.length > 1 ? t('compare.lastTurn', { duration: formatDuration(lastTurnMs) }) : formatDuration(lastTurnMs)}`}
+              {side?.reasoningEffort && !name.includes(side.reasoningEffort) && ` · ${t('compare.effort', { effort: side.reasoningEffort })}`}
             </span>
           </span>
           {cost && (
@@ -1439,11 +1410,11 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
               type="button"
               onClick={onToggleUsage}
               aria-expanded={!!usageOpen}
-              aria-label={`Side ${label.toUpperCase()} estimated cost ${cost.text}. ${usageOpen ? 'Hide' : 'Show'} usage by turn`}
+              aria-label={t('compare.costToggle', { side: label.toUpperCase(), cost: cost.text, open: usageOpen ? 'yes' : 'no' })}
               className="flex-shrink-0 inline-flex items-center gap-1 border-0 bg-transparent p-0 font-body text-[12.5px] text-ink-3 cursor-pointer hover:text-ink"
             >
               <span className="font-semibold text-ink tabular-nums">{cost.text}</span>
-              <span>total</span>
+              <span>{t('compare.total')}</span>
               <ChevronDown
                 size={14}
                 strokeWidth={1.75}
@@ -1470,7 +1441,7 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
           />
         ) : error ? (
           <div className="py-10 flex justify-center">
-            <Button size="sm" onClick={onRetryLoad}>Retry</Button>
+            <Button size="sm" onClick={onRetryLoad}>{t('compare.retry')}</Button>
           </div>
         ) : (
           <div className="py-10 text-center"><Spinner /></div>
@@ -1483,49 +1454,51 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
 // Who the follow-up goes to, as a pill in the composer's toolbar like the
 // model picker on Home.
 function SendToPicker({ target, names, onChange }) {
+  const { t } = useTranslation('artifacts');
   return (
     <Select
       value={target}
       onValueChange={onChange}
       options={[
-        { value: 'both', label: 'Both models' },
+        { value: 'both', label: t('compare.bothModels') },
         { value: 'a', label: names.a },
         { value: 'b', label: names.b },
       ]}
       variant="unstyled"
       className="meta-pill"
-      ariaLabel="Send to"
-      menuLabel="Send to"
+      ariaLabel={t('compare.sendTo')}
+      menuLabel={t('compare.sendTo')}
     />
   );
 }
 
 function UsageTable({ label, usage, turns, notes = [] }) {
+  const { t } = useTranslation('artifacts');
   const rows = turnUsageRows(usage, turns);
   const turnCount = usage.turns?.length || 0;
   const num = 'py-1.5 text-right tabular-nums';
   return (
     <div className="px-4 py-3 bg-surface-2 border-b border-x-0 border-t-0 border-solid border-line">
       <div className="flex items-baseline justify-between gap-3 mb-1.5">
-        <h3 className="m-0 text-[13px] font-semibold text-ink">Usage by turn</h3>
+        <h3 className="m-0 text-[13px] font-semibold text-ink">{t('compare.usageByTurn')}</h3>
         <span className="text-[12px] text-ink-3 tabular-nums">
-          {turnCount} {turnCount === 1 ? 'turn' : 'turns'} · {formatTokens(usageTokens(usage))} tokens
+          {t('compare.usageSummary', { count: turnCount, tokens: formatTokens(usageTokens(usage)) })}
         </span>
       </div>
-      <table aria-label={`Side ${label.toUpperCase()} usage by turn`} className="w-full border-collapse text-[12.5px] text-ink-2">
+      <table aria-label={t('compare.sideUsage', { side: label.toUpperCase() })} className="w-full border-collapse text-[12.5px] text-ink-2">
         <thead>
           <tr className="text-ink-3">
-            <th scope="col" className="py-1.5 text-left font-normal">Turn</th>
-            <th scope="col" className={`${num} font-normal`}>Time</th>
-            <th scope="col" className={`${num} font-normal`}>Input tokens</th>
-            <th scope="col" className={`${num} font-normal`}>Output tokens</th>
-            <th scope="col" className={`${num} font-normal`}>Cost</th>
+            <th scope="col" className="py-1.5 text-left font-normal">{t('compare.columns.turn')}</th>
+            <th scope="col" className={`${num} font-normal`}>{t('compare.columns.time')}</th>
+            <th scope="col" className={`${num} font-normal`}>{t('compare.columns.input')}</th>
+            <th scope="col" className={`${num} font-normal`}>{t('compare.columns.output')}</th>
+            <th scope="col" className={`${num} font-normal`}>{t('compare.columns.cost')}</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.label} className={row.total ? 'border-0 border-t border-solid border-line font-semibold text-ink' : undefined}>
-              <th scope="row" className="py-1.5 text-left font-[inherit]">{row.total ? 'Total' : row.label.replace('Turn ', '')}</th>
+              <th scope="row" className="py-1.5 text-left font-[inherit]">{row.total ? t('compare.columns.total') : row.label.replace('Turn ', '')}</th>
               <td className={num}>{row.time ?? '–'}</td>
               <td className={num} title={row.inputDetail}>{row.input}</td>
               <td className={num}>{row.output}</td>
@@ -1535,7 +1508,7 @@ function UsageTable({ label, usage, turns, notes = [] }) {
         </tbody>
       </table>
       <p className="m-0 mt-2 text-[11.5px] text-ink-3">
-        Estimated at list price. Includes the calls the agent makes on its own, such as checking its answer.
+        {t('compare.listPriceNote')}
         {notes.map((note) => ` ${note}`).join('')}
       </p>
     </div>
@@ -1545,6 +1518,7 @@ function UsageTable({ label, usage, turns, notes = [] }) {
 // Some of a continued side's files are still in the comparison; the server
 // says so on every load, so this stays until they are all across.
 function CarryNotice({ name, onCopyRest }) {
+  const { t } = useTranslation('artifacts');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   return (
@@ -1552,7 +1526,7 @@ function CarryNotice({ name, onCopyRest }) {
       <Alert variant="warning">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="flex-1 min-w-0">
-            Some of the files {name} made are still in this comparison and did not reach the task.
+            {t('compare.carryIncomplete', { name })}
           </span>
           <Button
             size="xs"
@@ -1563,13 +1537,13 @@ function CarryNotice({ name, onCopyRest }) {
               try {
                 await onCopyRest();
               } catch (err) {
-                setError(err?.message || 'Could not copy the remaining files.');
+                setError(err?.message || t('compare.copyRestFailed'));
               } finally {
                 setBusy(false);
               }
             }}
           >
-            Copy the remaining files
+            {t('compare.copyRest')}
           </Button>
         </div>
         {error && <div className="mt-1">{error}</div>}
@@ -1582,6 +1556,7 @@ function CarryNotice({ name, onCopyRest }) {
 // the rest (the server finishes a carry only into the same project), and
 // closing it opens the task.
 function ContinueDialog({ name, projects, onClose, onContinue }) {
+  const { t } = useTranslation('artifacts');
   const [projectId, setProjectId] = useState(projects[0] ? String(projects[0].id) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -1589,29 +1564,26 @@ function ContinueDialog({ name, projects, onClose, onContinue }) {
   return (
     <ConfirmModal
       open
-      title={`Continue with ${name}`}
+      title={t('compare.continueWith', { name })}
       message={partial ? (
         <span role="alert">
-          The task is ready, but some of the files {name} made did not come across, so they are still in
-          this comparison. Try again to bring the rest into the task.
+          {t('compare.partialCarry', { name })}
         </span>
       ) : (
         <div className="flex flex-col gap-3">
           <span>
-            This side becomes an ordinary task in the project you pick, with its history and artifacts.
-            Files it made or changed go in a new folder there, named for this comparison and {name}, so
-            nothing already in the project is overwritten. The comparison keeps what was compared.
+            {t('compare.continueBody', { name })}
           </span>
           <Select
             value={projectId}
             onValueChange={setProjectId}
             options={projects.map((p) => ({ value: String(p.id), label: projectLabel(p) }))}
-            aria-label="Project to continue in"
+            aria-label={t('compare.projectToContinue')}
           />
         </div>
       )}
-      confirmLabel={partial ? 'Try again' : 'Continue'}
-      cancelLabel={partial ? 'Open the task' : undefined}
+      confirmLabel={partial ? t('status.tryAgain') : t('compare.continue')}
+      cancelLabel={partial ? t('compare.openTask') : undefined}
       busy={busy}
       error={error}
       onConfirm={async () => {
@@ -1625,7 +1597,7 @@ function ContinueDialog({ name, projects, onClose, onContinue }) {
             setBusy(false);
           }
         } catch (err) {
-          setError(err?.message || 'Could not continue with this model.');
+          setError(err?.message || t('compare.continueFailed'));
           setBusy(false);
         }
       }}

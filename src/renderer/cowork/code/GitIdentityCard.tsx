@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import { useTranslation } from '../../lib/i18n';
 
 
 /** What Review › Deliver needs to ask for a Git identity and retry the commit. */
@@ -28,6 +29,7 @@ export function looksLikeEmail(value: string): boolean {
  * an email). Saving writes only what Git lacks and reruns the same commit.
  */
 export function GitIdentityCard({ setup, busy = false }: { setup: GitIdentitySetup; busy?: boolean }) {
+  const { t } = useTranslation('code');
   const [name, setName] = useState(setup.name);
   const [email, setEmail] = useState(setup.email);
   const [saving, setSaving] = useState(false);
@@ -45,7 +47,7 @@ export function GitIdentityCard({ setup, busy = false }: { setup: GitIdentitySet
     try {
       await setup.onSubmit(name.trim(), email.trim());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not save the Git identity.');
+      setError(reason instanceof Error ? reason.message : t('gitIdentity.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -54,14 +56,14 @@ export function GitIdentityCard({ setup, busy = false }: { setup: GitIdentitySet
   return (
     <section className="code-git-identity" aria-labelledby="code-git-identity-title">
       <div className="code-git-identity__intro">
-        <div className="code-field-label" id="code-git-identity-title">Git needs to know who you are</div>
-        <p>Commits on this computer need a name and an email. Save them once and the commit runs again. Anything Git already has is kept.</p>
+        <div className="code-field-label" id="code-git-identity-title">{t('gitIdentity.title')}</div>
+        <p>{t('gitIdentity.body')}</p>
       </div>
       <div className="code-git-identity__form">
-        <Input value={name} onChange={setName} placeholder="Your name" aria-label="Name for Git commits" disabled={disabled} />
-        <Input value={email} onChange={setEmail} placeholder="you@example.com" type="email" aria-label="Email for Git commits" disabled={disabled} />
+        <Input value={name} onChange={setName} placeholder={t('gitIdentity.namePlaceholder')} aria-label={t('gitIdentity.nameAriaLabel')} disabled={disabled} />
+        <Input value={email} onChange={setEmail} placeholder="you@example.com" type="email" aria-label={t('gitIdentity.emailAriaLabel')} disabled={disabled} />
         <Button size="sm" variant="primary" disabled={!ready || disabled} onClick={() => void save()}>
-          {saving ? 'Saving…' : 'Save and commit'}
+          {saving ? t('gitIdentity.saving') : t('gitIdentity.save')}
         </Button>
       </div>
       {error && <Alert variant="danger">{error}</Alert>}

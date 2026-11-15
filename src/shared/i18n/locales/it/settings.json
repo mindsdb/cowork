@@ -1,0 +1,498 @@
+{
+  "nav": {
+    "title": "Impostazioni",
+    "ariaLabel": "Sezioni delle impostazioni",
+    "groups": {
+      "General": "Generali",
+      "Code": "Codice",
+      "App": "App",
+      "System": "Sistema"
+    },
+    "items": {
+      "agent": "Agente",
+      "codingAgent": "Agente di codice",
+      "computers": "Computer",
+      "appearance": "Aspetto",
+      "branding": "Branding",
+      "desktop": "Desktop",
+      "channels": "Canali",
+      "updates": "Aggiornamenti",
+      "backend": "Backend",
+      "usage": "Utilizzo",
+      "account": "Account"
+    }
+  },
+  "header": {
+    "signIn": "Accedi",
+    "signInTooltip": "Accedi con MindsHub per usare i modelli gestiti"
+  },
+  "autoSave": {
+    "saving": "Salvataggio…",
+    "failed": "Impossibile salvare",
+    "saved": "Salvato",
+    "savedAutomatically": "Le modifiche vengono salvate automaticamente."
+  },
+  "language": {
+    "title": "Lingua",
+    "ariaLabel": "Lingua",
+    "matchSystem": "Come il sistema ({language})"
+  },
+  "appearance": {
+    "title": "Aspetto",
+    "style": {
+      "title": "Stile",
+      "lockedSubtitle": "Impostato da questa distribuzione. Puoi comunque scegliere tra chiaro e scuro.",
+      "subtitle": "Normale, 8-Bit oppure crea il tuo con Personalizzato. Si combina con chiaro e scuro.",
+      "ariaLabel": "Stile",
+      "optionAriaLabel": "Stile {name}"
+    },
+    "skins": {
+      "normal": {
+        "label": "Normale",
+        "title": "Usa l’aspetto standard."
+      },
+      "8bit": {
+        "label": "8-Bit",
+        "title": "Usa l’aspetto rétro 8-Bit."
+      },
+      "custom": {
+        "label": "Personalizzato",
+        "title": "Crea il tuo aspetto."
+      }
+    },
+    "theme": {
+      "title": "Tema",
+      "subtitle": "Chiaro o scuro: vale anche per lo sfondo animato.",
+      "ariaLabel": "Tema",
+      "light": "Chiaro",
+      "lightAriaLabel": "Tema chiaro",
+      "lightHint": "Usa il tema chiaro.",
+      "dark": "Scuro",
+      "darkAriaLabel": "Tema scuro",
+      "darkHint": "Usa il tema scuro."
+    },
+    "accent": {
+      "title": "Colore di risalto",
+      "subtitle": "Pulsanti, evidenziazioni, focus: il colore distintivo del tuo tema.",
+      "ariaLabel": "Colore di risalto personalizzato"
+    },
+    "background": {
+      "default": "Predefinito",
+      "lightTitle": "Sfondo chiaro",
+      "lightSubtitle": "Usato nel tema chiaro. Un colore scuro diventa una tinta chiara della stessa tonalità; il testo si adatta per restare leggibile. Con Predefinito, lo tinge lo sfondo scuro, altrimenti si applica l’aspetto standard del tema chiaro.",
+      "lightAriaLabel": "Colore di sfondo personalizzato — Modalità chiara",
+      "lightDefaultAriaLabel": "Sfondo chiaro predefinito",
+      "darkTitle": "Sfondo scuro",
+      "darkSubtitle": "Usato nel tema scuro. Un colore chiaro diventa una sfumatura scura della stessa tonalità; il testo si adatta per restare leggibile. Con Predefinito, lo tinge lo sfondo chiaro, altrimenti si applica l’aspetto standard del tema scuro.",
+      "darkAriaLabel": "Colore di sfondo personalizzato — Modalità scura",
+      "darkDefaultAriaLabel": "Sfondo scuro predefinito"
+    },
+    "corners": {
+      "title": "Angoli",
+      "subtitle": "Quanto appaiono netti i bordi delle superfici.",
+      "ariaLabel": "Arrotondamento degli angoli",
+      "square": "Squadrati",
+      "squareAriaLabel": "Angoli squadrati",
+      "squareHint": "Angoli netti, a pixel.",
+      "soft": "Morbidi",
+      "softAriaLabel": "Angoli morbidi",
+      "softHint": "Leggermente arrotondati.",
+      "round": "Arrotondati",
+      "roundAriaLabel": "Angoli arrotondati",
+      "roundHint": "Completamente arrotondati."
+    },
+    "typeface": {
+      "title": "Carattere",
+      "subtitle": "Il font standard dell’interfaccia oppure monospaziato ovunque, in stile terminale.",
+      "ariaLabel": "Carattere personalizzato",
+      "standard": "Standard",
+      "standardAriaLabel": "Font standard",
+      "standardHint": "Inter per il testo dell’interfaccia.",
+      "mono": "Mono",
+      "monoAriaLabel": "Font monospaziato",
+      "monoHint": "JetBrains Mono ovunque."
+    },
+    "scanlines": {
+      "title": "Linee di scansione",
+      "subtitle": "Un leggero effetto di linee di scansione CRT su tutta l’app.",
+      "ariaLabel": "Sovrapposizione linee di scansione"
+    },
+    "greeting": {
+      "title": "Messaggio di benvenuto",
+      "subtitle": "La frase mostrata quando inizi una nuova attività.",
+      "hint": "Appare sopra il campo dell’attività quando ne inizi una nuova.",
+      "ariaLabel": "Testo del messaggio di benvenuto"
+    },
+    "sidebarTitle": {
+      "title": "Titolo della barra laterale",
+      "subtitle": "Appare in cima al pannello di navigazione a sinistra. Lascia vuoto per usare quello predefinito, {product}.",
+      "hint": "Sostituisce il logotipo {product} nel pannello di navigazione.",
+      "ariaLabel": "Testo del titolo della barra laterale"
+    },
+    "sidebarTitleColor": {
+      "title": "Colore del titolo della barra laterale",
+      "subtitle": "Scegli un colore per il titolo della barra laterale oppure segui il colore del testo predefinito del tema.",
+      "ariaLabel": "Colore del titolo della barra laterale",
+      "follow": "Segui il tema",
+      "followAriaLabel": "Segui il colore del tema"
+    },
+    "sidebarLogo": {
+      "title": "Logo della barra laterale",
+      "subtitle": "Un’icona mostrata accanto al titolo della barra laterale. PNG, JPG o SVG, sotto i 300 KB.",
+      "change": "Cambia logo",
+      "upload": "Carica logo",
+      "remove": "Rimuovi",
+      "tooLarge": "Il logo deve essere inferiore a 300 KB."
+    },
+    "favicon": {
+      "title": "Icona della scheda del browser",
+      "subtitle": "PNG, ICO, SVG o WEBP, sotto i 100 KB. Ideale un’immagine quadrata di almeno 32 × 32 pixel.",
+      "previewAlt": "Anteprima dell’icona della scheda del browser",
+      "change": "Cambia icona",
+      "upload": "Carica icona",
+      "remove": "Rimuovi",
+      "removeAriaLabel": "Rimuovi l’icona della scheda del browser",
+      "fileAriaLabel": "File dell’icona della scheda del browser",
+      "wrongType": "Scegli un’immagine PNG, ICO, SVG o WEBP.",
+      "tooLarge": "L’icona della scheda del browser deve essere inferiore a 100 KB.",
+      "unreadable": "Impossibile leggere questa immagine. Prova con un altro file."
+    },
+    "figureSources": {
+      "title": "Mostra la provenienza dei numeri",
+      "subtitle": "Sottolinea ogni numero di una risposta con il passaggio da cui proviene e segnala i numeri che nessun passaggio ha restituito."
+    },
+    "animatedBackground": {
+      "title": "Sfondo animato",
+      "subtitle": "Una griglia di punti animata dietro l’app al posto di una superficie uniforme."
+    },
+    "counters": {
+      "title": "Mostra i contatori nel pannello di navigazione",
+      "subtitle": "Badge con il conteggio su Progetti / Pianificate / Artefatti / App connesse, più il tempo trascorso su ogni riga di Recenti.",
+      "ariaLabel": "Contatori del pannello di navigazione"
+    },
+    "themeToggle": {
+      "title": "Pulsante per cambiare tema",
+      "subtitle": "Passa da chiaro a scuro con il pulsante di visualizzazione nell’angolo della finestra."
+    },
+    "styleToggle": {
+      "title": "Pulsante per lo stile 8-Bit",
+      "subtitle": "Passa dallo stile Normale a 8-Bit con lo stesso pulsante. Se sono attivi entrambi, il pulsante apre le impostazioni di visualizzazione."
+    },
+    "setByOrg": "Impostato dalla tua organizzazione.",
+    "yourStyle": {
+      "title": "Il tuo stile",
+      "description": "Queste impostazioni sostituiscono l’aspetto della tua organizzazione, solo per te.",
+      "off": "Le impostazioni di stile personali sono disattivate. Tutti vedono l’aspetto della tua organizzazione.",
+      "orgSetsRest": "Le altre impostazioni di stile sono definite dal branding della tua organizzazione.",
+      "changeInBranding": "Modifica in Branding →"
+    },
+    "display": {
+      "title": "Visualizzazione",
+      "description": "Preferenze di visualizzazione personali. Le vedi solo tu."
+    }
+  },
+  "mobile": {
+    "back": "Torna alle impostazioni",
+    "close": "Chiudi impostazioni"
+  },
+  "footer": {
+    "hint": {
+      "missingNames": "Ogni provider personalizzato deve avere un nome",
+      "saving": "Salvataggio…",
+      "noChanges": "Nessuna modifica da salvare",
+      "save": "Salva le modifiche.",
+      "retest": "Ripeti il test dei provider non riusciti.",
+      "saveAndTest": "Salva le modifiche e ripeti i test dei provider."
+    },
+    "status": {
+      "testing": "Test della configurazione…",
+      "saving": "Salvataggio delle impostazioni…",
+      "testPassed": "Test superato: provider, modello e credenziali sono a posto.",
+      "saved": "Impostazioni salvate.",
+      "testProblem": "Il test ha rilevato un problema.",
+      "configProblem": "La configurazione ha rilevato un problema.",
+      "applyOnSave": "Le modifiche si applicano al salvataggio."
+    },
+    "button": {
+      "saving": "Salvataggio…",
+      "save": "Salva impostazioni",
+      "saved": "Salvato"
+    },
+    "errors": {
+      "saveFailed": "Impossibile salvare le impostazioni.",
+      "verifyFailed": "Impostazioni salvate, ma la verifica non è riuscita: {error}",
+      "checkFailed": "Impossibile controllare la configurazione.",
+      "validateFailed": "Impossibile convalidare le impostazioni."
+    }
+  },
+  "fields": {
+    "clearTooltip": "Cancella (applicato con «Salva impostazioni»)",
+    "clearAriaLabel": "Cancella valore"
+  },
+  "apiKey": {
+    "ariaLabel": "Chiave API",
+    "namedAriaLabel": "Chiave API di {name}",
+    "revealFirst": "Mostra prima la chiave per copiarla",
+    "copied": "Copiato",
+    "copyFailed": "Impossibile copiare: seleziona la chiave e copiala a mano",
+    "copy": "Copia negli appunti",
+    "copiedAriaLabel": "Copiato negli appunti",
+    "copyAriaLabel": "Copia la chiave negli appunti",
+    "hide": "Nascondi chiave",
+    "revealing": "Visualizzazione…",
+    "reveal": "Mostra chiave",
+    "clearTooltip": "Cancella questa chiave (applicato con «Salva impostazioni»)",
+    "clearAriaLabel": "Cancella chiave"
+  },
+  "budget": {
+    "fieldTitle": "{label} ({min}–{max}, predefinito {fallback}{unit, select, million { milioni di token} other {}})",
+    "millionTokens": "milioni di token",
+    "safetyLimit": "limite di sicurezza",
+    "noLimitHint": "nessun limite: valgono solo i limiti di passaggi e continuazioni automatiche",
+    "default": "predefinito {value}",
+    "or": "— oppure —"
+  },
+  "probe": {
+    "byok": "Oppure aggiungi qui sotto un tuo provider e la relativa chiave API.",
+    "noCredits": "Nessun credito disponibile.",
+    "topUp": "Ricarica il saldo →",
+    "addFunds": "Aggiungi fondi →",
+    "slowDown": "{sentence} Non è un problema di crediti.",
+    "budgetReached": "Il budget della tua organizzazione è esaurito. {detail}",
+    "viewBudgetsArrow": "Visualizza i budget →"
+  },
+  "providers": {
+    "title": "Provider LLM",
+    "unavailable": "Il provider configurato non è disponibile. Riprova o contatta l’amministratore.",
+    "status": {
+      "connected": "connesso",
+      "unableToConnect": "impossibile connettersi",
+      "testing": "test in corso…",
+      "notTested": "non testato"
+    },
+    "statusTitle": {
+      "signedIn": "Connesso tramite l’accesso a MindsHub.",
+      "passed": "Ultimo test superato",
+      "passedDetail": "Ultimo test superato ({detail})",
+      "failed": "Ultimo test non riuscito",
+      "failedDetail": "Ultimo test non riuscito: {detail}",
+      "testing": "Test in corso…",
+      "notTested": "Non ancora testato: salva le impostazioni ed esegui un test per verificarlo.",
+      "notTestedNoTests": "La connettività del provider non è stata testata."
+    },
+    "desc": {
+      "mindsCloud": "Tutti i modelli di punta in un unico posto: Claude, GPT, Gemini e altri.",
+      "anthropic": "Usa i modelli Claude con la tua chiave API di Anthropic.",
+      "openai": "Usa i modelli GPT con la tua chiave API di OpenAI.",
+      "gemini": "Usa i modelli Gemini tramite l’endpoint compatibile con OpenAI di Google.",
+      "openaiCompatible": "Qualsiasi server compatibile con OpenAI (Ollama, vLLM, Together, Groq e così via)."
+    },
+    "customHeading": "Provider personalizzato compatibile con OpenAI",
+    "customName": {
+      "label": "Nome del provider personalizzato",
+      "hint": "Nome visualizzato di questo provider personalizzato, mostrato nei menu dei modelli qui sotto.",
+      "required": "Nome obbligatorio"
+    },
+    "baseUrl": "URL di base",
+    "getKey": "Ottieni la tua chiave API su {link}",
+    "openInBrowser": "Apri {url} nel browser.",
+    "noAccount": "Non hai un account?",
+    "signUp": "Registrati →",
+    "signUpTooltip": "Apri la pagina di registrazione di MindsHub nel browser.",
+    "remove": "Rimuovi questo provider",
+    "editKey": "Modifica chiave API",
+    "allConfigured": "Tutti i tipi di provider sono già configurati",
+    "addAnother": "Aggiungi un altro provider",
+    "add": "Aggiungi provider",
+    "choose": "Scegli il provider:",
+    "hidePicker": "Nascondi la selezione del provider.",
+    "closePicker": "Chiudi la selezione del provider"
+  },
+  "agent": {
+    "modelRouter": "Instradamento dei modelli",
+    "roles": {
+      "planning": "Modello di pianificazione",
+      "router": "Modello di instradamento e riepilogo",
+      "coding": "Modello per il codice",
+      "planningSubtitle": "Usato per ragionamento, orchestrazione e risposte.",
+      "codingSubtitle": "Usato per generare codice nel blocco appunti."
+    },
+    "providerLabel": "Provider:",
+    "modelLabel": "Modello:",
+    "providerHint": "Scegli il provider per il ruolo di {role, select, planning {pianificazione} coding {codice} router {instradamento} other {{role}}}.",
+    "modelHint": "Scegli il modello per il ruolo di {role, select, planning {pianificazione} coding {codice} router {instradamento} other {{role}}}. Scegli «Altro…» per inserire l’ID di un modello personalizzato.",
+    "customModelPlaceholder": "Inserisci l’ID di un modello",
+    "customModelHint": "ID del modello a testo libero, inviato al provider così com’è.",
+    "modelIdHint": "ID del modello inviato a questo provider così com’è.",
+    "checking": "Verifica della connessione a {provider}…",
+    "notConfigured": "{provider} non è configurato: aggiungi le sue credenziali in «Provider LLM» qui sopra oppure scegli un altro provider.",
+    "unknownNotConfigured": "Questo provider non è configurato. Aggiungilo in «Provider LLM» qui sopra.",
+    "failed": "L’ultimo test di {provider} non è riuscito: controllalo in «Provider LLM» qui sopra oppure scegli un altro provider.",
+    "modelUnavailable": "{model} non è disponibile. Scegli un altro modello o contatta l’amministratore.",
+    "modelRestricted": "{model} è limitato da un amministratore della tua organizzazione. Scegli un altro modello.",
+    "modelNeedsCredits": "{model} richiede crediti. {link} per usarlo.",
+    "topUpBalance": "Ricarica il saldo",
+    "modelBudgetReached": "Impossibile eseguire {model}: il budget della tua organizzazione è esaurito.",
+    "viewBudgets": "Visualizza i budget"
+  },
+  "memory": {
+    "title": "Memoria",
+    "mode": {
+      "title": "Modalità memoria",
+      "subtitle": "Come {agent} aggiorna la sua memoria a lungo termine.",
+      "ariaLabel": "Modalità memoria",
+      "autopilot": "Automatica",
+      "autopilotHint": "{agent} aggiorna la memoria a lungo termine in automatico.",
+      "copilot": "Con conferma",
+      "copilotHint": "{agent} propone aggiornamenti della memoria che confermi tu.",
+      "off": "Disattivata",
+      "offHint": "Disattiva gli aggiornamenti della memoria a lungo termine."
+    },
+    "episodic": {
+      "title": "Memoria episodica",
+      "subtitle": "Salva la cronologia delle conversazioni per ricordarla in seguito."
+    },
+    "dashboards": {
+      "title": "Dashboard proattive",
+      "subtitle": "Genera automaticamente report HTML dall’output del blocco appunti."
+    },
+    "actFirst": {
+      "title": "Prima agisci, poi chiedi",
+      "subtitle": "Procede con impostazioni ragionevoli e dichiara le ipotesi nel testo, invece di fermarsi a chiedere."
+    }
+  },
+  "advanced": {
+    "title": "Impostazioni avanzate",
+    "limits": {
+      "title": "Limita quanto può fare un’attività",
+      "subtitleOn": "{agent} si ferma o chiede prima di proseguire quando raggiunge i passaggi, le continuazioni automatiche e i token impostati qui sotto.",
+      "subtitleOff": "Disattivato: un’attività prosegue finché non è completata, fino a un limite di sicurezza elevato oltre il quale {agent} chiede prima di continuare. Attivalo per impostare limiti tuoi."
+    },
+    "maxSteps": {
+      "title": "Passaggi massimi per attività",
+      "subtitle": "Quante azioni (eseguire codice, leggere file, cercare) {agent} può compiere su una richiesta prima di fermarsi per sentirti. Aumentalo perché le attività grandi finiscano in una volta sola; riducilo per tenere sotto controllo tempi e costi."
+    },
+    "maxContinuations": {
+      "title": "Continuazioni automatiche massime",
+      "subtitle": "Quando {agent} si ferma ma il lavoro sembra incompleto, Cowork lo rimanda a finirlo: questo valore limita quante volte. Aumentalo per un lavoro più completo senza interventi; imposta 0 per fermarti dopo il primo tentativo (riceverai comunque un riepilogo di ciò che manca)."
+    },
+    "maxTokens": {
+      "title": "Token massimi per attività",
+      "subtitle": "Il numero massimo di token che {agent} può usare per una richiesta prima di fermarsi per sentirti, così un’attività bloccata non consuma gran parte della tua quota gratuita o del saldo senza concludere. Aumentalo se affidi spesso lavori grandi; riducilo per limitare il costo di ogni singola richiesta.",
+      "noLimit": "Nessun limite"
+    },
+    "jev": {
+      "title": "Risposte rapide con Jev",
+      "subtitle": "Jev, il modello decisionale di MindsHub, legge ogni messaggio e la conversazione recente per decidere se il modello scelto può rispondere direttamente, e verifica se {agent} ha finito il lavoro. Disattivalo per far passare ogni messaggio da {agent}."
+    }
+  },
+  "desktop": {
+    "title": "Desktop",
+    "keepAwake": {
+      "title": "Resta attivo per le attività pianificate",
+      "subtitle": "Quando è collegato all’alimentazione, impedisce a questo computer di andare in stop mentre un’attività pianificata è in esecuzione o sta per partire. Non può riattivare un computer già in stop né impedirne lo stop quando chiudi il coperchio."
+    }
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "L’aspetto della tua organizzazione, per tutti i suoi membri. I membri lo vedranno la prossima volta che aprono l’app o le Impostazioni.",
+    "adminOnly": "Impostato dall’amministratore della tua organizzazione.",
+    "saveError": {
+      "forbidden": "Solo un amministratore dell’organizzazione può modificare il branding.",
+      "generic": "Impossibile salvare il branding. Riprova."
+    },
+    "sidebarTitle": {
+      "title": "Titolo della barra laterale",
+      "subtitle": "Appare in cima alla barra laterale per tutti nella tua organizzazione. Nome dell’azienda segue le ridenominazioni nella console; un titolo personalizzato resta come lo hai digitato; Nessuno mostra solo il logo.",
+      "ariaLabel": "Titolo della barra laterale",
+      "company": "Nome dell’azienda",
+      "companyHint": "Segue il nome dell’azienda, anche se viene rinominata.",
+      "custom": "Personalizzato",
+      "customHint": "Un titolo che digiti tu, mantenuto anche dopo le ridenominazioni.",
+      "none": "Nessuno",
+      "noneAriaLabel": "Nessuno (solo logo)",
+      "noneHint": "Nessun titolo: solo il logo.",
+      "customAriaLabel": "Titolo personalizzato della barra laterale",
+      "required": "Inserisci un titolo per la barra laterale oppure scegli Nome dell’azienda o Nessuno.",
+      "preview": "La barra laterale mostra:",
+      "logoOnly": "solo il logo",
+      "noTitle": "(nessun titolo)"
+    },
+    "logo": {
+      "title": "Logo e icona",
+      "subtitle": "Il logo è quello della barra laterale e l’icona è quella della scheda del browser, per tutti nella tua organizzazione. Si impostano nella console.",
+      "iconAlt": "Icona dell’organizzazione",
+      "logoAlt": "Logo dell’organizzazione",
+      "logoDarkAlt": "Logo dell’organizzazione per sfondi scuri",
+      "noneSet": "Nessuno impostato.",
+      "opensInBrowser": "Si apre nel browser",
+      "editInConsole": "Modifica nella console"
+    },
+    "theme": {
+      "title": "Tema dell’organizzazione",
+      "subtitle": "Chiaro o scuro per tutti, oppure lascia scegliere a ogni membro.",
+      "ariaLabel": "Tema dell’organizzazione",
+      "notSet": "Non impostato",
+      "notSetAriaLabel": "Nessun tema dell’organizzazione",
+      "lightAriaLabel": "Tema chiaro dell’organizzazione",
+      "darkAriaLabel": "Tema scuro dell’organizzazione"
+    },
+    "style": {
+      "title": "Stile dell’organizzazione",
+      "deploymentLocked": "Impostato da questa distribuzione, per tutte le organizzazioni che la usano.",
+      "subtitle": "L’aspetto da cui partono tutti nella tua organizzazione. Con Personalizzato scegli colore, sfondo, angoli e carattere.",
+      "ariaLabel": "Stile dell’organizzazione",
+      "notSet": "Non impostato",
+      "notSetAriaLabel": "Nessuno stile dell’organizzazione",
+      "notSetHint": "I membri mantengono l’aspetto standard dell’app.",
+      "optionAriaLabel": "Stile dell’organizzazione {name}"
+    },
+    "accent": {
+      "subtitle": "Pulsanti, evidenziazioni e indicatori di focus.",
+      "ariaLabel": "Colore di risalto dell’organizzazione"
+    },
+    "background": {
+      "lightSubtitle": "Usato nel tema chiaro. Un colore scuro diventa una tinta chiara della stessa tonalità; il testo si adatta per restare leggibile. Con Predefinito, lo tinge lo sfondo scuro, altrimenti si applica l’aspetto chiaro standard.",
+      "lightAriaLabel": "Colore dello sfondo chiaro dell’organizzazione",
+      "lightDefaultAriaLabel": "Sfondo chiaro predefinito dell’organizzazione",
+      "darkSubtitle": "Usato nel tema scuro. Un colore chiaro diventa una sfumatura scura della stessa tonalità; il testo si adatta per restare leggibile. Con Predefinito, lo tinge lo sfondo chiaro, altrimenti si applica l’aspetto scuro standard.",
+      "darkAriaLabel": "Colore dello sfondo scuro dell’organizzazione",
+      "darkDefaultAriaLabel": "Sfondo scuro predefinito dell’organizzazione"
+    },
+    "corners": {
+      "ariaLabel": "Arrotondamento degli angoli dell’organizzazione",
+      "squareAriaLabel": "Angoli squadrati dell’organizzazione",
+      "softAriaLabel": "Angoli morbidi dell’organizzazione",
+      "roundAriaLabel": "Angoli arrotondati dell’organizzazione"
+    },
+    "typeface": {
+      "subtitle": "Il font standard dell’interfaccia oppure monospaziato ovunque.",
+      "ariaLabel": "Carattere dell’organizzazione",
+      "standardAriaLabel": "Font standard dell’organizzazione",
+      "monoAriaLabel": "Font monospaziato dell’organizzazione"
+    },
+    "greeting": {
+      "title": "Messaggio di benvenuto dell’organizzazione",
+      "subtitle": "La frase che i membri vedono quando iniziano una nuova attività. Lascia vuoto per usare quella standard.",
+      "ariaLabel": "Messaggio di benvenuto dell’organizzazione"
+    },
+    "membersChoose": {
+      "title": "Consenti ai membri di scegliere il proprio stile",
+      "subtitle": "Attivo: i membri partono dallo stile dell’organizzazione e possono cambiarlo in Il tuo stile. Disattivo: tutti vedono lo stile dell’organizzazione."
+    },
+    "guidelines": {
+      "title": "Linee guida del marchio per Anton",
+      "subtitle": "Come Anton deve usare il tuo marchio in presentazioni, documenti, app e grafici: tono di voce, parole da usare o evitare, dove va il logo. Anton riceve anche i colori, il carattere e il logo impostati sopra.",
+      "placeholder": "Markdown. Ad esempio:\n- Titoli con la sola iniziale maiuscola\n- Metti il logo in alto a sinistra nelle slide del titolo"
+    },
+    "footer": {
+      "ariaLabel": "Modifiche al branding non salvate",
+      "saving": "Salvataggio…",
+      "unsaved": "Modifiche al branding non salvate. Tu le vedi già; tutti gli altri le vedranno dopo il salvataggio.",
+      "cancel": "Annulla",
+      "save": "Salva branding",
+      "saved": "Salvato. I membri lo vedranno la prossima volta che aprono l’app o le Impostazioni.",
+      "clean": "Nessuna modifica al branding non salvata"
+    }
+  }
+}

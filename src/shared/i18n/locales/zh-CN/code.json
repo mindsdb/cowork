@@ -1,0 +1,1595 @@
+{
+  "reviewPanel": {
+    "ariaLabel": "审查更改",
+    "closeAriaLabel": "关闭审查面板",
+    "resizeAriaLabel": "调整审查面板大小",
+    "eyebrow": "任务输出",
+    "title": "审查更改",
+    "tabsAriaLabel": "审查分区",
+    "tabs": {
+      "changes": "更改",
+      "deliver": "交付"
+    },
+    "summary": {
+      "changedFiles": "{count, plural, other {# 个文件已更改}}",
+      "trackingUnavailable": "无法跟踪更改",
+      "unchanged": "工作树无更改"
+    },
+    "empty": {
+      "directTitle": "打开文件夹以审查更改",
+      "title": "暂无可审查的更改",
+      "directDescription": "直接打开的文件夹没有 Git 基线，因此 {product} 无法生成内联差异。",
+      "description": "智能体工作时，文件更改会汇总到这里。"
+    },
+    "deliver": {
+      "heading": "交付此任务",
+      "project": "项目",
+      "branch": "分支",
+      "openOriginalFolder": "打开原始文件夹",
+      "openIsolatedCopy": "打开隔离副本",
+      "openOriginal": "打开原始版本"
+    },
+    "sourceChanged": {
+      "title": "此任务开始时，源文件夹中已有本地更改",
+      "body": "这些更改保留在源文件夹中。{product} 会在应用前检查冲突。"
+    },
+    "reconcile": {
+      "title": "协调原始更改",
+      "body": "让智能体在隔离副本中保留两个版本，然后重新审查。",
+      "action": "交给智能体解决"
+    },
+    "checks": {
+      "title": "项目检查",
+      "run": "运行检查",
+      "adopt": "使用最新的项目命令",
+      "failed": "{total} 项项目检查中有 {failed} 项未通过。请打开任务活动查看输出。",
+      "passed": "{count, plural, other {# 项项目检查已通过。}}",
+      "none": "此任务没有项目检查。从此项目启动的任务会使用“项目设置”中保存的命令。",
+      "noValidationCommands": "“项目设置”中没有为此任务的文件夹配置验证命令，因此无需检查。现已有 {count, plural, other {# 个运行操作}}可用。",
+      "noCommands": "“项目设置”中尚未为此任务的文件夹配置命令。请先在那里添加验证命令，然后再试一次。"
+    },
+    "applyLocally": {
+      "title": "应用到本地",
+      "tooltip": "将审查后的更改复制回原始文件夹",
+      "applied": "已应用",
+      "appliedNotice": "这些审查后的更改已应用到源文件夹。",
+      "nothingToApply": "此任务已直接在所选文件夹中工作，无需应用。"
+    },
+    "git": {
+      "title": "Git 选项",
+      "branchLabel": "在任务工作树中创建分支",
+      "create": "创建",
+      "commitLabel": "提交所有任务更改",
+      "commitPlaceholder": "描述此更改",
+      "commit": "提交"
+    },
+    "applyConfirm": {
+      "title": "将更改应用到源文件夹？",
+      "message": "要用审查后的任务更改更新 {target} 吗？如果发现冲突，{product} 会在更改任何文件夹前停止。",
+      "confirm": "应用更改",
+      "error": "无法应用更改，请重试。"
+    }
+  },
+  "fileReview": {
+    "staged": "已暂存",
+    "unstaged": "未暂存",
+    "committed": "已提交",
+    "stage": "暂存",
+    "unstage": "取消暂存",
+    "askCodex": "询问 Codex",
+    "discardAriaLabel": "放弃对 {path} 的更改",
+    "noteAriaLabel": "{path} 的审查备注",
+    "notePlaceholder": "这个文件应该怎么改？",
+    "toSend": "发送",
+    "cancel": "取消",
+    "sendToCodex": "发送给 Codex",
+    "discardConfirm": {
+      "title": "放弃此文件的更改？",
+      "message": "{path} 将恢复为当前任务版本。此操作无法撤销。",
+      "confirm": "放弃更改"
+    }
+  },
+  "reviewFileCard": {
+    "binary": "二进制文件已更改",
+    "noTextualDiff": "无文本差异"
+  },
+  "diffPatch": {
+    "ariaLabel": "文件差异",
+    "selectLine": "选择第 {line} 行",
+    "selectRemovedLine": "选择已删除的第 {line} 行",
+    "selectedLines": "所选行",
+    "line": "第 {line} 行",
+    "lines": "第 {start}–{end} 行"
+  },
+  "filesPanel": {
+    "ariaLabel": "任务文件",
+    "closeAriaLabel": "关闭文件面板",
+    "resizeAriaLabel": "调整文件面板大小",
+    "eyebrow": "任务上下文",
+    "title": "文件",
+    "folderMenuAriaLabel": "项目文件夹",
+    "resourceAriaLabel": "资源：{name}",
+    "searchPlaceholder": "搜索任务文件",
+    "loading": "正在加载…",
+    "empty": {
+      "title": "没有可用的任务文件",
+      "description": "此任务在这台电脑上没有准备好的工作副本。"
+    },
+    "noMatches": {
+      "title": "无匹配结果",
+      "description": "试试文件名、符号或代码中的短语。"
+    },
+    "back": "返回",
+    "folderEmpty": "此文件夹为空。",
+    "backToFiles": "文件",
+    "lineWindow": "第 {start}–{end} 行，共 {total} 行",
+    "linesAriaLabel": "{name} 的行",
+    "pagesAriaLabel": "文件分页",
+    "previous": "上一页",
+    "next": "下一页",
+    "selectedLine": "第 {start} 行",
+    "selectedLines": "第 {start}–{end} 行",
+    "wholeFile": "整个文件",
+    "addToPrompt": "添加到提示词",
+    "errors": {
+      "loadFiles": "无法加载文件。",
+      "openFolder": "无法打开此文件夹。",
+      "search": "搜索失败。",
+      "openFile": "无法打开此文件。"
+    }
+  },
+  "previewPanel": {
+    "ariaLabel": "实时预览",
+    "closeAriaLabel": "关闭预览",
+    "eyebrow": "项目操作",
+    "title": "预览",
+    "reloadAriaLabel": "重新加载预览",
+    "openInBrowserAriaLabel": "在浏览器中打开预览",
+    "unavailable": "预览不可用",
+    "widthAriaLabel": "预览宽度",
+    "responsiveAriaLabel": "响应式预览",
+    "tabletAriaLabel": "平板预览",
+    "mobileAriaLabel": "手机预览",
+    "frameTitle": "项目预览",
+    "empty": {
+      "title": "暂无本地预览",
+      "description": "运行一个监听任务开发端口的项目操作。"
+    }
+  },
+  "draftPullRequest": {
+    "status": {
+      "merged": "已合并",
+      "closed": "已关闭",
+      "draft": "草稿",
+      "changesRequested": "需要修改",
+      "checksFailing": "检查未通过",
+      "readyToMerge": "可以合并",
+      "checksRunning": "检查运行中",
+      "open": "开放",
+      "draftCreated": "已创建草稿"
+    },
+    "item": {
+      "needsCommit": "需要提交",
+      "noChanges": "无更改",
+      "readyFor": "可合并到 {branch}",
+      "baseBranch": "基础分支",
+      "unavailable": "不可用"
+    },
+    "review": {
+      "approved": "审查已批准",
+      "changesRequested": "需要修改",
+      "pending": "等待审查"
+    },
+    "ci": {
+      "passing": "检查已通过",
+      "failing": "检查未通过",
+      "running": "检查运行中"
+    },
+    "checkState": "{state, select, passing {已通过} failing {未通过} pending {等待中} other {{state}}}",
+    "updatedAt": "更新于 {time}",
+    "checks": "检查",
+    "reviewFeedback": "审查反馈",
+    "reviewer": "审查者",
+    "fixWithAgent": "交给智能体修复",
+    "resolve": "解决",
+    "markReady": "标记为就绪",
+    "addressFeedback": "处理反馈",
+    "fixChecks": "修复检查",
+    "merge": "合并",
+    "automationOptions": {
+      "fixFailingChecks": "修复未通过的检查",
+      "fixFailingChecksHint": "{count, plural, other {每次失败最多让智能体尝试 # 次}}",
+      "markReady": "标记为就绪",
+      "markReadyHint": "检查通过后",
+      "merge": "合并",
+      "mergeHint": "批准且检查通过后",
+      "completeLinkedIssues": "完成关联的议题",
+      "completeLinkedIssuesHint": "最终更新且全部合并后",
+      "archiveTask": "归档任务",
+      "archiveTaskHint": "全部合并后"
+    },
+    "loadError": "无法准备 GitHub 交付。",
+    "sectionAriaLabel": "通过 GitHub 完成",
+    "title": "通过 GitHub 完成",
+    "summary": {
+      "published": "{count, plural, other {# 个已发布}}",
+      "toResolve": "{count, plural, other {# 项待解决}}",
+      "ready": "{count, plural, other {# 个已就绪}}"
+    },
+    "automation": "自动化",
+    "automationAriaLabel": "交付自动化",
+    "refreshAriaLabel": "刷新拉取请求",
+    "attempt": {
+      "created": "{count, plural, other {# 个已创建}}",
+      "failed": "{count, plural, other {# 个失败}}",
+      "failureHint": "请解决受影响仓库的问题后重试；已成功创建的草稿不会重复创建。"
+    },
+    "allMerged": "所有拉取请求均已合并。",
+    "archiveTask": "归档任务",
+    "githubAccount": "GitHub 账户",
+    "connected": "已连接到此项目",
+    "addAccount": "为此项目添加账户",
+    "addGithub": "添加 GitHub",
+    "commitMessagePlaceholder": "提交信息",
+    "commitRepositories": "{count, plural, other {提交 # 个仓库}}",
+    "githubAccountAriaLabel": "GitHub 账户",
+    "titlePlaceholder": "拉取请求标题",
+    "bodyPlaceholder": "为审查者提供的背景信息（可选）…",
+    "repositories": "仓库",
+    "selectedOf": "已选 {selected}/{total}",
+    "includeAriaLabel": "包含 {name}",
+    "into": "合并到 {branch}",
+    "editOverride": "编辑标题或背景信息",
+    "createDrafts": "{count, plural, other {创建 # 个草稿拉取请求}}",
+    "createConfirm": {
+      "title": "{count, plural, other {创建 # 个草稿拉取请求？}}",
+      "message": "这会推送所选的任务分支，然后按显示顺序创建草稿。已有的草稿保持不变。",
+      "confirm": "创建草稿"
+    },
+    "mergeConfirm": {
+      "title": "合并 {name}？",
+      "message": "GitHub 将使用仓库的默认合并方式合并此拉取请求。此操作无法在这里撤销。",
+      "confirm": "合并拉取请求"
+    },
+    "resolveConfirm": {
+      "title": "将此审查讨论标记为已解决？",
+      "message": "将此 GitHub 审查对话标记为已解决。该讨论仍会保留在 GitHub 历史记录中。",
+      "confirm": "标记为已解决"
+    },
+    "readyConfirm": {
+      "title": "将 {name} 标记为就绪？",
+      "pullRequest": "拉取请求",
+      "message": "这会取消草稿状态，并在 GitHub 上请求审查。",
+      "confirm": "标记为就绪"
+    }
+  },
+  "sourceUpdate": {
+    "ariaLabel": "关联工作的更新",
+    "title": "关联工作",
+    "completeIssue": "完成议题",
+    "cancel": "取消",
+    "postAnother": "再发布一条",
+    "postUpdate": "发布更新",
+    "needsAttention": "需要处理",
+    "completed": "已完成",
+    "posted": "已发布",
+    "placeholder": "为 {target} 撰写更新…",
+    "progress": "进展",
+    "finalResult": "最终结果",
+    "typeAriaLabel": "更新类型",
+    "useLatestSummary": "使用最新摘要",
+    "postTo": "发布到 {provider}",
+    "completeConfirm": {
+      "title": "完成 {target}？",
+      "issue": "议题",
+      "linearMessage": "将此 Linear 议题移至团队的已完成状态。",
+      "githubMessage": "关闭此 GitHub 议题。其讨论和历史记录仍可查看。",
+      "confirm": "完成议题"
+    }
+  },
+  "repositoryLocalChanges": {
+    "ariaLabel": "{name} 的本地更改",
+    "heading": "{count, plural, other {{name} 有 # 处本地更改}}",
+    "hideDiff": "隐藏差异",
+    "viewDiff": "查看差异",
+    "moreFiles": "{count, plural, other {还有 # 个文件}}",
+    "loadError": "无法加载本地更改，请重试。",
+    "closeAndRetry": "关闭并重试",
+    "binary": "二进制文件已更改。",
+    "noChanges": "已没有本地更改。刷新即可更新此面板。"
+  },
+  "deliveryAutomation": {
+    "error": "交付自动化无法继续。"
+  },
+  "developerTools": {
+    "comments": "{count, plural, other {# 条评论}}",
+    "attachments": "{count, plural, other {# 个附件}}"
+  },
+  "workspaceUsage": {
+    "explanation": "Cowork 为此任务保留的大致存储空间，包括其工作区、对比副本和恢复数据。你自己的文件夹以及各工作树共享的 Git 历史记录不计算在内。在 macOS 上，副本与其源文件共享磁盘空间，因此删除任务实际释放的空间可能远少于显示的数值。",
+    "storage": "存储空间",
+    "measuring": "正在计算…",
+    "notMeasured": "尚未计算",
+    "taskSize": "约 {size}",
+    "taskSizeUpdating": "约 {size} · 正在更新…",
+    "recovery": "恢复数据",
+    "recoveryOfThat": "其中 {size}",
+    "allTasks": "所有任务"
+  },
+  "repositorySetup": {
+    "invalidBranch": "请使用 Git 分支名称，例如 {example}。"
+  },
+  "gitIdentity": {
+    "saveFailed": "无法保存 Git 身份。",
+    "title": "Git 需要知道你是谁",
+    "body": "在这台电脑上提交需要姓名和邮箱。保存一次后，提交会重新运行。Git 中已有的设置会保留。",
+    "namePlaceholder": "你的姓名",
+    "nameAriaLabel": "Git 提交使用的姓名",
+    "emailAriaLabel": "Git 提交使用的邮箱",
+    "saving": "正在保存…",
+    "save": "保存并提交"
+  },
+  "deleteProject": {
+    "title": "删除此代码项目？",
+    "message": "这会移除项目设置，源文件夹不受影响。包含编码任务的项目无法删除。",
+    "confirm": "删除项目",
+    "deleting": "正在删除…",
+    "failed": "无法删除此代码项目。"
+  },
+  "renameTask": {
+    "failed": "无法重命名此编码任务。",
+    "title": "重命名编码任务",
+    "label": "任务名称",
+    "cancel": "取消",
+    "rename": "重命名"
+  },
+  "recovery": {
+    "title": "重新打开任务",
+    "subtitle": "选择在哪里重新打开此任务。之后发送一条消息即可继续中断的工作。",
+    "computerAriaLabel": "用于恢复任务的电脑",
+    "recommended": "推荐",
+    "savedCopy": "已保存的工作副本",
+    "freshCopy": "全新的工作副本",
+    "empty": {
+      "title": "没有在线的兼容电脑",
+      "body": "请让原来的电脑上线，或连接另一台兼容的电脑。"
+    },
+    "recreateWarning": "这会从已保存的仓库修订版本开始。上一台电脑上未推送的更改无法随任务迁移。",
+    "cancel": "取消",
+    "reopening": "正在重新打开…",
+    "startFresh": "使用全新副本"
+  },
+  "projectResources": {
+    "title": "代码",
+    "errors": {
+      "chooseFolder": "无法选择该文件夹。",
+      "duplicateResource": "该资源已在此项目中。",
+      "inspectFolder": "无法检查该文件夹。",
+      "invalidUrl": "请输入 Git 仓库 URL，例如 {example}。",
+      "duplicateRepository": "该仓库已在此项目中。"
+    },
+    "status": {
+      "offline": "{computer} 已离线",
+      "computerOffline": "电脑已离线",
+      "anyComputer": "任意电脑",
+      "only": "仅限 {computer}",
+      "onlyThisComputer": "仅限这台电脑"
+    },
+    "baseBranch": "基础分支",
+    "baseBranchPlaceholder": "仓库默认分支",
+    "commands": "命令",
+    "optional": "（可选）",
+    "setup": "设置",
+    "setupAriaLabel": "设置命令",
+    "validate": "验证",
+    "validateAriaLabel": "验证命令",
+    "run": "运行",
+    "runAriaLabel": "运行命令",
+    "remove": "移除",
+    "removeAriaLabel": "移除 {name}",
+    "adding": "正在添加…",
+    "addFolder": "添加文件夹",
+    "addRepository": "添加仓库",
+    "chooseFolder": "选择文件夹",
+    "runsOnThisComputer": "在这台电脑上运行",
+    "cloneRepository": "克隆仓库",
+    "runsOnAnyComputer": "可在任意电脑上运行"
+  },
+  "projectConnectedTools": {
+    "title": "连接器",
+    "usedByRepository": " · 已被仓库使用",
+    "reconnect": "重新连接",
+    "manage": "管理连接器",
+    "empty": "连接 GitHub 或 Linear，即可从议题启动任务并交付拉取请求。",
+    "open": "打开连接器"
+  },
+  "projectConnections": {
+    "backToSettings": "返回项目设置",
+    "backToTask": "返回任务"
+  },
+  "projectActions": {
+    "settings": "项目设置",
+    "delete": "删除项目",
+    "noTask": "请先打开一个编码任务，再运行项目操作。"
+  },
+  "projectDefaults": {
+    "invalidEnvironmentLine": "环境变量行需要采用 NAME=value 格式：{line}"
+  },
+  "projectSettings": {
+    "title": "项目设置",
+    "newTitle": "新建代码项目",
+    "subtitle": "此项目中的任务共享其代码、连接器和默认设置。",
+    "name": "项目名称",
+    "skills": "技能",
+    "teamSetup": {
+      "title": "团队配置",
+      "summary": "{branch} · 已包含 {count} 项",
+      "updateAvailable": "有可用更新",
+      "checkForUpdates": "检查更新",
+      "reviewUpdate": "查看更新",
+      "newerRevision": "有更新的团队配置版本可用。",
+      "applyUpdate": "应用更新",
+      "includedGuidance": "已包含的指南",
+      "includedCount": "{enabled}/{total}",
+      "details": "详细信息",
+      "source": "来源",
+      "revision": "修订版本",
+      "checking": "正在检查…",
+      "openSource": "打开来源",
+      "openLocalCopy": "打开本地副本"
+    },
+    "defaults": {
+      "title": "任务默认设置",
+      "agent": "智能体",
+      "agentAriaLabel": "默认编码智能体",
+      "model": "模型",
+      "modelAriaLabel": "默认编码模型",
+      "modelPlaceholder": "选择模型",
+      "noModels": "没有可用的编码模型",
+      "reasoning": "推理",
+      "reasoningAriaLabel": "默认推理强度",
+      "permissions": "权限",
+      "permissionsAriaLabel": "默认编码权限"
+    },
+    "environment": {
+      "title": "环境",
+      "ports": "开发端口",
+      "portsHelp": "每个任务都会在每个名称下获得一个独立的空闲端口。",
+      "variables": "环境变量",
+      "variablesHelp": "此项目中的所有任务均可见。请勿在此存放密钥。"
+    },
+    "errors": {
+      "inspectPlaybook": "无法检查团队手册。",
+      "checkAvailability": "无法检查资源可用性。",
+      "nameRequired": "请为此代码项目命名。",
+      "resourceRequired": "请至少添加一个仓库或文件夹。",
+      "save": "无法保存此代码项目。",
+      "checkTeamSetup": "无法检查团队配置更新。",
+      "applyTeamSetup": "无法应用团队配置更新。",
+      "updateGuidance": "无法更新团队配置指南。",
+      "openRepository": "无法打开该仓库。"
+    },
+    "cancel": "取消",
+    "saving": "正在保存…",
+    "creating": "正在创建…",
+    "save": "保存更改",
+    "create": "创建项目"
+  },
+  "runtimeControls": {
+    "tryAgain": "请重试。",
+    "title": "任务设置",
+    "subtitle": "这些设置将应用于此编码任务之后的对话轮次。",
+    "model": "模型",
+    "modelAriaLabel": "任务模型",
+    "reasoning": "推理",
+    "modelDefault": "模型默认值",
+    "reasoningAriaLabel": "推理强度",
+    "effortPlaceholder": "强度",
+    "permissions": "权限",
+    "permissionsAriaLabel": "任务权限",
+    "personality": "个性",
+    "personalityAriaLabel": "智能体个性",
+    "personalities": {
+      "pragmatic": "务实",
+      "friendly": "友好",
+      "none": "无个性"
+    },
+    "fast": {
+      "title": "快速",
+      "description": "在模型支持时使用优先推理。",
+      "ariaLabel": "快速推理"
+    },
+    "network": {
+      "title": "网络访问",
+      "includedWithFullAccess": "完全访问权限已包含此项。",
+      "description": "允许命令访问外部服务。"
+    },
+    "webSearch": {
+      "title": "网页搜索",
+      "description": "允许编码智能体在需要时搜索网页。"
+    },
+    "folders": {
+      "title": "其他文件夹",
+      "description": "允许此任务跨相关的本地文件夹工作。",
+      "add": "添加文件夹",
+      "removeAriaLabel": "移除其他文件夹 {path}"
+    },
+    "sandbox": {
+      "title": "Windows 沙盒",
+      "checking": "正在检查…",
+      "unknown": "未知",
+      "unavailable": "不可用",
+      "setupStarted": "已开始设置",
+      "setupFailed": "设置失败",
+      "ready": "已就绪",
+      "setUp": "设置"
+    },
+    "applyFailed": "无法应用任务设置",
+    "cancel": "取消",
+    "apply": "应用"
+  },
+  "extensions": {
+    "alsoInstalled": "也已安装在 {location}",
+    "alsoInstalledAt": "也已安装在 {location} · {path}",
+    "loadFailed": "无法加载任务扩展。",
+    "title": "任务扩展",
+    "subtitle": "从此文件夹、你的 Codex 技能和 Cowork 技能库加载的功能。",
+    "typesAriaLabel": "扩展类型",
+    "tabs": {
+      "skills": "技能",
+      "mcp_servers": "MCP",
+      "plugins": "插件",
+      "apps": "应用",
+      "hooks": "钩子"
+    },
+    "refreshAriaLabel": "刷新任务扩展",
+    "loading": "正在加载{tab, select, skills {技能} mcp_servers { MCP} plugins {插件} apps {应用} hooks {钩子} other {扩展}}…",
+    "empty": "此任务没有已启用的{tab, select, skills {技能} mcp_servers { MCP} plugins {插件} apps {应用} hooks {钩子} other {扩展}}。",
+    "sourceErrors": "部分扩展来源无法检查",
+    "config": {
+      "title": "代码模式配置",
+      "description": "此私有 Codex 配置由所有编码任务共享。项目中的 {file} 文件会自动叠加。",
+      "open": "打开配置"
+    }
+  },
+  "projects": {
+    "viewTasks": "查看 {name} 中的任务",
+    "resourceCount": "{count, plural, other {# 个资源}}",
+    "actionsAriaLabel": "{name} 的操作",
+    "title": "项目",
+    "subtitle": "编码任务共享的仓库、文件夹、技能和默认设置。",
+    "new": "新建项目",
+    "search": "搜索项目",
+    "sort": {
+      "updated": "最近更新",
+      "name": "名称"
+    },
+    "empty": {
+      "title": "还没有项目",
+      "description": "创建项目，将相关的仓库和文件夹集中到一起。",
+      "action": "创建你的第一个项目"
+    },
+    "listAriaLabel": "代码项目",
+    "loadFailed": "无法加载代码项目。"
+  },
+  "projectPicker": {
+    "resourceCount": "{count, plural, other {# 个资源}}",
+    "noProject": "无项目",
+    "localFolder": "本地文件夹",
+    "projects": "项目",
+    "newProject": "新建项目",
+    "search": "搜索项目",
+    "noResults": "未找到项目",
+    "ariaLabel": "代码项目",
+    "menuLabel": "项目"
+  },
+  "skills": {
+    "origin": {
+      "all": "所有来源",
+      "team": "团队",
+      "personal": "我的"
+    },
+    "kind": {
+      "instructions": "指令",
+      "workflow": "工作流",
+      "skill": "技能"
+    },
+    "unversioned": "无版本",
+    "cancel": "取消",
+    "close": "关闭",
+    "save": "保存",
+    "saving": "正在保存…",
+    "usedBy": "{count, plural, other {已被 # 个项目使用}}",
+    "updateAvailable": "有可用更新",
+    "addSource": {
+      "title": "添加团队来源",
+      "subtitle": "连接包含技能、指令或工作流的 Git 仓库。",
+      "repositoryLabel": "仓库或文件夹",
+      "choose": "选择",
+      "nameLabel": "名称",
+      "optional": "可选",
+      "namePlaceholder": "工程规范",
+      "branchLabel": "分支",
+      "repositoryRequired": "请选择 Git 仓库或输入其 URL。",
+      "addFailed": "无法添加该团队来源。",
+      "folderFailed": "无法选择该文件夹。",
+      "adding": "正在添加…",
+      "add": "添加来源"
+    },
+    "projects": {
+      "title": "选择项目",
+      "subtitle": "让所选代码项目中的任务可以使用此内容。",
+      "folders": "{count, plural, other {# 个文件夹}}",
+      "empty": "请先创建代码项目，再分配团队技能。"
+    },
+    "source": {
+      "fallbackTitle": "团队来源",
+      "repository": "仓库",
+      "itemsUnit": "{count, plural, other {项}}",
+      "projectsUnit": "{count, plural, other {个项目}}",
+      "openRepository": "打开仓库",
+      "checkUpdates": "检查更新",
+      "update": "更新来源",
+      "remove": "移除来源"
+    },
+    "view": {
+      "title": "技能",
+      "subtitle": "你的工作流和团队的工程规范，随时可用于代码任务。",
+      "addPersonal": "添加个人技能",
+      "searchPlaceholder": "搜索技能",
+      "noMatch": "没有与搜索匹配的技能。",
+      "emptyPersonal": {
+        "title": "还没有个人技能",
+        "description": "编写指令或导入 SKILL.md，无需 Git 仓库。",
+        "action": "添加你的第一个技能"
+      },
+      "emptyTeam": {
+        "title": "还没有团队来源",
+        "description": "连接 Git 仓库，在各项目间共享工程规范。"
+      },
+      "emptyView": "此视图中没有技能。",
+      "viewItem": "查看 {name}",
+      "moreActions": "{name} 的更多操作",
+      "edit": "编辑",
+      "delete": "删除",
+      "projectCount": "{count, plural, other {# 个项目}}",
+      "available": "可用",
+      "disabled": "已停用",
+      "sourceFilter": "来源",
+      "itemCount": "{count, plural, other {# 项}}",
+      "needsAttention": "需要处理",
+      "sourceDetails": "来源详情",
+      "sourceUnavailable": "来源不可用，打开以查看详情。",
+      "noItemsMatch": "没有与此搜索匹配的项目。",
+      "noSharedItems": "未找到共享内容。",
+      "personalDescription": "可在代码模式中使用的个人技能",
+      "builtInDescription": "由 MindsHub 维护的工程技能"
+    },
+    "errors": {
+      "updateProjects": "无法更新项目技能。",
+      "updateSource": "无法更新该来源。",
+      "openRepository": "无法打开该仓库。",
+      "removeSource": "无法移除该来源。",
+      "deleteSkill": "无法删除该技能。",
+      "loadLibrary": "无法加载技能库。"
+    },
+    "removeConfirm": {
+      "title": "移除团队来源？",
+      "message": "{name} 将从此技能库中移除，其 Git 仓库不会被更改。",
+      "busy": "正在移除…"
+    },
+    "deleteConfirm": {
+      "title": "删除个人技能？",
+      "message": "{name} 将从你的技能库中移除。现有任务会保留其已保存的副本。",
+      "confirm": "删除技能",
+      "busy": "正在删除…"
+    }
+  },
+  "personalSkill": {
+    "saveFailed": "无法保存此技能，请重试。",
+    "errors": {
+      "fileType": "请选择 SKILL.md 或 .skill 文本文件。",
+      "fileTooLarge": "请选择小于 120 KB 的技能。",
+      "fileUnreadable": "无法读取此文件。请选择 UTF-8 编码的文本技能。",
+      "instructionsTooLong": "指令请控制在 120 KB 以内。"
+    },
+    "fields": {
+      "name": "名称",
+      "namePlaceholder": "例如：审查我的 TypeScript",
+      "description": "使用时机",
+      "descriptionHelp": "帮助智能体判断何时需要使用此技能。",
+      "descriptionPlaceholder": "审查 TypeScript 更改，确保代码清晰、错误处理可靠。",
+      "instructions": "指令",
+      "instructionsHelp": "编写或粘贴智能体应遵循的步骤和规范。",
+      "instructionsPlaceholder": "先阅读已更改的文件…",
+      "available": "对智能体可用",
+      "keepRestrictions": "现有的项目限制将保留。",
+      "availableHint": "可用于这台电脑上新的代码任务。"
+    },
+    "editTitle": "编辑个人技能",
+    "addTitle": "添加个人技能",
+    "subtitle": "用于你的代码任务，无需 Git 仓库。",
+    "loading": "正在加载技能…",
+    "tryAgain": "重试",
+    "tabs": {
+      "ariaLabel": "添加个人技能",
+      "write": "编写指令",
+      "import": "导入文件"
+    },
+    "import": {
+      "fileAriaLabel": "技能文件",
+      "title": "导入你自己的 SKILL.md",
+      "description": "选择一个包含名称、描述和指令的文本文件。它会被复制到你的代码技能中，原始文件保持不变。",
+      "chooseAnother": "选择其他文件",
+      "choose": "选择文件",
+      "limits": "SKILL.md 或 .skill · 最大 120 KB"
+    },
+    "cancel": "取消",
+    "saving": "正在保存…",
+    "saveChanges": "保存更改",
+    "add": "添加技能",
+    "discard": {
+      "title": "放弃更改？",
+      "message": "未保存的技能更改将会丢失。",
+      "confirm": "放弃更改",
+      "cancel": "继续编辑"
+    }
+  },
+  "skillDetail": {
+    "loadFailed": "无法加载此技能。",
+    "rendered": "渲染视图",
+    "viewSource": "查看源代码",
+    "files": "文件"
+  },
+  "projectSkills": {
+    "heading": {
+      "added": "{count, plural, other {已添加 # 个技能}}",
+      "choose": "选择技能",
+      "included": "{count, plural, other {已包含 # 个技能}}"
+    },
+    "summary": {
+      "selected": "已选择 {count} 个",
+      "available": "{count} 个可用",
+      "included": "已包含 {count} 个",
+      "none": "没有可用的代码技能"
+    },
+    "footer": {
+      "selected": "已为此项目选择 {count} 个",
+      "maintained": "{count, plural, other {已自动包含 # 个维护技能}}",
+      "default": "选择每个任务都应获得的指南"
+    },
+    "loadingEngineering": "正在加载工程技能…",
+    "search": "搜索代码技能",
+    "loading": "正在加载技能…",
+    "maintained": "由 MindsHub 维护",
+    "included": "已包含",
+    "empty": "此组织暂无可用的代码技能。",
+    "openSkills": "打开技能"
+  },
+  "connectors": {
+    "title": "连接器",
+    "subtitle": "只需连接一次开发者工具，即可将其添加到任意代码项目。",
+    "ariaLabel": "代码连接器",
+    "providers": {
+      "github": "从议题开始，创建草稿拉取请求，并跟踪审查和检查。",
+      "linear": "从 Linear 议题开始，并将进展同步回议题。"
+    },
+    "usage": {
+      "none": "未被任何项目使用",
+      "used": "{count, plural, other {已被 # 个项目使用}}"
+    },
+    "errors": {
+      "loadOptions": "无法加载 {provider} 连接选项。",
+      "connect": "无法连接 {provider}。",
+      "validate": "无法验证此凭据。",
+      "postConnect": "已连接，但未能完成代码模式的更新：{reason}",
+      "postConnectFallback": "请尝试重新打开连接器。",
+      "disconnect": "无法断开此账户的连接。"
+    },
+    "returnProject": {
+      "before": "你在此连接的账户将添加到",
+      "after": "。可根据需要连接多个账户，完成后返回即可。"
+    },
+    "returnTask": "连接账户后，返回你的任务。",
+    "backToTask": "返回任务",
+    "status": {
+      "reconnect": "{count, plural, other {# 个账户 · 需重新连接}}",
+      "connectedCount": "已连接 {count} 个",
+      "notConnected": "未连接",
+      "reconnectNeeded": "需要重新连接",
+      "connected": "已连接"
+    },
+    "connecting": "正在连接…",
+    "addAccount": "添加账户",
+    "connect": "连接",
+    "browser": {
+      "title": "在浏览器中继续",
+      "hint": "{provider} 完成授权后，请返回此处。"
+    },
+    "cancel": "取消",
+    "reconnecting": "正在重新连接…",
+    "reconnect": "重新连接",
+    "credential": {
+      "title": "连接 {provider}",
+      "githubSubtitle": "为此本地版本使用个人访问令牌。",
+      "linearSubtitle": "为此本地版本使用个人 API 密钥。"
+    },
+    "disconnect": {
+      "action": "断开连接",
+      "title": "断开 {name} 的连接？",
+      "titleFallback": "断开此账户的连接？",
+      "message": "使用此账户的项目将保留引用，但在你重新连接之前，代码模式无法通过它读取或发布内容。"
+    }
+  },
+  "commandPalette": {
+    "skillFallback": "MindsHub 技能",
+    "view": "查看",
+    "ariaLabel": "技能和命令",
+    "search": "搜索技能和命令",
+    "skillsSection": "MindsHub 技能",
+    "commandsSection": "{agent} 命令",
+    "empty": "没有匹配的技能或命令"
+  },
+  "sidebarSessions": {
+    "title": "编程任务",
+    "noProject": "无项目",
+    "errors": {
+      "pin": "无法置顶此任务。",
+      "unpin": "无法取消置顶此任务。"
+    },
+    "untitled": "未命名编程任务",
+    "untitledLower": "未命名编程任务",
+    "rowAriaLabel": "{title}，{status}{unread, select, yes {，未读} other {}}，{repository}，{updated}",
+    "actionsFor": "{name} 的操作",
+    "organize": "整理",
+    "organizeAriaLabel": "整理编程任务",
+    "projects": "项目",
+    "taskList": "任务列表",
+    "sort": "排序",
+    "priority": "优先级",
+    "lastUpdated": "最近更新",
+    "searchPlaceholder": "查找任务",
+    "searchAriaLabel": "查找编程任务",
+    "noMatch": "没有与搜索匹配的编程任务。",
+    "empty": "开始一个编程任务后，它的对话和更改都会保存在这里。",
+    "pinned": "已置顶",
+    "archived": "已归档"
+  },
+  "tasksView": {
+    "status": {
+      "all": "所有状态",
+      "attention": "需要处理",
+      "inProgress": "进行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "readyOrStopped": "就绪或已停止"
+    },
+    "sort": {
+      "updated": "最近更新",
+      "created": "最近创建",
+      "title": "标题"
+    },
+    "unavailableProject": "不可用的项目",
+    "filters": {
+      "project": "项目",
+      "allProjects": "所有项目",
+      "status": "状态"
+    },
+    "allTasks": "所有任务",
+    "projectSubtitle": "此项目中的编程任务。",
+    "projectActions": "{name} 操作",
+    "newTask": "新建任务",
+    "search": "搜索任务",
+    "count": "{count, plural, other {# 个任务}}",
+    "filteredCount": "{shown}/{total} 个任务",
+    "noMatch": "没有匹配的任务",
+    "clearFilters": "清除筛选条件",
+    "emptyArchived": {
+      "title": "没有已归档的任务",
+      "description": "你归档的任务会显示在这里。"
+    },
+    "empty": {
+      "title": "还没有任务",
+      "description": "每个任务包含一段编程对话，以及它对某个文件夹或仓库所做的更改。",
+      "action": "开始第一个任务"
+    },
+    "projectTasks": "项目任务"
+  },
+  "taskMenu": {
+    "errors": {
+      "archive": "无法归档此任务。",
+      "restore": "无法恢复此任务。",
+      "delete": "无法删除此任务。"
+    },
+    "stopFirst": "请先停止当前轮次。",
+    "pin": "置顶",
+    "unpin": "取消置顶",
+    "rename": "重命名",
+    "archive": "归档",
+    "restore": "恢复",
+    "delete": "删除",
+    "deleteConfirm": {
+      "title": "删除此编程任务？",
+      "message": "这会移除任务历史记录和所有隔离的工作副本。你的原始文件不受影响。",
+      "confirm": "删除任务"
+    }
+  },
+  "taskList": {
+    "loadFailed": "无法加载编程任务。"
+  },
+  "taskActions": {
+    "refreshFailed": "{completed}，但任务列表无法刷新：{reason}",
+    "tryAgainShortly": "请稍后重试",
+    "operationFailed": "编程操作失败。",
+    "completed": {
+      "operation": "操作已完成",
+      "started": "任务已开始",
+      "forked": "任务已复刻",
+      "archived": "任务已归档",
+      "restored": "任务已恢复"
+    },
+    "errors": {
+      "start": "无法开始此任务。",
+      "fork": "无法复刻此编程任务。",
+      "update": "无法更新此编程任务。"
+    }
+  },
+  "taskAttention": {
+    "answer": "有任务需要你回答。",
+    "approval": "有任务需要你批准。",
+    "plan": "计划已准备好，等你审阅。",
+    "failed": "有任务需要处理后才能继续。",
+    "finished": "有编程任务已完成。",
+    "bar": {
+      "ariaLabel": "需要处理的任务",
+      "unavailable": "此窗口无法使用桌面通知。",
+      "denied": "请在系统设置中允许 MindsHub 通知，以便接收提醒。",
+      "failed": "无法开启通知。你仍可在“需要处理”中找到待决定的事项。",
+      "needsYou": "{count, plural, other {# 个任务需要你处理 →}}",
+      "on": "通知已开启",
+      "off": "离开时通知我"
+    }
+  },
+  "catalog": {
+    "loadAgentsFailed": "无法加载编程智能体。",
+    "loadModelsFailed": "无法加载编程模型。"
+  },
+  "newTask": {
+    "heading": "想构建什么？",
+    "composerAriaLabel": "创建编程任务",
+    "dropHint": "拖放文件以附加",
+    "editProject": "编辑 {name}",
+    "changeFolder": "更改文件夹，当前为 {name}",
+    "chooseFolder": "选择文件夹",
+    "localResources": "本地资源",
+    "promptPlaceholder": "描述要做的更改、重要的限制条件，以及你希望如何验证…",
+    "promptAriaLabel": "编程任务",
+    "agentAriaLabel": "编程智能体",
+    "agentMenuLabel": "智能体",
+    "modelAriaLabel": "选择模型",
+    "modelMenuLabel": "模型",
+    "modelPlaceholder": "选择模型",
+    "noModels": "没有可用的编程模型",
+    "effortLabel": "推理强度",
+    "effortPlaceholder": "强度",
+    "starting": "正在开始…",
+    "startPlanning": "开始规划",
+    "startTask": "开始任务",
+    "automaticBranches": "自动创建任务分支",
+    "localChangesIncluded": "包含本地更改",
+    "localChangesExcluded": "不含本地更改",
+    "loadingSource": "正在加载议题或 PR…",
+    "planUnavailable": "此处无法使用规划模式。请关闭它，或选择支持该模式的电脑。",
+    "connectToStart": "连接 MindsHub 以开始任务。",
+    "mindsHubRequired": "代码模式在 MindsHub 上运行。连接你的 MindsHub 账户即可开始任务。",
+    "connecting": "正在连接…",
+    "connectMindsHub": "连接 MindsHub"
+  },
+  "newTaskDraft": {
+    "folderUnavailable": "{name} 不可用。请在项目设置中将其移除后重新添加。",
+    "baseBranchMissing": "{name} 找不到基础分支 {branch}。请在{location, select, setup {“仓库和文件夹”} other {项目设置}}中更新。",
+    "sourcePromptOne": "处理 {id}：{title}",
+    "sourcePromptMany": "{count, plural, other {处理已关联的 # 个工作项。}}",
+    "foldersCheckFailed": "无法检查此项目的文件夹。",
+    "engineUnavailable": "不可用",
+    "folderGone": "该文件夹已不可用。请选择其他文件夹。",
+    "folderAccessFailed": "无法访问该文件夹。",
+    "folderChooseFailed": "无法选择该文件夹。",
+    "readiness": {
+      "startingTask": "正在开始任务…",
+      "loadingAgent": "正在加载编程智能体…",
+      "checkingResources": "正在检查项目资源…",
+      "checkingFolder": "正在检查文件夹…",
+      "findingComputer": "正在查找可用的电脑…",
+      "addResource": "请在项目设置中为此项目添加仓库或文件夹。",
+      "noComputer": "没有可运行此任务的电脑。",
+      "noAgent": "没有可用的编程智能体。",
+      "modelRestricted": "管理员已限制此模型。请选择其他模型。",
+      "addCredits": "请充值，或选择可用的模型。",
+      "noModels": "没有可用的编程模型。",
+      "chooseModel": "选择模型以继续。",
+      "chooseFolder": "选择文件夹以继续。",
+      "budgetReached": "你的组织预算已用完。请选择可用的模型，或请所有者或管理员提高预算。"
+    }
+  },
+  "executionTarget": {
+    "thisComputer": "这台电脑",
+    "readyNow": "{platform} · 已就绪",
+    "offline": "{platform} · 离线",
+    "activeTasks": "{platform} · {count, plural, other {# 个进行中的任务}}",
+    "ready": "{platform} · 就绪",
+    "localFolder": "本地文件夹",
+    "unavailable": "不可用",
+    "computers": "电脑",
+    "cloudDescription": "托管的按需算力",
+    "comingSoon": "即将推出",
+    "runOn": "运行任务的位置",
+    "capacityIssue": "目前没有在线的电脑可以运行此任务。",
+    "offlineIssue": "{name} 所在的电脑已离线。",
+    "findFailed": "找不到这台电脑。",
+    "checkFailed": "无法检查此任务可以在哪里运行。"
+  },
+  "permissions": {
+    "ariaLabel": "编程权限",
+    "menuLabel": "权限",
+    "readOnly": {
+      "label": "只读",
+      "title": "只检查和解释，不更改文件。"
+    },
+    "supervised": {
+      "label": "先询问",
+      "title": "执行需要你批准的命令前先暂停。"
+    },
+    "workspace": {
+      "label": "工作区内自动",
+      "title": "在此任务的隔离副本中自主工作。"
+    },
+    "fullAccess": {
+      "label": "完全访问",
+      "title": "自主工作，不受文件系统限制。"
+    }
+  },
+  "branchSelect": {
+    "loadFailed": "无法加载分支。打开选择器以重试。",
+    "ariaLabel": "{name} 的起始分支",
+    "placeholder": "默认分支",
+    "searchPlaceholder": "查找分支…",
+    "menuLabel": "起始分支"
+  },
+  "repositoryPicker": {
+    "resultsAriaLabel": "GitHub 仓库",
+    "private": "私有",
+    "public": "公开",
+    "archivedSuffix": " · 已归档",
+    "added": "已添加",
+    "add": "添加",
+    "searchingMore": "正在搜索更多仓库…",
+    "loading": "正在加载仓库…",
+    "noMatches": "没有匹配的仓库。",
+    "noRepositories": "此连接没有可用的仓库。",
+    "tryAgain": "重试",
+    "manageConnection": "管理连接",
+    "loadMore": "加载更多仓库",
+    "ariaLabel": "添加 Git 仓库",
+    "title": "GitHub 仓库",
+    "close": "关闭仓库选择器",
+    "accountAriaLabel": "GitHub 账户",
+    "accountMenuLabel": "账户",
+    "reconnectHint": "重新连接 GitHub 以浏览你的仓库。",
+    "connectHint": "连接 GitHub 后即可从你的仓库中选择。",
+    "reconnect": "重新连接 GitHub",
+    "connect": "连接 GitHub",
+    "searchPlaceholder": "搜索仓库…",
+    "searchAriaLabel": "搜索仓库",
+    "missingHint": "找不到某个仓库？此连接可能需要获得该仓库的访问权限。",
+    "manageAccess": "管理访问权限",
+    "pasteUrl": "粘贴仓库 URL",
+    "urlAriaLabel": "Git 仓库 URL",
+    "loadFailed": "无法加载仓库。请重试。"
+  },
+  "taskRepositories": {
+    "checkFailed": "无法检查仓库。请刷新以重试。",
+    "ariaLabel": "仓库和文件夹",
+    "resources": "{count, plural, other {# 项资源}}",
+    "localChanges": "本地更改"
+  },
+  "repositoryDrawer": {
+    "branchExists": "该分支已存在。请为任务分支另取一个名称。",
+    "remoteCheckFailed": "无法检查远程分支。",
+    "retryApply": "{message}再次应用以重试。",
+    "newTask": "新建任务",
+    "title": "仓库和文件夹",
+    "remoteNotice": "选择这台电脑才能设置任务分支和包含本地更改。资源选择在任何电脑上都可用。",
+    "branchLabel": "此任务的新分支",
+    "optional": "可选",
+    "branchHint": "将在每个所选仓库中创建。留空则自动命名。",
+    "includeInTask": "包含在此任务中",
+    "startFrom": "起始分支",
+    "computerOffline": "{name} 已离线",
+    "requiredComputer": "所需电脑",
+    "onlyOn": "仅在 {name} 上",
+    "linkedComputer": "其关联的电脑",
+    "include": "包含 {name}",
+    "localFolder": "本地文件夹 · 复制到此任务中",
+    "onSelectedComputer": "在所选电脑上",
+    "onThisComputer": "在这台电脑上：{branch}",
+    "onThisComputerClean": "在这台电脑上：{branch} · 无更改",
+    "checkingRepository": "正在检查仓库…",
+    "statusUnavailable": "状态不可用",
+    "checkingRepositories": "正在检查仓库…",
+    "checkoutStatus": "本地检出状态",
+    "refresh": "刷新",
+    "localChanges": "本地更改",
+    "committedTitle": "从已提交的代码开始",
+    "committedHint": "本地更改保留在这台电脑上。",
+    "includeTitle": "包含我的本地更改",
+    "includeHint": "将其复制到此任务中，原始文件保持不变。",
+    "count": "{repositories, plural, other {# 个仓库}} · {folders, plural, other {# 个文件夹}}",
+    "checkingBranches": "正在检查分支…",
+    "apply": "应用到任务"
+  },
+  "workItemPicker": {
+    "justNow": "刚刚",
+    "hours": "{count} 小时",
+    "days": "{count} 天",
+    "ariaLabel": "从现有工作开始",
+    "title": "从工作项开始",
+    "searchSubtitle": "搜索议题和拉取请求",
+    "recentSubtitle": "最近更新且分配给你的",
+    "close": "关闭工作项选择器",
+    "providerAriaLabel": "开发者工具",
+    "accountAriaLabel": "{provider} 账户",
+    "accountMenuLabel": "账户",
+    "searchPlaceholder": "搜索 {provider}",
+    "searchAriaLabel": "搜索 {provider} 工作项",
+    "resultsAriaLabel": "{provider} 工作项",
+    "finding": "正在查找工作项…",
+    "noMatches": "没有匹配的工作项。",
+    "noAssigned": "没有分配给你的工作项。",
+    "linkPlaceholder": "或粘贴议题或拉取请求链接",
+    "linkAriaLabel": "议题或拉取请求链接",
+    "adding": "正在添加…",
+    "add": "添加",
+    "connectHint": "连接 GitHub 或 Linear，即可从现有工作开始。",
+    "openConnectors": "打开连接器"
+  },
+  "taskSourceLinks": {
+    "invalidLink": "请粘贴 GitHub 或 Linear 的议题或拉取请求链接。",
+    "chooseAccount": "选择要使用的 {provider} 账户。",
+    "loadFailed": "无法加载该工作项。",
+    "searchFailed": "无法搜索已连接的工作项。",
+    "linkedAriaLabel": "已关联的工作项",
+    "remove": "移除 {label}",
+    "addAnother": "再添加议题或 PR",
+    "add": "添加议题或 PR"
+  },
+  "activity": {
+    "phrase": {
+      "edit": "{count, plural, other {编辑了 # 个文件}}",
+      "command": "{count, plural, other {运行了 # 条命令}}",
+      "read": "{count, plural, other {读取了 # 个文件}}",
+      "search": "{count, plural, other {搜索了 # 次}}",
+      "list": "{count, plural, other {列出了 # 个文件夹}}",
+      "tool": "{count, plural, other {使用了 # 个工具}}",
+      "plan": "更新了计划",
+      "compact": "压缩了上下文",
+      "retry": "{count, plural, other {重试了 # 次}}"
+    },
+    "askedForApproval": "请求了批准",
+    "thoughtItThrough": "已思考",
+    "agentActivity": "智能体活动",
+    "aFile": "一个文件",
+    "planStep": "计划步骤",
+    "stepPosition": "第 {step} 步，共 {total} 步",
+    "live": {
+      "editingFile": "正在编辑 {name}",
+      "editingFiles": "正在编辑文件",
+      "compacting": "正在压缩上下文",
+      "calling": "正在调用 {tool}",
+      "using": "正在使用 {tool}",
+      "usingTool": "正在使用工具",
+      "reading": "正在读取 {name}",
+      "searchingFor": "正在搜索“{query}”",
+      "searching": "正在搜索",
+      "listing": "正在列出文件",
+      "running": "正在运行 {command}",
+      "reconnecting": "正在重新连接…",
+      "thinking": "正在思考…"
+    },
+    "step": {
+      "edited": "编辑了",
+      "files": "{count, plural, other {# 个文件}}",
+      "updatedPlan": "更新了计划",
+      "planProgress": "· 已完成 {done}/{total}",
+      "retried": "已重试",
+      "retryTarget": "· 连接中断后",
+      "retryTargetAttempt": "· 连接中断后（{attempt}）",
+      "askedToRun": "请求运行",
+      "compacted": "压缩了上下文",
+      "viewed": "查看了",
+      "anImage": "一张图片",
+      "called": "调用了",
+      "used": "使用了",
+      "aTool": "一个工具",
+      "read": "读取了",
+      "searchedFor": "搜索了",
+      "searched": "已搜索",
+      "listed": "列出了",
+      "filesWord": "文件",
+      "ran": "运行了",
+      "created": "创建了",
+      "deleted": "删除了"
+    }
+  },
+  "presentation": {
+    "status": {
+      "ready": "就绪",
+      "working": "工作中",
+      "needsApproval": "需要批准",
+      "completed": "已完成",
+      "stopped": "已停止",
+      "interrupted": "已中断",
+      "failed": "失败",
+      "preparing": "准备中",
+      "needsAttention": "需要处理",
+      "paused": "已暂停",
+      "reopening": "正在重新打开",
+      "computerOffline": "电脑已离线",
+      "answerNeeded": "需要回答",
+      "reviewPlan": "审阅计划",
+      "planning": "规划中"
+    },
+    "relative": {
+      "now": "刚刚",
+      "minutes": "{count} 分钟",
+      "hours": "{count} 小时",
+      "days": "{count} 天"
+    },
+    "replaces": "替代 {skills}"
+  },
+  "reasoning": {
+    "levels": {
+      "none": "无",
+      "minimal": "最低",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高",
+      "max": "最高"
+    },
+    "levelEffort": "推理强度：{level}",
+    "projectDefault": "项目默认",
+    "modelDefault": "模型默认",
+    "default": "默认",
+    "defaultEffort": "默认推理强度"
+  },
+  "timeline": {
+    "failed": "失败",
+    "exitCode": "退出代码 {code}",
+    "failedCount": "{count, plural, other {# 项失败}}",
+    "workedFor": "工作了 {duration}",
+    "worked": "已完成工作",
+    "turnChanges": {
+      "ariaLabel": "本轮更改的文件",
+      "edited": "{count, plural, other {编辑了 # 个文件}}",
+      "review": "审阅",
+      "more": "及另外 {count} 个"
+    },
+    "preparingWorkspace": "正在准备任务工作区…",
+    "preparingPlan": "正在探索并制定计划…",
+    "plan": {
+      "heading": "计划",
+      "preparing": "智能体正在制定计划…"
+    },
+    "childWork": {
+      "ariaLabel": "Codex 并行工作",
+      "label": "并行工作",
+      "worker": "Codex 工作单元",
+      "working": "工作中",
+      "stopped": "已停止",
+      "done": "已完成"
+    },
+    "copyMessage": "复制消息",
+    "copyResponse": "复制回复",
+    "agentMessageAriaLabel": "编程智能体消息",
+    "record": {
+      "approvalDenied": "已拒绝批准",
+      "approvalResolved": "已处理批准请求",
+      "followUpDelivered": "已送达追加指令",
+      "requestRejected": "请求被拒绝",
+      "taskStatus": "任务状态"
+    },
+    "failureDetails": "失败详情",
+    "showEarlier": "显示之前的 {count} 条更新"
+  },
+  "externalLink": {
+    "unsafeRepository": "该仓库地址不安全，无法打开。",
+    "openRepositoryFailed": "无法打开该仓库。"
+  },
+  "commandLine": {
+    "unclosedQuote": "请闭合命令参数中的引号。"
+  },
+  "queuedResume": {
+    "failed": "无法恢复排队的指令。"
+  },
+  "session": {
+    "refreshFailed": "无法刷新此编程任务。",
+    "liveDisconnected": "实时更新已断开。正在重新连接…",
+    "loadFailed": "无法加载此编程任务。",
+    "historyReconnecting": "正在重新连接任务历史记录…"
+  },
+  "codeView": {
+    "resumeFailed": "无法恢复此任务。",
+    "recoveryOptionsFailed": "无法加载恢复选项。",
+    "projectActionFailed": "无法启动项目操作。",
+    "loadingTasks": "正在加载编程任务…",
+    "restoringTask": "正在恢复任务…",
+    "steerTimeout": "任务未及时接受引导。如有待处理的批准，请先处理后再试。",
+    "stopTimeout": "任务未及时响应停止请求。请重试。",
+    "commandUnavailable": "此版本尚不支持 /{command} 控件。",
+    "projectCommandsNotUpdated": "项目命令未更新。",
+    "restoreFailed": "无法恢复此编程任务。",
+    "applyBlocked": "当前轮次结束后才能应用更改"
+  },
+  "api": {
+    "serviceStartFailed": "无法启动本地代码模式服务。",
+    "requestFailed": "编程请求失败（{status}）",
+    "outdatedBackend": "此桌面版本连接的后端版本较旧，不支持代码模式。请使用匹配的 cowork-server 版本重启应用。"
+  },
+  "composer": {
+    "checkingModes": "正在检查可用的任务模式…",
+    "modeUnavailable": "此任务模式不可用。请先更改模式再发送。",
+    "dropHint": "拖放文件以附加",
+    "placeholder": {
+      "queueWhileWaiting": "在智能体等待时排队一条追加指令…",
+      "steer": "引导当前工作…",
+      "followUp": "添加本轮结束后的追加指令…",
+      "notStarted": "开始新任务以继续",
+      "recoverable": "重新打开任务，然后说明如何继续…",
+      "refinePlan": "完善计划…",
+      "anotherChange": "提出其他更改…"
+    },
+    "inputAriaLabel": "追加指令",
+    "whenBuilding": "构建时：",
+    "permissionsLocked": "当前轮次结束后才能更改权限",
+    "stopAriaLabel": "停止编程智能体",
+    "stop": "停止",
+    "deliveryAriaLabel": "指令发送方式",
+    "queue": "排队",
+    "steer": "引导",
+    "steerAriaLabel": "引导当前轮次",
+    "queueAriaLabel": "将指令加入队列",
+    "sendAriaLabel": "发送追加指令",
+    "send": "发送"
+  },
+  "promptQueue": {
+    "ariaLabel": "排队的指令",
+    "queued": "{count, plural, =0 {已排队} other {已排队 · # 个文件}}",
+    "steerAriaLabel": "用排队的第 {position} 条指令引导",
+    "steer": "引导",
+    "removeAriaLabel": "移除排队的第 {position} 条指令"
+  },
+  "slashMenu": {
+    "ariaLabel": "代码模式命令",
+    "label": "命令"
+  },
+  "mentionMenu": {
+    "ariaLabel": "任务文件",
+    "label": "此任务中的文件和文件夹"
+  },
+  "composerAddMenu": {
+    "ariaLabel": "添加",
+    "triggerAriaLabel": "添加到提示词",
+    "heading": "添加",
+    "planMode": "规划模式",
+    "planUnavailable": "当前轮次结束后可用",
+    "files": "文件和文件夹",
+    "planOffAriaLabel": "关闭规划模式",
+    "plan": "规划"
+  },
+  "composerLip": {
+    "showMore": "{count, plural, other {再显示 # 条通知}}",
+    "addCredits": "充值",
+    "reopening": "正在重新打开…",
+    "reopen": "重新打开任务",
+    "chooseModel": "选择模型",
+    "chooseAnotherModel": "选择其他模型",
+    "hideDetails": "隐藏详情",
+    "showDetails": "显示详情",
+    "details": "详情",
+    "moreOptions": "更多选项",
+    "dismiss": "忽略",
+    "viewBudgets": "查看预算"
+  },
+  "composerNotices": {
+    "thisModel": "此模型",
+    "insufficientCredits": {
+      "title": "{model} 需要积分",
+      "body": "请充值或选择其他模型，然后在此任务中继续。"
+    },
+    "authFailed": {
+      "title": "你的登录信息与此服务器不匹配",
+      "body": "请重新登录，或切换回你登录时所用的环境，然后在此任务中继续。"
+    },
+    "modelUnavailable": {
+      "title": "{model} 不可用",
+      "body": "请选择其他模型，然后在此任务中继续。"
+    },
+    "rateLimited": {
+      "title": "MindsHub 收到的请求过于频繁",
+      "body": "本轮已停止。请稍等片刻，然后在此任务中继续。"
+    },
+    "allowanceExhausted": {
+      "title": "你的免费额度已用完",
+      "body": "立即充值即可继续，或等待额度恢复后在此任务中继续。"
+    },
+    "freeAirPaused": {
+      "title": "免费的 MindsHub Air 已暂停",
+      "body": "每日预算重置后会恢复。如需立即继续，请充值或选择其他模型。"
+    },
+    "notStarted": {
+      "title": "任务未开始",
+      "body": "无法准备任务的工作区，因此智能体未运行。问题解决后，请开始新任务。"
+    },
+    "reopening": {
+      "title": "正在重新打开任务",
+      "body": "正在重新连接任务文件…"
+    },
+    "paused": {
+      "title": "任务已暂停",
+      "offlineBody": "任务所在的电脑已断开连接。你的对话不会丢失；可以在那台电脑上重新打开，或选择另一台兼容的电脑。",
+      "interruptedBody": "本轮在完成前停止了。重新打开会恢复工作副本；发送消息即可继续被中断的工作。"
+    },
+    "restoreError": {
+      "title": "无法重新打开此任务的工作区",
+      "body": "{error}。任务的工作内容仍已保存；问题解决后请重试。"
+    },
+    "released": {
+      "body": "为节省磁盘空间，此任务的工作区已被收起。你继续或审阅此任务时，会连同所有更改一起重建。"
+    },
+    "kept": {
+      "body": "{reason}，因此它仍占用磁盘空间。"
+    },
+    "budgetExceeded": {
+      "title": "你的组织预算已用完",
+      "body": "所有者或管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。"
+    }
+  },
+  "planModeCommand": {
+    "label": "规划模式",
+    "turnOn": "开启规划模式",
+    "turnOff": "关闭规划模式"
+  },
+  "taskBar": {
+    "originalFolder": "原始文件夹",
+    "isolatedFolders": "{count, plural, other {# 个隔离文件夹}}",
+    "isolatedCopy": "隔离副本",
+    "allProjectFiles": "所有项目文件",
+    "allProjectFolders": "{count, plural, other {全部 # 个项目文件夹}}",
+    "selectedFolders": "{count, plural, other {# 个所选文件夹}}",
+    "openOriginalFolder": "打开原始文件夹",
+    "openIsolatedCopy": "打开隔离副本",
+    "forkTask": "复刻任务",
+    "taskSettings": "任务设置",
+    "detailsMenuAriaLabel": "工作副本和任务详情",
+    "showDetailsAriaLabel": "显示 {label} 的任务详情",
+    "details": {
+      "title": "任务配置",
+      "files": "文件",
+      "branch": "分支",
+      "computer": "电脑",
+      "agent": "智能体",
+      "model": "模型",
+      "folder": "文件夹"
+    },
+    "runAndPreviewAriaLabel": "运行和预览",
+    "runAction": "运行 {action}",
+    "startingAction": "正在启动 {action}",
+    "starting": "正在启动…",
+    "run": "运行",
+    "runMenuAriaLabel": "运行项目操作",
+    "chooseActionAriaLabel": "选择要运行的项目操作",
+    "previewRunning": "预览正在运行的项目",
+    "previewUnavailable": "运行项目后即可预览",
+    "preview": "预览",
+    "surfacesAriaLabel": "任务视图",
+    "files": "文件",
+    "terminal": "终端",
+    "reviewChanges": "审阅更改",
+    "review": "审阅",
+    "taskActionsAriaLabel": "编程任务操作"
+  },
+  "terminal": {
+    "status": {
+      "running": "运行中",
+      "disconnected": "已断开",
+      "ready": "就绪",
+      "exited": "已退出",
+      "exitedWithCode": "已退出，代码 {code}"
+    },
+    "errors": {
+      "open": "无法打开终端。",
+      "actionTerminal": "项目操作已启动，但无法打开其终端。",
+      "refresh": "无法刷新终端列表。",
+      "create": "无法创建终端。",
+      "rename": "无法重命名终端。",
+      "close": "无法关闭终端。",
+      "stop": "无法停止终端。",
+      "restart": "无法重启终端。",
+      "write": "无法写入终端。",
+      "interrupted": "终端连接已中断。切换标签页或重新打开面板即可重新连接。",
+      "unavailable": "终端不可用。"
+    },
+    "ariaLabel": "任务终端",
+    "resize": "调整终端大小",
+    "tabs": "终端标签页",
+    "renameAriaLabel": "重命名 {label}",
+    "renameHint": "双击以重命名",
+    "tabAriaLabel": "{label}，{status}",
+    "closeAriaLabel": "关闭 {label}",
+    "limit": "每个任务最多 {max} 个终端",
+    "new": "新建终端",
+    "stopHint": "停止此终端，但不关闭其标签页",
+    "stop": "停止终端",
+    "restart": "重启",
+    "hide": "隐藏终端面板",
+    "opening": "正在打开终端…",
+    "empty": "没有打开的终端",
+    "output": "终端输出"
+  },
+  "planDecision": {
+    "error": "无法继续。请重试。",
+    "label": "审阅计划",
+    "kind": "计划已就绪",
+    "cancelRevision": "取消修改",
+    "revise": "修改计划",
+    "update": "更新计划",
+    "build": "按计划构建",
+    "buildTooltip": "使用此任务所选的权限进行构建",
+    "question": "按此计划开始构建？",
+    "changesAriaLabel": "对计划的修改",
+    "changesPlaceholder": "计划中有哪些需要修改？"
+  },
+  "question": {
+    "error": "无法发送你的回答。请重试。",
+    "label": "智能体的问题",
+    "kind": "{count, plural, other {# 个问题}}",
+    "sending": "正在发送…",
+    "continue": "继续",
+    "privateAnswer": "私密回答",
+    "ownAnswer": "或自己填写回答",
+    "yourAnswer": "你的回答"
+  },
+  "approval": {
+    "kinds": {
+      "command": {
+        "label": "终端",
+        "question": "运行此命令？"
+      },
+      "fileChange": {
+        "label": "文件更改",
+        "question": "修改受保护的文件？"
+      },
+      "network": {
+        "label": "访问权限",
+        "question": "授予额外的访问权限？"
+      },
+      "elevated": {
+        "label": "提升的权限",
+        "question": "批准需要提升权限的操作？"
+      }
+    },
+    "deny": "拒绝",
+    "alwaysAllow": "始终允许",
+    "alwaysAllowTooltip": "允许本次操作，并在此任务剩余时间内允许类似命令",
+    "label": "需要批准",
+    "kind": "批准",
+    "allowOnce": "允许一次",
+    "fallbackQuestion": "智能体需要你的批准"
+  },
+  "promptReferences": {
+    "desktopOnly": "桌面应用支持附加本地文件。",
+    "ariaLabel": "附加的上下文",
+    "removeAriaLabel": "移除 {name}"
+  }
+}

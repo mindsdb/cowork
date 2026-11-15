@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { useTranslation } from '../../lib/i18n';
 import Ico from '../components/Icons';
 import {
   CollectionState, FilterChips, FilterMenu, FilterRow, ListGroup, PageHeader, SearchInput, SortPill,
@@ -14,19 +15,21 @@ import { projectActions } from './projectActions';
 import { useCodeTaskMenu, type CodeTaskListActions } from './useCodeTaskMenu';
 import './code-tasks.css';
 
-const STATUS_OPTIONS = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'attention', label: 'Needs attention' },
-  { value: 'accent', label: 'In progress' },
-  { value: 'success', label: 'Completed' },
-  { value: 'danger', label: 'Failed' },
-  { value: 'neutral', label: 'Ready or stopped' },
+type T = (key: string, values?: Record<string, unknown>) => string;
+
+const statusOptions = (t: T) => [
+  { value: 'all', label: t('tasksView.status.all') },
+  { value: 'attention', label: t('tasksView.status.attention') },
+  { value: 'accent', label: t('tasksView.status.inProgress') },
+  { value: 'success', label: t('tasksView.status.completed') },
+  { value: 'danger', label: t('tasksView.status.failed') },
+  { value: 'neutral', label: t('tasksView.status.readyOrStopped') },
 ];
 
-const SORT_OPTIONS = [
-  { id: 'updated', label: 'Recently updated' },
-  { id: 'created', label: 'Recently created' },
-  { id: 'title', label: 'Title' },
+const sortOptions = (t: T) => [
+  { id: 'updated', label: t('tasksView.sort.updated') },
+  { id: 'created', label: t('tasksView.sort.created') },
+  { id: 'title', label: t('tasksView.sort.title') },
 ];
 
 const TONE: Record<ReturnType<typeof codingSessionStatus>['tone'], StatusTone> = {
@@ -52,6 +55,7 @@ export function CodeTasksView({
   onRetry: () => void;
   taskActions?: CodeTaskListActions;
 }) {
+  const { t } = useTranslation('code');
   const [query, setQuery] = useState('');
   const [projectFilter, setProjectFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -64,7 +68,7 @@ export function CodeTasksView({
       const pinned = !task.pinned;
       setActionError(null);
       taskActions?.onSetPinned(task.id, pinned)
-        .catch(() => setActionError(`Couldn't ${pinned ? 'pin' : 'unpin'} this task.`));
+        .catch(() => setActionError(pinned ? t('sidebarSessions.errors.pin') : t('sidebarSessions.errors.unpin')));
     },
     onRename: (id, title) => taskActions!.onRename(id, title),
     onSetArchived: (id, archive) => taskActions!.onSetArchived(id, archive),
@@ -78,11 +82,11 @@ export function CodeTasksView({
     // findable. IDs, not names, distinguish projects with the same name.
     const names = new Map<string, string>();
     for (const task of sessions) {
-      if (task.project_id) names.set(task.project_id, task.project_name || 'Unavailable project');
+      if (task.project_id) names.set(task.project_id, task.project_name || t('tasksView.unavailableProject'));
     }
     for (const project of projects) names.set(project.id, project.name);
     return names;
-  }, [projects, sessions]);
+  }, [projects, sessions, t]);
   const projectOptions = useMemo(() => {
     const nameCounts = new Map<string, number>();
     for (const name of projectNames.values()) nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
@@ -138,39 +142,39 @@ export function CodeTasksView({
   const filters: Filter[] = [
     // A project's own page is already scoped, so it has no project facet.
     ...(projectId ? [] : [{
-      id: 'project', label: 'Project', value: projectFilter, allValue: 'all', onChange: setProjectFilter,
-      options: [{ value: 'all', label: 'All projects' }, { value: 'none', label: 'No project' }, ...projectOptions],
+      id: 'project', label: t('tasksView.filters.project'), value: projectFilter, allValue: 'all', onChange: setProjectFilter,
+      options: [{ value: 'all', label: t('tasksView.filters.allProjects') }, { value: 'none', label: t('sidebarSessions.noProject') }, ...projectOptions],
     }]),
-    { id: 'status', label: 'Status', value: statusFilter, allValue: 'all', onChange: setStatusFilter, options: STATUS_OPTIONS },
-    { id: 'archived', label: 'Archived', toggle: true, value: archived, onChange: setArchived },
+    { id: 'status', label: t('tasksView.filters.status'), value: statusFilter, allValue: 'all', onChange: setStatusFilter, options: statusOptions(t) },
+    { id: 'archived', label: t('sidebarSessions.archived'), toggle: true, value: archived, onChange: setArchived },
   ];
 
   return (
     <main className="code-tasks-view">
-      {projectId && <div className="code-tasks-view__back"><Button variant="subtle" size="sm" onClick={onBack}>{Ico.chevLeft(14)} Projects</Button></div>}
+      {projectId && <div className="code-tasks-view__back"><Button variant="subtle" size="sm" onClick={onBack}>{Ico.chevLeft(14)} {t('sidebarSessions.projects')}</Button></div>}
       <div className={`code-tasks-view__header${projectId ? ' code-tasks-view__header--project' : ''}`}><PageHeader
-        title={projectId ? projectNames.get(projectId) || 'Unavailable project' : 'All tasks'}
-        subtitle={projectId ? 'Coding tasks in this project.' : undefined}
+        title={projectId ? projectNames.get(projectId) || t('tasksView.unavailableProject') : t('tasksView.allTasks')}
+        subtitle={projectId ? t('tasksView.projectSubtitle') : undefined}
         actions={<div className="code-tasks-view__actions">
           {project && <Menu
-            trigger={<Button icon variant="subtle" aria-label={`${project.name} actions`}>{Ico.moreVert(16)}</Button>}
+            trigger={<Button icon variant="subtle" aria-label={t('tasksView.projectActions', { name: project.name })}>{Ico.moreVert(16)}</Button>}
             items={projectActions(project.id, onEditProject, onDeleteProject)}
           />}
-          <Button variant="primary" disabled={!canCreate || loading} onClick={() => onNewTask(newTaskProjectId)}>{Ico.plus(14)} New task</Button>
+          <Button variant="primary" disabled={!canCreate || loading} onClick={() => onNewTask(newTaskProjectId)}>{Ico.plus(14)} {t('tasksView.newTask')}</Button>
         </div>}
       /></div>
       {!hasNoTasks && <FilterRow
-        search={<SearchInput value={query} onChange={setQuery} inputRef={inputRef} placeholder="Search tasks" />}
+        search={<SearchInput value={query} onChange={setQuery} inputRef={inputRef} placeholder={t('tasksView.search')} />}
         filter={<FilterMenu filters={filters} />}
         chips={<FilterChips filters={filters} onClear={clearFilters} />}
-        sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+        sort={<SortPill value={sort} onChange={setSort} options={sortOptions(t)} />}
         counts={!loading && !error ? (filtered.length === total
-          ? `${total} ${total === 1 ? 'task' : 'tasks'}`
-          : `${filtered.length} of ${total} tasks`) : undefined}
+          ? t('tasksView.count', { count: total })
+          : t('tasksView.filteredCount', { shown: filtered.length, total })) : undefined}
       />}
       <div className="mx-8 grid gap-4">
         {actionError && <Alert variant="danger">{actionError}</Alert>}
-        {error && <Alert variant="danger">{error}<div className="mt-2"><Button variant="subtle" size="sm" onClick={onRetry}>Try again</Button></div></Alert>}
+        {error && <Alert variant="danger">{error}<div className="mt-2"><Button variant="subtle" size="sm" onClick={onRetry}>{t('personalSkill.tryAgain')}</Button></div></Alert>}
         {/* A failed load shows the error alone, never an empty state. */}
         {!(error && !sessions.length) && <CollectionState
           loading={loading && !sessions.length}
@@ -178,19 +182,19 @@ export function CodeTasksView({
           skeletonCount={4}
           total={total}
           shown={filtered.length}
-          noMatchTitle="No matching tasks"
-          clearLabel="Clear filters"
+          noMatchTitle={t('tasksView.noMatch')}
+          clearLabel={t('tasksView.clearFilters')}
           onClear={() => { setQuery(''); setProjectFilter('all'); setStatusFilter('all'); }}
           empty={archived
-            ? { title: 'No archived tasks', description: 'Tasks you archive will appear here.' }
+            ? { title: t('tasksView.emptyArchived.title'), description: t('tasksView.emptyArchived.description') }
             : {
                 icon: Ico.code(20),
-                title: 'No tasks yet',
-                description: 'A task keeps one coding conversation and the changes it makes to a folder or repository.',
-                action: canCreate ? { label: 'Start your first task', onClick: () => onNewTask(newTaskProjectId) } : undefined,
+                title: t('tasksView.empty.title'),
+                description: t('tasksView.empty.description'),
+                action: canCreate ? { label: t('tasksView.empty.action'), onClick: () => onNewTask(newTaskProjectId) } : undefined,
               }}
         >
-          <ListGroup aria-label={projectId ? 'Project tasks' : 'Code tasks'}>
+          <ListGroup aria-label={projectId ? t('tasksView.projectTasks') : t('sidebarSessions.title')}>
             {filtered.map(task => {
               const status = codingSessionStatus(task);
               const name = task.project_id ? projectNames.get(task.project_id) : undefined;

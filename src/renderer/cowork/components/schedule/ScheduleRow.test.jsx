@@ -99,3 +99,19 @@ describe('taskMenuItems', () => {
     expect(h.onPause).toHaveBeenCalledWith(task);
   });
 });
+
+describe('ScheduleRow — one run at a time', () => {
+  it('offers Stop instead of Run while a run is going', () => {
+    const onStopRun = vi.fn();
+    const onRunNow = vi.fn();
+    const { rerender } = render(
+      <ScheduleRow task={{ ...baseTask, running: true }} projects={PROJECTS} onStopRun={onStopRun} onRunNow={onRunNow} />,
+    );
+    expect(screen.queryByRole('button', { name: /^Run$/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Stop$/ }));
+    expect(onStopRun).toHaveBeenCalled();
+    rerender(<ScheduleRow task={baseTask} projects={PROJECTS} onStopRun={onStopRun} onRunNow={onRunNow} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+    expect(onRunNow).toHaveBeenCalled();
+  });
+});

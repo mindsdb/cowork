@@ -9,24 +9,25 @@ import { Command, CommandFooter, CommandGroup, CommandInput, CommandItem, Comman
 import { Modal } from './ui/Modal';
 import { productName } from '../../lib/deploymentBrand';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
+import { useTranslation } from '../../lib/i18n';
 
 const PRODUCT_NAME = productName(STOCK_PRODUCT_NAME);
-const LABEL = `Search ${PRODUCT_NAME}`;
 
+// `label` is a message key; translated when the groups are built.
 const TYPES = {
-  task: { label: 'Tasks', icon: Ico.list },
-  project: { label: 'Projects', icon: Ico.folder },
-  artifact: { label: 'Artifacts', icon: Ico.sparkle },
-  attachment: { label: 'Attachments', icon: Ico.attach },
-  schedule: { label: 'Schedules', icon: Ico.clock },
-  pin: { label: 'Pins', icon: Ico.pin },
+  task: { label: 'search.types.task', icon: Ico.list },
+  project: { label: 'search.types.project', icon: Ico.folder },
+  artifact: { label: 'search.types.artifact', icon: Ico.sparkle },
+  attachment: { label: 'search.types.attachment', icon: Ico.attach },
+  schedule: { label: 'search.types.schedule', icon: Ico.clock },
+  pin: { label: 'search.types.pin', icon: Ico.pin },
 };
 
-function groupByType(results) {
+function groupByType(results, t) {
   const groups = new Map();
   for (const result of results) {
     if (!groups.has(result.type)) {
-      const label = TYPES[result.type]?.label || `${result.type.charAt(0).toUpperCase()}${result.type.slice(1)}`;
+      const label = TYPES[result.type] ? t(TYPES[result.type].label) : `${result.type.charAt(0).toUpperCase()}${result.type.slice(1)}`;
       groups.set(result.type, { key: result.type, label, items: [] });
     }
     groups.get(result.type).items.push(result);
@@ -35,6 +36,8 @@ function groupByType(results) {
 }
 
 export default function SearchModal({ open, onClose, onSearch, onSelect, recents }) {
+  const { t } = useTranslation('shell');
+  const LABEL = t('search.label', { product: PRODUCT_NAME });
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -42,8 +45,8 @@ export default function SearchModal({ open, onClose, onSearch, onSelect, recents
   // Before anything is typed, recent tasks and projects are the starting list.
   const showRecents = !query.trim() && recents?.length > 0;
   const groups = useMemo(() => (showRecents
-    ? groupByType(recents).map((g) => ({ ...g, label: g.key === 'task' ? 'Recent tasks' : g.label }))
-    : groupByType(results)), [showRecents, recents, results]);
+    ? groupByType(recents, t).map((g) => ({ ...g, label: g.key === 'task' ? t('search.recentTasks') : g.label }))
+    : groupByType(results, t)), [showRecents, recents, results, t]);
 
   useEffect(() => {
     if (!open) return;
@@ -58,7 +61,7 @@ export default function SearchModal({ open, onClose, onSearch, onSelect, recents
         const data = await onSearch(query);
         setResults(data.results || []);
       } catch (err) {
-        setError(err.message || 'Search failed.');
+        setError(err.message || t('search.failed'));
       } finally {
         setBusy(false);
       }
@@ -74,7 +77,7 @@ export default function SearchModal({ open, onClose, onSearch, onSelect, recents
       onClose={onClose}
       placement="top"
       layer="palette"
-      ariaLabel="Search"
+      ariaLabel={t('search.ariaLabel')}
       width="min(620px, calc(100vw - 32px))"
       maxHeight="min(680px, calc(100vh - 80px))"
     >
@@ -85,8 +88,8 @@ export default function SearchModal({ open, onClose, onSearch, onSelect, recents
           aria-label={LABEL}
           leading={Ico.search(16)}
           trailing={(
-            <Tooltip content="Close">
-              <button type="button" className="mini-icon-btn" aria-label="Close" onClick={onClose}>{Ico.close(14)}</button>
+            <Tooltip content={t('ui.modal.close')}>
+              <button type="button" className="mini-icon-btn" aria-label={t('ui.modal.close')} onClick={onClose}>{Ico.close(14)}</button>
             </Tooltip>
           )}
         />
@@ -105,14 +108,14 @@ export default function SearchModal({ open, onClose, onSearch, onSelect, recents
             </CommandGroup>
           )}
         </CommandList>
-        {busy && <CommandStatus>Searching...</CommandStatus>}
+        {busy && <CommandStatus>{t('search.searching')}</CommandStatus>}
         {error && <div className="dialog-error">{error}</div>}
-        {!busy && query.trim() && results.length === 0 && !error && <CommandStatus>{`No ${PRODUCT_NAME} results found.`}</CommandStatus>}
-        {!query.trim() && !showRecents && <CommandStatus>Tasks, projects, artifacts, attachments, schedules, and pins are searchable.</CommandStatus>}
+        {!busy && query.trim() && results.length === 0 && !error && <CommandStatus>{t('search.noResults', { product: PRODUCT_NAME })}</CommandStatus>}
+        {!query.trim() && !showRecents && <CommandStatus>{t('search.hint')}</CommandStatus>}
         <CommandFooter>
-          <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> to navigate</span>
-          <span><Kbd>↵</Kbd> to open</span>
-          <span><Kbd>esc</Kbd> to close</span>
+          <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> {t('search.toNavigate')}</span>
+          <span><Kbd>↵</Kbd> {t('search.toOpen')}</span>
+          <span><Kbd>esc</Kbd> {t('search.toClose')}</span>
         </CommandFooter>
       </Command>
     </Modal>

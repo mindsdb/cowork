@@ -1,3 +1,6 @@
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.datasourceSubmission.${key}`, { ns: 'projects', ...vars });
 // The cloud datasource submission: what goes to the relay, and what the
 // connection it answers with means for the form.
 //
@@ -24,7 +27,7 @@ const FAILED_STATUSES = new Set(['failed']);
 export function buildDatasourcePayload({ spec, method, values, name }) {
   const trimmedName = String(name || '').trim();
   if (!trimmedName) {
-    throw new Error('Give this connection a name so you can tell it apart later.');
+    throw new Error(tr('errors.nameRequired'));
   }
 
   const field = (key) => {
@@ -43,16 +46,16 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
   const verifyRequested = values?.tls_verify === true || values?.tls_verify === 'true';
   const mode = field('tls_mode') || (verifyRequested ? 'system' : '');
   if (mode && !TLS_MODES.includes(mode)) {
-    throw new Error('Choose how this server\'s certificate should be checked.');
+    throw new Error(tr('errors.tlsModeRequired'));
   }
   const caPem = field('ca_pem');
 
   if (mode === 'custom_ca') {
     if (!caPem) {
-      throw new Error('Paste the CA certificate, or choose public certificate authorities.');
+      throw new Error(tr('errors.caRequired'));
     }
     if (new TextEncoder().encode(caPem).length > MAX_CA_PEM_BYTES) {
-      throw new Error('That CA certificate is larger than the 64 KiB limit. Paste only the chain this server needs.');
+      throw new Error(tr('errors.caTooLarge'));
     }
   }
 
@@ -81,24 +84,53 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
 // What a user can do about a refusal, by the gateway's own code. Only the ones
 // with an answer appear: a code with no useful advice is better shown as the
 // plain failure than dressed up in a guess.
+// Values are message keys under messages.datasourceSubmission.hints.
 const HINTS = {
-  tls_failed:
-    "The server's certificate could not be verified. A self-hosted database usually presents the "
-    + 'certificate it generated for itself, which no client can check. If that is this server, turn '
-    + 'off "Only connect if the certificate is signed by a public authority".',
-  destination_forbidden:
-    'That address cannot be reached from here. The database has to be on a public address, not a '
-    + 'private or local one.',
-  authentication_failed: 'The server refused the username or password.',
-  insufficient_privileges:
-    'The account cannot read anything this connection points at. If you named a schema, check its '
-    + 'spelling and its capitals, which PostgreSQL treats as part of the name, and that the account '
-    + 'has USAGE on that schema as well as SELECT on its tables. An account that can also write is '
-    + 'fine; one with superuser rights, or that can read server files, is refused, because those '
-    + 'reach past your database.',
-  connection_failed:
-    'The server did not answer. Check the host and port, and that your firewall allows the connection.',
+  tls_failed: 'tlsFailed',
+  destination_forbidden: 'destinationForbidden',
+  authentication_failed: 'authenticationFailed',
+  insufficient_privileges: 'insufficientPrivileges',
+  connection_failed: 'connectionFailed',
 };
+
+// Without certificate checks, `tls_failed` is the gateway refusing to send the
+// password to an unidentified server, whether or not the password is right.
+// Only `encrypted` insists on TLS, so there the handshake may be what failed.
+// PostgreSQL also refuses a login asking for no password, Kerberos, or an
+// unsigned SCRAM exchange there. Each value is a key under `hints.tls`.
+const UNVERIFIED_CAUSES = {
+  mysql: { prefer: 'refusedLogin', disabled: 'refusedLogin', encrypted: 'refusedLoginOrHandshake' },
+  checkbox: { prefer: 'refusedPgLogin', disabled: 'refusedPgLogin', encrypted: 'refusedPgLoginOrHandshake' },
+};
+
+// MySQL's form asks which certificate to trust; the other engines' ask one yes-or-no question.
+const TURN_CHECKS_ON = { checkbox: 'turnChecksOnCheckbox', mysql: 'turnChecksOnMysql' };
+
+function hintText(key) {
+  return key ? tr(`hints.${key}`) : '';
+}
+
+// The code's advice, except that `tls_failed` depends on whether the connection
+// checked the server and on which form the engine has. '' when there is none.
+function hintFor(connection) {
+  const code = connection?.validation_code || connection?.validationCode;
+  // Own keys only: the code arrives off the wire, and `__proto__` would otherwise render an object.
+  if (code !== 'tls_failed') return hintText(Object.hasOwn(HINTS, code) ? HINTS[code] : null);
+  const mysql = connection?.connector_id === 'mysql';
+  const form = mysql ? 'mysql' : 'checkbox';
+  if (Object.hasOwn(UNVERIFIED_CAUSES[form], connection?.tls_mode)) {
+    // `encrypted` needs TLS, so a server without it fails before any login and SCRAM cannot help.
+    // The box cannot help a server without a publicly signed certificate, and its form has no CA paste.
+    const fallback = mysql || connection.tls_mode === 'encrypted' ? null : 'tls.pgScramFallback';
+    return [`tls.${UNVERIFIED_CAUSES[form][connection.tls_mode]}`, `tls.${TURN_CHECKS_ON[form]}`, fallback]
+      .filter(Boolean).map(hintText).join(' ');
+  }
+  if (!mysql) return hintText(HINTS.tls_failed);
+  // The user already chose their own authority, so the pasted one or the host name is what failed.
+  // Otherwise lead with the CA: an unchecked MySQL connection fails again whenever the server asks
+  // for the password.
+  return hintText(connection?.tls_mode === 'custom_ca' ? 'tls.mysqlCustomCaMismatch' : 'tls.mysqlUnverifiedCertificate');
+}
 
 // auth creates a connection `pending` and only the gateway's probe completion
 // moves it on, so pending is a real state the user waits in, and anything
@@ -110,7 +142,7 @@ export function describeConnectionState(connection) {
     return {
       kind: 'verified',
       canRetry: false,
-      title: 'Connected',
+      title: tr('state.connected'),
       detail: '',
     };
   }
@@ -119,19 +151,19 @@ export function describeConnectionState(connection) {
     return {
       kind: 'failed',
       canRetry: true,
-      title: 'Could not connect',
+      title: tr('state.failed'),
       detail: connection?.validation_error || '',
       // The server stores that validation failed, not why; the gateway's own
       // code rides along on the three routes that run a check, and it is the
       // only thing here that can tell the user what to change.
-      hint: HINTS[connection?.validation_code || connection?.validationCode] || '',
+      hint: hintFor(connection),
     };
   }
 
   return {
     kind: 'pending',
     canRetry: false,
-    title: 'Checking the connection',
-    detail: 'Your credentials are stored encrypted. This page updates when the check finishes.',
+    title: tr('state.pending'),
+    detail: tr('state.pendingDetail'),
   };
 }

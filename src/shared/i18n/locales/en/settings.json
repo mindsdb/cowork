@@ -1,0 +1,498 @@
+{
+  "nav": {
+    "title": "Settings",
+    "ariaLabel": "Settings sections",
+    "groups": {
+      "General": "General",
+      "Code": "Code",
+      "App": "App",
+      "System": "System"
+    },
+    "items": {
+      "agent": "Agent",
+      "codingAgent": "Coding agent",
+      "computers": "Computers",
+      "appearance": "Appearance",
+      "branding": "Branding",
+      "desktop": "Desktop",
+      "channels": "Channels",
+      "updates": "Updates",
+      "backend": "Backend",
+      "usage": "Usage",
+      "account": "Account"
+    }
+  },
+  "header": {
+    "signIn": "Sign in",
+    "signInTooltip": "Sign in with MindsHub to use managed models"
+  },
+  "autoSave": {
+    "saving": "Saving…",
+    "failed": "Couldn't save",
+    "saved": "Saved",
+    "savedAutomatically": "Changes are saved automatically."
+  },
+  "language": {
+    "title": "Language",
+    "ariaLabel": "Language",
+    "matchSystem": "Match system ({language})"
+  },
+  "appearance": {
+    "title": "Appearance",
+    "style": {
+      "title": "Style",
+      "lockedSubtitle": "Set by this deployment. Light and dark stay your choice.",
+      "subtitle": "Normal, 8-Bit, or design your own with Custom. Combines with light and dark.",
+      "ariaLabel": "Style",
+      "optionAriaLabel": "{name} style"
+    },
+    "skins": {
+      "normal": {
+        "label": "Normal",
+        "title": "Use the standard look."
+      },
+      "8bit": {
+        "label": "8-Bit",
+        "title": "Use the retro 8-Bit look."
+      },
+      "custom": {
+        "label": "Custom",
+        "title": "Design your own look."
+      }
+    },
+    "theme": {
+      "title": "Theme",
+      "subtitle": "Light or dark — also drives the animated background.",
+      "ariaLabel": "Theme",
+      "light": "Light",
+      "lightAriaLabel": "Light theme",
+      "lightHint": "Use the light theme.",
+      "dark": "Dark",
+      "darkAriaLabel": "Dark theme",
+      "darkHint": "Use the dark theme."
+    },
+    "accent": {
+      "title": "Accent color",
+      "subtitle": "Buttons, highlights, focus — the brand color of your theme.",
+      "ariaLabel": "Custom accent color"
+    },
+    "background": {
+      "default": "Default",
+      "lightTitle": "Light background",
+      "lightSubtitle": "Used in light theme. A dark pick becomes a light tint of its hue; text adjusts to stay readable. With Default, the dark background tints it, or Light's stock look applies.",
+      "lightAriaLabel": "Custom background color — Light mode",
+      "lightDefaultAriaLabel": "Default Light background",
+      "darkTitle": "Dark background",
+      "darkSubtitle": "Used in dark theme. A light pick becomes a dark shade of its hue; text adjusts to stay readable. With Default, the light background tints it, or Dark's stock look applies.",
+      "darkAriaLabel": "Custom background color — Dark mode",
+      "darkDefaultAriaLabel": "Default Dark background"
+    },
+    "corners": {
+      "title": "Corners",
+      "subtitle": "How sharp the surfaces feel.",
+      "ariaLabel": "Corner radius",
+      "square": "Square",
+      "squareAriaLabel": "Square corners",
+      "squareHint": "Sharp pixel corners.",
+      "soft": "Soft",
+      "softAriaLabel": "Soft corners",
+      "softHint": "Gently rounded.",
+      "round": "Round",
+      "roundAriaLabel": "Round corners",
+      "roundHint": "Fully rounded."
+    },
+    "typeface": {
+      "title": "Typeface",
+      "subtitle": "Standard UI font, or mono everywhere for the terminal feel.",
+      "ariaLabel": "Custom typeface",
+      "standard": "Standard",
+      "standardAriaLabel": "Standard font",
+      "standardHint": "Inter for UI text.",
+      "mono": "Mono",
+      "monoAriaLabel": "Mono font",
+      "monoHint": "JetBrains Mono everywhere."
+    },
+    "scanlines": {
+      "title": "Scanlines",
+      "subtitle": "A faint CRT scanline overlay across the app.",
+      "ariaLabel": "Scanline overlay"
+    },
+    "greeting": {
+      "title": "Greeting",
+      "subtitle": "The line shown when you start a new task.",
+      "hint": "Shown above the task input when you start a new task.",
+      "ariaLabel": "Greeting text"
+    },
+    "sidebarTitle": {
+      "title": "Sidebar title",
+      "subtitle": "Shown at the top of the left-hand nav panel. Leave blank for the default, {product}.",
+      "hint": "Replaces the {product} wordmark in the nav panel.",
+      "ariaLabel": "Sidebar title text"
+    },
+    "sidebarTitleColor": {
+      "title": "Sidebar title color",
+      "subtitle": "Pick a color for the sidebar title, or follow the theme's default text color.",
+      "ariaLabel": "Sidebar title color",
+      "follow": "Follow theme",
+      "followAriaLabel": "Follow theme color"
+    },
+    "sidebarLogo": {
+      "title": "Sidebar logo",
+      "subtitle": "An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.",
+      "change": "Change logo",
+      "upload": "Upload logo",
+      "remove": "Remove",
+      "tooLarge": "Logo must be under 300 KB."
+    },
+    "favicon": {
+      "title": "Browser tab icon",
+      "subtitle": "PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.",
+      "previewAlt": "Browser tab icon preview",
+      "change": "Change icon",
+      "upload": "Upload icon",
+      "remove": "Remove",
+      "removeAriaLabel": "Remove browser tab icon",
+      "fileAriaLabel": "Browser tab icon file",
+      "wrongType": "Choose a PNG, ICO, SVG, or WEBP image.",
+      "tooLarge": "Browser tab icon must be under 100 KB.",
+      "unreadable": "Couldn't read this image. Try another file."
+    },
+    "figureSources": {
+      "title": "Show where figures came from",
+      "subtitle": "Underline each figure in an answer with the step it came from, and mark figures no step returned."
+    },
+    "animatedBackground": {
+      "title": "Animated background",
+      "subtitle": "Animated dot-grid behind the app instead of a flat surface."
+    },
+    "counters": {
+      "title": "Show nav-panel counters",
+      "subtitle": "Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.",
+      "ariaLabel": "Nav-panel counters"
+    },
+    "themeToggle": {
+      "title": "Theme toggle button",
+      "subtitle": "Light/dark control on the display button in the window corner."
+    },
+    "styleToggle": {
+      "title": "8-bit style toggle button",
+      "subtitle": "Normal/8-Bit style control on the same button. With both on, the button opens Display settings."
+    },
+    "setByOrg": "Set by your organization.",
+    "yourStyle": {
+      "title": "Your style",
+      "description": "These override your organization's look, just for you.",
+      "off": "Personal style settings are off. Everyone sees your organization's look.",
+      "orgSetsRest": "Other style settings are set by your organization's branding.",
+      "changeInBranding": "Change in Branding →"
+    },
+    "display": {
+      "title": "Display",
+      "description": "Personal display preferences. Only you see them."
+    }
+  },
+  "mobile": {
+    "back": "Back to settings",
+    "close": "Close settings"
+  },
+  "footer": {
+    "hint": {
+      "missingNames": "Each custom provider needs a name",
+      "saving": "Saving…",
+      "noChanges": "No unsaved changes",
+      "save": "Save changes.",
+      "retest": "Re-test failed providers.",
+      "saveAndTest": "Save changes and re-run provider tests."
+    },
+    "status": {
+      "testing": "Testing configuration…",
+      "saving": "Saving settings…",
+      "testPassed": "Test passed — provider, model, and credentials look good.",
+      "saved": "Settings saved.",
+      "testProblem": "Test reported a problem.",
+      "configProblem": "Configuration reported a problem.",
+      "applyOnSave": "Changes apply on save."
+    },
+    "button": {
+      "saving": "Saving…",
+      "save": "Save settings",
+      "saved": "Saved"
+    },
+    "errors": {
+      "saveFailed": "Settings could not be saved.",
+      "verifyFailed": "Settings saved, but verification failed: {error}",
+      "checkFailed": "Configuration could not be checked.",
+      "validateFailed": "Settings could not be validated."
+    }
+  },
+  "fields": {
+    "clearTooltip": "Clear (commits on Save settings)",
+    "clearAriaLabel": "Clear value"
+  },
+  "apiKey": {
+    "ariaLabel": "API key",
+    "namedAriaLabel": "{name} API key",
+    "revealFirst": "Reveal the key first to copy it",
+    "copied": "Copied",
+    "copyFailed": "Couldn't copy — select the key to copy manually",
+    "copy": "Copy to clipboard",
+    "copiedAriaLabel": "Copied to clipboard",
+    "copyAriaLabel": "Copy key to clipboard",
+    "hide": "Hide key",
+    "revealing": "Revealing…",
+    "reveal": "Reveal key",
+    "clearTooltip": "Clear this key (commits on Save settings)",
+    "clearAriaLabel": "Clear key"
+  },
+  "budget": {
+    "fieldTitle": "{label} ({min}–{max}, default {fallback}{unit, select, million { million tokens} other {}})",
+    "millionTokens": "million tokens",
+    "safetyLimit": "safety limit",
+    "noLimitHint": "no limit — only the step and auto-continue caps apply",
+    "default": "default {value}",
+    "or": "— or —"
+  },
+  "probe": {
+    "byok": "Or add your own provider and API key below.",
+    "noCredits": "No credits available.",
+    "topUp": "Top up balance →",
+    "addFunds": "Add funds →",
+    "slowDown": "{sentence} This isn't a credits problem.",
+    "budgetReached": "Your organization's budget is used up. {detail}",
+    "viewBudgetsArrow": "View budgets →"
+  },
+  "providers": {
+    "title": "LLM Providers",
+    "unavailable": "The configured provider is unavailable. Try again, or contact your administrator.",
+    "status": {
+      "connected": "connected",
+      "unableToConnect": "unable to connect",
+      "testing": "testing…",
+      "notTested": "not tested"
+    },
+    "statusTitle": {
+      "signedIn": "Connected through MindsHub sign-in.",
+      "passed": "Last test passed",
+      "passedDetail": "Last test passed ({detail})",
+      "failed": "Last test failed",
+      "failedDetail": "Last test failed: {detail}",
+      "testing": "Testing…",
+      "notTested": "Not tested yet — save settings and run a test to verify.",
+      "notTestedNoTests": "Provider connectivity has not been tested."
+    },
+    "desc": {
+      "mindsCloud": "All frontier models in one place — Claude, GPT, Gemini, and more.",
+      "anthropic": "Use Claude models with your Anthropic API key.",
+      "openai": "Use GPT models with your OpenAI API key.",
+      "gemini": "Use Gemini models through Google's OpenAI-compatible endpoint.",
+      "openaiCompatible": "Any OpenAI-compatible server (Ollama, vLLM, Together, Groq, etc)."
+    },
+    "customHeading": "Custom OpenAI-compatible provider",
+    "customName": {
+      "label": "Custom provider name",
+      "hint": "Display name for this custom provider — shown in the model dropdowns below.",
+      "required": "Name required"
+    },
+    "baseUrl": "Base URL",
+    "getKey": "Get your API key at {link}",
+    "openInBrowser": "Open {url} in your browser.",
+    "noAccount": "Don't have an account?",
+    "signUp": "Sign up →",
+    "signUpTooltip": "Open the MindsHub sign-up page in your browser.",
+    "remove": "Remove this provider",
+    "editKey": "Edit API key",
+    "allConfigured": "All provider types are already configured",
+    "addAnother": "Add another provider",
+    "add": "Add provider",
+    "choose": "Choose Provider:",
+    "hidePicker": "Hide the provider picker.",
+    "closePicker": "Close provider picker"
+  },
+  "agent": {
+    "modelRouter": "Model Router",
+    "roles": {
+      "planning": "Planning model",
+      "router": "Routing and summarization model",
+      "coding": "Coding model",
+      "planningSubtitle": "Used for reasoning, orchestration, and responses.",
+      "codingSubtitle": "Used for scratchpad code generation."
+    },
+    "providerLabel": "Provider:",
+    "modelLabel": "Model:",
+    "providerHint": "Choose which provider powers the {role, select, planning {planning} coding {coding} router {router} other {{role}}} role.",
+    "modelHint": "Pick the model used for {role, select, planning {planning} coding {coding} router {router} other {{role}}}. Choose Other… to type a custom model id.",
+    "customModelPlaceholder": "Type a model id",
+    "customModelHint": "Free-form model id sent verbatim to the provider.",
+    "modelIdHint": "Model id sent verbatim to this provider.",
+    "checking": "Checking {provider} connection…",
+    "notConfigured": "{provider} isn't configured — add its credentials under LLM Providers above, or pick another provider.",
+    "unknownNotConfigured": "This provider is not configured. Add it under LLM Providers above.",
+    "failed": "{provider} failed its last test — check it under LLM Providers above, or pick another provider.",
+    "modelUnavailable": "{model} is unavailable. Choose another model or contact your administrator.",
+    "modelRestricted": "{model} is restricted by an admin in your organization. Choose another model.",
+    "modelNeedsCredits": "{model} needs credits. {link} to use it.",
+    "topUpBalance": "Top up your balance",
+    "modelBudgetReached": "{model} can't run because your organization's budget is used up.",
+    "viewBudgets": "View budgets"
+  },
+  "memory": {
+    "title": "Memory",
+    "mode": {
+      "title": "Memory mode",
+      "subtitle": "How {agent} updates its long-term memory.",
+      "ariaLabel": "Memory mode",
+      "autopilot": "Autopilot",
+      "autopilotHint": "{agent} updates long-term memory automatically.",
+      "copilot": "Copilot",
+      "copilotHint": "{agent} suggests memory updates for you to confirm.",
+      "off": "Off",
+      "offHint": "Disable long-term memory updates."
+    },
+    "episodic": {
+      "title": "Episodic memory",
+      "subtitle": "Save conversation history for future recall."
+    },
+    "dashboards": {
+      "title": "Proactive dashboards",
+      "subtitle": "Auto-generate HTML reports from scratchpad output."
+    },
+    "actFirst": {
+      "title": "Act first, ask later",
+      "subtitle": "Act on reasonable defaults and state assumptions inline, instead of stopping to ask."
+    }
+  },
+  "advanced": {
+    "title": "Advanced Settings",
+    "limits": {
+      "title": "Limit how much a task can do",
+      "subtitleOn": "{agent} stops or asks before going further at the steps, auto-continues and tokens you set below.",
+      "subtitleOff": "Off: a task runs until it's done, up to a high safety limit where {agent} asks before going further. Turn on to set your own limits."
+    },
+    "maxSteps": {
+      "title": "Max steps per task",
+      "subtitle": "How many actions (running code, reading files, searching) {agent} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost."
+    },
+    "maxContinuations": {
+      "title": "Max auto-continues",
+      "subtitle": "When {agent} stops but the work looks unfinished, Cowork sends it back to complete the job — this caps how many times. Raise it for hands-off thoroughness; set 0 to stop after the first attempt (you'll still get a summary of what's missing)."
+    },
+    "maxTokens": {
+      "title": "Max tokens per task",
+      "subtitle": "The most tokens {agent} may spend on one request before pausing to check in with you, so a task that gets stuck can't use up a large share of your free allowance or balance without finishing. Raise it if you routinely give it big jobs; lower it to cap what any single request can cost.",
+      "noLimit": "No limit"
+    },
+    "jev": {
+      "title": "Fast answers with Jev",
+      "subtitle": "Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether {agent} finished its work. Turn it off to have every message run {agent}."
+    }
+  },
+  "desktop": {
+    "title": "Desktop",
+    "keepAwake": {
+      "title": "Stay awake for scheduled tasks",
+      "subtitle": "While plugged in, keeps this computer from sleeping when a scheduled task is running or about to run. It can't wake a computer that's already asleep or stop it sleeping when you close the lid."
+    }
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "Your organization's look, for everyone in it. Members see it the next time they open the app or Settings.",
+    "adminOnly": "Set by your organization admin.",
+    "saveError": {
+      "forbidden": "Only an organization admin can change the branding.",
+      "generic": "Couldn't save the branding. Try again."
+    },
+    "sidebarTitle": {
+      "title": "Sidebar title",
+      "subtitle": "Shown at the top of the sidebar for everyone in your organization. Company name follows renames in the console; a custom title stays as typed; None shows the logo only.",
+      "ariaLabel": "Sidebar title",
+      "company": "Company name",
+      "companyHint": "Follows the company name, including renames.",
+      "custom": "Custom",
+      "customHint": "A title you type, kept through renames.",
+      "none": "None",
+      "noneAriaLabel": "None (logo only)",
+      "noneHint": "No title: the logo alone.",
+      "customAriaLabel": "Custom sidebar title",
+      "required": "Enter a sidebar title, or choose Company name or None.",
+      "preview": "Sidebar shows:",
+      "logoOnly": "logo only",
+      "noTitle": "(no title)"
+    },
+    "logo": {
+      "title": "Logo and icon",
+      "subtitle": "The logo is the sidebar logo and the icon is the browser tab icon, for everyone in your organization. They are set in the console.",
+      "iconAlt": "Organization icon",
+      "logoAlt": "Organization logo",
+      "logoDarkAlt": "Organization logo for dark backgrounds",
+      "noneSet": "None set.",
+      "opensInBrowser": "Opens in your browser",
+      "editInConsole": "Edit in console"
+    },
+    "theme": {
+      "title": "Organization theme",
+      "subtitle": "Light or dark for everyone, or leave it to each member.",
+      "ariaLabel": "Organization theme",
+      "notSet": "Not set",
+      "notSetAriaLabel": "No organization theme",
+      "lightAriaLabel": "Light organization theme",
+      "darkAriaLabel": "Dark organization theme"
+    },
+    "style": {
+      "title": "Organization style",
+      "deploymentLocked": "Set by this deployment, for every organization on it.",
+      "subtitle": "The look everyone in your organization starts from. Custom lets you pick the color, background, corners and typeface.",
+      "ariaLabel": "Organization style",
+      "notSet": "Not set",
+      "notSetAriaLabel": "No organization style",
+      "notSetHint": "Members keep the app's standard look.",
+      "optionAriaLabel": "{name} organization style"
+    },
+    "accent": {
+      "subtitle": "Buttons, highlights and focus rings.",
+      "ariaLabel": "Organization accent color"
+    },
+    "background": {
+      "lightSubtitle": "Used in light theme. A dark pick becomes a light tint of its hue; text adjusts to stay readable. With Default, the dark background tints it, or the stock light look applies.",
+      "lightAriaLabel": "Organization light background color",
+      "lightDefaultAriaLabel": "Default organization light background",
+      "darkSubtitle": "Used in dark theme. A light pick becomes a dark shade of its hue; text adjusts to stay readable. With Default, the light background tints it, or the stock dark look applies.",
+      "darkAriaLabel": "Organization dark background color",
+      "darkDefaultAriaLabel": "Default organization dark background"
+    },
+    "corners": {
+      "ariaLabel": "Organization corner radius",
+      "squareAriaLabel": "Square organization corners",
+      "softAriaLabel": "Soft organization corners",
+      "roundAriaLabel": "Round organization corners"
+    },
+    "typeface": {
+      "subtitle": "Standard UI font, or mono everywhere.",
+      "ariaLabel": "Organization typeface",
+      "standardAriaLabel": "Standard organization font",
+      "monoAriaLabel": "Mono organization font"
+    },
+    "greeting": {
+      "title": "Organization greeting",
+      "subtitle": "The line members see when they start a new task. Leave blank for the standard one.",
+      "ariaLabel": "Organization greeting"
+    },
+    "membersChoose": {
+      "title": "Let members choose their own style",
+      "subtitle": "On: the organization style is where members start, and they can change it under Your style. Off: everyone sees the organization style."
+    },
+    "guidelines": {
+      "title": "Brand guidelines for Anton",
+      "subtitle": "How Anton should use your brand in decks, documents, apps and charts: voice, words to use or avoid, where the logo goes. Anton also gets your colors, typeface and logo from above.",
+      "placeholder": "Markdown. For example:\n- Headlines in sentence case\n- Put the logo top left on title slides"
+    },
+    "footer": {
+      "ariaLabel": "Unsaved branding changes",
+      "saving": "Saving…",
+      "unsaved": "Unsaved branding changes. You see them now; everyone else sees them once you save.",
+      "cancel": "Cancel",
+      "save": "Save branding",
+      "saved": "Saved. Members see it the next time they open the app or Settings.",
+      "clean": "No unsaved branding changes"
+    }
+  }
+}

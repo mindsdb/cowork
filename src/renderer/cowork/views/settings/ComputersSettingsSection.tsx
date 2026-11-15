@@ -11,6 +11,7 @@ import { Input } from '../../components/ui/Input';
 import { codeControlPlaneReachable } from '../../code/controlPlane';
 import { ConnectComputerModal } from './ConnectComputerModal';
 import { SettingsGroup, SettingsSectionPanel } from './settingsLayout';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 const POLL_INTERVAL_MS = 5_000;
 const MAX_POLL_INTERVAL_MS = 60_000;
@@ -25,11 +26,11 @@ function platformLabel(platform: CodeComputer['capabilities']['platform']): stri
 
 function seenLabel(value: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
-  if (seconds < 20) return 'just now';
-  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 20) return i18n.t('settingsTools:computers.seenJustNow');
+  if (seconds < 60) return i18n.t('settingsTools:computers.seenSecondsAgo', { count: seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  return `${Math.floor(minutes / 60)}h ago`;
+  if (minutes < 60) return i18n.t('settingsTools:computers.seenMinutesAgo', { count: minutes });
+  return i18n.t('settingsTools:computers.seenHoursAgo', { count: Math.floor(minutes / 60) });
 }
 
 
@@ -46,6 +47,7 @@ function computerDetail(computer: CodeComputer): string {
 
 
 export default function ComputersSettingsSection() {
+  const { t } = useTranslation('settingsTools');
   const [computers, setComputers] = useState<CodeComputer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -65,7 +67,7 @@ export default function ComputersSettingsSection() {
       setError('');
       return true;
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not load computers.');
+      setError(reason instanceof Error ? reason.message : i18n.t('settingsTools:computers.loadFailed'));
       return false;
     } finally {
       if (!quiet) setLoading(false);
@@ -109,7 +111,7 @@ export default function ComputersSettingsSection() {
       setEditingId('');
       setError('');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not rename this computer.');
+      setError(reason instanceof Error ? reason.message : t('computers.renameFailed'));
     }
   };
 
@@ -120,28 +122,28 @@ export default function ComputersSettingsSection() {
       setRevokingId('');
       setError('');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not revoke this computer.');
+      setError(reason instanceof Error ? reason.message : t('computers.revokeFailed'));
     }
   };
 
   return (
     <SettingsSectionPanel>
-      <SettingsGroup title="Computers">
+      <SettingsGroup title={t('computers.title')}>
         {canConnectComputers && (
           <div className="flex items-start justify-between gap-6 border-b border-x-0 border-t-0 border-solid border-line py-4">
             <div>
-              <h3 className="m-0 text-base font-semibold text-ink">Run Code beyond this computer</h3>
-              <p className="m-0 mt-1 max-w-[540px] text-sm leading-5 text-ink-3">Connected computers can run portable Git projects. Local folders stay on the computer where you added them.</p>
+              <h3 className="m-0 text-base font-semibold text-ink">{t('computers.connectTitle')}</h3>
+              <p className="m-0 mt-1 max-w-[540px] text-sm leading-5 text-ink-3">{t('computers.connectSubtitle')}</p>
             </div>
             <Button size="sm" variant="tinted" onClick={() => setConnectOpen(true)}>
-              <Icon of={Plus} size={14} /> Connect computer
+              <Icon of={Plus} size={14} /> {t('computers.connectButton')}
             </Button>
           </div>
         )}
 
         <div className="divide-y divide-line">
-          {loading && !computers.length && <div className="py-5 text-sm text-ink-3">Finding computers…</div>}
-          {!loading && !computers.length && <div className="py-5 text-sm text-ink-3">No computers connected.</div>}
+          {loading && !computers.length && <div className="py-5 text-sm text-ink-3">{t('computers.finding')}</div>}
+          {!loading && !computers.length && <div className="py-5 text-sm text-ink-3">{t('computers.empty')}</div>}
           {computers.map((computer) => {
             const isLocal = Boolean(computer.is_local || computer.id === 'local');
             const editing = editingId === computer.id;
@@ -159,25 +161,25 @@ export default function ComputersSettingsSection() {
                         size="sm"
                         value={editingName}
                         onChange={setEditingName}
-                        aria-label={`Name for ${computer.name}`}
+                        aria-label={t('computers.nameAriaLabel', { name: computer.name })}
                         onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
                           if (event.key === 'Enter') void saveName(computer);
                           if (event.key === 'Escape') setEditingId('');
                         }}
                         autoFocus
                       />
-                      <Button size="xs" variant="primary" onClick={() => void saveName(computer)}>Save</Button>
-                      <Button size="xs" variant="subtle" onClick={() => setEditingId('')}>Cancel</Button>
+                      <Button size="xs" variant="primary" onClick={() => void saveName(computer)}>{t('computers.save')}</Button>
+                      <Button size="xs" variant="subtle" onClick={() => setEditingId('')}>{t('computers.cancel')}</Button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
                       <strong className="truncate text-sm font-semibold text-ink">{computer.name}</strong>
-                      {isLocal && <Badge size="xs" variant="muted">This computer</Badge>}
+                      {isLocal && <Badge size="xs" variant="muted">{t('computers.thisComputer')}</Badge>}
                     </div>
                   )}
                   <div className="mt-0.5 truncate text-xs text-ink-4">
-                    {computerDetail(computer)} · {computer.status === 'online' ? 'Online' : 'Offline'} · Last seen {seenLabel(computer.last_seen_at)}
-                    {computer.active_run_count ? ` · ${computer.active_run_count} active ${computer.active_run_count === 1 ? 'task' : 'tasks'}` : ''}
+                    {computerDetail(computer)} · {computer.status === 'online' ? t('computers.online') : t('computers.offline')} · {t('computers.lastSeen', { when: seenLabel(computer.last_seen_at) })}
+                    {computer.active_run_count ? ` · ${t('computers.activeTasks', { count: computer.active_run_count })}` : ''}
                   </div>
                 </div>
                 {!editing && (
@@ -185,7 +187,7 @@ export default function ComputersSettingsSection() {
                     icon
                     size="sm"
                     variant="subtle"
-                    aria-label={`Rename ${computer.name}`}
+                    aria-label={t('computers.renameAriaLabel', { name: computer.name })}
                     onClick={() => { setEditingId(computer.id); setEditingName(computer.name); }}
                   >
                     <Icon of={Pencil} size={14} />
@@ -193,11 +195,11 @@ export default function ComputersSettingsSection() {
                 )}
                 {!isLocal && (confirming ? (
                   <div className="flex items-center gap-1.5">
-                    <Button size="xs" variant="danger-solid" onClick={() => void revoke(computer)}>Revoke</Button>
-                    <Button size="xs" variant="subtle" onClick={() => setRevokingId('')}>Cancel</Button>
+                    <Button size="xs" variant="danger-solid" onClick={() => void revoke(computer)}>{t('computers.revoke')}</Button>
+                    <Button size="xs" variant="subtle" onClick={() => setRevokingId('')}>{t('computers.cancel')}</Button>
                   </div>
                 ) : (
-                  <Button size="xs" variant="danger" onClick={() => setRevokingId(computer.id)}>Revoke</Button>
+                  <Button size="xs" variant="danger" onClick={() => setRevokingId(computer.id)}>{t('computers.revoke')}</Button>
                 ))}
               </div>
             );
@@ -206,17 +208,17 @@ export default function ComputersSettingsSection() {
         {error && <div role="alert" className="py-3 text-sm text-[var(--danger)]">{error}</div>}
       </SettingsGroup>
 
-      <SettingsGroup title="MindsHub Cloud">
+      <SettingsGroup title={t('computers.cloudTitle')}>
         <div className="flex items-center gap-3 py-4">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[9px] border border-solid border-line bg-surface-2 text-ink-4">
             <Icon of={Cloud} size={16} />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <strong className="text-sm font-semibold text-ink">Managed compute</strong>
-              <Badge size="xs" variant="muted">Coming soon</Badge>
+              <strong className="text-sm font-semibold text-ink">{t('computers.managedCompute')}</strong>
+              <Badge size="xs" variant="muted">{t('computers.comingSoon')}</Badge>
             </div>
-            <div className="mt-0.5 text-xs text-ink-4">On-demand Code environments with no runtime installation.</div>
+            <div className="mt-0.5 text-xs text-ink-4">{t('computers.managedComputeSubtitle')}</div>
           </div>
         </div>
       </SettingsGroup>

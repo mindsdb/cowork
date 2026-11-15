@@ -5,6 +5,7 @@ import { host } from '../../platform/host';
 import { trackBillingOpened } from '../lib/analytics';
 import { usageActionUrl } from '../lib/usageWarnings';
 import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDismiss';
+import { useTranslation } from '../../lib/i18n';
 
 // The usage bar above the chat input (ENG-1782): a tab tucked behind the
 // composer's top edge, so it reads as part of the input rather than a system
@@ -35,6 +36,7 @@ const keyOf = (d) => d.dismissKey ?? d.kind;
 // warning about. Only then does an at-rest bar mean "healthy", which is when
 // closed warnings are forgotten.
 export default function UsageBar({ warning, isBillingOwner = false, usageKnown = false, trigger = 'usage_notice' }) {
+  const { t } = useTranslation('shell');
   const [dismissed, dismiss] = useUsageBarDismiss({
     // Closed warnings are forgotten once the bar is back at rest: the standing
     // figure or nothing at all. Not while a warning is up, even one the person
@@ -100,8 +102,8 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
           onClick={() => (shown.resting ? hideFigure() : dismiss(keyOf(shown)))}
           // The label names what goes, since for a free user the figure's
           // button is a permanent fixture rather than a passing warning's.
-          aria-label={shown.resting ? 'Hide allowance' : 'Dismiss'}
-          title={shown.resting ? 'Hide' : 'Dismiss'}
+          aria-label={shown.resting ? t('usageBar.hideAllowance') : t('ui.toast.dismiss')}
+          title={shown.resting ? t('usageBar.hide') : t('ui.toast.dismiss')}
           className="absolute top-1 right-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md border-0 bg-transparent text-[color:inherit] opacity-70 cursor-pointer hover:opacity-100 hover:bg-[rgba(127,127,127,0.12)]"
         >
           <Icon of={X} size={14} />

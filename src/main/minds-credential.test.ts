@@ -109,10 +109,10 @@ describe('isMindsCredentialSidecarReachable', () => {
     expect(isMindsCredentialSidecarReachable()).toBe(true);
   });
 
-  it('is true while the sidecar is still starting', () => {
+  it('is false while the sidecar is still starting', () => {
     (isServerRunning as Mock).mockReturnValue(false);
     (isServerStarting as Mock).mockReturnValue(true);
-    expect(isMindsCredentialSidecarReachable()).toBe(true);
+    expect(isMindsCredentialSidecarReachable()).toBe(false);
   });
 
   it('is false at boot, before any sidecar exists', () => {
@@ -310,6 +310,14 @@ describe('pushMindsCredential', () => {
   it('does not call a sidecar that is down', async () => {
     (isServerRunning as Mock).mockReturnValue(false);
     (isServerStarting as Mock).mockReturnValue(false);
+    const calls = installFetch();
+    expect(await pushMindsCredential('a-token')).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does not call a sidecar that is only starting', async () => {
+    (isServerRunning as Mock).mockReturnValue(false);
+    (isServerStarting as Mock).mockReturnValue(true);
     const calls = installFetch();
     expect(await pushMindsCredential('a-token')).toBe(false);
     expect(calls).toHaveLength(0);

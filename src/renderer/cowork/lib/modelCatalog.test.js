@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  modelMaker, groupModelOptions, isModelLocked, isModelRestricted, unavailableModelFields,
+  modelMaker, groupModelOptions, isModelLocked, isModelRestricted, isModelBudgetReached, unavailableModelFields,
   knownModelDisabledReasons, orderByFamily, latestAliasIds, OTHER_MAKER,
 } from './modelCatalog';
 
@@ -285,6 +285,32 @@ describe('isModelRestricted / unavailableModelFields', () => {
 
   it('never marks a restricted row locked, which is what would attach Add credits', () => {
     expect(unavailableModelFields(ENABLED, REASONS, 'opus').locked).toBeUndefined();
+  });
+});
+
+/* The org's spent budget closes a paid row, and credits do not lift it either. */
+describe('isModelBudgetReached / unavailableModelFields', () => {
+  const ENABLED = { mindshub_air: true, opus: false, fable: false };
+  const REASONS = { opus: 'budget_exceeded', fable: 'wallet_empty' };
+
+  it('tags a disabled row with the budget_exceeded reason Budget reached, never locked', () => {
+    expect(isModelBudgetReached(ENABLED, REASONS, 'opus')).toBe(true);
+    expect(isModelRestricted(ENABLED, REASONS, 'opus')).toBe(false);
+    expect(unavailableModelFields(ENABLED, REASONS, 'opus')).toEqual({
+      disabled: true,
+      budgetReached: true,
+      tag: 'Budget reached',
+      title: "Your organization's budget is used up. An owner or admin can raise it in Budgets.",
+    });
+  });
+
+  it('ignores the reason on an available row and on a wallet row', () => {
+    expect(isModelBudgetReached({ opus: true }, REASONS, 'opus')).toBe(false);
+    expect(isModelBudgetReached(ENABLED, REASONS, 'fable')).toBe(false);
+  });
+
+  it('keeps budget_exceeded when narrowing the relay', () => {
+    expect(knownModelDisabledReasons(REASONS)).toEqual(REASONS);
   });
 });
 

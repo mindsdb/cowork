@@ -1762,6 +1762,14 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   flex-shrink: 0;
 }
 
+/* The org's logo is a wordmark: keep the row's height, let the
+   width follow the image up to a cap so a long one can't push the title out. */
+.anton-sidebar__logo--wide {
+  width: auto;
+  max-width: 112px;
+  object-position: left center;
+}
+
 .anton-sidebar__wordmark {
   font-family: var(--font-display);
   font-weight: 500;
@@ -2785,6 +2793,11 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   height: 22px;
   object-fit: contain;
   flex-shrink: 0;
+}
+.mshell__drawer-logo--wide {
+  width: auto;
+  max-width: 128px;
+  object-position: left center;
 }
 .mshell__drawer-title {
   font-family: var(--font-display);
@@ -3975,6 +3988,32 @@ body[data-theme="light"] .anton-inline-code {
   pointer-events: none;
   background: linear-gradient(to right, transparent, var(--surface-2));
 }
+/* A note in the steps list (MarkdownContent size="steps", ENG-4195): code
+   stays the small mono style with little padding, so a note holding a code
+   block or a code span keeps the step rows' rhythm. */
+.markdown-steps .anton-inline-code {
+  font-size: 0.92em;
+}
+/* Bold keeps the row's ink: the dark theme's brightest-ink emphasis (see
+   `body[data-theme="dark"] strong`) would make a note's bold outshine the
+   step rows around it. */
+body[data-theme] .markdown-steps :is(strong, b) {
+  color: inherit;
+}
+.markdown-steps .anton-code-block {
+  margin: 2px 0;
+  border-radius: var(--r);
+}
+.markdown-steps .anton-code-block-header {
+  padding: 2px 6px 0;
+}
+.markdown-steps .anton-code-block-pre {
+  padding: 2px 8px 6px;
+}
+.markdown-steps .anton-code-block-pre code.hljs {
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
 .anton-code-block-overflow-note {
   padding: 0 14px 10px;
   font-family: var(--font-body);
@@ -4067,46 +4106,46 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 }
 
 /* ── Channels (ChannelsView) ─────────────────────────────────────────── */
-.channels-view { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); }
-.channels-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,.08)); font-family: var(--font-display, inherit); font-size: var(--text-md); font-weight: 600; }
+.channels-view { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
+.channels-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-display, inherit); font-size: var(--text-md); font-weight: 600; }
 .channels-lede { padding: 16px 20px 0; }
 .channels-pad { padding: 16px 20px; }
 /* Master–detail split. flex:1 + min-height:0 give the two panes a bounded
    height inside the flex column; without them the content grows past the
    window and the inner scroll never engages (most visible in the
    fixed-height Electron shell). */
-.channels-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
-.channels-list { flex: 0 0 250px; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
-.channels-list-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: var(--card-radius-row); border: 1px solid transparent; background: transparent; color: var(--fg); font: inherit; cursor: pointer; text-align: left; }
-.channels-list-item:hover:not(.is-active) { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-.channels-list-item.is-active { background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: var(--border-02, rgba(0,0,0,.1)); }
+.channels-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border-subtle); }
+.channels-list { flex: 0 0 250px; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--border-subtle); }
+.channels-list-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: var(--card-radius-row); border: 1px solid transparent; background: transparent; color: var(--ink); font: inherit; cursor: pointer; text-align: left; }
+.channels-list-item:hover:not(.is-active) { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.channels-list-item.is-active { background: color-mix(in srgb, var(--ink) 7%, transparent); border-color: var(--border-02); }
 .channels-list-name { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; min-width: 0; }
 /* Brand-logo chip: a white tile keeps dark brand marks (e.g. Slack's plum)
    legible on dark themes. */
-.channels-logo { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-8); background: #fff; border: 1px solid var(--border-02, rgba(0,0,0,.1)); color: var(--ink-4, #8a8a86); }
+.channels-logo { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-8); background: var(--surface); border: 1px solid var(--border-02); color: var(--ink-4); }
 .channels-card-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .channels-detail { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 20px; }
 .channels-detail .channels-card { max-width: 640px; }
-.channels-intro { color: var(--ink-3, #6b6a66); margin: 0 0 16px; font-size: 13px; }
-.channels-muted { color: var(--ink-4, #8a8a86); font-size: 13px; }
-.channels-card { border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: 16px; background: var(--bg-a, transparent); }
+.channels-intro { color: var(--ink-3); margin: 0 0 16px; font-size: 13px; }
+.channels-muted { color: var(--ink-4); font-size: 13px; }
+.channels-card { border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: 16px; background: var(--card-surface); }
 .channels-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .channels-card-head h2 { font-size: var(--text-base); font-weight: 600; margin: 0; }
-.channels-type { font-family: var(--font-mono, monospace); font-size: var(--text-xs); color: var(--ink-4, #8a8a86); }
+.channels-type { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-4); }
 .channels-agent { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
-.channels-agent-label { font-size: 12px; font-weight: 600; color: var(--fg); }
+.channels-agent-label { font-size: 12px; font-weight: 600; color: var(--ink); }
 /* Segmented tab control for picking the channel agent. */
-.channels-agent-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-lg); background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid var(--border-subtle, rgba(0,0,0,.1)); }
+.channels-agent-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-lg); background: color-mix(in srgb, var(--ink) 6%, transparent); border: 1px solid var(--border-subtle); }
 .channels-agent-tab {
   appearance: none; border: 0; background: transparent; cursor: pointer;
-  color: var(--ink-3, #6b6b6b); font: inherit; font-size: 12px; font-weight: 500;
+  color: var(--ink-3); font: inherit; font-size: 12px; font-weight: 500;
   text-transform: capitalize; padding: 4px 14px; border-radius: var(--r-8);
   transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
-.channels-agent-tab:hover:not(.is-active):not(:disabled) { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
-.channels-agent-tab.is-active { background: var(--accent, #1a1916); color: var(--accent-fg, #fff); }
+.channels-agent-tab:hover:not(.is-active):not(:disabled) { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.channels-agent-tab.is-active { background: var(--accent-solid); color: var(--accent-solid-ink); }
 .channels-agent-tab:disabled { cursor: default; opacity: .65; }
-.channels-agent-hint { font-size: var(--text-xs); color: var(--ink-4, #8a8a86); }
+.channels-agent-hint { font-size: var(--text-xs); color: var(--ink-4); }
 
 .channels-fields { display: flex; flex-direction: column; gap: 10px; }
 
@@ -4115,22 +4154,22 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-input:hover { border-color: var(--line-2); }
 .channels-input:focus { border-color: var(--accent); box-shadow: var(--ring); }
 .channels-input:focus-visible { outline: 0; box-shadow: 0 0 0 1px var(--accent); }
-.channels-hook { font-size: 12px; color: var(--ink-3, #6b6a66); margin: 12px 0 0; }
-.channels-hook code { font-family: var(--font-mono, monospace); font-size: var(--text-xs); word-break: break-all; }
-.channels-note { font-size: 12px; color: var(--ink-4, #8a8a86); margin: 8px 0 0; }
-.channels-error { font-size: 12px; color: var(--danger, #c0392b); margin: 10px 0 0; }
-.channels-notice { font-size: 12px; color: var(--accent-strong, #1f8a4c); margin: 10px 0 0; }
-.channels-warn { font-size: 12px; color: var(--warning, #B45309); margin: 10px 0 0; }
+.channels-hook { font-size: 12px; color: var(--ink-3); margin: 12px 0 0; }
+.channels-hook code { font-family: var(--font-mono); font-size: var(--text-xs); word-break: break-all; }
+.channels-note { font-size: 12px; color: var(--ink-4); margin: 8px 0 0; }
+.channels-error { font-size: 12px; color: var(--danger); margin: 10px 0 0; }
+.channels-notice { font-size: 12px; color: var(--accent-strong); margin: 10px 0 0; }
+.channels-warn { font-size: 12px; color: var(--warning); margin: 10px 0 0; }
 .channels-actions { display: flex; gap: 8px; margin-top: 14px; }
 
 /* Channel routes (bindings) */
-.channels-routes { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
+.channels-routes { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-subtle); }
 .channels-routes-title { font-size: var(--text-base); font-weight: 600; margin: 0 0 4px; }
 .channels-route-add { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
 .channels-route-add .channels-input { flex: 1 1 140px; min-width: 120px; }
 .channels-route-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.channels-route-table th { text-align: left; font-weight: 500; color: var(--ink-4, #8a8a86); font-size: var(--text-xs); padding: 4px 8px; }
-.channels-route-table td { padding: 6px 8px; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.06)); vertical-align: top; }
+.channels-route-table th { text-align: left; font-weight: 500; color: var(--ink-4); font-size: var(--text-xs); padding: 4px 8px; }
+.channels-route-table td { padding: 6px 8px; border-top: 1px solid var(--border-subtle); vertical-align: top; }
 .channels-input-sm { padding: 5px 8px; font-size: 12px; width: 100%; }
 .channels-route-actions { display: flex; gap: 6px; white-space: nowrap; }
 
@@ -4202,4 +4241,120 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 }
 @media (prefers-reduced-motion: reduce) {
   .compare-vs-orb { animation: none; }
+}
+
+/* Japanese (ENG-4149). Inter and JetBrains Mono have no kana or kanji, so
+   name Japanese faces right after them: Latin text keeps the brand faces,
+   Japanese text gets a Japanese face instead of whatever the OS falls back to
+   (on Windows that can be a Chinese one, which draws some kanji differently).
+   `lang` is set on <html> by the i18n runtime. */
+:root:lang(ja) {
+  --font-sans: 'Inter', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo UI',
+    'Noto Sans JP', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans JP', monospace;
+}
+/* Japanese has no spaces between words: break between characters, but never
+   before small kana or closing punctuation (kinsoku). */
+:lang(ja) {
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
+/* Korean (ENG-4149): Hangul faces after the brand faces, as for Japanese.
+   Korean puts spaces between words, so break only there (keep-all), never
+   inside a word. */
+:root:lang(ko) {
+  --font-sans: 'Inter', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', ui-sans-serif,
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', monospace;
+}
+:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* Simplified Chinese (ENG-4149): Simplified Han faces after the brand faces.
+   Naming them matters: left to the fallback, macOS can pick a Japanese face
+   and draw some characters with Japanese glyph shapes. No spaces between
+   words, so break between characters, but never before closing punctuation. */
+:root:lang(zh) {
+  --font-sans: 'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', monospace;
+}
+:lang(zh) {
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
+/* The artifact a bar message was about (ENG-4227), under the user's text in
+   the transcript: an attachment-style chip, compact. */
+.artifact-ref-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: 500 var(--text-sm)/1 var(--font-body);
+  transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease, color var(--dur-hover) ease;
+}
+button.artifact-ref-pill { cursor: pointer; }
+button.artifact-ref-pill:hover { background: var(--ghost-hover); border-color: color-mix(in srgb, var(--ink) 18%, var(--line)); color: var(--ink); }
+button.artifact-ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+.artifact-ref-pill-icon { display: inline-flex; flex-shrink: 0; }
+.artifact-ref-pill-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Quick edits from the artifact viewer's bar, grouped in the chat (ENG-4227):
+   one quiet card, no turn toolbar. */
+.quick-edit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 560px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-12);
+  background: var(--surface);
+  font-family: var(--font-body);
+}
+.quick-edit-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.quick-edit-card-title { color: var(--ink-2); font-size: var(--text-sm); font-weight: 500; }
+.quick-edit-card-count { color: var(--ink-4); font-size: var(--text-xs); }
+.quick-edit-card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.quick-edit-card-row { display: flex; align-items: flex-start; gap: 12px; padding: 6px 0; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.quick-edit-card-row:first-child { border-top: 0; padding-top: 2px; }
+.quick-edit-card-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.quick-edit-card-request { color: var(--ink-4); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-edit-card-summary { display: flex; align-items: baseline; gap: 6px; color: var(--ink); font-size: var(--text-sm); line-height: 1.45; }
+.quick-edit-card-summary-text { min-width: 0; }
+.quick-edit-card-time { flex-shrink: 0; color: var(--ink-4); font-size: var(--text-xs); line-height: 1.6; font-variant-numeric: tabular-nums; }
+.quick-edit-card-row.is-undone .quick-edit-card-summary-text { color: var(--ink-4); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-4) 70%, transparent); }
+.quick-edit-card-tag { flex-shrink: 0; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--ink-3); font-size: var(--text-2xs); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.quick-edit-card-more { align-self: flex-start; margin-left: -6px; height: 22px; padding: 0 6px; border: 0; border-radius: var(--r-8); background: transparent; color: var(--ink-3); font: 500 var(--text-xs)/1 var(--font-body); cursor: pointer; transition: background var(--dur-hover) ease, color var(--dur-hover) ease; }
+.quick-edit-card-more:hover { background: var(--ghost-hover); color: var(--text-strong); }
+/* Inside the user bubble, under the message (ENG-4227): a small chip on the
+   bubble's own fill. The bubble sizes to the wider of the text and the chip,
+   so a short message widens to fit it rather than jumping. */
+.user-turn-artifact-ref { display: flex; justify-content: flex-start; margin-top: 8px; min-width: 0; }
+.user-turn-bubble .artifact-ref-pill {
+  height: 24px;
+  padding: 0 9px 0 7px;
+  gap: 5px;
+  border-color: color-mix(in srgb, var(--ink) 10%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface-raised));
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+}
+.user-turn-bubble button.artifact-ref-pill:hover {
+  background: color-mix(in srgb, var(--ink) 8%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--ink) 18%, transparent);
+  color: var(--ink);
 }

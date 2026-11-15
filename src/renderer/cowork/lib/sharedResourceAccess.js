@@ -1,4 +1,7 @@
 import { host } from '../../platform/host';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.sharedResourceAccess.${key}`, { ns: 'projects', ...vars });
 
 /**
  * Shared-resource capabilities are server decisions. Hosted Cowork fails
@@ -28,9 +31,11 @@ export function isReservedProjectName(name, isWeb = host.isWeb) {
 
 /** Stands in for an actor the server identified but deliberately did not name. */
 export const OTHER_ACTOR_LABEL = 'Another member';
+export const otherActorLabel = () => tr('otherActor');
 
 /** Stands in for an actor the server could not identify at all. */
 export const UNKNOWN_ACTOR_LABEL = 'Unknown';
+export const unknownActorLabel = () => tr('unknownActor');
 
 /**
  * Attribution carries an email only when the actor is the viewer themselves

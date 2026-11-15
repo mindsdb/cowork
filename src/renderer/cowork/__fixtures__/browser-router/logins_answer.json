@@ -1,0 +1,13 @@
+{
+  "description": "The router's DELETE {router}/logins answer, sent with the person's own credential: every site's sign-in is gone from their browser and from storage, also when nothing was saved.",
+  "examples": {
+    "signed out of every site": {
+      "where": "DELETE /logins",
+      "kind": "response",
+      "status": 200,
+      "body": {
+        "cleared": true
+      }
+    }
+  }
+}

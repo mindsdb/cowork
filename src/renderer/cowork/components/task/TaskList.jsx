@@ -3,19 +3,20 @@
 import { useMemo } from 'react';
 import { CollectionState, ListGroup } from '../collection';
 import { TaskRow, ScheduleGroupRow, chatTaskMenu, chatTaskRow, groupScheduleRuns } from './TaskRows';
+import { useTranslation } from '../../../lib/i18n';
 
 export function TaskList({
   tasks = [],
   schedules = [],
-  scheduleRunsIndex = {},
   onSelectTask,
   onOpenSchedule,
   onDeleteTask,
   onMoveTaskToProject,
 }) {
+  const { t } = useTranslation('chat');
   const rows = useMemo(
-    () => groupScheduleRuns(tasks, scheduleRunsIndex),
-    [tasks, scheduleRunsIndex],
+    () => groupScheduleRuns(tasks),
+    [tasks],
   );
   const schedulesById = useMemo(
     () => new Map((schedules || []).map((s) => [s?.id, s])),
@@ -25,13 +26,13 @@ export function TaskList({
   return (
     <div>
       <div className="flex items-baseline gap-2 mb-3 pl-1">
-        <span className="s-h3">Tasks</span>
+        <span className="s-h3">{t('taskList.title')}</span>
         <span className="font-body text-[13px] text-ink-4">{rows.length}</span>
       </div>
       <CollectionState
         total={rows.length}
         shown={rows.length}
-        empty={{ title: 'No tasks in this project yet', description: 'Type a prompt above to start one.' }}
+        empty={{ title: t('taskList.emptyTitle'), description: t('taskList.emptyDescription') }}
       >
         <ListGroup>
           {rows.map((row) => {

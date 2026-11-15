@@ -5,30 +5,34 @@ import { useOrgMode } from '../../../lib/orgMode';
 import { canDownloadArtifact, canShowInBrowserTab } from '../../lib/artifactKinds';
 import { artifactExportFormats } from '../../lib/artifactExport';
 import { PublishMenu } from './publish/PublishMenu';
-import { ArtifactModeTabs } from './workspace/ArtifactModeTabs';
+import { ArtifactAddressPill } from './ArtifactAddressPill';
 import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
 import { PreviewErrorsButton } from './PreviewErrorsButton';
 import { ArtifactExportMenu } from './export/ArtifactExportMenu';
+import { reportDownloaded } from '../../lib/artifactShareAnalytics';
+import { useTranslation } from '../../../lib/i18n';
 
 export function ArtifactViewerHeader({
   title,
   authorship = null,
   workspace,
   review,
+  // `{ open, onToggle }` for the Stats side panel; absent on surfaces without it.
+  stats = null,
   publication,
   actions,
   // `{ errors, dismissed, dismiss }` from usePreviewDiagnostics.
   diagnostics,
+  // The address pill: `{ kind, url, fallback }`.
+  address = null,
   onClose,
 }) {
+  const { t } = useTranslation('artifacts');
   const orgMode = useOrgMode();
-  const {
-    enabled: commentsEnabled,
-    open: commentsOpen,
-    controller: comments,
-    onToggle: toggleComments,
-  } = review;
+  // Comments is a layer toggle on the revision line now (ENG-4227); `review`
+  // stays in the props for callers that pass it.
+  void review;
   const {
     canManage,
     publishable,
@@ -37,6 +41,10 @@ export function ArtifactViewerHeader({
     isPublished,
     disabledReason,
   } = publication;
+  const showStats = !!stats && isPublished && canManage;
+  // A caller with no address to give still gets the pill, named by the
+  // title, so ↗ keeps its place.
+  const shownAddress = address || { kind: isPublished ? 'published' : 'draft', url: '', fallback: title };
   const {
     canOpenInBrowserTab,
     canOpenLocalFile,
@@ -71,51 +79,27 @@ export function ArtifactViewerHeader({
   const openDisabled = !hasActionPath || (isBackendArtifact && !backendPort);
   const openMenuItems = [
     ...(canDownload ? [{
-      label: 'Download',
+      label: t('documentPreview.download'),
       icon: Ico.download(14),
       onClick: onDownload,
     }] : []),
     ...(canOpenLocalFile ? [{
-      label: host.isMac() ? 'Show in Finder' : 'Show in folder',
+      label: host.isMac() ? t('header.showInFinder') : t('header.showInFolder'),
       icon: Ico.openFolder(14),
       onClick: onOpenFolder,
     }] : []),
   ];
-  const workspaceLoading = workspace.status === 'idle' || workspace.status === 'loading';
-  /* A file the viewer only previews says so first: a card too old for the
-     workspace would otherwise read "Refresh", and a refresh never makes it
-     editable. The workspace hook sets `previewOnly` with its reason. */
-  const editDisabledReason = workspace.previewOnly
-    ? workspace.unsupportedReason || 'This artifact cannot be edited here'
-    : !workspace.supported
-      ? 'Refresh the artifact to load editing tools'
-      : workspaceLoading
-        ? 'Loading editing tools…'
-        : workspace.capabilities?.canEdit === false
-          ? 'Only the artifact owner can edit'
-          // "Too old to edit" and "never shared with you" both land in the
-          // `unsupported` status; the hook names which one so the tooltip doesn't
-          // send the user looking in the wrong place.
-          : workspace.unsupportedReason || 'This artifact cannot be edited here';
-  const reviewDisabledReason = workspace.previewOnly
-    ? workspace.unsupportedReason || 'Review is not available for this artifact'
-    : !workspace.supported
-      ? 'Refresh the artifact to load review tools'
-      : workspaceLoading
-        ? 'Loading review tools…'
-        : workspace.commentsOffReason
-          || workspace.unsupportedReason
-          || 'Review is not available for this artifact';
   return (
-    <div className="artifact-viewer-topbar" style={{
+    // Three columns, 1fr auto 1fr (artifactWorkspace.css): the address pill
+    // in the true centre, the title and the actions on either side.
+    <div className="artifact-viewer-topbar is-centered" style={{
       flex: '0 0 auto',
-      display: 'flex', alignItems: 'center', gap: 10,
       padding: '10px 12px',
       borderBottom: '1px solid var(--line)',
       background: 'var(--surface)',
     }}>
       {/* Left — artifact title. */}
-      <div className="artifact-viewer-title-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+      <div className="artifact-viewer-title-zone" style={{ minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
         <div
           id="artifact-viewer-title"
           className="s-h3"
@@ -133,53 +117,31 @@ export function ArtifactViewerHeader({
         <ArtifactAuthorshipBadge authorship={authorship} className="shrink-0" />
       </div>
 
-      {/* Middle — the artifact's three working modes. */}
-      <div className="artifact-viewer-mode-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <ArtifactModeTabs
-          value={workspace.mode}
-          onChange={workspace.setMode}
-          canEdit={!!workspace.source && workspace.capabilities?.canEdit !== false}
-          canReview={commentsEnabled}
-          editDisabledReason={editDisabledReason}
-          reviewDisabledReason={reviewDisabledReason}
-        />
-        {/* Beside the tabs rather than in the ⋯ menu: that menu is hidden in org
-            mode because its other entries are OS/file actions and `/publish`
-            routes an org deployment cannot answer, and this belongs on both.
-            Hidden outright when there is no URL to open — a button that opens
-            nothing is worse than no button. Hidden on web, too, for a file a
-            tab would save instead of show. */}
-        {canOpenInBrowserTab && canOpenAsTab && (
-          <Tooltip content="Open in a browser tab">
-            <IconButton aria-label="Open in a browser tab" onClick={onOpenInBrowserTab}>
-              {Ico.arrowUpRight(16)}
-            </IconButton>
-          </Tooltip>
+      {/* Middle — the artifact's address, with copy and open-in-a-tab. ↗ is
+          here rather than in the ⋯ menu, which org mode hides, and is offered
+          by the same rule as before: never a button that opens nothing, nor a
+          tab that would save a file instead of showing it. */}
+      <div className="artifact-viewer-mode-zone" style={{ minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        {shownAddress && (
+          <ArtifactAddressPill
+            kind={shownAddress.kind}
+            url={shownAddress.url}
+            fallback={shownAddress.fallback}
+            canOpen={!!canOpenInBrowserTab && canOpenAsTab}
+            onOpen={onOpenInBrowserTab}
+          />
         )}
       </div>
 
-      {/* Right — preview errors, comments, publishing, more actions, and close. */}
-      <div className="artifact-viewer-action-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+      {/* Right — preview errors, comments, stats, publishing, more actions, and close. */}
+      <div className="artifact-viewer-action-zone" style={{ minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
-        {commentsEnabled && (
-          <div style={{ position: 'relative' }}>
-            <Tooltip content={commentsOpen ? 'Hide comments' : 'Comments'}>
-              <IconButton
-                aria-label={comments.unreadCount > 0
-                  ? `Comments, ${comments.unreadCount} unread`
-                  : 'Comments'}
-                onClick={toggleComments}
-                active={commentsOpen}
-              >
-                {Ico.chats(16)}
-              </IconButton>
-            </Tooltip>
-            {comments.unreadCount > 0 && (
-              <span className="artifact-feedback-badge" aria-hidden="true">
-                {Math.min(99, comments.unreadCount)}
-              </span>
-            )}
-          </div>
+        {showStats && (
+          <Tooltip content={stats.open ? t('stats.toggle.hide') : t('stats.toggle.show')}>
+            <IconButton aria-label={t('stats.toggle.show')} onClick={stats.onToggle} active={!!stats.open}>
+              {Ico.chartColumn(16)}
+            </IconButton>
+          </Tooltip>
         )}
         {/* Sharing is owner-side chrome on BOTH deployments now. It used to be
             desktop-only, on the grounds that org mode's window is a review
@@ -199,8 +161,8 @@ export function ArtifactViewerHeader({
             where the ⋯ menu is hidden. Desktop opens the file in its default
             app instead, and keeps Download in the Open button's menu. */}
         {host.isWeb && canDownload && (
-          <Tooltip content="Download">
-            <IconButton aria-label="Download" onClick={onDownload}>
+          <Tooltip content={t('documentPreview.download')}>
+            <IconButton aria-label={t('documentPreview.download')} onClick={onDownload}>
               {Ico.download(16)}
             </IconButton>
           </Tooltip>
@@ -210,22 +172,22 @@ export function ArtifactViewerHeader({
             <Button
               size="sm"
               disabled={openDisabled}
-              title={isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined}
+              title={isBackendArtifact && !backendPort ? t('header.waitingForPort') : undefined}
               onClick={onOpenOS}
               style={openMenuItems.length > 0 ? { borderTopRightRadius: 0, borderBottomRightRadius: 0 } : undefined}
             >
-              {Ico.externalLink(14)} Open
+              {Ico.externalLink(14)} {t('documentPreview.open')}
             </Button>
             {openMenuItems.length > 0 && (
               <Menu
-                ariaLabel="Open options"
+                ariaLabel={t('header.openOptions')}
                 align="end"
                 width={190}
                 trigger={
                   <Button
                     size="sm"
                     icon
-                    aria-label="More ways to open"
+                    aria-label={t('header.moreWaysToOpen')}
                     style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeftWidth: 0 }}
                   >
                     {Ico.chevDown(14)}
@@ -242,7 +204,12 @@ export function ArtifactViewerHeader({
             server sends no list and gets none either. The route is addressed
             by the draft URL, so no draft URL means no Export. */}
         {exportFormats.length > 0 && artifact?.draftUrl && (
-          <ArtifactExportMenu key={artifact.draftUrl} draftUrl={artifact.draftUrl} formats={exportFormats} />
+          <ArtifactExportMenu
+            key={artifact.draftUrl}
+            draftUrl={artifact.draftUrl}
+            formats={exportFormats}
+            onExported={(format) => reportDownloaded(artifact, { entry: 'viewer', kind: 'export', format })}
+          />
         )}
         {/* Download, Open and Show in folder left this menu when they became
             visible controls, so nothing appears twice. "Open in browser" and
@@ -251,34 +218,35 @@ export function ArtifactViewerHeader({
             from the browser-tab arrow, which shows whenever either exists. */}
         {!orgMode && (
           <Menu
-            ariaLabel="Artifact actions"
+            ariaLabel={t('header.artifactActions')}
             align="end"
             width={190}
             trigger={
-              <IconButton aria-label="More actions">
+              <IconButton aria-label={t('header.moreActions')}>
                 {Ico.moreVert(16)}
               </IconButton>
             }
             items={[
               {
-                label: 'Reload preview',
+                label: t('header.reloadPreview'),
                 icon: Ico.reload(14),
                 disabled: !hasActionPath,
                 onClick: onReload,
               },
               { divider: true },
               {
-                label: 'Delete',
+                label: t('common.delete'),
+                key: 'delete',
                 icon: Ico.trash(14),
                 danger: true,
                 disabled: deleteBusy || !hasActionPath || !canManage,
                 onClick: onTrash,
               },
-            ].filter((item) => canManage || item.label !== 'Delete')}
+            ].filter((item) => canManage || item.key !== 'delete')}
           />
         )}
-        <Tooltip content="Close">
-          <IconButton onClick={onClose} aria-label="Close">{Ico.close(16)}</IconButton>
+        <Tooltip content={t('header.close')}>
+          <IconButton onClick={onClose} aria-label={t('header.close')}>{Ico.close(16)}</IconButton>
         </Tooltip>
       </div>
     </div>
