@@ -150,6 +150,97 @@ describe('app_version on captured events', () => {
   });
 });
 
+describe('which PostHog project a desktop build reports to', () => {
+  const NON_PROD_KEY = 'phc_zBzpZzh8kCPVpKeVyRRLNSfyTisRfLCq8SPhtiTHZway';
+  const bodies = (fetchMock) => fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+
+  it.each(['stable', 'preview', 'dev'])('sends a %s build to the non-production project, labelled', async (kind) => {
+    getVersionInfo.mockResolvedValue({ app: '2.26.11.9.1-819-gcdb170c9', ui: null, source: 'bundled', buildKind: kind });
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const [body] = bodies(fetchMock);
+    expect(body.api_key).toBe(NON_PROD_KEY);
+    expect(body.properties.build_kind).toBe(kind);
+  });
+
+  it('keeps a prod build on the baked production token, labelled', async () => {
+    getVersionInfo.mockResolvedValue({ app: '2.26.11.9.1', ui: null, source: 'bundled', buildKind: 'prod' });
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const [body] = bodies(fetchMock);
+    expect(body.api_key).toBe('phc_test');
+    expect(body.properties.build_kind).toBe('prod');
+  });
+
+  it('keeps the production token and omits the label when the shell reports no kind', async () => {
+    const fetchMock = mockFetch(); // beforeEach: buildKind null, a shell older than the field
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const [body] = bodies(fetchMock);
+    expect(body.api_key).toBe('phc_test');
+    expect(body.properties).not.toHaveProperty('build_kind');
+  });
+
+  it('leaves web on the baked token without asking the shell', async () => {
+    hostState.isElectron = false;
+    const fetchMock = mockFetch();
+    const { trackDataSourceConnected } = await importAnalytics();
+
+    trackDataSourceConnected('postgres');
+    const body = await sentEvent(fetchMock, 'data_source_connected');
+
+    expect(body.api_key).toBe('phc_test');
+    expect(body.properties).not.toHaveProperty('build_kind');
+    expect(getVersionInfo).not.toHaveBeenCalled();
+  });
+
+  it('asks again after a failed read instead of pinning the install to production', async () => {
+    getVersionInfo
+      .mockRejectedValueOnce(new Error('bridge not ready'))
+      .mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+    const fetchMock = mockFetch();
+    const { trackDataSourceConnected, trackArtifactBuilt } = await importAnalytics();
+
+    trackDataSourceConnected('postgres');
+    await sentEvent(fetchMock, 'data_source_connected');
+    trackArtifactBuilt('report', 'a1');
+    const second = await sentEvent(fetchMock, 'artifact_built');
+
+    expect(second.api_key).toBe(NON_PROD_KEY);
+  });
+
+  it('merges a staging install into the account in the non-production project', async () => {
+    getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+    getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+    const merge = await sentEvent(fetchMock, '$identify');
+
+    expect(merge.api_key).toBe(NON_PROD_KEY);
+  });
+
+  it('keeps the build kind an update outcome journaled over the running one', async () => {
+    getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'prod' });
+    const fetchMock = mockFetch();
+    const { trackUpdatePhase } = await importAnalytics();
+
+    await trackUpdatePhase({ id: 'j1', channel: 'server', phase: 'applied', buildKind: 'stable' });
+
+    const [body] = bodies(fetchMock);
+    expect(body.properties.build_kind).toBe('stable');
+  });
+});
+
 describe('trackFirstQuery delivery gating (ENG-501)', () => {
   const FIRST_QUERY_KEY = 'mdb_first_query_sent';
 

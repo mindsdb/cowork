@@ -22,10 +22,11 @@ import { host, onMindsHubCredentialChanged } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
 import { startCreditsFlow } from './creditsFlow';
 import { subscribeOrganizationChanges } from './organizationChanges';
+import { posthogKeyForBuildKind } from '../../../shared/analytics-project';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
-// device_id, aid (desktop, once health resolves), and (once identity resolves)
+// device_id, build_kind and aid (desktop, once known), and (once identity resolves)
 // is_internal + a `$set` person update on all of them. `$identify` is a PostHog protocol event, not a product event,
 // so it lives inline in the merge rather than here.
 const EVENTS = {
@@ -214,6 +215,24 @@ const IS_PROD_BUILD =
 // it; for "current version" use the latest event's app_version instead.
 const APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : undefined;
+
+// The desktop shell's build kind, which decides the project an event goes to:
+// installers bake the production token whatever their kind, so a staging or
+// preview install has to re-route itself (posthogKeyForBuildKind). Only a
+// reported kind is cached; a failed or empty answer is asked again on the next
+// event, so one bad read cannot pin a staging install to production.
+let cachedBuildKind = null;
+async function shellBuildKind() {
+  if (SURFACE !== 'desktop') return null;
+  if (cachedBuildKind) return cachedBuildKind;
+  try {
+    const info = await host.getVersionInfo();
+    cachedBuildKind = info?.buildKind || null;
+  } catch {
+    /* an older shell without the bridge: unknown */
+  }
+  return cachedBuildKind;
+}
 
 // ── Session flags ──────────────────────────────────────────────────
 // CI-hygiene and debug-logging each resolve to a boolean once (from a build-time
@@ -536,10 +555,10 @@ async function getDistinctId() {
 // event, and buckets by `timestamp`, so a late send lands on the day the
 // thing happened.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function postCapture(event, distinctId, properties, envelope = {}) {
+function postCapture(event, distinctId, properties, envelope = {}, apiKey = POSTHOG_KEY) {
   const at = envelope.timestamp ? new Date(envelope.timestamp) : null;
   const body = JSON.stringify({
-    api_key: POSTHOG_KEY,
+    api_key: apiKey,
     event,
     distinct_id: distinctId,
     properties: { ...properties, $lib: LIB },
@@ -581,14 +600,15 @@ function mergeAnonIntoAccount(sub) {
   if (!deviceId || deviceId === sub) return;
   mergeInFlight.add(sub);
   dlog('$identify merge', { distinct_id: sub, $anon_distinct_id: deviceId });
-  postCapture('$identify', sub, {
+  // Merged in the project the events went to, or the people stay apart there.
+  shellBuildKind().then((buildKind) => postCapture('$identify', sub, {
     $anon_distinct_id: deviceId,
     // Carry device_id onto the person too (via personSet), so the deterministic
     // join key survives even if PostHog declines the person-merge.
     $set: personSet(),
     surface: SURFACE,
     is_internal: identity.isInternal,
-  }).then((ok) => {
+  }, {}, posthogKeyForBuildKind(buildKind, POSTHOG_KEY))).then((ok) => {
     if (ok) {
       try {
         window.localStorage.setItem(IDENTITY_MERGED_KEY, sub);
@@ -636,7 +656,11 @@ function capture(event, properties = {}, envelope = {}) {
         dlog('skip', event, '— no identity and no device id');
         return false;
       }
+      const buildKind = await shellBuildKind();
       const eventProps = {
+        // Omitted while unknown. An event that reports its own build_kind
+        // (update_phase journals the kind it ran under) keeps it.
+        ...(buildKind ? { build_kind: buildKind } : {}),
         ...properties,
         surface: SURFACE,
         app_version: APP_VERSION,
@@ -709,7 +733,7 @@ function capture(event, properties = {}, envelope = {}) {
       // inherit these via the `$identify` merge on sign-in.
       if (distinctId) eventProps.$set = personSet();
       dlog('POST', event, { distinct_id: captureId, identified: Boolean(distinctId) });
-      return postCapture(event, captureId, eventProps, envelope);
+      return postCapture(event, captureId, eventProps, envelope, posthogKeyForBuildKind(buildKind, POSTHOG_KEY));
     })
     .catch((err) => {
       dlog('capture failed for', event, err);

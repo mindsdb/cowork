@@ -5,10 +5,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { BuildKind } from './channels';
+import { NON_PROD_POSTHOG_KEY } from '../shared/analytics-project';
 
-// The non-production PostHog project. A project token can only write events
-// and ships in every page that loads PostHog, so it is not a secret.
-export const NON_PROD_POSTHOG_KEY = 'phc_zBzpZzh8kCPVpKeVyRRLNSfyTisRfLCq8SPhtiTHZway';
+export { NON_PROD_POSTHOG_KEY };
 
 // What anton stamps on each event as `environment`. `stable` is the staging
 // ring, so it says so.
