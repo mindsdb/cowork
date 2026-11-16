@@ -483,26 +483,21 @@ export function resolveRoleModel(providerWasRepointed, storedModel, modelList, a
 
 /**
  * The model the Image model picker shows as current (ENG-4024): the saved
- * `image_model`, else the catalog's image-role default, else the compiled
- * fallback, else the first image model the wallet can pay for. Only a pick the
- * user makes is ever written; everything after the saved value is display, so
- * an untouched picker leaves the server's default in charge (ENG-1632).
+ * `image_model`, else the server's image default (`imageModelDefault`, from
+ * cowork-server's `_image_model_default`), else the compiled default, exactly
+ * as the server resolves it. Only a pick the user makes is ever written, so an
+ * untouched picker leaves the server's default in charge (ENG-1632).
  *
- * A saved id missing from `imageModels` is returned as-is, so the picker shows
- * it as a stale pin to re-pick (resolveModelPickerValue) instead of quietly
- * reading as a different model than the one generate_image will ask for.
+ * Never substitutes another listed model: an id missing from `imageModels`
+ * (saved or default) is returned as-is, and the picker shows it as one to
+ * re-pick (resolveModelPickerValue) rather than reading as a different model
+ * than generate_image will ask for.
  *
  * @param {string | null | undefined} stored settings.imageModel
- * @param {string[]} imageModels settings.imageModels
- * @param {{ catalogDefault?: string, modelEnabled?: Record<string, boolean> }} [opts]
+ * @param {{ catalogDefault?: string }} [opts]
  */
-export function resolveImageModel(stored, imageModels, { catalogDefault = '', modelEnabled = {} } = {}) {
-  if (stored) return stored;
-  const list = Array.isArray(imageModels) ? imageModels : [];
-  for (const candidate of [catalogDefault, IMAGE_MODEL_FALLBACK]) {
-    if (candidate && list.includes(candidate)) return candidate;
-  }
-  return list.find((m) => !isModelLocked(modelEnabled, m)) || list[0] || '';
+export function resolveImageModel(stored, { catalogDefault = '' } = {}) {
+  return stored || catalogDefault || IMAGE_MODEL_FALLBACK;
 }
 
 /**

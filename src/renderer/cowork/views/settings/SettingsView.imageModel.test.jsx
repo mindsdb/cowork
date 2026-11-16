@@ -142,6 +142,12 @@ describe('SettingsView: Image model row', () => {
     expect(imagePicker()).toHaveTextContent('GPT Image 2.6 Flare');
   });
 
+  it('shows a server default the list lacks as one to re-pick, never another model', () => {
+    render(<Harness initialSettings={settingsWith({}, { imageModelDefault: 'nano-banana' })} onSave={onSave} />);
+    expect(imagePicker()).toHaveTextContent(/legacy — re-select a model/);
+    expect(imagePicker()).not.toHaveTextContent('GPT Image 2.6 Flare');
+  });
+
   it('shows the saved choice over the default, and saves a new pick', async () => {
     const user = userEvent.setup();
     render(<Harness initialSettings={settingsWith({ imageModel: SUNBURST })} onSave={onSave} />);

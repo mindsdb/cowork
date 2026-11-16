@@ -1266,35 +1266,33 @@ describe('image model settings (ENG-4024)', () => {
 
   describe('resolveImageModel', () => {
     it('shows the saved choice', () => {
-      expect(resolveImageModel(SUNBURST, [FLARE, SUNBURST], { catalogDefault: FLARE })).toBe(SUNBURST);
+      expect(resolveImageModel(SUNBURST, { catalogDefault: FLARE })).toBe(SUNBURST);
     });
 
     it('keeps a saved id the catalog no longer lists, so the picker can show it as stale', () => {
-      expect(resolveImageModel('gpt-image-1-mini', [FLARE, SUNBURST])).toBe('gpt-image-1-mini');
+      expect(resolveImageModel('gpt-image-1-mini', { catalogDefault: FLARE })).toBe('gpt-image-1-mini');
     });
 
-    it("defaults to the catalog's image-role default", () => {
-      expect(resolveImageModel('', [FLARE, SUNBURST], { catalogDefault: SUNBURST })).toBe(SUNBURST);
-      expect(resolveImageModel(null, [FLARE, SUNBURST], { catalogDefault: SUNBURST })).toBe(SUNBURST);
+    it("defaults to the server's image default", () => {
+      expect(resolveImageModel('', { catalogDefault: SUNBURST })).toBe(SUNBURST);
+      expect(resolveImageModel(null, { catalogDefault: SUNBURST })).toBe(SUNBURST);
     });
 
-    it('falls back to the compiled default when the catalog names none', () => {
+    it('falls back to the compiled default when the server names none', () => {
       expect(IMAGE_MODEL_FALLBACK).toBe(FLARE);
-      expect(resolveImageModel(undefined, [SUNBURST, FLARE])).toBe(FLARE);
-      // A catalog default the list does not carry is no default.
-      expect(resolveImageModel(undefined, [SUNBURST, FLARE], { catalogDefault: 'nano-banana' })).toBe(FLARE);
+      expect(resolveImageModel(undefined)).toBe(FLARE);
+      expect(resolveImageModel('', { catalogDefault: '' })).toBe(FLARE);
     });
 
-    it('otherwise takes the first model the wallet can pay for', () => {
-      expect(resolveImageModel('', ['img-a', 'img-b'], { modelEnabled: { 'img-a': false } })).toBe('img-b');
-      expect(resolveImageModel('', ['img-a'], { modelEnabled: { 'img-a': false } })).toBe('img-a');
-      expect(resolveImageModel('', [])).toBe('');
+    it("never swaps the server's default for another listed model", () => {
+      // The server hands generate_image this id, listed or not.
+      expect(resolveImageModel('', { catalogDefault: 'nano-banana' })).toBe('nano-banana');
     });
 
     it('pairs with the picker helpers: the shown value is always a rendered option', () => {
-      for (const stored of ['', SUNBURST, 'gone-model']) {
-        const list = [FLARE, SUNBURST];
-        const cur = resolveImageModel(stored, list, { catalogDefault: FLARE });
+      const list = [FLARE, SUNBURST];
+      for (const [stored, catalogDefault] of [['', FLARE], [SUNBURST, FLARE], ['gone-model', FLARE], ['', 'nano-banana'], ['', '']]) {
+        const cur = resolveImageModel(stored, { catalogDefault });
         const { showStalePin, selectValue } = resolveModelPickerValue(cur, list, false);
         const values = buildModelOptions(cur, list, false, showStalePin).map((o) => o.value);
         expect(values).toContain(selectValue);

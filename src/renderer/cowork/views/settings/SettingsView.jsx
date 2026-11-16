@@ -2017,9 +2017,8 @@ export default function SettingsView({
                     );
                   }
                   const modelEnabled = settings.modelEnabled || {};
-                  const curModel = resolveImageModel(settings.imageModel, imageModels, {
+                  const curModel = resolveImageModel(settings.imageModel, {
                     catalogDefault: settings.imageModelDefault,
-                    modelEnabled,
                   });
                   // No free text here (allowOther false), so a saved id the
                   // catalog dropped shows as a stale pin to re-pick.
