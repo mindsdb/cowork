@@ -27,7 +27,7 @@ import {
 } from './formStore';
 
 import { allowConnectorTestHost, cancelConnectorTest, confirmConnectorTest, connectCustomConnector, createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, fetchSubmissionReplaces, startConnectorOAuth, pollConnectorOAuth } from '../../api';
-import { customConnectPayload, describeConnectFailure } from '../../lib/customConnect';
+import { connectSuccessSubtitle, customConnectPayload, describeConnectFailure } from '../../lib/customConnect';
 import { buildDatasourcePayload, describeConnectionState } from '../../lib/datasourceSubmission';
 import { host } from '../../../platform/host';
 import { PLATFORM_UI } from '../../../lib/deployment';
@@ -267,7 +267,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           // The form's Connect and Cancel would override the success screen's own buttons.
           actions: null,
           title: `Connected ${connection?.name || spec._custom_connect.label}`,
-          subtitle: 'The check passed and your credentials are stored. You can see them in Connect Apps and Data.',
+          subtitle: connectSuccessSubtitle(spec, values, skipped),
         });
         window.dispatchEvent(new CustomEvent('anton:connections-changed'));
       } catch (e) {
