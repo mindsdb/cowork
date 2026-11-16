@@ -206,6 +206,13 @@ describe('SettingsView: Image model row', () => {
     expect(imagePicker()).toHaveTextContent('GPT Image 2.6 Flare');
   });
 
+  it('hides the picker once a later MindsHub read lists no image models', () => {
+    const held = settingsWith();
+    const refreshed = { ...held, ...mergeRecommendedModels(held, { recommendedModels: { 'minds-cloud': ['sonnet'] }, imageModels: [] }) };
+    render(<Harness initialSettings={refreshed} onSave={onSave} />);
+    expect(screen.queryByText('Image model')).toBeNull();
+  });
+
   it('draws no row when MindsHub is connected but lists no image models', () => {
     render(<Harness initialSettings={settingsWith({}, { imageModels: [], imageModelDefault: '' })} onSave={onSave} />);
     expect(screen.queryByText('Image model')).toBeNull();

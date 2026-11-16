@@ -322,14 +322,17 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
   const hasEntries = (live) => !!live && typeof live === 'object' && Object.keys(live).length > 0;
   const overlayMap = (current, live) => (hasEntries(live) ? live : (current || {}));
   const liveReasons = knownModelDisabledReasons(rec.modelDisabledReasons);
-  // Image models (ENG-4024) are a list of their own, under the same rule as a
-  // chat list: only a non-empty live one replaces what we hold.
+  // Image models (ENG-4024): a non-empty live list replaces ours, and so does an
+  // empty one once MindsHub was read (its chat bucket is filled only then).
   const liveImageModels = Array.isArray(rec.imageModels)
     ? rec.imageModels.filter((id) => typeof id === 'string' && id)
     : [];
+  const mindsHubRead = Array.isArray(rec.recommendedModels?.['minds-cloud'])
+    && rec.recommendedModels['minds-cloud'].length > 0;
+  const imageListLive = liveImageModels.length > 0 || (mindsHubRead && Array.isArray(rec.imageModels));
   const imageModels = liveImageModels.length
     ? (keepOrder ? keepListOrder(base.imageModels, liveImageModels) : liveImageModels)
-    : (Array.isArray(base.imageModels) ? base.imageModels : []);
+    : (imageListLive ? [] : (Array.isArray(base.imageModels) ? base.imageModels : []));
   // No chat picker may offer one: a planning or coding role pinned to an image
   // model fails every turn. cowork-server already leaves them out of the chat
   // lists; stripping them here as well covers a bucket that lists them anyway
@@ -353,7 +356,7 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     recommendedPair: overlayLists(base.recommendedPair, rec.recommendedPair),
     imageModels,
     imageModelDefault: (typeof rec.imageModelDefault === 'string' && rec.imageModelDefault)
-      || base.imageModelDefault || '',
+      || (imageListLive ? '' : base.imageModelDefault) || '',
     // Merged, not replaced: when the MindsHub fetch fails the server still
     // sends the static direct-provider entries, and taking that partial map
     // as the whole catalog dropped every MindsHub model's levels (ENG-2591).

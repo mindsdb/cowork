@@ -1237,15 +1237,33 @@ describe('image model settings (ENG-4024)', () => {
         .toEqual(['mindshub_air', 'sonnet']);
     });
 
-    it('strips by the held image list when a refresh sends none', () => {
+    it('keeps and strips by the held image list when MindsHub could not be read', () => {
       const merged = mergeRecommendedModels(
         { imageModels: [FLARE], imageModelDefault: FLARE },
-        { recommendedModels: { 'minds-cloud': ['mindshub_air', FLARE] }, imageModels: [] },
+        { recommendedModels: { 'minds-cloud': [], 'openai-compatible': ['local-llm', FLARE] }, imageModels: [] },
       );
-      // An empty live list is a failed fetch, not "no image models".
+      // No MindsHub ids means no MindsHub read: an empty image list says nothing.
       expect(merged.imageModels).toEqual([FLARE]);
       expect(merged.imageModelDefault).toBe(FLARE);
-      expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air']);
+      expect(merged.recommendedModels['openai-compatible']).toEqual(['local-llm']);
+    });
+
+    it('drops the held image list when MindsHub was read and lists none', () => {
+      const merged = mergeRecommendedModels(
+        { imageModels: [FLARE], imageModelDefault: FLARE },
+        { recommendedModels: { 'minds-cloud': ['mindshub_air'] }, imageModels: [] },
+      );
+      expect(merged.imageModels).toEqual([]);
+      expect(merged.imageModelDefault).toBe('');
+    });
+
+    it('keeps the held image list from a server that sends no image list at all', () => {
+      const merged = mergeRecommendedModels(
+        { imageModels: [FLARE], imageModelDefault: FLARE },
+        { recommendedModels: { 'minds-cloud': ['mindshub_air'] } },
+      );
+      expect(merged.imageModels).toEqual([FLARE]);
+      expect(merged.imageModelDefault).toBe(FLARE);
     });
 
     it('keeps the held image order on an on-open refresh', () => {
