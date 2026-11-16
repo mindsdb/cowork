@@ -2081,6 +2081,23 @@ describe('frames', () => {
     expect(found.otherSiteFrames).toEqual([{ x: 15, y: 15, width: 50, height: 20 }, { x: 10, y: 120, width: 300, height: 100 }]);
   });
 
+  it("leaves out of the frames it can't enter an object showing an image, which holds no frame, and keeps an object showing another site's page and an embed, which may", () => {
+    document.body.innerHTML = `
+      <object id="img" data="https://shop.other.test/logo.png" type="image/png"></object>
+      <object id="page" data="https://shop.other.test/buy" type="text/html"></object>
+      <embed id="emb" src="https://shop.other.test/buy" type="text/html">
+      <iframe id="ads" src="https://ads.example.test/"></iframe>`;
+    // The object showing a page has a window, whose document this world can't read.
+    Object.defineProperty(document.getElementById('page')!, 'contentWindow', { configurable: true, value: {} });
+    place(document.getElementById('img')!, 10, 10, 120, 40);
+    place(document.getElementById('page')!, 10, 60, 300, 100);
+    place(document.getElementById('emb')!, 10, 170, 300, 100);
+    place(document.getElementById('ads')!, 10, 280, 300, 100);
+    const found = secretBoxes();
+    expect(found.otherSiteFrames).toEqual([{ x: 10, y: 60, width: 300, height: 100 }, { x: 10, y: 170, width: 300, height: 100 }, { x: 10, y: 280, width: 300, height: 100 }]);
+    expect(found.owners).toBe(2);
+  });
+
   it("takes no screenshot when the frame tree holds a payment frame and the searched documents hold a frame their owners don't account for", () => {
     const found: FoundSecrets = { secrets: [{ x: 1, y: 1, width: 5, height: 5 }], paymentFrames: [], otherSiteFrames: [{ x: 0, y: 0, width: 50, height: 50 }], mirroredFrames: [], owners: 1, viewport: { width: 800, height: 600 } };
     const stripe = 'https://js.stripe.com/v3/elements-inner-card';

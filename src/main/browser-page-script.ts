@@ -284,7 +284,8 @@ export interface FocusedTyping {
     where each frame draws them, or the whole frame where a transform or an
     offset path turns it) and the copies -webkit-box-reflect draws of them,
     payment frames by address, every frame the search doesn't enter (one
-    from another site, or a same-origin one past SECRET_SEARCH_DEPTH), and
+    from another site, or a same-origin one past SECRET_SEARCH_DEPTH, an
+    embed included but not an object showing an image), and
     the copies -webkit-box-reflect draws of any frame (`mirroredFrames`),
     whole. `owners` counts the frame owners that hold a frame (DomFrame's
     `framed`) in the documents it searched. */
@@ -1389,7 +1390,9 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* What a screenshot must not show. Same-origin frames are searched in
      turn, `maxDepth` deep, each box placed where the frame draws it
      (throughOwner); a frame from another site can't be, and one past that
-     depth isn't. A secret field's copies that -webkit-box-reflect draws
+     depth isn't, so it is blacked out whole, an embed included, which may
+     show a page, while an object showing an image holds no frame and
+     stays shown. A secret field's copies that -webkit-box-reflect draws
      (mirrored) are secrets too, and so is every frame's copy, whole: a read
      of a frame's fields, here or in the frame's own world
      (browser-frames.ts), places them in the frame alone. */
@@ -1417,8 +1420,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         const inner = frameDocOf(el);
         const payment = hostIn(sourceOf(el), paymentHosts) || (!!inner && hostIn(String(inner.location?.href || ''), paymentHosts));
         if (payment) add(found.paymentFrames, el);
-        if (!inner || depth >= maxDepth) add(found.otherSiteFrames, el);
-        else if (!payment) {
+        if (!inner || depth >= maxDepth) {
+          // An object showing an image holds no frame, as the web pod's walk reads it; an embed may.
+          if (holdsFrame(el) || tagOf(el) === 'embed') add(found.otherSiteFrames, el);
+        } else if (!payment) {
           const into = throughOwner(el);
           visit(inner, (box) => place(into(box)), depth + 1);
         }

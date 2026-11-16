@@ -33,8 +33,8 @@
  * can't be read is blacked out whole. Inside a frame the world can't
  * search, a frame that frame's own search can't reach (one in a closed
  * shadow root there) is read too: one of its origin for its secret fields,
- * and any other, when it is secret, blacked out whole where the debugger
- * places its owner.
+ * and any other, when it shows what a screenshot blacks out, blacked out
+ * whole where the debugger places its owner.
  *
  * `frameSecrets`: page.json's frame `secret` for the frames a page read's
  * world can't look into: whether each one, or a frame inside it at any
@@ -599,6 +599,14 @@ const FIRST_DOCUMENTS: ReadonlySet<string> = new Set(['', 'about:blank']);
    embed): by its node, which stays the same while the node does. */
 const OWNER_NODE = 'owner:';
 
+/* What a look into frames finds (FrameReads.frameLooks): whether a frame,
+   or a frame inside it at any depth, holds what the look asks, and whether
+   any of several does. */
+interface FrameLook {
+  holds: (frameId: string) => Promise<boolean>;
+  anyHolds: (frameIds: string[]) => Promise<boolean>;
+}
+
 /** A frame a press lands in: its id and its address then. */
 export interface FramePlace {
   id: string;
@@ -774,43 +782,79 @@ export class FrameReads {
     }
   }
 
-  /* page.json's frame `secret` for frames this attach knows, each looked
-     into once per look (frameSecrets, frameMasks). A frame is secret when
-     it is on a payment provider's host (no world opens there, and nothing
-     is sent to its session), or still at its first document
-     (FIRST_DOCUMENTS) while its owner names an address on one, as the
-     page's world reads an owner's address (secretInside in
-     browser-page-script.ts), or its own world finds a private field or a
-     payment frame in its document or a frame it enters (frameSecret in
-     browser-page-script.ts). Where that world finds none, or doesn't
-     answer, each frame the debugger knows in it is looked into in turn, at
-     any depth, a frame of yet another site attached through its own
-     session (attachFrames): the world can't look into another site's
-     frame, nor see one in a closed shadow root. `anySecret` answers
-     whether any of `frameIds` is found secret, as soon as one is, so a
+  /* Looks into frames this attach knows, each once per look, at any depth
+     (secretLooks, maskedLooks). A frame holds what the look asks when it
+     is on a payment provider's host (no world opens there, and nothing is
+     sent to its session), or still at its first document (FIRST_DOCUMENTS)
+     while its owner names an address on one, as the page's world reads an
+     owner's address (secretInside in browser-page-script.ts), or when `own`
+     finds it in the frame's own world. Where that finds none, each frame
+     the debugger knows in it is looked into in turn, a frame of yet another
+     site attached through its own session (attachFrames): the world can't
+     look into another site's frame, nor see one in a closed shadow root. A
+     frame whose look fails answers what `unread` makes of it. `anyHolds`
+     answers whether any of `frameIds` holds it, as soon as one does, so a
      frame beside it whose world never answers doesn't hold the answer. */
-  private secretLooks(): { secretIn: (frameId: string) => Promise<boolean>; anySecret: (frameIds: string[]) => Promise<boolean> } {
+  private frameLooks(own: (frameId: string, address: string) => Promise<boolean>, unread: (frameId: string) => Promise<boolean>): FrameLook {
     const looks = new Map<string, Promise<boolean>>();
-    const anySecret = (frameIds: string[]): Promise<boolean> => Promise.any(frameIds.map(async (frameId) => {
-      if (!(await secretIn(frameId))) throw new Error('no secret found');
+    const anyHolds = (frameIds: string[]): Promise<boolean> => Promise.any(frameIds.map(async (frameId) => {
+      if (!(await holds(frameId))) throw new Error('nothing found');
     })).then(() => true, () => false);
-    const secretIn = (frameId: string): Promise<boolean> => {
+    const holds = (frameId: string): Promise<boolean> => {
       let looking = looks.get(frameId);
       if (!looking) {
         looking = (async () => {
           const address = this.session.knownAddress(frameId) ?? await this.session.frameAddress(frameId);
           if (isPaymentAddress(address)) return true;
           if (FIRST_DOCUMENTS.has(address) && isPaymentAddress(await this.session.ownerAddress(frameId).catch(() => ''))) return true;
-          const own = await this.session.read<boolean | null>(frameId, { kind: 'frameSecret', paymentHosts: PAYMENT_FRAME_HOSTS }).catch(() => null);
-          if (own === true) return true;
+          if (await own(frameId, address)) return true;
           await this.session.attachFrames(frameId);
-          return anySecret(this.session.childFrames(frameId).map(({ id }) => id));
-        })().catch(() => false);
+          return anyHolds(this.session.childFrames(frameId).map(({ id }) => id));
+        })().catch(() => unread(frameId));
         looks.set(frameId, looking);
       }
       return looking;
     };
-    return { secretIn, anySecret };
+    return { holds, anyHolds };
+  }
+
+  /* page.json's frame `secret` for frames this attach knows (frameSecrets),
+     looked into as frameLooks says: its own world finds a private field or
+     a payment frame in its document or a frame it enters (frameSecret in
+     browser-page-script.ts), a hidden sign-in field included, since the
+     mark anticipates what the frame may ask for. A world that doesn't
+     answer finds none, and a frame whose look fails is left unmarked. */
+  private secretLooks(): FrameLook {
+    return this.frameLooks(
+      (frameId) => this.session.read<boolean | null>(frameId, { kind: 'frameSecret', paymentHosts: PAYMENT_FRAME_HOSTS }).then((own) => own === true, () => false),
+      async () => false,
+    );
+  }
+
+  /* Whether a screenshot blacks out a frame that a frame's own search can't
+     reach (hiddenSecretFrames), looked into as frameLooks says: what a
+     screenshot blacks out elsewhere, its own world's search for secrets
+     (secretBoxes in browser-page-script.ts) finding a shown secret field, a
+     card-named one included, or a payment frame by the address its owner
+     names; not page.json's mark, which a hidden sign-in field sets too. A
+     frame before its first document ('') shows nothing. One whose look
+     fails counts as showing a secret, unless its owner draws nothing
+     (ownerBoxes). */
+  private maskedLooks(): FrameLook {
+    return this.frameLooks(
+      async (frameId, address) => {
+        if (!address) return false;
+        const found = await this.session.read<FoundSecrets>(frameId, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth: 0 });
+        return found.secrets.length > 0 || found.paymentFrames.length > 0;
+      },
+      async (frameId) => {
+        try {
+          return (await this.session.ownerBoxes(frameId)) !== null;
+        } catch {
+          return true;
+        }
+      },
+    );
   }
 
   /**
@@ -835,7 +879,7 @@ export class FrameReads {
     const nestedUnplaced = new Set<string>();
     const found = (): LookedFrames => ({ frames: new Set(frames), unplaced: new Set(unplaced), nestedUnplaced: new Set(nestedUnplaced) });
     if (deadline <= Date.now()) return found();
-    const { secretIn, anySecret } = this.secretLooks();
+    const { holds: secretIn, anyHolds: anySecret } = this.secretLooks();
     const sameAddress = (url: string) => (frame: { url: string }) => withoutFragment(frame.url) === withoutFragment(url);
     const work = async () => {
       const main = await this.session.mainFrame();
@@ -879,23 +923,23 @@ export class FrameReads {
    * In a frame the page's world can't search, the frames that frame's own
    * search can't reach (one in a closed shadow root there) are read too
    * (hiddenSecretFrames): one of its origin for the secret fields of its own
-   * document, or whole when that read fails, and any other, when it is
-   * secret (secretLooks), blacked out whole where the debugger places its
-   * owner. One whose owner draws nothing (gone, or laid out no box) has
+   * document, or whole when that read fails, and any other, when it shows
+   * what a screenshot blacks out (maskedLooks), blacked out whole where the
+   * debugger places its owner. One whose owner draws nothing (gone, or laid out no box) has
    * nothing to black out; the frame that holds them is blacked out whole
    * when the debugger can't place an owner there that draws.
    */
   async frameMasks(): Promise<Box[]> {
     const main = await this.session.mainFrame();
     await this.session.attachFrames();
-    const { secretIn } = this.secretLooks();
+    const { holds: masked } = this.maskedLooks();
     const masks = await Promise.all(this.session.framesToRead(main, SECRET_SEARCH_DEPTH).map(async ({ id: frameId, searched }) => {
       const owner = await this.session.ownerBoxes(frameId).catch(() => null);
       if (!owner) return [];
       const depth = searched ? 0 : SECRET_SEARCH_DEPTH;
       const read = async () => {
         const found = await this.session.read<FoundSecrets>(frameId, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth });
-        return { found, hidden: searched ? [] : await this.hiddenSecretFrames(frameId, found.owners, secretIn) };
+        return { found, hidden: searched ? [] : await this.hiddenSecretFrames(frameId, found.owners, masked) };
       };
       const answer = await withTimeout(read(), FRAME_READ_MS).catch(() => null);
       const place = answer && throughQuad(owner.content, answer.found.viewport);
@@ -926,12 +970,13 @@ export class FrameReads {
      the search would enter is read for the secret fields and payment
      frames of its own document in its own world, placed through its owner,
      so one the search did reach is never blacked out whole, and one whose
-     read fails is; and each other frame there that is secret (`secretIn`)
-     is blacked out whole, its owner's border box. A frame whose owner
+     read fails is; and each other frame there that shows what a
+     screenshot blacks out (`masked`, maskedLooks) is blacked out whole,
+     its owner's border box. A frame whose owner
      draws nothing (gone since the debugger listed it, or laid out no box,
      as a card option not picked) shows nothing, so it has nothing to black
      out. */
-  private async hiddenSecretFrames(frameId: string, owners: number, secretIn: (frameId: string) => Promise<boolean>): Promise<Box[] | null> {
+  private async hiddenSecretFrames(frameId: string, owners: number, masked: (frameId: string) => Promise<boolean>): Promise<Box[] | null> {
     await this.session.attachFrames(frameId);
     const inside = this.session.framesToRead(frameId, SECRET_SEARCH_DEPTH);
     if (inside.length <= owners) return [];
@@ -939,7 +984,7 @@ export class FrameReads {
       const found = searched ? await this.session.read<FoundSecrets>(id, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth: 0 }).catch(() => null) : null;
       const shown = found ? [...found.secrets, ...found.paymentFrames, ...found.mirroredFrames] : [];
       if (found && !shown.length) return [];
-      if (!searched && !(await secretIn(id))) return [];
+      if (!searched && !(await masked(id))) return [];
       let owner: OwnerBoxes | null;
       try {
         owner = await this.session.ownerBoxes(id);
