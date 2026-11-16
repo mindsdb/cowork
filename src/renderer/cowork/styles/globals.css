@@ -4289,3 +4289,72 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   line-break: strict;
   overflow-wrap: anywhere;
 }
+
+/* The artifact a bar message was about (ENG-4227), under the user's text in
+   the transcript: an attachment-style chip, compact. */
+.artifact-ref-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: 500 var(--text-sm)/1 var(--font-body);
+  transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease, color var(--dur-hover) ease;
+}
+button.artifact-ref-pill { cursor: pointer; }
+button.artifact-ref-pill:hover { background: var(--ghost-hover); border-color: color-mix(in srgb, var(--ink) 18%, var(--line)); color: var(--ink); }
+button.artifact-ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+.artifact-ref-pill-icon { display: inline-flex; flex-shrink: 0; }
+.artifact-ref-pill-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Quick edits from the artifact viewer's bar, grouped in the chat (ENG-4227):
+   one quiet card, no turn toolbar. */
+.quick-edit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 560px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-12);
+  background: var(--surface);
+  font-family: var(--font-body);
+}
+.quick-edit-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.quick-edit-card-title { color: var(--ink-2); font-size: var(--text-sm); font-weight: 500; }
+.quick-edit-card-count { color: var(--ink-4); font-size: var(--text-xs); }
+.quick-edit-card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.quick-edit-card-row { display: flex; align-items: flex-start; gap: 12px; padding: 6px 0; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.quick-edit-card-row:first-child { border-top: 0; padding-top: 2px; }
+.quick-edit-card-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.quick-edit-card-request { color: var(--ink-4); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-edit-card-summary { display: flex; align-items: baseline; gap: 6px; color: var(--ink); font-size: var(--text-sm); line-height: 1.45; }
+.quick-edit-card-summary-text { min-width: 0; }
+.quick-edit-card-time { flex-shrink: 0; color: var(--ink-4); font-size: var(--text-xs); line-height: 1.6; font-variant-numeric: tabular-nums; }
+.quick-edit-card-row.is-undone .quick-edit-card-summary-text { color: var(--ink-4); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-4) 70%, transparent); }
+.quick-edit-card-tag { flex-shrink: 0; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--ink-3); font-size: var(--text-2xs); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.quick-edit-card-more { align-self: flex-start; margin-left: -6px; height: 22px; padding: 0 6px; border: 0; border-radius: var(--r-8); background: transparent; color: var(--ink-3); font: 500 var(--text-xs)/1 var(--font-body); cursor: pointer; transition: background var(--dur-hover) ease, color var(--dur-hover) ease; }
+.quick-edit-card-more:hover { background: var(--ghost-hover); color: var(--text-strong); }
+/* Inside the user bubble, under the message (ENG-4227): a small chip on the
+   bubble's own fill. The bubble sizes to the wider of the text and the chip,
+   so a short message widens to fit it rather than jumping. */
+.user-turn-artifact-ref { display: flex; justify-content: flex-start; margin-top: 8px; min-width: 0; }
+.user-turn-bubble .artifact-ref-pill {
+  height: 24px;
+  padding: 0 9px 0 7px;
+  gap: 5px;
+  border-color: color-mix(in srgb, var(--ink) 10%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface-raised));
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+}
+.user-turn-bubble button.artifact-ref-pill:hover {
+  background: color-mix(in srgb, var(--ink) 8%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--ink) 18%, transparent);
+  color: var(--ink);
+}

@@ -28,6 +28,8 @@ vi.mock('./browserDownload', async (importOriginal) => {
 vi.mock('./authenticatedResource', () => ({
   downloadAuthenticatedResource: mocks.downloadAuthenticatedResource,
 }));
+const reportDownloaded = vi.hoisted(() => vi.fn());
+vi.mock('./artifactShareAnalytics', () => ({ reportDownloaded }));
 
 import { artifactDownloadUrl, downloadArtifactFile } from './artifactDownload';
 
@@ -141,4 +143,26 @@ it('refuses mobile artifacts before starting either download transport', async (
   await expect(downloadArtifactFile({ draftUrl: DRAFT, serveUrl: SERVE })).resolves.toBe(false);
   expect(mocks.downloadUrl).not.toHaveBeenCalled();
   expect(mocks.downloadAuthenticatedResource).not.toHaveBeenCalled();
+});
+
+describe('download analytics', () => {
+  const card = { id: 'a1', type: 'xlsx', draftUrl: DRAFT, title: 'Model' };
+
+  beforeEach(() => reportDownloaded.mockClear());
+
+  it('reports a saved file once, with where it was asked for', async () => {
+    mocks.downloadAuthenticatedResource.mockResolvedValue(true);
+    expect(await downloadArtifactFile(card, { entry: 'list' })).toBe(true);
+    expect(reportDownloaded).toHaveBeenCalledTimes(1);
+    expect(reportDownloaded).toHaveBeenCalledWith(card, { entry: 'list', kind: 'file' });
+  });
+
+  it('reports nothing when the file was not saved', async () => {
+    mocks.downloadAuthenticatedResource.mockResolvedValue(false);
+    expect(await downloadArtifactFile(card, { entry: 'list' })).toBe(false);
+    mocks.downloadAuthenticatedResource.mockRejectedValue(new Error('401'));
+    expect(await downloadArtifactFile(card, { entry: 'list' })).toBe(false);
+    expect(await downloadArtifactFile({ id: 'none' })).toBe(false);
+    expect(reportDownloaded).not.toHaveBeenCalled();
+  });
 });

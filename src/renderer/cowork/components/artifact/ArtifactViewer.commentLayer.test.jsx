@@ -58,7 +58,8 @@ vi.mock('./workspace/useArtifactWorkspace', () => ({
   }),
 }));
 vi.mock('./ArtifactViewerHeader', () => ({
-  ArtifactViewerHeader: ({ review }) => <button onClick={review.onToggle}>Comments</button>,
+  // Comments is a layer toggle on the revision line (ENG-4227), not in the header.
+  ArtifactViewerHeader: () => null,
 }));
 vi.mock('./ArtifactViewerBody', () => ({
   ArtifactViewerBody: ({ preview }) => {

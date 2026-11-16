@@ -167,7 +167,7 @@
   "modeTabs": {
     "ariaLabel": "Modo del artefacto",
     "preview": "Vista previa",
-    "edit": "Editar",
+    "source": "Código fuente",
     "review": "Revisar",
     "editDisabled": "Solo el dueño del artefacto puede editarlo",
     "reviewDisabled": "La revisión no está disponible para este artefacto",
@@ -341,7 +341,12 @@
     "reported": "{count, plural, one {La vista previa informó # error} other {La vista previa informó # errores}}",
     "line": "línea {line}",
     "title": "Errores de la vista previa",
-    "ariaLabel": "Errores de la vista previa, {count}"
+    "ariaLabel": "Errores de la vista previa, {count}",
+    "kind": {
+      "rejection": "Rechazo de promesa no gestionado",
+      "console": "Error de consola",
+      "http": "Error del servidor"
+    }
   },
   "liveAppPreview": {
     "failure": "No se pudo conectar con esta app. Recarga para reintentar o ábrela en tu navegador.",
@@ -447,7 +452,8 @@
     "discardMessage": "El cambio del agente queda en el historial del artefacto, pero la sugerencia se cierra y no se aplicará.",
     "discardFailed": "No se pudo descartar esa sugerencia.",
     "deleteTitle": "¿Eliminar artefacto?",
-    "deleteMessage": "\"{title}\" se eliminará de forma permanente. No se puede deshacer."
+    "deleteMessage": "\"{title}\" se eliminará de forma permanente. No se puede deshacer.",
+    "changedElsewhere": "Este artefacto cambió. Volver a cargar"
   },
   "artifactsView": {
     "sort": {
@@ -637,6 +643,56 @@
       }
     }
   },
+  "quickEdit": {
+    "ariaLabel": "Edición rápida",
+    "inputLabel": "Pide un cambio",
+    "placeholder": "Pide un cambio…",
+    "send": "Enviar",
+    "route": {
+      "edit": "Editando directamente…",
+      "agent": "Pasando esto al agente…"
+    },
+    "stage": {
+      "routing": "Pensando cómo hacerlo…",
+      "reading": "Leyendo el artefacto…",
+      "writing": "Escribiendo el cambio…",
+      "checking": "Comprobando la vista previa…",
+      "fixing": "Corrigiendo lo que encontró la comprobación…"
+    },
+    "handingOff": "Enviando al chat…",
+    "applied": "Hecho.",
+    "undo": "Deshacer",
+    "undoing": "Deshaciendo…",
+    "undone": "Deshecho.",
+    "noop": "No cambió nada.",
+    "failed": "Ese cambio no se pudo hacer aquí.",
+    "askAgent": "Preguntar al agente",
+    "errors": {
+      "stale": "Este artefacto cambió desde que lo abriste. Se ha vuelto a cargar; inténtalo de nuevo.",
+      "busy": "Otro cambio en este artefacto sigue en curso. Inténtalo de nuevo cuando termine.",
+      "failed": "No se pudo hacer el cambio.",
+      "stopped": "El cambio se detuvo antes de terminar.",
+      "chatFailed": "No se pudo continuar en el chat. Inténtalo de nuevo desde el chat.",
+      "filesChanged": "Los archivos de este cambio se modificaron de nuevo después, así que no se puede deshacer aquí.",
+      "filesChangedNamed": "{paths} cambió de nuevo después, así que este cambio no se puede deshacer aquí.",
+      "alreadyUndone": "Este cambio ya se deshizo.",
+      "repairPending": "Una sugerencia del agente para este artefacto espera tu decisión. Acéptala o descártala primero.",
+      "undoGone": "Este cambio ya no se puede deshacer aquí. Usa el historial para volver atrás."
+    },
+    "placeholderChat": "Pregunta sobre este artefacto o cámbialo…",
+    "openInChat": "Abrir en el chat",
+    "needsAnswer": "Necesita tu respuesta en el chat",
+    "workingInChat": "Trabajando en el chat…",
+    "sentToChat": "Enviado al chat.",
+    "chatStopped": "El turno del chat se detuvo antes de responder.",
+    "unsavedConfirm": {
+      "title": "Tienes cambios sin guardar. ¿Guardarlos antes de enviar?",
+      "save": "Guardar y enviar",
+      "discard": "Descartar y enviar",
+      "cancel": "Cancelar",
+      "saveFailed": "No se pudieron guardar tus cambios, así que no se envió nada."
+    }
+  },
   "stats": {
     "toggle": {
       "show": "Estadísticas",
@@ -669,5 +725,30 @@
       "temporarilyUnavailable": "Las estadísticas no están disponibles temporalmente.",
       "loadFailed": "No se pudieron cargar las estadísticas."
     }
+  },
+  "refPill": {
+    "open": "Abrir {title}"
+  },
+  "quickEditCard": {
+    "title": "Editado en el visor",
+    "count": "{count, plural, one {# cambio} other {# cambios}}",
+    "undone": "Deshecho",
+    "showAll": "{count, plural, other {Mostrar los #}}",
+    "showFewer": "Mostrar menos"
+  },
+  "layers": {
+    "ariaLabel": "Capas del visor",
+    "source": "Edición en vivo",
+    "comments": "Comentarios",
+    "sourceOffPrompt": {
+      "title": "¿Desactivar Edición en vivo?",
+      "message": "Se descartarán los cambios no guardados en Edición en vivo.",
+      "confirmLabel": "Descartar cambios"
+    }
+  },
+  "address": {
+    "draft": "Borrador",
+    "copy": "Copiar dirección",
+    "copied": "Copiado"
   }
 }
