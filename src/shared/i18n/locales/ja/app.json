@@ -264,5 +264,9 @@
   "addon": {
     "moveFailed": "メッセージをキューに移動できませんでした。もう一度お試しください。",
     "stayQueued": "{agent} は今これを受け取れません。キューに残ります。"
+  },
+  "notion": {
+    "connectTitle": "Notionを接続しますか？",
+    "connectMessage": "Notionからページを追加するには、Notionワークスペースを接続する必要があります。"
   }
 }

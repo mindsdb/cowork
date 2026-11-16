@@ -86,7 +86,10 @@ function AttachmentChip({ attachment, onRemove }) {
   const { t } = useTranslation('chat');
   const src = attachment.source || attachment.kind || 'file';
   const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
-  const label = src === 'connector' ? t('composer.attachment.connector') : src === 'gdrive' ? 'Google Drive' : isImage ? t('composer.attachment.image') : t('composer.attachment.file');
+  const label = src === 'connector' ? t('composer.attachment.connector')
+    : src === 'gdrive' ? 'Google Drive'
+      : src === 'notion' ? 'Notion'
+        : isImage ? t('composer.attachment.image') : t('composer.attachment.file');
   const status = attachment.pendingFile
     ? t('composer.attachment.queued')
     : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
@@ -101,8 +104,9 @@ function AttachmentChip({ attachment, onRemove }) {
         {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || t('composer.attachment.image')} />
           : src === 'connector' ? Ico.link(14)
             : src === 'gdrive' ? Ico.googleDrive(14)
-              : isImage ? Ico.image(14)
-                : Ico.doc(14)}
+              : src === 'notion' ? Ico.notion(14)
+                : isImage ? Ico.image(14)
+                  : Ico.doc(14)}
       </span>
       <span className="attachment-chip-body">
         <span className="attachment-chip-name">{attachment.name || label}</span>
@@ -148,6 +152,7 @@ export default function Composer({
   onNavigateToConnectors,
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddNotionPages,
   onAddSharePointFiles,
   /** When set with `onUpdateConnectorMute`, Connectors submenu toggles mute (applied when you send). */
   conversationId = null,
@@ -265,6 +270,7 @@ export default function Composer({
   const [attachMenuBelow, setAttachMenuBelow] = useState(false);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const [gdrivePickerBusy, setGdrivePickerBusy] = useState(false);
+  const [notionPickerBusy, setNotionPickerBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
@@ -859,6 +865,20 @@ export default function Composer({
     }
   }
 
+  async function handleAddNotionPages() {
+    if (!onAddNotionPages || notionPickerBusy) return;
+    setError('');
+    setNotionPickerBusy(true);
+    setOpenMenu(null);
+    try {
+      await Promise.resolve(onAddNotionPages(project?.name));
+    } catch (err) {
+      setError(err.message || 'Could not add Notion pages.');
+    } finally {
+      setNotionPickerBusy(false);
+    }
+  }
+
   // Drag OS files onto the composer to attach them to the message.
   const { isDragging: filesDragging, dropHandlers: fileDropHandlers } = useFileDrop({
     onFiles: handleAttachFiles,
@@ -1267,6 +1287,15 @@ export default function Composer({
                       disabled={gdrivePickerBusy}
                     >
                       {Ico.googleDrive(14)} {gdrivePickerBusy ? t('composer.menu.openingGoogleDrive') : t('composer.menu.addFromGoogleDrive')}
+                    </button>
+                  )}
+                  {onAddNotionPages && (
+                    <button
+                      className="menu-item"
+                      onClick={handleAddNotionPages}
+                      disabled={notionPickerBusy}
+                    >
+                      {Ico.notion(14)} {notionPickerBusy ? 'Opening Notion…' : 'Add pages from Notion'}
                     </button>
                   )}
                   {onAddSharePointFiles && project?.name && (

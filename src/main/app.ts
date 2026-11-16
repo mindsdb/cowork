@@ -23,6 +23,7 @@ import { installQuitSignalHandlers } from './quit-signals';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { filterExtraFields } from './oauth-extra-fields';
+import { hasRequiredTokens } from './oauth-connect-result';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
@@ -889,7 +890,7 @@ function setupIPC() {
         redirectHost: oauthBlock.redirect_host,
         tokenAuthStyle: oauthBlock.token_auth_style,
       });
-      if (!pkceResult.ok || !pkceResult.access_token || (supportsRefresh && !pkceResult.refresh_token)) {
+      if (!hasRequiredTokens(pkceResult, oauthBlock) || !pkceResult.access_token) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
       }
       focusMainWindow();
@@ -901,7 +902,7 @@ function setupIPC() {
       let accountIdentity: Awaited<ReturnType<typeof fetchAccountIdentity>> = { email: '' };
       for (let attempt = 0; attempt < 2 && !accountIdentity.email; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
-        accountIdentity = await fetchAccountIdentity(engine, pkceResult.access_token);
+        accountIdentity = await fetchAccountIdentity(engine, pkceResult.access_token, pkceResult.extra);
       }
       const accountEmail = accountIdentity.email;
       if (!accountEmail) return { ok: false, reason: accountIdentity.reason || 'Could not retrieve account email.' };
@@ -910,6 +911,10 @@ function setupIPC() {
       // Absent entirely for a supports_refresh: false connector.
       if (pkceResult.refresh_token) {
         await setRefreshToken(engine, accountEmail, pkceResult.refresh_token);
+      } else {
+        // A reconnect that issued none would otherwise leave the previous
+        // grant's token here, and the refresh loop would post that one.
+        try { await deleteRefreshToken(engine, accountEmail); } catch {}
       }
 
       const expiresAt = new Date(Date.now() + (pkceResult.expires_in ?? 3600) * 1000).toISOString();
@@ -956,7 +961,12 @@ function setupIPC() {
       const saved = await saveRes.json() as { ok: boolean; name?: string };
       const vaultSlug = saved.name || labelName;
 
-      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style);
+      // Same rule as startOrphanRefreshLoops: a connector that never
+      // refreshes (GitHub) gets no loop, which would otherwise mark it
+      // needs_reconnect once its nominal expiry passes.
+      if (supportsRefresh) {
+        startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style, oauthBlock.refresh_token_optional === true);
+      }
       return { ok: true, name: vaultSlug, account_email: accountEmail };
     }
 
@@ -2133,8 +2143,10 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const tokenUrl = oauthBlock?.token_url;
         if (!tokenUrl) continue;
         const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
-        if (!refreshToken) continue;
-        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style);
+        // Without a refresh token the loop only marks the connection
+        // needs_reconnect at expiry, which matters for refresh_token_optional.
+        if (!refreshToken && oauthBlock?.refresh_token_optional !== true) continue;
+        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style, oauthBlock?.refresh_token_optional === true);
         diagnostic("main.app", "INFO", "token_refresh_resumed_loop_for", `[token-refresh] resumed loop for ${engine}:${accountEmail}`);
       } catch (err) {
         diagnostic("main.app", "WARNING", "token_refresh_could_not_resume_loop_for", `[token-refresh] could not resume loop for ${engine}/${name}:`, err);
