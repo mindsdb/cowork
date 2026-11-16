@@ -19,6 +19,7 @@ import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { stockBackground } from '../../../lib/stockThemeTokens';
+import { STOCK_GREETING } from '../../../lib/orgBranding';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, mindsRegisterUrl, consoleUrlFor } from '../../../lib/mindsUrls';
 import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
 import { useAccountUser } from '../../hooks/useAccountUser';
@@ -357,6 +358,13 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
       )}
     </div>
   );
+}
+
+// The greeting someone typed, or '' while it is still the server's stock
+// English, so the field shows the translated default as its placeholder.
+function ownGreeting(greeting) {
+  const text = typeof greeting === 'string' ? greeting.trim() : '';
+  return text && text !== STOCK_GREETING ? greeting : '';
 }
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel, disabled }) {
@@ -2536,8 +2544,9 @@ export default function SettingsView({
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
-                value={orgLocks.greeting ? look.greeting : settings.greeting}
+                value={orgLocks.greeting ? look.greeting : ownGreeting(settings.greeting)}
                 onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
+                placeholder={t('shell:home.greetingFallback')}
                 disabled={orgLocks.greeting}
                 title={t('appearance.greeting.hint')}
                 ariaLabel={t('appearance.greeting.ariaLabel')}
