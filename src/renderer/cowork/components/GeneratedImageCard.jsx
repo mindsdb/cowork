@@ -10,7 +10,7 @@
 // A file the card can't read (moved, deleted, outside the project, or not an
 // image after all) shows its name and says so, never a broken-image icon.
 // Clicking a loaded image opens it in the file viewer, which can save it or,
-// on desktop, open it in the default app.
+// on desktop, reveal it in its folder.
 
 import { useState } from 'react';
 import Ico from './Icons';
@@ -46,8 +46,9 @@ export function GeneratedImageCard({ image, projectName = null, projectPath = ''
   const blob = useBlobImageSrc({ url });
   const src = waitingForProject ? '' : blob.src;
   const failed = !waitingForProject && blob.failed;
-  // The bytes arrived but don't decode as an image.
-  const [undecodable, setUndecodable] = useState(false);
+  // The url whose bytes didn't decode as an image; keyed by url so a new file gets a fresh try.
+  const [undecodableUrl, setUndecodableUrl] = useState(null);
+  const undecodable = !!url && undecodableUrl === url;
   const name = image?.name || relPath || image?.path || t('generatedImage.fallbackName');
   const alt = image?.prompt || t('generatedImage.alt', { name });
   const width = image?.width || null;
@@ -86,7 +87,7 @@ export function GeneratedImageCard({ image, projectName = null, projectPath = ''
       className="inline-flex items-center justify-center overflow-hidden rounded-xl border border-solid border-line bg-surface-2 max-w-full"
       style={frameStyle}
     >
-      {src ? <img src={src} alt={alt} onError={() => setUndecodable(true)} style={imgStyle} /> : null}
+      {src ? <img src={src} alt={alt} onError={() => setUndecodableUrl(url)} style={imgStyle} /> : null}
     </span>
   );
 
