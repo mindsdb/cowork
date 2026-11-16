@@ -76,7 +76,8 @@
     },
     "inPlace": {
       "title": "{count, plural, one {Esta tarefa edita sua pasta diretamente} other {Esta tarefa edita suas pastas diretamente}}",
-      "body": "{count, plural, one {As alterações já estão na sua pasta, então não há nada para aplicar.} other {As alterações já estão nas suas pastas, então não há nada para aplicar.}} Pull requests em rascunho ainda não estão disponíveis para tarefas locais: faça commit aqui e depois faça push e abra uma pull request com suas ferramentas de sempre."
+      "body": "{count, plural, one {As alterações já estão na sua pasta, então não há nada para aplicar.} other {As alterações já estão nas suas pastas, então não há nada para aplicar.}} Pull requests em rascunho ainda não estão disponíveis para tarefas locais: faça commit aqui e depois faça push e abra uma pull request com suas ferramentas de sempre.",
+      "bodyWithoutGit": "{count, plural, one {As alterações já estão na sua pasta, então não há nada para aplicar.} other {As alterações já estão nas suas pastas, então não há nada para aplicar.}}"
     }
   },
   "fileReview": {

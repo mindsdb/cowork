@@ -76,7 +76,8 @@
     },
     "inPlace": {
       "title": "{count, plural, one {Questa attività modifica direttamente la tua cartella} other {Questa attività modifica direttamente le tue cartelle}}",
-      "body": "{count, plural, one {Le modifiche sono già nella tua cartella, quindi non c’è nulla da applicare.} other {Le modifiche sono già nelle tue cartelle, quindi non c’è nulla da applicare.}} Le bozze di pull request non sono ancora disponibili per le attività locali: esegui il commit qui, poi fai push e apri una pull request con i tuoi strumenti abituali."
+      "body": "{count, plural, one {Le modifiche sono già nella tua cartella, quindi non c’è nulla da applicare.} other {Le modifiche sono già nelle tue cartelle, quindi non c’è nulla da applicare.}} Le bozze di pull request non sono ancora disponibili per le attività locali: esegui il commit qui, poi fai push e apri una pull request con i tuoi strumenti abituali.",
+      "bodyWithoutGit": "{count, plural, one {Le modifiche sono già nella tua cartella, quindi non c’è nulla da applicare.} other {Le modifiche sono già nelle tue cartelle, quindi non c’è nulla da applicare.}}"
     }
   },
   "fileReview": {

@@ -76,7 +76,8 @@
     },
     "inPlace": {
       "title": "{count, plural, one {Cette tâche modifie directement votre dossier} other {Cette tâche modifie directement vos dossiers}}",
-      "body": "{count, plural, one {Ses modifications sont déjà dans votre dossier, il n’y a donc rien à appliquer.} other {Ses modifications sont déjà dans vos dossiers, il n’y a donc rien à appliquer.}} Les pull requests brouillons ne sont pas encore disponibles pour les tâches locales. Commitez ici, puis poussez et ouvrez une pull request avec vos outils habituels."
+      "body": "{count, plural, one {Ses modifications sont déjà dans votre dossier, il n’y a donc rien à appliquer.} other {Ses modifications sont déjà dans vos dossiers, il n’y a donc rien à appliquer.}} Les pull requests brouillons ne sont pas encore disponibles pour les tâches locales. Commitez ici, puis poussez et ouvrez une pull request avec vos outils habituels.",
+      "bodyWithoutGit": "{count, plural, one {Ses modifications sont déjà dans votre dossier, il n’y a donc rien à appliquer.} other {Ses modifications sont déjà dans vos dossiers, il n’y a donc rien à appliquer.}}"
     }
   },
   "fileReview": {

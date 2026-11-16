@@ -76,7 +76,8 @@
     },
     "inPlace": {
       "title": "{count, plural, one {Esta tarea edita tu carpeta directamente} other {Esta tarea edita tus carpetas directamente}}",
-      "body": "{count, plural, one {Sus cambios ya están en tu carpeta, así que no hay nada que aplicar.} other {Sus cambios ya están en tus carpetas, así que no hay nada que aplicar.}} Las pull requests en borrador aún no están disponibles para tareas locales: haz commit aquí y luego haz push y abre una pull request con tus herramientas habituales."
+      "body": "{count, plural, one {Sus cambios ya están en tu carpeta, así que no hay nada que aplicar.} other {Sus cambios ya están en tus carpetas, así que no hay nada que aplicar.}} Las pull requests en borrador aún no están disponibles para tareas locales: haz commit aquí y luego haz push y abre una pull request con tus herramientas habituales.",
+      "bodyWithoutGit": "{count, plural, one {Sus cambios ya están en tu carpeta, así que no hay nada que aplicar.} other {Sus cambios ya están en tus carpetas, así que no hay nada que aplicar.}}"
     }
   },
   "fileReview": {

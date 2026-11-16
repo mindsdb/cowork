@@ -76,7 +76,8 @@
     },
     "inPlace": {
       "title": "{count, plural, one {Diese Aufgabe bearbeitet Ihren Ordner direkt} other {Diese Aufgabe bearbeitet Ihre Ordner direkt}}",
-      "body": "{count, plural, one {Die Änderungen sind bereits in Ihrem Ordner, daher gibt es nichts anzuwenden.} other {Die Änderungen sind bereits in Ihren Ordnern, daher gibt es nichts anzuwenden.}} Pull-Request-Entwürfe sind für lokale Aufgaben noch nicht verfügbar: Committen Sie hier, pushen Sie dann und öffnen Sie einen Pull-Request mit Ihren gewohnten Tools."
+      "body": "{count, plural, one {Die Änderungen sind bereits in Ihrem Ordner, daher gibt es nichts anzuwenden.} other {Die Änderungen sind bereits in Ihren Ordnern, daher gibt es nichts anzuwenden.}} Pull-Request-Entwürfe sind für lokale Aufgaben noch nicht verfügbar: Committen Sie hier, pushen Sie dann und öffnen Sie einen Pull-Request mit Ihren gewohnten Tools.",
+      "bodyWithoutGit": "{count, plural, one {Die Änderungen sind bereits in Ihrem Ordner, daher gibt es nichts anzuwenden.} other {Die Änderungen sind bereits in Ihren Ordnern, daher gibt es nichts anzuwenden.}}"
     }
   },
   "fileReview": {

@@ -280,7 +280,7 @@ export function ReviewPanel({
             </div>
             {inPlace && (
               <Alert variant="info" title={t('reviewPanel.inPlace.title', { count: workspaceEntries.length })}>
-                {t('reviewPanel.inPlace.body', { count: workspaceEntries.length })}
+                {t(offersGitOptions ? 'reviewPanel.inPlace.body' : 'reviewPanel.inPlace.bodyWithoutGit', { count: workspaceEntries.length })}
               </Alert>
             )}
             {sourceChanged && (inPlace

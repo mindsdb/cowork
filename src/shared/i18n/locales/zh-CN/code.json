@@ -76,7 +76,8 @@
     },
     "inPlace": {
       "title": "{count, plural, other {此任务直接编辑你的文件夹}}",
-      "body": "{count, plural, other {更改已在你的文件夹中，无需应用。}}本地任务暂不支持草稿拉取请求：请在此提交，然后用你常用的工具推送并创建拉取请求。"
+      "body": "{count, plural, other {更改已在你的文件夹中，无需应用。}}本地任务暂不支持草稿拉取请求：请在此提交，然后用你常用的工具推送并创建拉取请求。",
+      "bodyWithoutGit": "{count, plural, other {更改已在你的文件夹中，无需应用。}}"
     }
   },
   "fileReview": {

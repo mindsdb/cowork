@@ -130,6 +130,16 @@ describe('ReviewPanel for a Local task', () => {
     expect(within(dialog).getByText(/last committed version in your folder, including any edits made before this task started/)).toBeInTheDocument();
   });
 
+  it('does not tell a Local task on a folder without Git to commit there', async () => {
+    const user = userEvent.setup();
+    renderPanel({ ...base, base_revision: null, repository_root: null }, []);
+
+    await user.click(screen.getByRole('tab', { name: 'Deliver' }));
+    expect(screen.getByText(/already in your folder, so there is nothing to apply/)).toBeInTheDocument();
+    expect(screen.queryByText(/commit here/)).toBeNull();
+    expect(screen.queryByText('Commit all changes in your folder')).toBeNull();
+  });
+
   it('shows an unchanged Local folder as unchanged, not as untracked', () => {
     renderPanel(base, []);
 

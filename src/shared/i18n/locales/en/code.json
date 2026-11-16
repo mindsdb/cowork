@@ -32,7 +32,8 @@
     },
     "inPlace": {
       "title": "{count, plural, one {This task edits your folder directly} other {This task edits your folders directly}}",
-      "body": "{count, plural, one {Its changes are already in your folder, so there is nothing to apply.} other {Its changes are already in your folders, so there is nothing to apply.}} Draft pull requests are not available for Local tasks yet: commit here, then push and open a pull request with your usual tools."
+      "body": "{count, plural, one {Its changes are already in your folder, so there is nothing to apply.} other {Its changes are already in your folders, so there is nothing to apply.}} Draft pull requests are not available for Local tasks yet: commit here, then push and open a pull request with your usual tools.",
+      "bodyWithoutGit": "{count, plural, one {Its changes are already in your folder, so there is nothing to apply.} other {Its changes are already in your folders, so there is nothing to apply.}}"
     },
     "sourceChanged": {
       "title": "Source had local changes when this task began",

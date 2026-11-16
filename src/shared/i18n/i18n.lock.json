@@ -75309,6 +75309,40 @@
       "text": "f78e9fd1acf1"
     }
   },
+  "code:reviewPanel.inPlace.bodyWithoutGit": {
+    "de": {
+      "from": "9058eb6dc81f",
+      "text": "c51e861e0b55"
+    },
+    "es": {
+      "from": "9058eb6dc81f",
+      "text": "6f4e41257b27"
+    },
+    "fr": {
+      "from": "9058eb6dc81f",
+      "text": "940d280344e9"
+    },
+    "it": {
+      "from": "9058eb6dc81f",
+      "text": "2759309cefe4"
+    },
+    "ja": {
+      "from": "9058eb6dc81f",
+      "text": "a5af5b0ccbb3"
+    },
+    "ko": {
+      "from": "9058eb6dc81f",
+      "text": "d35ecaaf68b7"
+    },
+    "pt-BR": {
+      "from": "9058eb6dc81f",
+      "text": "27b01db37cc4"
+    },
+    "zh-CN": {
+      "from": "9058eb6dc81f",
+      "text": "c5c7eae9ab39"
+    }
+  },
   "code:reviewPanel.inPlace.title": {
     "de": {
       "from": "33df6efdf5a0",
