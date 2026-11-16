@@ -336,7 +336,7 @@
     "topUpBalance": "充值余额",
     "modelBudgetReached": "你所在组织的预算已用完，无法运行 {model}。",
     "viewBudgets": "查看预算",
-    "imageModelNeedsMindsHub": "图像生成在 MindsHub 上运行。请在上方的 LLM 服务商中添加 MindsHub 以选择图像模型。",
+    "imageModelNeedsMindsHub": "图像生成在 MindsHub 上运行。请在 LLM 服务商中添加 MindsHub 以选择图像模型。",
     "imageModelHint": "选择用于生成图像的模型。"
   },
   "memory": {

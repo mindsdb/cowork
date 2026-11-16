@@ -336,7 +336,7 @@
     "topUpBalance": "Top up your balance",
     "modelBudgetReached": "{model} can't run because your organization's budget is used up.",
     "viewBudgets": "View budgets",
-    "imageModelNeedsMindsHub": "Image generation runs on MindsHub. Add it under LLM Providers above to choose an image model.",
+    "imageModelNeedsMindsHub": "Image generation runs on MindsHub. Add it under LLM Providers to choose an image model.",
     "imageModelHint": "Pick the model used to generate images."
   },
   "memory": {

@@ -336,7 +336,7 @@
     "topUpBalance": "Recarga tu saldo",
     "modelBudgetReached": "{model} no puede ejecutarse porque se agotó el presupuesto de tu organización.",
     "viewBudgets": "Ver presupuestos",
-    "imageModelNeedsMindsHub": "La generación de imágenes funciona con MindsHub. Añádelo arriba en Proveedores de LLM para elegir un modelo de imagen.",
+    "imageModelNeedsMindsHub": "La generación de imágenes funciona con MindsHub. Añádelo en Proveedores de LLM para elegir un modelo de imagen.",
     "imageModelHint": "Elige el modelo que se usa para generar imágenes."
   },
   "memory": {

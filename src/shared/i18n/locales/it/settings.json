@@ -336,7 +336,7 @@
     "topUpBalance": "Ricarica il saldo",
     "modelBudgetReached": "Impossibile eseguire {model}: il budget della tua organizzazione è esaurito.",
     "viewBudgets": "Visualizza i budget",
-    "imageModelNeedsMindsHub": "La generazione di immagini funziona con MindsHub. Aggiungilo sopra in Provider LLM per scegliere un modello per le immagini.",
+    "imageModelNeedsMindsHub": "La generazione di immagini funziona con MindsHub. Aggiungilo in Provider LLM per scegliere un modello per le immagini.",
     "imageModelHint": "Scegli il modello usato per generare immagini."
   },
   "memory": {

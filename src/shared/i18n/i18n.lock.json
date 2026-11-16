@@ -129949,36 +129949,36 @@
   },
   "settings:agent.imageModelNeedsMindsHub": {
     "de": {
-      "from": "2d4df49422a0",
-      "text": "fd0376e5bf51"
+      "from": "659739243336",
+      "text": "8859c21e5394"
     },
     "es": {
-      "from": "2d4df49422a0",
-      "text": "b1448b353ae2"
+      "from": "659739243336",
+      "text": "08452a58f2e3"
     },
     "fr": {
-      "from": "2d4df49422a0",
-      "text": "2cbf333086df"
+      "from": "659739243336",
+      "text": "39a1a61ecbda"
     },
     "it": {
-      "from": "2d4df49422a0",
-      "text": "eaddb5ec46e9"
+      "from": "659739243336",
+      "text": "9ec86be0f71c"
     },
     "ja": {
-      "from": "2d4df49422a0",
-      "text": "28a0910ccecc"
+      "from": "659739243336",
+      "text": "e3dfbc78730a"
     },
     "ko": {
-      "from": "2d4df49422a0",
-      "text": "6e52dc7975fe"
+      "from": "659739243336",
+      "text": "c4d9907f925e"
     },
     "pt-BR": {
-      "from": "2d4df49422a0",
-      "text": "8f83f8cf05ef"
+      "from": "659739243336",
+      "text": "ff7ee6395232"
     },
     "zh-CN": {
-      "from": "2d4df49422a0",
-      "text": "4299a3b553bc"
+      "from": "659739243336",
+      "text": "0fce0ef9cc45"
     }
   },
   "settings:agent.modelBudgetReached": {

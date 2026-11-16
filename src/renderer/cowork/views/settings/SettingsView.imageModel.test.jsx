@@ -177,7 +177,8 @@ describe('SettingsView: Image model row', () => {
       onSave={onSave}
     />);
     expect(screen.getByText('Image model')).toBeInTheDocument();
-    expect(screen.getByText(/Image generation runs on MindsHub/)).toBeInTheDocument();
+    // Direction-neutral: LLM Providers sits below this row once any provider is set.
+    expect(screen.getByText('Image generation runs on MindsHub. Add it under LLM Providers to choose an image model.')).toBeInTheDocument();
     expect(screen.queryByTitle('Pick the model used to generate images.')).toBeNull();
   });
 
@@ -189,7 +190,7 @@ describe('SettingsView: Image model row', () => {
       onSave={onSave}
     />);
     expect(screen.queryByText(/Image generation runs on MindsHub/)).toBeNull();
-    expect(screen.queryByText(/LLM Providers above to choose an image model/)).toBeNull();
+    expect(screen.queryByText(/LLM Providers to choose an image model/)).toBeNull();
     expect(screen.queryByText('Image model')).toBeNull();
   });
 
