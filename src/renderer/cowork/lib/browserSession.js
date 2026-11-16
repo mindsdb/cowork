@@ -146,14 +146,16 @@ export function latestBrowserSessionIdIn(messages, streamingMsg = null) {
    browserSession.test.js pins each name here to it.
 
    The viewer posts to the pane on window: ready once its script runs, live
-   when its current socket got the pod's hello, and closed, with a close
+   once a stream's hello shows (which waits for the person to let go of a
+   held mouse button), and closed, with a close
    code, when no live or pending socket is left. Each router refusal of the
    view is a page that posts the closed message too. url, ask and control
    carry the page the viewer shows, a question typed in its address bar, and
    who holds the browser. A viewer that takes tickets in place transfers a
    MessagePort with its ready; the pane posts ticket, pause and focus on that
-   port only, so no ticket travels by window.postMessage. The theme alone
-   goes to the viewer's window (browserViewerTheme). */
+   port only, so no ticket travels by window.postMessage. Only the theme
+   (browserViewerTheme) and the hand-back (HAND_BACK_MESSAGE in
+   browserHandBack.js) go to the viewer's window. */
 export const VIEWER_READY = 'browser-viewer-ready';
 export const VIEWER_LIVE = 'browser-viewer-live';
 export const VIEWER_CLOSED = 'browser-viewer-closed';

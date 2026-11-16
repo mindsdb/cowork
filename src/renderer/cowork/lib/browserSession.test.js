@@ -29,6 +29,7 @@ import {
   viewerLinkFrom,
   withBrowserStep,
 } from './browserSession';
+import { HAND_BACK_MESSAGE } from './browserHandBack';
 import embedAnswer from '../__fixtures__/browser-router/embed_answer.json';
 import viewerMessages from '../__fixtures__/browser-viewer/messages.json';
 
@@ -123,7 +124,7 @@ describe('the viewer messages', () => {
     }).toEqual(viewerMessages.viewer_to_pane);
     expect({ ticket: VIEWER_TICKET, pause: VIEWER_PAUSE, focus: VIEWER_FOCUS }).toEqual(viewerMessages.pane_to_viewer_port);
     const style = { getPropertyValue: () => '' };
-    expect({ theme: browserViewerTheme(style, 'light').type }).toEqual(viewerMessages.pane_to_viewer_window);
+    expect({ theme: browserViewerTheme(style, 'light').type, hand_back: HAND_BACK_MESSAGE }).toEqual(viewerMessages.pane_to_viewer_window);
   });
 });
 

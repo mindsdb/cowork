@@ -13,7 +13,8 @@
     "focus": "browser-viewer-focus"
   },
   "pane_to_viewer_window": {
-    "theme": "browser-theme"
+    "theme": "browser-theme",
+    "hand_back": "browser-hand-back"
   },
   "ready_carries_port": true,
   "drop_sequence": [
