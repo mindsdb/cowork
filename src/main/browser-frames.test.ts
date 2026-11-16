@@ -216,21 +216,46 @@ describe('FrameReads.frameMasks', () => {
     expect(masks).not.toContainEqual(box(10, 230, 180, 60));
   });
 
-  it("blacks out whole a frame that keeps a secret frame where its world's search can't reach when the debugger can't place that frame's owner, and looks no further where the search counted every frame", async () => {
+  it("blacks out whole a frame that keeps a secret frame where its world's search can't reach only when the debugger can't place that frame's owner, which draws, and looks no further where the search counted every frame", async () => {
+    const at = (x: number, y: number, width: number, height: number) => ({ content: box(x, y, width, height), border: box(x, y, width, height) });
+    const card = { secrets: [box(5, 5, 80, 10)] };
     const dbg = fakeCdpDebugger({
       frames: [
-        // The card frame's owner draws no box the debugger can give.
-        { id: 'donate', url: 'https://donate.other.test/wrapper', parentId: MAIN_FRAME, remote: true, owner: owner(0, 200) },
-        { id: 'vault', url: 'https://vault.vendor.test/card', parentId: 'donate', remote: true, holds: true, owner: null },
+        // A billing form of another site that keeps two card options in a closed shadow root: the one not picked is display: none, so its owner lays out no box.
+        { id: 'billing', url: 'https://billing.other.test/form', parentId: MAIN_FRAME, remote: true, owner: owner(0, 200) },
+        { id: 'unpicked', url: 'https://vault.vendor.test/card', parentId: 'billing', remote: true, holds: true, secrets: card, owner: null },
+        { id: 'picked', url: 'https://vault.vendor.test/card?2', parentId: 'billing', remote: true, holds: true, secrets: card, owner: at(10, 60, 100, 20) },
+        // A pledge form whose card frame's owner the debugger finds in no process it asks.
+        { id: 'pledge', url: 'https://pledge.other.test/form', parentId: MAIN_FRAME, remote: true, owner: owner(300, 0) },
+        { id: 'elsewhere', url: 'https://vault.vendor.test/card?3', parentId: 'pledge', remote: true, holds: true, secrets: card, owner: at(10, 10, 100, 20), unplaced: true },
         // A checkout whose world found its one frame and blacks it out whole.
-        { id: 'checkout', url: 'https://checkout.other.test/', parentId: MAIN_FRAME, remote: true, owner: owner(300, 0), secrets: { owners: 1, otherSiteFrames: [box(0, 0, 100, 50)] } },
+        { id: 'checkout', url: 'https://checkout.other.test/', parentId: MAIN_FRAME, remote: true, owner: owner(600, 0), secrets: { owners: 1, otherSiteFrames: [box(0, 0, 100, 50)] } },
         { id: 'fields', url: 'https://vault.vendor.test/card2', parentId: 'checkout', remote: true, holds: true },
       ],
     });
     const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
-    expect(masks).toHaveLength(2);
-    expect(masks).toEqual(expect.arrayContaining([box(-2, 198, 204, 104), box(300, 0, 100, 50)]));
+    // The billing form stays shown but for its drawn card frame; the pledge form is blacked out whole.
+    expect(masks).toHaveLength(3);
+    expect(masks).toEqual(expect.arrayContaining([box(10, 260, 100, 20), box(298, -2, 204, 104), box(600, 0, 100, 50)]));
     expect(sentOf(dbg, 'Page.createIsolatedWorld').map(({ params }) => params.frameId)).not.toContain('fields');
+  });
+
+  it("shows a frame of another site whose frame of its own origin, which its search entered, is gone by the time it is read, blacks out whole one there whose read fails, and still blacks out the card frame it keeps in a closed shadow root", async () => {
+    const at = (x: number, y: number, width: number, height: number) => ({ content: box(x, y, width, height), border: box(x, y, width, height) });
+    const dbg = fakeCdpDebugger({
+      frames: [
+        // A donation form of another site at (0, 200) whose helper frame of its own origin is dropped after the debugger lists it.
+        { id: 'donate', url: 'https://donate.other.test/wrapper', parentId: MAIN_FRAME, remote: true, owner: owner(0, 200) },
+        { id: 'helper', url: 'https://donate.other.test/helper', parentId: 'donate', owner: at(0, 0, 1, 1), gone: true },
+        { id: 'vault', url: 'https://vault.vendor.test/card', parentId: 'donate', remote: true, holds: true, secrets: { secrets: [box(5, 5, 80, 10)] }, owner: at(10, 60, 100, 20) },
+        // The same form at (300, 0), whose frame of its own origin draws but its world's read fails.
+        { id: 'pledge', url: 'https://pledge.other.test/wrapper', parentId: MAIN_FRAME, remote: true, owner: owner(300, 0) },
+        { id: 'notes', url: 'https://pledge.other.test/notes', parentId: 'pledge', owner: at(10, 10, 120, 30), throws: true },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toHaveLength(2);
+    expect(masks).toEqual(expect.arrayContaining([box(10, 260, 100, 20), box(310, 10, 120, 30)]));
   });
 
   it("blacks out whole a payment provider's frame, which no world opens in, and keeps each mask inside its frame", async () => {

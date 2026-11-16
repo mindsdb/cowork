@@ -58,6 +58,17 @@ export interface FakeFrame {
   ownerTag?: 'iframe' | 'frame' | 'object' | 'embed';
   /** The frame's world never answers. */
   hangs?: boolean;
+  /** The frame's world answers every read with an exception. */
+  throws?: boolean;
+  /** The page dropped the frame just after the debugger listed it: frame
+      trees and auto-attach still list it, while Page.createIsolatedWorld
+      and DOM.getFrameOwner find no such frame, as Chromium answers for a
+      removed frame. */
+  gone?: boolean;
+  /** Chromium lists the frame in the process the debugger asks, but its
+      owner element sits in another one, so DOM.getFrameOwner answers that
+      the frame doesn't belong to that target. */
+  unplaced?: boolean;
   /** What the frame's own world answers a look for a secret (frameSecret):
       true when it finds a secret, card-named or sign-in field or a payment
       frame in its document or a frame it enters, null when it finds none
@@ -216,9 +227,10 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         return { object: { type: 'object', subtype: 'node', objectId: `root:${root.frame.id}:${root.level}` } };
       }
       case 'DOM.getFrameOwner': {
-        // Only the session of the process that holds the owner element finds it.
         const owned = frame(params.frameId);
-        if (!owned || ownerProcess(owned) !== frameOfSession(sessionId)) throw new Error('Frame with the given id was not found.');
+        if (!owned || owned.gone) throw new Error('Frame with the given id was not found.');
+        // Every process lists every frame, but only the session of the process that holds the owner element finds it.
+        if (owned.unplaced || ownerProcess(owned) !== frameOfSession(sessionId)) throw new Error('Frame with the given id does not belong to the target.');
         return { backendNodeId: 1000 + model.frames.indexOf(owned) };
       }
       case 'DOM.getBoxModel': {
@@ -229,7 +241,7 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
       }
       case 'Page.createIsolatedWorld': {
         const target = frame(params.frameId);
-        if (!target) throw new Error('No frame for given id found');
+        if (!target || target.gone) throw new Error('No frame for given id found');
         const id = nextWorld++;
         worlds.set(`${sessionId ?? ''}/${id}`, target.id);
         return { executionContextId: id };
@@ -241,6 +253,7 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         if (!target) throw new Error('Cannot find context with specified id');
         const expression = String(method === 'Runtime.evaluate' ? params.expression : params.functionDeclaration);
         if (target.hangs) return new Promise(() => {});
+        if (target.throws) return { exceptionDetails: { text: 'Uncaught' }, result: { type: 'object', subtype: 'error' } };
         /* Read from the document, or from inside the closed root at `level` the debugger handed the world. */
         let level = -1;
         if (method === 'Runtime.callFunctionOn') {

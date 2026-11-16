@@ -132,6 +132,12 @@ export const FRAME_READ_MS = 2_000;
 /* The isolated worlds' name. Pages can't see it. */
 const WORLD_NAME = 'page-reads';
 
+/* What Chromium answers when a frame's owner draws nothing: DOM.getFrameOwner
+   for a frame no longer in the page, and DOM.getBoxModel for an element it
+   lays out no box for (display: none, or removed). Any other failure
+   leaves an owner unplaced (ownerBoxes). */
+const DRAWS_NOTHING: readonly string[] = ['Frame with the given id was not found', 'Could not compute box model'];
+
 type CdpListener = (event: unknown, method: string, params: unknown, sessionId: string) => void;
 
 /** The part of Electron's webContents.debugger this module uses. */
@@ -165,6 +171,13 @@ interface KnownFrame {
   parentId: string | null;
   origin?: string;
   session?: string;
+}
+
+/* Where a frame's owner element draws: its content quad (x1, y1, ... x4,
+   y4) and its border box. */
+interface OwnerBoxes {
+  content: number[];
+  border: Box;
 }
 
 interface Evaluated {
@@ -446,11 +459,18 @@ export class DebuggerSession {
       the process that holds that element, inside a closed shadow root too:
       in the page's viewport for an element in the page's process, and in
       the own viewport of the frame of another site it sits in otherwise
-      (ownView). It fails for one that draws nothing. */
-  async ownerBoxes(frameId: string): Promise<{ content: number[]; border: Box }> {
-    const { backendNodeId, session } = await this.ownerOf(frameId);
-    const { model } = await this.send<{ model: { content: number[]; border: number[] } }>('DOM.getBoxModel', { backendNodeId }, session);
-    return { content: model.content, border: quadBox(model.border) };
+      (ownView). Null when it draws nothing: the frame is gone since the
+      debugger listed it, or its element lays out no box (display: none, or
+      removed). It throws when the debugger can't place it otherwise. */
+  async ownerBoxes(frameId: string): Promise<OwnerBoxes | null> {
+    try {
+      const { backendNodeId, session } = await this.ownerOf(frameId);
+      const { model } = await this.send<{ model: { content: number[]; border: number[] } }>('DOM.getBoxModel', { backendNodeId }, session);
+      return { content: model.content, border: quadBox(model.border) };
+    } catch (error) {
+      if (error instanceof Error && DRAWS_NOTHING.some((answer) => error.message.startsWith(answer))) return null;
+      throw error;
+    }
   }
 
   /** The address the element that holds frame `frameId` names (an object's
@@ -859,9 +879,11 @@ export class FrameReads {
    * In a frame the page's world can't search, the frames that frame's own
    * search can't reach (one in a closed shadow root there) are read too
    * (hiddenSecretFrames): one of its origin for the secret fields of its own
-   * document, and any other, when it is secret (secretLooks), blacked out
-   * whole where the debugger places its owner; the frame that holds them is
-   * blacked out whole when the debugger can't place one.
+   * document, or whole when that read fails, and any other, when it is
+   * secret (secretLooks), blacked out whole where the debugger places its
+   * owner. One whose owner draws nothing (gone, or laid out no box) has
+   * nothing to black out; the frame that holds them is blacked out whole
+   * when the debugger can't place an owner there that draws.
    */
   async frameMasks(): Promise<Box[]> {
     const main = await this.session.mainFrame();
@@ -893,30 +915,39 @@ export class FrameReads {
   /* What a screenshot blacks out in frame `frameId` that its own world's
      search for secrets may not have reached, as the debugger places it
      (ownerBoxes: in the frame's own view when it runs in a process of its
-     own, else in the page's), or null when something there can't be
-     placed. That search counts the frame owners it finds in the documents
-     it searches (FoundSecrets' `owners`) and reaches none in a closed
-     shadow root, while the debugger knows each frame there (framesToRead
-     from the frame, its frames of other sites auto-attached). When the
-     debugger knows no more of them than the search counted, the search
-     found every one, and nothing more is looked into. Otherwise, as for the
-     page's own frames: each frame of its origin the search would enter is
-     read for the secret fields and payment frames of its own document in
-     its own world, placed through its owner, so one the search did reach
-     is never blacked out whole; and each other frame there that is secret
-     (`secretIn`) is blacked out whole, its owner's border box. */
+     own, else in the page's), or null when the debugger can't place an
+     owner there that draws. That search counts the frame owners it finds
+     in the documents it searches (FoundSecrets' `owners`) and reaches none
+     in a closed shadow root, while the debugger knows each frame there
+     (framesToRead from the frame, its frames of other sites
+     auto-attached). When the debugger knows no more of them than the
+     search counted, the search found every one, and nothing more is looked
+     into. Otherwise, as for the page's own frames: each frame of its origin
+     the search would enter is read for the secret fields and payment
+     frames of its own document in its own world, placed through its owner,
+     so one the search did reach is never blacked out whole, and one whose
+     read fails is; and each other frame there that is secret (`secretIn`)
+     is blacked out whole, its owner's border box. A frame whose owner
+     draws nothing (gone since the debugger listed it, or laid out no box,
+     as a card option not picked) shows nothing, so it has nothing to black
+     out. */
   private async hiddenSecretFrames(frameId: string, owners: number, secretIn: (frameId: string) => Promise<boolean>): Promise<Box[] | null> {
     await this.session.attachFrames(frameId);
     const inside = this.session.framesToRead(frameId, SECRET_SEARCH_DEPTH);
     if (inside.length <= owners) return [];
     const masks = await Promise.all(inside.map(async ({ id, searched }): Promise<Box[] | null> => {
-      if (!searched) return (await secretIn(id)) ? this.session.ownerBoxes(id).then(({ border }) => [border], () => null) : [];
-      const found = await this.session.read<FoundSecrets>(id, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth: 0 });
-      const shown = [...found.secrets, ...found.paymentFrames, ...found.mirroredFrames];
-      if (!shown.length) return [];
-      const owner = await this.session.ownerBoxes(id).catch(() => null);
-      if (!owner) return null;
-      const place = throughQuad(owner.content, found.viewport);
+      const found = searched ? await this.session.read<FoundSecrets>(id, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth: 0 }).catch(() => null) : null;
+      const shown = found ? [...found.secrets, ...found.paymentFrames, ...found.mirroredFrames] : [];
+      if (found && !shown.length) return [];
+      if (!searched && !(await secretIn(id))) return [];
+      let owner: OwnerBoxes | null;
+      try {
+        owner = await this.session.ownerBoxes(id);
+      } catch {
+        return null;
+      }
+      if (!owner) return [];
+      const place = found && throughQuad(owner.content, found.viewport);
       if (!place) return [owner.border];
       const content = quadBox(owner.content);
       return shown.map((box) => clip(place(box), content)).filter((box): box is Box => box !== null);
