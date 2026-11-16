@@ -65,6 +65,10 @@ function draftDiffers(draft, current) {
 
 // ── Small shared bits ───────────────────────────────────────────────────
 
+// The panel's middle section, the only part that shrinks and scrolls when the
+// popup hits its height cap. Every other row keeps its content height.
+const SCROLL_BODY = 'min-h-0 overflow-y-auto overscroll-contain';
+
 function PanelHeader({ title }) {
   // .s-h3 already sets color:var(--ink); it does not set padding/border, so
   // those move safely to utilities. Directional border zeroes its off-axis
@@ -499,12 +503,16 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
               background: 'var(--surface)', borderRadius: 14,
               boxShadow: 'var(--sh-popup)', overflow: 'hidden',
               fontFamily: FONT_BODY, outline: 'none',
+              // Never taller than the space Base UI measures beside the
+              // trigger: the body scrolls, the header and footer stay put.
+              maxHeight: 'var(--available-height)',
+              display: 'flex', flexDirection: 'column',
             }}>
               {/* NOT PUBLISHED — Share to the Web */}
               {!isPublished && (
                 <>
                   <PanelHeader title={t('publish.shareToWeb')} />
-                  <div className="py-3 px-4">
+                  <div className={`py-3 px-4 ${SCROLL_BODY}`} data-testid="publish-menu-body">
                     <SectionLabel>{t('publish.whoCanAccess')}</SectionLabel>
                     {sharingSettingsStatus || (
                       <>
@@ -538,8 +546,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                     <SectionLabel>{t('publish.websiteUrl')}</SectionLabel>
                     <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry: 'viewer' })} />
                   </div>
-  
-                  <div className="py-3 px-4">
+
+                  <div className={`py-3 px-4 ${SCROLL_BODY}`} data-testid="publish-menu-body">
                     {view === 'summary' && (
                       <>
                         <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.change')}</LinkButton>}>

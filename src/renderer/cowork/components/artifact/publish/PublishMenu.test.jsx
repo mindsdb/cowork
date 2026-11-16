@@ -208,3 +208,45 @@ describe('PublishMenu — a first share with the platform UI on', () => {
     expect(screen.getByText('Only me')).toBeInTheDocument();
   });
 });
+
+// jsdom does no layout, so these pin the CSS contract: the popup is capped at
+// the height Base UI measures beside the trigger, and only the body scrolls,
+// which keeps Update reachable on a short window.
+describe('PublishMenu — fits a short window', () => {
+  function popupOf(body) {
+    return body.closest('[role="dialog"]') || body.parentElement;
+  }
+
+  it('caps the unpublished panel and scrolls its body, keeping Share in the footer', () => {
+    render(<PublishMenu controller={makeController()} />);
+    fireEvent.click(screen.getByText('Share'));
+
+    const body = screen.getByTestId('publish-menu-body');
+    expect(body.className).toMatch(/\bmin-h-0\b/);
+    expect(body.className).toMatch(/\boverflow-y-auto\b/);
+    const popup = popupOf(body);
+    expect(popup.style.maxHeight).toBe('var(--available-height)');
+    expect(popup.style.flexDirection).toBe('column');
+    // The trigger is a "Share" button too; the footer's is the last one.
+    const share = screen.getAllByRole('button', { name: 'Share' }).at(-1);
+    expect(popup.contains(share)).toBe(true);
+    expect(body.contains(share)).toBe(false);
+  });
+
+  it('keeps Update outside the scrolling body of the access view', () => {
+    const ctrl = makeController({
+      publishedUrl: 'https://share/abc', accessMode: 'restricted', accessEmails: ['alice@x.com'], modified: true,
+    });
+    render(<PublishMenu controller={ctrl} />);
+    fireEvent.click(screen.getByText('Shared'));
+    fireEvent.click(screen.getByText('Change'));
+
+    const body = screen.getByTestId('publish-menu-body');
+    expect(body.className).toMatch(/\boverflow-y-auto\b/);
+    const popup = popupOf(body);
+    expect(popup.style.maxHeight).toBe('var(--available-height)');
+    const update = screen.getByRole('button', { name: 'Update' });
+    expect(popup.contains(update)).toBe(true);
+    expect(body.contains(update)).toBe(false);
+  });
+});
