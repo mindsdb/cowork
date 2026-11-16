@@ -10,6 +10,7 @@ vi.mock('../../api', () => ({
   revealSettingKey: vi.fn(async () => ''),
   fetchRecommendedModels: vi.fn(async () => ({})),
   testProviders: vi.fn(async () => ({ providerStatus: {}, providerStatusDetails: {} })),
+  testDecisionModel: vi.fn(async () => ({ ok: true, error: null, ms: 1 })),
 }));
 const host = vi.hoisted(() => ({ isElectron: true, isWeb: false, isMac: () => false, openExternal: () => {} }));
 vi.mock('../../../platform/host', () => ({
@@ -162,5 +163,52 @@ describe('the Fast answers with Jev switch', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalled());
 
     expect(onSave.mock.calls.at(-1)[0]).toMatchObject({ jevDecisionsEnabled: false });
+  });
+});
+
+describe('the Decision model group', () => {
+  it('signed in to MindsHub, is just Jev in the Model router card, with no fields', async () => {
+    for (const routing of [undefined, { mode: 'jev' }, { mode: 'jev', canSetDecisionModel: true }]) {
+      const { unmount } = render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing })} />);
+      expect(await screen.findByText('Planning model')).toBeInTheDocument();
+      // Folded under Show more after the coding model.
+      expect(screen.queryByText('Decision model')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      expect(screen.getByText('Decision model')).toBeInTheDocument();
+      expect(screen.getByText('Jev')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Endpoint URL')).toBeNull();
+      unmount();
+    }
+  });
+
+  it('without MindsHub, is absent for whoever may not change the provider, and on an older server', async () => {
+    const local = { ...COMPAT, name: 'Local' };
+    for (const routing of [undefined, { mode: 'llm' }, { mode: 'llm', canSetDecisionModel: false }]) {
+      const { unmount } = render(<Harness initial={settingsFor('openai-compatible', local, { routing })} />);
+      expect(await screen.findByText('Planning model')).toBeInTheDocument();
+      expect(screen.queryByText('Decision model')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+      unmount();
+    }
+  });
+
+  it('sits with the provider settings, and its fields save with the form', async () => {
+    const onSave = vi.fn(async () => {});
+    render(<SettingsView
+      settings={settingsFor('openai-compatible', { ...COMPAT, name: 'Local' }, { routing: { mode: 'llm', routerProvider: 'openai-compatible', canSetDecisionModel: true } })}
+      setSetting={vi.fn()} onSave={onSave}
+      theme="dark" onThemeChange={vi.fn()} skin="default" onSkinChange={vi.fn()}
+      customTheme={{}} onCustomThemeChange={vi.fn()} agentLabel="Anton"
+      section="agent" onSectionChange={vi.fn()} shellUpdate={null} onDownloadShellUpdate={vi.fn()}
+    />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect(screen.getByText('Decision model')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Endpoint URL'), { target: { value: 'https://decide.example.test/d' } });
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'own-key' } });
+    fireEvent.click(await screen.findByRole('button', { name: /^Save settings$/ }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls.at(-1)[0]).toMatchObject({
+      decisionModelUrl: 'https://decide.example.test/d', decisionModelApiKey: 'own-key',
+    });
   });
 });
