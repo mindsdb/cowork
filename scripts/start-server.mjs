@@ -31,12 +31,44 @@ const NON_PROD_POSTHOG_KEY = 'phc_zBzpZzh8kCPVpKeVyRRLNSfyTisRfLCq8SPhtiTHZway';
 
 /** A dev server's turns are ours: send them to the non-production project,
  *  labelled `dev`, as the desktop app does for its dev kind. A variable the
- *  developer exported is left alone, even an empty one. */
-export function devAnalyticsEnv(env = process.env) {
+ *  developer set, exported or in one of anton's dotenv files (`dotenvNames`),
+ *  is left alone, even an empty one: anton's documented way to switch the sink
+ *  off is `ANTON_POSTHOG_KEY=` in such a file, and a spawned value would
+ *  outrank it. */
+export function devAnalyticsEnv(env = process.env, dotenvNames = new Set()) {
+  const isSet = (name) => env[name] !== undefined || dotenvNames.has(name);
   const out = {};
-  if (env.ANTON_POSTHOG_KEY === undefined) out.ANTON_POSTHOG_KEY = NON_PROD_POSTHOG_KEY;
-  if (env.ANTON_DEPLOYMENT_ENV === undefined) out.ANTON_DEPLOYMENT_ENV = 'dev';
+  if (!isSet('ANTON_POSTHOG_KEY')) out.ANTON_POSTHOG_KEY = NON_PROD_POSTHOG_KEY;
+  if (!isSet('ANTON_DEPLOYMENT_ENV')) out.ANTON_DEPLOYMENT_ENV = 'dev';
   return out;
+}
+
+/** The names assigned in the dotenv files anton reads for a server running in
+ *  `serverDir`, upper-cased: `.env` and `.anton/.env` there, then
+ *  `~/.anton/.env` and `~/.cowork/.env`. A line match, not python-dotenv's full
+ *  grammar (src/main/analytics-env.ts has that), which is enough for a dev
+ *  script. */
+export function antonDotenvNames(serverDir, home = os.homedir()) {
+  const files = [
+    path.join(serverDir, '.env'),
+    path.join(serverDir, '.anton', '.env'),
+    path.join(home, '.anton', '.env'),
+    path.join(home, '.cowork', '.env'),
+  ];
+  const names = new Set();
+  for (const file of files) {
+    let text;
+    try {
+      text = fs.readFileSync(file, 'utf-8');
+    } catch {
+      continue;
+    }
+    for (const line of text.split(/\r?\n/)) {
+      const m = line.match(/^\s*(?:export\s+)?['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?\s*=/);
+      if (m) names.add(m[1].toUpperCase());
+    }
+  }
+  return names;
 }
 
 // Locate the cowork-server directory. Convention: sibling of this repo
@@ -105,7 +137,7 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
 
   const env = {
     ...process.env,
-    ...devAnalyticsEnv(),
+    ...devAnalyticsEnv(process.env, antonDotenvNames(serverDir)),
     PATH: getEnvPath(),
     PYTHONUNBUFFERED: '1',
     // Pin the dev home; unset COWORK_HOME defaults to ~/.cowork (prod). Mirrors
