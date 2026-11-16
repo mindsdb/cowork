@@ -377,6 +377,14 @@
     "browserSession": {
       "opened": "Navigateur ouvert"
     },
+    "browserSteps": {
+      "open": "Ouverture de {site}",
+      "read": "Lecture de la page",
+      "look": "Examen de la page",
+      "act": "Travail sur la page",
+      "handOver": "Vous attend dans le navigateur",
+      "generic": "Utilisation du navigateur"
+    },
     "figureSources": {
       "noSource": "Aucune source : aucune étape de cette réponse n’a renvoyé ce nombre. Vérifiez-le avant de vous en servir.",
       "repeated": "Repris d’une réponse précédente",

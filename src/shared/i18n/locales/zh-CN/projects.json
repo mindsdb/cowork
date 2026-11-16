@@ -377,6 +377,14 @@
     "browserSession": {
       "opened": "已打开浏览器"
     },
+    "browserSteps": {
+      "open": "正在打开 {site}",
+      "read": "正在阅读页面",
+      "look": "正在查看页面",
+      "act": "正在页面上操作",
+      "handOver": "正在浏览器中等你",
+      "generic": "正在使用浏览器"
+    },
     "figureSources": {
       "noSource": "无来源：此回答中没有任何步骤返回过这个数字。采取行动前请先核实。",
       "repeated": "沿用自之前的回答",

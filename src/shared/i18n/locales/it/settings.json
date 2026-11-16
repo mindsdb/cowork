@@ -494,5 +494,12 @@
       "saved": "Salvato. I membri lo vedranno la prossima volta che aprono l’app o le Impostazioni.",
       "clean": "Nessuna modifica al branding non salvata"
     }
+  },
+  "voice": {
+    "title": "Voce",
+    "agentTitle": "Agente vocale",
+    "agentHelp": "Parla con {agent} dal pulsante di chiamata. Disattivo nasconde i pulsanti di chiamata e termina la chiamata in corso.",
+    "voiceTitle": "Voce",
+    "voiceHelp": "Scegline una per ascoltarla. {agent} dice una breve frase con ogni nuova voce."
   }
 }

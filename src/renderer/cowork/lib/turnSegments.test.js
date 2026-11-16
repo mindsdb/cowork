@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { splitTurnSegments, liveSegmentIndex } from './turnSegments';
+import { resetBrowserPrefsForTests, syncBrowserPrefs } from './browserPrefs';
 
 const work = (id, startedAt = 1) => ({ id, label: id, badge: 'ToolProgress', status: 'completed', startedAt });
 const question = (qid, { answer = null, completedAt = null, options, select } = {}) => ({
@@ -146,6 +147,49 @@ describe('splitTurnSegments', () => {
       expect(last([question('ask:1', { answer: TIMEOUT })], {})).toEqual({ reopened: false, expired: false });
       expect(last([question('ask:1')], {})).toEqual({ reopened: false, expired: true });
     });
+  });
+});
+
+describe('position-click cards', () => {
+  const POSITION = [{ value: 'approve', label: 'Approve', detail: 'Allow clicks by position on this page' }];
+  afterEach(() => { resetBrowserPrefsForTests(); });
+
+  it('drops an answered one whatever the setting, so the work around it stays one block', () => {
+    const steps = [work('a'), question('browser:approve:t:p', { answer: { status: 'answered', values: ['approve'] }, options: POSITION }), work('b')];
+    expect(shape(splitTurnSegments(steps))).toEqual([['a', 'b']]);
+    syncBrowserPrefs({ browserApproveSteps: false });
+    expect(shape(splitTurnSegments(steps))).toEqual([['a', 'b']]);
+  });
+
+  it('keeps one still waiting, in case the app could not approve it', () => {
+    const steps = [work('a'), question('browser:approve:t:p', { options: POSITION })];
+    expect(shape(splitTurnSegments(steps))).toEqual([['a'], 'Q:question-browser:approve:t:p', []]);
+  });
+});
+
+describe('held browser step cards', () => {
+  const STEP = [{ value: 'approve', label: 'Approve', detail: 'Take this step once' }, { value: 'cancel', label: 'Cancel' }];
+  const held = (answer) => question('browser:approve:t-abc:p', { answer, options: STEP });
+  afterEach(() => { resetBrowserPrefsForTests(); });
+
+  it('folds an answered one into the steps as one line, whoever approved it', () => {
+    const steps = [work('a'), held({ status: 'answered', values: ['approve'] }), work('b')];
+    const segments = splitTurnSegments(steps);
+    expect(shape(segments)).toEqual([['a', 'question-browser:approve:t-abc:p', 'b']]);
+    expect(segments[0].steps[1]).toMatchObject({ badge: 'BrowserApproval', label: 'Browser action approved', data: { approved: true, sessionId: 't-abc' } });
+    syncBrowserPrefs({ browserApproveSteps: false });
+    expect(shape(splitTurnSegments(steps))).toEqual([['a', 'question-browser:approve:t-abc:p', 'b']]);
+  });
+
+  it('says cancelled for a Cancel, a Skip or no answer', () => {
+    for (const answer of [{ status: 'answered', values: ['cancel'] }, { status: 'skipped', values: [] }, { status: 'timeout', values: [] }]) {
+      const [segment] = splitTurnSegments([held(answer)]);
+      expect(segment.steps[0]).toMatchObject({ label: 'Browser action cancelled', data: { approved: false } });
+    }
+  });
+
+  it('keeps one still waiting as its card', () => {
+    expect(shape(splitTurnSegments([work('a'), held(null)]))).toEqual([['a'], 'Q:question-browser:approve:t-abc:p', []]);
   });
 });
 
