@@ -213,10 +213,6 @@ describe('PublishMenu — a first share with the platform UI on', () => {
 // the height Base UI measures beside the trigger, and only the body scrolls,
 // which keeps Update reachable on a short window.
 describe('PublishMenu — fits a short window', () => {
-  function popupOf(body) {
-    return body.closest('[role="dialog"]') || body.parentElement;
-  }
-
   it('caps the unpublished panel and scrolls its body, keeping Share in the footer', () => {
     render(<PublishMenu controller={makeController()} />);
     fireEvent.click(screen.getByText('Share'));
@@ -224,8 +220,9 @@ describe('PublishMenu — fits a short window', () => {
     const body = screen.getByTestId('publish-menu-body');
     expect(body.className).toMatch(/\bmin-h-0\b/);
     expect(body.className).toMatch(/\boverflow-y-auto\b/);
-    const popup = popupOf(body);
-    expect(popup.style.maxHeight).toBe('var(--available-height)');
+    const popup = screen.getByRole('dialog');
+    expect(popup.contains(body)).toBe(true);
+    expect(popup.style.maxHeight).toBe('var(--available-height, 80vh)');
     expect(popup.style.flexDirection).toBe('column');
     // The trigger is a "Share" button too; the footer's is the last one.
     const share = screen.getAllByRole('button', { name: 'Share' }).at(-1);
@@ -243,10 +240,30 @@ describe('PublishMenu — fits a short window', () => {
 
     const body = screen.getByTestId('publish-menu-body');
     expect(body.className).toMatch(/\boverflow-y-auto\b/);
-    const popup = popupOf(body);
-    expect(popup.style.maxHeight).toBe('var(--available-height)');
+    const popup = screen.getByRole('dialog');
+    expect(popup.style.maxHeight).toBe('var(--available-height, 80vh)');
+    // The link row scrolls with the body rather than holding its height.
+    expect(body.textContent).toContain('share/abc');
     const update = screen.getByRole('button', { name: 'Update' });
     expect(popup.contains(update)).toBe(true);
     expect(body.contains(update)).toBe(false);
+  });
+
+  it('lets a long notice and an error shrink beside the footer', () => {
+    const ctrl = makeController({
+      publishedUrl: 'https://share/abc', accessMode: 'public',
+      notice: 'A long warning about the old link', error: 'Update failed',
+    });
+    render(<PublishMenu controller={ctrl} />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    const body = screen.getByTestId('publish-menu-body');
+    for (const text of ['A long warning about the old link', 'Update failed']) {
+      const row = screen.getByText(text).closest('[role="alert"], [role="status"]') || screen.getByText(text);
+      expect(body.contains(row)).toBe(false);
+      const shell = [...screen.getByRole('dialog').children].find((el) => el.contains(row));
+      expect(shell.className).toMatch(/\bmin-h-0\b/);
+      expect(shell.className).toMatch(/\boverflow-y-auto\b/);
+    }
   });
 });
