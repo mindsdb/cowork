@@ -378,6 +378,27 @@ describe('FrameReads.frameSecrets', () => {
     expect(dbg.sent.filter(([, , sessionId]) => sessionId === 'session-adyen')).toEqual([]);
   });
 
+  it("finds a payment provider's frame still loading in a frame another site's frame keeps in a closed shadow root, by the address its owner names, and none in an ordinary frame still loading there", async () => {
+    const frames: FakeFrame[] = [
+      // A donation form of another site whose world sees no frame: in a closed shadow root it keeps an iframe naming a payment provider's address, still at its first about:blank.
+      { id: 'donate', url: 'https://donate.other.test/wrapper', parentId: MAIN_FRAME, remote: true, holds: false, path: [0] },
+      { id: 'loading', url: 'about:blank', origin: 'https://donate.other.test', parentId: 'donate', src: 'https://checkoutshopper-test.adyen.com/checkoutshopper/securedfields/card.html' },
+      // The same before its first document, at '', and an object naming the provider's address relative to the form's.
+      { id: 'pay', url: 'https://pay.other.test/wrapper', parentId: MAIN_FRAME, remote: true, holds: false, path: [1] },
+      { id: 'early', url: '', parentId: 'pay', ownerTag: 'object', src: '//checkoutshopper-test.adyen.com/card' },
+      // A news widget of another site keeping an ad still loading.
+      { id: 'news', url: 'https://news.other.test/widget', parentId: MAIN_FRAME, remote: true, holds: false, path: [2] },
+      { id: 'slot', url: 'about:blank', origin: 'https://news.other.test', parentId: 'news', src: 'https://ads.third.test/slot' },
+    ];
+    const dbg = fakeCdpDebugger({ frames });
+    const found = await secrets(dbg, look(frames.filter((frame) => frame.path)));
+    expect([...found.frames].sort()).toEqual([0, 1]);
+    // No world opens in a frame about to show a payment provider's page.
+    expect(worldsOf(dbg).map(([frameId]) => frameId)).not.toEqual(expect.arrayContaining(['loading']));
+    expect(sentOf(dbg, 'DOM.getFrameOwner').filter(({ params }) => ['loading', 'early'].includes(String(params.frameId))).map(({ sessionId }) => sessionId))
+      .toEqual(['session-donate', 'session-pay']);
+  });
+
   it("finds a card field in a frame inside another site's frame as soon as its world answers, though a frame beside it never answers", async () => {
     const frames: FakeFrame[] = [
       { id: 'checkout', url: 'https://checkout.other.test/', parentId: MAIN_FRAME, remote: true, holds: null, path: [0] },

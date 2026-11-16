@@ -49,6 +49,13 @@ export interface FakeFrame {
       turns it. The frame's own viewport is its content box's size unless
       `secrets.viewport` says otherwise. */
   owner?: { content: Box; border: Box; quad?: number[] } | null;
+  /** The address the frame's owner element names (an iframe's src, an
+      object's data), as DOM.describeNode gives its attributes on the
+      session of the process that holds it; `url` unless it says otherwise,
+      as while the frame still loads it at about:blank or ''. */
+  src?: string;
+  /** The owner element's tag: iframe unless it says otherwise. */
+  ownerTag?: 'iframe' | 'frame' | 'object' | 'embed';
   /** The frame's world never answers. */
   hangs?: boolean;
   /** What the frame's own world answers a look for a secret (frameSecret):
@@ -135,8 +142,15 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
     const parent = frame(owned.parentId);
     return parent?.remote ? parent : parent && remoteAbove(parent);
   };
+  /* The owner element of frame `owned`, by the backend node id
+     DOM.getFrameOwner gives it, which only the session of the process that
+     holds it finds. */
+  const ownerOf = (backendNodeId: unknown, sessionId: string | undefined): FakeFrame | undefined => {
+    const owned = model.frames[Number(backendNodeId) - 1000];
+    return owned && ownerProcess(owned) === frameOfSession(sessionId) ? owned : undefined;
+  };
   const tree = (root: FakeFrame): unknown => ({
-    frame: { id: root.id, url: root.url, ...(root.parentId ? { parentId: root.parentId } : {}), securityOrigin: root.origin ?? new URL(root.url).origin },
+    frame: { id: root.id, url: root.url, ...(root.parentId ? { parentId: root.parentId } : {}), securityOrigin: root.origin ?? (URL.canParse(root.url) ? new URL(root.url).origin : '') },
     childFrames: model.frames.filter((f) => f.parentId === root.id && !f.remote).map(tree),
   });
 
@@ -184,6 +198,13 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
           closedRoots.set(backendNodeId, { frame: owner, level: Number(level) });
           return { node: { localName: 'x-host', nodeName: 'X-HOST', shadowRoots: [{ nodeName: '#document-fragment', shadowRootType: 'closed', backendNodeId }] } };
         }
+        if (Number(params.backendNodeId) >= 1000) {
+          // A frame's owner element (DOM.getFrameOwner), with the address it names among its attributes.
+          const owned = ownerOf(params.backendNodeId, sessionId);
+          if (!owned) throw new Error('No node with given id found');
+          const tag = owned.ownerTag ?? 'iframe';
+          return { node: { localName: tag, nodeName: tag.toUpperCase(), frameId: owned.id, attributes: ['style', 'border:0', tag === 'object' ? 'data' : 'src', owned.src ?? owned.url] } };
+        }
         const node = nodes.get(Number(params.backendNodeId));
         if (!node) throw new Error('No node with given id found');
         return { node: { localName: node.localName, nodeName: node.localName.toUpperCase(), ...(node.ownsFrame ? { frameId: node.ownsFrame } : {}) } };
@@ -201,8 +222,8 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         return { backendNodeId: 1000 + model.frames.indexOf(owned) };
       }
       case 'DOM.getBoxModel': {
-        const owned = model.frames[Number(params.backendNodeId) - 1000];
-        if (!owned || ownerProcess(owned) !== frameOfSession(sessionId)) throw new Error('Could not find node with given id');
+        const owned = ownerOf(params.backendNodeId, sessionId);
+        if (!owned) throw new Error('Could not find node with given id');
         if (!owned.owner) throw new Error('Could not compute box model.');
         return { model: { content: owned.owner.quad ?? quad(owned.owner.content), border: quad(owned.owner.border) } };
       }

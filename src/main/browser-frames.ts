@@ -38,17 +38,18 @@
  *
  * `frameSecrets`: page.json's frame `secret` for the frames a page read's
  * world can't look into: whether each one, or a frame inside it at any
- * depth, is a payment provider's frame or holds a secret, card-named or
- * sign-in field, read in each frame's own world and in each frame the
- * debugger knows inside it, one in a closed shadow root included, a frame
- * of yet another site inside another site's attached through that frame's
- * session.
+ * depth, is a payment provider's frame (or still loading one, by the
+ * address its owner names) or holds a secret, card-named or sign-in field,
+ * read in each frame's own world and in each frame the debugger knows
+ * inside it, one in a closed shadow root included, a frame of yet another
+ * site inside another site's attached through that frame's session.
  *
  * Every command goes out through `DebuggerSession.send`, which checks it
  * first: only the methods in ALLOWED_CDP_METHODS; input and the page reads on
  * the page's own session, a frame's session only auto-attaching its own
  * frames of other sites, opening and reading its world and the nodes that
- * world answers, and placing the elements that hold its frames;
+ * world answers, and placing the elements that hold its frames and reading
+ * the addresses they name;
  * Runtime.evaluate and Runtime.callFunctionOn only in an isolated world
  * this attach made with Page.createIsolatedWorld, and DOM.resolveNode only
  * into one, never in the
@@ -104,8 +105,9 @@ export const ALLOWED_CDP_METHODS: ReadonlySet<string> = new Set([
 /* What a frame's own session may send: its frame tree, an auto-attach to
    the frames of other sites in it (attachFrames), opening and reading the
    isolated world it reads in, the nodes that world answers, and where the
-   elements that hold its own frames draw them (ownerBoxes), which the
-   debugger finds inside closed shadow roots too. */
+   elements that hold its own frames draw them (ownerBoxes) and the
+   addresses they name (ownerAddress), which the debugger finds inside
+   closed shadow roots too. */
 const FRAME_SESSION_METHODS: ReadonlySet<string> = new Set([
   'Target.setAutoAttach',
   'Page.getFrameTree',
@@ -446,10 +448,43 @@ export class DebuggerSession {
       the own viewport of the frame of another site it sits in otherwise
       (ownView). It fails for one that draws nothing. */
   async ownerBoxes(frameId: string): Promise<{ content: number[]; border: Box }> {
-    const session = this.frames.get(this.frames.get(frameId)?.parentId ?? '')?.session;
-    const { backendNodeId } = await this.send<{ backendNodeId: number }>('DOM.getFrameOwner', { frameId }, session);
+    const { backendNodeId, session } = await this.ownerOf(frameId);
     const { model } = await this.send<{ model: { content: number[]; border: number[] } }>('DOM.getBoxModel', { backendNodeId }, session);
     return { content: model.content, border: quadBox(model.border) };
+  }
+
+  /** The address the element that holds frame `frameId` names (an object's
+      data, another owner's src), resolved against the address of the frame
+      it sits in, read on the session of the process that holds that
+      element, inside a closed shadow root too; '' when it names none. It
+      says what a frame still at its first document (about:blank, or '')
+      is loading. */
+  async ownerAddress(frameId: string): Promise<string> {
+    const { backendNodeId, session } = await this.ownerOf(frameId);
+    const { node } = await this.send<{ node: { localName?: string; attributes?: string[] } }>('DOM.describeNode', { backendNodeId, depth: 0 }, session);
+    const name = node.localName === 'object' ? 'data' : 'src';
+    const base = this.frames.get(this.frames.get(frameId)?.parentId ?? '')?.url || undefined;
+    // DOM.describeNode gives the attributes as name, value, name, value.
+    const attributes = node.attributes ?? [];
+    for (let at = 0; at + 1 < attributes.length; at += 2) {
+      if (attributes[at] !== name || !attributes[at + 1]) continue;
+      try {
+        return new URL(attributes[at + 1], base).href;
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  }
+
+  /* The backend node id of the element that holds frame `frameId`, and the
+     session of the process that holds that element (the frame it sits in's,
+     none for the page's own process), where the debugger finds it inside a
+     closed shadow root too. */
+  private async ownerOf(frameId: string): Promise<{ backendNodeId: number; session?: string }> {
+    const session = this.frames.get(this.frames.get(frameId)?.parentId ?? '')?.session;
+    const { backendNodeId } = await this.send<{ backendNodeId: number }>('DOM.getFrameOwner', { frameId }, session);
+    return { backendNodeId, session };
   }
 
   /* How the debugger describes the element `request` answers in frame
@@ -534,6 +569,11 @@ export async function withDebugger<T>(dbg: CdpDebugger, run: (session: DebuggerS
 /* The elements that hold another document, as the page world's FRAME_TAGS
    names them. */
 const FRAME_OWNERS: ReadonlySet<string> = new Set(['iframe', 'frame', 'object', 'embed']);
+
+/* The addresses Chromium gives a frame still loading its first page: its
+   first document's, or none before that. What it loads is the address its
+   owner names (ownerAddress). */
+const FIRST_DOCUMENTS: ReadonlySet<string> = new Set(['', 'about:blank']);
 
 /* How frameAt names an owner that names no frame of its own (a plugin's
    embed): by its node, which stays the same while the node does. */
@@ -717,7 +757,10 @@ export class FrameReads {
   /* page.json's frame `secret` for frames this attach knows, each looked
      into once per look (frameSecrets, frameMasks). A frame is secret when
      it is on a payment provider's host (no world opens there, and nothing
-     is sent to its session), or its own world finds a private field or a
+     is sent to its session), or still at its first document
+     (FIRST_DOCUMENTS) while its owner names an address on one, as the
+     page's world reads an owner's address (secretInside in
+     browser-page-script.ts), or its own world finds a private field or a
      payment frame in its document or a frame it enters (frameSecret in
      browser-page-script.ts). Where that world finds none, or doesn't
      answer, each frame the debugger knows in it is looked into in turn, at
@@ -735,7 +778,9 @@ export class FrameReads {
       let looking = looks.get(frameId);
       if (!looking) {
         looking = (async () => {
-          if (isPaymentAddress(this.session.knownAddress(frameId) ?? await this.session.frameAddress(frameId))) return true;
+          const address = this.session.knownAddress(frameId) ?? await this.session.frameAddress(frameId);
+          if (isPaymentAddress(address)) return true;
+          if (FIRST_DOCUMENTS.has(address) && isPaymentAddress(await this.session.ownerAddress(frameId).catch(() => ''))) return true;
           const own = await this.session.read<boolean | null>(frameId, { kind: 'frameSecret', paymentHosts: PAYMENT_FRAME_HOSTS }).catch(() => null);
           if (own === true) return true;
           await this.session.attachFrames(frameId);
