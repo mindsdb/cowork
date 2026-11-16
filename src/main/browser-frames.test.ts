@@ -82,6 +82,38 @@ describe('DebuggerSession', () => {
     });
     expect(sentOf(dbg, 'Target.setAutoAttach')).toEqual([{ params: { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sessionId: undefined }]);
   });
+
+  it("finds a frame's owner on the session of the process that holds it, and, as Chromium 157 answers, no such frame on a session outside the frame's own target, and a frame of another target on one above it or the frame's own", async () => {
+    const dbg = fakeCdpDebugger({
+      frames: [
+        // Two frames of other sites in the page; the second holds a frame of its own site and one of yet another.
+        { id: 'a', url: 'https://a.other.test/', parentId: MAIN_FRAME, remote: true },
+        { id: 'b', url: 'https://b.other.test/', parentId: MAIN_FRAME, remote: true },
+        { id: 'c', url: 'https://b.other.test/c', parentId: 'b' },
+        { id: 'd', url: 'https://d.other.test/', parentId: 'b', remote: true },
+      ],
+    });
+    const asked: Array<[string, string | undefined, string]> = [];
+    await withDebugger(dbg, async (session) => {
+      await session.mainFrame();
+      await session.attachFrames();
+      await session.attachFrames('b');
+      for (const sessionId of [undefined, 'session-a', 'session-b', 'session-d']) {
+        for (const frameId of ['b', 'c', 'd']) {
+          const answer = await session.send('DOM.getFrameOwner', { frameId }, sessionId).then(() => 'found', (error: Error) => error.message);
+          asked.push([frameId, sessionId, answer]);
+        }
+      }
+    });
+    const notFound = 'Frame with the given id was not found.';
+    const elsewhere = 'Frame with the given id does not belong to the target.';
+    expect(asked).toEqual([
+      ['b', undefined, 'found'], ['c', undefined, elsewhere], ['d', undefined, elsewhere],
+      ['b', 'session-a', notFound], ['c', 'session-a', notFound], ['d', 'session-a', notFound],
+      ['b', 'session-b', elsewhere], ['c', 'session-b', 'found'], ['d', 'session-b', 'found'],
+      ['b', 'session-d', notFound], ['c', 'session-d', notFound], ['d', 'session-d', elsewhere],
+    ]);
+  });
 });
 
 describe('withDebugger', () => {

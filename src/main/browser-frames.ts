@@ -500,7 +500,10 @@ export class DebuggerSession {
   /* The backend node id of the element that holds frame `frameId`, and the
      session of the process that holds that element (the frame it sits in's,
      none for the page's own process), where the debugger finds it inside a
-     closed shadow root too. */
+     closed shadow root too. That session's target holds the frame, so its
+     answer that no such frame was found means the frame is gone
+     (DRAWS_NOTHING): the session of a frame outside it answers the same
+     for a frame still there. */
   private async ownerOf(frameId: string): Promise<{ backendNodeId: number; session?: string }> {
     const session = this.frames.get(this.frames.get(frameId)?.parentId ?? '')?.session;
     const { backendNodeId } = await this.send<{ backendNodeId: number }>('DOM.getFrameOwner', { frameId }, session);

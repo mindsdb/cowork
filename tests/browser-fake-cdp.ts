@@ -227,9 +227,19 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         return { object: { type: 'object', subtype: 'node', objectId: `root:${root.frame.id}:${root.level}` } };
       }
       case 'DOM.getFrameOwner': {
+        /* As Chromium answers: a session finds only the frames of its own
+           target, its frame and those inside it at any depth (the page's
+           session every frame), and of those only the ones whose owner
+           element its process holds; it finds a frame outside them no more
+           than one that is gone, and one inside them whose owner another
+           process holds (its own frame's among them) belongs to another
+           target. */
+        const root = sessionId === undefined ? frame(MAIN_FRAME) : frameOfSession(sessionId);
+        if (!root) throw new Error('No session with given id');
         const owned = frame(params.frameId);
-        if (!owned || owned.gone) throw new Error('Frame with the given id was not found.');
-        // Every process lists every frame, but only the session of the process that holds the owner element finds it.
+        let inTarget = false;
+        for (let at = owned; at && !inTarget; at = frame(at.parentId)) inTarget = at === root;
+        if (!owned || owned.gone || !inTarget) throw new Error('Frame with the given id was not found.');
         if (owned.unplaced || ownerProcess(owned) !== frameOfSession(sessionId)) throw new Error('Frame with the given id does not belong to the target.');
         return { backendNodeId: 1000 + model.frames.indexOf(owned) };
       }
