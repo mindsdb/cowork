@@ -5747,7 +5747,14 @@ function AppCore() {
   // The same for a run that fails, or succeeds if the user asked to hear
   // about those: a notification where the OS allows one, a toast otherwise.
   // Clicking opens the task's page, which says why and offers the run.
-  const { prefs: scheduleNotifyPrefs, setPrefs: setScheduleNotifyPrefs } = useScheduleRunNotifications(scheduled, {
+  const {
+    prefs: scheduleNotifyPrefs,
+    setPrefs: setScheduleNotifyPrefs,
+    canEdit: canEditScheduleNotifyPrefs,
+  } = useScheduleRunNotifications(scheduled, {
+    settings,
+    settingsLoaded,
+    saveSettings,
     onOpen: (schedule) => {
       setWorkspaceMode('cowork');
       setSelectedScheduleId(schedule.id);
@@ -6445,7 +6452,7 @@ function AppCore() {
               setRoute('projects');
             }}
             unseenAutoPauses={unseenAutoPauses}
-            notifyPrefs={scheduleNotifyPrefs}
+            notifyPrefs={canEditScheduleNotifyPrefs ? scheduleNotifyPrefs : undefined}
             onNotifyPrefsChange={setScheduleNotifyPrefs}
             agentLabel={agentLabel}
           />

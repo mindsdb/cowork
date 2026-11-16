@@ -58,6 +58,8 @@ export const SETTINGS_KEY_MAP = {
   show_dots: 'showDots',
   show_counters: 'showCounters',
   schedule_keep_awake: 'scheduleKeepAwake',
+  schedule_notify_failed: 'scheduleNotifyFailed',
+  schedule_notify_succeeded: 'scheduleNotifySucceeded',
   show_figure_sources: 'showFigureSources',
   nav_title: 'navTitle',
   nav_title_color: 'navTitleColor',
@@ -752,6 +754,9 @@ export function committedSettingsPatch(patch, serverKeys) {
   return confirmed;
 }
 
+/** Writable only once a fetch shows the server knows them; see diffSettingsForWrite. */
+const SERVED_ONLY_FIELDS = new Set(['limitsEnabled', 'scheduleNotifyFailed', 'scheduleNotifySucceeded']);
+
 export function diffSettingsForWrite(patch, lastFetched) {
   const writes = {};
   for (const [clientKey, value] of Object.entries(patch)) {
@@ -769,8 +774,9 @@ export function diffSettingsForWrite(patch, lastFetched) {
     // is {} until the first successful fetch, so as a global rule this would
     // silently drop the first save of a session. For budget keys the trade
     // is worth it — absence really does mean a server that can't take them.
-    // The limits switch rides the same rule: it reached the server later.
-    if ((clientKey in BUDGET_FIELDS || clientKey === 'limitsEnabled') && !(clientKey in lastFetched)) continue;
+    // The limits switch and the scheduled-run notification choices ride the
+    // same rule: they reached the server later.
+    if ((clientKey in BUDGET_FIELDS || SERVED_ONLY_FIELDS.has(clientKey)) && !(clientKey in lastFetched)) continue;
     const prev = lastFetched[clientKey];
     if (prev === value) continue;
     if (typeof value === 'object' && JSON.stringify(prev) === JSON.stringify(value)) continue;
