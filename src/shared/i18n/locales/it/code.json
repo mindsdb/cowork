@@ -460,7 +460,9 @@
       "reasoning": "Ragionamento",
       "reasoningAriaLabel": "Livello di ragionamento predefinito",
       "permissions": "Autorizzazioni",
-      "permissionsAriaLabel": "Autorizzazioni di codice predefinite"
+      "permissionsAriaLabel": "Autorizzazioni di codice predefinite",
+      "workspace": "Spazio di lavoro",
+      "workspaceAriaLabel": "Spazio di lavoro predefinito delle attività"
     },
     "environment": {
       "title": "Ambiente",
@@ -1615,6 +1617,10 @@
       "title": "Lavora in un worktree Git isolato, così le attività possono essere eseguite in parallelo."
     },
     "selectAriaLabel": "Dove lavora l’attività",
-    "menuLabel": "Spazio di lavoro"
+    "menuLabel": "Spazio di lavoro",
+    "default": {
+      "label": "Predefinito",
+      "title": "Lascia che {product} scelga in base alla cartella e al computer di ogni attività."
+    }
   }
 }

@@ -460,7 +460,9 @@
       "reasoning": "推論",
       "reasoningAriaLabel": "デフォルトの推論レベル",
       "permissions": "権限",
-      "permissionsAriaLabel": "デフォルトのコーディング権限"
+      "permissionsAriaLabel": "デフォルトのコーディング権限",
+      "workspace": "ワークスペース",
+      "workspaceAriaLabel": "タスクのデフォルトのワークスペース"
     },
     "environment": {
       "title": "環境",
@@ -1615,6 +1617,10 @@
       "title": "分離されたGitワークツリーで作業するため、複数のタスクを並行して実行できます。"
     },
     "selectAriaLabel": "タスクの作業場所",
-    "menuLabel": "ワークスペース"
+    "menuLabel": "ワークスペース",
+    "default": {
+      "label": "デフォルト",
+      "title": "タスクごとのフォルダとコンピュータに応じて{product}が選択します。"
+    }
   }
 }

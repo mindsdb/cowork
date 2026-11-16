@@ -67591,6 +67591,74 @@
       "text": "60add5a6c60a"
     }
   },
+  "code:projectSettings.defaults.workspace": {
+    "de": {
+      "from": "87bb59ba2f92",
+      "text": "6a85b5763fef"
+    },
+    "es": {
+      "from": "87bb59ba2f92",
+      "text": "b326fc96874e"
+    },
+    "fr": {
+      "from": "87bb59ba2f92",
+      "text": "3f680c5fc8ca"
+    },
+    "it": {
+      "from": "87bb59ba2f92",
+      "text": "630b730a8ab0"
+    },
+    "ja": {
+      "from": "87bb59ba2f92",
+      "text": "cae6357e5163"
+    },
+    "ko": {
+      "from": "87bb59ba2f92",
+      "text": "ffb5c2d141e0"
+    },
+    "pt-BR": {
+      "from": "87bb59ba2f92",
+      "text": "eafcdf825d56"
+    },
+    "zh-CN": {
+      "from": "87bb59ba2f92",
+      "text": "37979829426b"
+    }
+  },
+  "code:projectSettings.defaults.workspaceAriaLabel": {
+    "de": {
+      "from": "9a888d40a657",
+      "text": "a6b5038381f3"
+    },
+    "es": {
+      "from": "9a888d40a657",
+      "text": "973699d597c2"
+    },
+    "fr": {
+      "from": "9a888d40a657",
+      "text": "6e3aaf9b454f"
+    },
+    "it": {
+      "from": "9a888d40a657",
+      "text": "5251ab2c1ced"
+    },
+    "ja": {
+      "from": "9a888d40a657",
+      "text": "37e495c1746f"
+    },
+    "ko": {
+      "from": "9a888d40a657",
+      "text": "bebf88585ac9"
+    },
+    "pt-BR": {
+      "from": "9a888d40a657",
+      "text": "17c2f84a1994"
+    },
+    "zh-CN": {
+      "from": "9a888d40a657",
+      "text": "73426392da0f"
+    }
+  },
   "code:projectSettings.environment.ports": {
     "de": {
       "from": "74b2a6855a50",
@@ -88329,6 +88397,74 @@
     "zh-CN": {
       "from": "eda4ddf60a85",
       "text": "22c0364dfa91"
+    }
+  },
+  "code:workspaceMode.default.label": {
+    "de": {
+      "from": "21b111cbfe6e",
+      "text": "ef6691545d2c"
+    },
+    "es": {
+      "from": "21b111cbfe6e",
+      "text": "13bd6e86a139"
+    },
+    "fr": {
+      "from": "21b111cbfe6e",
+      "text": "291b4fc834dc"
+    },
+    "it": {
+      "from": "21b111cbfe6e",
+      "text": "7315f406dbc3"
+    },
+    "ja": {
+      "from": "21b111cbfe6e",
+      "text": "29236e14bb30"
+    },
+    "ko": {
+      "from": "21b111cbfe6e",
+      "text": "10ccf42a824a"
+    },
+    "pt-BR": {
+      "from": "21b111cbfe6e",
+      "text": "0758c00e6ea0"
+    },
+    "zh-CN": {
+      "from": "21b111cbfe6e",
+      "text": "844b8cc8dff7"
+    }
+  },
+  "code:workspaceMode.default.title": {
+    "de": {
+      "from": "2826b0ac0182",
+      "text": "85a4a513df55"
+    },
+    "es": {
+      "from": "2826b0ac0182",
+      "text": "6a9ea916b1b2"
+    },
+    "fr": {
+      "from": "2826b0ac0182",
+      "text": "f5a2b820179e"
+    },
+    "it": {
+      "from": "2826b0ac0182",
+      "text": "04d4ad1fd19a"
+    },
+    "ja": {
+      "from": "2826b0ac0182",
+      "text": "21e1128411fd"
+    },
+    "ko": {
+      "from": "2826b0ac0182",
+      "text": "290712c2a506"
+    },
+    "pt-BR": {
+      "from": "2826b0ac0182",
+      "text": "dcf935608834"
+    },
+    "zh-CN": {
+      "from": "2826b0ac0182",
+      "text": "3ab649ae4e3f"
     }
   },
   "code:workspaceMode.local.label": {

@@ -460,7 +460,9 @@
       "reasoning": "推理",
       "reasoningAriaLabel": "默认推理强度",
       "permissions": "权限",
-      "permissionsAriaLabel": "默认编码权限"
+      "permissionsAriaLabel": "默认编码权限",
+      "workspace": "工作区",
+      "workspaceAriaLabel": "任务的默认工作区"
     },
     "environment": {
       "title": "环境",
@@ -1615,6 +1617,10 @@
       "title": "在隔离的 Git 工作树中工作，以便多个任务可以并行运行。"
     },
     "selectAriaLabel": "任务的工作位置",
-    "menuLabel": "工作区"
+    "menuLabel": "工作区",
+    "default": {
+      "label": "默认",
+      "title": "由 {product} 根据每个任务的文件夹和计算机来选择。"
+    }
   }
 }

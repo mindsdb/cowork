@@ -460,7 +460,9 @@
       "reasoning": "Razonamiento",
       "reasoningAriaLabel": "Esfuerzo de razonamiento predeterminado",
       "permissions": "Permisos",
-      "permissionsAriaLabel": "Permisos de código predeterminados"
+      "permissionsAriaLabel": "Permisos de código predeterminados",
+      "workspace": "Espacio de trabajo",
+      "workspaceAriaLabel": "Espacio de trabajo predeterminado de las tareas"
     },
     "environment": {
       "title": "Entorno",
@@ -1615,6 +1617,10 @@
       "title": "Trabajar en un worktree de Git aislado, para que las tareas puedan ejecutarse en paralelo."
     },
     "selectAriaLabel": "Dónde trabaja la tarea",
-    "menuLabel": "Espacio de trabajo"
+    "menuLabel": "Espacio de trabajo",
+    "default": {
+      "label": "Predeterminado",
+      "title": "Deja que {product} elija según la carpeta y la computadora de cada tarea."
+    }
   }
 }
