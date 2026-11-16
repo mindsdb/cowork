@@ -274,11 +274,14 @@ describe('BrowserSettingsSection', () => {
     });
   });
 
-  it('shows the switch in its own group once the server offers the browser', async () => {
+  it('shows the switch in its own group once the server offers the browser, off until turned on', async () => {
     fetchBrowseStatus.mockResolvedValue(AVAILABLE);
-    renderSection();
+    const setSetting = vi.fn();
+    renderSection({}, setSetting);
     const toggle = await screen.findByRole('switch', { name: 'Shared browser' });
-    expect(toggle).toBeChecked();
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(setSetting).toHaveBeenCalledWith('browserEnabled', true);
     expect(screen.getByRole('heading', { level: 2, name: 'Shared browser' })).toBeInTheDocument();
   });
 

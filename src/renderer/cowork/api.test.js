@@ -1785,6 +1785,30 @@ describe('paginated /items', () => {
     expect(res.task.messagesCursor).toBe('cursor-9');
   });
 
+  it('shows a reloaded message without the Notion page text it was sent with', async () => {
+    const sent = 'what changed?\n\n[Notion pages added for this message — Anton-only context, do not echo back]\n--- Notion page t1: Roadmap ---\nQ3 goals';
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items') ? { items: [{ role: 'user', content: sent }], hasMore: true, nextBefore: 'c' } : meta,
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession, fetchOlderMessages } = await import('./api');
+
+    expect((await fetchSession('c1')).messages[0].content).toBe('what changed?');
+    expect((await fetchOlderMessages('c1', 'c')).messages[0].content).toBe('what changed?');
+  });
+
+  it('titles a conversation without the Notion page note the server kept in it', async () => {
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items')
+        ? { items: [], hasMore: false, nextBefore: null }
+        : { ...meta, title: 'what is this page about?\n\n[Notion pages added for this message — Anton-only cont' },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession } = await import('./api');
+
+    expect((await fetchSession('c1')).title).toBe('what is this page about?');
+  });
+
   it('fetchOlderMessages requests the given cursor and returns the next page', async () => {
     const fetchMock = vi.fn(async () => jsonRes({
       items: [{ role: 'user', content: 'older' }], hasMore: false, nextBefore: null,

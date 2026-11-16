@@ -50,6 +50,9 @@ import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
 import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
+import { handleArtifactCheckEvent } from './lib/artifactCheck';
+import { ModelPickerContext } from './lib/modelPickerContext';
+import { onConversationRefresh } from './lib/conversationRefresh';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, moveForm as moveDataVaultForm, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
@@ -67,6 +70,8 @@ import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useNotionPagePicker } from './hooks/useNotionPagePicker';
+import NotionPagePickerModal from './components/NotionPagePickerModal';
 import { useAccountUser } from './hooks/useAccountUser';
 import { LiveAppAvailabilityWatcher } from './hooks/useLiveAppAvailability';
 import { skillScopeKey } from './lib/accountUser';
@@ -109,6 +114,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
          SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
+import { describeNotionReferencePages, loadNotionPageTexts } from './lib/notionReferencePages';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
@@ -238,9 +244,10 @@ function isPendingFileAttachment(a) {
 // directly via the connector's persisted `_picked_files` grant (see
 // cowork-server's harness integration_guidance), independent of any one
 // message. The chip is a visual confirmation only, so it must never be
-// resolved to an upload or sent as a real attachment id.
+// resolved to an upload or sent as a real attachment id. Notion pages work the
+// same way: the agent reads them with its notion-fetch tool.
 function isReferenceOnlyAttachment(a) {
-  return !!(a && a.source === 'gdrive');
+  return !!(a && (a.source === 'gdrive' || a.source === 'notion'));
 }
 
 // Activation gate (ENG-736): fire from the chat send/reply terminal handlers,
@@ -478,14 +485,20 @@ async function resolveComposerAttachmentsForSend(projectName, sessionId, attachm
 // one of them. Named explicitly here so Anton can resolve the
 // reference — same hidden-context pattern as describeConnectFormState.
 function describeGoogleDriveReferenceFiles(reference) {
-  if (!reference?.length) return '';
-  const lines = reference.map((f) => `- ${f.name || 'untitled'} (Drive file id: ${f.driveFileId || f.id})`);
+  const drive = (reference || []).filter((a) => a.source === 'gdrive');
+  if (!drive.length) return '';
+  const lines = drive.map((f) => `- ${f.name || 'untitled'} (Drive file id: ${f.driveFileId || f.id})`);
   return [
     '[Google Drive files added via the picker for this message — Anton-only context, do not echo back]',
     'The user just added the following Google Drive file(s). When they refer to "this file"/"these files" '
       + 'in the message above, they mean these — read them with files.get(fileId=...):',
     ...lines,
   ].join('\n');
+}
+
+function describeReferenceAttachments(reference, notionTexts) {
+  return [describeGoogleDriveReferenceFiles(reference), describeNotionReferencePages(reference, notionTexts)]
+    .filter(Boolean).join('\n\n');
 }
 
 const ACCENT_VARS = {
@@ -1034,6 +1047,50 @@ function AppCore() {
 
   // The reconcile body. Wrapped by refreshInFlightSet below with a re-entrancy
   // guard; declared first so the wrapper can reference it without a TDZ.
+  // Fetch a conversation's newest page and merge it into the task, the way a
+  // run that finished elsewhere is caught up. Also asked for by the artifact
+  // viewer's chat bar (ENG-4227) after a quick edit, whose group message the
+  // server updates in place in the artifact's chat (lib/conversationRefresh).
+  const refetchConversationMessages = useCallback((cid) => {
+    const knownIds = knownIdsOf(cid);
+    fetchSession(cid).then((fresh) => {
+      if (!fresh || !Array.isArray(fresh.messages)) return;
+      const reconciled = applySessionMessages(cid, fresh.messages);
+      setTasks((tasksPrev) => tasksPrev.map((t) => {
+        if (t.id !== cid) return t;
+        // Only the most recent page — merge against what the task
+        // already has. The server never saved refused questions, so
+        // any the merge dropped go back after it.
+        // With no stream of ours on it, a placeholder or live stub
+        // here is left over from opening the run while the server
+        // still listed it; the merge would carry it past the answer.
+        const local = hasLiveTurnHere(cid)
+          ? t.messages
+          : removeThinkingPlaceholder(stripStreaming(t.messages));
+        const merged = mergeMessagePage(local, reconciled, knownIds);
+        const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
+        return {
+          ...t,
+          messages: [...merged, ...refused],
+          // Same array the merge just used. Inert today — applySessionMessages
+          // neither adds nor removes an id-bearing row, so both see the
+          // same oldest id — but the two decisions must agree on which
+          // rows the page covers, and only one of them should pick.
+          ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
+          status: 'idle',
+        };
+      }));
+    }).catch(() => {});
+  }, [hasLiveTurnHere]);
+
+  // A quick edit changed the artifact's chat (ENG-4227). Skipped while a turn
+  // of ours runs there: the server writes no note then, and the turn's own
+  // end refetches.
+  useEffect(() => onConversationRefresh((cid) => {
+    if (hasLiveTurnHere(cid)) return;
+    refetchConversationMessages(cid);
+  }), [hasLiveTurnHere, refetchConversationMessages]);
+
   const reconcileInFlight = useCallback(async () => {
     const items = await fetchInFlightList();
     // A failed poll returns null, NOT [] — don't reconcile: treating it as "server
@@ -1114,41 +1171,13 @@ function AppCore() {
         // re-render storm.
         setTimeout(() => {
           finished.forEach((cid) => {
-            const knownIds = knownIdsOf(cid);
-            fetchSession(cid).then((fresh) => {
-              if (!fresh || !Array.isArray(fresh.messages)) return;
-              const reconciled = applySessionMessages(cid, fresh.messages);
-              setTasks((tasksPrev) => tasksPrev.map((t) => {
-                if (t.id !== cid) return t;
-                // Only the most recent page — merge against what the task
-                // already has. The server never saved refused questions, so
-                // any the merge dropped go back after it.
-                // With no stream of ours on it, a placeholder or live stub
-                // here is left over from opening the run while the server
-                // still listed it; the merge would carry it past the answer.
-                const local = hasLiveTurnHere(cid)
-                  ? t.messages
-                  : removeThinkingPlaceholder(stripStreaming(t.messages));
-                const merged = mergeMessagePage(local, reconciled, knownIds);
-                const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
-                return {
-                  ...t,
-                  messages: [...merged, ...refused],
-                  // Same array the merge just used. Inert today — applySessionMessages
-                  // neither adds nor removes an id-bearing row, so both see the
-                  // same oldest id — but the two decisions must agree on which
-                  // rows the page covers, and only one of them should pick.
-                  ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
-                  status: 'idle',
-                };
-              }));
-            }).catch(() => {});
+            refetchConversationMessages(cid);
           });
         }, 0);
       }
       return next;
     });
-  }, [abortStream, hasLiveTurnHere]);
+  }, [abortStream, hasLiveTurnHere, refetchConversationMessages]);
 
   const refreshInFlightSet = useCallback(async () => {
     // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
@@ -1847,6 +1876,9 @@ function AppCore() {
     planningReasoningEffort: settings.planningReasoningEffort,
     onRefresh: refreshModelAvailability,
   }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
+  // The composer's catalog and picker metadata for the artifact viewer's chat
+  // bar (ENG-4227), the same ones the composer gets.
+  const modelPickerCtx = useMemo(() => ({ models, modelMeta }), [models, modelMeta]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -2582,6 +2614,8 @@ function AppCore() {
                   // possible later if we see network overhead.
       onEvent(ev) {
         if (!isCurrentStream(taskId, ctrl)) return;
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
@@ -3325,6 +3359,18 @@ function AppCore() {
     setRoute,
   });
 
+  const {
+    notionPicker,
+    notionConnectPrompt,
+    resolveNotionPicker,
+    cancelNotionPicker,
+    confirmNotionConnect,
+    cancelNotionConnect,
+    handleAddNotionPages,
+    handleAddNotionProjectPages,
+    fetchNotionProjectPages,
+    removeNotionProjectPage,
+  } = useNotionPagePicker({ selectedProject, setComposerAttachments });
   const { startSharePointImport, sharePointModals } = useSharePointImport({
     connections: connectors,
     projects,
@@ -3626,7 +3672,8 @@ function AppCore() {
      browser (GET /browse/status answers `available: true`, never on a
      self-hosted stack) and while it is on in Settings (on by default). Off
      there, no task gets it, so no switch (lib/browserSwitch). */
-  const browserOnInSettings = settings.browserEnabled !== false;
+  // Off unless the person turned it on in Settings (Beta).
+  const browserOnInSettings = settings.browserEnabled === true;
   const browseAvailable = useBrowseAvailable(`${health.status}:${inAppBrowserRegistered}`);
   const browserSwitchShown = showsBrowserSwitch({ browserOnInSettings, browseAvailable });
   const composerBrowserSwitch = browserSwitchShown
@@ -3838,7 +3885,8 @@ function AppCore() {
       hasPendingFiles ? taskId : null,
       rawComposer,
     );
-    const sendText = reference.length ? `${text}\n\n${describeGoogleDriveReferenceFiles(reference)}` : text;
+    const notionTexts = await loadNotionPageTexts(reference);
+    const sendText = reference.length ? `${text}\n\n${describeReferenceAttachments(reference, notionTexts)}` : text;
     setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
@@ -3994,6 +4042,8 @@ function AppCore() {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
@@ -4133,6 +4183,21 @@ function AppCore() {
   // A task the app starts for the person (a connector button, an artifact
   // repair), so analytics can tell it from one they typed.
   const sendFromApp = (text, meta) => sendWithStartVia('app', () => handleSendFromHome(text, meta));
+
+  // The home composer clears only once a send resolves, which can take ~10s
+  // while attached Notion pages load, so a second Enter would open a second
+  // chat with the same text. The Composer itself can't guard this: one
+  // Composer serves every chat, and other chats must still queue meanwhile.
+  const homeComposerSendingRef = useRef(false);
+  const sendFromHomeComposer = async (text, meta) => {
+    if (homeComposerSendingRef.current) return false;
+    homeComposerSendingRef.current = true;
+    try {
+      return await handleSendFromHome(text, meta);
+    } finally {
+      homeComposerSendingRef.current = false;
+    }
+  };
 
   // Send inside an existing task
   //
@@ -4372,9 +4437,9 @@ function AppCore() {
     // collapses to null, so it sends no effort.
     const taskEffort = (opts.effortOverride ?? targetTask.reasoningEffort) || null;
 
-    let sendingAttachments, attachmentIds, driveReference;
+    let sendingAttachments, attachmentIds, referenceAttachments;
     try {
-      ({ merged: sendingAttachments, attachmentIds, reference: driveReference } = await resolveComposerAttachmentsForSend(
+      ({ merged: sendingAttachments, attachmentIds, reference: referenceAttachments } = await resolveComposerAttachmentsForSend(
         taskProjectName,
         id,
         // A drained queued item carries its own attachments; only a
@@ -4408,6 +4473,9 @@ function AppCore() {
       });
       throw err;
     }
+    // Before the Thinking placeholder: its Stop button can't cancel this
+    // wait, and the turn would start once it ended.
+    const notionTexts = await loadNotionPageTexts(referenceAttachments);
 
     setTasks((prev) => prev.map((t) =>
       t.id === id
@@ -4492,8 +4560,8 @@ function AppCore() {
      // keeps the original text — Anton-only context, never shown.
     const connectFormState = getDataVaultFormState(id);
     const connectContext = describeConnectFormState(connectFormState);
-    const driveContext = describeGoogleDriveReferenceFiles(driveReference);
-    const hiddenContext = [connectContext, driveContext].filter(Boolean).join('\n\n');
+    const referenceContext = describeReferenceAttachments(referenceAttachments, notionTexts);
+    const hiddenContext = [connectContext, referenceContext].filter(Boolean).join('\n\n');
     const sendText = hiddenContext ? `${text}\n\n${hiddenContext}` : text;
 
     // Tag this task as currently streaming so reconcileTaskMessages
@@ -4517,6 +4585,8 @@ function AppCore() {
         // fresh id; the new value rides on `response.created`.
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
@@ -4868,6 +4938,8 @@ function AppCore() {
         // A custom connector's test waiting on the user: its id goes to the
         // panel's own store, never into the stream state or the message.
         if (applyConnectorTestEvent(resolvedId || id, ev)) return;
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
@@ -6269,7 +6341,7 @@ function AppCore() {
             activeTasks={activeTasks}
             onSelectTask={selectTask}
             onClearActive={clearActive}
-            onSend={handleSendFromHome}
+            onSend={sendFromHomeComposer}
             project={canRunProject(selectedProject) ? selectedProject : null}
             onProjectChange={setSelectedProject}
             model={selectedModel}
@@ -6284,6 +6356,7 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
@@ -6358,10 +6431,14 @@ function AppCore() {
             connectors={composerConnectors}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
+            onAddNotionProjectPages={handleAddNotionProjectPages}
+            onFetchNotionProjectPages={fetchNotionProjectPages}
+            onRemoveNotionProjectPage={removeNotionProjectPage}
             disabledConnections={currentTask?.disabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
@@ -6474,7 +6551,7 @@ function AppCore() {
               // Sending from project detail = same path as home, but
               // selectedProject is already pinned to this project so
               // the new task lands in the right workspace.
-              return handleSendFromHome(text, meta);
+              return sendFromHomeComposer(text, meta);
             }}
             codingModeEnabled={false}
             onSelectTask={selectTask}
@@ -6487,10 +6564,14 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
+            onAddNotionProjectPages={handleAddNotionProjectPages}
+            onFetchNotionProjectPages={fetchNotionProjectPages}
+            onRemoveNotionProjectPage={removeNotionProjectPage}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
@@ -7020,6 +7101,23 @@ function AppCore() {
         </ModalBody>
       </Modal>
 
+      {/* Composer "+" → "Add pages from Notion" — see useNotionPagePicker. */}
+      <ConfirmModal
+        open={!!notionConnectPrompt}
+        title={tApp('notion.connectTitle')}
+        message={tApp('notion.connectMessage')}
+        confirmLabel={tApp('common.connect')}
+        cancelLabel={tApp('common.cancel')}
+        onConfirm={confirmNotionConnect}
+        onClose={cancelNotionConnect}
+      />
+      <NotionPagePickerModal
+        open={!!notionPicker}
+        connections={notionPicker?.connections}
+        onClose={cancelNotionPicker}
+        onConfirm={resolveNotionPicker}
+      />
+
       {/* OTA update overlay — shown during auto-update download/reload */}
       {updateCurtainUp && (
         <div style={{
@@ -7073,10 +7171,12 @@ function AppCore() {
 
   return (
     <HubUsageContext.Provider value={hubUsageCtx}>
-      <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
-      <CoworkProvider value={coworkValue}>
-        <CoworkRouterProvider router={routerRef.current} />
-      </CoworkProvider>
+      <ModelPickerContext.Provider value={modelPickerCtx}>
+        <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
+        <CoworkProvider value={coworkValue}>
+          <CoworkRouterProvider router={routerRef.current} />
+        </CoworkProvider>
+      </ModelPickerContext.Provider>
     </HubUsageContext.Provider>
   );
 }

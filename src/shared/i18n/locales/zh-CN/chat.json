@@ -624,5 +624,16 @@
     "closedTitle": "此任务的浏览器已关闭",
     "closedDescription": "{agent} 需要时会重新打开它。",
     "squeezed": "放大窗口以查看页面"
+  },
+  "notionPicker": {
+    "title": "从 Notion 添加页面",
+    "subtitle": "搜索你的 Notion 并为这条消息选择页面。",
+    "searchPlaceholder": "搜索 Notion 页面…",
+    "searchAriaLabel": "搜索 Notion 页面",
+    "minQuery": "{count, plural, other {请至少输入 # 个字符进行搜索。}}",
+    "noResults": "未找到页面。",
+    "database": "数据库",
+    "cancel": "取消",
+    "add": "{count, plural, =0 {添加页面} other {添加 # 个页面}}"
   }
 }

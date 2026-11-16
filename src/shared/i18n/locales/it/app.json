@@ -264,5 +264,9 @@
   "addon": {
     "moveFailed": "Impossibile spostare il messaggio nella coda. Riprova.",
     "stayQueued": "{agent} non può accettarlo ora. Resta in coda."
+  },
+  "notion": {
+    "connectTitle": "Collegare Notion?",
+    "connectMessage": "Devi collegare il tuo workspace Notion per aggiungere pagine da Notion."
   }
 }

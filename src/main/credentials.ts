@@ -45,4 +45,7 @@ export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
   posthog: {
     clientIdVar: 'POSTHOG_CLIENT_ID',
   },
+  notion: {
+    clientIdVar: 'NOTION_CLIENT_ID',
+  },
 };

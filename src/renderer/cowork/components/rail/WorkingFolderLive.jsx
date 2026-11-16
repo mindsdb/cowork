@@ -47,6 +47,7 @@ import {
 import { canPreviewDocument } from '../../preview/kinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
+import { reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { stopSharingNotice } from '../artifact/publish/linkLeftLive';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
@@ -347,7 +348,7 @@ export function WorkingFolderLive({
         onClick: async () => {
           setRowError('');
           setRowNote('');
-          if (!(await downloadArtifactFile(a))) setRowError(downloadUnavailableMessage(t('rail.artifacts.noServableFile')));
+          if (!(await downloadArtifactFile(a, { entry: 'rail' }))) setRowError(downloadUnavailableMessage(t('rail.artifacts.noServableFile')));
         },
       },
       canShareLiveApp(a, liveApps) && {
@@ -417,13 +418,17 @@ export function WorkingFolderLive({
       // The server enforces the same rule as a backstop. Skipped in org mode —
       // see needsClientUnpublishBeforeDelete.
       let leftLive = '';
-      if (needsClientUnpublishBeforeDelete({ orgMode, published: a.publishedUrl })) {
+      const clientUnpublishes = needsClientUnpublishBeforeDelete({ orgMode, published: a.publishedUrl });
+      if (clientUnpublishes) {
         leftLive = stopSharingNotice(await unpublishArtifact(a.path));
+        reportWithdrawal(a, { entry: 'rail_delete', before: shareSnapshot(a), leftLive: !!leftLive });
       }
       // Deletion is centralized through cowork-server (not shell.trashItem),
       // so it works in every shell and the server's unpublish-before-delete
       // guard always runs.
       await deleteArtifactAndSync(a);
+      // On Web that guard is the takedown, and the delete fails without it.
+      if (!clientUnpublishes && a.publishedUrl) reportWithdrawal(a, { entry: 'rail_delete', before: shareSnapshot(a) });
       // The page itself is still open to anyone with its link.
       if (leftLive) setRowNote(leftLive);
     } catch (e) {
@@ -475,7 +480,7 @@ export function WorkingFolderLive({
     } else if (target === 'download') {
       /* Nothing here renders the file and nobody shared it: its bytes are
          still one request away, and the note says why it saved. */
-      if (await downloadArtifactFile(artifact)) {
+      if (await downloadArtifactFile(artifact, { entry: 'rail' })) {
         setRowNote(noPreviewDownloadedNote());
       } else {
         setRowError(downloadUnavailableMessage(t('rail.artifacts.noServableFile')));
@@ -672,7 +677,9 @@ export function WorkingFolderLive({
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => {
           setPreviewArt(updated);
-          setArtifacts((prev) => prev.map((a) => a.path === updated.path ? { ...a, publishedUrl: updated.publishedUrl } : a));
+          // The whole report: its access and page id too, which the rail's own
+          // Download and Delete read, and the rail does not refetch.
+          setArtifacts((prev) => prev.map((a) => a.path === updated.path ? { ...a, ...updated } : a));
         }}
         onDelete={(path) => {
           setArtifacts((prev) => prev.filter((a) => a.path !== path));
