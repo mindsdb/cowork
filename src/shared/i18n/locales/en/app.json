@@ -264,5 +264,9 @@
   "addon": {
     "moveFailed": "Could not move that message to the queue. Please try again.",
     "stayQueued": "{agent} could not take it now. It stays in the queue."
+  },
+  "notion": {
+    "connectTitle": "Connect Notion?",
+    "connectMessage": "You need to connect your Notion workspace to add pages from Notion."
   }
 }

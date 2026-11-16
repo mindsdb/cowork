@@ -53,6 +53,8 @@
       "openNamedInDrive": "在 Google Drive 中打开“{name}”",
       "untitled": "未命名",
       "openInDrive": "在 Google Drive 中打开",
+      "openNamedInNotion": "在 Notion 中打开“{name}”",
+      "openInNotion": "在 Notion 中打开",
       "removeFromProjectFiles": "从项目文件中移除",
       "removeFromProjectFilesAriaLabel": "从项目文件中移除 {name}",
       "loadAttachmentsFailed": "无法加载附件",

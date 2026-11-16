@@ -647,5 +647,16 @@
       "optional": "optional",
       "example": "Beispiel: {value}"
     }
+  },
+  "notionPicker": {
+    "title": "Seiten aus Notion hinzufügen",
+    "subtitle": "Durchsuchen Sie Notion und wählen Sie Seiten für diese Nachricht aus.",
+    "searchPlaceholder": "Notion-Seiten durchsuchen…",
+    "searchAriaLabel": "Notion-Seiten durchsuchen",
+    "minQuery": "{count, plural, one {Geben Sie mindestens # Zeichen ein, um zu suchen.} other {Geben Sie mindestens # Zeichen ein, um zu suchen.}}",
+    "noResults": "Keine Seiten gefunden.",
+    "database": "Datenbank",
+    "cancel": "Abbrechen",
+    "add": "{count, plural, =0 {Seite hinzufügen} one {Seite hinzufügen} other {# Seiten hinzufügen}}"
   }
 }
