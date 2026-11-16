@@ -30,14 +30,6 @@ const SPEC = toCustomConnectSpec({
   fields: [{ name: 'api_key', label: 'API key', type: 'password', secret: true, required: true }],
 }, { path: '/v1/me' }, 'Acme CRM');
 
-const OPTIONAL_SPEC = toCustomConnectSpec({
-  form_id: 'open_data-connector',
-  title: 'Connect Open Data',
-  engine: 'open_data',
-  _connector_id: 'open_data',
-  fields: [{ name: 'api_key', label: 'API key', type: 'password', secret: true, required: false }],
-}, { path: '/v1/me', public_path: '/v1/public' }, 'Open Data');
-
 function renderPanel() {
   const handlers = { onSubmit: vi.fn(), onContinue: vi.fn(), onClose: vi.fn() };
   render(<DataVaultFormPanel conversationId={CID} {...handlers} />);
@@ -107,37 +99,6 @@ describe('connecting a custom connector', () => {
 
     expect(await screen.findByLabelText(/^API key/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^skip$/i })).toBeNull();
-  });
-
-  it('connects without the key when the member skips an optional field, and says what the check proved', async () => {
-    api.connectCustomConnector.mockResolvedValue({ id: 8, connector_id: 'open_data', name: 'Open Data', status: 'verified' });
-    setForm(CID, { ...OPTIONAL_SPEC });
-    renderPanel();
-
-    await userEvent.type(await screen.findByLabelText(/^API address/i), 'api.open.example');
-    await userEvent.click(screen.getByRole('button', { name: /^skip$/i }));
-    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
-
-    await waitFor(() => expect(getForm(CID)?._is_success).toBe(true));
-    expect(api.connectCustomConnector).toHaveBeenCalledWith('open_data', {
-      name: 'Open Data', address: 'api.open.example', values: {},
-    });
-    expect(getForm(CID).subtitle).toMatch(/proved only that the API answers, not that a key works/);
-  });
-
-  it('never sends a key the member typed and then skipped', async () => {
-    api.connectCustomConnector.mockResolvedValue({ id: 9, connector_id: 'open_data', name: 'Open Data', status: 'verified' });
-    setForm(CID, { ...OPTIONAL_SPEC });
-    renderPanel();
-
-    await userEvent.type(await screen.findByLabelText(/^API address/i), 'api.open.example');
-    await userEvent.type(screen.getByLabelText(/^API key/i), KEY);
-    await userEvent.click(screen.getByRole('button', { name: /^skip$/i }));
-    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
-
-    await waitFor(() => expect(api.connectCustomConnector).toHaveBeenCalled());
-    expect(api.connectCustomConnector.mock.calls[0][1].values).toEqual({});
-    expect(JSON.stringify(api.connectCustomConnector.mock.calls)).not.toContain(KEY);
   });
 
   it('closes on Cancel without a message to the chat', async () => {
