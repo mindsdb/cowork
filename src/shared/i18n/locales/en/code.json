@@ -1603,5 +1603,17 @@
     "desktopOnly": "Local file attachments are available in the desktop app.",
     "ariaLabel": "Attached context",
     "removeAriaLabel": "Remove {name}"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "Local",
+      "title": "Work in the folder itself. One local task runs in a repository at a time."
+    },
+    "worktree": {
+      "label": "Worktree",
+      "title": "Work in an isolated Git worktree, so tasks can run side by side."
+    },
+    "selectAriaLabel": "Where the task works",
+    "menuLabel": "Workspace"
   }
 }

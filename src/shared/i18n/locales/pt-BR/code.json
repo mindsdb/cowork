@@ -27,11 +27,14 @@
       "branch": "Branch",
       "openOriginalFolder": "Abrir pasta original",
       "openIsolatedCopy": "Abrir cópia isolada",
-      "openOriginal": "Abrir original"
+      "openOriginal": "Abrir original",
+      "openYourFolder": "Abrir sua pasta"
     },
     "sourceChanged": {
       "title": "A origem tinha alterações locais quando esta tarefa começou",
-      "body": "Essas alterações ficaram na pasta de origem. O {product} verifica conflitos antes de aplicar."
+      "body": "Essas alterações ficaram na pasta de origem. O {product} verifica conflitos antes de aplicar.",
+      "inPlaceTitle": "A pasta já tinha alterações sem commit",
+      "inPlaceBody": "Elas aparecem nesta revisão junto com as do agente, e o commit feito aqui as inclui."
     },
     "reconcile": {
       "title": "Conciliar as alterações originais",
@@ -61,13 +64,19 @@
       "create": "Criar",
       "commitLabel": "Fazer commit de todas as alterações da tarefa",
       "commitPlaceholder": "Descreva a alteração",
-      "commit": "Commit"
+      "commit": "Commit",
+      "branchLabelInPlace": "Criar uma branch na sua pasta e mudar para ela",
+      "commitLabelInPlace": "Fazer commit de todas as alterações da sua pasta"
     },
     "applyConfirm": {
       "title": "Aplicar as alterações à pasta de origem?",
       "message": "Atualizar {target} com as alterações revisadas da tarefa? O {product} vai parar antes de alterar qualquer pasta se encontrar um conflito.",
       "confirm": "Aplicar alterações",
       "error": "Não foi possível aplicar as alterações. Tente novamente."
+    },
+    "inPlace": {
+      "title": "{count, plural, one {Esta tarefa edita sua pasta diretamente} other {Esta tarefa edita suas pastas diretamente}}",
+      "body": "{count, plural, one {As alterações já estão na sua pasta, então não há nada para aplicar.} other {As alterações já estão nas suas pastas, então não há nada para aplicar.}} Pull requests em rascunho ainda não estão disponíveis para tarefas locais: faça commit aqui e depois faça push e abra uma pull request com suas ferramentas de sempre."
     }
   },
   "fileReview": {
@@ -86,7 +95,8 @@
     "discardConfirm": {
       "title": "Descartar as alterações deste arquivo?",
       "message": "{path} voltará para a versão atual da tarefa. Isso não pode ser desfeito.",
-      "confirm": "Descartar alterações"
+      "confirm": "Descartar alterações",
+      "messageInPlace": "{path} voltará para a última versão com commit na sua pasta, incluindo as edições feitas antes do início desta tarefa. Isso não pode ser desfeito."
     }
   },
   "reviewFileCard": {
@@ -1497,7 +1507,9 @@
     "terminal": "Terminal",
     "reviewChanges": "Revisar alterações",
     "review": "Revisar",
-    "taskActionsAriaLabel": "Ações da tarefa de código"
+    "taskActionsAriaLabel": "Ações da tarefa de código",
+    "localFolder": "{count, plural, one {Local · sua pasta} other {Local · suas # pastas}}",
+    "openYourFolder": "Abrir sua pasta"
   },
   "terminal": {
     "status": {
@@ -1591,5 +1603,17 @@
     "desktopOnly": "Anexos de arquivos locais estão disponíveis no app para desktop.",
     "ariaLabel": "Contexto anexado",
     "removeAriaLabel": "Remover {name}"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "Local",
+      "title": "Trabalhar na própria pasta. Só uma tarefa local é executada por vez em um repositório."
+    },
+    "worktree": {
+      "label": "Worktree",
+      "title": "Trabalhar em uma worktree Git isolada, para que as tarefas possam ser executadas lado a lado."
+    },
+    "selectAriaLabel": "Onde a tarefa trabalha",
+    "menuLabel": "Espaço de trabalho"
   }
 }
