@@ -41,6 +41,10 @@ export interface FakeFrame {
   inControl?: boolean;
   /** What the frame's own world finds for a screenshot, in its own viewport's pixels. */
   secrets?: Partial<FoundSecrets>;
+  /** Its document holds a card field, shown or not (a collapsed card
+      section's), as the frame's own world reads one for a screenshot
+      (holdsMaskedField). */
+  cardField?: boolean;
   /** The frame's owner element: its content and border boxes in the
       viewport of the process that holds it, as DOM.getBoxModel gives them on
       that process's session (the page's viewport for an owner in the page's
@@ -294,6 +298,10 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         if (expression.includes('"kind":"secretBoxes"')) {
           const viewport = target.owner ? { width: target.owner.content.width, height: target.owner.content.height } : SECRETS_NONE.viewport;
           return { result: { type: 'object', value: { ...SECRETS_NONE, viewport, ...target.secrets } } };
+        }
+        if (expression.includes('"kind":"holdsMaskedField"')) {
+          const found = { ...SECRETS_NONE, ...target.secrets };
+          return { result: { type: 'object', value: target.cardField === true || found.secrets.length > 0 || found.paymentFrames.length > 0 } };
         }
         return { exceptionDetails: { text: 'Uncaught' }, result: { type: 'object', subtype: 'error' } };
       }

@@ -350,6 +350,13 @@ export type PageWorldRequest =
      a private field; null when it finds neither but meets a frame it can't
      look into; false otherwise. It answers by value. */
   | { kind: 'frameSecret'; paymentHosts: readonly string[] }
+  /* Whether a screenshot blacks out this document's frame whole where the
+     search of the frame around it can't reach it (FrameReads.frameMasks in
+     browser-frames.ts): it shows what a screenshot blacks out (secretBoxes
+     over this document alone: a shown secret field or a payment frame), or
+     holds a card field, shown or not, as the web pod's holdsMaskedField
+     reads one. It answers by value. */
+  | { kind: 'holdsMaskedField'; paymentHosts: readonly string[] }
   /* The frame owner at `path` (RawFrame's `path`), when its address is
      still `url`, or null. It answers an element, for the debugger to name
      the frame it holds (browser-frames.ts). */
@@ -603,6 +610,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     }
     return false;
   };
+  /* A card field, shown or not: a field whose autocomplete names a card,
+     or one the page names for a card (cardNamed). */
+  const CARD_AUTOCOMPLETE = /(^|\s)cc-[a-z-]+(\s|$)/;
+  const cardField = (el: Element): boolean =>
+    isField(el) && (CARD_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase()) || cardNamed(el));
   /* An input or textarea a person types text into, or an editor. */
   const isTextField = (el: Element): boolean => tagOf(el) === 'textarea'
     || (tagOf(el) === 'input' && !NOT_TEXT_INPUTS.has(inputType(el)))
@@ -1826,6 +1838,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       return secretBoxes(request.paymentHosts, request.depth);
     case 'frameSecret':
       return secretIn(doc, request.paymentHosts);
+    case 'holdsMaskedField': {
+      const found = secretBoxes(request.paymentHosts, 0);
+      return found.secrets.length > 0 || found.paymentFrames.length > 0 || elementsIn(doc).some(cardField);
+    }
     case 'frameOwner':
       return ownerAt(request.path, request.url);
     case 'watch':

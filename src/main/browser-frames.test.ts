@@ -262,7 +262,7 @@ describe('FrameReads.frameMasks', () => {
         { id: 'early', url: '', parentId: 'donate', src: 'https://checkoutshopper-test.adyen.com/card', owner: at(10, 45, 100, 15) },
         // A widget whose own document shows nothing secret, holding another site's frame that shows a password field.
         { id: 'widget', url: 'https://widget.other.test/', parentId: 'donate', remote: true, owner: at(120, 5, 70, 40) },
-        { id: 'auth', url: 'https://auth.third.test/', parentId: 'widget', remote: true, holds: true, secrets: { secrets: [box(1, 1, 30, 8)] } },
+        { id: 'auth', url: 'https://auth.third.test/', parentId: 'widget', remote: true, holds: true, secrets: { secrets: [box(1, 1, 30, 8)] }, owner: at(1, 1, 60, 30) },
         // An ad holding a helper frame it drops after the debugger lists it.
         { id: 'ad', url: 'https://ads.other.test/slot', parentId: 'donate', remote: true, owner: at(120, 60, 70, 30) },
         { id: 'helper', url: 'https://ads.third.test/helper', parentId: 'ad', remote: true, gone: true },
@@ -272,6 +272,43 @@ describe('FrameReads.frameMasks', () => {
     expect(masks).toHaveLength(3);
     expect(masks).toEqual(expect.arrayContaining([box(10, 225, 100, 15), box(10, 245, 100, 15), box(120, 205, 70, 40)]));
     expect(masks, 'the sign-in step and the ad stay shown').not.toEqual(expect.arrayContaining([box(10, 205, 100, 15)]));
+  });
+
+  it("blacks out whole a frame another site's frame keeps in a closed shadow root that holds a card field, shown or not, as the pod host does, and shows one there that holds only a hidden password field", async () => {
+    const at = (x: number, y: number, width: number, height: number) => ({ content: box(x, y, width, height), border: box(x, y, width, height) });
+    const dbg = fakeCdpDebugger({
+      frames: [
+        // Another site's billing form at (0, 200), whose own world counts no frame owner: it keeps its frames in a closed shadow root.
+        { id: 'billing', url: 'https://billing.other.test/form', parentId: MAIN_FRAME, remote: true, owner: owner(0, 200) },
+        // A vendor's card frame showing its card field.
+        { id: 'vault', url: 'https://vault.vendor.test/card', parentId: 'billing', remote: true, holds: true, secrets: { secrets: [box(5, 2, 80, 10)] }, owner: at(10, 10, 180, 20) },
+        // A third site's payment step, drawn, whose card section is collapsed: its card field is display: none.
+        { id: 'step', url: 'https://pay.third.test/step', parentId: 'billing', remote: true, holds: true, cardField: true, owner: at(10, 40, 180, 20) },
+        // A third site's notes frame, drawn, that holds a hidden password field and no card field.
+        { id: 'notes', url: 'https://notes.third.test/', parentId: 'billing', remote: true, holds: true, owner: at(10, 70, 180, 20) },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toHaveLength(2);
+    expect(masks).toEqual(expect.arrayContaining([box(10, 210, 180, 20), box(10, 240, 180, 20)]));
+  });
+
+  it("shows a frame another site's frame keeps in a closed shadow root while the frame it holds a card field in draws nothing, a card option not picked, and blacks it out whole once that frame draws", async () => {
+    const at = (x: number, y: number, width: number, height: number) => ({ content: box(x, y, width, height), border: box(x, y, width, height) });
+    const dbg = fakeCdpDebugger({
+      frames: [
+        // Another site's billing form at (0, 200), whose own world counts no frame owner: it keeps its frames in a closed shadow root.
+        { id: 'billing', url: 'https://billing.other.test/form', parentId: MAIN_FRAME, remote: true, owner: owner(0, 200) },
+        // A third site's payment step, drawn, whose card option is a vendor's frame it doesn't draw (display: none).
+        { id: 'step', url: 'https://pay.third.test/step', parentId: 'billing', remote: true, owner: at(10, 10, 180, 40) },
+        { id: 'option', url: 'https://vault.vendor.test/card', parentId: 'step', remote: true, holds: true, cardField: true, owner: null },
+        // The same step where the person picked the card: its vendor's frame draws.
+        { id: 'picked', url: 'https://pay.third.test/step?2', parentId: 'billing', remote: true, owner: at(10, 60, 180, 40) },
+        { id: 'card', url: 'https://vault.vendor.test/card?2', parentId: 'picked', remote: true, holds: true, cardField: true, owner: at(5, 5, 100, 20) },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toEqual([box(10, 260, 180, 40)]);
   });
 
   it("blacks out whole a frame that keeps a secret frame where its world's search can't reach only when the debugger can't place that frame's owner, which draws, and looks no further where the search counted every frame", async () => {

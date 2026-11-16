@@ -1690,6 +1690,31 @@ describe('frames', () => {
     }
   });
 
+  it("answers whether a frame's own document shows what a screenshot blacks out or holds a card field, shown or not, as the debugger asks it of a frame another site's frame keeps in a closed shadow root", () => {
+    const look = () => pageWorld(document, freshWorld(), { kind: 'holdsMaskedField', paymentHosts: [...FRAME_READ_RULES.paymentHosts] });
+    // Elements marked data-box are drawn; the rest lay out no box, as display: none does.
+    const cases: Array<[string, boolean]> = [
+      ["<input type='password' data-box>", true],
+      ["<input autocomplete='cc-number' data-box>", true],
+      ["<iframe src='https://js.stripe.com/v3/elements-inner-card' data-box></iframe>", true],
+      ["<p data-box>Pay by card</p><input autocomplete='cc-number' style='display:none'>", true],
+      ["<p data-box>Pay by card</p><div style='display:none'><input name='cardnumber' placeholder='Card number'></div>", true],
+      ["<p data-box>Notes</p><input type='password' style='display:none'>", false],
+      ["<input autocomplete='username' data-box>", false],
+      ["<input name='giftCardNumber' style='display:none'>", false],
+      ["<p data-box>Ad</p><iframe src='https://ads.other.test/slot' data-box></iframe>", false],
+    ];
+    for (const [body, found] of cases) {
+      document.body.innerHTML = body;
+      layout();
+      expect(look(), body).toBe(found);
+    }
+    // A card field in an open shadow root, not shown.
+    document.body.innerHTML = '<div id="host"></div>';
+    document.getElementById('host')!.attachShadow({ mode: 'open' }).innerHTML = "<input autocomplete='cc-csc' style='display:none'>";
+    expect(look(), 'open root').toBe(true);
+  });
+
   it("answers the frame owner at a listed frame's path while its address is still the one the read listed, for the debugger to name the frame it holds, and none once it moved", async () => {
     document.body.innerHTML = `
       <iframe id="ad" src="https://ads.other.test/banner"></iframe>
