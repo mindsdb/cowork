@@ -20,11 +20,12 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
+import { orgBrandImageOrigins, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 
 const ARTIFACT_CDN = 'https://cdn.jsdelivr.net';
 
 const webTemplate = readFileSync(join(__dirname, 'index-web.html'), 'utf8');
-const platformWebPage = withDraftLinkFrameSources(webTemplate);
+const platformWebPage = withOrgBrandImageSources(withDraftLinkFrameSources(webTemplate));
 const desktopPage = readFileSync(join(__dirname, 'index.html'), 'utf8');
 
 const WEB_PAGES: [string, string][] = [
@@ -115,6 +116,16 @@ describe('shell CSP', () => {
   });
 
   /*
+   * Org logos and icons come from auth, so the hosted page's
+   * img-src names exactly the auth hosts on top of the template's, and the
+   * template (self-hosted and white-label) names none of them.
+   */
+  it('lets the platform-UI web page load org brand images from the auth hosts only', () => {
+    expect(directive(platformWebPage, 'img-src')).toEqual([...directive(webTemplate, 'img-src'), ...orgBrandImageOrigins(undefined)]);
+    expect(ourDomains(directive(webTemplate, 'img-src'))).toEqual([]);
+  });
+
+  /*
    * Desktop never frames a draft host (it navigates to its loopback server),
    * so neither the draft hosts nor the CDN belong in its policy.
    */
@@ -122,5 +133,18 @@ describe('shell CSP', () => {
     expect(directive(desktopPage, 'script-src')).not.toContain(ARTIFACT_CDN);
     expect(ourDomains(directive(desktopPage, 'frame-src'))).toEqual([]);
     expect(ourDomains(directive(desktopPage, 'child-src'))).toEqual([]);
+  });
+
+  /*
+   * A scheme source such as https: would let any frame in the desktop app,
+   * the preview's editor frame included, load any site.
+   */
+  it.each(['frame-src', 'child-src'])('lets the desktop shell frame only its loopback server in %s', (name) => {
+    expect(schemeSources(directive(desktopPage, name))).toEqual([]);
+    expect(directive(desktopPage, name)).toEqual(['http://127.0.0.1:*', 'http://localhost:*']);
+  });
+
+  it('gives frame-src and child-src the same sources in the desktop shell', () => {
+    expect(directive(desktopPage, 'child-src')).toEqual(directive(desktopPage, 'frame-src'));
   });
 });

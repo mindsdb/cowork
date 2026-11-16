@@ -8,6 +8,7 @@ import { ArcadeShell } from './components';
 import { PixelSprite } from './sprites';
 import { TERMS_TEXT, PRIVACY_TEXT } from './legalText';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
+import { useTranslation } from '../../lib/i18n';
 
 type View = 'main' | 'terms' | 'privacy';
 
@@ -18,6 +19,7 @@ type View = 'main' | 'terms' | 'privacy';
  * stays simple and rule-of-hooks-safe.
  */
 export function LegalViewer({ doc, onClose }: { doc: 'terms' | 'privacy'; onClose: () => void }) {
+  const { t } = useTranslation('setup');
   const isTerms = doc === 'terms';
   const dialogRef = useRef<HTMLDivElement>(null);
   const backBtnRef = useRef<HTMLButtonElement>(null);
@@ -55,16 +57,16 @@ export function LegalViewer({ doc, onClose }: { doc: 'terms' | 'privacy'; onClos
         className="arc-legal"
         role="dialog"
         aria-modal="true"
-        aria-label={isTerms ? 'Terms of Service' : 'Privacy Policy'}
+        aria-label={isTerms ? t('legal.terms') : t('legal.privacy')}
         ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="arc-legal-head">
           <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.18em', color: 'var(--arc-cyan, #3dd6f5)' }}>
-            {isTerms ? 'TERMS OF SERVICE' : 'PRIVACY POLICY'}
+            {isTerms ? t('legal.termsHeading') : t('legal.privacyHeading')}
           </span>
           <button type="button" className="arc-btn-ghost" onClick={onClose} ref={backBtnRef}>
-            ← BACK
+            {t('legal.back')}
           </button>
         </div>
         <div className="arc-legal-body">
@@ -77,6 +79,7 @@ export function LegalViewer({ doc, onClose }: { doc: 'terms' | 'privacy'; onClos
 }
 
 export default function TermsScreen({ onAccept }: { onAccept: () => void }) {
+  const { t } = useTranslation('setup');
   const [view, setView] = useState<View>('main');
   const [accepted, setAccepted] = useState(false);
 
@@ -85,21 +88,21 @@ export default function TermsScreen({ onAccept }: { onAccept: () => void }) {
   }
 
   return (
-    <ArcadeShell title="LICENSE AGREEMENT" subtitle="every quest begins with a scroll">
+    <ArcadeShell title={t('terms.title')} subtitle={t('terms.subtitle')}>
       <div className="arc-stack arc-fade-in" style={{ gap: 26, width: 'min(560px, 100%)' }}>
-        <PixelSprite name="scroll" size={64} title="License scroll" />
+        <PixelSprite name="scroll" size={64} title={t('terms.spriteTitle')} />
 
         <div style={{ fontSize: 12.5, lineHeight: 1.7, letterSpacing: '0.04em', color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 440 }}>
-          Before we get started, please review and accept our policies.
+          {t('terms.intro')}
         </div>
 
         <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button type="button" className="arc-btn-ghost" style={{ flex: 1, minWidth: 180 }} onClick={() => setView('terms')}>
-              → READ TERMS OF SERVICE
+              {t('terms.readTerms')}
             </button>
             <button type="button" className="arc-btn-ghost" style={{ flex: 1, minWidth: 180 }} onClick={() => setView('privacy')}>
-              → READ PRIVACY POLICY
+              {t('terms.readPrivacy')}
             </button>
           </div>
 
@@ -116,26 +119,26 @@ export default function TermsScreen({ onAccept }: { onAccept: () => void }) {
               checked={accepted}
               onChange={(e) => setAccepted(e.target.checked)}
               onClick={(e) => e.stopPropagation()}
-              aria-label="I have read and agree with the MindsDB Terms of Service and Privacy Policy"
+              aria-label={t('terms.consentAriaLabel')}
             />
             <span className="arc-check-box" aria-hidden>{accepted ? '✓' : ''}</span>
             <span className="arc-check-text">
-              I have read and agree with MindsDB{' '}
-              <button type="button" className="arc-link" onClick={(e) => { e.stopPropagation(); setView('terms'); }}>Terms of Service</button>
-              {' '}and{' '}
-              <button type="button" className="arc-link" onClick={(e) => { e.stopPropagation(); setView('privacy'); }}>Privacy Policy</button>.
-              {' '}I understand that by checking this box, I am providing my consent to be bound by these terms.
+              {t('terms.consentBefore')}{' '}
+              <button type="button" className="arc-link" onClick={(e) => { e.stopPropagation(); setView('terms'); }}>{t('legal.terms')}</button>
+              {' '}{t('terms.consentAnd')}{' '}
+              <button type="button" className="arc-link" onClick={(e) => { e.stopPropagation(); setView('privacy'); }}>{t('legal.privacy')}</button>.
+              {' '}{t('terms.consentAfter')}
             </span>
           </div>
         </div>
 
         <button className="arc-btn arc-btn-green" disabled={!accepted} onClick={onAccept}>
-          ACCEPT &amp; CONTINUE ▶
+          {t('terms.accept')}
         </button>
 
         <div style={{ fontSize: 10.5, letterSpacing: '0.06em', color: 'var(--arc-dim)', textAlign: 'center', lineHeight: 1.6 }}>
-          Next we&rsquo;ll install the system dependencies {STOCK_PRODUCT_NAME} needs.
-          <br />Takes about a minute.
+          {t('terms.nextInstall', { product: STOCK_PRODUCT_NAME })}
+          <br />{t('terms.takesAMinute')}
         </div>
       </div>
     </ArcadeShell>

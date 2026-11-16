@@ -52,6 +52,8 @@ const workspaceMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api', () => ({
+  fetchPublishStats: vi.fn(),
+  setPublishTracking: vi.fn(),
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   // Resolves rather than returning undefined: an artifact with a local path
   // mounts a preview on open, and the viewer chains off this directly.
@@ -69,6 +71,8 @@ vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async
 // The real artifactRef: only a card with a full identity can ask for a link.
 vi.mock('../../lib/artifactWorkspaceApi', async (importOriginal) => ({
   artifactRef: (await importOriginal()).artifactRef,
+  loadArtifactStats: vi.fn(),
+  setArtifactTracking: vi.fn(),
   loadArtifactDraftText: vi.fn(async () => ({ content: '' })),
   loadArtifactDraftDocument: vi.fn(async () => ({
     content: '<html><head></head><body>Hi</body></html>',

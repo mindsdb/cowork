@@ -1,0 +1,1595 @@
+{
+  "reviewPanel": {
+    "ariaLabel": "Review changes",
+    "closeAriaLabel": "Close review panel",
+    "resizeAriaLabel": "Resize review panel",
+    "eyebrow": "Task output",
+    "title": "Review changes",
+    "tabsAriaLabel": "Review sections",
+    "tabs": {
+      "changes": "Changes",
+      "deliver": "Deliver"
+    },
+    "summary": {
+      "changedFiles": "{count, plural, one {# changed file} other {# changed files}}",
+      "trackingUnavailable": "Change tracking unavailable",
+      "unchanged": "Working tree unchanged"
+    },
+    "empty": {
+      "directTitle": "Open the folder to review changes",
+      "title": "No changes to review yet",
+      "directDescription": "Direct folders do not have a Git baseline, so {product} cannot build an inline diff.",
+      "description": "File changes will collect here while the agent works."
+    },
+    "deliver": {
+      "heading": "Deliver this task",
+      "project": "Project",
+      "branch": "Branch",
+      "openOriginalFolder": "Open original folder",
+      "openIsolatedCopy": "Open isolated copy",
+      "openOriginal": "Open original"
+    },
+    "sourceChanged": {
+      "title": "Source had local changes when this task began",
+      "body": "Those changes stayed in the source folder. {product} checks for conflicts before applying."
+    },
+    "reconcile": {
+      "title": "Reconcile the original changes",
+      "body": "Have the agent preserve both versions in the isolated copy, then review again.",
+      "action": "Resolve with agent"
+    },
+    "checks": {
+      "title": "Project checks",
+      "run": "Run checks",
+      "adopt": "Use latest project commands",
+      "failed": "{failed} of {total} project checks failed. Open the task activity for output.",
+      "passed": "{count, plural, one {# project check passed.} other {# project checks passed.}}",
+      "none": "This task has no project checks. Tasks started from this project use the commands saved in Project settings.",
+      "noValidationCommands": "Project settings have no validation commands for this task's folders, so there is nothing to check. {count, plural, one {# run action is} other {# run actions are}} now available.",
+      "noCommands": "Project settings have no commands for this task's folders yet. Add validation commands there, then use this again."
+    },
+    "applyLocally": {
+      "title": "Apply locally",
+      "tooltip": "Copy the reviewed changes back to the original folders",
+      "applied": "Applied",
+      "appliedNotice": "These reviewed changes were applied to the source folders.",
+      "nothingToApply": "This task already works in the selected folder, so there is nothing to apply."
+    },
+    "git": {
+      "title": "Git options",
+      "branchLabel": "Create a branch in the task worktree",
+      "create": "Create",
+      "commitLabel": "Commit all task changes",
+      "commitPlaceholder": "Describe the change",
+      "commit": "Commit"
+    },
+    "applyConfirm": {
+      "title": "Apply changes to the source folder?",
+      "message": "Update {target} with the reviewed task changes? {product} will stop before changing any folder if it finds a conflict.",
+      "confirm": "Apply changes",
+      "error": "Could not apply changes. Please try again."
+    }
+  },
+  "fileReview": {
+    "staged": "Staged",
+    "unstaged": "Unstaged",
+    "committed": "Committed",
+    "stage": "Stage",
+    "unstage": "Unstage",
+    "askCodex": "Ask Codex",
+    "discardAriaLabel": "Discard changes to {path}",
+    "noteAriaLabel": "Review note for {path}",
+    "notePlaceholder": "What should change in this file?",
+    "toSend": "to send",
+    "cancel": "Cancel",
+    "sendToCodex": "Send to Codex",
+    "discardConfirm": {
+      "title": "Discard this file’s changes?",
+      "message": "{path} will return to the current task version. This cannot be undone.",
+      "confirm": "Discard changes"
+    }
+  },
+  "reviewFileCard": {
+    "binary": "Binary file changed",
+    "noTextualDiff": "No textual diff"
+  },
+  "diffPatch": {
+    "ariaLabel": "File diff",
+    "selectLine": "Select {line}",
+    "selectRemovedLine": "Select {line} removed",
+    "selectedLines": "selected lines",
+    "line": "line {line}",
+    "lines": "lines {start}–{end}"
+  },
+  "filesPanel": {
+    "ariaLabel": "Task files",
+    "closeAriaLabel": "Close files panel",
+    "resizeAriaLabel": "Resize files panel",
+    "eyebrow": "Task context",
+    "title": "Files",
+    "folderMenuAriaLabel": "Project folder",
+    "resourceAriaLabel": "Resource: {name}",
+    "searchPlaceholder": "Search task files",
+    "loading": "Loading…",
+    "empty": {
+      "title": "No task files available",
+      "description": "This task does not have a prepared working copy on this computer."
+    },
+    "noMatches": {
+      "title": "No matches",
+      "description": "Try a filename, symbol, or phrase from the code."
+    },
+    "back": "Back",
+    "folderEmpty": "This folder is empty.",
+    "backToFiles": "Files",
+    "lineWindow": "Lines {start}–{end} of {total}",
+    "linesAriaLabel": "{name} lines",
+    "pagesAriaLabel": "File pages",
+    "previous": "Previous",
+    "next": "Next",
+    "selectedLine": "Lines {start}",
+    "selectedLines": "Lines {start}–{end}",
+    "wholeFile": "Whole file",
+    "addToPrompt": "Add to prompt",
+    "errors": {
+      "loadFiles": "Files could not be loaded.",
+      "openFolder": "This folder could not be opened.",
+      "search": "Search failed.",
+      "openFile": "This file could not be opened."
+    }
+  },
+  "previewPanel": {
+    "ariaLabel": "Live preview",
+    "closeAriaLabel": "Close preview",
+    "eyebrow": "Project action",
+    "title": "Preview",
+    "reloadAriaLabel": "Reload preview",
+    "openInBrowserAriaLabel": "Open preview in browser",
+    "unavailable": "Preview is not available",
+    "widthAriaLabel": "Preview width",
+    "responsiveAriaLabel": "responsive preview",
+    "tabletAriaLabel": "tablet preview",
+    "mobileAriaLabel": "mobile preview",
+    "frameTitle": "Project preview",
+    "empty": {
+      "title": "No local preview yet",
+      "description": "Run a project action that listens on the task’s development port."
+    }
+  },
+  "draftPullRequest": {
+    "status": {
+      "merged": "Merged",
+      "closed": "Closed",
+      "draft": "Draft",
+      "changesRequested": "Changes requested",
+      "checksFailing": "Checks failing",
+      "readyToMerge": "Ready to merge",
+      "checksRunning": "Checks running",
+      "open": "Open",
+      "draftCreated": "Draft created"
+    },
+    "item": {
+      "needsCommit": "Commit required",
+      "noChanges": "No changes",
+      "readyFor": "Ready for {branch}",
+      "baseBranch": "base branch",
+      "unavailable": "Unavailable"
+    },
+    "review": {
+      "approved": "Review approved",
+      "changesRequested": "Changes requested",
+      "pending": "Review pending"
+    },
+    "ci": {
+      "passing": "Checks passing",
+      "failing": "Checks failing",
+      "running": "Checks running"
+    },
+    "checkState": "{state, select, passing {passing} failing {failing} pending {pending} other {{state}}}",
+    "updatedAt": "Updated {time}",
+    "checks": "Checks",
+    "reviewFeedback": "Review feedback",
+    "reviewer": "Reviewer",
+    "fixWithAgent": "Fix with agent",
+    "resolve": "Resolve",
+    "markReady": "Mark ready",
+    "addressFeedback": "Address feedback",
+    "fixChecks": "Fix checks",
+    "merge": "Merge",
+    "automationOptions": {
+      "fixFailingChecks": "Fix failing checks",
+      "fixFailingChecksHint": "{count, plural, one {Up to # agent attempt per failure} other {Up to # agent attempts per failure}}",
+      "markReady": "Mark ready",
+      "markReadyHint": "After checks pass",
+      "merge": "Merge",
+      "mergeHint": "After approval and checks",
+      "completeLinkedIssues": "Complete linked issues",
+      "completeLinkedIssuesHint": "After final updates and all merges",
+      "archiveTask": "Archive task",
+      "archiveTaskHint": "After all merges"
+    },
+    "loadError": "Could not prepare GitHub delivery.",
+    "sectionAriaLabel": "Finish with GitHub",
+    "title": "Finish with GitHub",
+    "summary": {
+      "published": "{count, plural, one {# published} other {# published}}",
+      "toResolve": "{count, plural, one {# item to resolve} other {# items to resolve}}",
+      "ready": "{count, plural, one {# ready} other {# ready}}"
+    },
+    "automation": "Automation",
+    "automationAriaLabel": "Delivery automation",
+    "refreshAriaLabel": "Refresh pull requests",
+    "attempt": {
+      "created": "{count, plural, one {# created} other {# created}}",
+      "failed": "{count, plural, one {# failed} other {# failed}}",
+      "failureHint": "Resolve the affected repository and retry; successful drafts will not be recreated."
+    },
+    "allMerged": "All pull requests are merged.",
+    "archiveTask": "Archive task",
+    "githubAccount": "GitHub account",
+    "connected": "Connected to this project",
+    "addAccount": "Add an account to this project",
+    "addGithub": "Add GitHub",
+    "commitMessagePlaceholder": "Commit message",
+    "commitRepositories": "{count, plural, one {Commit # repository} other {Commit # repositories}}",
+    "githubAccountAriaLabel": "GitHub account",
+    "titlePlaceholder": "Pull request title",
+    "bodyPlaceholder": "Optional context for reviewers…",
+    "repositories": "Repositories",
+    "selectedOf": "{selected} of {total}",
+    "includeAriaLabel": "Include {name}",
+    "into": "into {branch}",
+    "editOverride": "Edit title or context",
+    "createDrafts": "{count, plural, one {Create # draft pull request} other {Create # draft pull requests}}",
+    "createConfirm": {
+      "title": "{count, plural, one {Create # draft pull request?} other {Create # draft pull requests?}}",
+      "message": "This pushes the selected task branches, then creates drafts in the order shown. Existing drafts are left unchanged.",
+      "confirm": "Create drafts"
+    },
+    "mergeConfirm": {
+      "title": "Merge {name}?",
+      "message": "GitHub will merge this pull request using the repository’s default merge method. This cannot be undone here.",
+      "confirm": "Merge pull request"
+    },
+    "resolveConfirm": {
+      "title": "Resolve this review thread?",
+      "message": "Mark this GitHub review conversation as resolved. The thread stays visible in GitHub history.",
+      "confirm": "Resolve thread"
+    },
+    "readyConfirm": {
+      "title": "Mark {name} ready?",
+      "pullRequest": "pull request",
+      "message": "This removes draft status and requests review on GitHub.",
+      "confirm": "Mark ready"
+    }
+  },
+  "sourceUpdate": {
+    "ariaLabel": "Linked work updates",
+    "title": "Linked work",
+    "completeIssue": "Complete issue",
+    "cancel": "Cancel",
+    "postAnother": "Post another",
+    "postUpdate": "Post update",
+    "needsAttention": "Needs attention",
+    "completed": "Completed",
+    "posted": "Posted",
+    "placeholder": "Write an update for {target}…",
+    "progress": "Progress",
+    "finalResult": "Final result",
+    "typeAriaLabel": "Update type",
+    "useLatestSummary": "Use latest summary",
+    "postTo": "Post to {provider}",
+    "completeConfirm": {
+      "title": "Complete {target}?",
+      "issue": "issue",
+      "linearMessage": "Move this Linear issue to the team’s completed state.",
+      "githubMessage": "Close this GitHub issue. Its discussion and history remain available.",
+      "confirm": "Complete issue"
+    }
+  },
+  "repositoryLocalChanges": {
+    "ariaLabel": "{name} local changes",
+    "heading": "{count, plural, one {{name} has # local change} other {{name} has # local changes}}",
+    "hideDiff": "Hide diff",
+    "viewDiff": "View diff",
+    "moreFiles": "{count, plural, one {# more file} other {# more files}}",
+    "loadError": "Could not load local changes. Try again.",
+    "closeAndRetry": "Close and retry",
+    "binary": "Binary file changed.",
+    "noChanges": "No local changes remain. Refresh to update this panel."
+  },
+  "deliveryAutomation": {
+    "error": "Delivery automation could not continue."
+  },
+  "developerTools": {
+    "comments": "{count, plural, one {# comment} other {# comments}}",
+    "attachments": "{count, plural, one {# attachment} other {# attachments}}"
+  },
+  "workspaceUsage": {
+    "explanation": "Approximate storage Cowork keeps for this task: its workspace, comparison copy and recovery data. Your own folder and the Git history worktrees share are not counted. On macOS copies share disk with their source, so deleting a task can free much less than shown.",
+    "storage": "Storage",
+    "measuring": "Measuring…",
+    "notMeasured": "Not measured yet",
+    "taskSize": "~{size}",
+    "taskSizeUpdating": "~{size} · updating…",
+    "recovery": "Recovery",
+    "recoveryOfThat": "{size} of that",
+    "allTasks": "All tasks"
+  },
+  "repositorySetup": {
+    "invalidBranch": "Use a Git branch name such as {example}."
+  },
+  "gitIdentity": {
+    "saveFailed": "Could not save the Git identity.",
+    "title": "Git needs to know who you are",
+    "body": "Commits on this computer need a name and an email. Save them once and the commit runs again. Anything Git already has is kept.",
+    "namePlaceholder": "Your name",
+    "nameAriaLabel": "Name for Git commits",
+    "emailAriaLabel": "Email for Git commits",
+    "saving": "Saving…",
+    "save": "Save and commit"
+  },
+  "deleteProject": {
+    "title": "Delete this Code Project?",
+    "message": "This removes the project setup. Source folders are untouched. Projects with coding tasks cannot be deleted.",
+    "confirm": "Delete project",
+    "deleting": "Deleting…",
+    "failed": "Could not delete this Code Project."
+  },
+  "renameTask": {
+    "failed": "Could not rename this coding task.",
+    "title": "Rename coding task",
+    "label": "Task name",
+    "cancel": "Cancel",
+    "rename": "Rename"
+  },
+  "recovery": {
+    "title": "Reopen task",
+    "subtitle": "Choose where this task should reopen. Send a message afterwards to continue the interrupted work.",
+    "computerAriaLabel": "Computer for resumed task",
+    "recommended": "Recommended",
+    "savedCopy": "Saved working copy",
+    "freshCopy": "Fresh working copy",
+    "empty": {
+      "title": "No compatible computer is online",
+      "body": "Bring the original computer online or connect another compatible computer."
+    },
+    "recreateWarning": "This starts from the saved repository revisions. Unpushed changes on the previous computer cannot move with the task.",
+    "cancel": "Cancel",
+    "reopening": "Reopening…",
+    "startFresh": "Start fresh copy"
+  },
+  "projectResources": {
+    "title": "Code",
+    "errors": {
+      "chooseFolder": "Could not choose that folder.",
+      "duplicateResource": "That resource is already in this project.",
+      "inspectFolder": "Could not inspect that folder.",
+      "invalidUrl": "Enter a Git repository URL, such as {example}.",
+      "duplicateRepository": "That repository is already in this project."
+    },
+    "status": {
+      "offline": "{computer} offline",
+      "computerOffline": "Computer offline",
+      "anyComputer": "Any computer",
+      "only": "Only {computer}",
+      "onlyThisComputer": "Only this computer"
+    },
+    "baseBranch": "Base branch",
+    "baseBranchPlaceholder": "Repository default",
+    "commands": "Commands",
+    "optional": "(optional)",
+    "setup": "Setup",
+    "setupAriaLabel": "Setup command",
+    "validate": "Validate",
+    "validateAriaLabel": "Validation command",
+    "run": "Run",
+    "runAriaLabel": "Run command",
+    "remove": "Remove",
+    "removeAriaLabel": "Remove {name}",
+    "adding": "Adding…",
+    "addFolder": "Add folder",
+    "addRepository": "Add repository",
+    "chooseFolder": "Choose a folder",
+    "runsOnThisComputer": "Runs on this computer",
+    "cloneRepository": "Clone a repository",
+    "runsOnAnyComputer": "Runs on any computer"
+  },
+  "projectConnectedTools": {
+    "title": "Connectors",
+    "usedByRepository": " · Used by a repository",
+    "reconnect": "Reconnect",
+    "manage": "Manage connectors",
+    "empty": "Connect GitHub or Linear to start tasks from issues and deliver pull requests.",
+    "open": "Open Connectors"
+  },
+  "projectConnections": {
+    "backToSettings": "Back to project settings",
+    "backToTask": "Back to task"
+  },
+  "projectActions": {
+    "settings": "Project settings",
+    "delete": "Delete project",
+    "noTask": "Open a coding task before running a project action."
+  },
+  "projectDefaults": {
+    "invalidEnvironmentLine": "Environment line needs NAME=value: {line}"
+  },
+  "projectSettings": {
+    "title": "Project settings",
+    "newTitle": "New code project",
+    "subtitle": "Tasks in this project share its code, connectors, and defaults.",
+    "name": "Project name",
+    "skills": "Skills",
+    "teamSetup": {
+      "title": "Team Setup",
+      "summary": "{branch} · {count} included",
+      "updateAvailable": "Update available",
+      "checkForUpdates": "Check for updates",
+      "reviewUpdate": "Review update",
+      "newerRevision": "A newer Team Setup revision is available.",
+      "applyUpdate": "Apply update",
+      "includedGuidance": "Included guidance",
+      "includedCount": "{enabled} of {total}",
+      "details": "Details",
+      "source": "Source",
+      "revision": "Revision",
+      "checking": "Checking…",
+      "openSource": "Open source",
+      "openLocalCopy": "Open local copy"
+    },
+    "defaults": {
+      "title": "Task defaults",
+      "agent": "Agent",
+      "agentAriaLabel": "Default coding agent",
+      "model": "Model",
+      "modelAriaLabel": "Default coding model",
+      "modelPlaceholder": "Select model",
+      "noModels": "No coding models available",
+      "reasoning": "Reasoning",
+      "reasoningAriaLabel": "Default reasoning effort",
+      "permissions": "Permissions",
+      "permissionsAriaLabel": "Default coding permissions"
+    },
+    "environment": {
+      "title": "Environment",
+      "ports": "Development ports",
+      "portsHelp": "Each task gets its own free port under each name.",
+      "variables": "Environment variables",
+      "variablesHelp": "Visible to every task in this project. Don’t put secrets here."
+    },
+    "errors": {
+      "inspectPlaybook": "Could not inspect the team playbook.",
+      "checkAvailability": "Could not check resource availability.",
+      "nameRequired": "Name this Code Project.",
+      "resourceRequired": "Add at least one repository or folder.",
+      "save": "Could not save this Code Project.",
+      "checkTeamSetup": "Could not check for Team Setup updates.",
+      "applyTeamSetup": "Could not apply the Team Setup update.",
+      "updateGuidance": "Could not update Team Setup guidance.",
+      "openRepository": "Could not open that repository."
+    },
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "creating": "Creating…",
+    "save": "Save changes",
+    "create": "Create project"
+  },
+  "runtimeControls": {
+    "tryAgain": "Try again.",
+    "title": "Task settings",
+    "subtitle": "These settings apply to future turns in this coding task.",
+    "model": "Model",
+    "modelAriaLabel": "Task model",
+    "reasoning": "Reasoning",
+    "modelDefault": "Model default",
+    "reasoningAriaLabel": "Reasoning effort",
+    "effortPlaceholder": "Effort",
+    "permissions": "Permissions",
+    "permissionsAriaLabel": "Task permissions",
+    "personality": "Personality",
+    "personalityAriaLabel": "Agent personality",
+    "personalities": {
+      "pragmatic": "Pragmatic",
+      "friendly": "Friendly",
+      "none": "No personality"
+    },
+    "fast": {
+      "title": "Fast",
+      "description": "Use priority inference when the model supports it.",
+      "ariaLabel": "Fast inference"
+    },
+    "network": {
+      "title": "Network access",
+      "includedWithFullAccess": "Included with full access.",
+      "description": "Allow commands to reach external services."
+    },
+    "webSearch": {
+      "title": "Web search",
+      "description": "Let the coding agent search the web when useful."
+    },
+    "folders": {
+      "title": "Additional folders",
+      "description": "Let this task work across related local folders.",
+      "add": "Add folder",
+      "removeAriaLabel": "Remove additional folder {path}"
+    },
+    "sandbox": {
+      "title": "Windows sandbox",
+      "checking": "Checking…",
+      "unknown": "unknown",
+      "unavailable": "unavailable",
+      "setupStarted": "setup started",
+      "setupFailed": "setup failed",
+      "ready": "ready",
+      "setUp": "Set up"
+    },
+    "applyFailed": "Couldn't apply task settings",
+    "cancel": "Cancel",
+    "apply": "Apply"
+  },
+  "extensions": {
+    "alsoInstalled": "Also installed in {location}",
+    "alsoInstalledAt": "Also installed in {location} · {path}",
+    "loadFailed": "Could not load task extensions.",
+    "title": "Task extensions",
+    "subtitle": "Capabilities loaded from this folder, your Codex skills, and Cowork's Skills Library.",
+    "typesAriaLabel": "Extension types",
+    "tabs": {
+      "skills": "Skills",
+      "mcp_servers": "MCP",
+      "plugins": "Plugins",
+      "apps": "Apps",
+      "hooks": "Hooks"
+    },
+    "refreshAriaLabel": "Refresh task extensions",
+    "loading": "Loading {tab, select, skills {skills} mcp_servers {mcp} plugins {plugins} apps {apps} hooks {hooks} other {extensions}}…",
+    "empty": "No {tab, select, skills {skills} mcp_servers {mcp} plugins {plugins} apps {apps} hooks {hooks} other {extensions}} are active for this task.",
+    "sourceErrors": "Some extension sources could not be inspected",
+    "config": {
+      "title": "Code Mode configuration",
+      "description": "This private Codex config is shared by coding tasks. Project {file} files are layered automatically.",
+      "open": "Open config"
+    }
+  },
+  "projects": {
+    "viewTasks": "View tasks in {name}",
+    "resourceCount": "{count, plural, one {# resource} other {# resources}}",
+    "actionsAriaLabel": "{name} actions",
+    "title": "Projects",
+    "subtitle": "Repositories, folders, skills, and defaults shared by coding tasks.",
+    "new": "New project",
+    "search": "Search projects",
+    "sort": {
+      "updated": "Recently updated",
+      "name": "Name"
+    },
+    "empty": {
+      "title": "No projects yet",
+      "description": "Create a project to bring related repositories and folders together.",
+      "action": "Create your first project"
+    },
+    "listAriaLabel": "Code Projects",
+    "loadFailed": "Could not load Code Projects."
+  },
+  "projectPicker": {
+    "resourceCount": "{count, plural, one {# resource} other {# resources}}",
+    "noProject": "No project",
+    "localFolder": "Local folder",
+    "projects": "Projects",
+    "newProject": "New project",
+    "search": "Search projects",
+    "noResults": "No projects found",
+    "ariaLabel": "Code Project",
+    "menuLabel": "Project"
+  },
+  "skills": {
+    "origin": {
+      "all": "All sources",
+      "team": "Team",
+      "personal": "Yours"
+    },
+    "kind": {
+      "instructions": "Instructions",
+      "workflow": "Workflow",
+      "skill": "Skill"
+    },
+    "unversioned": "Unversioned",
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "saving": "Saving…",
+    "usedBy": "Used by {count, plural, one {# project} other {# projects}}",
+    "updateAvailable": "Update available",
+    "addSource": {
+      "title": "Add team source",
+      "subtitle": "Connect a Git repository containing skills, instructions, or workflows.",
+      "repositoryLabel": "Repository or folder",
+      "choose": "Choose",
+      "nameLabel": "Name",
+      "optional": "Optional",
+      "namePlaceholder": "Engineering standards",
+      "branchLabel": "Branch",
+      "repositoryRequired": "Choose a Git repository or enter its URL.",
+      "addFailed": "Could not add that team source.",
+      "folderFailed": "Could not choose that folder.",
+      "adding": "Adding…",
+      "add": "Add source"
+    },
+    "projects": {
+      "title": "Choose projects",
+      "subtitle": "Make this available to tasks in the selected Code Projects.",
+      "folders": "{count, plural, one {# folder} other {# folders}}",
+      "empty": "Create a Code Project before assigning team skills."
+    },
+    "source": {
+      "fallbackTitle": "Team source",
+      "repository": "Repository",
+      "itemsUnit": "{count, plural, one {items} other {items}}",
+      "projectsUnit": "{count, plural, one {project} other {projects}}",
+      "openRepository": "Open repository",
+      "checkUpdates": "Check for updates",
+      "update": "Update source",
+      "remove": "Remove source"
+    },
+    "view": {
+      "title": "Skills",
+      "subtitle": "Your workflows and your team’s engineering standards, ready for Code tasks.",
+      "addPersonal": "Add personal skill",
+      "searchPlaceholder": "Search skills",
+      "noMatch": "No skills match your search.",
+      "emptyPersonal": {
+        "title": "No personal skills yet",
+        "description": "Write instructions or import a SKILL.md. No Git repository needed.",
+        "action": "Add your first skill"
+      },
+      "emptyTeam": {
+        "title": "No team sources yet",
+        "description": "Connect a Git repository to share engineering standards across projects."
+      },
+      "emptyView": "No skills in this view.",
+      "viewItem": "View {name}",
+      "moreActions": "More actions for {name}",
+      "edit": "Edit",
+      "delete": "Delete",
+      "projectCount": "{count, plural, one {# project} other {# projects}}",
+      "available": "Available",
+      "disabled": "Disabled",
+      "sourceFilter": "Source",
+      "itemCount": "{count, plural, one {# item} other {# items}}",
+      "needsAttention": "Needs attention",
+      "sourceDetails": "Source details",
+      "sourceUnavailable": "Source unavailable — open for details.",
+      "noItemsMatch": "No items match this search.",
+      "noSharedItems": "No shared items found.",
+      "personalDescription": "Personal skills available in Code Mode",
+      "builtInDescription": "Engineering skills maintained by MindsHub"
+    },
+    "errors": {
+      "updateProjects": "Could not update project skills.",
+      "updateSource": "Could not update that source.",
+      "openRepository": "Could not open that repository.",
+      "removeSource": "Could not remove that source.",
+      "deleteSkill": "Could not delete that skill.",
+      "loadLibrary": "Could not load the Skills Library."
+    },
+    "removeConfirm": {
+      "title": "Remove team source?",
+      "message": "{name} will be removed from this Skills Library. Its Git repository will not be changed.",
+      "busy": "Removing…"
+    },
+    "deleteConfirm": {
+      "title": "Delete personal skill?",
+      "message": "{name} will be removed from your library. Existing tasks keep their saved copy.",
+      "confirm": "Delete skill",
+      "busy": "Deleting…"
+    }
+  },
+  "personalSkill": {
+    "saveFailed": "Could not save this skill. Please try again.",
+    "errors": {
+      "fileType": "Choose a SKILL.md or .skill text file.",
+      "fileTooLarge": "Choose a skill smaller than 120 KB.",
+      "fileUnreadable": "Could not read this file. Choose a UTF-8 text skill.",
+      "instructionsTooLong": "Keep the instructions under 120 KB."
+    },
+    "fields": {
+      "name": "Name",
+      "namePlaceholder": "e.g. Review my TypeScript",
+      "description": "When to use it",
+      "descriptionHelp": "Helps the agent recognise when this skill is relevant.",
+      "descriptionPlaceholder": "Review TypeScript changes for clarity and reliable error handling.",
+      "instructions": "Instructions",
+      "instructionsHelp": "Write or paste the steps and standards the agent should follow.",
+      "instructionsPlaceholder": "Start by reading the changed files…",
+      "available": "Available to the agent",
+      "keepRestrictions": "Existing project restrictions will be kept.",
+      "availableHint": "Available to new Code tasks on this computer."
+    },
+    "editTitle": "Edit personal skill",
+    "addTitle": "Add personal skill",
+    "subtitle": "For your Code tasks. No Git repository required.",
+    "loading": "Loading skill…",
+    "tryAgain": "Try again",
+    "tabs": {
+      "ariaLabel": "Add a personal skill",
+      "write": "Write instructions",
+      "import": "Import file"
+    },
+    "import": {
+      "fileAriaLabel": "Skill file",
+      "title": "Bring your own SKILL.md",
+      "description": "Choose a text file with a name, description and instructions. It will be copied into your Code skills. The original file stays unchanged.",
+      "chooseAnother": "Choose another file",
+      "choose": "Choose file",
+      "limits": "SKILL.md or .skill · Up to 120 KB"
+    },
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "saveChanges": "Save changes",
+    "add": "Add skill",
+    "discard": {
+      "title": "Discard changes?",
+      "message": "Your unsaved skill changes will be lost.",
+      "confirm": "Discard changes",
+      "cancel": "Keep editing"
+    }
+  },
+  "skillDetail": {
+    "loadFailed": "Could not load this skill.",
+    "rendered": "Rendered",
+    "viewSource": "View source",
+    "files": "Files"
+  },
+  "projectSkills": {
+    "heading": {
+      "added": "{count, plural, one {# skill added} other {# skills added}}",
+      "choose": "Choose skills",
+      "included": "{count, plural, one {# skill included} other {# skills included}}"
+    },
+    "summary": {
+      "selected": "{count} selected",
+      "available": "{count} available",
+      "included": "{count} included",
+      "none": "No Code skills available"
+    },
+    "footer": {
+      "selected": "{count} selected for this project",
+      "maintained": "{count, plural, one {# maintained skill included automatically} other {# maintained skills included automatically}}",
+      "default": "Choose the guidance every task should receive"
+    },
+    "loadingEngineering": "Loading engineering skills…",
+    "search": "Search Code skills",
+    "loading": "Loading skills…",
+    "maintained": "MindsHub maintained",
+    "included": "Included",
+    "empty": "No Code skills are available to this organisation yet.",
+    "openSkills": "Open Skills"
+  },
+  "connectors": {
+    "title": "Connectors",
+    "subtitle": "Connect developer tools once, then add them to any Code Project.",
+    "ariaLabel": "Code Connectors",
+    "providers": {
+      "github": "Start from issues, create draft pull requests, and follow reviews and checks.",
+      "linear": "Start from Linear issues and post progress back to them."
+    },
+    "usage": {
+      "none": "Not used by a project",
+      "used": "Used by {count, plural, one {# project} other {# projects}}"
+    },
+    "errors": {
+      "loadOptions": "Could not load {provider} connection options.",
+      "connect": "Could not connect {provider}.",
+      "validate": "Could not validate this credential.",
+      "postConnect": "Connected, but could not finish updating Code: {reason}",
+      "postConnectFallback": "try reopening Connectors.",
+      "disconnect": "Could not disconnect this account."
+    },
+    "returnProject": {
+      "before": "Accounts you connect here are added to",
+      "after": ". Connect as many as you need, then go back."
+    },
+    "returnTask": "Connect an account, then return to your task.",
+    "backToTask": "Back to task",
+    "status": {
+      "reconnect": "{count, plural, one {# account · reconnect} other {# accounts · reconnect}}",
+      "connectedCount": "{count} connected",
+      "notConnected": "Not connected",
+      "reconnectNeeded": "Reconnect needed",
+      "connected": "Connected"
+    },
+    "connecting": "Connecting…",
+    "addAccount": "Add account",
+    "connect": "Connect",
+    "browser": {
+      "title": "Continue in your browser",
+      "hint": "Return here when {provider} finishes authorizing."
+    },
+    "cancel": "Cancel",
+    "reconnecting": "Reconnecting…",
+    "reconnect": "Reconnect",
+    "credential": {
+      "title": "Connect {provider}",
+      "githubSubtitle": "Use a personal access token for this local build.",
+      "linearSubtitle": "Use a personal API key for this local build."
+    },
+    "disconnect": {
+      "action": "Disconnect",
+      "title": "Disconnect {name}?",
+      "titleFallback": "Disconnect this account?",
+      "message": "Projects using this account will keep the reference, but Code cannot read or publish through it until you reconnect."
+    }
+  },
+  "commandPalette": {
+    "skillFallback": "MindsHub skill",
+    "view": "View",
+    "ariaLabel": "Skills and commands",
+    "search": "Search skills and commands",
+    "skillsSection": "MindsHub skills",
+    "commandsSection": "{agent} commands",
+    "empty": "No matching skills or commands"
+  },
+  "sidebarSessions": {
+    "title": "Code tasks",
+    "noProject": "No project",
+    "errors": {
+      "pin": "Couldn't pin this task.",
+      "unpin": "Couldn't unpin this task."
+    },
+    "untitled": "Untitled coding task",
+    "untitledLower": "untitled coding task",
+    "rowAriaLabel": "{title}, {status}{unread, select, yes {, unread} other {}}, {repository}, {updated}",
+    "actionsFor": "Actions for {name}",
+    "organize": "Organize",
+    "organizeAriaLabel": "Organize coding tasks",
+    "projects": "Projects",
+    "taskList": "Task list",
+    "sort": "Sort",
+    "priority": "Priority",
+    "lastUpdated": "Last updated",
+    "searchPlaceholder": "Find a task",
+    "searchAriaLabel": "Find a coding task",
+    "noMatch": "No coding tasks match your search.",
+    "empty": "Start a coding task to keep its conversation and changes here.",
+    "pinned": "Pinned",
+    "archived": "Archived"
+  },
+  "tasksView": {
+    "status": {
+      "all": "All statuses",
+      "attention": "Needs attention",
+      "inProgress": "In progress",
+      "completed": "Completed",
+      "failed": "Failed",
+      "readyOrStopped": "Ready or stopped"
+    },
+    "sort": {
+      "updated": "Recently updated",
+      "created": "Recently created",
+      "title": "Title"
+    },
+    "unavailableProject": "Unavailable project",
+    "filters": {
+      "project": "Project",
+      "allProjects": "All projects",
+      "status": "Status"
+    },
+    "allTasks": "All tasks",
+    "projectSubtitle": "Coding tasks in this project.",
+    "projectActions": "{name} actions",
+    "newTask": "New task",
+    "search": "Search tasks",
+    "count": "{count, plural, one {# task} other {# tasks}}",
+    "filteredCount": "{shown} of {total} tasks",
+    "noMatch": "No matching tasks",
+    "clearFilters": "Clear filters",
+    "emptyArchived": {
+      "title": "No archived tasks",
+      "description": "Tasks you archive will appear here."
+    },
+    "empty": {
+      "title": "No tasks yet",
+      "description": "A task keeps one coding conversation and the changes it makes to a folder or repository.",
+      "action": "Start your first task"
+    },
+    "projectTasks": "Project tasks"
+  },
+  "taskMenu": {
+    "errors": {
+      "archive": "Couldn't archive this task.",
+      "restore": "Couldn't restore this task.",
+      "delete": "Couldn't delete this task."
+    },
+    "stopFirst": "Stop the active turn first.",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "rename": "Rename",
+    "archive": "Archive",
+    "restore": "Restore",
+    "delete": "Delete",
+    "deleteConfirm": {
+      "title": "Delete this coding task?",
+      "message": "This removes the task history and any isolated working copy. Your original files are left alone.",
+      "confirm": "Delete task"
+    }
+  },
+  "taskList": {
+    "loadFailed": "Could not load coding tasks."
+  },
+  "taskActions": {
+    "refreshFailed": "{completed}, but the task list could not refresh: {reason}",
+    "tryAgainShortly": "try again shortly",
+    "operationFailed": "Coding operation failed.",
+    "completed": {
+      "operation": "The operation completed",
+      "started": "The task started",
+      "forked": "The task was forked",
+      "archived": "The task was archived",
+      "restored": "The task was restored"
+    },
+    "errors": {
+      "start": "Could not start this task.",
+      "fork": "Could not fork this coding task.",
+      "update": "Could not update this coding task."
+    }
+  },
+  "taskAttention": {
+    "answer": "A task needs your answer.",
+    "approval": "A task needs your approval.",
+    "plan": "A plan is ready for your review.",
+    "failed": "A task needs attention before it can continue.",
+    "finished": "A coding task has finished.",
+    "bar": {
+      "ariaLabel": "Task attention",
+      "unavailable": "Desktop notifications are unavailable in this window.",
+      "denied": "Allow MindsHub notifications in your system settings to receive alerts.",
+      "failed": "Notifications could not be enabled. You can still find decisions under Needs attention.",
+      "needsYou": "{count, plural, one {# task needs you →} other {# tasks need you →}}",
+      "on": "Notifications on",
+      "off": "Notify when away"
+    }
+  },
+  "catalog": {
+    "loadAgentsFailed": "Could not load coding agents.",
+    "loadModelsFailed": "Could not load coding models."
+  },
+  "newTask": {
+    "heading": "What should we build?",
+    "composerAriaLabel": "Create coding task",
+    "dropHint": "Drop files to attach",
+    "editProject": "Edit {name}",
+    "changeFolder": "Change folder, currently {name}",
+    "chooseFolder": "Choose folder",
+    "localResources": "Local resources",
+    "promptPlaceholder": "Describe the change, important constraints, and how you want it verified…",
+    "promptAriaLabel": "Coding task",
+    "agentAriaLabel": "Coding agent",
+    "agentMenuLabel": "Agent",
+    "modelAriaLabel": "Choose model",
+    "modelMenuLabel": "Model",
+    "modelPlaceholder": "Select model",
+    "noModels": "No coding models available",
+    "effortLabel": "Reasoning effort",
+    "effortPlaceholder": "Effort",
+    "starting": "Starting…",
+    "startPlanning": "Start planning",
+    "startTask": "Start task",
+    "automaticBranches": "Automatic task branches",
+    "localChangesIncluded": "Local changes included",
+    "localChangesExcluded": "Local changes excluded",
+    "loadingSource": "Loading issue or PR…",
+    "planUnavailable": "Plan mode is unavailable here. Turn it off or choose a computer that supports it.",
+    "connectToStart": "Connect MindsHub to start a task.",
+    "mindsHubRequired": "Code runs on MindsHub. Connect your MindsHub account to start a task.",
+    "connecting": "Connecting…",
+    "connectMindsHub": "Connect MindsHub"
+  },
+  "newTaskDraft": {
+    "folderUnavailable": "{name} is unavailable. Remove and re-add it in Project settings.",
+    "baseBranchMissing": "{name} cannot find its {branch} base branch. Update it in {location, select, setup {Repositories & folders} other {Project settings}}.",
+    "sourcePromptOne": "Work on {id}: {title}",
+    "sourcePromptMany": "{count, plural, one {Work on the # linked work item.} other {Work on the # linked work items.}}",
+    "foldersCheckFailed": "Could not check this project’s folders.",
+    "engineUnavailable": "Unavailable",
+    "folderGone": "That folder is no longer available. Choose another folder.",
+    "folderAccessFailed": "Could not access that folder.",
+    "folderChooseFailed": "Could not choose that folder.",
+    "readiness": {
+      "startingTask": "Starting task…",
+      "loadingAgent": "Loading coding agent…",
+      "checkingResources": "Checking project resources…",
+      "checkingFolder": "Checking folder…",
+      "findingComputer": "Finding an available computer…",
+      "addResource": "Add a repository or folder to this project in Project settings.",
+      "noComputer": "No computer can run this task.",
+      "noAgent": "No coding agent is available.",
+      "modelRestricted": "An admin restricted this model. Choose another model.",
+      "addCredits": "Add credits or choose an available model.",
+      "noModels": "No coding models are available.",
+      "chooseModel": "Choose a model to continue.",
+      "chooseFolder": "Choose a folder to continue.",
+      "budgetReached": "Your organization's budget is used up. Choose an available model or ask an owner or admin to raise it."
+    }
+  },
+  "executionTarget": {
+    "thisComputer": "This computer",
+    "readyNow": "{platform} · Ready now",
+    "offline": "{platform} · Offline",
+    "activeTasks": "{platform} · {count, plural, one {# active task} other {# active tasks}}",
+    "ready": "{platform} · Ready",
+    "localFolder": "Local folder",
+    "unavailable": "Unavailable",
+    "computers": "Computers",
+    "cloudDescription": "Managed, on-demand compute",
+    "comingSoon": "Coming soon",
+    "runOn": "Run task on",
+    "capacityIssue": "No online computer can run this task right now.",
+    "offlineIssue": "{name} is on a computer that is offline.",
+    "findFailed": "Could not find this computer.",
+    "checkFailed": "Could not check where this task can run."
+  },
+  "permissions": {
+    "ariaLabel": "Coding permissions",
+    "menuLabel": "Permissions",
+    "readOnly": {
+      "label": "Read only",
+      "title": "Inspect and explain without changing files."
+    },
+    "supervised": {
+      "label": "Ask first",
+      "title": "Pause before commands that need your approval."
+    },
+    "workspace": {
+      "label": "Workspace auto",
+      "title": "Work autonomously inside this task’s isolated copy."
+    },
+    "fullAccess": {
+      "label": "Full access",
+      "title": "Work autonomously without filesystem restrictions."
+    }
+  },
+  "branchSelect": {
+    "loadFailed": "Could not load branches. Open the picker to retry.",
+    "ariaLabel": "Start {name} from",
+    "placeholder": "Default branch",
+    "searchPlaceholder": "Find a branch…",
+    "menuLabel": "Start from"
+  },
+  "repositoryPicker": {
+    "resultsAriaLabel": "GitHub repositories",
+    "private": "Private",
+    "public": "Public",
+    "archivedSuffix": " · Archived",
+    "added": "Added",
+    "add": "Add",
+    "searchingMore": "Searching more repositories…",
+    "loading": "Loading repositories…",
+    "noMatches": "No matching repositories.",
+    "noRepositories": "No repositories available to this connection.",
+    "tryAgain": "Try again",
+    "manageConnection": "Manage connection",
+    "loadMore": "Load more repositories",
+    "ariaLabel": "Add Git repository",
+    "title": "GitHub repositories",
+    "close": "Close repository picker",
+    "accountAriaLabel": "GitHub account",
+    "accountMenuLabel": "Account",
+    "reconnectHint": "Reconnect GitHub to browse your repositories.",
+    "connectHint": "Choose from your repositories by connecting GitHub.",
+    "reconnect": "Reconnect GitHub",
+    "connect": "Connect GitHub",
+    "searchPlaceholder": "Search repositories…",
+    "searchAriaLabel": "Search repositories",
+    "missingHint": "Missing a repository? This connection may need access to it.",
+    "manageAccess": "Manage access",
+    "pasteUrl": "Paste repository URL",
+    "urlAriaLabel": "Git repository URL",
+    "loadFailed": "Could not load repositories. Try again."
+  },
+  "taskRepositories": {
+    "checkFailed": "Could not check repositories. Refresh to try again.",
+    "ariaLabel": "Repositories and folders",
+    "resources": "{count, plural, one {# resource} other {# resources}}",
+    "localChanges": "Local changes"
+  },
+  "repositoryDrawer": {
+    "branchExists": "That branch already exists. Choose a new task branch name.",
+    "remoteCheckFailed": "Could not check remote branches.",
+    "retryApply": "{message} Apply again to retry.",
+    "newTask": "New task",
+    "title": "Repositories & folders",
+    "remoteNotice": "Choose this computer to set task branches and include local changes. Resource selection works on any computer.",
+    "branchLabel": "New branch for this task",
+    "optional": "Optional",
+    "branchHint": "Created in each selected repository. Leave blank for an automatic name.",
+    "includeInTask": "Include in this task",
+    "startFrom": "Start from",
+    "computerOffline": "{name} is offline",
+    "requiredComputer": "Required computer",
+    "onlyOn": "Only on {name}",
+    "linkedComputer": "its linked computer",
+    "include": "Include {name}",
+    "localFolder": "Local folder · copied into this task",
+    "onSelectedComputer": "On the selected computer",
+    "onThisComputer": "On this computer: {branch}",
+    "onThisComputerClean": "On this computer: {branch} · clean",
+    "checkingRepository": "Checking repository…",
+    "statusUnavailable": "Status unavailable",
+    "checkingRepositories": "Checking repositories…",
+    "checkoutStatus": "Local checkout status",
+    "refresh": "Refresh",
+    "localChanges": "Local changes",
+    "committedTitle": "Start from committed code",
+    "committedHint": "Leave local changes on this computer.",
+    "includeTitle": "Include my local changes",
+    "includeHint": "Copy them into this task. Keep originals.",
+    "count": "{repositories, plural, one {# repository} other {# repositories}} · {folders, plural, one {# folder} other {# folders}}",
+    "checkingBranches": "Checking branches…",
+    "apply": "Apply to task"
+  },
+  "workItemPicker": {
+    "justNow": "Just now",
+    "hours": "{count}h",
+    "days": "{count}d",
+    "ariaLabel": "Start from existing work",
+    "title": "Start from work",
+    "searchSubtitle": "Search issues and pull requests",
+    "recentSubtitle": "Recently updated and assigned to you",
+    "close": "Close work picker",
+    "providerAriaLabel": "Developer tool",
+    "accountAriaLabel": "{provider} account",
+    "accountMenuLabel": "Account",
+    "searchPlaceholder": "Search {provider}",
+    "searchAriaLabel": "Search {provider} work",
+    "resultsAriaLabel": "{provider} work",
+    "finding": "Finding work…",
+    "noMatches": "No matching work.",
+    "noAssigned": "No assigned work found.",
+    "linkPlaceholder": "Or paste an issue or pull-request link",
+    "linkAriaLabel": "Issue or pull-request link",
+    "adding": "Adding…",
+    "add": "Add",
+    "connectHint": "Connect GitHub or Linear to start from existing work.",
+    "openConnectors": "Open Connectors"
+  },
+  "taskSourceLinks": {
+    "invalidLink": "Paste a GitHub or Linear issue or pull-request link.",
+    "chooseAccount": "Choose the {provider} account to use.",
+    "loadFailed": "Could not load that work item.",
+    "searchFailed": "Could not search connected work.",
+    "linkedAriaLabel": "Linked work",
+    "remove": "Remove {label}",
+    "addAnother": "Add another issue or PR",
+    "add": "Add issue or PR"
+  },
+  "activity": {
+    "phrase": {
+      "edit": "edited {count, plural, one {# file} other {# files}}",
+      "command": "ran {count, plural, one {# command} other {# commands}}",
+      "read": "read {count, plural, one {# file} other {# files}}",
+      "search": "searched {count, plural, one {# time} other {# times}}",
+      "list": "listed {count, plural, one {# folder} other {# folders}}",
+      "tool": "used {count, plural, one {# tool} other {# tools}}",
+      "plan": "updated the plan",
+      "compact": "compacted context",
+      "retry": "{count, plural, one {retried once} other {retried # times}}"
+    },
+    "askedForApproval": "Asked for approval",
+    "thoughtItThrough": "Thought it through",
+    "agentActivity": "Agent activity",
+    "aFile": "a file",
+    "planStep": "Plan step",
+    "stepPosition": "Step {step} of {total}",
+    "live": {
+      "editingFile": "Editing {name}",
+      "editingFiles": "Editing files",
+      "compacting": "Compacting context",
+      "calling": "Calling {tool}",
+      "using": "Using {tool}",
+      "usingTool": "Using a tool",
+      "reading": "Reading {name}",
+      "searchingFor": "Searching for {query}",
+      "searching": "Searching",
+      "listing": "Listing files",
+      "running": "Running {command}",
+      "reconnecting": "Reconnecting…",
+      "thinking": "Thinking…"
+    },
+    "step": {
+      "edited": "Edited",
+      "files": "{count, plural, one {# file} other {# files}}",
+      "updatedPlan": "Updated the plan",
+      "planProgress": "· {done} of {total} done",
+      "retried": "Retried",
+      "retryTarget": "after the connection dropped",
+      "retryTargetAttempt": "after the connection dropped ({attempt})",
+      "askedToRun": "Asked to run",
+      "compacted": "Compacted context",
+      "viewed": "Viewed",
+      "anImage": "an image",
+      "called": "Called",
+      "used": "Used",
+      "aTool": "a tool",
+      "read": "Read",
+      "searchedFor": "Searched for",
+      "searched": "Searched",
+      "listed": "Listed",
+      "filesWord": "files",
+      "ran": "Ran",
+      "created": "Created",
+      "deleted": "Deleted"
+    }
+  },
+  "presentation": {
+    "status": {
+      "ready": "Ready",
+      "working": "Working",
+      "needsApproval": "Needs approval",
+      "completed": "Completed",
+      "stopped": "Stopped",
+      "interrupted": "Interrupted",
+      "failed": "Failed",
+      "preparing": "Preparing",
+      "needsAttention": "Needs attention",
+      "paused": "Paused",
+      "reopening": "Reopening",
+      "computerOffline": "Computer offline",
+      "answerNeeded": "Answer needed",
+      "reviewPlan": "Review plan",
+      "planning": "Planning"
+    },
+    "relative": {
+      "now": "now",
+      "minutes": "{count}m",
+      "hours": "{count}h",
+      "days": "{count}d"
+    },
+    "replaces": "replaces {skills}"
+  },
+  "reasoning": {
+    "levels": {
+      "none": "None",
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Xhigh",
+      "max": "Max"
+    },
+    "levelEffort": "{level} effort",
+    "projectDefault": "Project default",
+    "modelDefault": "Model default",
+    "default": "Default",
+    "defaultEffort": "Default effort"
+  },
+  "timeline": {
+    "failed": "Failed",
+    "exitCode": "Exit code {code}",
+    "failedCount": "{count, plural, one {# failed} other {# failed}}",
+    "workedFor": "Worked for {duration}",
+    "worked": "Worked",
+    "turnChanges": {
+      "ariaLabel": "Files changed in this turn",
+      "edited": "Edited {count, plural, one {# file} other {# files}}",
+      "review": "Review",
+      "more": "and {count} more"
+    },
+    "preparingWorkspace": "Preparing the task workspace…",
+    "preparingPlan": "Exploring and preparing a plan…",
+    "plan": {
+      "heading": "Plan",
+      "preparing": "The agent is preparing a plan…"
+    },
+    "childWork": {
+      "ariaLabel": "Parallel Codex work",
+      "label": "Parallel work",
+      "worker": "Codex worker",
+      "working": "Working",
+      "stopped": "Stopped",
+      "done": "Done"
+    },
+    "copyMessage": "Copy message",
+    "copyResponse": "Copy response",
+    "agentMessageAriaLabel": "Coding agent message",
+    "record": {
+      "approvalDenied": "Approval denied",
+      "approvalResolved": "Approval resolved",
+      "followUpDelivered": "Follow-up delivered",
+      "requestRejected": "Request rejected",
+      "taskStatus": "Task status"
+    },
+    "failureDetails": "Failure details",
+    "showEarlier": "Show {count} earlier updates"
+  },
+  "externalLink": {
+    "unsafeRepository": "That repository address is not safe to open.",
+    "openRepositoryFailed": "Could not open that repository."
+  },
+  "commandLine": {
+    "unclosedQuote": "Close the quoted command argument."
+  },
+  "queuedResume": {
+    "failed": "Could not resume the queued instruction."
+  },
+  "session": {
+    "refreshFailed": "Could not refresh this coding task.",
+    "liveDisconnected": "Live updates disconnected. Reconnecting…",
+    "loadFailed": "Could not load this coding task.",
+    "historyReconnecting": "Task history is reconnecting…"
+  },
+  "codeView": {
+    "resumeFailed": "The task could not be resumed.",
+    "recoveryOptionsFailed": "Recovery options could not be loaded.",
+    "projectActionFailed": "The project action could not be started.",
+    "loadingTasks": "Loading coding tasks…",
+    "restoringTask": "Restoring task…",
+    "steerTimeout": "The task did not accept the steer in time. If an approval is pending, resolve it first and try again.",
+    "stopTimeout": "The task did not acknowledge the stop request in time. Try again.",
+    "commandUnavailable": "/{command} controls are not available in this build yet.",
+    "projectCommandsNotUpdated": "Project commands were not updated.",
+    "restoreFailed": "This coding task could not be restored.",
+    "applyBlocked": "Changes can be applied after the current turn finishes"
+  },
+  "api": {
+    "serviceStartFailed": "The local Code service could not start.",
+    "requestFailed": "Coding request failed ({status})",
+    "outdatedBackend": "This desktop build is connected to an older backend that does not support Code Mode. Restart the app with the matching cowork-server build."
+  },
+  "composer": {
+    "checkingModes": "Checking available task modes…",
+    "modeUnavailable": "This task mode is unavailable. Change the mode before sending.",
+    "dropHint": "Drop files to attach",
+    "placeholder": {
+      "queueWhileWaiting": "Queue a follow-up while the agent waits…",
+      "steer": "Steer the current work…",
+      "followUp": "Add a follow-up for after this turn…",
+      "notStarted": "Start a new task to continue",
+      "recoverable": "Reopen the task, then say how to continue…",
+      "refinePlan": "Refine the plan…",
+      "anotherChange": "Ask for another change…"
+    },
+    "inputAriaLabel": "Follow-up instruction",
+    "whenBuilding": "When building:",
+    "permissionsLocked": "Permissions can be changed after the current turn finishes",
+    "stopAriaLabel": "Stop coding agent",
+    "stop": "Stop",
+    "deliveryAriaLabel": "Instruction delivery",
+    "queue": "Queue",
+    "steer": "Steer",
+    "steerAriaLabel": "Steer current turn",
+    "queueAriaLabel": "Queue instruction",
+    "sendAriaLabel": "Send follow-up",
+    "send": "Send"
+  },
+  "promptQueue": {
+    "ariaLabel": "Queued instructions",
+    "queued": "{count, plural, =0 {Queued} one {Queued · # file} other {Queued · # files}}",
+    "steerAriaLabel": "Steer with queued instruction {position}",
+    "steer": "Steer",
+    "removeAriaLabel": "Remove queued instruction {position}"
+  },
+  "slashMenu": {
+    "ariaLabel": "Code commands",
+    "label": "Commands"
+  },
+  "mentionMenu": {
+    "ariaLabel": "Task files",
+    "label": "Files and folders in this task"
+  },
+  "composerAddMenu": {
+    "ariaLabel": "Add",
+    "triggerAriaLabel": "Add to prompt",
+    "heading": "Add",
+    "planMode": "Plan mode",
+    "planUnavailable": "Available after the current turn finishes",
+    "files": "Files and folders",
+    "planOffAriaLabel": "Turn plan mode off",
+    "plan": "Plan"
+  },
+  "composerLip": {
+    "showMore": "{count, plural, one {Show # more notice} other {Show # more notices}}",
+    "addCredits": "Add credits",
+    "reopening": "Reopening…",
+    "reopen": "Reopen task",
+    "chooseModel": "Choose model",
+    "chooseAnotherModel": "Choose another model",
+    "hideDetails": "Hide details",
+    "showDetails": "Show details",
+    "details": "Details",
+    "moreOptions": "More options",
+    "dismiss": "Dismiss",
+    "viewBudgets": "View budgets"
+  },
+  "composerNotices": {
+    "thisModel": "This model",
+    "insufficientCredits": {
+      "title": "{model} needs credits",
+      "body": "Add credits or choose another model, then continue in this task."
+    },
+    "authFailed": {
+      "title": "Your sign-in does not match this server",
+      "body": "Sign in again, or switch back to the environment you signed into, then continue in this task."
+    },
+    "modelUnavailable": {
+      "title": "{model} is not available",
+      "body": "Choose another model, then continue in this task."
+    },
+    "rateLimited": {
+      "title": "MindsHub is receiving requests too quickly",
+      "body": "This turn stopped. Wait a moment, then continue in this task."
+    },
+    "allowanceExhausted": {
+      "title": "Your included allowance is used up",
+      "body": "Add credits to continue now, or wait for the allowance to refill, then continue in this task."
+    },
+    "freeAirPaused": {
+      "title": "Free MindsHub Air is paused",
+      "body": "It resumes when the daily budget resets. Add credits or choose another model to continue now."
+    },
+    "notStarted": {
+      "title": "Task did not start",
+      "body": "Its workspace could not be prepared, so the agent never ran. Start a new task once the problem is fixed."
+    },
+    "reopening": {
+      "title": "Reopening task",
+      "body": "Reconnecting to the task files…"
+    },
+    "paused": {
+      "title": "Task paused",
+      "offlineBody": "The task computer disconnected. Your conversation is safe; reopen it there or choose another compatible computer.",
+      "interruptedBody": "The turn stopped before it completed. Reopening restores the working copy; send a message to continue the interrupted work."
+    },
+    "restoreError": {
+      "title": "Could not reopen this task’s workspace",
+      "body": "{error}. The task’s work is still saved; try again once that is fixed."
+    },
+    "released": {
+      "body": "This task’s workspace was put away to save disk. It is rebuilt with all its changes when you continue or review it."
+    },
+    "kept": {
+      "body": "{reason}, so it still uses disk."
+    },
+    "budgetExceeded": {
+      "title": "Your organization's budget is used up",
+      "body": "An owner or admin can raise it in Budgets, or choose an available model to continue in this task."
+    }
+  },
+  "planModeCommand": {
+    "label": "Plan mode",
+    "turnOn": "Turn plan mode on",
+    "turnOff": "Turn plan mode off"
+  },
+  "taskBar": {
+    "originalFolder": "Original folder",
+    "isolatedFolders": "{count, plural, one {# isolated folder} other {# isolated folders}}",
+    "isolatedCopy": "Isolated copy",
+    "allProjectFiles": "All project files",
+    "allProjectFolders": "{count, plural, one {All # project folder} other {All # project folders}}",
+    "selectedFolders": "{count, plural, one {# selected folder} other {# selected folders}}",
+    "openOriginalFolder": "Open original folder",
+    "openIsolatedCopy": "Open isolated copy",
+    "forkTask": "Fork task",
+    "taskSettings": "Task settings",
+    "detailsMenuAriaLabel": "Working copy and task details",
+    "showDetailsAriaLabel": "Show task details for {label}",
+    "details": {
+      "title": "Task setup",
+      "files": "Files",
+      "branch": "Branch",
+      "computer": "Computer",
+      "agent": "Agent",
+      "model": "Model",
+      "folder": "Folder"
+    },
+    "runAndPreviewAriaLabel": "Run and preview",
+    "runAction": "Run {action}",
+    "startingAction": "Starting {action}",
+    "starting": "Starting…",
+    "run": "Run",
+    "runMenuAriaLabel": "Run project action",
+    "chooseActionAriaLabel": "Choose a project action to run",
+    "previewRunning": "Preview running project",
+    "previewUnavailable": "Run the project to enable preview",
+    "preview": "Preview",
+    "surfacesAriaLabel": "Task surfaces",
+    "files": "Files",
+    "terminal": "Terminal",
+    "reviewChanges": "Review changes",
+    "review": "Review",
+    "taskActionsAriaLabel": "Coding task actions"
+  },
+  "terminal": {
+    "status": {
+      "running": "Running",
+      "disconnected": "Disconnected",
+      "ready": "Ready",
+      "exited": "Exited",
+      "exitedWithCode": "Exited with code {code}"
+    },
+    "errors": {
+      "open": "Could not open the terminal.",
+      "actionTerminal": "The project action started, but its terminal could not be opened.",
+      "refresh": "Could not refresh the terminal list.",
+      "create": "Could not create a terminal.",
+      "rename": "Could not rename the terminal.",
+      "close": "Could not close the terminal.",
+      "stop": "Could not stop the terminal.",
+      "restart": "Could not restart the terminal.",
+      "write": "Could not write to terminal.",
+      "interrupted": "Terminal connection interrupted. Switch tabs or reopen the panel to reconnect.",
+      "unavailable": "Terminal is unavailable."
+    },
+    "ariaLabel": "Task terminals",
+    "resize": "Resize terminal",
+    "tabs": "Terminal tabs",
+    "renameAriaLabel": "Rename {label}",
+    "renameHint": "Double-click to rename",
+    "tabAriaLabel": "{label}, {status}",
+    "closeAriaLabel": "Close {label}",
+    "limit": "Up to {max} terminals per task",
+    "new": "New terminal",
+    "stopHint": "Stop this terminal without closing its tab",
+    "stop": "Stop terminal",
+    "restart": "Restart",
+    "hide": "Hide terminal panel",
+    "opening": "Opening terminal…",
+    "empty": "No terminals open",
+    "output": "Terminal output"
+  },
+  "planDecision": {
+    "error": "Could not continue. Try again.",
+    "label": "Review plan",
+    "kind": "Plan ready",
+    "cancelRevision": "Cancel revision",
+    "revise": "Revise plan",
+    "update": "Update plan",
+    "build": "Build from plan",
+    "buildTooltip": "Builds with this task’s selected permissions",
+    "question": "Start building from this plan?",
+    "changesAriaLabel": "Changes to the plan",
+    "changesPlaceholder": "What should change in the plan?"
+  },
+  "question": {
+    "error": "Could not send your answers. Try again.",
+    "label": "Agent questions",
+    "kind": "{count, plural, one {Question} other {# questions}}",
+    "sending": "Sending…",
+    "continue": "Continue",
+    "privateAnswer": "Private answer",
+    "ownAnswer": "Or write your own answer",
+    "yourAnswer": "Your answer"
+  },
+  "approval": {
+    "kinds": {
+      "command": {
+        "label": "Terminal",
+        "question": "Run this command?"
+      },
+      "fileChange": {
+        "label": "File change",
+        "question": "Modify protected files?"
+      },
+      "network": {
+        "label": "Access",
+        "question": "Grant additional access?"
+      },
+      "elevated": {
+        "label": "Elevated access",
+        "question": "Approve elevated action?"
+      }
+    },
+    "deny": "Deny",
+    "alwaysAllow": "Always allow",
+    "alwaysAllowTooltip": "Allow this now, and similar commands for the rest of this task",
+    "label": "Approval required",
+    "kind": "Approval",
+    "allowOnce": "Allow once",
+    "fallbackQuestion": "The agent needs approval"
+  },
+  "promptReferences": {
+    "desktopOnly": "Local file attachments are available in the desktop app.",
+    "ariaLabel": "Attached context",
+    "removeAriaLabel": "Remove {name}"
+  }
+}

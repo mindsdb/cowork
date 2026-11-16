@@ -7,8 +7,12 @@
    do, so the control never shows there. */
 
 import { canUseSharedResource } from './sharedResourceAccess';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.skillSharing.${key}`, { ns: 'projects', ...vars });
 
 export const SKILL_SHARING_LABEL = 'Who can use it';
+export const skillSharingLabel = () => tr('label');
 
 export const SKILL_SHARING_PRIVATE = 'private';
 export const SKILL_SHARING_EVERYONE = 'everyone';
@@ -22,7 +26,14 @@ export const SKILL_SHARING_OPTIONS = [
   },
 ];
 
+/* The same options in the reader's language, for rendering. */
+export const skillSharingOptions = () => [
+  { value: SKILL_SHARING_PRIVATE, label: tr('private.label'), description: tr('private.description') },
+  { value: SKILL_SHARING_EVERYONE, label: tr('everyone.label'), description: tr('everyone.description') },
+];
+
 export const SKILL_SHARING_CREATE_HINT = "You can change this later on the skill's page.";
+export const skillSharingCreateHint = () => tr('createHint');
 
 /* Deliberately not canUseSharedResource: that helper grants a missing key on
    the desktop, which would show the control against a server with no

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './cowork/components/ui/Modal';
 import Button from './cowork/components/ui/Button';
 import { restartConfirmationCopy } from '../shared/restart-confirmation';
+import { sharedTranslator, useTranslation } from './lib/i18n';
 import {
   subscribeRestartConfirmation,
   type PendingRestartConfirmation,
@@ -14,11 +15,12 @@ import {
 // It renders only while `guardRestart` has a question pending; Cancel leaves
 // the update ready to install later.
 export default function RestartConfirmHost() {
+  useTranslation('app'); // re-render when the language changes
   const [pending, setPending] = useState<PendingRestartConfirmation | null>(null);
   useEffect(() => subscribeRestartConfirmation(setPending), []);
   if (!pending) return null;
 
-  const copy = restartConfirmationCopy(pending.runningTasks);
+  const copy = restartConfirmationCopy(pending.runningTasks, sharedTranslator('app'));
   const cancel = () => pending.resolve(false);
   return (
     <Modal open size="sm" layer="system" labelledBy="restart-confirm-title" onClose={cancel}>

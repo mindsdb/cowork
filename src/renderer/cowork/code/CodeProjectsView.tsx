@@ -11,11 +11,9 @@ import {
 import { projectResources, type CodeProject } from './api';
 import { relativeTime } from './presentation';
 import { projectActions } from './projectActions';
+import { useTranslation } from '../../lib/i18n';
 
-const SORT_OPTIONS = [
-  { id: 'updated', label: 'Recently updated' },
-  { id: 'name', label: 'Name' },
-];
+const SORT_IDS = ['updated', 'name'] as const;
 
 export function CodeProjectsView({
   projects,
@@ -34,6 +32,7 @@ export function CodeProjectsView({
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const { t } = useTranslation('code');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('updated');
   // Same layouts and default as Cowork's Projects page.
@@ -55,13 +54,13 @@ export function CodeProjectsView({
       title: project.name,
       description: resources.map((resource) => resource.name).join(', ') || undefined,
       onActivate: () => onOpen(project.id),
-      activateLabel: `View tasks in ${project.name}`,
+      activateLabel: t('projects.viewTasks', { name: project.name }),
       meta: <>
-        <span>{resources.length} {resources.length === 1 ? 'resource' : 'resources'}</span>
+        <span>{t('projects.resourceCount', { count: resources.length })}</span>
         <time dateTime={project.updated_at}>{relativeTime(project.updated_at)}</time>
       </>,
       actions: <Menu
-        trigger={<Button icon variant="subtle" size="sm" aria-label={`${project.name} actions`}>{Ico.moreVert(14)}</Button>}
+        trigger={<Button icon variant="subtle" size="sm" aria-label={t('projects.actionsAriaLabel', { name: project.name })}>{Ico.moreVert(14)}</Button>}
         items={projectActions(project.id, onEdit, onDelete)}
       />,
     };
@@ -70,14 +69,14 @@ export function CodeProjectsView({
   return (
     <main className="code-projects-view">
       <PageHeader
-        title="Projects"
-        subtitle="Repositories, folders, skills, and defaults shared by coding tasks."
-        actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(14)} New project</Button>}
+        title={t('projects.title')}
+        subtitle={t('projects.subtitle')}
+        actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(14)} {t('projects.new')}</Button>}
       />
       {/* Nothing to search or sort until a project exists. */}
       {(loading || error || projects.length > 0) && <FilterRow
-        search={<SearchInput value={query} onChange={setQuery} placeholder="Search projects" shortcut="" />}
-        sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+        search={<SearchInput value={query} onChange={setQuery} placeholder={t('projects.search')} shortcut="" />}
+        sort={<SortPill value={sort} onChange={setSort} options={SORT_IDS.map((id) => ({ id, label: t(`projects.sort.${id}`) }))} />}
         view={<ViewToggle value={view} onValueChange={setView} />}
       />}
 
@@ -93,9 +92,9 @@ export function CodeProjectsView({
             onClear={() => setQuery('')}
             empty={{
               icon: Ico.folder(20),
-              title: 'No projects yet',
-              description: 'Create a project to bring related repositories and folders together.',
-              action: { label: 'Create your first project', onClick: onCreate },
+              title: t('projects.empty.title'),
+              description: t('projects.empty.description'),
+              action: { label: t('projects.empty.action'), onClick: onCreate },
             }}
           >
             {effectiveView === 'grid' ? (
@@ -103,7 +102,7 @@ export function CodeProjectsView({
                 {visible.map((project) => <ItemCard key={project.id} as="article" {...slots(project)} />)}
               </CardGrid>
             ) : (
-              <ListGroup aria-label="Code Projects">
+              <ListGroup aria-label={t('projects.listAriaLabel')}>
                 {visible.map((project) => <ListItem key={project.id} as="article" {...slots(project)} />)}
               </ListGroup>
             )}

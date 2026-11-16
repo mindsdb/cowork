@@ -11,8 +11,10 @@ import { projectLabelByName } from '../lib/projectLabel';
 import Ico from './Icons';
 import { Tooltip } from './ui';
 import { relativeAge } from '../lib/formatTime';
+import { useTranslation } from '../../lib/i18n';
 
 function Row({ task, onSelect, onDelete }) {
+  const { t } = useTranslation('shell');
   const [hover, setHover] = useState(false);
   // The right edge holds either the time-ago OR the trash glyph —
   // never both. Same Y, same X, swapped on hover. We reserve no
@@ -31,14 +33,14 @@ function Row({ task, onSelect, onDelete }) {
       }}
     >
       <span className="text-[13px] min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-        {task.title || 'Untitled'}
+        {task.title || t('recents.untitled')}
       </span>
       {hover ? (
-        <Tooltip content="Delete this task">
+        <Tooltip content={t('recents.deleteTask')}>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-            aria-label="Delete this task"
+            aria-label={t('recents.deleteTask')}
             className="bg-transparent border-0 p-0 inline-flex items-center cursor-pointer text-ink-3 hover:text-danger [transition:color_var(--dur-hover)_ease]"
           >
             {Ico.trash(14)}
@@ -57,6 +59,9 @@ function Row({ task, onSelect, onDelete }) {
 // most-recent task's updatedAt (so the group whose work is freshest
 // floats to the top); within each group, tasks keep the input order
 // (callers already sort by recency before passing them in).
+// Group key for tasks without a project; shown translated.
+const NO_PROJECT = '(no project)';
+
 function groupByProject(tasks) {
   const ts = (raw) => {
     if (raw == null) return 0;
@@ -66,7 +71,7 @@ function groupByProject(tasks) {
   };
   const map = new Map();
   for (const task of tasks) {
-    const key = task.projectName || '(no project)';
+    const key = task.projectName || NO_PROJECT;
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(task);
   }
@@ -80,6 +85,7 @@ function groupByProject(tasks) {
 }
 
 export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDelete, projects = [] }) {
+  const { t } = useTranslation('shell');
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
 
@@ -132,18 +138,18 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search recent tasks…"
-            aria-label="Search recent tasks"
+            placeholder={t('recents.searchPlaceholder')}
+            aria-label={t('recents.searchAriaLabel')}
             className="flex-1 min-w-0 bg-transparent border-0 [outline:none] font-[family-name:var(--font-body)] text-[13.5px] text-ink"
           />
           <span className="text-xs tabular-nums text-ink-4">
-            {filtered.length} of {tasks.length}
+            {t('recents.count', { shown: filtered.length, total: tasks.length })}
           </span>
-          <Tooltip content="Close">
+          <Tooltip content={t('ui.modal.close')}>
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close"
+              aria-label={t('ui.modal.close')}
               className="w-[26px] h-[26px] rounded-[6px] bg-transparent border-0 text-ink-3 cursor-pointer inline-grid place-items-center text-[18px] leading-none"
             >×</button>
           </Tooltip>
@@ -152,7 +158,7 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
         <div className="flex-1 overflow-y-auto py-2 px-[6px] flex flex-col gap-1">
           {filtered.length === 0 ? (
             <div className="py-8 px-5 text-center text-ink-4 text-[13px]">
-              {q ? 'No tasks match.' : 'No recent tasks yet.'}
+              {q ? t('recents.noMatch') : t('recents.empty')}
             </div>
           ) : (
             groupByProject(filtered).map((group) => (
@@ -162,7 +168,7 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
                     clickable row, so each task underneath stays the
                     primary affordance. */}
                 <div className="section-label flex items-center gap-2 pt-2 px-3 pb-1">
-                  <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{projectLabelByName(projects, group.projectName)}</span>
+                  <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{group.projectName === NO_PROJECT ? t('recents.noProject') : projectLabelByName(projects, group.projectName)}</span>
                   <span className="flex-1 h-px bg-line" />
                   <span className="text-ink-4 tabular-nums">{group.items.length}</span>
                 </div>

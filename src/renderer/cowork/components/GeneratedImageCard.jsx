@@ -18,6 +18,10 @@ import { Tooltip } from './ui';
 import { useBlobImageSrc } from './AttachmentThumbnail';
 import { projectFileDownloadUrl } from '../api';
 import { projectRelativeImagePath } from '../lib/generatedImage';
+import { useTranslation } from '../../lib/i18n';
+
+// Stands in for the file name so the sentence stays one catalog message.
+const NAME_TOKEN = '\uE000';
 
 // Wide enough to read a generated picture in the chat column, small enough
 // that a turn of several stays scannable. The file viewer shows it full size.
@@ -32,6 +36,7 @@ const MAX_EDGE_PX = 360;
  * }} props
  */
 export function GeneratedImageCard({ image, projectName = null, projectPath = '', onOpen = null }) {
+  const { t } = useTranslation('chat');
   // Until the chat knows its project (a cold start, before the projects list
   // lands) there is nothing to read the file from yet: that is loading, not a
   // missing file, so the card waits rather than say it can't show the image.
@@ -43,8 +48,8 @@ export function GeneratedImageCard({ image, projectName = null, projectPath = ''
   const failed = !waitingForProject && blob.failed;
   // The bytes arrived but don't decode as an image.
   const [undecodable, setUndecodable] = useState(false);
-  const name = image?.name || relPath || image?.path || 'image';
-  const alt = image?.prompt || `Generated image ${name}`;
+  const name = image?.name || relPath || image?.path || t('generatedImage.fallbackName');
+  const alt = image?.prompt || t('generatedImage.alt', { name });
   const width = image?.width || null;
   const height = image?.height || null;
   // With its size known, the frame takes the picture's shape before the bytes
@@ -67,7 +72,10 @@ export function GeneratedImageCard({ image, projectName = null, projectPath = ''
       >
         <span className="inline-flex flex-none">{Ico.image(16)}</span>
         <span className="min-w-0 truncate">
-          <span className="text-ink-2">{name}</span> could not be shown. It may have been moved or deleted.
+          {(() => {
+            const [before, after = ''] = t('generatedImage.notShown', { name: NAME_TOKEN }).split(NAME_TOKEN);
+            return <>{before}<span className="text-ink-2">{name}</span>{after}</>;
+          })()}
         </span>
       </div>
     );
@@ -85,11 +93,11 @@ export function GeneratedImageCard({ image, projectName = null, projectPath = ''
   return (
     <figure className="m-0 inline-flex flex-col gap-1 max-w-full">
       {onOpen && relPath && src ? (
-        <Tooltip content="Open image">
+        <Tooltip content={t('attachmentThumbnail.open')}>
           <button
             type="button"
             onClick={() => onOpen(relPath)}
-            aria-label={`Open image: ${name}`}
+            aria-label={t('attachmentThumbnail.openNamed', { name })}
             className="p-0 m-0 border-0 bg-transparent cursor-pointer max-w-full text-left"
           >
             {picture}

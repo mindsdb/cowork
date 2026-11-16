@@ -6,15 +6,17 @@
 import { useCallback, useState } from 'react';
 import SharePointImportModal from './SharePointImportModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './SharePointSetupModal';
+import { projectLabelByName } from '../../lib/projectLabel';
 
 /**
  * @param {object} options
  * @param {{engine: string, name: string, user_label?: string|null}[]} options.connections every saved connection
+ * @param {{name: string, display_name?: string|null}[]} [options.projects] resolves the label shown for the target project
  * @param {boolean} options.orgMode
  * @param {() => void} [options.onConnectionsChanged] after a connection is created here
  * @returns {{startSharePointImport: ((projectName: string) => void) | undefined, sharePointModals: JSX.Element}}
  */
-export function useSharePointImport({ connections, orgMode, onConnectionsChanged }) {
+export function useSharePointImport({ connections, projects, orgMode, onConnectionsChanged }) {
   const [flow, setFlow] = useState(null);
   const sharePoint = (connections || []).filter((c) => c.engine === SHAREPOINT_ENGINE);
 
@@ -42,6 +44,7 @@ export function useSharePointImport({ connections, orgMode, onConnectionsChanged
       <SharePointImportModal
         open={flow?.step === 'import'}
         projectName={flow?.projectName || ''}
+        projectDisplayName={projectLabelByName(projects, flow?.projectName)}
         connections={offered}
         onClose={close}
       />

@@ -16,6 +16,7 @@ import { describeFetchError } from './fetch-error';
 import {
   type MindsOrg,
   type MindsOrgList,
+  brandIconFromAttributes,
   chooseMindsOrg,
   organizationLabel,
   personalOrgName,
@@ -442,6 +443,8 @@ interface OrgRef {
    *  from the human display name — used to spot the user's personal org. */
   slug?: string;
   source?: string;
+  /** The org's icon, from the org attribute `brand_icon_url`. */
+  iconUrl?: string;
 }
 
 /** The signed-in account, from the token already in hand. */
@@ -459,6 +462,7 @@ function normalizeOrgRef(value: any, source: string): OrgRef | null {
     name: raw.displayName ?? raw.display_name ?? raw.name ?? undefined,
     slug: raw.name ? String(raw.name) : undefined,
     source,
+    iconUrl: brandIconFromAttributes(raw.attributes),
   };
 }
 
@@ -496,6 +500,7 @@ function pushUniqueOrg(target: OrgRef[], seen: Set<string>, org: OrgRef | null) 
     if (existing && existing.name === existing.slug && org.name && org.name !== org.slug) {
       existing.name = org.name;
     }
+    if (existing && !existing.iconUrl && org.iconUrl) existing.iconUrl = org.iconUrl;
     return;
   }
   seen.add(org.id);

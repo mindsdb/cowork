@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { documentPreviewData } from '../../../../tests/helpers/documentPreviewData';
 import type { DocumentPreviewFrameProps } from './DocumentPreviewFrame';
 
-const platform = vi.hoisted(() => ({ isWeb: true }));
+const platform = vi.hoisted(() => ({ isWeb: true, isMobileShell: false }));
 /* The frame is a stub here: DocumentPreviewFrame has its own tests. */
 const frameStub = vi.hoisted(() => ({
   crash: false,
@@ -85,6 +85,7 @@ async function mountedFrame() {
 
 beforeEach(() => {
   platform.isWeb = true;
+  platform.isMobileShell = false;
   frameStub.crash = false;
   frameStub.mounts = [];
   bundleStub.loadScript.mockReset();
@@ -427,4 +428,23 @@ describe('layout', () => {
     expect(css).toMatch(/\.document-preview \{[^}]*position: absolute;[^}]*inset: 0;/);
     expect(css).toMatch(/\.document-preview-frame \{[^}]*width: 100%;/);
   });
+});
+
+it('explains mobile preview failures without automatically downloading or offering a dead button', async () => {
+  platform.isMobileShell = true;
+  bundleStub.loadScript.mockRejectedValue(new TypeError('Bundle failed'));
+  const { props } = mount();
+  expect(await screen.findByText(/Downloads are not available in the mobile app/)).toBeInTheDocument();
+  expect(props.download).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument();
+});
+
+it('explains how to get a complete document in the mobile truncation bar', async () => {
+  platform.isMobileShell = true;
+  const { props } = mount();
+  const frame = await mountedFrame();
+  act(() => frame.onRendered({ type: 'xlsx', units: 1, truncated: true }));
+  expect(screen.getByRole('note')).toHaveTextContent('Open Cowork in your browser');
+  expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument();
+  expect(props.download).not.toHaveBeenCalled();
 });

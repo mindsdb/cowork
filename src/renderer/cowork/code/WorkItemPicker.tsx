@@ -6,6 +6,7 @@ import Select from '../components/ui/Select';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import type { ProjectConnection, WorkItemSummary } from './api';
 import { developerProviderLabel, type DeveloperProvider } from './developerTools';
+import i18n, { currentLocale, useTranslation } from '../../lib/i18n';
 
 function updatedLabel(value: string): string {
   if (!value) return '';
@@ -13,10 +14,12 @@ function updatedLabel(value: string): string {
   if (!Number.isFinite(timestamp)) return '';
   const elapsed = Math.max(0, Date.now() - timestamp);
   const hours = Math.floor(elapsed / 3_600_000);
-  if (hours < 1) return 'Just now';
-  if (hours < 24) return `${hours}h`;
+  if (hours < 1) return i18n.t('workItemPicker.justNow', { ns: 'code' });
+  if (hours < 24) return i18n.t('workItemPicker.hours', { ns: 'code', count: hours });
   const days = Math.floor(hours / 24);
-  return days < 30 ? `${days}d` : new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return days < 30
+    ? i18n.t('workItemPicker.days', { ns: 'code', count: days })
+    : new Date(value).toLocaleDateString(currentLocale(), { month: 'short', day: 'numeric' });
 }
 
 export function WorkItemPicker({
@@ -60,16 +63,18 @@ export function WorkItemPicker({
   onClose: () => void;
   busy: boolean;
 }) {
+  const { t } = useTranslation('code');
+  const providerName = developerProviderLabel(provider);
   const providerConnections = connections.filter((item) => item.provider === provider);
   const hasConnections = connections.length > 0;
   return (
-    <section className="code-work-picker" aria-label="Start from existing work">
+    <section className="code-work-picker" aria-label={t('workItemPicker.ariaLabel')}>
       <header className="code-work-picker__header">
         <div>
-          <strong>Start from work</strong>
-          <span>{query.trim() ? 'Search issues and pull requests' : 'Recently updated and assigned to you'}</span>
+          <strong>{t('workItemPicker.title')}</strong>
+          <span>{query.trim() ? t('workItemPicker.searchSubtitle') : t('workItemPicker.recentSubtitle')}</span>
         </div>
-        <Button icon size="sm" variant="subtle" aria-label="Close work picker" onClick={onClose} disabled={busy}>{Ico.close(14)}</Button>
+        <Button icon size="sm" variant="subtle" aria-label={t('workItemPicker.close')} onClick={onClose} disabled={busy}>{Ico.close(14)}</Button>
       </header>
 
       {hasConnections ? (
@@ -77,7 +82,7 @@ export function WorkItemPicker({
           <div className="code-work-picker__filters">
             <ToggleGroup
               size="sm"
-              aria-label="Developer tool"
+              aria-label={t('workItemPicker.providerAriaLabel')}
               disabled={busy}
               value={provider}
               onValueChange={(value) => onProviderChange(value as DeveloperProvider)}
@@ -90,9 +95,9 @@ export function WorkItemPicker({
                 options={providerConnections.map((item) => ({ value: item.name, label: item.label || item.name }))}
                 variant="unstyled"
                 size="sm"
-                ariaLabel={`${developerProviderLabel(provider)} account`}
+                ariaLabel={t('workItemPicker.accountAriaLabel', { provider: providerName })}
                 disabled={busy}
-                menuLabel="Account"
+                menuLabel={t('workItemPicker.accountMenuLabel')}
               />
             )}
           </div>
@@ -102,17 +107,17 @@ export function WorkItemPicker({
             size="sm"
             leading={Ico.search(14)}
             wrapperClassName="code-work-picker__search"
-            placeholder={`Search ${developerProviderLabel(provider)}`}
-            aria-label={`Search ${developerProviderLabel(provider)} work`}
+            placeholder={t('workItemPicker.searchPlaceholder', { provider: providerName })}
+            aria-label={t('workItemPicker.searchAriaLabel', { provider: providerName })}
             disabled={busy}
             autoFocus
           />
 
-          <div className="code-work-picker__results" role="listbox" aria-label={`${developerProviderLabel(provider)} work`}>
-            {loading && <div className="code-work-picker__message" role="status">Finding work…</div>}
+          <div className="code-work-picker__results" role="listbox" aria-label={t('workItemPicker.resultsAriaLabel', { provider: providerName })}>
+            {loading && <div className="code-work-picker__message" role="status">{t('workItemPicker.finding')}</div>}
             {!loading && error && <div className="code-work-picker__message is-error" role="alert">{error}</div>}
             {!loading && !error && items.length === 0 && (
-              <div className="code-work-picker__message">{query.trim() ? 'No matching work.' : 'No assigned work found.'}</div>
+              <div className="code-work-picker__message">{query.trim() ? t('workItemPicker.noMatches') : t('workItemPicker.noAssigned')}</div>
             )}
             {!loading && !error && items.map((item) => (
               <button
@@ -138,17 +143,17 @@ export function WorkItemPicker({
               value={link}
               onChange={onLinkChange}
               size="sm"
-              placeholder="Or paste an issue or pull-request link"
-              aria-label="Issue or pull-request link"
+              placeholder={t('workItemPicker.linkPlaceholder')}
+              aria-label={t('workItemPicker.linkAriaLabel')}
               disabled={busy}
             />
-            <Button size="sm" variant="subtle" onClick={onAddLink} disabled={busy || !link.trim()}>{adding ? 'Adding…' : 'Add'}</Button>
+            <Button size="sm" variant="subtle" onClick={onAddLink} disabled={busy || !link.trim()}>{adding ? t('workItemPicker.adding') : t('workItemPicker.add')}</Button>
           </div>
         </>
       ) : (
         <div className="code-work-picker__empty">
-          <span>Connect GitHub or Linear to start from existing work.</span>
-          <Button size="sm" variant="tinted" onClick={onOpenConnectors}>Open Connectors</Button>
+          <span>{t('workItemPicker.connectHint')}</span>
+          <Button size="sm" variant="tinted" onClick={onOpenConnectors}>{t('workItemPicker.openConnectors')}</Button>
         </div>
       )}
     </section>

@@ -17,6 +17,8 @@ import { GitIdentityCard, type GitIdentitySetup } from './GitIdentityCard';
 import { SourceUpdateSection } from './SourceUpdateSection';
 import type { ReviewFileAction } from './FileReviewControls';
 import { ReviewFileCard } from './ReviewFileCard';
+import { useTranslation } from '../../lib/i18n';
+import { productName } from '../../lib/deploymentBrand';
 
 
 type ReviewStyle = CSSProperties & { '--code-review-width': string };
@@ -78,6 +80,8 @@ export function ReviewPanel({
   onFileAction?: (file: DiffFile, action: ReviewFileAction) => Promise<void>;
   suggestedUpdate?: string;
 }) {
+  const { t } = useTranslation('code');
+  const product = productName('Cowork');
   const [tab, setTab] = useState<'changes' | 'git'>('changes');
   const [branch, setBranch] = useState('');
   const [message, setMessage] = useState('');
@@ -94,13 +98,13 @@ export function ReviewPanel({
     }
     const failed = results.filter((item) => item.return_code !== 0).length;
     setValidationNotice(failed
-      ? { variant: 'danger', text: `${failed} of ${results.length} project checks failed. Open the task activity for output.` }
+      ? { variant: 'danger', text: t('reviewPanel.checks.failed', { failed, total: results.length }) }
       : results.length
-        ? { variant: 'success', text: `${results.length} project ${results.length === 1 ? 'check passed' : 'checks passed'}.` }
+        ? { variant: 'success', text: t('reviewPanel.checks.passed', { count: results.length }) }
         // A task keeps the commands its project had when it started. The
         // recovery for an older task is to adopt the current ones explicitly;
         // editing Project settings alone never reaches it (ENG-2895).
-        : { variant: 'info', text: 'This task has no project checks. Tasks started from this project use the commands saved in Project settings.', offerAdopt: true });
+        : { variant: 'info', text: t('reviewPanel.checks.none'), offerAdopt: true });
     return results;
   };
 
@@ -116,8 +120,8 @@ export function ReviewPanel({
       setValidationNotice({
         variant: 'info',
         text: refreshed.run_count
-          ? `Project settings have no validation commands for this task's folders, so there is nothing to check. ${refreshed.run_count === 1 ? '1 run action is' : `${refreshed.run_count} run actions are`} now available.`
-          : "Project settings have no commands for this task's folders yet. Add validation commands there, then use this again.",
+          ? t('reviewPanel.checks.noValidationCommands', { count: refreshed.run_count })
+          : t('reviewPanel.checks.noCommands'),
         offerAdopt: true,
       });
       return;
@@ -176,17 +180,17 @@ export function ReviewPanel({
 
   return (
     <>
-      <button type="button" className="code-review-scrim" aria-label="Close review panel" onClick={onClose} />
+      <button type="button" className="code-review-scrim" aria-label={t('reviewPanel.closeAriaLabel')} onClick={onClose} />
       <aside
         id="code-review-panel"
         className="code-review"
-        aria-label="Review changes"
+        aria-label={t('reviewPanel.ariaLabel')}
         style={{ '--code-review-width': `${width}px` } as ReviewStyle}
       >
         <div
           className="code-review__resize"
           role="separator"
-          aria-label="Resize review panel"
+          aria-label={t('reviewPanel.resizeAriaLabel')}
           aria-orientation="vertical"
           aria-valuemin={340}
           aria-valuemax={640}
@@ -205,15 +209,15 @@ export function ReviewPanel({
         />
         <header className="code-review__header">
           <div>
-            <div className="section-label">Task output</div>
-            <div className="code-review__title">Review changes</div>
+            <div className="section-label">{t('reviewPanel.eyebrow')}</div>
+            <div className="code-review__title">{t('reviewPanel.title')}</div>
           </div>
-          <Button icon size="sm" variant="subtle" aria-label="Close review panel" onClick={onClose}>{Ico.close(14)}</Button>
+          <Button icon size="sm" variant="subtle" aria-label={t('reviewPanel.closeAriaLabel')} onClick={onClose}>{Ico.close(14)}</Button>
         </header>
         <Tabs value={tab} onValueChange={(value) => setTab(value as 'changes' | 'git')}>
-          <TabList className="code-review__tabs" aria-label="Review sections">
-            <Tab value="changes">Changes <span>{files.length}</span></Tab>
-            <Tab value="git">Deliver</Tab>
+          <TabList className="code-review__tabs" aria-label={t('reviewPanel.tabsAriaLabel')}>
+            <Tab value="changes">{t('reviewPanel.tabs.changes')} <span>{files.length}</span></Tab>
+            <Tab value="git">{t('reviewPanel.tabs.deliver')}</Tab>
           </TabList>
         </Tabs>
         {error && <div className="code-review__error"><Alert variant="danger">{error}</Alert></div>}
@@ -222,18 +226,18 @@ export function ReviewPanel({
           <div className="code-review__body scroll-clean">
             <div className="code-review__summary">
               <span>{files.length
-                ? `${files.length} changed ${files.length === 1 ? 'file' : 'files'}`
-                : directFolderWithoutDiff ? 'Change tracking unavailable' : 'Working tree unchanged'}</span>
+                ? t('reviewPanel.summary.changedFiles', { count: files.length })
+                : directFolderWithoutDiff ? t('reviewPanel.summary.trackingUnavailable') : t('reviewPanel.summary.unchanged')}</span>
               {files.length > 0 && <><span className="code-diff-add">+{additions}</span><span className="code-diff-del">−{deletions}</span></>}
             </div>
             {files.length === 0 && (
               <EmptyState
                 size="sm"
                 icon={Ico.code(20)}
-                title={directFolderWithoutDiff ? 'Open the folder to review changes' : 'No changes to review yet'}
+                title={directFolderWithoutDiff ? t('reviewPanel.empty.directTitle') : t('reviewPanel.empty.title')}
                 description={directFolderWithoutDiff
-                  ? 'Direct folders do not have a Git baseline, so Cowork cannot build an inline diff.'
-                  : 'File changes will collect here while the agent works.'}
+                  ? t('reviewPanel.empty.directDescription', { product })
+                  : t('reviewPanel.empty.description')}
               />
             )}
             {groupedFiles.map((group, groupIndex) => (
@@ -254,35 +258,35 @@ export function ReviewPanel({
         ) : (
           <div className="code-review__body code-git-panel scroll-clean">
             <div className="code-delivery-heading">
-              <strong>Deliver this task</strong>
+              <strong>{t('reviewPanel.deliver.heading')}</strong>
             </div>
             {gitIdentitySetup && <GitIdentityCard setup={gitIdentitySetup} busy={busy} />}
             <section className="code-handoff-summary">
-              {session.project_name && <div className="code-handoff-summary__row"><span>Project</span><strong>{session.project_name}</strong></div>}
+              {session.project_name && <div className="code-handoff-summary__row"><span>{t('reviewPanel.deliver.project')}</span><strong>{session.project_name}</strong></div>}
               {workspaceEntries.map((workspace) => (
                 <div className="code-handoff-summary__folder" key={workspace.folder_id}>
                   <div className="code-handoff-summary__row"><span>{workspace.folder_name}</span><code title={workspace.workspace_path}>{compactPath(workspace.workspace_path)}</code></div>
-                  {workspace.task_branch && <div className="code-handoff-summary__row"><span>Branch</span><Badge size="xs" variant="accent">{workspace.task_branch}</Badge></div>}
+                  {workspace.task_branch && <div className="code-handoff-summary__row"><span>{t('reviewPanel.deliver.branch')}</span><Badge size="xs" variant="accent">{workspace.task_branch}</Badge></div>}
                 </div>
               ))}
             </section>
             <div className="code-git-open-actions">
-              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.workspace_path)}>{Ico.openFolder(14)} {session.workspace_kind === 'direct_folder' ? 'Open original folder' : 'Open isolated copy'}</Button>}
-              {session.computer_is_local !== false && session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.source_path)}>Open original</Button>}
+              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.workspace_path)}>{Ico.openFolder(14)} {session.workspace_kind === 'direct_folder' ? t('reviewPanel.deliver.openOriginalFolder') : t('reviewPanel.deliver.openIsolatedCopy')}</Button>}
+              {session.computer_is_local !== false && session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.source_path)}>{t('reviewPanel.deliver.openOriginal')}</Button>}
             </div>
-            {sourceChanged && <Alert variant="warning" title="Source had local changes when this task began">Those changes stayed in the source folder. Cowork checks for conflicts before applying.</Alert>}
+            {sourceChanged && <Alert variant="warning" title={t('reviewPanel.sourceChanged.title')}>{t('reviewPanel.sourceChanged.body', { product })}</Alert>}
             {handoffConflict && (
               <section className="code-handoff-primary">
-                <div><div className="code-field-label">Reconcile the original changes</div><p>Have the agent preserve both versions in the isolated copy, then review again.</p></div>
-                <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void onResolveConflicts()}>Resolve with agent</Button>
+                <div><div className="code-field-label">{t('reviewPanel.reconcile.title')}</div><p>{t('reviewPanel.reconcile.body')}</p></div>
+                <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void onResolveConflicts()}>{t('reviewPanel.reconcile.action')}</Button>
               </section>
             )}
             {supportsHandoff ? (
               <>
                 {session.project_id && (
                   <section className="code-handoff-secondary">
-                    <div><div className="code-field-label">Project checks</div></div>
-                    <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void runChecks()}>Run checks</Button>
+                    <div><div className="code-field-label">{t('reviewPanel.checks.title')}</div></div>
+                    <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void runChecks()}>{t('reviewPanel.checks.run')}</Button>
                   </section>
                 )}
                 {validationNotice && (
@@ -291,7 +295,7 @@ export function ReviewPanel({
                     {validationNotice.offerAdopt && onAdoptProjectCommands && (
                       <div className="mt-[8px]">
                         <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void adoptProjectCommands()}>
-                          Use latest project commands
+                          {t('reviewPanel.checks.adopt')}
                         </Button>
                       </div>
                     )}
@@ -316,27 +320,27 @@ export function ReviewPanel({
                 )}
                 <section className="code-handoff-primary code-handoff-local">
                   <div>
-                    <div className="code-field-label">Apply locally</div>
+                    <div className="code-field-label">{t('reviewPanel.applyLocally.title')}</div>
                   </div>
-                  <Tooltip content="Copy the reviewed changes back to the original folders">
+                  <Tooltip content={t('reviewPanel.applyLocally.tooltip')}>
                     <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => { setApplyError(''); setApplyOpen(true); }}>
-                      {applied ? 'Applied' : 'Apply locally'}
+                      {applied ? t('reviewPanel.applyLocally.applied') : t('reviewPanel.applyLocally.title')}
                     </Button>
                   </Tooltip>
                 </section>
-                {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
-                {!session.project_id && gitWorkspaces.length > 0 && <Collapsible className="code-git-advanced" panelClassName="code-git-advanced__body" title="Git options">
+                {applied && <Alert variant="success">{t('reviewPanel.applyLocally.appliedNotice')}</Alert>}
+                {!session.project_id && gitWorkspaces.length > 0 && <Collapsible className="code-git-advanced" panelClassName="code-git-advanced__body" title={t('reviewPanel.git.title')}>
                   <div className="code-git-action">
-                    <div className="code-field-label">Create a branch in the task worktree</div>
-                    <div className="code-inline-form"><Input value={branch} onChange={setBranch} placeholder="feature/my-change" variant="mono" disabled={active || busy} /><Button size="sm" disabled={!branch.trim() || active || busy} onClick={async () => { try { await onBranch(branch.trim()); setBranch(''); } catch { /* Parent renders the failure. */ } }}>Create</Button></div>
+                    <div className="code-field-label">{t('reviewPanel.git.branchLabel')}</div>
+                    <div className="code-inline-form"><Input value={branch} onChange={setBranch} placeholder="feature/my-change" variant="mono" disabled={active || busy} /><Button size="sm" disabled={!branch.trim() || active || busy} onClick={async () => { try { await onBranch(branch.trim()); setBranch(''); } catch { /* Parent renders the failure. */ } }}>{t('reviewPanel.git.create')}</Button></div>
                   </div>
                   <div className="code-git-action">
-                    <div className="code-field-label">Commit all task changes</div>
-                    <div className="code-inline-form"><Input value={message} onChange={setMessage} placeholder="Describe the change" disabled={active || busy} /><Button size="sm" disabled={!message.trim() || active || busy} onClick={async () => { try { await onCommit(message.trim()); setMessage(''); } catch { /* Parent renders the failure. */ } }}>Commit</Button></div>
+                    <div className="code-field-label">{t('reviewPanel.git.commitLabel')}</div>
+                    <div className="code-inline-form"><Input value={message} onChange={setMessage} placeholder={t('reviewPanel.git.commitPlaceholder')} disabled={active || busy} /><Button size="sm" disabled={!message.trim() || active || busy} onClick={async () => { try { await onCommit(message.trim()); setMessage(''); } catch { /* Parent renders the failure. */ } }}>{t('reviewPanel.git.commit')}</Button></div>
                   </div>
                 </Collapsible>}
               </>
-            ) : <p className="code-empty-copy">This task already works in the selected folder, so there is nothing to apply.</p>}
+            ) : <p className="code-empty-copy">{t('reviewPanel.applyLocally.nothingToApply')}</p>}
             <SourceUpdateSection
               contexts={session.source_contexts || []}
               deliveries={session.deliveries || []}
@@ -349,9 +353,9 @@ export function ReviewPanel({
         )}
         <ConfirmModal
           open={applyOpen}
-          title="Apply changes to the source folder?"
-          message={`Update ${session.project_name || session.source_path} with the reviewed task changes? Cowork will stop before changing any folder if it finds a conflict.`}
-          confirmLabel="Apply changes"
+          title={t('reviewPanel.applyConfirm.title')}
+          message={t('reviewPanel.applyConfirm.message', { target: session.project_name || session.source_path, product })}
+          confirmLabel={t('reviewPanel.applyConfirm.confirm')}
           busy={busy}
           error={applyError}
           onClose={() => { if (!busy) setApplyOpen(false); }}
@@ -362,7 +366,7 @@ export function ReviewPanel({
               setAppliedChangeKey(changeKey);
               setApplyOpen(false);
             } catch (reason) {
-              setApplyError(reason instanceof Error && reason.message ? reason.message : 'Could not apply changes. Please try again.');
+              setApplyError(reason instanceof Error && reason.message ? reason.message : t('reviewPanel.applyConfirm.error'));
             }
           }}
         />

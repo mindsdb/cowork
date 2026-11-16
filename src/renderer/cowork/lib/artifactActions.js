@@ -1,3 +1,6 @@
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.artifactActions.${key}`, { ns: 'projects', ...vars });
 /*
  * Which artifact card actions exist, per deployment mode.
  *
@@ -27,6 +30,7 @@ const NEEDS_BRIDGE_OR_FILE_URL = new Set(['download']);
 
 /** What a click shows once a file with no preview has downloaded. */
 export const NO_PREVIEW_DOWNLOADED_NOTE = 'No preview for this file type; downloaded instead.';
+export const noPreviewDownloadedNote = () => tr('noPreviewDownloaded');
 
 export function isArtifactActionAvailable(id, { orgMode, hasBridge, published, hasDraft, canDownload } = {}) {
   if (orgMode) {

@@ -515,6 +515,53 @@ describe('free_serving_paused card', () => {
   });
 });
 
+describe('budget_exceeded card', () => {
+  const PAID = { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' };
+  const MSG = "Your organization's spending budget is used up. An owner or admin can raise it in Budgets.";
+  const TITLE = "Your organization's budget is used up";
+  const RAISE = "Paid models can't run until an owner or admin raises it in Budgets.";
+  const renderStop = (usage, props = {}) => render(withUsage(
+    usage,
+    <ChatView
+      task={taskWith(failedTurn('budget_exceeded', MSG))}
+      model={PAID}
+      onSwitchToAirAndResend={vi.fn()}
+      {...props}
+    />,
+  ));
+
+  it('names the budget, links to Budgets, and never asks for funds', () => {
+    renderStop(hubUsage({ remaining: 0, used: 100 }));
+    expect(stopCard(TITLE).getByText(RAISE)).toBeInTheDocument();
+    expect(stopCard(TITLE).getByRole('button', { name: 'View budgets' })).toBeEnabled();
+    expect(stopCard(TITLE).queryByRole('button', { name: /Add funds|auto top up/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).toBeNull();
+  });
+
+  it('offers MindsHub Air while its free allowance has room, resending the failed message', async () => {
+    const user = userEvent.setup();
+    const onSwitchToAirAndResend = vi.fn();
+    renderStop(hubUsage({ remaining: 80 }), { onSwitchToAirAndResend });
+    expect(stopCard(TITLE).getByText(`${RAISE} MindsHub Air still works while its free allowance lasts.`)).toBeInTheDocument();
+    await user.click(stopCard(TITLE).getByRole('button', { name: 'Switch to MindsHub Air' }));
+    expect(onSwitchToAirAndResend).toHaveBeenCalledWith('draw me a chart', []);
+  });
+
+  it.each([
+    ['the org has no free grant', hubUsage(null, { freeTokens: { limit: 0, used: 0, remaining: 0 } }), {}],
+    ['the task is already on Air', hubUsage({ remaining: 80 }), { model: { id: MINDSHUB_AIR_MODEL_ID, name: 'MindsHub Air' } }],
+    ['there is no hub usage', undefined, {}],
+  ])('offers no switch when %s', (_label, usage, props) => {
+    if (usage === undefined) {
+      render(<ChatView task={taskWith(failedTurn('budget_exceeded', MSG))} model={PAID} onSwitchToAirAndResend={vi.fn()} />);
+    } else {
+      renderStop(usage, props);
+    }
+    expect(screen.getByText(TITLE)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).toBeNull();
+  });
+});
+
 describe('provider_required card', () => {
   it('pitches a free allowance on Air without calling it monthly', () => {
     render(<ChatView task={taskWith([{ role: 'provider_required' }])} />);
@@ -1196,6 +1243,8 @@ const WIRE_CODES = [
   'free_serving_paused',
   // An org admin's model rule refused the model; credits do not unlock it.
   'model_restricted',
+  // The org's spending budget is used up; an owner or admin raises it in Budgets.
+  'budget_exceeded',
   // cowork-server found no free database connection in time; the user waits, then retries.
   'server_busy',
   // The server stopped while the turn ran; the question itself was fine, so it can be sent again.

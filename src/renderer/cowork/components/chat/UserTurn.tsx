@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { trimCopiedSelection } from '../../lib/clipboard';
+import { useTranslation } from '../../../lib/i18n';
 
 // Long user messages clamp to ~8 lines behind a "Show more" toggle so a big
 // pasted prompt doesn't dominate the viewport before the answer starts.
@@ -19,6 +20,7 @@ export const USER_CLAMP_MAX_PX = 176;
 export function UserTurn({
   content,
   children,
+  footer,
   attachments,
   actions,
   deleting = false,
@@ -27,12 +29,16 @@ export function UserTurn({
 }: {
   content: string;
   children?: ReactNode;
+  /** Inside the bubble, under the message: a chip such as the artifact a
+   *  message from the viewer's chat bar was about (ENG-4227). */
+  footer?: ReactNode;
   attachments?: ReactNode;
   actions?: ReactNode;
   deleting?: boolean;
   className?: string;
   turnId?: string;
 }) {
+  const { t } = useTranslation('chat');
   const contentRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState(true);
   const [overflowing, setOverflowing] = useState(false);
@@ -69,8 +75,10 @@ export function UserTurn({
               {/* The same markdown pipeline as answers, so fences, emphasis and
                   lists typed in the composer render. Forms and charts are off:
                   a special fence typed by the user must not trigger renderers
-                  reserved for assistant output. */}
-              <MarkdownContent text={content} variant="user" enableForms={false} enableCharts={false} />
+                  reserved for assistant output. Single newlines stay line
+                  breaks: the reader typed them with Shift+Enter or pasted
+                  them, and CommonMark would join the lines into one. */}
+              <MarkdownContent text={content} variant="user" softBreaks enableForms={false} enableCharts={false} />
             </div>
           )}
           {!custom && overflowing && (
@@ -80,9 +88,10 @@ export function UserTurn({
               aria-expanded={!collapsed}
               onClick={() => setCollapsed((c) => !c)}
             >
-              {collapsed ? 'Show more' : 'Show less'}
+              {collapsed ? t('userTurn.showMore') : t('userTurn.showLess')}
             </button>
           )}
+          {footer}
         </div>
         {attachments}
         {actions}

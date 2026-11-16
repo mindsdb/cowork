@@ -65,13 +65,13 @@
 // since the footer is plain content, not a selectable item (see
 // ui/Combobox.jsx's `footer` slot docs).
 //
-// Option shape: { value, label, disabled?, locked?, restricted?, title?, tag?, note?, maker?, provider?, pin? }.
+// Option shape: { value, label, disabled?, locked?, restricted?, budgetReached?, title?, tag?, note?, maker?, provider?, pin? }.
 //   - `provider`: MindsHub's serving-vendor field (the ENG-1111 backend
 //     contract), which decides the section.
 //   - `maker`: explicit maker key, trusted over inference when present. It is
 //     the icon identity only, never the section.
 //   - `tag`: compact right-aligned pill on the row (availability: "Needs
-//     credits" or "Restricted"), kept out of the label so the trigger and the search see
+//     credits", "Restricted" or "Budget reached"), kept out of the label so the trigger and the search see
 //     the bare name.
 //   - `note`: muted "(latest)" text after the name on the row only, kept out
 //     of the label for the same reason.
@@ -82,6 +82,8 @@
 //   - `restricted`: an org admin's model rule blocks this model. Disabled,
 //     tagged "Restricted" with an explanatory `title`, and never `locked`, so
 //     no "Add credits" button attaches: credits cannot lift an admin rule.
+//   - `budgetReached`: the org's spending budget is used up. Disabled, tagged
+//     "Budget reached", never `locked`: credits do not raise a budget.
 //   - `pin: 'top' | 'bottom'`: render outside the maker groups, unheaded,
 //     at the top/bottom of the list (stale-pin and "Other…" entries).
 //     Pinned entries also bypass the search filter: "Other…" is the escape
@@ -94,17 +96,15 @@ import { ChevronRight, Check } from 'lucide-react';
 import { Icon } from './ui/Icon';
 import { cn } from '../lib/cn';
 import { groupModelOptions, modelMaker } from '../lib/modelCatalog';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { USAGE_ACTIONS, usageActionUrl } from '../lib/usageWarnings';
+import { useHubUsageContext } from '../lib/hubUsageContext';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { trackBillingOpened } from '../lib/analytics';
 import Combobox from './ui/Combobox.jsx';
 import ProviderIcon from './ProviderIcon.jsx';
 import { Tooltip } from './ui';
-
-// Copy is shared verbatim with the flyout's description paragraph — pulled
-// to a constant so the two can't drift.
-const EFFORT_DESCRIPTION = 'Higher effort means more thorough responses, but takes longer and uses your limits faster.';
+import { useTranslation } from '../../lib/i18n';
 
 // How long the flyout stays open after the pointer leaves both the footer
 // row and the panel itself, with nothing else happening — long enough that
@@ -129,6 +129,16 @@ const CHECK = <Icon of={Check} size={12} />;
 function capitalize(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
+
+// The displayed name of an effort level. Only the label is translated; the
+// level itself ('medium', 'xhigh', …) is the stored value. A level the catalog
+// doesn't know yet falls back to the capitalized id, as before.
+function effortLabel(t, level) {
+  return level ? t(`effort.levels.${level}`, { defaultValue: capitalize(level) }) : level;
+}
+
+// Section headings that are words rather than a maker's name (which stays as is).
+const GROUP_NAME_KEYS = { 'open-weight': 'groups.openWeight', other: 'groups.other' };
 
 // Pseudo-group keys for pinned (unheaded) entries. Underscored so they can
 // never collide with a real maker key from modelCatalog.
@@ -157,9 +167,9 @@ const PIN_BOTTOM = '__pinned-bottom__';
  * the stopPropagation, and none can without a `locked` row that is not also
  * disabled, which the builders never produce.
  */
-function creditsAction() {
+function creditsAction(t, isBillingOwner) {
   return (
-    <Tooltip content="Add credits to use this model">
+    <Tooltip content={t('picker.addCreditsTooltip')}>
       <button
         type="button"
         /* Same metrics as the "Needs credits" tag it sits beside, in accent so
@@ -175,11 +185,11 @@ function creditsAction() {
         onClick={(e) => {
           e.stopPropagation();
           trackBillingOpened('locked_model_row');
-          return host.openExternal(MINDS_BILLING_URL);
+          return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        Add credits
+        {t('picker.addCredits')}
       </button>
     </Tooltip>
   );
@@ -288,6 +298,7 @@ function EffortFooter({
   onPick,
   zIndex,
 }) {
+  const { t } = useTranslation('models');
   const [flyoutOpen, setFlyoutOpen] = useState(false);
   const closeTimerRef = useRef(null);
 
@@ -316,7 +327,7 @@ function EffortFooter({
 
   const rowContent = (
     <>
-      <span>Effort</span>
+      <span>{t('effort.label')}</span>
       <span className="inline-flex items-center gap-[4px] text-ink-3">
         <span className="truncate max-w-[110px]">{valueLabel}</span>
         {CHEVRON_RIGHT}
@@ -357,7 +368,7 @@ function EffortFooter({
             )}
           >
             <p className="m-0 px-[14px] pt-[10px] pb-[8px] text-[12px] leading-[1.5] text-ink-3">
-              {EFFORT_DESCRIPTION}
+              {t('effort.description')}
             </p>
             <div className="pb-[4px]">
               {effortOptions.map((lvl) => (
@@ -370,10 +381,10 @@ function EffortFooter({
                   <span className="inline-flex justify-center text-accent">
                     {lvl === resolvedEffort && CHECK}
                   </span>
-                  <span className="min-w-0 truncate text-left">{capitalize(lvl)}</span>
+                  <span className="min-w-0 truncate text-left">{effortLabel(t, lvl)}</span>
                   {lvl === defaultEffort && (
                     <span className="shrink-0 rounded-full border border-line px-[7px] py-[1px] text-[10.5px] leading-[15px] text-ink-4 select-none">
-                      Default
+                      {t('effort.default')}
                     </span>
                   )}
                 </button>
@@ -388,8 +399,8 @@ function EffortFooter({
 
 export function ModelSelect({
   options = [],
-  placeholder = 'Select model',
-  emptyText = 'No models found',
+  placeholder: placeholderProp,
+  emptyText: emptyTextProp,
   // Reasoning-effort footer (ENG-1940) — all optional; omitting `modelEfforts`
   // entirely keeps this component's behavior identical to before it existed.
   modelEfforts,
@@ -400,24 +411,29 @@ export function ModelSelect({
   onValueChange,
   ...rest
 }) {
+  const { t } = useTranslation('models');
+  const placeholder = placeholderProp ?? t('picker.placeholder');
+  const emptyText = emptyTextProp ?? t('picker.empty');
+  const isBillingOwner = !!useHubUsageContext()?.usage?.isBillingOwner;
   const groups = useMemo(() => {
     // A locked row gets the route to credits attached here, so neither builder
     // has to know how to render one. An explicit `action` from a call site wins
     // — Model Router carries its own and is never locked anyway.
     const entries = options.filter(Boolean)
       .map((o) => {
-        if (!PLATFORM_UI && o.locked) return { ...o, tag: 'Unavailable' };
-        return o.locked && !o.action ? { ...o, action: creditsAction() } : o;
+        if (!PLATFORM_UI && o.locked) return { ...o, tag: t('picker.unavailable') };
+        return o.locked && !o.action ? { ...o, action: creditsAction(t, isBillingOwner) } : o;
       });
     const top = entries.filter((o) => o.pin === 'top');
     const bottom = entries.filter((o) => o.pin === 'bottom');
-    const grouped = groupModelOptions(entries.filter((o) => !o.pin));
+    const grouped = groupModelOptions(entries.filter((o) => !o.pin))
+      .map((g) => (GROUP_NAME_KEYS[g.key] ? { ...g, name: t(GROUP_NAME_KEYS[g.key]) } : g));
     return [
       ...(top.length ? [{ key: PIN_TOP, name: null, items: top }] : []),
       ...grouped,
       ...(bottom.length ? [{ key: PIN_BOTTOM, name: null, items: bottom }] : []),
     ];
-  }, [options]);
+  }, [options, t, isBillingOwner]);
 
   // This component takes over the Combobox's open state ONLY when the effort
   // feature is opted into (`modelEfforts` passed at all) — a footer pick
@@ -562,7 +578,7 @@ export function ModelSelect({
       if (!nextHasEfforts && showEffortFooter && comboboxOpen) {
         pendingFooterExitRef.current = true;
         exitFooterDataRef.current = {
-          valueLabel: capitalize(resolvedEffort),
+          valueLabel: effortLabel(t, resolvedEffort),
           effortOptions,
           resolvedEffort,
           defaultEffort: effortEntry?.default,
@@ -577,7 +593,7 @@ export function ModelSelect({
       groups={groups}
       placeholder={placeholder}
       emptyText={emptyText}
-      searchAriaLabel="Search models"
+      searchAriaLabel={t('picker.searchAriaLabel')}
       // Match on the display label OR the raw id — "opus" finds Claude Opus
       // whether typed as alias or name. Pinned entries bypass the filter.
       filter={(item, query, contains) => !!item?.pin || contains(item?.label ?? '', query) || contains(item?.value ?? '', query)}
@@ -593,14 +609,14 @@ export function ModelSelect({
               ? <AnimatedWidthText text={selected.label} />
               : placeholder}
             {selected && showEffortOnTrigger && (
-              <span className="text-ink-3"> · <AnimatedWidthText text={capitalize(resolvedEffort)} fadeOnChange /></span>
+              <span className="text-ink-3"> · <AnimatedWidthText text={effortLabel(t, resolvedEffort)} fadeOnChange /></span>
             )}
           </span>
         </>
       )}
       footer={showEffortFooter ? (
         <EffortFooter
-          valueLabel={capitalize(resolvedEffort)}
+          valueLabel={effortLabel(t, resolvedEffort)}
           effortOptions={effortOptions}
           resolvedEffort={resolvedEffort}
           defaultEffort={effortEntry?.default}

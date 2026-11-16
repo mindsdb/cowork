@@ -22,6 +22,7 @@ declare const Ico: {
   copy: IconRenderer;
   cube: IconRenderer;
   doc: IconRenderer;
+  download: IconRenderer;
   edit: IconRenderer;
   externalLink: IconRenderer;
   folder: IconRenderer;

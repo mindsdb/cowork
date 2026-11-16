@@ -16,6 +16,8 @@ const ICON_MAP = {
   note:     Ico.chats,
   // A picture generate_image wrote (ENG-4024).
   image:    Ico.image,
+  // The agent's browser (lib/browserSteps.js).
+  globe:    Ico.globe,
 };
 
 export function StepIcon({ type, size = 12 }) {

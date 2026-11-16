@@ -146,6 +146,9 @@ vi.mock('./lib/analytics', () => ({
   classifyFirstResponse: vi.fn(() => ({})),
   fireFirstResponse: vi.fn(),
   trackTurnFailed: vi.fn(),
+  trackAddonAdded: vi.fn(),
+  trackAddonQueued: vi.fn(),
+  trackAddonOverridden: vi.fn(),
 }));
 
 import App, { unsavedRefusedQuestions } from './App';
@@ -1497,6 +1500,40 @@ describe('the first message of a new task (analytics)', () => {
     await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
 
     expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({ attachments: 1 }));
+  });
+});
+
+describe('a second Enter while a send from Home is still preparing', () => {
+  it('starts one conversation, not two', async () => {
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const homeComposer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+
+    // Hold the send before its stream starts, as loading attached Notion
+    // pages does; the composer keeps its text until the send resolves.
+    let releaseUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
+    );
+    // Later tests count upload calls, and the shared mock is never cleared.
+    try {
+      await attach(user, 'brief.txt');
+      await send(user, homeComposer, 'summarize the brief');
+      await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+      await user.keyboard('{Enter}');
+
+      await act(async () => { releaseUpload(); await Promise.resolve(); });
+      await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(streams.filter((x) => x.kind === 'new')).toHaveLength(1);
+    } finally {
+      uploadAttachments.mockClear();
+    }
   });
 });
 

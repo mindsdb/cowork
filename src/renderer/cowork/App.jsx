@@ -11,6 +11,10 @@ import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
 import { mergeMessagePage, reconcilePaginationState, knownRowIds } from './lib/mergeMessagePage';
+import {
+  isDroppedStream, withoutDroppedRows, droppedError, stopReconnecting, historyEndsTurn,
+  waitOrOnline, RECONNECT_DELAYS_MS,
+} from './lib/droppedTurn';
 import { stampUserMessageId } from './lib/stampUserMessageId';
 import { displayToggleMode, nextToggledSkin, styleToggleLabel } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
@@ -21,10 +25,10 @@ import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
-import { Button, Tooltip } from './components/ui';
+import { Button, EmptyState, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
-import ChatView from './views/ChatView';
+import ChatView, { warmBrowser } from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
 import TasksView from './views/TasksView';
@@ -32,8 +36,11 @@ import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
+import { LanguageHeaderSelect } from './views/settings/LanguageSection';
+import i18n, { useTranslation } from '../lib/i18n';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
+import CompareView from './views/CompareView';
 import CodeView from './code/CodeView';
 import { useCodeModeAccess } from './code/codeModeAccess';
 import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from './code/defaults';
@@ -46,10 +53,14 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
-import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
+import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
+import { handleArtifactCheckEvent } from './lib/artifactCheck';
+import { ModelPickerContext } from './lib/modelPickerContext';
+import { onConversationRefresh } from './lib/conversationRefresh';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, moveForm as moveDataVaultForm, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
-import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
+import { applyFavicon, applyNavTitleColor, applyOrgFavicon } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
 import { canRunProject, canUseSharedResource } from './lib/sharedResourceAccess';
@@ -61,7 +72,10 @@ import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
+import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useNotionPagePicker } from './hooks/useNotionPagePicker';
+import NotionPagePickerModal from './components/NotionPagePickerModal';
 import { useAccountUser } from './hooks/useAccountUser';
 import { LiveAppAvailabilityWatcher } from './hooks/useLiveAppAvailability';
 import { skillScopeKey } from './lib/accountUser';
@@ -74,27 +88,38 @@ import { useServerControl } from './hooks/useServerControl';
 import { useSidebarNav } from './hooks/useSidebarNav';
 import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
+import { useModelAvailabilityTriggers } from './hooks/useModelAvailabilityTriggers';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
+import { createAvailabilityRefresher, mergeChangesNothing, REFRESH_SCOPE, serverHonorsRefreshScope } from './lib/modelRefresh';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
+import { useOrgBranding } from './hooks/useOrgBranding';
+import { windowTitleFor, withBrandingDraft } from '../lib/orgBranding';
+import { productName } from '../lib/deploymentBrand';
+import { STOCK_PRODUCT_NAME, STOCK_WORDMARK } from '../../shared/product-name';
+import { takeSettingsDeepLink } from './lib/settingsDeepLink';
 import { useAppUpdates } from './hooks/useAppUpdates';
-import { deriveUpdateBanner } from '../../shared/update-banner';
+import { deriveUpdateBanner, restartUnderway } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { stopScheduleRun } from './lib/stopScheduleRun';
+import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
+import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
-         allocateConversationId, uploadAttachments,
+         allocateConversationId, uploadAttachments, openBrowserAt,
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit,
-         runScheduleNow, fetchDatasources, MOCK_DATA,
+         runScheduleNow, fetchScheduleRuns, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
-         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
-import { answerBody, initialStreamState, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchVoiceStatus, readBrowserApproveSteps} from './api';
+import { describeNotionReferencePages, loadNotionPageTexts } from './lib/notionReferencePages';
+import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
 import {
@@ -116,11 +141,16 @@ import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from '
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, sendWithStartVia, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { addonEligibility } from './lib/addons';
+import { useAddons } from './hooks/useAddons';
 import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
+import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
+import { PLATFORM_UI } from '../lib/deployment';
+import { noteMobilePushTaskStarted, setMobilePushNavigator } from '../lib/mobilePush';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -134,6 +164,34 @@ import {
   loadConversation,
 } from './CoworkRouter';
 import { normalizeComposerDisabledConnections, toggleConnectionMute } from './lib/connectionMutes';
+import { rememberTaskBrowser } from './lib/taskBrowser';
+import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/browserSwitch';
+import { useNativeOverlay } from './lib/nativeOverlay';
+import VoiceCallWindow from './components/VoiceCallWindow';
+import VoiceLauncher from './components/VoiceLauncher';
+import TopShortcuts from './components/TopShortcuts';
+import BlankBrowserPanel from './components/browser/BlankBrowserPanel';
+import { BrowserPanel } from './components/browser/BrowserPanel';
+import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
+import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
+import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
+import { artifactsOnScreen } from './lib/voice/screenArtifacts';
+import { createSeenCallBack } from './lib/voice/seenCallBack';
+import {
+  callNeedActions, createCallNeeds, openNeeds,
+} from './lib/voice/callNeeds';
+import { handBackBrowser } from './lib/browserHandBack';
+import {
+  desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageOriginForContext,
+} from './lib/browserSession';
+import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
+import { warmBrowserForSession } from './lib/browserWarmUp';
+import { readBrowseStatus } from './lib/browseStatus';
+import {
+  approveCardsForPerson, browserApprovalIds, declineBrowserApproval, isAutoApprovedCard,
+} from './lib/browserApproval';
+import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
+import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -142,17 +200,20 @@ import { Outlet } from 'react-router-dom';
  * available for free-form questions about the form.
 */
 const CONNECT_FOLLOWUPS = [
-  "Have a question about any of the fields? I'm happy to explain.",
-  "Need help finding your credentials? Just ask.",
-  "If anything's unclear, let me know — I can walk you through it.",
-  "Curious what a specific field expects? I can clarify.",
-  "Want more detail on any of the steps? Just ask.",
-  "Have questions before you submit? I'm here.",
-  "Want me to explain any of the fields more deeply? Let me know.",
-  "Happy to clarify anything before you fill it out.",
-  "If you'd like more context on a field, just ask.",
-  "Any questions about the setup? I'm here to help.",
-];
+  'fields', 'credentials', 'unclear', 'fieldExpects', 'steps',
+  'beforeSubmit', 'deeper', 'clarify', 'context', 'setup',
+].map((key) => `connect.followups.${key}`);
+
+/* Translate in the `app` namespace at the moment the text is needed. */
+const tApp = (key, vars) => i18n.t(key, { ns: 'app', ...vars });
+
+/* A translated sentence with one value shown in bold. The value goes in as a
+   marker, so each language keeps its own word order around it. */
+const BOLD_MARK = '\u0000';
+function withBold(key, name, value) {
+  const [before, after = ''] = tApp(key, { [name]: BOLD_MARK }).split(BOLD_MARK);
+  return <>{before}<strong>{value}</strong>{after}</>;
+}
 
 // Print a version/build banner to the browser console on startup so
 // developers and QA can quickly confirm which releases are running.
@@ -212,9 +273,10 @@ function isPendingFileAttachment(a) {
 // directly via the connector's persisted `_picked_files` grant (see
 // cowork-server's harness integration_guidance), independent of any one
 // message. The chip is a visual confirmation only, so it must never be
-// resolved to an upload or sent as a real attachment id.
+// resolved to an upload or sent as a real attachment id. Notion pages work the
+// same way: the agent reads them with its notion-fetch tool.
 function isReferenceOnlyAttachment(a) {
-  return !!(a && a.source === 'gdrive');
+  return !!(a && (a.source === 'gdrive' || a.source === 'notion'));
 }
 
 // Activation gate (ENG-736): fire from the chat send/reply terminal handlers,
@@ -243,7 +305,8 @@ function fireFirstResponse(result) {
  */
 export function pendingQuestionFor(steps) {
   const pending = (steps || []).filter(
-    (s) => s.badge === 'AskUser' && !s.data?.answer,
+    // A position card is answered by the app itself, never by typed text.
+    (s) => s.badge === 'AskUser' && !s.data?.answer && !isAutoApprovedCard(s.data),
   );
   if (pending.length === 0) return null;
   const last = pending[pending.length - 1];
@@ -330,7 +393,7 @@ export function retireQuestionFromSteps(steps, questionId) {
  *
  * Pure so the decision can be tested without a stream. Returns null when
  * nothing should happen, else {taskId, queueTaskId, questionId, text,
- * attachments}. The
+ * attachments, itemIds}. The
  * caller is responsible for adding `questionId` to the drained set
  * synchronously, before any setState — that is what makes the drain
  * exactly-once even though clearing the queue is async.
@@ -340,14 +403,19 @@ export function planQueueDrain(steps, taskIds, queues, drainedQuestionIds) {
   if (!pending) return null;
   if (drainedQuestionIds?.has(pending.question_id)) return null;
   const ids = (taskIds || []).filter(Boolean);
-  const queueTaskId = ids.find((tid) => ((queues || {})[tid] || []).length > 0);
+  // An add-on whose request is still out (ENG-4194) stays put: the server may
+  // yet add it to the turn, and handing it back as well would send it twice.
+  const drainable = (tid) => ((queues || {})[tid] || []).filter((q) => !q?.addonPending);
+  const queueTaskId = ids.find((tid) => drainable(tid).length > 0);
   if (!queueTaskId) return null;
+  const items = drainable(queueTaskId);
   return {
     taskId: ids[0],
     queueTaskId,
     questionId: pending.question_id,
-    text: drainQueueToInput(queues[queueTaskId]),
-    attachments: drainQueueAttachments(queues[queueTaskId]),
+    text: drainQueueToInput(items),
+    attachments: drainQueueAttachments(items),
+    itemIds: items.map((q) => q.id),
   };
 }
 
@@ -388,7 +456,7 @@ export async function resolvePendingAnswer({ steps, conversationId, text, submit
   if (pending.allow_custom === false && payload.text && !payload.values) {
     return {
       action: 'blocked',
-      message: 'This question needs one of the options above. Pick one, or press Skip if you want to type something else.',
+      message: tApp('askUser.selectOnly'),
     };
   }
   const result = await submit(conversationId, pending.question_id, payload);
@@ -403,8 +471,8 @@ export async function resolvePendingAnswer({ steps, conversationId, text, submit
     return {
       action: 'fail',
       message: status === 'rejected'
-        ? 'That answer was rejected. Try one of the offered options.'
-        : 'Could not send your answer. Please try again.',
+        ? tApp('askUser.rejected')
+        : tApp('askUser.sendFailed'),
     };
   }
   // A success body carries no `status` at all (`{accepted: true}`) — api.js
@@ -422,10 +490,10 @@ async function resolveComposerAttachmentsForSend(projectName, sessionId, attachm
   const rest = list.filter((a) => !isPendingFileAttachment(a) && !isReferenceOnlyAttachment(a));
   if (pending.length) {
     if (!projectName || !sessionId) {
-      throw new Error('Pick a project and use a saved conversation before sending file attachments.');
+      throw new Error(tApp('attachments.needSavedConversation'));
     }
     if (String(sessionId).startsWith('tmp-')) {
-      throw new Error('Wait until this conversation has started before sending file attachments.');
+      throw new Error(tApp('attachments.waitForStart'));
     }
   }
   let uploaded = [];
@@ -446,15 +514,32 @@ async function resolveComposerAttachmentsForSend(projectName, sessionId, attachm
 // agent gets no signal at all that a message's "this file" refers to
 // one of them. Named explicitly here so Anton can resolve the
 // reference — same hidden-context pattern as describeConnectFormState.
+/** What the agent is told about the page open in the browser a new task was
+    sent beside: only the site's origin (pageOriginForContext), never text the
+    site chose, so nothing the page wrote reads as the person's request. */
+function describeOpenBrowserPage(origin) {
+  return [
+    '[The browser beside this request — Anton-only context, do not echo back]',
+    `When they sent this, the user had a page from ${origin} open in the shared browser.`,
+    'That page is open in this task\'s browser now; if the request is about it, read it there.',
+  ].join('\n');
+}
+
 function describeGoogleDriveReferenceFiles(reference) {
-  if (!reference?.length) return '';
-  const lines = reference.map((f) => `- ${f.name || 'untitled'} (Drive file id: ${f.driveFileId || f.id})`);
+  const drive = (reference || []).filter((a) => a.source === 'gdrive');
+  if (!drive.length) return '';
+  const lines = drive.map((f) => `- ${f.name || 'untitled'} (Drive file id: ${f.driveFileId || f.id})`);
   return [
     '[Google Drive files added via the picker for this message — Anton-only context, do not echo back]',
     'The user just added the following Google Drive file(s). When they refer to "this file"/"these files" '
       + 'in the message above, they mean these — read them with files.get(fileId=...):',
     ...lines,
   ].join('\n');
+}
+
+function describeReferenceAttachments(reference, notionTexts) {
+  return [describeGoogleDriveReferenceFiles(reference), describeNotionReferencePages(reference, notionTexts)]
+    .filter(Boolean).join('\n\n');
 }
 
 const ACCENT_VARS = {
@@ -514,6 +599,10 @@ async function loadSessionMessagesWithRetry(
 // - but never more than MAX (a heartbeat for cross-client changes / clock drift)
 // - and never less than MIN (so an overdue-but-not-yet-processed schedule can't turn into a busy loop).
 // RUN_BUFFER gives the time to actually finish task before we go check.
+// A failed read of /voice/status is tried again this many times in all,
+// waiting a little longer each time.
+const VOICE_STATUS_TRIES = 4;
+const VOICE_STATUS_RETRY_MS = 15_000;
 const SCHEDULE_POLL_MAX_DELAY_MS = 10 * 60 * 1000;
 const SCHEDULE_POLL_MIN_DELAY_MS = 60 * 1000;
 const SCHEDULE_POLL_RUN_BUFFER_MS = 60 * 1000;
@@ -573,21 +662,35 @@ export default function App() {
   );
 }
 
+// The picks a send to `task` goes back to the default on: its own Model Router
+// or "Operator default" pick, and an effort the composer left on "Default"
+// (''). Both go out as no value, which cowork-server reads as "keep the saved
+// pick", as it must for a pinned model the picker no longer offers. Naming
+// them in reset_picks makes the server clear them, so a reload shows the
+// default too. A same-tick override sends a value, so it resets nothing.
+export function turnResetPicks(task, { modelOverride, effortOverride } = {}) {
+  return [
+    ...(!modelOverride && task?.model === MODEL_ROUTER_ID ? ['model'] : []),
+    ...(effortOverride == null && task?.reasoningEffort === '' ? ['reasoning_effort'] : []),
+  ];
+}
+
 // Cmd+K's starting list before anything is typed: the five most recently
 // updated tasks and the first three projects, from state App already holds.
-function searchRecents(tasks, projects) {
+export function searchRecents(tasks, projects) {
   const labelFor = (task) => {
-    const project = projects.find((p) => p.name === task.projectId || p.path === task.projectPath);
+    const project = resolveTaskProject(task, projects);
     return project ? projectLabel(project) : undefined;
   };
   return [
     ...[...tasks].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).slice(0, 5)
-      .map((task) => ({ type: 'task', id: task.id, title: task.title || 'Untitled task', subtitle: labelFor(task) })),
+      .map((task) => ({ type: 'task', id: task.id, title: task.title || tApp('common.untitledTask'), subtitle: labelFor(task) })),
     ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.id || project.name, title: projectLabel(project) })),
   ];
 }
 
 function AppCore() {
+  const { t: tSettings } = useTranslation('settings');
   // Seed from the read-through cache of the last settings fetch, not a literal
   // set of defaults — the server (GET /settings/) is the single source of truth
   // and returns every field's resolved default, so the boot fetch (below) fills
@@ -595,6 +698,19 @@ function AppCore() {
   // server's values within one fetch. This removes the hard-coded copy whose
   // values could drift from the server's (e.g. showDots). See ENG-941/ENG-1125.
   const [settings, setSettings] = useState(loadCachedSettings);
+  // Approve browser steps is the person's setting (lib/browserPrefs.js): the
+  // cards read it as it changes here, and the old device-only copy goes.
+  useEffect(() => {
+    syncBrowserPrefs({
+      browserApproveSteps: settings.browserApproveSteps,
+      browserOnlyWhenNeeded: settings.browserOnlyWhenNeeded,
+      browserApproveStepsOffAt: settings.browserApproveStepsOffAt,
+    });
+  }, [settings.browserApproveSteps, settings.browserOnlyWhenNeeded, settings.browserApproveStepsOffAt]);
+  useEffect(() => { forgetLegacyBrowserPrefs(); }, []);
+  // Whether this session's settings have arrived from the server, so a choice
+  // that depends on them (such as the models an operator offers) is final.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [appearancePreview, setAppearancePreview] = useState({});
   const appearanceSettings = { ...settings, ...appearancePreview };
   const previewAppearance = useCallback((key, value) => {
@@ -607,6 +723,19 @@ function AppCore() {
   }, []);
 
   const agentLabel = getAgentLabel(settings);
+
+  /* This UI shows the desktop's in-app browser, so main may register it with
+     the local server, which then offers the agent the browser tool. Once a
+     load; a UI that never says so (an older one) never gets the tool. */
+  const [inAppBrowserRegistered, setInAppBrowserRegistered] = useState(false);
+  useEffect(() => {
+    if (!host.supportsInAppBrowser) return;
+    host.inAppBrowser.ready()
+      .catch((error) => {
+        diagnostic('renderer.app', 'WARNING', 'in_app_browser_ready_failed', error);
+      })
+      .finally(() => setInAppBrowserRegistered(true));
+  }, []);
 
   const [tasks, setTasks] = useState([]);
   // 'loading' until the first list response lands, then 'ready' or 'failed'.
@@ -622,6 +751,148 @@ function AppCore() {
   // requests whose results the `local.length > 0` guard then discards.
   const warmedRef = useRef(false);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+  // The voice call with Anton (ENG-4138): GPT-Live through MindsHub
+  // Inference. Its requests go to Anton in the task callTaskIdRef names, and
+  // callContextRef (set below) says what that task is about.
+  const callTaskIdRef = useRef(null);
+  const callContextRef = useRef(null);
+  const [voiceAvailable, setVoiceAvailable] = useState(false);
+  // Read with the rest of the app's data (refreshData): at start, and again
+  // whenever the server comes online. A failed read keeps the last answer and
+  // asks again a little later, a few times; only the newest read counts.
+  const voiceStatusRead = useRef({ seq: 0, timer: null });
+  const readVoiceStatus = useCallback((attempt = 0) => {
+    const reads = voiceStatusRead.current;
+    clearTimeout(reads.timer);
+    reads.seq += 1;
+    const seq = reads.seq;
+    fetchVoiceStatus().then((status) => {
+      if (seq !== reads.seq) return;
+      if (!status.failed) {
+        setVoiceAvailable(status.available);
+        return;
+      }
+      if (attempt + 1 < VOICE_STATUS_TRIES) {
+        reads.timer = setTimeout(() => readVoiceStatus(attempt + 1), VOICE_STATUS_RETRY_MS * (attempt + 1));
+      }
+    });
+  }, []);
+  useEffect(() => () => {
+    clearTimeout(voiceStatusRead.current.timer);
+    voiceStatusRead.current.seq += 1;
+  }, []);
+  // Its requests go through the operator (lib/voice/operator.js), which can
+  // also run the app: projects, moving and stopping tasks, a task's steps, the
+  // browser. Its history lives for one call.
+  const operateFromCallRef = useRef(null);
+  const callScreenRef = useRef({});
+  const callWorkRef = useRef(createCallWork());
+  // Queued messages the call waits on (lib/voice/callWork.js): the queue's
+  // drain and every queue write report to it.
+  const callQueueWatchRef = useRef(createQueueWatch());
+  const voiceHistoryRef = useRef([]);
+  // The call hung up while Anton worked on its requests: it calls back with the result.
+  const callBackRef = useRef(false);
+  const callBackSeenRef = useRef({ canCallBack: false });
+  // The call back for finished work, once the tab is in sight (lib/voice/seenCallBack.js).
+  const seenCallBackRef = useRef(null);
+  const [callBackPending, setCallBackPending] = useState(false);
+  // What the call's work stops on the person for (lib/voice/callNeeds.js),
+  // and the stream's hook for it, set each render below.
+  const callNeedsRef = useRef(null);
+  const callNeedsSeenRef = useRef({});
+  const noteCallNeedsRef = useRef(null);
+  const voiceCall = useVoiceCall({
+    onAsk: (request) => operateFromCallRef.current(request),
+    context: () => callContextRef.current?.() || '',
+    // Work running for the call: a quiet call hangs up and calls back once it's done.
+    busy: () => callWorkRef.current.busy(),
+    onAway: () => { callBackRef.current = true; setCallBackPending(true); },
+  });
+  if (!seenCallBackRef.current) {
+    // The call as this render has it (callNeedsSeenRef, refreshed below).
+    seenCallBackRef.current = createSeenCallBack({
+      announce: (news, { asks }) => callNeedsSeenRef.current.voiceCall.announce(news, { asks }),
+      canCallBack: () => callBackSeenRef.current.canCallBack,
+      take: () => {
+        callBackRef.current = false;
+        setCallBackPending(false);
+      },
+      callBack: (news, { asks }) => { void callNeedsSeenRef.current.voiceCall.callBack(news, getVoicePrefs().voice, { asks }); },
+    });
+  }
+  // Settings > Voice (lib/voice/voicePrefs.js): off hides every call button
+  // and ends a call; a new voice moves a call to it at once, or, with no
+  // call, says a short line in it.
+  const voicePrefs = useVoicePrefs();
+  const voicePrefsSeenRef = useRef(null);
+  voicePrefsSeenRef.current = { voiceCall, voiceAvailable };
+  useEffect(() => subscribeVoicePrefs((prefs, { voiceChanged }) => {
+    const { voiceCall: calling, voiceAvailable: canCall } = voicePrefsSeenRef.current;
+    if (!prefs.enabled) {
+      if (calling.phase !== 'idle') void calling.end();
+      return;
+    }
+    if (!voiceChanged || !canCall) return;
+    if (calling.phase === 'idle' || calling.phase === 'ended' || calling.previewing) calling.preview(prefs.voice);
+    else calling.switchVoice(prefs.voice);
+  }), []);
+  // Show browser from Home or Projects: a blank page floating over the
+  // page, whose search starts a task.
+  const [offTaskBrowserOpen, setOffTaskBrowserOpen] = useState(false);
+  // An address typed there opens at once, with no agent, in a browser session
+  // of its own (no task yet): {sessionId} once it is open.
+  const [offTaskBrowser, setOffTaskBrowser] = useState(null);
+  // The phone top bar's browser icon, in a task: ChatView opens its browser.
+  const [taskBrowserSignal, setTaskBrowserSignal] = useState(0);
+  const offTaskBrowserIdRef = useRef(null);
+  // The page the off-task browser shows (the viewer reports it): a new task
+  // sent beside it is about it, and takes it along.
+  const offTaskPageUrlRef = useRef('');
+  // The off-task browser could not open: the standalone start page shows instead.
+  const [offTaskBlank, setOffTaskBlank] = useState(false);
+  /* Opens the off-task browser, at `url` or (null) on a blank tab, in a
+     session of its own kept while the app runs, so the next address goes to
+     the same tabs. */
+  // Bumped by closing it, so a browser still opening doesn't show after it.
+  const offTaskOpenSeqRef = useRef(0);
+  const openOffTaskBrowser = async (url) => {
+    offTaskBrowserIdRef.current ||= offTaskBrowserId(allocateConversationId, accountId || '');
+    const seq = offTaskOpenSeqRef.current;
+    let sessionId;
+    if (host.isWeb) {
+      sessionId = (await openBrowserAt(offTaskBrowserIdRef.current, url))?.session_id;
+    } else {
+      sessionId = await desktopTaskSession(offTaskBrowserIdRef.current);
+      await host.inAppBrowser.open(sessionId, url);
+    }
+    if (sessionId && seq === offTaskOpenSeqRef.current) {
+      setOffTaskBrowser((was) => ({ sessionId, blank: url === null || Boolean(was?.blank) }));
+    }
+    return sessionId;
+  };
+  const closeOffTaskBrowser = () => {
+    offTaskOpenSeqRef.current += 1;
+    offTaskPageUrlRef.current = '';
+    setOffTaskBrowserOpen(false);
+    setOffTaskBrowser(null);
+  };
+  // Showing the browser opens the real one, as the agent's, with the start page over its blank tab.
+  useEffect(() => {
+    if (!offTaskBrowserOpen || offTaskBrowser) return;
+    setOffTaskBlank(false);
+    const seq = offTaskOpenSeqRef.current;
+    const fallBack = () => { if (seq === offTaskOpenSeqRef.current) setOffTaskBlank(true); };
+    openOffTaskBrowser(null).then((id) => { if (!id) fallBack(); }, fallBack);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offTaskBrowserOpen]);
+  const sendFromOffTaskBrowser = (text) => {
+    setOffTaskBrowserOpen(false);
+    const inProject = route === 'projects' && canRunProject(selectedProject) ? selectedProject : null;
+    void handleSendFromHome(text, { attachments: [], disabledConnections: [], ...(inProject ? { project: inProject } : {}) });
+  };
+  // "Show the browser" from a call: ChatView opens the pane for this task.
+  const [browserRequest, setBrowserRequest] = useState(null);
   // The row ids a conversation holds before a fetch, or undefined (no
   // snapshot, today's merge rule) when it is not held under that id.
   const knownIdsOf = (id) => {
@@ -709,7 +980,6 @@ function AppCore() {
   // they cross into the task-list and routing domains.
   const {
     scheduled,
-    scheduleRunsIndex,
     refreshSchedules,
     handleCreateSchedule,
     handleUpdateSchedule,
@@ -727,6 +997,8 @@ function AppCore() {
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
+  /** The + menu's Browser switch, off for the next new task (ENG-3188). */
+  const [composerBrowserOff, setComposerBrowserOff] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState(null);
   // Set by the checklist's "Try an example" row; Home answers it and clears it.
   const [examplesRequest, setExamplesRequest] = useState(0);
@@ -911,6 +1183,11 @@ function AppCore() {
   // instead — assigned right after the drain is defined and read only from
   // async completion callbacks, never during render.
   const drainNextQueuedMessageRef = useRef(null);
+  // The same for the dropped-turn recovery, which handleStreamError starts but
+  // which reattaches through reconnectInFlight, declared after it.
+  const recoverDroppedTurnRef = useRef(null);
+  // Conversations with a dropped-turn recovery out, so a second drop waits on it.
+  const droppedRecoveryRef = useRef(new Set());
 
   // Running tally for the stranded-reservation self-heal (reservationReleaseDecision):
   // a stream that dies with no terminal pins the slot forever, so the in-flight
@@ -972,6 +1249,50 @@ function AppCore() {
 
   // The reconcile body. Wrapped by refreshInFlightSet below with a re-entrancy
   // guard; declared first so the wrapper can reference it without a TDZ.
+  // Fetch a conversation's newest page and merge it into the task, the way a
+  // run that finished elsewhere is caught up. Also asked for by the artifact
+  // viewer's chat bar (ENG-4227) after a quick edit, whose group message the
+  // server updates in place in the artifact's chat (lib/conversationRefresh).
+  const refetchConversationMessages = useCallback((cid) => {
+    const knownIds = knownIdsOf(cid);
+    fetchSession(cid).then((fresh) => {
+      if (!fresh || !Array.isArray(fresh.messages)) return;
+      const reconciled = applySessionMessages(cid, fresh.messages);
+      setTasks((tasksPrev) => tasksPrev.map((t) => {
+        if (t.id !== cid) return t;
+        // Only the most recent page — merge against what the task
+        // already has. The server never saved refused questions, so
+        // any the merge dropped go back after it.
+        // With no stream of ours on it, a placeholder or live stub
+        // here is left over from opening the run while the server
+        // still listed it; the merge would carry it past the answer.
+        const local = hasLiveTurnHere(cid)
+          ? t.messages
+          : removeThinkingPlaceholder(stripStreaming(t.messages));
+        const merged = mergeMessagePage(local, reconciled, knownIds);
+        const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
+        return {
+          ...t,
+          messages: [...merged, ...refused],
+          // Same array the merge just used. Inert today — applySessionMessages
+          // neither adds nor removes an id-bearing row, so both see the
+          // same oldest id — but the two decisions must agree on which
+          // rows the page covers, and only one of them should pick.
+          ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
+          status: 'idle',
+        };
+      }));
+    }).catch(() => {});
+  }, [hasLiveTurnHere]);
+
+  // A quick edit changed the artifact's chat (ENG-4227). Skipped while a turn
+  // of ours runs there: the server writes no note then, and the turn's own
+  // end refetches.
+  useEffect(() => onConversationRefresh((cid) => {
+    if (hasLiveTurnHere(cid)) return;
+    refetchConversationMessages(cid);
+  }), [hasLiveTurnHere, refetchConversationMessages]);
+
   const reconcileInFlight = useCallback(async () => {
     const items = await fetchInFlightList();
     // A failed poll returns null, NOT [] — don't reconcile: treating it as "server
@@ -1052,41 +1373,13 @@ function AppCore() {
         // re-render storm.
         setTimeout(() => {
           finished.forEach((cid) => {
-            const knownIds = knownIdsOf(cid);
-            fetchSession(cid).then((fresh) => {
-              if (!fresh || !Array.isArray(fresh.messages)) return;
-              const reconciled = applySessionMessages(cid, fresh.messages);
-              setTasks((tasksPrev) => tasksPrev.map((t) => {
-                if (t.id !== cid) return t;
-                // Only the most recent page — merge against what the task
-                // already has. The server never saved refused questions, so
-                // any the merge dropped go back after it.
-                // With no stream of ours on it, a placeholder or live stub
-                // here is left over from opening the run while the server
-                // still listed it; the merge would carry it past the answer.
-                const local = hasLiveTurnHere(cid)
-                  ? t.messages
-                  : removeThinkingPlaceholder(stripStreaming(t.messages));
-                const merged = mergeMessagePage(local, reconciled, knownIds);
-                const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
-                return {
-                  ...t,
-                  messages: [...merged, ...refused],
-                  // Same array the merge just used. Inert today — applySessionMessages
-                  // neither adds nor removes an id-bearing row, so both see the
-                  // same oldest id — but the two decisions must agree on which
-                  // rows the page covers, and only one of them should pick.
-                  ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
-                  status: 'idle',
-                };
-              }));
-            }).catch(() => {});
+            refetchConversationMessages(cid);
           });
         }, 0);
       }
       return next;
     });
-  }, [abortStream, hasLiveTurnHere]);
+  }, [abortStream, hasLiveTurnHere, refetchConversationMessages]);
 
   const refreshInFlightSet = useCallback(async () => {
     // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
@@ -1166,9 +1459,11 @@ function AppCore() {
   const updateMessageQueue = (update) => {
     setMessageQueue(update);
     messageQueueRef.current = update(messageQueueRef.current);
+    // A message the voice call waits on that left the queue without running.
+    callQueueWatchRef.current.sweep(messageQueueRef.current);
   };
 
-  const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
+  const enqueueMessage = (taskId, text, attachments = [], disabledConnections = [], queuedReason = null, extra = null) => {
     // `attachments` rides with the queued item so a message sent while a
     // turn is in flight keeps its files — the drain re-resolves/uploads
     // them. Without this the queue stored text only and files were lost.
@@ -1176,8 +1471,29 @@ function AppCore() {
     // turn honors the connection-disable state as it was when the user hit
     // send, not whatever the composer happens to show when it finally
     // drains (which, for a cross-task drain, belongs to another task).
-    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments, disabledConnections };
+    // `queuedReason`: why a message sent while the task ran was queued rather
+    // than added to it (ENG-4194), for the chip's hover line.
+    const item = {
+      id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      text, attachments, disabledConnections,
+      ...(queuedReason ? { queuedReason } : {}),
+      // An add-on's queue state (ENG-4194): `addonPending` while its request
+      // is out, `addonOffer` for the slot a mid-task send holds from the
+      // moment Enter is pressed, `addonLocalKey` to find it again, and
+      // `paused` + `unconfirmed` when nobody can say whether it was added.
+      ...(extra || {}),
+    };
     updateMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
+    return item.id;
+  };
+  // Settle one queued item in place: `patch` merges into it, null removes it.
+  const updateQueueItem = (taskId, itemId, patch) => {
+    if (patch === null) { removeFromQueue(taskId, itemId); return; }
+    updateMessageQueue((prev) => {
+      const arr = prev[taskId];
+      if (!arr || !arr.some((q) => q.id === itemId)) return prev;
+      return { ...prev, [taskId]: arr.map((q) => (q.id === itemId ? { ...q, ...patch } : q)) };
+    });
   };
   const removeFromQueue = (taskId, itemId) => {
     updateMessageQueue((prev) => {
@@ -1188,9 +1504,12 @@ function AppCore() {
       return next;
     });
   };
+  // The first item that may run: a paused one waits for the person.
+  const queueHead = (taskId) => (messageQueueRef.current[taskId] || []).find((q) => !q.paused) || null;
   const popQueueHead = (taskId) => {
-    const head = (messageQueueRef.current[taskId] || [])[0];
+    const head = queueHead(taskId);
     if (!head) return null;
+    callQueueWatchRef.current.ran(head.id, taskId);
     removeFromQueue(taskId, head.id);
     return head;
   };
@@ -1202,14 +1521,22 @@ function AppCore() {
     updateMessageQueue((queues) => mergeQueuesForAdoptedId(queues, fromIds, toId));
   };
 
-  const clearQueueForTask = (taskId) => {
-    updateMessageQueue((queues) => {
-      if (!queues[taskId]) return queues;
-      const next = { ...queues };
-      delete next[taskId];
-      return next;
-    });
-  };
+  // Messages sent while a turn runs (ENG-4194): offered to the running turn,
+  // moved between it and the queue, and settled from its stream. See
+  // hooks/useAddons.js.
+  const addons = useAddons({
+    liveStreamsRef,
+    messageQueueRef,
+    tasksRef,
+    toastManagerRef,
+    drainNextQueuedMessageRef,
+    enqueueMessage,
+    updateQueueItem,
+    removeFromQueue,
+    hasLiveTurnHere,
+    agentLabel,
+    tApp,
+  });
 
   // Fans lib/stampUserMessageId out over the ids a stream can be filed under
   // (a tmp- id and the server's canonical one both reach here mid-adoption).
@@ -1237,6 +1564,20 @@ function AppCore() {
   // time a question appears while messages are queued, hands them back to
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
+  // Clicks by position are approved for the person whatever the setting,
+  // and so are held browser steps with Approve browser steps off (Settings >
+  // Shared browser), held after they turned it off: once per card, never
+  // shown (lib/browserApproval.js approveCardsForPerson). For a held step the
+  // setting is read fresh from the server first, and this tab takes what it
+  // read, so approvals turned on, or off again later, on another device since
+  // this tab read settings count: then the card shows.
+  const autoApprovedRef = useRef(new Set());
+  const readApproveStepsHere = async () => {
+    const setting = await readBrowserApproveSteps();
+    if (setting) setSettings((prev) => ({ ...prev, browserApproveSteps: setting.asks, browserApproveStepsOffAt: setting.offAtMs }));
+    return setting;
+  };
+
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
     // Every stream's onEvent funnels through here (after dropping the events of
     // a superseded stream), so reaching this line means it delivered data.
@@ -1250,6 +1591,14 @@ function AppCore() {
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
+    void approveCardsForPerson({
+      taskIds, steps, seen: autoApprovedRef.current, isWeb: host.isWeb, submit: submitAnswer, readAsks: readApproveStepsHere,
+    });
+    noteCallNeedsRef.current?.(taskIds, steps);
+    // Mid-task messages (ENG-4194): queue the ones this client added that the
+    // turn handed back, and drop queued copies the turn took after all —
+    // before the stream's terminal drains the queue.
+    addons.onStreamSteps(taskIds, steps);
     const plan = planQueueDrain(
       steps,
       taskIds,
@@ -1262,15 +1611,16 @@ function AppCore() {
     // non-empty queue and drain it twice.
     drainedQuestionsRef.current.add(plan.questionId);
     // Clear under the key the messages are filed under, but redirect to the
-    // conversation the task is known by now — see planQueueDrain.
-    clearQueueForTask(plan.queueTaskId);
+    // conversation the task is known by now — see planQueueDrain. Only the
+    // items handed back: an add-on still waiting on its request stays.
+    plan.itemIds.forEach((itemId) => removeFromQueue(plan.queueTaskId, itemId));
     composerRedirectBumpRef.current += 1;
     // Only the newly restored batch, and only under this task's key — never
     // accumulated (that re-injects an earlier drain's text) and never into a
     // shared slot (that discards an earlier drain's text).
     //
     // The files those queued messages were carrying ride the SAME entry as the
-    // text, because they have to travel together: `clearQueueForTask` above
+    // text, because they have to travel together: the removal above
     // deletes the only other reference to them, while `composerAttachments` is a
     // single app-wide list that is not keyed by task. Staging them here would
     // therefore put task A's files on whatever task happens to be on screen, and
@@ -1329,6 +1679,14 @@ function AppCore() {
       if (liveStepsRef.current[key] === steps) liveStepsRef.current[key] = next;
     });
   }, []);
+
+  // A turn's end, for a voice call waiting on it (lib/voice/turnEnds.js). A
+  // turn whose Stop is under way ended stopped, whatever partial answer its
+  // cancelled frame carried, so the call never hears it as finished.
+  const reportTurnDone = (ids, content, finalId) => {
+    const stopped = ids.some((tid) => tid && stoppingRef.current.has(tid));
+    reportTurnEnd(ids, stopped ? { error: TURN_STOPPED, finalId } : { content: content || '', finalId });
+  };
 
   const handleStopStream = useCallback(async (opts = {}) => {
     const silent = opts?.silent === true;
@@ -1400,12 +1758,22 @@ function AppCore() {
       endStopping(false);
       toastManagerRef.current?.add({
         type: 'danger',
-        title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
+        title: tApp('tasks.stopFailed'),
       });
       // The turn's own terminal may have run during the wait and skipped this queue.
       drainNextQueuedMessageRef.current?.(cidToCancel);
       return;
     }
+
+    /*
+     * The turn ends stopped for whatever waits on it (a voice call's work).
+     * When the cancel answers before the cancelled frame, abortStream below
+     * reaps the record and the turn's own terminal never reports; when the
+     * frame came first, it already reported stopped (reportTurnDone) and this
+     * finds no one waiting.
+     */
+    const stoppedTask = tasksRef.current.find((t) => t.id === cidToCancel);
+    reportTurnEnd([cidToCancel, stoppedTask?.renamedFrom], { error: TURN_STOPPED });
 
     /*
      * Tear down the record for the conversation being stopped, not whichever
@@ -1618,6 +1986,7 @@ function AppCore() {
     // Judged on the server id: a replay counts only that one, not the tmp- id.
     const reportsFailure = cid != null ? ownsRows(cid) : ids.some(ownsRows);
     if (reportsFailure && (!recovered || persistedFailure)) trackTurnFailed(cid, event);
+    const dropped = !recovered && Boolean(cid) && isDroppedStream(event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id) || !ownsRows(t.id)) return t;
       if (recovered) {
@@ -1643,7 +2012,16 @@ function AppCore() {
         if (!row.content && !row.steps?.length) return [];
         // A server-declared failure names the row it persisted; without that
         // id neither row of this turn would offer Delete.
-        return [{ ...row, id: row.id ?? event?.assistant_message_id, role: 'assistant', streamStatus: 'error' }];
+        const id = row.id ?? event?.assistant_message_id;
+        // A drop's partial answer goes once the turn is reached again: the
+        // reattached stream replays it from the start.
+        return [{
+          ...row,
+          id,
+          role: 'assistant',
+          streamStatus: 'error',
+          ...(dropped && !id ? { _dropped: true, _userMessageId: event?.user_message_id ?? null } : {}),
+        }];
       })));
       const configError = isAntonConfigError(message, event);
       const displayError = normalizeAntonError(message, event);
@@ -1666,6 +2044,10 @@ function AppCore() {
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
             requestId: typeof event?.request_id === 'string' ? event.request_id : null,
+            /* Client-only: a lost connection, shown with "Trying to
+               reconnect" while recoverDroppedTurn tries to reach the turn,
+               and removed once it does. */
+            ...(dropped ? { _dropped: true, _reconnecting: true, _userMessageId: event?.user_message_id ?? null } : {}),
           };
       return {
         ...t,
@@ -1676,6 +2058,7 @@ function AppCore() {
     if (isAntonConfigError(message, event)) {
       fetchHealth().then((h) => setHealth(h));
     }
+    if (dropped && reportsFailure) void recoverDroppedTurnRef.current?.(cid);
   }, [markInFlightDone, releaseLiveSteps, releaseSlotClaim]);
 
   // Per-task streaming state is derived inside ChatView (it has the
@@ -1706,26 +2089,29 @@ function AppCore() {
   const sendableModelId = useCallback((id) => (
     pickerMode === 'off' ? (id ?? null) : offeredModelId(id, offeredModels(models, settings.modelEnabled))
   ), [pickerMode, models, settings.modelEnabled]);
+  const showCompare = useMemo(
+    () => compareAvailable({ platformUi: PLATFORM_UI, pickerMode, models, modelEnabled: settings.modelEnabled }),
+    [pickerMode, models, settings.modelEnabled],
+  );
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
-  // Re-check wallet availability when the composer's model menu opens, so a top-up
-  // made outside the app unlocks its models without a restart. This is what makes
-  // it safe for the composer to DISABLE a locked model at all: `modelEnabled` is
-  // otherwise refreshed only by the Settings picker, so a user who hits "Add
-  // credits" (which opens an external browser), tops up and comes back would find
-  // the row still greyed until they visited Settings or restarted. Settings has had
-  // this since ENG-412; this is parity with it.
-  //
-  // A failed refresh leaves the map we hold in place — mergeRecommendedModels never
-  // lets an empty response overwrite it, and a model absent from the map counts as
-  // available — so this can never lock the picker.
-  const refreshModelAvailability = useCallback(async () => {
-    const data = await fetchRecommendedModels({ refresh: true });
-    // keepOrder: the menu is already open on the list we hold when this lands.
-    const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
-    if (merged) setSettings((prev) => ({ ...prev, ...merged }));
-  }, [settings]);
+  // One throttled re-check for every picker outside Settings ('all') and the availability
+  // triggers ('minds'). A deferred call is queued, not dropped; stale responses are dropped.
+  const availability = useRef(null);
+  if (!availability.current) {
+    availability.current = createAvailabilityRefresher({
+      fetch: (scope) => fetchRecommendedModels({ refresh: true, scope }),
+      // keepOrder: a menu may be open on this list. Skipping a no-op keeps App from re-rendering per poll.
+      apply: (data) => setSettings((prev) => {
+        const merged = mergeRecommendedModels(prev, data, { keepOrder: true });
+        return merged && !mergeChangesNothing(prev, merged) ? { ...prev, ...merged } : prev;
+      }),
+    });
+  }
+  useEffect(() => () => availability.current?.cancel(), []);
+  const refreshModelAvailability = useCallback(() => availability.current.refresh(REFRESH_SCOPE.all), []);
+  const refreshCreditLocks = useCallback(() => availability.current.refresh(REFRESH_SCOPE.minds), []);
 
   const modelMeta = useMemo(() => ({
     modelProviders: settings.modelProviders,
@@ -1746,6 +2132,9 @@ function AppCore() {
     planningReasoningEffort: settings.planningReasoningEffort,
     onRefresh: refreshModelAvailability,
   }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
+  // The composer's catalog and picker metadata for the artifact viewer's chat
+  // bar (ENG-4227), the same ones the composer gets.
+  const modelPickerCtx = useMemo(() => ({ models, modelMeta }), [models, modelMeta]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -1767,18 +2156,51 @@ function AppCore() {
     sidebarCollapsibleRoutes,
     sidebarPopout,
   } = useSidebarNav({ isNarrow });
+  const orgMode = useOrgMode();
+  // The org's branding: hosted org mode only. Read at startup, on
+  // an org switch or sign-in, and each time Settings opens; never polled.
+  // Hosted MindsHub (any org, personal ones too): the sidebar title, logo and
+  // tab icon come from the org, not from per-person settings.
+  const hostedMindsHub = PLATFORM_UI && host.isWeb && orgMode;
+  // Desktop reads the same org-branding from its local server (passed through
+  // to auth with the MindsHub credential).
+  const orgBranding = useOrgBranding({ enabled: hostedMindsHub, desktop: host.isElectron, settingsOpen });
+  // Where the org's logo, icon and sidebar title replace the per-person ones:
+  // hosted web (any org), and desktop signed in to an org with branding.
+  const orgControlled = hostedMindsHub || (host.isElectron && Boolean(orgBranding.branding?.enabled));
+  // An admin's unsaved edits on Settings → Branding, previewed live in this
+  // window only: the draft takes the org-look slot in the resolver. It never
+  // reaches the server or the first-paint cache, and leaving the Branding page
+  // (or closing Settings) clears it, which puts the saved look back.
+  const [brandingDraft, setBrandingDraft] = useState(null);
+  const savedOrgBranding = orgBranding.branding;
+  const previewOrgBranding = useMemo(
+    () => withBrandingDraft(savedOrgBranding, brandingDraft, productName(STOCK_WORDMARK)),
+    [brandingDraft, savedOrgBranding],
+  );
+  useEffect(() => { if (!settingsOpen) setBrandingDraft(null); }, [settingsOpen]);
+  /* The narrow-band sidebar popout counts as an overlay, so the desktop
+     browser pane's native view steps aside rather than draw over it. */
+  useNativeOverlay(sidebarPopout && navPopoutOpen);
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
-  // effects that keep them applied — all live in useThemeSkin.
+  // effects that keep them applied — all live in useThemeSkin. `look` is the
+  // deployment brand, the org's branding and the member's choices resolved
+  // in one place (lib/orgBranding.ts): the greeting, sidebar logo and tab
+  // icon below read it rather than the raw settings.
   const {
     theme, setTheme,
     skin, setSkin,
     themeModalOpen, setThemeModalOpen,
     customTheme, setCustomTheme,
-  } = useThemeSkin();
+    look,
+  } = useThemeSkin({ orgBranding: previewOrgBranding, settings: appearanceSettings, hostedMindsHub: orgControlled });
+  // Desktop's window title is the resolved sidebar title, or the stock name.
+  useEffect(() => {
+    if (host.isElectron) document.title = windowTitleFor(look, productName(STOCK_PRODUCT_NAME));
+  }, [look]);
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
-  const orgMode = useOrgMode();
   // One list for the composer's per-conversation toggles: the OAuth
   // connections and the cloud database ones, each keyed by (engine, name),
   // which is the pair the server filters a turn's grants on.
@@ -1871,12 +2293,18 @@ function AppCore() {
   // Sidebar title color — a synced Setting (like the greeting), independent
   // of the skin/CustomTheme system above, so it applies in every style.
   useEffect(() => {
-    applyNavTitleColor(appearanceSettings.navTitleColor);
-  }, [appearanceSettings.navTitleColor]);
+    applyNavTitleColor(look.navTitleColor);
+  }, [look.navTitleColor]);
 
+  // The tab icon: the member's own, the org's, or the page's own (the
+  // deployment brand's or stock), as resolved in `look`.
+  const faviconHref = look.favicon?.href ?? null;
+  const faviconFromOrg = look.favicon?.source === 'org';
   useEffect(() => {
-    if (host.isWeb) applyFavicon(appearanceSettings.favicon);
-  }, [appearanceSettings.favicon]);
+    if (!host.isWeb) return;
+    if (faviconFromOrg) applyOrgFavicon(faviconHref);
+    else applyFavicon(faviconHref);
+  }, [faviconHref, faviconFromOrg]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
@@ -1961,10 +2389,8 @@ function AppCore() {
   }, []);
   const reportCodeStopIssue = useCallback(({ discoveryFailed, cancelFailures }) => {
     const title = discoveryFailed
-      ? 'Code Mode is hidden, but running tasks could not be fully checked.'
-      : cancelFailures === 1
-        ? 'Code Mode is hidden, but one task could not be stopped.'
-        : `Code Mode is hidden, but ${cancelFailures} tasks could not be stopped.`;
+      ? tApp('codeMode.stopUnchecked')
+      : tApp('codeMode.stopFailed', { count: cancelFailures });
     toastManagerRef.current?.add({
       type: 'warning',
       title,
@@ -1985,6 +2411,9 @@ function AppCore() {
   // web). It's stateless w.r.t. AppCore — nav state flows through context.
   const routerRef = useRef(null);
   if (!routerRef.current) routerRef.current = createCoworkRouter();
+  // Mobile app (ENG-4023): a tapped push notification opens its route here,
+  // including one tapped before the router existed (cold start). No-op elsewhere.
+  useEffect(() => setMobilePushNavigator((path) => { routerRef.current?.navigate(path); }), []);
   const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
@@ -2094,6 +2523,11 @@ function AppCore() {
     handleShellAutoUpdateAction,
     dismissShellUpdate,
   } = useAppUpdates();
+  /* The OTA update curtain covers the window while an update downloads and
+     the UI reloads. It counts as an overlay, so the desktop browser pane's
+     native view steps aside rather than draw over it. */
+  const updateCurtainUp = updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading';
+  useNativeOverlay(updateCurtainUp);
 
   // Collapse the three update mechanisms into one shell-first banner (or null).
   // The manual notice is dismissal-filtered here before it can win the slot.
@@ -2105,7 +2539,14 @@ function AppCore() {
     shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed
       ? { version: shellUpdate.version, debInstaller: host.getPlatform() === 'linux' }
       : null,
-  });
+  }, tApp);
+  // Close Settings once a restart is underway. Its "Restart now" buttons wait
+  // on requests that resolve only as the window reloads or the app quits, so
+  // without this the modal stays up over the update overlay.
+  const restartInProgress = restartUnderway({ ota: updateStatus, shellAuto: shellAutoUpdate });
+  useEffect(() => {
+    if (restartInProgress) setSettingsOpen(false);
+  }, [restartInProgress]);
   const handleUpdateAction = useCallback((action) => {
     if (action === 'apply-ota') return handleApplyUpdate();
     if (action === 'shell-auto') return handleShellAutoUpdateAction();
@@ -2185,9 +2626,11 @@ function AppCore() {
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
+        setSettingsLoaded(true);
       }
     });
-  }, [refreshSchedules, reloadArtifacts]);
+    readVoiceStatus();
+  }, [refreshSchedules, reloadArtifacts, readVoiceStatus]);
 
   useEffect(() => {
     refreshData();
@@ -2270,13 +2713,10 @@ function AppCore() {
       toastManager.add({
         type: payload.permanent ? 'danger' : 'warning',
         timeout: 0,
-        title: (
-          <>
-            <strong>{payload.engine}</strong>
-            {payload.permanent
-              ? ' connection needs to be reconnected — refresh token expired.'
-              : ' connection refresh failed — retrying automatically.'}
-          </>
+        title: withBold(
+          payload.permanent ? 'oauth.reconnectNeeded' : 'oauth.refreshRetrying',
+          'engine',
+          payload.engine,
         ),
       });
     });
@@ -2293,6 +2733,8 @@ function AppCore() {
     });
     return result;
   }, []);
+  // A held step's card can turn Approve browser steps off (its Skip approvals).
+  useEffect(() => setBrowserSettingSaver(saveSettings), [saveSettings]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
   const resolvedTask = tasks.find((t) => t.id === activeTaskId) || null;
@@ -2326,11 +2768,14 @@ function AppCore() {
   const currentTaskModel = currentTask?.model
     ? (sendableModelId(currentTask.model) === MODEL_ROUTER_ID
         ? MODEL_ROUTER
-        : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
-    : selectedModel;
-  // Sibling to currentTaskModel (ENG-1940): the task's own effort pick if
-  // it has one, else whatever the home composer currently shows.
-  const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
+        : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: tApp('tasks.configuredPlanningModel') }))
+    : (currentTask ? MODEL_ROUTER : selectedModel);
+  /* A task with no saved pick is on the default: Model Router and the
+     "Default" effort (''), which is what the server runs a turn that sends
+     neither on. The home composer's picks seed a new task when it is created;
+     an existing task never borrows them, since a send would then save them
+     onto the conversation. */
+  const currentTaskEffort = currentTask ? (currentTask.reasoningEffort ?? '') : selectedEffort;
 
   /* "Switch to MindsHub Air" escape hatch on the model-denial and drained-wallet
      cards (ENG-1304): offered only while Air itself is payable — the free
@@ -2358,6 +2803,7 @@ function AppCore() {
     prevRouteForComposerMuteRef.current = route;
     if (prev === 'task' && (route === 'home' || route === 'projects')) {
       setComposerDisabledConnections([]);
+      setComposerBrowserOff(false);
     }
   }, [route]);
 
@@ -2427,6 +2873,8 @@ function AppCore() {
                   // possible later if we see network overhead.
       onEvent(ev) {
         if (!isCurrentStream(taskId, ctrl)) return;
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
@@ -2450,6 +2898,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -2485,6 +2934,7 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
@@ -2532,6 +2982,63 @@ function AppCore() {
     registerStream(taskId, ctrl);
     return true;
   }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad, releaseSlotClaim]);
+
+  /*
+   * A dropped connection, not a failed turn: keep trying to reach the turn
+   * until it is back, then take the error away. A turn still running is
+   * reattached (its stream replays from the start); one that finished
+   * meanwhile has its answer, or its saved failure, loaded in place of the
+   * error. The error stays, without "Trying to reconnect", once the tries run
+   * out, the turn is gone without an ending, or another turn takes over.
+   */
+  const recoverDroppedTurn = useCallback(async (cid) => {
+    if (!cid || droppedRecoveryRef.current.has(cid)) return;
+    droppedRecoveryRef.current.add(cid);
+    const current = () => tasksRef.current.find((t) => t.id === cid);
+    const settle = (update) => setTasks((prev) => prev.map((t) => (
+      t.id === cid && droppedError(t) ? update(t) : t
+    )));
+    try {
+      for (const delay of RECONNECT_DELAYS_MS) {
+        await waitOrOnline(delay);
+        if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        let status;
+        try {
+          status = await fetchInFlightStatus(cid, { strict: true, timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+        } catch { continue; } // Still offline.
+        if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        if (status?.in_flight) {
+          if (await reconnectInFlight(cid).catch(() => false)) {
+            settle((t) => ({ ...t, messages: withoutDroppedRows(t.messages, droppedError(t)) }));
+            return;
+          }
+          continue;
+        }
+        let loaded = null;
+        try {
+          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+        } catch { continue; }
+        if (!loaded) continue;
+        if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        const knownIds = knownIdsOf(cid);
+        settle((t) => {
+          if (!historyEndsTurn(loaded.messages, droppedError(t)?._userMessageId)) return t;
+          const hasError = loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required');
+          return {
+            ...t,
+            status: hasError ? 'error' : 'idle',
+            messages: mergeMessagePage(withoutDroppedRows(t.messages, droppedError(t)), loaded.messages, knownIds),
+            ...reconcilePaginationState(t, loaded),
+          };
+        });
+        return;
+      }
+    } finally {
+      droppedRecoveryRef.current.delete(cid);
+      settle((t) => ({ ...t, messages: stopReconnecting(t.messages) }));
+    }
+  }, [hasLiveTurnHere, reconnectInFlight]);
+  recoverDroppedTurnRef.current = recoverDroppedTurn;
 
   // Navigation intent only: flipping route + activeTaskId drives the URL to
   // `/c/:id`, whose loader + openConversation() (below) do the hydration and
@@ -2748,8 +3255,8 @@ function AppCore() {
 
     setTasks((prev) => [{
       id: tempId,
-      title: `Modify ${connection.name || label}`,
-      subtitle: 'just now',
+      title: tApp('modify.taskTitle', { name: connection.name || label }),
+      subtitle: tApp('common.justNow'),
       status: hasLiteralForm ? 'idle' : 'active',
       messages: hasLiteralForm
         ? [
@@ -2762,7 +3269,7 @@ function AppCore() {
                 logo: full.form?.logo || full.logo,
                 logo_color: full.form?.logo_color || full.logo_color,
               },
-              content: `Modify ${connection.name || label}`,
+              content: tApp('modify.taskTitle', { name: connection.name || label }),
               // Modify-specific metadata so ChatView can render the
               // intro card with Cancel + Disconnect actions instead
               // of the plain "fill out the form" affordance.
@@ -2773,14 +3280,14 @@ function AppCore() {
             },
             {
               role: 'assistant',
-              content: `Update the credentials or settings for "${connection.name}" — saving overwrites the existing connection.`,
+              content: tApp('modify.body', { name: connection.name }),
               _client_only: true,
             },
           ]
         : [
             {
               role: 'assistant',
-              content: `Let's update ${connection.name || label}.`,
+              content: tApp('modify.intro', { name: connection.name || label }),
               _client_only: true,
             },
           ],
@@ -2858,8 +3365,8 @@ function AppCore() {
         // method list.
         const synthMethod = {
           id: '__edit_current__',
-          label: 'Currently saved values',
-          description: 'Edit the values stored for this connection.',
+          label: tApp('modify.savedValuesLabel'),
+          description: tApp('modify.savedValuesDescription'),
           fields: syntheticFields,
           // No `submit_action` / `oauth` / `actions` inherited from
           // any spec method — the synthetic stands on its own. The
@@ -2884,6 +3391,8 @@ function AppCore() {
           selected_method: '__edit_current__',
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -2901,6 +3410,8 @@ function AppCore() {
           fields: syntheticFields,
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -2923,7 +3434,7 @@ function AppCore() {
     } else {
       // No registry entry — fall back to the chat-agent flow. Anton
       // can still walk the user through the change.
-      Promise.resolve().then(() => sendFromApp(`Update connection ${connection.name} (${label}).`));
+      Promise.resolve().then(() => sendFromApp(tApp('modify.chatRequest', { name: connection.name, label })));
     }
   };
   // Cancel a modify-flow task: drop the synthetic chat task we
@@ -3049,8 +3560,8 @@ function AppCore() {
 
     setTasks((prev) => [{
       id: tempId,
-      title: `Connect ${label}`,
-      subtitle: 'just now',
+      title: tApp('connect.taskTitle', { name: label }),
+      subtitle: tApp('common.justNow'),
       status: hasLiteralForm ? 'idle' : 'active',
       messages: hasLiteralForm
         ? [
@@ -3063,19 +3574,19 @@ function AppCore() {
                 logo: full.form?.logo || full.logo,
                 logo_color: full.form?.logo_color || full.logo_color,
               },
-              content: `Connect ${label}`,
+              content: tApp('connect.taskTitle', { name: label }),
               _client_only: true,
             },
             {
               role: 'assistant',
-              content: CONNECT_FOLLOWUPS[Math.floor(Math.random() * CONNECT_FOLLOWUPS.length)],
+              content: tApp(CONNECT_FOLLOWUPS[Math.floor(Math.random() * CONNECT_FOLLOWUPS.length)]),
               _client_only: true,
             },
           ]
         : [
             {
               role: 'assistant',
-              content: `Let's connect ${label}.`,
+              content: tApp('connect.intro', { name: label }),
               _client_only: true,
             },
           ],
@@ -3099,8 +3610,9 @@ function AppCore() {
       // In cloud a connector whose methods carry a `cloud` block is shaped to
       // it: that block replaces the desktop fields and copy whole, and a
       // method without one is not offered, because the relay supports exactly
-      // one method per database connector and refuses the rest. Everything
-      // else, which is every OAuth connector, passes through untouched.
+      // one method per database connector and refuses the rest. OAuth methods
+      // stay beside the cloud form; a connector with no cloud block passes
+      // through untouched.
       const baseSpec = {
         ...full.form,
         // Stamp the canonical engine slug so server-side code
@@ -3111,6 +3623,8 @@ function AppCore() {
         // engine slug; we treat that as the source of truth.
         engine: full.form.engine || full.id,
         _connector_id: full.id,
+        // Saved before connection tests: the form shows the rebuild text, not fields.
+        _needs_rebuild: !!full.needs_rebuild,
         /* Reconnecting a shared connection carries its name so the submit
            (DataVaultFormPanel reads spec._existing_name) updates that entry in
            place instead of saving a second one under a fresh random slug. */
@@ -3161,8 +3675,21 @@ function AppCore() {
     setRoute,
   });
 
+  const {
+    notionPicker,
+    notionConnectPrompt,
+    resolveNotionPicker,
+    cancelNotionPicker,
+    confirmNotionConnect,
+    cancelNotionConnect,
+    handleAddNotionPages,
+    handleAddNotionProjectPages,
+    fetchNotionProjectPages,
+    removeNotionProjectPage,
+  } = useNotionPagePicker({ selectedProject, setComposerAttachments });
   const { startSharePointImport, sharePointModals } = useSharePointImport({
     connections: connectors,
+    projects,
     orgMode,
     onConnectionsChanged: () => {
       fetchDatasources()
@@ -3190,6 +3717,13 @@ function AppCore() {
     refreshData,
   });
   const codeAccountUser = useAccountUser(ssoConnected);
+  // Start the person's browser pod as soon as their web session opens
+  // (lib/browserWarmUp.js), not when a task first needs it.
+  const warmAccount = codeAccountUser?.sub ?? null;
+  useEffect(() => {
+    if (!host.isWeb || !warmAccount) return undefined;
+    return warmBrowserForSession({ warm: warmBrowser, readStatus: readBrowseStatus });
+  }, [warmAccount]);
   const codeSkillScopeKey = skillScopeKey(codeAccountUser);
 
   // undefined (never a real accountId or the null of "signed out") so the
@@ -3216,6 +3750,8 @@ function AppCore() {
   // on web there is no earlier, pre-mount purge to catch it first the way
   // Electron's main.tsx has.
   const accountId = codeAccountUser?.sub ?? null;
+  // The off-task browser is kept per account: another account (or none) picks its own.
+  useEffect(() => { offTaskBrowserIdRef.current = null; }, [accountId]);
   if (purgedAccountRef.current !== accountId) {
     // `undefined` only on the very first pass, which runs during this
     // component's own render and therefore BEFORE the composer below it has
@@ -3267,6 +3803,14 @@ function AppCore() {
   // finishes too, so a task that just spent the last free tokens flips the
   // notice without waiting for the next tick.
   const { usage: hubUsage, refresh: refreshHubUsage } = useHubUsage(codeAccountUser);
+  useModelAvailabilityTriggers({
+    refresh: refreshCreditLocks,
+    modelEnabled: settings.modelEnabled,
+    modelDisabledReasons: settings.modelDisabledReasons,
+    mindsIds: settings.recommendedModels?.['minds-cloud'],
+    usage: hubUsage,
+    canNarrowRefresh: () => serverHonorsRefreshScope(REFRESH_SCOPE.minds),
+  });
   const hubUsageCtx = useMemo(() => ({
     usage: hubUsage,
     providerType: providerValueToType(settings.planningProvider) || 'minds-cloud',
@@ -3311,6 +3855,19 @@ function AppCore() {
     else if (isMobile) setSettingsSection(null);
     setSettingsOpen(true);
   };
+
+  // A link into Settings (?settings=appearance&section=branding, captured in
+  // web-main.tsx before login): open that page once, scrolled to that part.
+  const [appearanceAnchor, setAppearanceAnchor] = useState(null);
+  const clearAppearanceAnchor = useCallback(() => setAppearanceAnchor(null), []);
+  useEffect(() => {
+    const link = takeSettingsDeepLink();
+    if (!link) return;
+    setAppearanceAnchor(link.section);
+    openSettings(link.page);
+    // Once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const navigate = (key) => {
     if (sidebarPopout) setNavPopoutOpen(false);
@@ -3436,6 +3993,32 @@ function AppCore() {
     });
   }, []);
 
+  /* The + menu shows a Browser switch only where this deployment offers the
+     browser (GET /browse/status answers `available: true`, never on a
+     self-hosted stack) and while it is on in Settings (on by default). Off
+     there, no task gets it, so no switch (lib/browserSwitch). */
+  // Off unless the person turned it on in Settings (Beta).
+  const browserOnInSettings = settings.browserEnabled === true;
+  /* Asked again when a saved setting changes what picks the browser's steps:
+     the provider, the Jev switch, the organization's own decision model. */
+  const browseAvailable = useBrowseAvailable(
+    `${health.status}:${inAppBrowserRegistered}:${settings.planningProvider}:${settings.jevDecisionsEnabled}:${settings.decisionModelUrl}:${settings.decisionModelApiKey}`,
+  );
+  const browserSwitchShown = showsBrowserSwitch({
+    browserOnInSettings, browseAvailable, webWithoutMindsHub: host.isWeb && !llmViaMindsHub(settings),
+  });
+  const composerBrowserSwitch = browserSwitchShown
+    ? { on: !composerBrowserOff, onChange: (on) => setComposerBrowserOff(!on), agentLabel }
+    : null;
+
+  // The + menu's Browser switch for one task (ENG-3188): on its record, which
+  // every send to it reads, and on this device so it survives a reload.
+  const handleTaskBrowserSwitch = useCallback((taskId, on) => {
+    if (!taskId) return;
+    rememberTaskBrowser(taskId, !on);
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, browserOff: !on } : t)));
+  }, []);
+
   const handleRemoveAttachment = async (id) => {
     const target = composerAttachments.find((a) => a.id === id);
     setComposerAttachments((prev) => prev.filter((attachment) => attachment.id !== id));
@@ -3485,16 +4068,16 @@ function AppCore() {
   const launchCodingModeTask = async (text, meta) => {
     let generalProject = runnableProjects.find((p) => p.name === 'general');
     const effectiveProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null) || generalProject;
-    if (!canRunProject(effectiveProject)) throw new Error('Only the owner can run tasks in this shared project.');
+    if (!canRunProject(effectiveProject)) throw new Error(tApp('tasks.ownerOnly'));
     if (!effectiveProject?.path) {
-      throw new Error('Pick a project with a folder before launching Claude Code.');
+      throw new Error(tApp('codeMode.needFolder'));
     }
     if (!meta.model || meta.model === MODEL_ROUTER_ID) {
-      throw new Error('Pick a model before launching Claude Code.');
+      throw new Error(tApp('codeMode.needModel'));
     }
     const authToken = await revealSettingKey('minds');
     if (!authToken) {
-      throw new Error('No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.');
+      throw new Error(tApp('codeMode.noKey'));
     }
     const conversation = await createConversation({
       project: effectiveProject.name,
@@ -3505,12 +4088,12 @@ function AppCore() {
     });
     const taskId = conversation?.id;
     if (!taskId) {
-      throw new Error('Could not create the Claude Code task.');
+      throw new Error(tApp('codeMode.createFailed'));
     }
     setTasks((prev) => [{
       id: taskId,
       title: text.length > 60 ? text.slice(0, 57) + '…' : text,
-      subtitle: 'just now',
+      subtitle: tApp('common.justNow'),
       status: 'idle',
       messages: [{ role: 'user', content: text, attachments: [] }],
       projectName: effectiveProject.name,
@@ -3551,9 +4134,40 @@ function AppCore() {
   };
 
   // Send from the home screen — creates a new session
+  /* The page the browser beside Home or a project shows, when it is a real
+     page (not its blank start page): what a task sent from there is about.
+     Its origin and path only: it goes into the task's context. */
+  const carriedBrowserPage = () => {
+    if (!offTaskBrowserOpen || !(route === 'home' || route === 'projects')) return '';
+    // The whole address, so the task's browser reopens the same page (a
+    // search keeps its query); prompts get only its origin and path.
+    const raw = String(offTaskPageUrlRef.current || '');
+    return pageOriginForContext(raw) && raw.length <= 4096 ? raw : '';
+  };
+  /* The new task's own browser opens at that page, and its view shows it;
+     the off-task pane closes, since the task now holds the page. */
+  const carryBrowserInto = async (taskId, url) => {
+    closeOffTaskBrowser();
+    try {
+      let sessionId;
+      if (host.isWeb) {
+        sessionId = (await openBrowserAt(taskId, url))?.session_id;
+      } else {
+        sessionId = await desktopTaskSession(taskId);
+        await host.inAppBrowser.open(sessionId, url);
+      }
+      if (sessionId) setBrowserRequest({ taskId, sessionId, at: Date.now() });
+    } catch {
+      // The task still knows the page; the agent opens it itself.
+    }
+  };
+
+  const carriedPageRef = useRef(null);
+  carriedPageRef.current = carriedBrowserPage;
+
   const handleSendFromHome = async (text, meta) => {
     if (!canRunProject(meta?.project) || (route === 'projects' && !canRunProject(selectedProject))) {
-      throw new Error('Only the owner can run tasks in this shared project.');
+      throw new Error(tApp('tasks.ownerOnly'));
     }
     if (meta?.harness === 'claude-code') {
       return launchCodingModeTask(text, meta);
@@ -3576,7 +4190,7 @@ function AppCore() {
       setTasks((prev) => [{
         id: taskId,
         title: text.length > 60 ? text.slice(0, 57) + '…' : text,
-        subtitle: 'just now',
+        subtitle: tApp('common.justNow'),
         status: 'idle',
         messages: [
           // `_unsent`: never reached the server, so hydration drops it.
@@ -3616,12 +4230,17 @@ function AppCore() {
     const disabledForSend = normalizeComposerDisabledConnections(
       meta?.disabledConnections ?? composerDisabledConnections,
     );
+    // Only the composer's own switch: the browser is off only when switched off.
+    const browserOffForSend = newTaskBrowserOff({ callerBrowserOff: meta?.browserOff, browserOnInSettings, composerBrowserOff });
 
     const rawComposer = meta?.attachments ?? composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const suppliedConversationId = meta?.conversationId || null;
+    // The browser open beside Home or the project on a page: the task is
+    // about it, and its own browser opens there, so it needs its real id now.
+    const carried = carriedBrowserPage();
     const taskId = suppliedConversationId
-      || (hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`);
+      || (hasPendingFiles || carried ? allocateConversationId() : `tmp-${Date.now()}`);
     // Flag the not-yet-persisted id so the route loader renders from local
     // state instead of 404ing home.
     markOptimisticConversation(taskId);
@@ -3631,7 +4250,13 @@ function AppCore() {
       hasPendingFiles ? taskId : null,
       rawComposer,
     );
-    const sendText = reference.length ? `${text}\n\n${describeGoogleDriveReferenceFiles(reference)}` : text;
+    const notionTexts = await loadNotionPageTexts(reference);
+    const sendText = [
+      text,
+      reference.length ? describeReferenceAttachments(reference, notionTexts) : '',
+      carried ? describeOpenBrowserPage(pageOriginForContext(carried)) : '',
+    ].filter(Boolean).join('\n\n');
+    if (carried) void carryBrowserInto(taskId, carried);
     setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
@@ -3649,7 +4274,7 @@ function AppCore() {
     const newT = {
       id: taskId,
       title: text.length > 60 ? text.slice(0, 57) + '…' : text,
-      subtitle: 'just now',
+      subtitle: tApp('common.justNow'),
       status: 'active',
       messages: [],
       // Locally created: nothing is fetching history for it, because it has
@@ -3669,6 +4294,7 @@ function AppCore() {
       harness: meta?.harness || null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
+      browserOff: browserOffForSend,
       // Stamp a client-side timestamp so the Sidebar's sort-by-
       // updatedAt sees this task as the freshest. Without it, brand-
       // new tasks would sort to the bottom (no updatedAt) until the
@@ -3678,6 +4304,9 @@ function AppCore() {
     setTasks((prev) => [newT, ...prev]);
     setActiveTaskId(taskId);
     setRoute('task');
+    // Mobile app (ENG-4023): the first task started is when the app offers
+    // "notify me when tasks finish" (once; no-op outside the app).
+    noteMobilePushTaskStarted();
 
     let resolvedId = taskId;
     /*
@@ -3689,12 +4318,14 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // The tmp- id was never stored; the task's real one is.
+      if (browserOffForSend) rememberTaskBrowser(sid, true);
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
       // The canonical id isn't loadable yet either — keep the loader off it.
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === taskId ? { ...t, id: sid } : t
+        t.id === previousId || t.id === taskId ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
@@ -3748,7 +4379,7 @@ function AppCore() {
                 // "Thinking…". The reply path (handleSendInTask)
                 // uses the default label since the session is
                 // already warm by then.
-                { label: 'Creating task…' },
+                { label: tApp('tasks.creating') },
               ),
             }
           : t,
@@ -3767,7 +4398,7 @@ function AppCore() {
     trackAgentSessionStarted();
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
-      conversationId: suppliedConversationId || (hasPendingFiles ? taskId : undefined),
+      conversationId: suppliedConversationId || (hasPendingFiles || carried ? taskId : undefined),
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
@@ -3776,10 +4407,13 @@ function AppCore() {
       harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
+      browserOff: browserOffForSend,
       onEvent(ev) {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
@@ -3824,6 +4458,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -3851,10 +4486,10 @@ function AppCore() {
           const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           if (configErrorInBody) {
-            return { ...t, id: finalId, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
+            return { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
           return finalContent
-            ? { ...t, id: finalId, status: 'idle', messages: [...msgs, {
+            ? { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
                 // Client-only: lets its steps fold shut instead of vanishing
@@ -3863,12 +4498,13 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
                 ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
-            : { ...t, id: finalId, status: 'idle', messages: msgs };
+            : { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: msgs };
         }));
         // Follow the rename only if this conversation is still on screen; the
         // person may have moved to another one while the answer ran.
@@ -3884,6 +4520,7 @@ function AppCore() {
           // now (keyed to the resolved conversation id the panel reads).
           openStreamedForm(finalId, finalContent);
         }
+        reportTurnDone([finalId, resolvedId, taskId], finalContent, finalId);
         reloadArtifacts();
         // This turn held the shared stream slot; drain anything queued
         // against any task while it ran (ENG-1378).
@@ -3895,6 +4532,7 @@ function AppCore() {
         releaseStream(resolvedId || taskId, sessionCtrl);
         if (superseded) return;
         releaseLiveSteps([resolvedId, taskId]);
+        reportTurnEnd([resolvedId, taskId], { error: event?.code === 'cancelled' ? TURN_STOPPED : message });
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
         void (async () => {
@@ -3918,6 +4556,21 @@ function AppCore() {
   // repair), so analytics can tell it from one they typed.
   const sendFromApp = (text, meta) => sendWithStartVia('app', () => handleSendFromHome(text, meta));
 
+  // The home composer clears only once a send resolves, which can take ~10s
+  // while attached Notion pages load, so a second Enter would open a second
+  // chat with the same text. The Composer itself can't guard this: one
+  // Composer serves every chat, and other chats must still queue meanwhile.
+  const homeComposerSendingRef = useRef(false);
+  const sendFromHomeComposer = async (text, meta) => {
+    if (homeComposerSendingRef.current) return false;
+    homeComposerSendingRef.current = true;
+    try {
+      return await handleSendFromHome(text, meta);
+    } finally {
+      homeComposerSendingRef.current = false;
+    }
+  };
+
   // Send inside an existing task
   //
   // Answers `true` when the text is on its way — a stream started, or it was
@@ -3940,6 +4593,8 @@ function AppCore() {
     // whether the chat is on screen or not.
     const mutesForSend = opts.disabledConnections
       ?? (tasksRef.current.find((t) => t.id === id) || targetTask).disabledConnections;
+    // Its Browser switch, read the same way (handleTaskBrowserSwitch).
+    const browserOffForSend = !!(tasksRef.current.find((t) => t.id === id) || targetTask).browserOff;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
     // turn + the action card and stop before any in-flight reservation.
@@ -3997,9 +4652,7 @@ function AppCore() {
       if (orphaned.length > 0) {
         toastManager.add({
           type: 'warning',
-          title: orphaned.length === 1
-            ? 'Your file was not sent — the agent asked a question first. It is still attached.'
-            : `Your ${orphaned.length} files were not sent — the agent asked a question first. They are still attached.`,
+          title: tApp('attachments.notSent', { count: orphaned.length }),
         });
       }
       // The text became the answer to the agent's question, so it did not start
@@ -4058,16 +4711,39 @@ function AppCore() {
     //      which may remove the new turn. The message waits, and that Stop or
     //      delete drains it once it has finished.
     if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current || hasLiveTurnHere(id)) {
+      // A message typed into a task that is working right now may belong to
+      // that task ("use the sales DB instead"): offer it to the running turn
+      // first (ENG-4194). Only the person's own composer sends: a drained or
+      // machine-written prompt (a repair) always queues, as before.
+      let queuedReason = null;
+      if (!opts.targetTask && !opts.skipPendingAnswer && hasLiveTurnHere(id)) {
+        const eligibility = addonEligibility({
+          conversationId: id,
+          text,
+          attachments: queuedAttachments ?? composerAttachments,
+          liveStream: Boolean(addons.liveAddonCtrl(id)),
+          ending: stoppingRef.current.has(id) || deletingRef.current.has(id) || recoveringRef.current.has(id),
+        });
+        if (eligibility.ok) {
+          addons.offerAddon(id, text, mutesForSend);
+          return true;
+        }
+        addons.noteQueued(eligibility.reason);
+        queuedReason = eligibility.reason;
+      }
       // Queue with the files attached so a mid-stream send doesn't drop
       // them. A fresh send takes the composer's attachments and clears
       // them (the queued item now owns them); a re-enqueued queued item
       // reuses its own and leaves the live composer untouched.
-      enqueueMessage(
+      const queuedId = enqueueMessage(
         id,
         text,
         queuedAttachments ?? composerAttachments,
         mutesForSend,
+        queuedReason,
       );
+      // A voice call that sent it follows its queue item to its own turn.
+      opts.onQueued?.(queuedId);
       if (queuedAttachments == null) setComposerAttachments([]);
       // Queued counts as sent: the drain runs it when the slot frees, so a
       // repair waiting on this prompt will get its turn.
@@ -4126,27 +4802,18 @@ function AppCore() {
     // opts.modelOverride carries a same-tick model switch (the "Switch to
     // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
     // closure, so a setTasks({...model}) just before this call would not be
-    // visible here yet. The `selectedModel` fallback is the on-screen model
-    // picker, so only a live send to the task on screen may inherit it; a
-    // drained off-screen task must not pick up whatever model the current
-    // view happens to show — it falls through to the server default instead.
-    const taskModel = sendableModelId(opts.modelOverride
-      || targetTask.model
-      || (opts.targetTask ? null : selectedModel?.id)
-      || null);
+    // visible here yet. A task with no pick sends none and runs on the
+    // server default, as currentTaskModel shows it; it never borrows the
+    // home composer's pick, which the server would then save on the chat.
+    const taskModel = sendableModelId(opts.modelOverride || targetTask.model || null);
     // Sibling precedence chain to taskModel (ENG-1940): a same-tick
-    // override, else the task's own saved pick, else — only for a live
-    // send to the task on screen — the home composer's current pick.
-    // selectedEffort defaults to '', so the trailing `|| null` collapses
-    // that (and any other falsy pick) to null the same way taskModel's does.
-    const taskEffort = (opts.effortOverride
-      ?? targetTask.reasoningEffort
-      ?? (opts.targetTask ? null : selectedEffort))
-      || null;
+    // override, else the task's own saved pick. The "Default" effort ('')
+    // collapses to null, so it sends no effort.
+    const taskEffort = (opts.effortOverride ?? targetTask.reasoningEffort) || null;
 
-    let sendingAttachments, attachmentIds, driveReference;
+    let sendingAttachments, attachmentIds, referenceAttachments;
     try {
-      ({ merged: sendingAttachments, attachmentIds, reference: driveReference } = await resolveComposerAttachmentsForSend(
+      ({ merged: sendingAttachments, attachmentIds, reference: referenceAttachments } = await resolveComposerAttachmentsForSend(
         taskProjectName,
         id,
         // A drained queued item carries its own attachments; only a
@@ -4176,10 +4843,13 @@ function AppCore() {
       // and the staged file for a retry.
       toastManager.add({
         type: 'danger',
-        title: err?.message || 'Could not send your attachment. Please try again.',
+        title: err?.message || tApp('attachments.sendFailed'),
       });
       throw err;
     }
+    // Before the Thinking placeholder: its Stop button can't cancel this
+    // wait, and the turn would start once it ended.
+    const notionTexts = await loadNotionPageTexts(referenceAttachments);
 
     setTasks((prev) => prev.map((t) =>
       t.id === id
@@ -4221,7 +4891,7 @@ function AppCore() {
       moveDraft(previousId, sid);
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === id ? { ...t, id: sid } : t
+        t.id === previousId || t.id === id ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       // Move the in-flight + active refs onto the new id so cancel /
       // reconcile passes look at the right key.
@@ -4236,15 +4906,7 @@ function AppCore() {
       // Migrate the form store so a success-state panel (e.g. the
       // OAuth success screen set just before onContinue was called)
       // survives the ID change and stays visible under the new task id.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4272,8 +4934,8 @@ function AppCore() {
      // keeps the original text — Anton-only context, never shown.
     const connectFormState = getDataVaultFormState(id);
     const connectContext = describeConnectFormState(connectFormState);
-    const driveContext = describeGoogleDriveReferenceFiles(driveReference);
-    const hiddenContext = [connectContext, driveContext].filter(Boolean).join('\n\n');
+    const referenceContext = describeReferenceAttachments(referenceAttachments, notionTexts);
+    const hiddenContext = [connectContext, referenceContext].filter(Boolean).join('\n\n');
     const sendText = hiddenContext ? `${text}\n\n${hiddenContext}` : text;
 
     // Tag this task as currently streaming so reconcileTaskMessages
@@ -4286,8 +4948,10 @@ function AppCore() {
       projectPath: taskProjectPath,
       model: taskModel,
       reasoningEffort: taskEffort,
+      resetPicks: turnResetPicks(targetTask, opts),
       attachmentIds,
       disabledConnections: disabledForSend,
+      browserOff: browserOffForSend,
       onEvent(ev) {
         if (!isCurrentStream(resolvedId || id, ctrl)) return;
         // Adopt the server's canonical id as soon as it lands. The
@@ -4295,6 +4959,8 @@ function AppCore() {
         // fresh id; the new value rides on `response.created`.
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
@@ -4322,6 +4988,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -4357,6 +5024,7 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
@@ -4369,6 +5037,7 @@ function AppCore() {
           persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
+        reportTurnDone([resolvedId, id], finalContent, resolvedId);
         reloadArtifacts();
         // Drain the next queued message now that the single stream slot is
         // free. Sweeps every task's queue (preferring this task for FIFO
@@ -4385,6 +5054,7 @@ function AppCore() {
         // Same as onDone: a later visit must hydrate from the server.
         clearOptimisticConversation(resolvedId);
         releaseLiveSteps([resolvedId, id]);
+        reportTurnEnd([resolvedId, id], { error: event?.code === 'cancelled' ? TURN_STOPPED : message });
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         void (async () => {
@@ -4407,6 +5077,395 @@ function AppCore() {
   // task's queue, not just the finishing one. `preferredTaskId` (the
   // finishing task) is tried first so its own follow-ups keep FIFO order.
   // `skipTaskIds` lists tasks a failed send already tried in this chain.
+  // The voice call's requests go to Anton as a typed message would, in the
+  // call's task (a new one for the first request from Home). The operator
+  // names the task (`taskId`), or asks for a new one (`newTask`, in `project`
+  // when given).
+  // Sends the request and resolves once Anton has it: {taskId, finished}, where
+  // `finished` resolves with his answer when the request's own turn ends. In
+  // a task whose turn is running (one the person typed), the request queues
+  // behind it, and `finished` follows its queue item to the turn that runs it
+  // (askInTask), not the running turn. A wait that gives up rejects with
+  // `timedOut`.
+  const sendFromCall = async (request, { taskId = null, newTask = false, project = null } = {}) => {
+    const callTaskId = newTask ? null : (taskId || callTaskIdRef.current);
+    const existing = callTaskId && tasksRef.current.find((t) => t.id === callTaskId);
+    const id = existing ? existing.id : allocateConversationId();
+    callTaskIdRef.current = id;
+    if (existing) {
+      const { sent, finished } = await askInTask({
+        taskId: id,
+        queueWatch: callQueueWatchRef.current,
+        send: (onQueued) => handleSendInTask(request, [], { targetTask: existing, onQueued }),
+      });
+      if (!sent) throw new Error(`${agentLabel} couldn't take the request.`);
+      return { taskId: id, finished };
+    }
+    const turn = waitForTurnEnd(id);
+    const sent = await handleSendFromHome(request, {
+      conversationId: id, attachments: [], disabledConnections: [], ...(project ? { project } : {}),
+    });
+    if (sent === false) {
+      turn.cancel();
+      throw new Error(`${agentLabel} couldn't take the request.`);
+    }
+    const finished = turn.promise.then(({ content, error, finalId }) => {
+      callTaskIdRef.current = finalId || id;
+      if (error) throw new Error(String(error));
+      return content;
+    });
+    return { taskId: id, finished };
+  };
+  /* Work the voice call gave Anton finished: said on the call while it is up,
+     or in a call back when the call hung up to wait for it. A call the person
+     ended themselves stays ended. */
+  const reportCallWork = (work, { content = '', error = '' }) => {
+    const title = tasksRef.current.find((t) => t.id === work.taskId)?.title;
+    const where = title ? ` in "${title}"` : '';
+    const news = error === TURN_STOPPED
+      ? `${agentLabel}'s work on "${work.request}"${where} was stopped before it finished.`
+      : error
+      ? `${agentLabel} couldn't finish "${work.request}"${where}: ${error}`
+      : `${agentLabel} finished "${work.request}"${where}: ${String(content || '').slice(0, 1200)}`;
+    // A call that is up (or connecting, or fading out) says it; one hanging up
+    // or gone refuses it, and the call back below takes over.
+    if (voiceCall.announce(news)) return;
+    // A call back already waits for the tab to show: this news goes with it.
+    if (seenCallBackRef.current.join(news)) return;
+    if (!callBackRef.current) return;
+    callBackRef.current = false;
+    setCallBackPending(false);
+    if (!callBackSeenRef.current.canCallBack) return;
+    // In a tab out of sight the call would start unheard: it waits for the person to come back.
+    seenCallBackRef.current.callBack(news);
+  };
+  /* Work the call gave Anton stopped on the person: a browser hand-over, a
+     browser step to approve, or a question. The call says what he needs while
+     it is up, or calls back as finished work does, in the same call back (a
+     tab out of sight waits, and a result or another request that comes
+     meanwhile is said with it; the microphone stays off until Anton speaks).
+     A request answered on screen first, within the grace or while the tab
+     waits, is never called about. The call back leaves the work's own call
+     back armed: it hangs up when quiet with the work still running, and the
+     result calls back again. */
+  if (!callNeedsRef.current) {
+    callNeedsRef.current = createCallNeeds({
+      hasCallWork: (tid) => callWorkRef.current.inTask(tid).length > 0,
+      stepsOf: (tid) => liveStepsRef.current[tid],
+      titleOf: (ids) => tasksRef.current.find((t) => ids.includes(t.id))?.title,
+      announce: (news) => callNeedsSeenRef.current.voiceCall.announce(news, { asks: true }),
+      callBackDue: () => callBackRef.current,
+      canCallBack: () => callBackSeenRef.current.canCallBack,
+      seen: seenCallBackRef.current,
+      agentLabel: () => callNeedsSeenRef.current.agentLabel,
+    });
+  }
+  callNeedsSeenRef.current = { voiceCall, agentLabel };
+  noteCallNeedsRef.current = callNeedsRef.current.note;
+  // What the voice call is told about the task at the start, as background.
+  callContextRef.current = () => {
+    const task = callTaskIdRef.current && tasksRef.current.find((t) => t.id === callTaskIdRef.current);
+    if (!task) return '';
+    const recent = (task.messages || [])
+      .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+      .slice(-4)
+      .map((m) => `${m.role === 'user' ? 'The user' : agentLabel}: ${m.content.trim().slice(0, 350)}`);
+    return [`The user is in a task called "${task.title}".`, recent.length ? 'Its latest messages:' : '', ...recent]
+      .filter(Boolean).join('\n');
+  };
+  // The voice call's operator: each request becomes the app's actions, run
+  // here as the person, through the same handlers their clicks use. The
+  // operator reads the screen each round, so it reads it from this ref, which
+  // every render refreshes.
+  callScreenRef.current = { route, currentTask, selectedProject, projects };
+  const callTask = (id) => {
+    const task = tasksRef.current.find((t) => t.id === id);
+    if (!task) throw new Error(`There is no task with the id ${id}.`);
+    return task;
+  };
+  const callProject = (name) => {
+    const wanted = String(name || '').trim().toLowerCase();
+    return (callScreenRef.current.projects || []).find((p) => p.name.toLowerCase() === wanted) || null;
+  };
+  // Work the call gave Anton that is still running: one at a time, so two
+  // requests never run side by side and two answers never talk over each
+  // other. A request while one runs is queued behind it or, when it should
+  // replace it, the person is asked first (the operator decides, from
+  // ask_anton's refusal).
+  const callBusy = () => callWorkRef.current.first();
+  // The call's last work went without an answer to say (given up on): with
+  // nothing left running, there is nothing to call back about.
+  const callWorkGone = () => {
+    if (callWorkRef.current.busy() || !callBackRef.current) return;
+    callBackRef.current = false;
+    setCallBackPending(false);
+  };
+  const callActions = {
+    ask_anton: async ({ request, task_id: taskId, project }) => {
+      const busy = callBusy();
+      if (busy) {
+        const where = tasksRef.current.find((t) => t.id === busy.taskId)?.title;
+        return `Not started: ${agentLabel} is still working on "${busy.request}"${where ? ` in "${where}"` : ''}. `
+          + 'Tell the user that, then either queue this with queue_for_anton, or ask whether to stop that work '
+          + 'and do this now (stop_task, then ask_anton).';
+      }
+      const inProject = project ? callProject(project) : null;
+      if (project && !inProject) throw new Error(`There is no project called "${project}".`);
+      const existing = taskId && taskId !== 'new' ? callTask(taskId) : null;
+      if (existing && !(callScreenRef.current.route === 'task' && callScreenRef.current.currentTask?.id === existing.id)) {
+        selectTask(existing.id);
+      }
+      const work = callWorkRef.current.add({ request: String(request || ''), taskId: existing?.id || null });
+      let sent;
+      try {
+        sent = await sendFromCall(work.request, { taskId: existing?.id, newTask: !existing, project: inProject });
+      } catch (err) {
+        work.settle();
+        throw err;
+      }
+      // The call doesn't wait for the answer: it hears it when it comes, or is called back with it.
+      work.taskId = sent.taskId;
+      sent.finished.then(
+        (content) => { if (work.settle()) reportCallWork(work, { content }); },
+        (err) => {
+          if (!work.settle()) return;
+          if (err?.timedOut) callWorkGone();
+          else reportCallWork(work, { error: err?.message || 'something went wrong' });
+        },
+      );
+      voiceCall.armAway();
+      const title = tasksRef.current.find((t) => t.id === sent.taskId)?.title;
+      return `Sent to ${agentLabel}${title ? ` in "${title}"` : ' in a new task'}. Tell the user in a few words that `
+        + `${agentLabel} is on it and you'll get back to them when it's done. Don't wait for the answer.`;
+    },
+    queue_for_anton: async ({ request, task_id: taskId }) => {
+      // The call's latest work: this one runs, and is said, after it.
+      const ahead = callWorkRef.current.last();
+      const task = taskId && taskId !== 'new' ? callTask(taskId) : (ahead?.taskId && callTask(ahead.taskId));
+      if (!task) throw new Error('There is no task to queue it in.');
+      const text = String(request || '');
+      // A send into a busy task waits its turn there (handleSendInTask's
+      // queue); `turn` follows its own queue item to the turn that runs it,
+      // and settles if that item is removed first (a Stop, or the person).
+      const { sent, turn } = await sendForOwnTurn({
+        taskId: task.id,
+        queueWatch: callQueueWatchRef.current,
+        send: (onQueued) => handleSendInTask(text, [], { targetTask: task, onQueued }),
+      });
+      if (!sent) throw new Error(`${agentLabel} couldn't take the request.`);
+      const work = callWorkRef.current.add({ request: text, taskId: task.id });
+      voiceCall.armAway();
+      void (async () => {
+        const { content, error, timedOut } = await turn;
+        // Answers are said in the order they were asked.
+        await ahead?.done;
+        if (!work.settle()) return;
+        if (timedOut) callWorkGone();
+        else reportCallWork(work, { content, error });
+      })();
+      return ahead
+        ? `Queued in "${task.title}": ${agentLabel} does it right after "${ahead.request}". You'll hear when it's done.`
+        : `Sent to "${task.title}".`;
+    },
+    create_project: async ({ name }) => {
+      const known = callProject(name);
+      if (known) return `The project "${known.name}" already exists.`;
+      const created = await handleCreateProject({ name: String(name).trim(), _inline: true });
+      return `Created the project "${created?.name || name}".`;
+    },
+    move_task: async ({ task_id: taskId, project }) => {
+      const task = callTask(taskId);
+      const known = callProject(project);
+      try {
+        await moveTask(task, known?.name || String(project).trim(), { isNew: !known });
+      } finally {
+        await refreshAfterMove();
+      }
+      return `Moved "${task.title}" to ${known ? `"${known.name}"` : `a new project, "${project}"`}.`;
+    },
+    open_task: ({ task_id: taskId }) => {
+      const task = callTask(taskId);
+      selectTask(task.id);
+      return `Opened "${task.title}".`;
+    },
+    open_project: ({ project }) => {
+      const known = callProject(project);
+      if (!known) throw new Error(`There is no project called "${project}".`);
+      setSelectedProject(known);
+      setRoute('projects');
+      return `Opened the project "${known.name}".`;
+    },
+    task_steps: async ({ task_id: taskId }) => {
+      let task = callTask(taskId);
+      if (!(task.messages || []).length) {
+        const fresh = await fetchSession(task.id);
+        if (fresh?.messages) task = { ...task, messages: fresh.messages };
+      }
+      return describeSteps(task);
+    },
+    stop_task: async ({ task_id: taskId }) => {
+      const task = callTask(taskId);
+      if (!isRunning(task)) return `"${task.title}" isn't running.`;
+      await handleStopStream({ taskId: task.id });
+      // The call's own work there ends with it: wait for that, so a request
+      // that follows the stop isn't refused as running alongside it.
+      const stopping = callWorkRef.current.inTask(task.id).map((w) => w.done);
+      await Promise.race([Promise.all(stopping), new Promise((r) => { setTimeout(r, 4000); })]);
+      return `Stopped "${task.title}".`;
+    },
+    show_browser: ({ task_id: taskId }) => {
+      const task = callTask(taskId);
+      const sessionId = latestBrowserSessionIdIn(task.messages);
+      if (!sessionId) return `"${task.title}" hasn't used the browser.`;
+      selectTask(task.id);
+      setBrowserRequest({ taskId: task.id, sessionId, at: Date.now() });
+      return `Showing the browser from "${task.title}".`;
+    },
+    // What Anton waits on, answered by voice as the person's own click on its
+    // card would (lib/voice/callNeeds.js). A held browser step can only be
+    // cancelled this way: it is approved on the screen alone.
+    ...callNeedActions({
+      taskOf: callTask,
+      stepsOf: (tid) => liveStepsRef.current[tid],
+      sessionOf: (task, steps) => latestBrowserSessionIdIn(task.messages, { steps }),
+      handBack: handBackBrowser,
+      showBrowser: (task, sessionId) => {
+        selectTask(task.id);
+        setBrowserRequest({ taskId: task.id, sessionId, at: Date.now() });
+      },
+      decline: async (questionId) => {
+        const held = host.isWeb ? browserApprovalIds(questionId) : null;
+        if (held) await declineBrowserApproval(held);
+      },
+      submit: submitAnswer,
+      agentLabel,
+    }),
+    // Saved like a pick in Settings; the prefs listener above moves the call
+    // to it, a moment later so this answer gets back first.
+    change_voice: ({ voice }) => {
+      if (!VOICES.some((v) => v.value === voice)) return `There is no voice called ${voice}.`;
+      if (getVoicePrefs().voice === voice) return `Already speaking as ${voiceLabel(voice)}.`;
+      setTimeout(() => setVoicePrefs({ voice }), 300);
+      return `Switching to ${voiceLabel(voice)}; the call reconnects in that voice.`;
+    },
+    // The person asked to hang up: the card's X, once the goodbye is said.
+    hang_up: () => {
+      if (!voiceCall.hangUpAfterAnswer()) return 'There is no call to hang up.';
+      return 'Hanging up once your answer is said: say only a brief goodbye, or nothing.';
+    },
+  };
+  operateFromCallRef.current = (request) => runOperator({
+    request,
+    history: voiceHistoryRef.current,
+    snapshot: () => describeScreen({
+      ...callScreenRef.current, tasks: tasksRef.current, callTaskId: callTaskIdRef.current, working: callBusy(),
+      browserPage: pageOriginForContext(carriedPageRef.current?.() || ''),
+      artifacts: artifactsOnScreen(),
+      waiting: tasksRef.current
+        .map((t) => ({ id: t.id, title: t.title, needs: openNeeds(liveStepsRef.current[t.id]) }))
+        .filter((w) => w.needs.length),
+    }),
+    actions: callActions,
+  });
+  // The current task's project's tasks, for the browser pane's list of the
+  // project's browsers (ENG-4138, prototype).
+  const projectTasksForBrowsers = useMemo(() => {
+    if (!currentTask) return null;
+    const project = currentTask.projectName || 'general';
+    return tasks
+      .filter((t) => (t.projectName || 'general') === project && /^[A-Za-z0-9_-]{1,64}$/.test(String(t.id)))
+      .slice(0, 100)
+      .map((t) => ({ id: t.id, title: t.title }));
+  }, [tasks, currentTask?.id, currentTask?.projectName]);
+  /* Show browser from Home or Projects: the task view's pane, beside the page
+     on a wide screen and over it otherwise, so the page stays usable. On the
+     web it shows at once, with the start page, while the browser opens. */
+  const offTaskPaneFloats = isNarrow || isMobile || !(route === 'home' || route === 'projects');
+  const offTaskPaneProps = {
+    floating: offTaskPaneFloats,
+    taskKey: route,
+    agentLabel,
+    onClose: closeOffTaskBrowser,
+    onOpenUrl: openOffTaskBrowser,
+    onSend: sendFromOffTaskBrowser,
+    // The viewer's address bar fills Home's composer, for the person to send.
+    onDraft: (text) => {
+      if (route !== 'home') setRoute('home');
+      setComposerPrefill({ text, bump: Date.now(), append: true });
+    },
+  };
+  const offTaskPane = offTaskBrowserOpen && browserSwitchShown && route !== 'task' && (offTaskBrowser || (host.isWeb && !offTaskBlank) ? (
+    <BrowserPanel
+      {...offTaskPaneProps}
+      sessionId={offTaskBrowser?.sessionId ?? null}
+      startBlank={!offTaskBrowser || offTaskBrowser.blank}
+      onPageUrl={(url) => { offTaskPageUrlRef.current = url; }}
+    />
+  ) : offTaskBlank ? <BlankBrowserPanel {...offTaskPaneProps} /> : null);
+  const dockOffTask = Boolean(offTaskPane) && !offTaskPaneFloats;
+  // The same elements with the pane or without, so the page (and what is
+  // typed in its composer) stays as it is when the pane opens beside it.
+  const besideOffTask = (view) => (
+    <div className={`flex-1 min-h-0 ${dockOffTask ? 'grid grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : 'flex flex-col'}`}>
+      <div className="min-w-0 min-h-0 flex-1 flex flex-col">{view}</div>
+      {dockOffTask && offTaskPane}
+    </div>
+  );
+  // An ended voice call only shows its card: the call button dismisses it and starts anew.
+  const noCallRunning = !voiceCallRunning(voiceCall.phase);
+  // Voice calls only where the LLM provider is MindsHub: the call runs on
+  // MindsHub. With another provider every call button is hidden.
+  const voiceOffered = llmViaMindsHub(settings) && voicePrefs.enabled;
+  // A call back needs voice calls on.
+  callBackSeenRef.current = { canCallBack: voiceAvailable && voiceOffered };
+  const startVoiceCall = voiceAvailable && voiceOffered && noCallRunning
+    ? () => {
+      callTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
+      // Calling while a call back is due: the work goes on, and its result is
+      // said on this call. Work left over with nothing running anywhere is
+      // stale: it would hold the call busy for good.
+      if (!callBackRef.current) voiceHistoryRef.current = [];
+      const anythingRunning = Boolean(activeStreamingTaskIdRef.current) || tasksRef.current.some(isRunning)
+        || Object.values(messageQueueRef.current).some((queue) => queue?.length);
+      if (!anythingRunning) callWorkRef.current.clear();
+      callBackRef.current = false;
+      setCallBackPending(false);
+      void voiceCall.start({ voice: getVoicePrefs().voice });
+    }
+    : null;
+  // The voice call's round button (VoiceLauncher): a click starts a voice
+  // call; while one runs it shows that, and the call's card ends it.
+  let voiceCallShortcut = null;
+  if (!voiceOffered && voiceCall.phase === 'idle') {
+    voiceCallShortcut = null;
+  } else if (voiceCall.lingering) {
+    // Fading out, still listening: the button brings the call back as an ordinary one.
+    voiceCallShortcut = { label: tApp('voiceCall.backToCall', { agent: agentLabel }), live: true, onClick: () => voiceCall.resume() };
+  } else if (voiceCallRunning(voiceCall.phase)) {
+    voiceCallShortcut = { label: tApp('voiceCall.onCall', { agent: agentLabel }), live: true };
+  } else if (startVoiceCall) {
+    voiceCallShortcut = {
+      label: callBackPending ? tApp('voiceCall.callBackPending', { agent: agentLabel }) : tApp('voiceCall.call', { agent: agentLabel }),
+      onClick: () => { if (voiceCall.phase === 'ended') voiceCall.dismiss(); startVoiceCall(); },
+    };
+  } else if (voiceAvailable) {
+    voiceCallShortcut = {
+      label: tApp('voiceCall.anotherCall'),
+      disabled: true,
+    };
+  }
+  // Where live voice isn't served (or not yet known), no call button shows.
+  const offTaskShortcuts = (
+    // The browser's button only while the shared browser is on (Settings, beta) and offered.
+    <TopShortcuts onShowBrowser={browserSwitchShown ? () => setOffTaskBrowserOpen(true) : null} />
+  );
+  // Where the call's card goes: in the sidebar above its footer while the
+  // sidebar is docked open, floating in that corner otherwise.
+  const dockVoiceCall = !isMobile && !sidebarPopout && !sidebarCollapsedEffective;
+  // On a phone, in a task, the card sits at the top of the chat, above the
+  // browser (ChatView's phone dock).
+  const callInTaskOnPhone = isMobile && route === 'task' && Boolean(currentTask) && !showConversationError && !showConversationLoading;
+
   const drainNextQueuedMessage = (preferredTaskId, skipTaskIds = []) => {
     // Slot re-reserved (a new turn already started) — that turn's own
     // onDone/onError will drain next. Prevents launching two parallel turns.
@@ -4429,6 +5488,11 @@ function AppCore() {
     if (!taskId) return;
     const targetTask = tasksRef.current.find((t) => t.id === taskId);
     if (!targetTask) return;
+    // Its add-on request is still out ("Add to current task", or a mid-task
+    // send holding its place): sending it now as well could run it twice, and
+    // skipping it would run later messages first. That request drains again
+    // once it is answered.
+    if (queueHead(taskId)?.addonPending) return;
     const next = popQueueHead(taskId);
     if (!next) return;
     // handleSendInTask can reject (answer submit, or attachment resolution).
@@ -4568,7 +5632,7 @@ function AppCore() {
       moveDraft(previousId, sid);
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === id ? { ...t, id: sid } : t
+        t.id === previousId || t.id === id ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
@@ -4581,15 +5645,7 @@ function AppCore() {
       // data-vault-form-patch blocks (keyed to the new id) both
       // find the form. Without this the panel loses its spec and
       // the success patch falls through to a bare setForm.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4644,6 +5700,11 @@ function AppCore() {
         if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A custom connector's test waiting on the user: its id goes to the
+        // panel's own store, never into the stream state or the message.
+        if (applyConnectorTestEvent(resolvedId || id, ev)) return;
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
@@ -4711,6 +5772,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -4736,6 +5798,7 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
@@ -4782,7 +5845,7 @@ function AppCore() {
             _is_probing: false,
             _is_success: false,
             status_text: null,
-            form_error: message || 'Form submission failed.',
+            form_error: message || tApp('tasks.formSubmitFailed'),
           });
         }
         setTasks((prev) => prev.map((t) => {
@@ -4790,7 +5853,7 @@ function AppCore() {
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           return { ...t, status: 'error', messages: [...msgs, {
             role: 'error',
-            content: message || 'Form submission failed.',
+            content: message || tApp('tasks.formSubmitFailed'),
           }] };
         }));
         drainNextQueuedMessage(resolvedId);
@@ -4903,12 +5966,16 @@ function AppCore() {
     if (typeof taskId === 'string' && taskId.startsWith('tmp-')) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.App", "INFO", "performdeletetask_tempid_local_only_delete", '[performDeleteTask] tempId — local-only delete');
+      addons.forgetConversation(taskId);
       return;
     }
     try {
       await deleteConversation(taskId);
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.App", "INFO", "performdeletetask_server_delete_ok", '[performDeleteTask] server delete ok');
+      // No message it was sent mid-task can come back now (ENG-4208). Only once
+      // the delete has happened: a refused one puts the chat back as it was.
+      addons.forgetConversation(taskId);
       // Unpin only once the delete has really happened. Run in parallel, a
       // refused delete still committed the unpin server-side, and the
       // restored row came back silently unpinned across reloads.
@@ -4962,7 +6029,7 @@ function AppCore() {
         // Needs action before it makes sense to move on, so it persists
         // until dismissed, like the OAuth refresh-failure toast.
         timeout: 0,
-        title: "Couldn't delete this chat. It is back in your list; try again.",
+        title: tApp('deleteTask.failed'),
         description: e?.message,
       });
     }
@@ -5053,7 +6120,7 @@ function AppCore() {
       refreshingAfterDeleteRef.current.add(taskId);
       // Said before the fetch, not after it: the click has to register at once,
       // and this spends it on a refresh rather than on the delete.
-      alert('The last delete here left this list unconfirmed, so it will be refreshed now. Check it, then delete again if you still need to.');
+      alert(tApp('deleteTurn.unconfirmedRefresh'));
       try {
         if (await resyncConversationAfterDelete(taskId, unconfirmedDeletes[taskId])) {
           setUnconfirmedDeletes((prev) => {
@@ -5063,7 +6130,7 @@ function AppCore() {
             return next;
           });
         } else {
-          alert('This conversation could not be refreshed. Reload it before deleting anything else in it.');
+          alert(tApp('deleteTurn.refreshFailed'));
         }
       } finally {
         refreshingAfterDeleteRef.current.delete(taskId);
@@ -5104,7 +6171,7 @@ function AppCore() {
         failedOlderCursorRef.current.set(taskId, current.messagesCursor);
         toastManager.add({
           type: 'danger',
-          title: "Couldn't load earlier messages. Try again.",
+          title: tApp('tasks.loadEarlierFailed'),
         });
         return;
       }
@@ -5238,7 +6305,7 @@ function AppCore() {
         return prev.map((x) => (x === t ? next : x));
       });
     });
-    if (!removed) alert('This message changed before it could be deleted. Try again.');
+    if (!removed) alert(tApp('deleteTurn.messageChanged'));
   };
 
   // A task as of every update queued so far: an updater runs after them all,
@@ -5386,14 +6453,14 @@ function AppCore() {
         // The quiet version of this is the one that loses data: the exchange
         // may be gone on the server while the list still shows it.
         alert(failure
-          ? 'Could not confirm this delete, and the conversation could not be refreshed. Reload this conversation before deleting anything else in it.'
-          : 'This exchange was deleted, but the conversation could not be refreshed, so the list may be out of date. Reload this conversation before deleting anything else in it.');
+          ? tApp('deleteTurn.unconfirmedNoRefresh')
+          : tApp('deleteTurn.deletedNoRefresh'));
       } else if (unconfirmed) {
-        alert('Could not confirm this delete. It may still have gone through, so this conversation will be refreshed before the next delete in it.');
+        alert(tApp('deleteTurn.unconfirmed'));
       } else if (failure && refused) {
-        alert(`Could not delete this exchange: ${failure?.message || failure}`);
+        alert(tApp('deleteTurn.failedWithReason', { reason: failure?.message || failure }));
       } else if (gone) {
-        alert('The server did not delete this exchange as shown, so the conversation has been refreshed. Check it, then delete again if you still need to.');
+        alert(tApp('deleteTurn.notDeletedAsShown'));
       }
     } finally {
       // Cleared in the same continuation that truncates the list, so the turn
@@ -5444,7 +6511,7 @@ function AppCore() {
       toastManager.add({
         type: 'danger',
         timeout: 0,
-        title: "Couldn't delete this project. Nothing was removed; try again.",
+        title: tApp('deleteProject.failed'),
         description: e?.message || String(e),
       });
       return;
@@ -5465,6 +6532,7 @@ function AppCore() {
     // conversation the server is about to cascade-delete.
     clearDraft(`project:${project.id || project.name}`);
     doomedTaskIds.forEach((id) => clearDraft(id));
+    doomedTaskIds.forEach((id) => addons.forgetConversation(id));
     // The server confirmed deletion, so it is now safe to update local state.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
     setTasks((prev) => prev.filter((t) =>
@@ -5504,35 +6572,44 @@ function AppCore() {
     if (task?.id) setMoveModalTask(task);
   };
 
-  const handleConfirmMove = async (destName, { isNew = false, moveEverything = true } = {}) => {
+  const handleConfirmMove = async (destName, options = {}) => {
     const task = moveModalTask;
-    if (!task || !destName) return;
-    let targetName = destName;
-    let targetPath = task.projectPath;
     try {
-      if (isNew) {
-        const created = await createProject(destName);
-        targetName = created?.name || destName;
-        targetPath = created?.path || targetPath;
-        const freshProjects = await fetchProjects();
-        if (Array.isArray(freshProjects)) setProjects(freshProjects);
-      } else {
-        targetPath = projects.find((p) => p.name === targetName)?.path || targetPath;
-      }
-      // Optimistic: show the task under the new project immediately.
-      setTasks((prev) => prev.map((t) =>
-        t.id === task.id
-          ? { ...t, projectName: targetName, projectPath: targetPath }
-          : t
-      ));
-      await moveTaskToProject(task.id, targetName, moveEverything);
+      await moveTask(task, destName, options);
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.App", "ERROR", "move_task_failed", '[move task] failed', e);
     } finally {
       setMoveModalTask(null);
     }
-    // Server is canonical — refresh tasks + projects after the move.
+    await refreshAfterMove();
+  };
+
+  // Throws when the move fails; the caller refreshes either way.
+  const moveTask = async (task, destName, { isNew = false, moveEverything = true } = {}) => {
+    if (!task || !destName) return;
+    let targetName = destName;
+    let targetPath = task.projectPath;
+    if (isNew) {
+      const created = await createProject(destName);
+      targetName = created?.name || destName;
+      targetPath = created?.path || targetPath;
+      const freshProjects = await fetchProjects();
+      if (Array.isArray(freshProjects)) setProjects(freshProjects);
+    } else {
+      targetPath = projects.find((p) => p.name === targetName)?.path || targetPath;
+    }
+    // Optimistic: show the task under the new project immediately.
+    setTasks((prev) => prev.map((t) =>
+      t.id === task.id
+        ? { ...t, projectName: targetName, projectPath: targetPath }
+        : t
+    ));
+    await moveTaskToProject(task.id, targetName, moveEverything);
+  };
+
+  // Server is canonical — refresh tasks + projects after a move.
+  const refreshAfterMove = async () => {
     const fresh = await fetchSessions();
     // Merge, never replace — same reason as handleRenameTask above. Repro for
     // the replace: open chat A, then Move to project on any task; the open
@@ -5598,8 +6675,39 @@ function AppCore() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
 
-  const handleRunScheduleNow = async (id) => {
-    const result = await runScheduleNow(id);
+  // A desktop notification when the server pauses a schedule after repeated
+  // failures, where the OS allows one; clicking it opens that schedule. Until
+  // the user opens it, the Scheduled Tasks page also says so.
+  const { unseen: unseenAutoPauses, markReviewed: markAutoPauseReviewed } = useAutoPauseNotifications(
+    scheduled,
+    (id) => {
+      setWorkspaceMode('cowork');
+      setSelectedScheduleId(id);
+      setRoute('schedule-detail');
+    },
+  );
+
+  // Stop a schedule's run in flight the way the chat's Stop does: cancel its
+  // conversation's turn. The schedule list doesn't carry that conversation,
+  // so it is read from the newest runs.
+  const handleStopScheduleRun = (id) => stopScheduleRun(id, {
+    fetchRuns: fetchScheduleRuns, cancel: cancelResponse, refresh: refreshSchedules,
+  });
+
+  // Hold off idle sleep while a scheduled run is in flight or about to fire,
+  // unless the user turned it off in Settings. Desktop only; a no-op on web.
+  // Said again on every poll (`scheduled` is a new list each time): the shell
+  // lets a hold lapse when it stops hearing it.
+  const keepAwake = shouldKeepAwake(scheduled, {
+    windowMs: SCHEDULE_POLL_MAX_DELAY_MS + SCHEDULE_POLL_RUN_BUFFER_MS,
+    enabled: settings.scheduleKeepAwake !== false,
+  });
+  useEffect(() => {
+    host.setScheduleKeepAwake(keepAwake);
+  }, [keepAwake, scheduled]);
+  useEffect(() => () => { host.setScheduleKeepAwake(false); }, []);
+  const handleRunScheduleNow = async (id, options) => {
+    const result = await runScheduleNow(id, options);
     // The server creates the conversation eagerly and returns its id.
     // Mark it in-flight locally so reconcileTaskMessages doesn't inject
     // a spurious "got interrupted" prompt before the 5s poll catches up,
@@ -5731,32 +6839,42 @@ function AppCore() {
         window.dispatchEvent(new CustomEvent('anton:open-new-project'));
       }, 60);
     },
-    navTitle: appearanceSettings.navTitle || null,
-    navLogo: appearanceSettings.navLogo || null,
+    navTitle: look.navTitle,
+    navLogo: look.logo,
+    navLogoWide: look.logoSource === 'org',
+    navTitleHidden: look.navTitleHidden,
     // Mobile has no room for the desktop floating-toggle-row (bottom-right,
     // over the FAB) — the theme toggle moves into the top bar, opposite the
     // hamburger, and the coding-mode toggle is dropped entirely rather than
     // hunting for a second spot.
     theme,
-    showThemeToggle: appearanceSettings.showThemeToggle !== false,
+    showThemeToggle: appearanceSettings.showThemeToggle !== false
+      && ['menu', 'theme'].includes(displayToggleMode(appearanceSettings, look.lockedByOrg)),
     /* Opens Display settings only when the corner button would; otherwise it
        flips the theme. */
     onToggleTheme: () => {
-      if (displayToggleMode(appearanceSettings) === 'menu') {
+      if (displayToggleMode(appearanceSettings, look.lockedByOrg) === 'menu') {
         setThemeModalOpen(true);
       } else {
         setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
       }
     },
+    // On a phone the voice button sits in the top bar, beside the browser's.
+    callShortcut: voiceCallShortcut,
+    accountUser: codeAccountUser,
+    onShowBrowser: browserSwitchShown ? () => {
+      if (route === 'task') setTaskBrowserSignal((n) => n + 1);
+      else setOffTaskBrowserOpen(true);
+    } : null,
   };
 
   // Desktop corner button. Each Appearance switch gates only its own control
   // (ENG-3201): both on opens Display settings, one on flips just that one.
   const displayToggle = (() => {
-    switch (displayToggleMode(appearanceSettings)) {
+    switch (displayToggleMode(appearanceSettings, look.lockedByOrg)) {
       case 'menu':
         return {
-          label: 'Display settings',
+          label: tApp('display.settings'),
           // Not sun/moon: this opens both controls, so it must not read as
           // the direct theme flip.
           icon: Ico.palette(14),
@@ -5764,7 +6882,7 @@ function AppCore() {
         };
       case 'theme':
         return {
-          label: 'Toggle dark/light mode',
+          label: tApp('display.toggleTheme'),
           icon: theme === 'dark' ? Ico.sun(14) : Ico.moon(14),
           onClick: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
         };
@@ -5857,6 +6975,7 @@ function AppCore() {
       >
         <Sidebar
           tasks={tasks}
+          showCompare={showCompare}
           tasksStatus={tasksStatus}
           onRetryTasks={refreshData}
           pins={pins}
@@ -5911,7 +7030,6 @@ function AppCore() {
           onMoveTaskToProject={handleOpenMoveModal}
           projects={runnableProjects}
           schedules={scheduled}
-          scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
             if (sidebarPopout) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
@@ -5920,11 +7038,19 @@ function AppCore() {
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
           showCounters={appearanceSettings.showCounters === true}
-          navTitle={appearanceSettings.navTitle || null}
-          navLogo={appearanceSettings.navLogo || null}
+          navTitle={look.navTitle}
+          navLogo={look.logo}
+          navLogoWide={look.logoSource === 'org'}
+          navTitleHidden={look.navTitleHidden}
           updateBanner={updateBanner}
           onUpdateAction={handleUpdateAction}
           onDismissUpdate={dismissShellUpdate}
+          callCard={dockVoiceCall ? (
+            <>
+              <VoiceCallWindow docked call={voiceCall} agentLabel={agentLabel} />
+              <VoiceLauncher docked call={voiceCallShortcut} />
+            </>
+          ) : null}
           onStartChat={(text) => {
             // Popout sidebar (narrow desktop, or Coding Mode) is an overlay
             // drawer. Close it like navigate/onOpenSchedule do, so the new
@@ -5995,14 +7121,14 @@ function AppCore() {
           hidden={effectiveWorkspaceMode !== 'cowork'}
           aria-hidden={effectiveWorkspaceMode !== 'cowork'}
         >
-        {route === 'home' && (
+        {route === 'home' && besideOffTask(
           <HomeView
-            greeting={appearanceSettings.greeting}
+            greeting={look.greeting}
             showDots={showDots}
             activeTasks={activeTasks}
             onSelectTask={selectTask}
             onClearActive={clearActive}
-            onSend={handleSendFromHome}
+            onSend={sendFromHomeComposer}
             project={canRunProject(selectedProject) ? selectedProject : null}
             onProjectChange={setSelectedProject}
             model={selectedModel}
@@ -6017,10 +7143,14 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
+            onStartVoiceCall={startVoiceCall}
+            topShortcuts={offTaskShortcuts}
+            browserSwitch={composerBrowserSwitch}
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
@@ -6055,9 +7185,13 @@ function AppCore() {
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
+            browserOn={taskBrowserOn({ switchShown: browserSwitchShown, taskBrowserOff: currentTask?.browserOff })}
             showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
+            onAddQueuedToTask={(itemId) => addons.handleAddQueuedToTask(currentTask?.id, itemId)}
+            onMoveAddonToQueue={(addonId, text, decidedBy) => addons.handleMoveAddonToQueue(currentTask?.id, addonId, text, decidedBy)}
+            onResendQueued={(itemId) => addons.handleResendQueued(currentTask?.id, itemId)}
             onBack={() => {
               // Returning home = "new task in this project". Pre-select
               // the task's project so the home composer is ready to go.
@@ -6086,13 +7220,27 @@ function AppCore() {
             connectors={composerConnectors}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
+            onAddNotionProjectPages={handleAddNotionProjectPages}
+            onFetchNotionProjectPages={fetchNotionProjectPages}
+            onRemoveNotionProjectPage={removeNotionProjectPage}
             disabledConnections={currentTask?.disabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
+            onStartVoiceCall={startVoiceCall}
+            browserRequest={browserRequest}
+            projectTasks={projectTasksForBrowsers}
+            onOpenTaskBrowser={(id, sessionId) => { selectTask(id); setBrowserRequest({ taskId: id, sessionId, at: Date.now() }); }}
+            openBrowserSignal={taskBrowserSignal}
+            phoneCallCard={callInTaskOnPhone ? <VoiceCallWindow docked call={voiceCall} agentLabel={agentLabel} /> : null}
+            phoneCall={callInTaskOnPhone ? voiceCall : null}
+            browserSwitch={browserSwitchShown && currentTask
+              ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
+              : null}
             onPinTask={handlePinTask}
             onUnpinTask={handleUnpinTask}
             onRenameTask={handleRenameTask}
@@ -6165,7 +7313,7 @@ function AppCore() {
               if (result?.status === 'error') {
                 toastManager.add({
                   type: 'danger',
-                  title: 'Could not send your answer. Please try again.',
+                  title: tApp('askUser.sendFailed'),
                 });
               } else if (result?.status === 'rejected') {
                 // From a button press this means the app submitted a shape the
@@ -6173,21 +7321,20 @@ function AppCore() {
                 // user can fix by choosing differently.
                 toastManager.add({
                   type: 'danger',
-                  title: 'That answer was not accepted. Reload the conversation to see the question as it stands now.',
+                  title: tApp('askUser.notAccepted'),
                 });
               }
             }}
           />
         )}
 
-        {route === 'projects' && (
+        {route === 'projects' && besideOffTask(
           <ProjectsView
             projects={projects}
             selectedProject={selectedProjectForView}
             loading={projectDetailResolving || !projectsLoaded}
             tasks={tasks}
             scheduled={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
             modelMeta={modelMeta}
             model={selectedModel}
@@ -6200,7 +7347,7 @@ function AppCore() {
               // Sending from project detail = same path as home, but
               // selectedProject is already pinned to this project so
               // the new task lands in the right workspace.
-              return handleSendFromHome(text, meta);
+              return sendFromHomeComposer(text, meta);
             }}
             codingModeEnabled={false}
             onSelectTask={selectTask}
@@ -6213,13 +7360,20 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
+            onAddNotionProjectPages={handleAddNotionProjectPages}
+            onFetchNotionProjectPages={fetchNotionProjectPages}
+            onRemoveNotionProjectPage={removeNotionProjectPage}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
+            onStartVoiceCall={startVoiceCall}
+            topShortcuts={offTaskShortcuts}
+            browserSwitch={composerBrowserSwitch}
             onOpenSchedule={(task) => {
               // Same handler ScheduledView uses — routes to the
               // schedule detail page for the clicked row.
@@ -6239,6 +7393,7 @@ function AppCore() {
             scheduled={scheduled}
             projects={runnableProjects}
             models={modelOptions}
+            modelMeta={modelMeta}
             selectedProject={runnableSelectedProject}
             selectedModel={selectedModel}
             onCreate={handleCreateSchedule}
@@ -6247,6 +7402,7 @@ function AppCore() {
             onPause={handlePauseSchedule}
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
+            onStopRun={handleStopScheduleRun}
             onOpenSchedule={(task) => {
               setSelectedScheduleId(task.id);
               setRoute('schedule-detail');
@@ -6255,6 +7411,7 @@ function AppCore() {
               if (p) setSelectedProject(p);
               setRoute('projects');
             }}
+            unseenAutoPauses={unseenAutoPauses}
             agentLabel={agentLabel}
           />
         )}
@@ -6264,6 +7421,7 @@ function AppCore() {
             task={scheduled.find((s) => s.id === selectedScheduleId) || null}
             projects={runnableProjects}
             models={modelOptions}
+            modelMeta={modelMeta}
             agentLabel={agentLabel}
             onBack={() => { setSelectedScheduleId(null); setRoute('scheduled'); }}
             onUpdate={handleUpdateSchedule}
@@ -6275,6 +7433,8 @@ function AppCore() {
             onPause={handlePauseSchedule}
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
+            onReviewedAutoPause={markAutoPauseReviewed}
+            onStopRun={handleStopScheduleRun}
             onOpenRunSession={(sessionId) => {
               if (!sessionId) return;
               // Scheduled runs create real conversations on the
@@ -6323,7 +7483,6 @@ function AppCore() {
             tasks={tasks}
             projects={runnableProjects}
             schedules={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             onOpenTask={(id) => selectTask(id)}
             onOpenProject={(p) => {
               if (p) setSelectedProject(p);
@@ -6354,6 +7513,28 @@ function AppCore() {
         )}
 
         {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {/* A link to Compare where it isn't offered: the operator picks every
+            question's model (known from the build), or, once settings are in,
+            offers none to choose from. */}
+        {route === 'compare' && !showCompare && (settingsLoaded || pickerMode === 'off') && (
+          <EmptyState
+            title={tApp('compare.unavailableTitle')}
+            description={tApp('compare.unavailableDescription')}
+            action={{ label: tApp('common.newTask'), onClick: newTask, primary: true }}
+          />
+        )}
+        {route === 'compare' && showCompare && (
+          <CompareView
+            models={models}
+            modelMeta={modelMeta}
+            // Only projects the person can run tasks in: a comparison copies
+            // its source's files, and Continue moves a side into one.
+            projects={runnableProjects}
+            agentLabel={agentLabel}
+            onOpenTask={(id) => { if (id) selectTask(id); }}
+            onOpenSettings={openSettings}
+          />
+        )}
         {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             projects={runnableProjects}
@@ -6426,6 +7607,13 @@ function AppCore() {
               skin={skin} onSkinChange={setSkin}
               customTheme={customTheme} onCustomThemeChange={setCustomTheme}
               agentLabel={agentLabel}
+              orgBranding={orgBranding.branding}
+              onOrgBrandingSaved={orgBranding.apply}
+              onOrgBrandingDraft={setBrandingDraft}
+              look={look}
+              hostedMindsHub={orgControlled}
+              appearanceAnchor={appearanceAnchor}
+              onAppearanceAnchorShown={clearAppearanceAnchor}
               section={settingsSection}
               onSectionChange={setSettingsSection}
               serverOnline={serverOnline}
@@ -6448,10 +7636,14 @@ function AppCore() {
           <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
             <ModalHeader
               id="settings-modal-title"
-              title="Settings"
+              title={tSettings('nav.title')}
               onClose={() => setSettingsOpen(false)}
-              right={!ssoConnected && host.isElectron ? (
-                <Tooltip content="Sign in with MindsHub to use managed models">
+              right={(
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {/* Language from any section, not only Appearance (ENG-4149). */}
+                  <LanguageHeaderSelect />
+                  {!ssoConnected && host.isElectron && (
+                <Tooltip content={tSettings('header.signInTooltip')}>
                   <button
                     type="button"
                     onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
@@ -6467,9 +7659,11 @@ function AppCore() {
                     }}
                     onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
-                  >Sign in</button>
+                  >{tSettings('header.signIn')}</button>
                 </Tooltip>
-              ) : undefined}
+                  )}
+                </div>
+              )}
             />
             <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <SettingsView
@@ -6479,6 +7673,13 @@ function AppCore() {
                 skin={skin} onSkinChange={setSkin}
                 customTheme={customTheme} onCustomThemeChange={setCustomTheme}
                 agentLabel={agentLabel}
+                orgBranding={orgBranding.branding}
+                onOrgBrandingSaved={orgBranding.apply}
+                onOrgBrandingDraft={setBrandingDraft}
+                look={look}
+                hostedMindsHub={orgControlled}
+                appearanceAnchor={appearanceAnchor}
+                onAppearanceAnchorShown={clearAppearanceAnchor}
                 section={settingsSection || 'agent'}
                 onSectionChange={setSettingsSection}
                 serverOnline={serverOnline}
@@ -6535,7 +7736,7 @@ function AppCore() {
         // than opening a connect form that couldn't work here.
         onDesktopOnly={(c) => {
           setConnectorPickerOpen(false);
-          setComingSoonFeature(c?.label || 'This connector');
+          setComingSoonFeature(c?.label || tApp('connect.thisConnector'));
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);
@@ -6550,6 +7751,7 @@ function AppCore() {
         onThemeChange={setTheme}
         skin={skin}
         onSkinChange={setSkin}
+        orgLocks={look.lockedByOrg}
       />
 
       <ComingSoonModal
@@ -6570,12 +7772,20 @@ function AppCore() {
       />
       )}
 
+      {!dockVoiceCall && !callInTaskOnPhone && <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />}
+      {/* The call starts from a round button where its card shows (on a phone, the top bar's). */}
+      {!dockVoiceCall && !isMobile && <VoiceLauncher call={voiceCallShortcut} />}
+      {/* Narrow, or off Home and Projects: the browser floats over the page. */}
+      {offTaskPane && !dockOffTask && offTaskPane}
+
       <ConfirmModal
         open={pendingDisconnect != null}
-        title={`Disconnect ${pendingDisconnect?.name || 'this connection'}?`}
-        message={`The saved ${pendingDisconnect?.engine || ''} connection and its stored credentials are deleted. You can connect it again later.`}
-        confirmLabel="Disconnect"
-        busyLabel="Disconnecting…"
+        title={pendingDisconnect?.name
+          ? tApp('disconnect.title', { name: pendingDisconnect.name })
+          : tApp('disconnect.titleFallback')}
+        message={tApp('disconnect.message', { engine: pendingDisconnect?.engine || '' })}
+        confirmLabel={tApp('disconnect.confirm')}
+        busyLabel={tApp('disconnect.busy')}
         destructive
         busy={disconnectBusy}
         error={disconnectError}
@@ -6585,10 +7795,10 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDeleteTaskId != null}
-        title="Delete this task?"
-        message="The conversation history and any per-task scratchpad cells will be removed. This can't be undone."
-        confirmLabel="Delete"
-        cancelLabel="Keep"
+        title={tApp('deleteTask.title')}
+        message={tApp('deleteTask.message')}
+        confirmLabel={tApp('common.delete')}
+        cancelLabel={tApp('common.keep')}
         destructive
         onClose={() => setPendingDeleteTaskId(null)}
         onConfirm={async () => {
@@ -6600,10 +7810,10 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDeleteTurn != null}
-        title="Delete this exchange?"
-        message={`This removes both your question and ${agentLabel}'s response from the conversation. Any scratchpad cells, artifacts, or memory writes produced as part of this turn stay on disk. This can't be undone.`}
-        confirmLabel="Delete"
-        cancelLabel="Keep"
+        title={tApp('deleteTurn.title')}
+        message={tApp('deleteTurn.message', { agent: agentLabel })}
+        confirmLabel={tApp('common.delete')}
+        cancelLabel={tApp('common.keep')}
         destructive
         onClose={() => setPendingDeleteTurn(null)}
         onConfirm={async () => {
@@ -6616,14 +7826,14 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDeleteProject != null}
-        title={`Delete project "${pendingDeleteProject?.name}"?`}
+        title={tApp('deleteProject.title', { name: projectLabel(pendingDeleteProject) })}
         message={
           pendingDeleteProject?.capabilities?.directoryIsExternal
-            ? `The project and its conversations will be removed. Your folder ${pendingDeleteProject?.path || ''} stays where it is and your own files in it are not touched, though Cowork's skills/ and .anton/ folders are left behind inside it. This can't be undone.`
-            : "All conversations, scratchpad output, memory, and artifacts under this project will be removed from disk. This can't be undone."
+            ? tApp('deleteProject.messageExternal', { path: pendingDeleteProject?.path || '' })
+            : tApp('deleteProject.message')
         }
-        confirmLabel="Delete project"
-        cancelLabel="Keep"
+        confirmLabel={tApp('deleteProject.confirm')}
+        cancelLabel={tApp('common.keep')}
         destructive
         onClose={() => setPendingDeleteProject(null)}
         onConfirm={async () => {
@@ -6645,10 +7855,10 @@ function AppCore() {
           google_drive connection yet — see useGoogleDrivePicker. */}
       <ConfirmModal
         open={!!driveConnectPrompt}
-        title="Connect Google Drive?"
-        message="You need to connect your Google Drive account to add files from Drive."
-        confirmLabel="Connect"
-        cancelLabel="Cancel"
+        title={tApp('drive.connectTitle')}
+        message={tApp('drive.connectMessage')}
+        confirmLabel={tApp('common.connect')}
+        cancelLabel={tApp('common.cancel')}
         onConfirm={confirmDriveConnect}
         onClose={cancelDriveConnect}
       />
@@ -6663,8 +7873,8 @@ function AppCore() {
       >
         <ModalHeader
           id="gdrive-account-picker-title"
-          title="Choose a Google Drive account"
-          subtitle="More than one Google Drive account is connected — pick which one to use."
+          title={tApp('drive.chooseAccountTitle')}
+          subtitle={tApp('drive.chooseAccountSubtitle')}
           onClose={cancelDriveAccountChoice}
         />
         <ModalBody>
@@ -6695,8 +7905,25 @@ function AppCore() {
         </ModalBody>
       </Modal>
 
+      {/* Composer "+" → "Add pages from Notion" — see useNotionPagePicker. */}
+      <ConfirmModal
+        open={!!notionConnectPrompt}
+        title={tApp('notion.connectTitle')}
+        message={tApp('notion.connectMessage')}
+        confirmLabel={tApp('common.connect')}
+        cancelLabel={tApp('common.cancel')}
+        onConfirm={confirmNotionConnect}
+        onClose={cancelNotionConnect}
+      />
+      <NotionPagePickerModal
+        open={!!notionPicker}
+        connections={notionPicker?.connections}
+        onClose={cancelNotionPicker}
+        onConfirm={resolveNotionPicker}
+      />
+
       {/* OTA update overlay — shown during auto-update download/reload */}
-      {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (
+      {updateCurtainUp && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -6718,8 +7945,10 @@ function AppCore() {
             fontFamily: 'var(--font-sans)',
           }}>
             {updateStatus.phase === 'downloading'
-              ? `Updating${updateStatus.version ? ` to ${updateStatus.version}` : ''}...`
-              : 'Almost there...'}
+              ? (updateStatus.version
+                  ? tApp('update.updatingTo', { version: updateStatus.version })
+                  : tApp('update.updating'))
+              : tApp('update.almostThere')}
           </div>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
@@ -6746,10 +7975,12 @@ function AppCore() {
 
   return (
     <HubUsageContext.Provider value={hubUsageCtx}>
-      <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
-      <CoworkProvider value={coworkValue}>
-        <CoworkRouterProvider router={routerRef.current} />
-      </CoworkProvider>
+      <ModelPickerContext.Provider value={modelPickerCtx}>
+        <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
+        <CoworkProvider value={coworkValue}>
+          <CoworkRouterProvider router={routerRef.current} />
+        </CoworkProvider>
+      </ModelPickerContext.Provider>
     </HubUsageContext.Provider>
   );
 }

@@ -1,6 +1,7 @@
 import { diagnostic } from '../../../shared/diagnostics';
 import { clearDraftsForOrganizationSwitch } from './draftStore';
 import { clearCachedSettings } from './settingsCache';
+import { clearCachedOrgBranding } from './orgBrandingCache';
 import {
   DOCUMENT_ORGANIZATION_EPOCH,
   DOCUMENT_ORGANIZATION_TRANSITION,
@@ -207,6 +208,7 @@ export function prepareForOrganizationReload({
   if (transitionId) rememberReload(transitionId);
   if (clearTenantState) {
     clearCachedSettings();
+    clearCachedOrgBranding();
     clearDraftsForOrganizationSwitch();
   }
   if (!consumeReloadBudget()) {
@@ -236,6 +238,7 @@ function publishReload(id, applyLocally) {
      * current; a bfcache resurrection must still reload on pageshow.
      */
     clearCachedSettings();
+    clearCachedOrgBranding();
     clearDraftsForOrganizationSwitch();
   }
   if (ownedPendingId === id) ownedPendingId = null;

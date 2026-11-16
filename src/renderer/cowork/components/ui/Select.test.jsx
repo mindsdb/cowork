@@ -2,6 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Select } from './Select';
+import { useNativeOverlayOpen } from '../../lib/nativeOverlay';
+
+/* What the desktop browser stage reads: whether any overlay is open. */
+function OverlayProbe() {
+  return <output data-testid="overlay">{useNativeOverlayOpen() ? 'open' : 'clear'}</output>;
+}
 
 const OPTIONS = [
   { value: 'name', label: 'Name' },
@@ -245,5 +251,29 @@ describe('Select', () => {
     await user.click(screen.getByRole('combobox', { name: 'Coding permissions' }));
 
     expect(screen.getByText('Permissions')).toBeInTheDocument();
+  });
+});
+
+describe('Select over the desktop browser pane', () => {
+  it('counts its popup as an overlay while it is open, through a close the caller cancels', async () => {
+    const user = userEvent.setup();
+    let keepOpen = true;
+    const onOpenChange = (next, details) => {
+      if (!next && keepOpen) details.cancel();
+    };
+    render(<><Harness onOpenChange={onOpenChange} /><OverlayProbe /></>);
+    expect(screen.getByTestId('overlay')).toHaveTextContent('clear');
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByTestId('overlay')).toHaveTextContent('open');
+
+    // The caller cancels the close, so the popup stays and so does the count.
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('option', { name: 'Date' })).toBeInTheDocument();
+    expect(screen.getByTestId('overlay')).toHaveTextContent('open');
+
+    keepOpen = false;
+    await user.keyboard('{Escape}');
+    expect(screen.getByTestId('overlay')).toHaveTextContent('clear');
   });
 });

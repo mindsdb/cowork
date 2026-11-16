@@ -71,6 +71,17 @@ describe('versionRows', () => {
     expect(shell).toEqual(['App shell', '0.1.0 (too old)']);
   });
 
+  it('marks a shell that macOS keeps from updating', () => {
+    const [shell] = versionRows({
+      versionInfo: info({ app: '0.1.0' }),
+      bakedVersion: '1.2.3',
+      serverVersion: '4.5.6',
+      antonVersion: '7.8.9',
+      osCappedMacosMajor: 12,
+    });
+    expect(shell).toEqual(['App shell', '0.1.0 (no updates on macOS 12)']);
+  });
+
   it('shows the given placeholder for backend versions that have not answered', () => {
     const rows = versionRows({
       versionInfo: info({}),

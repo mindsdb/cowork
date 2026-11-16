@@ -26,6 +26,7 @@ import {
 import { host } from '../platform/host';
 import { fetchSessionResult } from './api';
 import { EmptyState, Spinner } from './components/ui';
+import { useTranslation } from '../lib/i18n';
 
 // Ids that aren't yet loadable via the API (a new-chat send + the canonical id
 // the server later mints). The loader renders these from local state instead of
@@ -72,6 +73,7 @@ const VIEW_ROUTES = [
   'customize',
   'skills',
   'memory',
+  'compare',
   'publish',
 ];
 
@@ -263,14 +265,15 @@ function ScheduleDetailRoute() {
 // failure. Unlike a 404 (redirect Home), the URL is kept and retry re-runs the
 // loader via the revalidator.
 export function ConversationUnavailable() {
+  const { t } = useTranslation('app');
   const revalidator = useRevalidator();
   const retrying = revalidator.state !== 'idle';
   return (
     <EmptyState
-      title="This conversation didn’t load"
-      description="We couldn’t reach the server. Your link is still valid — try again once you’re back online."
+      title={t('router.unavailableTitle')}
+      description={t('router.unavailableDescription')}
       action={{
-        label: retrying ? 'Retrying…' : 'Try again',
+        label: retrying ? t('router.retrying') : t('router.tryAgain'),
         onClick: () => revalidator.revalidate(),
         disabled: retrying,
         // The only way forward on this screen, so it takes the primary weight.
