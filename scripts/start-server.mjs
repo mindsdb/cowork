@@ -24,6 +24,21 @@ const SERVER_HOST = '127.0.0.1';
 let serverProcess = null;
 let serverStarted = false;
 
+// The non-production PostHog project (NON_PROD_POSTHOG_KEY in
+// src/main/analytics-env.ts; a test keeps the two equal). Without these, anton
+// in a dev server reports its turns to production with no `environment`.
+const NON_PROD_POSTHOG_KEY = 'phc_zBzpZzh8kCPVpKeVyRRLNSfyTisRfLCq8SPhtiTHZway';
+
+/** A dev server's turns are ours: send them to the non-production project,
+ *  labelled `dev`, as the desktop app does for its dev kind. A variable the
+ *  developer exported is left alone, even an empty one. */
+export function devAnalyticsEnv(env = process.env) {
+  const out = {};
+  if (env.ANTON_POSTHOG_KEY === undefined) out.ANTON_POSTHOG_KEY = NON_PROD_POSTHOG_KEY;
+  if (env.ANTON_DEPLOYMENT_ENV === undefined) out.ANTON_DEPLOYMENT_ENV = 'dev';
+  return out;
+}
+
 // Locate the cowork-server directory. Convention: sibling of this repo
 // (../cowork-server relative to the cowork repo root). Override with
 // COWORK_SERVER_DIR env var for non-standard layouts.
@@ -90,6 +105,7 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
 
   const env = {
     ...process.env,
+    ...devAnalyticsEnv(),
     PATH: getEnvPath(),
     PYTHONUNBUFFERED: '1',
     // Pin the dev home; unset COWORK_HOME defaults to ~/.cowork (prod). Mirrors
