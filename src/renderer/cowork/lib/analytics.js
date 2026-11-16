@@ -218,20 +218,21 @@ const APP_VERSION =
 
 // The desktop shell's build kind, which decides the project an event goes to:
 // installers bake the production token whatever their kind, so a staging or
-// preview install has to re-route itself (posthogKeyForBuildKind). Only a
-// reported kind is cached; a failed or empty answer is asked again on the next
-// event, so one bad read cannot pin a staging install to production.
-let cachedBuildKind = null;
+// preview install has to re-route itself (posthogKeyForBuildKind). The shell's
+// answer is cached, including "no kind" from a shell too old to report one; a
+// failed read is asked again on the next event, so one bad read cannot pin a
+// staging install to production.
+let cachedBuildKind; // undefined until the shell has answered
 async function shellBuildKind() {
   if (SURFACE !== 'desktop') return null;
-  if (cachedBuildKind) return cachedBuildKind;
+  if (cachedBuildKind !== undefined) return cachedBuildKind;
   try {
     const info = await host.getVersionInfo();
     cachedBuildKind = info?.buildKind || null;
+    return cachedBuildKind;
   } catch {
-    /* an older shell without the bridge: unknown */
+    return null;
   }
-  return cachedBuildKind;
 }
 
 // ── Session flags ──────────────────────────────────────────────────
@@ -587,37 +588,47 @@ function postCapture(event, distinctId, properties, envelope = {}, apiKey = POST
 // `$identify` event carrying `$anon_distinct_id`. Idempotent via a localStorage
 // marker so it fires once per account, not on every event.
 const IDENTITY_MERGED_KEY = 'cowork_identity_merged_sub';
+// The merge happens in the project the events go to, so its marker is kept per
+// project: an install that merged into production before it was routed
+// elsewhere still merges once where its events now land. Production keeps the
+// original key, so no production install merges again.
+function identityMergedKey(apiKey) {
+  return apiKey === POSTHOG_KEY ? IDENTITY_MERGED_KEY : `${IDENTITY_MERGED_KEY}:${apiKey}`;
+}
 function mergeAnonIntoAccount(sub) {
   if (!POSTHOG_KEY || isCi() || !sub) return;
   if (mergeInFlight.has(sub)) return;
-  try {
-    if (window.localStorage.getItem(IDENTITY_MERGED_KEY) === sub) return;
-  } catch {
-    // localStorage unavailable: fall through and attempt the merge anyway.
-  }
   const deviceId = getDeviceId();
   // Nothing to merge if there's no distinct device id to alias from.
   if (!deviceId || deviceId === sub) return;
   mergeInFlight.add(sub);
-  dlog('$identify merge', { distinct_id: sub, $anon_distinct_id: deviceId });
-  // Merged in the project the events went to, or the people stay apart there.
-  shellBuildKind().then((buildKind) => postCapture('$identify', sub, {
-    $anon_distinct_id: deviceId,
-    // Carry device_id onto the person too (via personSet), so the deterministic
-    // join key survives even if PostHog declines the person-merge.
-    $set: personSet(),
-    surface: SURFACE,
-    is_internal: identity.isInternal,
-  }, {}, posthogKeyForBuildKind(buildKind, POSTHOG_KEY))).then((ok) => {
-    if (ok) {
-      try {
-        window.localStorage.setItem(IDENTITY_MERGED_KEY, sub);
-      } catch {
-        /* best effort: a re-merge next session is harmless */
-      }
-    } else {
-      mergeInFlight.delete(sub); // non-ok or network error: let a later event retry
+  shellBuildKind().then((buildKind) => {
+    const apiKey = posthogKeyForBuildKind(buildKind, POSTHOG_KEY);
+    const markerKey = identityMergedKey(apiKey);
+    try {
+      if (window.localStorage.getItem(markerKey) === sub) return;
+    } catch {
+      // localStorage unavailable: fall through and attempt the merge anyway.
     }
+    dlog('$identify merge', { distinct_id: sub, $anon_distinct_id: deviceId });
+    postCapture('$identify', sub, {
+      $anon_distinct_id: deviceId,
+      // Carry device_id onto the person too (via personSet), so the deterministic
+      // join key survives even if PostHog declines the person-merge.
+      $set: personSet(),
+      surface: SURFACE,
+      is_internal: identity.isInternal,
+    }, {}, apiKey).then((ok) => {
+      if (ok) {
+        try {
+          window.localStorage.setItem(markerKey, sub);
+        } catch {
+          /* best effort: a re-merge next session is harmless */
+        }
+      } else {
+        mergeInFlight.delete(sub); // non-ok or network error: let a later event retry
+      }
+    });
   });
 }
 
@@ -659,7 +670,8 @@ function capture(event, properties = {}, envelope = {}) {
       const buildKind = await shellBuildKind();
       const eventProps = {
         // Omitted while unknown. An event that reports its own build_kind
-        // (update_phase journals the kind it ran under) keeps it.
+        // keeps it, null included: update_phase journals the kind it ran
+        // under, and boot_screen_resolved sends null when the shell has none.
         ...(buildKind ? { build_kind: buildKind } : {}),
         ...properties,
         surface: SURFACE,

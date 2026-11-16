@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { BuildKind } from './channels';
-import { NON_PROD_POSTHOG_KEY } from '../shared/analytics-project';
+import { NON_PROD_POSTHOG_KEY, posthogKeyForBuildKind } from '../shared/analytics-project';
 
 export { NON_PROD_POSTHOG_KEY };
 
@@ -56,7 +56,9 @@ export function analyticsEnv(
   const isSet = (name: string) => env[name] !== undefined || dotenvNames.has(name);
   const out: Record<string, string> = {};
   if (!usageEvents) out.ANTON_ANALYTICS_ENABLED = 'false';
-  if (kind !== 'prod' && !isSet('ANTON_POSTHOG_KEY')) out.ANTON_POSTHOG_KEY = NON_PROD_POSTHOG_KEY;
+  // '' stands for anton's built-in production key: prod gets nothing injected.
+  const posthogKey = posthogKeyForBuildKind(kind, '');
+  if (posthogKey && !isSet('ANTON_POSTHOG_KEY')) out.ANTON_POSTHOG_KEY = posthogKey;
   if (!isSet('ANTON_DEPLOYMENT_ENV')) out.ANTON_DEPLOYMENT_ENV = DEPLOYMENT_LABEL[kind];
   return out;
 }

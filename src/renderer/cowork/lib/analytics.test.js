@@ -229,6 +229,45 @@ describe('which PostHog project a desktop build reports to', () => {
     expect(merge.api_key).toBe(NON_PROD_KEY);
   });
 
+  it('merges once in the non-production project even after merging in production', async () => {
+    window.localStorage.setItem('cowork_identity_merged_sub', 'user-123'); // merged before the routing
+    getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+    getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+    const merge = await sentEvent(fetchMock, '$identify');
+
+    expect(merge.api_key).toBe(NON_PROD_KEY);
+    expect(window.localStorage.getItem('cowork_identity_merged_sub')).toBe('user-123');
+  });
+
+  it('does not merge a production install again', async () => {
+    window.localStorage.setItem('cowork_identity_merged_sub', 'user-123');
+    getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'prod' });
+    getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(bodies(fetchMock).map((b) => b.event)).not.toContain('$identify');
+  });
+
+  it('asks a shell that reports no kind only once', async () => {
+    const fetchMock = mockFetch(); // beforeEach: buildKind null
+    const { trackDataSourceConnected, trackArtifactBuilt } = await importAnalytics();
+
+    trackDataSourceConnected('postgres');
+    await sentEvent(fetchMock, 'data_source_connected');
+    trackArtifactBuilt('report', 'a1');
+    await sentEvent(fetchMock, 'artifact_built');
+
+    expect(getVersionInfo).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the build kind an update outcome journaled over the running one', async () => {
     getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'prod' });
     const fetchMock = mockFetch();
