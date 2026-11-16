@@ -1170,6 +1170,42 @@ export async function keychainRevoke(engine: string, name: string, accountEmail:
   return { ok: false, reason: 'keychainRevoke is Electron-only.' };
 }
 
+// Desktop only: main holds the app secret the server requires for this change.
+// Null when this shell predates the bridge, so the caller makes the request itself.
+export async function setConnectionAccessMode(
+  engine: string,
+  name: string,
+  accessMode: string,
+): Promise<{ ok: boolean; access_mode?: string; status?: number; reason?: string } | null> {
+  if (isElectron && typeof bridge.setConnectionAccessMode === 'function') {
+    return bridge.setConnectionAccessMode({ engine, name, accessMode });
+  }
+  return null;
+}
+
+// What main returns for a Notion page search or fetch: the server's JSON, the
+// server's refusal as it sent it, or main's own refusal.
+export type NotionPagesBridgeResult =
+  | { ok: true; data: unknown }
+  | { ok: false; status: number; text: string; retryAfter: string | null }
+  | { ok: false; reason: string };
+
+// Desktop only: main holds the app secret the server requires for these. Null
+// when this shell predates the bridge, so the caller makes the request itself.
+export async function notionSearchPages(name: string, query: string): Promise<NotionPagesBridgeResult | null> {
+  if (isElectron && typeof bridge.notionSearchPages === 'function') {
+    return bridge.notionSearchPages({ name, query });
+  }
+  return null;
+}
+
+export async function notionFetchPage(name: string, page: string): Promise<NotionPagesBridgeResult | null> {
+  if (isElectron && typeof bridge.notionFetchPage === 'function') {
+    return bridge.notionFetchPage({ name, page });
+  }
+  return null;
+}
+
 export interface DrivePickerFile {
   id: string;
   name: string;
@@ -2013,6 +2049,9 @@ export const host = {
   getAccessToken,
   logout,
   keychainRevoke,
+  setConnectionAccessMode,
+  notionSearchPages,
+  notionFetchPage,
   onOAuthRefreshError,
   pickDriveFiles,
   cancelDrivePicker,
