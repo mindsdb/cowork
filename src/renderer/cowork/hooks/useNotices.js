@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  fetchNoticeUnreadCount, fetchNotices, markAllNoticesRead, markNoticeRead,
+  fetchNotices, markAllNoticesRead, markNoticeRead,
 } from '../api';
 import { scheduleState } from '../components/schedule/ScheduleStatusBadge';
 import { msg, noticeText, runKind } from '../lib/noticeText';
 
-// How often the unread count is checked. Window focus and navigation check it
-// too, so an idle app still hears within a minute.
+// How often the newest notices are read. Window focus and navigation read
+// them too, so an idle app still hears within a minute.
 export const NOTICE_POLL_MS = 60_000;
 // A notice older than this is backlog: it shows in the bell, but no system
 // notification or toast is raised for it.
@@ -14,6 +14,8 @@ export const NOTICE_FRESH_MS = 5 * 60_000;
 // Slack for a client clock a little ahead of the server's.
 const CLOCK_SLACK_MS = 60_000;
 const LIST_LIMIT = 50;
+// The newest notices each poll reads to find new ones.
+const POLL_LIMIT = 20;
 
 // The notices to announce now: unread, of a kind this client can word, created
 // since this client started listening and within the last few minutes, and not
@@ -33,14 +35,13 @@ function autoPausedSchedule(schedules, scheduleId) {
   return !!schedule && scheduleState(schedule) === 'auto_paused';
 }
 
-const DEFAULT_API = { fetchNoticeUnreadCount, fetchNotices, markNoticeRead, markAllNoticesRead };
+const DEFAULT_API = { fetchNotices, markNoticeRead, markAllNoticesRead };
 
 // The account's notices, for the sidebar bell, and the system notification or
 // toast for a notice that has just arrived.
 //
-// - Polls the unread count every minute, on window focus, and whenever
-//   `routeKey` changes. When the count changes, it reads the list to find
-//   what is new.
+// - Reads the newest notices and the unread count every minute, on window
+//   focus, and whenever `routeKey` changes. New notices are found by id.
 // - `available` is false until the server answers, and stays false on a
 //   server without notices (404), which hides the bell. Such a server is
 //   still asked on each poll, quietly, so the bell appears after it updates.
@@ -68,7 +69,6 @@ export function useNotices({
   Object.assign(refs.current, { onOpen, toast, closeToast, resolveSchedules, api });
   const announcedRef = useRef(new Set());
   const sinceRef = useRef(Date.now() - CLOCK_SLACK_MS);
-  const lastCountRef = useRef(null);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -137,7 +137,6 @@ export function useNotices({
     setAvailable(true);
     setNotices(data.notices);
     setUnreadCount(data.unreadCount);
-    lastCountRef.current = data.unreadCount;
     setListStatus('ready');
     return data.notices;
   }, []);
@@ -149,31 +148,30 @@ export function useNotices({
     for (const notice of list || []) announcedRef.current.add(notice.id);
   }, [loadList]);
 
+  // Each poll reads the newest notices, not just the count: a count can stay
+  // the same while one notice is read elsewhere and another arrives, and the
+  // new one must still be announced. The open list is left alone; it is read
+  // again when the bell opens.
   const pollingRef = useRef(false);
   const poll = useCallback(async () => {
     if (pollingRef.current) return;
     pollingRef.current = true;
     try {
-      let count;
+      let data;
       // A failed read keeps what was last known; the next poll tries again.
-      try { count = await refs.current.api.fetchNoticeUnreadCount(); } catch { return; }
+      try { data = await refs.current.api.fetchNotices({ limit: POLL_LIMIT }); } catch { return; }
       if (!mountedRef.current) return;
-      if (count == null) {
+      if (!data) {
         setAvailable(false);
         return;
       }
       setAvailable(true);
-      const previous = lastCountRef.current;
-      lastCountRef.current = count;
-      setUnreadCount(count);
-      if (count > 0 && count !== previous) {
-        const list = await loadList();
-        if (list) await announce(list);
-      }
+      setUnreadCount(data.unreadCount);
+      await announce(data.notices);
     } finally {
       pollingRef.current = false;
     }
-  }, [loadList, announce]);
+  }, [announce]);
 
   // On mount, and on every navigation.
   useEffect(() => { poll(); }, [routeKey, poll]);
@@ -195,11 +193,7 @@ export function useNotices({
     if (!notice.readAt) {
       const readAt = new Date().toISOString();
       setNotices((list) => list.map((n) => (n.id === notice.id ? { ...n, readAt } : n)));
-      setUnreadCount((c) => {
-        const next = Math.max(0, c - 1);
-        lastCountRef.current = next;
-        return next;
-      });
+      setUnreadCount((c) => Math.max(0, c - 1));
       Promise.resolve(refs.current.api.markNoticeRead(notice.id)).catch(() => {});
     }
     open(notice);
@@ -209,7 +203,6 @@ export function useNotices({
     const readAt = new Date().toISOString();
     setNotices((list) => list.map((n) => (n.readAt ? n : { ...n, readAt })));
     setUnreadCount(0);
-    lastCountRef.current = 0;
     Promise.resolve(refs.current.api.markAllNoticesRead()).catch(() => {});
   }, []);
 

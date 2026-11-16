@@ -20,7 +20,6 @@ const notice = (over = {}) => ({
 function fakeApi(list = []) {
   const api = {
     list,
-    fetchNoticeUnreadCount: vi.fn(async () => api.list.filter((n) => !n.readAt).length),
     fetchNotices: vi.fn(async () => ({ notices: api.list, unreadCount: api.list.filter((n) => !n.readAt).length })),
     markNoticeRead: vi.fn(async () => ({ ok: true })),
     markAllNoticesRead: vi.fn(async () => ({ updated: 1 })),
@@ -104,12 +103,12 @@ describe('useNotices', () => {
     const warn = vi.spyOn(console, 'warn');
     const error = vi.spyOn(console, 'error');
     const api = fakeApi();
-    api.fetchNoticeUnreadCount.mockResolvedValue(null);
+    api.fetchNotices.mockResolvedValue(null);
     const { result } = renderHook(() => useNotices({ api }));
     await flush();
     expect(result.current.available).toBe(false);
     await act(async () => { vi.advanceTimersByTime(NOTICE_POLL_MS); });
-    expect(api.fetchNoticeUnreadCount).toHaveBeenCalledTimes(2);
+    expect(api.fetchNotices).toHaveBeenCalledTimes(2);
     expect(result.current.available).toBe(false);
     expect(warn).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
@@ -122,14 +121,14 @@ describe('useNotices', () => {
     });
     await flush();
     expect(result.current.available).toBe(true);
-    expect(api.fetchNoticeUnreadCount).toHaveBeenCalledTimes(1);
+    expect(api.fetchNotices).toHaveBeenCalledTimes(1);
     await act(async () => { vi.advanceTimersByTime(NOTICE_POLL_MS); });
-    expect(api.fetchNoticeUnreadCount).toHaveBeenCalledTimes(2);
+    expect(api.fetchNotices).toHaveBeenCalledTimes(2);
     await act(async () => { window.dispatchEvent(new Event('focus')); });
-    expect(api.fetchNoticeUnreadCount).toHaveBeenCalledTimes(3);
+    expect(api.fetchNotices).toHaveBeenCalledTimes(3);
     rerender({ routeKey: 'scheduled' });
     await flush();
-    expect(api.fetchNoticeUnreadCount).toHaveBeenCalledTimes(4);
+    expect(api.fetchNotices).toHaveBeenCalledTimes(4);
   });
 
   it('notifies once for a notice that arrives while the app is open, and opens it on click', async () => {
@@ -154,6 +153,24 @@ describe('useNotices', () => {
     expect(shown).toHaveLength(1);
   });
 
+  it('announces a new notice even when the unread count does not move', async () => {
+    const older = notice({ id: 'old', createdAt: ago(30 * 60_000) });
+    const api = fakeApi([older]);
+    const { result } = renderHook(() => useNotices({ api }));
+    await flush();
+    expect(result.current.unreadCount).toBe(1);
+    // In one poll window, the old notice is read on another device and a new
+    // one arrives: still one unread.
+    const fresh = notice({ id: 'new', createdAt: new Date(NOW + 30_000).toISOString() });
+    vi.setSystemTime(NOW + 60_000);
+    api.list = [fresh, { ...older, readAt: ago(-40_000) }];
+    await act(async () => { vi.advanceTimersByTime(NOTICE_POLL_MS); });
+    await flush();
+    expect(result.current.unreadCount).toBe(1);
+    expect(shown).toHaveLength(1);
+    expect(shown[0].options.tag).toBe('notice-new');
+  });
+
   it('shows a backlog in the bell only, with no burst on opening', async () => {
     const api = fakeApi([
       notice({ id: 'a', createdAt: ago(3 * 60 * 60_000) }),
@@ -162,8 +179,9 @@ describe('useNotices', () => {
     const toast = vi.fn();
     const { result } = renderHook(() => useNotices({ api, toast }));
     await flush();
-    expect(result.current.notices).toHaveLength(2);
     expect(result.current.unreadCount).toBe(2);
+    await act(async () => { await result.current.showList(); });
+    expect(result.current.notices).toHaveLength(2);
     expect(shown).toHaveLength(0);
     expect(toast).not.toHaveBeenCalled();
   });

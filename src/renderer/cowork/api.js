@@ -3533,13 +3533,6 @@ async function noticesReq(path, options) {
   }
 }
 
-// The number of unread notices, or null when the server has no notices.
-export async function fetchNoticeUnreadCount() {
-  const data = await noticesReq('/notices/unread-count');
-  if (!data) return null;
-  return Number.isFinite(data.unreadCount) ? data.unreadCount : 0;
-}
-
 // { notices: [{ id, kind, subject, target, createdAt, readAt }], unreadCount },
 // newest first, or null when the server has no notices.
 export async function fetchNotices({ limit = 50 } = {}) {
