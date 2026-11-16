@@ -259,17 +259,29 @@ describe('UserMenu — API keys and API docs (ENG-4288)', () => {
     expect(hostMock.openExternal).toHaveBeenCalledWith(
       consoleUrlFor(MINDS_API_KEY_URL, { organizationId: ACME.id, subject: 'user-1' }),
     );
-    expect(MINDS_API_KEY_URL.endsWith('/apiKeys')).toBe(true);
     expect(analyticsMock.trackMenuApiKeysClicked).toHaveBeenCalledOnce();
     expect(analyticsMock.trackMenuApiDocsClicked).not.toHaveBeenCalled();
     expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+  });
+
+  /* Before the organization listing lands, the token's claim names the
+     organization, so the API keys page still opens on it rather than on
+     whichever organization the browser has active. */
+  it('names the organization from the token when the listing has not landed', () => {
+    renderMenu(<UserMenu user={{ ...user, orgId: 'org-from-token' }} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /API keys/ }));
+    const opened = new URL(hostMock.openExternal.mock.calls[0][0]);
+    expect(`${opened.origin}${opened.pathname}`).toBe(MINDS_API_KEY_URL);
+    expect(opened.searchParams.get('organization')).toBe('org-from-token');
+    expect(opened.searchParams.get('subject')).toBe('user-1');
   });
 
   it('opens the API docs and records the click', () => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /API docs/ }));
-    expect(hostMock.openExternal).toHaveBeenCalledWith('https://docs.mindshub.ai/');
+    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_API_DOCS_URL);
     expect(analyticsMock.trackMenuApiDocsClicked).toHaveBeenCalledOnce();
     expect(analyticsMock.trackMenuApiKeysClicked).not.toHaveBeenCalled();
     expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();

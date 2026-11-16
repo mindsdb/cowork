@@ -166,6 +166,28 @@ describe('console host derivation (the one role that differs by host shape)', ()
     expect(MINDS_CONSOLE_HOME_URL).toBe('https://console.staging.mindshub.ai/home');
   });
 
+  // Same reason: a sign-up that returned to the bare root would be carried
+  // off to Cowork web rather than landing in the console.
+  it('returns a sign-up to the console home page, not the bare root', async () => {
+    vi.stubEnv('VITE_KEYCLOAK_URL', '');
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.staging.mindshub.ai');
+    const { MINDS_REGISTER_URL } = await importUrls();
+    const url = new URL(MINDS_REGISTER_URL);
+
+    expect(`${url.origin}${url.pathname}`).toBe(
+      'https://auth.staging.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/registrations',
+    );
+    expect(url.searchParams.get('client_id')).toBe('public-client');
+    expect(url.searchParams.get('redirect_uri')).toBe('https://console.staging.mindshub.ai/home');
+  });
+
+  it('points the API keys link at the console /apiKeys page', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.staging.mindshub.ai');
+    const { MINDS_API_KEY_URL } = await importUrls();
+
+    expect(MINDS_API_KEY_URL).toBe('https://console.staging.mindshub.ai/apiKeys');
+  });
+
   it('keeps the console. label on prod', async () => {
     vi.stubEnv('VITE_MINDS_API_URL', 'https://api.mindshub.ai');
     const { MINDS_CONSOLE_URL } = await importUrls();

@@ -161,7 +161,13 @@ export const MINDS_SUPPORT_URL = 'https://mindshub.ai/support';
 export const MINDS_DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-welcome';
 
 // MindsHub sign-up: the Keycloak registration flow (not the account
-// page), which lands the new user back on the console. Built from the
+// page), which lands the new user on the console's home page. Built from the
 // base vars so it stays correct if VITE_KEYCLOAK_URL / VITE_MINDS_API_URL
 // are overridden for a non-prod environment.
-export const MINDS_REGISTER_URL = `${KEYCLOAK_BASE}/auth/realms/mindsdb/protocol/openid-connect/registrations?client_id=public-client&response_type=code&scope=openid&redirect_uri=${encodeURIComponent(`${MINDS_CONSOLE_URL}/`)}`;
+//
+// The redirect is `/home`, not the console root: the console sends a fresh
+// sign-in that lands on `/` on to Cowork web (ENG-4288), so a desktop sign-up
+// returning to the root would be carried off to Cowork web instead of the
+// console. Keycloak's public-client allowlists `https://console.<env>/*` in
+// every environment, so `/home` is an accepted redirect URI.
+export const MINDS_REGISTER_URL = `${KEYCLOAK_BASE}/auth/realms/mindsdb/protocol/openid-connect/registrations?client_id=public-client&response_type=code&scope=openid&redirect_uri=${encodeURIComponent(MINDS_CONSOLE_HOME_URL)}`;

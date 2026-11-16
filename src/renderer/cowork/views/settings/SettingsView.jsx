@@ -19,8 +19,9 @@ import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { stockBackground } from '../../../lib/stockThemeTokens';
-import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, consoleUrlFor } from '../../../lib/mindsUrls';
 import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
+import { useAccountUser } from '../../hooks/useAccountUser';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
@@ -867,6 +868,15 @@ export default function SettingsView({
   const { settings, setSetting, dirty: settingsDirty } = draft;
   const lastSavedSettings = committedSettings;
   const codeModeAccess = useCodeModeAccess();
+  /* The MindsHub key link names the organization and account it was opened
+     for, as the account menu's console links do (ENG-3274), so the console
+     opens its API keys page on this organization rather than whichever one the
+     browser's own session has active. Whatever the token knows is sent; the
+     other providers' pages are not the console and stay bare. */
+  const accountUser = useAccountUser(isSsoConnected);
+  const getKeyHref = (type) => (type === 'minds-cloud' && GET_KEY_URL[type]
+    ? consoleUrlFor(GET_KEY_URL[type], { organizationId: accountUser?.orgId ?? null, subject: accountUser?.sub ?? null })
+    : GET_KEY_URL[type]);
   const canEditBranding = Boolean(orgBranding?.enabled && orgBranding?.canEdit);
   const visibleNav = navItemsForHost(
     host.isWeb,
@@ -1588,7 +1598,7 @@ export default function SettingsView({
                             {withLink(t('providers.getKey', { link: LINK_TOKEN }), (
                               <Tooltip content={t('providers.openInBrowser', { url: GET_KEY_URL[p.type].replace(/^https?:\/\//, '') })}>
                                 <a
-                                  href={GET_KEY_URL[p.type]}
+                                  href={getKeyHref(p.type)}
                                   target="_blank"
                                   rel="noreferrer noopener"
                                   className="text-accent"
