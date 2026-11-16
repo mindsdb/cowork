@@ -586,7 +586,12 @@
     "succeededTitle": "スケジュールされたタスクが完了しました",
     "succeededBody": "「{title}」の実行が完了しました。クリックして開きます。",
     "succeededToast": "スケジュールされたタスク「{title}」の実行が完了しました。",
-    "openAction": "タスクを開く"
+    "openAction": "タスクを開く",
+    "stoppedTitle": "スケジュールタスクが停止しました",
+    "stoppedBody": "「{title}」は完了前に上限に達して停止しました。クリックして確認してください。",
+    "stoppedToast": "スケジュールタスク「{title}」は完了前に上限に達して停止しました。",
+    "genericTitle": "新しい通知",
+    "genericLine": "新しい通知: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "通知",

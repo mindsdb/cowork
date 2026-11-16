@@ -586,7 +586,12 @@
     "succeededTitle": "Tarefa agendada concluída",
     "succeededBody": "“{title}” concluiu uma execução. Clique para abrir.",
     "succeededToast": "A tarefa agendada “{title}” concluiu uma execução.",
-    "openAction": "Abrir tarefa"
+    "openAction": "Abrir tarefa",
+    "stoppedTitle": "Tarefa agendada interrompida",
+    "stoppedBody": "“{title}” parou no limite antes de terminar. Clique para revisar.",
+    "stoppedToast": "A tarefa agendada “{title}” parou no limite antes de terminar.",
+    "genericTitle": "Nova notificação",
+    "genericLine": "Nova notificação: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "Notificações",

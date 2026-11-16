@@ -409,5 +409,14 @@
     "confirm": "サインアウト",
     "failed": "サインアウトを完了できませんでした。もう一度お試しください。",
     "waitNote": "サインアウト処理中です。この画面は閉じても構いません。処理は自動的に完了します。"
+  },
+  "notices": {
+    "title": "通知",
+    "ariaLabel": "{count, plural, =0 {通知} other {通知、未読 # 件}}",
+    "unread": "未読:",
+    "markAllRead": "すべて既読にする",
+    "emptyTitle": "通知はありません",
+    "emptyDescription": "対応が必要なスケジュール実行がここに表示されます。",
+    "loadFailed": "通知を読み込めませんでした。"
   }
 }

@@ -409,5 +409,14 @@
     "confirm": "Cerrar sesión",
     "failed": "No se pudo terminar de cerrar sesión. Vuelve a intentarlo.",
     "waitNote": "Todavía estamos cerrando tu sesión. Puedes cerrar esto: termina por sí solo."
+  },
+  "notices": {
+    "title": "Notificaciones",
+    "ariaLabel": "{count, plural, =0 {Notificaciones} one {Notificaciones, # sin leer} other {Notificaciones, # sin leer}}",
+    "unread": "Sin leer:",
+    "markAllRead": "Marcar todo como leído",
+    "emptyTitle": "No hay notificaciones",
+    "emptyDescription": "Aquí aparecen las ejecuciones programadas que requieren tu atención.",
+    "loadFailed": "No se pudieron cargar las notificaciones."
   }
 }

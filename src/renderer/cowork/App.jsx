@@ -94,6 +94,7 @@ import { useSchedules } from './hooks/useSchedules';
 import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { useScheduleRunNotifications } from './hooks/useScheduleRunNotifications';
+import { useNotices } from './hooks/useNotices';
 import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -5744,22 +5745,28 @@ function AppCore() {
     },
   );
 
-  // The same for a run that fails, or succeeds if the user asked to hear
-  // about those: a notification where the OS allows one, a toast otherwise.
-  // Clicking opens the task's page, which says why and offers the run.
+  // Which run endings post a notice: account settings, edited from the
+  // Scheduled Tasks page.
   const {
     prefs: scheduleNotifyPrefs,
     setPrefs: setScheduleNotifyPrefs,
     canEdit: canEditScheduleNotifyPrefs,
-  } = useScheduleRunNotifications(scheduled, {
-    settings,
-    settingsLoaded,
-    saveSettings,
-    onOpen: (schedule) => {
+  } = useScheduleRunNotifications({ settings, settingsLoaded, saveSettings });
+
+  // The sidebar bell: the account's notices, polled about once a minute and
+  // on every navigation. A notice that has just arrived also raises a
+  // notification where the OS allows one, a toast otherwise. A scheduled-run
+  // notice opens the task's page, which says why and offers the run.
+  const notices = useNotices({
+    routeKey: `${effectiveWorkspaceMode}:${route}:${activeTaskId || ''}:${selectedScheduleId || ''}`,
+    onOpen: (notice) => {
+      const scheduleId = notice?.target?.scheduleId;
+      if (!scheduleId) return;
       setWorkspaceMode('cowork');
-      setSelectedScheduleId(schedule.id);
+      setSelectedScheduleId(scheduleId);
       setRoute('schedule-detail');
     },
+    resolveSchedules: refreshSchedules,
     toast: (notice) => toastManager.add(notice),
     closeToast: (id) => toastManager.close(id),
   });
@@ -6045,6 +6052,7 @@ function AppCore() {
       >
         <Sidebar
           tasks={tasks}
+          notices={notices}
           showCompare={showCompare}
           tasksStatus={tasksStatus}
           onRetryTasks={refreshData}

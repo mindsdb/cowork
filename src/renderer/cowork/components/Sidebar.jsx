@@ -10,6 +10,7 @@ import { debInstallStep } from '../../../shared/update-banner';
 import { relativeAge } from '../lib/formatTime';
 import { useAccountUser } from '../hooks/useAccountUser';
 import UserMenu from './UserMenu';
+import NoticeBell from './NoticeBell';
 import WorkspaceSelector from './WorkspaceSelector';
 import { WORKSPACE_SELECTOR_ENABLED } from '../lib/workspaceSelectorFlag';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
@@ -222,6 +223,9 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
 
 export default function Sidebar({
   tasks,
+  // The account's notices, from useNotices, for the header bell. Omitted, or
+  // on a server without notices, there is no bell.
+  notices = null,
   // 'loading' | 'ready' | 'failed' — lets the recents list tell an in-flight
   // load and a failed one apart from a genuinely empty account (ENG-2246).
   // Defaults to 'ready' so callers that don't pass it behave as before.
@@ -574,6 +578,7 @@ export default function Sidebar({
                 {Ico.search(16)}
               </button>
             </Tooltip>
+            {notices && <NoticeBell {...notices} />}
           </div>
           {(!navTitleHidden || navLogo || brandLogoUrl()) && (
             <span
