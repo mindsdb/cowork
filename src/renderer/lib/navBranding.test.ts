@@ -143,3 +143,12 @@ describe('applyOrgFavicon', () => {
     expect(icon().getAttribute('href')).toBe('/minds-icon.svg');
   });
 });
+
+describe('navBranding — navBrand', () => {
+  it('marks only the stock product for the stock mark', async () => {
+    const { navBrand } = await import('./navBranding');
+    expect(navBrand(null, null)).toEqual({ wordmark: 'MindsHub', logo: null, stockMark: true });
+    expect(navBrand('Lumen Labs', null).stockMark).toBe(false);
+    expect(navBrand(null, 'data:image/png;base64,abc').stockMark).toBe(false);
+  });
+});

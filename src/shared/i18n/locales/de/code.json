@@ -848,9 +848,6 @@
     "sort": "Sortieren",
     "priority": "Priorität",
     "lastUpdated": "Zuletzt aktualisiert",
-    "searchPlaceholder": "Aufgabe suchen",
-    "searchAriaLabel": "Code-Aufgabe suchen",
-    "noMatch": "Keine Code-Aufgaben entsprechen Ihrer Suche.",
     "empty": "Starten Sie eine Code-Aufgabe, um ihre Unterhaltung und Änderungen hier zu behalten.",
     "pinned": "Angeheftet",
     "archived": "Archiviert"
@@ -948,6 +945,15 @@
       "needsYou": "{count, plural, one {# Aufgabe braucht Sie →} other {# Aufgaben brauchen Sie →}}",
       "on": "Benachrichtigungen an",
       "off": "Bei Abwesenheit benachrichtigen"
+    },
+    "bell": {
+      "needsYou": "{count, plural, one {# Aufgabe braucht Sie} other {# Aufgaben brauchen Sie}}",
+      "triggerNeedsYou": "Code: {count, plural, one {# Aufgabe braucht Sie} other {# Aufgaben brauchen Sie}}",
+      "menuLabel": "Code-Hinweise",
+      "trigger": "Code-Benachrichtigungen",
+      "none": "Keine Code-Aufgabe braucht Sie",
+      "untitled": "Unbenannte Aufgabe",
+      "onHint": "An"
     }
   },
   "catalog": {
@@ -1471,10 +1477,7 @@
     "openIsolatedCopy": "Isolierte Kopie öffnen",
     "forkTask": "Aufgabe forken",
     "taskSettings": "Aufgabeneinstellungen",
-    "detailsMenuAriaLabel": "Arbeitskopie und Aufgabendetails",
-    "showDetailsAriaLabel": "Aufgabendetails für {label} anzeigen",
     "details": {
-      "title": "Aufgabeneinrichtung",
       "files": "Dateien",
       "branch": "Branch",
       "computer": "Computer",
@@ -1496,8 +1499,11 @@
     "files": "Dateien",
     "terminal": "Terminal",
     "reviewChanges": "Änderungen prüfen",
-    "review": "Prüfen",
-    "taskActionsAriaLabel": "Aktionen für Code-Aufgabe"
+    "taskActionsAriaLabel": "Aktionen für Code-Aufgabe",
+    "allTasksIn": "Alle Aufgaben in {name}",
+    "allTasks": "Alle Aufgaben",
+    "detailsMenuShortAriaLabel": "Aufgabendetails",
+    "showDetailsShortAriaLabel": "Aufgabendetails anzeigen"
   },
   "terminal": {
     "status": {

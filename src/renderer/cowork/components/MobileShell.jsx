@@ -102,10 +102,8 @@ export default function MobileShell({
   navLogo = null,        // Settings → Appearance → Sidebar logo override
   navLogoWide = false,   // the org's wordmark logo, not a square icon
   navTitleHidden = false, // the org chose logo only: no title, not even the product name
-  // Top-bar theme toggle, opposite the hamburger — the desktop
-  // floating-toggle-row has no room on mobile, and the coding-mode toggle
-  // that sits beside it there is dropped entirely rather than given a
-  // second spot here.
+  // Top-bar theme toggle, opposite the hamburger — mobile has no titlebar
+  // or sidebar footer, where desktop docks display settings.
   theme = 'dark',
   showThemeToggle = true,
   onToggleTheme,

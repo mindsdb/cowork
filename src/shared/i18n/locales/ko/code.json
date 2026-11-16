@@ -848,9 +848,6 @@
     "sort": "정렬",
     "priority": "우선순위",
     "lastUpdated": "마지막 업데이트",
-    "searchPlaceholder": "작업 찾기",
-    "searchAriaLabel": "코딩 작업 찾기",
-    "noMatch": "검색과 일치하는 코딩 작업이 없습니다.",
     "empty": "코딩 작업을 시작하면 대화와 변경 사항이 여기에 보관됩니다.",
     "pinned": "고정됨",
     "archived": "보관됨"
@@ -948,6 +945,15 @@
       "needsYou": "{count, plural, other {작업 #개에서 확인 필요 →}}",
       "on": "알림 켜짐",
       "off": "자리 비움 시 알림"
+    },
+    "bell": {
+      "needsYou": "{count, plural, other {작업 #개에서 확인 필요}}",
+      "triggerNeedsYou": "코드: {count, plural, other {작업 #개에서 확인 필요}}",
+      "menuLabel": "코드 확인 필요",
+      "trigger": "코드 알림",
+      "none": "확인이 필요한 코드 작업이 없습니다",
+      "untitled": "제목 없는 작업",
+      "onHint": "켜짐"
     }
   },
   "catalog": {
@@ -1471,10 +1477,7 @@
     "openIsolatedCopy": "격리된 사본 열기",
     "forkTask": "작업 포크",
     "taskSettings": "작업 설정",
-    "detailsMenuAriaLabel": "작업 사본 및 작업 세부 정보",
-    "showDetailsAriaLabel": "{label} 작업 세부 정보 보기",
     "details": {
-      "title": "작업 구성",
       "files": "파일",
       "branch": "브랜치",
       "computer": "컴퓨터",
@@ -1496,8 +1499,11 @@
     "files": "파일",
     "terminal": "터미널",
     "reviewChanges": "변경 사항 검토",
-    "review": "검토",
-    "taskActionsAriaLabel": "코딩 작업 메뉴"
+    "taskActionsAriaLabel": "코딩 작업 메뉴",
+    "allTasksIn": "{name}의 모든 작업",
+    "allTasks": "모든 작업",
+    "detailsMenuShortAriaLabel": "작업 세부 정보",
+    "showDetailsShortAriaLabel": "작업 세부 정보 보기"
   },
   "terminal": {
     "status": {

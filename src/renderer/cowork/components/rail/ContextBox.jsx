@@ -14,7 +14,6 @@ export function ContextBox({
   /** Bumps when the task transcript changes (turn finish, send, etc.) so attachments and memory stay in sync. */
   refreshKey,
   defaultOpen = true,
-  slim = true,
   onAddGoogleDriveFiles,
   onAddSharePointFiles,
   onFetchGoogleDriveFiles,
@@ -22,7 +21,7 @@ export function ContextBox({
 }) {
   const { t } = useTranslation('shell');
   return (
-    <RailCard title={t('rail.context.title')} defaultOpen={defaultOpen} slim={slim}>
+    <RailCard title={t('rail.context.title')} defaultOpen={defaultOpen}>
       <ContextCard
         projects={projects}
         project={project}

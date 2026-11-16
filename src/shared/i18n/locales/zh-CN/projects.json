@@ -845,8 +845,6 @@
     },
     "noRenamePermission": "你没有重命名此项目的权限。",
     "renameFailed": "重命名失败：{error}",
-    "expandPanel": "展开面板",
-    "collapsePanel": "收起面板",
     "title": "项目",
     "allProjects": "所有项目",
     "deleting": "正在删除…",

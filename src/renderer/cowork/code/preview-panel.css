@@ -9,7 +9,6 @@
 .code-preview__stage { flex: 1; min-height: 0; padding: 12px; display: flex; justify-content: center; overflow: auto; background: color-mix(in srgb, var(--bg) 72%, var(--surface-2)); }
 .code-preview__stage iframe { height: 100%; min-height: 420px; border: 1px solid var(--line); border-radius: var(--r-lg); background: white; box-shadow: var(--sh-1); }
 
-body:has(.code-preview) .floating-toggle-row { opacity: 0; pointer-events: none; }
 
 @media (max-width: 1159px) {
   .code-preview-scrim { position: fixed; z-index: 50; inset: 0; display: block; border: 0; background: rgba(0, 0, 0, .34); backdrop-filter: blur(2px); }

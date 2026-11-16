@@ -94,10 +94,7 @@
     "progress": {
       "title": "Avanzamento"
     },
-    "card": {
-      "collapse": "Comprimi",
-      "expand": "Espandi"
-    },
+    "card": {},
     "showMore": {
       "less": "Mostra meno",
       "more": "+ altri {count}"
@@ -133,6 +130,10 @@
       "haveCopyTitle": "Hai già una copia. Eliminala per duplicare di nuovo l’app.",
       "duplicateAriaLabel": "Duplica {name}",
       "duplicatedToast": "Duplicata in questo progetto."
+    },
+    "toggle": {
+      "collapse": "Comprimi pannello",
+      "expand": "Espandi pannello"
     }
   },
   "confirm": {
@@ -202,7 +203,8 @@
     "triggerAriaLabel": "Area di lavoro: {name}"
   },
   "workspaceMode": {
-    "code": "Codice"
+    "code": "Codice",
+    "tooltip": "Modalità {mode}"
   },
   "search": {
     "label": "Cerca in {product}",
@@ -308,7 +310,6 @@
       "skillsLibrary": "Libreria di competenze",
       "compare": "Confronta modelli"
     },
-    "agent": "Agente",
     "pinned": "Fissate",
     "viewAllTasks": "Visualizza tutte le attività",
     "viewAll": "Visualizza tutto →",
@@ -330,7 +331,8 @@
       "offline": "offline"
     },
     "settings": "Impostazioni",
-    "openSettings": "Apri Impostazioni"
+    "openSettings": "Apri Impostazioni",
+    "close": "Chiudi barra laterale"
   },
   "mobile": {
     "tasks": "Attività",
@@ -409,5 +411,9 @@
     "confirm": "Esci",
     "failed": "Impossibile completare la disconnessione. Riprova.",
     "waitNote": "Disconnessione ancora in corso. Puoi chiudere questa finestra: terminerà da sola."
+  },
+  "attention": {
+    "placeholderTooltip": "Le notifiche riguardano le attività di Codice",
+    "placeholderAriaLabel": "Notifiche, per le attività di Codice"
   }
 }

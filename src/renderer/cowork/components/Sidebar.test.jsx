@@ -57,41 +57,18 @@ import { deriveUpdateBanner } from '../../../shared/update-banner';
 import { OWN_WORK_PROMPT } from './onboarding/steps';
 import { reset as resetOnboarding } from './onboarding/onboardingStore';
 
-const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
+const baseProps = { tasks: [], onNavigate: () => {} };
 
 // Minimal decodable JWT for the signed-in footer tests.
 const jwt = (payload) =>
   `header.${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}.sig`;
 
-describe('Sidebar — persistent Cowork / Code workspace switch', () => {
-  it('hides the entire workspace switch until Code Mode is enabled', () => {
+describe('Sidebar — Code workspace and shell controls', () => {
+  it('leaves the Cowork / Code switch to the titlebar brand menu', () => {
     hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} showWorkspaceSwitch={false} />);
+    render(<Sidebar {...baseProps} activeWorkspace="code" />);
     expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
-  });
-
-  it('switches to Code from the dedicated Electron workspace control', () => {
-    hostMock.isWeb = false;
-    const onWorkspaceChange = vi.fn();
-    render(<Sidebar {...baseProps} onWorkspaceChange={onWorkspaceChange} />);
-    expect(screen.getByRole('button', { name: 'Cowork' })).toBeInTheDocument();
-    screen.getByRole('button', { name: 'Code' }).click();
-    expect(onWorkspaceChange).toHaveBeenCalledWith('code');
-  });
-
-  it('switches directly back to Cowork without using a Cowork navigation route', () => {
-    hostMock.isWeb = false;
-    const onWorkspaceChange = vi.fn();
-    render(
-      <Sidebar
-        {...baseProps}
-        activeWorkspace="code"
-        onWorkspaceChange={onWorkspaceChange}
-      />
-    );
-    screen.getByRole('button', { name: 'Cowork' }).click();
-    expect(onWorkspaceChange).toHaveBeenCalledWith('cowork');
+    expect(screen.queryByRole('radio', { name: 'Cowork' })).toBeNull();
   });
 
   it('gives Code first-class Projects and Connectors destinations without leaking Cowork navigation', () => {
@@ -118,24 +95,70 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
   });
 
-  it('uses the canonical sidebar collapse control in Code', () => {
+  it('docked, heads its column with the switch and the brand, and leaves the toggle to the window', () => {
     hostMock.isWeb = false;
-    const onToggleCollapsed = vi.fn();
-    render(
-      <Sidebar
-        {...baseProps}
-        activeWorkspace="code"
-        onToggleCollapsed={onToggleCollapsed}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
-    expect(onToggleCollapsed).toHaveBeenCalledOnce();
+    const brand = { wordmark: 'MindsHub', mode: 'cowork', showSwitch: true, onChange: vi.fn() };
+    const { container } = render(<Sidebar {...baseProps} brand={brand} onToggleCollapsed={vi.fn()} />);
+    const head = container.querySelector('.app-sidebar__head');
+    // Both sit inside the sidebar, so they open and close with it.
+    expect(head.closest('aside')).not.toBeNull();
+    expect(head.querySelector('[role="group"][aria-label="Workspace"]')).not.toBeNull();
+    // The brand has its own row under the head, with the sidebar's width.
+    const brandRow = container.querySelector('.app-brand');
+    expect(head.contains(brandRow)).toBe(false);
+    expect(head.nextElementSibling).toBe(brandRow);
+    expect(brandRow).toHaveTextContent('MindsHub');
+    expect(screen.queryByRole('button', { name: 'Close sidebar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull();
   });
 
-  it('keeps the collapse control out of the accessibility tree when unavailable', () => {
+  it('starts a task from a plain row, and opens search from the brand row', () => {
     hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} activeWorkspace="code" />);
-    expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull();
+    const onNewTask = vi.fn();
+    const onOpenSearch = vi.fn();
+    const brand = { wordmark: 'MindsHub', mode: 'cowork', showSwitch: false, onChange: vi.fn(), onOpenSearch, searchShortcut: '⌘K' };
+    const { container } = render(<Sidebar {...baseProps} brand={brand} onNewTask={onNewTask} />);
+    const newTask = screen.getByRole('button', { name: 'New task' });
+    // A nav row like the others, not a filled button.
+    expect(newTask).toHaveClass('nav-item');
+    expect(newTask).not.toHaveClass('btn');
+    fireEvent.click(newTask);
+    expect(onNewTask).toHaveBeenCalledOnce();
+    const search = screen.getByRole('button', { name: 'Search' });
+    expect(container.querySelector('.app-brand').contains(search)).toBe(true);
+    fireEvent.click(search);
+    expect(onOpenSearch).toHaveBeenCalledOnce();
+  });
+
+  it('hosts the attention slot in the brand row only while docked', () => {
+    hostMock.isWeb = false;
+    const brand = { wordmark: 'MindsHub', stockMark: true, mode: 'cowork', showSwitch: false, onChange: vi.fn() };
+    const { container, rerender } = render(<Sidebar {...baseProps} brand={brand} />);
+    expect(container.querySelector('.app-brand .app-brand__attention')).not.toBeNull();
+    expect(container.querySelector('.app-brand__mark')).not.toBeNull();
+    // As a drawer or hidden, the titlebar keeps it.
+    rerender(<Sidebar {...baseProps} brand={brand} popout onToggleCollapsed={vi.fn()} />);
+    expect(container.querySelector('.app-brand__attention')).toBeNull();
+    rerender(<Sidebar {...baseProps} brand={brand} collapsed />);
+    expect(container.querySelector('.app-brand__attention')).toBeNull();
+  });
+
+  it('holds the bell\'s spot with a disabled bell only where Code is available', () => {
+    hostMock.isWeb = false;
+    const brand = { wordmark: 'MindsHub', stockMark: true, mode: 'cowork', showSwitch: true, onChange: vi.fn() };
+    const { rerender } = render(<Sidebar {...baseProps} brand={brand} />);
+    const bell = screen.getByRole('button', { name: 'Notifications, for Code tasks' });
+    expect(bell).toHaveAttribute('aria-disabled', 'true');
+    rerender(<Sidebar {...baseProps} brand={{ ...brand, showSwitch: false }} />);
+    expect(screen.queryByRole('button', { name: 'Notifications, for Code tasks' })).toBeNull();
+  });
+
+  it('as a drawer, repeats the close toggle in its own top row', () => {
+    hostMock.isWeb = false;
+    const onToggleCollapsed = vi.fn();
+    render(<Sidebar {...baseProps} popout onToggleCollapsed={onToggleCollapsed} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Close sidebar' }));
+    expect(onToggleCollapsed).toHaveBeenCalledOnce();
   });
 
   it('removes every sidebar control from the accessibility tree while collapsed', () => {
@@ -149,15 +172,17 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
       />,
     );
     expect(container.querySelector('aside')).toHaveAttribute('inert');
-    expect(screen.queryByRole('button', { name: 'Expand sidebar' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'New code task' })).toBeNull();
   });
 
-  it('does not expose local coding on the hosted web shell', () => {
+  it('docks display settings in the footer when enabled', () => {
     hostMock.isWeb = true;
-    render(<Sidebar {...baseProps} />);
-    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
+    const onClick = vi.fn();
+    const { rerender } = render(<Sidebar {...baseProps} />);
+    expect(screen.queryByRole('button', { name: 'Display settings' })).toBeNull();
+    rerender(<Sidebar {...baseProps} displayToggle={{ label: 'Display settings', icon: null, onClick }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Display settings' }));
+    expect(onClick).toHaveBeenCalledOnce();
   });
 });
 
@@ -364,43 +389,6 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
   });
 });
 
-describe('Sidebar — nav title/logo override', () => {
-  it('shows the default "MindsHub" wordmark and no logo when unset', () => {
-    render(<Sidebar {...baseProps} />);
-    expect(screen.getByText('MindsHub')).toBeInTheDocument();
-    expect(document.querySelector('.anton-sidebar__logo')).toBeNull();
-  });
-
-  it("gives the org's wordmark logo a wider box than a square icon", () => {
-    const { rerender } = render(<Sidebar {...baseProps} navLogo="https://auth.acme.com/logo.png" navLogoWide />);
-    expect(document.querySelector('.anton-sidebar__logo')).toHaveClass('anton-sidebar__logo--wide');
-    rerender(<Sidebar {...baseProps} navLogo="data:image/png;base64,abc123" />);
-    expect(document.querySelector('.anton-sidebar__logo')).not.toHaveClass('anton-sidebar__logo--wide');
-  });
-
-  it('shows the logo alone, with no product name, when the org chose None', () => {
-    const { rerender } = render(<Sidebar {...baseProps} navLogo="https://auth.acme.com/logo.png" navLogoWide navTitleHidden />);
-    expect(document.querySelector('.anton-sidebar__wordmark')).toBeNull();
-    expect(document.querySelector('.anton-sidebar__logo')).not.toBeNull();
-    rerender(<Sidebar {...baseProps} navTitleHidden />);
-    expect(document.querySelector('.anton-sidebar__wordmark')).toBeNull();
-    expect(document.querySelector('.anton-sidebar__logo')).toBeNull();
-  });
-
-  it('shows a custom navTitle and navLogo when set', () => {
-    render(<Sidebar {...baseProps} navTitle="Acme Workspace" navLogo="data:image/png;base64,abc123" />);
-    expect(screen.getByText('Acme Workspace')).toBeInTheDocument();
-    expect(screen.queryByText('MindsHub')).toBeNull();
-    const img = document.querySelector('.anton-sidebar__logo');
-    expect(img).not.toBeNull();
-    expect(img.getAttribute('src')).toBe('data:image/png;base64,abc123');
-  });
-
-  it('falls back to "MindsHub" when navTitle is an empty string', () => {
-    render(<Sidebar {...baseProps} navTitle="" />);
-    expect(screen.getByText('MindsHub')).toBeInTheDocument();
-  });
-});
 
 describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
   // Parity with the web console: a signed-in user gets the account row
@@ -432,11 +420,28 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
     expect(await screen.findByRole('button', { name: 'Settings' })).toBeInTheDocument();
   });
 
-  it('shows the backend status pill instead of the account row when the server is down', async () => {
+  it('offers Settings only through the account menu', async () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline />);
+    await screen.findByRole('button', { name: /Hazem Ahmed/ });
+    expect(screen.queryByRole('button', { name: /Settings/ })).toBeNull();
+  });
+
+  it('keeps display settings in the footer beside the account row', async () => {
+    hostMock.isWeb = false;
+    const onClick = vi.fn();
+    render(<Sidebar {...baseProps} serverOnline displayToggle={{ label: 'Display settings', icon: null, onClick }} />);
+    await screen.findByRole('button', { name: /Hazem Ahmed/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Display settings' }));
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the account row under the backend status pill when the server is down', async () => {
     hostMock.isWeb = false;
     render(<Sidebar {...baseProps} serverOnline={false} />);
     expect(await screen.findByRole('button', { name: /Backend status/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Hazem Ahmed/ })).toBeNull();
+    expect(await screen.findByRole('button', { name: /Hazem Ahmed/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Settings/ })).toBeNull();
   });
 });
 
@@ -523,7 +528,7 @@ describe('Sidebar — where the MindsHub workspace control sits', () => {
     rerender(<Sidebar {...baseProps} serverOnline />);
 
     expect(screen.queryByRole('button', { name: /^Workspace:/ })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Open Settings' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /Hazem Ahmed/ })).toHaveFocus();
   });
 
   it.each([

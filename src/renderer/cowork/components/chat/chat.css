@@ -1,14 +1,15 @@
 /* Shared chat transcript primitives (components/chat), used by Cowork chat
    and Code Mode. */
 
-/* Fade the transcript out where the floating composer begins, with a mask,
-   so it holds over any backdrop and nothing reads through the gap below the
-   composer. The mask clips the element's own scrollbar too, so a second
+/* Fade the transcript out under the app titlebar and where the floating
+   composer begins, with a mask, so it holds over any backdrop and nothing
+   reads through the gap below the composer. The top fade sits in the
+   content's top padding, so it only shows once content scrolls into it. The mask clips the element's own scrollbar too, so a second
    opaque layer keeps the scrollbar strip fully visible. */
 .chat-scroller__box {
   --chat-fade-end: calc(100% - var(--chat-dock-height, 0px) + 8px);
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--chat-fade-end) - 48px), transparent var(--chat-fade-end)), linear-gradient(#000, #000);
-          mask-image: linear-gradient(to bottom, #000 calc(var(--chat-fade-end) - 48px), transparent var(--chat-fade-end)), linear-gradient(#000, #000);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(var(--chat-fade-end) - 48px), transparent var(--chat-fade-end)), linear-gradient(#000, #000);
+          mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(var(--chat-fade-end) - 48px), transparent var(--chat-fade-end)), linear-gradient(#000, #000);
   -webkit-mask-size: 100% 100%, 16px 100%;
           mask-size: 100% 100%, 16px 100%;
   -webkit-mask-position: 0 0, 100% 0;

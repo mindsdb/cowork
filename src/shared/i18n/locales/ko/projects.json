@@ -845,8 +845,6 @@
     },
     "noRenamePermission": "이 프로젝트의 이름을 변경할 권한이 없습니다.",
     "renameFailed": "이름을 변경하지 못했습니다: {error}",
-    "expandPanel": "패널 펼치기",
-    "collapsePanel": "패널 접기",
     "title": "프로젝트",
     "allProjects": "모든 프로젝트",
     "deleting": "삭제 중…",

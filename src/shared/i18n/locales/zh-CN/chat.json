@@ -151,8 +151,6 @@
       "title": "{who} 出现临时问题"
     },
     "header": {
-      "expandPanel": "展开面板",
-      "collapsePanel": "收起面板",
       "apps": "应用",
       "connectAppsAndData": "连接应用和数据",
       "projects": "项目",

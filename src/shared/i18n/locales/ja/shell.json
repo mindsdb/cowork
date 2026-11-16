@@ -94,10 +94,7 @@
     "progress": {
       "title": "進行状況"
     },
-    "card": {
-      "collapse": "折りたたむ",
-      "expand": "展開"
-    },
+    "card": {},
     "showMore": {
       "less": "表示を減らす",
       "more": "他{count}件"
@@ -133,6 +130,10 @@
       "haveCopyTitle": "コピーがすでにあります。もう一度複製するには、コピーを削除してください。",
       "duplicateAriaLabel": "{name}を複製",
       "duplicatedToast": "このプロジェクトに複製しました。"
+    },
+    "toggle": {
+      "collapse": "パネルを折りたたむ",
+      "expand": "パネルを展開"
     }
   },
   "confirm": {
@@ -202,7 +203,8 @@
     "triggerAriaLabel": "ワークスペース：{name}"
   },
   "workspaceMode": {
-    "code": "コード"
+    "code": "コード",
+    "tooltip": "{mode}モード"
   },
   "search": {
     "label": "{product}を検索",
@@ -308,7 +310,6 @@
       "skillsLibrary": "スキルライブラリ",
       "compare": "モデルを比較"
     },
-    "agent": "エージェント",
     "pinned": "ピン留め",
     "viewAllTasks": "すべてのタスクを表示",
     "viewAll": "すべて表示 →",
@@ -330,7 +331,8 @@
       "offline": "オフライン"
     },
     "settings": "設定",
-    "openSettings": "設定を開く"
+    "openSettings": "設定を開く",
+    "close": "サイドバーを閉じる"
   },
   "mobile": {
     "tasks": "タスク",
@@ -409,5 +411,9 @@
     "confirm": "サインアウト",
     "failed": "サインアウトを完了できませんでした。もう一度お試しください。",
     "waitNote": "サインアウト処理中です。この画面は閉じても構いません。処理は自動的に完了します。"
+  },
+  "attention": {
+    "placeholderTooltip": "通知はコードのタスク専用です",
+    "placeholderAriaLabel": "通知（コードのタスク用）"
   }
 }

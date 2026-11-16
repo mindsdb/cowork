@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import type { ReactNode } from 'react';
-import { cn } from '../../lib/cn';
 import { Crumb, CrumbSep, CrumbCurrent } from '../ui/Crumb';
+import { AppHeader } from '../appHeader';
 import { useTranslation } from '../../../lib/i18n';
 
 // The one page-header for every main view. Two shapes so depth and placement
@@ -17,12 +17,12 @@ import { useTranslation } from '../../../lib/i18n';
 //              holds only the ancestors (the title is the current page), and
 //              `actions` move beside the title.
 //
-// Both shapes own the titlebar-safe inset: paddingTop honours
-// --titlebar-safe-top (set on <main> by the shell) so the header drops below
-// the macOS traffic lights + the floating open-sidebar button when the sidebar
-// isn't docked over that corner, falling back to the normal padding via max().
-// Reserving the space on top (rather than the left) keeps the title/crumb left-
-// aligned with the body beneath it instead of pushing it into a lopsided gutter.
+// The trail renders into the app titlebar (<AppHeader>), so drill-down
+// crumbs sit in the same fixed row on every surface. Titles stay in the body,
+// close under the titlebar row at pane-title size (s-h2): with the titlebar
+// above it, a 28px title and deep top padding read as a landing page rather
+// than a work surface. A trail with a title puts its crumbs in the titlebar
+// and its title, subtitle and actions in the body, like the title shape.
 //
 // The subtitle has no width cap of its own: it wraps at the edge of the text
 // column (left of `actions`, or the full page without them), the same width
@@ -86,46 +86,42 @@ export function PageHeader({
       </div>
     );
 
+    const crumbBar = (
+      <AppHeader>
+        <nav aria-label={t('collection.breadcrumb')} className="flex min-w-0 flex-1 overflow-hidden">{trail}</nav>
+        {title == null && actions && (
+          <div className="flex items-center gap-2 shrink-0">{actions}</div>
+        )}
+      </AppHeader>
+    );
+
     if (title != null) {
       return (
-        <header className="flex flex-col gap-1.5 shrink-0 min-w-0 pb-5 pt-[max(14px,var(--titlebar-safe-top,0px))]">
-          {/* The crumb's own inline padding lines its text up with the title. */}
-          <nav aria-label={t('collection.breadcrumb')} className="flex min-w-0 pl-[26px] pr-8">{trail}</nav>
-          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 min-w-0 px-8">
+        <>
+          {crumbBar}
+          <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 shrink-0 min-w-0 px-8 pb-5 pt-3">
             <div className="min-w-0 flex-[1_1_18rem] flex flex-col gap-1">
-              <h1 className="s-h1 m-0 text-ink [overflow-wrap:anywhere]">{title}</h1>
+              <h1 className="s-h2 m-0 text-ink [overflow-wrap:anywhere]">{title}</h1>
               {subtitle && (
                 <div className="m-0 text-[13.5px] leading-[1.5] text-ink-3">{subtitle}</div>
               )}
             </div>
             {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
-          </div>
-        </header>
+          </header>
+        </>
       );
     }
 
-    return (
-      <header
-        className={cn(
-          'flex items-center justify-between gap-3 shrink-0 min-w-0',
-          'pb-3.5 pr-7 pl-7 pt-[max(14px,var(--titlebar-safe-top,0px))]',
-        )}
-      >
-        {trail}
-        {actions && (
-          <div className="flex items-center gap-2 shrink-0">{actions}</div>
-        )}
-      </header>
-    );
+    return crumbBar;
   }
 
   return (
-    <div className="flex flex-col gap-[18px] pr-8 pb-6 pl-8 pt-[max(28px,var(--titlebar-safe-top,0px))]">
+    <div className="flex flex-col gap-[18px] pr-8 pb-5 pl-8 pt-3">
       {/* Wraps the actions below the title once the title column would drop
           under 18rem, so narrow windows stack instead of crushing the title. */}
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 min-w-0">
         <div className="min-w-0 flex-[1_1_18rem] flex flex-col gap-1">
-          <h1 className="s-h1 m-0 text-ink">{title}</h1>
+          <h1 className="s-h2 m-0 text-ink">{title}</h1>
           {subtitle && (
             <p className="m-0 text-[13.5px] leading-[1.5] text-ink-3">{subtitle}</p>
           )}

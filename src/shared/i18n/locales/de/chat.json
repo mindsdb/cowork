@@ -151,8 +151,6 @@
       "title": "{who} hat ein vorübergehendes Problem"
     },
     "header": {
-      "expandPanel": "Bereich erweitern",
-      "collapsePanel": "Bereich reduzieren",
       "apps": "Apps",
       "connectAppsAndData": "Apps und Daten verbinden",
       "projects": "Projekte",

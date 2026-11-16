@@ -77,6 +77,7 @@ import {
   useCollectionView,
 } from '../components/collection';
 import { host } from '../../platform/host';
+import { IS_MAC } from '../lib/shortcut';
 import { surfaceCopy } from '../lib/surface';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -790,7 +791,7 @@ export default function ArtifactsView({
   const [menuFor, setMenuFor] = useState(null); // { artifact, rect }
   const { t } = useTranslation('artifacts');
   const sortOptions = SORT_IDS.map((id) => ({ id, label: t(`artifactsView.sort.${id}`) }));
-  const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+  const isMacPlatform = IS_MAC;
   // Toast surfaces publish/unpublish results — primarily so failures
   // don't disappear into the console.
   const toastManager = useToastManager();
@@ -1038,7 +1039,7 @@ export default function ArtifactsView({
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through.
     <div
-      className="scroll-clean flex-1 overflow-y-auto flex flex-col [container-type:inline-size]"
+      className="scroll-clean titlebar-fade titlebar-fade--page flex-1 overflow-y-auto flex flex-col [container-type:inline-size]"
     >
       <PageHeader
         title={t('artifactsView.title')}

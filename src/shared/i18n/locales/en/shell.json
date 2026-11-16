@@ -94,16 +94,13 @@
     "progress": {
       "title": "Progress"
     },
-    "card": {
-      "collapse": "Collapse",
-      "expand": "Expand"
-    },
+    "card": {},
     "showMore": {
       "less": "Show less",
       "more": "+ {count} more"
     },
     "scheduled": {
-      "title": "Scheduled Tasks",
+      "title": "Scheduled tasks",
       "empty": "Nothing scheduled here yet."
     },
     "artifacts": {
@@ -133,6 +130,10 @@
       "haveCopyTitle": "You have a copy. Delete it to duplicate the app again.",
       "duplicateAriaLabel": "Duplicate {name}",
       "duplicatedToast": "Duplicated into this project."
+    },
+    "toggle": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
     }
   },
   "confirm": {
@@ -202,7 +203,8 @@
     "triggerAriaLabel": "Workspace: {name}"
   },
   "workspaceMode": {
-    "code": "Code"
+    "code": "Code",
+    "tooltip": "{mode} mode"
   },
   "search": {
     "label": "Search {product}",
@@ -308,7 +310,6 @@
       "skillsLibrary": "Skills library",
       "compare": "Compare Models"
     },
-    "agent": "Agent",
     "pinned": "Pinned",
     "viewAllTasks": "View all tasks",
     "viewAll": "View all →",
@@ -330,7 +331,8 @@
       "offline": "offline"
     },
     "settings": "Settings",
-    "openSettings": "Open Settings"
+    "openSettings": "Open Settings",
+    "close": "Close sidebar"
   },
   "mobile": {
     "tasks": "Tasks",
@@ -409,5 +411,9 @@
     "confirm": "Sign out",
     "failed": "Could not finish signing out. Please try again.",
     "waitNote": "Still signing you out. You can close this — it finishes on its own."
+  },
+  "attention": {
+    "placeholderTooltip": "Notifications are for Code tasks",
+    "placeholderAriaLabel": "Notifications, for Code tasks"
   }
 }

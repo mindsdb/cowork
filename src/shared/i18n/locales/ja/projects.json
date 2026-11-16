@@ -845,8 +845,6 @@
     },
     "noRenamePermission": "このプロジェクトの名前を変更する権限がありません。",
     "renameFailed": "名前を変更できませんでした：{error}",
-    "expandPanel": "パネルを展開",
-    "collapsePanel": "パネルを折りたたむ",
     "title": "プロジェクト",
     "allProjects": "すべてのプロジェクト",
     "deleting": "削除中…",

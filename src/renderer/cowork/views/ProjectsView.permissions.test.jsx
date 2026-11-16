@@ -15,7 +15,8 @@ vi.mock('../api', () => ({
   countNonEmptyMemory: vi.fn(() => 0),
 }));
 
-vi.mock('../components/rail', () => ({
+vi.mock('../components/rail', async (importOriginal) => ({
+  ...(await importOriginal()),
   WorkingFolderBox: () => null,
   ContextBox: ({ project }) => (
     <div data-testid="context-box">Context and instructions for {project.name}</div>
@@ -193,6 +194,17 @@ describe('ProjectsView shared-resource permissions', () => {
       .toHaveClass('opacity-100', 'pointer-events-auto');
     expect(screen.queryByRole('button', { name: 'Collapse panel' }))
       .not.toBeInTheDocument();
+  });
+
+  it('toggles the context panel from one docked header control', () => {
+    setViewportWidth(1400);
+    render(<ProjectsView projects={[lockedProject]} selectedProject={lockedProject} />);
+    const toggle = screen.getByRole('button', { name: 'Collapse panel' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(toggle);
+    // Same control, same place — no second floating expand button.
+    expect(screen.getAllByRole('button', { name: /panel/ })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Expand panel' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('does not replace a newly opened project when an older rename settles', async () => {

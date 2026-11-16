@@ -845,8 +845,6 @@
     },
     "noRenamePermission": "Sie haben keine Berechtigung, dieses Projekt umzubenennen.",
     "renameFailed": "Umbenennen fehlgeschlagen: {error}",
-    "expandPanel": "Bereich einblenden",
-    "collapsePanel": "Bereich ausblenden",
     "title": "Projekte",
     "allProjects": "Alle Projekte",
     "deleting": "Wird gelöscht…",
