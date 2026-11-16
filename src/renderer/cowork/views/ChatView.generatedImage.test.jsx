@@ -171,3 +171,31 @@ describe('inline generated image', () => {
     expect(globalThis.fetch).not.toHaveBeenCalledWith(expect.stringContaining('/etc/'), expect.anything());
   });
 });
+
+describe('a generated image and its artifact card', () => {
+  const SLUG = 'a-yellow-star-45ed7ced';
+  const withSlug = imageResult('images/cat.png', {
+    content: JSON.stringify({ path: 'images/cat.png', artifact_slug: SLUG, mime_type: 'image/png' }),
+  });
+  const artifactCreated = (slug) => ({
+    type: 'response.artifact_created',
+    artifact: { id: 'a1', slug, type: 'image', kind: 'Image', ext: '.png', title: 'A yellow star' },
+  });
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, blob: async () => new Blob(['png-bytes'], { type: 'image/png' }) }));
+  });
+
+  it('shows the picture once, inline, with no artifact card for it', async () => {
+    render(<ChatView task={taskWith([withSlug, artifactCreated(SLUG)])} project={PROJECT} projects={[PROJECT]} />);
+    expect(await screen.findAllByRole('img', { name: 'Generated image cat.png' })).toHaveLength(1);
+    expect(document.querySelectorAll('.chat-artifact-card')).toHaveLength(0);
+  });
+
+  it('keeps the card for an artifact the picture is not', async () => {
+    render(<ChatView task={taskWith([withSlug, artifactCreated('another-image-1234')])} project={PROJECT} projects={[PROJECT]} />);
+    await screen.findByRole('img', { name: 'Generated image cat.png' });
+    expect(document.querySelectorAll('.chat-artifact-card')).toHaveLength(1);
+  });
+});
+

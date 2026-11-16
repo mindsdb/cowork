@@ -526,6 +526,15 @@ function deriveCellStatus(serverStatus, parsedCell) {
  * @param {() => number} [now] — clock injection for tests
  * @returns {object} new state
  */
+/* A generated image's artifact card is flagged `_shownInline` when an Image step
+   in the turn has its slug: the inline picture stands for it (either event order). */
+function flagInlineArtifacts(steps) {
+  const slugs = new Set(steps.filter((s) => s.badge === 'Image' && s.data?.artifactSlug).map((s) => s.data.artifactSlug));
+  if (slugs.size === 0) return steps;
+  return steps.map((s) => (s.badge === 'Artifact' && !s._shownInline && s.data?.slug && slugs.has(s.data.slug)
+    ? { ...s, _shownInline: true } : s));
+}
+
 export function reduceStream(state, event, now = Date.now, { replay = false } = {}) {
   if (!event || typeof event !== 'object') return state;
   const type = event.type;
@@ -788,7 +797,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       try { _trackArtifactBuilt(art.type || 'unknown', artifactIdentity(art) || art.id || ''); }
       catch { /* analytics must never break streaming */ }
     }
-    return { ...state, steps: [...state.steps, step] };
+    return { ...state, steps: flagInlineArtifacts([...state.steps, step]) };
   }
 
   // Inline skill-draft card. The harness emits this at turn end for a skill the
@@ -1008,7 +1017,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         _toolUseId: toolUseId,
       });
     }
-    return { ...state, steps };
+    return { ...state, steps: flagInlineArtifacts(steps) };
   }
 
   // New scratchpad cell starts. We push a placeholder step now so the

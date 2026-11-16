@@ -127,3 +127,42 @@ describe('responseStreamAdapter — generate_image result', () => {
     expect(turn.steps[0].data.path).toBe('images/cat.png');
   });
 });
+
+// The server also files the picture as an artifact and sends its card at turn
+// end; the inline picture stands for it, so that card is flagged, never dropped.
+describe('responseStreamAdapter — a generated image and its artifact card', () => {
+  const SLUG = 'a-yellow-star-45ed7ced';
+  const imageWithSlug = (slug = SLUG) => result(JSON.stringify({
+    status: 'generated', path: `.anton/artifacts/${SLUG}/star.png`, artifact_slug: slug, mime_type: 'image/png',
+  }));
+  const artifactCreated = (slug = SLUG) => ({
+    type: 'response.artifact_created',
+    artifact: { id: '45ed7ced', slug, type: 'image', kind: 'Image', ext: '.png', title: 'A yellow star' },
+  });
+  const artifactStep = (steps) => steps.find((s) => s.badge === 'Artifact');
+
+  it('carries the artifact slug on the Image step', () => {
+    expect(reduceAll([imageWithSlug()]).steps[0].data.artifactSlug).toBe(SLUG);
+  });
+
+  it('flags the same-slug artifact as shown inline, in either event order', () => {
+    for (const events of [[imageWithSlug(), artifactCreated()], [artifactCreated(), imageWithSlug()]]) {
+      const { steps } = reduceAll(events);
+      expect(steps.filter((s) => s.badge === 'Image')).toHaveLength(1);
+      // Still a step, so the artifacts list hears of it.
+      expect(artifactStep(steps)).toMatchObject({ _shownInline: true, data: { slug: SLUG } });
+    }
+  });
+
+  it('leaves an artifact with a different slug as a card', () => {
+    const { steps } = reduceAll([imageWithSlug(), artifactCreated('another-image-1234')]);
+    expect(artifactStep(steps)._shownInline).toBeUndefined();
+  });
+
+  it('flags it the same way after a reload', () => {
+    const [turn] = hydrateMessagesFromServerEvents([
+      { role: 'assistant', content: 'Here it is.', events: [imageWithSlug(), artifactCreated(), { type: 'response.completed' }] },
+    ]);
+    expect(artifactStep(turn.steps)._shownInline).toBe(true);
+  });
+});
