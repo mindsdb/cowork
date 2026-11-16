@@ -1621,6 +1621,9 @@
     "default": {
       "label": "默认",
       "title": "由 {product} 根据每个任务的文件夹和计算机来选择。"
-    }
+    },
+    "initializeGit": "初始化 Git",
+    "initializeFailed": "无法初始化 Git。请重试。",
+    "unavailable": "此文件夹没有可用的工作区模式。"
   }
 }

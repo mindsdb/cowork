@@ -65,11 +65,12 @@ interface NewTaskDraftOptions {
 }
 
 
-async function projectFolderIssue(projectId: string, items: ProjectFolderInspection[], setup?: TaskRepositorySetup): Promise<string> {
+async function projectFolderIssue(projectId: string, items: ProjectFolderInspection[], setup?: TaskRepositorySetup, mode?: WorkspaceMode | null): Promise<string> {
   const unavailable = items.find(({ inspection }) => !inspection.exists || !inspection.is_directory);
   if (unavailable) {
     return i18n.t('newTaskDraft.folderUnavailable', { ns: 'code', name: unavailable.folder.name });
   }
+  if (mode === 'in_place') return '';
   for (const item of items) {
     const branch = setup?.base_branches[item.folder.id] || item.folder.base_branch;
     // projectFolders checks the configured base. A different task base must
@@ -155,29 +156,52 @@ export function useNewTaskDraft({
     executionIssue,
     refreshComputers,
   } = useTaskExecutionTarget(selectedProject, engineId);
-  // The server says which modes this task could run in; until it answers, or
-  // if it predates modes, the task is isolated as it always was.
-  const [workspaceModeOptions, setWorkspaceModeOptions] = useState<WorkspaceModeOptions>(WORKTREE_ONLY);
   const [rememberedWorkspaceMode, setRememberedWorkspaceMode] = useState<WorkspaceMode | null>(storedWorkspaceMode);
   const selectedProjectKey = selectedProject?.id ?? null;
   const workspaceModeComputer = selectedProject ? computerId || undefined : undefined;
-  // Only a folder in a Git repository can be worked in directly, so the server needs to see it.
   const workspaceModeFolder = selectedProject ? undefined : standaloneFolderPath || undefined;
+  const workspaceModeKey = JSON.stringify([selectedProjectKey, workspaceModeComputer, workspaceModeFolder]);
+  const activeModeKey = useRef(workspaceModeKey);
+  activeModeKey.current = workspaceModeKey;
+  const [modeResponse, setModeResponse] = useState<{
+    key: string; options: WorkspaceModeOptions; known: boolean;
+  } | null>(null);
+  const currentModeResponse = modeResponse?.key === workspaceModeKey ? modeResponse : null;
+  const workspaceModeOptions = currentModeResponse?.options ?? WORKTREE_ONLY;
+  const workspaceModesLoading = !currentModeResponse;
+  const [gitInitialization, setGitInitialization] = useState<{ key: string; busy: boolean; error: string } | null>(null);
+  const initializingGit = gitInitialization?.key === workspaceModeKey && gitInitialization.busy;
+  const initializeGitError = gitInitialization?.key === workspaceModeKey ? gitInitialization.error : '';
   useEffect(() => {
     let current = true;
-    setWorkspaceModeOptions(WORKTREE_ONLY);
     void (async () => {
       try {
         const options = await codingApi.workspaceModes(selectedProjectKey, workspaceModeComputer, workspaceModeFolder);
-        if (current) setWorkspaceModeOptions(options);
-      } catch { /* No answer: keep the isolated default. */ }
+        if (current) setModeResponse({ key: workspaceModeKey, options, known: true });
+      } catch {
+        // Older servers have no modes endpoint; omit the mode in their requests.
+        if (current) setModeResponse({ key: workspaceModeKey, options: WORKTREE_ONLY, known: false });
+      }
     })();
     return () => { current = false; };
-  }, [selectedProjectKey, workspaceModeComputer, workspaceModeFolder]);
+  }, [selectedProjectKey, workspaceModeComputer, workspaceModeFolder, workspaceModeKey]);
+  const initializeGit = async () => {
+    if (!workspaceModeFolder || selectedProject || initializingGit) return;
+    setGitInitialization({ key: workspaceModeKey, busy: true, error: '' });
+    try {
+      const options = await codingApi.initializeGit(workspaceModeFolder);
+      if (activeModeKey.current !== workspaceModeKey) return;
+      setModeResponse({ key: workspaceModeKey, options, known: true });
+    } catch (reason) {
+      if (activeModeKey.current === workspaceModeKey) {
+        setGitInitialization({ key: workspaceModeKey, busy: false, error: reason instanceof Error ? reason.message : i18n.t('workspaceMode.initializeFailed', { ns: 'code' }) });
+      }
+    } finally {
+      setGitInitialization(current => current?.key === workspaceModeKey ? { ...current, busy: false } : current);
+    }
+  };
   const workspaceModeChoice = offersWorkspaceChoice(workspaceModeOptions);
-  // A choice made in the composer holds for this project, computer and folder;
-  // changing any of them lets the project default or the remembered choice apply again.
-  const workspaceModeKey = JSON.stringify([selectedProjectKey, workspaceModeComputer, workspaceModeFolder]);
+  // A choice holds only for this project, computer and folder.
   const [explicitWorkspaceMode, setExplicitWorkspaceMode] = useState<{ key: string; mode: WorkspaceMode } | null>(null);
   useEffect(() => { setExplicitWorkspaceMode(null); }, [workspaceModeKey]);
   const workspaceMode = effectiveWorkspaceMode(workspaceModeOptions, {
@@ -205,7 +229,7 @@ export function useNewTaskDraft({
   const setRepositorySetup = (setup: TaskRepositorySetup | undefined) => {
     setRepositoryChoice(setup ? {key: repositoryKey, setup} : null);
     // Switched for this task only; the user did not choose Worktree as a habit.
-    if (setup && workspaceModeChoice && workspaceMode === 'in_place') {
+    if (setup) {
       setExplicitWorkspaceMode({ key: workspaceModeKey, mode: 'worktree' });
     }
   };
@@ -254,13 +278,13 @@ export function useNewTaskDraft({
     setFoldersLoading(true);
     codingApi.projectFolders(selectedProject.id).then(async ({ items }) => {
       if (!active) return;
-      const issue = await projectFolderIssue(selectedProject.id, items.filter(item => resourceIds.includes(item.folder.id)), repositorySetup);
+      const issue = await projectFolderIssue(selectedProject.id, items.filter(item => resourceIds.includes(item.folder.id)), repositorySetup, workspaceMode);
       if (active) setFolderIssue(issue);
     }).catch((reason) => {
       if (active) setFolderIssue(reason instanceof Error ? reason.message : i18n.t('newTaskDraft.foldersCheckFailed', { ns: 'code' }));
     }).finally(() => { if (active) setFoldersLoading(false); });
     return () => { active = false; };
-  }, [selectedProject, resourceScopeKey, repositorySetup]);
+  }, [selectedProject, resourceScopeKey, repositorySetup, workspaceMode]);
 
   useEffect(() => {
     setEngineId(selectedProject?.default_engine_id || defaultEngineId);
@@ -381,9 +405,13 @@ export function useNewTaskDraft({
   const selectedEngine = engines.find((engine) => engine.id === engineId);
   const selectedEngineAvailable = selectedEngine?.available === true;
   const workspaceLoading = selectedProject ? foldersLoading : standaloneFolderLoading;
-  const workspaceIssue = selectedProject ? folderIssue : standaloneFolderIssue;
+  const modeIssue = currentModeResponse?.known && (workspaceModeOptions.supported.length === 0
+    || (!!repositorySetup && !workspaceModeOptions.supported.includes('worktree')))
+    ? workspaceModeOptions.worktree_unavailable_reason || workspaceModeOptions.in_place_unavailable_reason || i18n.t('workspaceMode.unavailable', { ns: 'code' })
+    : '';
+  const workspaceIssue = (selectedProject ? folderIssue : standaloneFolderIssue) || modeIssue;
   const workspaceSelected = !!selectedProject || !!standaloneFolderPath;
-  const loading = engineLoading || modelsLoading || workspaceLoading || executionLoading;
+  const loading = engineLoading || modelsLoading || workspaceLoading || executionLoading || workspaceModesLoading || initializingGit;
   const noProjectResources = !!selectedProject && projectResources.length === 0;
   const taskReady = !!prompt.trim()
     && workspaceSelected
@@ -399,6 +427,7 @@ export function useNewTaskDraft({
      settings, so that one does. */
   const startUnavailable = busy
     || loading
+    || !!modeIssue
     || !prompt.trim()
     || (!!selectedProject && (!!workspaceIssue || !computerId || !!executionIssue))
     || !selectedEngineAvailable
@@ -412,7 +441,7 @@ export function useNewTaskDraft({
   const readinessMessage = (() => {
     if (busy) return readiness('startingTask');
     if (engineLoading || modelsLoading) return readiness('loadingAgent');
-    if (workspaceLoading) return selectedProject ? readiness('checkingResources') : readiness('checkingFolder');
+    if (workspaceLoading || workspaceModesLoading || initializingGit) return selectedProject ? readiness('checkingResources') : readiness('checkingFolder');
     if (executionLoading) return readiness('findingComputer');
     if (workspaceIssue) return workspaceIssue;
     if (executionIssue) return executionIssue;
@@ -468,7 +497,7 @@ export function useNewTaskDraft({
       ...(selectedProject && resourceIds.length < projectResources.length ? { resourceIds } : {}),
       ...(selectedProject ? { computerId } : {}),
       ...(repositorySetup ? { repositorySetup } : {}),
-      ...(workspaceModeChoice ? { workspaceMode } : {}),
+      ...(currentModeResponse?.known && workspaceMode && (workspaceModeChoice || workspaceMode === 'in_place') ? { workspaceMode } : {}),
     };
     await onCreate(selectedProject
       ? { ...task, projectId: selectedProject.id }
@@ -500,6 +529,11 @@ export function useNewTaskDraft({
     workspaceMode,
     setWorkspaceMode,
     workspaceModeChoice,
+    workspaceModeOptions,
+    workspaceModesLoading,
+    initializeGit,
+    initializingGit,
+    initializeGitError,
     reasoningEffort,
     setReasoningEffort,
     effortLevels,

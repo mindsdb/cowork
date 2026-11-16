@@ -1621,6 +1621,9 @@
     "default": {
       "label": "Padrão",
       "title": "Deixe o {product} escolher de acordo com a pasta e o computador de cada tarefa."
-    }
+    },
+    "initializeGit": "Inicializar Git",
+    "initializeFailed": "Não foi possível inicializar o Git. Tente novamente.",
+    "unavailable": "Nenhum modo de espaço de trabalho está disponível para esta pasta."
   }
 }

@@ -73,9 +73,11 @@ export type WorkspaceMode = 'in_place' | 'worktree';
 /** The modes a new task could run in, resolved by the server for its project and computer. */
 export interface WorkspaceModeOptions {
   supported: WorkspaceMode[];
-  default: WorkspaceMode;
+  default: WorkspaceMode | null;
   /** Why working in the folder itself is not offered; older servers omit it. */
   in_place_unavailable_reason?: string | null;
+  worktree_unavailable_reason?: string | null;
+  can_initialize_git?: boolean;
 }
 
 export interface SessionCreateBody {
@@ -860,6 +862,9 @@ const liveCodingApi = {
     const suffix = query.size ? `?${query.toString()}` : '';
     return requestJson<WorkspaceModeOptions>(`/workspace-modes${suffix}`);
   },
+  initializeGit: (path: string) => requestJson<WorkspaceModeOptions>('/workspace/initialize-git', {
+    method: 'POST', body: JSON.stringify({ path }),
+  }),
   computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
     method: 'POST',
   }),

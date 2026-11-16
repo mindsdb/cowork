@@ -1621,6 +1621,9 @@
     "default": {
       "label": "Predeterminado",
       "title": "Deja que {product} elija según la carpeta y la computadora de cada tarea."
-    }
+    },
+    "initializeGit": "Inicializar Git",
+    "initializeFailed": "No se pudo inicializar Git. Inténtalo de nuevo.",
+    "unavailable": "No hay ningún modo de espacio de trabajo disponible para esta carpeta."
   }
 }

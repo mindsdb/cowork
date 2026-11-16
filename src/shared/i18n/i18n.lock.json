@@ -88467,6 +88467,74 @@
       "text": "3ab649ae4e3f"
     }
   },
+  "code:workspaceMode.initializeFailed": {
+    "de": {
+      "from": "a84ebd1511bb",
+      "text": "e13bb30731a5"
+    },
+    "es": {
+      "from": "a84ebd1511bb",
+      "text": "a4ed963f01fb"
+    },
+    "fr": {
+      "from": "a84ebd1511bb",
+      "text": "2fdccd0f2096"
+    },
+    "it": {
+      "from": "a84ebd1511bb",
+      "text": "b5d51b662df6"
+    },
+    "ja": {
+      "from": "a84ebd1511bb",
+      "text": "65953249327b"
+    },
+    "ko": {
+      "from": "a84ebd1511bb",
+      "text": "704c3c53badb"
+    },
+    "pt-BR": {
+      "from": "a84ebd1511bb",
+      "text": "b3c1e6356ebb"
+    },
+    "zh-CN": {
+      "from": "a84ebd1511bb",
+      "text": "15b6bcbdddbb"
+    }
+  },
+  "code:workspaceMode.initializeGit": {
+    "de": {
+      "from": "4ee149f5e938",
+      "text": "677b80936666"
+    },
+    "es": {
+      "from": "4ee149f5e938",
+      "text": "0728454629c8"
+    },
+    "fr": {
+      "from": "4ee149f5e938",
+      "text": "71144c44bc9c"
+    },
+    "it": {
+      "from": "4ee149f5e938",
+      "text": "e58f1b042d24"
+    },
+    "ja": {
+      "from": "4ee149f5e938",
+      "text": "ea7139191924"
+    },
+    "ko": {
+      "from": "4ee149f5e938",
+      "text": "58cc7e234e5b"
+    },
+    "pt-BR": {
+      "from": "4ee149f5e938",
+      "text": "0728454629c8"
+    },
+    "zh-CN": {
+      "from": "4ee149f5e938",
+      "text": "d21e2b01ee56"
+    }
+  },
   "code:workspaceMode.local.label": {
     "de": {
       "from": "8c31e6e72230",
@@ -88601,6 +88669,40 @@
     "zh-CN": {
       "from": "0dd68b79d8c8",
       "text": "97297e3429b1"
+    }
+  },
+  "code:workspaceMode.unavailable": {
+    "de": {
+      "from": "c77670e40ea9",
+      "text": "017985f5019e"
+    },
+    "es": {
+      "from": "c77670e40ea9",
+      "text": "b3f8a61f354a"
+    },
+    "fr": {
+      "from": "c77670e40ea9",
+      "text": "a87cd1c3f4c9"
+    },
+    "it": {
+      "from": "c77670e40ea9",
+      "text": "ae033a990df2"
+    },
+    "ja": {
+      "from": "c77670e40ea9",
+      "text": "eeabae662edf"
+    },
+    "ko": {
+      "from": "c77670e40ea9",
+      "text": "1c36f14beaf1"
+    },
+    "pt-BR": {
+      "from": "c77670e40ea9",
+      "text": "67261d360cfb"
+    },
+    "zh-CN": {
+      "from": "c77670e40ea9",
+      "text": "fa7fef335d77"
     }
   },
   "code:workspaceMode.worktree.label": {

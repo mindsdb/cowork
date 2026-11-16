@@ -83,7 +83,7 @@ export interface WorkspaceModePreferences {
 export function effectiveWorkspaceMode(
   options: WorkspaceModeOptions,
   { explicit = null, projectDefault = null, remembered = null }: WorkspaceModePreferences,
-): WorkspaceMode {
+): WorkspaceMode | null {
   const usable = (mode: WorkspaceMode | null): mode is WorkspaceMode => !!mode && options.supported.includes(mode);
   if (usable(explicit)) return explicit;
   if (projectDefault) return usable(projectDefault) ? projectDefault : options.default;

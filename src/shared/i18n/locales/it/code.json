@@ -1621,6 +1621,9 @@
     "default": {
       "label": "Predefinito",
       "title": "Lascia che {product} scelga in base alla cartella e al computer di ogni attività."
-    }
+    },
+    "initializeGit": "Inizializza Git",
+    "initializeFailed": "Impossibile inizializzare Git. Riprova.",
+    "unavailable": "Nessuna modalità di lavoro è disponibile per questa cartella."
   }
 }

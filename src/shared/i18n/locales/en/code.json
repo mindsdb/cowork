@@ -1621,6 +1621,9 @@
     "default": {
       "label": "Default",
       "title": "Let {product} choose for each task’s folder and computer."
-    }
+    },
+    "initializeGit": "Initialize Git",
+    "initializeFailed": "Could not initialize Git. Try again.",
+    "unavailable": "No workspace mode is available for this folder."
   }
 }

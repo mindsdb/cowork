@@ -1621,6 +1621,9 @@
     "default": {
       "label": "デフォルト",
       "title": "タスクごとのフォルダとコンピュータに応じて{product}が選択します。"
-    }
+    },
+    "initializeGit": "Git を初期化",
+    "initializeFailed": "Git を初期化できませんでした。もう一度お試しください。",
+    "unavailable": "このフォルダーで利用できるワークスペースモードはありません。"
   }
 }

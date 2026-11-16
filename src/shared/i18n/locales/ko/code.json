@@ -1621,6 +1621,9 @@
     "default": {
       "label": "기본값",
       "title": "각 작업의 폴더와 컴퓨터에 따라 {product}에서 선택합니다."
-    }
+    },
+    "initializeGit": "Git 초기화",
+    "initializeFailed": "Git을 초기화하지 못했습니다. 다시 시도하세요.",
+    "unavailable": "이 폴더에서 사용할 수 있는 작업 공간 모드가 없습니다."
   }
 }

@@ -1621,6 +1621,9 @@
     "default": {
       "label": "Standard",
       "title": "{product} entscheidet anhand des Ordners und Computers jeder Aufgabe."
-    }
+    },
+    "initializeGit": "Git initialisieren",
+    "initializeFailed": "Git konnte nicht initialisiert werden. Versuche es erneut.",
+    "unavailable": "Für diesen Ordner ist kein Arbeitsbereichsmodus verfügbar."
   }
 }

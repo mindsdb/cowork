@@ -498,7 +498,9 @@ export function getCodeFixtureApi() {
   const name = activeFixtureName();
   if (!name) return null;
   const state = fixtureState(name);
-  let sessions = name === 'new' || name === 'empty' || name === 'work-search' ? [] : state.sessions;
+  const plainFolder = name === 'plain' || name === 'plain-initialized';
+  let gitInitialized = name === 'plain-initialized';
+  let sessions = plainFolder || name === 'new' || name === 'empty' || name === 'work-search' ? [] : state.sessions;
   const eventMap = new Map<string, CodingEvent[]>([[state.primary.id, state.events]]);
   const fileMap = new Map<string, DiffFile[]>([[state.primary.id, state.files]]);
 
@@ -623,7 +625,17 @@ export function getCodeFixtureApi() {
 
   return {
     engines: async () => copy(engines),
-    workspaceModes: async (): Promise<WorkspaceModeOptions> => ({ supported: ['worktree', 'in_place'], default: 'worktree' }),
+    workspaceModes: async (): Promise<WorkspaceModeOptions> => plainFolder ? {
+      supported: ['in_place'], default: 'in_place', can_initialize_git: !gitInitialized,
+      worktree_unavailable_reason: gitInitialized
+        ? 'This repository has no commits yet. Make a first commit to use a Worktree'
+        : "This folder isn't a Git repository. Initialize Git to use a Worktree",
+    } : { supported: ['worktree', 'in_place'], default: 'in_place' },
+    initializeGit: async (): Promise<WorkspaceModeOptions> => {
+      gitInitialized = true;
+      return { supported: ['in_place'], default: 'in_place', can_initialize_git: false,
+        worktree_unavailable_reason: 'This repository has no commits yet. Make a first commit to use a Worktree' };
+    },
     models: async () => ({ items: [...FIXTURE_MODEL_IDS] }),
     inspect: async (path: string): Promise<WorkspaceInspection> => ({
       path, exists: true, is_directory: true, is_git: true, repository_root: path,

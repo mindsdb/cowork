@@ -1621,6 +1621,9 @@
     "default": {
       "label": "Par défaut",
       "title": "Laisser {product} choisir selon le dossier et l’ordinateur de chaque tâche."
-    }
+    },
+    "initializeGit": "Initialiser Git",
+    "initializeFailed": "Impossible d’initialiser Git. Réessayez.",
+    "unavailable": "Aucun mode d’espace de travail n’est disponible pour ce dossier."
   }
 }
