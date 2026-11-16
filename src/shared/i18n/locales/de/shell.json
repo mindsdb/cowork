@@ -53,6 +53,8 @@
       "openNamedInDrive": "„{name}“ in Google Drive öffnen",
       "untitled": "Unbenannt",
       "openInDrive": "In Google Drive öffnen",
+      "openNamedInNotion": "„{name}“ in Notion öffnen",
+      "openInNotion": "In Notion öffnen",
       "removeFromProjectFiles": "Aus Projektdateien entfernen",
       "removeFromProjectFilesAriaLabel": "{name} aus Projektdateien entfernen",
       "loadAttachmentsFailed": "Anhänge konnten nicht geladen werden",

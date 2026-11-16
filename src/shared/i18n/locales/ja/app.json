@@ -271,5 +271,9 @@
     "callBackPending": "完了したら {agent} から折り返し電話します",
     "call": "{agent} に電話",
     "anotherCall": "別の通話が進行中です"
+  },
+  "notion": {
+    "connectTitle": "Notionを接続しますか？",
+    "connectMessage": "Notionからページを追加するには、Notionワークスペースを接続する必要があります。"
   }
 }

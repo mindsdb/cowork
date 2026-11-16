@@ -271,5 +271,9 @@
     "callBackPending": "完成后 {agent} 会回电给你",
     "call": "呼叫 {agent}",
     "anotherCall": "另一个通话正在进行"
+  },
+  "notion": {
+    "connectTitle": "连接 Notion？",
+    "connectMessage": "你需要连接 Notion 工作区才能从 Notion 添加页面。"
   }
 }

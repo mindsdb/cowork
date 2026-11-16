@@ -271,5 +271,9 @@
     "callBackPending": "{agent} te llamará cuando termine",
     "call": "Llamar a {agent}",
     "anotherCall": "Hay otra llamada en curso"
+  },
+  "notion": {
+    "connectTitle": "¿Conectar Notion?",
+    "connectMessage": "Necesitas conectar tu espacio de trabajo de Notion para añadir páginas de Notion."
   }
 }
