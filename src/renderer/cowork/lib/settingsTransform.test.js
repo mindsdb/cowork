@@ -1204,6 +1204,16 @@ describe('image model settings (ENG-4024)', () => {
     expect(committedSettingsPatch({ imageModel: SUNBURST }, ['image_model'])).toEqual({ imageModel: SUNBURST });
   });
 
+  it("reads an unset image_model as no pick, so the server's filled-in default is never saved back", () => {
+    const transformed = transformSettingsRows([{ key: 'image_model', value: FLARE, is_set: false }]);
+    expect(transformed.imageModel).toBeUndefined();
+    // So the picker follows the live default, not the one /settings/ was read with.
+    expect(resolveImageModel(transformed.imageModel, { catalogDefault: SUNBURST })).toBe(SUNBURST);
+    expect(diffSettingsForWrite({ ...transformed }, transformed)).not.toHaveProperty('image_model');
+    // A real pick still reads as one.
+    expect(transformSettingsRows([{ key: 'image_model', value: SUNBURST, is_set: true }]).imageModel).toBe(SUNBURST);
+  });
+
   it('starts a settings load with an empty image list and default', () => {
     const transformed = transformSettingsRows([]);
     expect(transformed.imageModels).toEqual([]);

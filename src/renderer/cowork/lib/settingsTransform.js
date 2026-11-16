@@ -685,6 +685,9 @@ export function transformSettingsRows(rows) {
       const served = row.default ?? (row.is_set === false ? row.value : null);
       if (served != null) result.budgetDefaults = { ...result.budgetDefaults, [clientKey]: String(served) };
     }
+    // An unset image_model carries the server's start-time default, not a pick:
+    // leave it unset so the picker follows the live `imageModelDefault`.
+    if (clientKey === 'imageModel' && row.is_set === false) continue;
     if (row.is_sensitive) {
       result[clientKey] = row.is_set ? '***' : '';
     } else if (row.value != null) {
