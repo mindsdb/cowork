@@ -649,5 +649,16 @@
       "optional": "任意",
       "example": "例: {value}"
     }
+  },
+  "notionPicker": {
+    "title": "Notionからページを追加",
+    "subtitle": "Notionを検索して、このメッセージに追加するページを選択します。",
+    "searchPlaceholder": "Notionのページを検索…",
+    "searchAriaLabel": "Notionのページを検索",
+    "minQuery": "{count, plural, other {検索するには#文字以上入力してください。}}",
+    "noResults": "ページが見つかりません。",
+    "database": "データベース",
+    "cancel": "キャンセル",
+    "add": "{count, plural, =0 {ページを追加} other {#ページを追加}}"
   }
 }
