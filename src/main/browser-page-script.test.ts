@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { pageShape, problems } from '../../tests/browser-contract-shapes';
 import {
   challengeKind,
@@ -401,6 +401,45 @@ describe('the isolated-world page read', () => {
     expect(pageWorld(document, world, { kind: 'select', id: country.id, values: ['Peru'] })).toMatchObject({ ok: false, reason: 'no_option', options: ['Mexico', 'Canada'] });
     const go = snapshot(world).elements.find((e) => e.name === 'Sign in')!;
     expect(pageWorld(document, world, { kind: 'select', id: go.id, values: ['x'] })).toEqual({ ok: false, reason: 'not_select' });
+  });
+
+  it('names the control under a point, by its nearest clickable ancestor, and nothing for content, fields or frames', () => {
+    document.body.innerHTML = `
+      <button data-box><span id="label">Place order</span></button>
+      <p id="copy" data-box>Your cart</p>
+      <input id="note" data-box aria-label="Note">
+      <iframe id="pay" data-box title="Card"></iframe>
+      <div id="host" data-box></div>`;
+    layout();
+    const inner = document.getElementById('host')!.attachShadow({ mode: 'open' });
+    inner.innerHTML = '<a href="/delete">Delete</a>';
+    const world = freshWorld();
+    let under: Element | null = null;
+    // The test DOM lays nothing out, so it is told what lies under the point.
+    const before = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
+    const fromPoint = vi.fn(() => under);
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: fromPoint });
+    inner.elementFromPoint = () => inner.querySelector('a');
+    try {
+      const at = (el: Element | null) => {
+        under = el;
+        return pageWorld(document, world, { kind: 'atPoint', x: 10, y: 10 });
+      };
+      const order = at(document.getElementById('label'));
+      expect(order).toMatchObject({ role: 'button', name: 'Place order' });
+      // The id is the one a read gives the same button.
+      const listed = snapshot(world).elements.find((e) => e.name === 'Place order')!;
+      expect((order as { id: number }).id).toBe(listed.id);
+      expect(at(document.getElementById('host'))).toMatchObject({ role: 'link', name: 'Delete' });
+      expect(at(document.getElementById('copy'))).toBeNull();
+      expect(at(document.getElementById('note'))).toBeNull();
+      expect(at(document.getElementById('pay'))).toBeNull();
+      expect(at(null)).toBeNull();
+      expect(fromPoint).toHaveBeenCalledWith(10, 10);
+    } finally {
+      if (before) Object.defineProperty(document, 'elementFromPoint', before);
+      else delete (document as unknown as Record<string, unknown>).elementFromPoint;
+    }
   });
 
   it('runs from its source text, so it needs nothing from this module', () => {

@@ -25,6 +25,9 @@ import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { filterExtraFields } from './oauth-extra-fields';
 import { hasRequiredTokens } from './oauth-connect-result';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
+import { serverMayReceiveTokens, serverTrust } from './app-secret';
+import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNotionPagesInMain } from './notion-pages';
+import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
@@ -142,6 +145,7 @@ const inAppBrowser = new InAppBrowserHost({
 setServerStartedHook(composeStartedHook(
   handOffMindsCredentialToStartedSidecar,
   () => inAppBrowser.serverStarted(),
+  async () => { void syncAppHeldMcpConnections(); },
 ));
 
 function getAntonEnvPath(): string {
@@ -920,6 +924,17 @@ function setupIPC() {
       const expiresAt = new Date(Date.now() + (pkceResult.expires_in ?? 3600) * 1000).toISOString();
       const tokenUrl: string = oauthBlock.token_url;
 
+      // A server that has not proved the app secret gets no token.
+      if (!serverMayReceiveTokens()) {
+        try { await deleteRefreshToken(engine, accountEmail); } catch {}
+        return {
+          ok: false,
+          reason: serverTrust() === 'untrusted'
+            ? 'The backend could not be verified. Restart Cowork and try again.'
+            : 'The backend is not running.',
+        };
+      }
+
       // Persist to vault — refresh_token intentionally excluded.
       const saveRes = await fetch(
         `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/save`,
@@ -966,6 +981,13 @@ function setupIPC() {
       // needs_reconnect once its nominal expiry passes.
       if (supportsRefresh) {
         startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style, oauthBlock.refresh_token_optional === true);
+      }
+      if (oauthMethodId === 'mcp') {
+        try {
+          await handOverAfterConnect(engine, vaultSlug, pkceResult.access_token, expiresAt);
+        } catch (err) {
+          diagnostic("main.app", "WARNING", "oauth_mcp_app_held_hand_over_failed", `[oauth] could not hand over ${engine}/${vaultSlug} to the server:`, err);
+        }
       }
       return { ok: true, name: vaultSlug, account_email: accountEmail };
     }
@@ -1086,6 +1108,7 @@ function setupIPC() {
       }
     } catch {}
     try { await deleteRefreshToken(engine, accountEmail); } catch {}
+    try { await forgetAccessMode(engine, name); } catch {}
     try {
       await fetch(
         `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}`,
@@ -1094,6 +1117,25 @@ function setupIPC() {
     } catch {}
     return { ok: true };
   });
+
+  // Desktop only: the renderer cannot hold the app secret this route needs.
+  ipcMain.handle(IPC.CONNECTIONS_SET_ACCESS_MODE, async (_event, opts) => {
+    const { engine, name, accessMode } = opts || {};
+    if (typeof engine !== 'string' || !engine || typeof name !== 'string' || !name) {
+      return { ok: false, reason: 'engine and name are required.' };
+    }
+    if (!isAccessMode(accessMode)) return { ok: false, reason: 'accessMode must be read, write or none.' };
+    try {
+      return await setConnectionAccessMode(engine, name, accessMode);
+    } catch (err) {
+      diagnostic("main.app", "WARNING", "connections_set_access_mode_failed", `[connections] access-mode change failed for ${engine}/${name}:`, err);
+      return { ok: false, reason: 'Could not change tool access.' };
+    }
+  });
+
+  // Desktop only, for the same reason: these read pages with the app-held token.
+  ipcMain.handle(IPC.NOTION_SEARCH_PAGES, (_event, opts) => searchNotionPagesInMain(opts?.name, opts?.query));
+  ipcMain.handle(IPC.NOTION_FETCH_PAGE, (_event, opts) => fetchNotionPageInMain(opts?.name, opts?.page));
 
   // ── MindsHub onboarding ──────────────────────────────────────
   // Logging in via Keycloak doesn't yet decide the user's LLM —

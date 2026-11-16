@@ -21,6 +21,7 @@ import { currentServerLocale } from '../lib/i18n';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
+import { approvalsOffAtOf } from './lib/browserPrefs';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
 import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
@@ -1951,6 +1952,32 @@ async function readSettings({ validate = true } = {}) {
   return result;
 }
 
+/**
+ * @typedef {{ asks: boolean, offAtMs: number | null }} BrowserApprovalSetting
+ */
+
+/* The person's Approve browser steps setting as the server holds it now
+   (browser_approve_steps), with when they last turned it off
+   (browser_approve_steps_off_at, the server's clock), read just before the
+   app approves a held browser step for them, so a choice made on another
+   device counts at once: `asks` false when they turned approvals off,
+   `offAtMs` null when the server doesn't say, and null when it can't be
+   read. Under the settings lock, like fetchSettings, so it reads after a
+   save that started before it (a card's Skip approvals). */
+/** @returns {Promise<BrowserApprovalSetting | null>} */
+export async function readBrowserApproveSteps() {
+  const op = _settingsLock.then(async () => {
+    try {
+      const settings = transformSettingsRows(await req('/settings/'));
+      return { asks: settings.browserApproveSteps !== false, offAtMs: approvalsOffAtOf(settings) };
+    } catch {
+      return null;
+    }
+  });
+  _settingsLock = op.catch(() => {});
+  return op;
+}
+
 export async function fetchSettings() {
   const op = _settingsLock.then(async () => {
     try {
@@ -2099,6 +2126,24 @@ export async function testProviders(providers) {
   } catch (err) {
     return { providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {}, error: err?.message || 'Test failed' };
   }
+}
+
+/**
+ * The organization's own decision model, tested with one minimal decision:
+ * the endpoint and key typed in Settings, or the stored ones where left out
+ * (a key of '***' is the stored one). cowork-server only lets an
+ * organization admin (anyone on a desktop) ask, and sends the stored key
+ * only to the stored endpoint.
+ *
+ * @param {{ url?: string, apiKey?: string, model?: string }} target
+ * @returns {Promise<{ ok: boolean, error: string | null, ms?: number }>}
+ */
+export async function testDecisionModel({ url, apiKey, model } = {}) {
+  return req('/settings/test-decision-model', {
+    method: 'POST',
+    body: JSON.stringify({ url: url || null, apiKey: apiKey || null, model: model || null }),
+    timeoutMs: 20_000,
+  });
 }
 
 export async function revealSettingKey(name) {
@@ -2463,10 +2508,37 @@ export async function deletePickedFile(engine, name, fileId, project) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
 }
 
+// On the desktop the server requires the app secret for Notion page search and
+// fetch, so they go through the main process; org mode, the web SPA and a
+// shell without the bridge call the route directly. Resolves to `{ data }`
+// with the server's JSON, or null to make the direct request.
+async function notionViaMain(path, call, signal) {
+  if (!host.isElectron || getOrgMode()) return null;
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  // IPC cannot be cancelled; an abort only stops waiting for it.
+  const result = await new Promise((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+    signal?.addEventListener('abort', onAbort, { once: true });
+    call().then(resolve, reject).finally(() => signal?.removeEventListener('abort', onAbort));
+  });
+  if (!result) return null;
+  if (result.ok) return { data: result.data };
+  if ('status' in result) {
+    // The same error a direct request raises for this response.
+    throw await responseError({
+      status: result.status,
+      text: async () => result.text,
+      headers: { get: (h) => (h.toLowerCase() === 'retry-after' ? result.retryAfter : null) },
+    }, `API ${path} returned ${result.status}`);
+  }
+  throw new Error(result.reason);
+}
+
 // Pages and databases matching `query` in one Notion connection's workspace,
 // for the chat's "Add pages from Notion" picker.
 export async function searchNotionPages(name, query, { signal } = {}) {
-  const data = await req('/connectors/notion/search', {
+  const viaMain = await notionViaMain('/connectors/notion/search', () => host.notionSearchPages(name, query), signal);
+  const data = viaMain ? viaMain.data : await req('/connectors/notion/search', {
     method: 'POST',
     body: JSON.stringify({ name, query }),
     signal,
@@ -2477,6 +2549,8 @@ export async function searchNotionPages(name, query, { signal } = {}) {
 // A picked page's title and text (capped server-side; `truncated` says so),
 // sent with the chat message so the agent doesn't have to fetch it itself.
 export async function fetchNotionPage(name, page, { signal } = {}) {
+  const viaMain = await notionViaMain('/connectors/notion/fetch', () => host.notionFetchPage(name, page), signal);
+  if (viaMain) return viaMain.data;
   return req('/connectors/notion/fetch', {
     method: 'POST',
     body: JSON.stringify({ name, page }),
@@ -2501,11 +2575,18 @@ export async function fetchSavedConnection(engine, name) {
 }
 
 // Changes an MCP-based connection's read/write/none tool-access mode after
-// it's already connected (ENG-487 — HubSpot's connector is the first with
-// an editable-after-connect setting). No PKCE, no reconnect — a purely
-// local write on cowork-server's side (or a proxy to auth in org mode),
-// works identically from Electron and the web SPA.
+// it's already connected. No PKCE, no reconnect. On the desktop
+// it goes through the main process, which holds the mode in the keychain and
+// the secret the local server requires; org mode (and the web SPA) calls the
+// route directly.
 export async function patchConnectionAccessMode(engine, name, accessMode) {
+  if (host.isElectron && !getOrgMode()) {
+    const result = await host.setConnectionAccessMode(engine, name, accessMode);
+    if (result) {
+      if (!result.ok) throw new Error(result.reason || 'Could not change tool access.');
+      return result;
+    }
+  }
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/access-mode`, {
     method: 'PATCH',
     body: JSON.stringify({ access_mode: accessMode }),
@@ -3136,10 +3217,17 @@ export async function duplicateLiveApp({ shareId, projectId }) {
  * with `status: 'organization_off'`. On the desktop it means the app's own
  * browser has registered with the local server.
  *
+ * `decisions_model` says what picks the browser's steps: Jev on MindsHub, a
+ * decision model of the organization's own, or nothing (null), and then the
+ * browser doesn't run. A server that predates it sends neither field.
+ *
  * @typedef {Object} BrowseStatus
- * @property {boolean} enabled  The person's own switch (Settings), on by default.
+ * @property {boolean} enabled  The person's own switch (Settings), read as off without a decisions model.
  * @property {boolean} available
  * @property {'none' | 'starting' | 'running' | 'unavailable' | 'not_entitled' | 'organization_off'} status
+ * @property {'mindshub' | 'own' | null} [decisions_model]
+ * @property {boolean} [can_set_decisions_model]  Whether the caller may set one up: an organization admin, or anyone on a desktop.
+ * @property {boolean} [own_decisions_unused]  The organization set up its own decision model, but this deployment's browser can't ask it.
  */
 
 /**
@@ -3187,6 +3275,93 @@ export function browserClientHints() {
  *
  * @returns {Promise<BrowseStatus>}
  */
+// ─── Voice calls (prototype) ─────────────────────────────────────────────────
+/* Whether this deployment's MindsHub Inference serves live voice. A failed
+   read reads as no, with `failed: true`, so the caller can ask again. */
+export async function fetchVoiceStatus() {
+  try {
+    const status = await req('/voice/status', { timeoutMs: 15_000, headers: await hubHeaders() });
+    return { available: !!status?.available };
+  } catch {
+    return { available: false, failed: true };
+  }
+}
+
+/* The browser's SDP offer in, GPT-Live's answer out ({session: {id},
+   transport: {sdp}}), through the server and MindsHub as the caller. */
+function localTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function startVoiceSession(sdp, voice) {
+  return req('/voice/session', {
+    method: 'POST',
+    timeoutMs: 40_000,
+    headers: await hubHeaders(),
+    // The person's time zone, so the call knows their date and time.
+    body: JSON.stringify({ sdp, ...(voice ? { voice } : {}), ...(localTimeZone() ? { timezone: localTimeZone() } : {}) }),
+  });
+}
+
+/* One step of the voice call's operator: the call's history and what is on
+   screen in, the model's next turn ({content, tool_calls: [{id, name,
+   arguments}]}) out. The app runs the calls (lib/voice/operator.js). */
+export async function voiceOperate(messages, snapshot) {
+  return req('/voice/operate', {
+    method: 'POST',
+    timeoutMs: 40_000,
+    headers: await hubHeaders(),
+    // The time zone, so the operator counts dates from the person's today.
+    body: JSON.stringify({ messages, snapshot, timezone: localTimeZone() || undefined }),
+  });
+}
+
+/* The person typed an address in a task's browser pane: the server opens the
+   task's own session at it, as them, with no agent. Web only; the desktop
+   opens its own browser (host.inAppBrowser.open). Resolves {session_id}. */
+export async function openBrowserAt(conversationId, url) {
+  return req('/browse/open', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ conversation_id: conversationId, url }),
+  });
+}
+
+/* The project's browsers (ENG-4138, prototype): which of these tasks have an
+   open browser, each with its tabs and the tabs it saved. Web only. Resolves
+   {browsers: [{conversation_id, session_id, url, viewers, holder, tabs, parked_tabs}]}. */
+export async function fetchTaskBrowsers(conversationIds) {
+  return req('/browse/browsers', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ conversation_ids: conversationIds.slice(0, 100) }),
+  });
+}
+
+export async function switchTaskTab(conversationId, tabId) {
+  return req('/browse/tabs/switch', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId, tab_id: tabId }),
+  });
+}
+
+/* Closes a tab; `park` keeps a note of it, to reopen when the task needs it. */
+export async function closeTaskTab(conversationId, tabId, { park = true } = {}) {
+  return req('/browse/tabs/close', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId, tab_id: tabId, park }),
+  });
+}
+
+/* Closes a task's browser; its tabs are noted and reopen when the task needs them. */
+export async function closeTaskBrowser(conversationId) {
+  return req('/browse/close', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId }),
+  });
+}
+
 export async function provisionBrowser() {
   return req('/browse/provision', {
     method: 'POST',

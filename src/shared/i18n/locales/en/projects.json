@@ -377,6 +377,14 @@
     "browserSession": {
       "opened": "Opened the browser"
     },
+    "browserSteps": {
+      "open": "Opening {site}",
+      "read": "Reading the page",
+      "look": "Looking at the page",
+      "act": "Working on the page",
+      "handOver": "Waiting for you in the browser",
+      "generic": "Using the browser"
+    },
     "figureSources": {
       "noSource": "No source: no step in this answer returned this figure. Check it before you act on it.",
       "repeated": "Repeated from an earlier answer",
