@@ -494,5 +494,12 @@
       "saved": "Gespeichert. Mitglieder sehen es, wenn sie die App oder die Einstellungen das nächste Mal öffnen.",
       "clean": "Keine nicht gespeicherten Branding-Änderungen"
     }
+  },
+  "voice": {
+    "title": "Stimme",
+    "agentTitle": "Sprachagent",
+    "agentHelp": "Sprechen Sie über die Anruftaste mit {agent}. Aus blendet die Anruftasten aus und beendet einen laufenden Anruf.",
+    "voiceTitle": "Stimme",
+    "voiceHelp": "Wählen Sie eine aus, um sie zu hören. {agent} sagt in jeder neuen Stimme einen kurzen Satz."
   }
 }

@@ -377,6 +377,14 @@
     "browserSession": {
       "opened": "브라우저를 열었습니다"
     },
+    "browserSteps": {
+      "open": "{site} 여는 중",
+      "read": "페이지 읽는 중",
+      "look": "페이지 확인 중",
+      "act": "페이지에서 작업 중",
+      "handOver": "브라우저에서 기다리는 중",
+      "generic": "브라우저 사용 중"
+    },
     "figureSources": {
       "noSource": "출처 없음: 이 답변의 어떤 단계에서도 이 수치가 나오지 않았습니다. 활용하기 전에 확인하세요.",
       "repeated": "이전 답변에서 가져옴",

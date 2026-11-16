@@ -636,6 +636,10 @@
       "working": "Procesando…",
       "allow": "Permitir para esta prueba",
       "confirm": "Confirmar y guardar"
+    },
+    "browserInstead": {
+      "title": "Usar el navegador en su lugar",
+      "help": "Sin conexión: inicias sesión en {name} en el modo navegador y el trabajo se hace ahí. Más lento que conectar."
     }
   },
   "legacyConnect": {

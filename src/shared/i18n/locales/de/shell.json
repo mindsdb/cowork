@@ -360,7 +360,12 @@
     "total": "{count} insgesamt",
     "noTasks": "Noch keine Aufgaben.",
     "untitledTask": "Unbenannte Aufgabe",
-    "seeAllTasks": "Alle Aufgaben anzeigen"
+    "seeAllTasks": "Alle Aufgaben anzeigen",
+    "recents": "Zuletzt verwendet",
+    "showFewer": "Weniger anzeigen",
+    "seeAllCount": "Alle {count} anzeigen",
+    "signedIn": "Angemeldet",
+    "logOut": "Abmelden"
   },
   "dispatch": {
     "qrAriaLabel": "Dekorativer Kopplungscode",
@@ -409,5 +414,8 @@
     "confirm": "Abmelden",
     "failed": "Die Abmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
     "waitNote": "Die Abmeldung läuft noch. Sie können dieses Fenster schließen, der Vorgang wird automatisch abgeschlossen."
+  },
+  "shortcuts": {
+    "showBrowser": "Browser anzeigen"
   }
 }

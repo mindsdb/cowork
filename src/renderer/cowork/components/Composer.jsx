@@ -153,6 +153,8 @@ export default function Composer({
   conversationId = null,
   disabledConnections = [],
   onUpdateConnectorMute,
+  /** Starts a voice call with the agent (prototype); null hides it from the + menu. */
+  onStartVoiceCall = null,
   /**
    * The shared browser for this task or the next one, shown as a Browser
    * switch in the + menu. Null hides it.
@@ -1307,6 +1309,17 @@ export default function Composer({
                         <span className="toggle-thumb" />
                       </button>
                     </div>
+                  )}
+                  {onStartVoiceCall && (
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        onStartVoiceCall();
+                      }}
+                    >
+                      {Ico.call(14)} {t('composer.voiceCall')}
+                    </button>
                   )}
                   <button
                     className="menu-item"

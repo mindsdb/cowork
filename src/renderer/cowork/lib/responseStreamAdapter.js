@@ -2,6 +2,7 @@ import { applyAddonEvent } from './addons';
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
 import { artifactIdentity } from './artifactIdentity';
 import { browserStep, withBrowserStep } from './browserSession';
+import { BROWSER_ACTION_BADGE, BROWSER_TOOL, browserActionLabel, browserActionStep } from './browserSteps';
 import { parseFigureSources } from './figureSources';
 import i18n from '../../lib/i18n';
 
@@ -203,7 +204,7 @@ function closeOpenInspectableSteps(steps, completedAt) {
   return closeOpenSteps(
     steps,
     completedAt,
-    (step) => step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress',
+    (step) => step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress' || step.badge === BROWSER_ACTION_BADGE,
   );
 }
 
@@ -868,6 +869,11 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         select: event.select === 'many' ? 'many' : 'one',
         allow_custom: event.allow_custom !== false,
         timeout_s: event.timeout_s ?? null,
+        // When the server held it (its clock, also on a replay), or null for
+        // an event without one: the app approves a held browser step for the
+        // person only if it was held after they turned approvals off
+        // (lib/browserPrefs.js), never by this tab's clock.
+        held_at_ms: Number.isFinite(event.at_ms) ? event.at_ms : null,
         answer: null,
       },
       output: null,
@@ -1220,6 +1226,30 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // the two rounds makes it look like an answer (ENG-3554).
     if (startsTool(event) && state.bodyText.trim()) {
       state = { ...state, ...sealRoundOnToolStart(state, eventTs) };
+    }
+
+    /* The agent's browser tool (lib/browserSteps.js): each call is a step.
+       Its start names the tool, the next line for the same call carries its
+       arguments, which label it (the arguments themselves are not kept: a
+       step can type a password), and its tool_done ends it. */
+    const browserCallId = event.tool_use_id || '';
+    if (browserCallId) {
+      const idx = state.steps.findIndex((s) => s.badge === BROWSER_ACTION_BADGE && s._toolUseId === browserCallId);
+      if (!phase && !event.subtype && idx === -1 && event.content === BROWSER_TOOL) {
+        // A call whose tool_done never came (it can be throttled away) ends where the next starts.
+        const steps = closeOpenSteps(state.steps, eventTs, (s) => s.badge === BROWSER_ACTION_BADGE);
+        return { ...state, steps: [...steps, browserActionStep({ id: `step-${steps.length + 1}`, toolUseId: browserCallId, at: eventTs })] };
+      }
+      if (idx !== -1 && (phase === 'tool_done' || (!phase && !event.subtype))) {
+        const steps = state.steps.slice();
+        if (phase === 'tool_done') {
+          steps[idx] = { ...steps[idx], status: 'completed', completedAt: eventTs };
+        } else {
+          const args = safeJsonParse(event.content || '');
+          if (args && typeof args === 'object') steps[idx] = { ...steps[idx], label: browserActionLabel(args) };
+        }
+        return { ...state, steps };
+      }
     }
 
     // anton is deliberately idle, waiting out a velocity rate-limit before

@@ -76,6 +76,7 @@ const NO_BROWSER: InAppBrowserBridge = {
   show: async () => ({ exists: false, drawn: false }),
   hide: async () => {},
   setBounds: async () => ({ drawn: false }),
+  open: async () => {},
   back: async () => {},
   forward: async () => {},
   reload: async () => {},

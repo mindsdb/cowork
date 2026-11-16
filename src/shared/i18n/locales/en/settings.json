@@ -494,5 +494,12 @@
       "saved": "Saved. Members see it the next time they open the app or Settings.",
       "clean": "No unsaved branding changes"
     }
+  },
+  "voice": {
+    "title": "Voice",
+    "agentTitle": "Voice agent",
+    "agentHelp": "Talk with {agent} from the call button. Off hides the call buttons and ends a call that is running.",
+    "voiceTitle": "Voice",
+    "voiceHelp": "Pick one to hear it. {agent} says a short line in each new voice."
   }
 }

@@ -377,6 +377,14 @@
     "browserSession": {
       "opened": "Browser geöffnet"
     },
+    "browserSteps": {
+      "open": "{site} wird geöffnet",
+      "read": "Seite wird gelesen",
+      "look": "Seite wird angesehen",
+      "act": "Arbeit auf der Seite",
+      "handOver": "Wartet im Browser auf Sie",
+      "generic": "Browser wird verwendet"
+    },
     "figureSources": {
       "noSource": "Keine Quelle: Kein Schritt in dieser Antwort hat diese Zahl geliefert. Prüfen Sie sie, bevor Sie sich darauf verlassen.",
       "repeated": "Aus einer früheren Antwort übernommen",
