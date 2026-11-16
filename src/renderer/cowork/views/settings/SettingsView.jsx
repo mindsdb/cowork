@@ -19,7 +19,7 @@ import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { stockBackground } from '../../../lib/stockThemeTokens';
-import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, consoleUrlFor } from '../../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, mindsRegisterUrl, consoleUrlFor } from '../../../lib/mindsUrls';
 import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
 import { useAccountUser } from '../../hooks/useAccountUser';
 import { useOrgMode } from '../../../lib/orgMode';
@@ -1612,7 +1612,7 @@ export default function SettingsView({
                             {t('providers.noAccount')}{' '}
                             <Tooltip content={t('providers.signUpTooltip')}>
                               <a
-                                href={MINDS_REGISTER_URL}
+                                href={mindsRegisterUrl(isElectron ? 'desktop' : 'web')}
                                 target="_blank"
                                 rel="noreferrer noopener"
                                 className="text-accent"

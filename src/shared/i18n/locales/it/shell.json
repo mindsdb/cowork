@@ -401,7 +401,11 @@
       "operatorBody": "Chiedi all’operatore di configurare il provider del modello prima di avviare un’attività.",
       "startFree": "Inizia gratis"
     },
-    "handoffHint": "Modifica questo prompt, poi invialo quando sei pronto."
+    "handoffHint": "Modifica questo prompt, poi invialo quando sei pronto.",
+    "signupWelcome": {
+      "fromDesktop": "Il tuo account è pronto. Puoi iniziare subito qui, oppure tornare all’app {product} e accedere.",
+      "dismiss": "Chiudi"
+    }
   },
   "logout": {
     "title": "Uscire da {product}?",

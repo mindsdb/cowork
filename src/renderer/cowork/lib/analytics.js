@@ -177,6 +177,7 @@ const EVENTS = {
   // count is the measure of whether that path is being found.
   MENU_API_KEYS_CLICKED:    'menu_api_keys_clicked',    // {}  user menu -> console API keys page
   MENU_API_DOCS_CLICKED:    'menu_api_docs_clicked',    // {}  user menu -> docs.mindshub.ai
+  SIGNUP_LANDED:            'signup_landed',            // { from: 'desktop'|'web' }  a new account reached Cowork web Home from a sign-up link
 };
 
 const ORG_STAMPED_EVENTS = new Set([
@@ -1025,6 +1026,13 @@ export function trackMenuApiKeysClicked() {
 
 export function trackMenuApiDocsClicked() {
   capture(EVENTS.MENU_API_DOCS_CLICKED);
+}
+
+// A new account reached Cowork web from a sign-up link (ENG-4288). `from` is
+// where the sign-up started: 'desktop' for the desktop app, 'web' for Cowork
+// web. Once per landing, since the landing marker is taken exactly once.
+export function trackSignupLanded(from) {
+  capture(EVENTS.SIGNUP_LANDED, { from: from === 'desktop' ? 'desktop' : 'web' });
 }
 
 // First switch into the Code workspace per launch, from any entry point. The

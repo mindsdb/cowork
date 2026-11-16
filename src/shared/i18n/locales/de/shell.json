@@ -401,7 +401,11 @@
       "operatorBody": "Bitten Sie Ihren Betreiber, den Modellanbieter zu konfigurieren, bevor Sie eine Aufgabe starten.",
       "startFree": "Kostenlos starten"
     },
-    "handoffHint": "Bearbeiten Sie diesen Prompt und senden Sie ihn, wenn Sie bereit sind."
+    "handoffHint": "Bearbeiten Sie diesen Prompt und senden Sie ihn, wenn Sie bereit sind.",
+    "signupWelcome": {
+      "fromDesktop": "Ihr Konto ist bereit. Sie können direkt hier loslegen oder zur {product}-App zurückkehren und sich anmelden.",
+      "dismiss": "Schließen"
+    }
   },
   "logout": {
     "title": "Von {product} abmelden?",

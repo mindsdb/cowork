@@ -2135,3 +2135,20 @@ describe('user menu developer links (ENG-4288)', () => {
     await vi.waitFor(() => expect(sent()).toBe(2));
   });
 });
+
+describe('signup_landed (ENG-4288)', () => {
+  it.each([
+    ['desktop', 'desktop'],
+    ['web', 'web'],
+    // Anything unexpected reads as the web, never as free text.
+    ['someone@example.com', 'web'],
+  ])('sends from=%s as %s and nothing else about the person', async (from, expected) => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+
+    analytics.trackSignupLanded(from);
+    const event = await sentEvent(fetchMock, 'signup_landed');
+    expect(event.properties.from).toBe(expected);
+    expect(JSON.stringify(event.properties)).not.toContain('example.com');
+  });
+});

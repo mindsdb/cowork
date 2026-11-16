@@ -401,7 +401,11 @@
       "operatorBody": "Ask your operator to configure the model provider before starting a task.",
       "startFree": "Start for free"
     },
-    "handoffHint": "Edit this prompt, then send when you're ready."
+    "handoffHint": "Edit this prompt, then send when you're ready.",
+    "signupWelcome": {
+      "fromDesktop": "Your account is ready. You can start right here, or go back to the {product} app and sign in.",
+      "dismiss": "Dismiss"
+    }
   },
   "logout": {
     "title": "Sign out of {product}?",

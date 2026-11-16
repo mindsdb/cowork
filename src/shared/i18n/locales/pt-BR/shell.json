@@ -401,7 +401,11 @@
       "operatorBody": "Peça ao seu operador para configurar o provedor de modelos antes de iniciar uma tarefa.",
       "startFree": "Começar grátis"
     },
-    "handoffHint": "Edite este prompt e envie quando estiver pronto."
+    "handoffHint": "Edite este prompt e envie quando estiver pronto.",
+    "signupWelcome": {
+      "fromDesktop": "Sua conta está pronta. Você pode começar aqui mesmo ou voltar ao app {product} e entrar.",
+      "dismiss": "Dispensar"
+    }
   },
   "logout": {
     "title": "Sair do {product}?",

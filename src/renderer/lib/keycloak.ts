@@ -26,7 +26,7 @@ import { isMobileShell } from './mobileShell';
 import { MOBILE_KEYCLOAK_CLIENT_ID, createMobileShellAdapter } from './mobileAuth';
 
 // Single source of truth for the Keycloak host lives in mindsUrls.ts so the
-// login flow and the sign-up link (MINDS_REGISTER_URL) always agree on the
+// login flow and the sign-up link (mindsRegisterUrl) always agree on the
 // environment (prod / staging / dev).
 const keycloakUrl = MINDS_KEYCLOAK_URL;
 

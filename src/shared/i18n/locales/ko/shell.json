@@ -401,7 +401,11 @@
       "operatorBody": "작업을 시작하기 전에 운영자에게 모델 제공업체 구성을 요청하세요.",
       "startFree": "무료로 시작"
     },
-    "handoffHint": "이 프롬프트를 수정한 다음 준비되면 보내세요."
+    "handoffHint": "이 프롬프트를 수정한 다음 준비되면 보내세요.",
+    "signupWelcome": {
+      "fromDesktop": "계정이 준비되었습니다. 여기서 바로 시작하거나 {product} 앱으로 돌아가 로그인하세요.",
+      "dismiss": "닫기"
+    }
   },
   "logout": {
     "title": "{product}에서 로그아웃할까요?",

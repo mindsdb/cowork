@@ -52,7 +52,7 @@ export const MINDS_API_BASE =
 // `pr-cowork-744.dev.mindshub.ai` answers 200. Dropping the prefix is the
 // derivation the chart actually implies. Permanent envs are untouched, because
 // there the console does carry its own `console.` label.
-const mindsServiceHost = (role: 'auth' | 'console'): string => {
+const mindsServiceHost = (role: 'auth' | 'console' | 'cowork'): string => {
   if (role === 'console' && MINDS_API_BASE.includes('://api-')) {
     return MINDS_API_BASE.replace('://api-', '://');
   }
@@ -160,14 +160,43 @@ export const MINDS_SUPPORT_URL = 'https://mindshub.ai/support';
 // separable from the in-app "coming soon to Cloud" prompt (`from=cowork-web`).
 export const MINDS_DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-welcome';
 
-// MindsHub sign-up: the Keycloak registration flow (not the account
-// page), which lands the new user on the console's home page. Built from the
-// base vars so it stays correct if VITE_KEYCLOAK_URL / VITE_MINDS_API_URL
-// are overridden for a non-prod environment.
+// Cowork web, derived from the same resolved API base as everything above, so
+// the desktop app (whose renderer is served over file://, not from Cowork web)
+// still knows the Cowork web host of its own environment. The plain token swap
+// is right for this role in every shape, PR environments included:
+//   api.mindshub.ai              -> cowork.mindshub.ai
+//   api.staging.mindshub.ai      -> cowork.staging.mindshub.ai
+//   api-pr-<n>.dev.mindshub.ai   -> cowork-pr-<n>.dev.mindshub.ai
+// On Cowork web itself this is its own origin, because MINDS_API_BASE was
+// derived from that origin in the first place.
+export const MINDS_COWORK_WEB_URL = mindsServiceHost('cowork');
+
+/** Where a sign-up link was clicked: the desktop app or Cowork web. */
+export type SignupSource = 'desktop' | 'web';
+
+/**
+ * Cowork web's landing page for a brand-new account (ENG-4288). `welcome=1`
+ * tells Cowork web the account was just created; `from=desktop` says the
+ * sign-up started in the desktop app, so the page can point back to it. A
+ * sign-up from Cowork web carries no `from`: that person is already where they
+ * belong.
+ */
+export function coworkWelcomeUrl(source: SignupSource): string {
+  const target = new URL(`${MINDS_COWORK_WEB_URL}/`);
+  target.searchParams.set('welcome', '1');
+  if (source === 'desktop') target.searchParams.set('from', 'desktop');
+  return target.toString();
+}
+
+// MindsHub sign-up: the Keycloak registration flow (not the account page).
+// Built from the base vars so it stays correct if VITE_KEYCLOAK_URL /
+// VITE_MINDS_API_URL are overridden for a non-prod environment.
 //
-// The redirect is `/home`, not the console root: the console sends a fresh
-// sign-in that lands on `/` on to Cowork web (ENG-4288), so a desktop sign-up
-// returning to the root would be carried off to Cowork web instead of the
-// console. Keycloak's public-client allowlists `https://console.<env>/*` in
-// every environment, so `/home` is an accepted redirect URI.
-export const MINDS_REGISTER_URL = `${KEYCLOAK_BASE}/auth/realms/mindsdb/protocol/openid-connect/registrations?client_id=public-client&response_type=code&scope=openid&redirect_uri=${encodeURIComponent(MINDS_CONSOLE_HOME_URL)}`;
+// A new account lands in Cowork web with the composer ready, not in the
+// console (ENG-4288): people should try the product before they meet budgets
+// and settings. Keycloak's public-client allowlists `https://cowork.<env>/*`
+// in prod, staging and dev, and `https://cowork-<env>.dev…/*` in every PR
+// environment, so this redirect URI is accepted everywhere the link is built.
+export function mindsRegisterUrl(source: SignupSource): string {
+  return `${KEYCLOAK_BASE}/auth/realms/mindsdb/protocol/openid-connect/registrations?client_id=public-client&response_type=code&scope=openid&redirect_uri=${encodeURIComponent(coworkWelcomeUrl(source))}`;
+}
