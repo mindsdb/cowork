@@ -74,19 +74,30 @@ describe('endViewSession', () => {
     );
   });
 
-  it('settles with a warning when the view host cannot be reached or refuses', async () => {
+  // A refused origin gets no CORS headers, so fetch rejects with a TypeError,
+  // exactly as for a host that cannot be reached.
+  it('settles with a warning when the view host refuses or cannot be reached', async () => {
     vi.stubEnv('VITE_MINDS_API_URL', '');
     setUrl('https://cowork.staging.mindshub.ai/');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
     const { endViewSession } = await importViewSession();
 
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
     await expect(endViewSession()).resolves.toBeUndefined();
-    expect(warn).toHaveBeenLastCalledWith('Could not end the artifact viewer session (TypeError).');
 
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 403 })));
+    expect(warn).toHaveBeenCalledWith('Could not end the artifact viewer session (TypeError).');
+  });
+
+  it('warns with the status of an error answer the page can read', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', '');
+    setUrl('https://cowork.staging.mindshub.ai/');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 405 })));
+    const { endViewSession } = await importViewSession();
+
     await expect(endViewSession()).resolves.toBeUndefined();
-    expect(warn).toHaveBeenLastCalledWith('Could not end the artifact viewer session (HTTP 403).');
+
+    expect(warn).toHaveBeenCalledWith('Could not end the artifact viewer session (HTTP 405).');
   });
 
   it('stays quiet when the view host clears the session', async () => {

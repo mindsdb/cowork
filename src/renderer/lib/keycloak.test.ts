@@ -191,11 +191,12 @@ it('ends the view session while the previews close, not after', async () => {
   expect(instance.logout).toHaveBeenCalledOnce();
 });
 
-it('does not end the account session when the preview revoke fails', async () => {
+it('ends the account session even when closing the previews throws', async () => {
   keycloak.authenticated = true;
-  previews.closeLiveAppPreviewsForSignOut.mockRejectedValueOnce(new Error('revoke failed'));
-  await expect(logout()).rejects.toThrow('revoke failed');
-  expect(instance.logout).not.toHaveBeenCalled();
+  previews.closeLiveAppPreviewsForSignOut.mockRejectedValueOnce(new Error('preview close failed'));
+  await logout();
+  expect(viewSession.endViewSession).toHaveBeenCalledOnce();
+  expect(instance.logout).toHaveBeenCalledOnce();
 });
 
 it('does not touch the view session when there is no account session', async () => {

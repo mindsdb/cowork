@@ -21,8 +21,10 @@ function besideViewHost(): boolean {
 /**
  * Clear this browser's host-only `view_session` on the environment's view
  * host, so a restricted artifact asks for sign-in again after sign-out. Best
- * effort: a failure only leaves a warning, the one trace of a view host that
- * refuses this origin. Plain http (local `vite dev`) has no view host.
+ * effort: a failure only leaves a warning. A view host that refuses this
+ * origin answers without CORS headers, so the browser reports it as a network
+ * error (TypeError), the same as an unreachable host. Plain http (local
+ * `vite dev`) has no view host.
  */
 export async function endViewSession(): Promise<void> {
   if (typeof window === 'undefined' || window.location.protocol !== 'https:') return;
