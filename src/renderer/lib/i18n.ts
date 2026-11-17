@@ -34,10 +34,6 @@ export { useTranslation };
 export type { AppLocale, LanguagePreference, SupportedLocale };
 
 const PREFERENCE_KEY = 'cowork.language';
-/* Until every screen is translated (ENG-4149 phase 4) the Language picker
-   and non-English locales are opt-in: dev builds, or a tester who sets this
-   key. Everyone else runs in English exactly as before. */
-const PREVIEW_KEY = 'cowork.i18nPreview';
 
 type Catalog = Record<string, unknown>;
 
@@ -75,10 +71,6 @@ function isDev(): boolean {
   return Boolean(import.meta.env?.DEV);
 }
 
-export function languagePickerEnabled(): boolean {
-  return isDev() || readStorage(PREVIEW_KEY) === '1';
-}
-
 export function systemLanguages(): readonly string[] {
   if (typeof navigator === 'undefined') return [];
   if (Array.isArray(navigator.languages) && navigator.languages.length) return navigator.languages;
@@ -90,9 +82,9 @@ export function getLanguagePreference(): LanguagePreference {
   return isLanguagePreference(saved, { allowPseudo: isDev() }) ? saved : SYSTEM_PREFERENCE;
 }
 
-/* The locale this session runs in. Outside preview everyone gets English. */
+/* The locale this session runs in: the saved choice, else the OS language
+   when it is one the app ships, else English. */
 export function preferredLocale(): AppLocale {
-  if (!languagePickerEnabled()) return SOURCE_LOCALE;
   return resolveLocale(getLanguagePreference(), systemLanguages(), { allowPseudo: isDev() });
 }
 
@@ -215,10 +207,8 @@ export function whenI18nReady(): Promise<void> {
 }
 
 /* The locale to tell the server (X-Cowork-UI-Locale), so Anton knows the
-   user's language: one of SUPPORTED_LOCALES, or null while the language
-   picker is off, so the server sees no setting until the feature ships. */
+   user's language: one of SUPPORTED_LOCALES (the pseudo-locale sends en). */
 export function currentServerLocale(): SupportedLocale | null {
-  if (!languagePickerEnabled()) return null;
   const lng = i18n.resolvedLanguage ?? i18n.language;
   return serverLocale(isLanguagePreference(lng, { allowPseudo: true }) && lng !== SYSTEM_PREFERENCE ? lng : SOURCE_LOCALE);
 }

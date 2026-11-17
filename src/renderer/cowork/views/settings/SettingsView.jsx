@@ -11,6 +11,7 @@ import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError, mindsProbeNotice, probePolicyUnavailableSentence, probeRateLimitedSentence } from '../../lib/providerStatus';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../../lib/usageWarnings';
+import { offersBilling } from '../../lib/billingLinks';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../components/ui';
@@ -19,8 +20,10 @@ import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { stockBackground } from '../../../lib/stockThemeTokens';
-import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { STOCK_GREETING } from '../../../lib/orgBranding';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, mindsRegisterUrl, consoleUrlFor } from '../../../lib/mindsUrls';
 import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
+import { useAccountUser } from '../../hooks/useAccountUser';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
@@ -32,6 +35,9 @@ import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } f
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import OrgBrandingFields from './OrgBrandingFields';
 import BrowserSettingsSection from './BrowserSettingsSection';
+import DecisionModelSettingsGroup from './DecisionModelSettingsGroup';
+import VoiceSettingsSection from './VoiceSettingsSection';
+import { llmViaMindsHub } from '../../lib/voice/voicePrefs';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import i18n, { useTranslation } from '../../../lib/i18n';
@@ -42,6 +48,7 @@ import { providerTestsEnabled } from '../../../lib/providerTests';
 import { visibleProviderCards } from './providerVisibility';
 import { productName } from '../../../lib/deploymentBrand';
 import { STOCK_WORDMARK } from '../../../../shared/product-name';
+import { LanguageHeaderSelect } from './LanguageSection';
 
 // Small icon button that lives inside a text field (clear / reveal / copy).
 // CORE carries the shape; the states add color/background/cursor so no state
@@ -101,7 +108,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger font-semibold">{t('probe.noCredits')}{' '}</span>
-          <button
+          {offersBilling() && <button
             type="button"
             // Recorded before the navigation, so web and
             // desktop count identically. `host.openExternal` is
@@ -111,10 +118,10 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
             // an unhardened window if it ever had run.
             onClick={() => {
               trackBillingOpened('no_credits_notice');
-              return host.openExternal(MINDS_BILLING_URL);
+              return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
             }}
             className={LINK_BTN}
-          >{t('probe.topUp')}</button>
+          >{t('probe.topUp')}</button>}
         </div>
         {byok}
       </div>
@@ -132,7 +139,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger">{body} </span>
-          <button
+          {offersBilling() && <button
             type="button"
             onClick={() => {
               // Literal triggers inline, so the analytics vocabulary sweep sees them.
@@ -140,7 +147,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
               return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
             }}
             className={LINK_BTN}
-          >{t('probe.addFunds')}</button>
+          >{t('probe.addFunds')}</button>}
         </div>
         {byok}
       </div>
@@ -178,6 +185,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
 /** The Budgets tab for this session's organization; credits do not lift a budget. */
 function ViewBudgetsLink({ children }) {
   const budgetsUrl = useBudgetsUrl();
+  if (!offersBilling()) return null;
   return (
     <button
       type="button"
@@ -196,7 +204,7 @@ function ViewBudgetsLink({ children }) {
    names it and gives the way out. A restricted model has no billing way out,
    so its line has no link; a budget-stopped one links to Budgets. Exported
    for the visual fixture. */
-export function UnavailableModelHint({ label, restricted, budgetReached = false }) {
+export function UnavailableModelHint({ label, restricted, budgetReached = false, isBillingOwner = false }) {
   const { t } = useTranslation('settings');
   if (!PLATFORM_UI) {
     return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
@@ -216,6 +224,9 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false 
       </div>
     );
   }
+  if (!offersBilling()) {
+    return <div className="text-[11.5px] text-ink-3">{t('agent.modelNeedsCreditsNoLink', { model: label })}</div>;
+  }
   return (
     <div className="text-[11.5px] text-ink-3">
       {withLink(t('agent.modelNeedsCredits', { model: label, link: LINK_TOKEN }), (
@@ -223,7 +234,7 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false 
           type="button"
           onClick={() => {
             trackBillingOpened('locked_model_hint');
-            return host.openExternal(MINDS_BILLING_URL);
+            return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
           }}
           className={LINK_BTN}
         >{t('agent.topUpBalance')}</button>
@@ -352,6 +363,13 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
       )}
     </div>
   );
+}
+
+// The greeting someone typed, or '' while it is still the server's stock
+// English, so the field shows the translated default as its placeholder.
+function ownGreeting(greeting) {
+  const text = typeof greeting === 'string' ? greeting.trim() : '';
+  return text && text !== STOCK_GREETING ? greeting : '';
 }
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel, disabled }) {
@@ -866,6 +884,15 @@ export default function SettingsView({
   const { settings, setSetting, dirty: settingsDirty } = draft;
   const lastSavedSettings = committedSettings;
   const codeModeAccess = useCodeModeAccess();
+  /* The MindsHub key link names the organization and account it was opened
+     for, as the account menu's console links do (ENG-3274), so the console
+     opens its API keys page on this organization rather than whichever one the
+     browser's own session has active. Whatever the token knows is sent; the
+     other providers' pages are not the console and stay bare. */
+  const accountUser = useAccountUser(isSsoConnected);
+  const getKeyHref = (type) => (type === 'minds-cloud' && GET_KEY_URL[type]
+    ? consoleUrlFor(GET_KEY_URL[type], { organizationId: accountUser?.orgId ?? null, subject: accountUser?.sub ?? null })
+    : GET_KEY_URL[type]);
   const canEditBranding = Boolean(orgBranding?.enabled && orgBranding?.canEdit);
   const visibleNav = navItemsForHost(
     host.isWeb,
@@ -911,7 +938,7 @@ export default function SettingsView({
   // Per-role "refetching model list on dropdown open" flag — drives the
   // trigger's spinner so a still-open dropdown showing possibly-stale
   // locked/unlocked state doesn't read as done loading.
-  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
+  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false, codingAgent: false });
   // Start by distrusting a persisted provider failure. The mount-time check
   // below decides whether it is still real before failure UI is shown. A deployment
   // with testing disabled keeps the stored result without running connectivity tests.
@@ -923,6 +950,24 @@ export default function SettingsView({
   // session — the one open where the wallet state is most likely to be stale.
   const modelOpenState = useRef({});
   const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: -Infinity });
+  // Opening a model picker re-checks the wallet, so a top-up made in the browser unlocks
+  // its models here. The popup opens on the list we hold and reconciles when this lands.
+  const refreshModelsOnOpen = (role, isOpen) => {
+    if (!isOpen || modelRefreshing[role]) return;
+    const openState = modelOpenFor(role);
+    if (performance.now() - openState.refreshedAt < MODEL_REFRESH_TTL_MS) return;
+    setModelRefreshing((m) => ({ ...m, [role]: true }));
+    // Unsequenced against App's refresher; both write the same fresh server answer, so order rarely matters.
+    fetchRecommendedModels({ refresh: true }).then((data) => {
+      // keepOrder: the dropdown is open on this list; an empty response leaves it alone.
+      const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
+      if (!merged) return;
+      for (const [key, value] of Object.entries(merged)) setSettingProp(key, value);
+      openState.refreshedAt = performance.now();
+    }).catch(() => { }).finally(() => {
+      setModelRefreshing((m) => ({ ...m, [role]: false }));
+    });
+  };
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -1020,7 +1065,6 @@ export default function SettingsView({
   const roleProviderType = (role) => canonicalProviderForRole(role);
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   // effectiveRoleProvider already falls back to MindsHub, as the server does.
-  const budgetRowsShown = hasBudgetSettings && !(host.isWeb && PLATFORM_UI);
   const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
@@ -1060,6 +1104,10 @@ export default function SettingsView({
   // adding e.g. an Anthropic key "just works" without touching the
   // custom-model controls. Falls back to MindsHub when nothing is
   // configured so the unconfigured baseline still surfaces a row.
+  // Signed in to a MindsHub server for inference: a keyed MindsHub card,
+  // or the platform's sign-in. Then the decision model is Jev there.
+  const mindsConnected = visibleProviders.some((p) => p.type === 'minds-cloud' && providerConfigured(p))
+    || (PLATFORM_UI && Boolean(isSsoConnected));
   const defaultModeProviderType = (() => {
     const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
     if (minds && providerConfigured(minds)) return 'minds-cloud';
@@ -1570,7 +1618,7 @@ export default function SettingsView({
                             {withLink(t('providers.getKey', { link: LINK_TOKEN }), (
                               <Tooltip content={t('providers.openInBrowser', { url: GET_KEY_URL[p.type].replace(/^https?:\/\//, '') })}>
                                 <a
-                                  href={GET_KEY_URL[p.type]}
+                                  href={getKeyHref(p.type)}
                                   target="_blank"
                                   rel="noreferrer noopener"
                                   className="text-accent"
@@ -1584,7 +1632,7 @@ export default function SettingsView({
                             {t('providers.noAccount')}{' '}
                             <Tooltip content={t('providers.signUpTooltip')}>
                               <a
-                                href={MINDS_REGISTER_URL}
+                                href={mindsRegisterUrl(isElectron ? 'desktop' : 'web')}
                                 target="_blank"
                                 rel="noreferrer noopener"
                                 className="text-accent"
@@ -1897,41 +1945,7 @@ export default function SettingsView({
                                       writeOverride({ providerType: curType, model: next });
                                     }
                                   }}
-                                  onOpenChange={(isOpen) => {
-                                    // Opening re-checks the wallet, so a top-up made in an
-                                    // external tab unlocks its models here without an app restart.
-                                    // The popup opens immediately on the list we already hold and
-                                    // reconciles in place when the response lands, rather than
-                                    // withholding itself until then: the trigger is a click target,
-                                    // and a click that produces nothing for the length of a network
-                                    // round trip reads as a broken control. Briefly showing a
-                                    // model as locked that a top-up has just unlocked is safe —
-                                    // this list is an affordance, not the authority. Auth decides
-                                    // at request time, so a stale row can mislead for a moment but
-                                    // can never let a turn through that shouldn't run.
-                                    if (!isOpen) return;
-                                    const openState = modelOpenFor(role);
-                                    if (modelRefreshing[role]) return;
-                                    // Don't re-pay the round trip for a re-open moments later.
-                                    if (performance.now() - openState.refreshedAt < MODEL_REFRESH_TTL_MS) return;
-                                    setModelRefreshing((m) => ({ ...m, [role]: true }));
-                                    fetchRecommendedModels({ refresh: true }).then((data) => {
-                                      // Same merge rule as the mount-time load: an empty list or
-                                      // map in the response leaves what we have alone. The
-                                      // endpoint answers 200 with empty buckets when the MindsHub
-                                      // fetch itself failed, and assigning those straight through
-                                      // would empty the dropdown the user just clicked (for every
-                                      // role — the keys are shared) until the app restarts.
-                                      // keepOrder: the dropdown is open on the list we hold
-                                      // when this lands; a reordered list jumps under the cursor.
-                                      const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
-                                      if (!merged) return;
-                                      for (const [key, value] of Object.entries(merged)) setSettingProp(key, value);
-                                      openState.refreshedAt = performance.now();
-                                    }).catch(() => { }).finally(() => {
-                                      setModelRefreshing((m) => ({ ...m, [role]: false }));
-                                    });
-                                  }}
+                                  onOpenChange={(isOpen) => refreshModelsOnOpen(role, isOpen)}
                                   loading={modelRefreshing[role]}
                                   title={t('agent.modelHint', { role })}
                                   options={modelOptions}
@@ -1966,6 +1980,7 @@ export default function SettingsView({
                                   label={displayModelLabel(curModel, settings.modelLabels || {})}
                                   restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
                                   budgetReached={isModelBudgetReached(modelEnabled, settings.modelDisabledReasons, curModel)}
+                                  isBillingOwner={isBillingOwner}
                                 />
                               )}
                             </>);
@@ -2008,11 +2023,27 @@ export default function SettingsView({
                     {showRouterRoleRow(settings.routing, settings.gate)
                       && RoleRow({ role: 'router', label: t('agent.roles.router') })}
                     {RoleRow({ role: 'coding', label: t('agent.roles.coding') })}
+                    {/* The decision model: Jev when signed in to MindsHub for
+                        inference, else the organization's own endpoint, for
+                        whoever may set it (routing.canSetDecisionModel). */}
+                    <DecisionModelSettingsGroup
+                      embedded
+                      settings={settings}
+                      setSetting={setSetting}
+                      agentLabel={agentLabel || 'Anton'}
+                      mindsConnected={mindsConnected}
+                    />
                   </>
                 );
               })()}
             </SettingsGroup>
           </div>}
+          {/* Without the Model router card, the decision model is a group of its own. */}
+          {!PLATFORM_UI && (
+            <div className="order-3">
+              <DecisionModelSettingsGroup settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} />
+            </div>
+          )}
         </div>
 
         <SettingsGroup title={t('memory.title')}>
@@ -2053,14 +2084,12 @@ export default function SettingsView({
 
         <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
 
-        {/* Not on hosted web yet: its turns run in a pod that doesn't receive
-            these limits until the web time limit and the PR that sends them
-            ship, so the switch and values here would not be what a hosted web
-            turn runs under. Self-hosted web runs turns in its own server, where
-            they apply. The Jev switch has no such limit, so it keeps the group. */}
-        {(budgetRowsShown || jevSwitchShown) && (
+        {/* Voice calls run on MindsHub: only when it is the LLM provider. */}
+        {llmViaMindsHub(settings) && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />}
+
+        {(hasBudgetSettings || jevSwitchShown) && (
           <SettingsGroup title={t('advanced.title')} collapsible defaultCollapsed>
-            {budgetRowsShown && <>
+            {hasBudgetSettings && <>
             {hasLimitsSwitch && (
               <Section
                 title={t('advanced.limits.title')}
@@ -2306,6 +2335,8 @@ export default function SettingsView({
       available={codeModeAccess.available}
       enabled={codeModeAccess.enabled}
       onEnabledChange={codeModeAccess.setEnabled}
+      onModelMenuOpenChange={(isOpen) => refreshModelsOnOpen('codingAgent', isOpen)}
+      modelRefreshing={modelRefreshing.codingAgent}
     />
   );
 
@@ -2518,8 +2549,9 @@ export default function SettingsView({
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
-                value={orgLocks.greeting ? look.greeting : settings.greeting}
+                value={orgLocks.greeting ? look.greeting : ownGreeting(settings.greeting)}
                 onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
+                placeholder={t('shell:home.greetingFallback')}
                 disabled={orgLocks.greeting}
                 title={t('appearance.greeting.hint')}
                 ariaLabel={t('appearance.greeting.ariaLabel')}
@@ -2831,7 +2863,8 @@ export default function SettingsView({
           <div className="settings-mobile__title" id="settings-mobile-title">
             {activeItem ? t(`nav.items.${activeItem.id}`) : t('nav.title')}
           </div>
-          <span className="settings-mobile__spacer" aria-hidden="true" />
+          {/* Same language picker as the desktop Settings header (ENG-4149). */}
+          <div className="shrink-0"><LanguageHeaderSelect /></div>
         </header>
         <div className="settings-mobile__body scroll-clean">
           {inDetail ? (

@@ -1,0 +1,5 @@
+CAPACITOR_DEBUG = true
+
+// Marketing version + build number, written from package.json by
+// scripts/cap-copy-before.mjs (Release uses it as its base config directly).
+#include "App/Version.xcconfig"

@@ -311,6 +311,18 @@ describe('Settings → Branding, its own page for org admins', () => {
 });
 
 describe('Settings → Appearance: Your style, then Display', () => {
+  it("leaves the greeting field empty while it is the server's stock English, with the default as placeholder", () => {
+    renderSettings({ settings: { greeting: "Let's knock something off your list" }, look: { greeting: null, lockedByOrg: LOCKS_NONE } });
+    const field = screen.getByLabelText('Greeting text');
+    expect(field).toHaveValue('');
+    expect(field).toHaveAttribute('placeholder', "Let's knock something off your list");
+  });
+
+  it('shows a greeting someone typed in the field', () => {
+    renderSettings({ look: { greeting: 'Mine', lockedByOrg: LOCKS_NONE } });
+    expect(screen.getByLabelText('Greeting text')).toHaveValue('Mine');
+  });
+
   it('has Your style then Display, each with a heading, and the override line', () => {
     renderSettings({ orgBranding: branding({ canEdit: false }), hostedMindsHub: true, look: { greeting: null, lockedByOrg: LOCKS_NONE } });
     const stylePart = group(APPEARANCE_ANCHORS.style);

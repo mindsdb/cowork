@@ -22,6 +22,7 @@ import { Alert, Button, OutsidePressLayer, Spinner, Tooltip } from '../../ui';
 import { unrecordedLinkWarning } from './linkLeftLive';
 import i18n, { useTranslation } from '../../../../lib/i18n';
 import { copyText } from '../../../lib/clipboard';
+import { reportLinkCopied, reportShareOpened } from '../../../lib/artifactShareAnalytics';
 import {
   AccessChooser,
   accessDraftFromArtifact,
@@ -64,6 +65,13 @@ function draftDiffers(draft, current) {
 
 // ── Small shared bits ───────────────────────────────────────────────────
 
+// The panel's middle section: it shrinks and scrolls first when the popup hits
+// its height cap, so the header and the footer's buttons stay on screen.
+const SCROLL_BODY = 'min-h-0 overflow-y-auto overscroll-contain';
+// Notices sit by the footer so they stay in view, and may shrink too: a long
+// warning next to an error must not push the footer out of the popup.
+const ALERT_ROW = 'mx-4 mb-3 min-h-0 overflow-y-auto';
+
 function PanelHeader({ title }) {
   // .s-h3 already sets color:var(--ink); it does not set padding/border, so
   // those move safely to utilities. Directional border zeroes its off-axis
@@ -102,12 +110,16 @@ function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, chil
   );
 }
 
-function UrlField({ url }) {
+function UrlField({ url, onCopied }) {
   const { t } = useTranslation('artifacts');
   const [copied, setCopied] = useState(false);
   const display = (url || '').replace(/^https?:\/\//, '');
   const onCopy = async () => {
-    if (await copyText(url)) { setCopied(true); setTimeout(() => setCopied(false), 1400); }
+    if (await copyText(url)) {
+      onCopied?.();
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    }
   };
   return (
     <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-[6px] pb-0 pl-[10px]">
@@ -206,14 +218,14 @@ function NotifyConfirm({ added, sharing, orgName, busy, choice, onDecide }) {
 
 function ErrorRow({ message }) {
   if (!message) return null;
-  return <Alert variant="danger" className="mx-4 mb-3">{message}</Alert>;
+  return <Alert variant="danger" className={ALERT_ROW}>{message}</Alert>;
 }
 
 /* What the last action left live, or a warning that this link has no owner on
    record (linkLeftLive.js). */
 function NoticeRow({ message }) {
   if (!message) return null;
-  return <Alert variant="warning" className="mx-4 mb-3">{message}</Alert>;
+  return <Alert variant="warning" className={ALERT_ROW}>{message}</Alert>;
 }
 
 // ── Version history ───────────────────────────────────────────────────────
@@ -444,6 +456,16 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
             if (!pub.busy) setNotifyPrompt(null);
             return;
           }
+          if (v && !open) {
+            reportShareOpened(pub.artifact, {
+              entry: 'viewer',
+              // Unknown until the artifact's access has been read, whatever the
+              // card's default mode says.
+              isShared: shareState.kind === 'unknown' || (isPublished && !pub.accessLoaded)
+                ? null
+                : isSharedWithSomeone,
+            });
+          }
           setOpen(v);
         }}
       >
@@ -484,12 +506,17 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
               background: 'var(--surface)', borderRadius: 14,
               boxShadow: 'var(--sh-popup)', overflow: 'hidden',
               fontFamily: FONT_BODY, outline: 'none',
+              // Never taller than the space Base UI measures beside the
+              // trigger: the body scrolls, the header and footer stay put.
+              // 80vh covers the frames before the Positioner first measures.
+              maxHeight: 'var(--available-height, 80vh)',
+              display: 'flex', flexDirection: 'column',
             }}>
               {/* NOT PUBLISHED — Share to the Web */}
               {!isPublished && (
                 <>
                   <PanelHeader title={t('publish.shareToWeb')} />
-                  <div className="py-3 px-4">
+                  <div className={`py-3 px-4 ${SCROLL_BODY}`} data-testid="publish-menu-body">
                     <SectionLabel>{t('publish.whoCanAccess')}</SectionLabel>
                     {sharingSettingsStatus || (
                       <>
@@ -519,85 +546,87 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                       is published but not shared. */}
                   <PanelHeader title={isSharedWithSomeone ? t('publish.shared') : t('publish.share')} />
   
-                  <div className="py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
-                    <SectionLabel>{t('publish.websiteUrl')}</SectionLabel>
-                    <UrlField url={pub.publishedUrl} />
-                  </div>
+                  <div className={SCROLL_BODY} data-testid="publish-menu-body">
+                    <div className="py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
+                      <SectionLabel>{t('publish.websiteUrl')}</SectionLabel>
+                      <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry: 'viewer' })} />
+                    </div>
+
+                    <div className="py-3 px-4">
+                      {view === 'summary' && (
+                        <>
+                          <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.change')}</LinkButton>}>
+                            {t('publish.whoCanAccess')}
+                          </SectionLabel>
+                          {accessLoadStatus || <AccessSummaryCard pub={pub} sharing={sharing} orgName={orgName} />}
+                          {pub.accessMode === 'password' && (
+                            <div className="mt-2 flex justify-end">
+                              <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>{t('publish.changePassword')}</LinkButton>
+                            </div>
+                          )}
+                          {!orgMode && pub.versions.length > 1 && (
+                            <div className="mt-3">
+                              <LinkButton onClick={() => setView('versions')}>{t('publish.versionHistoryCount', { count: pub.versions.length })}</LinkButton>
+                            </div>
+                          )}
+                        </>
+                      )}
   
-                  <div className="py-3 px-4">
-                    {view === 'summary' && (
-                      <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.change')}</LinkButton>}>
-                          {t('publish.whoCanAccess')}
-                        </SectionLabel>
-                        {accessLoadStatus || <AccessSummaryCard pub={pub} sharing={sharing} orgName={orgName} />}
-                        {pub.accessMode === 'password' && (
-                          <div className="mt-2 flex justify-end">
-                            <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>{t('publish.changePassword')}</LinkButton>
+                      {view === 'access' && (
+                        <>
+                          <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setNotifyPrompt(null); setView('summary'); }}>{t('publish.dismiss')}</LinkButton>}>
+                            {t('publish.whoCanAccess')}
+                          </SectionLabel>
+                          {sharingSettingsStatus || accessLoadStatus || (
+                            <>
+                              {permissionsNotice}
+                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} />
+                            </>
+                          )}
+                        </>
+                      )}
+  
+                      {view === 'password' && (
+                        <>
+                          <SectionLabel action={<LinkButton onClick={() => setView('summary')}>{t('publish.dismiss')}</LinkButton>}>
+                            {t('publish.changePassword')}
+                          </SectionLabel>
+                          <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-2 pb-0 pl-[10px]">
+                            <input
+                              type={pwd.reveal ? 'text' : 'password'} value={pwd.value}
+                              onChange={(e) => setPwd((p) => ({ ...p, value: e.target.value }))}
+                              onKeyDown={(e) => { if (e.key === 'Enter') doSavePassword(); }}
+                              autoFocus placeholder={t('publish.newPassword')}
+                              className="flex-1 min-w-0 bg-transparent border-0 [outline:none] text-ink font-[family-name:var(--font-mono)] text-[13px] py-[9px] px-0"
+                            />
+                            <Tooltip content={pwd.reveal ? t('publish.hide') : t('publish.show')}>
+                              <button type="button" onClick={() => setPwd((p) => ({ ...p, reveal: !p.reveal }))}
+                                aria-label={pwd.reveal ? t('publish.hidePassword') : t('publish.showPassword')}
+                                className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
+                                {pwd.reveal ? Ico.eyeOff(16) : Ico.eye(16)}
+                              </button>
+                            </Tooltip>
                           </div>
-                        )}
-                        {!orgMode && pub.versions.length > 1 && (
-                          <div className="mt-3">
-                            <LinkButton onClick={() => setView('versions')}>{t('publish.versionHistoryCount', { count: pub.versions.length })}</LinkButton>
-                          </div>
-                        )}
-                      </>
-                    )}
+                        </>
+                      )}
   
-                    {view === 'access' && (
-                      <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setNotifyPrompt(null); setView('summary'); }}>{t('publish.dismiss')}</LinkButton>}>
-                          {t('publish.whoCanAccess')}
-                        </SectionLabel>
-                        {sharingSettingsStatus || accessLoadStatus || (
-                          <>
-                            {permissionsNotice}
-                            <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} />
-                          </>
-                        )}
-                      </>
-                    )}
-  
-                    {view === 'password' && (
-                      <>
-                        <SectionLabel action={<LinkButton onClick={() => setView('summary')}>{t('publish.dismiss')}</LinkButton>}>
-                          {t('publish.changePassword')}
-                        </SectionLabel>
-                        <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-2 pb-0 pl-[10px]">
-                          <input
-                            type={pwd.reveal ? 'text' : 'password'} value={pwd.value}
-                            onChange={(e) => setPwd((p) => ({ ...p, value: e.target.value }))}
-                            onKeyDown={(e) => { if (e.key === 'Enter') doSavePassword(); }}
-                            autoFocus placeholder={t('publish.newPassword')}
-                            className="flex-1 min-w-0 bg-transparent border-0 [outline:none] text-ink font-[family-name:var(--font-mono)] text-[13px] py-[9px] px-0"
+                      {view === 'versions' && (
+                        <>
+                          <SectionLabel action={<LinkButton onClick={() => setView('summary')}>{t('publish.dismiss')}</LinkButton>}>
+                            {t('publish.versionHistory')}
+                          </SectionLabel>
+                          <VersionList
+                            versions={pub.versions}
+                            activatingMd5={activatingMd5}
+                            busy={pub.busy}
+                            onActivate={doActivate}
                           />
-                          <Tooltip content={pwd.reveal ? t('publish.hide') : t('publish.show')}>
-                            <button type="button" onClick={() => setPwd((p) => ({ ...p, reveal: !p.reveal }))}
-                              aria-label={pwd.reveal ? t('publish.hidePassword') : t('publish.showPassword')}
-                              className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
-                              {pwd.reveal ? Ico.eyeOff(16) : Ico.eye(16)}
-                            </button>
-                          </Tooltip>
-                        </div>
-                      </>
-                    )}
-  
-                    {view === 'versions' && (
-                      <>
-                        <SectionLabel action={<LinkButton onClick={() => setView('summary')}>{t('publish.dismiss')}</LinkButton>}>
-                          {t('publish.versionHistory')}
-                        </SectionLabel>
-                        <VersionList
-                          versions={pub.versions}
-                          activatingMd5={activatingMd5}
-                          busy={pub.busy}
-                          onActivate={doActivate}
-                        />
-                        <p className="mt-[10px] mx-[2px] mb-0 font-body text-xs text-ink-3 leading-[1.4]">
-                          {t('publish.versionsNote')}
-                        </p>
-                      </>
-                    )}
+                          <p className="mt-[10px] mx-[2px] mb-0 font-body text-xs text-ink-3 leading-[1.4]">
+                            {t('publish.versionsNote')}
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </div>
   
                   <NoticeRow message={pub.notice || (pub.linkOwnerRecorded === false ? unrecordedLinkWarning() : '')} />

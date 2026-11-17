@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { withUiLocale } from './api';
 import { changeLocale } from '../lib/i18n';
 
-/* ENG-4149: while the language picker is on, every server request names the
+/* ENG-4149: every server request names the
    UI language in the app's own header, so cowork-server can tell Anton which
    language to fall back to. Never Accept-Language: browsers send that on
    their own from the OS language. */
@@ -50,15 +50,8 @@ describe('withUiLocale', () => {
     expect(headers.get('Accept')).toBe('text/event-stream');
   });
 
-  it('sends nothing while the language picker is off', () => {
+  it('sends the language in production builds too', () => {
     vi.stubEnv('DEV', false);
-    const options = { headers: { 'Content-Type': 'application/json' } };
-    expect(withUiLocale(options)).toBe(options);
-  });
-
-  it('sends the language once the preview is turned on', () => {
-    vi.stubEnv('DEV', false);
-    window.localStorage.setItem('cowork.i18nPreview', '1');
     expect(withUiLocale({})).toEqual({ headers: { 'X-Cowork-UI-Locale': 'en' } });
   });
 });

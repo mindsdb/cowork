@@ -15,8 +15,7 @@ const PROJECTS = [
   { name: 'ops', display_name: 'Ops' },
 ];
 
-// Two runs of one schedule: r1 carries its scheduledId, r2 is only known
-// through the runs index (older records saved before the field existed).
+// Two runs of one schedule, each carrying its scheduledId.
 const TASKS = [
   { id: 't1', title: 'Alpha report', projectName: 'metrics', updatedAt: '2026-09-28T10:00:00Z' },
   { id: 't2', title: 'Beta notes', projectName: 'ops', updatedAt: '2026-09-30T10:00:00Z' },

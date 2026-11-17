@@ -24,6 +24,12 @@
       "readyTimeoutMs": "プレビューに時間がかかりすぎました。プレビューの上限である{seconds}秒以内に開始されませんでした。",
       "progressTimeoutMs": "プレビューに時間がかかりすぎました。{seconds}秒間（プレビューの上限）進行がありませんでした。"
     },
+    "truncatedMobile": {
+      "xlsx": "各シートの最大{rows, number}行・{columns, number}列を表示しています。",
+      "pptx": "{count, plural, other {最初の#枚のスライドを表示しています。}}",
+      "pdf": "最初の{pages, number}ページを表示しています。",
+      "docx": "このドキュメントの一部を表示しています。"
+    },
     "truncated": {
       "xlsx": "各シートの最大{rows, number}行・{columns, number}列を表示しています。シート全体は{action, select, download {ダウンロード} other {「開く」}}で確認できます。",
       "pptx": "{count, plural, other {最初の#枚のスライドを表示しています。}}すべてのスライドは{action, select, download {ダウンロード} other {「開く」}}で確認できます。",
@@ -161,7 +167,7 @@
   "modeTabs": {
     "ariaLabel": "アーティファクトのモード",
     "preview": "プレビュー",
-    "edit": "編集",
+    "source": "ソース",
     "review": "レビュー",
     "editDisabled": "編集できるのはアーティファクトのオーナーのみです",
     "reviewDisabled": "このアーティファクトではレビューを利用できません",
@@ -335,7 +341,12 @@
     "reported": "{count, plural, other {プレビューで#件のエラーが報告されました}}",
     "line": "{line}行目",
     "title": "プレビューのエラー",
-    "ariaLabel": "プレビューのエラー、{count}件"
+    "ariaLabel": "プレビューのエラー、{count}件",
+    "kind": {
+      "rejection": "処理されていない Promise の拒否",
+      "console": "コンソールエラー",
+      "http": "サーバーエラー"
+    }
   },
   "liveAppPreview": {
     "failure": "このアプリに接続できませんでした。再読み込みしてもう一度お試しいただくか、ブラウザで開いてください。",
@@ -441,7 +452,8 @@
     "discardMessage": "エージェントの変更はこのアーティファクトの履歴に残りますが、提案は終了し、適用されません。",
     "discardFailed": "その提案を破棄できませんでした。",
     "deleteTitle": "アーティファクトを削除しますか？",
-    "deleteMessage": "「{title}」は完全に削除されます。この操作は取り消せません。"
+    "deleteMessage": "「{title}」は完全に削除されます。この操作は取り消せません。",
+    "changedElsewhere": "このアーティファクトは変更されました。再読み込み"
   },
   "artifactsView": {
     "sort": {
@@ -630,5 +642,113 @@
         "prompt": "メモアプリに新しく追加されたダークモードの告知文を、3つのバージョンで書いてください。280文字以内のツイート、親しみやすい120語以内のメール、50語以内の変更履歴エントリです。それぞれのチャネルにふさわしい文体にしてください。"
       }
     }
+  },
+  "quickEdit": {
+    "ariaLabel": "クイック編集",
+    "inputLabel": "変更を依頼",
+    "placeholder": "変更を依頼…",
+    "send": "送信",
+    "route": {
+      "edit": "直接編集しています…",
+      "agent": "エージェントに引き継いでいます…"
+    },
+    "stage": {
+      "routing": "進め方を判断しています…",
+      "reading": "アーティファクトを読み込んでいます…",
+      "writing": "変更を書き込んでいます…",
+      "checking": "プレビューを確認しています…",
+      "fixing": "見つかった問題を修正しています…"
+    },
+    "handingOff": "チャットに送信しています…",
+    "applied": "完了しました。",
+    "undo": "元に戻す",
+    "undoing": "元に戻しています…",
+    "undone": "元に戻しました。",
+    "noop": "変更はありませんでした。",
+    "failed": "この変更はここでは行えませんでした。",
+    "askAgent": "代わりにエージェントに依頼",
+    "errors": {
+      "stale": "開いた後にこのアーティファクトが変更されました。再読み込みしたので、もう一度お試しください。",
+      "busy": "このアーティファクトへの別の変更がまだ実行中です。完了してからもう一度お試しください。",
+      "failed": "変更を行えませんでした。",
+      "stopped": "変更は完了前に停止しました。",
+      "chatFailed": "チャットで続行できませんでした。チャットからもう一度お試しください。",
+      "filesChanged": "この変更で触れたファイルがその後さらに変更されたため、ここでは元に戻せません。",
+      "filesChangedNamed": "{paths} がその後さらに変更されたため、この変更はここでは元に戻せません。",
+      "alreadyUndone": "この変更はすでに元に戻されています。",
+      "repairPending": "このアーティファクトに対するエージェントの提案が判断待ちです。先に承認または破棄してください。",
+      "undoGone": "この変更はここではもう元に戻せません。履歴から戻してください。"
+    },
+    "placeholderChat": "このアーティファクトについて質問または変更を依頼…",
+    "openInChat": "チャットで開く",
+    "needsAnswer": "チャットで回答が必要です",
+    "workingInChat": "チャットで処理中…",
+    "sentToChat": "チャットに送信しました。",
+    "chatStopped": "チャットのターンは回答前に停止しました。",
+    "unsavedConfirm": {
+      "title": "未保存の変更があります。送信する前に保存しますか？",
+      "save": "保存して送信",
+      "discard": "破棄して送信",
+      "cancel": "キャンセル",
+      "saveFailed": "変更を保存できなかったため、何も送信されませんでした。"
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "統計",
+      "hide": "統計を非表示"
+    },
+    "title": "統計",
+    "close": "統計パネルを閉じる",
+    "loading": "統計を読み込み中",
+    "retry": "再試行",
+    "trackViews": "閲覧数をカウント",
+    "trackingOff": "カウントはオフです。オンにすると閲覧数のカウントが始まります。",
+    "metrics": {
+      "viewsInPeriod": "閲覧数（30日間）",
+      "uniqueViewers": "ユニーク閲覧者（30日間）",
+      "totalViews": "総閲覧数",
+      "lastViewed": "最終閲覧"
+    },
+    "daysInUtc": "日付は UTC",
+    "chartLabel": "1日あたりの閲覧数",
+    "viewers": {
+      "email": "メール",
+      "lastSeen": "最終閲覧",
+      "restrictedOnly": "閲覧者の名前は、共有が制限されている場合にのみ記録されます。"
+    },
+    "noViews": "まだ閲覧はありません",
+    "errors": {
+      "otherAccount": "このアカウントでは統計を利用できません。",
+      "unavailable": "このアーティファクトでは統計を利用できません。",
+      "reconnect": "統計を表示するには MindsHub に再接続してください。",
+      "temporarilyUnavailable": "統計は一時的に利用できません。",
+      "loadFailed": "統計を読み込めませんでした。"
+    }
+  },
+  "refPill": {
+    "open": "{title}を開く"
+  },
+  "quickEditCard": {
+    "title": "ビューアーで編集",
+    "count": "{count, plural, other {#件の変更}}",
+    "undone": "取り消し済み",
+    "showAll": "{count, plural, other {すべて表示（#件）}}",
+    "showFewer": "表示を減らす"
+  },
+  "layers": {
+    "ariaLabel": "ビューアーのレイヤー",
+    "source": "ライブ編集",
+    "comments": "コメント",
+    "sourceOffPrompt": {
+      "title": "ライブ編集をオフにしますか？",
+      "message": "ライブ編集の未保存の変更は破棄されます。",
+      "confirmLabel": "変更を破棄"
+    }
+  },
+  "address": {
+    "draft": "下書き",
+    "copy": "アドレスをコピー",
+    "copied": "コピーしました"
   }
 }

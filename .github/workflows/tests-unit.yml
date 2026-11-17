@@ -118,7 +118,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest # unit/component only — no native/Electron dep
-    timeout-minutes: 15
+    # 560 to 800 s on a typical runner; a slow one passes 900 s.
+    timeout-minutes: 25
     env:
       COWORK_SERVER_CHANNEL: ''
       ANTHROPIC_API_KEY: ''

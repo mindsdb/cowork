@@ -12,11 +12,16 @@
       "allowanceStop": {
         "noGrant": "{noGrant} Il tuo saldo è esaurito: aggiungi fondi per continuare.",
         "withTime": "Hai esaurito la quota gratuita di MindsHub Air e il tuo saldo è a zero. Aggiungi fondi per continuare a lavorare, oppure attendi che la quota si rinnovi alle {time}.",
-        "noTime": "Hai esaurito la quota gratuita di MindsHub Air e il tuo saldo è a zero. Aggiungi fondi per continuare a lavorare."
+        "noTime": "Hai esaurito la quota gratuita di MindsHub Air e il tuo saldo è a zero. Aggiungi fondi per continuare a lavorare.",
+        "noTimeMobile": "Hai esaurito la quota gratuita di MindsHub Air e il tuo saldo è a zero.",
+        "noGrantMobile": "{noGrant} Il tuo saldo è a zero.",
+        "withTimeMobile": "Hai esaurito la quota gratuita di MindsHub Air e il tuo saldo è a zero. Si rinnova alle {time}."
       },
       "freeServingPaused": {
         "until": "MindsHub Air gratuito è sospeso per tutti fino alle {until}. La tua quota non viene consumata. Aggiungi fondi per continuare a lavorare subito.",
-        "dailyReset": "MindsHub Air gratuito è sospeso per tutti fino al rinnovo del budget giornaliero. La tua quota non viene consumata. Aggiungi fondi per continuare a lavorare subito."
+        "dailyReset": "MindsHub Air gratuito è sospeso per tutti fino al rinnovo del budget giornaliero. La tua quota non viene consumata. Aggiungi fondi per continuare a lavorare subito.",
+        "untilMobile": "MindsHub Air gratuito è sospeso per tutti fino alle {until}. La tua quota non viene consumata.",
+        "dailyResetMobile": "MindsHub Air gratuito è sospeso per tutti fino al rinnovo del budget giornaliero. La tua quota non viene consumata."
       },
       "resting": {
         "resetsAt": "Si rinnova alle {time}.",
@@ -26,13 +31,17 @@
       "percentLeft": "Ti resta il {percent} della quota gratuita",
       "autoTopUpFailed": {
         "title": "Ricarica automatica non riuscita",
-        "body": "Non è stato possibile addebitare la tua carta. Aggiungi fondi o aggiorna il metodo di pagamento."
+        "body": "Non è stato possibile addebitare la tua carta. Aggiungi fondi o aggiorna il metodo di pagamento.",
+        "bodyMobile": "Non è stato possibile addebitare la tua carta."
       },
       "balanceEmpty": {
         "title": "Saldo esaurito",
         "body": "Aggiungi fondi per avviare un’altra attività.",
         "freeUsedToo": "Hai esaurito anche la quota gratuita. Aggiungi fondi o attendi che si rinnovi.",
-        "freeUsedTooWithTime": "Hai esaurito anche la quota gratuita. Aggiungi fondi o attendi che si rinnovi alle {time}."
+        "freeUsedTooWithTime": "Hai esaurito anche la quota gratuita. Aggiungi fondi o attendi che si rinnovi alle {time}.",
+        "freeUsedTooMobile": "Hai esaurito anche la quota gratuita.",
+        "freeUsedTooWithTimeMobile": "Hai esaurito anche la quota gratuita. Si rinnova alle {time}.",
+        "bodyMobile": "Il tuo saldo è esaurito. I modelli a pagamento non sono disponibili."
       },
       "balanceLow": {
         "title": "Saldo in esaurimento",
@@ -40,7 +49,9 @@
         "autoCovers": "Restano {usd}. Ci penserà la ricarica automatica.",
         "autoPending": "Restano {usd}. La ricarica automatica è in attesa della tua banca.",
         "autoCapReached": "Restano {usd} e la ricarica automatica è sospesa per non superare il limite mensile. Aggiungi fondi per continuare.",
-        "body": "Restano {usd}. Aggiungi fondi o attiva la ricarica automatica."
+        "body": "Restano {usd}. Aggiungi fondi o attiva la ricarica automatica.",
+        "bodyMobile": "Restano {usd}.",
+        "autoCapReachedMobile": "Restano {usd} e la ricarica automatica è sospesa per non superare il limite mensile."
       },
       "freeUsed": {
         "title": "Quota gratuita esaurita",
@@ -95,7 +106,8 @@
         "walletEmpty": "Nessun credito disponibile. Aggiungi fondi per usare MindsHub.",
         "allowanceExhausted": "Nessun token gratuito di MindsHub Air disponibile e il saldo è a zero.",
         "freeAirPaused": "MindsHub Air gratuito è sospeso al momento.",
-        "budgetExceeded": "Il budget della tua organizzazione è esaurito."
+        "budgetExceeded": "Il budget della tua organizzazione è esaurito.",
+        "walletEmptyMobile": "Nessun credito disponibile."
       },
       "missingApiKey": "Aggiungi una chiave API a destra.",
       "missingBaseUrl": "Aggiungi un URL di base a destra.",
@@ -223,7 +235,9 @@
         "oneWorking": "Potrai continuare quando {name} avrà finito.",
         "bothContinued": "Entrambi i lati sono proseguiti come attività, quindi questo confronto non accetta altri messaggi.",
         "sideContinued": "{name} è proseguito come attività. Invia solo a {other}.",
-        "sideWorking": "{name} è ancora al lavoro. Invia solo a {other}, oppure attendi."
+        "sideWorking": "{name} è ancora al lavoro. Invia solo a {other}, oppure attendi.",
+        "outOfCreditsBothMobile": "Entrambi i modelli si sono fermati perché il saldo è esaurito.",
+        "outOfCreditsOneMobile": "{name} si è fermato perché il saldo è esaurito."
       },
       "twiceTheCredits": "Un confronto esegue due modelli, quindi consuma circa il doppio dei crediti di una singola attività.",
       "turnsTitle": "{nameA}: {countA, plural, one {# turno} other {# turni}} · {nameB}: {countB, plural, one {# turno} other {# turni}}",
@@ -377,6 +391,14 @@
     "browserSession": {
       "opened": "Browser aperto"
     },
+    "browserSteps": {
+      "open": "Apertura di {site}",
+      "read": "Lettura della pagina",
+      "look": "Osservazione della pagina",
+      "act": "Lavoro sulla pagina",
+      "handOver": "Ti aspetta nel browser",
+      "generic": "Uso del browser"
+    },
     "figureSources": {
       "noSource": "Nessuna fonte: nessun passaggio di questa risposta ha restituito questo dato. Verificalo prima di usarlo.",
       "repeated": "Ripreso da una risposta precedente",
@@ -494,7 +516,8 @@
     },
     "antonErrors": {
       "noProvider": "Nessun provider LLM è collegato a questo account. Inizia gratis con MindsHub o aggiungi il tuo provider in Impostazioni.",
-      "couldNotComplete": "Impossibile completare questa attività."
+      "couldNotComplete": "Impossibile completare questa attività.",
+      "noProviderMobile": "Collega il tuo provider in Impostazioni."
     },
     "displayToggle": {
       "switchStyle": "Passa allo stile {style}"
@@ -543,6 +566,7 @@
     "missed": "Mancata",
     "lastFailed": "Ultima non riuscita",
     "lastRunFailed": "Ultima esecuzione non riuscita",
+    "stoppedAtLimit": "Interrotta a un limite",
     "done": "Completata",
     "active": "Attiva"
   },
@@ -572,11 +596,14 @@
     "autoPausedNote": "«Riprendi» riattiva la pianificazione e può recuperare un’esecuzione in sospeso. «Esegui ora» la esegue una volta, subito.",
     "partialTitle": "L’ultima esecuzione si è interrotta a metà",
     "partialNote": "Alcune delle sue azioni potrebbero essere state completate. Controlla l’esecuzione prima di ripeterla.",
+    "limitTitle": "L’ultima esecuzione si è interrotta a un limite",
+    "limitNote": "Parte del lavoro potrebbe essere stata completata. Controlla l’esecuzione prima di ripeterla.",
     "failedTitle": "L’ultima esecuzione non è riuscita",
     "resume": "Riprendi",
     "runNow": "Esegui ora",
     "reviewRun": "Controlla esecuzione",
-    "runAgain": "Esegui di nuovo"
+    "runAgain": "Esegui di nuovo",
+    "openSettings": "Apri Impostazioni"
   },
   "scheduleRunNotice": {
     "untitled": "Attività pianificata",
@@ -627,6 +654,8 @@
     "name": "Nome",
     "namePlaceholder": "Ricavato dal prompt",
     "project": "Progetto",
+    "model": "Modello",
+    "accountDefault": "Predefinito dell’account",
     "cancel": "Annulla",
     "saveAndRunOnce": "Salva ed esegui una volta",
     "saving": "Salvataggio…",
@@ -666,7 +695,8 @@
       "running": "In esecuzione",
       "success": "Riuscita",
       "failed": "Non riuscita",
-      "cancelled": "Interrotta"
+      "cancelled": "Interrotta",
+      "stoppedAtLimit": "Interrotta a un limite"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "In esecuzione ora",
@@ -682,6 +712,8 @@
     "runNow": "Esegui ora",
     "scheduleAriaLabel": "Pianificazione",
     "accountDefaultModel": "Modello predefinito dell’account",
+    "ranOnDefaultModel": "Modello predefinito",
+    "modelUnavailable": "{model} non è disponibile, quindi questa esecuzione ha usato il tuo modello predefinito.",
     "succeededCount": "{total, plural, one {{succeeded} esecuzione riuscita su #} other {{succeeded} esecuzioni riuscite su #}}",
     "promptAriaLabel": "Prompt",
     "runs": "Esecuzioni",

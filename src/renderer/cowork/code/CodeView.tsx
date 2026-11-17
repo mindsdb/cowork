@@ -46,7 +46,9 @@ import { isActiveStatus, promptHistory } from './presentation';
 import { useComposerNotice } from './useComposerNotice';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
 import { trackBillingOpened } from '../lib/analytics';
-import { MINDS_BILLING_URL, MINDS_BUDGETS_URL, consoleUrlFor } from '../../lib/mindsUrls';
+import { MINDS_BUDGETS_URL, consoleUrlFor } from '../../lib/mindsUrls';
+import { USAGE_ACTIONS, usageActionUrl } from '../lib/usageWarnings';
+import { useHubUsageContext } from '../lib/hubUsageContext';
 import { openCodeExternalUrl } from './shellLinks';
 import { useTranslation } from '../../lib/i18n';
 import './code.css';
@@ -114,6 +116,7 @@ export default function CodeView({
   taskActions?: CodeTaskListActions;
 }) {
   const { t } = useTranslation('code');
+  const isBillingOwner = !!useHubUsageContext()?.usage?.isBillingOwner;
   const [filesOpen, setFilesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
   const openReview = useCallback(() => {
@@ -542,7 +545,7 @@ export default function CodeView({
                       onChooseModel={() => setControlsOpen(true)}
                       onAddCredits={(billingTrigger) => {
                         trackBillingOpened(billingTrigger, 'code');
-                        void openCodeExternalUrl(MINDS_BILLING_URL);
+                        void openCodeExternalUrl(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
                       }}
                       onViewBudgets={() => {
                         trackBillingOpened('budget_exceeded', 'code');

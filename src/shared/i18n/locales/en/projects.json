@@ -12,11 +12,16 @@
       "allowanceStop": {
         "noGrant": "{noGrant} Your balance is empty, so add funds to continue.",
         "withTime": "Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at {time}.",
-        "noTime": "Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working."
+        "noTime": "Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working.",
+        "noTimeMobile": "Your free MindsHub Air allowance is used up and your balance is empty.",
+        "noGrantMobile": "{noGrant} Your balance is empty.",
+        "withTimeMobile": "Your free MindsHub Air allowance is used up and your balance is empty. Resets at {time}."
       },
       "freeServingPaused": {
         "until": "Free MindsHub Air is paused for everyone until {until}. This doesn't use your allowance. Add funds to keep working now.",
-        "dailyReset": "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now."
+        "dailyReset": "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
+        "untilMobile": "Free MindsHub Air is paused for everyone until {until}. This doesn't use your allowance.",
+        "dailyResetMobile": "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance."
       },
       "resting": {
         "resetsAt": "Resets at {time}.",
@@ -26,13 +31,17 @@
       "percentLeft": "{percent} of your free allowance left",
       "autoTopUpFailed": {
         "title": "Auto top up failed",
-        "body": "We couldn't charge your card. Add funds or update your payment method."
+        "body": "We couldn't charge your card. Add funds or update your payment method.",
+        "bodyMobile": "We couldn't charge your card."
       },
       "balanceEmpty": {
         "title": "Balance empty",
         "body": "Add funds to start another task.",
         "freeUsedToo": "Your free allowance is used up too. Add funds, or wait for it to refill.",
-        "freeUsedTooWithTime": "Your free allowance is used up too. Add funds, or wait for it to refill at {time}."
+        "freeUsedTooWithTime": "Your free allowance is used up too. Add funds, or wait for it to refill at {time}.",
+        "freeUsedTooMobile": "Your free allowance is used up too.",
+        "freeUsedTooWithTimeMobile": "Your free allowance is used up too. Resets at {time}.",
+        "bodyMobile": "Your balance is empty. Paid models are unavailable."
       },
       "balanceLow": {
         "title": "Balance running low",
@@ -40,7 +49,9 @@
         "autoCovers": "{usd} left. Auto top up will cover it.",
         "autoPending": "{usd} left. Auto top up is waiting on your bank.",
         "autoCapReached": "{usd} left and auto top up is paused to stay within its monthly cap. Add funds to keep going.",
-        "body": "{usd} left. Add funds or turn on auto top up."
+        "body": "{usd} left. Add funds or turn on auto top up.",
+        "bodyMobile": "{usd} left.",
+        "autoCapReachedMobile": "{usd} left and auto top up is paused to stay within its monthly cap."
       },
       "freeUsed": {
         "title": "Free allowance used up",
@@ -95,7 +106,8 @@
         "walletEmpty": "No credits available. Add funds to use MindsHub.",
         "allowanceExhausted": "No free MindsHub Air tokens available, and the balance is empty.",
         "freeAirPaused": "Free MindsHub Air is paused right now.",
-        "budgetExceeded": "Your organization's budget is used up."
+        "budgetExceeded": "Your organization's budget is used up.",
+        "walletEmptyMobile": "No credits available."
       },
       "missingApiKey": "Add an API key on the right.",
       "missingBaseUrl": "Add a base URL on the right.",
@@ -223,7 +235,9 @@
         "oneWorking": "You can follow up when {name} finishes.",
         "bothContinued": "Both sides were continued as tasks, so this comparison takes no more messages.",
         "sideContinued": "{name} was continued as a task. Send to {other} only.",
-        "sideWorking": "{name} is still working. Send to {other} only, or wait."
+        "sideWorking": "{name} is still working. Send to {other} only, or wait.",
+        "outOfCreditsBothMobile": "Both models stopped because the balance ran out.",
+        "outOfCreditsOneMobile": "{name} stopped because the balance ran out."
       },
       "twiceTheCredits": "A comparison runs two models, so it uses about twice the credits of one task.",
       "turnsTitle": "{nameA}: {countA, plural, one {# turn} other {# turns}} · {nameB}: {countB, plural, one {# turn} other {# turns}}",
@@ -377,6 +391,14 @@
     "browserSession": {
       "opened": "Opened the browser"
     },
+    "browserSteps": {
+      "open": "Opening {site}",
+      "read": "Reading the page",
+      "look": "Looking at the page",
+      "act": "Working on the page",
+      "handOver": "Waiting for you in the browser",
+      "generic": "Using the browser"
+    },
     "figureSources": {
       "noSource": "No source: no step in this answer returned this figure. Check it before you act on it.",
       "repeated": "Repeated from an earlier answer",
@@ -494,7 +516,8 @@
     },
     "antonErrors": {
       "noProvider": "No LLM provider is connected for this account. Start free with MindsHub or add your own provider in Settings.",
-      "couldNotComplete": "Could not complete this task."
+      "couldNotComplete": "Could not complete this task.",
+      "noProviderMobile": "Connect your own provider in Settings."
     },
     "displayToggle": {
       "switchStyle": "Switch to {style} style"
@@ -543,6 +566,7 @@
     "missed": "Missed",
     "lastFailed": "Last failed",
     "lastRunFailed": "Last run failed",
+    "stoppedAtLimit": "Stopped at a limit",
     "done": "Done",
     "active": "Active"
   },
@@ -572,11 +596,14 @@
     "autoPausedNote": "Resume turns the schedule back on and may catch up a pending run. Run now runs it once, now.",
     "partialTitle": "The last run stopped partway",
     "partialNote": "Some of its actions may have completed. Review the run before running it again.",
+    "limitTitle": "The last run stopped at a limit",
+    "limitNote": "Some of its work may be done. Review the run before running it again.",
     "failedTitle": "The last run failed",
     "resume": "Resume",
     "runNow": "Run now",
     "reviewRun": "Review run",
-    "runAgain": "Run again"
+    "runAgain": "Run again",
+    "openSettings": "Open Settings"
   },
   "scheduleRunNotice": {
     "untitled": "Scheduled task",
@@ -627,6 +654,8 @@
     "name": "Name",
     "namePlaceholder": "Named from the prompt",
     "project": "Project",
+    "model": "Model",
+    "accountDefault": "Account default",
     "cancel": "Cancel",
     "saveAndRunOnce": "Save and run once",
     "saving": "Saving…",
@@ -666,7 +695,8 @@
       "running": "Running",
       "success": "Succeeded",
       "failed": "Failed",
-      "cancelled": "Stopped"
+      "cancelled": "Stopped",
+      "stoppedAtLimit": "Stopped at a limit"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Running now",
@@ -682,6 +712,8 @@
     "runNow": "Run now",
     "scheduleAriaLabel": "Schedule",
     "accountDefaultModel": "Account default model",
+    "ranOnDefaultModel": "Default model",
+    "modelUnavailable": "{model} isn't available, so this run used your default model.",
     "succeededCount": "{total, plural, one {{succeeded} of # run succeeded} other {{succeeded} of # runs succeeded}}",
     "promptAriaLabel": "Prompt",
     "runs": "Runs",

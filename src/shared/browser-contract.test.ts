@@ -55,7 +55,7 @@ const REQUEST_GUARDS: Record<string, (body: unknown) => Parsed<unknown>> = {
    each to its own reason. */
 const ROUTER_ONLY = [
   'unscoped', 'out_of_scope', 'not_entitled', 'daily_limit', 'entitlements_unavailable',
-  'browser_starting', 'approval_required', 'too_many_requests',
+  'browser_starting', 'approval_required', 'too_many_requests', 'tab_limit',
 ];
 
 describe('the browser contract fixtures', () => {

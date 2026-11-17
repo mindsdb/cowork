@@ -18,7 +18,9 @@
 export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId, runningTaskIds) {
   const exists = (id) => includesId(existingTaskIds, id);
   const hasQueue = (id) =>
-    Array.isArray(queues?.[id]) && queues[id].length > 0 && exists(id)
+    // A paused item (an add-on whose fate is unconfirmed, ENG-4194) waits for
+    // the person, so a queue holding only those has nothing to run.
+    Array.isArray(queues?.[id]) && queues[id].some((q) => !q?.paused) && exists(id)
     && !includesId(runningTaskIds, id);
 
   if (preferredTaskId && hasQueue(preferredTaskId)) return preferredTaskId;
