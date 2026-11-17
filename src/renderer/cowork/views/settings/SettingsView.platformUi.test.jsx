@@ -18,7 +18,6 @@ vi.mock('../../../platform/host', () => ({
   isElectron: false, getAccessToken: vi.fn(async () => ''),
 }));
 vi.mock('../../lib/analytics', () => ({ resetDeviceIdentity: vi.fn(), trackBillingOpened: vi.fn() }));
-vi.mock('../ChannelsView', () => ({ default: () => <div>Channels</div> }));
 
 import SettingsView, { MindsProbeNotice, UnavailableModelHint } from './SettingsView';
 import { fetchBrowseStatus } from '../../api';
@@ -43,7 +42,7 @@ function renderSettings(data = settings, onSave = vi.fn(async () => ({})), secti
 }
 
 it('offers Agent, Appearance and Channels and rejects an old Usage deep link', () => {
-  expect(navItemsForHost(true, true, true).map(({ id }) => id)).toEqual(['agent', 'appearance', 'channels']);
+  expect(navItemsForHost(true, true, true).map(({ id }) => id)).toEqual(['agent', 'appearance']);
   renderSettings(settings, undefined, 'usage');
   expect(screen.getByRole('heading', { name: 'Memory', exact: true })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Usage' })).not.toBeInTheDocument();

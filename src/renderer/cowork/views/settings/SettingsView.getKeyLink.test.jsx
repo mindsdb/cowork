@@ -32,7 +32,6 @@ vi.mock('../../../platform/host', () => ({
   getAccessToken: vi.fn(async () => tokenMock.token),
 }));
 vi.mock('../../lib/analytics', () => ({ resetDeviceIdentity: vi.fn(), trackBillingOpened: vi.fn() }));
-vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
 import { MINDS_API_KEY_URL } from '../../../lib/mindsUrls';

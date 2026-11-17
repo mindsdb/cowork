@@ -31,11 +31,10 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('../../lib/analytics', () => ({
   resetDeviceIdentity: vi.fn(),
 }));
-vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
 
-const NAV_LABELS = ['Agent', 'Appearance', 'Channels', 'Updates', 'Backend', 'Account'];
+const NAV_LABELS = ['Agent', 'Appearance', 'Updates', 'Backend', 'Account'];
 
 // Controlled harness: the open section is owned by the parent (App in prod).
 // Taps call onSectionChange, which re-renders with the new `section` — the
@@ -77,7 +76,7 @@ describe('SettingsView mobile master-detail (ENG-990/ENG-991)', () => {
     expect(screen.getByRole('combobox', { name: 'Language' })).toBeTruthy();
   });
 
-  it('opens on the section list with all six sections', () => {
+  it('opens on the section list with all five sections', () => {
     renderMobile();
     // Header title is "Settings", back control closes the surface.
     expect(screen.getByRole('button', { name: 'Close settings' })).toBeTruthy();

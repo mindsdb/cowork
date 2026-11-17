@@ -33,10 +33,6 @@ function expectLabelNotSlug() {
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal()),
   fetchProjects: vi.fn(async () => PROJECTS),
-  fetchChannelBindings: vi.fn(async () => ([
-    { id: 'b1', channel_type: 'slack', external_group_id: 'C1', display_name: 'eng',
-      trigger_rule: 'always', anton_project_id: 'p1' },
-  ])),
   fetchMemory: vi.fn(async () => ({
     sections: [{ scope: 'Project', projectName: SLUG, projectId: 'p1', files: [
       { path: `Project:p1:lessons`, name: 'lessons.md', category: 'lessons',
@@ -99,12 +95,6 @@ describe('ENG-1676 render coverage — components no other test mounts', () => {
   it('SkillsView shows the display name on a skill scoped to the project', async () => {
     const { default: SkillsView } = await import('../views/SkillsView');
     render(<ToastProvider><SkillsView onCreateWithCowork={() => {}} onTryInChat={() => {}} /></ToastProvider>);
-    await waitFor(() => expectLabelNotSlug());
-  });
-
-  it('ChannelBindings shows the display name for the pinned project', async () => {
-    const { default: ChannelBindings } = await import('../views/ChannelBindings');
-    render(<ChannelBindings plugins={[{ channel_type: 'slack', display_name: 'Slack' }]} />);
     await waitFor(() => expectLabelNotSlug());
   });
 

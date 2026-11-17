@@ -30,7 +30,6 @@ const analyticsMock = vi.hoisted(() => ({
   trackBillingOpened: vi.fn(),
 }));
 vi.mock('../../lib/analytics', () => analyticsMock);
-vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView, { UnavailableModelHint } from './SettingsView';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../../lib/mindsUrls';

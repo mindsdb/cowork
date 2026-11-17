@@ -58,7 +58,6 @@ vi.mock('../../../lib/orgMode', () => ({
 vi.mock('../../lib/analytics', () => ({
   resetDeviceIdentity: vi.fn(),
 }));
-vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 vi.mock('../../code/api', () => ({
   codingApi: {
     engines: codingSpies.engines,
@@ -168,11 +167,6 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
   it('renders the Appearance section', async () => {
     render(<Harness section="appearance" />);
     expect(await screen.findByText('Theme')).toBeInTheDocument();
-  });
-
-  it('renders the Channels section', async () => {
-    render(<Harness section="channels" />);
-    expect(await screen.findByTestId('channels-stub')).toBeInTheDocument();
   });
 
   it('renders the Updates section with the current version card', async () => {

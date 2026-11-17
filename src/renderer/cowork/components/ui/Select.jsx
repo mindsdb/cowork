@@ -43,7 +43,7 @@
 //
 // Three visual variants:
 //   - `variant="field"` (default) — full-width bordered control, matches
-//     the form fields it replaces (settings-select, channels-input, etc).
+//     the form fields it replaces (settings-select, etc).
 //   - `variant="pill"` — compact "Label: value ⌄" control, replaces the
 //     SelectPill / customize-select overlay trick used for sort/filter.
 //   - `variant="unstyled"` — wiring only, for domain controls that use an

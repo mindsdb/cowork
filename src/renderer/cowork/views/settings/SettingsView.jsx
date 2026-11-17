@@ -26,7 +26,6 @@ import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
 import { useAccountUser } from '../../hooks/useAccountUser';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
-import ChannelsView from '../ChannelsView';
 import UpdatesSection from './UpdatesSection';
 import BackendSection from './BackendSection';
 import AccountSection from './AccountSection';
@@ -2843,12 +2842,6 @@ export default function SettingsView({
     </SettingsSectionPanel>
   );
 
-  const renderChannelsSection = () => (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <ChannelsView />
-    </div>
-  );
-
   const renderUpdatesSection = () => (
     <UpdatesSection
       footer={renderSaveFooter()}
@@ -2908,7 +2901,6 @@ export default function SettingsView({
       computers: renderComputersSection,
       appearance: renderAppearanceSection,
       branding: renderBrandingSection,
-      channels: renderChannelsSection,
       updates: renderUpdatesSection,
       backend: renderBackendSection,
       usage: renderUsageSection,
@@ -3000,7 +2992,6 @@ export default function SettingsView({
       {effectiveSection === 'appearance' && renderAppearanceSection()}
       {effectiveSection === 'branding' && renderBrandingSection()}
       {effectiveSection === 'desktop' && renderDesktopSection()}
-      {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}
       {effectiveSection === 'backend' && renderBackendSection()}
       {effectiveSection === 'usage' && renderUsageSection()}

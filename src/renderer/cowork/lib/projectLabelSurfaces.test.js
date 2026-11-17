@@ -32,14 +32,13 @@ const SURFACES = [
   ['mobile drawer (the sidebar below 640px)', 'cowork/components/MobileShell.jsx'],
   ['artifacts view open-project tooltip', 'cowork/views/ArtifactsView.jsx'],
   // Round three. Found by running the rules below across the whole renderer
-  // rather than by hand -- which is the only reason ChannelBindings and
-  // ScheduleDetailView are here at all; no report named them.
+  // rather than by hand -- which is the only reason ScheduleDetailView is
+  // here at all; no report named it.
   ['task list project filter', 'cowork/views/TasksView.jsx'],
   ['task row project link', 'cowork/components/task/TaskRows.jsx'],
   ['scheduled list', 'cowork/views/ScheduledView.jsx'],
   ['schedule row', 'cowork/components/schedule/ScheduleRow.jsx'],
   ['schedule detail hint', 'cowork/views/ScheduleDetailView.jsx'],
-  ['channel bindings', 'cowork/views/ChannelBindings.jsx'],
   // Round five, and the first round prompted by the question "did we check
   // skills?" rather than by a rule. These hold a project as a NAME STRING --
   // `skill.projects` is an array of names, and these rows carry `projectName`
@@ -97,7 +96,7 @@ const JSX_CHILD = new RegExp(`>\\{\\s*${PROJECT_VAR}\\??\\.name\\b[^\\n]*?\\}\\s
  * followed by `{projectName}` defeats every regex aimed at the render site: by
  * then it is an ordinary string. Keyed on the LOCAL's name rather than the
  * source expression, so `projects.find(…)?.name` is caught too -- which is how
- * ScheduledView's search, ScheduleDetailView and ChannelBindings surfaced.
+ * ScheduledView's search and ScheduleDetailView surfaced.
  */
 const BARE_INTERP = new RegExp(`\\$\\{\\s*${PROJECT_VAR}\\??\\.name\\s*\\}`);
 // The allowlist of local names is deliberate, and it is this rule's known
