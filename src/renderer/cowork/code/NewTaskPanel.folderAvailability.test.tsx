@@ -45,6 +45,7 @@ vi.mock('./api', () => ({
   },
 }));
 
+import { codingApi } from './api';
 import { NewTaskPanel } from './NewTaskPanel';
 
 const folder = { id: 'proj', name: 'proj', path: '/Users/olha/proj', base_branch: 'main', commands: [] };
@@ -115,6 +116,7 @@ describe('NewTaskPanel project folder availability', () => {
     localStorage.removeItem('mindshub-code:workspace-mode');
     projectFolders.mockReset();
     projectFolders.mockResolvedValue(present);
+    vi.mocked(codingApi.engines).mockResolvedValue([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]);
   });
 
   afterEach(() => {
@@ -187,6 +189,32 @@ describe('NewTaskPanel project folder availability', () => {
     await user.click(startButton());
     await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Add a file named notes.md' }));
+  });
+
+  it('cancels the start when Plan mode is switched on while the folders are being checked', async () => {
+    vi.mocked(codingApi.engines).mockResolvedValue([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true, features: { planning: 'supported' } }]);
+    const user = userEvent.setup();
+    const onCreate = renderComposer();
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Add a file');
+    await waitFor(() => expect(startButton()).toBeEnabled());
+
+    let answer: (value: typeof present) => void = () => {};
+    projectFolders.mockReturnValue(new Promise<typeof present>((resolve) => { answer = resolve; }));
+    await user.click(startButton());
+    await waitFor(() => expect(startButton()).toBeDisabled());
+    // The mode belongs to the panel, not the draft, and is still switchable.
+    await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode' }));
+    projectFolders.mockResolvedValue(present);
+    await act(async () => { answer(present); });
+
+    // A build task must not run under a button that now says Start planning.
+    const startPlanning = await screen.findByRole('button', { name: 'Start planning' });
+    await waitFor(() => expect(startPlanning).toBeEnabled());
+    expect(onCreate).not.toHaveBeenCalled();
+    await user.click(startPlanning);
+    await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Add a file', taskMode: 'plan' }));
   });
 
   it('clears the warning by itself once the folder is back', async () => {
