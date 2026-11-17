@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Some files from deleted tasks could not be removed. Retry cleanup to free their disk space.",
+    "retry": "Retry cleanup",
+    "retrying": "Retrying cleanup…",
+    "retryFailed": "Cleanup could not be retried. Try again."
+  },
   "reviewPanel": {
     "ariaLabel": "Review changes",
     "closeAriaLabel": "Close review panel",

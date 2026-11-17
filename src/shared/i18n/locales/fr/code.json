@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Certains fichiers de tâches supprimées n’ont pas pu être effacés. Relancez le nettoyage pour libérer de l’espace disque.",
+    "retry": "Relancer le nettoyage",
+    "retrying": "Nettoyage en cours…",
+    "retryFailed": "Impossible de relancer le nettoyage. Réessayez."
+  },
   "reviewPanel": {
     "ariaLabel": "Revoir les modifications",
     "closeAriaLabel": "Fermer le panneau de revue",

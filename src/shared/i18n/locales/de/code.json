@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Einige Dateien gelöschter Aufgaben konnten nicht entfernt werden. Wiederholen Sie die Bereinigung, um Speicherplatz freizugeben.",
+    "retry": "Bereinigung wiederholen",
+    "retrying": "Bereinigung läuft…",
+    "retryFailed": "Die Bereinigung konnte nicht erneut gestartet werden. Versuchen Sie es noch einmal."
+  },
   "reviewPanel": {
     "ariaLabel": "Änderungen prüfen",
     "closeAriaLabel": "Prüfbereich schließen",
