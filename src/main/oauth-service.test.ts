@@ -505,6 +505,25 @@ describe('authorizeInBrowser', () => {
     },
   );
 
+  it("adds its parameters to the endpoint's own query", async () => {
+    const nextAuthUrl = captureAuthUrl();
+    const flow = authorizeInBrowser({ ...BROWSER_OPTS, authUrl: 'https://auth.example.com/authorize?tenant=a' });
+    const authUrl = await nextAuthUrl();
+    expect(authUrl.origin + authUrl.pathname).toBe('https://auth.example.com/authorize');
+    expect(authUrl.searchParams.get('tenant')).toBe('a');
+    expect(authUrl.searchParams.get('response_type')).toBe('code');
+    expect(authUrl.searchParams.get('client_id')).toBe('client-1');
+    cancelCurrentOAuth();
+    await flow;
+  });
+
+  it('refuses an authorize endpoint with a fragment', async () => {
+    (shell.openExternal as ReturnType<typeof vi.fn>).mockClear();
+    const result = await authorizeInBrowser({ ...BROWSER_OPTS, authUrl: 'https://auth.example.com/authorize#frag' });
+    expect(result).toEqual({ ok: false, reason: 'OAuth authorize URL must use https.' });
+    expect(shell.openExternal).not.toHaveBeenCalled();
+  });
+
   it('binds the custom MCP port on 127.0.0.1 when asked', async () => {
     const nextAuthUrl = captureAuthUrl();
     const flow = authorizeInBrowser({ ...BROWSER_OPTS, redirectPort: CUSTOM_MCP_REDIRECT_PORT });

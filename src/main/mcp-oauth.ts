@@ -363,6 +363,9 @@ function httpsEndpoint(value: unknown): string {
     throw new McpOAuthError('invalid_response', 'the authorization server metadata has an invalid endpoint');
   }
   if (url.protocol !== 'https:') throw new McpOAuthError('insecure_endpoint', 'every authorization endpoint must use https');
+  if (url.hash || String(value).includes('#')) {
+    throw new McpOAuthError('invalid_response', 'an authorization endpoint must not carry a fragment');
+  }
   return url.href;
 }
 

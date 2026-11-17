@@ -177,6 +177,11 @@ describe('discoverMcpAuth against hostile answers', () => {
     },
   );
 
+  it.each(['authorization_endpoint', 'token_endpoint'])('refuses a %s with a fragment', async (field) => {
+    const { fetchFn } = replay(hostile({ asMetadata: { [field]: 'https://auth.example.com/x#frag' } }));
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('invalid_response');
+  });
+
   it('refuses an http authorization server', async () => {
     const { fetchFn } = replay(hostile({ servers: ['http://auth.example.com'] }));
     expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('insecure_endpoint');

@@ -165,9 +165,12 @@ function endAttempt(attempt: Attempt): void {
   if (_activeAttempt === attempt) _activeAttempt = null;
 }
 
+/* An https URL without a fragment: an authorize endpoint may carry a query
+   but never a fragment (RFC 6749 3.1). */
 function isHttpsUrl(value: string): boolean {
   try {
-    return new URL(value).protocol === 'https:';
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.hash && !value.includes('#');
   } catch {
     return false;
   }
@@ -262,7 +265,10 @@ async function browserStep(opts: BrowserAuthorizeOpts, attempt: Attempt): Promis
     code_challenge_method: 'S256',
     ...(opts.extraAuthParams || {}),
   });
-  const authUrl = `${opts.authUrl}?${authParams.toString()}`;
+  // Added to the endpoint's own query (RFC 6749 3.1), not appended after it.
+  const authorizeUrl = new URL(opts.authUrl);
+  authParams.forEach((value, name) => authorizeUrl.searchParams.set(name, value));
+  const authUrl = authorizeUrl.href;
 
   // Wait for the redirect — server stays up until either the
   // callback fires, the safety timeout elapses, or the renderer
