@@ -1,0 +1,303 @@
+{
+  "doc": "Dokument",
+  "pane": {
+    "status": {
+      "agentWriting": "Agent schreibt",
+      "notSaved": "Noch nicht gespeichert",
+      "saving": "Wird gespeichert…"
+    },
+    "showTabs": "Tabs anzeigen",
+    "showTabsChanged": "Tabs anzeigen (ein Tab wurde geändert)",
+    "openSharedPage": "Geteilte Seite öffnen",
+    "openInBrowser": "Im Browser öffnen",
+    "shareToOpen": "Teilen Sie das Dokument, um es im Browser zu öffnen",
+    "showChat": "Chat anzeigen",
+    "expand": "Erweitern",
+    "close": "Schließen",
+    "closeDoc": "Dokument schließen",
+    "loading": "Dokument wird geladen",
+    "gone": "Dieses Dokument existiert nicht mehr.",
+    "openFailed": "Dieses Dokument konnte nicht geöffnet werden. {reason}",
+    "offline": "Der lokale Server von Cowork ist nicht erreichbar. Ihre Änderungen bleiben hier erhalten und werden gespeichert, sobald er wieder verfügbar ist.",
+    "dismiss": "Ausblenden",
+    "undo": "Rückgängig"
+  },
+  "export": {
+    "label": "Exportieren",
+    "downloadAs": "Herunterladen als",
+    "format": {
+      "docx": "Word (.docx)",
+      "pdf": "PDF",
+      "md": "Markdown",
+      "html": "HTML-Seite"
+    },
+    "copyMarkdown": "Als Markdown kopieren",
+    "exporting": "{name} wird exportiert…",
+    "failed": "Export fehlgeschlagen",
+    "failedStatus": "Export fehlgeschlagen ({status})",
+    "copied": "Als Markdown kopiert",
+    "copyFailed": "Kopieren fehlgeschlagen",
+    "copyDocFailed": "Das Dokument konnte nicht kopiert werden"
+  },
+  "notice": {
+    "deletedTab": "Tab „{title}“ gelöscht",
+    "deletedColumn": "Spalte „{name}“ gelöscht",
+    "deletedRows": "{count, plural, one {Eine Zeile gelöscht} other {# Zeilen gelöscht}}",
+    "deletedBlocks": "{count, plural, one {Ein Block gelöscht} other {# Blöcke gelöscht}}",
+    "cantUndo": "Rückgängig machen nicht möglich: Es wurde inzwischen geändert.",
+    "cantRedo": "Wiederholen nicht möglich: Das Dokument wurde inzwischen geändert.",
+    "editTooBig": "Diese Änderung war zu groß zum Speichern. Das Dokument zeigt den gespeicherten Stand.",
+    "editFailed": "Diese Änderung konnte nicht gespeichert werden. Das Dokument zeigt den gespeicherten Stand.",
+    "imageFailed": "Das Bild konnte nicht hinzugefügt werden",
+    "imageFailedStatus": "Das Bild konnte nicht hinzugefügt werden ({status})",
+    "imageTooLarge": "Dieses Bild ist zu groß für ein Dokument (höchstens 10 MB).",
+    "openPageFailed": "Die Seite konnte nicht geöffnet werden",
+    "openInBrowserFailed": "Dieses Dokument konnte nicht im Browser geöffnet werden",
+    "requestFailed": "Dokumentanfrage fehlgeschlagen ({status})",
+    "timeout": "Der Server hat zu lange für die Antwort gebraucht."
+  },
+  "card": {
+    "open": "Dokument öffnen: {title}",
+    "deleted": "Gelöschtes Dokument: {title}",
+    "kindDeleted": "Dokument · gelöscht",
+    "kindOpen": "Dokument · neben dem Chat geöffnet",
+    "showing": "Angezeigt",
+    "openButton": "Öffnen"
+  },
+  "column": {
+    "resize": "Dokumentgröße ändern"
+  },
+  "page": {
+    "untitled": "Ohne Titel",
+    "title": "Titel",
+    "edited": "Bearbeitet {age}",
+    "new": "Neues Dokument",
+    "byAgent": "Mit dem Agenten geschrieben"
+  },
+  "tabs": {
+    "label": "Tabs",
+    "add": "Tab hinzufügen",
+    "hide": "Tabs ausblenden",
+    "changed": "Geändert",
+    "showChanged": "Geänderten Tab anzeigen",
+    "name": "Tab-Name",
+    "menu": "Tab {title}",
+    "options": "Optionen für {title}",
+    "rename": "Umbenennen",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "delete": "Tab löschen"
+  },
+  "block": {
+    "kind": {
+      "paragraph": "Absatz",
+      "heading": "Überschrift {level}",
+      "listItem": "Listenelement",
+      "task": "To-do",
+      "quote": "Zitat",
+      "callout": "Hinweisbox",
+      "table": "Tabelle",
+      "chart": "Diagramm",
+      "metrics": "Kennzahlen",
+      "code": "Code",
+      "image": "Bild",
+      "divider": "Trennlinie",
+      "pending": "Noch zu schreibender Abschnitt",
+      "other": "Block"
+    },
+    "empty": {
+      "paragraph": "Leerer Absatz",
+      "heading": "Leere Überschrift {level}",
+      "listItem": "Leeres Listenelement",
+      "task": "Leeres To-do",
+      "quote": "Leeres Zitat",
+      "callout": "Leere Hinweisbox"
+    },
+    "named": "{kind} „{words}“",
+    "addBelow": "Block unter {block} hinzufügen",
+    "options": "Optionen für {block}",
+    "optionsMenu": "Blockoptionen",
+    "startWriting": "Beginnen Sie zu schreiben oder geben Sie / für Blöcke ein",
+    "typeSlash": "Geben Sie / für Blöcke ein",
+    "markDone": "Als erledigt markieren",
+    "markNotDone": "Als nicht erledigt markieren"
+  },
+  "menu": {
+    "turnInto": "Umwandeln in",
+    "calloutColor": "Farbe der Hinweisbox",
+    "editWithAgent": "Mit dem Agenten bearbeiten…",
+    "duplicate": "Duplizieren",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "delete": "Löschen"
+  },
+  "insert": {
+    "label": "Block einfügen",
+    "noMatch": "Keine Blöcke passen zu „{query}“",
+    "group": {
+      "basic": "Grundlagen",
+      "data": "Daten",
+      "other": "Sonstiges",
+      "agent": "Agent"
+    },
+    "item": {
+      "paragraph": "Text",
+      "heading1": "Überschrift 1",
+      "heading2": "Überschrift 2",
+      "heading3": "Überschrift 3",
+      "bullet": "Aufzählung",
+      "numbered": "Nummerierte Liste",
+      "task": "To-do-Liste",
+      "quote": "Zitat",
+      "callout": "Hinweisbox",
+      "table": "Tabelle",
+      "chart": "Diagramm",
+      "metrics": "Kennzahlen",
+      "code": "Code",
+      "divider": "Trennlinie",
+      "image": "Bild",
+      "ask": "Den Agenten schreiben lassen…"
+    }
+  },
+  "tone": {
+    "info": "Info",
+    "success": "Erfolg",
+    "warning": "Warnung",
+    "danger": "Gefahr",
+    "note": "Notiz"
+  },
+  "format": {
+    "label": "Formatierung",
+    "bold": "Fett",
+    "italic": "Kursiv",
+    "strike": "Durchgestrichen",
+    "code": "Code",
+    "link": "Link",
+    "addLink": "Link hinzufügen",
+    "linkAddress": "Linkadresse",
+    "linkPlaceholder": "Link einfügen und Enter drücken"
+  },
+  "ask": {
+    "label": "Mit dem Agenten bearbeiten",
+    "request": "Anfrage an den Agenten",
+    "placeholderWrite": "Was soll der Agent hier schreiben?",
+    "placeholderChange": "Was soll sich ändern?",
+    "send": "Senden"
+  },
+  "chart": {
+    "label": "Diagramm",
+    "title": "Diagrammtitel",
+    "kind": {
+      "bar": "Säulen",
+      "hbar": "Balken",
+      "stacked": "Gestapelt",
+      "line": "Linie",
+      "area": "Fläche",
+      "donut": "Ring"
+    },
+    "inUnit": "In {unit}",
+    "followsTable": "Wird mit der Tabelle aktualisiert",
+    "showTable": "Tabelle anzeigen",
+    "makeTable": "Daten in eine Tabelle umwandeln",
+    "tableGone": "Die Tabelle dieses Diagramms ist nicht mehr in diesem Tab.",
+    "noColumn": "Die Tabelle hat keine Spalte „{column}“.",
+    "noNumbers": "Noch keine Zahlen zum Darstellen.",
+    "drawFrom": "Aus einer Tabelle erstellen",
+    "useTable": "Tabelle verwenden…",
+    "tableOption": "Tabelle {number}: {columns}",
+    "total": "Gesamt",
+    "totalUnit": "Gesamt ({unit})"
+  },
+  "table": {
+    "kind": {
+      "text": "Text",
+      "number": "Zahl",
+      "status": "Status",
+      "date": "Datum"
+    },
+    "type": "Typ",
+    "sortAsc": "Aufsteigend sortieren",
+    "sortDesc": "Absteigend sortieren",
+    "insertLeft": "Spalte links einfügen",
+    "insertRight": "Spalte rechts einfügen",
+    "deleteColumn": "Spalte löschen",
+    "columnName": "Spaltenname",
+    "columnMenu": "Spalte {column}",
+    "columnOptions": "Optionen für Spalte {column}",
+    "addColumn": "Spalte hinzufügen",
+    "rowOptions": "Zeilenoptionen",
+    "rowOptionsFor": "Optionen für Zeile {number}",
+    "insertAbove": "Zeile oberhalb einfügen",
+    "insertBelow": "Zeile unterhalb einfügen",
+    "deleteRow": "Zeile löschen",
+    "newRow": "Neue Zeile",
+    "other": "Andere…",
+    "clear": "Leeren",
+    "setValue": "{column} festlegen",
+    "newValue": "Neuer Wert für {column}",
+    "cellValue": "{column}: {value}",
+    "cellEmpty": "{column}: leer",
+    "dateValue": "Datum: {value}",
+    "dateEmpty": "Datum: leer",
+    "cell": "{column}, Zeile {number}"
+  },
+  "metrics": {
+    "label": "Bezeichnung",
+    "change": "Veränderung"
+  },
+  "code": {
+    "label": "Code",
+    "language": "Codesprache",
+    "plainText": "reiner Text",
+    "copy": "Code kopieren",
+    "copied": "Kopiert"
+  },
+  "image": {
+    "label": "Bild",
+    "caption": "Bildunterschrift hinzufügen"
+  },
+  "pending": {
+    "writing": "Wird geschrieben:",
+    "toWrite": "Noch zu schreiben:"
+  },
+  "versions": {
+    "title": "Versionsverlauf",
+    "saved": "Automatisch gespeichert",
+    "loading": "Versionen werden geladen…",
+    "loadFailed": "Die Versionen konnten nicht geladen werden. Versuchen Sie es gleich noch einmal.",
+    "current": "Aktuelle Version",
+    "none": "Frühere Versionen erscheinen hier, sobald sich das Dokument ändert.",
+    "hint": "Wählen Sie eine Version aus, um sie vor dem Wiederherstellen anzusehen.",
+    "viewing": "Ansicht: {when}",
+    "changedSince": "Seit dieser Version geändert",
+    "older": "Ältere Version",
+    "newer": "Neuere Version",
+    "back": "Zurück zur aktuellen Version",
+    "restoreThis": "Diese Version wiederherstellen",
+    "confirmTitle": "Diese Version wiederherstellen?",
+    "confirmLead": "Das Dokument wird auf den Stand zurückgesetzt, den es {when} hatte.",
+    "agentWriting": "Der Agent schreibt noch. Was er als Nächstes schreibt, landet in der Version, die Sie wiederherstellen.",
+    "nothingLost": "Es geht nichts verloren. Die aktuelle Version bleibt im Versionsverlauf, sodass Sie zurückwechseln können.",
+    "sharedUpdates": "Die geteilte Seite wird ebenfalls aktualisiert.",
+    "cancel": "Abbrechen",
+    "restore": "Wiederherstellen",
+    "restoring": "Wird wiederhergestellt…",
+    "restoredFrom": "Version wiederhergestellt: {when}",
+    "undo": "Rückgängig",
+    "openFailed": "Diese Version konnte nicht geöffnet werden",
+    "restoreFailed": "Diese Version konnte nicht wiederhergestellt werden",
+    "undoFailed": "Die Wiederherstellung konnte nicht rückgängig gemacht werden",
+    "earlier": "Frühere Änderungen",
+    "who": {
+      "agent": "Agent",
+      "user": "Sie"
+    },
+    "today": "Heute",
+    "yesterday": "Gestern",
+    "whenTitle": "{day}, {time}",
+    "whenPhrase": "{day, select, today {heute um {time}} yesterday {gestern um {time}} other {am {date} um {time}}}",
+    "justNow": "gerade eben",
+    "minutesAgo": "{count, plural, other {vor # Min.}}",
+    "hoursAgo": "{count, plural, other {vor # Std.}}"
+  }
+}

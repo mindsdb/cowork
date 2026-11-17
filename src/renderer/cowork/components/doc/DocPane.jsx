@@ -30,6 +30,7 @@ import { PublishMenu } from '../artifact/publish/PublishMenu';
 import { usePublish } from '../artifact/publish/usePublish';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import i18n, { useTranslation } from '../../../lib/i18n';
 import './doc.css';
 import './docPane.css';
 
@@ -49,11 +50,14 @@ export function headerCorner({ fillsWindow, expanded }) {
   return expanded ? 'main' : undefined;
 }
 
+const tr = (key, vars) => i18n.t(key, { ns: 'docs', ...vars });
+
 // What a doc downloads as, in the menu's order: the formats the server offers
 // here (PDF needs a render service), or all of them from a server that doesn't say.
-const EXPORTS = [['docx', 'Word (.docx)'], ['pdf', 'PDF'], ['md', 'Markdown'], ['html', 'HTML page']];
+const EXPORTS = ['docx', 'pdf', 'md', 'html'];
 export function exportChoices(offered) {
-  return EXPORTS.filter(([fmt]) => !Array.isArray(offered) || offered.includes(fmt));
+  return EXPORTS.filter((fmt) => !Array.isArray(offered) || offered.includes(fmt))
+    .map((fmt) => [fmt, tr(`export.format.${fmt}`)]);
 }
 
 const DELETES = new Set(['delete', 'delete_tab', 'delete_column', 'delete_rows']);
@@ -70,26 +74,24 @@ export function deletionNotice(doc, ops, tabId) {
   switch (op.op) {
     case 'delete_tab': {
       const gone = doc.tabs.find((t) => t.id === op.tab);
-      return gone ? `Deleted the tab “${gone.title}”` : null;
+      return gone ? tr('notice.deletedTab', { title: gone.title }) : null;
     }
     case 'delete_column': {
       const col = tab?.blocks.find((b) => b.id === op.table)?.columns?.find((c) => c.id === op.col);
-      return col ? `Deleted the column “${col.name}”` : null;
+      return col ? tr('notice.deletedColumn', { name: col.name }) : null;
     }
-    case 'delete_rows': return op.rows.length === 1 ? 'Deleted a row' : `Deleted ${op.rows.length} rows`;
+    case 'delete_rows': return tr('notice.deletedRows', { count: op.rows.length });
     default: {
       const gone = (tab?.blocks || []).filter((b) => op.target.includes(b.id));
       if (!gone.some((b) => !isTextBlock(b) || blockPlainText(b).trim())) return null;
-      return gone.length === 1 ? 'Deleted a block' : `Deleted ${gone.length} blocks`;
+      return tr('notice.deletedBlocks', { count: gone.length });
     }
   }
 }
 
 /** What a refused edit's banner says: the server's words are the agent's, naming ops by number. */
 export function writeErrorText(e) {
-  return e?.code === 'too_big' || e?.status === 413
-    ? 'That edit was too large to save. The doc shows what is saved.'
-    : 'That edit couldn’t be saved. The doc shows what is saved.';
+  return tr(e?.code === 'too_big' || e?.status === 413 ? 'notice.editTooBig' : 'notice.editFailed');
 }
 
 export default function DocPane({
@@ -100,6 +102,7 @@ export default function DocPane({
     doc, status, error, capabilities, card, apply: applyOps, undo, redo, flash, agentActive, saving, writeError,
     clearWriteError,
   } = useDoc({ projectRef, artifactId, transport: LOCAL_TRANSPORT });
+  const { t } = useTranslation('docs');
   // Images beside the doc, fetched with the app's credentials (the shell shows
   // only blob: images from its own server).
   const loadImage = useDraftImageLoader(card?.draftUrl, null);
@@ -147,17 +150,17 @@ export default function DocPane({
   }, [applyOps]);
   const stepBack = useCallback(async (kind) => {
     const done = await (kind === 'redo' ? redo() : undo());
-    if (done === 'changed') warn(kind === 'redo' ? 'Can’t redo that: the doc has changed since.' : 'Can’t undo that: it has changed since.');
+    if (done === 'changed') warn(t(kind === 'redo' ? 'notice.cantRedo' : 'notice.cantUndo'));
     return done;
-  }, [undo, redo, warn]);
+  }, [undo, redo, warn, t]);
   const uploadImage = useCallback(async (file) => {
     try {
       return await uploadDocImage(projectRef, artifactId, file);
     } catch (e) {
-      warn(e.message || 'Couldn’t add that image');
+      warn(e.message || t('notice.imageFailed'));
       return null;
     }
-  }, [projectRef, artifactId, warn]);
+  }, [projectRef, artifactId, warn, t]);
   const history = useVersionHistory({ projectRef, artifactId, onError: warn });
   // An earlier version being looked at, read-only, in place of the doc; its
   // blocks that read differently now are marked.
@@ -238,9 +241,9 @@ export default function DocPane({
       const name = await downloadDocExport(projectRef, artifactId, format);
       // The download is handed on, not finished: the desktop app asks where
       // to save it, and the person can still cancel.
-      setNotice({ tone: 'info', text: `Exporting ${name}…` });
+      setNotice({ tone: 'info', text: t('export.exporting', { name }) });
     } catch (e) {
-      setNotice({ tone: 'warn', text: e.message || 'Export failed' });
+      setNotice({ tone: 'warn', text: e.message || t('export.failed') });
     }
   };
   const copyMarkdown = async () => {
@@ -248,10 +251,10 @@ export default function DocPane({
       const md = await fetchDocMarkdown(projectRef, artifactId);
       // The shared helper, not navigator.clipboard alone: the app refuses the
       // clipboard permission, and the click's activation is spent by the fetch.
-      if (!await copyText(md)) throw new Error('Couldn’t copy the doc');
-      setNotice({ tone: 'info', text: 'Copied as Markdown' });
+      if (!await copyText(md)) throw new Error(t('export.copyDocFailed'));
+      setNotice({ tone: 'info', text: t('export.copied') });
     } catch (e) {
-      setNotice({ tone: 'warn', text: e.message || 'Copy failed' });
+      setNotice({ tone: 'warn', text: e.message || t('export.copyFailed') });
     }
   };
   useEffect(() => {
@@ -331,6 +334,7 @@ export default function DocPane({
   // way any other artifact opens before it is shared.
   const canOpenLocally = host.isElectron && !!card?.htmlPath;
   const canOpenInBrowser = !!pub.publishedUrl || canOpenLocally;
+  const openLabel = t(pub.publishedUrl ? 'pane.openSharedPage' : 'pane.openInBrowser');
   const openInBrowser = async () => {
     try {
       if (pub.publishedUrl) {
@@ -338,9 +342,9 @@ export default function DocPane({
         return;
       }
       const res = await host.openPath(card.htmlPath);
-      if (res && res.ok === false) throw new Error(res.reason || 'Could not open the page');
+      if (res && res.ok === false) throw new Error(res.reason || t('notice.openPageFailed'));
     } catch (e) {
-      setNotice({ tone: 'warn', text: e.message || 'Could not open this doc in a browser' });
+      setNotice({ tone: 'warn', text: e.message || t('notice.openInBrowserFailed') });
     }
   };
 
@@ -355,11 +359,11 @@ export default function DocPane({
   const tabbed = (shown?.tabs.length || 0) > 1;
   const offline = writeError?.code === 'offline';
   const statusEl = live
-    ? <span className="doc-header__status doc-header__status--agent"><span className="doc-header__pulse" aria-hidden="true" />Agent is writing</span>
+    ? <span className="doc-header__status doc-header__status--agent"><span className="doc-header__pulse" aria-hidden="true" />{t('pane.status.agentWriting')}</span>
     : offline
-      ? <span className="doc-header__status doc-header__status--warn">Not saved yet</span>
+      ? <span className="doc-header__status doc-header__status--warn">{t('pane.status.notSaved')}</span>
       : showSaving
-        ? <span className="doc-header__status">Saving…</span>
+        ? <span className="doc-header__status">{t('pane.status.saving')}</span>
         : null;
 
   return (
@@ -367,14 +371,14 @@ export default function DocPane({
       ref={rootRef}
       className={`doc-root ${variant === 'modal' ? 'doc-pane--modal' : 'doc-pane'} ${narrow ? 'doc-root--narrow' : ''}`}
       data-corner={headerCorner({ fillsWindow, expanded })}
-      aria-label={shown?.title || fallbackTitle || 'Doc'}
+      aria-label={shown?.title || fallbackTitle || t('doc')}
       onKeyDownCapture={onKeyDownCapture}
     >
       <header className="doc-header">
         {tabbed && !narrow && tabsHidden ? (
-          <Tooltip content="Show tabs">
+          <Tooltip content={t('pane.showTabs')}>
             <button type="button" ref={showTabsRef} className="doc-iconbtn doc-header__tabs" onClick={showTabs}
-              aria-label={unseen.size && !version ? 'Show tabs (a tab has changed)' : 'Show tabs'}>
+              aria-label={t(unseen.size && !version ? 'pane.showTabsChanged' : 'pane.showTabs')}>
               <Icon of={PanelLeftOpen} size={16} />
               {unseen.size > 0 && !version && <span className="doc-header__tabs-dot" />}
             </button>
@@ -383,44 +387,42 @@ export default function DocPane({
           <span className="doc-header__icon"><Icon of={FileText} size={16} /></span>
         )}
         {/* A version looked at shows its own title: restoring it brings that back too. */}
-        <span className="doc-header__title" title={shown?.title || fallbackTitle}>{shown?.title || fallbackTitle || 'Doc'}</span>
+        <span className="doc-header__title" title={shown?.title || fallbackTitle}>{shown?.title || fallbackTitle || t('doc')}</span>
         <span aria-live="polite">{statusEl}</span>
         {doc && editable && <VersionMenu history={history} />}
         {doc && (
           <Menu
-            ariaLabel="Export"
-            tooltip="Export"
-            trigger={<button type="button" className="doc-iconbtn" aria-label="Export"><Icon of={Download} size={16} /></button>}
+            ariaLabel={t('export.label')}
+            tooltip={t('export.label')}
+            trigger={<button type="button" className="doc-iconbtn" aria-label={t('export.label')}><Icon of={Download} size={16} /></button>}
             items={[
-              { heading: 'Download as' },
+              { heading: t('export.downloadAs') },
               ...exportChoices(capabilities?.exportFormats)
                 .map(([key, label]) => ({ key, label, onClick: () => exportAs(key) })),
               { divider: true },
-              { key: 'copy', label: 'Copy as Markdown', onClick: copyMarkdown },
+              { key: 'copy', label: t('export.copyMarkdown'), onClick: copyMarkdown },
             ]}
           />
         )}
         {doc && canShare && <PublishMenu controller={pub} noun="doc" followsEdits />}
         {doc && (
-          <Tooltip content={canOpenInBrowser
-            ? (pub.publishedUrl ? 'Open the shared page' : 'Open in browser')
-            : 'Share it to open it in a browser'}>
-            <button type="button" className="doc-iconbtn" aria-label={pub.publishedUrl ? 'Open the shared page' : 'Open in browser'}
+          <Tooltip content={canOpenInBrowser ? openLabel : t('pane.shareToOpen')}>
+            <button type="button" className="doc-iconbtn" aria-label={openLabel}
               disabled={!canOpenInBrowser} onClick={openInBrowser}>
               <Icon of={ArrowUpRight} size={16} />
             </button>
           </Tooltip>
         )}
         {onToggleExpand && (
-          <Tooltip content={expanded ? 'Show the chat' : 'Expand'}>
-            <button type="button" className="doc-iconbtn" aria-label={expanded ? 'Show the chat' : 'Expand'} onClick={onToggleExpand}>
+          <Tooltip content={t(expanded ? 'pane.showChat' : 'pane.expand')}>
+            <button type="button" className="doc-iconbtn" aria-label={t(expanded ? 'pane.showChat' : 'pane.expand')} onClick={onToggleExpand}>
               <Icon of={expanded ? Minimize2 : Maximize2} size={16} />
             </button>
           </Tooltip>
         )}
         {onClose && (
-          <Tooltip content="Close">
-            <button type="button" className="doc-iconbtn" aria-label="Close doc" onClick={onClose}><Icon of={X} size={16} /></button>
+          <Tooltip content={t('pane.close')}>
+            <button type="button" className="doc-iconbtn" aria-label={t('pane.closeDoc')} onClick={onClose}><Icon of={X} size={16} /></button>
           </Tooltip>
         )}
       </header>
@@ -431,10 +433,10 @@ export default function DocPane({
       {writeError && (
         <div className="doc-banner" role="alert">
           {offline
-            ? 'Can’t reach Cowork’s local server. Your edits are kept here and will save as soon as it’s back.'
+            ? t('pane.offline')
             : writeErrorText(writeError)}
           <span className="doc-banner__spacer" />
-          {!offline && <button type="button" className="doc-addbtn" onClick={clearWriteError}>Dismiss</button>}
+          {!offline && <button type="button" className="doc-addbtn" onClick={clearWriteError}>{t('pane.dismiss')}</button>}
         </div>
       )}
       {notice && (
@@ -443,17 +445,17 @@ export default function DocPane({
           {notice.undo && (
             <>
               <span className="doc-banner__spacer" />
-              <button type="button" className="doc-addbtn" onClick={() => { setNotice(null); stepBack('undo'); }}>Undo</button>
+              <button type="button" className="doc-addbtn" onClick={() => { setNotice(null); stepBack('undo'); }}>{t('pane.undo')}</button>
             </>
           )}
         </div>
       )}
 
       {status === 'loading' && !doc && (
-        <div className="doc-scroll"><div className="doc-skeleton" aria-label="Loading doc"><div /><div /><div style={{ width: '82%' }} /><div style={{ width: '64%' }} /></div></div>
+        <div className="doc-scroll"><div className="doc-skeleton" aria-label={t('pane.loading')}><div /><div /><div style={{ width: '82%' }} /><div style={{ width: '64%' }} /></div></div>
       )}
       {status === 'error' && !doc && (
-        <div className="doc-state">{error?.status === 404 ? 'This doc no longer exists.' : `Could not open this doc. ${error?.message || ''}`}</div>
+        <div className="doc-state">{error?.status === 404 ? t('pane.gone') : t('pane.openFailed', { reason: error?.message || '' })}</div>
       )}
       {shown && shownTab && (
         <div className="doc-body">

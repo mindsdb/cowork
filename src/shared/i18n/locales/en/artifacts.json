@@ -299,6 +299,8 @@
       "specificDesc": "Only the people you list"
     },
     "whoCanAccess": "Who can access your app",
+    "whoCanAccessDoc": "Who can access your doc",
+    "updatesAsYouEdit": "Updates as you edit",
     "addPassword": "Add a password",
     "hide": "Hide",
     "show": "Show",

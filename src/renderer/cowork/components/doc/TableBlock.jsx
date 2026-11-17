@@ -7,13 +7,9 @@ import { Icon } from '../ui/Icon';
 import { Menu } from '../ui';
 import EditableText from './EditableText';
 import { formatDate, newId, opIndex, toIsoDate, toneFor } from './docModel';
+import { useTranslation } from '../../../lib/i18n';
 
-const COLUMN_KINDS = {
-  text: { label: 'Text', icon: Type },
-  number: { label: 'Number', icon: Hash },
-  status: { label: 'Status', icon: CircleDot },
-  date: { label: 'Date', icon: Calendar },
-};
+const COLUMN_KINDS = { text: Type, number: Hash, status: CircleDot, date: Calendar };
 
 // Values people reach for in common columns. A tracker the agent writes often
 // starts with every row on one value ("Not started"), and the dropdown only
@@ -33,6 +29,7 @@ export function suggestedValues(column) {
 }
 
 function StatusCell({ value, column, editable, onChange }) {
+  const { t } = useTranslation('docs');
   const [open, setOpen] = useState(false);
   const [typing, setTyping] = useState(false);
   // "Other…" types a value in place of the menu. The box opens only once the
@@ -63,7 +60,7 @@ function StatusCell({ value, column, editable, onChange }) {
         <input
           className="doc-date-input"
           autoFocus
-          aria-label={`New ${column.name}`}
+          aria-label={t('table.newValue', { column: column.name })}
           placeholder={column.name}
           defaultValue=""
           onBlur={(e) => done(e.currentTarget, true)}
@@ -81,8 +78,8 @@ function StatusCell({ value, column, editable, onChange }) {
       <Menu
         open={open}
         onOpenChange={onOpenChange}
-        ariaLabel={`Set ${column.name}`}
-        trigger={<button type="button" className="doc-cellbtn" aria-label={`${column.name}: ${value || 'empty'}`}>{chip}</button>}
+        ariaLabel={t('table.setValue', { column: column.name })}
+        trigger={<button type="button" className="doc-cellbtn" aria-label={value ? t('table.cellValue', { column: column.name, value }) : t('table.cellEmpty', { column: column.name })}>{chip}</button>}
         items={[
           ...(column.options || []).map((o) => ({
             key: o.name,
@@ -97,8 +94,8 @@ function StatusCell({ value, column, editable, onChange }) {
             aria: { role: 'menuitemradio', 'aria-checked': false },
           })),
           { divider: true },
-          { key: '__other', label: 'Other…', onClick: () => { otherAsked.current = true; } },
-          ...(value ? [{ key: '__clear', label: 'Clear', onClick: () => onChange('') }] : []),
+          { key: '__other', label: t('table.other'), onClick: () => { otherAsked.current = true; } },
+          ...(value ? [{ key: '__clear', label: t('table.clear'), onClick: () => onChange('') }] : []),
         ]}
       />
     </div>
@@ -106,6 +103,7 @@ function StatusCell({ value, column, editable, onChange }) {
 }
 
 function DateCell({ value, editable, onChange }) {
+  const { t } = useTranslation('docs');
   const [editing, setEditing] = useState(false);
   // The picker reads only ISO: a date written out ("December 1, 2026") opens
   // on that day, and only a change the person makes is saved. Saving what the
@@ -138,43 +136,44 @@ function DateCell({ value, editable, onChange }) {
   return (
     <div className="doc-td">
       {editable
-        ? <button type="button" className="doc-cellbtn" onClick={() => setEditing(true)} aria-label={`Date: ${label || 'empty'}`}>{label || <span style={{ color: 'var(--ink-5)' }}>—</span>}</button>
+        ? <button type="button" className="doc-cellbtn" onClick={() => setEditing(true)} aria-label={label ? t('table.dateValue', { value: label }) : t('table.dateEmpty')}>{label || <span style={{ color: 'var(--ink-5)' }}>—</span>}</button>
         : label}
     </div>
   );
 }
 
 function ColumnHeader({ table, column, index, editable, onOps }) {
+  const { t } = useTranslation('docs');
   const [open, setOpen] = useState(false);
   const set = (patch) => onOps([{ op: 'update_column', table: table.id, col: column.id, ...patch }]);
   const items = [
-    { heading: 'Type' },
-    ...Object.entries(COLUMN_KINDS).map(([k, kind]) => ({
+    { heading: t('table.type') },
+    ...Object.entries(COLUMN_KINDS).map(([k, icon]) => ({
       key: `kind-${k}`,
-      icon: <Icon of={kind.icon} size={14} />,
-      label: kind.label,
+      icon: <Icon of={icon} size={14} />,
+      label: t(`table.kind.${k}`),
       onClick: () => set({ kind: k }),
       aria: { role: 'menuitemradio', 'aria-checked': column.kind === k },
     })),
     { divider: true },
-    { key: 'asc', icon: <Icon of={ArrowUp} size={14} />, label: 'Sort ascending', onClick: () => onOps([{ op: 'sort_rows', table: table.id, col: column.id }]) },
-    { key: 'desc', icon: <Icon of={ArrowDown} size={14} />, label: 'Sort descending', onClick: () => onOps([{ op: 'sort_rows', table: table.id, col: column.id, descending: true }]) },
+    { key: 'asc', icon: <Icon of={ArrowUp} size={14} />, label: t('table.sortAsc'), onClick: () => onOps([{ op: 'sort_rows', table: table.id, col: column.id }]) },
+    { key: 'desc', icon: <Icon of={ArrowDown} size={14} />, label: t('table.sortDesc'), onClick: () => onOps([{ op: 'sort_rows', table: table.id, col: column.id, descending: true }]) },
     { divider: true },
-    { key: 'left', label: 'Insert column left', onClick: () => onOps([{ op: 'add_column', table: table.id, name: 'Column', index: opIndex(index) }]) },
-    { key: 'right', label: 'Insert column right', onClick: () => onOps([{ op: 'add_column', table: table.id, name: 'Column', index: opIndex(index + 1) }]) },
-    ...(table.columns.length > 1 ? [{ divider: true }, { key: 'del', danger: true, label: 'Delete column', onClick: () => onOps([{ op: 'delete_column', table: table.id, col: column.id }]) }] : []),
+    { key: 'left', label: t('table.insertLeft'), onClick: () => onOps([{ op: 'add_column', table: table.id, name: 'Column', index: opIndex(index) }]) },
+    { key: 'right', label: t('table.insertRight'), onClick: () => onOps([{ op: 'add_column', table: table.id, name: 'Column', index: opIndex(index + 1) }]) },
+    ...(table.columns.length > 1 ? [{ divider: true }, { key: 'del', danger: true, label: t('table.deleteColumn'), onClick: () => onOps([{ op: 'delete_column', table: table.id, col: column.id }]) }] : []),
   ];
   return (
     <th scope="col" className={column.kind === 'number' ? 'doc-td--number' : ''}>
       <div className="doc-th">
-        <span className="doc-th__kind" aria-hidden="true"><Icon of={COLUMN_KINDS[column.kind]?.icon || Type} size={12} /></span>
+        <span className="doc-th__kind" aria-hidden="true"><Icon of={COLUMN_KINDS[column.kind] || Type} size={12} /></span>
         <EditableText
           className="doc-th__name"
           value={column.name}
           plain
           singleLine
           editable={editable}
-          ariaLabel="Column name"
+          ariaLabel={t('table.columnName')}
           onCommit={(name) => {
             if (!name.trim()) return false; // a column keeps a name: the old one comes back
             set({ name: name.trim() });
@@ -186,8 +185,8 @@ function ColumnHeader({ table, column, index, editable, onOps }) {
             <Menu
               open={open}
               onOpenChange={setOpen}
-              ariaLabel={`${column.name} column`}
-              trigger={<button type="button" className="doc-gutter__btn" aria-label={`${column.name} column options`}><Icon of={ChevronDown} size={14} /></button>}
+              ariaLabel={t('table.columnMenu', { column: column.name })}
+              trigger={<button type="button" className="doc-gutter__btn" aria-label={t('table.columnOptions', { column: column.name })}><Icon of={ChevronDown} size={14} /></button>}
               items={items}
             />
           </span>
@@ -198,19 +197,20 @@ function ColumnHeader({ table, column, index, editable, onOps }) {
 }
 
 function RowMenu({ table, row, index, onOps, onAddRow }) {
+  const { t } = useTranslation('docs');
   const [open, setOpen] = useState(false);
   return (
     <span className="doc-row-menu" data-open={open}>
       <Menu
         open={open}
         onOpenChange={setOpen}
-        ariaLabel="Row options"
-        trigger={<button type="button" className="doc-gutter__btn" aria-label={`Row ${index + 1} options`}><Icon of={Ellipsis} size={14} /></button>}
+        ariaLabel={t('table.rowOptions')}
+        trigger={<button type="button" className="doc-gutter__btn" aria-label={t('table.rowOptionsFor', { number: index + 1 })}><Icon of={Ellipsis} size={14} /></button>}
         items={[
-          { key: 'above', label: 'Insert row above', onClick: () => onAddRow(index) },
-          { key: 'below', label: 'Insert row below', onClick: () => onAddRow(index + 1) },
+          { key: 'above', label: t('table.insertAbove'), onClick: () => onAddRow(index) },
+          { key: 'below', label: t('table.insertBelow'), onClick: () => onAddRow(index + 1) },
           { divider: true },
-          { key: 'del', danger: true, label: 'Delete row', onClick: () => onOps([{ op: 'delete_rows', table: table.id, rows: [row.id] }]) },
+          { key: 'del', danger: true, label: t('table.deleteRow'), onClick: () => onOps([{ op: 'delete_rows', table: table.id, rows: [row.id] }]) },
         ]}
       />
     </span>
@@ -218,6 +218,7 @@ function RowMenu({ table, row, index, onOps, onAddRow }) {
 }
 
 export default function TableBlock({ block, editable, onOps }) {
+  const { t } = useTranslation('docs');
   const wrap = useRef(null);
   const blankRow = () => ({ id: newId('r_'), cells: Object.fromEntries(block.columns.map((c) => [c.id, ''])) });
   // A new row takes the caret, so typing goes into it rather than nowhere.
@@ -266,7 +267,7 @@ export default function TableBlock({ block, editable, onOps }) {
               ))}
               {editable && (
                 <th className="doc-table__addcol">
-                  <button type="button" className="doc-gutter__btn" style={{ margin: '6px auto', display: 'grid' }} aria-label="Add column"
+                  <button type="button" className="doc-gutter__btn" style={{ margin: '6px auto', display: 'grid' }} aria-label={t('table.addColumn')}
                     onClick={() => onOps([{ op: 'add_column', table: block.id, name: 'Column' }])}>
                     <Icon of={Plus} size={14} />
                   </button>
@@ -293,7 +294,7 @@ export default function TableBlock({ block, editable, onOps }) {
                           value={value}
                           editable={editable}
                           singleLine
-                          ariaLabel={`${col.name}, row ${ri + 1}`}
+                          ariaLabel={t('table.cell', { column: col.name, number: ri + 1 })}
                           onCommit={onChange}
                           onKeyDown={(e, api) => {
                             if (e.key === 'Tab') { e.preventDefault(); api.flush(); moveFocus(ri, ci, 0, e.shiftKey ? -1 : 1); }
@@ -313,7 +314,7 @@ export default function TableBlock({ block, editable, onOps }) {
         {editable && (
           <div className="doc-table__foot">
             <button type="button" className="doc-addbtn" onClick={() => addRow()}>
-              <Icon of={Plus} size={14} /> New row
+              <Icon of={Plus} size={14} /> {t('table.newRow')}
             </button>
           </div>
         )}

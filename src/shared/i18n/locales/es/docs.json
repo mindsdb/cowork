@@ -1,0 +1,303 @@
+{
+  "doc": "Documento",
+  "pane": {
+    "status": {
+      "agentWriting": "El agente está escribiendo",
+      "notSaved": "Aún sin guardar",
+      "saving": "Guardando…"
+    },
+    "showTabs": "Mostrar pestañas",
+    "showTabsChanged": "Mostrar pestañas (una pestaña cambió)",
+    "openSharedPage": "Abrir la página compartida",
+    "openInBrowser": "Abrir en el navegador",
+    "shareToOpen": "Compártelo para abrirlo en un navegador",
+    "showChat": "Mostrar el chat",
+    "expand": "Expandir",
+    "close": "Cerrar",
+    "closeDoc": "Cerrar documento",
+    "loading": "Cargando documento",
+    "gone": "Este documento ya no existe.",
+    "openFailed": "No se pudo abrir este documento. {reason}",
+    "offline": "No se puede conectar con el servidor local de Cowork. Tus ediciones se conservan aquí y se guardarán en cuanto vuelva.",
+    "dismiss": "Descartar",
+    "undo": "Deshacer"
+  },
+  "export": {
+    "label": "Exportar",
+    "downloadAs": "Descargar como",
+    "format": {
+      "docx": "Word (.docx)",
+      "pdf": "PDF",
+      "md": "Markdown",
+      "html": "Página HTML"
+    },
+    "copyMarkdown": "Copiar como Markdown",
+    "exporting": "Exportando {name}…",
+    "failed": "No se pudo exportar",
+    "failedStatus": "No se pudo exportar ({status})",
+    "copied": "Copiado como Markdown",
+    "copyFailed": "No se pudo copiar",
+    "copyDocFailed": "No se pudo copiar el documento"
+  },
+  "notice": {
+    "deletedTab": "Se eliminó la pestaña “{title}”",
+    "deletedColumn": "Se eliminó la columna “{name}”",
+    "deletedRows": "{count, plural, one {Se eliminó una fila} other {Se eliminaron # filas}}",
+    "deletedBlocks": "{count, plural, one {Se eliminó un bloque} other {Se eliminaron # bloques}}",
+    "cantUndo": "No se puede deshacer: cambió desde entonces.",
+    "cantRedo": "No se puede rehacer: el documento cambió desde entonces.",
+    "editTooBig": "Esa edición era demasiado grande para guardarla. El documento muestra lo que está guardado.",
+    "editFailed": "No se pudo guardar esa edición. El documento muestra lo que está guardado.",
+    "imageFailed": "No se pudo agregar esa imagen",
+    "imageFailedStatus": "No se pudo agregar esa imagen ({status})",
+    "imageTooLarge": "Esa imagen es demasiado grande para un documento (10 MB como máximo).",
+    "openPageFailed": "No se pudo abrir la página",
+    "openInBrowserFailed": "No se pudo abrir este documento en un navegador",
+    "requestFailed": "Error en la solicitud del documento ({status})",
+    "timeout": "El servidor tardó demasiado en responder."
+  },
+  "card": {
+    "open": "Abrir documento: {title}",
+    "deleted": "Documento eliminado: {title}",
+    "kindDeleted": "Documento · eliminado",
+    "kindOpen": "Documento · abierto junto al chat",
+    "showing": "Abierto",
+    "openButton": "Abrir"
+  },
+  "column": {
+    "resize": "Cambiar el tamaño del documento"
+  },
+  "page": {
+    "untitled": "Sin título",
+    "title": "Título",
+    "edited": "Editado {age}",
+    "new": "Nuevo documento",
+    "byAgent": "Escrito con el agente"
+  },
+  "tabs": {
+    "label": "Pestañas",
+    "add": "Agregar pestaña",
+    "hide": "Ocultar pestañas",
+    "changed": "Modificada",
+    "showChanged": "Mostrar la pestaña modificada",
+    "name": "Nombre de la pestaña",
+    "menu": "Pestaña {title}",
+    "options": "Opciones de {title}",
+    "rename": "Cambiar nombre",
+    "moveUp": "Mover hacia arriba",
+    "moveDown": "Mover hacia abajo",
+    "delete": "Eliminar pestaña"
+  },
+  "block": {
+    "kind": {
+      "paragraph": "Párrafo",
+      "heading": "Encabezado {level}",
+      "listItem": "Elemento de lista",
+      "task": "Pendiente",
+      "quote": "Cita",
+      "callout": "Destacado",
+      "table": "Tabla",
+      "chart": "Gráfico",
+      "metrics": "Métricas",
+      "code": "Código",
+      "image": "Imagen",
+      "divider": "Divisor",
+      "pending": "Sección por escribir",
+      "other": "Bloque"
+    },
+    "empty": {
+      "paragraph": "Párrafo vacío",
+      "heading": "Encabezado {level} vacío",
+      "listItem": "Elemento de lista vacío",
+      "task": "Pendiente vacío",
+      "quote": "Cita vacía",
+      "callout": "Destacado vacío"
+    },
+    "named": "{kind} “{words}”",
+    "addBelow": "Agregar un bloque debajo de {block}",
+    "options": "Opciones de {block}",
+    "optionsMenu": "Opciones del bloque",
+    "startWriting": "Empieza a escribir o escribe / para ver los bloques",
+    "typeSlash": "Escribe / para ver los bloques",
+    "markDone": "Marcar como hecho",
+    "markNotDone": "Marcar como pendiente"
+  },
+  "menu": {
+    "turnInto": "Convertir en",
+    "calloutColor": "Color del destacado",
+    "editWithAgent": "Editar con el agente…",
+    "duplicate": "Duplicar",
+    "moveUp": "Mover hacia arriba",
+    "moveDown": "Mover hacia abajo",
+    "delete": "Eliminar"
+  },
+  "insert": {
+    "label": "Insertar un bloque",
+    "noMatch": "Ningún bloque coincide con “{query}”",
+    "group": {
+      "basic": "Básicos",
+      "data": "Datos",
+      "other": "Otros",
+      "agent": "Agente"
+    },
+    "item": {
+      "paragraph": "Texto",
+      "heading1": "Encabezado 1",
+      "heading2": "Encabezado 2",
+      "heading3": "Encabezado 3",
+      "bullet": "Lista con viñetas",
+      "numbered": "Lista numerada",
+      "task": "Lista de pendientes",
+      "quote": "Cita",
+      "callout": "Destacado",
+      "table": "Tabla",
+      "chart": "Gráfico",
+      "metrics": "Métricas",
+      "code": "Código",
+      "divider": "Divisor",
+      "image": "Imagen",
+      "ask": "Pedir al agente que escriba…"
+    }
+  },
+  "tone": {
+    "info": "Información",
+    "success": "Éxito",
+    "warning": "Advertencia",
+    "danger": "Peligro",
+    "note": "Nota"
+  },
+  "format": {
+    "label": "Formato",
+    "bold": "Negrita",
+    "italic": "Cursiva",
+    "strike": "Tachado",
+    "code": "Código",
+    "link": "Enlace",
+    "addLink": "Agregar enlace",
+    "linkAddress": "Dirección del enlace",
+    "linkPlaceholder": "Pega un enlace y presiona Enter"
+  },
+  "ask": {
+    "label": "Editar con el agente",
+    "request": "Solicitud para el agente",
+    "placeholderWrite": "¿Qué debe escribir el agente aquí?",
+    "placeholderChange": "¿Qué debe cambiar?",
+    "send": "Enviar"
+  },
+  "chart": {
+    "label": "Gráfico",
+    "title": "Título del gráfico",
+    "kind": {
+      "bar": "Columnas",
+      "hbar": "Barras",
+      "stacked": "Apiladas",
+      "line": "Línea",
+      "area": "Área",
+      "donut": "Anillo"
+    },
+    "inUnit": "En {unit}",
+    "followsTable": "Se actualiza con su tabla",
+    "showTable": "Mostrar su tabla",
+    "makeTable": "Convertir los datos en una tabla",
+    "tableGone": "La tabla de este gráfico ya no está en esta pestaña.",
+    "noColumn": "Su tabla no tiene la columna “{column}”.",
+    "noNumbers": "Todavía no hay números para dibujar.",
+    "drawFrom": "Dibujar a partir de una tabla",
+    "useTable": "Usar una tabla…",
+    "tableOption": "Tabla {number}: {columns}",
+    "total": "Total",
+    "totalUnit": "Total ({unit})"
+  },
+  "table": {
+    "kind": {
+      "text": "Texto",
+      "number": "Número",
+      "status": "Estado",
+      "date": "Fecha"
+    },
+    "type": "Tipo",
+    "sortAsc": "Ordenar de forma ascendente",
+    "sortDesc": "Ordenar de forma descendente",
+    "insertLeft": "Insertar columna a la izquierda",
+    "insertRight": "Insertar columna a la derecha",
+    "deleteColumn": "Eliminar columna",
+    "columnName": "Nombre de la columna",
+    "columnMenu": "Columna {column}",
+    "columnOptions": "Opciones de la columna {column}",
+    "addColumn": "Agregar columna",
+    "rowOptions": "Opciones de la fila",
+    "rowOptionsFor": "Opciones de la fila {number}",
+    "insertAbove": "Insertar fila arriba",
+    "insertBelow": "Insertar fila abajo",
+    "deleteRow": "Eliminar fila",
+    "newRow": "Nueva fila",
+    "other": "Otro…",
+    "clear": "Borrar",
+    "setValue": "Definir {column}",
+    "newValue": "Nuevo valor de {column}",
+    "cellValue": "{column}: {value}",
+    "cellEmpty": "{column}: vacío",
+    "dateValue": "Fecha: {value}",
+    "dateEmpty": "Fecha: vacía",
+    "cell": "{column}, fila {number}"
+  },
+  "metrics": {
+    "label": "Etiqueta",
+    "change": "Variación"
+  },
+  "code": {
+    "label": "Código",
+    "language": "Lenguaje del código",
+    "plainText": "texto sin formato",
+    "copy": "Copiar código",
+    "copied": "Copiado"
+  },
+  "image": {
+    "label": "Imagen",
+    "caption": "Agregar una leyenda"
+  },
+  "pending": {
+    "writing": "Escribiendo:",
+    "toWrite": "Por escribir:"
+  },
+  "versions": {
+    "title": "Historial de versiones",
+    "saved": "Guardado automáticamente",
+    "loading": "Cargando versiones…",
+    "loadFailed": "No se pudieron cargar las versiones. Vuelve a intentarlo en un momento.",
+    "current": "Versión actual",
+    "none": "Las versiones anteriores aparecen aquí a medida que cambia el documento.",
+    "hint": "Elige una versión para verla antes de restaurarla.",
+    "viewing": "Viendo {when}",
+    "changedSince": "Cambió desde esta versión",
+    "older": "Versión anterior",
+    "newer": "Versión más reciente",
+    "back": "Volver a la actual",
+    "restoreThis": "Restaurar esta versión",
+    "confirmTitle": "¿Restaurar esta versión?",
+    "confirmLead": "El documento vuelve a como estaba {when}.",
+    "agentWriting": "El agente sigue escribiendo. Lo que escriba a continuación quedará en la versión que restaures.",
+    "nothingLost": "No se pierde nada. La versión actual queda en el historial de versiones, así que puedes volver a ella.",
+    "sharedUpdates": "La página compartida también se actualiza.",
+    "cancel": "Cancelar",
+    "restore": "Restaurar",
+    "restoring": "Restaurando…",
+    "restoredFrom": "Versión restaurada: {when}",
+    "undo": "Deshacer",
+    "openFailed": "No se pudo abrir esa versión",
+    "restoreFailed": "No se pudo restaurar esa versión",
+    "undoFailed": "No se pudo deshacer la restauración",
+    "earlier": "Cambios anteriores",
+    "who": {
+      "agent": "Agente",
+      "user": "Tú"
+    },
+    "today": "Hoy",
+    "yesterday": "Ayer",
+    "whenTitle": "{day}, {time}",
+    "whenPhrase": "{day, select, today {hoy a las {time}} yesterday {ayer a las {time}} other {el {date} a las {time}}}",
+    "justNow": "justo ahora",
+    "minutesAgo": "{count, plural, other {hace # min}}",
+    "hoursAgo": "{count, plural, other {hace # h}}"
+  }
+}

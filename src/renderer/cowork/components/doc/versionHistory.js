@@ -4,10 +4,17 @@
 // restoring it would change back). Pure, so it is tested directly; `now` is
 // passed in.
 
+import i18n from '../../../lib/i18n';
+import { dateLocale } from '../../lib/formatTime';
+
 const DAY_MS = 86_400_000;
+const tr = (key, vars) => i18n.t(key, { ns: 'docs', ...vars });
 
 /** Who made a version, as the row names them. */
-export const WHO = { agent: 'Agent', user: 'You' };
+export const WHO = {
+  get agent() { return tr('versions.who.agent'); },
+  get user() { return tr('versions.who.user'); },
+};
 
 function dayStart(date) {
   const d = new Date(date);
@@ -15,45 +22,56 @@ function dayStart(date) {
   return d.getTime();
 }
 
-/** "Today", "Yesterday", the weekday within the week, else "Oct 12" (and the year, when it isn't this one). */
-export function dayLabel(iso, now) {
+/** Calendar days from `iso` to `now`: 0 today, 1 yesterday. */
+function daysAgo(iso, now) {
+  return Math.round((dayStart(now) - dayStart(new Date(iso))) / DAY_MS);
+}
+
+/** The weekday within the week, else "Oct 12" (and the year, when it isn't this one). */
+function dateLabel(iso, now) {
   const d = new Date(iso);
-  const days = Math.round((dayStart(now) - dayStart(d)) / DAY_MS);
-  if (days <= 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+  if (daysAgo(iso, now) < 7) return d.toLocaleDateString(dateLocale(), { weekday: 'long' });
   const year = d.getFullYear() !== new Date(now).getFullYear() ? { year: 'numeric' } : {};
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...year });
+  return d.toLocaleDateString(dateLocale(), { month: 'short', day: 'numeric', ...year });
+}
+
+/** "Today", "Yesterday", else the weekday or the date. */
+export function dayLabel(iso, now) {
+  const days = daysAgo(iso, now);
+  if (days <= 0) return tr('versions.today');
+  if (days === 1) return tr('versions.yesterday');
+  return dateLabel(iso, now);
 }
 
 /** "3:42 PM", in the person's own clock. */
-export const timeLabel = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+export const timeLabel = (iso) => new Date(iso).toLocaleTimeString(dateLocale(), { hour: 'numeric', minute: '2-digit' });
 
 /** As a heading: "Today, 2:58 PM". */
-export const whenTitle = (iso, now) => `${dayLabel(iso, now)}, ${timeLabel(iso)}`;
+export const whenTitle = (iso, now) => tr('versions.whenTitle', { day: dayLabel(iso, now), time: timeLabel(iso) });
 
 /** In a sentence: "today at 2:58 PM", "Monday at 9:04 AM", "Oct 12 at 5:12 PM". */
 export function whenPhrase(iso, now) {
-  const day = dayLabel(iso, now);
-  return `${day === 'Today' || day === 'Yesterday' ? day.toLowerCase() : day} at ${timeLabel(iso)}`;
+  const days = daysAgo(iso, now);
+  const day = days <= 0 ? 'today' : days === 1 ? 'yesterday' : 'other';
+  return tr('versions.whenPhrase', { day, date: day === 'other' ? dateLabel(iso, now) : '', time: timeLabel(iso) });
 }
 
 /** Short, for a version from today: "2:58 PM"; otherwise the phrase. */
-export const whenShort = (iso, now) => (dayLabel(iso, now) === 'Today' ? timeLabel(iso) : whenPhrase(iso, now));
+export const whenShort = (iso, now) => (daysAgo(iso, now) <= 0 ? timeLabel(iso) : whenPhrase(iso, now));
 
 /** How long ago, for the doc as it is now: "just now", "12 min ago", "3 hr ago", else the phrase. */
 export function ago(iso, now) {
   const seconds = (new Date(now) - new Date(iso)) / 1000;
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-  if (seconds < 6 * 3600) return `${Math.floor(seconds / 3600)} hr ago`;
+  if (seconds < 60) return tr('versions.justNow');
+  if (seconds < 3600) return tr('versions.minutesAgo', { count: Math.floor(seconds / 60) });
+  if (seconds < 6 * 3600) return tr('versions.hoursAgo', { count: Math.floor(seconds / 3600) });
   return whenPhrase(iso, now);
 }
 
 /** What a version's row says happened. */
 export function whatChanged(entry, now) {
-  if (entry.restoredFrom?.at) return `Restored the version from ${whenShort(entry.restoredFrom.at, now)}`;
-  return entry.summary || 'Earlier changes';
+  if (entry.restoredFrom?.at) return tr('versions.restoredFrom', { when: whenShort(entry.restoredFrom.at, now) });
+  return entry.summary || tr('versions.earlier');
 }
 
 /** The kept versions (newest first) under their day: [{ day, versions }]. */

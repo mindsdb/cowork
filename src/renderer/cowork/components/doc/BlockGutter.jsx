@@ -6,6 +6,7 @@ import { Icon } from '../ui/Icon';
 import { Menu } from '../ui';
 import { BLOCK_ICONS, TONE_ICONS } from './blockIcons';
 import { blockMenu } from './blockMenu';
+import { useTranslation } from '../../../lib/i18n';
 
 const ICONS = { ...BLOCK_ICONS, ...TONE_ICONS, dup: Copy, up: ArrowUp, down: ArrowDown, del: Trash2 };
 
@@ -34,16 +35,17 @@ export function blockMenuItems({ blocks, index, onOps, readText, turnInto, askAg
 
 /** `label` names the block for its buttons ("Heading 2 “Risks”"). */
 export default function BlockGutter({ label, open, onOpenChange, onAdd, items }) {
+  const { t } = useTranslation('docs');
   return (
     <div className="doc-gutter" data-open={open}>
-      <button type="button" className="doc-gutter__btn" aria-label={`Add a block below ${label}`} onClick={onAdd}>
+      <button type="button" className="doc-gutter__btn" aria-label={t('block.addBelow', { block: label })} onClick={onAdd}>
         <Icon of={Plus} size={14} />
       </button>
       <Menu
         open={open}
         onOpenChange={onOpenChange}
-        ariaLabel="Block options"
-        trigger={<button type="button" className="doc-gutter__btn" aria-label={`Options for ${label}`}><Icon of={GripVertical} size={14} /></button>}
+        ariaLabel={t('block.optionsMenu')}
+        trigger={<button type="button" className="doc-gutter__btn" aria-label={t('block.options', { block: label })}><Icon of={GripVertical} size={14} /></button>}
         items={items}
       />
     </div>

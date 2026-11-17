@@ -377,7 +377,7 @@ export function AccessChooser({
 
   return (
     <AudiencePanel
-      ariaLabel={noun === 'app' ? t('publish.whoCanAccess') : `Who can access your ${noun}`}
+      ariaLabel={t(noun === 'doc' ? 'publish.whoCanAccessDoc' : 'publish.whoCanAccess')}
       value={draft.mode}
       onValueChange={(m) => set({ mode: m })}
       options={options}

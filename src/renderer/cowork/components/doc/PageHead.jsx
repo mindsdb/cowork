@@ -6,16 +6,18 @@ import { Plus } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import EditableText from './EditableText';
 import { relativeAge } from '../../lib/formatTime';
+import { useTranslation } from '../../../lib/i18n';
 
 // "Edited 3m ago" that stays true: it re-reads the clock each minute instead of
 // keeping the age it had when the doc last rendered.
 function EditedAgo({ at }) {
+  const { t } = useTranslation('docs');
   const [, tick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 60_000);
     return () => clearInterval(t);
   }, []);
-  return <span>{at ? `Edited ${relativeAge(at)}` : 'New doc'}</span>;
+  return <span>{at ? t('page.edited', { age: relativeAge(at) }) : t('page.new')}</span>;
 }
 
 /**
@@ -24,6 +26,7 @@ function EditedAgo({ at }) {
  * says that has happened.
  */
 export default function PageHead({ title, editable, onCommit, onEnter, updatedAt, byAgent, onAddTab, nameNow = false, onNamed }) {
+  const { t } = useTranslation('docs');
   const titleRef = useRef(null);
   useEffect(() => {
     if (!nameNow) return;
@@ -39,8 +42,8 @@ export default function PageHead({ title, editable, onCommit, onEnter, updatedAt
         plain
         singleLine
         editable={editable}
-        placeholder="Untitled"
-        ariaLabel="Title"
+        placeholder={t('page.untitled')}
+        ariaLabel={t('page.title')}
         onCommit={onCommit}
         onKeyDown={(e) => {
           if (e.key !== 'Enter') return;
@@ -51,9 +54,9 @@ export default function PageHead({ title, editable, onCommit, onEnter, updatedAt
       />
       <div className="doc-byline">
         <EditedAgo at={updatedAt} />
-        {byAgent && (<><span className="doc-byline__dot">·</span><span>Written with the agent</span></>)}
+        {byAgent && (<><span className="doc-byline__dot">·</span><span>{t('page.byAgent')}</span></>)}
         {onAddTab && (
-          <button type="button" className="doc-byline__add" onClick={onAddTab}><Icon of={Plus} size={14} />Add tab</button>
+          <button type="button" className="doc-byline__add" onClick={onAddTab}><Icon of={Plus} size={14} />{t('tabs.add')}</button>
         )}
       </div>
     </>

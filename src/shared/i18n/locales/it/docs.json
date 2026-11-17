@@ -1,0 +1,303 @@
+{
+  "doc": "Documento",
+  "pane": {
+    "status": {
+      "agentWriting": "L’agente sta scrivendo",
+      "notSaved": "Non ancora salvato",
+      "saving": "Salvataggio…"
+    },
+    "showTabs": "Mostra schede",
+    "showTabsChanged": "Mostra schede (una scheda è cambiata)",
+    "openSharedPage": "Apri la pagina condivisa",
+    "openInBrowser": "Apri nel browser",
+    "shareToOpen": "Condividilo per aprirlo in un browser",
+    "showChat": "Mostra la chat",
+    "expand": "Espandi",
+    "close": "Chiudi",
+    "closeDoc": "Chiudi documento",
+    "loading": "Caricamento del documento",
+    "gone": "Questo documento non esiste più.",
+    "openFailed": "Impossibile aprire questo documento. {reason}",
+    "offline": "Impossibile raggiungere il server locale di Cowork. Le tue modifiche restano qui e verranno salvate appena sarà di nuovo disponibile.",
+    "dismiss": "Chiudi",
+    "undo": "Annulla"
+  },
+  "export": {
+    "label": "Esporta",
+    "downloadAs": "Scarica come",
+    "format": {
+      "docx": "Word (.docx)",
+      "pdf": "PDF",
+      "md": "Markdown",
+      "html": "Pagina HTML"
+    },
+    "copyMarkdown": "Copia come Markdown",
+    "exporting": "Esportazione di {name}…",
+    "failed": "Esportazione non riuscita",
+    "failedStatus": "Esportazione non riuscita ({status})",
+    "copied": "Copiato come Markdown",
+    "copyFailed": "Copia non riuscita",
+    "copyDocFailed": "Impossibile copiare il documento"
+  },
+  "notice": {
+    "deletedTab": "Scheda «{title}» eliminata",
+    "deletedColumn": "Colonna «{name}» eliminata",
+    "deletedRows": "{count, plural, one {Riga eliminata} other {# righe eliminate}}",
+    "deletedBlocks": "{count, plural, one {Blocco eliminato} other {# blocchi eliminati}}",
+    "cantUndo": "Impossibile annullare: nel frattempo è stato modificato.",
+    "cantRedo": "Impossibile ripetere: nel frattempo il documento è stato modificato.",
+    "editTooBig": "Questa modifica è troppo grande per essere salvata. Il documento mostra il contenuto salvato.",
+    "editFailed": "Impossibile salvare questa modifica. Il documento mostra il contenuto salvato.",
+    "imageFailed": "Impossibile aggiungere l’immagine",
+    "imageFailedStatus": "Impossibile aggiungere l’immagine ({status})",
+    "imageTooLarge": "L’immagine è troppo grande per un documento (massimo 10 MB).",
+    "openPageFailed": "Impossibile aprire la pagina",
+    "openInBrowserFailed": "Impossibile aprire questo documento in un browser",
+    "requestFailed": "Richiesta del documento non riuscita ({status})",
+    "timeout": "Il server ha impiegato troppo tempo a rispondere."
+  },
+  "card": {
+    "open": "Apri documento: {title}",
+    "deleted": "Documento eliminato: {title}",
+    "kindDeleted": "Documento · eliminato",
+    "kindOpen": "Documento · aperto accanto alla chat",
+    "showing": "Aperto",
+    "openButton": "Apri"
+  },
+  "column": {
+    "resize": "Ridimensiona il documento"
+  },
+  "page": {
+    "untitled": "Senza titolo",
+    "title": "Titolo",
+    "edited": "Modificato {age}",
+    "new": "Nuovo documento",
+    "byAgent": "Scritto con l’agente"
+  },
+  "tabs": {
+    "label": "Schede",
+    "add": "Aggiungi scheda",
+    "hide": "Nascondi schede",
+    "changed": "Modificata",
+    "showChanged": "Mostra la scheda modificata",
+    "name": "Nome della scheda",
+    "menu": "Scheda {title}",
+    "options": "Opzioni di {title}",
+    "rename": "Rinomina",
+    "moveUp": "Sposta su",
+    "moveDown": "Sposta giù",
+    "delete": "Elimina scheda"
+  },
+  "block": {
+    "kind": {
+      "paragraph": "Paragrafo",
+      "heading": "Titolo {level}",
+      "listItem": "Elemento dell’elenco",
+      "task": "Elemento da fare",
+      "quote": "Citazione",
+      "callout": "Riquadro",
+      "table": "Tabella",
+      "chart": "Grafico",
+      "metrics": "Metriche",
+      "code": "Codice",
+      "image": "Immagine",
+      "divider": "Separatore",
+      "pending": "Sezione da scrivere",
+      "other": "Blocco"
+    },
+    "empty": {
+      "paragraph": "Paragrafo vuoto",
+      "heading": "Titolo {level} vuoto",
+      "listItem": "Elemento dell’elenco vuoto",
+      "task": "Elemento da fare vuoto",
+      "quote": "Citazione vuota",
+      "callout": "Riquadro vuoto"
+    },
+    "named": "{kind} «{words}»",
+    "addBelow": "Aggiungi un blocco sotto {block}",
+    "options": "Opzioni per {block}",
+    "optionsMenu": "Opzioni del blocco",
+    "startWriting": "Inizia a scrivere o digita / per i blocchi",
+    "typeSlash": "Digita / per i blocchi",
+    "markDone": "Segna come completato",
+    "markNotDone": "Segna come non completato"
+  },
+  "menu": {
+    "turnInto": "Trasforma in",
+    "calloutColor": "Colore del riquadro",
+    "editWithAgent": "Modifica con l’agente…",
+    "duplicate": "Duplica",
+    "moveUp": "Sposta su",
+    "moveDown": "Sposta giù",
+    "delete": "Elimina"
+  },
+  "insert": {
+    "label": "Inserisci un blocco",
+    "noMatch": "Nessun blocco corrisponde a «{query}»",
+    "group": {
+      "basic": "Base",
+      "data": "Dati",
+      "other": "Altro",
+      "agent": "Agente"
+    },
+    "item": {
+      "paragraph": "Testo",
+      "heading1": "Titolo 1",
+      "heading2": "Titolo 2",
+      "heading3": "Titolo 3",
+      "bullet": "Elenco puntato",
+      "numbered": "Elenco numerato",
+      "task": "Elenco di cose da fare",
+      "quote": "Citazione",
+      "callout": "Riquadro",
+      "table": "Tabella",
+      "chart": "Grafico",
+      "metrics": "Metriche",
+      "code": "Codice",
+      "divider": "Separatore",
+      "image": "Immagine",
+      "ask": "Chiedi all’agente di scrivere…"
+    }
+  },
+  "tone": {
+    "info": "Informazioni",
+    "success": "Successo",
+    "warning": "Avviso",
+    "danger": "Pericolo",
+    "note": "Nota"
+  },
+  "format": {
+    "label": "Formato",
+    "bold": "Grassetto",
+    "italic": "Corsivo",
+    "strike": "Barrato",
+    "code": "Codice",
+    "link": "Link",
+    "addLink": "Aggiungi link",
+    "linkAddress": "Indirizzo del link",
+    "linkPlaceholder": "Incolla un link e premi Invio"
+  },
+  "ask": {
+    "label": "Modifica con l’agente",
+    "request": "Richiesta per l’agente",
+    "placeholderWrite": "Cosa deve scrivere qui l’agente?",
+    "placeholderChange": "Cosa deve cambiare?",
+    "send": "Invia"
+  },
+  "chart": {
+    "label": "Grafico",
+    "title": "Titolo del grafico",
+    "kind": {
+      "bar": "Colonne",
+      "hbar": "Barre",
+      "stacked": "In pila",
+      "line": "Linee",
+      "area": "Area",
+      "donut": "Anello"
+    },
+    "inUnit": "In {unit}",
+    "followsTable": "Si aggiorna con la sua tabella",
+    "showTable": "Mostra la sua tabella",
+    "makeTable": "Trasforma i dati in una tabella",
+    "tableGone": "La tabella di questo grafico non è più in questa scheda.",
+    "noColumn": "La sua tabella non ha la colonna «{column}».",
+    "noNumbers": "Ancora nessun numero da rappresentare.",
+    "drawFrom": "Crea da una tabella",
+    "useTable": "Usa una tabella…",
+    "tableOption": "Tabella {number}: {columns}",
+    "total": "Totale",
+    "totalUnit": "Totale ({unit})"
+  },
+  "table": {
+    "kind": {
+      "text": "Testo",
+      "number": "Numero",
+      "status": "Stato",
+      "date": "Data"
+    },
+    "type": "Tipo",
+    "sortAsc": "Ordina in modo crescente",
+    "sortDesc": "Ordina in modo decrescente",
+    "insertLeft": "Inserisci colonna a sinistra",
+    "insertRight": "Inserisci colonna a destra",
+    "deleteColumn": "Elimina colonna",
+    "columnName": "Nome della colonna",
+    "columnMenu": "Colonna {column}",
+    "columnOptions": "Opzioni della colonna {column}",
+    "addColumn": "Aggiungi colonna",
+    "rowOptions": "Opzioni della riga",
+    "rowOptionsFor": "Opzioni della riga {number}",
+    "insertAbove": "Inserisci riga sopra",
+    "insertBelow": "Inserisci riga sotto",
+    "deleteRow": "Elimina riga",
+    "newRow": "Nuova riga",
+    "other": "Altro…",
+    "clear": "Cancella",
+    "setValue": "Imposta {column}",
+    "newValue": "Nuovo valore per {column}",
+    "cellValue": "{column}: {value}",
+    "cellEmpty": "{column}: vuoto",
+    "dateValue": "Data: {value}",
+    "dateEmpty": "Data: vuota",
+    "cell": "{column}, riga {number}"
+  },
+  "metrics": {
+    "label": "Etichetta",
+    "change": "Variazione"
+  },
+  "code": {
+    "label": "Codice",
+    "language": "Linguaggio del codice",
+    "plainText": "testo semplice",
+    "copy": "Copia codice",
+    "copied": "Copiato"
+  },
+  "image": {
+    "label": "Immagine",
+    "caption": "Aggiungi una didascalia"
+  },
+  "pending": {
+    "writing": "In scrittura:",
+    "toWrite": "Da scrivere:"
+  },
+  "versions": {
+    "title": "Cronologia versioni",
+    "saved": "Salvataggio automatico",
+    "loading": "Caricamento delle versioni…",
+    "loadFailed": "Impossibile caricare le versioni. Riprova tra un momento.",
+    "current": "Versione attuale",
+    "none": "Le versioni precedenti appariranno qui man mano che il documento cambia.",
+    "hint": "Scegli una versione per vederla prima di ripristinarla.",
+    "viewing": "Visualizzazione: {when}",
+    "changedSince": "Cambiato rispetto a questa versione",
+    "older": "Versione precedente",
+    "newer": "Versione successiva",
+    "back": "Torna alla versione attuale",
+    "restoreThis": "Ripristina questa versione",
+    "confirmTitle": "Ripristinare questa versione?",
+    "confirmLead": "Il documento tornerà com’era {when}.",
+    "agentWriting": "L’agente sta ancora scrivendo. Ciò che scriverà da ora in poi finirà nella versione che ripristini.",
+    "nothingLost": "Non si perde nulla. La versione attuale resta nella cronologia delle versioni, quindi puoi tornarci.",
+    "sharedUpdates": "Si aggiorna anche la pagina condivisa.",
+    "cancel": "Annulla",
+    "restore": "Ripristina",
+    "restoring": "Ripristino…",
+    "restoredFrom": "Ripristinata la versione ({when})",
+    "undo": "Annulla",
+    "openFailed": "Impossibile aprire quella versione",
+    "restoreFailed": "Impossibile ripristinare quella versione",
+    "undoFailed": "Impossibile annullare il ripristino",
+    "earlier": "Modifiche precedenti",
+    "who": {
+      "agent": "Agente",
+      "user": "Tu"
+    },
+    "today": "Oggi",
+    "yesterday": "Ieri",
+    "whenTitle": "{day}, {time}",
+    "whenPhrase": "{day, select, today {oggi alle {time}} yesterday {ieri alle {time}} other {{date} alle {time}}}",
+    "justNow": "adesso",
+    "minutesAgo": "{count, plural, other {# min fa}}",
+    "hoursAgo": "{count, plural, one {# ora fa} other {# ore fa}}"
+  }
+}

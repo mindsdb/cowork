@@ -262,11 +262,17 @@
     },
     "dropFiles": "Déposez des fichiers pour les joindre",
     "addContext": "Ajouter du contexte",
+    "docOutput": {
+      "chip": "Document",
+      "remove": "Sortie : document. Retirer",
+      "title": "La réponse sera rédigée sous forme de document. Cliquez pour retirer."
+    },
     "menu": {
       "attachFiles": "Joindre des fichiers ou des photos",
       "openingGoogleDrive": "Ouverture de Google Drive…",
       "addFromGoogleDrive": "Ajouter des fichiers depuis Google Drive",
       "addFromSharePoint": "Ajouter des fichiers depuis SharePoint",
+      "writeAsDoc": "Rédiger sous forme de document",
       "browserTitle": "{agent} peut utiliser le mode navigateur dans cette tâche. La désactivation s’applique à partir de votre prochain message.",
       "browser": "Navigateur",
       "browserOff": "Désactiver le navigateur pour cette tâche",

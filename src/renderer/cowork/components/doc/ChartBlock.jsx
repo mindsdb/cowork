@@ -16,14 +16,15 @@ import { Menu, Tooltip } from '../ui';
 import EditableText from './EditableText';
 import { chartData, newId, sourceForTable } from './docModel';
 import { barPath, clip, donutArcs, formatter, niceScale, stackTotals, unitParts } from './chartGeometry';
+import { useTranslation } from '../../../lib/i18n';
 
 const KINDS = [
-  { id: 'bar', label: 'Columns', icon: ChartColumn },
-  { id: 'hbar', label: 'Bars', icon: ChartBar },
-  { id: 'stacked', label: 'Stacked', icon: ChartBarStacked },
-  { id: 'line', label: 'Line', icon: ChartLine },
-  { id: 'area', label: 'Area', icon: ChartArea },
-  { id: 'donut', label: 'Donut', icon: ChartPie },
+  { id: 'bar', icon: ChartColumn },
+  { id: 'hbar', icon: ChartBar },
+  { id: 'stacked', icon: ChartBarStacked },
+  { id: 'line', icon: ChartLine },
+  { id: 'area', icon: ChartArea },
+  { id: 'donut', icon: ChartPie },
 ];
 
 const color = (i) => `var(--series-${(i % 8) + 1})`;
@@ -235,6 +236,7 @@ function CartesianChart({ kind, labels, series, width, unit, title, fmt }) {
 }
 
 function DonutChart({ labels, series, width, unit, title, fmt }) {
+  const { t } = useTranslation('docs');
   const [hover, setHover] = useState(null);
   const values = (series[0]?.values || []).map((v) => Math.max(0, v || 0));
   const total = values.reduce((a, b) => a + b, 0);
@@ -252,7 +254,7 @@ function DonutChart({ labels, series, width, unit, title, fmt }) {
           {fmt(hover != null ? values[hover] : total)}
         </text>
         <text x={r} y={r + 15} textAnchor="middle" fontSize="10.5" fill="var(--ink-3)">
-          {hover != null ? clip(labels[hover], 18) : `Total${unit ? ` (${unit})` : ''}`}
+          {hover != null ? clip(labels[hover], 18) : unit ? t('chart.totalUnit', { unit }) : t('chart.total')}
         </text>
       </svg>
       <div style={{ display: 'grid', gap: 6, fontSize: 12.5, minWidth: 160, flex: 1 }}>
@@ -269,6 +271,7 @@ function DonutChart({ labels, series, width, unit, title, fmt }) {
 }
 
 export default function ChartBlock({ block, tab, editable, onOps, onShowTable }) {
+  const { t } = useTranslation('docs');
   const wrap = useRef(null);
   const width = useWidth(wrap);
   const { labels, series, table, missing } = chartData(block, tab);
@@ -277,7 +280,7 @@ export default function ChartBlock({ block, tab, editable, onOps, onShowTable })
   const plotted = series.filter((s) => s.values.some((v) => v != null));
   const fmt = formatter(plotted.flatMap((s) => s.values), block.unit);
   const unitWord = unitParts(block.unit).word;
-  const subtitle = [unitWord ? `In ${unitWord}` : null, table ? 'Updates with its table' : null].filter(Boolean).join(' · ');
+  const subtitle = [unitWord ? t('chart.inUnit', { unit: unitWord }) : null, table ? t('chart.followsTable') : null].filter(Boolean).join(' · ');
 
   const setKind = (next) => onOps?.([{ op: 'update', id: block.id, set: { chart: next } }]);
 
@@ -296,7 +299,7 @@ export default function ChartBlock({ block, tab, editable, onOps, onShowTable })
   };
 
   return (
-    <figure className="doc-chart" ref={wrap} aria-label={block.title || 'Chart'}>
+    <figure className="doc-chart" ref={wrap} aria-label={block.title || t('chart.label')}>
       <div className="doc-chart__head">
         <div className="doc-chart__titles">
           <EditableText
@@ -305,7 +308,7 @@ export default function ChartBlock({ block, tab, editable, onOps, onShowTable })
             plain
             singleLine
             editable={editable}
-            placeholder="Chart title"
+            placeholder={t('chart.title')}
             onCommit={(title) => onOps?.([{ op: 'update', id: block.id, set: { title } }])}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
           />
@@ -314,14 +317,14 @@ export default function ChartBlock({ block, tab, editable, onOps, onShowTable })
         {editable && (
           <div className="doc-chart__tools">
             {KINDS.map((k) => (
-              <Tooltip key={k.id} content={k.label}>
-                <button type="button" className="doc-iconbtn" aria-label={k.label} aria-pressed={kind === k.id} onClick={() => setKind(k.id)}>
+              <Tooltip key={k.id} content={t(`chart.kind.${k.id}`)}>
+                <button type="button" className="doc-iconbtn" aria-label={t(`chart.kind.${k.id}`)} aria-pressed={kind === k.id} onClick={() => setKind(k.id)}>
                   <Icon of={k.icon} size={16} />
                 </button>
               </Tooltip>
             ))}
-            <Tooltip content={table ? 'Show its table' : 'Turn data into a table'}>
-              <button type="button" className="doc-iconbtn" aria-label={table ? 'Show its table' : 'Turn data into a table'}
+            <Tooltip content={t(table ? 'chart.showTable' : 'chart.makeTable')}>
+              <button type="button" className="doc-iconbtn" aria-label={t(table ? 'chart.showTable' : 'chart.makeTable')}
                 onClick={() => (table ? onShowTable?.(table.id) : makeTable())}>
                 <Icon of={Table2} size={16} />
               </button>
@@ -333,19 +336,19 @@ export default function ChartBlock({ block, tab, editable, onOps, onShowTable })
       {missing || !labels.length || !plotted.length ? (
         <div className="doc-chart__empty">
           <div>
-            {missing === 'table' ? 'This chart’s table isn’t in this tab any more.'
-              : missing === 'x' ? `Its table has no “${block.source?.x}” column.`
-                : 'No numbers to draw yet.'}
+            {missing === 'table' ? t('chart.tableGone')
+              : missing === 'x' ? t('chart.noColumn', { column: block.source?.x })
+                : t('chart.noNumbers')}
           </div>
           {editable && missing && tablesHere.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <Menu
-                ariaLabel="Draw from a table"
-                trigger={<button type="button" className="doc-addbtn"><Icon of={Table2} size={14} /> Use a table…</button>}
-                items={tablesHere.map((t, i) => ({
-                  key: t.id,
-                  label: `Table ${i + 1}: ${t.columns.map((c) => c.name).slice(0, 4).join(', ')}`,
-                  onClick: () => onOps?.([{ op: 'update', id: block.id, set: { source: sourceForTable(t) } }]),
+                ariaLabel={t('chart.drawFrom')}
+                trigger={<button type="button" className="doc-addbtn"><Icon of={Table2} size={14} /> {t('chart.useTable')}</button>}
+                items={tablesHere.map((tbl, i) => ({
+                  key: tbl.id,
+                  label: t('chart.tableOption', { number: i + 1, columns: tbl.columns.map((c) => c.name).slice(0, 4).join(', ') }),
+                  onClick: () => onOps?.([{ op: 'update', id: block.id, set: { source: sourceForTable(tbl) } }]),
                 }))}
               />
             </div>

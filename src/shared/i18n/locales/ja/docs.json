@@ -1,0 +1,303 @@
+{
+  "doc": "ドキュメント",
+  "pane": {
+    "status": {
+      "agentWriting": "エージェントが作成中",
+      "notSaved": "未保存",
+      "saving": "保存中…"
+    },
+    "showTabs": "タブを表示",
+    "showTabsChanged": "タブを表示（変更されたタブがあります）",
+    "openSharedPage": "共有ページを開く",
+    "openInBrowser": "ブラウザで開く",
+    "shareToOpen": "ブラウザで開くには共有してください",
+    "showChat": "チャットを表示",
+    "expand": "拡大表示",
+    "close": "閉じる",
+    "closeDoc": "ドキュメントを閉じる",
+    "loading": "ドキュメントを読み込み中",
+    "gone": "このドキュメントはもう存在しません。",
+    "openFailed": "このドキュメントを開けませんでした。{reason}",
+    "offline": "Coworkのローカルサーバーに接続できません。編集内容はここに保持され、接続が回復するとすぐに保存されます。",
+    "dismiss": "閉じる",
+    "undo": "元に戻す"
+  },
+  "export": {
+    "label": "エクスポート",
+    "downloadAs": "ダウンロード形式",
+    "format": {
+      "docx": "Word (.docx)",
+      "pdf": "PDF",
+      "md": "Markdown",
+      "html": "HTMLページ"
+    },
+    "copyMarkdown": "Markdownとしてコピー",
+    "exporting": "{name}をエクスポート中…",
+    "failed": "エクスポートできませんでした",
+    "failedStatus": "エクスポートできませんでした（{status}）",
+    "copied": "Markdownとしてコピーしました",
+    "copyFailed": "コピーできませんでした",
+    "copyDocFailed": "ドキュメントをコピーできませんでした"
+  },
+  "notice": {
+    "deletedTab": "タブ「{title}」を削除しました",
+    "deletedColumn": "列「{name}」を削除しました",
+    "deletedRows": "{count, plural, other {#行を削除しました}}",
+    "deletedBlocks": "{count, plural, other {#個のブロックを削除しました}}",
+    "cantUndo": "元に戻せません：その後に変更されています。",
+    "cantRedo": "やり直せません：その後にドキュメントが変更されています。",
+    "editTooBig": "編集内容が大きすぎるため保存できませんでした。ドキュメントには保存済みの内容が表示されています。",
+    "editFailed": "編集内容を保存できませんでした。ドキュメントには保存済みの内容が表示されています。",
+    "imageFailed": "画像を追加できませんでした",
+    "imageFailedStatus": "画像を追加できませんでした（{status}）",
+    "imageTooLarge": "画像が大きすぎるため、ドキュメントに追加できません（最大10 MB）。",
+    "openPageFailed": "ページを開けませんでした",
+    "openInBrowserFailed": "このドキュメントをブラウザで開けませんでした",
+    "requestFailed": "ドキュメントのリクエストに失敗しました（{status}）",
+    "timeout": "サーバーの応答がタイムアウトしました。"
+  },
+  "card": {
+    "open": "ドキュメントを開く：{title}",
+    "deleted": "削除されたドキュメント：{title}",
+    "kindDeleted": "ドキュメント · 削除済み",
+    "kindOpen": "ドキュメント · チャットの横に表示中",
+    "showing": "表示中",
+    "openButton": "開く"
+  },
+  "column": {
+    "resize": "ドキュメントのサイズを変更"
+  },
+  "page": {
+    "untitled": "無題",
+    "title": "タイトル",
+    "edited": "最終編集：{age}",
+    "new": "新規ドキュメント",
+    "byAgent": "エージェントと共同作成"
+  },
+  "tabs": {
+    "label": "タブ",
+    "add": "タブを追加",
+    "hide": "タブを非表示",
+    "changed": "変更あり",
+    "showChanged": "変更されたタブを表示",
+    "name": "タブ名",
+    "menu": "{title}タブ",
+    "options": "{title}のオプション",
+    "rename": "名前を変更",
+    "moveUp": "上へ移動",
+    "moveDown": "下へ移動",
+    "delete": "タブを削除"
+  },
+  "block": {
+    "kind": {
+      "paragraph": "段落",
+      "heading": "見出し{level}",
+      "listItem": "リスト項目",
+      "task": "ToDo",
+      "quote": "引用",
+      "callout": "コールアウト",
+      "table": "表",
+      "chart": "グラフ",
+      "metrics": "指標",
+      "code": "コード",
+      "image": "画像",
+      "divider": "区切り線",
+      "pending": "作成予定のセクション",
+      "other": "ブロック"
+    },
+    "empty": {
+      "paragraph": "空の段落",
+      "heading": "空の見出し{level}",
+      "listItem": "空のリスト項目",
+      "task": "空のToDo",
+      "quote": "空の引用",
+      "callout": "空のコールアウト"
+    },
+    "named": "{kind}「{words}」",
+    "addBelow": "{block}の下にブロックを追加",
+    "options": "{block}のオプション",
+    "optionsMenu": "ブロックのオプション",
+    "startWriting": "入力を開始するか、「/」でブロックを挿入",
+    "typeSlash": "「/」でブロックを挿入",
+    "markDone": "完了にする",
+    "markNotDone": "未完了にする"
+  },
+  "menu": {
+    "turnInto": "変換",
+    "calloutColor": "コールアウトの色",
+    "editWithAgent": "エージェントで編集…",
+    "duplicate": "複製",
+    "moveUp": "上へ移動",
+    "moveDown": "下へ移動",
+    "delete": "削除"
+  },
+  "insert": {
+    "label": "ブロックを挿入",
+    "noMatch": "「{query}」に一致するブロックはありません",
+    "group": {
+      "basic": "基本",
+      "data": "データ",
+      "other": "その他",
+      "agent": "エージェント"
+    },
+    "item": {
+      "paragraph": "テキスト",
+      "heading1": "見出し1",
+      "heading2": "見出し2",
+      "heading3": "見出し3",
+      "bullet": "箇条書きリスト",
+      "numbered": "番号付きリスト",
+      "task": "ToDoリスト",
+      "quote": "引用",
+      "callout": "コールアウト",
+      "table": "表",
+      "chart": "グラフ",
+      "metrics": "指標",
+      "code": "コード",
+      "divider": "区切り線",
+      "image": "画像",
+      "ask": "エージェントに作成を依頼…"
+    }
+  },
+  "tone": {
+    "info": "情報",
+    "success": "成功",
+    "warning": "警告",
+    "danger": "危険",
+    "note": "メモ"
+  },
+  "format": {
+    "label": "書式",
+    "bold": "太字",
+    "italic": "斜体",
+    "strike": "取り消し線",
+    "code": "コード",
+    "link": "リンク",
+    "addLink": "リンクを追加",
+    "linkAddress": "リンクのアドレス",
+    "linkPlaceholder": "リンクを貼り付けてEnterキーを押してください"
+  },
+  "ask": {
+    "label": "エージェントで編集",
+    "request": "エージェントへの依頼",
+    "placeholderWrite": "エージェントにここで何を書いてもらいますか？",
+    "placeholderChange": "何を変更しますか？",
+    "send": "送信"
+  },
+  "chart": {
+    "label": "グラフ",
+    "title": "グラフのタイトル",
+    "kind": {
+      "bar": "縦棒",
+      "hbar": "横棒",
+      "stacked": "積み上げ",
+      "line": "折れ線",
+      "area": "面",
+      "donut": "ドーナツ"
+    },
+    "inUnit": "単位：{unit}",
+    "followsTable": "表に合わせて更新",
+    "showTable": "元の表を表示",
+    "makeTable": "データを表に変換",
+    "tableGone": "このグラフの表は、このタブにはもうありません。",
+    "noColumn": "表に「{column}」列がありません。",
+    "noNumbers": "表示する数値がまだありません。",
+    "drawFrom": "表から作成",
+    "useTable": "表を使用…",
+    "tableOption": "表{number}：{columns}",
+    "total": "合計",
+    "totalUnit": "合計（{unit}）"
+  },
+  "table": {
+    "kind": {
+      "text": "テキスト",
+      "number": "数値",
+      "status": "ステータス",
+      "date": "日付"
+    },
+    "type": "種類",
+    "sortAsc": "昇順で並べ替え",
+    "sortDesc": "降順で並べ替え",
+    "insertLeft": "左に列を挿入",
+    "insertRight": "右に列を挿入",
+    "deleteColumn": "列を削除",
+    "columnName": "列名",
+    "columnMenu": "{column}列",
+    "columnOptions": "{column}列のオプション",
+    "addColumn": "列を追加",
+    "rowOptions": "行のオプション",
+    "rowOptionsFor": "{number}行目のオプション",
+    "insertAbove": "上に行を挿入",
+    "insertBelow": "下に行を挿入",
+    "deleteRow": "行を削除",
+    "newRow": "新しい行",
+    "other": "その他…",
+    "clear": "クリア",
+    "setValue": "{column}を設定",
+    "newValue": "新しい{column}",
+    "cellValue": "{column}：{value}",
+    "cellEmpty": "{column}：空",
+    "dateValue": "日付：{value}",
+    "dateEmpty": "日付：空",
+    "cell": "{column}、{number}行目"
+  },
+  "metrics": {
+    "label": "ラベル",
+    "change": "増減"
+  },
+  "code": {
+    "label": "コード",
+    "language": "コードの言語",
+    "plainText": "プレーンテキスト",
+    "copy": "コードをコピー",
+    "copied": "コピーしました"
+  },
+  "image": {
+    "label": "画像",
+    "caption": "キャプションを追加"
+  },
+  "pending": {
+    "writing": "作成中：",
+    "toWrite": "作成予定："
+  },
+  "versions": {
+    "title": "バージョン履歴",
+    "saved": "自動保存",
+    "loading": "バージョンを読み込み中…",
+    "loadFailed": "バージョンを読み込めませんでした。しばらくしてからもう一度お試しください。",
+    "current": "現在のバージョン",
+    "none": "ドキュメントが変更されると、以前のバージョンがここに表示されます。",
+    "hint": "バージョンを選択すると、復元する前に内容を確認できます。",
+    "viewing": "表示中：{when}",
+    "changedSince": "このバージョン以降に変更",
+    "older": "前のバージョン",
+    "newer": "次のバージョン",
+    "back": "現在のバージョンに戻る",
+    "restoreThis": "このバージョンを復元",
+    "confirmTitle": "このバージョンを復元しますか？",
+    "confirmLead": "ドキュメントは{when}の状態に戻ります。",
+    "agentWriting": "エージェントはまだ作成中です。この後に書かれる内容は、復元したバージョンに追加されます。",
+    "nothingLost": "失われる内容はありません。現在のバージョンはバージョン履歴に残るため、いつでも切り替えて戻せます。",
+    "sharedUpdates": "共有ページも更新されます。",
+    "cancel": "キャンセル",
+    "restore": "復元",
+    "restoring": "復元中…",
+    "restoredFrom": "{when}のバージョンを復元しました",
+    "undo": "元に戻す",
+    "openFailed": "そのバージョンを開けませんでした",
+    "restoreFailed": "そのバージョンを復元できませんでした",
+    "undoFailed": "復元を元に戻せませんでした",
+    "earlier": "以前の変更",
+    "who": {
+      "agent": "エージェント",
+      "user": "あなた"
+    },
+    "today": "今日",
+    "yesterday": "昨日",
+    "whenTitle": "{day} {time}",
+    "whenPhrase": "{day, select, today {今日 {time}} yesterday {昨日 {time}} other {{date} {time}}}",
+    "justNow": "たった今",
+    "minutesAgo": "{count, plural, other {#分前}}",
+    "hoursAgo": "{count, plural, other {#時間前}}"
+  }
+}

@@ -8,7 +8,7 @@ import i18n, { currentLocale } from '../../lib/i18n';
 const tr = (key, vars) => i18n.t(`messages.time.${key}`, { ns: 'projects', ...vars });
 
 /* English keeps the system's date format, as it always has. */
-function dateLocale() {
+export function dateLocale() {
   const locale = currentLocale();
   return locale === 'en' || locale === 'en-XA' ? undefined : locale;
 }
