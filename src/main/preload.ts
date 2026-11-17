@@ -10,6 +10,7 @@ const inAppBrowser: InAppBrowserBridge = {
   show: (sessionId: string, bounds: StageBounds) => ipcRenderer.invoke(IPC.BROWSER_SHOW, sessionId, bounds),
   hide: () => ipcRenderer.invoke(IPC.BROWSER_HIDE),
   setBounds: (bounds: StageBounds) => ipcRenderer.invoke(IPC.BROWSER_SET_BOUNDS, bounds),
+  open: (sessionId: string, url: string | null) => ipcRenderer.invoke(IPC.BROWSER_OPEN, sessionId, url),
   back: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, sessionId, 'back'),
   forward: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, sessionId, 'forward'),
   reload: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, sessionId, 'reload'),

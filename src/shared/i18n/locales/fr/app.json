@@ -264,5 +264,12 @@
   "addon": {
     "moveFailed": "Impossible de déplacer ce message dans la file d’attente. Veuillez réessayer.",
     "stayQueued": "{agent} ne peut pas le prendre pour l’instant. Il reste dans la file d’attente."
+  },
+  "voiceCall": {
+    "backToCall": "Revenir à l’appel avec {agent}",
+    "onCall": "En appel avec {agent}",
+    "callBackPending": "{agent} vous rappellera une fois terminé",
+    "call": "Appeler {agent}",
+    "anotherCall": "Un autre appel est en cours"
   }
 }
