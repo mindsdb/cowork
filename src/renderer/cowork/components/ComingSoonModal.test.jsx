@@ -2,11 +2,29 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 const openExternal = vi.hoisted(() => vi.fn());
-vi.mock('../../platform/host', () => ({ host: { openExternal } }));
+const hostState = vi.hoisted(() => ({ isMobileShell: false }));
+vi.mock('../../platform/host', () => ({
+  host: { openExternal, get isMobileShell() { return hostState.isMobileShell; } },
+}));
 
 import ComingSoonModal from './ComingSoonModal';
 
-beforeEach(() => openExternal.mockClear());
+beforeEach(() => {
+  openExternal.mockClear();
+  hostState.isMobileShell = false;
+});
+
+// ENG-4023: a phone cannot install the desktop app, so the app offers no
+// download, only the note and a way out.
+it('offers no download inside the mobile app', () => {
+  hostState.isMobileShell = true;
+  const onClose = vi.fn();
+  render(<ComingSoonModal feature="Channels" onClose={onClose} />);
+  expect(screen.queryByText('Download the app')).toBeNull();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Close' }).at(-1));
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(openExternal).not.toHaveBeenCalled();
+});
 
 describe('ComingSoonModal', () => {
   it('stays closed when no feature is set', () => {

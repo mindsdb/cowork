@@ -19,11 +19,11 @@ import { LoadStatus, RetryAlert } from '../components/LoadStatus';
 import { useSkillSharing } from './useSkillSharing';
 import SkillShareMenu from '../components/SkillShareMenu';
 import SkillDetail from '../components/SkillDetail';
-import SkillModal, { OWN_SHARED_CHANGE_NOTE, skillFieldStyle } from '../components/SkillModal';
+import SkillModal, { skillFieldStyle } from '../components/SkillModal';
 import { ShareStateLabel, shareStateIcon } from '../components/ShareStateLabel';
 import {
-  ALWAYS_ON_BADGE,
-  ALWAYS_ON_BADGE_HINT,
+  alwaysOnBadge,
+  alwaysOnBadgeHint,
   canEditSkill,
   groupSkillsBySection,
   isOrgSharingOn,
@@ -39,9 +39,9 @@ import {
   sharedResourceAttribution,
 } from '../lib/sharedResourceAccess';
 import {
-  SKILL_SHARING_CREATE_HINT,
-  SKILL_SHARING_LABEL,
-  SKILL_SHARING_OPTIONS,
+  skillSharingCreateHint,
+  skillSharingLabel,
+  skillSharingOptions,
   SKILL_SHARING_PRIVATE,
   canShareSkill,
   isOwnSharedSkill,
@@ -49,43 +49,37 @@ import {
   sharedFromValue,
   sharingValue,
 } from '../lib/skillSharing';
+import i18n, { useTranslation } from '../../lib/i18n';
+import { productName } from '../../lib/deploymentBrand';
+
+const tr = (key, vars) => i18n.t(key, { ns: 'library', ...vars });
 
 /* The same sentence cowork-server answers when it refuses a change to a skill
    someone else shares with the caller. */
-const SHARED_SKILL_NOTE = "This skill is shared with you and can't be changed here.";
+const sharedSkillNote = () => tr('skills.sharedSkillNote');
 
 /* Why Edit or Uninstall is disabled, shown beside the menu item. Only an
    explicit `shared: true` names sharing. A built-in offers neither. */
 function lockedActionHint(skill) {
-  if (isSharedSkill(skill)) return 'Shared with you';
-  return 'Admin or creator';
+  if (isSharedSkill(skill)) return tr('skills.lockedHint.sharedWithYou');
+  return tr('skills.lockedHint.adminOrCreator');
 }
-
-const OWN_SHARED_SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
-const OWN_SHARED_REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
 
 // The detail view's note for a skill the caller can't edit.
 function readOnlyNote(skill) {
-  if (skill.isBuiltin) return 'Built-in skills are read only.';
-  if (isSharedSkill(skill)) return SHARED_SKILL_NOTE;
-  return 'Read only — only the creator or an organization admin can change this skill.';
+  if (skill.isBuiltin) return tr('skills.readOnly.builtin');
+  if (isSharedSkill(skill)) return sharedSkillNote();
+  return tr('skills.readOnly.other');
 }
 
 /* The on/off switch, on a row and in the detail header. Its label and
    tooltip say what flipping it does; where it is locked, the tooltip says
    why. */
-export const TURN_ON_LABEL = 'Turn on: Anton can use this skill';
-export const TURN_OFF_LABEL = "Turn off: Anton won't use this skill";
-const NO_PERMISSION_SWITCH_HINT = 'You do not have permission to enable or disable this skill.';
 
 /* A skill anyone else sees, and every built-in, has a switch "just
    for me": it turns the skill on or off in the caller's own tasks and leaves
    everyone else's alone. Only an editor turns it off for everyone, from the
    menu, and then the personal switch rests off and locked. */
-export const TURN_ON_FOR_ME_LABEL = 'Turn on for me: Anton can use this skill in your tasks';
-export const TURN_OFF_FOR_ME_LABEL = "Turn off for me: Anton won't use this skill in your tasks";
-export const DISABLED_FOR_EVERYONE_HINT = 'Disabled for everyone by an editor';
-export const DISABLED_FOR_EVERYONE_BADGE = 'Disabled for everyone';
 
 /* Whether the skill's switch is the caller's own. The caller's own private
    skill keeps the one global switch, since nobody else uses it; so does a
@@ -101,20 +95,21 @@ function offersEveryoneToggle(skill) {
 }
 
 function SkillEnabledControl({ skill, checked, personal = false, disabledForEveryone = false, onChange, size = 'sm' }) {
+  const { t } = useTranslation('library');
   if (personal) {
     if (disabledForEveryone) {
       return (
         <Switch
           size={size}
           checked={false}
-          aria-label={TURN_ON_FOR_ME_LABEL}
-          title={DISABLED_FOR_EVERYONE_HINT}
+          aria-label={t('skills.switch.onForMe')}
+          title={t('skills.switch.disabledForEveryoneHint')}
           disabled
           onCheckedChange={() => {}}
         />
       );
     }
-    const label = checked ? TURN_OFF_FOR_ME_LABEL : TURN_ON_FOR_ME_LABEL;
+    const label = checked ? t('skills.switch.offForMe') : t('skills.switch.onForMe');
     return (
       <Switch
         size={size}
@@ -126,10 +121,10 @@ function SkillEnabledControl({ skill, checked, personal = false, disabledForEver
     );
   }
   const canDisable = canUseSharedResource(skill, 'canDisable');
-  const label = checked ? TURN_OFF_LABEL : TURN_ON_LABEL;
+  const label = checked ? t('skills.switch.off') : t('skills.switch.on');
   const title = !canDisable
-    ? NO_PERMISSION_SWITCH_HINT
-    : isOwnSharedSkill(skill) ? `${label}. ${OWN_SHARED_SWITCH_HINT}` : label;
+    ? t('skills.switch.noPermission')
+    : isOwnSharedSkill(skill) ? t('skills.switch.ownSharedHint', { label }) : label;
   return (
     <Switch
       size={size}
@@ -157,6 +152,7 @@ function SkillTile({ skill }) {
 // right; the switch, Share and the overflow menu after them. Share and the
 // menu show on hover or focus, and always on a touch screen.
 function SkillRow({ skill, onClick, projects = [], capabilities = null, orgName = null, teams = [], actions = null, disabled = false, disabledForEveryone = false }) {
+  const { t } = useTranslation('library');
   const age = relativeAge(skill.updatedAt);
   // Project label, not slug (ENG-1676); unscoped skills apply everywhere.
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
@@ -184,10 +180,10 @@ function SkillRow({ skill, onClick, projects = [], capabilities = null, orgName 
         <>
           <span className="inline-flex min-w-0 items-center gap-1">
             {Ico.folder(12)}
-            <span className="truncate">{project || 'All projects'}</span>
+            <span className="truncate">{project || t('skillDetail.allProjects')}</span>
           </span>
           {author && <span className="max-w-[160px] truncate" title={author}>{author}</span>}
-          {age && <span className="whitespace-nowrap">Updated {age}</span>}
+          {age && <span className="whitespace-nowrap">{t('skills.updatedAge', { age })}</span>}
         </>
       )}
       actions={actions}
@@ -195,17 +191,17 @@ function SkillRow({ skill, onClick, projects = [], capabilities = null, orgName 
       {hasBadges && (
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5" data-testid="skill-badges">
           {disabledForEveryone
-            ? <Badge variant="muted" size="sm">{DISABLED_FOR_EVERYONE_BADGE}</Badge>
-            : disabled && <Badge variant="muted" size="sm">Disabled</Badge>}
-          {skill.isBuiltin && <Badge variant="muted" size="sm">Built-in</Badge>}
-          {shared && <Badge variant="muted" size="sm">Shared</Badge>}
+            ? <Badge variant="muted" size="sm">{t('skillDetail.disabledForEveryone')}</Badge>
+            : disabled && <Badge variant="muted" size="sm">{t('skillDetail.disabled')}</Badge>}
+          {skill.isBuiltin && <Badge variant="muted" size="sm">{t('skillDetail.builtIn')}</Badge>}
+          {shared && <Badge variant="muted" size="sm">{t('share.shared')}</Badge>}
           {audience && <Badge variant="default" size="sm">{audience}</Badge>}
           {alwaysOn && (
-            <Tooltip content={ALWAYS_ON_BADGE_HINT}>
-              <span className="relative z-10 inline-flex"><Badge variant="accent" size="sm">{ALWAYS_ON_BADGE}</Badge></span>
+            <Tooltip content={alwaysOnBadgeHint()}>
+              <span className="relative z-10 inline-flex"><Badge variant="accent" size="sm">{alwaysOnBadge()}</Badge></span>
             </Tooltip>
           )}
-          {sharedBy && <span className="max-w-[240px] truncate font-body text-xs text-ink-4" title={sharedBy}>Shared by {sharedBy}</span>}
+          {sharedBy && <span className="max-w-[240px] truncate font-body text-xs text-ink-4" title={sharedBy}>{t('skills.sharedBy', { email: sharedBy })}</span>}
         </div>
       )}
     </ListItem>
@@ -250,9 +246,10 @@ function writeBuiltinOpen(open) {
 /* The built-in skills, last on the page and folded by default: a header
    "Built-in · N" that opens and closes the rows. */
 function BuiltinSection({ count, open, onToggle, children }) {
+  const { t } = useTranslation('library');
   const listId = 'skills-builtin-list';
   return (
-    <section aria-label="Built-in" className="grid min-w-0 grid-cols-1 gap-2">
+    <section aria-label={t('skillDetail.builtIn')} className="grid min-w-0 grid-cols-1 gap-2">
       <h2 className="m-0 flex min-h-8 items-center px-1">
         <button
           type="button"
@@ -262,7 +259,7 @@ function BuiltinSection({ count, open, onToggle, children }) {
           className="inline-flex min-w-0 cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent p-0 font-body text-base font-semibold text-ink focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
         >
           <span className="inline-flex text-ink-4" aria-hidden="true">{SECTION_ICONS.builtin(14)}</span>
-          <span>Built-in</span>
+          <span>{t('skillDetail.builtIn')}</span>
           <span className="text-sm font-normal text-ink-4">
             · <span data-testid="section-count">{count}</span>
           </span>
@@ -278,6 +275,7 @@ function BuiltinSection({ count, open, onToggle, children }) {
 }
 
 function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false }) {
+  const { t } = useTranslation('library');
   const [dragging, setDragging] = useState(false);
   const [file, setFile]         = useState(null);
   const [busy, setBusy]         = useState(false);
@@ -298,7 +296,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
       onClose();
       await onSaved(saved, { shared: canShare && sharedFromValue(sharing) });
     } catch (err) {
-      onError?.(err.message || 'Could not upload skill.');
+      onError?.(err.message || t('skills.upload.failed'));
     } finally {
       setBusy(false);
     }
@@ -312,7 +310,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
 
   return (
     <Modal open={open} onClose={onClose} width="min(549px, 92vw)" labelledBy="upload-skill-title" dismissible={!busy}>
-      <ModalHeader id="upload-skill-title" title="Upload Skill Files" subtitle="Upload a .md or .skill file to import a skill." onClose={onClose} />
+      <ModalHeader id="upload-skill-title" title={t('skills.upload.title')} subtitle={t('skills.upload.subtitle')} onClose={onClose} />
       <ModalBody padding="20px">
         <div className="flex flex-col gap-4">
 
@@ -336,20 +334,20 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
                   {file.name}
                 </span>
                 <span className="text-[12px] font-[family-name:var(--font-body)] text-ink-4">
-                  {(file.size / 1024).toFixed(1)} KB
+                  {t('skills.upload.sizeKb', { size: (file.size / 1024).toFixed(1) })}
                 </span>
                 <Button
                   variant="subtle"
                   onClick={(e) => { e.stopPropagation(); setFile(null); }}
                 >
-                  Remove
+                  {t('recipients.removeTooltip')}
                 </Button>
               </>
             ) : (
               <>
                 <span className="text-ink-4">{Ico.upload(32)}</span>
                 <span className="text-[13.5px] font-[family-name:var(--font-body)] text-ink-3">
-                  Drag and drop or click to upload
+                  {t('skills.upload.dropHint')}
                 </span>
               </>
             )}
@@ -364,33 +362,33 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
 
           {/* File requirements */}
           <div className="text-[12px] leading-[16px] text-ink-3 font-[family-name:var(--font-body)]">
-            <div className="font-medium mb-1">File requirements</div>
+            <div className="font-medium mb-1">{t('skills.upload.requirements')}</div>
             <ul className="m-0 pl-[18px]">
-              <li>.md or .skill file must contain skill name and description formatted in YAML</li>
-              <li>.zip file must include a SKILL.md file</li>
+              <li>{t('skills.upload.requirementMd')}</li>
+              <li>{t('skills.upload.requirementZip')}</li>
             </ul>
           </div>
 
           {canShare && (
-            <Field label={SKILL_SHARING_LABEL} help={SKILL_SHARING_CREATE_HINT}>
+            <Field label={skillSharingLabel()} help={skillSharingCreateHint()}>
               <Select
-                ariaLabel={SKILL_SHARING_LABEL}
+                ariaLabel={skillSharingLabel()}
                 value={sharing}
                 onValueChange={setSharing}
                 disabled={busy}
                 style={{ ...skillFieldStyle, height: 34 }}
-                options={SKILL_SHARING_OPTIONS}
+                options={skillSharingOptions()}
               />
             </Field>
           )}
 
         </div>
       </ModalBody>
-      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>}>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>{t('skillModal.cancel')}</Button>}>
         {file && (
           <Button variant="primary" disabled={busy} onClick={upload}>
             {!busy && Ico.upload(14)}
-            {busy ? 'Uploading…' : 'Upload'}
+            {busy ? t('skills.upload.uploading') : t('skills.upload.upload')}
           </Button>
         )}
       </ModalFooter>
@@ -398,13 +396,12 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
   );
 }
 
-const COWORK_PREFILL = "Let's create a skill together using your /skill-creator skill. First ask me what the skill should do.";
-
 function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
+  const { t } = useTranslation('library');
   const items = [
-    { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(14),    onClick: onWrite },
-    { id: 'cowork', label: 'Create With Cowork',      icon: Ico.sparkle(14), onClick: () => onCowork?.(COWORK_PREFILL) },
-    { id: 'upload', label: 'Upload a skill',           icon: Ico.upload(14),  onClick: onUpload },
+    { id: 'write',  label: t('skills.create.write'), icon: Ico.edit(14),    onClick: onWrite },
+    { id: 'cowork', label: t('skills.create.cowork', { product: productName('Cowork') }), icon: Ico.sparkle(14), onClick: () => onCowork?.(t('skills.create.coworkPrefill')) },
+    { id: 'upload', label: t('skills.create.upload'), icon: Ico.upload(14),  onClick: onUpload },
   ];
   const trigger = (
     <Button
@@ -412,19 +409,19 @@ function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
       style={{ display: 'inline-flex', alignItems: 'center', gap: 8, paddingRight: 10 }}
     >
       {Ico.plus(14)}
-      <span>Create skill</span>
+      <span>{t('skills.create.button')}</span>
       <span className="inline-flex text-inherit opacity-70">{Ico.chevDown(12)}</span>
     </Button>
   );
   return <Menu trigger={trigger} items={items} align="end" width={220} />;
 }
 
-const SORT_OPTIONS = [
-  { id: 'name',   label: 'Name' },
-  { id: 'recent', label: 'Recent' },
-];
-
 export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
+  const { t } = useTranslation('library');
+  const sortOptions = [
+    { id: 'name',   label: t('skills.sort.name') },
+    { id: 'recent', label: t('skills.sort.recent') },
+  ];
   // Skills come from the shared store so saves/deletes here sync the composer
   // "/" menu (and skill-card saves sync back to this page) with no reload.
   const { skills, reload, canShare }  = useSkills();
@@ -492,11 +489,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     shared = false, stoppedSharing = false, sharedWithAudience = false, updatedSharing = false,
   } = {}) => {
     const label = saved?.label;
-    if (sharedWithAudience) showToast(`Created and shared ${label}.`, 'success');
-    else if (updatedSharing) showToast(`Saved ${label} and updated who can use it.`, 'success');
-    else if (shared) showToast(`Saved and shared ${label} with everyone.`, 'success');
-    else if (stoppedSharing) showToast(`Saved ${label} and stopped sharing it.`, 'success');
-    else showToast(`Saved ${label}.`, 'success');
+    if (sharedWithAudience) showToast(t('skills.toast.createdShared', { name: label }), 'success');
+    else if (updatedSharing) showToast(t('skills.toast.savedUpdatedSharing', { name: label }), 'success');
+    else if (shared) showToast(t('skills.toast.savedSharedEveryone', { name: label }), 'success');
+    else if (stoppedSharing) showToast(t('skills.toast.savedStoppedSharing', { name: label }), 'success');
+    else showToast(t('skills.toast.saved', { name: label }), 'success');
   };
 
   const onSkillUploaded = async (saved, options) => {
@@ -523,9 +520,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
       setSelected((current) => (
         current?.label === skill.label ? null : current
       ));
-      showToast(`Removed ${skill.label}.`, 'success');
+      showToast(t('skills.toast.removed', { name: skill.label }), 'success');
     } catch (err) {
-      showToast(err.message || 'Could not remove skill.');
+      showToast(err.message || t('skills.toast.removeFailed'));
     }
   };
 
@@ -543,10 +540,10 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     setShared(shared);
     try {
       await setSkillSharingAndSync(targetLabel, shared);
-      showToast(shared ? `Shared ${targetLabel} with everyone.` : `Stopped sharing ${targetLabel}.`, 'success');
+      showToast(shared ? t('skills.toast.sharedEveryone', { name: targetLabel }) : t('skills.toast.stoppedSharing', { name: targetLabel }), 'success');
     } catch (err) {
       setShared(!shared);
-      showToast(err.message || 'Could not change who can use this skill.');
+      showToast(err.message || t('share.changeFailed'));
     } finally {
       setPendingSharing((current) => {
         const next = new Map(current);
@@ -606,7 +603,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     } catch (err) {
       if (!request.isLatest()) return false;
       patchOpen(targetLabel, { enabled: request.base() });
-      showToast(err.message || 'Could not update skill.');
+      showToast(err.message || t('skills.toast.updateFailed'));
       return false;
     } finally {
       if (request.isLatest()) {
@@ -624,7 +621,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const setEnabledForEveryone = async (skill, next) => {
     if (!offersEveryoneToggle(skill)) return;
     if (await writeEnabled(skill, next)) {
-      showToast(next ? `Turned ${skill.label} on for everyone.` : `Turned ${skill.label} off for everyone.`, 'success');
+      showToast(next ? t('skills.toast.onForEveryone', { name: skill.label }) : t('skills.toast.offForEveryone', { name: skill.label }), 'success');
     }
   };
   /* The switch "just for me" on a skill others see, or a built-in: the
@@ -640,7 +637,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     } catch (err) {
       if (!request.isLatest()) return;
       patchOpen(targetLabel, { enabledForMe: request.base() });
-      showToast(err.message || 'Could not update skill.');
+      showToast(err.message || t('skills.toast.updateFailed'));
     } finally {
       if (request.isLatest()) {
         request.finish();
@@ -680,27 +677,27 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const everyoneMenuItems = (skill) => {
     if (!offersEveryoneToggle(skill)) return [];
     return isEnabledForEveryone(skill)
-      ? [{ id: 'disable-everyone', label: 'Disable for everyone', icon: Ico.powerOff(14), onClick: () => setDisablingForEveryone(skill) }]
-      : [{ id: 'enable-everyone', label: 'Enable for everyone', icon: Ico.power(14), onClick: () => setEnabledForEveryone(skill, true) }];
+      ? [{ id: 'disable-everyone', label: t('skills.menu.disableEveryone'), icon: Ico.powerOff(14), onClick: () => setDisablingForEveryone(skill) }]
+      : [{ id: 'enable-everyone', label: t('skills.menu.enableEveryone'), icon: Ico.power(14), onClick: () => setEnabledForEveryone(skill, true) }];
   };
   /* The skill's menu: Try in chat, on or off for everyone where the caller
      edits a skill others see, then Edit and Uninstall where they apply. */
   const skillMenuItems = (skill) => [
-    { id: 'try', label: 'Try in chat', icon: Ico.chats(14), onClick: () => onTryInChat?.(`/${skill.label}`, skill.projects?.[0]) },
+    { id: 'try', label: t('skills.menu.tryInChat'), icon: Ico.chats(14), onClick: () => onTryInChat?.(`/${skill.label}`, skill.projects?.[0]) },
     ...everyoneMenuItems(skill),
     ...(hidesOwnerActions(skill) ? [] : [{
-      id: 'edit', label: 'Edit', icon: Ico.edit(14),
+      id: 'edit', label: t('skills.menu.edit'), icon: Ico.edit(14),
       disabled: !canUseSharedResource(skill, 'canEdit'),
       hint: !canUseSharedResource(skill, 'canEdit') ? lockedActionHint(skill) : undefined,
-      title: !canUseSharedResource(skill, 'canEdit') ? 'You do not have permission to edit this skill.' : undefined,
+      title: !canUseSharedResource(skill, 'canEdit') ? t('skills.menu.noEditPermission') : undefined,
       onClick: () => startEdit(skill),
     },
     { divider: true },
     {
-      id: 'uninstall', label: 'Uninstall', icon: Ico.trash(14), danger: true,
+      id: 'uninstall', label: t('skills.menu.uninstall'), icon: Ico.trash(14), danger: true,
       disabled: !canUseSharedResource(skill, 'canDelete'),
       hint: !canUseSharedResource(skill, 'canDelete') ? lockedActionHint(skill) : undefined,
-      title: !canUseSharedResource(skill, 'canDelete') ? 'You do not have permission to uninstall this skill.' : undefined,
+      title: !canUseSharedResource(skill, 'canDelete') ? t('skills.menu.noUninstallPermission') : undefined,
       onClick: () => remove(skill),
     }]),
   ];
@@ -723,16 +720,16 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           const state = shareState(skill);
           // Shared: the word says so; private: just the icon, like the menu.
           return shareMenu(skill, state.shared ? (
-            <Button size="xxs" variant="subtle" aria-label={`Shared: ${skill.label}`}>
+            <Button size="xxs" variant="subtle" aria-label={t('skills.sharedAriaLabel', { name: skill.label })}>
               <ShareStateLabel state={state} size={12} />
             </Button>
           ) : (
-            <Button icon size="xxs" variant="subtle" aria-label={`Share ${skill.label}`}>
+            <Button icon size="xxs" variant="subtle" aria-label={t('share.shareNamed', { name: skill.label })}>
               {shareStateIcon(state.kind, 14)}
             </Button>
-          ), state.shared ? state.hint : 'Share');
+          ), state.shared ? state.hint : t('share.share'));
         })()}
-        <OverflowMenu label={`More actions for ${skill.label}`} title="More actions" items={skillMenuItems(skill)} />
+        <OverflowMenu label={t('skills.moreActionsFor', { name: skill.label })} title={t('skills.moreActions')} items={skillMenuItems(skill)} />
       </div>
     </>
   );
@@ -786,7 +783,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         // ── Detail view ────────────────────────────────────────────────────
         <>
           <PageHeader
-            crumbs={[{ label: 'Skills', onClick: () => setSelected(null) }]}
+            crumbs={[{ label: t('skills.title'), onClick: () => setSelected(null) }]}
             current={selected.label}
           />
           <SkillDetail
@@ -807,9 +804,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                   </Button>
                 ))}
                 {!hidesOwnerActions(selected) && canUseSharedResource(selected, 'canEdit') && (
-                  <Button variant="default" onClick={() => startEdit(selected)} aria-label={`Edit ${selected.label}`} title="Edit">
+                  <Button variant="default" onClick={() => startEdit(selected)} aria-label={t('skills.editNamed', { name: selected.label })} title={t('skills.menu.edit')}>
                     {Ico.edit(14)}
-                    Edit
+                    {t('skills.menu.edit')}
                   </Button>
                 )}
                 {enabledControl(selected, 'md')}
@@ -821,7 +818,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                 {!orgSharingOn && <SharedResourceAttribution resource={selected} />}
                 {orgSharingOn && !canEditSkill(selected) && !selected.isBuiltin && (
                   <p className="m-0 text-[12px] text-ink-3" role="note">
-                    {skillOwnerEmail(selected) ? `Shared by ${skillOwnerEmail(selected)}. ` : ''}
+                    {skillOwnerEmail(selected) ? t('skills.sharedByPrefix', { email: skillOwnerEmail(selected) }) : ''}
                     {readOnlyOrgNote(selected)}
                   </p>
                 )}
@@ -832,15 +829,15 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                 )}
                 {!orgSharingOn && isOwnSharedSkill(selected) && (
                   <p className="m-0 text-[12px] text-ink-3" role="note">
-                    {OWN_SHARED_CHANGE_NOTE}
+                    {t('skillModal.ownSharedChangeNote')}
                   </p>
                 )}
               </div>
             )}
             sharingControl={!orgSharingOn && canShareSkill(selected) ? (
               <Select
-                ariaLabel={SKILL_SHARING_LABEL}
-                options={SKILL_SHARING_OPTIONS}
+                ariaLabel={skillSharingLabel()}
+                options={skillSharingOptions()}
                 value={pendingSharing.get(selected.label) ?? sharingValue(selected)}
                 onValueChange={(value) => changeSharing(selected, value)}
                 disabled={pendingSharing.has(selected.label)}
@@ -857,26 +854,26 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           {/* Same header as Projects, Tasks and Artifacts: title, subtitle
               and the primary action, then the search/sort toolbar. */}
           <PageHeader
-            title="Skills"
-            subtitle="Extend Cowork's capabilities with task-specific skills"
+            title={t('skills.title')}
+            subtitle={t('skills.subtitle', { product: productName('Cowork') })}
             actions={<CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} onCowork={onCreateWithCowork} />}
           />
 
           {(skills === null || skills.length > 0) && (
             <FilterRow
-              search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" />}
-              sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
+              search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder={t('skills.searchPlaceholder')} />}
+              sort={<SortPill value={sortBy} onChange={setSortBy} options={sortOptions} />}
               counts={skills === null || skills.length === 0 ? null : (
                 search.trim()
-                  ? `${sorted.length} of ${skills.length} skills`
-                  : `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`
+                  ? t('skills.countFiltered', { shown: sorted.length, total: skills.length })
+                  : t('skills.count', { count: skills.length })
               )}
             />
           )}
           {mindsHubNotice && <div className={`${LIST_CLASS} mb-4`}>{mindsHubNotice}</div>}
           {sharingStatus === LOAD_STATUS.ERROR ? (
             <div className={LIST_CLASS}>
-              <LoadStatus status={sharingStatus} what="sharing settings" onRetry={sharing.retry} />
+              <LoadStatus status={sharingStatus} what={t('skills.sharingSettings')} onRetry={sharing.retry} />
             </div>
           ) : (
             <CollectionState
@@ -889,9 +886,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               skeletonClassName={LIST_CLASS}
               empty={{
                 icon: Ico.cube(20),
-                title: 'No saved skills yet',
-                description: 'Write a skill, upload a SKILL.md, or ask Cowork to make one.',
-                action: { label: 'Write your first skill', onClick: startNew },
+                title: t('skills.empty.title'),
+                description: t('skills.empty.description', { product: productName('Cowork') }),
+                action: { label: t('skills.empty.action'), onClick: startNew },
                 className: 'mx-8 mb-8',
               }}
             >
@@ -942,18 +939,18 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
       />
       <ConfirmModal
         open={!!removing}
-        title={removing ? `Remove skill "${removing.label}"?` : ''}
-        message={removing && isOwnSharedSkill(removing) ? OWN_SHARED_REMOVE_NOTE : undefined}
-        confirmLabel="Remove"
+        title={removing ? t('skills.remove.title', { name: removing.label }) : ''}
+        message={removing && isOwnSharedSkill(removing) ? t('skills.remove.ownSharedNote') : undefined}
+        confirmLabel={t('recipients.removeTooltip')}
         destructive
         onClose={() => setRemoving(null)}
         onConfirm={() => { const skill = removing; setRemoving(null); if (skill) confirmRemove(skill); }}
       />
       <ConfirmModal
         open={!!disablingForEveryone}
-        title={disablingForEveryone ? `Turn off ${disablingForEveryone.label} for everyone it's shared with?` : ''}
-        message="Anton won't use it in anyone's tasks until an editor turns it back on."
-        confirmLabel="Disable for everyone"
+        title={disablingForEveryone ? t('skills.disableEveryone.title', { name: disablingForEveryone.label }) : ''}
+        message={t('skills.disableEveryone.message')}
+        confirmLabel={t('skills.menu.disableEveryone')}
         destructive
         onClose={() => setDisablingForEveryone(null)}
         onConfirm={() => {

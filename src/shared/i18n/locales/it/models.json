@@ -1,0 +1,30 @@
+{
+  "picker": {
+    "placeholder": "Seleziona un modello",
+    "empty": "Nessun modello trovato",
+    "searchAriaLabel": "Cerca modelli",
+    "unavailable": "Non disponibile",
+    "addCredits": "Aggiungi crediti",
+    "addCreditsTooltip": "Aggiungi crediti per usare questo modello"
+  },
+  "groups": {
+    "openWeight": "Pesi aperti",
+    "other": "Altro"
+  },
+  "effort": {
+    "label": "Ragionamento",
+    "description": "Un ragionamento più approfondito dà risposte più accurate, ma richiede più tempo e consuma più in fretta i tuoi limiti.",
+    "default": "Predefinito",
+    "levels": {
+      "none": "Nessuno",
+      "minimal": "Minimo",
+      "low": "Basso",
+      "medium": "Medio",
+      "high": "Alto",
+      "xhigh": "Molto alto",
+      "max": "Massimo",
+      "fast": "Veloce",
+      "slow": "Lento"
+    }
+  }
+}

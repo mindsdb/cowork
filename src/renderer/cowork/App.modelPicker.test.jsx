@@ -9,6 +9,7 @@ import userEvent from '@testing-library/user-event';
 vi.mock('../lib/deployment', () => ({ PLATFORM_UI: false }));
 
 const spies = vi.hoisted(() => ({
+  fetchProjects: vi.fn(),
   fetchSessions: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessionResult: vi.fn(),
@@ -35,7 +36,8 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
   fetchOlderMessages: vi.fn(async () => ({ messages: [] })),
   fetchConversationList: vi.fn(async () => []),
-  fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
+  fetchProjects: (...args) => spies.fetchProjects(...args),
+  fetchComparisons: vi.fn(async () => ({ comparisons: [], hasMore: false })),
   fetchArtifacts: vi.fn(async () => []),
   fetchSettings: vi.fn(async () => SETTINGS),
   fetchPins: vi.fn(async () => ({ pins: [] })),
@@ -109,12 +111,13 @@ beforeEach(() => {
   __resetDraftsForTests();
   streams.length = 0;
   spies.fetchSessions.mockReset().mockResolvedValue([]);
+  spies.fetchProjects.mockReset().mockResolvedValue([{ name: 'general', path: '/tmp/general' }]);
   spies.fetchSession.mockReset().mockResolvedValue({ id: 'conv-a', messages: [], hasMoreMessages: false, messagesCursor: null });
   spies.fetchSessionResult.mockReset().mockResolvedValue({ status: 'ok', task: savedTask(null) });
 });
 
 afterEach(() => {
-  document.head.querySelectorAll('meta[name="cowork-model-picker"]').forEach((node) => node.remove());
+  document.head.querySelectorAll('meta[name="cowork-model-picker"], meta[name="cowork-model-efforts"]').forEach((node) => node.remove());
 });
 
 async function send(user, text) {
@@ -181,5 +184,112 @@ describe("the operator's model picker", () => {
     const stream = await send(user, 'Say hello again');
     expect(stream.kind).toBe('reply');
     expect(stream.opts.model).toBe(sent);
+    // A pin the picker no longer offers goes out as no model and keeps its pin.
+    expect(stream.opts.resetPicks).toEqual([]);
+  });
+
+  it('resets the saved model when a reopened conversation goes back to the operator default', async () => {
+    setMode('default');
+    spies.fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general', model: 'opus-5-5' },
+    ]);
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: savedTask('opus-5-5') });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+    await user.click(await screen.findByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: 'Operator default' }));
+    const stream = await send(user, 'Say hello again');
+    expect(stream.kind).toBe('reply');
+    expect(stream.opts.model).toBe(MODEL_ROUTER_ID);
+    expect(stream.opts.resetPicks).toEqual(['model']);
+  });
+
+  it("keeps a reopened conversation with no saved picks on the default, whatever the home composer shows", async () => {
+    setMode('open');
+    const efforts = document.createElement('meta');
+    efforts.name = 'cowork-model-efforts';
+    efforts.content = JSON.stringify({ models: { 'opus-5-5': ['xhigh'] }, operatorDefault: ['low', 'medium'] });
+    document.head.append(efforts);
+    // What the list returns for a conversation that went back to the default: no model, no effort.
+    spies.fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general', model: null, reasoningEffort: null },
+    ]);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+    await user.click(await goHome(user));
+    await user.click(screen.getByRole('option', { name: 'Opus 5.5' }));
+    await user.click(screen.getByRole('combobox', { name: 'Reasoning effort' }));
+    await user.click(screen.getByRole('option', { name: 'Xhigh' }));
+
+    await user.click(screen.getByText('Alpha task'));
+    expect(await screen.findByRole('combobox', { name: 'Choose model' })).not.toHaveTextContent('Opus 5.5');
+    expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveTextContent('Default effort');
+    const stream = await send(user, 'Say hello again');
+    expect(stream.kind).toBe('reply');
+    expect(stream.opts.model).not.toBe('opus-5-5');
+    expect(stream.opts.reasoningEffort).toBeNull();
+    expect(stream.opts.resetPicks).toEqual([]);
+  });
+});
+
+// Compare Models offers a model choice, so App shows it under the operator's
+// picker only while the picker offers a model, as the composer shows its own.
+describe("Compare Models under the operator's model picker", () => {
+  const offered = { ...SETTINGS.modelEnabled };
+  afterEach(() => { Object.assign(SETTINGS.modelEnabled, offered); });
+
+  it.each([
+    ['picker on, models offered', 'default', false, true],
+    ['picker on, none offered', 'default', true, false],
+    ['picker off', null, false, false],
+  ])('%s: entry shown is %s', async (_case, mode, noneOffered, shown) => {
+    if (mode) setMode(mode);
+    if (noneOffered) for (const id of Object.keys(SETTINGS.modelEnabled)) SETTINGS.modelEnabled[id] = false;
+    render(<App />);
+    await screen.findByRole('button', { name: /new task/i });
+    // Settings, and with them the offered models, land after the first paint.
+    await new Promise((resolve) => { setTimeout(resolve, 100); });
+    if (shown) expect(await screen.findByRole('button', { name: 'Compare Models' })).toBeTruthy();
+    else expect(screen.queryByRole('button', { name: 'Compare Models' })).toBeNull();
+  });
+});
+
+describe('a link to Compare Models where users choose no model', () => {
+  const offered = { ...SETTINGS.modelEnabled };
+  afterEach(() => { Object.assign(SETTINGS.modelEnabled, offered); });
+
+  it.each([
+    ["the operator's picker off", null],
+    ["the operator's picker offering no model", 'open'],
+  ])('with %s, says why instead of a blank page', async (_case, mode) => {
+    if (mode) {
+      setMode(mode);
+      for (const id of Object.keys(SETTINGS.modelEnabled)) SETTINGS.modelEnabled[id] = false;
+    }
+    window.history.replaceState(null, '', '/compare');
+    render(<App />);
+    expect(await screen.findByText("Compare Models isn't available here")).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Compare two models' })).toBeNull();
+  });
+});
+
+// A comparison copies its source project's files, and Continue moves a side
+// into a project: both need a project the person can run tasks in, never one
+// shared with them read-only.
+describe('Compare Models offers only projects the person can run', () => {
+  it("leaves a project shared with them out of the start screen's picker", async () => {
+    setMode('open');
+    spies.fetchProjects.mockResolvedValue([
+      { id: 'p-own', name: 'reports', display_name: 'Reports', path: '/tmp/reports' },
+      { id: 'p-shared', name: 'finance', display_name: 'Finance', path: '/tmp/finance', shared: true },
+    ]);
+    window.history.replaceState(null, '', '/compare');
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Compare two models' });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Choose project' }));
+    expect(await screen.findByRole('button', { name: /Reports/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Finance/ })).toBeNull();
   });
 });

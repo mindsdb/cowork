@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  brandIconFromAttributes,
   type MindsOrg,
   PERSONAL_ORG_LABEL,
   chooseMindsOrg,
@@ -58,6 +59,26 @@ describe('toMindsOrg', () => {
     // that string here would be a third copy of the rule, so a missing display
     // name stays missing and the caller decides what to show.
     expect(toMindsOrg({ id: 'o1', slug: 'acme.example' }, USER).displayName).toBe('acme.example');
+  });
+});
+
+describe('the org icon', () => {
+  it('reads brand_icon_url from Keycloak attributes, list or string', () => {
+    expect(brandIconFromAttributes({ brand_icon_url: ['https://auth.acme.com/i.png'] })).toBe('https://auth.acme.com/i.png');
+    expect(brandIconFromAttributes({ brand_icon_url: ' https://auth.acme.com/i.png ' })).toBe('https://auth.acme.com/i.png');
+  });
+
+  it.each([undefined, null, [], {}, { brand_icon_url: [] }, { brand_icon_url: [''] }, { brand_icon_url: 7 }])(
+    'reads %j as no icon',
+    (attributes) => {
+      expect(brandIconFromAttributes(attributes)).toBeUndefined();
+    },
+  );
+
+  it('carries the icon onto the org only when there is one', () => {
+    expect(toMindsOrg({ id: 'o1', slug: 'acme.example', iconUrl: 'https://auth.acme.com/i.png' }, USER).iconUrl)
+      .toBe('https://auth.acme.com/i.png');
+    expect(toMindsOrg({ id: 'o1', slug: 'acme.example' }, USER)).not.toHaveProperty('iconUrl');
   });
 });
 

@@ -14,8 +14,8 @@ describe('scheduled tasks with an invalid brand name', () => {
       render(<ScheduleTaskModal open onClose={vi.fn()} onSubmit={vi.fn()} projects={[]} agentLabel="Anton" task={task} />);
       expect(screen.getByPlaceholderText('Ask Anton to…')).toBeInTheDocument();
       expect(screen.getByText(task
-        ? 'Update the cadence or prompt. Anton picks up changes on the next run.'
-        : 'Anton runs this prompt on the cadence you set.')).toBeInTheDocument();
+        ? 'What should Anton do?'
+        : 'Anton runs this on its own, even with this tab closed.')).toBeInTheDocument();
     },
   );
 });

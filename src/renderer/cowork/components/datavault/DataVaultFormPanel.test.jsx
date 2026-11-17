@@ -20,9 +20,9 @@ describe('DataVaultFormPanel — user_label', () => {
     await user.type(screen.getByLabelText(/label/i), 'prod-db');
     await user.click(screen.getByRole('button', { name: /submit/i }));
 
-    expect(onSubmit).toHaveBeenCalledWith(
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ values: expect.objectContaining({ user_label: 'prod-db' }) })
-    );
+    ));
   });
 
   it('pre-fills the label from spec.user_label for a modify-flow spec', () => {

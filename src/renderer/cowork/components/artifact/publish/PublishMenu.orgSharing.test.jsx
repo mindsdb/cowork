@@ -145,7 +145,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
   });
 
   describe('who may share with everyone at the org', () => {
-    it('disables Everyone at the org for a member, with the admin hint, and shares nothing with everyone', async () => {
+    it('disables Everyone at the org for a role without the capability, with the role hint, and shares nothing with everyone', async () => {
       const user = userEvent.setup();
       const pub = makeController({ orgSharing: orgSharing({ capabilities: { canShareArtifactsOrg: false } }) });
       render(<PublishMenu controller={pub} />);
@@ -153,14 +153,14 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
 
       expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
       await user.hover(screen.getByTestId('org-option-locked'));
-      expect(await screen.findByText('Only admins can share with everyone in the organization')).toBeInTheDocument();
+      expect(await screen.findByText("Your role can't share with everyone in the organization")).toBeInTheDocument();
       await user.click(radio(/^Everyone at Acme/));
       expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-checked', 'false');
       expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
       expect(pub.publish).not.toHaveBeenCalled();
     });
 
-    it('lets an admin pick it', async () => {
+    it('lets a member with the capability pick it', async () => {
       const user = userEvent.setup();
       const pub = makeController({ orgSharing: orgSharing({ capabilities: { canShareArtifactsOrg: true } }) });
       render(<PublishMenu controller={pub} />);
@@ -183,10 +183,10 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
     });
 
-    /* With MindsHub unreachable the capabilities read false, and "only admins"
+    /* With MindsHub unreachable the capabilities read false, and the role hint
        would blame the caller for an outage. The lock says what happened and
        the panel offers Retry. */
-    it("says MindsHub couldn't be reached instead of the admin hint, with Retry", async () => {
+    it("says MindsHub couldn't be reached instead of the role hint, with Retry", async () => {
       const user = userEvent.setup();
       const retry = vi.fn();
       const pub = makeController({
@@ -198,7 +198,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
       await user.hover(screen.getByTestId('org-option-locked'));
       expect(await screen.findByText("Couldn't reach MindsHub")).toBeInTheDocument();
-      expect(screen.queryByText('Only admins can share with everyone in the organization')).toBeNull();
+      expect(screen.queryByText("Your role can't share with everyone in the organization")).toBeNull();
       expect(screen.getByRole('alert')).toHaveTextContent("Couldn't reach MindsHub to check what you can share.");
       await user.click(screen.getByRole('button', { name: 'Retry' }));
       expect(retry).toHaveBeenCalledTimes(1);

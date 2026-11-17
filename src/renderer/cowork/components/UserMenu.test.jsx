@@ -14,6 +14,8 @@ vi.mock('../../platform/host', () => hostMock);
 const analyticsMock = vi.hoisted(() => ({
   resetDeviceIdentity: vi.fn(),
   trackBillingOpened: vi.fn(),
+  trackMenuApiKeysClicked: vi.fn(),
+  trackMenuApiDocsClicked: vi.fn(),
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
@@ -33,9 +35,13 @@ vi.mock('../hooks/useMindsOrgs', () => ({
 import UserMenu from './UserMenu';
 import { PERSONAL_ORG_LABEL as PERSONAL_LABEL } from '../../../shared/minds-orgs';
 import ToastProvider from './ui/Toast';
+import { AUTH_IMAGE_HOST } from '../../lib/orgBranding';
+import { setOrgIcons } from '../lib/orgIcons';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { readLastOrgId } from '../lib/orgLanding';
 import {
+  MINDS_API_DOCS_URL,
+  MINDS_API_KEY_URL,
   MINDS_BILLING_URL,
   MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
@@ -73,6 +79,8 @@ beforeEach(() => {
   hostMock.openExternal.mockClear();
   hostMock.host.logout.mockClear();
   analyticsMock.trackBillingOpened.mockClear();
+  analyticsMock.trackMenuApiKeysClicked.mockClear();
+  analyticsMock.trackMenuApiDocsClicked.mockClear();
   hostMock.host.isElectron = true;
   hostMock.host.isWeb = false;
   orgsMock.state = { orgs: [], activeOrg: null, activeOrgId: null, switching: false };
@@ -129,7 +137,7 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
     expect(screen.getByText('Organization')).toBeInTheDocument();
     expect(screen.getByText('Account')).toBeInTheDocument();
     expect(screen.getAllByText('MindsDB').length).toBeGreaterThan(0);
-    for (const label of ['Settings', 'Billing & Usage', 'Members', 'Help & Feedback', 'Logout']) {
+    for (const label of ['Settings', 'Billing & Usage', 'Members', 'API keys', 'API docs', 'Help & Feedback', 'Logout']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
   });
@@ -157,6 +165,8 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
   it.each([
     ['Billing & Usage', consoleUrlFor(MINDS_BILLING_URL, { subject: 'user-1' })],
     ['Members', consoleUrlFor(MINDS_MEMBERS_URL, { subject: 'user-1' })],
+    ['API keys', consoleUrlFor(MINDS_API_KEY_URL, { subject: 'user-1' })],
+    ['API docs', MINDS_API_DOCS_URL],
     ['Help & Feedback', MINDS_SUPPORT_URL],
   ])('opens %s in the OS browser', (label, url) => {
     renderMenu(<UserMenu user={user} />);
@@ -217,6 +227,19 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
     );
   });
 
+  it('inside the mobile app, leaves Billing & Usage out and keeps the rest', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      renderMenu(<UserMenu user={user} onOpenSettings={vi.fn()} />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: /Billing & Usage/ })).toBeNull();
+      expect(screen.getByRole('menuitem', { name: /Members/ })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /Settings/ })).toBeInTheDocument();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
   it.each([['Members'], ['Help & Feedback'], ['Settings']])(
     'records nothing for %s — it is not a billing route',
     (label) => {
@@ -224,6 +247,67 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
       openMenu();
       fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
       expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+    },
+  );
+});
+
+// ENG-4288: sign-in lands in Cowork, so the menu is where a developer finds
+// API keys and docs. Each link has its own event, and neither borrows another's.
+describe('UserMenu — API keys and API docs (ENG-4288)', () => {
+  it('sits with the console links, after Members and before Help & Feedback', () => {
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    const labels = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    const at = (label) => labels.findIndex((text) => text.includes(label));
+    expect(at('Members')).toBeLessThan(at('API keys'));
+    expect(at('API keys')).toBeLessThan(at('API docs'));
+    expect(at('API docs')).toBeLessThan(at('Help & Feedback'));
+  });
+
+  it('opens the console API keys page for this account and organization, and records the click', () => {
+    orgsMock.state = { orgs: [ACME, PERSONAL], activeOrg: ACME, activeOrgId: ACME.id, switching: false };
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /API keys/ }));
+    expect(hostMock.openExternal).toHaveBeenCalledWith(
+      consoleUrlFor(MINDS_API_KEY_URL, { organizationId: ACME.id, subject: 'user-1' }),
+    );
+    expect(analyticsMock.trackMenuApiKeysClicked).toHaveBeenCalledOnce();
+    expect(analyticsMock.trackMenuApiDocsClicked).not.toHaveBeenCalled();
+    expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+  });
+
+  /* Before the organization listing lands, the token's claim names the
+     organization, so the API keys page still opens on it rather than on
+     whichever organization the browser has active. */
+  it('names the organization from the token when the listing has not landed', () => {
+    renderMenu(<UserMenu user={{ ...user, orgId: 'org-from-token' }} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /API keys/ }));
+    const opened = new URL(hostMock.openExternal.mock.calls[0][0]);
+    expect(`${opened.origin}${opened.pathname}`).toBe(MINDS_API_KEY_URL);
+    expect(opened.searchParams.get('organization')).toBe('org-from-token');
+    expect(opened.searchParams.get('subject')).toBe('user-1');
+  });
+
+  it('opens the API docs and records the click', () => {
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /API docs/ }));
+    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_API_DOCS_URL);
+    expect(analyticsMock.trackMenuApiDocsClicked).toHaveBeenCalledOnce();
+    expect(analyticsMock.trackMenuApiKeysClicked).not.toHaveBeenCalled();
+    expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+  });
+
+  it.each([['Billing & Usage'], ['Members'], ['Help & Feedback'], ['Settings']])(
+    'records neither developer event for %s',
+    (label) => {
+      renderMenu(<UserMenu user={user} onOpenSettings={vi.fn()} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
+      expect(analyticsMock.trackMenuApiKeysClicked).not.toHaveBeenCalled();
+      expect(analyticsMock.trackMenuApiDocsClicked).not.toHaveBeenCalled();
     },
   );
 });
@@ -282,6 +366,55 @@ describe('UserMenu — organization picker', () => {
     const footer = screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent;
     expect(footer).toContain(PERSONAL_LABEL);
     expect(footer).not.toContain("hazem@example.com's organization");
+  });
+
+  it("shows each organization's own icon, else its initial", () => {
+    const icon = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/icon?v=1`;
+    const globex = { id: 'org-globex', name: 'globex.example', displayName: 'Globex', isPersonal: false, iconUrl: 'https://images.globex.com/icon.png' };
+    withOrgs([{ ...ACME, iconUrl: icon }, globex], { ...ACME, iconUrl: icon });
+    renderMenu(<UserMenu user={user} />);
+    // The footer row shows the active org's icon beside its name.
+    const footer = screen.getByRole('button', { name: /Hazem Ahmed/ });
+    expect(footer.querySelector('img[data-testid="org-icon-image"]')).toHaveAttribute('src', icon);
+    openMenu();
+    const acmeRow = screen.getByRole('menuitem', { name: /acme\.example/ });
+    expect(acmeRow.querySelector('img[data-testid="org-icon-image"]')).toHaveAttribute('src', icon);
+    // An icon from any other host is ignored, and the initial tile shows instead.
+    const globexRow = screen.getByRole('menuitem', { name: /Globex/ });
+    expect(globexRow.querySelector('img')).toBeNull();
+    expect(globexRow.querySelector('[data-testid="org-icon-initial"]')).toHaveTextContent('G');
+  });
+
+  it('takes each org\'s icon from /hub/org-icons first, then the Keycloak attribute, then the initial', () => {
+    const fromEndpoint = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/icon?v=2`;
+    const fromAttribute = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-beta/branding/icon?v=1`;
+    const beta = { id: 'org-beta', name: 'beta.example', displayName: 'Beta', isPersonal: false, iconUrl: fromAttribute };
+    const gamma = { id: 'org-gamma', name: 'gamma.example', displayName: 'Gamma', isPersonal: false };
+    setOrgIcons({ 'org-acme': fromEndpoint, 'org-gamma': '/v1/organizations/org-gamma/branding/icon' });
+    try {
+      withOrgs([{ ...ACME, iconUrl: 'https://images.globex.com/old.png' }, beta, gamma], ACME);
+      renderMenu(<UserMenu user={user} />);
+      openMenu();
+      expect(screen.getByRole('menuitem', { name: /acme\.example/ }).querySelector('img')).toHaveAttribute('src', fromEndpoint);
+      expect(screen.getByRole('menuitem', { name: /Beta/ }).querySelector('img')).toHaveAttribute('src', fromAttribute);
+      // A root-relative URL is never rendered.
+      const gammaRow = screen.getByRole('menuitem', { name: /Gamma/ });
+      expect(gammaRow.querySelector('img')).toBeNull();
+      expect(gammaRow.querySelector('[data-testid="org-icon-initial"]')).toHaveTextContent('G');
+    } finally {
+      setOrgIcons({});
+    }
+  });
+
+  it('falls back to the initial when the icon fails to load', () => {
+    const icon = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/icon?v=1`;
+    withOrgs([{ ...ACME, iconUrl: icon }, PERSONAL], PERSONAL);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    const acmeRow = screen.getByRole('menuitem', { name: /acme\.example/ });
+    fireEvent.error(acmeRow.querySelector('img'));
+    expect(acmeRow.querySelector('img')).toBeNull();
+    expect(acmeRow.querySelector('[data-testid="org-icon-initial"]')).toHaveTextContent('A');
   });
 
   it('lists every organization with a check on the active one', () => {

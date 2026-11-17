@@ -18,18 +18,21 @@ export interface BootStatusInput {
   shell?: { phase?: string | null } | null;
 }
 
-const DOWNLOADING = 'Downloading the latest update…';
-const FINISHING = 'Finishing up…';
-const INSTALLING = 'Installing the update — Cowork will reopen…';
+import { sourceTranslator, type Translate } from './i18n/translate';
+import appSource from './i18n/locales/en/app.json';
+
+/* The copy lives in the `app` catalog under `bootStatus`. The renderer passes its
+   `app` translator; without one the copy is English. */
+const english: Translate = sourceTranslator(appSource);
 
 /** The loading-screen status line, or null when no boot-time update is in
  *  flight (the welcome orb shows with no sub-line). */
-export function deriveBootStatus(input: BootStatusInput): string | null {
+export function deriveBootStatus(input: BootStatusInput, t: Translate = english): string | null {
   // The app is about to quit, so this outranks any OTA line.
-  if (input.shell?.phase === 'installing') return INSTALLING;
+  if (input.shell?.phase === 'installing') return t('bootStatus.installing');
   switch (input.ota?.phase) {
-    case 'downloading': return DOWNLOADING;
-    case 'reloading': return FINISHING;
+    case 'downloading': return t('bootStatus.downloading');
+    case 'reloading': return t('bootStatus.finishing');
     default: return null;
   }
 }

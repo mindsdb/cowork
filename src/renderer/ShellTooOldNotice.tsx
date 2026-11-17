@@ -3,6 +3,7 @@ import { Alert } from './cowork/components/ui/Alert';
 import Button from './cowork/components/ui/Button';
 import Ico from './cowork/components/Icons';
 import { host, type ShellAutoUpdateSnapshot } from './platform/host';
+import { sharedTranslator, useTranslation } from './lib/i18n';
 import {
   deriveShellTooOldNotice,
   SHELL_DOWNLOAD_PAGE,
@@ -51,8 +52,9 @@ async function runAction(action: ShellTooOldAction): Promise<void> {
 }
 
 export function ShellTooOldNotice({ verdict, shellAuto, onDismiss, topOffset = 12 }: ShellTooOldNoticeProps) {
+  const { t } = useTranslation('app');
   const [busy, setBusy] = useState(false);
-  const notice = deriveShellTooOldNotice(verdict, shellAuto);
+  const notice = deriveShellTooOldNotice(verdict, shellAuto, sharedTranslator('app'));
   if (!notice) return null;
 
   const handleAction = async () => {
@@ -93,8 +95,8 @@ export function ShellTooOldNotice({ verdict, shellAuto, onDismiss, topOffset = 1
           <button
             type="button"
             onClick={onDismiss}
-            aria-label="Dismiss until the next launch"
-            title="Dismiss until the next launch"
+            aria-label={t('shell.dismissUntilNextLaunch')}
+            title={t('shell.dismissUntilNextLaunch')}
             className="bg-transparent border-0 p-0.5 m-0 cursor-pointer text-inherit opacity-70 hover:opacity-100 leading-none"
           >
             {Ico.close ? Ico.close() : '×'}

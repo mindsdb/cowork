@@ -1,6 +1,8 @@
 import { sharedResourceAttribution } from '../lib/sharedResourceAccess';
+import { useTranslation } from '../../lib/i18n';
 
 export default function SharedResourceAttribution({ resource, className = '' }) {
+  const { t } = useTranslation('library');
   const attribution = sharedResourceAttribution(resource);
   if (!attribution) return null;
 
@@ -23,11 +25,11 @@ export default function SharedResourceAttribution({ resource, className = '' }) 
          4.5:1 floor in both themes while staying quieter than body copy. */
       className={`min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px] leading-[1.45] text-ink-3 ${className}`}
     >
-      {hasCreated && <span className="min-w-0 break-all">Created by {createdBy}</span>}
+      {hasCreated && <span className="min-w-0 break-all">{t('attribution.createdBy', { name: createdBy })}</span>}
       {hasModifiedBy && (
         <span className="min-w-0 break-all">
           {hasCreated && <span aria-hidden="true">· </span>}
-          Last modified by {lastModifiedBy}
+          {t('attribution.lastModifiedBy', { name: lastModifiedBy })}
         </span>
       )}
       {modifiedLabel && (

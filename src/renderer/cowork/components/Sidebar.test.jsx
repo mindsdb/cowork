@@ -371,6 +371,22 @@ describe('Sidebar — nav title/logo override', () => {
     expect(document.querySelector('.anton-sidebar__logo')).toBeNull();
   });
 
+  it("gives the org's wordmark logo a wider box than a square icon", () => {
+    const { rerender } = render(<Sidebar {...baseProps} navLogo="https://auth.acme.com/logo.png" navLogoWide />);
+    expect(document.querySelector('.anton-sidebar__logo')).toHaveClass('anton-sidebar__logo--wide');
+    rerender(<Sidebar {...baseProps} navLogo="data:image/png;base64,abc123" />);
+    expect(document.querySelector('.anton-sidebar__logo')).not.toHaveClass('anton-sidebar__logo--wide');
+  });
+
+  it('shows the logo alone, with no product name, when the org chose None', () => {
+    const { rerender } = render(<Sidebar {...baseProps} navLogo="https://auth.acme.com/logo.png" navLogoWide navTitleHidden />);
+    expect(document.querySelector('.anton-sidebar__wordmark')).toBeNull();
+    expect(document.querySelector('.anton-sidebar__logo')).not.toBeNull();
+    rerender(<Sidebar {...baseProps} navTitleHidden />);
+    expect(document.querySelector('.anton-sidebar__wordmark')).toBeNull();
+    expect(document.querySelector('.anton-sidebar__logo')).toBeNull();
+  });
+
   it('shows a custom navTitle and navLogo when set', () => {
     render(<Sidebar {...baseProps} navTitle="Acme Workspace" navLogo="data:image/png;base64,abc123" />);
     expect(screen.getByText('Acme Workspace')).toBeInTheDocument();
@@ -673,5 +689,47 @@ describe('Sidebar — task row titles', () => {
     render(<Sidebar {...baseProps} tasks={[task]} tasksStatus="ready" showCounters />);
     fireEvent.mouseEnter(screen.getByRole('button', { name: task.title }).parentElement);
     expect(titleOf()).not.toHaveClass('is-clipped');
+  });
+});
+
+// App decides whether the build offers Compare Models (compareAvailable); the
+// entry follows it.
+describe('Sidebar — Compare models entry', () => {
+  it.each([[true], [false]])('is shown when App offers it: %s', (shown) => {
+    render(<Sidebar {...baseProps} showCompare={shown} />);
+    expect(!!screen.queryByRole('button', { name: 'Compare Models' })).toBe(shown);
+  });
+});
+
+describe('Sidebar — Compare models', () => {
+  it('sits in the Agent group and opens the compare route', () => {
+    const onNavigate = vi.fn();
+    render(<Sidebar {...baseProps} showCompare onNavigate={onNavigate} />);
+    screen.getByRole('button', { name: 'Compare Models' }).click();
+    expect(onNavigate).toHaveBeenCalledWith('compare');
+  });
+});
+
+describe('Sidebar — a schedule’s runs fold into one Recents row', () => {
+  const schedules = [{
+    id: 's1', title: 'Daily digest', projectId: 'p1',
+    createdAt: '2026-10-01T00:00:00Z', lastResultConversationId: 'r3',
+  }];
+  const run = (id, day) => ({
+    id, title: 'Daily digest', projectId: 'p1', projectName: 'general', messages: [],
+    createdAt: `2026-10-0${day}T08:00:00Z`, updatedAt: `2026-10-0${day}T08:05:00Z`,
+  });
+
+  it('folds runs the server sent without a scheduledId', () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        schedules={schedules}
+        tasks={[run('r3', 4), run('r2', 3), run('r1', 2), { id: 't1', title: 'Chat', messages: [] }]}
+      />
+    );
+    expect(screen.getAllByText('Daily digest')).toHaveLength(1);
+    expect(screen.getByText('3 runs')).toBeInTheDocument();
+    expect(screen.getByText('Chat')).toBeInTheDocument();
   });
 });

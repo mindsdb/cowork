@@ -16,6 +16,7 @@
 import {
   AppWindow,
   ArrowDown,
+  ArrowLeftRight,
   ArrowUp,
   ArrowUpLeft,
   ArrowUpRight,
@@ -30,6 +31,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Columns2,
   CodeXml,
   Copy,
   Database,
@@ -46,6 +48,7 @@ import {
   Gamepad2,
   Globe,
   Image,
+  Info,
   KeyRound,
   LayoutGrid,
   Link,
@@ -55,6 +58,8 @@ import {
   Menu,
   MessagesSquare,
   Mic,
+  AudioLines,
+  MicOff,
   Monitor,
   Moon,
   Palette,
@@ -65,6 +70,7 @@ import {
   PanelRightOpen,
   Paperclip,
   Pencil,
+  Phone,
   Play,
   Pin,
   Plus,
@@ -87,6 +93,7 @@ import {
   ThumbsUp,
   Trash2,
   TriangleAlert,
+  Undo2,
   Upload,
   UserPlus,
   UserRound,
@@ -131,6 +138,7 @@ const Ico = {
   plus:     ico(Plus),
   folder:   ico(Folder),
   computer: ico(Monitor),
+  info:     ico(Info),
   phone:    ico(Smartphone),
   clock:    ico(Clock),
   sparkle:  ico(Sparkles),
@@ -142,6 +150,9 @@ const Ico = {
   chevRight: ico(ChevronRight, 14),
   chevLeft: ico(ChevronLeft, 14),
   mic:      ico(Mic),
+  voice:    ico(AudioLines),
+  micOff:   ico(MicOff),
+  call:     ico(Phone),
   // Up arrow — the composer's send affordance.
   send:     ico(ArrowUp),
   attach:   ico(Paperclip),
@@ -165,6 +176,8 @@ const Ico = {
   doc:      ico(FileText),
   globe:    ico(Globe),
   brain:    ico(Brain),
+  columns:  ico(Columns2),
+  swap:     ico(ArrowLeftRight),
   database: ico(Database),
   mail:     ico(Mail),
   upload:   ico(Upload),
@@ -195,6 +208,7 @@ const Ico = {
   openFolder:   ico(FolderOpen),
   // Manual reload of the preview.
   reload:       ico(RefreshCw),
+  undo:         ico(Undo2, 14),
   // Errors the previewed page reported about itself (ENG-3002).
   warning:      ico(TriangleAlert),
   // "Open in the default browser".
@@ -213,6 +227,7 @@ const Ico = {
 
   // ── Hand-rolled exceptions (no Lucide equivalent) ─────────────────────
   // Brand marks: Lucide ships no brand icons.
+  notion: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.46 4.21c.75.6 1.03.56 2.43.47l13.2-.8c.28 0 .05-.28-.04-.32L17.86 2c-.42-.33-.98-.7-2.06-.6L3.02 2.32c-.47.05-.56.28-.38.47zm.8 3.08v13.9c0 .74.37 1.03 1.21.98l14.51-.84c.84-.05.94-.56.94-1.17V6.35c0-.6-.24-.94-.75-.89L6.01 6.33c-.56.05-.75.33-.75.96zm14.32.75c.1.42 0 .84-.42.89l-.7.14v10.26c-.61.33-1.17.52-1.64.52-.75 0-.94-.24-1.5-.94l-4.57-7.19v6.96l1.45.33s0 .84-1.17.84l-3.22.19c-.1-.19 0-.65.33-.75l.84-.23V9.86l-1.17-.1c-.09-.42.14-1.02.8-1.07l3.46-.23 4.76 7.28V9.3l-1.21-.14c-.1-.52.28-.89.75-.94zM1.94 1.04 15.25.06c1.63-.14 2.05-.05 3.08.7l4.25 2.98c.7.51.93.65.93 1.21v16.35c0 1.03-.37 1.63-1.68 1.73L6.38 23.95c-.98.05-1.45-.09-1.96-.74L1.3 19.14c-.56-.75-.79-1.3-.79-1.96V2.65c0-.84.38-1.53 1.43-1.61z"/></svg>,
   // Official Drive mark (same geometry as public/logos/google_drive.svg),
   // filled with currentColor so it sits monochrome alongside the neutral menu
   // icons instead of the brand green.

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const state = vi.hoisted(() => ({ skills: null, catalogueStatus: 'idle', isWeb: true, canShare: false }));
+const state = vi.hoisted(() => ({ skills: null, catalogueStatus: 'idle', isWeb: true, isMobileShell: false, canShare: false }));
 const store = vi.hoisted(() => ({
   reload: vi.fn(),
   saveSkillAndSync: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock('../lib/skillsStore', () => ({
 }));
 vi.mock('../api', () => ({ deleteSkillDraft: vi.fn(async () => {}) }));
 vi.mock('../../platform/host', () => ({
-  host: { get isWeb() { return state.isWeb; } },
+  host: { get isWeb() { return state.isWeb; }, get isMobileShell() { return state.isMobileShell; } },
 }));
 
 import SkillCard from './SkillCard';
@@ -399,4 +399,16 @@ describe('SkillCard create-time sharing', () => {
     )).toBeInTheDocument();
     expect(screen.queryByText('Saved to your skills')).not.toBeInTheDocument();
   });
+});
+
+it('explains mobile skill downloads without claiming that the file was saved', () => {
+  state.isMobileShell = true;
+  try {
+    render(<SkillCard skill={draft} projectName="billing" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Download skill' }));
+    expect(screen.getByText(/Downloads are not available in the mobile app/)).toBeInTheDocument();
+    expect(screen.queryByText('Downloaded')).not.toBeInTheDocument();
+  } finally {
+    state.isMobileShell = false;
+  }
 });

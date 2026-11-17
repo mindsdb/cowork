@@ -8,6 +8,7 @@ import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, connectorInitials, humanLabel, isLegacyEngine } from '../../lib/connectionIdentity';
 import { isDatasourceRow } from '../../lib/datasourceConnectionRows';
 import { useConfirm } from '../ConfirmModal';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 function ConnectionLogo({ engine, label, custom, logoColor }) {
   const [failed, setFailed] = useState(null);
@@ -37,13 +38,14 @@ function ConnectionLogo({ engine, label, custom, logoColor }) {
    cowork-server refuses a new connection under that name until the operator
    stops sharing it. */
 export function disconnectPrompt({ engine, name, shared }) {
-  const title = `Disconnect ${engine}/${name}?`;
+  const title = i18n.t('connectionCard.disconnectTitle', { ns: 'library', engine, name });
   return shared
-    ? { title, message: "It's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it." }
+    ? { title, message: i18n.t('connectionCard.disconnectShared', { ns: 'library' }) }
     : { title };
 }
 
 function useConnectionSlots({ connection, onDelete, onModify }) {
+  const { t } = useTranslation('library');
   const [busy, setBusy] = useState(false);
   const [confirm, confirmModal] = useConfirm();
   const engine = connection.engine || 'unknown';
@@ -51,15 +53,15 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const { title, subtitle } = connectionIdentity(connection);
   const legacy = isLegacyEngine(engine);
   // The activator's own label is all a screen reader hears for the item.
-  const describedTitle = connection.custom ? `${title} (custom connector)` : title;
-  const repairHint = legacy ? '. Saved by an older version. Disconnect it and connect again.' : '';
+  const describedTitle = connection.custom ? t('connectionCard.customTitle', { title }) : title;
+  const repairHint = legacy ? t('connectionCard.repairHint') : '';
   const needsReconnect = connection.status === 'needs_reconnect';
   // The summary API omits status for healthy saved connections. Do not paint
   // an unfamiliar explicit status green as if we had checked it successfully
   // — a blank-but-present status ('') is unfamiliar too, not "no status".
   const connected = connection.status == null || connection.status === 'connected';
-  const statusLabel = needsReconnect ? 'Reconnect needed'
-    : connected ? 'Connected' : humanLabel(connection.status);
+  const statusLabel = needsReconnect ? t('connectionCard.reconnectNeeded')
+    : connected ? t('connections.connected') : humanLabel(connection.status);
   /* Only an explicit `managed: true` from the server makes the card read-only;
      a connection without the field keeps its Disconnect button. An explicit
      `shared: true` badges it Shared, whether someone else shares it with the
@@ -68,14 +70,14 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
      provides, which no person created. */
   const managed = connection.managed === true;
   const shared = connection.shared === true;
-  const badge = shared ? 'Shared' : managed ? 'Managed' : null;
+  const badge = shared ? t('share.shared') : managed ? t('connectionCard.managed') : null;
 
   const handleRemove = async () => {
     const prompt = disconnectPrompt({ engine, name, shared });
     const message = isDatasourceRow(connection)
-      ? `${subtitle} will be removed and its stored credentials deleted. Conversations that use it lose access.`
+      ? t('connectionCard.removeDatasource', { name: subtitle })
       : prompt.message;
-    if (!(await confirm({ ...prompt, message, confirmLabel: 'Disconnect', destructive: true }))) return;
+    if (!(await confirm({ ...prompt, message, confirmLabel: t('connectionCard.disconnect'), destructive: true }))) return;
     setBusy(true);
     try {
       await onDelete?.(connection);
@@ -89,18 +91,23 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
     title,
     badges: connection.custom || badge ? (
       <>
-        {connection.custom && <Badge variant="accent" size="xs">Custom</Badge>}
+        {connection.custom && <Badge variant="accent" size="xs">{t('connectionCard.custom')}</Badge>}
         {badge && <Badge variant="muted" size="sm">{badge}</Badge>}
       </>
     ) : undefined,
     description: subtitle,
     children: legacy
-      ? <span className="text-xs text-ink-4">Saved by an older version. Disconnect it and connect again.</span>
+      ? <span className="text-xs text-ink-4">{t('connectionCard.legacy')}</span>
       : undefined,
     onActivate: typeof onModify === 'function' ? () => onModify(connection) : undefined,
     /* The details of a managed connection open read-only, with no Reconnect,
        so its name says View. */
-    activateLabel: `${managed ? 'View' : needsReconnect ? 'Reconnect' : 'Manage'} ${describedTitle}: ${subtitle}${repairHint}`,
+    activateLabel: t('connectionCard.activateLabel', {
+      action: managed ? 'view' : needsReconnect ? 'reconnect' : 'manage',
+      title: describedTitle,
+      subtitle,
+      hint: repairHint,
+    }),
     busy,
     className: needsReconnect ? 'bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]' : undefined,
     meta: (
@@ -111,7 +118,7 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
         {!managed && (
           <ItemActions className="ml-auto">
             <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
-              {busy ? 'Removing…' : 'Disconnect'}
+              {busy ? t('connectionCard.removing') : t('connectionCard.disconnect')}
             </Button>
           </ItemActions>
         )}

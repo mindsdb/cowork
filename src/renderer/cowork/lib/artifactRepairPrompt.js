@@ -18,6 +18,8 @@
 // (`create_agent_repair` in cowork-server's artifact_revisions.py), so there is
 // one shape to track, and a miss degrades to the plain text that renders today.
 
+import i18n from '../../lib/i18n';
+
 const PREFIX = 'Address this artifact review thread.';
 const THREAD_LABEL = 'Complete comment thread:';
 
@@ -84,20 +86,25 @@ export function parseArtifactRepairPrompt(text) {
 // work is still happening; everything else is a resting state the reviewer
 // acts on (or has already acted on) in the artifact window.
 const STATUS_COPY = {
-  queued:    { label: 'Making changes',            tone: 'busy' },
-  ready:     { label: 'Changes ready to review',   tone: 'done' },
-  accepted:  { label: 'Changes applied',           tone: 'done' },
-  rejected:  { label: 'Changes discarded',         tone: 'idle' },
-  no_change: { label: 'No changes were needed',    tone: 'idle' },
-  conflict:  { label: 'Could not apply the changes', tone: 'warn' },
-  cancelled: { label: 'Cancelled',                 tone: 'idle' },
+  queued:    { key: 'queued',    tone: 'busy' },
+  ready:     { key: 'ready',     tone: 'done' },
+  accepted:  { key: 'accepted',  tone: 'done' },
+  rejected:  { key: 'rejected',  tone: 'idle' },
+  no_change: { key: 'noChange',  tone: 'idle' },
+  conflict:  { key: 'conflict',  tone: 'warn' },
+  cancelled: { key: 'cancelled', tone: 'idle' },
   // Distinct from `rejected`: the agent's revision stays in history, the owner
   // simply closed the review without applying or restoring it.
-  discarded: { label: 'Suggestion dismissed',      tone: 'idle' },
+  discarded: { key: 'discarded', tone: 'idle' },
 };
 
+const cardState = ({ key, tone }) => ({
+  label: i18n.t(`messages.artifactRepair.${key}`, { ns: 'projects' }),
+  tone,
+});
+
 /**
- * Status → what the card shows.
+ * Status → what the card shows, the label in the current language.
  *
  * `streaming` only matters before the first status lands: a handoff whose turn
  * is still running reads as "Making changes" even though nothing has written a
@@ -105,12 +112,12 @@ const STATUS_COPY = {
  * streaming after the repair is already `ready`.
  */
 export function repairCardState(status, { streaming = false } = {}) {
-  if (STATUS_COPY[status]) return STATUS_COPY[status];
+  if (STATUS_COPY[status]) return cardState(STATUS_COPY[status]);
   return streaming
-    ? STATUS_COPY.queued
+    ? cardState(STATUS_COPY.queued)
     // Unknown and not streaming: say what we know (a handoff was sent) rather
     // than claim an outcome we could not confirm.
-    : { label: 'Sent to the agent', tone: 'idle' };
+    : cardState({ key: 'sent', tone: 'idle' });
 }
 
 export default parseArtifactRepairPrompt;

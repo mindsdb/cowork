@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
+import i18n from '../../lib/i18n';
 
 import {
   codingApi,
@@ -11,11 +12,26 @@ import {
 } from './api';
 
 const EXECUTION_CAPACITY_REFRESH_MS = 5_000;
-const CAPACITY_ISSUE = 'No online computer can run this task right now.';
-const OFFLINE_ISSUE_SUFFIX = ' is on a computer that is offline.';
+// Kept as data and worded at render, so the text follows the current language.
+type ExecutionIssue =
+  | { kind: 'capacity' }
+  | { kind: 'offline'; name: string }
+  | { kind: 'error'; message: string }
+  | null;
 
-const offlineIssue = (resourceName: string) => `${resourceName}${OFFLINE_ISSUE_SUFFIX}`;
-const isTransientIssue = (issue: string) => issue === CAPACITY_ISSUE || issue.endsWith(OFFLINE_ISSUE_SUFFIX);
+const isTransientIssue = (issue: ExecutionIssue) => issue?.kind === 'capacity' || issue?.kind === 'offline';
+
+function issueText(issue: ExecutionIssue): string {
+  if (!issue) return '';
+  if (issue.kind === 'capacity') return i18n.t('executionTarget.capacityIssue', { ns: 'code' });
+  if (issue.kind === 'offline') return i18n.t('executionTarget.offlineIssue', { ns: 'code', name: issue.name });
+  return issue.message;
+}
+
+const errorIssue = (reason: unknown, fallbackKey: string): ExecutionIssue => ({
+  kind: 'error',
+  message: reason instanceof Error ? reason.message : i18n.t(fallbackKey, { ns: 'code' }),
+});
 
 
 export function useTaskExecutionTarget(selectedProject: CodeProject | null, engineId: string) {
@@ -30,7 +46,7 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
   const [allComputers, setAllComputers] = useState<CodeComputer[]>([]);
   const [computerId, setComputerId] = useState('');
   const [loading, setLoading] = useState(false);
-  const [issue, setIssue] = useState('');
+  const [issue, setIssue] = useState<ExecutionIssue>(null);
   const [refreshRevision, setRefreshRevision] = useState(0);
 
   useEffect(() => {
@@ -39,14 +55,14 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
     setComputers([]);
     setAllComputers([]);
     setComputerId('');
-    setIssue('');
+    setIssue(null);
   }, [defaultResourceIdsJson, selectedProject?.id]);
 
   useEffect(() => {
     let active = true;
     if (!selectedProject) {
       setLoading(true);
-      setIssue('');
+      setIssue(null);
       codingApi.computers().then((page) => {
         if (!active) return;
         setComputers(page.items);
@@ -54,7 +70,7 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
         const local = page.items.find((computer) => computer.is_local || computer.id === 'local') || page.items[0];
         setComputerId(local?.id || '');
       }).catch((reason) => {
-        if (active) setIssue(reason instanceof Error ? reason.message : 'Could not find this computer.');
+        if (active) setIssue(errorIssue(reason, 'executionTarget.findFailed'));
       }).finally(() => {
         if (active) setLoading(false);
       });
@@ -68,7 +84,7 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
     const allSelected = resourceIds.length === resources.length
       && resources.every((resource) => resourceIds.includes(resource.id));
     setLoading(true);
-    setIssue('');
+    setIssue(null);
     Promise.all([
       codingApi.projectResources(selectedProject.id),
       codingApi.projectComputers(selectedProject.id, allSelected ? undefined : resourceIds, engineId),
@@ -84,10 +100,10 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
       if (!computerPage.items.length) {
         const selectedStates = resourcePage.items.filter((item) => resourceIds.includes(item.resource.id));
         const offline = selectedStates.find((item) => item.availability.status === 'offline');
-        setIssue(offline ? offlineIssue(offline.resource.name) : CAPACITY_ISSUE);
+        setIssue(offline ? { kind: 'offline', name: offline.resource.name } : { kind: 'capacity' });
       }
     }).catch((reason) => {
-      if (active) setIssue(reason instanceof Error ? reason.message : 'Could not check where this task can run.');
+      if (active) setIssue(errorIssue(reason, 'executionTarget.checkFailed'));
     }).finally(() => {
       if (active) setLoading(false);
     });
@@ -133,7 +149,7 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
     computerId,
     setComputerId,
     executionLoading: loading,
-    executionIssue: issue,
+    executionIssue: issueText(issue),
     refreshComputers: () => setRefreshRevision((current) => current + 1),
   };
 }

@@ -11,9 +11,13 @@ import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked } from '../lib/analytics';
+import { billingCopyKey, offersBilling } from '../lib/billingLinks';
+import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded } from '../lib/analytics';
 import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
+import { takeSignupWelcome, SIGNUP_FROM_DESKTOP } from '../lib/signupWelcome';
+import { productName } from '../../lib/deploymentBrand';
 import { getDraft } from '../lib/draftStore';
+import i18n, { useTranslation } from '../../lib/i18n';
 
 // ── Boot choreography ───────────────────────────────────────────────────
 //
@@ -50,7 +54,8 @@ import { getDraft } from '../lib/draftStore';
 // config_ready=false) live in App.jsx so they fire once per app
 // session, not once per HomeView remount.
 
-const GREETING_FALLBACK = "Let's knock something off your list";
+// The greeting shown when the host passes none; translated when needed.
+const greetingFallback = () => i18n.t('home.greetingFallback', { ns: 'shell' });
 
 // Per-phase durations. Keep these short enough that the whole
 // post-server choreography fits in ~3s — the user already waited
@@ -139,7 +144,7 @@ function useBootPhase({ serverOnline, configReady, greeting, skipIntro = false }
   // 'typing' — per-char timer + tail pause + advance to 'settling'.
   useEffect(() => {
     if (phase !== 'typing') return undefined;
-    const target = greeting || GREETING_FALLBACK;
+    const target = greeting || greetingFallback();
     if (typedCount >= target.length) {
       const t = setTimeout(() => setPhase('settling'), TYPE_TAIL_MS);
       return () => clearTimeout(t);
@@ -203,13 +208,14 @@ function useOrbCenterOffset(orbRef, containerRef) {
 
 
 function ActiveList({ tasks, onSelect, onClear }) {
+  const { t } = useTranslation('shell');
   if (!tasks.length) return null;
   return (
     <div className="w-full max-w-[640px] mt-9">
       <div className="flex items-center mb-2 py-0 px-1">
-        <div className="text-[12px] font-semibold text-[var(--frost-700)] tracking-[0.02em]">Active</div>
+        <div className="text-[12px] font-semibold text-[var(--frost-700)] tracking-[0.02em]">{t('home.active')}</div>
         <div className="flex-1" />
-        <Button variant="subtle" onClick={onClear}>Clear active</Button>
+        <Button variant="subtle" onClick={onClear}>{t('home.clearActive')}</Button>
       </div>
       <div className="flex flex-col gap-[2px]">
         {tasks.map((t) => (
@@ -244,8 +250,13 @@ export default function HomeView({
   onSend, project, onProjectChange, model, onModelChange, effort, onEffortChange, projects, models, modelMeta,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
   onAddGoogleDriveFiles,
+  onAddNotionPages,
   disabledConnections = [],
   onUpdateConnectorMute,
+  onStartVoiceCall = null,
+  // The browser and call icons, at the top right (TopShortcuts).
+  topShortcuts = null,
+  browserSwitch = null,
   onNavigateToConnectors,
   onCreateProject,
   configReady, configError, onOpenSettings,
@@ -268,7 +279,8 @@ export default function HomeView({
   codingModelDefault,
   harnessClaudeCodeEnabled,
 }) {
-  const greetingText = greeting || GREETING_FALLBACK;
+  const { t } = useTranslation('shell');
+  const greetingText = greeting || t('home.greetingFallback');
   const blocked = configReady === false;
 
   // Selected task mode (ENG-1594). Null = default view (pill row visible).
@@ -285,6 +297,20 @@ export default function HomeView({
   // Leaving that mode (send, or removing the chip) retires it for good, so it
   // cannot reappear over a different mode picked afterwards.
   const [handoffHint, setHandoffHint] = useState(false);
+  // A brand-new account that signed up from the desktop app (ENG-4288). Home
+  // greets it with one line that says it can start here or go back to the app.
+  // A sign-up from Cowork web gets no notice: that person is already where
+  // they meant to be, with the composer ready.
+  const [desktopWelcome, setDesktopWelcome] = useState(false);
+  const welcomeTakenRef = useRef(false);
+  useEffect(() => {
+    if (welcomeTakenRef.current) return;
+    welcomeTakenRef.current = true;
+    const welcome = takeSignupWelcome();
+    if (!welcome) return;
+    trackSignupLanded(welcome.from);
+    if (welcome.from === SIGNUP_FROM_DESKTOP) setDesktopWelcome(true);
+  }, []);
   useEffect(() => {
     if (!taskMode) setHandoffHint(false);
   }, [taskMode]);
@@ -459,8 +485,8 @@ export default function HomeView({
     const exampleId = sample ? sampleId(sample.label) : (ownWork ? OWN_WORK_START : null);
     // The task is credited to the example only if the example was placed; a
     // kept draft of the user's own is not the example's doing.
-    setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null);
-    trackComposerReady(handoff.entrySource, exampleId, prefilled);
+    setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null, handoff.placement);
+    trackComposerReady(handoff.entrySource, exampleId, prefilled, handoff.placement);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerUsable]);
 
@@ -475,8 +501,27 @@ export default function HomeView({
   return (
     <div
       ref={homeRef}
-      className="flex-1 overflow-auto flex flex-col items-center justify-center pt-0 px-10 pb-[60px] bg-transparent"
+      className="relative flex-1 overflow-auto flex flex-col items-center justify-center pt-0 px-10 pb-[60px] bg-transparent"
     >
+      {desktopWelcome && (
+        // Out of the flow, so the centred greeting and composer do not move
+        // when the notice appears or is dismissed.
+        <div
+          role="status"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-10 max-w-[calc(100%-32px)] flex items-center gap-2 w-max rounded-lg border border-line bg-surface-2 pl-4 pr-1.5 py-1 text-[12.5px] text-ink-2 shadow-sm"
+        >
+          <span className="min-w-0">{t('home.signupWelcome.fromDesktop', { product: productName('Cowork') })}</span>
+          <button
+            type="button"
+            className="mini-icon-btn shrink-0"
+            aria-label={t('home.signupWelcome.dismiss')}
+            onClick={() => setDesktopWelcome(false)}
+          >
+            {Ico.close(12)}
+          </button>
+        </div>
+      )}
+      {topShortcuts && <div className="absolute top-3.5 right-3.5 z-10">{topShortcuts}</div>}
       {/* Deliberate exception to the .s-* ladder. This is the home hero, and
           the ladder has no rung between s-h1 (28px) and s-display (44px): 28px
           is dwarfed by the 42px orb, 44px wraps to two lines in the 640px
@@ -589,13 +634,13 @@ export default function HomeView({
             <div className="home-connect-card">
               <span className="w-9 h-9 rounded-[9px] inline-flex items-center justify-center bg-[var(--primary-50)] text-[var(--primary-700)] shrink-0">{Ico.key(20)}</span>
               <div className="home-connect-card__body">
-                <div className="text-base font-[650] text-strong">{PLATFORM_UI ? 'Connect a provider to start chatting' : 'Provider setup is required'}</div>
+                <div className="text-base font-[650] text-strong">{PLATFORM_UI ? t('home.connectProvider.title') : t('home.connectProvider.operatorTitle')}</div>
                 <div className="text-sm text-[var(--frost-700)] mt-[3px]">{PLATFORM_UI
-                  ? 'Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.'
-                  : 'Ask your operator to configure the model provider before starting a task.'}</div>
+                  ? t(billingCopyKey('home.connectProvider.body'))
+                  : t('home.connectProvider.operatorBody')}</div>
               </div>
               {PLATFORM_UI && <div className="home-connect-card__actions">
-                <Button
+                {offersBilling() && <Button
                   variant="primary"
                   onClick={() => {
                     // Same card, same trigger as ChatView's provider_required
@@ -604,12 +649,12 @@ export default function HomeView({
                     trackBillingOpened('connect_provider');
                     host.openExternal(MINDS_BILLING_URL);
                   }}
-                >Start for free</Button>
+                >{t('home.connectProvider.startFree')}</Button>}
                 <Button
                   variant="primary"
                   onClick={() => onOpenSettings?.('agent')}
                   style={{ background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' }}
-                >Open Settings</Button>
+                >{t('sidebar.openSettings')}</Button>
               </div>}
             </div>
           ) : (
@@ -633,9 +678,12 @@ export default function HomeView({
               onNavigateToConnectors={onNavigateToConnectors}
               onAttachFiles={onAttachFiles}
               onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+              onAddNotionPages={onAddNotionPages}
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
+              onStartVoiceCall={onStartVoiceCall}
+              browserSwitch={browserSwitch}
               onCreateProject={onCreateProject}
               onTypingChange={setIsTyping}
               codingModeEnabled={codingModeEnabled}
@@ -654,7 +702,7 @@ export default function HomeView({
           <div className="w-full h-0 overflow-visible flex flex-col items-center">
             {handoffHint && taskMode && (
               <p role="status" className="text-sm text-[var(--frost-700)] mt-2 mb-0 w-full max-w-[var(--composer-max-width,640px)]">
-                Edit this prompt, then send when you're ready.
+                {t('home.handoffHint')}
               </p>
             )}
             {/* Samples only render when onPrefill exists — a sample click's

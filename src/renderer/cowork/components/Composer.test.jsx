@@ -3,7 +3,7 @@
 // It must open the "Start a new project" modal, and a create from that
 // modal must select the new project on the composer.
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within, act, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, within, act, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -749,6 +749,16 @@ describe('Composer — pasted image names (ENG-1100)', () => {
     expect(attached[0].name).toMatch(CLIPBOARD_NAME);
     expect(attached[1].name).toMatch(CLIPBOARD_NAME);
     expect(attached[0].name).not.toBe(attached[1].name);
+  });
+
+  it('returns focus to the text box after a file is picked', async () => {
+    const onAttachFiles = vi.fn();
+    const { container } = render(<Composer onSend={vi.fn()} project={{ name: 'general' }} projects={[{ name: 'general' }]} models={[]} onAttachFiles={onAttachFiles} />);
+    const input = container.querySelector('input[type=file]');
+    input.focus();
+    fireEvent.change(input, { target: { files: [pastedImage([1])] } });
+    await waitFor(() => expect(textarea()).toHaveFocus());
+    expect(onAttachFiles).toHaveBeenCalledTimes(1);
   });
 
   it('attaches synchronously and swallows the paste', () => {

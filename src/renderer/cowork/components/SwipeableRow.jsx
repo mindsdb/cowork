@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useTranslation } from '../../lib/i18n';
 
 // Swipe-left-to-delete row, mobile-only. Standard iOS pattern:
 //   • Swipe left ~80px → reveals red delete action behind the row.
@@ -17,7 +18,7 @@ const COMMIT_PX = 180;
 
 export default function SwipeableRow({
   onDelete,
-  deleteLabel = 'Delete',
+  deleteLabel: deleteLabelProp,
   children,
   // Optional: callers that own the row's outer styling can pass a
   // className so the swipe container blends in (e.g. matching the
@@ -26,6 +27,8 @@ export default function SwipeableRow({
   // Disable swipe in specific cases (e.g. while editing inline).
   disabled = false,
 }) {
+  const { t } = useTranslation('shell');
+  const deleteLabel = deleteLabelProp === undefined ? t('common.delete') : deleteLabelProp;
   const { isMobile } = useBreakpoint();
   const [translateX, setTranslateX] = useState(0);
   const [transitioning, setTransitioning] = useState(false);

@@ -3,7 +3,7 @@
 // (the wallet is empty right now); the locked-model hint follows picking a model
 // the wallet cannot pay for (nothing is broken yet). Separate triggers, so the
 // two are not read as one.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
@@ -32,8 +32,15 @@ const analyticsMock = vi.hoisted(() => ({
 vi.mock('../../lib/analytics', () => analyticsMock);
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
-import SettingsView from './SettingsView';
-import { MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import SettingsView, { UnavailableModelHint } from './SettingsView';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../../lib/mindsUrls';
+import { HubUsageContext } from '../../lib/hubUsageContext';
+
+const asBillingOwner = (ui) => (
+  <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: true }, providerType: 'minds-cloud', refresh: () => {} }}>
+    {ui}
+  </HubUsageContext.Provider>
+);
 
 function Harness({ initialSettings }) {
   const [settings, setSettings] = useState(initialSettings);
@@ -97,6 +104,23 @@ describe('SettingsView — no-credits notice route (ENG-1533)', () => {
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('no_credits_notice');
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
+
+  it('opens the add-credits dialog for a billing owner', async () => {
+    const user = userEvent.setup();
+    spies.testProviders.mockResolvedValue({
+      providerStatus: { 'minds-cloud': 'fail' },
+      providerStatusDetails: { 'minds-cloud': 'HTTP 429' },
+    });
+    render(asBillingOwner(<Harness initialSettings={noCredits()} />));
+
+    await waitFor(() => expect(screen.getAllByText(/No credits available/i).length).toBeGreaterThan(0));
+    // Every instance, so a second notice wired the old way cannot hide behind the first.
+    const buttons = screen.getAllByRole('button', { name: /Top up balance/ });
+    for (const button of buttons) await user.click(button);
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledTimes(buttons.length);
+    expect(hostMock.host.openExternal.mock.calls.every(([url]) => url === MINDS_ADD_FUNDS_URL)).toBe(true);
+  });
 });
 
 describe('SettingsView — locked-model hint route (ENG-1533)', () => {
@@ -125,11 +149,68 @@ describe('SettingsView — locked-model hint route (ENG-1533)', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
 
+  it('opens the add-credits dialog for a billing owner', async () => {
+    const user = userEvent.setup();
+    render(asBillingOwner(<Harness initialSettings={lockedModel()} />));
+
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Top up your balance' }).length).toBeGreaterThan(0),
+    );
+    // Every instance: one hint renders per role picker whose current model is locked.
+    const buttons = screen.getAllByRole('button', { name: 'Top up your balance' });
+    for (const button of buttons) await user.click(button);
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledTimes(buttons.length);
+    expect(hostMock.host.openExternal.mock.calls.every(([url]) => url === MINDS_ADD_FUNDS_URL)).toBe(true);
+  });
+
   it('shows no hint, and records nothing, when the model is payable', async () => {
     render(<Harness initialSettings={{ ...lockedModel(), modelEnabled: { 'gpt-5.6-sol': true } }} />);
 
     await waitFor(() => expect(spies.testProviders).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: 'Top up your balance' })).toBeNull();
     expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+  });
+});
+
+describe('SettingsView inside the mobile app', () => {
+  beforeEach(() => { hostMock.host.isMobileShell = true; });
+  afterEach(() => { hostMock.host.isMobileShell = false; });
+
+  it('says there are no credits without offering a top-up', async () => {
+    spies.testProviders.mockResolvedValue({
+      providerStatus: { 'minds-cloud': 'fail' },
+      providerStatusDetails: { 'minds-cloud': 'HTTP 429' },
+    });
+    render(<Harness initialSettings={{
+      ...baseSettings(),
+      providerStatus: { 'minds-cloud': 'fail' },
+      providerStatusDetails: { 'minds-cloud': 'HTTP 429' },
+    }} />);
+
+    await waitFor(() => expect(screen.getAllByText(/No credits available/i).length).toBeGreaterThan(0));
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    expect(screen.queryByRole('button', { name: /Top up balance/ })).toBeNull();
+  });
+
+  it('names a locked model as needing credits, with no link to top up', async () => {
+    render(<Harness initialSettings={{
+      ...baseSettings(),
+      providerStatus: { 'minds-cloud': 'ok' },
+      providerStatusDetails: {},
+      modelEnabled: { 'gpt-5.6-sol': false },
+    }} />);
+
+    await waitFor(() => expect(screen.getAllByText(/needs credits\.$/).length).toBeGreaterThan(0));
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    expect(screen.queryByRole('button', { name: 'Top up your balance' })).toBeNull();
+  });
+
+  it('names a budget-stopped model without linking to Budgets', () => {
+    render(<UnavailableModelHint label="Opus" budgetReached />);
+
+    expect(screen.getByText(/Opus/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

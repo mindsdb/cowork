@@ -13,7 +13,7 @@ import SkillAudienceFields from './SkillAudienceFields';
 import { AudienceList } from './RecipientRows';
 import { saveSkillAndSync, setSkillAccessAndSync, setSkillSharingAndSync } from '../lib/skillsStore';
 import {
-  ALWAYS_ON_BADGE_HINT,
+  alwaysOnBadgeHint,
   PRIVATE_ACCESS,
   canChangeSkillAudience,
   canEditSkill,
@@ -25,15 +25,16 @@ import {
 } from '../lib/orgSharing';
 import { canUseSharedResource } from '../lib/sharedResourceAccess';
 import {
-  SKILL_SHARING_CREATE_HINT,
-  SKILL_SHARING_LABEL,
-  SKILL_SHARING_OPTIONS,
+  skillSharingCreateHint,
+  skillSharingLabel,
+  skillSharingOptions,
   SKILL_SHARING_PRIVATE,
   canShareSkill,
   isOwnSharedSkill,
   sharedFromValue,
   sharingValue,
 } from '../lib/skillSharing';
+import { useTranslation } from '../../lib/i18n';
 
 // Sentinel for the "All projects" choice in the Project <Select>. It must
 // be a non-empty string: Base UI's <Select.Value> treats an empty-string value
@@ -43,12 +44,6 @@ import {
 // storage: `submit` maps it back to an empty `projects` array, and it can't
 // collide with a real project name.
 const ALL_PROJECTS = '__all_projects__';
-
-/* Shown in the detail view and the Edit modal, since an edit or the switch
-   reaches every reader at their next answer. */
-export const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
-
-const AUDIENCE_OWNER_ONLY_HINT = 'Only the owner can change who can use it';
 
 /* The text fields' look, shared with the Upload modal. */
 export const skillFieldStyle = {
@@ -71,6 +66,7 @@ const SKILL_MODAL_WIDTH = 'min(960px, 94vw)';
 const SKILL_MODAL_HEIGHT = 'min(680px, 88vh)';
 
 export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = null, projects = [], canShare = false, capabilities = null, orgName = null }) {
+  const { t } = useTranslation('library');
   const isEdit = initial !== null;
   const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
   const [busy, setBusy] = useState(false);
@@ -122,7 +118,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
 
   const submit = async () => {
     if (isEdit && !canUseSharedResource(initial, 'canEdit')) {
-      onError?.('You do not have permission to edit this shared skill.');
+      onError?.(t('skillModal.noEditPermission'));
       return;
     }
     const label = isEdit ? initial.label : draft.label.trim();
@@ -139,11 +135,11 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
       try {
         await setSkillAccessAndSync(slug, skillAccessPayload(access));
       } catch (err) {
-        const reason = err?.message || 'unknown error';
+        const reason = err?.message || t('skillModal.unknownError');
         setRetrySlug(slug);
         setInlineError(isEdit
-          ? `Skill saved, but sharing couldn't be updated: ${reason}.`
-          : `Skill created, but it couldn't be shared: ${reason}. You can share it from the skill's menu.`);
+          ? t('skillModal.shareUpdateFailed', { reason })
+          : t('skillModal.shareCreateFailed', { reason }));
         await onPartialSave?.(saved);
         return false;
       }
@@ -181,7 +177,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
         stoppedSharing: sharingChanged && !sharedChoice,
       });
     } catch (err) {
-      onError?.(err?.message || 'Could not save skill.');
+      onError?.(err?.message || t('skillCard.saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -200,8 +196,8 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
     >
       <ModalHeader
         id="skill-modal-title"
-        title={isEdit ? 'Edit Skill' : 'Add a Skill'}
-        subtitle="Write a name, description, and instructions for the skill."
+        title={isEdit ? t('skillModal.editTitle') : t('skillModal.addTitle')}
+        subtitle={t('skillModal.subtitle')}
         onClose={handleClose}
       />
       {/* Two columns on a wide window: what the skill says on the left, where
@@ -214,11 +210,11 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
             className="flex min-w-0 flex-col gap-3 p-5 min-[720px]:min-h-0 min-[720px]:flex-1 min-[720px]:overflow-y-auto"
           >
             {isEdit && isOwnSharedSkill(initial) && (
-              <p className="m-0 text-[12px] text-ink-3" role="note">{OWN_SHARED_CHANGE_NOTE}</p>
+              <p className="m-0 text-[12px] text-ink-3" role="note">{t('skillModal.ownSharedChangeNote')}</p>
             )}
-            <Field label="Label">
+            <Field label={t('skillModal.label')}>
               <Input
-                aria-label="Label"
+                aria-label={t('skillModal.label')}
                 value={draft.label}
                 onChange={(v) => setField('label', v)}
                 placeholder="weekly-status-report"
@@ -227,22 +223,22 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
                 autoFocus={!isEdit}
               />
             </Field>
-            <Field label="Description">
+            <Field label={t('skillModal.description')}>
               <Textarea
-                aria-label="Description"
+                aria-label={t('skillModal.description')}
                 value={draft.description}
                 onChange={(v) => setField('description', v)}
-                placeholder="Generate weekly status reports from recent work. Use when asked for updates or progress summaries."
+                placeholder={t('skillModal.descriptionPlaceholder')}
                 style={{ ...skillFieldStyle, height: 80 }}
               />
             </Field>
             {/* Instructions take whatever height the column has left. */}
-            <Field label="Instructions" className="min-[720px]:min-h-0 min-[720px]:flex-1">
+            <Field label={t('skillDetail.instructions')} className="min-[720px]:min-h-0 min-[720px]:flex-1">
               <Textarea
-                aria-label="Instructions"
+                aria-label={t('skillDetail.instructions')}
                 value={draft.declarative}
                 onChange={(v) => setField('declarative', v)}
-                placeholder="Summarize my recent work in three sections: wins, blockers, and next steps. Keep the tone professional but not stiff..."
+                placeholder={t('skillModal.instructionsPlaceholder')}
                 className="min-[720px]:flex-1"
                 style={{ ...skillFieldStyle, minHeight: 198, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
               />
@@ -250,12 +246,12 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
             {inlineError && <Alert variant="danger">{inlineError}</Alert>}
           </div>
           <aside
-            aria-label="Skill settings"
+            aria-label={t('skillModal.settings')}
             className="flex flex-col gap-3 border-0 border-t border-solid border-line p-5 min-[720px]:w-[300px] min-[720px]:shrink-0 min-[720px]:overflow-y-auto min-[720px]:border-l min-[720px]:border-t-0"
           >
-            <Field label="Project">
+            <Field label={t('skillDetail.project')}>
               <Select
-                ariaLabel="Project"
+                ariaLabel={t('skillDetail.project')}
                 value={draft.project}
                 onValueChange={(v) => setField('project', v)}
                 style={{ ...skillFieldStyle, height: 34 }}
@@ -263,7 +259,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
                   // The global scope is a mode, not a project; set it apart from
                   // the real projects (which map 1:1 to the projects page) with a
                   // leading icon and a divider.
-                  { value: ALL_PROJECTS, label: 'All projects', icon: Ico.globe(14) },
+                  { value: ALL_PROJECTS, label: t('skillDetail.allProjects'), icon: Ico.globe(14) },
                   { separator: true },
                   // value stays the slug -- it is what `submit` persists into
                   // `skill.projects`. Only the label is for reading.
@@ -272,8 +268,8 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
               />
             </Field>
             {asksAudience && (
-              <Field label={SKILL_SHARING_LABEL} help={canChangeAudience ? undefined : AUDIENCE_OWNER_ONLY_HINT}>
-                <div role="group" aria-label={SKILL_SHARING_LABEL} className="min-w-0">
+              <Field label={skillSharingLabel()} help={canChangeAudience ? undefined : t('skillModal.ownerOnlyHint')}>
+                <div role="group" aria-label={skillSharingLabel()} className="min-w-0">
                   {canChangeAudience ? (
                     <SkillAudienceFields
                       key={audienceKey}
@@ -292,10 +288,10 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
                         teamIds={savedAccess.allowedTeamIds}
                         userIds={savedAccess.allowedUserIds}
                         orgName={orgName}
-                        label={SKILL_SHARING_LABEL}
+                        label={skillSharingLabel()}
                       />
                       {savedAccess.alwaysOn && (
-                        <span className="font-body text-[12px] text-ink-3">{ALWAYS_ON_BADGE_HINT}</span>
+                        <span className="font-body text-[12px] text-ink-3">{alwaysOnBadgeHint()}</span>
                       )}
                     </div>
                   )}
@@ -303,23 +299,23 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
               </Field>
             )}
             {asksSharing && (
-              <Field label={SKILL_SHARING_LABEL} help={isEdit ? undefined : SKILL_SHARING_CREATE_HINT}>
+              <Field label={skillSharingLabel()} help={isEdit ? undefined : skillSharingCreateHint()}>
                 <Select
-                  ariaLabel={SKILL_SHARING_LABEL}
+                  ariaLabel={skillSharingLabel()}
                   value={draft.sharing}
                   onValueChange={(v) => setField('sharing', v)}
                   style={{ ...skillFieldStyle, height: 34 }}
-                  options={SKILL_SHARING_OPTIONS}
+                  options={skillSharingOptions()}
                 />
               </Field>
             )}
           </aside>
         </div>
       </ModalBody>
-      <ModalFooter cancel={<Button variant="subtle" onClick={handleClose} disabled={busy}>Cancel</Button>}>
+      <ModalFooter cancel={<Button variant="subtle" onClick={handleClose} disabled={busy}>{t('skillModal.cancel')}</Button>}>
         <Button variant="primary" disabled={!canSubmit} onClick={submit}>
           {!isEdit && !busy && Ico.plus(14)}
-          {busy ? 'Saving…' : retrySlug ? 'Retry sharing' : isEdit ? 'Save' : 'Create'}
+          {busy ? t('skillCard.saving') : retrySlug ? t('skillModal.retrySharing') : isEdit ? t('skillModal.save') : t('skillModal.create')}
         </Button>
       </ModalFooter>
     </Modal>

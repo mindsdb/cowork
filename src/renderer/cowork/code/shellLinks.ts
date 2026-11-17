@@ -1,4 +1,5 @@
 import { host } from '../../platform/host';
+import i18n from '../../lib/i18n';
 import { safeCodeExternalUrl } from './developerTools';
 
 // The only module under code/ that reaches the OS shell (enforced by
@@ -21,11 +22,11 @@ export async function openCodeRepository(repository: string): Promise<void> {
   const scpRemote = repository.match(/^git@([^:]+):(.+)$/i);
   if (scpRemote) {
     const opened = await openCodeExternalUrl(`https://${scpRemote[1]}/${scpRemote[2].replace(/\.git$/i, '')}`);
-    if (!opened) throw new Error('That repository address is not safe to open.');
+    if (!opened) throw new Error(i18n.t('externalLink.unsafeRepository', { ns: 'code' }));
     return;
   }
   const result = await host.showItemInFolder(repository);
-  if (!result.ok) throw new Error(result.reason || 'Could not open that repository.');
+  if (!result.ok) throw new Error(result.reason || i18n.t('externalLink.openRepositoryFailed', { ns: 'code' }));
 }
 
 /**

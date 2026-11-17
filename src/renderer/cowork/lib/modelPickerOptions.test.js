@@ -62,6 +62,24 @@ describe('buildModelPickerOptions', () => {
     expect(byValue.mindshub_air).toEqual({ value: 'mindshub_air', label: 'MindsHub Air' });
   });
 
+  it('tags a row the org budget stops as Budget reached, with no credits route', () => {
+    const options = buildModelPickerOptions([
+      { id: 'mindshub_air', name: 'MindsHub Air' },
+      { id: 'opus', name: 'Claude Opus 5' },
+    ], {
+      modelEnabled: { mindshub_air: true, opus: false },
+      modelDisabledReasons: { opus: 'budget_exceeded' },
+    });
+    expect(options.find((o) => o.value === 'opus')).toEqual({
+      value: 'opus',
+      label: 'Claude Opus 5',
+      disabled: true,
+      budgetReached: true,
+      tag: 'Budget reached',
+      title: "Your organization's budget is used up. An owner or admin can raise it in Budgets.",
+    });
+  });
+
   it('notes "latest" on a moving alias beside its pinned version, leaving every label bare', () => {
     // The moving alias is named by its line only, so next to its pinned twin it
     // reads as a duplicate unless it says it moves. The note stays out of `label`,

@@ -74,6 +74,17 @@ describe('SettingsView — App shell supported window (ENG-1047)', () => {
     expect(copyText).toHaveBeenCalledWith(expect.stringContaining('App shell: 2.26.9.1.3 (too old)'));
   });
 
+  it('shows the macOS cut-off instead of "too old"', async () => {
+    getShellSupport.mockResolvedValue({
+      status: 'os-capped', reason: 'behind', shellVersion: '2.26.10.1.1', latestShellVersion: '2.26.10.4.1', daysBehind: 3, macosMajor: 12,
+    });
+    render(<SettingsView {...baseProps} />);
+    expect(await screen.findByTestId('shell-os-capped')).toHaveTextContent('no longer receives app updates');
+    expect(screen.getByText('⚠ no updates on macOS 12')).toBeInTheDocument();
+    expect(screen.queryByTestId('shell-too-old')).toBeNull();
+    expect(screen.queryByText('⚠ too old')).toBeNull();
+  });
+
   it('shows no shell warning for a supported shell', async () => {
     getShellSupport.mockResolvedValue({
       status: 'supported', shellVersion: '2.26.9.1.3', latestShellVersion: '2.26.9.1.3', daysBehind: 0,

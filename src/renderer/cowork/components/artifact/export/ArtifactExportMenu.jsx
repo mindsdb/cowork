@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../../Icons';
 import { Button, Menu, Spinner } from '../../ui';
 import { cn } from '../../../lib/cn';
+import { useTranslation } from '../../../../lib/i18n';
 import { EXPORT_FORMAT_LABELS, runArtifactExport } from '../../../lib/artifactExport';
 
 /** @typedef {import('../../../lib/artifactExport').ExportNotice} ExportNotice */
@@ -19,9 +20,11 @@ const NOTICE_MS = 6_000;
  * @param {{
  *   draftUrl: string,
  *   formats: import('..').ArtifactExportFormat[],
+ *   onExported?: (format: import('..').ArtifactExportFormat) => void,
  * }} props
  */
-export function ArtifactExportMenu({ draftUrl, formats }) {
+export function ArtifactExportMenu({ draftUrl, formats, onExported }) {
+  const { t } = useTranslation('artifacts');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(/** @type {ExportNotice | null} */ (null));
   const noticeTimerRef = useRef(0);
@@ -47,6 +50,8 @@ export function ArtifactExportMenu({ draftUrl, formats }) {
     setBusy(true);
     showNotice(null);
     const next = await runArtifactExport(draftUrl, format);
+    // Saved even when the viewer closed meanwhile, so it counts either way.
+    if (next?.tone !== 'error') onExported?.(format);
     if (!mountedRef.current) return;
     showNotice(next);
     setBusy(false);
@@ -55,14 +60,14 @@ export function ArtifactExportMenu({ draftUrl, formats }) {
   return (
     <div className="relative">
       <Menu
-        ariaLabel="Export formats"
+        ariaLabel={t('export.formatsAriaLabel')}
         align="end"
         width={140}
         trigger={
           <Button size="sm" disabled={busy}>
             {busy
-              ? (<><Spinner style={{ color: 'currentColor' }} /> Exporting…</>)
-              : (<>Export <span className="inline-flex text-ink-3">{Ico.chevDown(14)}</span></>)}
+              ? (<><Spinner style={{ color: 'currentColor' }} /> {t('export.exporting')}</>)
+              : (<>{t('export.export')} <span className="inline-flex text-ink-3">{Ico.chevDown(14)}</span></>)}
           </Button>
         }
         items={formats.map((format) => ({

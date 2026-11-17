@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MindsHub Cowork</string>
+    <string name="title_activity_main">MindsHub Cowork</string>
+    <string name="package_name">ai.mindshub.cowork</string>
+    <string name="custom_url_scheme">ai.mindshub.cowork</string>
+    <!-- Push notifications (MainActivity.PUSH_CHANNEL_ID), shown in the app's notification settings. -->
+    <string name="push_channel_name">Task updates</string>
+    <string name="push_channel_description">Finished tasks, scheduled runs and artifacts shared with you</string>
+</resources>

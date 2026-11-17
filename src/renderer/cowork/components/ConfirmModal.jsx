@@ -10,13 +10,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import { Alert, Button } from './ui';
+import { useTranslation } from '../../lib/i18n';
 
 export function ConfirmModal({
   open,
-  title = 'Are you sure?',
+  title: titleProp,
   message,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel: confirmLabelProp,
+  cancelLabel: cancelLabelProp,
   destructive = false,
   // While truthy the action is in flight: both buttons disable, the confirm
   // button shows a spinner + `busyLabel`, and Enter is suppressed. Stops
@@ -38,6 +39,10 @@ export function ConfirmModal({
   onConfirm,
   onClose,
 }) {
+  const { t } = useTranslation('shell');
+  const title = titleProp === undefined ? t('confirm.title') : titleProp;
+  const confirmLabel = confirmLabelProp === undefined ? t('confirm.confirm') : confirmLabelProp;
+  const cancelLabel = cancelLabelProp === undefined ? t('common.cancel') : cancelLabelProp;
   const locked = busy && !dismissableWhileBusy;
   // Enter-to-confirm. Esc, backdrop and X dismissal are Modal's job
   // (disabled while locked via `dismissible` below).
