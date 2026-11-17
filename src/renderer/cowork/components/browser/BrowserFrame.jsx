@@ -3,6 +3,7 @@ import Ico from '../Icons';
 import Button from '../ui/Button';
 import './browser-panel.css';
 import { useTranslation } from '../../../lib/i18n';
+import { isEditable } from '../../lib/editable';
 
 /* The browser pane's frame, shared by the web viewer and the desktop's own
    browser: the chat's right-hand column (or, below the inline width, a panel
@@ -15,6 +16,23 @@ import { useTranslation } from '../../../lib/i18n';
    again: `dock` is {collapsed, onToggle}. Expanded, it covers the top of
    the screen (browser-panel.css) with no header of its own: the page's own
    address row, and a Minimize button floating at its right end. */
+
+/**
+ * Whether the pane may move the keyboard into `element`: only when the
+ * person's focus is on the page body, on nothing, or already inside the
+ * pane's aside. A field or button elsewhere keeps its focus, and so does a
+ * field in the pane they can type in, such as the start page's (isEditable);
+ * once it turns off, as the start page's does when it sends, it doesn't.
+ *
+ * @param {Element | null} element
+ * @returns {boolean}
+ */
+export function paneMayTakeFocus(element) {
+  const active = document.activeElement;
+  if (!active || active === document.body) return true;
+  if (!element?.closest('.browser-panel')?.contains(active)) return false;
+  return !isEditable(active) || Boolean(/** @type {HTMLInputElement} */ (active).disabled);
+}
 
 /**
  * @param {{
