@@ -754,5 +754,10 @@
     "database": "Database",
     "cancel": "Cancel",
     "add": "{count, plural, =0 {Add page} one {Add page} other {Add # pages}}"
+  },
+  "generatedImage": {
+    "fallbackName": "image",
+    "alt": "Generated image {name}",
+    "notShown": "{name} could not be shown. It may have been moved or deleted."
   }
 }

@@ -754,5 +754,10 @@
     "database": "Banco de dados",
     "cancel": "Cancelar",
     "add": "{count, plural, =0 {Adicionar página} one {Adicionar página} other {Adicionar # páginas}}"
+  },
+  "generatedImage": {
+    "fallbackName": "imagem",
+    "alt": "Imagem gerada {name}",
+    "notShown": "Não foi possível mostrar {name}. Talvez tenha sido movido ou excluído."
   }
 }

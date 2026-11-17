@@ -754,5 +754,10 @@
     "database": "数据库",
     "cancel": "取消",
     "add": "{count, plural, =0 {添加页面} other {添加 # 个页面}}"
+  },
+  "generatedImage": {
+    "fallbackName": "图像",
+    "alt": "生成的图像 {name}",
+    "notShown": "无法显示 {name}。它可能已被移动或删除。"
   }
 }

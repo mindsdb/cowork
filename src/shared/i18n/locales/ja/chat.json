@@ -754,5 +754,10 @@
     "database": "データベース",
     "cancel": "キャンセル",
     "add": "{count, plural, =0 {ページを追加} other {#ページを追加}}"
+  },
+  "generatedImage": {
+    "fallbackName": "画像",
+    "alt": "生成された画像 {name}",
+    "notShown": "{name} を表示できません。移動または削除された可能性があります。"
   }
 }

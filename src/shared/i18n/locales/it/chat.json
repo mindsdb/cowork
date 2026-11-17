@@ -754,5 +754,10 @@
     "database": "Database",
     "cancel": "Annulla",
     "add": "{count, plural, =0 {Aggiungi pagina} one {Aggiungi pagina} other {Aggiungi # pagine}}"
+  },
+  "generatedImage": {
+    "fallbackName": "immagine",
+    "alt": "Immagine generata {name}",
+    "notShown": "Impossibile mostrare {name}. Potrebbe essere stato spostato o eliminato."
   }
 }
