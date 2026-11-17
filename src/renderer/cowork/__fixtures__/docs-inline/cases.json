@@ -1,5 +1,5 @@
 {
-  "description": "Inline Markdown of a doc block and the HTML it renders to. cowork-server (docs/render.inline_html) renders exactly `html`; the editor (cowork docModel.inlineToHtml) renders the same marks, compared after its own attributes are set aside (link target and rel, chip classes and data, <br> for a line feed, &quot; in text). Both repositories keep an identical copy of this file.",
+  "description": "Inline Markdown of a doc block and the HTML it renders to. cowork-server (docs/render.inline_html) renders exactly `html`; the editor (cowork docModel.inlineToHtml) renders the same marks, compared after its own attributes are set aside (link target and rel, chip classes and data, &quot; in text). Both repositories keep an identical copy of this file.",
   "cases": [
     {
       "name": "plain text",
@@ -77,9 +77,9 @@
       "html": "<em>a\rb</em>"
     },
     {
-      "name": "emphasis spans a line feed",
+      "name": "emphasis spans a line feed, shown as a line break",
       "text": "*a\nb*",
-      "html": "<em>a\nb</em>"
+      "html": "<em>a<br>b</em>"
     },
     {
       "name": "U+2028 is neither white space nor a line end",
@@ -177,14 +177,44 @@
       "html": "<em>(a)</em>"
     },
     {
-      "name": "punctuation inside, letters outside",
+      "name": "* opens and closes beside punctuation inside a word",
       "text": "a*(b)*c",
-      "html": "a*(b)*c"
+      "html": "a<em>(b)</em>c"
+    },
+    {
+      "name": "bold ending in punctuation before a word",
+      "text": "**Note:**text",
+      "html": "<strong>Note:</strong>text"
+    },
+    {
+      "name": "bold around a price inside CJK text",
+      "text": "价格**$5**起",
+      "html": "价格<strong>$5</strong>起"
+    },
+    {
+      "name": "bold ending in a CJK colon",
+      "text": "**注意：**这是重点",
+      "html": "<strong>注意：</strong>这是重点"
+    },
+    {
+      "name": "bold around CJK quotes",
+      "text": "これは**「重要」**です",
+      "html": "これは<strong>「重要」</strong>です"
+    },
+    {
+      "name": "bold around a link inside a word",
+      "text": "x**[link](http://x)**y",
+      "html": "x<strong><a href=\"http://x\">link</a></strong>y"
+    },
+    {
+      "name": "_ keeps CommonMark's rule beside punctuation",
+      "text": "_Note:_text",
+      "html": "_Note:_text"
     },
     {
       "name": "emphasis spans a blank line",
       "text": "*a\n\nb*",
-      "html": "<em>a\n\nb</em>"
+      "html": "<em>a<br><br>b</em>"
     },
     {
       "name": "emphasis inside strike",
@@ -200,6 +230,11 @@
       "name": "strike inside a word",
       "text": "a~~b~~c",
       "html": "a<s>b</s>c"
+    },
+    {
+      "name": "strike around parentheses inside a word",
+      "text": "a~~(b)~~c",
+      "html": "a<s>(b)</s>c"
     },
     {
       "name": "strike marks hug the words",

@@ -91,6 +91,11 @@ export function chipHtml(kind, value) {
 // nest. Every look ahead is a cached "next match from here", which keeps all
 // of it linear in the length of the text.
 //
+// Looser than CommonMark: a run of * or ~~ opens unless white space follows it
+// and closes unless white space precedes it, so "**Note:**text" and
+// "价格**$5**起" are bold, as `htmlToInline` writes them. "_" keeps CommonMark's
+// rule, so snake_case stays as typed.
+//
 // Narrower than CommonMark: a code span is one backtick each side, kept
 // verbatim; only these marks escape; a link is inline, has words, and its
 // address is http(s):// or mailto: plus at least one character, up to ")";
@@ -107,7 +112,6 @@ const HREF_ESCAPE = /\\([*`~[\]{}_\\])/g;
 const NEXT = {
   '`': /`/g,
   '}': /\}/g,
-  // eslint-disable-next-line no-control-regex
   hrefEnd: /[)\x00-\x20\x7f]/g, // where CommonMark ends an address not in <…>
 };
 
@@ -134,7 +138,8 @@ const textHtml = (s) => escapeHtml(s).replace(/\n/g, '<br>');
 
 // A character beside a run of marks is white space (0), punctuation (1) or anything
 // else (2), read whole: an emoji is two UTF-16 units, and the server reads it as one
-// symbol (punctuation, to CommonMark). The text's edges count as white space.
+// symbol (punctuation, to CommonMark). The text's edges count as white space. P and S
+// come from the engine's Unicode tables, which may be newer than the server's.
 function charClass(ch) {
   if (SPACE.test(ch)) return 0;
   return PUNCT.test(ch) ? 1 : 2;
@@ -155,10 +160,11 @@ const classAfter = (s, j) => (j < s.length ? charClass(String.fromCodePoint(s.co
 /** Whether a run can open and close emphasis, by the classes of the characters around it. */
 function flanks(before, after, underscore) {
   const [spaceBefore, punctBefore, spaceAfter, punctAfter] = [before === 0, before === 1, after === 0, after === 1];
+  if (!underscore) return [!spaceAfter, !spaceBefore];
   const left = !spaceAfter && (!punctAfter || spaceBefore || punctBefore);
   const right = !spaceBefore && (!punctBefore || spaceAfter || punctAfter);
   // "_" never opens or closes inside a word.
-  return underscore ? [left && (!right || punctBefore), right && (!left || punctAfter)] : [left, right];
+  return [left && (!right || punctBefore), right && (!left || punctAfter)];
 }
 
 const FLANKS = [false, true].map((underscore) => [0, 1, 2].flatMap((b) => [0, 1, 2].map((a) => flanks(b, a, underscore))));
@@ -205,8 +211,8 @@ function pairRuns(bottom) {
     const tag = closer.mark === '~' ? 's' : used === 2 ? 'strong' : 'em';
     opener.left -= used;
     closer.left -= used;
-    opener.opens = `<${tag}>${opener.opens}`;
-    closer.closes += `</${tag}>`;
+    opener.opens.push(`<${tag}>`);
+    closer.closes.push(`</${tag}>`);
     opener.next = closer; // the runs between pair with nothing now
     closer.prev = opener;
     if (!opener.left) dropRun(opener);
@@ -245,8 +251,8 @@ function linkEnd(s, q, next) {
  * an opener's from its end, a closer's from its start. */
 function delimiterRun(start, end, mark, canOpen, canClose, prev) {
   const length = end - start;
-  // `opens` and `closes`: the tags it opens after its marks, and closes before them.
-  return { kind: 'run', start, end, mark, length, left: length, canOpen, canClose, prev, next: null, opens: '', closes: '' };
+  // `opens` and `closes`: the tags it opens after its marks and closes before them, innermost first.
+  return { kind: 'run', start, end, mark, length, left: length, canOpen, canClose, prev, next: null, opens: [], closes: [] };
 }
 
 /** What replaces parts of `s`, in text order: atoms (escapes, code spans, chips, a
@@ -312,7 +318,7 @@ function readInline(s) {
 
 function itemHtml(item) {
   if (item.kind === 'atom') return item.html;
-  if (item.kind === 'run') return item.closes + item.mark.repeat(item.left) + item.opens;
+  if (item.kind === 'run') return item.closes.join('') + item.mark.repeat(item.left) + item.opens.slice().reverse().join('');
   return item.href === null ? '[' : `<a href="${escapeHtml(item.href)}" target="_blank" rel="noopener noreferrer">`;
 }
 
@@ -365,10 +371,12 @@ function wrap(inner, mark) {
   return core ? `${lead}${mark}${core}${mark}${trail}` : inner;
 }
 
-// A link's address as Markdown holds it: a bracket or a space would end it early, so
-// they go percent-encoded, which addresses the same page ("…/Up_(film)").
+// A link's address as Markdown holds it: a bracket, a space or a control character would
+// end it early, so they go percent-encoded, which addresses the same page ("…/Up_(film)").
+// A backslash is escaped, since an escape in the address is read as the character.
 function linkTarget(href) {
-  return href.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\s/g, '%20');
+  return href.replace(/\\/g, '\\\\').replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\s/g, '%20')
+    .replace(/[\x00-\x1f\x7f]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`);
 }
 
 function serializeNode(node) {
