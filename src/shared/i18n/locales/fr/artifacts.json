@@ -167,7 +167,7 @@
   "modeTabs": {
     "ariaLabel": "Mode de l’artefact",
     "preview": "Aperçu",
-    "edit": "Modifier",
+    "source": "Source",
     "review": "Relecture",
     "editDisabled": "Seul le propriétaire de l’artefact peut le modifier",
     "reviewDisabled": "La relecture n’est pas disponible pour cet artefact",
@@ -341,7 +341,12 @@
     "reported": "{count, plural, one {L’aperçu a signalé # erreur} other {L’aperçu a signalé # erreurs}}",
     "line": "ligne {line}",
     "title": "Erreurs d’aperçu",
-    "ariaLabel": "Erreurs d’aperçu, {count}"
+    "ariaLabel": "Erreurs d’aperçu, {count}",
+    "kind": {
+      "rejection": "Rejet de promesse non géré",
+      "console": "Erreur de console",
+      "http": "Erreur du serveur"
+    }
   },
   "liveAppPreview": {
     "failure": "Impossible de se connecter à cette application. Rechargez pour réessayer ou ouvrez-la dans votre navigateur.",
@@ -447,7 +452,8 @@
     "discardMessage": "La modification de l’agent reste dans l’historique de cet artefact, mais la suggestion est fermée et ne sera pas appliquée.",
     "discardFailed": "Impossible d’abandonner cette suggestion.",
     "deleteTitle": "Supprimer l’artefact ?",
-    "deleteMessage": "« {title} » sera définitivement supprimé. Cette action est irréversible."
+    "deleteMessage": "« {title} » sera définitivement supprimé. Cette action est irréversible.",
+    "changedElsewhere": "Cet artefact a changé. Recharger"
   },
   "artifactsView": {
     "sort": {
@@ -637,6 +643,56 @@
       }
     }
   },
+  "quickEdit": {
+    "ariaLabel": "Modification rapide",
+    "inputLabel": "Demander une modification",
+    "placeholder": "Demander une modification…",
+    "send": "Envoyer",
+    "route": {
+      "edit": "Modification directe…",
+      "agent": "Transmission à l'agent…"
+    },
+    "stage": {
+      "routing": "Recherche de la meilleure approche…",
+      "reading": "Lecture de l'artefact…",
+      "writing": "Écriture de la modification…",
+      "checking": "Vérification de l'aperçu…",
+      "fixing": "Correction des problèmes détectés…"
+    },
+    "handingOff": "Envoi dans le chat…",
+    "applied": "Terminé.",
+    "undo": "Annuler",
+    "undoing": "Annulation…",
+    "undone": "Annulé.",
+    "noop": "Rien n'a changé.",
+    "failed": "Cette modification n'a pas pu être faite ici.",
+    "askAgent": "Demander plutôt à l'agent",
+    "errors": {
+      "stale": "Cet artefact a changé depuis son ouverture. Il a été rechargé ; réessayez.",
+      "busy": "Une autre modification de cet artefact est encore en cours. Réessayez une fois terminée.",
+      "failed": "La modification n'a pas pu être faite.",
+      "stopped": "La modification s'est arrêtée avant la fin.",
+      "chatFailed": "Impossible de continuer dans le chat. Réessayez depuis le chat.",
+      "filesChanged": "Les fichiers de cette modification ont été modifiés depuis ; elle ne peut pas être annulée ici.",
+      "filesChangedNamed": "{paths} a été modifié depuis ; cette modification ne peut pas être annulée ici.",
+      "alreadyUndone": "Cette modification a déjà été annulée.",
+      "repairPending": "Une suggestion de l'agent pour cet artefact attend votre décision. Acceptez-la ou abandonnez-la d'abord.",
+      "undoGone": "Cette modification ne peut plus être annulée ici. Utilisez l'historique pour revenir en arrière."
+    },
+    "placeholderChat": "Posez une question sur cet artefact ou modifiez-le…",
+    "openInChat": "Ouvrir dans le chat",
+    "needsAnswer": "Attend votre réponse dans le chat",
+    "workingInChat": "En cours dans le chat…",
+    "sentToChat": "Envoyé dans le chat.",
+    "chatStopped": "Le tour du chat s'est arrêté avant de répondre.",
+    "unsavedConfirm": {
+      "title": "Vous avez des modifications non enregistrées. Les enregistrer avant d'envoyer ?",
+      "save": "Enregistrer et envoyer",
+      "discard": "Abandonner et envoyer",
+      "cancel": "Annuler",
+      "saveFailed": "Vos modifications n'ont pas pu être enregistrées ; rien n'a été envoyé."
+    }
+  },
   "stats": {
     "toggle": {
       "show": "Statistiques",
@@ -669,5 +725,30 @@
       "temporarilyUnavailable": "Les statistiques sont temporairement indisponibles.",
       "loadFailed": "Impossible de charger les statistiques."
     }
+  },
+  "refPill": {
+    "open": "Ouvrir {title}"
+  },
+  "quickEditCard": {
+    "title": "Modifié dans la visionneuse",
+    "count": "{count, plural, one {# modification} other {# modifications}}",
+    "undone": "Annulé",
+    "showAll": "{count, plural, other {Tout afficher (#)}}",
+    "showFewer": "Afficher moins"
+  },
+  "layers": {
+    "ariaLabel": "Calques de la visionneuse",
+    "source": "Modification en direct",
+    "comments": "Commentaires",
+    "sourceOffPrompt": {
+      "title": "Désactiver Modification en direct ?",
+      "message": "Vos modifications non enregistrées dans Modification en direct seront abandonnées.",
+      "confirmLabel": "Abandonner les modifications"
+    }
+  },
+  "address": {
+    "draft": "Brouillon",
+    "copy": "Copier l'adresse",
+    "copied": "Copié"
   }
 }

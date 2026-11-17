@@ -177,13 +177,17 @@
       "pendingAction": "{rule} In attesa che la banca confermi l’ultimo addebito.",
       "badgeOn": "Ricarica automatica attiva",
       "badgeFailed": "Ricarica automatica non riuscita",
-      "badgePaused": "Ricarica automatica in pausa"
+      "badgePaused": "Ricarica automatica in pausa",
+      "offMobile": "La ricarica automatica è disattivata.",
+      "paymentFailedMobile": "Ricarica automatica non riuscita: non è stato possibile addebitare la carta."
     },
     "low": {
       "off": "Saldo basso. Aggiungi fondi o attiva la ricarica automatica per far continuare le attività.",
       "ok": "Saldo basso. La ricarica automatica lo ripristinerà.",
       "pending": "Saldo basso. La ricarica automatica è in attesa della banca.",
-      "other": "Saldo basso. Aggiungi fondi per far continuare le attività."
+      "other": "Saldo basso. Aggiungi fondi per far continuare le attività.",
+      "offMobile": "Saldo basso.",
+      "otherMobile": "Saldo basso."
     },
     "balance": {
       "title": "Saldo",
@@ -192,7 +196,8 @@
       "spentRange": "di credito usato dal {start} al {end}",
       "spentDate": "di credito usato il {date}",
       "spentThisPeriod": "di credito usato in questo periodo",
-      "notOwner": "Solo il responsabile della fatturazione della tua organizzazione può aggiungere fondi o modificare la ricarica automatica."
+      "notOwner": "Solo il responsabile della fatturazione della tua organizzazione può aggiungere fondi o modificare la ricarica automatica.",
+      "emptyMobile": "Il tuo saldo è esaurito. I modelli a pagamento non sono disponibili."
     },
     "signIn": {
       "title": "Accedi per vedere l’utilizzo",
@@ -203,7 +208,8 @@
     "error": {
       "title": "Impossibile caricare l’utilizzo",
       "body": "MindsHub non ha risposto. Riprova o controlla l’utilizzo nella console.",
-      "tryAgain": "Riprova"
+      "tryAgain": "Riprova",
+      "bodyMobile": "MindsHub non ha risposto."
     },
     "empty": "Ancora nessun utilizzo da mostrare per questo account."
   }

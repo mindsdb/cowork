@@ -26,6 +26,10 @@ const CASES = [
     node: <ScheduleRunAlert task={schedule({ lastRunStatus: 'failed', lastRun: { status: 'failed', outcome: 'interrupted', error: 'The app quit during the run.', conversationId: 'c1' } })} />,
   },
   {
+    label: 'Schedule run stopped at a limit',
+    node: <ScheduleRunAlert onOpenSettings={() => {}} task={schedule({ lastRun: { status: 'failed', outcome: 'stopped_at_limit', error: 'Run reached its step limit and stopped before it finished. Raise Max Steps per Task in Settings to let it do more.', conversationId: 'c1' } })} />,
+  },
+  {
     label: 'Schedule paused while a run finishes',
     node: <ScheduleRunAlert task={schedule({ enabled: false, running: true })} />,
   },

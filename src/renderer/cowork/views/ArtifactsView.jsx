@@ -53,7 +53,11 @@ import {
 } from '../components/artifact/publish/AccessChooser';
 import { AUDIENCE_CHOICE } from '../lib/orgSharing';
 import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
-import { publishRefusalMessage } from '../components/artifact/publish/publishErrors';
+import { publishFailureReason, publishRefusalMessage } from '../components/artifact/publish/publishErrors';
+import {
+  publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal,
+  shareSnapshot,
+} from '../lib/artifactShareAnalytics';
 import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
@@ -224,7 +228,7 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
  * shown only once the download succeeded.
  */
 async function downloadWithFeedback(artifact, toastManager, { note } = {}) {
-  if (!(await downloadArtifactFile(artifact))) {
+  if (!(await downloadArtifactFile(artifact, { entry: 'list' }))) {
     toastManager.add({ title: downloadUnavailableMessage(tr('artifactsView.downloadFailed')), type: 'danger' });
     return;
   }
@@ -675,7 +679,11 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     onPreview: () => onOpenViewer?.(artifact),
     onReveal: host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } },
     onDownload: () => downloadWithFeedback(artifact, toastManager),
-    onCopyUrl: async () => (published ? copyText(artifact.publishedUrl) : false),
+    onCopyUrl: async () => {
+      const copied = published ? await copyText(artifact.publishedUrl) : false;
+      if (copied) reportLinkCopied(artifact, { entry: 'list' });
+      return copied;
+    },
     onPublish: () => doPublish?.(artifact),
     onUnpublish: () => doUnpublish?.(artifact),
     onUpdate: () => doUpdate?.(artifact),
@@ -844,6 +852,7 @@ export default function ArtifactsView({
     // delegated awaiter is never left hanging.
     settlePublish();
     setPublishTarget(artifact);
+    reportShareOpened(artifact, { entry: 'list', isShared: shareSnapshot(artifact).shared });
     return new Promise((resolve) => { publishResolveRef.current = resolve; });
   };
 
@@ -863,8 +872,9 @@ export default function ArtifactsView({
         // (lib/sharingContract reads both).
         const answered = readAudienceAnswer(r);
         const requested = readAudienceRequest(access);
-        updateOne({
+        const saved = {
           ...artifact,
+          reportId: publishedPageId(r) || artifact.reportId || '',
           publishedUrl: r.url,
           accessMode: m,
           accessProtected: m === 'password',
@@ -872,9 +882,17 @@ export default function ArtifactsView({
           accessEmails: m === 'restricted' ? (answered.emails ?? requested.emails) : [],
           orgAllowed: m === 'restricted' ? (answered.orgAllowed ?? requested.orgAllowed) : false,
           ownerOnly: m === 'restricted' ? (answered.ownerOnly ?? requested.ownerOnly) : false,
-        });
+        };
+        updateOne(saved);
         setPhase(artifact.path, null);
         trackArtifactPublished(r.report_id || artifact.id || '', m);
+        reportAccessChanged(artifact, {
+          entry: 'list',
+          before: shareSnapshot(artifact),
+          after: shareSnapshot(saved),
+          reportId: publishedPageId(r),
+          access,
+        });
         showToast({
           kind: 'ok',
           message: t('artifactsView.sharedToast', { mode: m === 'password' || m === 'restricted' ? m : 'other', url: r.url }),
@@ -884,6 +902,7 @@ export default function ArtifactsView({
         showToast({ kind: 'error', message: t('publish.errors.noUrl') });
       }
     } catch (e) {
+      reportAccessChangeFailed(artifact, { entry: 'list', reason: publishFailureReason(e) });
       const msg = e?.message || String(e);
       // Map the failures a user can act on to a clearer message.
       const refusal = publishRefusalMessage(e);
@@ -908,7 +927,8 @@ export default function ArtifactsView({
     setPhase(artifact.path, 'unpublishing');
     try {
       const leftLive = stopSharingNotice(await unpublishArtifact(publishTargetPath(artifact)));
-      updateOne({ ...artifact, publishedUrl: '' });
+      reportWithdrawal(artifact, { entry: 'list', before: shareSnapshot(artifact), leftLive: !!leftLive });
+      updateOne({ ...artifact, publishedUrl: '', reportId: '' });
       // Without the platform UI the deployment decides where shares live,
       // so the toast names no service.
       showToast(leftLive
@@ -961,10 +981,16 @@ export default function ArtifactsView({
       // needsClientUnpublishBeforeDelete: there this call 501s and the server's
       // own delete does the unpublish with the right credential.
       let leftLive = '';
-      if (needsClientUnpublishBeforeDelete({ orgMode, published: artifact.publishedUrl })) {
+      const clientUnpublishes = needsClientUnpublishBeforeDelete({ orgMode, published: artifact.publishedUrl });
+      if (clientUnpublishes) {
         leftLive = stopSharingNotice(await unpublishArtifact(artifact.path));
+        reportWithdrawal(artifact, { entry: 'list_delete', before: shareSnapshot(artifact), leftLive: !!leftLive });
       }
       await deleteArtifactAndSync(artifact);
+      // On Web the delete itself takes the page down, or fails.
+      if (!clientUnpublishes && artifact.publishedUrl) {
+        reportWithdrawal(artifact, { entry: 'list_delete', before: shareSnapshot(artifact) });
+      }
       showToast(leftLive ? { kind: 'warning', message: leftLive } : { kind: 'ok', message: t('artifactsView.deleted') });
     } catch (e) {
       showToast({ kind: 'error', message: t('artifactsView.deleteFailed', { message: String(e?.message || e) }) });

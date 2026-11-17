@@ -38,6 +38,7 @@
 import { host } from '../../platform/host';
 import { downloadFilename, downloadUrl } from './browserDownload';
 import { downloadAuthenticatedResource } from './authenticatedResource';
+import { reportDownloaded } from './artifactShareAnalytics';
 
 function withDownloadParam(rel) {
   const base = rel.startsWith('http') ? rel : `${host.getApiOrigin()}${rel}`;
@@ -55,7 +56,21 @@ export function artifactDownloadUrl(artifact) {
   return rel ? withDownloadParam(rel) : '';
 }
 
-export async function downloadArtifactFile(artifact, { actionPath } = {}) {
+/**
+ * Saves the artifact's primary file; resolves true when it was saved. A saved
+ * file is reported as a download, with `entry` saying where it was asked for.
+ */
+export async function downloadArtifactFile(artifact, { actionPath, entry = 'other' } = {}) {
+  const saved = await saveArtifactFile(artifact, { actionPath });
+  if (saved) reportDownloaded(artifact, { entry, kind: 'file' });
+  return saved;
+}
+
+/**
+ * Saves the file like downloadArtifactFile but reports nothing, for a caller
+ * that reports the save as something else (an export).
+ */
+export async function saveArtifactFile(artifact, { actionPath } = {}) {
   if (host.isMobileShell) return false;
   const rawPath = actionPath || artifact?.canonicalPath || artifact?.path || '';
   const filename = downloadFilename(rawPath, artifact?.title || 'artifact');

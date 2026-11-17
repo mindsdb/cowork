@@ -4,6 +4,8 @@ import Ico from './Icons';
 import { Badge } from './ui';
 import { brandLogoUrl, productName } from '../../lib/deploymentBrand';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
+import { ConfirmModal } from './ConfirmModal';
+import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useTranslation } from '../../lib/i18n';
 
 // Mobile chrome for the cowork SPA. Active at viewport widths < 640px
@@ -12,12 +14,14 @@ import { useTranslation } from '../../lib/i18n';
 // Views (HomeView, ChatView, ProjectsView, etc.) render unchanged
 // inside `children` — only the chrome around them swaps.
 
+// How many chats the drawer lists under Chat before See all.
+export const RECENT_CHATS = 4;
+
 // `label` is a message key; translated at render.
 const SECTIONS = [
   { key: 'projects',  label: 'sidebar.nav.projects',  route: 'projects' },
   { key: 'scheduled', label: 'sidebar.nav.scheduled', route: 'scheduled' },
   { key: 'artifacts', label: 'sidebar.nav.artifacts', route: 'artifacts' },
-  { key: 'tasks',     label: 'mobile.tasks',          route: 'tasks' },
 ];
 
 function titleForRoute(t, route, { selectedProject, currentTask } = {}) {
@@ -109,10 +113,22 @@ export default function MobileShell({
   theme = 'dark',
   showThemeToggle = true,
   onToggleTheme,
+  // The voice call icon beside the browser's ({label, onClick, live,
+  // disabled}, as VoiceLauncher's `call`); null hides it.
+  callShortcut = null,
+  // The browser icon beside it: opens the task's browser, or the blank one.
+  onShowBrowser = null,
+  // The signed-in account (useAccountUser): the drawer's footer shows it and
+  // logs out. null when nobody is signed in to MindsHub.
+  accountUser = null,
   children,
 }) {
   const { t } = useTranslation('shell');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // The drawer's Chat row lists the newest chats; See all opens the rest in place.
+  const [allChats, setAllChats] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const { loggingOut, waitNote, logout } = useLogout();
   const [openSection, setOpenSection] = useState(null);
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
 
@@ -225,6 +241,22 @@ export default function MobileShell({
         <div className="mshell__title" title={title}>{title}</div>
         {/* Top-bar "+" removed — the FAB is now the universal create
             entry, so two affordances would just duplicate each other. */}
+        {onShowBrowser && (
+          <button type="button" className="mshell__theme-toggle mshell__browser" aria-label={t('shortcuts.showBrowser')} onClick={onShowBrowser}>
+            {Ico.globe(16)}
+          </button>
+        )}
+        {callShortcut && (
+          <button
+            type="button"
+            className={`mshell__theme-toggle mshell__call${callShortcut.live ? ' is-live' : ''}`}
+            aria-label={callShortcut.label}
+            aria-disabled={callShortcut.disabled || undefined}
+            onClick={callShortcut.disabled ? undefined : callShortcut.onClick}
+          >
+            {Ico.voice(16)}
+          </button>
+        )}
         {showThemeToggle ? (
           <button
             type="button"
@@ -339,6 +371,38 @@ export default function MobileShell({
               </span>
               <span className="mshell-row__chev">{Ico.chevronRight(14)}</span>
             </button>
+            {/* The newest chats, under Chat: a Recents line with See all at
+                its end, then the chats on a guide line. See all opens every
+                chat here, so the drawer needs no Tasks section. */}
+            {tasksList.length > 0 && (
+              <div className="mshell-recents">
+                <div className="mshell-recents__head">
+                  <span className="mshell-recents__label">{t('mobile.recents')}</span>
+                  {tasksList.length > RECENT_CHATS && (
+                    <button
+                      type="button"
+                      className="mshell-recents__more"
+                      aria-expanded={allChats}
+                      onClick={() => setAllChats((v) => !v)}
+                    >
+                      {allChats ? t('mobile.showFewer') : t('mobile.seeAllCount', { count: tasksList.length })}
+                    </button>
+                  )}
+                </div>
+                <div className="mshell-recent-chats">
+                  {(allChats ? tasksList : tasksList.slice(0, RECENT_CHATS)).map((task) => (
+                    <button
+                      key={task.id}
+                      type="button"
+                      className={`mshell-recent-chat${route === 'task' && currentTask?.id === task.id ? ' is-active' : ''}`}
+                      onClick={() => handleTaskTap(task.id)}
+                    >
+                      {task.title || t('mobile.untitledTask')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {SECTIONS.map((section) => {
@@ -455,7 +519,34 @@ export default function MobileShell({
             </button>
           </div>
         </nav>
+
+        {/* Footer: who is signed in, and Log out, confirmed like the
+            desktop account menu's (useLogout). */}
+        {accountUser && (
+          <div className="mshell__drawer-foot">
+            <span className="mshell__drawer-account" title={accountUser.email || ''}>
+              {accountUser.email || accountUser.name || t('mobile.signedIn')}
+            </span>
+            <button type="button" className="mshell__logout" onClick={() => setLogoutOpen(true)}>
+              {t('mobile.logOut')}
+            </button>
+          </div>
+        )}
       </aside>
+      <ConfirmModal
+        open={logoutOpen}
+        title={LOGOUT_CONFIRM_COPY.title}
+        message={LOGOUT_CONFIRM_COPY.message}
+        confirmLabel={LOGOUT_CONFIRM_COPY.confirmLabel}
+        cancelLabel={t('common.cancel')}
+        destructive
+        busy={loggingOut}
+        dismissableWhileBusy
+        note={waitNote}
+        busyLabel={t('userMenu.signingOut')}
+        onConfirm={logout}
+        onClose={() => setLogoutOpen(false)}
+      />
     </div>
   );
 }

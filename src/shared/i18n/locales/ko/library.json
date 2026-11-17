@@ -636,6 +636,10 @@
       "working": "처리 중…",
       "allow": "이번 테스트에 허용",
       "confirm": "확인 후 저장"
+    },
+    "browserInstead": {
+      "title": "대신 브라우저 사용",
+      "help": "연결 없이 브라우저 모드에서 {name}에 로그인하고 그곳에서 작업합니다. 연결하는 것보다 느립니다."
     }
   },
   "legacyConnect": {

@@ -17,7 +17,9 @@
  * pixels other than the page background on that page's canvas. When it sets
  * `laterErrorCode`, the preview first ends as `outcome`, and the parent then
  * removes the frame with that code, as its draw watchdog does for a page draw
- * that never ends.
+ * that never ends. When it sets `slow: true`, openPreview calls test.slow(),
+ * which triples the test's timeout, for a file whose grid takes most of the
+ * default timeout to build and read on a CI runner.
  *
  * openPreview leaves the preview frame mounted until the next openPreview or
  * the end of the test, except that a `timeout` unmounts it the way the parent's
@@ -57,7 +59,7 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
-import type { Frame, Page, Route } from '@playwright/test';
+import { test, type Frame, type Page, type Route } from '@playwright/test';
 import yaml from 'js-yaml';
 
 import type {
@@ -86,7 +88,7 @@ export interface FixtureExpectation {
   truncated?: boolean; textIncludes?: string[]; textExcludes?: string[]; paintedRegion?: CanvasRegion;
   laterErrorCode?: PreviewErrorCode;
 }
-export interface PreviewFixture { name: string; file: string; kind: 'clean' | 'hostile'; expect: FixtureExpectation }
+export interface PreviewFixture { name: string; file: string; kind: 'clean' | 'hostile'; slow?: boolean; expect: FixtureExpectation }
 /* What openPreview saw for one fixture. It loads the fixture into the preview
    and waits for `rendered` or `error`; `text` is the frame body's innerText at
    that point. It then clicks each a, area, [href] and [xlink:href] element in
@@ -124,7 +126,7 @@ declare global {
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 /* A fixture file name: no separators and no leading dot. */
 const FIXTURE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const FIXTURE_KEYS = new Set(['name', 'file', 'kind', 'expect']);
+const FIXTURE_KEYS = new Set(['name', 'file', 'kind', 'slow', 'expect']);
 const EXPECTATION_KEYS = new Set([
   'outcome', 'errorCode', 'errorLimit', 'units', 'minUnits', 'truncated', 'textIncludes', 'textExcludes', 'paintedRegion',
   'laterErrorCode',
@@ -211,12 +213,13 @@ function readExpectation(value: unknown, where: string): FixtureExpectation {
 function readFixture(value: unknown, setDir: string, where: string): PreviewFixture {
   if (!isRecord(value)) throw new Error(`${where}: each fixture must be a mapping`);
   checkKeys(value, FIXTURE_KEYS, where);
-  const { name, file, kind } = value;
+  const { name, file, kind, slow } = value;
   if (typeof name !== 'string' || !name) throw new Error(`${where}: name must be text`);
   if (typeof file !== 'string' || !FIXTURE_FILE.test(file)) throw new Error(`${where}: file must be a file name in its set's folder`);
   if (!existsSync(path.join(setDir, file))) throw new Error(`${where}: ${file} is not in ${setDir}`);
   if (kind !== 'clean' && kind !== 'hostile') throw new Error(`${where}: kind must be clean or hostile`);
-  return { name, file, kind, expect: readExpectation(value.expect, where) };
+  if (slow !== undefined && slow !== true) throw new Error(`${where}: slow, when set, must be true`);
+  return { name, file, kind, ...(slow ? { slow } : {}), expect: readExpectation(value.expect, where) };
 }
 
 export function loadFixtures(set: PreviewFixtureSet): PreviewFixture[] {
@@ -259,6 +262,7 @@ export function strayFrameDirectives(): string[] {
 }
 
 export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: PreviewFixture): Promise<PreviewRun> {
+  if (fixture.slow) test.slow();
   if (!/^https?:/.test(page.url())) await page.goto('/');
   await page.waitForFunction(() => !!window.coworkPreviewHarness);
   const harnessOrigin = new URL(page.url()).origin;

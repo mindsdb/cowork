@@ -53,6 +53,8 @@
       "openNamedInDrive": "Open \"{name}\" in Google Drive",
       "untitled": "untitled",
       "openInDrive": "Open in Google Drive",
+      "openNamedInNotion": "Open \"{name}\" in Notion",
+      "openInNotion": "Open in Notion",
       "removeFromProjectFiles": "Remove from project files",
       "removeFromProjectFilesAriaLabel": "Remove {name} from project files",
       "loadAttachmentsFailed": "Could not load attachments",
@@ -278,6 +280,8 @@
     "settings": "Settings",
     "billing": "Billing & Usage",
     "members": "Members",
+    "apiKeys": "API keys",
+    "apiDocs": "API docs",
     "help": "Help & Feedback",
     "manageOrg": "Manage organization",
     "logout": "Logout",
@@ -360,7 +364,12 @@
     "total": "{count} total",
     "noTasks": "No tasks yet.",
     "untitledTask": "Untitled task",
-    "seeAllTasks": "See all tasks"
+    "seeAllTasks": "See all tasks",
+    "recents": "Recents",
+    "showFewer": "Show fewer",
+    "seeAllCount": "See all {count}",
+    "signedIn": "Signed in",
+    "logOut": "Log out"
   },
   "dispatch": {
     "qrAriaLabel": "Decorative pairing code",
@@ -395,9 +404,14 @@
       "operatorTitle": "Provider setup is required",
       "body": "Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.",
       "operatorBody": "Ask your operator to configure the model provider before starting a task.",
-      "startFree": "Start for free"
+      "startFree": "Start for free",
+      "bodyMobile": "Connect your own provider in Settings."
     },
-    "handoffHint": "Edit this prompt, then send when you're ready."
+    "handoffHint": "Edit this prompt, then send when you're ready.",
+    "signupWelcome": {
+      "fromDesktop": "Your account is ready. You can start right here, or go back to the {product} app and sign in.",
+      "dismiss": "Dismiss"
+    }
   },
   "logout": {
     "title": "Sign out of {product}?",
@@ -409,5 +423,8 @@
     "confirm": "Sign out",
     "failed": "Could not finish signing out. Please try again.",
     "waitNote": "Still signing you out. You can close this — it finishes on its own."
+  },
+  "shortcuts": {
+    "showBrowser": "Show browser"
   }
 }

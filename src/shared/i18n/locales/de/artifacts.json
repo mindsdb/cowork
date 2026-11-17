@@ -167,7 +167,7 @@
   "modeTabs": {
     "ariaLabel": "Artefakt-Modus",
     "preview": "Vorschau",
-    "edit": "Bearbeiten",
+    "source": "Quelle",
     "review": "Prüfen",
     "editDisabled": "Nur der Inhaber des Artefakts kann es bearbeiten",
     "reviewDisabled": "Für dieses Artefakt ist keine Prüfung verfügbar",
@@ -341,7 +341,12 @@
     "reported": "{count, plural, one {Die Vorschau hat # Fehler gemeldet} other {Die Vorschau hat # Fehler gemeldet}}",
     "line": "Zeile {line}",
     "title": "Vorschaufehler",
-    "ariaLabel": "Vorschaufehler, {count}"
+    "ariaLabel": "Vorschaufehler, {count}",
+    "kind": {
+      "rejection": "Unbehandelte Promise-Ablehnung",
+      "console": "Konsolenfehler",
+      "http": "Serverfehler"
+    }
   },
   "liveAppPreview": {
     "failure": "Verbindung zu dieser App nicht möglich. Laden Sie neu, um es erneut zu versuchen, oder öffnen Sie sie im Browser.",
@@ -447,7 +452,8 @@
     "discardMessage": "Die Änderung des Agents bleibt im Verlauf dieses Artefakts erhalten, aber der Vorschlag wird geschlossen und nicht angewendet.",
     "discardFailed": "Dieser Vorschlag konnte nicht verworfen werden.",
     "deleteTitle": "Artefakt löschen?",
-    "deleteMessage": "„{title}“ wird endgültig gelöscht. Dies kann nicht rückgängig gemacht werden."
+    "deleteMessage": "„{title}“ wird endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "changedElsewhere": "Dieses Artefakt wurde geändert. Neu laden"
   },
   "artifactsView": {
     "sort": {
@@ -637,6 +643,56 @@
       }
     }
   },
+  "quickEdit": {
+    "ariaLabel": "Schnellbearbeitung",
+    "inputLabel": "Um eine Änderung bitten",
+    "placeholder": "Um eine Änderung bitten…",
+    "send": "Senden",
+    "route": {
+      "edit": "Wird direkt bearbeitet…",
+      "agent": "Wird an den Agenten übergeben…"
+    },
+    "stage": {
+      "routing": "Wird geplant…",
+      "reading": "Artefakt wird gelesen…",
+      "writing": "Änderung wird geschrieben…",
+      "checking": "Vorschau wird geprüft…",
+      "fixing": "Gefundene Fehler werden behoben…"
+    },
+    "handingOff": "Wird an den Chat gesendet…",
+    "applied": "Fertig.",
+    "undo": "Rückgängig",
+    "undoing": "Wird rückgängig gemacht…",
+    "undone": "Rückgängig gemacht.",
+    "noop": "Nichts geändert.",
+    "failed": "Diese Änderung konnte hier nicht vorgenommen werden.",
+    "askAgent": "Stattdessen den Agenten fragen",
+    "errors": {
+      "stale": "Dieses Artefakt hat sich geändert, seit du es geöffnet hast. Es wurde neu geladen; versuche es noch einmal.",
+      "busy": "Eine andere Änderung an diesem Artefakt läuft noch. Versuche es erneut, wenn sie fertig ist.",
+      "failed": "Die Änderung konnte nicht vorgenommen werden.",
+      "stopped": "Die Änderung wurde vor dem Abschluss abgebrochen.",
+      "chatFailed": "Im Chat konnte nicht fortgefahren werden. Versuche es im Chat erneut.",
+      "filesChanged": "Dateien dieser Änderung wurden seitdem erneut geändert, daher kann sie hier nicht rückgängig gemacht werden.",
+      "filesChangedNamed": "{paths} wurde seitdem erneut geändert, daher kann diese Änderung hier nicht rückgängig gemacht werden.",
+      "alreadyUndone": "Diese Änderung wurde bereits rückgängig gemacht.",
+      "repairPending": "Ein Vorschlag des Agenten für dieses Artefakt wartet auf deine Entscheidung. Übernimm oder verwirf ihn zuerst.",
+      "undoGone": "Diese Änderung kann hier nicht mehr rückgängig gemacht werden. Nutze den Verlauf, um zurückzugehen."
+    },
+    "placeholderChat": "Frage zu diesem Artefakt stellen oder es ändern…",
+    "openInChat": "Im Chat öffnen",
+    "needsAnswer": "Braucht deine Antwort im Chat",
+    "workingInChat": "Wird im Chat bearbeitet…",
+    "sentToChat": "An den Chat gesendet.",
+    "chatStopped": "Der Chat-Durchlauf wurde vor einer Antwort beendet.",
+    "unsavedConfirm": {
+      "title": "Du hast nicht gespeicherte Änderungen. Vor dem Senden speichern?",
+      "save": "Speichern und senden",
+      "discard": "Verwerfen und senden",
+      "cancel": "Abbrechen",
+      "saveFailed": "Deine Änderungen konnten nicht gespeichert werden, daher wurde nichts gesendet."
+    }
+  },
   "stats": {
     "toggle": {
       "show": "Statistiken",
@@ -669,5 +725,30 @@
       "temporarilyUnavailable": "Statistiken sind vorübergehend nicht verfügbar.",
       "loadFailed": "Statistiken konnten nicht geladen werden."
     }
+  },
+  "refPill": {
+    "open": "{title} öffnen"
+  },
+  "quickEditCard": {
+    "title": "Im Viewer bearbeitet",
+    "count": "{count, plural, one {# Änderung} other {# Änderungen}}",
+    "undone": "Rückgängig",
+    "showAll": "{count, plural, other {Alle # anzeigen}}",
+    "showFewer": "Weniger anzeigen"
+  },
+  "layers": {
+    "ariaLabel": "Viewer-Ebenen",
+    "source": "Live-Bearbeitung",
+    "comments": "Kommentare",
+    "sourceOffPrompt": {
+      "title": "Live-Bearbeitung ausschalten?",
+      "message": "Deine nicht gespeicherten Änderungen in „Live-Bearbeitung“ werden verworfen.",
+      "confirmLabel": "Änderungen verwerfen"
+    }
+  },
+  "address": {
+    "draft": "Entwurf",
+    "copy": "Adresse kopieren",
+    "copied": "Kopiert"
   }
 }

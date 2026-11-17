@@ -167,7 +167,7 @@
   "modeTabs": {
     "ariaLabel": "Modalità artefatto",
     "preview": "Anteprima",
-    "edit": "Modifica",
+    "source": "Sorgente",
     "review": "Revisione",
     "editDisabled": "Solo il proprietario dell’artefatto può modificarlo",
     "reviewDisabled": "La revisione non è disponibile per questo artefatto",
@@ -341,7 +341,12 @@
     "reported": "{count, plural, one {L’anteprima ha segnalato # errore} other {L’anteprima ha segnalato # errori}}",
     "line": "riga {line}",
     "title": "Errori dell’anteprima",
-    "ariaLabel": "Errori dell’anteprima, {count}"
+    "ariaLabel": "Errori dell’anteprima, {count}",
+    "kind": {
+      "rejection": "Rifiuto di promise non gestito",
+      "console": "Errore della console",
+      "http": "Errore del server"
+    }
   },
   "liveAppPreview": {
     "failure": "Impossibile connettersi a questa app. Ricarica per riprovare oppure aprila nel browser.",
@@ -447,7 +452,8 @@
     "discardMessage": "La modifica dell’agente resta nella cronologia di questo artefatto, ma il suggerimento viene chiuso e non verrà applicato.",
     "discardFailed": "Impossibile scartare quel suggerimento.",
     "deleteTitle": "Eliminare l’artefatto?",
-    "deleteMessage": "«{title}» verrà eliminato definitivamente. L’operazione non può essere annullata."
+    "deleteMessage": "«{title}» verrà eliminato definitivamente. L’operazione non può essere annullata.",
+    "changedElsewhere": "Questo artefatto è cambiato. Ricarica"
   },
   "artifactsView": {
     "sort": {
@@ -637,6 +643,56 @@
       }
     }
   },
+  "quickEdit": {
+    "ariaLabel": "Modifica rapida",
+    "inputLabel": "Chiedi una modifica",
+    "placeholder": "Chiedi una modifica…",
+    "send": "Invia",
+    "route": {
+      "edit": "Modifica diretta…",
+      "agent": "Passaggio all'agente…"
+    },
+    "stage": {
+      "routing": "Valutazione di come procedere…",
+      "reading": "Lettura dell'artefatto…",
+      "writing": "Scrittura della modifica…",
+      "checking": "Verifica dell'anteprima…",
+      "fixing": "Correzione dei problemi trovati…"
+    },
+    "handingOff": "Invio alla chat…",
+    "applied": "Fatto.",
+    "undo": "Annulla",
+    "undoing": "Annullamento…",
+    "undone": "Annullata.",
+    "noop": "Nessuna modifica.",
+    "failed": "Non è stato possibile fare questa modifica qui.",
+    "askAgent": "Chiedi all'agente",
+    "errors": {
+      "stale": "Questo artefatto è cambiato da quando l'hai aperto. È stato ricaricato; riprova.",
+      "busy": "Un'altra modifica a questo artefatto è ancora in corso. Riprova quando termina.",
+      "failed": "Non è stato possibile fare la modifica.",
+      "stopped": "La modifica si è interrotta prima di finire.",
+      "chatFailed": "Impossibile continuare nella chat. Riprova dalla chat.",
+      "filesChanged": "I file di questa modifica sono stati cambiati di nuovo, quindi non può essere annullata qui.",
+      "filesChangedNamed": "{paths} è stato cambiato di nuovo, quindi questa modifica non può essere annullata qui.",
+      "alreadyUndone": "Questa modifica è già stata annullata.",
+      "repairPending": "Un suggerimento dell'agente per questo artefatto attende la tua decisione. Accettalo o scartalo prima.",
+      "undoGone": "Questa modifica non può più essere annullata qui. Usa la cronologia per tornare indietro."
+    },
+    "placeholderChat": "Chiedi qualcosa su questo artefatto o modificalo…",
+    "openInChat": "Apri nella chat",
+    "needsAnswer": "Serve la tua risposta nella chat",
+    "workingInChat": "In corso nella chat…",
+    "sentToChat": "Inviato alla chat.",
+    "chatStopped": "Il turno della chat si è interrotto prima di rispondere.",
+    "unsavedConfirm": {
+      "title": "Hai modifiche non salvate. Salvarle prima di inviare?",
+      "save": "Salva e invia",
+      "discard": "Scarta e invia",
+      "cancel": "Annulla",
+      "saveFailed": "Non è stato possibile salvare le modifiche, quindi non è stato inviato nulla."
+    }
+  },
   "stats": {
     "toggle": {
       "show": "Statistiche",
@@ -669,5 +725,30 @@
       "temporarilyUnavailable": "Le statistiche sono temporaneamente non disponibili.",
       "loadFailed": "Impossibile caricare le statistiche."
     }
+  },
+  "refPill": {
+    "open": "Apri {title}"
+  },
+  "quickEditCard": {
+    "title": "Modificato nel visualizzatore",
+    "count": "{count, plural, one {# modifica} other {# modifiche}}",
+    "undone": "Annullata",
+    "showAll": "{count, plural, other {Mostra tutte (#)}}",
+    "showFewer": "Mostra meno"
+  },
+  "layers": {
+    "ariaLabel": "Livelli del visualizzatore",
+    "source": "Modifica dal vivo",
+    "comments": "Commenti",
+    "sourceOffPrompt": {
+      "title": "Disattivare Modifica dal vivo?",
+      "message": "Le modifiche non salvate in Modifica dal vivo andranno perse.",
+      "confirmLabel": "Scarta modifiche"
+    }
+  },
+  "address": {
+    "draft": "Bozza",
+    "copy": "Copia indirizzo",
+    "copied": "Copiato"
   }
 }
