@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Spies asserted on must be reachable inside the hoisted vi.mock factories.
@@ -747,6 +747,31 @@ describe('interrupted stream recovery', () => {
     });
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
+  });
+
+  it('stops trying to reach a dropped turn once the app unmounts', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+
+    // The first reconnect try is due a second after the drop. Its requests
+    // would land in whichever test runs next and answer that test's mocks.
+    cleanup();
+    spies.fetchSession.mockClear();
+    spies.fetchInFlightStatus.mockClear();
+    await new Promise((r) => { setTimeout(r, 1200); });
+    // Only this conversation's: under a shuffled order, another test's
+    // leftover work can still land here.
+    const forThisTurn = (fn) => fn.mock.calls.filter(([cid]) => cid === 'conv-a');
+    expect(forThisTurn(spies.fetchInFlightStatus)).toEqual([]);
+    expect(forThisTurn(spies.fetchSession)).toEqual([]);
   });
 
   it('ends the live turn when the reload shows the dropped stream actually completed', async () => {

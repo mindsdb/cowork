@@ -1190,6 +1190,15 @@ function AppCore() {
   const recoverDroppedTurnRef = useRef(null);
   // Conversations with a dropped-turn recovery out, so a second drop waits on it.
   const droppedRecoveryRef = useRef(new Set());
+  // The dropped-turn reconnects and run-start probes wait minutes between
+  // tries; they read this to stop once the App is gone instead of polling and
+  // reattaching for it.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    // Reset on mount too: StrictMode unmounts and remounts the same instance.
+    unmountedRef.current = false;
+    return () => { unmountedRef.current = true; };
+  }, []);
 
   // Running tally for the stranded-reservation self-heal (reservationReleaseDecision):
   // a stream that dies with no terminal pins the slot forever, so the in-flight
@@ -3000,7 +3009,8 @@ function AppCore() {
   const recoverDroppedTurn = useCallback(async (cid) => {
     if (!cid || droppedRecoveryRef.current.has(cid)) return;
     droppedRecoveryRef.current.add(cid);
-    const current = () => tasksRef.current.find((t) => t.id === cid);
+    // Gone once the App unmounts, which ends the loop at its next check.
+    const current = () => (unmountedRef.current ? undefined : tasksRef.current.find((t) => t.id === cid));
     const settle = (update) => setTasks((prev) => prev.map((t) => (
       t.id === cid && droppedError(t) ? update(t) : t
     )));
@@ -6769,7 +6779,7 @@ function AppCore() {
   const attachWhenRunStarts = async (cid) => {
     for (const delay of RUN_START_PROBE_DELAYS_MS) {
       await new Promise((resolve) => { setTimeout(resolve, delay); });
-      if (!inFlightSetRef.current.has(cid)) return;
+      if (unmountedRef.current || !inFlightSetRef.current.has(cid)) return;
       const outcome = runStartProbeOutcome(await fetchInFlightStatus(cid));
       if (outcome === 'ended') {
         runsAwaitingStartRef.current.delete(cid);
