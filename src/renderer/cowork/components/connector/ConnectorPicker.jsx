@@ -248,6 +248,14 @@ function BuildCustomTile({ onBuildCustom }) {
   );
 }
 
+// The member's own template for a connector cloud doesn't offer: cowork-server
+// gives it the built-in's id plus `_custom` (custom_id_for).
+export function customMatchFor(connectors, connector) {
+  if (!connector?.id) return null;
+  const id = `${connector.id}_custom`;
+  return (connectors || []).find((c) => c?.custom && c.id === id) || null;
+}
+
 // Substring match across the metadata a user sees: label, description,
 // category and aliases. `q` is already lowercased.
 function matchesSearch(connector, q) {
@@ -297,14 +305,14 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
       .finally(() => setLoading(false));
   }, [open, orgMode]);
 
-  // The server says whether a custom connector built here would be kept: only
-  // in one person's own scope. Hidden until it answers, so it never flashes,
-  // and asked again on each open. Org mode skips the ask; canBuildCustom also
-  // checks it, so either guard alone keeps the entries out of org mode.
+  // The server says whether a custom connector built here would be kept: in
+  // one person's own scope, and in org mode while members may build their own
+  // templates. Hidden until it answers, so it never flashes, and asked again
+  // on each open.
   const offersBuild = Boolean(onBuildCustom);
   const [buildAllowed, setBuildAllowed] = useState(false);
   useEffect(() => {
-    if (!open || orgMode || !offersBuild) return undefined;
+    if (!open || !offersBuild) return undefined;
     let live = true;
     setBuildAllowed(false);
     fetchCanBuildCustomConnector().then((allowed) => {
@@ -315,7 +323,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
       // The picker stays mounted while closed; the next open starts hidden.
       setBuildAllowed(false);
     };
-  }, [open, orgMode, offersBuild]);
+  }, [open, offersBuild]);
 
   // Auto-focus the search input when the picker opens.
   useEffect(() => {
@@ -363,7 +371,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
     return { available: a, desktopOnly: d };
   }, [filtered]);
 
-  const canBuildCustom = offersBuild && !orgMode && buildAllowed;
+  const canBuildCustom = offersBuild && buildAllowed;
   const trimmedQuery = query.trim();
   const offerBuildForQuery = canBuildCustom && Boolean(trimmedQuery) && !queryMatchesAny;
 
@@ -490,6 +498,12 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
                   : t('connectorPicker.noneAvailable')}
             </div>
           ))}
+          {/* First, so a member who doesn't find their system sees the way to add it without scrolling. */}
+          {canBuildCustom && !loading && !error && !(trimmedQuery && filtered.length === 0) && (
+            <div className={`${GRID} mb-6`}>
+              <BuildCustomTile onBuildCustom={onBuildCustom} />
+            </div>
+          )}
           {/* Body — two modes:
                 • sortBy=default → Featured section first (when not
                   searching/filtering), then category sections.
@@ -550,16 +564,15 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
               ))}
             </>
           )}
-          {canBuildCustom && !loading && !error && !(trimmedQuery && filtered.length === 0) && (
-            <div className={GRID}>
-              <BuildCustomTile onBuildCustom={onBuildCustom} />
-            </div>
-          )}
           {PLATFORM_UI && <ConnectorSection
             title={t('connectorPicker.desktopOnly')}
             count={desktopOnly.length}
             connectors={desktopOnly}
-            onPick={onDesktopOnly}
+            onPick={(connector) => onDesktopOnly?.(connector, {
+              customMatch: customMatchFor(connectors, connector),
+              // Only a key or token API can be stood in for by a custom connector.
+              canBuild: canBuildCustom && Boolean(connector?.api_key),
+            })}
           />}
         </ModalBody>
     </Modal>
