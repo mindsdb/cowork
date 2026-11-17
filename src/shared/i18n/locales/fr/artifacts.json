@@ -229,7 +229,11 @@
     "close": "Fermer la comparaison",
     "reject": "Rejeter et restaurer",
     "accept": "Accepter et résoudre",
-    "restore": "Restaurer comme nouvelle révision"
+    "restore": "Restaurer comme nouvelle révision",
+    "changePosition": "{current} sur {count, plural, one {# modification} other {# modifications}}",
+    "previousChange": "Modification précédente",
+    "nextChange": "Modification suivante",
+    "changeNavigation": "Parcourir les modifications"
   },
   "htmlEditor": {
     "blockGone": "Le bloc de texte sélectionné n’est plus disponible.",
