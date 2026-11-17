@@ -27,11 +27,14 @@
       "branch": "Branch",
       "openOriginalFolder": "Originalordner öffnen",
       "openIsolatedCopy": "Isolierte Kopie öffnen",
-      "openOriginal": "Original öffnen"
+      "openOriginal": "Original öffnen",
+      "openYourFolder": "Ihren Ordner öffnen"
     },
     "sourceChanged": {
       "title": "Die Quelle hatte beim Start dieser Aufgabe lokale Änderungen",
-      "body": "Diese Änderungen sind im Quellordner geblieben. {product} prüft vor dem Anwenden auf Konflikte."
+      "body": "Diese Änderungen sind im Quellordner geblieben. {product} prüft vor dem Anwenden auf Konflikte.",
+      "inPlaceTitle": "Der Ordner hatte bereits nicht committete Änderungen",
+      "inPlaceBody": "Sie erscheinen in dieser Überprüfung neben denen des Agents, und ein Commit hier schließt sie ein."
     },
     "reconcile": {
       "title": "Ursprüngliche Änderungen abgleichen",
@@ -61,13 +64,20 @@
       "create": "Erstellen",
       "commitLabel": "Alle Änderungen der Aufgabe committen",
       "commitPlaceholder": "Änderung beschreiben",
-      "commit": "Committen"
+      "commit": "Committen",
+      "branchLabelInPlace": "Branch in Ihrem Ordner erstellen und dorthin wechseln",
+      "commitLabelInPlace": "Alle Änderungen in Ihrem Ordner committen"
     },
     "applyConfirm": {
       "title": "Änderungen auf den Quellordner anwenden?",
       "message": "{target} mit den geprüften Änderungen der Aufgabe aktualisieren? {product} bricht ab, bevor ein Ordner geändert wird, falls ein Konflikt gefunden wird.",
       "confirm": "Änderungen anwenden",
       "error": "Änderungen konnten nicht angewendet werden. Bitte versuchen Sie es erneut."
+    },
+    "inPlace": {
+      "title": "{count, plural, one {Diese Aufgabe bearbeitet Ihren Ordner direkt} other {Diese Aufgabe bearbeitet Ihre Ordner direkt}}",
+      "body": "{count, plural, one {Die Änderungen sind bereits in Ihrem Ordner, daher gibt es nichts anzuwenden.} other {Die Änderungen sind bereits in Ihren Ordnern, daher gibt es nichts anzuwenden.}} Pull-Request-Entwürfe sind für lokale Aufgaben noch nicht verfügbar: Committen Sie hier, pushen Sie dann und öffnen Sie einen Pull-Request mit Ihren gewohnten Tools.",
+      "bodyWithoutGit": "{count, plural, one {Die Änderungen sind bereits in Ihrem Ordner, daher gibt es nichts anzuwenden.} other {Die Änderungen sind bereits in Ihren Ordnern, daher gibt es nichts anzuwenden.}}"
     }
   },
   "fileReview": {
@@ -86,7 +96,8 @@
     "discardConfirm": {
       "title": "Änderungen an dieser Datei verwerfen?",
       "message": "{path} wird auf die aktuelle Version der Aufgabe zurückgesetzt. Dies kann nicht rückgängig gemacht werden.",
-      "confirm": "Änderungen verwerfen"
+      "confirm": "Änderungen verwerfen",
+      "messageInPlace": "{path} wird auf die letzte committete Version in Ihrem Ordner zurückgesetzt, einschließlich Änderungen von vor dem Start dieser Aufgabe. Dies kann nicht rückgängig gemacht werden."
     }
   },
   "reviewFileCard": {
@@ -449,7 +460,9 @@
       "reasoning": "Reasoning",
       "reasoningAriaLabel": "Standard-Reasoning-Aufwand",
       "permissions": "Berechtigungen",
-      "permissionsAriaLabel": "Standard-Coding-Berechtigungen"
+      "permissionsAriaLabel": "Standard-Coding-Berechtigungen",
+      "workspace": "Arbeitsbereich",
+      "workspaceAriaLabel": "Standard-Arbeitsbereich für Aufgaben"
     },
     "environment": {
       "title": "Umgebung",
@@ -1037,16 +1050,16 @@
       "title": "Untersuchen und erklären, ohne Dateien zu ändern."
     },
     "supervised": {
-      "label": "Erst fragen",
-      "title": "Vor Befehlen pausieren, die Ihre Genehmigung erfordern."
+      "label": "Genehmigung anfragen",
+      "title": "Immer fragen, bevor Dateien außerhalb der Aufgabe bearbeitet werden oder das Internet genutzt wird."
     },
     "workspace": {
-      "label": "Arbeitsbereich automatisch",
-      "title": "Selbstständig in der isolierten Kopie dieser Aufgabe arbeiten."
+      "label": "Für mich genehmigen",
+      "title": "Ein Prüfer genehmigt Routineanfragen und blockiert riskante."
     },
     "fullAccess": {
       "label": "Vollzugriff",
-      "title": "Selbstständig ohne Dateisystem-Einschränkungen arbeiten."
+      "title": "Uneingeschränkter Zugriff auf das Internet und alle Dateien auf Ihrem Computer."
     }
   },
   "branchSelect": {
@@ -1497,7 +1510,9 @@
     "terminal": "Terminal",
     "reviewChanges": "Änderungen prüfen",
     "review": "Prüfen",
-    "taskActionsAriaLabel": "Aktionen für Code-Aufgabe"
+    "taskActionsAriaLabel": "Aktionen für Code-Aufgabe",
+    "localFolder": "{count, plural, one {Lokal · Ihr Ordner} other {Lokal · Ihre # Ordner}}",
+    "openYourFolder": "Ihren Ordner öffnen"
   },
   "terminal": {
     "status": {
@@ -1591,5 +1606,24 @@
     "desktopOnly": "Lokale Dateianhänge sind in der Desktop-App verfügbar.",
     "ariaLabel": "Angehängter Kontext",
     "removeAriaLabel": "{name} entfernen"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "Lokal",
+      "title": "Direkt im Ordner arbeiten. In einem Repository läuft jeweils nur eine lokale Aufgabe."
+    },
+    "worktree": {
+      "label": "Worktree",
+      "title": "In einem isolierten Git-Worktree arbeiten, damit Aufgaben parallel laufen können."
+    },
+    "selectAriaLabel": "Wo die Aufgabe arbeitet",
+    "menuLabel": "Arbeitsbereich",
+    "default": {
+      "label": "Standard",
+      "title": "{product} entscheidet anhand des Ordners und Computers jeder Aufgabe."
+    },
+    "initializeGit": "Git initialisieren",
+    "initializeFailed": "Git konnte nicht initialisiert werden. Versuche es erneut.",
+    "unavailable": "Für diesen Ordner ist kein Arbeitsbereichsmodus verfügbar."
   }
 }

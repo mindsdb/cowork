@@ -9,7 +9,7 @@ import { useLogout, LOGOUT_CONFIRM_COPY } from '../../hooks/useLogout';
 import { useMindsOrgs } from '../../hooks/useMindsOrgs';
 import { organizationLabel, orgDisplayName } from '../../../../shared/minds-orgs';
 import { accountInitials } from '../../lib/accountUser';
-import { MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
+import { MINDS_CONSOLE_HOME_URL, consoleUrlFor } from '../../../lib/mindsUrls';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 import { sharedTranslator, useTranslation } from '../../../lib/i18n';
 
@@ -42,6 +42,15 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
   // swap to auth's long generated label once the listing lands (ENG-2109).
   const orgName = organizationLabel(activeOrg, sharedTranslator('app')) || orgDisplayName(accountUser?.org, sharedTranslator('app'));
 
+  // Names the organization and account, as the account menu's console links do
+  // (ENG-3274), so the console opens on the organization shown here rather
+  // than whichever one the browser's own session has active. The listing's id
+  // first, the token's claim before it lands.
+  const consoleHomeUrl = consoleUrlFor(MINDS_CONSOLE_HOME_URL, {
+    organizationId: activeOrg?.id ?? accountUser?.orgId ?? null,
+    subject: accountUser?.sub ?? null,
+  });
+
   // User info card — shown on both Electron and web if we have a token
   const userCard = accountUser && (
     <div className={CARD}>
@@ -68,7 +77,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
           )}
         </div>
         <a
-          href={MINDS_CONSOLE_URL}
+          href={consoleHomeUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 text-[12px] font-medium text-accent no-underline py-[5px] px-2.5 rounded-md border border-solid border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]"
