@@ -244,6 +244,7 @@
     "noEditable": "No directly editable text was found",
     "clickToEdit": "Click any text in the artifact to edit it",
     "clickToEditOrNavigate": "Click text to edit it. Buttons and links still work, so you can go to another slide or page first. Alt-click (Option-click on Mac) one to edit its label.",
+    "syncingView": "Opening where you were in Preview…",
     "htmlSource": "HTML source",
     "editing": "Editing artifact",
     "back": "Back to artifact",

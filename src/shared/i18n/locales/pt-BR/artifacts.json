@@ -244,6 +244,7 @@
     "noEditable": "Nenhum texto diretamente editável foi encontrado",
     "clickToEdit": "Clique em qualquer texto do artefato para editá-lo",
     "clickToEditOrNavigate": "Clique em um texto para editá-lo. Botões e links continuam funcionando, então você pode ir antes para outro slide ou página. Use Alt-clique (Option-clique no Mac) em um deles para editar o rótulo.",
+    "syncingView": "Abrindo o ponto onde você estava na visualização…",
     "htmlSource": "Código HTML",
     "editing": "Editando artefato",
     "back": "Voltar ao artefato",

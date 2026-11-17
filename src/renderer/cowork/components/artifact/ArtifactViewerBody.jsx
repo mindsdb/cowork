@@ -113,6 +113,7 @@ export function ArtifactViewerBody({
     doc: previewDoc = '',
     kind: previewKind,
     iframeRef,
+    view: previewView = null,
     title,
     iframeReady,
     setIframeReady,
@@ -183,6 +184,8 @@ export function ArtifactViewerBody({
       onSave={(content) => workspace.save('Edited artifact', content)}
       draftUrl={draftPreviewUrl}
       loadImage={loadDraftImage}
+      active={showEditor}
+      previewView={previewView}
     />
   ) : null;
 

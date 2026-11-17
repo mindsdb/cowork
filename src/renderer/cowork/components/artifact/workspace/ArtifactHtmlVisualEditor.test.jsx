@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { inlineHtmlFromApi } from '../../../lib/inlineHtmlAssets';
 import { ArtifactHtmlVisualEditor } from './ArtifactHtmlVisualEditor';
 import { HTML_VISUAL_EDITOR_SOURCE } from './htmlVisualEditorRuntime';
@@ -211,5 +211,130 @@ describe('ArtifactHtmlVisualEditor multi-view pages', () => {
     fireEvent.click(screen.getByRole('button', { name: /Back/ }));
 
     expect(screen.getByTitle('Edit artifact on canvas')).toBe(frame);
+  });
+});
+
+describe('ArtifactHtmlVisualEditor opening on the preview view', () => {
+  const VIEW = {
+    hash: '',
+    scrollX: 0,
+    scrollY: 0,
+    container: null,
+    inputs: [{ type: 'key', key: 'ArrowRight', shiftKey: false }],
+    overflow: false,
+    heading: 'Slide 3',
+  };
+  let posted;
+
+  beforeEach(() => {
+    // Each canvas frame gets its own stand-in window, so a test can tell
+    // which frame the view went to.
+    posted = new Map();
+    vi.spyOn(HTMLIFrameElement.prototype, 'contentWindow', 'get').mockImplementation(function contentWindow() {
+      if (!posted.has(this)) posted.set(this, { postMessage: vi.fn() });
+      return posted.get(this);
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function Harness({ active, previewView }) {
+    const [value, setValue] = useState(VALUE);
+    return (
+      <ArtifactHtmlVisualEditor
+        source={SOURCE}
+        value={value}
+        onChange={setValue}
+        onSave={vi.fn()}
+        draftUrl={DRAFT_URL}
+        active={active}
+        previewView={previewView}
+      />
+    );
+  }
+
+  const canvas = () => screen.getByTitle('Edit artifact on canvas');
+  const viewsSentTo = (frame) => (posted.get(frame)?.postMessage.mock.calls || [])
+    .map(([message]) => message)
+    .filter((message) => message.type === 'view');
+  const ready = () => sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 1, interactiveCount: 0 });
+
+  it('sends the preview\'s view to a fresh canvas when Edit opens', async () => {
+    const rendered = render(<Harness active={false} previewView={{ view: VIEW, seq: 1 }} />);
+    const frame = await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    // Prepared behind the Preview: nothing is replayed until Edit is opened.
+    expect(viewsSentTo(frame)).toEqual([]);
+
+    rendered.rerender(<Harness active previewView={{ view: VIEW, seq: 1 }} />);
+
+    expect(canvas()).toBe(frame);
+    expect(viewsSentTo(frame)).toEqual([
+      { source: 'cowork-artifact-visual-editor-parent', type: 'view', view: VIEW },
+    ]);
+    expect(screen.getByText('Opening where you were in Preview…')).toBeInTheDocument();
+
+    sendFromFrame({ token: frameToken(), type: 'view-applied', status: 'ok' });
+    expect(screen.queryByText('Opening where you were in Preview…')).not.toBeInTheDocument();
+    expect(canvas()).toBe(frame);
+  });
+
+  it('ignores a view-applied report with another token', async () => {
+    const rendered = render(<Harness active={false} previewView={{ view: VIEW, seq: 1 }} />);
+    const frame = await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    rendered.rerender(<Harness active previewView={{ view: VIEW, seq: 1 }} />);
+
+    sendFromFrame({ token: 'forged', type: 'view-applied', status: 'mismatch' });
+
+    expect(canvas()).toBe(frame);
+    expect(screen.getByText('Opening where you were in Preview…')).toBeInTheDocument();
+  });
+
+  it('starts over from a fresh canvas when the replay missed the slide', async () => {
+    render(<Harness active previewView={{ view: VIEW, seq: 1 }} />);
+    const frame = await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    expect(viewsSentTo(frame)).toHaveLength(1);
+
+    sendFromFrame({ token: frameToken(), type: 'view-applied', status: 'mismatch' });
+
+    const rebuilt = await screen.findByTitle('Edit artifact on canvas');
+    expect(rebuilt).not.toBe(frame);
+    ready();
+    expect(viewsSentTo(rebuilt)).toEqual([]);
+  });
+
+  it('rebuilds a canvas the user may have moved before replaying a new view', async () => {
+    const rendered = render(<Harness active previewView={{ view: null, seq: 0 }} />);
+    const frame = await screen.findByTitle('Edit artifact on canvas');
+    ready();
+
+    // Back to Preview, the user moves it, then opens Edit again.
+    rendered.rerender(<Harness active={false} previewView={{ view: VIEW, seq: 1 }} />);
+    rendered.rerender(<Harness active previewView={{ view: VIEW, seq: 1 }} />);
+
+    const rebuilt = await screen.findByTitle('Edit artifact on canvas');
+    expect(rebuilt).not.toBe(frame);
+    expect(viewsSentTo(frame)).toEqual([]);
+    ready();
+    expect(viewsSentTo(rebuilt)).toHaveLength(1);
+  });
+
+  it('keeps the canvas where it is when the preview has not moved since', async () => {
+    const rendered = render(<Harness active previewView={{ view: VIEW, seq: 1 }} />);
+    const frame = await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    sendFromFrame({ token: frameToken(), type: 'view-applied', status: 'ok' });
+
+    rendered.rerender(<Harness active={false} previewView={{ view: VIEW, seq: 1 }} />);
+    rendered.rerender(<Harness active previewView={{ view: VIEW, seq: 1 }} />);
+    // A save reloads the preview: back at its start, but not moved by the user.
+    rendered.rerender(<Harness active previewView={{ view: null, seq: 2 }} />);
+
+    expect(canvas()).toBe(frame);
+    expect(viewsSentTo(frame)).toHaveLength(1);
   });
 });

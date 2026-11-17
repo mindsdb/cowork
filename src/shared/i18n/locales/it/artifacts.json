@@ -244,6 +244,7 @@
     "noEditable": "Nessun testo modificabile direttamente",
     "clickToEdit": "Fai clic su qualsiasi testo dell’artefatto per modificarlo",
     "clickToEditOrNavigate": "Fai clic su un testo per modificarlo. Pulsanti e link continuano a funzionare, così puoi prima passare a un'altra slide o pagina. Fai Alt-clic (Opzione-clic su Mac) su uno di essi per modificarne l'etichetta.",
+    "syncingView": "Apertura del punto in cui eri nell'anteprima…",
     "htmlSource": "Sorgente HTML",
     "editing": "Modifica dell’artefatto",
     "back": "Torna all’artefatto",
