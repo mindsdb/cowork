@@ -23,8 +23,12 @@ export interface UnavailableModelFields {
 export const MODEL_ROUTER_ID: 'model-router';
 export const MODEL_RESTRICTED_REASON: 'model_restricted';
 export const RESTRICTED_MODEL_TITLE: string;
+export function restrictedModelTitle(): string;
+export function modelRouterLabel(): string;
+export function operatorDefaultLabel(): string;
 export const BUDGET_EXCEEDED_REASON: 'budget_exceeded';
 export const BUDGET_REACHED_MODEL_TITLE: string;
+export function budgetReachedModelTitle(): string;
 
 /**
  * Narrows cowork-server's `modelDisabledReasons` relay to the entries whose

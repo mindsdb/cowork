@@ -7,8 +7,9 @@
 // module load. Duplicating it instead would let a newly added provider key be
 // stripped on sign-out but not counted as data, or the reverse.
 
-// ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are intentionally absent: a model
-// is a choice, not a credential, and the sign-out path must not mutate one.
+// ANTON_PLANNING_MODEL / ANTON_CODING_MODEL / ANTON_IMAGE_MODEL are
+// intentionally absent: a model is a choice, not a credential, and the sign-out
+// path must not mutate one.
 export const CREDENTIAL_ENV_KEYS = [
   'ANTON_MINDS_API_KEY',
   'ANTON_MINDS_URL',

@@ -12,6 +12,7 @@
 
 import { Menu } from './ui';
 import Ico from './Icons';
+import { useTranslation } from '../../lib/i18n';
 
 export function TaskMenu({
   task,
@@ -33,6 +34,7 @@ export function TaskMenu({
   hideRename = true,
   agentLabel,
 }) {
+  const { t } = useTranslation('shell');
   const hasPinItem = !!(onPin || onUnpin);
 
   // Declarative item list — each row is conditional, falsy entries are
@@ -40,8 +42,8 @@ export function TaskMenu({
   // so they only render when the section they separate is present.
   const items = [
     // Header-only extras (chat header), then a divider off the rest.
-    showHeaderActions && { id: 'schedule', icon: Ico.schedule(14), label: 'Schedule', hint: 'WIP', onClick: onSchedule },
-    showHeaderActions && { id: 'skill', icon: Ico.brain(14), label: 'Turn into skill', onClick: onTurnIntoSkill },
+    showHeaderActions && { id: 'schedule', icon: Ico.schedule(14), label: t('taskMenu.schedule'), hint: 'WIP', onClick: onSchedule },
+    showHeaderActions && { id: 'skill', icon: Ico.brain(14), label: t('taskMenu.turnIntoSkill'), onClick: onTurnIntoSkill },
     showHeaderActions && { divider: true },
 
     // Move to project — opens a picker modal (search existing projects,
@@ -50,7 +52,7 @@ export function TaskMenu({
     !hideMoveToProject && {
       id: 'move',
       icon: Ico.moveTo(14),
-      label: 'Move to project…',
+      label: t('taskMenu.moveToProject'),
       onClick: () => onMoveToProject?.(),
     },
     !hideMoveToProject && { divider: true },
@@ -58,15 +60,15 @@ export function TaskMenu({
     hasPinItem && {
       id: 'pin',
       icon: Ico.pin(14),
-      label: task?.pinned ? 'Unpin' : 'Pin',
+      label: task?.pinned ? t('taskMenu.unpin') : t('taskMenu.pin'),
       onClick: () => (task?.pinned ? onUnpin : onPin)?.(),
     },
-    !hideRename && { id: 'rename', icon: Ico.edit(14), label: 'Rename', onClick: onRename },
+    !hideRename && { id: 'rename', icon: Ico.edit(14), label: t('taskMenu.rename'), onClick: onRename },
 
     // Divider off Delete only when something precedes it.
     (!hideMoveToProject || !hideRename || hasPinItem) && { divider: true },
 
-    { id: 'delete', icon: Ico.trash(14), label: 'Delete', danger: true, onClick: onDelete },
+    { id: 'delete', icon: Ico.trash(14), label: t('common.delete'), danger: true, onClick: onDelete },
   ].filter(Boolean);
 
   return (
@@ -77,7 +79,7 @@ export function TaskMenu({
       align={align === 'left' ? 'start' : 'end'}
       width={220}
       zIndex={60}
-      ariaLabel="Task actions"
+      ariaLabel={t('taskMenu.ariaLabel')}
       items={items}
     />
   );

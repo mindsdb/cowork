@@ -1,0 +1,216 @@
+{
+  "install": {
+    "title": "LOADING WORLD",
+    "subtitle": "installing the engine",
+    "spriteTitle": "Installing",
+    "preparing": "Preparing install…",
+    "steps": {
+      "xcode": "Xcode Command Line Tools",
+      "git": "Check / install git",
+      "uv": "Install uv (Python package manager)",
+      "coworkServer": "Install cowork-server",
+      "verify": "Verify installation",
+      "server": "Start server"
+    },
+    "failedAt": "Failed at:",
+    "tryAgain": "TRY AGAIN",
+    "consoleIdle": "> boot sequence started…",
+    "cancel": "CANCEL INSTALL",
+    "cancelling": "CANCELLING…",
+    "cancelled": "Installation cancelled.",
+    "cancellingLog": "Cancelling installation...",
+    "doneSpriteTitle": "Setup complete",
+    "done": "SETUP COMPLETE!",
+    "launching": "Launching your workspace…"
+  },
+  "legal": {
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "termsHeading": "TERMS OF SERVICE",
+    "privacyHeading": "PRIVACY POLICY",
+    "back": "← BACK"
+  },
+  "terms": {
+    "title": "LICENSE AGREEMENT",
+    "subtitle": "every quest begins with a scroll",
+    "spriteTitle": "License scroll",
+    "intro": "Before we get started, please review and accept our policies.",
+    "readTerms": "→ READ TERMS OF SERVICE",
+    "readPrivacy": "→ READ PRIVACY POLICY",
+    "consentAriaLabel": "I have read and agree with the MindsDB Terms of Service and Privacy Policy",
+    "consentBefore": "I have read and agree with MindsDB",
+    "consentAnd": "and",
+    "consentAfter": "I understand that by checking this box, I am providing my consent to be bound by these terms.",
+    "accept": "ACCEPT & CONTINUE ▶",
+    "nextInstall": "Next we’ll install the system dependencies {product} needs.",
+    "takesAMinute": "Takes about a minute."
+  },
+  "theme": {
+    "title": "CHOOSE YOUR DISPLAY",
+    "subtitle": "pick your screen · change it anytime",
+    "groupAriaLabel": "Choose your display theme",
+    "presets": {
+      "midnight": {
+        "name": "MIDNIGHT",
+        "sub": "STANDARD · DARK",
+        "desc": "The standard look on deep-night surfaces with a neon cyan accent."
+      },
+      "daylight": {
+        "name": "DAYLIGHT",
+        "sub": "STANDARD · LIGHT",
+        "desc": "The standard look on clean white surfaces with a teal accent."
+      },
+      "gameboy": {
+        "name": "GAME BOY",
+        "sub": "8-BIT · LIGHT",
+        "desc": "Olive paper and deep-green ink, mono type. Handheld nostalgia for bright rooms."
+      },
+      "arcade": {
+        "name": "ARCADE",
+        "sub": "8-BIT · DARK",
+        "desc": "Phosphor cyan on deep navy, CRT scanlines, chunky mono type. The coin-op classic."
+      }
+    },
+    "custom": {
+      "name": "CREATE YOUR OWN",
+      "sub": "CUSTOM",
+      "desc": "Design your own theme inside the app — accent, background, corners, type and scanlines. Settings → Appearance → Style → Custom."
+    },
+    "cardAriaLabel": "{name} — {sub}",
+    "customAriaLabel": "{name} — design your own theme inside the app",
+    "pick": "PRESS ⏎ TO PICK {name}",
+    "customPrompt": "DESIGN IT INSIDE THE APP — PICK A PRESET TO START",
+    "back": "← back"
+  },
+  "launch": {
+    "tagline": "ONE APP. ANY AGENT.",
+    "nowPlaying": "now playing:",
+    "nowLoading": "NOW LOADING…"
+  },
+  "onboarding": {
+    "errors": {
+      "saveFailed": "Could not save your settings. Please try again.",
+      "saveToServerFailed": "Could not save your settings to the server. Please try again.",
+      "invalidKey": "Invalid API key",
+      "mindsKeySaveFailed": "Could not save the MindsHub key.",
+      "validationFailed": "Validation failed",
+      "signInTimedOut": "Sign-in timed out — the browser never finished authorizing. Try again and complete the newest tab it opens (close any older \"You're authorized\" tabs), or press {reloadKey} to reload.",
+      "signInCancelled": "Sign-in was cancelled. Try again whenever you’re ready.",
+      "signInFailed": "Sign in failed. Please try again.",
+      "signUpFailed": "Sign up failed. Please try again.",
+      "mindsSetupFailed": "MindsHub setup failed: {reason}",
+      "unexpected": "Unexpected error. Please try again.",
+      "mindsSetupFailedRetry": "Failed to set up MindsHub. Please try again."
+    },
+    "welcome": {
+      "title": "Welcome",
+      "subtitle": "getting things ready"
+    },
+    "ready": {
+      "subtitle": "you're all set",
+      "body": "Your workspace is ready. Give the agent a task. It does the work and hands back the results.",
+      "desktop": "Cowork also runs on your desktop.",
+      "getDesktop": "Get the desktop app"
+    },
+    "continue": "Continue",
+    "agreePrefix": "By continuing, you agree to our",
+    "agreeAnd": "and",
+    "pickOrg": {
+      "title": "Choose an organization",
+      "subtitle": "who pays for your usage",
+      "body": "You belong to more than one organization. Pick the one this computer should work in — its credits pay for your usage, and its admins can see and revoke this computer's access. You can change it later from the account menu."
+    },
+    "success": {
+      "title": "All set",
+      "subtitle": "you're signed in",
+      "heading": "You're all set!",
+      "workingIn": "Working in",
+      "readyToGo": "Ready to go"
+    },
+    "validating": {
+      "spriteTitle": "Validating",
+      "label": "TESTING LINK…"
+    },
+    "signupWait": {
+      "spriteTitle": "Waiting for sign-up",
+      "heading": "FINISH SIGN-UP IN YOUR BROWSER",
+      "body": "Create your account, then open the verification email we send you — clicking its link signs you in here automatically.",
+      "cancel": "Cancel"
+    },
+    "byok": {
+      "title": "Use your own key",
+      "subtitle": "add an LLM provider to continue",
+      "skippedIntro": "Pick an LLM provider to run on. You can connect MindsHub later in Settings → Providers (needed to share to the web).",
+      "noCreditsIntro": "Your MindsHub account has no LLM credits yet. Top up to use managed models — or connect your own provider below.",
+      "back": "← back to account options",
+      "selectProvider": "Select a provider",
+      "custom": "Custom",
+      "baseUrl": "Base URL",
+      "baseUrlHint": "Ollama, vLLM, Together, Groq, LM Studio, etc.",
+      "model": "Model",
+      "customModel": "Custom...",
+      "modelIdPlaceholder": "Enter model ID...",
+      "modelNamePlaceholder": "Enter model name...",
+      "keyLabel": {
+        "anthropic": "Anthropic API Key",
+        "gemini": "Google AI API Key",
+        "custom": "API Key (optional)",
+        "openai": "OpenAI API Key"
+      },
+      "customKeyPlaceholder": "Enter to skip if not needed",
+      "connect": "Connect"
+    },
+    "minds": {
+      "title": "Get started",
+      "subtitle": "create a free account or sign in to continue",
+      "managedBy": "MANAGED BY MINDSDB",
+      "benefits": {
+        "routing": "Smart model routing",
+        "connectors": "Secure data connectors",
+        "dashboards": "Share dashboards"
+      },
+      "oneMoment": "One moment…",
+      "createAccount": "Create a free account",
+      "signIn": "Sign in",
+      "apiKeyLabel": "MindsHub API Key",
+      "connecting": "Connecting…",
+      "connect": "Connect",
+      "noAccount": "No account?",
+      "createOne": "Create one for free →",
+      "verifyBefore": "Verified your email? You're one click away — hit",
+      "verifyAfter": "to finish. No need to register again.",
+      "continueWithout": "Continue without an account →"
+    }
+  },
+  "checklist": {
+    "title": "Get to know Cowork",
+    "closeAriaLabel": "Close checklist",
+    "close": "Close",
+    "startFailed": "Could not start chat. Please try again.",
+    "completeHeading": "You’ve got the basics!",
+    "steps": {
+      "bring-your-work": {
+        "title": "Start with your own work",
+        "description": "Tell Cowork what you're working on and hand it a file or notes."
+      },
+      "customize-role": {
+        "title": "Customize Cowork to your role",
+        "description": "Add ready-made tools and workflows."
+      },
+      "connect-app": {
+        "title": "Connect an app",
+        "description": "Link Google Drive, let Cowork act on your files."
+      },
+      "see-it-work": {
+        "title": "Try an example",
+        "description": "Pick one on Home and watch it build."
+      }
+    }
+  },
+  "firstArtifactTip": {
+    "ariaLabel": "Your first Live Artifact",
+    "body": "Your first Live Artifact is ready. It lives here. Open it anytime, or publish it to share a live URL.",
+    "gotIt": "Got it",
+    "showMe": "Show me"
+  }
+}

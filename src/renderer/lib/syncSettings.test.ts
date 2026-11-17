@@ -17,16 +17,18 @@ describe('syncSettingsToDb', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   // ─── ENG-739 regression: models must never be bulk-synced from .env ──
-  it('never PUTs planning_model / coding_model, even when present in the lines', async () => {
+  it('never PUTs planning_model / coding_model / image_model, even when present in the lines', async () => {
     await syncSettingsToDb([
       'ANTON_MINDS_API_KEY=mdb_abc',
       'ANTON_PLANNING_PROVIDER=minds-cloud',
       'ANTON_PLANNING_MODEL=latest:sonnet',
       'ANTON_CODING_MODEL=latest:haiku',
+      'ANTON_IMAGE_MODEL=gpt-image-2.6-sunburst',
     ]);
     const keys = settingKeysWritten(fetchMock.mock.calls);
     expect(keys).not.toContain('planning_model');
     expect(keys).not.toContain('coding_model');
+    expect(keys).not.toContain('image_model');
     // The credential + provider still sync (only the model keys are excluded).
     expect(keys).toContain('minds_api_key');
     expect(keys).toContain('planning_provider');
@@ -183,6 +185,18 @@ describe('modelLinesFrom', () => {
     ).toEqual(['ANTON_PLANNING_MODEL=gpt-5.5', 'ANTON_CODING_MODEL=gpt-5.5-mini']);
   });
 
+  // ENG-4024 / ENG-739: onboarding never picks an image model, so an image line
+  // in its lines came over from a hand-edited .env and must not reach the DB.
+  it('leaves out the image model line, which onboarding never chooses', () => {
+    expect(
+      modelLinesFrom([
+        'ANTON_MINDS_API_KEY=mdb_abc',
+        'ANTON_IMAGE_MODEL=gpt-image-2.6-sunburst',
+        'ANTON_PLANNING_MODEL=gpt-5.5',
+      ]),
+    ).toEqual(['ANTON_PLANNING_MODEL=gpt-5.5']);
+  });
+
   // The minds/SSO path writes no model line (backend resolves the tier default),
   // so there is nothing to hand up / replay on defer.
   it('returns [] when there is no model line (minds/SSO path)', () => {
@@ -221,6 +235,13 @@ describe('syncModelsToDb', () => {
     expect(keys).toContain('coding_model');
     const planning = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/settings/planning_model'));
     expect(JSON.parse((planning![1] as any).body).value).toBe('gpt-5.5');
+  });
+
+  it('PUTs image_model via the same dedicated endpoint (ENG-4024)', async () => {
+    await syncModelsToDb(['ANTON_IMAGE_MODEL=gpt-image-2.6-sunburst']);
+    expect(settingKeysWritten(fetchMock.mock.calls)).toEqual(['image_model']);
+    const image = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/settings/image_model'));
+    expect(JSON.parse((image![1] as any).body).value).toBe('gpt-image-2.6-sunburst');
   });
 
   it('ignores non-model keys — it must never write credentials/providers', async () => {
@@ -284,6 +305,17 @@ describe('syncModelsToDb', () => {
   it('treats a 401 as retryable, not a permanent refusal', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 401 });
     expect(await syncModelsToDb(['ANTON_PLANNING_MODEL=gpt-5.5'])).toBe(false);
+  });
+
+  // The refusal diagnostic names which model setting was refused, so the image
+  // key has to be on the diagnostic's setting_key allowlist too.
+  it('names image_model in the refusal diagnostic', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fetchMock.mockResolvedValue({ ok: false, status: 400 });
+    expect(await syncModelsToDb(['ANTON_IMAGE_MODEL=not-an-image-model'])).toBe(true);
+    expect(JSON.parse(String(warn.mock.calls[0][0]))).toMatchObject({ event: 'setting_value_refused', setting_key: 'image_model' });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('not-an-image-model');
+    warn.mockRestore();
   });
 
   it('treats a 422 as a permanent refusal, like 400', async () => {

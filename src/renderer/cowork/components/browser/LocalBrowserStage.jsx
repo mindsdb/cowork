@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { diagnostic } from '../../../../shared/diagnostics';
+import { BrowserNote } from './BrowserNote';
 import Ico from '../Icons';
 import Button from '../ui/Button';
 import EmptyState from '../ui/EmptyState';
@@ -7,8 +8,9 @@ import { Input } from '../ui/Input';
 import Spinner from '../ui/Spinner';
 import { host } from '../../../platform/host';
 import { useNativeOverlayOpen } from '../../lib/nativeOverlay';
-import { DESKTOP_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 import { BrowserFrame } from './BrowserFrame';
+import { BlankStartOver } from './BlankBrowserPanel';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The desktop pane: the app's own browser, a native view the app's main
    process places over this stage. The stage mounts no frame. It shows the
@@ -33,7 +35,13 @@ import { BrowserFrame } from './BrowserFrame';
    task, waits for main's answer to its own show.
 
    The person can click and type in the view at any time. Take over tells the
-   agent to stop; only Done hands the browser back, and the agent waits for it. */
+   agent to stop; only Done hands the browser back, and the agent waits for it.
+
+   Each change of who holds the browser goes to `onControl(holder, reason,
+   watching)`, as the web viewer's does (BrowserPanel), so the chat can carry
+   a task on when the browser comes back after its turn ended: from the
+   pane's Done, the card's Done, continue, or a watched hand-over that came
+   back by itself. */
 
 /**
  * @typedef {import('../../../../shared/browser-contract').BrowserViewState} BrowserViewState
@@ -96,6 +104,7 @@ function siteOf(url) {
 }
 
 function SignInForm({ site, onAnswer }) {
+  const { t } = useTranslation('chat');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   return (
@@ -106,13 +115,13 @@ function SignInForm({ site, onAnswer }) {
         onAnswer({ username, password });
       }}
     >
-      <div className="browser-panel__login-title">{site} asks you to sign in</div>
-      <div className="browser-panel__login-hint">Your username and password go only to this site.</div>
-      <Input aria-label="Username" autoComplete="off" value={username} onChange={(next) => setUsername(next)} />
-      <Input aria-label="Password" type="password" autoComplete="off" value={password} onChange={(next) => setPassword(next)} />
+      <div className="browser-panel__login-title">{t('browser.signIn.title', { site })}</div>
+      <div className="browser-panel__login-hint">{t('browser.signIn.hint')}</div>
+      <Input aria-label={t('browser.signIn.username')} autoComplete="off" value={username} onChange={(next) => setUsername(next)} />
+      <Input aria-label={t('browser.signIn.password')} type="password" autoComplete="off" value={password} onChange={(next) => setPassword(next)} />
       <div className="browser-panel__login-actions">
-        <Button variant="subtle" size="sm" type="button" onClick={() => onAnswer(null)}>Cancel</Button>
-        <Button variant="primary" size="sm" type="submit">Sign in</Button>
+        <Button variant="subtle" size="sm" type="button" onClick={() => onAnswer(null)}>{t('browser.signIn.cancel')}</Button>
+        <Button variant="primary" size="sm" type="submit">{t('browser.signIn.submit')}</Button>
       </div>
     </form>
   );
@@ -127,17 +136,22 @@ export const DOWNLOAD_ARM_MS = 700;
 /* The pane's line for the task's newest download. One that started while the
    agent held the browser waits for the person's Save. */
 export function downloadLine(download) {
-  const where = `Downloads, in ${download.folder}`;
+  const t = (key, vars) => i18n.t(`browser.download.${key}`, { ns: 'chat', name: download.name, ...vars });
+  const where = t('where', { folder: download.folder });
   switch (download.state) {
-    case 'waiting': return `This page wants to download ${download.name} to ${where}.`;
-    case 'progressing': return `Downloading ${download.name}…`;
-    case 'completed': return `${download.name} is in ${where}.`;
-    case 'cancelled': return `${download.name} wasn't saved.`;
-    default: return `${download.name} didn't download.`;
+    case 'waiting': return t('waiting', { where });
+    case 'progressing': return t('progressing');
+    case 'completed': return t('completed', { where });
+    case 'cancelled': return t('cancelled');
+    default: return t('failed');
   }
 }
 
-export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
+export function LocalBrowserStage({
+  sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null,
+  taskKey = '', onSend, onOpenUrl, onPageUrl = null, onControl = null,
+}) {
+  const { t } = useTranslation('chat');
   const browser = host.inAppBrowser;
   const stageRef = useRef(null);
   /** @type {[BrowserViewState | null, (s: BrowserViewState | null) => void]} */
@@ -159,7 +173,26 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
 
   const closed = !exists || state?.open === false;
   const signIn = state?.login ?? null;
-  const mayDraw = !overlayOpen && !signIn;
+  /* A blank tab (no address, nothing loading) gets the start page in the
+     view's place, as on the web, so the view stays parked while it shows. */
+  // The page it shows, for whoever opened it (the off-task browser's
+  // carry-over, which strips it before it reaches a prompt).
+  const onPageUrlRef = useRef(onPageUrl);
+  onPageUrlRef.current = onPageUrl;
+  const shownUrl = state?.url ?? '';
+  useEffect(() => { onPageUrlRef.current?.(shownUrl); }, [shownUrl]);
+  // Who holds the browser, reported once per change (state arrives on every page change too).
+  const onControlRef = useRef(onControl);
+  onControlRef.current = onControl;
+  const holder = state && state.open !== false ? state.control.holder : null;
+  const controlReason = state?.control.reason ?? '';
+  const controlWatching = state?.watching === true;
+  useEffect(() => {
+    if (!holder) return;
+    onControlRef.current?.(holder === 'human' ? 'human' : 'agent', controlReason.slice(0, 300), controlWatching);
+  }, [holder, controlReason, controlWatching]);
+  const startPage = Boolean(state) && !closed && !signIn && !state.url && !state.loading && Boolean(onSend || onOpenUrl);
+  const mayDraw = !overlayOpen && !signIn && !startPage;
   // Whether the view may draw now, for the pane's effect below to read.
   const mayDrawRef = useRef(mayDraw);
   // Sends main what the view may draw on now, or null while the pane shows no task.
@@ -236,9 +269,16 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
   const reason = state?.control.reason ?? '';
   // The page's own host leads the agent's reason, so a lookalike page can't
   // pass its words off as the app's.
+  const turnSite = site || t('browser.aNewTab');
+  /* A hand-over that comes back by itself once the person did what it
+     waits for (a box ticked, a page moved on) says so; Done still works. */
   const hint = personHolds
-    ? `Your turn on ${site || 'a new tab'}${reason ? `: ${reason}` : ''}. Click Done to hand it back to ${agentLabel}.`
-    : `${agentLabel} is using it. Take over to use it yourself.`;
+    ? (reason && state?.watching
+      ? t('browser.yourTurnWatching', { site: turnSite, reason, agent: agentLabel })
+      : reason
+      ? t('browser.yourTurnReason', { site: turnSite, reason, agent: agentLabel })
+      : t('browser.yourTurn', { site: turnSite, agent: agentLabel }))
+    : t('browser.agentUsing', { agent: agentLabel });
   /* The oldest download still waiting keeps the line until the person
      answers it, so a page can't slip a newer one under their click; with
      none waiting, the newest. Save and Don't save arm a moment after a
@@ -256,17 +296,17 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
   const tabs = state?.tabs ?? [];
   /* While the person holds the browser they may sign in to a site, so the
      note says, in Settings' own words, that sign-ins stay. */
-  const note = `${agentLabel}'s page reads and screenshots go to the model provider that serves your turn.${personHolds ? ` ${DESKTOP_SIGN_INS}` : ''}`;
+  const note = `${t('browser.pageReadsNote', { agent: agentLabel })}${personHolds ? ` ${i18n.t('settingsTools:browser.desktopSignIns')}` : ''}`;
 
   const actions = state && !closed && (
     <>
-      <Button icon size="sm" variant="subtle" aria-label="Back" disabled={!state.canGoBack} onClick={() => report(browser.back(sessionId))}>{Ico.chevLeft(14)}</Button>
-      <Button icon size="sm" variant="subtle" aria-label="Forward" disabled={!state.canGoForward} onClick={() => report(browser.forward(sessionId))}>{Ico.chevRight(14)}</Button>
-      <Button icon size="sm" variant="subtle" aria-label="Reload page" onClick={() => report(browser.reload(sessionId))}>{Ico.reload(14)}</Button>
+      <Button icon size="sm" variant="subtle" aria-label={t('browser.back')} disabled={!state.canGoBack} onClick={() => report(browser.back(sessionId))}>{Ico.chevLeft(14)}</Button>
+      <Button icon size="sm" variant="subtle" aria-label={t('browser.forward')} disabled={!state.canGoForward} onClick={() => report(browser.forward(sessionId))}>{Ico.chevRight(14)}</Button>
+      <Button icon size="sm" variant="subtle" aria-label={t('browser.reloadPage')} onClick={() => report(browser.reload(sessionId))}>{Ico.reload(14)}</Button>
       {personHolds ? (
-        <Button size="sm" variant="primary" onClick={() => report(browser.handBack(sessionId))}>Done</Button>
+        <Button size="sm" variant="primary" onClick={() => report(browser.handBack(sessionId))}>{t('browser.done')}</Button>
       ) : (
-        <Button size="sm" variant="subtle" onClick={() => report(browser.takeOver(sessionId))}>Take over</Button>
+        <Button size="sm" variant="subtle" onClick={() => report(browser.takeOver(sessionId))}>{t('browser.takeOver')}</Button>
       )}
     </>
   );
@@ -276,10 +316,10 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
      pane at its narrowest. */
   const below = state && !closed && (
     <>
-    <p className="browser-panel__note">{note}</p>
+    <BrowserNote agentLabel={agentLabel}>{note}</BrowserNote>
     <div className="browser-panel__status" role="status">
       {state.loading && <Spinner />}
-      <span className="browser-panel__site">{site || 'New tab'}</span>
+      <span className="browser-panel__site">{site || t('browser.newTab')}</span>
       {tabs.length > 1 && (
         <span className="browser-panel__tabs">
           {tabs.map((tab) => (
@@ -291,7 +331,7 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
               title={tab.url}
               onClick={() => report(browser.activateTab(sessionId, tab.id))}
             >
-              {tab.title || hostOf(tab.url) || 'New tab'}
+              {tab.title || hostOf(tab.url) || t('browser.newTab')}
             </button>
           ))}
         </span>
@@ -307,22 +347,22 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
       <div className="browser-panel__download-prompt" role="status">
         {Ico.download(12)}
         <span className="browser-panel__download-text">{downloadLine(latestDownload)}</span>
-        <Button size="sm" variant="primary" disabled={!downloadArmed} onClick={() => report(browser.answerDownload(sessionId, waitingId, true))}>Save</Button>
-        <Button size="sm" variant="subtle" disabled={!downloadArmed} onClick={() => report(browser.answerDownload(sessionId, waitingId, false))}>Don't save</Button>
+        <Button size="sm" variant="primary" disabled={!downloadArmed} onClick={() => report(browser.answerDownload(sessionId, waitingId, true))}>{t('browser.download.save')}</Button>
+        <Button size="sm" variant="subtle" disabled={!downloadArmed} onClick={() => report(browser.answerDownload(sessionId, waitingId, false))}>{t('browser.download.dontSave')}</Button>
       </div>
     )}
     </>
   );
 
   return (
-    <BrowserFrame hint={hint} actions={actions} below={below} stageRef={stageRef} onClose={onClose}>
+    <BrowserFrame hint={hint} actions={actions} below={below} stageRef={stageRef} onClose={onClose} floating={floating} extraActions={extraActions} dock={dock}>
       {closed ? (
         <EmptyState
           size="sm"
           className="browser-panel__empty"
           icon={Ico.globe(20)}
-          title="This task's browser is closed"
-          description={`${agentLabel} opens it again when it needs it.`}
+          title={t('browser.closedTitle')}
+          description={t('browser.closedDescription', { agent: agentLabel })}
         />
       ) : signIn ? (
         <SignInForm
@@ -330,8 +370,10 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
           site={signIn.host}
           onAnswer={(answer) => report(browser.answerLogin(sessionId, answer))}
         />
+      ) : startPage ? (
+        <BlankStartOver taskKey={taskKey} agentLabel={agentLabel} onSend={onSend} onOpenUrl={onOpenUrl} inset={false} />
       ) : squeezed ? (
-        <EmptyState size="sm" className="browser-panel__empty" title="Make the window bigger to see the page" />
+        <EmptyState size="sm" className="browser-panel__empty" title={t('browser.squeezed')} />
       ) : null}
     </BrowserFrame>
   );

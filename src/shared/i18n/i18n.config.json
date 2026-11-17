@@ -1,0 +1,13 @@
+{
+  "literalAllowlist": [
+    "MindsHub",
+    "Cowork",
+    "Anton",
+    "GitHub",
+    "Google Drive",
+    "SharePoint",
+    "Slack",
+    "JetBrains Mono"
+  ],
+  "literalBaseline": 0
+}

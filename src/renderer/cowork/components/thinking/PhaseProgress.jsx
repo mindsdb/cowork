@@ -17,14 +17,15 @@ import { Fragment } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import { usePhraseRotation } from '../../lib/usePhraseRotation';
+import i18n from '../../../lib/i18n';
 
 function formatDuration(ms) {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return null;
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) return i18n.t('duration.seconds', { ns: 'chat', seconds: s });
   const m = Math.floor(s / 60);
   const r = s % 60;
-  return `${m}m ${r}s`;
+  return i18n.t('duration.minutesSeconds', { ns: 'chat', minutes: m, seconds: r });
 }
 
 // Past-tense headline banks. We pick deterministically per turn (using
@@ -32,28 +33,12 @@ function formatDuration(ms) {
 // renders the same headline across re-renders, but two different
 // conversations rotate through variants. Mirrors the playful tone of
 // the in-flight phrase banks while reading as "this is done".
+// Values are chat-namespace keys (phaseProgress.<phase>.<n>), translated
+// when picked.
 const COMPLETED_LABELS = {
-  thinking: [
-    'Thought it through',
-    'Mapped it out',
-    'Lined up the steps',
-    'Picked the angle',
-    'Sketched the approach',
-  ],
-  working: [
-    'Worked through it',
-    'Crunched the numbers',
-    'Did the heavy lifting',
-    'Pulled it together',
-    'Followed the breadcrumbs',
-  ],
-  reasoning: [
-    'Wrapped up the answer',
-    'Tied it together',
-    'Distilled the result',
-    'Composed the response',
-    'Made it readable',
-  ],
+  thinking: ['1', '2', '3', '4', '5'].map((n) => `phaseProgress.thinking.${n}`),
+  working: ['1', '2', '3', '4', '5'].map((n) => `phaseProgress.working.${n}`),
+  reasoning: ['1', '2', '3', '4', '5'].map((n) => `phaseProgress.reasoning.${n}`),
 };
 
 // djb2 hash for stable picks per (conversationId, phase).
@@ -66,7 +51,7 @@ function _hash(str) {
 function pickCompletedLabel(phase, key) {
   const list = COMPLETED_LABELS[phase] || [];
   if (list.length === 0) return null;
-  return list[_hash(String(key || phase)) % list.length];
+  return i18n.t(list[_hash(String(key || phase)) % list.length], { ns: 'chat' });
 }
 
 function PhaseRow({
@@ -147,7 +132,7 @@ export function PhaseProgress({ steps = [], streamStatus = null, conversationId 
   if (!isInFlight && !isDone && steps.length === 0) {
     return (
       <p className="px-1 py-2 text-[12.5px] text-ink-4">
-        Steps appear here while the agent works.
+        {i18n.t('phaseProgress.empty', { ns: 'chat' })}
       </p>
     );
   }
@@ -247,7 +232,7 @@ export function PhaseProgress({ steps = [], streamStatus = null, conversationId 
           bank="working"
           phaseKey={`art-${step.id}`}
           status="completed"
-          label="Wrapped up an artifact"
+          label={i18n.t('phaseProgress.artifact', { ns: 'chat' })}
           sublabel={step.data?.title || step.data?.file_path || step.label}
           onClick={onActivateStep ? () => onActivateStep(step) : undefined}
         />

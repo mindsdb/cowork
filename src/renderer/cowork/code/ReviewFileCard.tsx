@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import Ico from '../components/Icons';
 import type { DiffFile } from './api';
-import { DiffPatchView, type DiffLineSelection } from './DiffPatchView';
+import { DiffPatchView, selectionDisplayLabel, type DiffLineSelection } from './DiffPatchView';
 import { FileReviewControls, type ReviewFileAction } from './FileReviewControls';
+import { useTranslation } from '../../lib/i18n';
 
 export function ReviewFileCard({
   file,
@@ -11,6 +12,7 @@ export function ReviewFileCard({
   busy,
   onAction,
   onAgentAction,
+  editsOriginal = false,
 }: {
   file: DiffFile;
   workspaceName: string;
@@ -18,7 +20,10 @@ export function ReviewFileCard({
   busy: boolean;
   onAction: (action: ReviewFileAction) => Promise<void>;
   onAgentAction: (prompt: string) => Promise<void>;
+  /** The task works in the user's own folder, so actions change it directly. */
+  editsOriginal?: boolean;
 }) {
+  const { t } = useTranslation('code');
   const [selection, setSelection] = useState<DiffLineSelection | null>(null);
   const location = `${file.folder_name || workspaceName}/${file.path}`;
   return (
@@ -33,12 +38,13 @@ export function ReviewFileCard({
       {file.patch ? (
         <DiffPatchView patch={file.patch} onSelectionChange={setSelection} />
       ) : (
-        <div className="code-diff-file__empty">{file.binary ? 'Binary file changed' : 'No textual diff'}</div>
+        <div className="code-diff-file__empty">{file.binary ? t('reviewFileCard.binary') : t('reviewFileCard.noTextualDiff')}</div>
       )}
       <FileReviewControls
         file={file}
         busy={busy}
-        selectionLabel={selection?.label || ''}
+        editsOriginal={editsOriginal}
+        selectionLabel={selection ? selectionDisplayLabel(selection) : ''}
         onAction={onAction}
         onAgentNote={(note) => onAgentAction([
           `Address this review note for ${location}${selection ? ` at ${selection.label}` : ''}:`,

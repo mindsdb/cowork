@@ -8,14 +8,20 @@ import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // dev / web are same-origin (proxied), so getApiOrigin() returns the page
 // origin. Routing through host keeps the port in one place.
 
-import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
+import { iterateSSE } from './lib/responseStreamAdapter';
+import { noteRefreshScopes } from './lib/modelRefresh';
+import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
+import { withQuickEditGroup } from './lib/quickEditGroup';
 import { isAntonConfigError } from './lib/antonErrors';
+import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
-import { relativeAge } from './lib/formatTime';
+import { withoutNotionPageNotes, stripNotionPageNoteFromTitle } from './lib/notionPageNote';
+import { currentServerLocale } from '../lib/i18n';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
+import { approvalsOffAtOf } from './lib/browserPrefs';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
 import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
@@ -70,7 +76,14 @@ function _untilAborted(promise, signal) {
 // COWORK_REQUIRE_AUTH=true) into every request via a session webRequest hook
 // (src/main/app.ts). That token never reaches the renderer and is NOT the
 // Keycloak token, so nothing is attached here.
+//
+// Both: every request carries the UI language as X-Cowork-UI-Locale (one of
+// SUPPORTED_LOCALES), so cowork-server can tell Anton which language to fall
+// back to (ENG-4149). Its own header, not Accept-Language, which browsers send
+// on their own; and only while the language picker is on. A caller's own
+// header wins.
 export async function authFetch(url, options = {}) {
+  options = withUiLocale(options);
   if (host.isWeb) {
     const token = await _untilAborted(host.getAccessToken(), options.signal);
     if (token) {
@@ -89,6 +102,27 @@ export async function authFetch(url, options = {}) {
     throw new Error('The active organization changed; reload required');
   }
   return response;
+}
+
+function hasHeader(headers, name) {
+  if (!headers) return false;
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) return headers.has(name);
+  const wanted = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === wanted);
+}
+
+export const UI_LOCALE_HEADER = 'X-Cowork-UI-Locale';
+
+export function withUiLocale(options = {}) {
+  if (hasHeader(options.headers, UI_LOCALE_HEADER)) return options;
+  const locale = currentServerLocale();
+  if (!locale) return options;
+  if (typeof Headers !== 'undefined' && options.headers instanceof Headers) {
+    const headers = new Headers(options.headers);
+    headers.set(UI_LOCALE_HEADER, locale);
+    return { ...options, headers };
+  }
+  return { ...options, headers: { ...(options.headers || {}), [UI_LOCALE_HEADER]: locale } };
 }
 
 /* Opt-in bound for a plain JSON request, so a dead server (a proxy holding
@@ -331,16 +365,21 @@ function _failedEventMeta(events) {
 function _hydrateAssistantEvents(messages) {
   if (!Array.isArray(messages)) return messages || [];
   const out = [];
-  for (const m of messages) {
+  for (const m of withoutNotionPageNotes(messages)) {
     if (m?.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
       out.push(m);
       continue;
     }
-    let state = initialStreamState();
-    for (const ev of m.events) {
-      try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
+    // A quick-edit group (ENG-4227) is a card, not a turn to replay.
+    const group = withQuickEditGroup(m);
+    if (group) {
+      out.push(group);
+      continue;
     }
+    const state = reduceServerEvents(m.events, null);
     const { events: _drop, ...rest } = m;
+    // The turn's response id, so an add-on saved against it can find it.
+    if (state.responseId) rest._responseId = state.responseId;
     const turnComplete = state.status === 'done' || state.status === 'error';
     const completeFlag = turnComplete ? { _turnComplete: true } : {};
     out.push({
@@ -351,6 +390,12 @@ function _hydrateAssistantEvents(messages) {
       ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
       ...(state.incompleteReason ? { incompleteReason: state.incompleteReason } : {}),
+      // The answer the live turn showed, not the saved text that joins every
+      // round: earlier rounds' narration is already in the steps as Notes.
+      // Every conversation open and every refetch after a turn ends comes
+      // through here, so without it a finished answer gained its narration
+      // back the moment the chat refetched it (ENG-4194).
+      ...(replayedAnswer(state, rest.content) || {}),
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);
@@ -376,14 +421,14 @@ function _hydrateAssistantEvents(messages) {
       }
     }
   }
-  return out;
+  // Messages added to a running turn (ENG-4194) render inside that turn.
+  return foldAddonMessages(out);
 }
 
 function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } = {}) {
-  // Server stores conversations under <project>/.anton/episodes/ and
-  // returns the project NAME on each conversation meta. We carry both:
-  //   projectName — the canonical id from the server
-  //   projectPath — resolved later from the projects list (App.jsx)
+  // The server returns each conversation's project by name, id and folder:
+  // projectName, projectId and projectPath below. The id is the stable one;
+  // a rename changes the name.
   //
   // Each assistant message may carry an `events` array — the SSE log
   // captured server-side for that turn. Replaying it through the live
@@ -401,10 +446,16 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
       .map((x) => ({ engine: x.engine.trim(), name: x.name.trim() }))
     : undefined;
 
+  /* `conv` is cowork-server's ConversationListItem, which both
+     GET /conversations/ and GET /conversations/{id} send in camelCase
+     (CamelResponse), so its two-word fields are read by their camelCase
+     names. */
   return {
     id: conv.id,
-    title: conv.title || conv.preview || conv.id || 'Untitled task',
-    subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
+    title: stripNotionPageNoteFromTitle(conv.title || conv.preview) || conv.id || 'Untitled task',
+    // The server sends no subtitle. A row ages from updatedAt when it renders;
+    // an age stamped here goes stale, and chatTaskRow shows it as a second line.
+    subtitle: '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
     // 'loading' until a real fetch resolves — every sidebar-listed
@@ -415,10 +466,11 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
     // conversation-list caller (fetchSessions) passes 'loading' explicitly.
     messagesStatus,
     projectName: conv.project || null,
-    projectId: conv.project_id || null,
-    projectPath: conv.project_path || null,
+    projectId: conv.projectId || null,
+    projectPath: conv.projectPath || null,
     harness: conv.harness || null,
     model: conv.model || null,
+    reasoningEffort: conv.reasoningEffort || null,
     attachments: [],
     disabledConnections,
     // Kept on this device, like the mutes (lib/taskBrowser).
@@ -430,8 +482,8 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
     // conversations created by `_run_schedule`; null for chat-
     // initiated conversations.
     scheduledId: conv.scheduled_id || conv.scheduledId || null,
-    updatedAt: conv.updated_at || conv.updatedAt || null,
-    createdAt: conv.created_at || conv.createdAt || null,
+    updatedAt: conv.updatedAt || null,
+    createdAt: conv.createdAt || null,
   };
 }
 
@@ -624,7 +676,7 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
   try {
     const raw = await req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }), { timeoutMs });
     const page = _pageFromItemsResponse(raw);
-    return { messages: page.items, hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
+    return { messages: withoutNotionPageNotes(page.items), hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
   } catch {
     return null;
   }
@@ -718,12 +770,41 @@ function idleWindowAfter(msg, idleTimeoutMs) {
   return timeoutS * 1000 + idleTimeoutMs;
 }
 
+// The controller a turn's stream hands back (ENG-4194): an AbortController
+// that also lets the app put its own `response.addon` rows through this
+// stream's reducer (`injectEvent`), so they sit in the turn exactly where server
+// events do, and carries the running turn's response id, which an add-on
+// request names (set once `response.created` arrives).
+function turnStreamController(onEvent) {
+  const ctrl = new AbortController();
+  ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
+  ctrl.responseId = null;
+  return ctrl;
+}
+
 // Streams a /v1/responses request. Maps OpenAI-style typed events to the
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
-  const ctrl = new AbortController();
+/**
+ * The model and effort a request may carry, by the same rule every turn
+ * follows. MODEL_ROUTER_ID never leaves the renderer (null is "this account's
+ * Settings decide"); without platform UI only the operator's picker sends
+ * picks. A per-task effort goes with platform UI on, and under the operator's
+ * picker for an effort it lets users pick on the model sent; otherwise none,
+ * so the request cannot override role settings. The viewer's chat bar
+ * (ENG-4227) sends its picks through this too.
+ */
+export function sendablePicks(model, reasoningEffort) {
+  const sendsPicks = PLATFORM_UI || modelPickerMode() !== 'off';
+  const sentModel = (sendsPicks && model && model !== MODEL_ROUTER_ID) ? model : null;
+  const sendsEffort = Boolean(reasoningEffort)
+    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
+  return { sendsPicks, model: sentModel, reasoningEffort: sendsEffort ? reasoningEffort : null };
+}
+
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+  const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
@@ -746,13 +827,8 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // picker (lib/modelPicker) sends a model, and App hands it only the
   // models that picker offers. With it off, all callers use
   // operator-configured role settings, including restored tasks.
-  const sentModel = ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null;
-  // A per-task effort is available with platform UI on, and under the
-  // operator's picker for an effort it lets users pick on the model this
-  // question sends, a retried task's saved effort included. Omit the key
-  // otherwise so this request cannot override role settings.
-  const sendsEffort = Boolean(reasoningEffort)
-    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
+  const { sendsPicks, model: sentModel, reasoningEffort: sentEffort } = sendablePicks(model, reasoningEffort);
+  const sendsEffort = sentEffort !== null;
   (async () => {
     try {
       bumpIdle();
@@ -767,7 +843,11 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // may still hold at a harness this build has no control left to
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
-          ...(sendsEffort ? { reasoning_effort: reasoningEffort } : {}),
+          ...(sendsEffort ? { reasoning_effort: sentEffort } : {}),
+          // The picks this question goes back to the default on (App's
+          // turnResetPicks), so the server clears the saved ones. Only where
+          // this client sends picks at all, and only when there is one.
+          ...(sendsPicks && resetPicks.length ? { reset_picks: resetPicks } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
@@ -823,6 +903,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
 
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
+          noteResponseId(ctrl, msg);
           bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
 
           // Raw passthrough — used by the streamAdapter to build a
@@ -949,7 +1030,7 @@ export function tailInFlight(conversationId, {
   idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
-  const ctrl = new AbortController();
+  const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
@@ -1001,6 +1082,7 @@ export function tailInFlight(conversationId, {
           try { msg = JSON.parse(raw); } catch { continue; }
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
+          noteResponseId(ctrl, msg);
           bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
           onEvent?.(msg);
           switch (msg.type) {
@@ -1223,6 +1305,99 @@ export async function submitAnswer(conversationId, questionId, answer) {
     if (status === 404) return { status: 'not_found' };
     if (status === 409) return { status: 'already_answered' };
     if (status === 400) return { status: 'rejected' };
+    return { status: 'error' };
+  }
+}
+
+/**
+ * Answer a preview check the running turn asked for (`response.artifact_check`,
+ * ENG-4207). `body` is `{ status: 'passed' | 'failed' | 'unavailable', errors,
+ * ms }`. Never throws: a lost answer only makes the server wait out the
+ * check's own timeout, so there is nothing for the caller to do about it.
+ */
+export async function submitArtifactCheck(checkId, body) {
+  if (!checkId) return { status: 'not_found' };
+  try {
+    return await req(`/artifacts/checks/${encodeURIComponent(checkId)}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+    });
+  } catch (err) {
+    return { status: err?.status === 404 ? 'not_found' : 'error' };
+  }
+}
+
+/** Keep the running turn's response id on its stream handle (ENG-4194). */
+function noteResponseId(ctrl, msg) {
+  if (msg?.type === 'response.created' && msg.response?.id) ctrl.responseId = String(msg.response.id);
+}
+
+/**
+ * Offer a message sent while a turn runs to that turn (ENG-4194). The server
+ * asks Jev whether it belongs to the running task; `force` is the person's own
+ * "Add to current task" and skips that question. `responseId` is the running
+ * turn's id (from its `response.created`); `localKey` is the app's own key for
+ * the row (≤64 chars of [A-Za-z0-9_-], dropped otherwise).
+ *
+ * Never throws. Answers `{status: 'added', addon_id, decided_by}`, or a status
+ * the caller queues on: the server's `queued` (with its reason), `not_found`
+ * (no running turn), `unsupported` (an older server without the route),
+ * `timeout` (no verdict within the window) or `error`.
+ */
+export async function sendAddon(conversationId, text, {
+  force = false, responseId = null, localKey = null, timeoutMs = ADDON_REQUEST_TIMEOUT_MS,
+} = {}) {
+  if (!conversationId) return { status: 'not_found' };
+  try {
+    const res = await req('/responses/addon', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        text,
+        ...(force ? { force: true } : {}),
+        // The turn this was typed against, so the server never adds it to a
+        // later one; and the app's own key for its row, echoed on the
+        // stream's `response.addon` events.
+        ...(responseId ? { response_id: String(responseId) } : {}),
+        ...(isValidLocalKey(localKey) ? { local_key: localKey } : {}),
+      }),
+      timeoutMs,
+    });
+    return res && typeof res === 'object' ? res : { status: 'error' };
+  } catch (err) {
+    if (err?.name === 'AbortError') return { status: 'timeout' };
+    const status = err?.status;
+    // An older server has no such route: FastAPI's plain 404 or a 405. A 404
+    // from the route itself (`{"status":"not_found"}`) means no running turn;
+    // both end the same way, in the queue.
+    if (status === 404) {
+      const body = err?.body;
+      const said = body?.status ?? body?.detail?.status;
+      return { status: said === 'not_found' ? 'not_found' : 'unsupported' };
+    }
+    if (status === 405) return { status: 'unsupported' };
+    return { status: 'error' };
+  }
+}
+
+/**
+ * Take an added message back out of the running turn ("Move to queue").
+ * `withdrawn` means Anton never saw it; `already_read` means it is too late.
+ */
+export async function withdrawAddon(conversationId, addonId) {
+  if (!conversationId || !addonId) return { status: 'not_found' };
+  try {
+    const res = await req('/responses/addon/withdraw', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: conversationId, addon_id: addonId }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+    });
+    return res && typeof res === 'object' ? res : { status: 'error' };
+  } catch (err) {
+    const status = err?.status;
+    if (status === 409) return { status: 'already_read' };
+    if (status === 404) return { status: 'not_found' };
     return { status: 'error' };
   }
 }
@@ -1621,15 +1796,16 @@ let _settingsLock = Promise.resolve();
    the `reasoning_efforts`/`default_reasoning_effort` it advertises) and merges a
    static effort catalog for direct providers. Returns null on any failure so the
    caller keeps the static lists baked into transformSettingsRows. */
-export async function fetchRecommendedModels({ refresh = false } = {}) {
+export async function fetchRecommendedModels({ refresh = false, scope = 'all' } = {}) {
   try {
-    // `refresh` bypasses the server's fetch_minds_models cache (up to a
-    // 5-minute TTL) — the model dropdown passes it on open so a wallet top-up
-    // isn't masked by the cached `enabled` map. A cached *failure* is still
-    // honored server-side, so this can't cost every open an HTTP timeout while
-    // MindsHub is down.
-    const data = await req(`/settings/recommended-models${refresh ? '?refresh=true' : ''}`);
-    if (data && typeof data === 'object') return data;
+    // `refresh` skips the server's short listing cache, so a wallet top-up shows at once.
+    // scope 'minds' forces only the MindsHub leg; a BYO endpoint keeps its cache.
+    const query = refresh ? `?refresh=true${scope === 'minds' ? '&refresh_scope=minds' : ''}` : '';
+    const data = await req(`/settings/recommended-models${query}`);
+    if (data && typeof data === 'object') {
+      noteRefreshScopes(data.refreshScopes);
+      return data;
+    }
   } catch { /* fall back to static lists */ }
   return null;
 }
@@ -1774,6 +1950,32 @@ async function readSettings({ validate = true } = {}) {
   _lastFetchedSettings = result;
   cacheSettings(result);
   return result;
+}
+
+/**
+ * @typedef {{ asks: boolean, offAtMs: number | null }} BrowserApprovalSetting
+ */
+
+/* The person's Approve browser steps setting as the server holds it now
+   (browser_approve_steps), with when they last turned it off
+   (browser_approve_steps_off_at, the server's clock), read just before the
+   app approves a held browser step for them, so a choice made on another
+   device counts at once: `asks` false when they turned approvals off,
+   `offAtMs` null when the server doesn't say, and null when it can't be
+   read. Under the settings lock, like fetchSettings, so it reads after a
+   save that started before it (a card's Skip approvals). */
+/** @returns {Promise<BrowserApprovalSetting | null>} */
+export async function readBrowserApproveSteps() {
+  const op = _settingsLock.then(async () => {
+    try {
+      const settings = transformSettingsRows(await req('/settings/'));
+      return { asks: settings.browserApproveSteps !== false, offAtMs: approvalsOffAtOf(settings) };
+    } catch {
+      return null;
+    }
+  });
+  _settingsLock = op.catch(() => {});
+  return op;
 }
 
 export async function fetchSettings() {
@@ -1924,6 +2126,24 @@ export async function testProviders(providers) {
   } catch (err) {
     return { providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {}, error: err?.message || 'Test failed' };
   }
+}
+
+/**
+ * The organization's own decision model, tested with one minimal decision:
+ * the endpoint and key typed in Settings, or the stored ones where left out
+ * (a key of '***' is the stored one). cowork-server only lets an
+ * organization admin (anyone on a desktop) ask, and sends the stored key
+ * only to the stored endpoint.
+ *
+ * @param {{ url?: string, apiKey?: string, model?: string }} target
+ * @returns {Promise<{ ok: boolean, error: string | null, ms?: number }>}
+ */
+export async function testDecisionModel({ url, apiKey, model } = {}) {
+  return req('/settings/test-decision-model', {
+    method: 'POST',
+    body: JSON.stringify({ url: url || null, apiKey: apiKey || null, model: model || null }),
+    timeoutMs: 20_000,
+  });
 }
 
 export async function revealSettingKey(name) {
@@ -2267,6 +2487,17 @@ export async function deleteDatasource(engine, name) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
+// Merges entries into a connection's persisted `_picked_files` list and
+// returns the merged list. Drive saves through host.pickDriveFiles; Notion
+// pages call this directly, since there is no picker grant to record.
+export async function savePickedFiles(engine, name, files) {
+  const data = await req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files`, {
+    method: 'PATCH',
+    body: JSON.stringify({ files }),
+  });
+  return Array.isArray(data?.files) ? data.files : [];
+}
+
 // Untags one file from `project` in a connection's persisted
 // `_picked_files` grant — the "un-pick" counterpart to the PATCH the
 // Google Picker flow calls. Used by the Project files rail to remove a
@@ -2275,6 +2506,56 @@ export async function deleteDatasource(engine, name) {
 export async function deletePickedFile(engine, name, fileId, project) {
   const qs = new URLSearchParams({ project });
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
+}
+
+// On the desktop the server requires the app secret for Notion page search and
+// fetch, so they go through the main process; org mode, the web SPA and a
+// shell without the bridge call the route directly. Resolves to `{ data }`
+// with the server's JSON, or null to make the direct request.
+async function notionViaMain(path, call, signal) {
+  if (!host.isElectron || getOrgMode()) return null;
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  // IPC cannot be cancelled; an abort only stops waiting for it.
+  const result = await new Promise((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+    signal?.addEventListener('abort', onAbort, { once: true });
+    call().then(resolve, reject).finally(() => signal?.removeEventListener('abort', onAbort));
+  });
+  if (!result) return null;
+  if (result.ok) return { data: result.data };
+  if ('status' in result) {
+    // The same error a direct request raises for this response.
+    throw await responseError({
+      status: result.status,
+      text: async () => result.text,
+      headers: { get: (h) => (h.toLowerCase() === 'retry-after' ? result.retryAfter : null) },
+    }, `API ${path} returned ${result.status}`);
+  }
+  throw new Error(result.reason);
+}
+
+// Pages and databases matching `query` in one Notion connection's workspace,
+// for the chat's "Add pages from Notion" picker.
+export async function searchNotionPages(name, query, { signal } = {}) {
+  const viaMain = await notionViaMain('/connectors/notion/search', () => host.notionSearchPages(name, query), signal);
+  const data = viaMain ? viaMain.data : await req('/connectors/notion/search', {
+    method: 'POST',
+    body: JSON.stringify({ name, query }),
+    signal,
+  });
+  return Array.isArray(data?.results) ? data.results : [];
+}
+
+// A picked page's title and text (capped server-side; `truncated` says so),
+// sent with the chat message so the agent doesn't have to fetch it itself.
+export async function fetchNotionPage(name, page, { signal } = {}) {
+  const viaMain = await notionViaMain('/connectors/notion/fetch', () => host.notionFetchPage(name, page), signal);
+  if (viaMain) return viaMain.data;
+  return req('/connectors/notion/fetch', {
+    method: 'POST',
+    body: JSON.stringify({ name, page }),
+    signal,
+  });
 }
 
 // Modify-flow read: returns the saved connection as
@@ -2294,11 +2575,18 @@ export async function fetchSavedConnection(engine, name) {
 }
 
 // Changes an MCP-based connection's read/write/none tool-access mode after
-// it's already connected (ENG-487 — HubSpot's connector is the first with
-// an editable-after-connect setting). No PKCE, no reconnect — a purely
-// local write on cowork-server's side (or a proxy to auth in org mode),
-// works identically from Electron and the web SPA.
+// it's already connected. No PKCE, no reconnect. On the desktop
+// it goes through the main process, which holds the mode in the keychain and
+// the secret the local server requires; org mode (and the web SPA) calls the
+// route directly.
 export async function patchConnectionAccessMode(engine, name, accessMode) {
+  if (host.isElectron && !getOrgMode()) {
+    const result = await host.setConnectionAccessMode(engine, name, accessMode);
+    if (result) {
+      if (!result.ok) throw new Error(result.reason || 'Could not change tool access.');
+      return result;
+    }
+  }
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/access-mode`, {
     method: 'PATCH',
     body: JSON.stringify({ access_mode: accessMode }),
@@ -2592,7 +2880,7 @@ export function streamDataVaultSubmission({
   idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
-  const ctrl = new AbortController();
+  const ctrl = turnStreamController(onEvent);
   /*
    * Same idle timer as _streamResponse. Without it a submission that never
    * answers keeps its conversation's stream record forever, and every message
@@ -2641,6 +2929,7 @@ export function streamDataVaultSubmission({
           if (!raw || raw === '[DONE]') continue;
           let msg;
           try { msg = JSON.parse(raw); } catch { continue; }
+          noteResponseId(ctrl, msg);
           bumpIdle();
 
           onEvent?.(msg);
@@ -2777,6 +3066,21 @@ export async function activateArtifactVersion(path, md5) {
   return req('/publish/activate', { method: 'POST', body: JSON.stringify({ path, md5 }) });
 }
 
+// View stats of a published artifact for its owner. Same path addressing as
+// /publish/versions; an empty path would only earn a 400, so it is refused here.
+export async function fetchPublishStats(path) {
+  if (!path) throw new Error('Artifact has no path');
+  return req(`/publish/stats?path=${encodeURIComponent(path)}`);
+}
+
+export async function setPublishTracking(path, enabled) {
+  if (!path) throw new Error('Artifact has no path');
+  return req('/publish/stats/tracking', {
+    method: 'PUT',
+    body: JSON.stringify({ path, enabled }),
+  });
+}
+
 // The path to send to publish/unpublish for an artifact. Prefer the
 // artifact *folder* so folder-based artifacts publish as a unit — the
 // server resolves the primary file for static artifacts and treats
@@ -2898,10 +3202,17 @@ export async function duplicateLiveApp({ shareId, projectId }) {
  * with `status: 'organization_off'`. On the desktop it means the app's own
  * browser has registered with the local server.
  *
+ * `decisions_model` says what picks the browser's steps: Jev on MindsHub, a
+ * decision model of the organization's own, or nothing (null), and then the
+ * browser doesn't run. A server that predates it sends neither field.
+ *
  * @typedef {Object} BrowseStatus
- * @property {boolean} enabled  The person's own switch (Settings), on by default.
+ * @property {boolean} enabled  The person's own switch (Settings), read as off without a decisions model.
  * @property {boolean} available
  * @property {'none' | 'starting' | 'running' | 'unavailable' | 'not_entitled' | 'organization_off'} status
+ * @property {'mindshub' | 'own' | null} [decisions_model]
+ * @property {boolean} [can_set_decisions_model]  Whether the caller may set one up: an organization admin, or anyone on a desktop.
+ * @property {boolean} [own_decisions_unused]  The organization set up its own decision model, but this deployment's browser can't ask it.
  */
 
 /**
@@ -2949,6 +3260,93 @@ export function browserClientHints() {
  *
  * @returns {Promise<BrowseStatus>}
  */
+// ─── Voice calls (prototype) ─────────────────────────────────────────────────
+/* Whether this deployment's MindsHub Inference serves live voice. A failed
+   read reads as no, with `failed: true`, so the caller can ask again. */
+export async function fetchVoiceStatus() {
+  try {
+    const status = await req('/voice/status', { timeoutMs: 15_000, headers: await hubHeaders() });
+    return { available: !!status?.available };
+  } catch {
+    return { available: false, failed: true };
+  }
+}
+
+/* The browser's SDP offer in, GPT-Live's answer out ({session: {id},
+   transport: {sdp}}), through the server and MindsHub as the caller. */
+function localTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function startVoiceSession(sdp, voice) {
+  return req('/voice/session', {
+    method: 'POST',
+    timeoutMs: 40_000,
+    headers: await hubHeaders(),
+    // The person's time zone, so the call knows their date and time.
+    body: JSON.stringify({ sdp, ...(voice ? { voice } : {}), ...(localTimeZone() ? { timezone: localTimeZone() } : {}) }),
+  });
+}
+
+/* One step of the voice call's operator: the call's history and what is on
+   screen in, the model's next turn ({content, tool_calls: [{id, name,
+   arguments}]}) out. The app runs the calls (lib/voice/operator.js). */
+export async function voiceOperate(messages, snapshot) {
+  return req('/voice/operate', {
+    method: 'POST',
+    timeoutMs: 40_000,
+    headers: await hubHeaders(),
+    // The time zone, so the operator counts dates from the person's today.
+    body: JSON.stringify({ messages, snapshot, timezone: localTimeZone() || undefined }),
+  });
+}
+
+/* The person typed an address in a task's browser pane: the server opens the
+   task's own session at it, as them, with no agent. Web only; the desktop
+   opens its own browser (host.inAppBrowser.open). Resolves {session_id}. */
+export async function openBrowserAt(conversationId, url) {
+  return req('/browse/open', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ conversation_id: conversationId, url }),
+  });
+}
+
+/* The project's browsers (ENG-4138, prototype): which of these tasks have an
+   open browser, each with its tabs and the tabs it saved. Web only. Resolves
+   {browsers: [{conversation_id, session_id, url, viewers, holder, tabs, parked_tabs}]}. */
+export async function fetchTaskBrowsers(conversationIds) {
+  return req('/browse/browsers', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ conversation_ids: conversationIds.slice(0, 100) }),
+  });
+}
+
+export async function switchTaskTab(conversationId, tabId) {
+  return req('/browse/tabs/switch', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId, tab_id: tabId }),
+  });
+}
+
+/* Closes a tab; `park` keeps a note of it, to reopen when the task needs it. */
+export async function closeTaskTab(conversationId, tabId, { park = true } = {}) {
+  return req('/browse/tabs/close', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId, tab_id: tabId, park }),
+  });
+}
+
+/* Closes a task's browser; its tabs are noted and reopen when the task needs them. */
+export async function closeTaskBrowser(conversationId) {
+  return req('/browse/close', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId }),
+  });
+}
+
 export async function provisionBrowser() {
   return req('/browse/provision', {
     method: 'POST',
@@ -3693,4 +4091,25 @@ export function openCommentsStream(userDir, reportId, since, { onEvent, onError,
     }
   })();
   return ctrl;
+}
+
+// Push notifications for the mobile app (ENG-4023, lib/mobilePush.ts). The
+// device token is the APNs device token on iOS and the FCM registration token
+// on Android. Both answer 204. A server without push answers 404/405/501; the
+// error carries `status` so the caller can tell that apart from a failure.
+export async function registerPushDevice({ token, platform, appVersion = null, environment = null }) {
+  return req('/push/devices', {
+    method: 'POST',
+    body: JSON.stringify({ token, platform, app_version: appVersion, environment }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+// Sign-out runs this before the tokens are cleared, so keep it short.
+export async function unregisterPushDevice(token, { timeoutMs = 3_000 } = {}) {
+  return req('/push/devices', {
+    method: 'DELETE',
+    body: JSON.stringify({ token }),
+    timeoutMs,
+  });
 }

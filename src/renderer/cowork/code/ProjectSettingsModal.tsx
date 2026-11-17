@@ -29,10 +29,12 @@ import {
   type ResourceAvailability,
   type ProjectSkillSource,
   ReasoningEffort,
+  type WorkspaceMode,
 } from './api';
 import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
-import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
+import { isPermissionMode, permissionOptions } from './permissions';
+import { DEFAULT_WORKSPACE_MODE_VALUE, isWorkspaceMode, projectWorkspaceModeOptions, offersWorkspaceChoice } from './workspaceMode';
 import { MODEL_DEFAULT_VALUE, effortLevelsFor, projectEffortOptions } from './reasoning';
 import { parseEnvironmentVariables, parsePortNames } from './projectDefaults';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
@@ -41,6 +43,7 @@ import { ProjectSkillSelector } from './ProjectSkillSelector';
 import { openCodePath, openCodeRepository } from './shellLinks';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 import { useSkillLibrary } from './useSkillLibrary';
+import { useTranslation } from '../../lib/i18n';
 
 const supportedProviders = new Set(['github', 'linear']);
 
@@ -87,6 +90,7 @@ export function ProjectSettingsModal({
   modelMeta?: ModelPickerMeta;
   catalog?: CodingCatalog;
 }) {
+  const { t } = useTranslation('code');
   const localCatalog = useCodingCatalog(catalog === undefined);
   const codingCatalog = catalog || localCatalog;
   const [name, setName] = useState('');
@@ -104,10 +108,27 @@ export function ProjectSettingsModal({
   const [projectModelChoice, setProjectModel] = useState(defaultModel);
   const [projectPermission, setProjectPermission] = useState<PermissionMode>('supervised');
   const [projectReasoningEffort, setProjectReasoningEffort] = useState<ReasoningEffort | null>(null);
+  const [projectWorkspaceMode, setProjectWorkspaceMode] = useState<WorkspaceMode | null>(null);
+  // Offer the setting only where a task can choose, as the composer does.
+  const [workspaceModeChoice, setWorkspaceModeChoice] = useState(false);
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
   const initializedProjectId = useRef<string | null | undefined>(undefined);
+  const projectIdForModes = project?.id ?? null;
+  useEffect(() => {
+    if (!open) return undefined;
+    let current = true;
+    void (async () => {
+      try {
+        const options = await codingApi.workspaceModes(projectIdForModes);
+        if (current) setWorkspaceModeChoice(offersWorkspaceChoice(options));
+      } catch {
+        if (current) setWorkspaceModeChoice(false);
+      }
+    })();
+    return () => { current = false; };
+  }, [open, projectIdForModes]);
   const resumeWithoutReset = useRef(false);
   const availableConnections = useMemo(() => {
     const items = new Map(
@@ -174,6 +195,7 @@ export function ProjectSettingsModal({
     setProjectModel(project?.default_model || defaultModel);
     setProjectPermission(project?.permission_mode || 'supervised');
     setProjectReasoningEffort(project?.default_reasoning_effort || null);
+    setProjectWorkspaceMode(project?.default_workspace_mode || null);
     setError('');
     setPlaybookStatus(null);
     if (project?.playbook) {
@@ -181,7 +203,7 @@ export function ProjectSettingsModal({
         if (initializedProjectId.current === project.id) setPlaybookStatus(status);
       }).catch((reason) => {
         if (initializedProjectId.current !== project.id) return;
-        setError(reason instanceof Error ? reason.message : 'Could not inspect the team playbook.');
+        setError(reason instanceof Error ? reason.message : t('projectSettings.errors.inspectPlaybook'));
       });
     }
   // Initialize when the editor changes identity. Saving updates the selected
@@ -213,7 +235,7 @@ export function ProjectSettingsModal({
       setComputers(computerPage.items);
       setAvailability(resourcePage.items.map((item) => item.availability));
     }).catch((reason) => {
-      if (active) setError(reason instanceof Error ? reason.message : 'Could not check resource availability.');
+      if (active) setError(reason instanceof Error ? reason.message : t('projectSettings.errors.checkAvailability'));
     });
     return () => { active = false; };
   }, [open, project?.id]);
@@ -253,8 +275,8 @@ export function ProjectSettingsModal({
   };
 
   const save = async () => {
-    if (!name.trim()) { setError('Name this Code Project.'); return; }
-    if (!resources.length) { setError('Add at least one repository or folder.'); return; }
+    if (!name.trim()) { setError(t('projectSettings.errors.nameRequired')); return; }
+    if (!resources.length) { setError(t('projectSettings.errors.resourceRequired')); return; }
     setSkillsSaving(true);
     try {
       const normalizedResources = resources.map((resource) => {
@@ -281,10 +303,11 @@ export function ProjectSettingsModal({
         default_model: projectModel,
         default_reasoning_effort: projectReasoningEffort,
         permission_mode: projectPermission,
+        default_workspace_mode: projectWorkspaceMode,
       });
       onClose();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not save this Code Project.');
+      setError(reason instanceof Error ? reason.message : t('projectSettings.errors.save'));
     } finally {
       setPlaybookBusy(false);
       setSkillsSaving(false);
@@ -304,13 +327,13 @@ export function ProjectSettingsModal({
     >
       <ModalHeader
         id="code-project-settings-title"
-        title={project ? 'Project settings' : 'New code project'}
-        subtitle={project ? 'Tasks in this project share its code, connectors, and defaults.' : undefined}
+        title={project ? t('projectSettings.title') : t('projectSettings.newTitle')}
+        subtitle={project ? t('projectSettings.subtitle') : undefined}
         onClose={onClose}
       />
       <ModalBody>
         <div className="code-project-settings">
-          <Field label="Project name" heading>
+          <Field label={t('projectSettings.name')} heading>
             <Input value={name} onChange={setName} placeholder="atlas" spellCheck={false} autoFocus />
           </Field>
 
@@ -343,7 +366,7 @@ export function ProjectSettingsModal({
           />}
 
           {project && <>
-            <FieldSet legend="Skills">
+            <FieldSet legend={t('projectSettings.skills')}>
               <ProjectSkillSelector
                 items={skillLibrary.items}
                 selected={selectedSkillSources}
@@ -355,42 +378,42 @@ export function ProjectSettingsModal({
             </FieldSet>
 
             {project.playbook && (
-              <FieldSet legend="Team Setup">
+              <FieldSet legend={t('projectSettings.teamSetup.title')}>
                 <div className="code-team-setup__connected">
                 <div className="code-team-setup__summary">
                   <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
                   <div>
                     <strong>{repositoryLabel(project.playbook.repository)}</strong>
-                    <span>{project.playbook.branch} · {playbookStatus?.items.filter((item) => item.enabled).length || 0} included</span>
+                    <span>{t('projectSettings.teamSetup.summary', { branch: project.playbook.branch, count: playbookStatus?.items.filter((item) => item.enabled).length || 0 })}</span>
                   </div>
-                  {playbookStatus?.update_available && <Badge variant="warning" size="sm">Update available</Badge>}
+                  {playbookStatus?.update_available && <Badge variant="warning" size="sm">{t('projectSettings.teamSetup.updateAvailable')}</Badge>}
                 </div>
                 <div className="code-playbook-actions">
                   <Button size="sm" variant="subtle" disabled={playbookBusy} onClick={async () => {
                     setPlaybookBusy(true); setError('');
                     try { setPlaybookStatus(await codingApi.refreshPlaybook(project.id)); }
-                    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not check for Team Setup updates.'); }
+                    catch (reason) { setError(reason instanceof Error ? reason.message : t('projectSettings.errors.checkTeamSetup')); }
                     finally { setPlaybookBusy(false); }
-                  }}>Check for updates</Button>
+                  }}>{t('projectSettings.teamSetup.checkForUpdates')}</Button>
                 </div>
 
                 {playbookStatus?.update_available && (
-                  <Collapsible className="code-playbook-update" title="Review update">
-                    <pre>{playbookStatus.diff || 'A newer Team Setup revision is available.'}</pre>
+                  <Collapsible className="code-playbook-update" title={t('projectSettings.teamSetup.reviewUpdate')}>
+                    <pre>{playbookStatus.diff || t('projectSettings.teamSetup.newerRevision')}</pre>
                     <Button size="sm" variant="primary" disabled={playbookBusy} onClick={async () => {
                       setPlaybookBusy(true); setError('');
                       try { setPlaybookStatus(await codingApi.applyPlaybook(project.id)); }
-                      catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not apply the Team Setup update.'); }
+                      catch (reason) { setError(reason instanceof Error ? reason.message : t('projectSettings.errors.applyTeamSetup')); }
                       finally { setPlaybookBusy(false); }
-                    }}>Apply update</Button>
+                    }}>{t('projectSettings.teamSetup.applyUpdate')}</Button>
                   </Collapsible>
                 )}
 
                 {!!playbookStatus?.items.length && (
                   <Collapsible
                     className="code-playbook-items"
-                    title="Included guidance"
-                    meta={`${playbookStatus.items.filter((item) => item.enabled).length} of ${playbookStatus.items.length}`}
+                    title={t('projectSettings.teamSetup.includedGuidance')}
+                    meta={t('projectSettings.teamSetup.includedCount', { enabled: playbookStatus.items.filter((item) => item.enabled).length, total: playbookStatus.items.length })}
                   >
                     <div>
                       {playbookStatus.items.map((item) => (
@@ -401,7 +424,7 @@ export function ProjectSettingsModal({
                               .map((candidate) => candidate.path);
                             setPlaybookBusy(true); setError('');
                             try { setPlaybookStatus(await codingApi.setPlaybookItems(project.id, enabled)); }
-                            catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update Team Setup guidance.'); }
+                            catch (reason) { setError(reason instanceof Error ? reason.message : t('projectSettings.errors.updateGuidance')); }
                             finally { setPlaybookBusy(false); }
                           }} />
                           <span className="code-playbook-items__copy"><strong>{item.name}</strong><small>{item.kind}</small></span>
@@ -411,14 +434,14 @@ export function ProjectSettingsModal({
                   </Collapsible>
                 )}
 
-                <Collapsible className="code-team-setup__details" title="Details">
+                <Collapsible className="code-team-setup__details" title={t('projectSettings.teamSetup.details')}>
                   <dl>
-                    <div><dt>Source</dt><dd title={project.playbook.repository}>{project.playbook.repository}</dd></div>
-                    <div><dt>Revision</dt><dd>{playbookStatus?.current_revision?.slice(0, 8) || 'Checking…'}</dd></div>
+                    <div><dt>{t('projectSettings.teamSetup.source')}</dt><dd title={project.playbook.repository}>{project.playbook.repository}</dd></div>
+                    <div><dt>{t('projectSettings.teamSetup.revision')}</dt><dd>{playbookStatus?.current_revision?.slice(0, 8) || t('projectSettings.teamSetup.checking')}</dd></div>
                   </dl>
                   <div>
-                    <Button size="sm" variant="subtle" onClick={() => void openCodeRepository(project.playbook!.repository).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not open that repository.'))}>Open source</Button>
-                    {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(project.playbook!.cache_path!)}>Open local copy</Button>}
+                    <Button size="sm" variant="subtle" onClick={() => void openCodeRepository(project.playbook!.repository).catch((reason) => setError(reason instanceof Error ? reason.message : t('projectSettings.errors.openRepository')))}>{t('projectSettings.teamSetup.openSource')}</Button>
+                    {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(project.playbook!.cache_path!)}>{t('projectSettings.teamSetup.openLocalCopy')}</Button>}
                   </div>
                 </Collapsible>
                 {playbookStatus?.error && <Alert variant="danger" className="code-project-error">{playbookStatus.error}</Alert>}
@@ -426,25 +449,33 @@ export function ProjectSettingsModal({
               </FieldSet>
             )}
 
-            <FieldSet legend="Task defaults">
+            <FieldSet legend={t('projectSettings.defaults.title')}>
               <div className="code-project-columns">
-                <Field label="Agent"><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} ariaLabel="Default coding agent" /></Field>
-                <Field label="Model"><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></Field>
+                <Field label={t('projectSettings.defaults.agent')}><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} ariaLabel={t('projectSettings.defaults.agentAriaLabel')} /></Field>
+                <Field label={t('projectSettings.defaults.model')}><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} ariaLabel={t('projectSettings.defaults.modelAriaLabel')} placeholder={t('projectSettings.defaults.modelPlaceholder')} emptyText={t('projectSettings.defaults.noModels')} onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></Field>
                 {projectEffortLevels && (
-                  <Field label="Reasoning"><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} ariaLabel="Default reasoning effort" /></Field>
+                  <Field label={t('projectSettings.defaults.reasoning')}><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} ariaLabel={t('projectSettings.defaults.reasoningAriaLabel')} /></Field>
                 )}
-                <Field label="Permissions"><Select value={projectPermission} onValueChange={(value) => {
+                <Field label={t('projectSettings.defaults.permissions')}><Select value={projectPermission} onValueChange={(value) => {
                   if (isPermissionMode(value)) setProjectPermission(value);
-                }} options={PERMISSION_OPTIONS} ariaLabel="Default coding permissions" /></Field>
+                }} options={permissionOptions(projectPermission)} ariaLabel={t('projectSettings.defaults.permissionsAriaLabel')} /></Field>
+                {workspaceModeChoice && (
+                  <Field label={t('projectSettings.defaults.workspace')}><Select
+                    value={projectWorkspaceMode || DEFAULT_WORKSPACE_MODE_VALUE}
+                    onValueChange={(value) => setProjectWorkspaceMode(isWorkspaceMode(value) ? value : null)}
+                    options={projectWorkspaceModeOptions()}
+                    ariaLabel={t('projectSettings.defaults.workspaceAriaLabel')}
+                  /></Field>
+                )}
               </div>
             </FieldSet>
 
-            <FieldSet legend="Environment">
+            <FieldSet legend={t('projectSettings.environment.title')}>
               <div className="grid gap-3">
-                <Field label="Development ports" help="Each task gets its own free port under each name.">
+                <Field label={t('projectSettings.environment.ports')} help={t('projectSettings.environment.portsHelp')}>
                   <Input variant="mono" value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" />
                 </Field>
-                <Field label="Environment variables" help="Visible to every task in this project. Don’t put secrets here.">
+                <Field label={t('projectSettings.environment.variables')} help={t('projectSettings.environment.variablesHelp')}>
                   <Textarea variant="mono" value={environmentText} onChange={setEnvironmentText} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} />
                 </Field>
               </div>
@@ -453,11 +484,11 @@ export function ProjectSettingsModal({
           {error && <Alert variant="danger">{error}</Alert>}
         </div>
       </ModalBody>
-      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>}>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>{t('projectSettings.cancel')}</Button>}>
         <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !resources.length}>
           {busy || skillsSaving || playbookBusy
-            ? (project ? 'Saving…' : 'Creating…')
-            : project ? 'Save changes' : <>{Ico.plus(14)} Create project</>}
+            ? (project ? t('projectSettings.saving') : t('projectSettings.creating'))
+            : project ? t('projectSettings.save') : <>{Ico.plus(14)} {t('projectSettings.create')}</>}
         </Button>
       </ModalFooter>
     </Modal>

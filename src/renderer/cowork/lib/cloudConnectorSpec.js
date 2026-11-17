@@ -13,6 +13,8 @@
 // path, so it stays beside the cloud form (Supabase has both). A connector
 // with no cloud block anywhere is returned untouched.
 
+import i18n from '../../lib/i18n';
+
 export function isCloudDatasourceSpec(spec) {
   const methods = Array.isArray(spec?.methods) ? spec.methods : [];
   return methods.some((m) => m && m.cloud);
@@ -49,7 +51,7 @@ export function toCloudSpec(spec, connection = null) {
         // Everything but the password, which only auth holds.
         name: connection.name,
         user_label: connection.name,
-        title: `Edit ${connection.name}`,
+        title: i18n.t('messages.cloudConnector.editTitle', { ns: 'projects', name: connection.name }),
         methods: methods.map((m) => ({
           ...m,
           fields: (m.fields || []).map((f) => {

@@ -1,0 +1,30 @@
+{
+  "picker": {
+    "placeholder": "Select model",
+    "empty": "No models found",
+    "searchAriaLabel": "Search models",
+    "unavailable": "Unavailable",
+    "addCredits": "Add credits",
+    "addCreditsTooltip": "Add credits to use this model"
+  },
+  "groups": {
+    "openWeight": "Open Weight",
+    "other": "Other"
+  },
+  "effort": {
+    "label": "Effort",
+    "description": "Higher effort means more thorough responses, but takes longer and uses your limits faster.",
+    "default": "Default",
+    "levels": {
+      "none": "None",
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Xhigh",
+      "max": "Max",
+      "fast": "Fast",
+      "slow": "Slow"
+    }
+  }
+}

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { host } from '../../../../platform/host';
+import i18n from '../../../../lib/i18n';
+import { productName } from '../../../../lib/deploymentBrand';
 import {
   cancelAgentRepair,
   canUseArtifactWorkspace,
@@ -62,12 +64,15 @@ function markAutoOpened(repairId) {
   } catch { /* storage unavailable: auto-open again next time */ }
 }
 
-const NO_WORKSPACE = 'This artifact was created before editing was available';
-const NO_DRAFT_ACCESS = 'The owner has not shared this draft for review';
+const tr = (key, vars) => i18n.t(`workspace.${key}`, { ns: 'artifacts', ...vars });
+const NO_WORKSPACE = () => tr('noWorkspace');
+const NO_DRAFT_ACCESS = () => tr('noDraftAccess');
 // Why the owner's comments are off: comments-access answered 503, and the
 // review service may come back.
-const COMMENTS_DOWN = "Comments aren't available right now. Reopen the artifact to try again.";
+const COMMENTS_DOWN = () => tr('commentsDown');
+/* The English text, for tests; the hook sets previewOnlyReason(). */
 export const PREVIEW_ONLY = "Preview only: Cowork can't edit this file type.";
+export const previewOnlyReason = () => tr('previewOnly', { product: productName('Cowork') });
 
 /*
  * `previewOnly` marks a file the viewer shows read-only, such as an .xlsx,
@@ -167,10 +172,10 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
           // existed, deliberately (ENG-1910). Nothing more to try: the source
           // request in flight is answering 404 for the same reason.
           setCapabilities(null);
-          setUnsupportedReason(NO_DRAFT_ACCESS);
+          setUnsupportedReason(NO_DRAFT_ACCESS());
           setStatus('unsupported');
         } else {
-          setError(reviewError.message || 'Could not open this artifact for review');
+          setError(reviewError.message || tr('openReviewFailed'));
           setStatus('error');
         }
         return;
@@ -192,7 +197,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
         } catch (accessError) {
           if (!isCurrent()) return;
           setCommentsReady(false);
-          if (accessError?.status === 503) setCommentsOffReason(COMMENTS_DOWN);
+          if (accessError?.status === 503) setCommentsOffReason(COMMENTS_DOWN());
           // A model-comparison side: the server keeps its drafts from being
           // shared until the user continues with it, and says so.
           else if (accessError?.status === 409) setCommentsOffReason(accessError.message);
@@ -258,7 +263,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
           if (!isCurrent()) return;
           // Soft: the artifact itself loaded. Same channel refreshRepair uses
           // for a repair that ended without a comparison to show.
-          setError(repairError.message || 'Could not load the agent suggestion');
+          setError(repairError.message || tr('loadSuggestionFailed'));
         }
       }
       // New servers bundle the initial history with the editable source so an
@@ -278,10 +283,10 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       } else if (loadError?.status === 404 || loadError?.status === 422) {
         // Unsupported artifacts can still preview, publish and review.
         setCapabilities(nextCapabilities);
-        setUnsupportedReason(NO_WORKSPACE);
+        setUnsupportedReason(NO_WORKSPACE());
         setStatus('unsupported');
       } else {
-        setError(loadError.message || 'Could not load editable source');
+        setError(loadError.message || tr('loadSourceFailed'));
         setStatus('error');
       }
     }
@@ -305,7 +310,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     setComparison(null);
     setRepair(null);
     if (open && previewOnly) {
-      setUnsupportedReason(PREVIEW_ONLY);
+      setUnsupportedReason(previewOnlyReason());
       setStatus('unsupported');
     } else if (open && supported) {
       load();
@@ -314,7 +319,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       // is no workspace request to wait for. Keep this state distinct from a
       // real in-flight load; otherwise the mode tabs say "Loading…" forever
       // even though no request was started.
-      setUnsupportedReason(NO_WORKSPACE);
+      setUnsupportedReason(NO_WORKSPACE());
       setStatus('unsupported');
     } else {
       setStatus('idle');
@@ -361,7 +366,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
         setConflict(staleRevision);
         setStatus('conflict');
       } else {
-        setError(saveError.message || 'Could not save changes');
+        setError(saveError.message || tr('saveFailed'));
         setStatus('error');
       }
       return null;
@@ -386,7 +391,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       setStatus('ready');
     } catch (compareError) {
       if (workspaceGeneration.current !== generation) return;
-      setError(compareError.message || 'Could not load revision');
+      setError(compareError.message || tr('loadRevisionFailed'));
       setStatus('error');
     }
   }, [artifact, source]);
@@ -395,7 +400,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     if (!source) {
       // Reachable when the source never loaded - a binary or oversized
       // artifact - where the button is live but has nothing to write into.
-      setError('This artifact has no editable source to restore into');
+      setError(tr('noSourceToRestore'));
       return null;
     }
     setStatus('saving');
@@ -414,7 +419,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       return next;
     } catch (restoreError) {
       if (workspaceGeneration.current !== generation) return null;
-      setError(restoreError.message || 'Could not restore revision');
+      setError(restoreError.message || tr('restoreFailed'));
       setStatus(restoreError?.status === 409 ? 'conflict' : 'error');
       return null;
     }
@@ -460,9 +465,9 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       setError('');
       setComparison({ kind: 'agent', ...detail.compare, repair: detail.repair });
     } else if (detail.repair?.status === 'no_change') {
-      setError('The agent finished without changing this artifact. The comment remains open.');
+      setError(tr('agentNoChange'));
     } else if (detail.repair?.status === 'conflict') {
-      setError('The artifact changed while the agent was working. Review the latest revision before trying again.');
+      setError(tr('changedWhileAgent'));
       await load();
     }
     return detail;
@@ -495,7 +500,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       // A server from before this route exists answers 404/405. The resolve
       // itself succeeded, so that is not something to report to the user.
       if (releaseError?.status !== 404 && releaseError?.status !== 405) {
-        setError('The comment was resolved, but its agent suggestion is still open.');
+        setError(tr('resolvedSuggestionOpen'));
       }
       return null;
     }
@@ -513,7 +518,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     if (!repair?.id) {
       // A user-initiated decision with no record behind it is a bug, not a
       // normal path: the comparison has outlived the repair that opened it.
-      setError('That suggestion is no longer open, so there was nothing to decide.');
+      setError(tr('suggestionClosed'));
       setComparison(null);
       return { decided: false, reason: 'missing-repair' };
     }

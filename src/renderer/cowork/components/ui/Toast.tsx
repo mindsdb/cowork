@@ -20,6 +20,7 @@
 //   toastManager.add({ title: 'Saved.', type: 'success' });
 //   toastManager.add({ id: 'oauth-x', title: '…', type: 'danger', timeout: 0 });
 //   toastManager.update('oauth-x', { title: 'Reconnected.', type: 'success', timeout: 5000 });
+//   toastManager.add({ title: '…', actionProps: { children: 'Open', onClick } });
 //
 // type: 'success' | 'danger' | 'warning' | undefined (neutral).
 //
@@ -36,6 +37,7 @@ import { Toast as BaseToast } from '@base-ui/react/toast';
 import { Check, TriangleAlert, CircleAlert, X } from 'lucide-react';
 import { Icon } from './Icon';
 import { cn } from '../../lib/cn';
+import { useTranslation } from '../../../lib/i18n';
 import { useNativeOverlay } from '../../lib/nativeOverlay';
 
 export const useToastManager = BaseToast.useToastManager;
@@ -88,6 +90,7 @@ function ToastList() {
 // The Base UI toast object carries app-defined fields (title/description/type)
 // under a broad generic; typed `any` here rather than fighting those generics.
 function ToastBubble({ toast }: { toast: any }) {
+  const { t } = useTranslation('shell');
   const icon = toast.type ? TYPE_ICON[toast.type] : undefined;
   return (
     <BaseToast.Root
@@ -121,8 +124,10 @@ function ToastBubble({ toast }: { toast: any }) {
       {toast.description && (
         <BaseToast.Description className="text-ink-3 text-[12px]">{toast.description}</BaseToast.Description>
       )}
+      {/* Renders nothing unless the toast carries actionProps. */}
+      <BaseToast.Action className="shrink-0 bg-transparent border-0 p-0 cursor-pointer font-body text-[13px] font-medium underline underline-offset-2 text-current hover:opacity-80" />
       <BaseToast.Close
-        aria-label="Dismiss"
+        aria-label={t('ui.toast.dismiss')}
         className="shrink-0 inline-flex items-center justify-center bg-transparent border-0 p-0 cursor-pointer opacity-70 hover:opacity-100"
       >
         {CLOSE_X}

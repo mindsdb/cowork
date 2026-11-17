@@ -7,7 +7,7 @@
      const { isDragging, dropHandlers } = useFileDrop({ onFiles, disabled });
      <div style={{ position: 'relative' }} {...dropHandlers}>
        …content…
-       <FileDropOverlay active={isDragging} label="Drop to add" />
+       <FileDropOverlay active={isDragging} label={t('…dropToAdd')} />
      </div>
 
    Notes:
@@ -22,6 +22,7 @@
 import { memo, useCallback, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { Icon } from '../components/ui/Icon';
+import i18n from '../../lib/i18n';
 
 function dragHasFiles(e) {
   const types = e?.dataTransfer?.types;
@@ -155,7 +156,7 @@ export function useFileDrop({ onFiles, disabled = false } = {}) {
    per keystroke), and all props are primitives — skip when nothing changed. */
 export const FileDropOverlay = memo(function FileDropOverlay({ active, label, busy = false, error = '' }) {
   const visible = active || busy || !!error;
-  const text = error || (busy ? 'Uploading…' : label);
+  const text = error || (busy ? i18n.t('messages.fileDrop.uploading', { ns: 'projects' }) : label);
   return (
     <div
       aria-hidden={!visible}

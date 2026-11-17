@@ -6,7 +6,7 @@
  * While a save has not replied, the prompt says the text may be lost, since
  * the save keeps it unless it fails.
  *
- * The header, the mode tabs, the body with its Markdown editor, the workspace
+ * The header, its layer toggles, the body with its Markdown editor, the workspace
  * hook, the modal and the confirm dialog are the real ones, so the Close button
  * is the one people click, the draft lives where the app keeps it, and Esc goes
  * through the dialog's own dismissal. Only the network, the host and the
@@ -94,7 +94,9 @@ const editor = () => screen.queryByLabelText('Edit notes.md');
 const discardPrompt = () => screen.queryByRole('dialog', { name: 'Discard changes?' });
 
 async function openEditor() {
-  await user.click(await screen.findByRole('tab', { name: 'Edit' }));
+  // The code editor is the Live edit layer, remembered across opens: switch it on only if off.
+  const toggle = await screen.findByRole('button', { name: 'Live edit' });
+  if (toggle.getAttribute('aria-pressed') !== 'true') await user.click(toggle);
   return screen.findByLabelText('Edit notes.md');
 }
 

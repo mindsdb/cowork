@@ -14,11 +14,11 @@ import { useState } from 'react';
 import Ico from './Icons';
 import { Tooltip } from './ui';
 import {
-  EVERYONE_AT_DESC,
-  ONLY_ME_DESC,
-  ONLY_ME_TITLE,
+  everyoneAtDesc,
+  onlyMeDesc,
+  onlyMeTitle,
   SHARED_KIND,
-  UNKNOWN_PERSON,
+  unknownPerson,
   everyoneAtLabel,
   namesDefaultTeam,
   orgNameOrGeneric,
@@ -27,9 +27,11 @@ import {
 } from '../lib/orgSharing';
 import { useKnownPeople, useMindsHubTeams } from '../hooks/useOrgSharing';
 import { LOAD_STATUS } from '../lib/sharingContract';
+import i18n, { useTranslation } from '../../lib/i18n';
 
-export const UNKNOWN_TEAM = 'Unknown team';
-export const PERSON_NOT_LOADED = "Couldn't load name";
+const tr = (key, vars) => i18n.t(key, { ns: 'library', ...vars });
+export const unknownTeam = () => tr('recipients.unknownTeam');
+export const personNotLoaded = () => tr('recipients.personNotLoaded');
 const NONE = Object.freeze([]);
 
 /**
@@ -54,34 +56,34 @@ export function recipientItems({ teamIds = NONE, userIds = NONE, emails = NONE }
     const team = teams.find((t) => t.id === id);
     let primary;
     if (team) primary = team.display_name;
-    else primary = teamsState?.status === LOAD_STATUS.READY ? UNKNOWN_TEAM : 'Loading…';
+    else primary = teamsState?.status === LOAD_STATUS.READY ? unknownTeam() : tr('recipients.loading');
     items.push({
       key: `t:${id}`,
       kind: 'team',
       primary,
-      secondary: 'Team',
-      removeLabel: `Remove ${primary}`,
+      secondary: tr('recipients.team'),
+      removeLabel: tr('recipients.remove', { name: primary }),
       muted: !team,
     });
   }
   for (const id of userIds) {
     const person = peopleById.get(id);
     if (person?.pending) {
-      items.push({ key: `u:${id}`, kind: 'person', primary: 'Loading…', secondary: null, removeLabel: 'Remove person', person, muted: true });
+      items.push({ key: `u:${id}`, kind: 'person', primary: tr('recipients.loading'), secondary: null, removeLabel: tr('recipients.removePerson'), person, muted: true });
       continue;
     }
     // MindsHub couldn't be asked: not known to be missing, so never "Unknown".
     if (person?.failed) {
-      items.push({ key: `u:${id}`, kind: 'person', primary: PERSON_NOT_LOADED, secondary: null, removeLabel: 'Remove person', person, muted: true });
+      items.push({ key: `u:${id}`, kind: 'person', primary: personNotLoaded(), secondary: null, removeLabel: tr('recipients.removePerson'), person, muted: true });
       continue;
     }
-    const name = person?.name || person?.email || UNKNOWN_PERSON;
+    const name = person?.name || person?.email || unknownPerson();
     items.push({
       key: `u:${id}`,
       kind: 'person',
       primary: name,
       secondary: person?.name && person?.email ? person.email : null,
-      removeLabel: `Remove ${name}`,
+      removeLabel: tr('recipients.remove', { name }),
       person,
       muted: !person?.name && !person?.email,
     });
@@ -91,8 +93,8 @@ export function recipientItems({ teamIds = NONE, userIds = NONE, emails = NONE }
       key: `e:${email}`,
       kind: emailsOnly ? 'email' : 'outside',
       primary: email,
-      secondary: emailsOnly ? null : `Outside ${orgNameOrGeneric(orgName)}`,
-      removeLabel: `Remove ${email}`,
+      secondary: emailsOnly ? null : tr('recipients.outsideOrg', { org: orgNameOrGeneric(orgName) }),
+      removeLabel: tr('recipients.remove', { name: email }),
     });
   }
   return items;
@@ -127,6 +129,7 @@ export function RecipientTile({ item }) {
 
 /** One recipient. With `onRemove` it ends in a remove ×. */
 export function RecipientRow({ item, onRemove = null }) {
+  const { t } = useTranslation('library');
   return (
     <li
       data-recipient-row={item.kind}
@@ -143,7 +146,7 @@ export function RecipientRow({ item, onRemove = null }) {
         )}
       </span>
       {onRemove && (
-        <Tooltip content="Remove">
+        <Tooltip content={t('recipients.removeTooltip')}>
           <button
             type="button"
             aria-label={item.removeLabel}
@@ -161,6 +164,7 @@ export function RecipientRow({ item, onRemove = null }) {
  * rest.
  */
 export function ReadOnlyRecipientRows({ items, label, limit = 4, testId, className = '' }) {
+  const { t } = useTranslation('library');
   const [expanded, setExpanded] = useState(false);
   const cut = !expanded && items.length > limit + 1;
   const shown = cut ? items.slice(0, limit) : items;
@@ -178,7 +182,7 @@ export function ReadOnlyRecipientRows({ items, label, limit = 4, testId, classNa
           type="button"
           onClick={() => setExpanded(true)}
           className="self-start bg-transparent border-0 cursor-pointer mt-0.5 py-1 px-2 font-body text-[12.5px] font-medium text-accent"
-        >{`+${items.length - limit} more`}</button>
+        >{t('recipients.more', { count: items.length - limit })}</button>
       )}
     </div>
   );
@@ -203,9 +207,10 @@ export function useRecipientItems({ teamIds = NONE, userIds = NONE, emails = NON
  * the org and outside emails its access lists.
  */
 export function SharedWithList({ teamIds = NONE, userIds = NONE, emails = NONE, orgName = null, teamsState = null, emailsOnly = false, limit = 4 }) {
+  const { t } = useTranslation('library');
   const items = useRecipientItems({ teamIds, userIds, emails }, { teamsState, orgName, emailsOnly });
   if (items.length === 0) return null;
-  return <ReadOnlyRecipientRows items={items} label="Shared with" limit={limit} testId="shared-with" />;
+  return <ReadOnlyRecipientRows items={items} label={t('recipients.sharedWith')} limit={limit} testId="shared-with" />;
 }
 
 /**
@@ -226,8 +231,10 @@ export function SharedWithList({ teamIds = NONE, userIds = NONE, emails = NONE, 
  */
 export function AudienceList({
   orgAllowed = false, teamIds = NONE, userIds = NONE,
-  orgName = null, teamsState: teamsProp = null, label = 'Who can use it', limit = 6, flush = true,
+  orgName = null, teamsState: teamsProp = null, label: labelProp, limit = 6, flush = true,
 }) {
+  const { t } = useTranslation('library');
+  const label = labelProp ?? t('recipients.whoCanUseIt');
   const ownTeams = useMindsHubTeams(!teamsProp);
   const teamsState = teamsProp || ownTeams;
   const teams = teamsState.teams || NONE;
@@ -238,11 +245,11 @@ export function AudienceList({
   );
   const items = [];
   if (everyone) {
-    items.push({ key: 'org', kind: 'org', primary: everyoneAtLabel(orgName), secondary: EVERYONE_AT_DESC });
+    items.push({ key: 'org', kind: 'org', primary: everyoneAtLabel(orgName), secondary: everyoneAtDesc() });
   }
   items.push(...listed);
   if (items.length === 0) {
-    items.push({ key: 'me', kind: 'private', primary: ONLY_ME_TITLE, secondary: ONLY_ME_DESC[SHARED_KIND.SKILL] });
+    items.push({ key: 'me', kind: 'private', primary: onlyMeTitle(), secondary: onlyMeDesc(SHARED_KIND.SKILL) });
   }
   // `flush`: pulled out by the rows' own padding, so names line up with the
   // text around them.

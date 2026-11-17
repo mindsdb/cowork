@@ -16,6 +16,7 @@
 
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { SKINS, SKIN_LOCKED } from '../../lib/skins';
+import { useTranslation } from '../../lib/i18n';
 
 const STYLE_OPTIONS = SKINS.filter((s) => s.id !== 'custom'); // Normal / 8-Bit
 
@@ -53,29 +54,32 @@ function Group({ label, children }) {
 export default function ThemeModal({
   open, onClose, theme, onThemeChange, skin, onSkinChange, orgLocks = null,
 }) {
+  const { t } = useTranslation('shell');
   const themeLocked = orgLocks?.theme === true;
   const styleLocked = orgLocks?.style === true;
   return (
     <Modal open={open} onClose={onClose} size="sm" labelledBy="theme-modal-title">
-      <ModalHeader id="theme-modal-title" title="Display Settings" subtitle={SKIN_LOCKED ? 'Theme — applied live' : 'Theme and style — applied live'} onClose={onClose} />
+      <ModalHeader id="theme-modal-title" title={t('themeModal.title')} subtitle={SKIN_LOCKED ? t('themeModal.subtitleThemeOnly') : t('themeModal.subtitle')} onClose={onClose} />
       <ModalBody>
         <div className="flex flex-col gap-[18px]">
           {!themeLocked && (
-            <Group label="Theme">
-              <Choice active={theme === 'light'} onClick={() => onThemeChange('light')}>Light</Choice>
-              <Choice active={theme === 'dark'} onClick={() => onThemeChange('dark')}>Dark</Choice>
+            <Group label={t('themeModal.theme')}>
+              <Choice active={theme === 'light'} onClick={() => onThemeChange('light')}>{t('themeModal.light')}</Choice>
+              <Choice active={theme === 'dark'} onClick={() => onThemeChange('dark')}>{t('themeModal.dark')}</Choice>
             </Group>
           )}
           {(themeLocked || (styleLocked && !SKIN_LOCKED)) && (
             <p className="m-0 text-sm text-ink-3">
-              {themeLocked && (styleLocked || SKIN_LOCKED) ? 'Theme and style are' : themeLocked ? 'Theme is' : 'Style is'} set by your organization.
+              {themeLocked && (styleLocked || SKIN_LOCKED)
+                ? t('themeModal.setByOrg.themeAndStyle')
+                : themeLocked ? t('themeModal.setByOrg.theme') : t('themeModal.setByOrg.style')}
             </p>
           )}
           {!SKIN_LOCKED && !styleLocked && (
-            <Group label="Style">
+            <Group label={t('themeModal.style')}>
               {STYLE_OPTIONS.map((s) => (
                 <Choice key={s.id} active={skin === s.id} onClick={() => onSkinChange(s.id)}>
-                  {s.label}
+                  {t(`themeModal.skins.${s.id}`, { defaultValue: s.label })}
                 </Choice>
               ))}
             </Group>

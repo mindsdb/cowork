@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import i18n from '../../lib/i18n';
 import { codingApi, type EngineCapability } from './api';
 import { onMindsHubCredentialChanged } from '../../platform/host';
 
@@ -63,7 +64,7 @@ export function useCodingCatalog(enabled = true): CodingCatalog {
         setEngineError('');
       }
     }).catch((reason) => {
-      if (requestGeneration === generation.current) setEngineError(reason instanceof Error ? reason.message : 'Could not load coding agents.');
+      if (requestGeneration === generation.current) setEngineError(reason instanceof Error ? reason.message : i18n.t('catalog.loadAgentsFailed', { ns: 'code' }));
     }).finally(() => {
       if (requestGeneration === generation.current) setEnginesLoading(false);
     });
@@ -90,7 +91,7 @@ export function useCodingCatalog(enabled = true): CodingCatalog {
       setModelsByEngine((current) => ({ ...current, [engineId]: [] }));
       setModelErrors((current) => ({
         ...current,
-        [engineId]: reason instanceof Error ? reason.message : 'Could not load coding models.',
+        [engineId]: reason instanceof Error ? reason.message : i18n.t('catalog.loadModelsFailed', { ns: 'code' }),
       }));
     }).finally(() => {
       if (requestGeneration !== generation.current) return;

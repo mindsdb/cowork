@@ -26,6 +26,7 @@ import { DEFAULT_CUSTOM_THEME } from '../../../lib/customTheme';
 import { stockBackground } from '../../../lib/stockThemeTokens';
 import { productName } from '../../../lib/deploymentBrand';
 import { STOCK_WORDMARK } from '../../../../shared/product-name';
+import { sharedTranslator, useTranslation } from '../../../lib/i18n';
 import {
   GREETING_MAX_LENGTH,
   GUIDELINES_MAX_LENGTH,
@@ -39,7 +40,8 @@ const COLOR_SWATCH_INPUT =
 const IMAGE_PREVIEW =
   'h-8 max-w-[160px] object-contain rounded-md border border-solid border-line-2 bg-surface p-1';
 const NOT_SET = 'none';
-const ADMIN_ONLY = 'Set by your organization admin.';
+// For saveErrorMessage, which runs outside a component.
+const tr = sharedTranslator('settings');
 
 /** The draft the form edits: the saved look, with the style spelled out. */
 function draftFrom(appearance) {
@@ -85,8 +87,8 @@ export function changedFields(draft, loaded) {
 export function saveErrorMessage(err) {
   const detail = typeof err?.message === 'string' && err.message && !/^API \//.test(err.message) ? err.message : null;
   if ((err?.status === 403 || err?.status === 422) && detail) return detail;
-  if (err?.status === 403) return 'Only an organization admin can change the branding.';
-  return "Couldn't save the branding. Try again.";
+  if (err?.status === 403) return tr('branding.saveError.forbidden');
+  return tr('branding.saveError.generic');
 }
 
 /** Same look? Compared as what would be saved, so a no-op edit isn't a change. */
@@ -95,6 +97,7 @@ function sameLook(a, b) {
 }
 
 export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) {
+  const { t } = useTranslation('settings');
   const canEdit = branding.canEdit === true;
   const saved = branding.appearance;
   const [draft, setDraft] = useState(() => draftFrom(saved));
@@ -135,7 +138,7 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
 
   const save = async () => {
     if (draft.sidebarTitleMode === 'custom' && !draft.sidebarTitle?.trim()) {
-      setTitleError('Enter a sidebar title, or choose Company name or None.');
+      setTitleError(t('branding.sidebarTitle.required'));
       return;
     }
     setStatus({ state: 'saving', message: null });
@@ -157,17 +160,17 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
 
   const locked = !canEdit;
   const custom = draft.skin === 'custom';
-  const sub = (text) => (canEdit ? text : `${text} ${ADMIN_ONLY}`);
+  const sub = (text) => (canEdit ? text : `${text} ${t('branding.adminOnly')}`);
   const companyTitle = companySidebarTitle(branding.orgName, productName(STOCK_WORDMARK));
   const titleMode = draft.sidebarTitleMode;
-  const shownTitle = titleMode === 'none' ? 'logo only'
-    : titleMode === 'custom' ? (draft.sidebarTitle?.trim() || '(no title)')
+  const shownTitle = titleMode === 'none' ? t('branding.sidebarTitle.logoOnly')
+    : titleMode === 'custom' ? (draft.sidebarTitle?.trim() || t('branding.sidebarTitle.noTitle'))
       : companyTitle;
   const titleBlank = titleMode === 'custom' && !draft.sidebarTitle?.trim();
 
   return (
     <>
-      <Section title="Sidebar title" subtitle={sub('Shown at the top of the sidebar for everyone in your organization. Company name follows renames in the console; a custom title stays as typed; None shows the logo only.')}>
+      <Section title={t('branding.sidebarTitle.title')} subtitle={sub(t('branding.sidebarTitle.subtitle'))}>
         <div className="flex flex-col gap-2">
           <ToggleGroup
             value={titleMode}
@@ -176,11 +179,11 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
               sidebarTitle: v === 'custom' ? (draft.sidebarTitle ?? saved.sidebarTitle ?? companyTitle) : draft.sidebarTitle,
             })}
             disabled={locked}
-            aria-label="Sidebar title"
+            aria-label={t('branding.sidebarTitle.ariaLabel')}
             options={[
-              { value: 'company', label: 'Company name', 'aria-label': 'Company name', title: 'Follows the company name, including renames.' },
-              { value: 'custom', label: 'Custom', 'aria-label': 'Custom', title: 'A title you type, kept through renames.' },
-              { value: 'none', label: 'None', 'aria-label': 'None (logo only)', title: 'No title: the logo alone.' },
+              { value: 'company', label: t('branding.sidebarTitle.company'), 'aria-label': t('branding.sidebarTitle.company'), title: t('branding.sidebarTitle.companyHint') },
+              { value: 'custom', label: t('branding.sidebarTitle.custom'), 'aria-label': t('branding.sidebarTitle.custom'), title: t('branding.sidebarTitle.customHint') },
+              { value: 'none', label: t('branding.sidebarTitle.none'), 'aria-label': t('branding.sidebarTitle.noneAriaLabel'), title: t('branding.sidebarTitle.noneHint') },
             ]}
           />
           {titleMode === 'custom' && (
@@ -194,60 +197,60 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
                 required
                 aria-invalid={titleBlank || undefined}
                 aria-describedby={titleError || titleBlank ? 'org-sidebar-title-error' : undefined}
-                aria-label="Custom sidebar title"
+                aria-label={t('branding.sidebarTitle.customAriaLabel')}
               />
               {(titleError || titleBlank) && (
                 <div id="org-sidebar-title-error" role="alert" className="text-[12px] text-danger">
-                  {titleError || 'Enter a sidebar title, or choose Company name or None.'}
+                  {titleError || t('branding.sidebarTitle.required')}
                 </div>
               )}
             </>
           )}
           <div className="text-[12px] text-ink-3" data-testid="sidebar-title-preview">
-            Sidebar shows: <span className="font-semibold text-ink-2">{shownTitle}</span>
+            {t('branding.sidebarTitle.preview')} <span className="font-semibold text-ink-2">{shownTitle}</span>
           </div>
         </div>
       </Section>
 
       <Section
-        title="Logo and icon"
-        subtitle="The logo is the sidebar logo and the icon is the browser tab icon, for everyone in your organization. They are set in the console."
+        title={t('branding.logo.title')}
+        subtitle={t('branding.logo.subtitle')}
       >
         <div className="flex flex-wrap items-center gap-3">
           {branding.iconUrl && (
-            <img src={branding.iconUrl} alt="Organization icon" className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
+            <img src={branding.iconUrl} alt={t('branding.logo.iconAlt')} className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
           )}
-          {branding.logoUrl && <img src={branding.logoUrl} alt="Organization logo" className={IMAGE_PREVIEW} />}
+          {branding.logoUrl && <img src={branding.logoUrl} alt={t('branding.logo.logoAlt')} className={IMAGE_PREVIEW} />}
           {branding.logoDarkUrl && (
-            <img src={branding.logoDarkUrl} alt="Organization logo for dark backgrounds" className={`${IMAGE_PREVIEW} bg-[#111]`} />
+            <img src={branding.logoDarkUrl} alt={t('branding.logo.logoDarkAlt')} className={`${IMAGE_PREVIEW} bg-[#111]`} />
           )}
           {!branding.iconUrl && !branding.logoUrl && !branding.logoDarkUrl && (
-            <span className="text-sm text-ink-3">None set.</span>
+            <span className="text-sm text-ink-3">{t('branding.logo.noneSet')}</span>
           )}
-          <Button variant="subtle" className="whitespace-nowrap" onClick={() => openExternal(consoleLink)} title="Opens in your browser">
-            Edit in console {Ico.arrowUpRight(12)}
+          <Button variant="subtle" className="whitespace-nowrap" onClick={() => openExternal(consoleLink)} title={t('branding.logo.opensInBrowser')}>
+            {t('branding.logo.editInConsole')} {Ico.arrowUpRight(12)}
           </Button>
         </div>
       </Section>
 
-      <Section title="Organization theme" subtitle={sub('Light or dark for everyone, or leave it to each member.')}>
+      <Section title={t('branding.theme.title')} subtitle={sub(t('branding.theme.subtitle'))}>
         <ToggleGroup
           value={draft.defaultTheme ?? NOT_SET}
           onValueChange={(v) => edit({ defaultTheme: v === NOT_SET ? null : v })}
           disabled={locked}
-          aria-label="Organization theme"
+          aria-label={t('branding.theme.ariaLabel')}
           options={[
-            { value: NOT_SET, label: 'Not set', 'aria-label': 'No organization theme' },
-            { value: 'light', label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} Light</span>), 'aria-label': 'Light organization theme' },
-            { value: 'dark', label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} Dark</span>), 'aria-label': 'Dark organization theme' },
+            { value: NOT_SET, label: t('branding.theme.notSet'), 'aria-label': t('branding.theme.notSetAriaLabel') },
+            { value: 'light', label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} {t('appearance.theme.light')}</span>), 'aria-label': t('branding.theme.lightAriaLabel') },
+            { value: 'dark', label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} {t('appearance.theme.dark')}</span>), 'aria-label': t('branding.theme.darkAriaLabel') },
           ]}
         />
       </Section>
 
       {SKIN_LOCKED ? (
-        <Section title="Organization style" subtitle="Set by this deployment, for every organization on it." />
+        <Section title={t('branding.style.title')} subtitle={t('branding.style.deploymentLocked')} />
       ) : (
-        <Section title="Organization style" subtitle={sub('The look everyone in your organization starts from. Custom lets you pick the color, background, corners and typeface.')}>
+        <Section title={t('branding.style.title')} subtitle={sub(t('branding.style.subtitle'))}>
           <ToggleGroup
             value={draft.skin ?? NOT_SET}
             onValueChange={(v) => edit({
@@ -260,10 +263,19 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
                 : {}),
             })}
             disabled={locked}
-            aria-label="Organization style"
+            aria-label={t('branding.style.ariaLabel')}
             options={[
-              { value: NOT_SET, label: 'Not set', 'aria-label': 'No organization style', title: "Members keep the app's standard look." },
-              ...SKINS.map((s) => ({ value: s.id, label: s.label, 'aria-label': `${s.label} organization style`, title: s.title })),
+              { value: NOT_SET, label: t('branding.style.notSet'), 'aria-label': t('branding.style.notSetAriaLabel'), title: t('branding.style.notSetHint') },
+              ...SKINS.map((s) => {
+                // A deployment brand's own skin keeps its brand name.
+                const label = t(`appearance.skins.${s.id}.label`, { defaultValue: s.label });
+                return {
+                  value: s.id,
+                  label,
+                  'aria-label': t('branding.style.optionAriaLabel', { name: label }),
+                  title: t(`appearance.skins.${s.id}.title`, { defaultValue: s.title }),
+                };
+              }),
             ]}
           />
         </Section>
@@ -271,24 +283,24 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
 
       {!SKIN_LOCKED && custom && (
         <>
-          <Section title="Accent color" subtitle="Buttons, highlights and focus rings.">
+          <Section title={t('appearance.accent.title')} subtitle={t('branding.accent.subtitle')}>
             <input
               type="color"
               value={draft.accent ?? DEFAULT_CUSTOM_THEME.accent}
               onChange={(e) => edit({ accent: e.target.value })}
               disabled={locked}
-              aria-label="Organization accent color"
+              aria-label={t('branding.accent.ariaLabel')}
               className={COLOR_SWATCH_INPUT}
             />
           </Section>
-          <Section title="Light background" subtitle="Used in light theme. A dark pick becomes a light tint of its hue; text adjusts to stay readable. With Default, the dark background tints it, or the stock light look applies.">
+          <Section title={t('appearance.background.lightTitle')} subtitle={t('branding.background.lightSubtitle')}>
             <div className="flex items-center gap-3">
               <input
                 type="color"
                 value={draft.backgroundLight ?? stockBackground('light')}
                 onChange={(e) => edit({ backgroundLight: e.target.value })}
                 disabled={locked || draft.backgroundLight === null}
-                aria-label="Organization light background color"
+                aria-label={t('branding.background.lightAriaLabel')}
                 className={COLOR_SWATCH_INPUT}
                 style={{ opacity: draft.backgroundLight === null ? 0.45 : 1 }}
               />
@@ -297,20 +309,20 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
                   checked={draft.backgroundLight === null}
                   onCheckedChange={(v) => edit({ backgroundLight: v ? null : stockBackground('light') })}
                   disabled={locked}
-                  aria-label="Default organization light background"
+                  aria-label={t('branding.background.lightDefaultAriaLabel')}
                 />
-                Default
+                {t('appearance.background.default')}
               </label>
             </div>
           </Section>
-          <Section title="Dark background" subtitle="Used in dark theme. A light pick becomes a dark shade of its hue; text adjusts to stay readable. With Default, the light background tints it, or the stock dark look applies.">
+          <Section title={t('appearance.background.darkTitle')} subtitle={t('branding.background.darkSubtitle')}>
             <div className="flex items-center gap-3">
               <input
                 type="color"
                 value={draft.backgroundDark ?? stockBackground('dark')}
                 onChange={(e) => edit({ backgroundDark: e.target.value })}
                 disabled={locked || draft.backgroundDark === null}
-                aria-label="Organization dark background color"
+                aria-label={t('branding.background.darkAriaLabel')}
                 className={COLOR_SWATCH_INPUT}
                 style={{ opacity: draft.backgroundDark === null ? 0.45 : 1 }}
               />
@@ -319,65 +331,65 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
                   checked={draft.backgroundDark === null}
                   onCheckedChange={(v) => edit({ backgroundDark: v ? null : stockBackground('dark') })}
                   disabled={locked}
-                  aria-label="Default organization dark background"
+                  aria-label={t('branding.background.darkDefaultAriaLabel')}
                 />
-                Default
+                {t('appearance.background.default')}
               </label>
             </div>
           </Section>
-          <Section title="Corners" subtitle="How sharp the surfaces feel.">
+          <Section title={t('appearance.corners.title')} subtitle={t('appearance.corners.subtitle')}>
             <ToggleGroup
               value={String(draft.radius ?? DEFAULT_CUSTOM_THEME.radius)}
               onValueChange={(v) => edit({ radius: Number(v) })}
               disabled={locked}
-              aria-label="Organization corner radius"
+              aria-label={t('branding.corners.ariaLabel')}
               options={[
-                { value: '0', label: 'Square', 'aria-label': 'Square organization corners' },
-                { value: '6', label: 'Soft', 'aria-label': 'Soft organization corners' },
-                { value: '12', label: 'Round', 'aria-label': 'Round organization corners' },
+                { value: '0', label: t('appearance.corners.square'), 'aria-label': t('branding.corners.squareAriaLabel') },
+                { value: '6', label: t('appearance.corners.soft'), 'aria-label': t('branding.corners.softAriaLabel') },
+                { value: '12', label: t('appearance.corners.round'), 'aria-label': t('branding.corners.roundAriaLabel') },
               ]}
             />
           </Section>
-          <Section title="Typeface" subtitle="Standard UI font, or mono everywhere.">
+          <Section title={t('appearance.typeface.title')} subtitle={t('branding.typeface.subtitle')}>
             <ToggleGroup
               value={draft.font ?? DEFAULT_CUSTOM_THEME.font}
               onValueChange={(v) => edit({ font: v })}
               disabled={locked}
-              aria-label="Organization typeface"
+              aria-label={t('branding.typeface.ariaLabel')}
               options={[
-                { value: 'standard', label: 'Standard', 'aria-label': 'Standard organization font' },
-                { value: 'mono', label: 'Mono', 'aria-label': 'Mono organization font' },
+                { value: 'standard', label: t('appearance.typeface.standard'), 'aria-label': t('branding.typeface.standardAriaLabel') },
+                { value: 'mono', label: t('appearance.typeface.mono'), 'aria-label': t('branding.typeface.monoAriaLabel') },
               ]}
             />
           </Section>
         </>
       )}
 
-      <Section title="Organization greeting" subtitle={sub('The line members see when they start a new task. Leave blank for the standard one.')}>
+      <Section title={t('branding.greeting.title')} subtitle={sub(t('branding.greeting.subtitle'))}>
         <Input
           value={draft.greeting ?? ''}
           onChange={(v) => edit({ greeting: v })}
           maxLength={GREETING_MAX_LENGTH}
           disabled={locked}
-          aria-label="Organization greeting"
+          aria-label={t('branding.greeting.ariaLabel')}
         />
       </Section>
 
       <Section
-        title="Let members choose their own style"
-        subtitle={sub('On: the organization style is where members start, and they can change it under Your style. Off: everyone sees the organization style.')}
+        title={t('branding.membersChoose.title')}
+        subtitle={sub(t('branding.membersChoose.subtitle'))}
       >
         <Switch
           checked={draft.membersCanChoose}
           onCheckedChange={(v) => edit({ membersCanChoose: v })}
           disabled={locked}
-          aria-label="Let members choose their own style"
+          aria-label={t('branding.membersChoose.title')}
         />
       </Section>
 
       <Section
-        title="Brand guidelines for Anton"
-        subtitle={sub('How Anton should use your brand in decks, documents, apps and charts: voice, words to use or avoid, where the logo goes. Anton also gets your colors, typeface and logo from above.')}
+        title={t('branding.guidelines.title')}
+        subtitle={sub(t('branding.guidelines.subtitle'))}
       >
         <Textarea
           value={draft.guidelines ?? ''}
@@ -385,8 +397,8 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
           rows={6}
           maxLength={GUIDELINES_MAX_LENGTH}
           disabled={locked}
-          aria-label="Brand guidelines for Anton"
-          placeholder={canEdit ? 'Markdown. For example:\n- Headlines in sentence case\n- Put the logo top left on title slides' : 'None set.'}
+          aria-label={t('branding.guidelines.title')}
+          placeholder={canEdit ? t('branding.guidelines.placeholder') : t('branding.logo.noneSet')}
         />
         {canEdit && (
           <div className="text-[11.5px] text-ink-4 mt-1">
@@ -400,22 +412,22 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
           <div
             className="sticky bottom-0 flex items-center gap-3 py-3 px-3 my-2 rounded-lg border border-solid border-line-2 bg-surface-2"
             role="region"
-            aria-label="Unsaved branding changes"
+            aria-label={t('branding.footer.ariaLabel')}
           >
             <div role="status" aria-live="polite" className="flex-1 text-[13px] font-medium text-ink-2">
               {status.state === 'error' ? <span className="text-danger">{status.message}</span>
-                : status.state === 'saving' ? 'Saving…'
-                  : 'Unsaved branding changes. You see them now; everyone else sees them once you save.'}
+                : status.state === 'saving' ? t('branding.footer.saving')
+                  : t('branding.footer.unsaved')}
             </div>
-            <Button variant="subtle" onClick={cancel} disabled={status.state === 'saving'}>Cancel</Button>
-            <Button variant="primary" onClick={save} disabled={status.state === 'saving'}>Save branding</Button>
+            <Button variant="subtle" onClick={cancel} disabled={status.state === 'saving'}>{t('branding.footer.cancel')}</Button>
+            <Button variant="primary" onClick={save} disabled={status.state === 'saving'}>{t('branding.footer.save')}</Button>
           </div>
         ) : (
           <div className="flex items-center gap-3 py-3">
             <div role="status" aria-live="polite" className="flex-1 text-[13px] font-medium text-ink-3">
-              {status.state === 'saved' ? 'Saved. Members see it the next time they open the app or Settings.' : 'No unsaved branding changes'}
+              {status.state === 'saved' ? t('branding.footer.saved') : t('branding.footer.clean')}
             </div>
-            <Button variant="primary" disabled>Save branding</Button>
+            <Button variant="primary" disabled>{t('branding.footer.save')}</Button>
           </div>
         )
       )}

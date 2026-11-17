@@ -5,6 +5,7 @@
 // lib/orgSharing; the tooltip saying who is the caller's, from `hint`.
 
 import Ico from './Icons';
+import { useTranslation } from '../../lib/i18n';
 
 const ICONS = {
   private: Ico.userPlus,
@@ -21,10 +22,11 @@ export function shareStateIcon(kind, size = 14) {
 
 /** The icon and "Share" / "Shared", for inside a button. */
 export function ShareStateLabel({ state, size = 14, icon = true }) {
+  const { t } = useTranslation('library');
   return (
     <>
       {icon && <span aria-hidden="true" className="inline-flex">{shareStateIcon(state?.kind, size)}</span>}
-      {state?.shared ? 'Shared' : 'Share'}
+      {state?.shared ? t('share.shared') : t('share.share')}
     </>
   );
 }

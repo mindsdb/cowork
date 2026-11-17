@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 
+import i18n, { useTranslation } from '../../lib/i18n';
 import './review-file.css';
 
 export interface DiffPatchLine {
@@ -53,7 +54,18 @@ function selectionLabel(start: DiffPatchLine, end: DiffPatchLine): string {
   return first === last ? `line ${first}` : `lines ${Math.min(first, last)}–${Math.max(first, last)}`;
 }
 
+/* `label` stays English: it goes into the prompt sent to the agent. This is the on-screen version. */
+export function selectionDisplayLabel({ start, end }: DiffLineSelection): string {
+  const first = start.newLine || start.oldLine;
+  const last = end.newLine || end.oldLine;
+  if (first == null || last == null) return i18n.t('diffPatch.selectedLines', { ns: 'code' });
+  return first === last
+    ? i18n.t('diffPatch.line', { ns: 'code', line: first })
+    : i18n.t('diffPatch.lines', { ns: 'code', start: Math.min(first, last), end: Math.max(first, last) });
+}
+
 export function DiffPatchView({ patch, onSelectionChange }: { patch: string; onSelectionChange: (selection: DiffLineSelection | null) => void }) {
+  const { t } = useTranslation('code');
   const lines = useMemo(() => parseDiffPatch(patch), [patch]);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
@@ -76,11 +88,11 @@ export function DiffPatchView({ patch, onSelectionChange }: { patch: string; onS
   };
   const [low, high] = anchor == null || focus == null ? [-1, -1] : [anchor, focus].sort((a, b) => a - b);
   return (
-    <div className="code-diff-patch" role="table" aria-label="File diff">
+    <div className="code-diff-patch" role="table" aria-label={t('diffPatch.ariaLabel')}>
       {lines.map((line) => (
         <div key={line.index} className={`code-diff-line is-${line.kind}${line.index >= low && line.index <= high && line.kind !== 'header' ? ' is-selected' : ''}`} role="row">
           {line.kind === 'header' ? <span className="code-diff-line__spacer" /> : (
-            <button type="button" className="code-diff-line__number" onClick={(event) => select(event, line)} aria-label={`Select ${line.newLine || line.oldLine || 'diff'}${line.kind === 'deletion' ? ' removed' : ''}`}>
+            <button type="button" className="code-diff-line__number" onClick={(event) => select(event, line)} aria-label={t(line.kind === 'deletion' ? 'diffPatch.selectRemovedLine' : 'diffPatch.selectLine', { line: line.newLine || line.oldLine || 'diff' })}>
               <span>{line.oldLine ?? ''}</span><span>{line.newLine ?? ''}</span>
             </button>
           )}

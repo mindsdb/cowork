@@ -1,5 +1,6 @@
 import Ico from '../Icons';
 import { TASK_MODES } from './taskModes';
+import { useTranslation } from '../../../lib/i18n';
 
 // Task-mode pill row under the home composer (ENG-1594). Always visible for
 // every account (unlike the old first-run-only suggestion chips) whenever no
@@ -13,7 +14,9 @@ import { TASK_MODES } from './taskModes';
 // motion (tokens zeroed) makes the entrance instant.
 // `modes` defaults to Home's task modes; the Compare screen passes its own
 // examples so both surfaces share one pill.
-export default function TaskModePills({ onPick, modes = TASK_MODES, label = 'Task types' }) {
+export default function TaskModePills({ onPick, modes = TASK_MODES, label: labelProp }) {
+  const { t } = useTranslation('chat');
+  const label = labelProp ?? t('taskModes.pillsAriaLabel');
   return (
     <div
       className="mt-5 flex w-full max-w-[var(--composer-max-width,640px)] flex-wrap justify-center gap-2"

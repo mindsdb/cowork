@@ -3,6 +3,7 @@
 
 import { RailCard } from './RailCard';
 import { ContextCard } from './ContextCard';
+import { useTranslation } from '../../../lib/i18n';
 
 export function ContextBox({
   /** For resolving a stored project slug to its label (ENG-1676). */
@@ -18,9 +19,13 @@ export function ContextBox({
   onAddSharePointFiles,
   onFetchGoogleDriveFiles,
   onRemoveGoogleDriveFile,
+  onAddNotionPages,
+  onFetchNotionPages,
+  onRemoveNotionPage,
 }) {
+  const { t } = useTranslation('shell');
   return (
-    <RailCard title="Context" defaultOpen={defaultOpen} slim={slim}>
+    <RailCard title={t('rail.context.title')} defaultOpen={defaultOpen} slim={slim}>
       <ContextCard
         projects={projects}
         project={project}
@@ -30,6 +35,9 @@ export function ContextBox({
         onAddSharePointFiles={onAddSharePointFiles}
         onFetchGoogleDriveFiles={onFetchGoogleDriveFiles}
         onRemoveGoogleDriveFile={onRemoveGoogleDriveFile}
+        onAddNotionPages={onAddNotionPages}
+        onFetchNotionPages={onFetchNotionPages}
+        onRemoveNotionPage={onRemoveNotionPage}
       />
     </RailCard>
   );

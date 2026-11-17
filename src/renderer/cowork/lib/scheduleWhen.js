@@ -1,3 +1,5 @@
+import i18n, { currentLocale } from '../../lib/i18n';
+
 // When a scheduled task runs, as the create/edit form holds it: a cadence, a
 // time of day, and a weekday (weekly) or a date (once), all in the user's own
 // time zone. These helpers turn that into the first run the server is sent,
@@ -9,6 +11,23 @@ export const CADENCES = ['once', 'every_15_minutes', 'every_30_minutes', 'hourly
 export const INTERVAL_MINUTES = { every_15_minutes: 15, every_30_minutes: 30, hourly: 60 };
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const msg = (key, vars) => i18n.t(`messages.scheduleWhen.${key}`, { ns: 'projects', ...vars });
+
+// The locale dates and times are formatted in: the browser's default while
+// the app runs in English (as before), else the app's language.
+export function dateLocale() {
+  const locale = currentLocale();
+  return locale === 'en' || locale === 'en-XA' ? undefined : locale;
+}
+
+// A weekday's full name (0 = Sunday) in the app's language.
+export function weekdayName(day) {
+  const locale = dateLocale();
+  if (!locale) return WEEKDAY_NAMES[day];
+  // 2000-01-02 was a Sunday.
+  return new Date(2000, 0, 2 + day).toLocaleDateString(locale, { weekday: 'long' });
+}
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -79,14 +98,14 @@ export function nextRuns(when, now = new Date(), count = 3) {
 export function timeZoneLabel(zone = Intl.DateTimeFormat().resolvedOptions().timeZone) {
   if (!zone || zone === 'UTC' || zone === 'Etc/UTC') return 'UTC';
   const city = zone.split('/').pop().replace(/_/g, ' ');
-  return `${city} time`;
+  return msg('timeZone', { city });
 }
 
 function clock(time) {
   const t = parseTime(time);
   if (!t) return '';
   const d = new Date(2000, 0, 1, t.h, t.m);
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleTimeString(dateLocale(), { hour: 'numeric', minute: '2-digit' });
 }
 
 // The schedule read back as one sentence: "Every weekday at 9:00 AM".
@@ -95,16 +114,19 @@ export function describeWhen(when) {
   switch (when.cadence) {
     case 'once': {
       const [y, mo, d] = String(when.date || '').split('-').map(Number);
-      if (!y) return `Once at ${at}`;
-      const day = new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-      return `Once, on ${day} at ${at}`;
+      if (!y) return msg('onceNoDate', { time: at });
+      const day = new Date(y, mo - 1, d).toLocaleDateString(dateLocale(), { weekday: 'short', month: 'short', day: 'numeric' });
+      return msg('once', { day, time: at });
     }
-    case 'every_15_minutes': return 'Every 15 minutes';
-    case 'every_30_minutes': return 'Every 30 minutes';
-    case 'hourly': return `Every hour at :${String(when.time || '').split(':')[1] || '00'}`;
-    case 'daily': return `Every day at ${at}`;
-    case 'weekdays': return `Every weekday at ${at}`;
-    case 'weekly': return `Every ${WEEKDAY_NAMES[Number(when.weekday)] || 'week'} at ${at}`;
+    case 'every_15_minutes': return msg('every15');
+    case 'every_30_minutes': return msg('every30');
+    case 'hourly': return msg('hourly', { minute: String(when.time || '').split(':')[1] || '00' });
+    case 'daily': return msg('daily', { time: at });
+    case 'weekdays': return msg('weekdays', { time: at });
+    case 'weekly': {
+      const weekday = WEEKDAY_NAMES[Number(when.weekday)] ? weekdayName(Number(when.weekday)) : null;
+      return weekday ? msg('weekly', { weekday, time: at }) : msg('weeklyNoDay', { time: at });
+    }
     default: return '';
   }
 }
@@ -113,8 +135,9 @@ export function describeWhen(when) {
 // once it is more than a week out.
 export function formatRun(date, now = new Date()) {
   const far = date.getTime() - new Date(now).getTime() > 6 * 24 * 60 * 60 * 1000;
-  const day = date.toLocaleDateString(undefined, far
+  const locale = dateLocale();
+  const day = date.toLocaleDateString(locale, far
     ? { weekday: 'short', month: 'short', day: 'numeric' }
     : { weekday: 'short' });
-  return `${day} ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+  return `${day} ${date.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}`;
 }

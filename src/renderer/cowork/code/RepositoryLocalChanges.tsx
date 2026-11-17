@@ -7,6 +7,7 @@ import Spinner from '../components/ui/Spinner';
 import { codingApi, type DiffFile } from './api';
 import { DiffPatchView } from './DiffPatchView';
 import type { RepositoryStatus } from './repositorySetupModels';
+import { useTranslation } from '../../lib/i18n';
 
 export function RepositoryLocalChanges({
   projectId,
@@ -17,6 +18,7 @@ export function RepositoryLocalChanges({
   name: string;
   status: RepositoryStatus;
 }) {
+  const { t } = useTranslation('code');
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<DiffFile[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -32,20 +34,20 @@ export function RepositoryLocalChanges({
     try {
       setFiles((await codingApi.repositoryDiff(projectId, status.resource_id)).files);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not load local changes. Try again.');
+      setError(reason instanceof Error ? reason.message : t('repositoryLocalChanges.loadError'));
     } finally {
       setLoading(false);
     }
   };
   return (
-    <section className="code-repository-changes" aria-label={`${name} local changes`}>
+    <section className="code-repository-changes" aria-label={t('repositoryLocalChanges.ariaLabel', { name })}>
       <div className="code-repository-changes__heading">
         <span>
           <Icon of={AlertCircle} size={16} />
-          {name} has {status.change_count} local {status.change_count === 1 ? 'change' : 'changes'}
+          {t('repositoryLocalChanges.heading', { name, count: status.change_count })}
         </span>
         <Button size="sm" variant="subtle" onClick={() => void toggle()} aria-expanded={open}>
-          {open ? 'Hide diff' : 'View diff'}
+          {open ? t('repositoryLocalChanges.hideDiff') : t('repositoryLocalChanges.viewDiff')}
         </Button>
       </div>
       {!open && (
@@ -57,7 +59,7 @@ export function RepositoryLocalChanges({
             </li>
           ))}
           {status.change_count > status.changes.length && (
-            <li>{status.change_count - status.changes.length} more files</li>
+            <li>{t('repositoryLocalChanges.moreFiles', { count: status.change_count - status.changes.length })}</li>
           )}
         </ul>
       )}
@@ -75,7 +77,7 @@ export function RepositoryLocalChanges({
                   setOpen(false);
                 }}
               >
-                Close and retry
+                {t('repositoryLocalChanges.closeAndRetry')}
               </Button>
             </Alert>
           ) : files?.length ? (
@@ -89,14 +91,14 @@ export function RepositoryLocalChanges({
                   </small>
                 </summary>
                 {file.binary ? (
-                  <p>Binary file changed.</p>
+                  <p>{t('repositoryLocalChanges.binary')}</p>
                 ) : (
                   <DiffPatchView patch={file.patch} onSelectionChange={() => {}} />
                 )}
               </details>
             ))
           ) : (
-            <p>No local changes remain. Refresh to update this panel.</p>
+            <p>{t('repositoryLocalChanges.noChanges')}</p>
           )}
         </div>
       )}

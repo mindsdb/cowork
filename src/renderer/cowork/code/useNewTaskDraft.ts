@@ -9,6 +9,7 @@ import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import { modelLabel } from '../lib/settingsTransform';
 import { effortLevelsFor, requestedEffort, resolveEffort } from './reasoning';
 import { host } from '../../platform/host';
+import i18n from '../../lib/i18n';
 import {
   codingApi,
   type CodeProject,
@@ -18,12 +19,21 @@ import {
   type PermissionMode,
   type ProjectFolderInspection,
   type SourceContext,
+  type WorkspaceMode,
+  type WorkspaceModeOptions,
 } from './api';
 import { preferredCodingModel } from './defaults';
 import { mergeReferences, referencesFromFiles } from './PromptReferences';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 import { useTaskExecutionTarget } from './useTaskExecutionTarget';
 import type { TaskRepositorySetup } from './repositorySetupModels';
+import {
+  WORKTREE_ONLY,
+  effectiveWorkspaceMode,
+  offersWorkspaceChoice,
+  storeWorkspaceMode,
+  storedWorkspaceMode,
+} from './workspaceMode';
 
 // The folder of the last folder-only task, preselected for the next one.
 const LAST_FOLDER_KEY = 'mindshub-code:last-folder';
@@ -55,11 +65,12 @@ interface NewTaskDraftOptions {
 }
 
 
-async function projectFolderIssue(projectId: string, items: ProjectFolderInspection[], setup?: TaskRepositorySetup): Promise<string> {
+async function projectFolderIssue(projectId: string, items: ProjectFolderInspection[], setup?: TaskRepositorySetup, mode?: WorkspaceMode | null): Promise<string> {
   const unavailable = items.find(({ inspection }) => !inspection.exists || !inspection.is_directory);
   if (unavailable) {
-    return `${unavailable.folder.name} is unavailable. Remove and re-add it in Project settings.`;
+    return i18n.t('newTaskDraft.folderUnavailable', { ns: 'code', name: unavailable.folder.name });
   }
+  if (mode === 'in_place') return '';
   for (const item of items) {
     const branch = setup?.base_branches[item.folder.id] || item.folder.base_branch;
     // projectFolders checks the configured base. A different task base must
@@ -68,8 +79,9 @@ async function projectFolderIssue(projectId: string, items: ProjectFolderInspect
       ? (await codingApi.repositoryBranches(projectId, item.folder.id)).items.includes(branch)
       : item.base_branch_available;
     if (!available) {
-      const location = setup ? 'Repositories & folders' : 'Project settings';
-      return `${item.folder.name} cannot find its ${branch} base branch. Update it in ${location}.`;
+      return i18n.t('newTaskDraft.baseBranchMissing', {
+        ns: 'code', name: item.folder.name, branch, location: setup ? 'setup' : 'project',
+      });
     }
   }
   return '';
@@ -85,13 +97,11 @@ function sourcePrompt(contexts: SourceContext[]): string {
   if (contexts.length === 0) return '';
   if (contexts.length === 1) {
     const [context] = contexts;
-    return `Work on ${context.external_id}: ${context.title}`;
+    return i18n.t('newTaskDraft.sourcePromptOne', { ns: 'code', id: context.external_id, title: context.title });
   }
-  return `Work on the ${contexts.length} linked work items.`;
+  return i18n.t('newTaskDraft.sourcePromptMany', { ns: 'code', count: contexts.length });
 }
 
-
-const NO_CODING_MODELS = 'No coding models are available.';
 
 
 export function useNewTaskDraft({
@@ -146,14 +156,83 @@ export function useNewTaskDraft({
     executionIssue,
     refreshComputers,
   } = useTaskExecutionTarget(selectedProject, engineId);
+  const [rememberedWorkspaceMode, setRememberedWorkspaceMode] = useState<WorkspaceMode | null>(storedWorkspaceMode);
+  const selectedProjectKey = selectedProject?.id ?? null;
+  const workspaceModeComputer = selectedProject ? computerId || undefined : undefined;
+  const workspaceModeFolder = selectedProject ? undefined : standaloneFolderPath || undefined;
+  const workspaceModeKey = JSON.stringify([selectedProjectKey, workspaceModeComputer, workspaceModeFolder]);
+  const activeModeKey = useRef(workspaceModeKey);
+  activeModeKey.current = workspaceModeKey;
+  const [modeResponse, setModeResponse] = useState<{
+    key: string; options: WorkspaceModeOptions; known: boolean;
+  } | null>(null);
+  const currentModeResponse = modeResponse?.key === workspaceModeKey ? modeResponse : null;
+  const workspaceModeOptions = currentModeResponse?.options ?? WORKTREE_ONLY;
+  const workspaceModesLoading = !currentModeResponse;
+  const [gitInitialization, setGitInitialization] = useState<{ key: string; busy: boolean; error: string } | null>(null);
+  const initializingGit = gitInitialization?.key === workspaceModeKey && gitInitialization.busy;
+  const initializeGitError = gitInitialization?.key === workspaceModeKey ? gitInitialization.error : '';
+  useEffect(() => {
+    let current = true;
+    void (async () => {
+      try {
+        const options = await codingApi.workspaceModes(selectedProjectKey, workspaceModeComputer, workspaceModeFolder);
+        if (current) setModeResponse({ key: workspaceModeKey, options, known: true });
+      } catch {
+        // Older servers have no modes endpoint; omit the mode in their requests.
+        if (current) setModeResponse({ key: workspaceModeKey, options: WORKTREE_ONLY, known: false });
+      }
+    })();
+    return () => { current = false; };
+  }, [selectedProjectKey, workspaceModeComputer, workspaceModeFolder, workspaceModeKey]);
+  const initializeGit = async () => {
+    if (!workspaceModeFolder || selectedProject || initializingGit) return;
+    setGitInitialization({ key: workspaceModeKey, busy: true, error: '' });
+    try {
+      const options = await codingApi.initializeGit(workspaceModeFolder);
+      if (activeModeKey.current !== workspaceModeKey) return;
+      setModeResponse({ key: workspaceModeKey, options, known: true });
+    } catch (reason) {
+      if (activeModeKey.current === workspaceModeKey) {
+        setGitInitialization({ key: workspaceModeKey, busy: false, error: reason instanceof Error ? reason.message : i18n.t('workspaceMode.initializeFailed', { ns: 'code' }) });
+      }
+    } finally {
+      setGitInitialization(current => current?.key === workspaceModeKey ? { ...current, busy: false } : current);
+    }
+  };
+  const workspaceModeChoice = offersWorkspaceChoice(workspaceModeOptions);
+  // A choice holds only for this project, computer and folder.
+  const [explicitWorkspaceMode, setExplicitWorkspaceMode] = useState<{ key: string; mode: WorkspaceMode } | null>(null);
+  useEffect(() => { setExplicitWorkspaceMode(null); }, [workspaceModeKey]);
+  const workspaceMode = effectiveWorkspaceMode(workspaceModeOptions, {
+    explicit: explicitWorkspaceMode?.key === workspaceModeKey ? explicitWorkspaceMode.mode : null,
+    projectDefault: selectedProject?.default_workspace_mode ?? null,
+    remembered: rememberedWorkspaceMode,
+  });
   const repositoryKey = JSON.stringify([selectedProject?.id, computerId, projectResources]);
   const [repositoryChoice, setRepositoryChoice] = useState<{
     key: string;
     setup: TaskRepositorySetup;
   } | null>(null);
+  const rememberWorkspaceMode = useCallback((mode: WorkspaceMode) => {
+    setRememberedWorkspaceMode(mode);
+    storeWorkspaceMode(mode);
+  }, []);
+  // Branch choices set up an isolated worktree, and a Local task works on each
+  // folder's current branch, so choosing one gives up the other.
+  const setWorkspaceMode = useCallback((mode: WorkspaceMode) => {
+    setExplicitWorkspaceMode({ key: workspaceModeKey, mode });
+    rememberWorkspaceMode(mode);
+    if (mode === 'in_place') setRepositoryChoice(null);
+  }, [rememberWorkspaceMode, workspaceModeKey]);
   const repositorySetup = repositoryChoice?.key === repositoryKey ? repositoryChoice.setup : undefined;
-  const setRepositorySetup = (setup: TaskRepositorySetup | undefined) =>
+  const setRepositorySetup = (setup: TaskRepositorySetup | undefined) => {
     setRepositoryChoice(setup ? {key: repositoryKey, setup} : null);
+    // Switched for this task only; the user did not choose Worktree as a habit.
+    if (setup) {
+      setExplicitWorkspaceMode({ key: workspaceModeKey, mode: 'worktree' });
+    }
+  };
   const resourceScopeKey = JSON.stringify(resourceIds);
 
   const engines = codingCatalog.engines;
@@ -199,13 +278,13 @@ export function useNewTaskDraft({
     setFoldersLoading(true);
     codingApi.projectFolders(selectedProject.id).then(async ({ items }) => {
       if (!active) return;
-      const issue = await projectFolderIssue(selectedProject.id, items.filter(item => resourceIds.includes(item.folder.id)), repositorySetup);
+      const issue = await projectFolderIssue(selectedProject.id, items.filter(item => resourceIds.includes(item.folder.id)), repositorySetup, workspaceMode);
       if (active) setFolderIssue(issue);
     }).catch((reason) => {
-      if (active) setFolderIssue(reason instanceof Error ? reason.message : 'Could not check this project’s folders.');
+      if (active) setFolderIssue(reason instanceof Error ? reason.message : i18n.t('newTaskDraft.foldersCheckFailed', { ns: 'code' }));
     }).finally(() => { if (active) setFoldersLoading(false); });
     return () => { active = false; };
-  }, [selectedProject, resourceScopeKey, repositorySetup]);
+  }, [selectedProject, resourceScopeKey, repositorySetup, workspaceMode]);
 
   useEffect(() => {
     setEngineId(selectedProject?.default_engine_id || defaultEngineId);
@@ -262,7 +341,7 @@ export function useNewTaskDraft({
     value: engine.id,
     label: engine.label,
     disabled: !engine.available,
-    title: engine.available ? undefined : engine.reason || 'Unavailable',
+    title: engine.available ? undefined : engine.reason || i18n.t('newTaskDraft.engineUnavailable', { ns: 'code' }),
   })), [engines]);
 
   const attachFiles = (files: FileList | null) => {
@@ -289,12 +368,12 @@ export function useNewTaskDraft({
         storeFolder('');
         setStandaloneFolderPath('');
       } else {
-        setStandaloneFolderIssue('That folder is no longer available. Choose another folder.');
+        setStandaloneFolderIssue(i18n.t('newTaskDraft.folderGone', { ns: 'code' }));
       }
     } catch (reason) {
       if (request !== folderRequest.current) return;
       if (remembered) setStandaloneFolderPath('');
-      else setStandaloneFolderIssue(reason instanceof Error ? reason.message : 'Could not access that folder.');
+      else setStandaloneFolderIssue(reason instanceof Error ? reason.message : i18n.t('newTaskDraft.folderAccessFailed', { ns: 'code' }));
     } finally {
       if (request === folderRequest.current) setStandaloneFolderLoading(false);
     }
@@ -303,7 +382,7 @@ export function useNewTaskDraft({
   const chooseStandaloneFolder = useCallback(async (): Promise<boolean> => {
     const result = await host.pickCodeFolder();
     if (!result.ok || !result.path) {
-      if (!result.cancelled) setCatalogError(result.reason || 'Could not choose that folder.');
+      if (!result.cancelled) setCatalogError(result.reason || i18n.t('newTaskDraft.folderChooseFailed', { ns: 'code' }));
       return false;
     }
     await openStandaloneFolder(result.path);
@@ -326,9 +405,13 @@ export function useNewTaskDraft({
   const selectedEngine = engines.find((engine) => engine.id === engineId);
   const selectedEngineAvailable = selectedEngine?.available === true;
   const workspaceLoading = selectedProject ? foldersLoading : standaloneFolderLoading;
-  const workspaceIssue = selectedProject ? folderIssue : standaloneFolderIssue;
+  const modeIssue = currentModeResponse?.known && (workspaceModeOptions.supported.length === 0
+    || (!!repositorySetup && !workspaceModeOptions.supported.includes('worktree')))
+    ? workspaceModeOptions.worktree_unavailable_reason || workspaceModeOptions.in_place_unavailable_reason || i18n.t('workspaceMode.unavailable', { ns: 'code' })
+    : '';
+  const workspaceIssue = (selectedProject ? folderIssue : standaloneFolderIssue) || modeIssue;
   const workspaceSelected = !!selectedProject || !!standaloneFolderPath;
-  const loading = engineLoading || modelsLoading || workspaceLoading || executionLoading;
+  const loading = engineLoading || modelsLoading || workspaceLoading || executionLoading || workspaceModesLoading || initializingGit;
   const noProjectResources = !!selectedProject && projectResources.length === 0;
   const taskReady = !!prompt.trim()
     && workspaceSelected
@@ -344,39 +427,44 @@ export function useNewTaskDraft({
      settings, so that one does. */
   const startUnavailable = busy
     || loading
+    || !!modeIssue
     || !prompt.trim()
     || (!!selectedProject && (!!workspaceIssue || !computerId || !!executionIssue))
     || !selectedEngineAvailable
     || !selectedModelValid
     || enabledModelOptions.length === 0;
 
+  const readiness = (key: string) => i18n.t(`newTaskDraft.readiness.${key}`, { ns: 'code' });
+  // Checked by identity below: an empty model list is how a missing MindsHub
+  // connection first shows up.
+  let noModelsMessage = '';
   const readinessMessage = (() => {
-    if (busy) return 'Starting task…';
-    if (engineLoading || modelsLoading) return 'Loading coding agent…';
-    if (workspaceLoading) return selectedProject ? 'Checking project resources…' : 'Checking folder…';
-    if (executionLoading) return 'Finding an available computer…';
+    if (busy) return readiness('startingTask');
+    if (engineLoading || modelsLoading) return readiness('loadingAgent');
+    if (workspaceLoading || workspaceModesLoading || initializingGit) return selectedProject ? readiness('checkingResources') : readiness('checkingFolder');
+    if (executionLoading) return readiness('findingComputer');
     if (workspaceIssue) return workspaceIssue;
     if (executionIssue) return executionIssue;
-    if (noProjectResources) return 'Add a repository or folder to this project in Project settings.';
+    if (noProjectResources) return readiness('addResource');
     // Before the first check, resourceIds is still empty and computerId unset.
-    if (selectedProject && resourceIds.length > 0 && !computerId) return 'No computer can run this task.';
+    if (selectedProject && resourceIds.length > 0 && !computerId) return readiness('noComputer');
     /* A catalog error already shows in the alert below, so these stay quiet
        rather than repeat it. */
-    if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
+    if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : readiness('noAgent'));
     /* An admin's model rule is not something credits unlock, so it never
        mentions them. */
-    if (selectedModelOption?.restricted) return 'An admin restricted this model. Choose another model.';
-    if (selectedModelOption?.budgetReached) return "Your organization's budget is used up. Choose an available model or ask an owner or admin to raise it.";
-    if (selectedModelOption?.locked) return 'Add credits or choose an available model.';
-    if (enabledModelOptions.length === 0) return catalogError ? '' : NO_CODING_MODELS;
-    if (!selectedModelValid) return 'Choose a model to continue.';
-    if (!workspaceSelected) return 'Choose a folder to continue.';
+    if (selectedModelOption?.restricted) return readiness('modelRestricted');
+    if (selectedModelOption?.budgetReached) return readiness('budgetReached');
+    if (selectedModelOption?.locked) return readiness('addCredits');
+    if (enabledModelOptions.length === 0) return catalogError ? '' : (noModelsMessage = readiness('noModels'));
+    if (!selectedModelValid) return readiness('chooseModel');
+    if (!workspaceSelected) return readiness('chooseFolder');
     return '';
   })();
 
   // cowork-server answers an empty model list, not an error, when MindsHub is
   // not connected, so this is how a user without MindsHub first shows up.
-  const noCodingModels = readinessMessage === NO_CODING_MODELS;
+  const noCodingModels = !!noModelsMessage;
 
   const readinessKind = loading || busy
     ? 'loading'
@@ -409,6 +497,7 @@ export function useNewTaskDraft({
       ...(selectedProject && resourceIds.length < projectResources.length ? { resourceIds } : {}),
       ...(selectedProject ? { computerId } : {}),
       ...(repositorySetup ? { repositorySetup } : {}),
+      ...(currentModeResponse?.known && workspaceMode && (workspaceModeChoice || workspaceMode === 'in_place') ? { workspaceMode } : {}),
     };
     await onCreate(selectedProject
       ? { ...task, projectId: selectedProject.id }
@@ -437,6 +526,14 @@ export function useNewTaskDraft({
     engineLoading,
     permissionMode,
     setPermissionMode,
+    workspaceMode,
+    setWorkspaceMode,
+    workspaceModeChoice,
+    workspaceModeOptions,
+    workspaceModesLoading,
+    initializeGit,
+    initializingGit,
+    initializeGitError,
     reasoningEffort,
     setReasoningEffort,
     effortLevels,

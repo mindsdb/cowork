@@ -17,12 +17,14 @@ import { CircleAlert, MessageCircleQuestion } from 'lucide-react';
 import { Icon } from './ui/Icon';
 import ActionBar, { type ActionBarProps, type ActionSpec } from './ui/ActionBar';
 import { cn } from '../lib/cn';
+import { useTranslation } from '../../lib/i18n';
 
 type Tone = 'notice' | 'question';
 
-const TONES: Record<Tone, { icon: typeof CircleAlert; label: string }> = {
-  notice: { icon: CircleAlert, label: 'Notice' },
-  question: { icon: MessageCircleQuestion, label: 'Question' },
+// `labelKey` is a chat-namespace key, translated at render.
+const TONES: Record<Tone, { icon: typeof CircleAlert; labelKey: string }> = {
+  notice: { icon: CircleAlert, labelKey: 'cardShell.notice' },
+  question: { icon: MessageCircleQuestion, labelKey: 'cardShell.question' },
 };
 
 export interface ChatCardShellProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
@@ -61,7 +63,9 @@ export function cardActions(buttons: CardButton[] = []): ActionBarProps | null {
 export default function ChatCardShell({
   tone = 'notice', kind, title, actions, footer, className, children, ...rest
 }: ChatCardShellProps) {
-  const { icon, label } = TONES[tone];
+  const { t } = useTranslation('chat');
+  const { icon, labelKey } = TONES[tone];
+  const label = t(labelKey);
   return (
     <div className={cn('chat-card-shell flex flex-col gap-2 rounded-xl bg-surface-2 px-4 py-3.5', className)} {...rest}>
       {kind !== false && (
