@@ -255,15 +255,8 @@
     "countFiltered": "{shown} / {total} 个连接",
     "count": "{count, plural, other {# 个连接}}",
     "drive": {
-      "noAccountEmail": "此连接没有记录账户电子邮件地址 — 请尝试重新连接。",
-      "pickerFailed": "无法打开 Drive 文件选择器。",
-      "title": "Drive 文件",
-      "intro": "此连接只能读取它自己创建的文件。在下方选择任意文件（可多选，也可选择整个共享云端硬盘），即可同样授予访问权限。",
-      "waiting": "已在浏览器中打开 — 请在那里选择文件，然后返回。返回后，确认访问权限可能需要几秒钟。",
-      "select": "从 Google Drive 选择文件",
-      "failed": "Google 实际上并未授予对{count, plural, other {这些文件}}的访问权限 — 请重新选择{count, plural, other {它们}}：",
-      "noFiles": "未选择任何文件。",
-      "granted": "已授予对 {count, plural, other {# 个文件}}的访问权限："
+      "limitedTitle": "Google 云端硬盘访问受限",
+      "limitedBody": "Anton 只能读取它创建的文件或你在聊天中添加的文件。请重新连接并勾选“查看并下载您的所有 Google 云端硬盘文件”，以便它读取你的整个云端硬盘。"
     },
     "reconnectRequired": "需要重新连接",
     "expired": {
@@ -549,7 +542,6 @@
       "note": "这可能需要一点时间。结果将显示在“连接应用和数据”中，如果检查未成功，你可以在那里重试。"
     },
     "viewConnections": "查看连接",
-    "driveNote": "此连接可以访问它创建的文件，以及你自行选择的文件 — 在聊天的 + 菜单中使用“从 Google Drive 添加文件”，或在此连接的设置中使用“从 Google Drive 选择文件”。",
     "viewConnectors": "查看连接器 →",
     "required": "{field} 为必填项。",
     "labelPlaceholder": "例如 prod-db",

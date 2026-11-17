@@ -255,15 +255,8 @@
     "countFiltered": "{shown} de {total} conexiones",
     "count": "{count, plural, one {# conexión} other {# conexiones}}",
     "drive": {
-      "noAccountEmail": "No hay un correo de cuenta registrado para esta conexión: intenta reconectarla.",
-      "pickerFailed": "No se pudo abrir el selector de Drive.",
-      "title": "Archivos de Drive",
-      "intro": "Esta conexión solo puede leer los archivos que creó. Selecciona archivos abajo (varios a la vez o unidades compartidas completas) para darle acceso a ellos también.",
-      "waiting": "Se abrió en tu navegador: elige tus archivos ahí y luego regresa. Confirmar el acceso puede tardar unos segundos después de que vuelvas.",
-      "select": "Seleccionar archivos de Google Drive",
-      "failed": "Google no otorgó acceso a {count, plural, one {este archivo} other {estos archivos}}. Intenta {count, plural, one {elegirlo} other {elegirlos}} de nuevo:",
-      "noFiles": "No se seleccionaron archivos.",
-      "granted": "Se otorgó acceso a {count, plural, one {# archivo} other {# archivos}}:"
+      "limitedTitle": "Acceso limitado a Google Drive",
+      "limitedBody": "Anton solo puede leer los archivos que creó o que añades en un chat. Vuelve a conectar y marca «Ver y descargar todos tus archivos de Google Drive» para que pueda leer todo tu Drive."
     },
     "reconnectRequired": "Se requiere reconexión",
     "expired": {
@@ -549,7 +542,6 @@
       "note": "Esto puede tardar un momento. El resultado aparece en Conectar apps y datos, donde puedes reintentar si la verificación no tiene éxito."
     },
     "viewConnections": "Ver conexiones",
-    "driveNote": "Esta conexión puede acceder a los archivos que creó y a los que elijas tú: usa \"Agregar archivos de Google Drive\" en el menú + de un chat o \"Seleccionar archivos de Google Drive\" en la configuración de esta conexión.",
     "viewConnectors": "Ver conectores →",
     "required": "{field} es obligatorio.",
     "labelPlaceholder": "p. ej., prod-db",

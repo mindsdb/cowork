@@ -759,5 +759,21 @@
     "fallbackName": "immagine",
     "alt": "Immagine generata {name}",
     "notShown": "Impossibile mostrare {name}. Potrebbe essere stato spostato o eliminato."
+  },
+  "drivePicker": {
+    "title": "Aggiungi file da Google Drive",
+    "subtitle": "Da {account}",
+    "searchPlaceholder": "Cerca nel tuo Drive per nome file",
+    "searchAriaLabel": "Cerca in Google Drive",
+    "matching": "File corrispondenti",
+    "recent": "Aperti di recente",
+    "listAriaLabel": "File di Google Drive",
+    "searching": "Ricerca in Google Drive…",
+    "noMatches": "Nessun file corrisponde a quel nome.",
+    "empty": "Ancora nessun file in questo Drive.",
+    "loadMore": "Carica altri",
+    "cancel": "Annulla",
+    "add": "{count, plural, =0 {Aggiungi file} one {Aggiungi file} other {Aggiungi # file}}",
+    "searchFailed": "Impossibile cercare in Google Drive."
   }
 }

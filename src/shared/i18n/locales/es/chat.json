@@ -759,5 +759,21 @@
     "fallbackName": "imagen",
     "alt": "Imagen generada {name}",
     "notShown": "No se puede mostrar {name}. Es posible que se haya movido o eliminado."
+  },
+  "drivePicker": {
+    "title": "Añadir archivos de Google Drive",
+    "subtitle": "De {account}",
+    "searchPlaceholder": "Busca en tu Drive por nombre de archivo",
+    "searchAriaLabel": "Buscar en Google Drive",
+    "matching": "Archivos que coinciden",
+    "recent": "Abiertos recientemente",
+    "listAriaLabel": "Archivos de Google Drive",
+    "searching": "Buscando en Google Drive…",
+    "noMatches": "Ningún archivo coincide con ese nombre.",
+    "empty": "Todavía no hay archivos en este Drive.",
+    "loadMore": "Cargar más",
+    "cancel": "Cancelar",
+    "add": "{count, plural, =0 {Añadir archivo} one {Añadir archivo} other {Añadir # archivos}}",
+    "searchFailed": "No se pudo buscar en Google Drive."
   }
 }

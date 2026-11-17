@@ -255,15 +255,8 @@
     "countFiltered": "{shown} of {total} connections",
     "count": "{count, plural, one {# connection} other {# connections}}",
     "drive": {
-      "noAccountEmail": "No account email on file for this connection — try reconnecting.",
-      "pickerFailed": "Could not open the Drive picker.",
-      "title": "Drive files",
-      "intro": "This connection can only read files it created itself. Select any files below — including several at once, or whole Shared Drives — to grant access to them too.",
-      "waiting": "Opened in your browser — pick your files there, then come back. Confirming access can take a few seconds after you return.",
-      "select": "Select files from Google Drive",
-      "failed": "Google didn't actually grant access to {count, plural, one {this file} other {these files}} — try picking {count, plural, one {it} other {them}} again:",
-      "noFiles": "No files selected.",
-      "granted": "Granted access to {count, plural, one {# file} other {# files}}:"
+      "limitedTitle": "Limited Google Drive access",
+      "limitedBody": "Anton can only read files it created or that you add in a chat. Reconnect and tick \"See and download all your Google Drive files\" to let it read your whole Drive."
     },
     "reconnectRequired": "Reconnection required",
     "expired": {
@@ -549,7 +542,6 @@
       "note": "This can take a moment. The result shows up on Connect Apps and Data, where you can retry it if the check does not succeed."
     },
     "viewConnections": "View connections",
-    "driveNote": "This connection can access files it created, plus any you pick yourself — use \"Add files from Google Drive\" in a chat's + menu, or \"Select files from Google Drive\" in this connection's settings.",
     "viewConnectors": "View connectors →",
     "required": "{field} is required.",
     "labelPlaceholder": "e.g. prod-db",

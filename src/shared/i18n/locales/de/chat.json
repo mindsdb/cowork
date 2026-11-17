@@ -759,5 +759,21 @@
     "fallbackName": "Bild",
     "alt": "Erzeugtes Bild {name}",
     "notShown": "{name} kann nicht angezeigt werden. Die Datei wurde möglicherweise verschoben oder gelöscht."
+  },
+  "drivePicker": {
+    "title": "Dateien aus Google Drive hinzufügen",
+    "subtitle": "Von {account}",
+    "searchPlaceholder": "Drive nach Dateinamen durchsuchen",
+    "searchAriaLabel": "Google Drive durchsuchen",
+    "matching": "Passende Dateien",
+    "recent": "Zuletzt geöffnet",
+    "listAriaLabel": "Google Drive-Dateien",
+    "searching": "Google Drive wird durchsucht…",
+    "noMatches": "Keine Datei passt zu diesem Namen.",
+    "empty": "Noch keine Dateien in diesem Drive.",
+    "loadMore": "Mehr laden",
+    "cancel": "Abbrechen",
+    "add": "{count, plural, =0 {Datei hinzufügen} one {Datei hinzufügen} other {# Dateien hinzufügen}}",
+    "searchFailed": "Google Drive konnte nicht durchsucht werden."
   }
 }

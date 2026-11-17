@@ -74,6 +74,7 @@ import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import DriveFilePickerModal from './components/DriveFilePickerModal';
 import { useNotionPagePicker } from './hooks/useNotionPagePicker';
 import NotionPagePickerModal from './components/NotionPagePickerModal';
 import { useAccountUser } from './hooks/useAccountUser';
@@ -3660,6 +3661,9 @@ function AppCore() {
   const {
     driveAccountChoice,
     driveConnectPrompt,
+    driveFileChooser,
+    resolveDriveFileChooser,
+    cancelDriveFileChooser,
     resolveDriveAccountChoice,
     cancelDriveAccountChoice,
     confirmDriveConnect,
@@ -7922,6 +7926,14 @@ function AppCore() {
         </ModalBody>
       </Modal>
 
+      {/* In-app Drive file chooser, for a connection that can read the whole
+          Drive — see useGoogleDrivePicker. */}
+      <DriveFilePickerModal
+        open={!!driveFileChooser}
+        connection={driveFileChooser?.connection}
+        onConfirm={resolveDriveFileChooser}
+        onClose={cancelDriveFileChooser}
+      />
       {/* Composer "+" → "Add pages from Notion" — see useNotionPagePicker. */}
       <ConfirmModal
         open={!!notionConnectPrompt}

@@ -449,11 +449,6 @@ export function DataVaultForm({
             )}
           </div>
         </div>
-        {(spec.engine === 'google_drive' || spec._connector_id === 'google_drive') && (
-          <Alert variant="info">
-            {t('dataVault.driveNote')}
-          </Alert>
-        )}
         <div className="flex justify-end gap-2">
           {/* On success we always offer two routes:
                  • secondary "Close" — just dismiss the panel

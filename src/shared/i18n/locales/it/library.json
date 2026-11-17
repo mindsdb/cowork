@@ -255,15 +255,8 @@
     "countFiltered": "{shown} connessioni su {total}",
     "count": "{count, plural, one {# connessione} other {# connessioni}}",
     "drive": {
-      "noAccountEmail": "Nessuna email dell’account registrata per questa connessione: prova a riconnetterla.",
-      "pickerFailed": "Impossibile aprire il selettore di Drive.",
-      "title": "File di Drive",
-      "intro": "Questa connessione può leggere solo i file che ha creato. Seleziona i file qui sotto, anche più file insieme o interi Drive condivisi, per concedere l’accesso anche a quelli.",
-      "waiting": "Aperto nel browser: scegli lì i file, poi torna qui. Al tuo ritorno, la conferma dell’accesso può richiedere qualche secondo.",
-      "select": "Seleziona file da Google Drive",
-      "failed": "Google non ha effettivamente concesso l’accesso a {count, plural, one {questo file} other {questi file}}: prova a {count, plural, one {selezionarlo} other {selezionarli}} di nuovo:",
-      "noFiles": "Nessun file selezionato.",
-      "granted": "Accesso concesso a {count, plural, one {# file} other {# file}}:"
+      "limitedTitle": "Accesso limitato a Google Drive",
+      "limitedBody": "Anton può leggere solo i file che ha creato o che aggiungi in una chat. Riconnettiti e seleziona \"Visualizzare e scaricare tutti i tuoi file di Google Drive\" per consentirgli di leggere tutto il tuo Drive."
     },
     "reconnectRequired": "Riconnessione necessaria",
     "expired": {
@@ -549,7 +542,6 @@
       "note": "Potrebbe volerci un momento. Il risultato compare in Connetti app e dati, dove puoi riprovare se la verifica non riesce."
     },
     "viewConnections": "Vedi connessioni",
-    "driveNote": "Questa connessione può accedere ai file che ha creato, più quelli che scegli tu: usa «Aggiungi file da Google Drive» nel menu + di una chat oppure «Seleziona file da Google Drive» nelle impostazioni di questa connessione.",
     "viewConnectors": "Vedi connettori →",
     "required": "{field} è obbligatorio.",
     "labelPlaceholder": "es. prod-db",
