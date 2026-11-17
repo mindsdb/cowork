@@ -172,6 +172,11 @@ session once before Keycloak starts:
 - **Keycloak can't be reached:** the session is kept and the app offers
   **Try again**, so a bad connection at launch doesn't sign anyone out.
 
+The whole startup has a 15-second deadline, including native storage and
+Keycloak initialization (which refreshes the supplied tokens again). A stalled
+startup shows **Try again** and keeps the saved session. A late response cannot
+leave that retry screen; retry reloads the page.
+
 Sign-out clears the saved session before the page reloads. How long someone
 stays signed in is the realm's SSO session limit (refresh tokens are
 session-bound); the app requests no offline token.

@@ -22,6 +22,7 @@ import { MobilePushPrompt } from './MobilePushPrompt';
 import type { RestoreResult } from './lib/mobileSession';
 
 const SIGN_IN_FAILED = 'We could not sign you in. Please try again.';
+export const MOBILE_AUTH_STARTUP_TIMEOUT_MS = 15_000;
 
 interface SignInClient {
   login(): Promise<void>;
@@ -137,8 +138,20 @@ export function MobileShellRoot({ shell, authClient, initOptions, onTokens, sess
   // The provider never leaves its loading view when init() rejects (a failed
   // code exchange, Keycloak unreachable), so catch that here.
   const [initFailed, setInitFailed] = useState(false);
+  const [initialized, setInitialized] = useState(false);
   const needsUpdate = shellNeedsUpdate(shell.version, MIN_SHELL_VERSION);
   const [restored, setRestored] = useState<RestoreResult | null>(session ? null : { kind: 'none' });
+
+  // Bound the whole startup, including native storage and Keycloak's own
+  // forced refresh after receiving restored tokens. That second request has
+  // no AbortSignal, so the restore fetch's timeout cannot protect this view.
+  // Keep the saved session for a reload; a late init cannot leave the retry
+  // screen because initFailed remains set for this page's lifetime.
+  useEffect(() => {
+    if (needsUpdate || initialized || initFailed) return undefined;
+    const timer = window.setTimeout(() => setInitFailed(true), MOBILE_AUTH_STARTUP_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [needsUpdate, initialized, initFailed]);
 
   useEffect(() => {
     if (!session || needsUpdate) return undefined;
@@ -168,6 +181,7 @@ export function MobileShellRoot({ shell, authClient, initOptions, onTokens, sess
         if (next.refreshToken) void session?.save(next);
       }}
       onEvent={(event) => {
+        if (event === 'onReady') setInitialized(true);
         if (event === 'onInitError') setInitFailed(true);
         // Signed out, or Keycloak ended the session: nothing to restore.
         if (event === 'onAuthLogout') void session?.forget();
