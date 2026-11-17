@@ -217,6 +217,7 @@ export function NewTaskPanel({
                   setup={draft.repositorySetup}
                   local={localTarget}
                   disabled={busy || executionLoading}
+                  onRefresh={draft.recheckProjectFolders}
                   onApply={(ids, setup) => {
                     setResourceIds(ids);
                     draft.setRepositorySetup(setup);
