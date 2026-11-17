@@ -12,6 +12,7 @@
  */
 
 import { classifyStart } from '../components/onboarding/completion';
+import { exampleForMessage, exampleTakesOwnData } from '../components/taskmodes/taskModes';
 
 export const NEXT_STEP = Object.freeze({
   OWN_DATA: 'own_data',
@@ -109,14 +110,22 @@ export function resultKinds({ firstUserText = '', userMessage = null, isFirstTur
 export function nextStepsFor(turn, { canSchedule = true, canAttach = true } = {}) {
   const kinds = resultKinds(turn);
   const has = (kind) => kinds.includes(kind);
+  const hasFiles = has(RESULT_KIND.FILE);
   const steps = [];
-  if (canAttach && has(RESULT_KIND.EXAMPLE)) steps.push(NEXT_STEP.OWN_DATA);
-  if (canAttach && has(RESULT_KIND.FILE) && !has(RESULT_KIND.EXAMPLE)) steps.push(NEXT_STEP.ANOTHER_FILE);
+  // Only an example that worked on made-up data or a document has something
+  // of the person's to swap in; a game or an app does not.
+  const ownData = has(RESULT_KIND.EXAMPLE)
+    && exampleTakesOwnData(exampleForMessage(messageText(turn?.firstUserText)));
+  if (canAttach && ownData) steps.push(NEXT_STEP.OWN_DATA);
+  if (canAttach && hasFiles && !has(RESULT_KIND.EXAMPLE)) steps.push(NEXT_STEP.ANOTHER_FILE);
   // A page or a schedule follows from findings written in the reply. When the
   // turn already made an artifact, that artifact is the page.
   if ((has(RESULT_KIND.TABLE) || has(RESULT_KIND.RESEARCH)) && !has(RESULT_KIND.ARTIFACT)) {
     steps.push(NEXT_STEP.MAKE_PAGE);
-    if (canSchedule) steps.push(NEXT_STEP.SCHEDULE);
+    // A schedule re-runs the message on its own: it has to be the
+    // conversation's first, so it needs no earlier turns, and carry no files,
+    // which a schedule cannot attach again.
+    if (canSchedule && turn?.isFirstTurn && !hasFiles) steps.push(NEXT_STEP.SCHEDULE);
   }
   return { resultKind: kinds[0], steps: steps.slice(0, MAX_STEPS) };
 }

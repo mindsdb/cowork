@@ -55,6 +55,25 @@ describe('next steps under an answer', () => {
     expect(row()).toBeNull();
   });
 
+  it('offers only a page after a follow-up, never a schedule', () => {
+    render(<ChatView
+      task={taskWith([
+        { id: 'u0', role: 'user', content: 'hi' },
+        { id: 'a0', role: 'assistant', content: 'Hello! What can I do?' },
+        ...tableTurn,
+      ])}
+      onSend={vi.fn()}
+      onScheduleFromChat={vi.fn()}
+    />);
+    expect(screen.getByRole('button', { name: 'Turn it into a page' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run this on a schedule' })).toBeNull();
+  });
+
+  it('offers no schedule when earlier history is not loaded, since the first message is unknown', () => {
+    render(<ChatView task={taskWith(tableTurn, { hasMoreMessages: true })} onSend={vi.fn()} onScheduleFromChat={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Run this on a schedule' })).toBeNull();
+  });
+
   it('shows nothing while the conversation is still running', () => {
     render(<ChatView task={taskWith(tableTurn)} onSend={vi.fn()} inFlightSet={new Set(['conv-a'])} />);
     expect(row()).toBeNull();

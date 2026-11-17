@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TASK_MODES } from '../components/taskmodes/taskModes';
+import { FEATURED_EXAMPLES_MODE, TASK_MODES, exampleTakesOwnData } from '../components/taskmodes/taskModes';
 import {
   NEXT_STEP,
   RESULT_KIND,
@@ -11,7 +11,9 @@ import {
   scheduledPromptFor,
 } from './nextSteps';
 
-const EXAMPLE_PROMPT = TASK_MODES.find((m) => m.id === 'games').samples[0].prompt;
+const sampleOf = (modeId, label) => TASK_MODES.find((m) => m.id === modeId).samples.find((s) => s.label === label);
+const EXAMPLE_PROMPT = sampleOf('spreadsheet', 'Calculate IRR for investment cash flows').prompt;
+const GAME_PROMPT = sampleOf('games', 'Classic snake game').prompt;
 const TABLE = '| Month | Total |\n| --- | ---: |\n| Jan | 12 |';
 const LINKS = 'Sources: https://a.example/report and https://b.example/data.';
 const answer = (over = {}) => ({ role: 'assistant', content: 'Done.', steps: [], ...over });
@@ -63,53 +65,97 @@ describe('resultKinds', () => {
 });
 
 describe('nextStepsFor', () => {
-  it('offers own data after an example', () => {
-    expect(nextStepsFor({ firstUserText: EXAMPLE_PROMPT, isFirstTurn: true, answer: answer() }))
+  const first = { isFirstTurn: true };
+
+  it('offers own data after an example that worked on sample data', () => {
+    expect(nextStepsFor({ firstUserText: EXAMPLE_PROMPT, ...first, answer: answer() }))
       .toEqual({ resultKind: RESULT_KIND.EXAMPLE, steps: [NEXT_STEP.OWN_DATA] });
   });
 
+  it('offers own data after a sample-writing work example sent with its mode instruction', () => {
+    const contract = sampleOf('spreadsheet', 'Pull key terms out of a contract').prompt;
+    expect(nextStepsFor({ firstUserText: `${contract} Also the termination clause.\n\nCreate or analyze a spreadsheet.`, ...first, answer: answer() }).steps)
+      .toEqual([NEXT_STEP.OWN_DATA]);
+  });
+
+  it('offers nothing of the person\u2019s own after a game, a website or an app example', () => {
+    for (const prompt of [
+      GAME_PROMPT,
+      sampleOf('website', 'Build a portfolio website').prompt,
+      sampleOf('apps', 'Build a habit tracker').prompt,
+    ]) {
+      const result = nextStepsFor({ firstUserText: prompt, ...first, answer: answer({ artifact: { id: 'x' } }) });
+      expect(result).toEqual({ resultKind: RESULT_KIND.EXAMPLE, steps: [] });
+    }
+  });
+
+  it('classifies each entry of the cross-mode Examples list by the mode it comes from', () => {
+    const byLabel = Object.fromEntries(FEATURED_EXAMPLES_MODE.samples.map((s) => [s.label, exampleTakesOwnData(s)]));
+    expect(byLabel).toMatchObject({
+      'Classic snake game': false,
+      'Neon falling blocks': false,
+      'Build a habit tracker': false,
+      'Build a quote or invoice generator': false,
+      'Show weekly sales activity via heatmap': true,
+      "Draft this week's update from last week's": true,
+      'Review what is on my plate this week': true,
+    });
+    const heatmap = FEATURED_EXAMPLES_MODE.samples.find((s) => s.label === 'Show weekly sales activity via heatmap');
+    expect(nextStepsFor({ firstUserText: heatmap.prompt, ...first, answer: answer() }).steps).toEqual([NEXT_STEP.OWN_DATA]);
+  });
+
+  it('lets a sample differ from its mode', () => {
+    expect(exampleTakesOwnData({ prompt: 'x', ownData: true })).toBe(true);
+    expect(exampleTakesOwnData({ prompt: 'x' })).toBe(false);
+    expect(exampleTakesOwnData(null)).toBe(false);
+  });
+
   it('offers another file after work on an attached file', () => {
-    expect(nextStepsFor({ userMessage: { attachments: [{ id: 'a' }] }, answer: answer() }).steps)
+    expect(nextStepsFor({ userMessage: { attachments: [{ id: 'a' }] }, ...first, answer: answer() }).steps)
       .toEqual([NEXT_STEP.ANOTHER_FILE]);
   });
 
-  it('offers a page and a schedule after research or a table', () => {
-    expect(nextStepsFor({ answer: answer({ content: TABLE }) }).steps).toEqual([NEXT_STEP.MAKE_PAGE, NEXT_STEP.SCHEDULE]);
-    expect(nextStepsFor({ answer: answer({ content: LINKS }) })).toEqual({
+  it('offers a page and a schedule after research or a table answering the first message', () => {
+    expect(nextStepsFor({ ...first, answer: answer({ content: TABLE }) }).steps).toEqual([NEXT_STEP.MAKE_PAGE, NEXT_STEP.SCHEDULE]);
+    expect(nextStepsFor({ ...first, answer: answer({ content: LINKS }) })).toEqual({
       resultKind: RESULT_KIND.RESEARCH, steps: [NEXT_STEP.MAKE_PAGE, NEXT_STEP.SCHEDULE],
     });
   });
 
+  it('offers only a page after a follow-up, since a schedule could not run it on its own', () => {
+    expect(nextStepsFor({ isFirstTurn: false, answer: answer({ content: TABLE }) }).steps).toEqual([NEXT_STEP.MAKE_PAGE]);
+  });
+
+  it('offers no schedule when the message carried files, which a schedule cannot attach again', () => {
+    const { steps } = nextStepsFor({ userMessage: { attachments: [{ id: 'a' }] }, ...first, answer: answer({ content: TABLE }) });
+    expect(steps).toEqual([NEXT_STEP.ANOTHER_FILE, NEXT_STEP.MAKE_PAGE]);
+  });
+
   it('repeats nothing the artifact card already offers', () => {
-    expect(nextStepsFor({ answer: answer({ artifact: { id: 'x' } }) })).toEqual({ resultKind: RESULT_KIND.ARTIFACT, steps: [] });
-    expect(nextStepsFor({ answer: answer({ artifact: { id: 'x' }, content: TABLE }) }).steps).toEqual([]);
+    expect(nextStepsFor({ ...first, answer: answer({ artifact: { id: 'x' } }) })).toEqual({ resultKind: RESULT_KIND.ARTIFACT, steps: [] });
+    expect(nextStepsFor({ ...first, answer: answer({ artifact: { id: 'x' }, content: TABLE }) }).steps).toEqual([]);
   });
 
   it('keeps the steps an artifact card does not cover', () => {
-    expect(nextStepsFor({ firstUserText: EXAMPLE_PROMPT, isFirstTurn: true, answer: answer({ artifact: { id: 'x' } }) }).steps)
+    expect(nextStepsFor({ firstUserText: EXAMPLE_PROMPT, ...first, answer: answer({ artifact: { id: 'x' } }) }).steps)
       .toEqual([NEXT_STEP.OWN_DATA]);
   });
 
   it('offers own data rather than another file when an example came with files', () => {
     expect(nextStepsFor({
-      firstUserText: EXAMPLE_PROMPT, isFirstTurn: true,
+      firstUserText: EXAMPLE_PROMPT, ...first,
       userMessage: { attachments: [{ id: 'a' }] }, answer: answer(),
     }).steps).toEqual([NEXT_STEP.OWN_DATA]);
   });
 
-  it('caps the row at three', () => {
-    const { steps } = nextStepsFor({ userMessage: { attachments: [{ id: 'a' }] }, answer: answer({ content: TABLE }) });
-    expect(steps).toEqual([NEXT_STEP.ANOTHER_FILE, NEXT_STEP.MAKE_PAGE, NEXT_STEP.SCHEDULE]);
-  });
-
   it('leaves out what the surface cannot do', () => {
-    expect(nextStepsFor({ answer: answer({ content: TABLE }) }, { canSchedule: false }).steps).toEqual([NEXT_STEP.MAKE_PAGE]);
+    expect(nextStepsFor({ ...first, answer: answer({ content: TABLE }) }, { canSchedule: false }).steps).toEqual([NEXT_STEP.MAKE_PAGE]);
     expect(nextStepsFor({ userMessage: { attachments: [{ id: 'a' }] }, answer: answer() }, { canAttach: false }).steps).toEqual([]);
-    expect(nextStepsFor({ firstUserText: EXAMPLE_PROMPT, isFirstTurn: true, answer: answer() }, { canAttach: false }).steps).toEqual([]);
+    expect(nextStepsFor({ firstUserText: EXAMPLE_PROMPT, ...first, answer: answer() }, { canAttach: false }).steps).toEqual([]);
   });
 
   it('offers nothing after a plain answer', () => {
-    expect(nextStepsFor({ answer: answer() })).toEqual({ resultKind: RESULT_KIND.OTHER, steps: [] });
+    expect(nextStepsFor({ ...first, answer: answer() })).toEqual({ resultKind: RESULT_KIND.OTHER, steps: [] });
   });
 });
 
