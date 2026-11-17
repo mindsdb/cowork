@@ -45,6 +45,38 @@ export const MAX_SPOKEN_CHARS = 1500;
 // Transcript deltas can land just after the delegation that they explain.
 const TRANSCRIPT_SETTLE_MS = 700;
 const CLOSE_WAIT_MS = 8000;
+// A session made for a call hung up while it was being made: how long it gets
+// to connect so it can be closed, and then to confirm the close.
+export const ABANDONED_CONNECT_MS = 10_000;
+const ABANDONED_CLOSE_MS = 3000;
+
+/* A session the server made for a call that was hung up (or replaced) while it
+   was being made. Nothing else can close it: session.close goes over the data
+   channel, and the server has no route that closes a session. Until it closes
+   it holds one of the person's open calls at inference, so connect just long
+   enough to send session.close, then drop the connection. */
+async function closeAbandoned({ peer, channel }, answerSdp) {
+  try {
+    if (!answerSdp) return;
+    await new Promise((resolve) => {
+      const gaveUp = setTimeout(resolve, ABANDONED_CONNECT_MS);
+      channel.addEventListener('open', () => {
+        clearTimeout(gaveUp);
+        try { channel.send(JSON.stringify({ type: 'session.close' })); } catch { resolve(); return; }
+        const unconfirmed = setTimeout(resolve, ABANDONED_CLOSE_MS);
+        channel.addEventListener('message', ({ data }) => {
+          try {
+            if (JSON.parse(data)?.type === 'session.closed') { clearTimeout(unconfirmed); resolve(); }
+          } catch { /* not an event */ }
+        });
+      });
+      peer.setRemoteDescription({ type: 'answer', sdp: answerSdp }).catch(() => { clearTimeout(gaveUp); resolve(); });
+    });
+  } finally {
+    try { channel.close(); } catch { /* already closed */ }
+    try { peer.close(); } catch { /* already closed */ }
+  }
+}
 // A goodbye or a preview line: how long to wait for it to start, the quiet
 // that means it's over (the audio trails the transcript), and the most it
 // may take.
@@ -187,8 +219,14 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     setWorking(false);
     if (!current) return;
     current.microphone?.getTracks().forEach((t) => t.stop());
-    try { current.channel?.close(); } catch { /* already closed */ }
-    try { current.peer?.close(); } catch { /* already closed */ }
+    if (current.connecting) {
+      // The server is making its session: the start that asked for it closes
+      // it once it is made (closeAbandoned), over this same connection.
+      current.abandoned = true;
+    } else {
+      try { current.channel?.close(); } catch { /* already closed */ }
+      try { current.peer?.close(); } catch { /* already closed */ }
+    }
     if (current.audio) current.audio.srcObject = null;
     meters.current = { agent: null, user: null };
     current.listening?.close?.().catch?.(() => {});
@@ -400,6 +438,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         }
       };
       peer.addEventListener('track', (e) => {
+        if (mine.abandoned) return;
         const voice = new MediaStream([e.track]);
         audio.srcObject = voice;
         audio.play().catch(() => {});
@@ -421,6 +460,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
       const channel = peer.createDataChannel(CHANNEL);
       mine.channel = channel;
       channel.addEventListener('message', ({ data }) => {
+        if (mine.abandoned) return;
         try { onEvent(JSON.parse(data)); } catch { /* not an event */ }
       });
       channel.addEventListener('close', () => {
@@ -438,11 +478,24 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         });
       }
       if (call.current !== mine) return; // hung up, or switched, while it started
-      const created = await startVoiceSession(peer.localDescription.sdp, asked);
-      if (call.current !== mine) return;
+      mine.connecting = true;
+      let created;
+      try {
+        created = await startVoiceSession(peer.localDescription.sdp, asked);
+      } finally {
+        mine.connecting = false;
+      }
+      if (call.current !== mine) {
+        if (mine.abandoned) void closeAbandoned(mine, created?.transport?.sdp);
+        return;
+      }
       await peer.setRemoteDescription({ type: 'answer', sdp: created.transport.sdp });
     } catch (err) {
-      if (mine && call.current !== mine) return;
+      if (mine && call.current !== mine) {
+        // Hung up while the server failed to make the session: nothing to close there.
+        if (mine.abandoned) void closeAbandoned(mine, null);
+        return;
+      }
       cleanup();
       setNotice(voiceStartFailure(err));
       setPhase('ended');
