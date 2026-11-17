@@ -64,6 +64,9 @@
     "showing": "표시 중",
     "openButton": "열기"
   },
+  "chip": {
+    "me": "나"
+  },
   "column": {
     "resize": "문서 크기 조정"
   },

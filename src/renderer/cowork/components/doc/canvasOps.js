@@ -6,6 +6,7 @@ import { blockPlainText, inlineToPlain, isListBlock, isTextBlock, makeBlock } fr
 import i18n from '../../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(key, { ns: 'docs', ...vars });
+const englishLabel = (key) => i18n.getFixedT('en', 'docs')(`insert.item.${key}`);
 
 // Labels and group names are getters: they read the language each time a menu is drawn.
 const item = (spec) => Object.defineProperties({ ...spec }, {
@@ -47,7 +48,7 @@ const IMAGE = item({ key: 'image', type: 'image', group: 'data' });
 /**
  * The slash menu's items for `query`, matched on label or block type: a label
  * starting with it first, then one holding it, then the type ("/ask" is the
- * agent's item before To-do, whose type is "task").
+ * agent's item before To-do, whose type is "task"), then the English label.
  */
 export function slashItems(query, canAsk, canImage = false) {
   const q = query.trim().toLowerCase();
@@ -58,11 +59,17 @@ export function slashItems(query, canAsk, canImage = false) {
     ...(canAsk ? [ASK] : []),
   ];
   if (!q) return items;
-  const rank = (i) => {
-    const label = i.label.toLowerCase();
+  const match = (text) => {
+    const label = text.toLowerCase();
     if (label.startsWith(q) || label.split(/\s+/).some((w) => w.startsWith(q))) return 0;
-    if (label.includes(q)) return 1;
-    return i.type.includes(q) ? 2 : -1;
+    return label.includes(q) ? 1 : -1;
+  };
+  const rank = (i) => {
+    const own = match(i.label);
+    if (own >= 0) return own;
+    if (i.type.includes(q)) return 2;
+    // In another language the English label still finds its block ("/list", "/text").
+    return match(englishLabel(i.key)) >= 0 ? 3 : -1;
   };
   return items.map((i) => [i, rank(i)]).filter(([, r]) => r >= 0).sort((a, b) => a[1] - b[1]).map(([i]) => i);
 }

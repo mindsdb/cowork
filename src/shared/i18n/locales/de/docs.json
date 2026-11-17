@@ -64,6 +64,9 @@
     "showing": "Angezeigt",
     "openButton": "Öffnen"
   },
+  "chip": {
+    "me": "Sie"
+  },
   "column": {
     "resize": "Dokumentgröße ändern"
   },

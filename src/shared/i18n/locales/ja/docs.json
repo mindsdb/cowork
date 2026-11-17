@@ -64,6 +64,9 @@
     "showing": "表示中",
     "openButton": "開く"
   },
+  "chip": {
+    "me": "あなた"
+  },
   "column": {
     "resize": "ドキュメントのサイズを変更"
   },

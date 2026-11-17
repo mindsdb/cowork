@@ -64,6 +64,9 @@
     "showing": "Showing",
     "openButton": "Open"
   },
+  "chip": {
+    "me": "You"
+  },
   "column": {
     "resize": "Resize the doc"
   },

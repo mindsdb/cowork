@@ -64,6 +64,9 @@
     "showing": "正在显示",
     "openButton": "打开"
   },
+  "chip": {
+    "me": "你"
+  },
   "column": {
     "resize": "调整文档大小"
   },

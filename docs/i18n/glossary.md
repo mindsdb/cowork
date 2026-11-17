@@ -211,7 +211,7 @@ Anton · MindsHub · Cowork · a deployment's brand name · model and provider n
 | Code Mode / Preview / Compare | Mode code / Aperçu / Comparer |
 | Update / Restart | Mise à jour / Redémarrer |
 | Doc / Tab / Block (docs) | Document / Onglet / Bloc |
-| Callout / To-do / Version history | Encadré / Case à cocher / Historique des versions |
+| Callout / To-do / Version history | Encadré / Élément à faire / Historique des versions |
 
 ## Korean (`ko`)
 

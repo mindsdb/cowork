@@ -4,7 +4,7 @@
 // restoring it would change back). Pure, so it is tested directly; `now` is
 // passed in.
 
-import i18n from '../../../lib/i18n';
+import i18n, { currentLocale } from '../../../lib/i18n';
 import { dateLocale } from '../../lib/formatTime';
 
 const DAY_MS = 86_400_000;
@@ -35,12 +35,13 @@ function dateLabel(iso, now) {
   return d.toLocaleDateString(dateLocale(), { month: 'short', day: 'numeric', ...year });
 }
 
-/** "Today", "Yesterday", else the weekday or the date. */
+/** "Today", "Yesterday", else the weekday or the date, capitalized as a heading ("lunes" → "Lunes"). */
 export function dayLabel(iso, now) {
   const days = daysAgo(iso, now);
   if (days <= 0) return tr('versions.today');
   if (days === 1) return tr('versions.yesterday');
-  return dateLabel(iso, now);
+  const label = dateLabel(iso, now);
+  return label.charAt(0).toLocaleUpperCase(currentLocale()) + label.slice(1);
 }
 
 /** "3:42 PM", in the person's own clock. */

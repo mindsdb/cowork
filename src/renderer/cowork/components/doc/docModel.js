@@ -7,6 +7,8 @@
 // server's answer. Inline text stays the Markdown subset the agent writes;
 // `inlineToHtml` / `htmlToInline` translate it for contentEditable.
 
+import i18n, { currentLocale } from '../../../lib/i18n';
+
 export const TEXT_TYPES = ['paragraph', 'heading', 'bullet', 'numbered', 'task', 'quote', 'callout'];
 export const LIST_TYPES = ['bullet', 'numbered', 'task'];
 
@@ -28,14 +30,14 @@ export const isListBlock = (b) => !!b && LIST_TYPES.includes(b.type);
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ESC[c]);
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** `2026-10-21` → `Oct 21, 2026`; anything else unchanged. */
+/** `2026-10-21` → `Oct 21, 2026` in the app's language; anything else unchanged. */
 export function formatDate(value) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
   if (!m) return String(value || '');
-  const month = MONTHS[Number(m[2]) - 1];
-  return month ? `${month} ${Number(m[3])}, ${m[1]}` : String(value);
+  const [year, month, day] = [Number(m[1]), Number(m[2]) - 1, Number(m[3])];
+  const date = new Date(Date.UTC(year, month, day));
+  if (date.getUTCMonth() !== month || date.getUTCDate() !== day) return String(value);
+  return date.toLocaleDateString(currentLocale(), { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 const TONE_WORDS = [
@@ -59,7 +61,7 @@ function chipHtml(kind, value) {
   let label = value;
   let cls = `doc-chip doc-chip--${kind}`;
   if (kind === 'date') label = formatDate(value);
-  if (kind === 'user') label = value === 'me' ? 'You' : value;
+  if (kind === 'user') label = value === 'me' ? i18n.t('chip.me', { ns: 'docs' }) : value;
   if (kind === 'status') cls += ` doc-tone--${toneFor(value)}`;
   return `<span class="${cls}" contenteditable="false" data-chip="${escapeHtml(raw)}">${escapeHtml(label)}</span>`;
 }

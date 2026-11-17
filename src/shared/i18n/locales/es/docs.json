@@ -64,6 +64,9 @@
     "showing": "Abierto",
     "openButton": "Abrir"
   },
+  "chip": {
+    "me": "Tú"
+  },
   "column": {
     "resize": "Cambiar el tamaño del documento"
   },

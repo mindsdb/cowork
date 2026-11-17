@@ -64,6 +64,9 @@
     "showing": "Aperto",
     "openButton": "Apri"
   },
+  "chip": {
+    "me": "Tu"
+  },
   "column": {
     "resize": "Ridimensiona il documento"
   },
@@ -296,7 +299,7 @@
     "yesterday": "Ieri",
     "whenTitle": "{day}, {time}",
     "whenPhrase": "{day, select, today {oggi alle {time}} yesterday {ieri alle {time}} other {{date} alle {time}}}",
-    "justNow": "adesso",
+    "justNow": "proprio ora",
     "minutesAgo": "{count, plural, other {# min fa}}",
     "hoursAgo": "{count, plural, one {# ora fa} other {# ore fa}}"
   }

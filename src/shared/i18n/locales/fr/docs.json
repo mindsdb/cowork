@@ -64,6 +64,9 @@
     "showing": "Affiché",
     "openButton": "Ouvrir"
   },
+  "chip": {
+    "me": "Vous"
+  },
   "column": {
     "resize": "Redimensionner le document"
   },
@@ -93,7 +96,7 @@
       "paragraph": "Paragraphe",
       "heading": "Titre {level}",
       "listItem": "Élément de liste",
-      "task": "Case à cocher",
+      "task": "Élément à faire",
       "quote": "Citation",
       "callout": "Encadré",
       "table": "Tableau",
@@ -109,7 +112,7 @@
       "paragraph": "Paragraphe vide",
       "heading": "Titre {level} vide",
       "listItem": "Élément de liste vide",
-      "task": "Case à cocher vide",
+      "task": "Élément à faire vide",
       "quote": "Citation vide",
       "callout": "Encadré vide"
     },
@@ -147,7 +150,7 @@
       "heading3": "Titre 3",
       "bullet": "Liste à puces",
       "numbered": "Liste numérotée",
-      "task": "Liste à cocher",
+      "task": "Liste de choses à faire",
       "quote": "Citation",
       "callout": "Encadré",
       "table": "Tableau",
@@ -295,7 +298,7 @@
     "today": "Aujourd’hui",
     "yesterday": "Hier",
     "whenTitle": "{day}, {time}",
-    "whenPhrase": "{day, select, today {aujourd’hui à {time}} yesterday {hier à {time}} other {le {date} à {time}}}",
+    "whenPhrase": "{day, select, today {aujourd’hui à {time}} yesterday {hier à {time}} other {{date} à {time}}}",
     "justNow": "à l’instant",
     "minutesAgo": "{count, plural, other {il y a # min}}",
     "hoursAgo": "{count, plural, other {il y a # h}}"
