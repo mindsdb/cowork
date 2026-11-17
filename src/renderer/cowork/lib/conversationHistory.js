@@ -31,6 +31,18 @@ const RUNNING_STEP_STATUSES = new Set([
   'pending', 'thinking', 'streaming', 'in_progress', 'running',
 ]);
 
+// The latest time an assistant turn recorded: its end, or any step's start or
+// end. Null when it recorded none.
+function lastRecordedTime(message) {
+  let latest = Number.isFinite(message.endedAt) ? message.endedAt : null;
+  for (const s of message.steps) {
+    for (const t of [s?.startedAt, s?.completedAt]) {
+      if (Number.isFinite(t) && (latest == null || t > latest)) latest = t;
+    }
+  }
+  return latest;
+}
+
 // Reconcile a task's stored streaming/running state against whether
 // a real SSE stream is alive for it RIGHT NOW. Called when the user
 // navigates into a task:
@@ -64,11 +76,16 @@ export function reconcileTaskMessages(messages, isLive, isServerInFlight = false
     .map((m) => {
       if (m.role !== 'assistant') return m;
       if (!Array.isArray(m.steps) || m.steps.length === 0) return m;
+      // A step still running here ended when the turn did, for example on a
+      // Stop, which saves no terminal event. End it at the last time the turn
+      // recorded, never at the moment the task was opened: that time would
+      // grow on every visit (ENG-4345).
+      const endedAt = lastRecordedTime(m);
       let dirty = false;
       const nextSteps = m.steps.map((s) => {
         if (s && RUNNING_STEP_STATUSES.has(s.status)) {
           dirty = true;
-          return { ...s, status: 'completed', completedAt: s.completedAt || Date.now() };
+          return { ...s, status: 'completed', completedAt: s.completedAt || endedAt };
         }
         return s;
       });
