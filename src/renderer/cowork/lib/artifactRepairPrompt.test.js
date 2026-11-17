@@ -31,7 +31,49 @@ Complete comment thread:
 
 Make the smallest coherent fix, preserve unrelated behavior and styling, and verify the artifact still renders.`;
 
+// The same handoff since ENG-4386, which routes the fix through anton's
+// \`edit_artifact\` and adds an \`Anchor\` line. Chats keep both shapes in their
+// history, so both must parse.
+const EDIT_ARTIFACT_PROMPT = `Address this artifact review thread. Work on the existing artifact source; do not create a replacement artifact and do not resolve the comment yourself.
+
+Artifact id: b01a1871f6955df9912cd9c7dd0d1a42
+Source path: store.html
+Make the change with one \`edit_artifact\` call: pass \`harbor-store-b01a1871\` as \`slug\`, and as \`task\` what the thread asks for, in your own words, followed by where it is anchored (the \`Anchor\` line below, verbatim) so the edit lands on that element. Do not call \`list_artifacts\` or read the files first. Only if \`edit_artifact\` is not offered, find the artifact with \`list_artifacts\` by passing this artifact id in \`match\`; \`Source path\` is relative to the artifact folder.
+Base revision: e45a0401-3afa-472f-9f5f-0c5a7fd742d2
+Repair id: 920b8812-228f-4fe7-91f7-f89ff85b0178
+Selected element: header > h1
+Anchor: the element matching the CSS selector \`header > h1\` in store.html, which the source writes as: <h1 class="title"> with the text \u201cPines\u201d
+Complete comment thread:
+[
+  {
+    "author": {
+      "user_id": "a4e45be6-5bcf-4746-91ba-fcb31e7f007a",
+      "email": "reviewer@example.com"
+    },
+    "text": "title should be harbor and pines",
+    "createdAt": "2026-09-04T06:28:16.333659+00:00"
+  }
+]
+
+Make the smallest coherent fix and preserve unrelated behavior and styling. \`edit_artifact\` checks the page in a browser itself: once it reports the change applied, do not re-read or re-verify the files.`;
+
 describe('parseArtifactRepairPrompt', () => {
+  it('reads the edit_artifact handoff the same way', () => {
+    expect(parseArtifactRepairPrompt(EDIT_ARTIFACT_PROMPT)).toEqual({
+      artifactId: 'b01a1871f6955df9912cd9c7dd0d1a42',
+      repairId: '920b8812-228f-4fe7-91f7-f89ff85b0178',
+      sourcePath: 'store.html',
+      baseRevisionId: 'e45a0401-3afa-472f-9f5f-0c5a7fd742d2',
+      // The raw selector, not the Anchor line's description of it.
+      selector: 'header > h1',
+      thread: [{
+        author: 'reviewer@example.com',
+        text: 'title should be harbor and pines',
+        createdAt: '2026-09-04T06:28:16.333659+00:00',
+      }],
+    });
+  });
+
   it('pulls the identifiers and the reviewer comment out of the handoff', () => {
     const parsed = parseArtifactRepairPrompt(PROMPT);
 
