@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button, Tooltip } from '../ui';
 import { ConnectorTestPrompt } from './ConnectorTestPrompt';
-import { clearPendingTest, dropPendingTest, getPendingTest, pendingTestFromAnswer, setPendingTest, setPendingTestCanceller, subscribePendingTest } from './connectorTestStore';
+import { TEST_DECLINED, TEST_ENDED, clearPendingTest, dropPendingTest, getPendingTest, pendingTestFromAnswer, setPendingTest, setPendingTestCanceller, subscribePendingTest } from './connectorTestStore';
 import { DataVaultForm } from './DataVaultForm';
 import { providerNameFromSpec } from './methodHero';
 import {
@@ -38,8 +38,9 @@ import { productName } from '../../../lib/deploymentBrand';
 
 // Ends a waiting connection test on the server, which otherwise keeps the
 // typed values until its timeout. Registered so every drop path uses it.
-function cancelPendingTestOnServer(pending) {
-  cancelConnectorTest(pending.kind === 'approval' ? { approvalId: pending.id } : { confirmId: pending.id })
+function cancelPendingTestOnServer(pending, reason) {
+  const id = pending.kind === 'approval' ? { approvalId: pending.id } : { confirmId: pending.id };
+  cancelConnectorTest({ ...id, reason })
     .catch((err) => console.warn('Could not cancel a connection test', err));
 }
 setPendingTestCanceller(cancelPendingTestOnServer);
@@ -810,7 +811,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       }
       // A new form or test replaced this one while the server answered.
       if (getPendingTest(conversationId) !== pending) {
-        if (next) cancelPendingTestOnServer(next);
+        if (next) cancelPendingTestOnServer(next, TEST_ENDED);
         return;
       }
       if (next) {
@@ -947,7 +948,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             onAllow={() => answerPendingTest((p) => allowConnectorTestHost(p.id))}
             onConfirm={() => answerPendingTest((p) => confirmConnectorTest(p.id), { saved: true })}
             onCancel={() => {
-              dropPendingTest(conversationId);
+              dropPendingTest(conversationId, TEST_DECLINED);
               patchForm(conversationId, { form_id: spec.form_id, _awaiting_confirmation: false, _awaiting_private_approval: false, status_text: null });
             }}
           />
