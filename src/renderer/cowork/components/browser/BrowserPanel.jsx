@@ -488,9 +488,13 @@ function WebBrowserStage({
         if (text) onDraftRef.current?.(browserRequestFor(text));
         return;
       }
-      // Who holds the browser: 'human' when the agent handed it to the person or they took over,
-      // and whether the hand-over comes back by itself once the person did what it waits for.
+      /* Who holds the browser: 'human' when the agent handed it to the person or they took over,
+         and whether the hand-over comes back by itself once the person did what it waits for.
+         While the tab is hidden the pane paused this viewer, and a control it posted before the
+         pause reached it is stale, as a live is: the paused viewer runs no Done. The hello on the
+         ticket the pane hands as the tab shows says again who holds the browser. */
       if (type === VIEWER_CONTROL) {
+        if (tabHidden()) return;
         const holds = {
           holder: event.data?.holder === 'human' ? 'human' : 'agent',
           reason: String(event.data?.reason || '').slice(0, 300),

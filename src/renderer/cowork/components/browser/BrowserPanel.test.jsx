@@ -1530,6 +1530,30 @@ describe('BrowserPanel', () => {
       resetHandBack();
     });
 
+    /* A control the viewer posted before the pause reached it comes from a
+       socket the pause closed: the paused viewer runs no Done, so the
+       hand-back waits for the hello on the ticket the pane hands as the tab
+       shows. */
+    it('registers no paused viewer for a control that crosses the pause, and registers it again at its next hello', async () => {
+      resetHandBack();
+      const { port } = await liveViewer();
+      const win = frameWindow();
+      setVisibility('hidden');
+      // The viewer posted this before the pause reached it.
+      messageFrom(win, { type: 'browser-viewer-control', holder: 'human', reason: 'sign in' });
+      embedBrowser.mockResolvedValue(link(2));
+      setVisibility('visible');
+      await flush();
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
+      expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+      expect(win.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      fromViewer(DROP_LIVE_AGAIN, port);
+      messageFrom(win, { type: 'browser-viewer-control', holder: 'human', reason: 'sign in' });
+      await flush();
+      expect(win.postMessage).toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+      resetHandBack();
+    });
+
     it('relinks when the network comes back after the fetch as the tab shows failed, even after a live that crossed the pause', async () => {
       const { frame, port } = await liveViewer();
       setVisibility('hidden');
