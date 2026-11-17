@@ -1314,6 +1314,7 @@
     "record": {
       "approvalDenied": "Approvazione negata",
       "approvalResolved": "Approvazione gestita",
+      "folderBusy": "Un’altra attività sta lavorando in questa cartella, quindi questa lavora in un worktree.",
       "followUpDelivered": "Istruzione aggiuntiva consegnata",
       "requestRejected": "Richiesta rifiutata",
       "taskStatus": "Stato dell’attività"

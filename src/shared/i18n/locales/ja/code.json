@@ -1314,6 +1314,7 @@
     "record": {
       "approvalDenied": "承認が拒否されました",
       "approvalResolved": "承認が処理されました",
+      "folderBusy": "別のタスクがこのフォルダで作業中のため、このタスクはワークツリーで作業します。",
       "followUpDelivered": "追加の指示を送信しました",
       "requestRejected": "リクエストが拒否されました",
       "taskStatus": "タスクのステータス"

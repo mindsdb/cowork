@@ -1314,6 +1314,7 @@
     "record": {
       "approvalDenied": "Approval denied",
       "approvalResolved": "Approval resolved",
+      "folderBusy": "Another task is working in this folder, so this one works in a worktree.",
       "followUpDelivered": "Follow-up delivered",
       "requestRejected": "Request rejected",
       "taskStatus": "Task status"

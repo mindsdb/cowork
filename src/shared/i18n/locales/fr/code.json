@@ -1314,6 +1314,7 @@
     "record": {
       "approvalDenied": "Approbation refusée",
       "approvalResolved": "Approbation traitée",
+      "folderBusy": "Une autre tâche travaille dans ce dossier, donc celle-ci travaille dans un worktree.",
       "followUpDelivered": "Message de suivi transmis",
       "requestRejected": "Demande rejetée",
       "taskStatus": "État de la tâche"

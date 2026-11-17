@@ -88161,6 +88161,40 @@
       "text": "c57db8673048"
     }
   },
+  "code:timeline.record.folderBusy": {
+    "de": {
+      "from": "4d6576909c21",
+      "text": "e16dd4f1e207"
+    },
+    "es": {
+      "from": "4d6576909c21",
+      "text": "d98b639cb5bb"
+    },
+    "fr": {
+      "from": "4d6576909c21",
+      "text": "cd4bdb38c794"
+    },
+    "it": {
+      "from": "4d6576909c21",
+      "text": "6f5b4ab8768f"
+    },
+    "ja": {
+      "from": "4d6576909c21",
+      "text": "7befeecfe62a"
+    },
+    "ko": {
+      "from": "4d6576909c21",
+      "text": "0f55b6740e0a"
+    },
+    "pt-BR": {
+      "from": "4d6576909c21",
+      "text": "41f9b68a7b2b"
+    },
+    "zh-CN": {
+      "from": "4d6576909c21",
+      "text": "6d4b7fc821a5"
+    }
+  },
   "code:timeline.record.followUpDelivered": {
     "de": {
       "from": "fce4b4962b11",

@@ -1314,6 +1314,7 @@
     "record": {
       "approvalDenied": "Genehmigung abgelehnt",
       "approvalResolved": "Genehmigung erledigt",
+      "folderBusy": "Eine andere Aufgabe arbeitet in diesem Ordner, daher arbeitet diese in einem Worktree.",
       "followUpDelivered": "Folgeanweisung zugestellt",
       "requestRejected": "Anfrage abgelehnt",
       "taskStatus": "Aufgabenstatus"

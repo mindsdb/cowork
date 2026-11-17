@@ -499,7 +499,12 @@ export function useNewTaskDraft({
       ...(selectedProject && resourceIds.length < projectResources.length ? { resourceIds } : {}),
       ...(selectedProject ? { computerId } : {}),
       ...(repositorySetup ? { repositorySetup } : {}),
-      ...(currentModeResponse?.known && workspaceMode && (workspaceModeChoice || workspaceMode === 'in_place') ? { workspaceMode } : {}),
+      ...(currentModeResponse?.known && workspaceMode && (workspaceModeChoice || workspaceMode === 'in_place') ? {
+        workspaceMode,
+        // Only a choice made for this task is binding; a default lets the
+        // server move a task into a worktree when the folder is busy.
+        workspaceModeIsDefault: explicitWorkspaceMode?.key !== workspaceModeKey,
+      } : {}),
     };
     await onCreate(selectedProject
       ? { ...task, projectId: selectedProject.id }

@@ -102,6 +102,8 @@ export interface SessionCreateBody {
   allow_direct_folder?: boolean;
   /** Omit to let the server choose for the project and computer. */
   workspace_mode?: WorkspaceMode;
+  /** The mode is a default, not chosen for this task, so the server may isolate a busy folder. */
+  workspace_mode_is_default?: boolean;
   engine_id?: string;
   model?: string;
   permission_mode?: PermissionMode;
@@ -130,6 +132,8 @@ interface CreateCodeTaskBase {
   computerId?: string;
   /** Set only when the composer offered a choice. */
   workspaceMode?: WorkspaceMode;
+  /** True when ``workspaceMode`` came from a default rather than a choice for this task. */
+  workspaceModeIsDefault?: boolean;
 }
 
 export type CreateCodeTaskInput = CreateCodeTaskBase & (
