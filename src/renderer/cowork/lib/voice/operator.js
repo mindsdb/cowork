@@ -17,6 +17,15 @@ import { describeWaiting } from './callNeeds';
 export const MAX_ROUNDS = 6;
 const MAX_HISTORY = 40;
 const MAX_RESULT_CHARS = 4000;
+// The server refuses a message longer than this (MAX_MESSAGE_CHARS in
+// cowork-server's voice operator). A request is everything heard since the
+// last one, so a long one keeps its end: what the person said last.
+export const MAX_REQUEST_CHARS = 8000;
+
+function fitRequest(request) {
+  const text = String(request ?? '');
+  return text.length > MAX_REQUEST_CHARS ? `…${text.slice(-(MAX_REQUEST_CHARS - 1))}` : text;
+}
 
 function asCall(call) {
   return { id: call.id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.arguments || {}) } };
@@ -27,7 +36,7 @@ function asCall(call) {
  * every round, so it sees what the previous round's actions changed.
  */
 export async function runOperator({ request, history, snapshot, actions, operate = voiceOperate, maxRounds = MAX_ROUNDS }) {
-  const exchange = [{ role: 'user', content: request }];
+  const exchange = [{ role: 'user', content: fitRequest(request) }];
   const settle = (said) => {
     history.push(...exchange, { role: 'assistant', content: said });
     return said;
