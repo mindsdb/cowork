@@ -51,6 +51,7 @@ import { rememberLastOrg, useOrgLanding } from '../lib/orgLanding';
 import { organizationLabel, orgDisplayName } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened, trackMenuApiDocsClicked, trackMenuApiKeysClicked } from '../lib/analytics';
+import { offersBilling } from '../lib/billingLinks';
 import { openExternal } from '../../platform/host';
 import {
   MINDS_API_DOCS_URL,
@@ -284,7 +285,7 @@ export function UserMenu({ user, onOpenSettings }) {
     // went looking. It has to be recorded — it is a real route to the billing
     // page, and a capped user who dismisses the card and uses the menu instead
     // is otherwise invisible — but any upgrade-intent analysis must exclude it.
-    PLATFORM_UI && externalItem(t, CreditCard, t('userMenu.billing'), consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
+    PLATFORM_UI && offersBilling() && externalItem(t, CreditCard, t('userMenu.billing'), consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
     PLATFORM_UI && externalItem(t, UsersRound, t('userMenu.members'), consoleLink(MINDS_MEMBERS_URL)),
     // Developer links (ENG-4288). Sign-in lands in Cowork rather than the
     // console, so a developer who came for the API needs a one-click route to

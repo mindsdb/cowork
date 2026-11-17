@@ -183,6 +183,7 @@ describe('console host derivation (the one role that differs by host shape)', ()
   it('leaves auth alone on a PR host: auth DOES keep its prefix there', async () => {
     // The asymmetry is the whole point. Auth is `auth-<env>.dev…`, the console
     // is `<env>.dev…`, so one role can use the token swap and the other cannot.
+    vi.stubEnv('VITE_KEYCLOAK_URL', '');
     vi.stubEnv('VITE_MINDS_API_URL', 'https://api-pr-cowork-744.dev.mindshub.ai');
     const { MINDS_KEYCLOAK_URL } = await importUrls();
 

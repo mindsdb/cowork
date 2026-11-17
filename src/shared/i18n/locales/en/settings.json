@@ -331,6 +331,7 @@
     "modelUnavailable": "{model} is unavailable. Choose another model or contact your administrator.",
     "modelRestricted": "{model} is restricted by an admin in your organization. Choose another model.",
     "modelNeedsCredits": "{model} needs credits. {link} to use it.",
+    "modelNeedsCreditsNoLink": "{model} needs credits.",
     "topUpBalance": "Top up your balance",
     "modelBudgetReached": "{model} can't run because your organization's budget is used up.",
     "viewBudgets": "View budgets"

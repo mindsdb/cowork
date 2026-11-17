@@ -404,7 +404,8 @@
       "operatorTitle": "Se requiere configurar un proveedor",
       "body": "Empieza con MindsHub y obtén una asignación gratuita en MindsHub Air; luego paga según lo que uses. O agrega tu propia clave de API (Anthropic, OpenAI o cualquier endpoint compatible con OpenAI) en Configuración.",
       "operatorBody": "Pide a tu operador que configure el proveedor de modelos antes de iniciar una tarea.",
-      "startFree": "Empezar gratis"
+      "startFree": "Empezar gratis",
+      "bodyMobile": "Conecta tu propio proveedor en Configuración."
     },
     "handoffHint": "Edita este prompt y envíalo cuando estés listo.",
     "signupWelcome": {

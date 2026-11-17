@@ -404,7 +404,8 @@
       "operatorTitle": "プロバイダの設定が必要です",
       "body": "MindsHubならMindsHub Airの無料枠から始めて、その後は従量課金でご利用いただけます。または、設定で独自のAPIキー（Anthropic、OpenAI、またはOpenAI互換のエンドポイント）を追加することもできます。",
       "operatorBody": "タスクを開始する前に、モデルプロバイダの設定を運用担当者に依頼してください。",
-      "startFree": "無料で始める"
+      "startFree": "無料で始める",
+      "bodyMobile": "設定で自分のプロバイダーを接続してください。"
     },
     "handoffHint": "このプロンプトを編集して、準備ができたら送信してください。",
     "signupWelcome": {

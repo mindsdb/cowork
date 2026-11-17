@@ -89,6 +89,7 @@ import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
 import { addonRowLabel, queuedReasonKey } from '../lib/addons';
 import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
@@ -1330,7 +1331,7 @@ export function AllowanceExhaustedCard({
       kind={t('chatView.kinds.billing')}
       title={t('chatView.cards.taskStopped')}
       body={allowanceStopCopy({ resetAt, usage })}
-      buttons={[
+      buttons={billingActions([
         {
           label: t('chatView.cards.addFunds'),
           // The click, not an impression — same rule as
@@ -1352,7 +1353,7 @@ export function AllowanceExhaustedCard({
             host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
           },
         }]),
-      ]}
+      ])}
     />
   );
 }
@@ -1412,11 +1413,11 @@ export function BalanceEmptyCard({
   };
   // Fixed copy, not the server string: the
   // gateway's wording predates pay as you go.
-  let body = t('chatView.cards.balanceRanOut');
-  let buttons = [addFunds];
+  let body = t(billingCopyKey('chatView.cards.balanceRanOut'));
+  let buttons = billingActions([addFunds]);
   if (!walletPaysNow && free.status === 'has_room' && onSwitchToAir) {
     body = t('chatView.cards.balanceEmptyAirLeft');
-    buttons = [addFunds, ...switchToAirButtons(onSwitchToAir)];
+    buttons = [...billingActions([addFunds]), ...switchToAirButtons(onSwitchToAir)];
   } else if (!walletPaysNow && free.status === 'spent' && refill) {
     body = allowanceStopCopy({ usage });
   }
@@ -1472,7 +1473,7 @@ export function FreeServingPausedCard({
       kind={t('chatView.kinds.usage')}
       title={t('chatView.cards.freeAirPausedTitle')}
       body={freeServingPausedCopy(resetAt)}
-      buttons={[
+      buttons={billingActions([
         {
           label: t('chatView.cards.addFunds'),
           /* The click only, like the other stopped-task cards. Its own
@@ -1483,7 +1484,7 @@ export function FreeServingPausedCard({
           },
           primary: true,
         },
-      ]}
+      ])}
     />
   );
 }
@@ -1522,7 +1523,7 @@ export function BudgetExceededCard({
       title={t('chatView.cards.budgetUsedUpTitle')}
       body={budgetExceededCopy({ usage })}
       buttons={[
-        {
+        ...billingActions([{
           label: t('chatView.cards.viewBudgets'),
           // The click only, like the other stopped-task cards.
           onClick: () => {
@@ -1530,7 +1531,7 @@ export function BudgetExceededCard({
             host.openExternal(budgetsUrl);
           },
           primary: true,
-        },
+        }]),
         ...(airHasRoom ? switchToAirButtons(onSwitchToAir) : []),
       ]}
     />
@@ -1548,10 +1549,10 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
       kind={t('chatView.kinds.connection')}
       title={PLATFORM_UI ? t('chatView.cards.connectProviderTitle') : t('chatView.cards.providerSetupRequiredTitle')}
       body={PLATFORM_UI
-        ? t('chatView.cards.connectProviderBody')
+        ? t(billingCopyKey('chatView.cards.connectProviderBody'))
         : t('chatView.cards.providerSetupRequiredBody')}
       buttons={PLATFORM_UI ? [
-        {
+        ...billingActions([{
           label: t('chatView.cards.startForFree'),
           // The click only. Whether this card deserves an
           // impression event of its own is an open
@@ -1561,7 +1562,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
             host.openExternal(MINDS_BILLING_URL);
           },
           primary: true,
-        },
+        }]),
         { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: false },
       ] : []}
     />
@@ -1589,11 +1590,11 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
         agentLabel={agentLabel}
         kind={t('chatView.kinds.billing')}
         title={t('chatView.cards.autoTopUpFailedTitle')}
-        body={t('chatView.cards.autoTopUpFailedBody')}
-        buttons={[
+        body={t(billingCopyKey('chatView.cards.autoTopUpFailedBody'))}
+        buttons={billingActions([
           { label: USAGE_ACTIONS.addFunds.label, onClick: open(USAGE_ACTIONS.addFunds), primary: true },
           { label: USAGE_ACTIONS.updatePaymentMethod.label, onClick: open(USAGE_ACTIONS.updatePaymentMethod) },
-        ]}
+        ])}
       />
     );
   }
@@ -1613,12 +1614,16 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
     <div className="my-3 flex flex-wrap items-center gap-x-1.5 font-body text-xs text-ink-3">
       <Icon of={CircleAlert} size={14} />
       <span>{text}</span>
-      <span aria-hidden="true">·</span>
-      <button
-        type="button"
-        onClick={open(USAGE_ACTIONS.viewUsage)}
-        className="border-0 bg-transparent p-0 m-0 font-body text-xs underline underline-offset-2 text-[color:inherit] cursor-pointer hover:text-ink-2"
-      >{USAGE_ACTIONS.viewUsage.label}</button>
+      {offersBilling() && (
+        <>
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            onClick={open(USAGE_ACTIONS.viewUsage)}
+            className="border-0 bg-transparent p-0 m-0 font-body text-xs underline underline-offset-2 text-[color:inherit] cursor-pointer hover:text-ink-2"
+          >{USAGE_ACTIONS.viewUsage.label}</button>
+        </>
+      )}
     </div>
   );
 }
@@ -1898,11 +1903,11 @@ export function ModelUnavailableCard({
       kind={t('chatView.kinds.model')}
       title={title}
       body={denied
-        ? t('chatView.model.needsCreditsBody')
+        ? t(billingCopyKey('chatView.model.needsCreditsBody'))
         : t('chatView.model.disabledBody')}
       buttons={denied
         ? [
-            { label: t('chatView.model.topUpBalance'), onClick: openBilling, primary: true },
+            ...billingActions([{ label: t('chatView.model.topUpBalance'), onClick: openBilling, primary: true }]),
             // Only while Air can still run (free allowance or a payable
             // wallet) — a switch offer into another locked model is the same
             // dead end this card exists to close.
@@ -1910,7 +1915,7 @@ export function ModelUnavailableCard({
           ]
         : [
             { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: true },
-            { label: t('chatView.model.topUpBalance'), onClick: openBilling },
+            ...billingActions([{ label: t('chatView.model.topUpBalance'), onClick: openBilling }]),
           ]}
     />
   );

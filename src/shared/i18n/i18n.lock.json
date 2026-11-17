@@ -33421,6 +33421,40 @@
       "text": "1be8b18224e2"
     }
   },
+  "chat:chatView.cards.autoTopUpFailedBodyMobile": {
+    "de": {
+      "from": "47572803aace",
+      "text": "290bbed0d169"
+    },
+    "es": {
+      "from": "47572803aace",
+      "text": "0ddb790d1a0d"
+    },
+    "fr": {
+      "from": "47572803aace",
+      "text": "f1dee8428403"
+    },
+    "it": {
+      "from": "47572803aace",
+      "text": "d920b92499f0"
+    },
+    "ja": {
+      "from": "47572803aace",
+      "text": "d8ead4135b77"
+    },
+    "ko": {
+      "from": "47572803aace",
+      "text": "0054e9b94f5c"
+    },
+    "pt-BR": {
+      "from": "47572803aace",
+      "text": "4adea3d749ef"
+    },
+    "zh-CN": {
+      "from": "47572803aace",
+      "text": "9c1f68f80da6"
+    }
+  },
   "chat:chatView.cards.autoTopUpFailedTitle": {
     "de": {
       "from": "d792d9bbea62",
@@ -33523,6 +33557,40 @@
       "text": "01d05a3c728c"
     }
   },
+  "chat:chatView.cards.balanceRanOutMobile": {
+    "de": {
+      "from": "06cedb06e9fb",
+      "text": "505710724067"
+    },
+    "es": {
+      "from": "06cedb06e9fb",
+      "text": "b010bcbeaaa7"
+    },
+    "fr": {
+      "from": "06cedb06e9fb",
+      "text": "eca1dbd9f35c"
+    },
+    "it": {
+      "from": "06cedb06e9fb",
+      "text": "9b76bd2dcce8"
+    },
+    "ja": {
+      "from": "06cedb06e9fb",
+      "text": "57ac0d8056a4"
+    },
+    "ko": {
+      "from": "06cedb06e9fb",
+      "text": "55691eee87d7"
+    },
+    "pt-BR": {
+      "from": "06cedb06e9fb",
+      "text": "f74164b91795"
+    },
+    "zh-CN": {
+      "from": "06cedb06e9fb",
+      "text": "557c7decab0e"
+    }
+  },
   "chat:chatView.cards.budgetUsedUpTitle": {
     "de": {
       "from": "9f09da671dd0",
@@ -33589,6 +33657,40 @@
     "zh-CN": {
       "from": "57ecb67cd67f",
       "text": "0b18cabf0707"
+    }
+  },
+  "chat:chatView.cards.connectProviderBodyMobile": {
+    "de": {
+      "from": "8f0e28cb49dc",
+      "text": "f86324e77a50"
+    },
+    "es": {
+      "from": "8f0e28cb49dc",
+      "text": "11f442b0a52e"
+    },
+    "fr": {
+      "from": "8f0e28cb49dc",
+      "text": "2d168d002375"
+    },
+    "it": {
+      "from": "8f0e28cb49dc",
+      "text": "aaf569caf096"
+    },
+    "ja": {
+      "from": "8f0e28cb49dc",
+      "text": "751c6940fca6"
+    },
+    "ko": {
+      "from": "8f0e28cb49dc",
+      "text": "3e6c08054c8b"
+    },
+    "pt-BR": {
+      "from": "8f0e28cb49dc",
+      "text": "0777a434b954"
+    },
+    "zh-CN": {
+      "from": "8f0e28cb49dc",
+      "text": "d862193feead"
     }
   },
   "chat:chatView.cards.connectProviderTitle": {
@@ -36241,6 +36343,40 @@
     "zh-CN": {
       "from": "7dddfa03b1c0",
       "text": "d5b27cdbd469"
+    }
+  },
+  "chat:chatView.model.needsCreditsBodyMobile": {
+    "de": {
+      "from": "87203ce0c510",
+      "text": "e681a39d97f6"
+    },
+    "es": {
+      "from": "87203ce0c510",
+      "text": "b6c85cd44084"
+    },
+    "fr": {
+      "from": "87203ce0c510",
+      "text": "34adab6e1ef0"
+    },
+    "it": {
+      "from": "87203ce0c510",
+      "text": "90ab0dd51157"
+    },
+    "ja": {
+      "from": "87203ce0c510",
+      "text": "4bc74b71a4df"
+    },
+    "ko": {
+      "from": "87203ce0c510",
+      "text": "68bbb2705e5c"
+    },
+    "pt-BR": {
+      "from": "87203ce0c510",
+      "text": "f8b4954ced49"
+    },
+    "zh-CN": {
+      "from": "87203ce0c510",
+      "text": "36451f231e61"
     }
   },
   "chat:chatView.model.needsCreditsTitle": {
@@ -109071,6 +109207,40 @@
       "text": "dd04a2462dfd"
     }
   },
+  "projects:messages.antonErrors.noProviderMobile": {
+    "de": {
+      "from": "8f0e28cb49dc",
+      "text": "f86324e77a50"
+    },
+    "es": {
+      "from": "8f0e28cb49dc",
+      "text": "11f442b0a52e"
+    },
+    "fr": {
+      "from": "8f0e28cb49dc",
+      "text": "2d168d002375"
+    },
+    "it": {
+      "from": "8f0e28cb49dc",
+      "text": "aaf569caf096"
+    },
+    "ja": {
+      "from": "8f0e28cb49dc",
+      "text": "751c6940fca6"
+    },
+    "ko": {
+      "from": "8f0e28cb49dc",
+      "text": "3e6c08054c8b"
+    },
+    "pt-BR": {
+      "from": "8f0e28cb49dc",
+      "text": "0777a434b954"
+    },
+    "zh-CN": {
+      "from": "8f0e28cb49dc",
+      "text": "d862193feead"
+    }
+  },
   "projects:messages.artifactActions.noPreviewDownloaded": {
     "de": {
       "from": "d360544f0be4",
@@ -110737,6 +110907,40 @@
       "text": "1dddb4443262"
     }
   },
+  "projects:messages.compare.block.outOfCreditsBothMobile": {
+    "de": {
+      "from": "c4cf2111a44c",
+      "text": "9032ee29d5f3"
+    },
+    "es": {
+      "from": "c4cf2111a44c",
+      "text": "2f16de1a7320"
+    },
+    "fr": {
+      "from": "c4cf2111a44c",
+      "text": "16d74ce11309"
+    },
+    "it": {
+      "from": "c4cf2111a44c",
+      "text": "42b11b18aba6"
+    },
+    "ja": {
+      "from": "c4cf2111a44c",
+      "text": "4fcbd594365d"
+    },
+    "ko": {
+      "from": "c4cf2111a44c",
+      "text": "8552d657840a"
+    },
+    "pt-BR": {
+      "from": "c4cf2111a44c",
+      "text": "6f74bef2a1ad"
+    },
+    "zh-CN": {
+      "from": "c4cf2111a44c",
+      "text": "0f315b489011"
+    }
+  },
   "projects:messages.compare.block.outOfCreditsOne": {
     "de": {
       "from": "d9fb5a8461ec",
@@ -110769,6 +110973,40 @@
     "zh-CN": {
       "from": "d9fb5a8461ec",
       "text": "45948aea2c37"
+    }
+  },
+  "projects:messages.compare.block.outOfCreditsOneMobile": {
+    "de": {
+      "from": "c42e617ae252",
+      "text": "ebe586aeb8ad"
+    },
+    "es": {
+      "from": "c42e617ae252",
+      "text": "9115788305c5"
+    },
+    "fr": {
+      "from": "c42e617ae252",
+      "text": "ddaa3207adbe"
+    },
+    "it": {
+      "from": "c42e617ae252",
+      "text": "ef6eb8939863"
+    },
+    "ja": {
+      "from": "c42e617ae252",
+      "text": "9484cf8c8250"
+    },
+    "ko": {
+      "from": "c42e617ae252",
+      "text": "437732f50114"
+    },
+    "pt-BR": {
+      "from": "c42e617ae252",
+      "text": "4849e238504f"
+    },
+    "zh-CN": {
+      "from": "c42e617ae252",
+      "text": "be4cc3149725"
     }
   },
   "projects:messages.compare.block.sending": {
@@ -116313,6 +116551,40 @@
       "text": "52b77da939d7"
     }
   },
+  "projects:messages.providerStatus.row.walletEmptyMobile": {
+    "de": {
+      "from": "969600523675",
+      "text": "f8edbcf91bef"
+    },
+    "es": {
+      "from": "969600523675",
+      "text": "8e62b735e744"
+    },
+    "fr": {
+      "from": "969600523675",
+      "text": "28e2aea453b0"
+    },
+    "it": {
+      "from": "969600523675",
+      "text": "5b0c25c8996e"
+    },
+    "ja": {
+      "from": "969600523675",
+      "text": "75a69d83f8fe"
+    },
+    "ko": {
+      "from": "969600523675",
+      "text": "309ee550ad2e"
+    },
+    "pt-BR": {
+      "from": "969600523675",
+      "text": "2f82c88f17d5"
+    },
+    "zh-CN": {
+      "from": "969600523675",
+      "text": "1ce2172fda15"
+    }
+  },
   "projects:messages.providerStatus.timeout": {
     "de": {
       "from": "0ebab62f57c6",
@@ -119339,6 +119611,40 @@
       "text": "13b77bfcf353"
     }
   },
+  "projects:messages.usage.allowanceStop.noGrantMobile": {
+    "de": {
+      "from": "726d60ef9b1d",
+      "text": "f8613eb1f3b0"
+    },
+    "es": {
+      "from": "726d60ef9b1d",
+      "text": "dfa1b7d2e03d"
+    },
+    "fr": {
+      "from": "726d60ef9b1d",
+      "text": "ff06d5c8d3a4"
+    },
+    "it": {
+      "from": "726d60ef9b1d",
+      "text": "1191935552d5"
+    },
+    "ja": {
+      "from": "726d60ef9b1d",
+      "text": "359b3075989f"
+    },
+    "ko": {
+      "from": "726d60ef9b1d",
+      "text": "d6636c46ab96"
+    },
+    "pt-BR": {
+      "from": "726d60ef9b1d",
+      "text": "3e74585d395f"
+    },
+    "zh-CN": {
+      "from": "726d60ef9b1d",
+      "text": "7df5d5cb7fc9"
+    }
+  },
   "projects:messages.usage.allowanceStop.noTime": {
     "de": {
       "from": "50fc264b351a",
@@ -119371,6 +119677,40 @@
     "zh-CN": {
       "from": "50fc264b351a",
       "text": "604266c5ca97"
+    }
+  },
+  "projects:messages.usage.allowanceStop.noTimeMobile": {
+    "de": {
+      "from": "e02fde35b6b8",
+      "text": "0a0c02285897"
+    },
+    "es": {
+      "from": "e02fde35b6b8",
+      "text": "d8faaead4bf9"
+    },
+    "fr": {
+      "from": "e02fde35b6b8",
+      "text": "2d49086e8c5d"
+    },
+    "it": {
+      "from": "e02fde35b6b8",
+      "text": "8921a2dade74"
+    },
+    "ja": {
+      "from": "e02fde35b6b8",
+      "text": "c94abe23ec54"
+    },
+    "ko": {
+      "from": "e02fde35b6b8",
+      "text": "dd850e861e87"
+    },
+    "pt-BR": {
+      "from": "e02fde35b6b8",
+      "text": "b2c2c086c7f6"
+    },
+    "zh-CN": {
+      "from": "e02fde35b6b8",
+      "text": "fcfc9c84fe60"
     }
   },
   "projects:messages.usage.allowanceStop.withTime": {
@@ -119407,6 +119747,40 @@
       "text": "bce0ef510b24"
     }
   },
+  "projects:messages.usage.allowanceStop.withTimeMobile": {
+    "de": {
+      "from": "f290e4aa8214",
+      "text": "8985c87974b2"
+    },
+    "es": {
+      "from": "f290e4aa8214",
+      "text": "4de016fb3347"
+    },
+    "fr": {
+      "from": "f290e4aa8214",
+      "text": "d5a5051e4f32"
+    },
+    "it": {
+      "from": "f290e4aa8214",
+      "text": "675cbb8b59a5"
+    },
+    "ja": {
+      "from": "f290e4aa8214",
+      "text": "f5ac2217c82e"
+    },
+    "ko": {
+      "from": "f290e4aa8214",
+      "text": "775cc56e6acd"
+    },
+    "pt-BR": {
+      "from": "f290e4aa8214",
+      "text": "b7051a8eb007"
+    },
+    "zh-CN": {
+      "from": "f290e4aa8214",
+      "text": "fb697e00f75e"
+    }
+  },
   "projects:messages.usage.autoTopUpFailed.body": {
     "de": {
       "from": "9ac842622b10",
@@ -119439,6 +119813,40 @@
     "zh-CN": {
       "from": "9ac842622b10",
       "text": "194a40743197"
+    }
+  },
+  "projects:messages.usage.autoTopUpFailed.bodyMobile": {
+    "de": {
+      "from": "47572803aace",
+      "text": "290bbed0d169"
+    },
+    "es": {
+      "from": "47572803aace",
+      "text": "0ddb790d1a0d"
+    },
+    "fr": {
+      "from": "47572803aace",
+      "text": "f1dee8428403"
+    },
+    "it": {
+      "from": "47572803aace",
+      "text": "d920b92499f0"
+    },
+    "ja": {
+      "from": "47572803aace",
+      "text": "d8ead4135b77"
+    },
+    "ko": {
+      "from": "47572803aace",
+      "text": "0054e9b94f5c"
+    },
+    "pt-BR": {
+      "from": "47572803aace",
+      "text": "4adea3d749ef"
+    },
+    "zh-CN": {
+      "from": "47572803aace",
+      "text": "9c1f68f80da6"
     }
   },
   "projects:messages.usage.autoTopUpFailed.title": {
@@ -119509,6 +119917,40 @@
       "text": "2b3e1ab967b0"
     }
   },
+  "projects:messages.usage.balanceEmpty.bodyMobile": {
+    "de": {
+      "from": "c7c9e947efcd",
+      "text": "806fd9990a15"
+    },
+    "es": {
+      "from": "c7c9e947efcd",
+      "text": "349bad0729ee"
+    },
+    "fr": {
+      "from": "c7c9e947efcd",
+      "text": "b4ef02c24633"
+    },
+    "it": {
+      "from": "c7c9e947efcd",
+      "text": "184f5fe5d5d6"
+    },
+    "ja": {
+      "from": "c7c9e947efcd",
+      "text": "b757b5577461"
+    },
+    "ko": {
+      "from": "c7c9e947efcd",
+      "text": "5f17cd286b1f"
+    },
+    "pt-BR": {
+      "from": "c7c9e947efcd",
+      "text": "f7500e67f55f"
+    },
+    "zh-CN": {
+      "from": "c7c9e947efcd",
+      "text": "22b22021c56d"
+    }
+  },
   "projects:messages.usage.balanceEmpty.freeUsedToo": {
     "de": {
       "from": "8741acf332d2",
@@ -119543,6 +119985,40 @@
       "text": "ff667ef6fac3"
     }
   },
+  "projects:messages.usage.balanceEmpty.freeUsedTooMobile": {
+    "de": {
+      "from": "671700db9659",
+      "text": "7ccaeba322ed"
+    },
+    "es": {
+      "from": "671700db9659",
+      "text": "61e65a57ed86"
+    },
+    "fr": {
+      "from": "671700db9659",
+      "text": "18b8548c8b9f"
+    },
+    "it": {
+      "from": "671700db9659",
+      "text": "a9d53f175547"
+    },
+    "ja": {
+      "from": "671700db9659",
+      "text": "b9c407ca878e"
+    },
+    "ko": {
+      "from": "671700db9659",
+      "text": "ba4f380f447f"
+    },
+    "pt-BR": {
+      "from": "671700db9659",
+      "text": "fb4b8c2c4410"
+    },
+    "zh-CN": {
+      "from": "671700db9659",
+      "text": "6d65fa22248a"
+    }
+  },
   "projects:messages.usage.balanceEmpty.freeUsedTooWithTime": {
     "de": {
       "from": "d8b85a2749cc",
@@ -119575,6 +120051,40 @@
     "zh-CN": {
       "from": "d8b85a2749cc",
       "text": "7f1b1d1b5383"
+    }
+  },
+  "projects:messages.usage.balanceEmpty.freeUsedTooWithTimeMobile": {
+    "de": {
+      "from": "1caf86eb04ef",
+      "text": "a71135534b29"
+    },
+    "es": {
+      "from": "1caf86eb04ef",
+      "text": "2627f3906b59"
+    },
+    "fr": {
+      "from": "1caf86eb04ef",
+      "text": "c2586b79ad5e"
+    },
+    "it": {
+      "from": "1caf86eb04ef",
+      "text": "1dba14598414"
+    },
+    "ja": {
+      "from": "1caf86eb04ef",
+      "text": "190bb161439a"
+    },
+    "ko": {
+      "from": "1caf86eb04ef",
+      "text": "609fd27f2243"
+    },
+    "pt-BR": {
+      "from": "1caf86eb04ef",
+      "text": "1d86d7189456"
+    },
+    "zh-CN": {
+      "from": "1caf86eb04ef",
+      "text": "ceefc38e23d3"
     }
   },
   "projects:messages.usage.balanceEmpty.title": {
@@ -119677,6 +120187,40 @@
     "zh-CN": {
       "from": "e145c81f5211",
       "text": "5a62ce161ba4"
+    }
+  },
+  "projects:messages.usage.balanceLow.autoCapReachedMobile": {
+    "de": {
+      "from": "97d03d658d92",
+      "text": "ce14fa582192"
+    },
+    "es": {
+      "from": "97d03d658d92",
+      "text": "129a22baf440"
+    },
+    "fr": {
+      "from": "97d03d658d92",
+      "text": "72b5400d1503"
+    },
+    "it": {
+      "from": "97d03d658d92",
+      "text": "ebdcf9b31eca"
+    },
+    "ja": {
+      "from": "97d03d658d92",
+      "text": "a4bd15976e04"
+    },
+    "ko": {
+      "from": "97d03d658d92",
+      "text": "1c51c3937f5b"
+    },
+    "pt-BR": {
+      "from": "97d03d658d92",
+      "text": "639e72cc666f"
+    },
+    "zh-CN": {
+      "from": "97d03d658d92",
+      "text": "fa8634b2ffa2"
     }
   },
   "projects:messages.usage.balanceLow.autoCovers": {
@@ -119813,6 +120357,40 @@
     "zh-CN": {
       "from": "7a02ad45e1ac",
       "text": "5955397ce107"
+    }
+  },
+  "projects:messages.usage.balanceLow.bodyMobile": {
+    "de": {
+      "from": "99e32fdb3890",
+      "text": "5d3965796e87"
+    },
+    "es": {
+      "from": "99e32fdb3890",
+      "text": "7707051728f9"
+    },
+    "fr": {
+      "from": "99e32fdb3890",
+      "text": "a695e353d4ce"
+    },
+    "it": {
+      "from": "99e32fdb3890",
+      "text": "85ce9e0f3e9d"
+    },
+    "ja": {
+      "from": "99e32fdb3890",
+      "text": "eb9b8b96e52d"
+    },
+    "ko": {
+      "from": "99e32fdb3890",
+      "text": "eb6a3040c301"
+    },
+    "pt-BR": {
+      "from": "99e32fdb3890",
+      "text": "d7e6a861800f"
+    },
+    "zh-CN": {
+      "from": "99e32fdb3890",
+      "text": "b7163dba8fc6"
     }
   },
   "projects:messages.usage.balanceLow.title": {
@@ -120053,6 +120631,40 @@
       "text": "cdf78d33c290"
     }
   },
+  "projects:messages.usage.freeServingPaused.dailyResetMobile": {
+    "de": {
+      "from": "2852d6dea479",
+      "text": "4d64ba34d49d"
+    },
+    "es": {
+      "from": "2852d6dea479",
+      "text": "a604f0b385cf"
+    },
+    "fr": {
+      "from": "2852d6dea479",
+      "text": "130f63263a40"
+    },
+    "it": {
+      "from": "2852d6dea479",
+      "text": "0bdfe4979b5b"
+    },
+    "ja": {
+      "from": "2852d6dea479",
+      "text": "19917c690387"
+    },
+    "ko": {
+      "from": "2852d6dea479",
+      "text": "68a7829961d4"
+    },
+    "pt-BR": {
+      "from": "2852d6dea479",
+      "text": "d4f717ec358d"
+    },
+    "zh-CN": {
+      "from": "2852d6dea479",
+      "text": "34c87f272658"
+    }
+  },
   "projects:messages.usage.freeServingPaused.until": {
     "de": {
       "from": "49a66e093c49",
@@ -120085,6 +120697,40 @@
     "zh-CN": {
       "from": "49a66e093c49",
       "text": "551310c8127e"
+    }
+  },
+  "projects:messages.usage.freeServingPaused.untilMobile": {
+    "de": {
+      "from": "9db3bfb3172f",
+      "text": "81fdf391d0e6"
+    },
+    "es": {
+      "from": "9db3bfb3172f",
+      "text": "604841553398"
+    },
+    "fr": {
+      "from": "9db3bfb3172f",
+      "text": "128bdeb94e1a"
+    },
+    "it": {
+      "from": "9db3bfb3172f",
+      "text": "5e55570a1318"
+    },
+    "ja": {
+      "from": "9db3bfb3172f",
+      "text": "41ba1fdb2f50"
+    },
+    "ko": {
+      "from": "9db3bfb3172f",
+      "text": "95468726c616"
+    },
+    "pt-BR": {
+      "from": "9db3bfb3172f",
+      "text": "4f71c3fc8622"
+    },
+    "zh-CN": {
+      "from": "9db3bfb3172f",
+      "text": "1a4459d7d4be"
     }
   },
   "projects:messages.usage.freeUsed.body": {
@@ -131373,6 +132019,40 @@
     "zh-CN": {
       "from": "92c90e5bd96e",
       "text": "81f09c59884f"
+    }
+  },
+  "settings:agent.modelNeedsCreditsNoLink": {
+    "de": {
+      "from": "1672b6c1e3db",
+      "text": "371ae9e970c2"
+    },
+    "es": {
+      "from": "1672b6c1e3db",
+      "text": "930b64a1fed4"
+    },
+    "fr": {
+      "from": "1672b6c1e3db",
+      "text": "9f79b0d84f8b"
+    },
+    "it": {
+      "from": "1672b6c1e3db",
+      "text": "7add16536f03"
+    },
+    "ja": {
+      "from": "1672b6c1e3db",
+      "text": "d3e87ce279ef"
+    },
+    "ko": {
+      "from": "1672b6c1e3db",
+      "text": "ce8b230be752"
+    },
+    "pt-BR": {
+      "from": "1672b6c1e3db",
+      "text": "4e898dd9c812"
+    },
+    "zh-CN": {
+      "from": "1672b6c1e3db",
+      "text": "9cb400840d5c"
     }
   },
   "settings:agent.modelRestricted": {
@@ -146573,6 +147253,40 @@
       "text": "f1f07abd1185"
     }
   },
+  "settingsSystem:usage.autoTopUp.offMobile": {
+    "de": {
+      "from": "65b2c9f8b667",
+      "text": "bdea5d98b002"
+    },
+    "es": {
+      "from": "65b2c9f8b667",
+      "text": "ef7c27bbaddf"
+    },
+    "fr": {
+      "from": "65b2c9f8b667",
+      "text": "569d8f5bf661"
+    },
+    "it": {
+      "from": "65b2c9f8b667",
+      "text": "1a18e04e7461"
+    },
+    "ja": {
+      "from": "65b2c9f8b667",
+      "text": "aa750280ebd9"
+    },
+    "ko": {
+      "from": "65b2c9f8b667",
+      "text": "62b82e326a7d"
+    },
+    "pt-BR": {
+      "from": "65b2c9f8b667",
+      "text": "d47aa9f7ac79"
+    },
+    "zh-CN": {
+      "from": "65b2c9f8b667",
+      "text": "7201d431d657"
+    }
+  },
   "settingsSystem:usage.autoTopUp.on": {
     "de": {
       "from": "fba3f9498fc2",
@@ -146639,6 +147353,40 @@
     "zh-CN": {
       "from": "4725265fcaad",
       "text": "d3c8368e4b60"
+    }
+  },
+  "settingsSystem:usage.autoTopUp.paymentFailedMobile": {
+    "de": {
+      "from": "6eb5022b4d43",
+      "text": "0cade5e80737"
+    },
+    "es": {
+      "from": "6eb5022b4d43",
+      "text": "4833c4c9923c"
+    },
+    "fr": {
+      "from": "6eb5022b4d43",
+      "text": "8b3f0926dc2d"
+    },
+    "it": {
+      "from": "6eb5022b4d43",
+      "text": "c99b30ae0f53"
+    },
+    "ja": {
+      "from": "6eb5022b4d43",
+      "text": "57d61906cff1"
+    },
+    "ko": {
+      "from": "6eb5022b4d43",
+      "text": "207137df4e0f"
+    },
+    "pt-BR": {
+      "from": "6eb5022b4d43",
+      "text": "1d954448babe"
+    },
+    "zh-CN": {
+      "from": "6eb5022b4d43",
+      "text": "b4b6ee5e8186"
     }
   },
   "settingsSystem:usage.autoTopUp.pendingAction": {
@@ -146741,6 +147489,40 @@
     "zh-CN": {
       "from": "053fa797fa04",
       "text": "19990dcc1696"
+    }
+  },
+  "settingsSystem:usage.balance.emptyMobile": {
+    "de": {
+      "from": "c7c9e947efcd",
+      "text": "806fd9990a15"
+    },
+    "es": {
+      "from": "c7c9e947efcd",
+      "text": "349bad0729ee"
+    },
+    "fr": {
+      "from": "c7c9e947efcd",
+      "text": "b4ef02c24633"
+    },
+    "it": {
+      "from": "c7c9e947efcd",
+      "text": "184f5fe5d5d6"
+    },
+    "ja": {
+      "from": "c7c9e947efcd",
+      "text": "b757b5577461"
+    },
+    "ko": {
+      "from": "c7c9e947efcd",
+      "text": "5f17cd286b1f"
+    },
+    "pt-BR": {
+      "from": "c7c9e947efcd",
+      "text": "f7500e67f55f"
+    },
+    "zh-CN": {
+      "from": "c7c9e947efcd",
+      "text": "22b22021c56d"
     }
   },
   "settingsSystem:usage.balance.notOwner": {
@@ -147013,6 +147795,40 @@
     "zh-CN": {
       "from": "8d7548749fbc",
       "text": "a0c44871ea2d"
+    }
+  },
+  "settingsSystem:usage.error.bodyMobile": {
+    "de": {
+      "from": "cb95b9004b18",
+      "text": "8cdb32165eef"
+    },
+    "es": {
+      "from": "cb95b9004b18",
+      "text": "2633886e18eb"
+    },
+    "fr": {
+      "from": "cb95b9004b18",
+      "text": "714814bf21cd"
+    },
+    "it": {
+      "from": "cb95b9004b18",
+      "text": "7371d14371aa"
+    },
+    "ja": {
+      "from": "cb95b9004b18",
+      "text": "f5aea7b0c73f"
+    },
+    "ko": {
+      "from": "cb95b9004b18",
+      "text": "d91ae5788424"
+    },
+    "pt-BR": {
+      "from": "cb95b9004b18",
+      "text": "97fc4f06491a"
+    },
+    "zh-CN": {
+      "from": "cb95b9004b18",
+      "text": "b7af75e313ef"
     }
   },
   "settingsSystem:usage.error.title": {
@@ -147525,6 +148341,40 @@
       "text": "599f5730ffc4"
     }
   },
+  "settingsSystem:usage.low.offMobile": {
+    "de": {
+      "from": "1229cbde006c",
+      "text": "d46d1138e5c2"
+    },
+    "es": {
+      "from": "1229cbde006c",
+      "text": "b0d625d98c23"
+    },
+    "fr": {
+      "from": "1229cbde006c",
+      "text": "6a4843dcb361"
+    },
+    "it": {
+      "from": "1229cbde006c",
+      "text": "a5529f45e2e8"
+    },
+    "ja": {
+      "from": "1229cbde006c",
+      "text": "fd011d2c1994"
+    },
+    "ko": {
+      "from": "1229cbde006c",
+      "text": "4f803155d27b"
+    },
+    "pt-BR": {
+      "from": "1229cbde006c",
+      "text": "e18f176e930e"
+    },
+    "zh-CN": {
+      "from": "1229cbde006c",
+      "text": "981b7603fb63"
+    }
+  },
   "settingsSystem:usage.low.ok": {
     "de": {
       "from": "04fa02698e16",
@@ -147591,6 +148441,40 @@
     "zh-CN": {
       "from": "bade4b3b6c37",
       "text": "702a0238ae52"
+    }
+  },
+  "settingsSystem:usage.low.otherMobile": {
+    "de": {
+      "from": "1229cbde006c",
+      "text": "d46d1138e5c2"
+    },
+    "es": {
+      "from": "1229cbde006c",
+      "text": "b0d625d98c23"
+    },
+    "fr": {
+      "from": "1229cbde006c",
+      "text": "6a4843dcb361"
+    },
+    "it": {
+      "from": "1229cbde006c",
+      "text": "a5529f45e2e8"
+    },
+    "ja": {
+      "from": "1229cbde006c",
+      "text": "fd011d2c1994"
+    },
+    "ko": {
+      "from": "1229cbde006c",
+      "text": "4f803155d27b"
+    },
+    "pt-BR": {
+      "from": "1229cbde006c",
+      "text": "e18f176e930e"
+    },
+    "zh-CN": {
+      "from": "1229cbde006c",
+      "text": "981b7603fb63"
     }
   },
   "settingsSystem:usage.low.pending": {
@@ -160511,6 +161395,40 @@
     "zh-CN": {
       "from": "6e4342a93e82",
       "text": "76bf42db7637"
+    }
+  },
+  "shell:home.connectProvider.bodyMobile": {
+    "de": {
+      "from": "8f0e28cb49dc",
+      "text": "f86324e77a50"
+    },
+    "es": {
+      "from": "8f0e28cb49dc",
+      "text": "11f442b0a52e"
+    },
+    "fr": {
+      "from": "8f0e28cb49dc",
+      "text": "2d168d002375"
+    },
+    "it": {
+      "from": "8f0e28cb49dc",
+      "text": "aaf569caf096"
+    },
+    "ja": {
+      "from": "8f0e28cb49dc",
+      "text": "751c6940fca6"
+    },
+    "ko": {
+      "from": "8f0e28cb49dc",
+      "text": "3e6c08054c8b"
+    },
+    "pt-BR": {
+      "from": "8f0e28cb49dc",
+      "text": "0777a434b954"
+    },
+    "zh-CN": {
+      "from": "8f0e28cb49dc",
+      "text": "d862193feead"
     }
   },
   "shell:home.connectProvider.operatorBody": {
