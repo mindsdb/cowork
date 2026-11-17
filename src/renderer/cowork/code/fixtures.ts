@@ -636,11 +636,13 @@ export function getCodeFixtureApi() {
       worktree_unavailable_reason: gitInitialized
         ? 'This repository has no commits yet. Make a first commit to use a Worktree'
         : "This folder isn't a Git repository. Initialize Git to use a Worktree",
+      worktree_unavailable_code: gitInitialized ? 'no_commits' : 'not_a_repository',
     } : { supported: ['worktree', 'in_place'], default: 'in_place' },
     initializeGit: async (): Promise<WorkspaceModeOptions> => {
       gitInitialized = true;
       return { supported: ['in_place'], default: 'in_place', can_initialize_git: false,
-        worktree_unavailable_reason: 'This repository has no commits yet. Make a first commit to use a Worktree' };
+        worktree_unavailable_reason: 'This repository has no commits yet. Make a first commit to use a Worktree',
+        worktree_unavailable_code: 'no_commits' };
     },
     models: async () => ({ items: [...FIXTURE_MODEL_IDS] }),
     inspect: async (path: string): Promise<WorkspaceInspection> => ({

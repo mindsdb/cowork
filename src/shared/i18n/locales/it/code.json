@@ -1634,6 +1634,16 @@
     },
     "initializeGit": "Inizializza Git",
     "initializeFailed": "Impossibile inizializzare Git. Riprova.",
-    "unavailable": "Nessuna modalità di lavoro è disponibile per questa cartella."
+    "unavailable": "Nessuna modalità di lavoro è disponibile per questa cartella.",
+    "reason": {
+      "notARepository": "Questa cartella non è un repository Git. Inizializza Git per usare un Worktree.",
+      "notARepositoryInFolder": "{folder} non è un repository Git. Inizializza Git per usare un Worktree.",
+      "noCommits": "Questo repository non ha ancora commit. Esegui un primo commit per usare un Worktree.",
+      "noCommitsInFolder": "{folder} non ha ancora commit. Esegui un primo commit per usare un Worktree.",
+      "noLocalCheckout": "{folder} non ha una copia locale su questo computer in cui lavorare. Scegli Worktree.",
+      "inPlaceUnsupportedPlatform": "Lavorare nella cartella originale non è ancora disponibile su questa piattaforma. Scegli Worktree.",
+      "inPlaceOtherComputer": "Le attività su un altro computer vengono eseguite in un worktree isolato. Scegli Worktree.",
+      "sharedRepository": "Due cartelle del progetto sono nello stesso repository, quindi non possono lavorare entrambe direttamente nella cartella. Scegli Worktree."
+    }
   }
 }

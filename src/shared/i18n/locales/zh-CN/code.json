@@ -1634,6 +1634,16 @@
     },
     "initializeGit": "初始化 Git",
     "initializeFailed": "无法初始化 Git。请重试。",
-    "unavailable": "此文件夹没有可用的工作区模式。"
+    "unavailable": "此文件夹没有可用的工作区模式。",
+    "reason": {
+      "notARepository": "此文件夹不是 Git 仓库。要使用工作树，请初始化 Git。",
+      "notARepositoryInFolder": "{folder} 不是 Git 仓库。要使用工作树，请初始化 Git。",
+      "noCommits": "此仓库还没有提交。要使用工作树，请先进行首次提交。",
+      "noCommitsInFolder": "{folder} 还没有提交。要使用工作树，请先进行首次提交。",
+      "noLocalCheckout": "{folder} 在此计算机上没有可用于工作的检出副本。请选择工作树。",
+      "inPlaceUnsupportedPlatform": "此平台暂不支持在原始文件夹中工作。请选择工作树。",
+      "inPlaceOtherComputer": "其他计算机上的任务在隔离的工作树中运行。请选择工作树。",
+      "sharedRepository": "两个项目文件夹位于同一个仓库中，因此不能都直接在文件夹中工作。请选择工作树。"
+    }
   }
 }

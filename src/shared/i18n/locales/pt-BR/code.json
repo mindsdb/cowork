@@ -1634,6 +1634,16 @@
     },
     "initializeGit": "Inicializar Git",
     "initializeFailed": "Não foi possível inicializar o Git. Tente novamente.",
-    "unavailable": "Nenhum modo de espaço de trabalho está disponível para esta pasta."
+    "unavailable": "Nenhum modo de espaço de trabalho está disponível para esta pasta.",
+    "reason": {
+      "notARepository": "Esta pasta não é um repositório Git. Inicialize o Git para usar uma Worktree.",
+      "notARepositoryInFolder": "{folder} não é um repositório Git. Inicialize o Git para usar uma Worktree.",
+      "noCommits": "Este repositório ainda não tem commits. Faça um primeiro commit para usar uma Worktree.",
+      "noCommitsInFolder": "{folder} ainda não tem commits. Faça um primeiro commit para usar uma Worktree.",
+      "noLocalCheckout": "{folder} não tem uma cópia local neste computador para trabalhar. Escolha Worktree.",
+      "inPlaceUnsupportedPlatform": "Trabalhar na pasta original ainda não está disponível nesta plataforma. Escolha Worktree.",
+      "inPlaceOtherComputer": "Tarefas em outro computador são executadas em uma worktree isolada. Escolha Worktree.",
+      "sharedRepository": "Duas pastas do projeto estão no mesmo repositório, então não podem trabalhar as duas diretamente na pasta. Escolha Worktree."
+    }
   }
 }

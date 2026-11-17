@@ -30,9 +30,11 @@ import type { TaskRepositorySetup } from './repositorySetupModels';
 import {
   WORKTREE_ONLY,
   effectiveWorkspaceMode,
+  inPlaceUnavailableText,
   offersWorkspaceChoice,
   storeWorkspaceMode,
   storedWorkspaceMode,
+  worktreeUnavailableText,
 } from './workspaceMode';
 
 // The folder of the last folder-only task, preselected for the next one.
@@ -407,7 +409,7 @@ export function useNewTaskDraft({
   const workspaceLoading = selectedProject ? foldersLoading : standaloneFolderLoading;
   const modeIssue = currentModeResponse?.known && (workspaceModeOptions.supported.length === 0
     || (!!repositorySetup && !workspaceModeOptions.supported.includes('worktree')))
-    ? workspaceModeOptions.worktree_unavailable_reason || workspaceModeOptions.in_place_unavailable_reason || i18n.t('workspaceMode.unavailable', { ns: 'code' })
+    ? worktreeUnavailableText(workspaceModeOptions) || inPlaceUnavailableText(workspaceModeOptions) || i18n.t('workspaceMode.unavailable', { ns: 'code' })
     : '';
   const workspaceIssue = (selectedProject ? folderIssue : standaloneFolderIssue) || modeIssue;
   const workspaceSelected = !!selectedProject || !!standaloneFolderPath;

@@ -1634,6 +1634,16 @@
     },
     "initializeGit": "Initialize Git",
     "initializeFailed": "Could not initialize Git. Try again.",
-    "unavailable": "No workspace mode is available for this folder."
+    "unavailable": "No workspace mode is available for this folder.",
+    "reason": {
+      "notARepository": "This folder isn’t a Git repository. Initialize Git to use a Worktree.",
+      "notARepositoryInFolder": "{folder} isn’t a Git repository. Initialize Git to use a Worktree.",
+      "noCommits": "This repository has no commits yet. Make a first commit to use a Worktree.",
+      "noCommitsInFolder": "{folder} has no commits yet. Make a first commit to use a Worktree.",
+      "noLocalCheckout": "{folder} has no checkout on this computer to work in. Choose Worktree.",
+      "inPlaceUnsupportedPlatform": "Working in the original folder isn’t available on this platform yet. Choose Worktree.",
+      "inPlaceOtherComputer": "Tasks on another computer run in an isolated worktree. Choose Worktree.",
+      "sharedRepository": "Two project folders are in the same repository, so they can’t both work in place. Choose Worktree."
+    }
   }
 }
