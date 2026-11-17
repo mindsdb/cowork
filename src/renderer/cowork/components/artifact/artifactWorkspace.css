@@ -24,7 +24,11 @@
 .artifact-revision-bar.is-centered { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(max-content, 1fr); align-items: center; column-gap: 10px; }
 /* The title keeps a readable minimum, so on a tight line the pill gives way
    first rather than the title collapsing to a letter. */
-.artifact-viewer-topbar.is-centered { grid-template-columns: minmax(min(11rem, 28%), 1fr) minmax(0, auto) minmax(max-content, 1fr); }
+.artifact-viewer-topbar.is-centered { grid-template-columns: minmax(min(11rem, 28%), 1fr) minmax(0, auto) minmax(min-content, 1fr); }
+/* The actions wrap onto a second line before anything is pushed out of the
+   modal; the window controls (maximize, hide toolbars, close) stay one group
+   at the end, so close is always on screen. */
+.artifact-viewer-window-controls { display: inline-flex; align-items: center; gap: 2px; flex: none; padding-left: 6px; border-left: 1px solid var(--line); }
 .artifact-revision-bar.is-centered .artifact-revision-actions { justify-content: flex-end; }
 .artifact-revision-center { display: flex; justify-content: center; min-width: 0; }
 .artifact-revision-identity strong { color: var(--ink-2); font-size: 12px; white-space: nowrap; }
@@ -234,7 +238,7 @@
 @media (max-width: 820px) {
   /* Narrow: the title and actions share the first row, the pill takes the
      second, centred. */
-  .artifact-viewer-topbar.is-centered { grid-template-columns: minmax(0, 1fr) max-content; grid-template-areas: "title actions" "address address"; row-gap: 8px; }
+  .artifact-viewer-topbar.is-centered { grid-template-columns: minmax(0, 1fr) minmax(min-content, max-content); grid-template-areas: "title actions" "address address"; row-gap: 8px; }
   .artifact-viewer-topbar.is-centered .artifact-viewer-title-zone { grid-area: title; }
   .artifact-viewer-topbar.is-centered .artifact-viewer-mode-zone { grid-area: address; }
   .artifact-viewer-topbar.is-centered .artifact-viewer-action-zone { grid-area: actions; }

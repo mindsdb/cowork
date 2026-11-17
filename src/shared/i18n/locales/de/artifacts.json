@@ -751,5 +751,13 @@
     "draft": "Entwurf",
     "copy": "Adresse kopieren",
     "copied": "Kopiert"
+  },
+  "layout": {
+    "maximize": "Maximieren",
+    "restore": "Größe wiederherstellen",
+    "hideToolbar": "Symbolleiste ausblenden",
+    "showToolbar": "Symbolleiste einblenden",
+    "hideQuickEdit": "Schnellbearbeitung ausblenden",
+    "showQuickEdit": "Schnellbearbeitung einblenden"
   }
 }

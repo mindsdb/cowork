@@ -751,5 +751,13 @@
     "draft": "Bozza",
     "copy": "Copia indirizzo",
     "copied": "Copiato"
+  },
+  "layout": {
+    "maximize": "Ingrandisci",
+    "restore": "Ripristina dimensioni",
+    "hideToolbar": "Nascondi barra degli strumenti",
+    "showToolbar": "Mostra barra degli strumenti",
+    "hideQuickEdit": "Nascondi modifica rapida",
+    "showQuickEdit": "Mostra modifica rapida"
   }
 }

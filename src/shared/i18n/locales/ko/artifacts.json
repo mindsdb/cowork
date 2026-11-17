@@ -751,5 +751,13 @@
     "draft": "초안",
     "copy": "주소 복사",
     "copied": "복사됨"
+  },
+  "layout": {
+    "maximize": "최대화",
+    "restore": "원래 크기로",
+    "hideToolbar": "도구 모음 숨기기",
+    "showToolbar": "도구 모음 표시",
+    "hideQuickEdit": "빠른 편집 숨기기",
+    "showQuickEdit": "빠른 편집 표시"
   }
 }

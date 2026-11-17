@@ -26,6 +26,10 @@ export function ArtifactViewerHeader({
   diagnostics,
   // The address pill: `{ kind, url, fallback }`.
   address = null,
+  // How much room the artifact gets (useViewerLayout): `{ maximized,
+  // toolbarHidden, quickEditHidden, canHideToolbar, canHideQuickEdit,
+  // onToggle(name) }`. Absent on surfaces without these controls.
+  layout = null,
   onClose,
 }) {
   const { t } = useTranslation('artifacts');
@@ -134,7 +138,7 @@ export function ArtifactViewerHeader({
       </div>
 
       {/* Right — preview errors, comments, stats, publishing, more actions, and close. */}
-      <div className="artifact-viewer-action-zone" style={{ minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+      <div className="artifact-viewer-action-zone" style={{ minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
         {showStats && (
           <Tooltip content={stats.open ? t('stats.toggle.hide') : t('stats.toggle.show')}>
@@ -245,9 +249,46 @@ export function ArtifactViewerHeader({
             ].filter((item) => canManage || item.key !== 'delete')}
           />
         )}
-        <Tooltip content={t('header.close')}>
-          <IconButton onClick={onClose} aria-label={t('header.close')}>{Ico.close(16)}</IconButton>
-        </Tooltip>
+        {/* Room for the artifact, then close. One group that never wraps
+            apart, so close stays at the end of the line in every state. */}
+        <div className="artifact-viewer-window-controls">
+          {layout?.canHideToolbar && (
+            <Tooltip content={layout.toolbarHidden ? t('layout.showToolbar') : t('layout.hideToolbar')}>
+              <IconButton
+                aria-label={layout.toolbarHidden ? t('layout.showToolbar') : t('layout.hideToolbar')}
+                aria-pressed={!!layout.toolbarHidden}
+                onClick={() => layout.onToggle('toolbarHidden')}
+              >
+                {layout.toolbarHidden ? Ico.panelTopOpen(16) : Ico.panelTopClose(16)}
+              </IconButton>
+            </Tooltip>
+          )}
+          {layout?.canHideQuickEdit && (
+            <Tooltip content={layout.quickEditHidden ? t('layout.showQuickEdit') : t('layout.hideQuickEdit')}>
+              <IconButton
+                aria-label={layout.quickEditHidden ? t('layout.showQuickEdit') : t('layout.hideQuickEdit')}
+                aria-pressed={!!layout.quickEditHidden}
+                onClick={() => layout.onToggle('quickEditHidden')}
+              >
+                {layout.quickEditHidden ? Ico.panelBottomOpen(16) : Ico.panelBottomClose(16)}
+              </IconButton>
+            </Tooltip>
+          )}
+          {layout && (
+            <Tooltip content={layout.maximized ? t('layout.restore') : t('layout.maximize')}>
+              <IconButton
+                aria-label={layout.maximized ? t('layout.restore') : t('layout.maximize')}
+                aria-keyshortcuts={host.isMac() ? 'Meta+Shift+Enter' : 'Control+Shift+Enter'}
+                onClick={() => layout.onToggle('maximized')}
+              >
+                {layout.maximized ? Ico.minimize(16) : Ico.maximize(16)}
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip content={t('header.close')}>
+            <IconButton onClick={onClose} aria-label={t('header.close')}>{Ico.close(16)}</IconButton>
+          </Tooltip>
+        </div>
       </div>
     </div>
   );

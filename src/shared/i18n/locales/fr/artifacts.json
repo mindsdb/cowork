@@ -751,5 +751,13 @@
     "draft": "Brouillon",
     "copy": "Copier l'adresse",
     "copied": "Copié"
+  },
+  "layout": {
+    "maximize": "Agrandir",
+    "restore": "Restaurer la taille",
+    "hideToolbar": "Masquer la barre d'outils",
+    "showToolbar": "Afficher la barre d'outils",
+    "hideQuickEdit": "Masquer la modification rapide",
+    "showQuickEdit": "Afficher la modification rapide"
   }
 }

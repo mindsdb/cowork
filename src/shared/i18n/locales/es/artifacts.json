@@ -751,5 +751,13 @@
     "draft": "Borrador",
     "copy": "Copiar dirección",
     "copied": "Copiado"
+  },
+  "layout": {
+    "maximize": "Maximizar",
+    "restore": "Restaurar tamaño",
+    "hideToolbar": "Ocultar barra de herramientas",
+    "showToolbar": "Mostrar barra de herramientas",
+    "hideQuickEdit": "Ocultar edición rápida",
+    "showQuickEdit": "Mostrar edición rápida"
   }
 }

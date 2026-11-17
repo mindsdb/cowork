@@ -72,6 +72,7 @@ import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
+import { useViewerLayout } from './useViewerLayout';
 import { ViewerLayerToggle, ViewerLayerToggles } from './ViewerLayerToggle';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
@@ -288,6 +289,19 @@ export function ArtifactViewer({
   // quick-edit bar), Source (the code editor) and Comments, each a header
   // toggle, remembered on this device.
   const { layers, setLayer } = useViewerLayers();
+  const { layout, toggle: toggleLayout } = useViewerLayout();
+  // Cmd/Ctrl+Shift+Enter maximizes and restores. Keys typed inside the
+  // artifact's own frame never reach this window, so the page keeps its keys.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = (event) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key !== 'Enter') return;
+      event.preventDefault();
+      toggleLayout('maximized');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, toggleLayout]);
   // The bar takes the caret when the viewer opens (QuickEditBar), once per open.
   const [barFocusRequest, setBarFocusRequest] = useState(0);
   const barFocusUsed = useRef(0);
@@ -1515,6 +1529,17 @@ export function ArtifactViewer({
     setTextSelection,
   };
 
+  // The toolbar holds Save and Discard, so it shows while there is unsaved
+  // work even when the user hid it.
+  const hasToolbar = !!workspace.currentRevision || !!layerControls;
+  const toolbarShown = hasToolbar && (!layout.toolbarHidden || !!workspace.dirty);
+  const headerLayout = {
+    ...layout,
+    canHideToolbar: hasToolbar,
+    canHideQuickEdit: canQuickEdit,
+    onToggle: toggleLayout,
+  };
+
   return (
     <Modal
       open={open}
@@ -1522,6 +1547,7 @@ export function ArtifactViewer({
       size="lg"
       width="min(1080px, 94vw)"
       height="min(820px, 88vh)"
+      fullBleed={layout.maximized}
       labelledBy="artifact-viewer-title"
     >
       <ArtifactViewerHeader
@@ -1534,10 +1560,11 @@ export function ArtifactViewer({
         actions={artifactActions}
         diagnostics={diagnostics}
         address={addressModel}
+        layout={headerLayout}
         onClose={requestClose}
       />
 
-      {workspace.currentRevision && (
+      {toolbarShown && workspace.currentRevision && (
         <ArtifactRevisionBar
           layerControls={layerControls}
           revision={workspace.currentRevision}
@@ -1552,7 +1579,7 @@ export function ArtifactViewer({
       )}
       {/* No revision line to sit on (a published page someone reviews, say):
           the toggles get a line of their own. */}
-      {!workspace.currentRevision && layerControls && (
+      {toolbarShown && !workspace.currentRevision && layerControls && (
         <div className="artifact-revision-bar is-centered is-layers-only">
           <span />
           <div className="artifact-revision-center">{layerControls}</div>
@@ -1673,7 +1700,7 @@ export function ArtifactViewer({
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
       />
 
-      {canQuickEdit && (
+      {canQuickEdit && !layout.quickEditHidden && (
         <QuickEditBar
           controller={quickEdit}
           chatMessages={chatMessages}

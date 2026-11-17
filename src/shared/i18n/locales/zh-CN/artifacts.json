@@ -751,5 +751,13 @@
     "draft": "草稿",
     "copy": "复制地址",
     "copied": "已复制"
+  },
+  "layout": {
+    "maximize": "最大化",
+    "restore": "恢复大小",
+    "hideToolbar": "隐藏工具栏",
+    "showToolbar": "显示工具栏",
+    "hideQuickEdit": "隐藏快速编辑",
+    "showQuickEdit": "显示快速编辑"
   }
 }

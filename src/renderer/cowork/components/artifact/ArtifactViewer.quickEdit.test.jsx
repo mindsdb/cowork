@@ -112,7 +112,9 @@ vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () =>
 vi.mock('./workspace/ArtifactRevisionBar', () => ({
   ArtifactRevisionBar: ({ layerControls }) => <div className="artifact-revision-bar">{layerControls}</div>,
 }));
-vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }));
+vi.mock('../ui/Modal', () => ({
+  Modal: ({ children, fullBleed }) => <div data-testid="modal" data-full-bleed={fullBleed ? 'true' : 'false'}>{children}</div>,
+}));
 vi.mock('../ConfirmModal', () => ({
   ConfirmModal: ({ open, title, confirmLabel, cancelLabel, onConfirm, onClose }) => (open ? (
     <div role="alertdialog" aria-label={title}>
@@ -1169,3 +1171,96 @@ describe('ArtifactViewer quick edit bar', () => {
   });
 });
 
+
+// Room for the artifact (ENG-4387): maximize, hide the toolbar and the quick
+// edit bar, close always on the line. Remembered on this device.
+describe('ArtifactViewer layout controls', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    workspaceMock.mode = 'preview';
+    workspaceMock.dirty = false;
+    workspaceMock.capabilities = { role: 'owner', canEdit: true, canQuickEdit: true };
+    workspaceMock.source = null;
+    workspaceApi.loadArtifactDraftDocument.mockResolvedValue({
+      content: '<html><body>Hi</body></html>', contentType: 'text/html', isHtml: true,
+    });
+  });
+
+  const revisionBar = () => document.querySelector('.artifact-revision-bar');
+  const modal = () => screen.getByTestId('modal');
+
+  it('maximizes to the window and back, from the button and from Ctrl+Shift+Enter', async () => {
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    expect(modal()).toHaveAttribute('data-full-bleed', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
+    expect(modal()).toHaveAttribute('data-full-bleed', 'true');
+
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true, shiftKey: true });
+    expect(modal()).toHaveAttribute('data-full-bleed', 'false');
+    expect(screen.getByRole('button', { name: 'Maximize' })).toBeInTheDocument();
+  });
+
+  it('hides and brings back the toolbar and the quick edit bar, each on its own', async () => {
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    expect(revisionBar()).not.toBeNull();
+    expect(bar()).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide toolbar' }));
+    expect(revisionBar()).toBeNull();
+    expect(bar()).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide quick edit' }));
+    expect(bar()).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show toolbar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show quick edit' }));
+    expect(revisionBar()).not.toBeNull();
+    expect(bar()).not.toBeNull();
+  });
+
+  it('keeps the toolbar, with Save on it, while there is unsaved work', async () => {
+    window.localStorage.setItem('cowork.artifactViewer.layout.v1', JSON.stringify({ toolbarHidden: true }));
+    workspaceMock.dirty = true;
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    expect(revisionBar()).not.toBeNull();
+  });
+
+  it('opens the next artifact the way the last one was left', async () => {
+    const first = renderViewer();
+    await screen.findByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide toolbar' }));
+    first.unmount();
+
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    expect(modal()).toHaveAttribute('data-full-bleed', 'true');
+    expect(revisionBar()).toBeNull();
+  });
+
+  it('keeps close at the end of the line in every layout', async () => {
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide toolbar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide quick edit' }));
+
+    const controls = document.querySelector('.artifact-viewer-window-controls');
+    const buttons = within(controls).getAllByRole('button');
+    expect(buttons.at(-1)).toHaveAccessibleName('Close');
+  });
+
+  it('offers no quick edit toggle where there is no quick edit bar', async () => {
+    workspaceMock.capabilities = { role: 'owner', canEdit: true };
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    expect(screen.queryByRole('button', { name: 'Hide quick edit' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Maximize' })).toBeInTheDocument();
+  });
+});
