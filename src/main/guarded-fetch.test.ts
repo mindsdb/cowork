@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import * as http from 'node:http';
 import * as https from 'node:https';
+import * as net from 'node:net';
 import type { LookupAddress } from 'node:dns';
 import cases from './__fixtures__/public-address-cases.json';
 import { checkPublicHttpsUrl, createGuardedFetch, GuardedFetchError, type GuardedFetchOptions } from './guarded-fetch';
@@ -193,6 +195,43 @@ describe('createGuardedFetch', () => {
     const direct = guarded(() => 'error', { proxyConfigured: async () => false });
     expect(await refusal(direct.fetchFn('https://mcp.example.com/'))).toBe('network');
   });
+});
+
+describe('status lines from a real HTTP parser', () => {
+  /* A loopback server that answers every connection with `raw` bytes, so the
+     response goes through Node's own HTTP parser as a hostile server's would. */
+  async function serveRaw(raw: string): Promise<{ port: number; close: () => void }> {
+    const server = net.createServer((socket) => {
+      socket.once('data', () => socket.end(Buffer.from(raw, 'latin1')));
+    });
+    await new Promise<void>((ready) => server.listen(0, '127.0.0.1', ready));
+    return { port: (server.address() as net.AddressInfo).port, close: () => server.close() };
+  }
+
+  it.each(['600 X', '999 X', '101 Switching Protocols'])(
+    'rejects %s instead of throwing outside the promise',
+    async (statusLine) => {
+      const uncaught: Error[] = [];
+      const onUncaught = (err: Error) => uncaught.push(err);
+      process.on('uncaughtException', onUncaught);
+      const { port, close } = await serveRaw(`HTTP/1.1 ${statusLine}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}`);
+      try {
+        const request = ((options: https.RequestOptions, onResponse: (res: http.IncomingMessage) => void) =>
+          http.request({ ...options, protocol: 'http:', agent: undefined, port }, onResponse)) as unknown as typeof https.request;
+        const fetchFn = createGuardedFetch({
+          request,
+          isAllowedAddress: () => true,
+          lookupAll: answers('127.0.0.1'),
+          timeoutMs: 2000,
+        });
+        expect(await refusal(fetchFn('https://hostile.example/'))).toBe('bad_response');
+        expect(uncaught).toEqual([]);
+      } finally {
+        close();
+        process.off('uncaughtException', onUncaught);
+      }
+    },
+  );
 });
 
 describe('checkPublicHttpsUrl', () => {

@@ -25,6 +25,7 @@ export type GuardedFetchErrorCode =
   | 'unresolved'
   | 'too_large'
   | 'timeout'
+  | 'bad_response'
   | 'network'
   | 'proxy_network';
 
@@ -61,7 +62,7 @@ export interface GuardedFetchOptions {
 
 const DEFAULT_MAX_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15_000;
-const NO_BODY_STATUSES = new Set([101, 204, 205, 304]);
+const NO_BODY_STATUSES = new Set([204, 205, 304]);
 
 /** A fetch that sends requests only to checked public https addresses. */
 export function createGuardedFetch(options: GuardedFetchOptions = {}): GuardedFetch {
@@ -213,7 +214,17 @@ function send(
         }
         chunks.push(chunk);
       });
-      res.on('end', () => finish(() => resolve(toResponse(res, Buffer.concat(chunks)))));
+      res.on('end', () =>
+        finish(() => {
+          // Node's parser passes any three-digit status, and `Response` throws
+          // outside 200-599; thrown here it would escape every handler.
+          try {
+            resolve(toResponse(res, Buffer.concat(chunks)));
+          } catch {
+            reject(new GuardedFetchError('bad_response', 'the server sent a response that is not valid HTTP'));
+          }
+        }),
+      );
       res.on('error', () => finish(() => reject(new GuardedFetchError('network', 'the connection failed'))));
     });
     const timer = setTimeout(() => {
@@ -232,6 +243,7 @@ function toResponse(res: IncomingMessage, body: Buffer): Response {
     if (Array.isArray(value)) value.forEach((item) => headers.append(name, item));
     else if (value !== undefined) headers.set(name, value);
   }
-  const status = res.statusCode ?? 502;
+  const status = res.statusCode ?? 0;
+  if (!Number.isInteger(status) || status < 200 || status > 599) throw new RangeError(`status ${status}`);
   return new Response(NO_BODY_STATUSES.has(status) ? null : new Uint8Array(body), { status, statusText: res.statusMessage, headers });
 }
