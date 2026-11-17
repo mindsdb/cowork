@@ -64,42 +64,122 @@ function chipHtml(kind, value) {
   return `<span class="${cls}" contenteditable="false" data-chip="${escapeHtml(raw)}">${escapeHtml(label)}</span>`;
 }
 
-const INLINE_SRC = (
-  [
-    '\\\\([*`~\\[\\]{}_\\\\])', // 1 escaped char
-    '`([^`]+)`', // 2 code
-    '\\*\\*(.+?)\\*\\*', // 3 bold
-    '~~(.+?)~~', // 4 strike
-    '\\[([^\\]]+)\\]\\(((?:https?:|mailto:)[^)\\s]+)\\)', // 5,6 link
-    '\\{\\{\\s*(date|status|user)\\s*:\\s*([^}]+?)\\s*\\}\\}', // 7,8 chip
-    '(?<![*\\w])\\*(?!\\s)(.+?)(?<!\\s)\\*(?![*\\w])', // 9 italic *x*
-    '(?<![_\\w])_(?!\\s)(.+?)(?<!\\s)_(?![_\\w])', // 10 italic _x_
-  ].join('|')
-);
+// Marks are read left to right as one regex alternation would read them: the
+// mark that starts first wins, and at one position bold goes before italic.
+// Italic, links and chips are scanned rather than matched: their regexes
+// rescan the rest of the line (or text) from every opener that never closes,
+// which is quadratic. Each scan reads exactly what its regex reads (the
+// server's render.inline_html scans alike):
+//   italic  (?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?![*\w])  and the same with _
+//   link    \[([^\]]+)\]\(((?:https?:|mailto:)[^)\s]+)\)
+//   chip    \{\{\s*(date|status|user)\s*:\s*([^}]+?)\s*\}\}
+// Every use sets lastIndex first, so the readers of nested words can share
+// these regexes.
+const MARK = /[\\`*~[{_]/g;
+const ESCAPED = /\\([*`~\[\]{}_\\])/y;
+const CODE = /`([^`]+)`/y;
+const BOLD = /\*\*(.+?)\*\*/y;
+const STRIKE = /~~(.+?)~~/y;
+const EM_OPEN = { '*': /(?<![*\w])\*(?!\s)/y, _: /(?<![_\w])_(?!\s)/y };
+const EM_CLOSE = { '*': /(?<!\s)\*(?![*\w])/g, _: /(?<!\s)_(?![_\w])/g };
+const LINE_END = /[\n\r\u2028\u2029]/g; // what a regex's `.` stops at
+const LINK_CLOSE = /]/g;
+const LINK_HREF = /\]\((?:https?:|mailto:)/y;
+const HREF_END = /[)\s]/g;
+const CHIP_HEAD = /\{\{\s*(date|status|user)\s*:/y;
+const CHIP_CLOSE = /}/g;
+
+function execAt(re, s, pos) {
+  re.lastIndex = pos;
+  return re.exec(s);
+}
+
+/** The first match of global `re` in `s` at or after a position (`s.length` if none).
+ * Asked for positions that only grow, it searches each stretch of `s` once. */
+function nextMatch(re, s) {
+  let from = 1;
+  let at = 0; // an empty span: the first ask searches
+  return (pos) => {
+    if (pos < from || pos > at) {
+      from = pos;
+      at = execAt(re, s, pos)?.index ?? s.length;
+    }
+    return at;
+  };
+}
+
+const textHtml = (s) => escapeHtml(s).replace(/\n/g, '<br>');
+
+/** A reader of one string's marks: `read(i)` gives the mark that starts at `i`
+ * as `{ end, open }`, plus `inner` Markdown and a `close` tag when its words
+ * hold marks of their own; null when no mark starts there. */
+function markReader(src) {
+  const emClose = { '*': nextMatch(EM_CLOSE['*'], src), _: nextMatch(EM_CLOSE._, src) };
+  const lineEnd = nextMatch(LINE_END, src);
+  const linkClose = nextMatch(LINK_CLOSE, src);
+  const hrefEnd = nextMatch(HREF_END, src);
+  const chipClose = nextMatch(CHIP_CLOSE, src);
+  const nested = (end, tag, inner) => ({ end, open: `<${tag}>`, inner, close: `</${tag}>` });
+
+  return (i) => {
+    const c = src[i];
+    let m;
+    if (c === '\\') return (m = execAt(ESCAPED, src, i)) && { end: i + 2, open: escapeHtml(m[1]) };
+    if (c === '`') return (m = execAt(CODE, src, i)) && { end: i + m[0].length, open: `<code>${escapeHtml(m[1])}</code>` };
+    if (c === '~') return (m = execAt(STRIKE, src, i)) && nested(i + m[0].length, 's', m[1]);
+    if (c === '*' && (m = execAt(BOLD, src, i))) return nested(i + m[0].length, 'strong', m[1]);
+    if (c === '*' || c === '_') {
+      if (!execAt(EM_OPEN[c], src, i)) return null;
+      // The words run to the first closing mark, which is on the same line.
+      const j = emClose[c](i + 2);
+      return j < src.length && lineEnd(i + 1) > j ? nested(j + 1, 'em', src.slice(i + 1, j)) : null;
+    }
+    if (c === '[') {
+      const q = linkClose(i + 1); // the words run to the first ]
+      if (q <= i + 1 || !(m = execAt(LINK_HREF, src, q))) return null;
+      const e = hrefEnd(q + m[0].length);
+      if (e === q + m[0].length || src[e] !== ')') return null;
+      const href = escapeHtml(src.slice(q + 2, e));
+      return { end: e + 1, open: `<a href="${href}" target="_blank" rel="noopener noreferrer">`, inner: src.slice(i + 1, q), close: '</a>' };
+    }
+    if (c === '{' && (m = execAt(CHIP_HEAD, src, i))) {
+      const v = i + m[0].length;
+      const q = chipClose(v); // the value runs to the first }
+      if (q === v || src[q + 1] !== '}') return null;
+      const raw = src.slice(v, q);
+      // The regex's lazy value sheds the spaces around it but keeps at least one character.
+      return { end: q + 2, open: chipHtml(m[1], raw.trim() || raw.at(-1)) };
+    }
+    return null;
+  };
+}
+
+const frame = (src, close) => ({ src, close, read: markReader(src), pos: 0, done: 0, out: '' });
 
 /** Inline Markdown → HTML (safe: every text run is escaped). */
 export function inlineToHtml(text) {
-  const src = String(text ?? '');
-  let out = '';
-  let last = 0;
-  // A fresh regex per call: nested formatting recurses, and a shared /g
-  // regex's lastIndex would be reset under the outer loop.
-  const re = new RegExp(INLINE_SRC, 'g');
-  let m;
-  while ((m = re.exec(src))) {
-    out += escapeHtml(src.slice(last, m.index)).replace(/\n/g, '<br>');
-    if (m[1] !== undefined) out += escapeHtml(m[1]);
-    else if (m[2] !== undefined) out += `<code>${escapeHtml(m[2])}</code>`;
-    else if (m[3] !== undefined) out += `<strong>${inlineToHtml(m[3])}</strong>`;
-    else if (m[4] !== undefined) out += `<s>${inlineToHtml(m[4])}</s>`;
-    else if (m[5] !== undefined) out += `<a href="${escapeHtml(m[6])}" target="_blank" rel="noopener noreferrer">${inlineToHtml(m[5])}</a>`;
-    else if (m[7] !== undefined) out += chipHtml(m[7], m[8]);
-    else if (m[9] !== undefined) out += `<em>${inlineToHtml(m[9])}</em>`;
-    else if (m[10] !== undefined) out += `<em>${inlineToHtml(m[10])}</em>`;
-    last = re.lastIndex;
+  // Nested words are read on an explicit stack: a crafted text nests thousands
+  // of marks deep, past what recursion's call stack holds.
+  const stack = [frame(String(text ?? ''), '')];
+  for (;;) {
+    const f = stack[stack.length - 1];
+    const mark = execAt(MARK, f.src, f.pos);
+    if (!mark) {
+      const html = f.out + textHtml(f.src.slice(f.done)) + f.close;
+      stack.pop();
+      if (!stack.length) return html;
+      stack[stack.length - 1].out += html;
+      continue;
+    }
+    const hit = f.read(mark.index);
+    if (!hit) {
+      f.pos = mark.index + 1;
+      continue;
+    }
+    f.out += textHtml(f.src.slice(f.done, mark.index)) + hit.open;
+    f.done = f.pos = hit.end;
+    if (hit.inner !== undefined) stack.push(frame(hit.inner, hit.close));
   }
-  out += escapeHtml(src.slice(last)).replace(/\n/g, '<br>');
-  return out;
 }
 
 /** Plain words of inline Markdown (search, labels, the agent's quote). */
