@@ -52,6 +52,11 @@ export interface PendingQuestion {
   }>;
 }
 
+export interface WorkspaceCleanupStatus {
+  failed: number;
+  running: boolean;
+}
+
 /**
  * Approximate storage Cowork manages for each task: workspaces, baselines and
  * recovery data in its own folders. The user's checkout and the repository
@@ -67,6 +72,19 @@ export interface WorkspaceUsagePage {
   measuring: boolean;
 }
 
+/** ``in_place`` works in the chosen folder itself; ``worktree`` isolates the task. */
+export type WorkspaceMode = 'in_place' | 'worktree';
+
+/** The modes a new task could run in, resolved by the server for its project and computer. */
+export interface WorkspaceModeOptions {
+  supported: WorkspaceMode[];
+  default: WorkspaceMode | null;
+  /** Why working in the folder itself is not offered; older servers omit it. */
+  in_place_unavailable_reason?: string | null;
+  worktree_unavailable_reason?: string | null;
+  can_initialize_git?: boolean;
+}
+
 export interface SessionCreateBody {
   repository_setup?: TaskRepositorySetup;
   task_mode?: TaskMode;
@@ -76,6 +94,8 @@ export interface SessionCreateBody {
   computer_id?: string;
   prompt: string;
   allow_direct_folder?: boolean;
+  /** Omit to let the server choose for the project and computer. */
+  workspace_mode?: WorkspaceMode;
   engine_id?: string;
   model?: string;
   permission_mode?: PermissionMode;
@@ -102,6 +122,8 @@ interface CreateCodeTaskBase {
   sourceContexts: SourceContext[];
   resourceIds?: string[];
   computerId?: string;
+  /** Set only when the composer offered a choice. */
+  workspaceMode?: WorkspaceMode;
 }
 
 export type CreateCodeTaskInput = CreateCodeTaskBase & (
@@ -143,7 +165,7 @@ export interface RecoveryPlan {
   options: RecoveryOption[];
 }
 
-export type SessionUpdateBody = Partial<RuntimeControls>;
+export type SessionUpdateBody = Partial<RuntimeControls> & { writes_allowed?: boolean };
 
 export interface PendingApproval {
   id: string;
@@ -196,6 +218,8 @@ export interface CodingSession {
   network_access?: boolean;
   web_search?: boolean;
   additional_dirs?: string[];
+  /** False while a task on a folder without a commit is held to a read-only sandbox. */
+  writes_allowed?: boolean;
   status: CodingStatus;
   project_id?: string | null;
   project_name?: string | null;
@@ -213,6 +237,8 @@ export interface CodingSession {
   source_path: string;
   workspace_path: string;
   workspace_kind: 'git_worktree' | 'local_copy' | 'direct_folder';
+  /** Absent on tasks created before modes were recorded; those are all isolated. */
+  workspace_mode?: WorkspaceMode | null;
   workspaces?: TaskWorkspace[];
   repository_root?: string | null;
   base_revision?: string | null;
@@ -456,6 +482,8 @@ export interface CodeProject {
   default_model: string;
   default_reasoning_effort?: ReasoningEffort | null;
   permission_mode: PermissionMode;
+  /** Null lets the server choose for each task's folder and computer. */
+  default_workspace_mode?: WorkspaceMode | null;
   created_at: string;
   updated_at: string;
 }
@@ -830,9 +858,22 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  workspaceCleanup: () => requestJson<WorkspaceCleanupStatus>('/workspace-cleanup'),
+  retryWorkspaceCleanup: () => requestJson<WorkspaceCleanupStatus>('/workspace-cleanup/retry', { method: 'POST' }),
   workspaceUsage: (sessionId?: string) => requestJson<WorkspaceUsagePage>(
     `/workspace-usage${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
   ),
+  workspaceModes: (projectId: string | null, computerId?: string, path?: string) => {
+    const query = new URLSearchParams();
+    if (projectId) query.set('project_id', projectId);
+    if (computerId) query.set('computer_id', computerId);
+    if (path) query.set('path', path);
+    const suffix = query.size ? `?${query.toString()}` : '';
+    return requestJson<WorkspaceModeOptions>(`/workspace-modes${suffix}`);
+  },
+  initializeGit: (path: string) => requestJson<WorkspaceModeOptions>('/workspace/initialize-git', {
+    method: 'POST', body: JSON.stringify({ path }),
+  }),
   computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
     method: 'POST',
   }),
@@ -845,7 +886,7 @@ const liveCodingApi = {
   resolveLocalResource: (body: ProjectFolder) => requestJson<ProjectResource>('/project-resources/inspect', {
     method: 'POST', body: JSON.stringify(body),
   }),
-  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'default_reasoning_effort' | 'permission_mode'>) =>
+  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'default_reasoning_effort' | 'permission_mode' | 'default_workspace_mode'>) =>
     requestJson<CodeProject>('/projects', { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id: string, body: Partial<CodeProject>) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(body),

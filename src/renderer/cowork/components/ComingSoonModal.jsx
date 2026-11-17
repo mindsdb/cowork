@@ -17,8 +17,12 @@ import { useTranslation } from '../../lib/i18n';
 // for attribution.
 const DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-web';
 
-export default function ComingSoonModal({ feature, onClose }) {
+// `offer`, when set, replaces the download with a way to connect the API now:
+// { kind: 'connect' | 'build', onAccept }. It shows only where the download would.
+export default function ComingSoonModal({ feature, onClose, offer = null }) {
   const { t } = useTranslation('shell');
+  const hasFooterActions = PLATFORM_UI && !host.isMobileShell;
+  const shownOffer = hasFooterActions ? offer : null;
   return (
     <Modal
       open={feature != null}
@@ -34,13 +38,15 @@ export default function ComingSoonModal({ feature, onClose }) {
       <ModalBody>
         <p className="s-body">
           {PLATFORM_UI
-            ? (feature ? t('comingSoon.cloudBodyNamed', { feature }) : t('comingSoon.cloudBody'))
+            ? (shownOffer
+              ? t('comingSoon.cloudBodyCustom', { feature })
+              : (feature ? t('comingSoon.cloudBodyNamed', { feature }) : t('comingSoon.cloudBody')))
             : (feature ? t('comingSoon.unavailableBodyNamed', { feature }) : t('comingSoon.unavailableBody'))}
         </p>
       </ModalBody>
       {/* The mobile app (ENG-4023) offers no installer: a phone cannot run
           the desktop app, so the note stands alone with a Close button. */}
-      {PLATFORM_UI && !host.isMobileShell ? (
+      {hasFooterActions ? (
         <ModalFooter
           cancel={(
             <Button variant="subtle" onClick={onClose}>
@@ -48,15 +54,27 @@ export default function ComingSoonModal({ feature, onClose }) {
             </Button>
           )}
         >
-          <Button
-            variant="primary"
-            onClick={() => {
-              host.openExternal(DOWNLOAD_URL);
-              onClose();
-            }}
-          >
-            {t('comingSoon.download')}
-          </Button>
+          {shownOffer ? (
+            <Button
+              variant="primary"
+              onClick={() => {
+                onClose();
+                shownOffer.onAccept();
+              }}
+            >
+              {shownOffer.kind === 'connect' ? t('comingSoon.connectCustom', { feature }) : t('comingSoon.buildCustom')}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={() => {
+                host.openExternal(DOWNLOAD_URL);
+                onClose();
+              }}
+            >
+              {t('comingSoon.download')}
+            </Button>
+          )}
         </ModalFooter>
       ) : (
         <ModalFooter>

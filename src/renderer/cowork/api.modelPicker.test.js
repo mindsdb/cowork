@@ -4,7 +4,7 @@ vi.mock('../lib/deployment', () => ({ PLATFORM_UI: false }));
 vi.mock('../platform/host', () => ({
   host: { getApiOrigin: () => 'https://cowork.example.test', getAccessToken: vi.fn(async () => null), isWeb: true },
 }));
-import { BASE, streamMessage, streamNewSession } from './api';
+import { BASE, sendablePicks, streamMessage, streamNewSession } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 
 beforeEach(() => {
@@ -90,3 +90,15 @@ it('sends no reset_picks when nothing goes back to the default', async () => {
   const body = await questionBody('conversation-1', { model: 'opus-5-5' });
   expect(body).not.toHaveProperty('reset_picks');
 });
+
+// The artifact viewer's chat bar sends its picks by the same rule (ENG-4227).
+it('sendablePicks keeps Model Router and efforts the operator does not offer off the wire', () => {
+  const meta = document.createElement('meta');
+  meta.name = 'cowork-model-efforts';
+  meta.content = JSON.stringify({ models: { 'opus-5-5': ['high'] }, operatorDefault: [] });
+  document.head.append(meta);
+  expect(sendablePicks(MODEL_ROUTER_ID, 'high')).toEqual({ sendsPicks: true, model: null, reasoningEffort: null });
+  expect(sendablePicks('opus-5-5', 'high')).toEqual({ sendsPicks: true, model: 'opus-5-5', reasoningEffort: 'high' });
+  expect(sendablePicks('opus-5-5', 'low')).toEqual({ sendsPicks: true, model: 'opus-5-5', reasoningEffort: null });
+});
+
