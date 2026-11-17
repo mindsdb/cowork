@@ -171,12 +171,9 @@ export const MINDS_DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cow
 // derived from that origin in the first place.
 export const MINDS_COWORK_WEB_URL = mindsServiceHost('cowork');
 
-// The view host that serves published artifacts in this environment. The token
-// swap is right here too: the worker serves a PR environment's artifacts on
+// The view host that serves published artifacts in this environment. The same
+// token swap as Cowork web above: a PR environment's view host is
 // view-<env>.dev.mindshub.ai.
-//   api.mindshub.ai              -> view.mindshub.ai
-//   api.staging.mindshub.ai      -> view.staging.mindshub.ai
-//   api-pr-<n>.dev.mindshub.ai   -> view-pr-<n>.dev.mindshub.ai
 export const MINDS_VIEW_URL = mindsServiceHost('view');
 
 /** Where a sign-up link was clicked: the desktop app or Cowork web. */

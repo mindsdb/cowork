@@ -12,7 +12,6 @@ function setUrl(url: string) {
 }
 
 afterEach(() => {
-  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -106,21 +105,18 @@ describe('endViewSession', () => {
     vi.stubEnv('VITE_MINDS_API_URL', '');
     setUrl('https://cowork.staging.mindshub.ai/');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const timeout = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal);
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+    })));
     const { endViewSession, VIEW_SESSION_END_TIMEOUT_MS } = await importViewSession();
-    vi.useFakeTimers();
-    let signal: AbortSignal | undefined;
-    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {
-      signal = init.signal ?? undefined;
-      return new Promise((_resolve, reject) => {
-        init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
-      });
-    }));
 
     const pending = endViewSession();
-    await vi.advanceTimersByTimeAsync(VIEW_SESSION_END_TIMEOUT_MS);
+    expect(timeoutSpy).toHaveBeenCalledWith(VIEW_SESSION_END_TIMEOUT_MS);
+    timeout.abort(new DOMException('Timed out', 'TimeoutError'));
 
     await expect(pending).resolves.toBeUndefined();
-    expect(signal?.aborted).toBe(true);
-    expect(warn).toHaveBeenCalledWith('Could not end the artifact viewer session (AbortError).');
+    expect(warn).toHaveBeenCalledWith('Could not end the artifact viewer session (TimeoutError).');
   });
 });
