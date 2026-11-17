@@ -280,6 +280,8 @@
     "settings": "Settings",
     "billing": "Billing & Usage",
     "members": "Members",
+    "apiKeys": "API keys",
+    "apiDocs": "API docs",
     "help": "Help & Feedback",
     "manageOrg": "Manage organization",
     "logout": "Logout",
@@ -405,7 +407,11 @@
       "startFree": "Start for free",
       "bodyMobile": "Connect your own provider in Settings."
     },
-    "handoffHint": "Edit this prompt, then send when you're ready."
+    "handoffHint": "Edit this prompt, then send when you're ready.",
+    "signupWelcome": {
+      "fromDesktop": "Your account is ready. You can start right here, or go back to the {product} app and sign in.",
+      "dismiss": "Dismiss"
+    }
   },
   "logout": {
     "title": "Sign out of {product}?",

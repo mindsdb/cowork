@@ -280,6 +280,8 @@
     "settings": "Einstellungen",
     "billing": "Abrechnung und Nutzung",
     "members": "Mitglieder",
+    "apiKeys": "API-Schlüssel",
+    "apiDocs": "API-Dokumentation",
     "help": "Hilfe und Feedback",
     "manageOrg": "Organisation verwalten",
     "logout": "Abmelden",
@@ -405,7 +407,11 @@
       "startFree": "Kostenlos starten",
       "bodyMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen."
     },
-    "handoffHint": "Bearbeiten Sie diesen Prompt und senden Sie ihn, wenn Sie bereit sind."
+    "handoffHint": "Bearbeiten Sie diesen Prompt und senden Sie ihn, wenn Sie bereit sind.",
+    "signupWelcome": {
+      "fromDesktop": "Ihr Konto ist bereit. Sie können direkt hier loslegen oder zur {product}-App zurückkehren und sich anmelden.",
+      "dismiss": "Schließen"
+    }
   },
   "logout": {
     "title": "Von {product} abmelden?",

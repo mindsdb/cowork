@@ -280,6 +280,8 @@
     "settings": "設定",
     "billing": "請求と使用量",
     "members": "メンバー",
+    "apiKeys": "API キー",
+    "apiDocs": "API ドキュメント",
     "help": "ヘルプとフィードバック",
     "manageOrg": "組織を管理",
     "logout": "サインアウト",
@@ -405,7 +407,11 @@
       "startFree": "無料で始める",
       "bodyMobile": "設定で自分のプロバイダーを接続してください。"
     },
-    "handoffHint": "このプロンプトを編集して、準備ができたら送信してください。"
+    "handoffHint": "このプロンプトを編集して、準備ができたら送信してください。",
+    "signupWelcome": {
+      "fromDesktop": "アカウントの準備ができました。ここからすぐに始めるか、{product} アプリに戻ってサインインしてください。",
+      "dismiss": "閉じる"
+    }
   },
   "logout": {
     "title": "{product}からサインアウトしますか？",

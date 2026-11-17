@@ -280,6 +280,8 @@
     "settings": "설정",
     "billing": "결제 및 사용량",
     "members": "멤버",
+    "apiKeys": "API 키",
+    "apiDocs": "API 문서",
     "help": "도움말 및 피드백",
     "manageOrg": "조직 관리",
     "logout": "로그아웃",
@@ -405,7 +407,11 @@
       "startFree": "무료로 시작",
       "bodyMobile": "설정에서 직접 공급자를 연결하세요."
     },
-    "handoffHint": "이 프롬프트를 수정한 다음 준비되면 보내세요."
+    "handoffHint": "이 프롬프트를 수정한 다음 준비되면 보내세요.",
+    "signupWelcome": {
+      "fromDesktop": "계정이 준비되었습니다. 여기서 바로 시작하거나 {product} 앱으로 돌아가 로그인하세요.",
+      "dismiss": "닫기"
+    }
   },
   "logout": {
     "title": "{product}에서 로그아웃할까요?",

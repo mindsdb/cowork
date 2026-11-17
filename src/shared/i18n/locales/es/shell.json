@@ -280,6 +280,8 @@
     "settings": "Configuración",
     "billing": "Facturación y uso",
     "members": "Miembros",
+    "apiKeys": "Claves de API",
+    "apiDocs": "Documentación de la API",
     "help": "Ayuda y comentarios",
     "manageOrg": "Administrar organización",
     "logout": "Cerrar sesión",
@@ -405,7 +407,11 @@
       "startFree": "Empezar gratis",
       "bodyMobile": "Conecta tu propio proveedor en Configuración."
     },
-    "handoffHint": "Edita este prompt y envíalo cuando estés listo."
+    "handoffHint": "Edita este prompt y envíalo cuando estés listo.",
+    "signupWelcome": {
+      "fromDesktop": "Tu cuenta está lista. Puedes empezar aquí mismo o volver a la app de {product} e iniciar sesión.",
+      "dismiss": "Descartar"
+    }
   },
   "logout": {
     "title": "¿Cerrar sesión en {product}?",
