@@ -37,9 +37,11 @@
 // rather than highlighting options the user may not have picked.
 //
 // A tool's message to the user (a `Message` step) is a boundary too: it renders
-// as an agent message between the work before and after it. So is a message
-// the person added to the running task (an `Addon` step, ENG-4194): it renders
-// as their own row at the point it joined.
+// as an agent message between the work before and after it. So is a picture
+// generate_image wrote (an `Image` step, ENG-4024): it shows where it was made,
+// not folded into the steps around it. So is a message the person added to the
+// running task (an `Addon` step, ENG-4194): it renders as their own row at the
+// point it joined.
 //
 // An answered held browser step is not a boundary: its card folds into the
 // turn's steps as one line, "Browser action approved" or "cancelled", with the
@@ -56,6 +58,7 @@ import { answeredHandOverStep } from './browserHandOverPrompt';
 
 const isQuestion = (step) => step?.badge === 'AskUser';
 const isMessage = (step) => step?.badge === 'Message';
+const isImage = (step) => step?.badge === 'Image';
 const isAddon = (step) => step?.badge === 'Addon';
 
 /**
@@ -63,10 +66,11 @@ const isAddon = (step) => step?.badge === 'Addon';
  *   { kind: 'steps', key, steps, startedAt, endedAt? }
  *   { kind: 'question', key, step, expired, reopened, lateAnswer }
  *   { kind: 'message', key, step }
+ *   { kind: 'image', key, step }
  *   { kind: 'addon', key, step }
  * Always starts and ends with a steps segment, and puts one (possibly empty)
- * between any two boundaries (questions or messages), so callers can always
- * pick the live one.
+ * between any two boundaries (questions, messages, images or addons), so
+ * callers can always pick the live one.
  */
 export function splitTurnSegments(steps, { startedAt = null, endedAt = null, conversationLive = false, reopenable = false, reply = null } = {}) {
   const list = Array.isArray(steps) ? steps : [];
@@ -108,14 +112,14 @@ export function splitTurnSegments(steps, { startedAt = null, endedAt = null, con
       current.steps.push(browserStep);
       continue;
     }
-    if (!isQuestion(step) && !isMessage(step) && !isAddon(step)) {
+    if (!isQuestion(step) && !isMessage(step) && !isImage(step) && !isAddon(step)) {
       current.steps.push(step);
       continue;
     }
     pushSteps(current);
     if (isAddon(step)) segments.push({ kind: 'addon', key: step.id, step });
-    else segments.push(isMessage(step)
-      ? { kind: 'message', key: step.id, step }
+    else segments.push(isMessage(step) || isImage(step)
+      ? { kind: isImage(step) ? 'image' : 'message', key: step.id, step }
       : {
         kind: 'question',
         key: step.id,

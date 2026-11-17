@@ -557,10 +557,9 @@ export default function ProjectsView({
   projects = [],
   selectedProject,
   tasks = [],
+  // Forwarded to TaskList so the project's task list collapses a
+  // schedule's runs the same way TasksView does.
   scheduled = [],
-  // Flat sessionId → scheduleId map. Forwarded to TaskList so the
-  // project view's task list collapses scheduled runs the same way
-  // TasksView does.
   models = [],
   modelMeta,
   model,

@@ -108,7 +108,10 @@
       "tryAgain": "다시 시도",
       "adminSpendingLimitBody": "관리자가 설정한 지출 한도에 도달했습니다. 관리자에게 문의하세요.",
       "budgetUsedUpTitle": "조직의 예산이 모두 소진되었습니다",
-      "viewBudgets": "예산 보기"
+      "viewBudgets": "예산 보기",
+      "balanceRanOutMobile": "이 작업이 끝나기 전에 잔액이 모두 소진되었습니다.",
+      "autoTopUpFailedBodyMobile": "카드 결제를 처리하지 못했습니다.",
+      "connectProviderBodyMobile": "설정에서 직접 공급자를 연결하세요."
     },
     "usageAlert": {
       "freeLow": "Air 무료 제공량 {percent} 남음",
@@ -142,7 +145,8 @@
       "needsCreditsTitle": "{model}을(를) 사용하려면 크레딧이 필요합니다",
       "needsCreditsBody": "이 모델을 사용할 크레딧이 부족합니다. 잔액을 충전한 후 사용하세요.",
       "disabledBody": "워크스페이스에서 이 모델이 꺼져 있습니다. 설정에서 다른 모델을 선택하세요.",
-      "topUpBalance": "잔액 충전"
+      "topUpBalance": "잔액 충전",
+      "needsCreditsBodyMobile": "이 모델을 사용할 크레딧이 부족합니다."
     },
     "overloaded": {
       "theModelProvider": "모델 공급자",
@@ -773,5 +777,10 @@
     "database": "데이터베이스",
     "cancel": "취소",
     "add": "{count, plural, =0 {페이지 추가} other {페이지 #개 추가}}"
+  },
+  "generatedImage": {
+    "fallbackName": "이미지",
+    "alt": "생성된 이미지 {name}",
+    "notShown": "{name}을(를) 표시할 수 없습니다. 이동되었거나 삭제되었을 수 있습니다."
   }
 }

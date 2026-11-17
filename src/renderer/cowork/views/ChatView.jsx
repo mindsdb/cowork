@@ -49,6 +49,7 @@ import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as 
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser, openBrowserAt } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
+import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
 import { canPreviewDocument } from '../preview/kinds';
@@ -90,6 +91,7 @@ import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
 import { addonRowLabel, queuedReasonKey } from '../lib/addons';
 import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
@@ -688,7 +690,7 @@ function justFinished(message) {
    hand-over handed back or stopped follow the turn's Browser row. */
 const followsBrowserRow = (step) => answeredBrowserStep(step) || finishedHandOverStep(step);
 
-function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false, agentLabel = null, onMoveAddonToQueue = null }) {
+function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false, agentLabel = null, onMoveAddonToQueue = null, imageSource = null }) {
   // Only show the browser when I'm needed (Settings): a turn's browser steps
   // are one row, labelled by the latest (lib/browserSteps.js).
   const { onlyWhenNeeded } = useBrowserPrefs();
@@ -708,6 +710,22 @@ function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conver
   const out = [];
   let prevWasCard = false;
   segments.forEach((seg, idx) => {
+    if (seg.kind === 'image') {
+      out.push(
+        // A picture generate_image wrote, where it was made (ENG-4024). Same
+        // spacing as a tool's message: it is not part of a block.
+        <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          <GeneratedImageCard
+            image={seg.step.data || {}}
+            projectName={imageSource?.projectName ?? null}
+            projectPath={imageSource?.projectPath || ''}
+            onOpen={imageSource?.onOpen ?? null}
+          />
+        </div>,
+      );
+      prevWasCard = true;
+      return;
+    }
     if (seg.kind === 'message') {
       out.push(
         // Same spacing as a question card: the message is not part of a block.
@@ -1345,7 +1363,7 @@ export function AllowanceExhaustedCard({
       kind={t('chatView.kinds.billing')}
       title={t('chatView.cards.taskStopped')}
       body={allowanceStopCopy({ resetAt, usage })}
-      buttons={[
+      buttons={billingActions([
         {
           label: t('chatView.cards.addFunds'),
           // The click, not an impression — same rule as
@@ -1367,7 +1385,7 @@ export function AllowanceExhaustedCard({
             host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
           },
         }]),
-      ]}
+      ])}
     />
   );
 }
@@ -1427,11 +1445,11 @@ export function BalanceEmptyCard({
   };
   // Fixed copy, not the server string: the
   // gateway's wording predates pay as you go.
-  let body = t('chatView.cards.balanceRanOut');
-  let buttons = [addFunds];
+  let body = t(billingCopyKey('chatView.cards.balanceRanOut'));
+  let buttons = billingActions([addFunds]);
   if (!walletPaysNow && free.status === 'has_room' && onSwitchToAir) {
     body = t('chatView.cards.balanceEmptyAirLeft');
-    buttons = [addFunds, ...switchToAirButtons(onSwitchToAir)];
+    buttons = [...billingActions([addFunds]), ...switchToAirButtons(onSwitchToAir)];
   } else if (!walletPaysNow && free.status === 'spent' && refill) {
     body = allowanceStopCopy({ usage });
   }
@@ -1487,7 +1505,7 @@ export function FreeServingPausedCard({
       kind={t('chatView.kinds.usage')}
       title={t('chatView.cards.freeAirPausedTitle')}
       body={freeServingPausedCopy(resetAt)}
-      buttons={[
+      buttons={billingActions([
         {
           label: t('chatView.cards.addFunds'),
           /* The click only, like the other stopped-task cards. Its own
@@ -1498,7 +1516,7 @@ export function FreeServingPausedCard({
           },
           primary: true,
         },
-      ]}
+      ])}
     />
   );
 }
@@ -1537,7 +1555,7 @@ export function BudgetExceededCard({
       title={t('chatView.cards.budgetUsedUpTitle')}
       body={budgetExceededCopy({ usage })}
       buttons={[
-        {
+        ...billingActions([{
           label: t('chatView.cards.viewBudgets'),
           // The click only, like the other stopped-task cards.
           onClick: () => {
@@ -1545,7 +1563,7 @@ export function BudgetExceededCard({
             host.openExternal(budgetsUrl);
           },
           primary: true,
-        },
+        }]),
         ...(airHasRoom ? switchToAirButtons(onSwitchToAir) : []),
       ]}
     />
@@ -1563,10 +1581,10 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
       kind={t('chatView.kinds.connection')}
       title={PLATFORM_UI ? t('chatView.cards.connectProviderTitle') : t('chatView.cards.providerSetupRequiredTitle')}
       body={PLATFORM_UI
-        ? t('chatView.cards.connectProviderBody')
+        ? t(billingCopyKey('chatView.cards.connectProviderBody'))
         : t('chatView.cards.providerSetupRequiredBody')}
       buttons={PLATFORM_UI ? [
-        {
+        ...billingActions([{
           label: t('chatView.cards.startForFree'),
           // The click only. Whether this card deserves an
           // impression event of its own is an open
@@ -1576,7 +1594,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
             host.openExternal(MINDS_BILLING_URL);
           },
           primary: true,
-        },
+        }]),
         { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: false },
       ] : []}
     />
@@ -1604,11 +1622,11 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
         agentLabel={agentLabel}
         kind={t('chatView.kinds.billing')}
         title={t('chatView.cards.autoTopUpFailedTitle')}
-        body={t('chatView.cards.autoTopUpFailedBody')}
-        buttons={[
+        body={t(billingCopyKey('chatView.cards.autoTopUpFailedBody'))}
+        buttons={billingActions([
           { label: USAGE_ACTIONS.addFunds.label, onClick: open(USAGE_ACTIONS.addFunds), primary: true },
           { label: USAGE_ACTIONS.updatePaymentMethod.label, onClick: open(USAGE_ACTIONS.updatePaymentMethod) },
-        ]}
+        ])}
       />
     );
   }
@@ -1628,12 +1646,16 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
     <div className="my-3 flex flex-wrap items-center gap-x-1.5 font-body text-xs text-ink-3">
       <Icon of={CircleAlert} size={14} />
       <span>{text}</span>
-      <span aria-hidden="true">·</span>
-      <button
-        type="button"
-        onClick={open(USAGE_ACTIONS.viewUsage)}
-        className="border-0 bg-transparent p-0 m-0 font-body text-xs underline underline-offset-2 text-[color:inherit] cursor-pointer hover:text-ink-2"
-      >{USAGE_ACTIONS.viewUsage.label}</button>
+      {offersBilling() && (
+        <>
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            onClick={open(USAGE_ACTIONS.viewUsage)}
+            className="border-0 bg-transparent p-0 m-0 font-body text-xs underline underline-offset-2 text-[color:inherit] cursor-pointer hover:text-ink-2"
+          >{USAGE_ACTIONS.viewUsage.label}</button>
+        </>
+      )}
     </div>
   );
 }
@@ -1913,11 +1935,11 @@ export function ModelUnavailableCard({
       kind={t('chatView.kinds.model')}
       title={title}
       body={denied
-        ? t('chatView.model.needsCreditsBody')
+        ? t(billingCopyKey('chatView.model.needsCreditsBody'))
         : t('chatView.model.disabledBody')}
       buttons={denied
         ? [
-            { label: t('chatView.model.topUpBalance'), onClick: openBilling, primary: true },
+            ...billingActions([{ label: t('chatView.model.topUpBalance'), onClick: openBilling, primary: true }]),
             // Only while Air can still run (free allowance or a payable
             // wallet) — a switch offer into another locked model is the same
             // dead end this card exists to close.
@@ -1925,7 +1947,7 @@ export function ModelUnavailableCard({
           ]
         : [
             { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: true },
-            { label: t('chatView.model.topUpBalance'), onClick: openBilling },
+            ...billingActions([{ label: t('chatView.model.topUpBalance'), onClick: openBilling }]),
           ]}
     />
   );
@@ -2199,6 +2221,9 @@ export default function ChatView({
   /* The figure source (a LinkedFigureSource) whose file is open in the
      figure viewer. null = closed. */
   const [figureFileSource, setFigureFileSource] = useState(null);
+  /* The project-relative path of a generated image open in the file viewer
+     (ENG-4024). null = closed. */
+  const [openImagePath, setOpenImagePath] = useState(null);
   // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
   // iframe modal; text artifacts (.md/.txt/.csv) open the same viewer
   // but render via the inline text path (no iframe, no OS handoff).
@@ -2297,6 +2322,16 @@ export default function ChatView({
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
+  // Where an inline generated image (ENG-4024) is read from: the project the
+  // chat runs in, whose folder is Anton's workspace. The project's slug
+  // addresses its files route and is never shown. Memoised so the turn
+  // segments it rides into don't re-render on its account.
+  const projectSlug = project?.name ?? null;
+  const generatedImageSource = useMemo(() => ({
+    projectName: projectSlug,
+    projectPath: artifactProjectPath,
+    onOpen: setOpenImagePath,
+  }), [projectSlug, artifactProjectPath]);
   // Which project's artifacts the liveness store should describe. An effect, not
   // a render-time call: the store emits. Both deps are primitives, so an equal
   // scope cannot re-trigger it.
@@ -3880,6 +3915,7 @@ export default function ChatView({
                     // Only right after it finished live: reopening the task
                     // later shows the steps already folded.
                     collapseOnMount={justFinished(m)}
+                    imageSource={generatedImageSource}
                   />
                   <TextBlock
                     text={m.content}
@@ -3953,6 +3989,7 @@ export default function ChatView({
                   idPrefix={streamingKey}
                   agentLabel={agentLabel}
                   onMoveAddonToQueue={onMoveAddonToQueue}
+                  imageSource={generatedImageSource}
                   live={{
                     isActive: isThinkingActive(streamingMsg.streamStatus),
                     currentThought: streamingMsg.currentThought,
@@ -4244,6 +4281,21 @@ export default function ChatView({
         remover={null}
         note={figureFileNote(figureFileSource)}
         onClose={() => setFigureFileSource(null)}
+      />
+
+      {/* A generated image opened from its inline card (ENG-4024). Read only:
+          the picture is the agent's output, and edits belong in a new turn.
+          The agent named the path, so, as in the figure viewer, no Open (it
+          hands the file to the OS default app). */}
+      <ContextFileModal
+        open={openImagePath != null}
+        projectName={project?.name}
+        projectPath={artifactProjectPath}
+        filePath={openImagePath || ''}
+        showOpenAction={false}
+        showEditAction={false}
+        remover={null}
+        onClose={() => setOpenImagePath(null)}
       />
 
       {/* Inline ArtifactCard viewer — same modal the Live artifacts

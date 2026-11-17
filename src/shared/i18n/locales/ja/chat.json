@@ -108,7 +108,10 @@
       "tryAgain": "再試行",
       "adminSpendingLimitBody": "管理者が設定した支出上限に達しました。管理者にお問い合わせください。",
       "budgetUsedUpTitle": "組織の予算を使い切りました",
-      "viewBudgets": "予算を表示"
+      "viewBudgets": "予算を表示",
+      "balanceRanOutMobile": "タスクの完了前に残高がなくなりました。",
+      "autoTopUpFailedBodyMobile": "カードに請求できませんでした。",
+      "connectProviderBodyMobile": "設定で自分のプロバイダーを接続してください。"
     },
     "usageAlert": {
       "freeLow": "Airの無料枠：残り{percent}",
@@ -142,7 +145,8 @@
       "needsCreditsTitle": "{model}にはクレジットが必要です",
       "needsCreditsBody": "このモデルを使うにはクレジットが足りません。残高をチャージしてください。",
       "disabledBody": "このモデルはワークスペースで無効になっています。設定で別のモデルを選択してください。",
-      "topUpBalance": "残高をチャージ"
+      "topUpBalance": "残高をチャージ",
+      "needsCreditsBodyMobile": "このモデルを使うにはクレジットが足りません。"
     },
     "overloaded": {
       "theModelProvider": "モデルプロバイダー",
@@ -773,5 +777,10 @@
     "database": "データベース",
     "cancel": "キャンセル",
     "add": "{count, plural, =0 {ページを追加} other {#ページを追加}}"
+  },
+  "generatedImage": {
+    "fallbackName": "画像",
+    "alt": "生成された画像 {name}",
+    "notShown": "{name} を表示できません。移動または削除された可能性があります。"
   }
 }

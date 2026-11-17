@@ -16,7 +16,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   setUrl('http://localhost:3000/');
 });
-describe('MINDS_KEYCLOAK_URL / MINDS_REGISTER_URL', () => {
+describe('MINDS_KEYCLOAK_URL / mindsRegisterUrl', () => {
   // Regression: the packaged desktop app loads the renderer over file://, so a
   // protocol-based "isWeb" fallback misfired and pointed the sign-up link at
   // auth.dev.mindshub.ai even though the API host resolved to prod. Auth must
@@ -25,11 +25,11 @@ describe('MINDS_KEYCLOAK_URL / MINDS_REGISTER_URL', () => {
     vi.stubEnv('DEV', false);
     vi.stubEnv('VITE_KEYCLOAK_URL', '');
     vi.stubEnv('VITE_MINDS_API_URL', '');
-    const { MINDS_API_BASE, MINDS_KEYCLOAK_URL, MINDS_REGISTER_URL } = await importUrls();
+    const { MINDS_API_BASE, MINDS_KEYCLOAK_URL, mindsRegisterUrl } = await importUrls();
     expect(MINDS_API_BASE).toBe('https://api.mindshub.ai');
     expect(MINDS_KEYCLOAK_URL).toBe('https://auth.mindshub.ai/auth');
-    expect(MINDS_REGISTER_URL).toContain('https://auth.mindshub.ai/auth/realms/mindsdb');
-    expect(MINDS_REGISTER_URL).not.toContain('auth.dev.mindshub.ai');
+    expect(mindsRegisterUrl('desktop')).toContain('https://auth.mindshub.ai/auth/realms/mindsdb');
+    expect(mindsRegisterUrl('desktop')).not.toContain('auth.dev.mindshub.ai');
   });
 
   it('defaults to the dev environment in `vite dev` (DEV=true) when no env is set', async () => {
@@ -156,6 +156,23 @@ describe('console host derivation (the one role that differs by host shape)', ()
     expect(MINDS_CONSOLE_URL).toBe('https://console.staging.mindshub.ai');
   });
 
+  // The console sends a sign-in that lands on its bare root to Cowork
+  // (ENG-4288), so a link from Cowork that means "the console" has to name a
+  // page or it bounces straight back.
+  it('points the console home link at /home, not the bare root', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.staging.mindshub.ai');
+    const { MINDS_CONSOLE_HOME_URL } = await importUrls();
+
+    expect(MINDS_CONSOLE_HOME_URL).toBe('https://console.staging.mindshub.ai/home');
+  });
+
+  it('points the API keys link at the console /apiKeys page', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.staging.mindshub.ai');
+    const { MINDS_API_KEY_URL } = await importUrls();
+
+    expect(MINDS_API_KEY_URL).toBe('https://console.staging.mindshub.ai/apiKeys');
+  });
+
   it('keeps the console. label on prod', async () => {
     vi.stubEnv('VITE_MINDS_API_URL', 'https://api.mindshub.ai');
     const { MINDS_CONSOLE_URL } = await importUrls();
@@ -166,12 +183,72 @@ describe('console host derivation (the one role that differs by host shape)', ()
   it('leaves auth alone on a PR host: auth DOES keep its prefix there', async () => {
     // The asymmetry is the whole point. Auth is `auth-<env>.dev…`, the console
     // is `<env>.dev…`, so one role can use the token swap and the other cannot.
+    vi.stubEnv('VITE_KEYCLOAK_URL', '');
     vi.stubEnv('VITE_MINDS_API_URL', 'https://api-pr-cowork-744.dev.mindshub.ai');
     const { MINDS_KEYCLOAK_URL } = await importUrls();
 
     expect(MINDS_KEYCLOAK_URL).toBe(
       'https://auth-pr-cowork-744.dev.mindshub.ai/auth',
     );
+  });
+});
+
+describe('sign-up lands in Cowork web (ENG-4288)', () => {
+  it.each([
+    ['https://api.mindshub.ai', 'https://cowork.mindshub.ai'],
+    ['https://api.staging.mindshub.ai', 'https://cowork.staging.mindshub.ai'],
+    ['https://api.dev.mindshub.ai', 'https://cowork.dev.mindshub.ai'],
+    // A PR env's Cowork web keeps its prefix: cowork-<env>.dev…, which is the
+    // host argocd-envs registers on public-client.
+    ['https://api-pr-cowork-744.dev.mindshub.ai', 'https://cowork-pr-cowork-744.dev.mindshub.ai'],
+  ])('derives Cowork web from %s', async (api, cowork) => {
+    vi.stubEnv('VITE_MINDS_API_URL', api);
+    const { MINDS_COWORK_WEB_URL } = await importUrls();
+
+    expect(MINDS_COWORK_WEB_URL).toBe(cowork);
+  });
+
+  it('knows Cowork web from the desktop app too, where the renderer is file://', async () => {
+    setUrl('file:///Applications/Cowork.app/index.html');
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_MINDS_API_URL', '');
+    const { MINDS_COWORK_WEB_URL } = await importUrls();
+
+    expect(MINDS_COWORK_WEB_URL).toBe('https://cowork.mindshub.ai');
+  });
+
+  it('sends a desktop sign-up to Cowork web, marked as from the desktop', async () => {
+    vi.stubEnv('VITE_KEYCLOAK_URL', '');
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.staging.mindshub.ai');
+    const { mindsRegisterUrl } = await importUrls();
+    const url = new URL(mindsRegisterUrl('desktop'));
+
+    expect(`${url.origin}${url.pathname}`).toBe(
+      'https://auth.staging.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/registrations',
+    );
+    expect(url.searchParams.get('client_id')).toBe('public-client');
+    expect(url.searchParams.get('redirect_uri')).toBe(
+      'https://cowork.staging.mindshub.ai/?welcome=1&from=desktop',
+    );
+  });
+
+  it('sends a web sign-up to Cowork web with the welcome mark alone', async () => {
+    vi.stubEnv('VITE_KEYCLOAK_URL', '');
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.staging.mindshub.ai');
+    const { mindsRegisterUrl } = await importUrls();
+    const url = new URL(mindsRegisterUrl('web'));
+
+    expect(url.searchParams.get('client_id')).toBe('public-client');
+    expect(url.searchParams.get('redirect_uri')).toBe('https://cowork.staging.mindshub.ai/?welcome=1');
+  });
+
+  it('never sends a sign-up to the console', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.mindshub.ai');
+    const { mindsRegisterUrl } = await importUrls();
+
+    for (const source of ['desktop', 'web'] as const) {
+      expect(new URL(mindsRegisterUrl(source)).searchParams.get('redirect_uri')).not.toContain('console.');
+    }
   });
 });
 

@@ -12,7 +12,7 @@ import { type MindsOrg, needsOrgPick, organizationLabel, rankMindsOrgs } from '.
 import { fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { trackKeyProvisioningRefused } from '../../cowork/lib/analytics';
-import { MINDS_API_BASE, MINDS_DOWNLOAD_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_DOWNLOAD_URL, mindsRegisterUrl } from '../../lib/mindsUrls';
 import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite } from './sprites';
@@ -74,14 +74,16 @@ export async function persistOnboarding(
         dbSyncFailed: true,
       };
     }
-    // syncModels writes the model keys the bulk DB sync intentionally skips.
+    // syncModels writes the model keys the bulk DB sync intentionally skips,
+    // and only the ones onboarding chose: `lines` can carry other model lines
+    // over from the existing .env (see modelLinesFrom).
     // Best-effort: the config has ALREADY persisted authoritatively (dbOk),
     // so a flaky model sync must NOT bounce the user to the error screen
     // over a saved config. Logged because a dropped model write does NOT
     // self-heal (model keys ride neither the bulk re-sync nor the startup
     // migration).
     try {
-      await deps.syncModels(lines);
+      await deps.syncModels(modelLinesFrom(lines));
     } catch (e) {
       diagnostic("renderer.pages.arcade.OnboardingScreen", "ERROR", "onboarding_best_effort_model_sync_failed", '[onboarding] best-effort model sync failed', e);
     }
@@ -1036,7 +1038,7 @@ export default function OnboardingScreen({
                 <button
                   type="button"
                   className="arc-link"
-                  onClick={() => host.openExternal(MINDS_REGISTER_URL)}
+                  onClick={() => host.openExternal(mindsRegisterUrl(host.isElectron ? 'desktop' : 'web'))}
                 >{t('onboarding.minds.createOne')}</button>
               </div>
             </>

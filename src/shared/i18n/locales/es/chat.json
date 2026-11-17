@@ -108,7 +108,10 @@
       "tryAgain": "Reintentar",
       "adminSpendingLimitBody": "Se alcanzó el límite de gasto que fijó tu administrador. Comunícate con tu administrador.",
       "budgetUsedUpTitle": "Se agotó el presupuesto de tu organización",
-      "viewBudgets": "Ver presupuestos"
+      "viewBudgets": "Ver presupuestos",
+      "balanceRanOutMobile": "Tu saldo se agotó antes de que terminara esta tarea.",
+      "autoTopUpFailedBodyMobile": "No pudimos cobrar a tu tarjeta.",
+      "connectProviderBodyMobile": "Conecta tu propio proveedor en Configuración."
     },
     "usageAlert": {
       "freeLow": "Queda {percent} de la asignación gratuita de Air",
@@ -142,7 +145,8 @@
       "needsCreditsTitle": "{model} necesita créditos",
       "needsCreditsBody": "No tienes suficientes créditos para este modelo. Recarga tu saldo para usarlo.",
       "disabledBody": "Este modelo está desactivado en tu espacio de trabajo. Elige otro modelo en Configuración.",
-      "topUpBalance": "Recargar saldo"
+      "topUpBalance": "Recargar saldo",
+      "needsCreditsBodyMobile": "No tienes suficientes créditos para este modelo."
     },
     "overloaded": {
       "theModelProvider": "El proveedor del modelo",
@@ -773,5 +777,10 @@
     "database": "Base de datos",
     "cancel": "Cancelar",
     "add": "{count, plural, =0 {Añadir página} one {Añadir página} other {Añadir # páginas}}"
+  },
+  "generatedImage": {
+    "fallbackName": "imagen",
+    "alt": "Imagen generada {name}",
+    "notShown": "No se puede mostrar {name}. Es posible que se haya movido o eliminado."
   }
 }

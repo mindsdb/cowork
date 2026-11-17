@@ -108,7 +108,10 @@
       "tryAgain": "重试",
       "adminSpendingLimitBody": "已达到管理员设置的支出上限。请联系管理员。",
       "budgetUsedUpTitle": "你所在组织的预算已用完",
-      "viewBudgets": "查看预算"
+      "viewBudgets": "查看预算",
+      "balanceRanOutMobile": "任务完成前你的余额已用完。",
+      "autoTopUpFailedBodyMobile": "无法从你的银行卡扣款。",
+      "connectProviderBodyMobile": "在“设置”中连接你自己的提供商。"
     },
     "usageAlert": {
       "freeLow": "Air 免费额度剩余 {percent}",
@@ -142,7 +145,8 @@
       "needsCreditsTitle": "{model} 需要积分",
       "needsCreditsBody": "你的积分不足以使用此模型。请为余额充值后再使用。",
       "disabledBody": "此模型已在你的工作区中关闭。请在“设置”中选择其他模型。",
-      "topUpBalance": "为余额充值"
+      "topUpBalance": "为余额充值",
+      "needsCreditsBodyMobile": "你的积分不足以使用此模型。"
     },
     "overloaded": {
       "theModelProvider": "模型提供商",
@@ -773,5 +777,10 @@
     "database": "数据库",
     "cancel": "取消",
     "add": "{count, plural, =0 {添加页面} other {添加 # 个页面}}"
+  },
+  "generatedImage": {
+    "fallbackName": "图像",
+    "alt": "生成的图像 {name}",
+    "notShown": "无法显示 {name}。它可能已被移动或删除。"
   }
 }

@@ -280,6 +280,8 @@
     "settings": "Configurações",
     "billing": "Faturamento e uso",
     "members": "Membros",
+    "apiKeys": "Chaves de API",
+    "apiDocs": "Documentação da API",
     "help": "Ajuda e feedback",
     "manageOrg": "Gerenciar organização",
     "logout": "Sair",
@@ -402,9 +404,14 @@
       "operatorTitle": "É preciso configurar um provedor",
       "body": "Comece com o MindsHub e ganhe uma franquia gratuita no MindsHub Air; depois, pague conforme o uso. Ou adicione sua própria chave de API (Anthropic, OpenAI ou qualquer endpoint compatível com OpenAI) em Configurações.",
       "operatorBody": "Peça ao seu operador para configurar o provedor de modelos antes de iniciar uma tarefa.",
-      "startFree": "Começar grátis"
+      "startFree": "Começar grátis",
+      "bodyMobile": "Conecte seu próprio provedor em Configurações."
     },
-    "handoffHint": "Edite este prompt e envie quando estiver pronto."
+    "handoffHint": "Edite este prompt e envie quando estiver pronto.",
+    "signupWelcome": {
+      "fromDesktop": "Sua conta está pronta. Você pode começar aqui mesmo ou voltar ao app {product} e entrar.",
+      "dismiss": "Dispensar"
+    }
   },
   "logout": {
     "title": "Sair do {product}?",

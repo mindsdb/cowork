@@ -280,6 +280,8 @@
     "settings": "Settings",
     "billing": "Billing & Usage",
     "members": "Members",
+    "apiKeys": "API keys",
+    "apiDocs": "API docs",
     "help": "Help & Feedback",
     "manageOrg": "Manage organization",
     "logout": "Logout",
@@ -402,9 +404,14 @@
       "operatorTitle": "Provider setup is required",
       "body": "Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.",
       "operatorBody": "Ask your operator to configure the model provider before starting a task.",
-      "startFree": "Start for free"
+      "startFree": "Start for free",
+      "bodyMobile": "Connect your own provider in Settings."
     },
-    "handoffHint": "Edit this prompt, then send when you're ready."
+    "handoffHint": "Edit this prompt, then send when you're ready.",
+    "signupWelcome": {
+      "fromDesktop": "Your account is ready. You can start right here, or go back to the {product} app and sign in.",
+      "dismiss": "Dismiss"
+    }
   },
   "logout": {
     "title": "Sign out of {product}?",
