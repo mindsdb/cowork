@@ -203,6 +203,26 @@ describe('NewTaskPanel project folder availability', () => {
     // Well inside the 5 second automatic re-check: this is Refresh's doing.
     await waitFor(() => expect(screen.queryByText(WARNING)).not.toBeInTheDocument(), { timeout: 1_000 });
     expect(projectFolders.mock.calls.length).toBeGreaterThan(checksBefore);
-    expect(startButton()).toBeEnabled();
+    // The open drawer hides the composer behind it from assistive technology.
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(startButton()).toBeEnabled());
+  });
+
+  it('keeps the last known state when a background re-check cannot reach the server', async () => {
+    const user = userEvent.setup();
+    const onCreate = renderComposer();
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Add a file');
+    await waitFor(() => expect(startButton()).toBeEnabled());
+
+    projectFolders.mockRejectedValue(new Error('Failed to fetch'));
+    const checksBefore = projectFolders.mock.calls.length;
+    fireEvent.focus(window);
+    await waitFor(() => expect(projectFolders.mock.calls.length).toBeGreaterThan(checksBefore));
+
+    expect(screen.queryByText('Failed to fetch')).not.toBeInTheDocument();
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    // Start still goes to the server, which has the last word.
+    await user.click(startButton());
+    await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
   });
 });
