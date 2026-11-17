@@ -219,20 +219,35 @@ const APP_VERSION =
 // The desktop shell's build kind, which decides the project an event goes to:
 // installers bake the production token whatever their kind, so a staging or
 // preview install has to re-route itself (posthogKeyForBuildKind). The shell's
-// answer is cached, including "no kind" from a shell too old to report one; a
-// failed read is asked again on the next event, so one bad read cannot pin a
-// staging install to production.
+// answer is cached, including "no kind" from a shell too old to report one.
+// A failed read is not an answer: the events waiting on it are held while the
+// shell is asked again, so a staging install's event isn't sent to production
+// on one bad read. Only when every retry fails does an event fall back to
+// production, so a production install never loses one; the next event asks
+// again.
+const BUILD_KIND_RETRY_DELAYS_MS = [250, 1000, 3000];
 let cachedBuildKind; // undefined until the shell has answered
-async function shellBuildKind() {
-  if (SURFACE !== 'desktop') return null;
-  if (cachedBuildKind !== undefined) return cachedBuildKind;
-  try {
-    const info = await host.getVersionInfo();
-    cachedBuildKind = info?.buildKind || null;
-    return cachedBuildKind;
-  } catch {
-    return null;
+let buildKindLookup = null; // the read in progress, shared by every waiting event
+function shellBuildKind() {
+  if (SURFACE !== 'desktop') return Promise.resolve(null);
+  if (cachedBuildKind !== undefined) return Promise.resolve(cachedBuildKind);
+  if (!buildKindLookup) {
+    buildKindLookup = (async () => {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          const info = await host.getVersionInfo();
+          cachedBuildKind = info?.buildKind || null;
+          return cachedBuildKind;
+        } catch {
+          if (attempt >= BUILD_KIND_RETRY_DELAYS_MS.length) return null;
+          await new Promise((resolve) => setTimeout(resolve, BUILD_KIND_RETRY_DELAYS_MS[attempt]));
+        }
+      }
+    })().finally(() => {
+      buildKindLookup = null;
+    });
   }
+  return buildKindLookup;
 }
 
 // ── Session flags ──────────────────────────────────────────────────
@@ -354,8 +369,9 @@ function actingOrganizationId() {
   if (host.isElectron) return credentialOrganizationId();
   return Promise.resolve(identity.personProps.organization_id);
 }
-// Synchronous guard against the merge firing twice when two events resolve
-// identity in the same tick, before the async localStorage marker is written.
+// Guard against the merge firing twice before the async localStorage marker is
+// written, keyed by project and account: a merge sent to production while the
+// shell was unreachable must not stop the one its events' project needs.
 // Entries are cleared on failure so a later event can still retry.
 const mergeInFlight = new Set();
 
@@ -597,19 +613,20 @@ function identityMergedKey(apiKey) {
 }
 function mergeAnonIntoAccount(sub) {
   if (!POSTHOG_KEY || isCi() || !sub) return;
-  if (mergeInFlight.has(sub)) return;
   const deviceId = getDeviceId();
   // Nothing to merge if there's no distinct device id to alias from.
   if (!deviceId || deviceId === sub) return;
-  mergeInFlight.add(sub);
   shellBuildKind().then((buildKind) => {
     const apiKey = posthogKeyForBuildKind(buildKind, POSTHOG_KEY);
+    const flight = `${apiKey}:${sub}`;
+    if (mergeInFlight.has(flight)) return;
     const markerKey = identityMergedKey(apiKey);
     try {
       if (window.localStorage.getItem(markerKey) === sub) return;
     } catch {
       // localStorage unavailable: fall through and attempt the merge anyway.
     }
+    mergeInFlight.add(flight);
     dlog('$identify merge', { distinct_id: sub, $anon_distinct_id: deviceId });
     postCapture('$identify', sub, {
       $anon_distinct_id: deviceId,
@@ -626,7 +643,7 @@ function mergeAnonIntoAccount(sub) {
           /* best effort: a re-merge next session is harmless */
         }
       } else {
-        mergeInFlight.delete(sub); // non-ok or network error: let a later event retry
+        mergeInFlight.delete(flight); // non-ok or network error: let a later event retry
       }
     });
   });

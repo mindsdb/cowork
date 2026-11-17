@@ -202,19 +202,96 @@ describe('which PostHog project a desktop build reports to', () => {
     expect(getVersionInfo).not.toHaveBeenCalled();
   });
 
-  it('asks again after a failed read instead of pinning the install to production', async () => {
+  it('holds an event through a failed read and sends it where the shell then says', async () => {
     getVersionInfo
       .mockRejectedValueOnce(new Error('bridge not ready'))
       .mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
     const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const sent = bodies(fetchMock);
+    expect(sent.map((b) => b.event)).toEqual(['app_installed']);
+    expect(sent[0].api_key).toBe(NON_PROD_KEY);
+  });
+
+  it('merges in the non-production project when the first read fails', async () => {
+    getVersionInfo
+      .mockRejectedValueOnce(new Error('bridge not ready'))
+      .mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+    getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+    await sentEvent(fetchMock, '$identify');
+
+    const merges = bodies(fetchMock).filter((b) => b.event === '$identify');
+    expect(merges.map((b) => b.api_key)).toEqual([NON_PROD_KEY]);
+  });
+
+  it('merges once when two events resolve the account at the same time', async () => {
+    getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+    getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+    // Sends stay pending, so neither merge has written its marker yet.
+    const pending = [];
+    const fetchMock = mockFetch();
+    fetchMock.mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
     const { trackDataSourceConnected, trackArtifactBuilt } = await importAnalytics();
 
     trackDataSourceConnected('postgres');
-    await sentEvent(fetchMock, 'data_source_connected');
     trackArtifactBuilt('report', 'a1');
-    const second = await sentEvent(fetchMock, 'artifact_built');
+    await sentEvent(fetchMock, 'artifact_built');
+    await new Promise((r) => setTimeout(r, 0));
 
-    expect(second.api_key).toBe(NON_PROD_KEY);
+    expect(bodies(fetchMock).filter((b) => b.event === '$identify')).toHaveLength(1);
+    pending.forEach((resolve) => resolve({ ok: true, status: 200 }));
+  });
+
+  describe('when the shell never answers', () => {
+    beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] }));
+    afterEach(() => vi.useRealTimers());
+
+    const settle = async (promise) => {
+      await vi.advanceTimersByTimeAsync(10_000);
+      return promise;
+    };
+
+    it('still delivers the event, to production, so a production install loses nothing', async () => {
+      getVersionInfo.mockRejectedValue(new Error('bridge gone'));
+      const fetchMock = mockFetch();
+      const { trackAppInstalled } = await importAnalytics();
+
+      await settle(trackAppInstalled());
+
+      const [body] = bodies(fetchMock);
+      expect(body.event).toBe('app_installed');
+      expect(body.api_key).toBe('phc_test');
+      expect(body.properties).not.toHaveProperty('build_kind');
+    });
+
+    it('merges again in the non-production project once the shell answers stable', async () => {
+      getVersionInfo
+        .mockRejectedValueOnce(new Error('bridge gone'))
+        .mockRejectedValueOnce(new Error('bridge gone'))
+        .mockRejectedValueOnce(new Error('bridge gone'))
+        .mockRejectedValueOnce(new Error('bridge gone'))
+        .mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+      getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+      const fetchMock = mockFetch();
+      const { trackAppInstalled, trackFirstQuery } = await importAnalytics();
+
+      await settle(trackAppInstalled());
+      // Identity is cached for five minutes; the merge runs again when it
+      // re-resolves, and by then the shell answers.
+      await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
+      await settle(trackFirstQuery());
+      await vi.advanceTimersByTimeAsync(0);
+
+      const merges = bodies(fetchMock).filter((b) => b.event === '$identify');
+      expect(merges.map((b) => b.api_key)).toEqual(['phc_test', NON_PROD_KEY]);
+    });
   });
 
   it('merges a staging install into the account in the non-production project', async () => {
