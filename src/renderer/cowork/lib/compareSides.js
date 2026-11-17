@@ -3,6 +3,7 @@
 // message and whatever the agent answered to it.
 
 import { offeredModels } from './modelPickerOptions';
+import { billingCopyKey } from './billingLinks';
 import i18n from '../../lib/i18n';
 
 /* User-facing copy, translated when it is read (never at import). */
@@ -273,8 +274,8 @@ export function composerBlock(target, sides = {}, names = { a: 'A', b: 'B' }, { 
   if (outOfCredits.length > 0) {
     return {
       message: outOfCredits.length === 2
-        ? tr('block.outOfCreditsBoth')
-        : tr('block.outOfCreditsOne', { name: names[outOfCredits[0]] }),
+        ? tr(billingCopyKey('block.outOfCreditsBoth'))
+        : tr(billingCopyKey('block.outOfCreditsOne'), { name: names[outOfCredits[0]] }),
       canSwitch: false,
       action: 'addFunds',
     };

@@ -53,6 +53,11 @@ export interface TooltipProps {
   className?: string;
   // Skip the hint-bubble skin, for a richer preview its className styles.
   unstyled?: boolean;
+  // Controlled open, for a hint that a tap also opens (touch has no hover).
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  // Whether a click on the trigger closes the hint (Base UI's default: yes).
+  closeOnClick?: boolean;
 }
 
 const POPUP_STYLE: CSSProperties = {
@@ -121,13 +126,16 @@ export function Tooltip({
   delay,
   className,
   unstyled,
+  open,
+  onOpenChange,
+  closeOnClick,
 }: TooltipProps) {
   // No content → render the trigger bare so callers can pass a
   // possibly-empty label without branching.
   if (content == null || content === '') return children;
   return (
-    <BaseTooltip.Root>
-      <BaseTooltip.Trigger delay={delay ?? tokenDelay()} render={children} />
+    <BaseTooltip.Root open={open} onOpenChange={onOpenChange ? (next) => onOpenChange(next) : undefined}>
+      <BaseTooltip.Trigger delay={delay ?? tokenDelay()} closeOnClick={closeOnClick} render={children} />
       <TooltipBubble side={side} sideOffset={sideOffset} className={className} unstyled={unstyled}>
         {content}
       </TooltipBubble>

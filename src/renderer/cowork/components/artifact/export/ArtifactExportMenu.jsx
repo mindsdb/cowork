@@ -20,9 +20,10 @@ const NOTICE_MS = 6_000;
  * @param {{
  *   draftUrl: string,
  *   formats: import('..').ArtifactExportFormat[],
+ *   onExported?: (format: import('..').ArtifactExportFormat) => void,
  * }} props
  */
-export function ArtifactExportMenu({ draftUrl, formats }) {
+export function ArtifactExportMenu({ draftUrl, formats, onExported }) {
   const { t } = useTranslation('artifacts');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(/** @type {ExportNotice | null} */ (null));
@@ -49,6 +50,8 @@ export function ArtifactExportMenu({ draftUrl, formats }) {
     setBusy(true);
     showNotice(null);
     const next = await runArtifactExport(draftUrl, format);
+    // Saved even when the viewer closed meanwhile, so it counts either way.
+    if (next?.tone !== 'error') onExported?.(format);
     if (!mountedRef.current) return;
     showNotice(next);
     setBusy(false);

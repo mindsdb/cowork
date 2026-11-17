@@ -21,6 +21,8 @@ import {
   modelLabel,
   transformSettingsRows,
   routerRoleSubtitle,
+  resolveImageModel,
+  IMAGE_MODEL_FALLBACK,
   showJevSwitch,
   showRouterRoleRow,
   jevClassifySwitch,
@@ -39,9 +41,45 @@ describe('favicon settings translation', () => {
 });
 
 describe('shared browser settings', () => {
-  it('maps only the switch', () => {
+  it('maps only the switch and the approvals choice', () => {
     const browserKeys = Object.keys(SETTINGS_KEY_MAP).filter((key) => key.startsWith('browser_'));
-    expect(browserKeys).toEqual(['browser_enabled']);
+    expect(browserKeys).toEqual(['browser_enabled', 'browser_approve_steps', 'browser_only_when_needed', 'browser_approve_steps_off_at']);
+  });
+
+  it('round-trips Only show the browser when needed as a server setting', () => {
+    expect(transformSettingsRows([{ key: 'browser_only_when_needed', value: 'false' }]).browserOnlyWhenNeeded).toBe(false);
+    expect(diffSettingsForWrite({ browserOnlyWhenNeeded: false }, { browserOnlyWhenNeeded: true }))
+      .toEqual({ browser_only_when_needed: 'false' });
+  });
+
+  it('round-trips Approve browser steps as a server setting', () => {
+    expect(transformSettingsRows([{ key: 'browser_approve_steps', value: 'false' }]).browserApproveSteps).toBe(false);
+    expect(transformSettingsRows([{ key: 'browser_approve_steps', value: 'True' }]).browserApproveSteps).toBe(true);
+    expect(diffSettingsForWrite({ browserApproveSteps: false }, { browserApproveSteps: true }))
+      .toEqual({ browser_approve_steps: 'false' });
+  });
+
+  /* The server stamps when approvals last went off, by its clock; the app
+     reads it to approve only steps held after it, and never writes it. */
+  it('reads when approvals went off, and never writes it back', () => {
+    expect(transformSettingsRows([{ key: 'browser_approve_steps_off_at', value: '1700000000123' }]).browserApproveStepsOffAt)
+      .toBe('1700000000123');
+    expect(diffSettingsForWrite({ browserApproveStepsOffAt: '1' }, { browserApproveStepsOffAt: '1700000000123' })).toEqual({});
+    expect(committedSettingsPatch({ browserApproveStepsOffAt: '1' }, ['browser_approve_steps_off_at'])).toEqual({});
+  });
+
+  /* Each write of approvals off moves the server's stamp past the cards
+     waiting then, so a card's Skip approvals must reach it even when this
+     tab already reads approvals off; and turning them back on from a card
+     is never dropped as unchanged from a stale read. */
+  it('writes the approvals switch as given, whatever this tab last read', () => {
+    expect(diffSettingsForWrite({ browserApproveSteps: false }, { browserApproveSteps: false })).toEqual({ browser_approve_steps: 'false' });
+    expect(diffSettingsForWrite({ browserApproveSteps: false }, {})).toEqual({ browser_approve_steps: 'false' });
+    expect(diffSettingsForWrite({ browserApproveSteps: true }, { browserApproveSteps: true })).toEqual({ browser_approve_steps: 'true' });
+    // Only a real switch value: a missing one is never written.
+    expect(diffSettingsForWrite({ browserApproveSteps: undefined }, {})).toEqual({});
+    // Other switches still skip an unchanged value.
+    expect(diffSettingsForWrite({ browserOnlyWhenNeeded: false }, { browserOnlyWhenNeeded: false })).toEqual({});
   });
 
   it('reads no server address, key, proxy switch or city from the settings rows', () => {
@@ -1154,6 +1192,142 @@ describe('mergeRecommendedModels — the gate binding (ENG-1851)', () => {
     const held = { gate: { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false } };
     expect(mergeRecommendedModels(held, { recommendedModels: {} }).gate).toEqual(held.gate);
     expect(mergeRecommendedModels({}, { recommendedModels: {} }).gate).toBeNull();
+  });
+});
+
+describe('image model settings (ENG-4024)', () => {
+  const FLARE = 'gpt-image-2.6-flare';
+  const SUNBURST = 'gpt-image-2.6-sunburst';
+
+  it('round-trips image_model like the other model settings', () => {
+    expect(transformSettingsRows([{ key: 'image_model', value: SUNBURST }]).imageModel).toBe(SUNBURST);
+    expect(diffSettingsForWrite({ imageModel: SUNBURST }, { imageModel: FLARE })).toEqual({ image_model: SUNBURST });
+    expect(committedSettingsPatch({ imageModel: SUNBURST }, ['image_model'])).toEqual({ imageModel: SUNBURST });
+  });
+
+  it("reads an unset image_model as no pick, so the server's filled-in default is never saved back", () => {
+    const transformed = transformSettingsRows([{ key: 'image_model', value: FLARE, is_set: false }]);
+    expect(transformed.imageModel).toBeUndefined();
+    // So the picker follows the live default, not the one /settings/ was read with.
+    expect(resolveImageModel(transformed.imageModel, { catalogDefault: SUNBURST })).toBe(SUNBURST);
+    expect(diffSettingsForWrite({ ...transformed }, transformed)).not.toHaveProperty('image_model');
+    // A real pick still reads as one.
+    expect(transformSettingsRows([{ key: 'image_model', value: SUNBURST, is_set: true }]).imageModel).toBe(SUNBURST);
+  });
+
+  it('starts a settings load with an empty image list and default', () => {
+    const transformed = transformSettingsRows([]);
+    expect(transformed.imageModels).toEqual([]);
+    expect(transformed.imageModelDefault).toBe('');
+  });
+
+  describe('mergeRecommendedModels keeps image models out of every chat list', () => {
+    it('takes the image list and catalog default the server sends', () => {
+      const merged = mergeRecommendedModels({}, {
+        recommendedModels: { 'minds-cloud': ['mindshub_air', 'sonnet'] },
+        imageModels: [FLARE, SUNBURST],
+        imageModelDefault: FLARE,
+      });
+      expect(merged.imageModels).toEqual([FLARE, SUNBURST]);
+      expect(merged.imageModelDefault).toBe(FLARE);
+      expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air', 'sonnet']);
+    });
+
+    it('strips an image model a chat bucket lists anyway, in every bucket', () => {
+      const merged = mergeRecommendedModels({}, {
+        recommendedModels: {
+          'minds-cloud': ['mindshub_air', FLARE, 'sonnet', SUNBURST],
+          'openai-compatible': [FLARE, 'local-llm'],
+        },
+        imageModels: [FLARE, SUNBURST],
+      });
+      expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air', 'sonnet']);
+      expect(merged.recommendedModels['openai-compatible']).toEqual(['local-llm']);
+      // So the composer's picker, built from that bucket, offers no image model.
+      expect(recommendedModelOptions(merged.recommendedModels, 'minds-cloud').map((o) => o.id))
+        .toEqual(['mindshub_air', 'sonnet']);
+    });
+
+    it('keeps and strips by the held image list when MindsHub could not be read', () => {
+      const merged = mergeRecommendedModels(
+        { imageModels: [FLARE], imageModelDefault: FLARE },
+        { recommendedModels: { 'minds-cloud': [], 'openai-compatible': ['local-llm', FLARE] }, imageModels: [] },
+      );
+      // No MindsHub ids means no MindsHub read: an empty image list says nothing.
+      expect(merged.imageModels).toEqual([FLARE]);
+      expect(merged.imageModelDefault).toBe(FLARE);
+      expect(merged.recommendedModels['openai-compatible']).toEqual(['local-llm']);
+    });
+
+    it('drops the held image list when MindsHub was read and lists none', () => {
+      const merged = mergeRecommendedModels(
+        { imageModels: [FLARE], imageModelDefault: FLARE },
+        { recommendedModels: { 'minds-cloud': ['mindshub_air'] }, imageModels: [] },
+      );
+      expect(merged.imageModels).toEqual([]);
+      expect(merged.imageModelDefault).toBe('');
+    });
+
+    it('keeps the held image list from a server that sends no image list at all', () => {
+      const merged = mergeRecommendedModels(
+        { imageModels: [FLARE], imageModelDefault: FLARE },
+        { recommendedModels: { 'minds-cloud': ['mindshub_air'] } },
+      );
+      expect(merged.imageModels).toEqual([FLARE]);
+      expect(merged.imageModelDefault).toBe(FLARE);
+    });
+
+    it('keeps the held image order on an on-open refresh', () => {
+      const merged = mergeRecommendedModels(
+        { imageModels: [FLARE, SUNBURST] },
+        { imageModels: [SUNBURST, FLARE] },
+        { keepOrder: true },
+      );
+      expect(merged.imageModels).toEqual([FLARE, SUNBURST]);
+    });
+
+    it('ignores an image list that is not a list of ids (older or odd server)', () => {
+      expect(mergeRecommendedModels({}, { imageModels: 'gpt-image-2.6-flare' }).imageModels).toEqual([]);
+      expect(mergeRecommendedModels({}, { imageModels: [FLARE, 7, null, ''] }).imageModels).toEqual([FLARE]);
+      expect(mergeRecommendedModels({}, { recommendedModels: {} }).imageModelDefault).toBe('');
+    });
+  });
+
+  describe('resolveImageModel', () => {
+    it('shows the saved choice', () => {
+      expect(resolveImageModel(SUNBURST, { catalogDefault: FLARE })).toBe(SUNBURST);
+    });
+
+    it('keeps a saved id the catalog no longer lists, so the picker can show it as stale', () => {
+      expect(resolveImageModel('gpt-image-1-mini', { catalogDefault: FLARE })).toBe('gpt-image-1-mini');
+    });
+
+    it("defaults to the server's image default", () => {
+      expect(resolveImageModel('', { catalogDefault: SUNBURST })).toBe(SUNBURST);
+      expect(resolveImageModel(null, { catalogDefault: SUNBURST })).toBe(SUNBURST);
+    });
+
+    it('falls back to the compiled default when the server names none', () => {
+      expect(IMAGE_MODEL_FALLBACK).toBe(FLARE);
+      expect(resolveImageModel(undefined)).toBe(FLARE);
+      expect(resolveImageModel('', { catalogDefault: '' })).toBe(FLARE);
+    });
+
+    it("never swaps the server's default for another listed model", () => {
+      // The server hands generate_image this id, listed or not.
+      expect(resolveImageModel('', { catalogDefault: 'nano-banana' })).toBe('nano-banana');
+    });
+
+    it('pairs with the picker helpers: the shown value is always a rendered option', () => {
+      const list = [FLARE, SUNBURST];
+      for (const [stored, catalogDefault] of [['', FLARE], [SUNBURST, FLARE], ['gone-model', FLARE], ['', 'nano-banana'], ['', '']]) {
+        const cur = resolveImageModel(stored, { catalogDefault });
+        const { showStalePin, selectValue } = resolveModelPickerValue(cur, list, false);
+        const values = buildModelOptions(cur, list, false, showStalePin).map((o) => o.value);
+        expect(values).toContain(selectValue);
+        expect(values).not.toContain('__custom__');
+      }
+    });
   });
 });
 

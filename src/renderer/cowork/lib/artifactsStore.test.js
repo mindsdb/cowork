@@ -11,6 +11,7 @@ vi.mock('../api', () => ({
 import { deleteArtifact, fetchArtifactsStrict } from '../api';
 import {
   __resetForTests,
+  artifactCardBySlug,
   artifactDeletedNow,
   deleteArtifactAndSync,
   noteArtifactCreated,
@@ -325,3 +326,35 @@ describe('live cards', () => {
     expect(artifactDeletedNow(chatCard(), { live: true })).toBe(false);
   });
 });
+
+// The chat's quick-edit pill names an artifact by its slug (ENG-4227).
+describe('artifactCardBySlug', () => {
+  beforeEach(() => {
+    __resetForTests();
+    vi.mocked(fetchArtifactsStrict).mockReset();
+  });
+
+  it('finds a loaded card by slug, and nothing before the load or for another slug', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([serverCard({ title: 'Clock' })]);
+    expect(artifactCardBySlug('clock-7db94eb8')).toBeNull();
+    await revalidate();
+    expect(artifactCardBySlug('clock-7db94eb8')).toMatchObject({ title: 'Clock' });
+    expect(artifactCardBySlug('other')).toBeNull();
+    expect(artifactCardBySlug('')).toBeNull();
+  });
+
+  it('forgets the cards when the scope changes, and a deleted one', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([serverCard()]);
+    await revalidate();
+    vi.mocked(deleteArtifact).mockResolvedValue({ ok: true });
+    await deleteArtifactAndSync(serverCard());
+    expect(artifactCardBySlug('clock-7db94eb8')).toBeNull();
+
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([serverCard({ slug: 'kept-1', id: 'aaaaaaaa', folder: '/x', path: '/x/i.html' })]);
+    await revalidate();
+    expect(artifactCardBySlug('kept-1')).not.toBeNull();
+    setArtifactsScope(SCOPE);
+    expect(artifactCardBySlug('kept-1')).toBeNull();
+  });
+});
+

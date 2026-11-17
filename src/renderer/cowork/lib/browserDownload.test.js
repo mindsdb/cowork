@@ -2,11 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { downloadBlob, downloadFilename, downloadUrl } from './browserDownload';
 
+const platform = vi.hoisted(() => ({ isMobileShell: false }));
+vi.mock('../../platform/host', () => ({ host: platform }));
+
 let createObjectURL;
 let revokeObjectURL;
 let clicked;
 
 beforeEach(() => {
+  platform.isMobileShell = false;
   vi.useFakeTimers();
   clicked = [];
   createObjectURL = vi.fn(() => 'blob:object-url');
@@ -100,4 +104,12 @@ describe('downloadBlob', () => {
     vi.advanceTimersByTime(1_000);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:object-url');
   });
+});
+
+it('does not create blobs or click download anchors in the mobile shell', () => {
+  platform.isMobileShell = true;
+  expect(downloadBlob(new Blob(['private']), 'private.txt')).toBe(false);
+  expect(downloadUrl('https://example.test/file', 'file')).toBe(false);
+  expect(createObjectURL).not.toHaveBeenCalled();
+  expect(clicked).toEqual([]);
 });

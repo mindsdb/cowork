@@ -39,7 +39,8 @@ import {
   subscribeSelectedMethod,
 } from './formStore';
 import HowToModal from './HowToModal';
-import { computeHeroView, orderMethods } from './methodHero';
+import { computeHeroView, orderMethods, providerNameFromSpec } from './methodHero';
+import { connectorWebsite } from '../../lib/connectorWebsites';
 import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
 import { useTranslation } from '../../../lib/i18n';
@@ -204,7 +205,7 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
 export function DataVaultForm({
   spec, busy = false, onAction, onMethodChange, conversationId,
   userLabel, onUserLabelChange, onFieldChange,
-  hideHeader = false,
+  hideHeader = false, onUseBrowser,
 }) {
   const { t } = useTranslation('library');
   // ── Multi-method shape ──────────────────────────────────────────
@@ -663,6 +664,7 @@ export function DataVaultForm({
           }}
           onAuthorize={authorizeWithMethod}
           busy={busy}
+          onUseBrowser={onUseBrowser}
         />
       )}
 
@@ -864,6 +866,7 @@ export function DataVaultForm({
         })}
         </div>
       </div>
+      {!isMultiMethod && <BrowserInstead spec={spec} busy={busy} onUseBrowser={onUseBrowser} />}
       </>}
 
       {/* How-to modal for the form-fill stage — wired to the
@@ -886,7 +889,34 @@ export function DataVaultForm({
 // description, and an optional "Recommended" pill. Click selects
 // the method (host pulls the choice into local state and the form
 // switches to the picked method's fields).
-function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
+/* One more way to go: no connection at all, with the agent working on the
+   service's website in the shared browser, where the person signs in. Only
+   for a service with a known website, and only where the browser can be
+   used (`onUseBrowser`). */
+function BrowserInstead({ spec, busy, onUseBrowser }) {
+  const { t } = useTranslation('library');
+  const url = connectorWebsite(spec?._connector_id || spec?.engine);
+  if (!url || !onUseBrowser) return null;
+  const name = providerNameFromSpec(spec);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => onUseBrowser({ name, url })}
+      className="flex items-center gap-3 w-full text-left px-[14px] py-[10px] rounded-[10px] bg-transparent border border-dashed border-line-2 text-ink font-[family-name:var(--font-body)] min-w-0 cursor-pointer disabled:cursor-not-allowed hover:bg-surface-2"
+    >
+      <span className="text-ink-3 inline-flex" aria-hidden>{Ico.globe(16)}</span>
+      <span className="flex flex-col gap-[2px] min-w-0">
+        <span className="font-medium text-[13px]">{t('dataVault.browserInstead.title')}</span>
+        <span className="text-[11.5px] text-ink-3 leading-[1.35]">
+          {t('dataVault.browserInstead.help', { name })}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }) {
   const { t } = useTranslation('library');
   // When a method exposes `how_to` markdown, clicking the help
   // affordance opens an in-app modal instead of an external URL.
@@ -1139,6 +1169,8 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
           {orderedMethods.map(renderCard)}
         </>
       )}
+
+      <BrowserInstead spec={spec} busy={busy} onUseBrowser={onUseBrowser} />
 
       <HowToModal
         open={!!howToFor}

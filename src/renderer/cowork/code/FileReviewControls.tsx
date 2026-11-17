@@ -15,12 +15,14 @@ export function FileReviewControls({
   onAction,
   onAgentNote,
   selectionLabel = '',
+  editsOriginal = false,
 }: {
   file: DiffFile;
   busy: boolean;
   onAction: (action: ReviewFileAction) => Promise<void>;
   onAgentNote: (note: string) => Promise<void>;
   selectionLabel?: string;
+  editsOriginal?: boolean;
 }) {
   const { t } = useTranslation('code');
   const [commenting, setCommenting] = useState(false);
@@ -87,7 +89,9 @@ export function FileReviewControls({
       <ConfirmModal
         open={discardOpen}
         title={t('fileReview.discardConfirm.title')}
-        message={t('fileReview.discardConfirm.message', { path: file.path })}
+        message={editsOriginal
+          ? t('fileReview.discardConfirm.messageInPlace', { path: file.path })
+          : t('fileReview.discardConfirm.message', { path: file.path })}
         confirmLabel={t('fileReview.discardConfirm.confirm')}
         destructive
         busy={localBusy}

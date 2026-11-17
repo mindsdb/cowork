@@ -677,7 +677,9 @@ describe('a message the server queued after the task had already taken it (ENG-4
     await emit({ type: 'response.addon', addon_id: 'ad5', local_key: localKey, state: 'read', text: 'use the sales DB', decided_by: 'jev' });
 
     await waitFor(() => expect(screen.queryByLabelText('Remove from queue')).toBeNull());
-    expect(addonRow()).toHaveAttribute('data-addon-state', 'read');
+    // The queue and the stream's rows are separate state, so the row can reach
+    // the screen a render after the queued copy leaves it.
+    await waitFor(() => expect(addonRow()).toHaveAttribute('data-addon-state', 'read'));
     expect(screen.getByText('Read by Anton')).toBeInTheDocument();
     await act(async () => { streams[streams.length - 1].opts.onDone(); });
     expect(spies.streamMessage).toHaveBeenCalledTimes(1);

@@ -177,13 +177,17 @@
       "pendingAction": "{rule} Warten auf die Bestätigung der letzten Abbuchung durch Ihre Bank.",
       "badgeOn": "Automatisches Aufladen aktiv",
       "badgeFailed": "Automatisches Aufladen fehlgeschlagen",
-      "badgePaused": "Automatisches Aufladen pausiert"
+      "badgePaused": "Automatisches Aufladen pausiert",
+      "offMobile": "Automatisches Aufladen ist aus.",
+      "paymentFailedMobile": "Automatisches Aufladen fehlgeschlagen: Ihre Karte konnte nicht belastet werden."
     },
     "low": {
       "off": "Guthaben wird knapp. Laden Sie Guthaben auf oder aktivieren Sie das automatische Aufladen, damit Aufgaben weiterlaufen.",
       "ok": "Guthaben wird knapp. Das automatische Aufladen füllt es wieder auf.",
       "pending": "Guthaben wird knapp. Das automatische Aufladen wartet auf Ihre Bank.",
-      "other": "Guthaben wird knapp. Laden Sie Guthaben auf, damit Aufgaben weiterlaufen."
+      "other": "Guthaben wird knapp. Laden Sie Guthaben auf, damit Aufgaben weiterlaufen.",
+      "offMobile": "Guthaben wird knapp.",
+      "otherMobile": "Guthaben wird knapp."
     },
     "balance": {
       "title": "Guthaben",
@@ -192,7 +196,8 @@
       "spentRange": "Guthaben verbraucht ({start} – {end})",
       "spentDate": "Guthaben verbraucht ({date})",
       "spentThisPeriod": "Guthaben in diesem Zeitraum verbraucht",
-      "notOwner": "Nur die für die Abrechnung zuständige Person Ihrer Organisation kann Guthaben aufladen oder das automatische Aufladen ändern."
+      "notOwner": "Nur die für die Abrechnung zuständige Person Ihrer Organisation kann Guthaben aufladen oder das automatische Aufladen ändern.",
+      "emptyMobile": "Ihr Guthaben ist aufgebraucht. Kostenpflichtige Modelle sind nicht verfügbar."
     },
     "signIn": {
       "title": "Melden Sie sich an, um Ihre Nutzung zu sehen",
@@ -203,7 +208,8 @@
     "error": {
       "title": "Nutzung konnte nicht geladen werden",
       "body": "MindsHub hat nicht geantwortet. Versuchen Sie es erneut oder prüfen Sie Ihre Nutzung in der Konsole.",
-      "tryAgain": "Erneut versuchen"
+      "tryAgain": "Erneut versuchen",
+      "bodyMobile": "MindsHub hat nicht geantwortet."
     },
     "empty": "Für dieses Konto gibt es noch keine Nutzungsdaten."
   }

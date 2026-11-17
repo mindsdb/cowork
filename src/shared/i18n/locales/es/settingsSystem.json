@@ -177,13 +177,17 @@
       "pendingAction": "{rule} Esperando que tu banco confirme el último cargo.",
       "badgeOn": "Recarga automática activada",
       "badgeFailed": "Falló la recarga automática",
-      "badgePaused": "Recarga automática en pausa"
+      "badgePaused": "Recarga automática en pausa",
+      "offMobile": "La recarga automática está desactivada.",
+      "paymentFailedMobile": "Falló la recarga automática: no pudimos cobrar a tu tarjeta."
     },
     "low": {
       "off": "Saldo bajo. Agrega fondos o activa la recarga automática para que tus tareas sigan ejecutándose.",
       "ok": "Saldo bajo. La recarga automática lo repondrá.",
       "pending": "Saldo bajo. La recarga automática está esperando a tu banco.",
-      "other": "Saldo bajo. Agrega fondos para que tus tareas sigan ejecutándose."
+      "other": "Saldo bajo. Agrega fondos para que tus tareas sigan ejecutándose.",
+      "offMobile": "Saldo bajo.",
+      "otherMobile": "Saldo bajo."
     },
     "balance": {
       "title": "Saldo",
@@ -192,7 +196,8 @@
       "spentRange": "de crédito gastado del {start} al {end}",
       "spentDate": "de crédito gastado {date}",
       "spentThisPeriod": "de crédito gastado en este período",
-      "notOwner": "Solo el responsable de facturación de tu organización puede agregar fondos o cambiar la recarga automática."
+      "notOwner": "Solo el responsable de facturación de tu organización puede agregar fondos o cambiar la recarga automática.",
+      "emptyMobile": "Tu saldo está vacío. Los modelos de pago no están disponibles."
     },
     "signIn": {
       "title": "Inicia sesión para ver tu uso",
@@ -203,7 +208,8 @@
     "error": {
       "title": "No se pudo cargar el uso",
       "body": "MindsHub no respondió. Inténtalo de nuevo o revisa tu uso en la consola.",
-      "tryAgain": "Reintentar"
+      "tryAgain": "Reintentar",
+      "bodyMobile": "MindsHub no respondió."
     },
     "empty": "Todavía no hay uso para mostrar en esta cuenta."
   }

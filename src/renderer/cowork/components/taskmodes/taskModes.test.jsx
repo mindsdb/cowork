@@ -7,6 +7,7 @@ import Ico from '../Icons';
 import { TASK_MODES, FEATURED_EXAMPLES_MODE, composeModeMessage, resemblesSample } from './taskModes';
 import { sampleId } from '../../lib/consoleHandoff';
 import { HABIT_TRACKER_PROMPT } from '../onboarding/steps';
+import enChat from '../../../../shared/i18n/locales/en/chat.json';
 import TaskModePills from './TaskModePills';
 import TaskModeSamples from './TaskModeSamples';
 
@@ -15,6 +16,14 @@ describe('TASK_MODES data', () => {
     expect(TASK_MODES.map((m) => m.id)).toEqual([
       'slides', 'website', 'apps', 'spreadsheet', 'visualization', 'wide-research', 'games',
     ]);
+  });
+
+  it('every sample label has its English catalog entry, so every language can translate it', () => {
+    for (const m of TASK_MODES) {
+      m.samples.forEach((s, i) => {
+        expect(enChat.taskModes[m.id]?.samples?.[String(i)], `${m.id} sample ${i}`).toBe(s.label);
+      });
+    }
   });
 
   it('every mode is complete and its icon key exists', () => {
@@ -127,6 +136,9 @@ describe('TASK_MODES data', () => {
       'Explain an error and suggest a fix',
       'Review what is on my plate this week',
       'Summarize a document and draft my reply',
+      'Pull key terms out of a contract',
+      'Coach me on a deal from a call transcript',
+      'Turn meeting notes into action items',
     ].sort());
   });
 

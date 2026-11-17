@@ -315,7 +315,9 @@
       "router": "Modelo de roteamento e resumo",
       "coding": "Modelo de código",
       "planningSubtitle": "Usado para raciocinar, orquestrar e responder.",
-      "codingSubtitle": "Usado para gerar código no scratchpad."
+      "codingSubtitle": "Usado para gerar código no scratchpad.",
+      "image": "Modelo de imagem",
+      "imageSubtitle": "Usado para gerar e editar imagens."
     },
     "providerLabel": "Provedor:",
     "modelLabel": "Modelo:",
@@ -331,9 +333,12 @@
     "modelUnavailable": "{model} não está disponível. Escolha outro modelo ou fale com seu administrador.",
     "modelRestricted": "Um administrador da sua organização restringiu {model}. Escolha outro modelo.",
     "modelNeedsCredits": "{model} precisa de créditos. {link} para usá-lo.",
+    "modelNeedsCreditsNoLink": "{model} precisa de créditos.",
     "topUpBalance": "Recarregue seu saldo",
     "modelBudgetReached": "{model} não pode ser executado porque o orçamento da sua organização acabou.",
-    "viewBudgets": "Ver orçamentos"
+    "viewBudgets": "Ver orçamentos",
+    "imageModelNeedsMindsHub": "A geração de imagens funciona com o MindsHub. Adicione-o em Provedores de LLM para escolher um modelo de imagem.",
+    "imageModelHint": "Escolha o modelo usado para gerar imagens."
   },
   "memory": {
     "title": "Memória",
@@ -499,5 +504,12 @@
       "saved": "Salvo. Os membros verão na próxima vez que abrirem o app ou as Configurações.",
       "clean": "Nenhuma alteração de marca não salva"
     }
+  },
+  "voice": {
+    "title": "Voz",
+    "agentTitle": "Agente de voz",
+    "agentHelp": "Converse com {agent} pelo botão de chamada. Desativado oculta os botões de chamada e encerra a chamada em andamento.",
+    "voiceTitle": "Voz",
+    "voiceHelp": "Escolha uma para ouvi-la. {agent} diz uma frase curta em cada voz nova."
   }
 }
