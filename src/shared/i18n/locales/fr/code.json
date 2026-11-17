@@ -1624,6 +1624,16 @@
     },
     "initializeGit": "Initialiser Git",
     "initializeFailed": "Impossible d’initialiser Git. Réessayez.",
-    "unavailable": "Aucun mode d’espace de travail n’est disponible pour ce dossier."
+    "unavailable": "Aucun mode d’espace de travail n’est disponible pour ce dossier.",
+    "reason": {
+      "notARepository": "Ce dossier n’est pas un dépôt Git. Initialisez Git pour utiliser un Worktree.",
+      "notARepositoryInFolder": "{folder} n’est pas un dépôt Git. Initialisez Git pour utiliser un Worktree.",
+      "noCommits": "Ce dépôt n’a pas encore de commit. Faites un premier commit pour utiliser un Worktree.",
+      "noCommitsInFolder": "{folder} n’a pas encore de commit. Faites un premier commit pour utiliser un Worktree.",
+      "noLocalCheckout": "{folder} n’a pas de copie locale sur cet ordinateur où travailler. Choisissez Worktree.",
+      "inPlaceUnsupportedPlatform": "Le travail dans le dossier d’origine n’est pas encore disponible sur cette plateforme. Choisissez Worktree.",
+      "inPlaceOtherComputer": "Les tâches sur un autre ordinateur s’exécutent dans un worktree isolé. Choisissez Worktree.",
+      "sharedRepository": "Deux dossiers du projet sont dans le même dépôt, ils ne peuvent donc pas tous les deux travailler directement dans le dossier. Choisissez Worktree."
+    }
   }
 }

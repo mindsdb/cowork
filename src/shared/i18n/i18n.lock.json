@@ -88773,6 +88773,278 @@
       "text": "37979829426b"
     }
   },
+  "code:workspaceMode.reason.inPlaceOtherComputer": {
+    "de": {
+      "from": "e88ec6450d94",
+      "text": "67a443aa5134"
+    },
+    "es": {
+      "from": "e88ec6450d94",
+      "text": "ad5f84023d6d"
+    },
+    "fr": {
+      "from": "e88ec6450d94",
+      "text": "715a5e82d133"
+    },
+    "it": {
+      "from": "e88ec6450d94",
+      "text": "c8a60f462696"
+    },
+    "ja": {
+      "from": "e88ec6450d94",
+      "text": "c7c6d38c2da4"
+    },
+    "ko": {
+      "from": "e88ec6450d94",
+      "text": "ec8483e6f28f"
+    },
+    "pt-BR": {
+      "from": "e88ec6450d94",
+      "text": "30a28141273b"
+    },
+    "zh-CN": {
+      "from": "e88ec6450d94",
+      "text": "b7a31e7f2ac0"
+    }
+  },
+  "code:workspaceMode.reason.inPlaceUnsupportedPlatform": {
+    "de": {
+      "from": "2ce47bfa5ea5",
+      "text": "12978fbfc359"
+    },
+    "es": {
+      "from": "2ce47bfa5ea5",
+      "text": "07484a082bea"
+    },
+    "fr": {
+      "from": "2ce47bfa5ea5",
+      "text": "8b0560006118"
+    },
+    "it": {
+      "from": "2ce47bfa5ea5",
+      "text": "62cc1c648147"
+    },
+    "ja": {
+      "from": "2ce47bfa5ea5",
+      "text": "205708c717b6"
+    },
+    "ko": {
+      "from": "2ce47bfa5ea5",
+      "text": "2fa0ee3e7af7"
+    },
+    "pt-BR": {
+      "from": "2ce47bfa5ea5",
+      "text": "1fc98ef69c50"
+    },
+    "zh-CN": {
+      "from": "2ce47bfa5ea5",
+      "text": "6ec3b0ce5703"
+    }
+  },
+  "code:workspaceMode.reason.noCommits": {
+    "de": {
+      "from": "d39120bc82e8",
+      "text": "8e1cc1dce18f"
+    },
+    "es": {
+      "from": "d39120bc82e8",
+      "text": "88fb9261920a"
+    },
+    "fr": {
+      "from": "d39120bc82e8",
+      "text": "81b7edf9e2d8"
+    },
+    "it": {
+      "from": "d39120bc82e8",
+      "text": "f4d9ccd23e62"
+    },
+    "ja": {
+      "from": "d39120bc82e8",
+      "text": "b5f50656a078"
+    },
+    "ko": {
+      "from": "d39120bc82e8",
+      "text": "5acb70af0d90"
+    },
+    "pt-BR": {
+      "from": "d39120bc82e8",
+      "text": "657fb7e7d230"
+    },
+    "zh-CN": {
+      "from": "d39120bc82e8",
+      "text": "a2819137839b"
+    }
+  },
+  "code:workspaceMode.reason.noCommitsInFolder": {
+    "de": {
+      "from": "0c3196907515",
+      "text": "70d19cf88520"
+    },
+    "es": {
+      "from": "0c3196907515",
+      "text": "bd6b71b7f8b0"
+    },
+    "fr": {
+      "from": "0c3196907515",
+      "text": "21418d4c4cf3"
+    },
+    "it": {
+      "from": "0c3196907515",
+      "text": "987367bcdbc9"
+    },
+    "ja": {
+      "from": "0c3196907515",
+      "text": "dd6b8e56750f"
+    },
+    "ko": {
+      "from": "0c3196907515",
+      "text": "d2ed24110605"
+    },
+    "pt-BR": {
+      "from": "0c3196907515",
+      "text": "3a863e7cce16"
+    },
+    "zh-CN": {
+      "from": "0c3196907515",
+      "text": "d1ca80541c9c"
+    }
+  },
+  "code:workspaceMode.reason.noLocalCheckout": {
+    "de": {
+      "from": "be2e653a1800",
+      "text": "45f9a125127d"
+    },
+    "es": {
+      "from": "be2e653a1800",
+      "text": "1da771f6e812"
+    },
+    "fr": {
+      "from": "be2e653a1800",
+      "text": "e9a1b895951f"
+    },
+    "it": {
+      "from": "be2e653a1800",
+      "text": "5440559a4168"
+    },
+    "ja": {
+      "from": "be2e653a1800",
+      "text": "6f9dd83ac667"
+    },
+    "ko": {
+      "from": "be2e653a1800",
+      "text": "00b2945fe20d"
+    },
+    "pt-BR": {
+      "from": "be2e653a1800",
+      "text": "163a1c2c1bb0"
+    },
+    "zh-CN": {
+      "from": "be2e653a1800",
+      "text": "3ac4cd66da52"
+    }
+  },
+  "code:workspaceMode.reason.notARepository": {
+    "de": {
+      "from": "d071537c5c24",
+      "text": "2a2ac8a52ffd"
+    },
+    "es": {
+      "from": "d071537c5c24",
+      "text": "2e888bbb0b52"
+    },
+    "fr": {
+      "from": "d071537c5c24",
+      "text": "d865883866d4"
+    },
+    "it": {
+      "from": "d071537c5c24",
+      "text": "5e624f3bcfee"
+    },
+    "ja": {
+      "from": "d071537c5c24",
+      "text": "b3414efcfda2"
+    },
+    "ko": {
+      "from": "d071537c5c24",
+      "text": "269e6868b969"
+    },
+    "pt-BR": {
+      "from": "d071537c5c24",
+      "text": "29dee76d0922"
+    },
+    "zh-CN": {
+      "from": "d071537c5c24",
+      "text": "80abdc376709"
+    }
+  },
+  "code:workspaceMode.reason.notARepositoryInFolder": {
+    "de": {
+      "from": "cf2e4e14c089",
+      "text": "0b3989463365"
+    },
+    "es": {
+      "from": "cf2e4e14c089",
+      "text": "2f7eb39a6a64"
+    },
+    "fr": {
+      "from": "cf2e4e14c089",
+      "text": "10a178944397"
+    },
+    "it": {
+      "from": "cf2e4e14c089",
+      "text": "4189d6a1e462"
+    },
+    "ja": {
+      "from": "cf2e4e14c089",
+      "text": "1f75fe453bd3"
+    },
+    "ko": {
+      "from": "cf2e4e14c089",
+      "text": "0118de1c191e"
+    },
+    "pt-BR": {
+      "from": "cf2e4e14c089",
+      "text": "cf782f87f37e"
+    },
+    "zh-CN": {
+      "from": "cf2e4e14c089",
+      "text": "a957032af1ae"
+    }
+  },
+  "code:workspaceMode.reason.sharedRepository": {
+    "de": {
+      "from": "62fbac70bb3d",
+      "text": "abc04ab62d5d"
+    },
+    "es": {
+      "from": "62fbac70bb3d",
+      "text": "dcdc5273f4cd"
+    },
+    "fr": {
+      "from": "62fbac70bb3d",
+      "text": "a84c105ac4ff"
+    },
+    "it": {
+      "from": "62fbac70bb3d",
+      "text": "e3f46a774ae0"
+    },
+    "ja": {
+      "from": "62fbac70bb3d",
+      "text": "a38358c19c3a"
+    },
+    "ko": {
+      "from": "62fbac70bb3d",
+      "text": "e4461820e213"
+    },
+    "pt-BR": {
+      "from": "62fbac70bb3d",
+      "text": "326fb1d0bb47"
+    },
+    "zh-CN": {
+      "from": "62fbac70bb3d",
+      "text": "645e32a96684"
+    }
+  },
   "code:workspaceMode.selectAriaLabel": {
     "de": {
       "from": "0dd68b79d8c8",

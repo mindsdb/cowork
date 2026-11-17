@@ -1624,6 +1624,16 @@
     },
     "initializeGit": "Git initialisieren",
     "initializeFailed": "Git konnte nicht initialisiert werden. Versuche es erneut.",
-    "unavailable": "Für diesen Ordner ist kein Arbeitsbereichsmodus verfügbar."
+    "unavailable": "Für diesen Ordner ist kein Arbeitsbereichsmodus verfügbar.",
+    "reason": {
+      "notARepository": "Dieser Ordner ist kein Git-Repository. Initialisiere Git, um einen Worktree zu verwenden.",
+      "notARepositoryInFolder": "{folder} ist kein Git-Repository. Initialisiere Git, um einen Worktree zu verwenden.",
+      "noCommits": "Dieses Repository hat noch keine Commits. Erstelle einen ersten Commit, um einen Worktree zu verwenden.",
+      "noCommitsInFolder": "{folder} hat noch keine Commits. Erstelle einen ersten Commit, um einen Worktree zu verwenden.",
+      "noLocalCheckout": "{folder} hat auf diesem Computer keinen Checkout zum Arbeiten. Wähle Worktree.",
+      "inPlaceUnsupportedPlatform": "Das Arbeiten im ursprünglichen Ordner ist auf dieser Plattform noch nicht verfügbar. Wähle Worktree.",
+      "inPlaceOtherComputer": "Aufgaben auf einem anderen Computer laufen in einem isolierten Worktree. Wähle Worktree.",
+      "sharedRepository": "Zwei Projektordner liegen im selben Repository und können daher nicht beide direkt im Ordner arbeiten. Wähle Worktree."
+    }
   }
 }
