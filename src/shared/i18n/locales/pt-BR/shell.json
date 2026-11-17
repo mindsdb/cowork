@@ -173,10 +173,13 @@
     "unavailableTitle": "Recurso indisponível",
     "cloudBodyNamed": "{feature} ainda não está disponível no Cloud. Enquanto isso, você pode usá-lo no app para desktop.",
     "cloudBody": "Este recurso ainda não está disponível no Cloud. Enquanto isso, você pode usá-lo no app para desktop.",
+    "cloudBodyCustom": "{feature} ainda não está disponível no Cloud. Você já pode conectá-lo como um conector personalizado.",
     "unavailableBodyNamed": "{feature} não está disponível nesta implantação.",
     "unavailableBody": "Este recurso não está disponível nesta implantação.",
     "notNow": "Agora não",
-    "download": "Baixar o app"
+    "download": "Baixar o app",
+    "connectCustom": "Conectar seu conector personalizado de {feature}",
+    "buildCustom": "Criar um conector personalizado"
   },
   "loadStatus": {
     "retry": "Tentar novamente",
