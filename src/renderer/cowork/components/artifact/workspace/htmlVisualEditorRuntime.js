@@ -31,6 +31,21 @@ export function createHtmlVisualEditorRuntime(token) {
       return target.closest('[' + ATTRIBUTE + ']');
     };
 
+    // Text that is also a control (a deck's "Next" button, a site's nav link,
+    // a tab) keeps working on a plain click, so the page can still be moved
+    // to the slide or section to edit. Option/Alt-click edits its label.
+    // tabindex is not a sign of a control: the editor adds it to every
+    // editable element.
+    const INTERACTIVE = 'a[href], button, summary, label, select, [role="button"], [role="tab"], '
+      + '[role="link"], [role="menuitem"], [role="option"], [onclick]';
+    const isInteractive = (element) => !!element?.closest(INTERACTIVE);
+    const navigates = (event, element) => (
+      !!element && element !== active && !event.altKey && isInteractive(element)
+    );
+    // A click focuses a button after pointerdown; that focus must not start
+    // editing it. Keyboard focus (Tab) still does.
+    let pointerFocus = false;
+
     const labelFor = (element) => {
       const explicit = element.getAttribute('aria-label');
       if (explicit) return explicit;
@@ -102,11 +117,21 @@ export function createHtmlVisualEditorRuntime(token) {
 
     const setup = () => {
       const elements = document.querySelectorAll('[' + ATTRIBUTE + ']');
-      send('ready', { editableCount: elements.length });
+      const readyDetail = () => ({
+        editableCount: elements.length,
+        interactiveCount: [...elements].filter(isInteractive).length,
+      });
+      send('ready', readyDetail());
 
       document.addEventListener('pointerdown', (event) => {
         if (!event.isTrusted) return;
         const next = editableFrom(event.target);
+        pointerFocus = true;
+        setTimeout(() => { pointerFocus = false; }, 0);
+        if (navigates(event, next)) {
+          finish();
+          return;
+        }
         if (next) {
           activate(next);
           event.stopImmediatePropagation();
@@ -116,13 +141,14 @@ export function createHtmlVisualEditorRuntime(token) {
       }, true);
 
       document.addEventListener('click', (event) => {
-        if (!event.isTrusted || !editableFrom(event.target)) return;
+        const target = editableFrom(event.target);
+        if (!event.isTrusted || !target || navigates(event, target)) return;
         event.preventDefault();
         event.stopImmediatePropagation();
       }, true);
 
       document.addEventListener('focusin', (event) => {
-        if (!event.isTrusted) return;
+        if (!event.isTrusted || pointerFocus) return;
         const next = editableFrom(event.target);
         if (next && next !== active) activate(next, true);
       }, true);
@@ -178,7 +204,7 @@ export function createHtmlVisualEditorRuntime(token) {
           active?.blur();
           finish();
         } else if (message.type === 'status') {
-          send('ready', { editableCount: elements.length });
+          send('ready', readyDetail());
         }
       });
     };

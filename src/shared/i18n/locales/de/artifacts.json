@@ -239,6 +239,7 @@
     "preparing": "Bearbeitbarer Text wird vorbereitet…",
     "noEditable": "Kein direkt bearbeitbarer Text gefunden",
     "clickToEdit": "Klicken Sie auf einen beliebigen Text im Artefakt, um ihn zu bearbeiten",
+    "clickToEditOrNavigate": "Klicke auf Text, um ihn zu bearbeiten. Schaltflächen und Links funktionieren weiterhin, sodass du zuerst zu einer anderen Folie oder Seite wechseln kannst. Mit Alt-Klick (Wahltaste-Klick auf dem Mac) bearbeitest du ihre Beschriftung.",
     "htmlSource": "HTML-Quelltext",
     "editing": "Artefakt wird bearbeitet",
     "back": "Zurück zum Artefakt",

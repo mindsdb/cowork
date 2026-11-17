@@ -58,6 +58,10 @@ export function ArtifactHtmlVisualEditor({
   const sourceKeyRef = useRef(sourceKey);
   const [showSource, setShowSource] = useState(false);
   const [frame, setFrame] = useState(() => buildFrame(value, documentUrl));
+  // The source the canvas reflects: the one it was built from plus every edit
+  // made in it. Equal to the draft means the canvas is current and can stay
+  // on whatever slide or page the user moved it to.
+  const frameValueRef = useRef(value);
   // Built from the source first, then inlined: element ranges are offsets
   // into the source, and parse5 never parses the inlined document.
   const inlined = useInlinedFrameDocument(frame.content, documentUrl);
@@ -65,16 +69,19 @@ export function ArtifactHtmlVisualEditor({
   const cancelSnapshotRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [editableCount, setEditableCount] = useState(frame.editableCount);
+  const [interactiveCount, setInteractiveCount] = useState(0);
   const [selection, setSelection] = useState(null);
   const [error, setError] = useState('');
 
   const rebuildFrame = useCallback((content) => {
     visualValueRef.current = content;
+    frameValueRef.current = content;
     const nextFrame = buildFrame(content, documentUrl);
     elementRangesRef.current = nextFrame.elements;
     cancelSnapshotRef.current = null;
     setFrame(nextFrame);
     setEditableCount(nextFrame.editableCount);
+    setInteractiveCount(0);
     setReady(false);
     setSelection(null);
     setError('');
@@ -107,6 +114,7 @@ export function ArtifactHtmlVisualEditor({
       if (message.type === 'ready') {
         setReady(true);
         setEditableCount(message.editableCount || 0);
+        setInteractiveCount(message.interactiveCount || 0);
       } else if (message.type === 'selection') {
         setSelection(message.elementId ? { id: message.elementId, label: message.label } : null);
         if (message.elementId) {
@@ -126,6 +134,7 @@ export function ArtifactHtmlVisualEditor({
         setError('');
         if (snapshot.content !== visualValueRef.current) {
           visualValueRef.current = snapshot.content;
+          frameValueRef.current = snapshot.content;
           onChange(snapshot.content);
         }
       } else if (message.type === 'change' && message.elementId) {
@@ -137,6 +146,7 @@ export function ArtifactHtmlVisualEditor({
             message.html,
           );
           visualValueRef.current = next.content;
+          frameValueRef.current = next.content;
           elementRangesRef.current = next.elements;
           setError('');
           onChange(next.content);
@@ -172,7 +182,7 @@ export function ArtifactHtmlVisualEditor({
 
   const toggleSource = () => {
     if (!showSource) finishEditing();
-    else rebuildFrame(visualValueRef.current);
+    else if (visualValueRef.current !== frameValueRef.current) rebuildFrame(visualValueRef.current);
     setShowSource((current) => !current);
   };
 
@@ -198,8 +208,9 @@ export function ArtifactHtmlVisualEditor({
     }
     if (!ready) return t('htmlEditor.preparing');
     if (editableCount === 0) return t('htmlEditor.noEditable');
+    if (interactiveCount > 0) return t('htmlEditor.clickToEditOrNavigate');
     return t('htmlEditor.clickToEdit');
-  }, [editableCount, error, ready, selection, showSource, t]);
+  }, [editableCount, error, interactiveCount, ready, selection, showSource, t]);
 
   return (
     <div className="artifact-html-visual-editor">
@@ -222,7 +233,7 @@ export function ArtifactHtmlVisualEditor({
         </div>
       </div>
 
-      {showSource ? (
+      {showSource && (
         <section className="artifact-source-pane artifact-html-source-pane" aria-label={t('htmlEditor.sourceAriaLabel')}>
           <div className="artifact-pane-label section-label">
             <span>{t('htmlEditor.htmlSource')}</span>
@@ -241,27 +252,28 @@ export function ArtifactHtmlVisualEditor({
             onSelect={reportSourceSelection}
           />
         </section>
-      ) : (
-        <div className="artifact-html-edit-canvas">
-          {!inlined.pending && (
-            <iframe
-              key={frame.key}
-              ref={iframeRef}
-              title={t('htmlEditor.canvasTitle')}
-              srcDoc={inlined.content}
-              sandbox="allow-scripts"
-              className="artifact-html-edit-iframe"
-              onLoad={(event) => {
-                setReady(true);
-                event.currentTarget.contentWindow?.postMessage({
-                  source: HTML_VISUAL_EDITOR_PARENT_SOURCE,
-                  type: 'status',
-                }, '*');
-              }}
-            />
-          )}
-        </div>
       )}
+      {/* Hidden, not unmounted, behind the source view: the page keeps the
+          slide or section the user had moved it to. */}
+      <div className="artifact-html-edit-canvas" hidden={showSource}>
+        {!inlined.pending && (
+          <iframe
+            key={frame.key}
+            ref={iframeRef}
+            title={t('htmlEditor.canvasTitle')}
+            srcDoc={inlined.content}
+            sandbox="allow-scripts"
+            className="artifact-html-edit-iframe"
+            onLoad={(event) => {
+              setReady(true);
+              event.currentTarget.contentWindow?.postMessage({
+                source: HTML_VISUAL_EDITOR_PARENT_SOURCE,
+                type: 'status',
+              }, '*');
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -17169,6 +17169,40 @@
       "text": "9aa5bb918bbb"
     }
   },
+  "artifacts:htmlEditor.clickToEditOrNavigate": {
+    "de": {
+      "from": "be901f1c05d9",
+      "text": "f659f1053afb"
+    },
+    "es": {
+      "from": "be901f1c05d9",
+      "text": "68b9bf1174a3"
+    },
+    "fr": {
+      "from": "be901f1c05d9",
+      "text": "74679cfe18a1"
+    },
+    "it": {
+      "from": "be901f1c05d9",
+      "text": "d0a8a6b14ebd"
+    },
+    "ja": {
+      "from": "be901f1c05d9",
+      "text": "636aad1b8b46"
+    },
+    "ko": {
+      "from": "be901f1c05d9",
+      "text": "557d1f581d3e"
+    },
+    "pt-BR": {
+      "from": "be901f1c05d9",
+      "text": "46fbbaeb4659"
+    },
+    "zh-CN": {
+      "from": "be901f1c05d9",
+      "text": "ac4b5dc57b23"
+    }
+  },
   "artifacts:htmlEditor.editing": {
     "de": {
       "from": "5a45ae9e6d91",

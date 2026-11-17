@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { inlineHtmlFromApi } from '../../../lib/inlineHtmlAssets';
 import { ArtifactHtmlVisualEditor } from './ArtifactHtmlVisualEditor';
@@ -142,5 +143,73 @@ describe('ArtifactHtmlVisualEditor cancel', () => {
     sendFromFrame({ token, type: 'cancel', elementId: 'cowork-edit-0' });
 
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ArtifactHtmlVisualEditor multi-view pages', () => {
+  function ControlledEditor() {
+    const [value, setValue] = useState(VALUE);
+    return (
+      <ArtifactHtmlVisualEditor
+        source={SOURCE}
+        value={value}
+        onChange={setValue}
+        onSave={vi.fn()}
+        draftUrl={DRAFT_URL}
+      />
+    );
+  }
+
+  async function renderControlled() {
+    render(<ControlledEditor />);
+    return screen.findByTitle('Edit artifact on canvas');
+  }
+
+  it('says buttons and links still work when the page has any', async () => {
+    await renderReadyEditor();
+
+    sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 3, interactiveCount: 1 });
+
+    expect(screen.getByText(/Buttons and links still work/)).toBeInTheDocument();
+  });
+
+  it('keeps the plain hint when no editable text is a control', async () => {
+    await renderReadyEditor();
+
+    sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 3, interactiveCount: 0 });
+
+    expect(screen.getByText('Click any text in the artifact to edit it')).toBeInTheDocument();
+  });
+
+  it('keeps the canvas, and the slide it is on, across a look at the source', async () => {
+    const frame = await renderControlled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
+    expect(frame).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+
+    expect(screen.getByTitle('Edit artifact on canvas')).toBe(frame);
+  });
+
+  it('rebuilds the canvas when the source was changed by hand', async () => {
+    const frame = await renderControlled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: VALUE.replace('Title', 'Typed') } });
+    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+
+    const rebuilt = await screen.findByTitle('Edit artifact on canvas');
+    expect(rebuilt).not.toBe(frame);
+    expect(rebuilt.getAttribute('srcdoc')).toContain('Typed');
+  });
+
+  it('keeps the canvas after an edit made on it', async () => {
+    const frame = await renderControlled();
+
+    sendFromFrame({ token: frameToken(), type: 'change', elementId: 'cowork-edit-0', html: 'Edited' });
+    fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+
+    expect(screen.getByTitle('Edit artifact on canvas')).toBe(frame);
   });
 });
