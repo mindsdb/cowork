@@ -749,6 +749,36 @@ describe('interrupted stream recovery', () => {
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
   });
 
+  it('does not reattach when the reconnect probe answers after unmount', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+    let resolveProbe;
+    let recoverySeen = false;
+    spies.fetchInFlightStatus.mockImplementation((cid, opts) => {
+      if (opts?.strict) {
+        recoverySeen = true;
+        return Promise.resolve({ in_flight: true });
+      }
+      if (recoverySeen) return new Promise((resolve) => { resolveProbe = resolve; });
+      return Promise.resolve({ in_flight: false });
+    });
+    await waitFor(() => expect(resolveProbe).toBeTypeOf('function'), { timeout: 4000 });
+    // The recovery probe has handed off to reconnectInFlight, whose own
+    // status request is still pending when the app goes away.
+    const tails = streams.filter((s) => s.kind === 'tail').length;
+    cleanup();
+    await act(async () => { resolveProbe({ in_flight: true }); });
+    expect(streams.filter((s) => s.kind === 'tail')).toHaveLength(tails);
+  });
+
   it('stops trying to reach a dropped turn once the app unmounts', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);

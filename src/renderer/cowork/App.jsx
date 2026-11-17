@@ -2834,7 +2834,7 @@ function AppCore() {
   // buildStreamHandlers() refactor is a fine follow-up once both
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
-    if (!taskId) return false;
+    if (!taskId || unmountedRef.current) return false;
     // A tail or send registered here, or a send holding the slot while it
     // uploads. A second stream would abort it, whoever holds the shared slot.
     const alreadyStreamingHere = () => (
@@ -2847,7 +2847,9 @@ function AppCore() {
     } catch {
       return false;
     }
-    if (!status || !status.in_flight) return false;
+    // Unmount may happen while the probe is pending. Do not open a stream
+    // for an App that is gone, even when the server still has a live turn.
+    if (unmountedRef.current || !status || !status.in_flight) return false;
     // A send or queued drain may have started here while the probe was out.
     if (alreadyStreamingHere()) return true;
 
