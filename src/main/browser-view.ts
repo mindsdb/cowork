@@ -33,6 +33,7 @@ import {
   pageAnswer,
   pageWorldSource,
   type PageWorldRequest,
+  type PointControl,
   type RawSnapshot,
   type SelectResult,
   type TypingFocus,
@@ -300,6 +301,7 @@ export class ElectronTab implements TabView {
         focus: (id, editing) => inStep<FocusResult>({ kind: 'focus', id, editing }),
         select: (id, values) => inStep<SelectResult>({ kind: 'select', id, values }),
         viewport: () => inStep<{ width: number; height: number }>({ kind: 'viewport' }),
+        atPoint: (at) => inStep<PointControl>({ kind: 'atPoint', x: at.x, y: at.y }),
       },
       nav: {
         load: (url) => unlessTakenOver(signal, () => this.load(url)),

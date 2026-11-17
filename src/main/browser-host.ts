@@ -34,6 +34,7 @@ import {
   type BrowserDownload,
   type BrowserViewState,
   electronHostsInAppBrowser,
+  navigableUrl,
   parseLoginAnswer,
   parseStageBounds,
   SESSION_ID_PATTERN,
@@ -622,6 +623,12 @@ export class InAppBrowserHost {
     handle(IPC.BROWSER_NAVIGATE, (id, where) => {
       if (where !== 'back' && where !== 'forward' && where !== 'reload') throw new Error('bad navigation');
       return this.sessions.personNavigate(sessionArg(id), where);
+    });
+    handle(IPC.BROWSER_OPEN, (id, url) => {
+      if (url === null) return this.sessions.personOpen(sessionArg(id), null);
+      const address = navigableUrl(url);
+      if (!address) throw new Error('bad url');
+      return this.sessions.personOpen(sessionArg(id), address);
     });
     handle(IPC.BROWSER_ACTIVATE_TAB, (id, tabId) => {
       if (typeof tabId !== 'string' || !TAB_ID_PATTERN.test(tabId)) throw new Error('bad tab id');

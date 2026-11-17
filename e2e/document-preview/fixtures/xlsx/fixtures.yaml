@@ -45,10 +45,12 @@
 # Labelled like past-caps.xlsx, but every other cell holds a sentence wider
 # than its column, so the grid at the caps is 400,000 cells of text. A browser
 # lays out only the blocks of rows in view, so the frame reports rendered soon
-# after it builds the grid.
+# after it builds the grid. Building it, and the harness's reads of the whole
+# frame, take 35 to 60 s on a CI runner, so it gets triple the test timeout.
 - name: a sheet of long text past 2,000 rows and 200 columns
   file: text-past-caps.xlsx
   kind: clean
+  slow: true
   expect:
     outcome: rendered
     units: 1

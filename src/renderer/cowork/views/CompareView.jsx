@@ -28,6 +28,7 @@ import { relativeAge } from '../lib/formatTime';
 import { projectLabel } from '../lib/projectLabel';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, deriveComposerWarning, usageActionUrl } from '../lib/usageWarnings';
+import { billingActions, offersBilling } from '../lib/billingLinks';
 import {
   trackBillingOpened,
   trackCompareViewOpened,
@@ -151,6 +152,7 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
   const key = notice.dismissKey ?? notice.kind;
   const closable = !notice.blocks;
   if (closable && dismissed.includes(key)) return null;
+  const actions = billingActions(notice.actions);
   return (
     <Alert variant={NOTICE_VARIANT[notice.tone] || 'info'} title={notice.title} className="relative w-full pr-10">
       {closable && (
@@ -166,9 +168,9 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
       )}
       <div className="flex flex-col gap-2">
         <span>{notice.body}</span>
-        {notice.actions?.length > 0 && (
+        {actions.length > 0 && (
           <span className="flex flex-wrap gap-2">
-            {notice.actions.map((action) => (
+            {actions.map((action) => (
               <Button key={action.key} size="sm" variant={action.key === 'addFunds' ? 'primary' : 'subtle'} onClick={() => openBilling(action, isBillingOwner, trigger)}>
                 {action.label}
               </Button>
@@ -581,6 +583,8 @@ function SidePicker({ label, value, onChange, models, modelMeta }) {
         className="meta-pill flex-1 min-w-0 justify-between"
         ariaLabel={t('compare.modelSide', { side: label.toUpperCase() })}
         placeholder={t('compare.chooseModel')}
+        // Opening re-checks the wallet (App throttles it), so a top-up unlocks rows here too.
+        onOpenChange={(opened) => { if (opened) Promise.resolve(modelMeta?.onRefresh?.()).catch(() => {}); }}
         {...(efforts ? {
           modelEfforts: efforts,
           effort: value.reasoningEffort,
@@ -1219,7 +1223,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
                   {rechecking ? t('compare.checking') : t('compare.checkAgain')}
                 </Button>
               )}
-              {block.action === 'addFunds' && (
+              {block.action === 'addFunds' && offersBilling() && (
                 <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up')}>
                   {t('compare.addFunds')}
                 </Button>

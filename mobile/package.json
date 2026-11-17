@@ -1,0 +1,35 @@
+{
+  "name": "mindshub-cowork-mobile",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MindsHub Cowork for iOS and Android: a Capacitor shell that loads the cloud web app (ENG-4023).",
+  "license": "UNLICENSED",
+  "scripts": {
+    "capacitor:copy:before": "node scripts/cap-copy-before.mjs",
+    "typecheck": "tsc --noEmit",
+    "sync": "cap sync",
+    "sync:ios": "cap sync ios",
+    "sync:android": "cap sync android",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/push-notifications": "^8.1.3",
+    "@capacitor/share": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

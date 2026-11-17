@@ -57,6 +57,9 @@ const RUN_STATUS = {
   failed:    { tone: 'danger',  key: 'failed' },
   cancelled: { tone: 'muted',   key: 'cancelled' },
 };
+// A run that stopped at a limit is failed on the server, but did its work up
+// to there: it reads as a warning, and its reason names the limit.
+const STOPPED_AT_LIMIT = { tone: 'warning', key: 'stoppedAtLimit' };
 
 const msg = (key, vars) => i18n.t(`scheduleDetail.${key}`, { ns: 'projects', ...vars });
 
@@ -87,6 +90,8 @@ function oneOffWithoutTime(task, state) {
 export default function ScheduleDetailView({
   task,
   projects = [],
+  models = [],
+  modelMeta,
   onBack,                   // → setRoute('scheduled')
   onOpenRunSession,         // (sessionId) → navigate to that conversation
   onUpdate,                 // (id, payload) → server PUT
@@ -98,6 +103,8 @@ export default function ScheduleDetailView({
   onReviewedAutoPause,
   // (scheduleId) — stops the run in flight, as the chat's Stop does.
   onStopRun,
+  // (section) — opens Settings, where a run's limits are raised.
+  onOpenSettings,
   agentLabel,
 }) {
   const { t } = useTranslation('projects');
@@ -107,6 +114,7 @@ export default function ScheduleDetailView({
   const toastManager = useToastManager();
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const modelName = (id) => models.find((m) => m.id === id)?.name || id;
 
   const taskId = task?.id;
   const autoPausedAt = task?.autoPausedAt;
@@ -224,7 +232,7 @@ export default function ScheduleDetailView({
             <span>{projectDisplay || t('scheduleCommon.noProject')}</span>
             <span aria-hidden className="text-ink-4">·</span>
             {/* "default" is the account's configured model, not a model id. */}
-            <span>{!task.model || task.model === 'default' ? t('scheduleDetail.accountDefaultModel') : task.model}</span>
+            <span>{!task.model || task.model === 'default' ? t('scheduleDetail.accountDefaultModel') : modelName(task.model)}</span>
             {finished.length > 0 && (
               <>
                 <span aria-hidden className="text-ink-4">·</span>
@@ -244,6 +252,7 @@ export default function ScheduleDetailView({
           onResume={(id) => withBusy(() => onResume?.(id))}
           onRunNow={(id) => withBusy(() => onRunNow?.(id))}
           onReviewRun={(conversationId) => onOpenRunSession?.(conversationId)}
+          onOpenSettings={onOpenSettings}
         />
 
         {task.prompt && (
@@ -260,7 +269,9 @@ export default function ScheduleDetailView({
             <ListNotice>{t('scheduleDetail.noRuns')}</ListNotice>
           )}
           {shown.map((run) => {
-            const status = RUN_STATUS[run.status] || RUN_STATUS.cancelled;
+            const status = run.status === 'failed' && run.outcome === 'stopped_at_limit'
+              ? STOPPED_AT_LIMIT
+              : RUN_STATUS[run.status] || RUN_STATUS.cancelled;
             const look = { tone: status.tone, label: t(`scheduleDetail.runStatus.${status.key}`) };
             const reason = run.status === 'failed' ? (run.error || null) : null;
             const when = absoluteTime(run.startedAt);
@@ -272,6 +283,11 @@ export default function ScheduleDetailView({
                 meta={(
                   <span className="inline-flex items-center gap-3">
                     {formatDuration(run.durationMs) && <span>{formatDuration(run.durationMs)}</span>}
+                    {run.unavailableModel && (
+                      <Tooltip content={t('scheduleDetail.modelUnavailable', { model: modelName(run.unavailableModel) })}>
+                        <span tabIndex={0} className="relative z-10 cursor-help">{t('scheduleDetail.ranOnDefaultModel')}</span>
+                      </Tooltip>
+                    )}
                     {reason ? (
                       // Above the row's stretched link, so the pointer reaches it.
                       <Tooltip content={reason}>
@@ -303,6 +319,8 @@ export default function ScheduleDetailView({
         onSubmit={async (payload, id) => onUpdate?.(id, payload)}
         task={task}
         projects={projects}
+        models={models}
+        modelMeta={modelMeta}
         agentLabel={agentLabel}
       />
 

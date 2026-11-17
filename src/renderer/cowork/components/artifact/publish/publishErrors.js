@@ -36,6 +36,18 @@ export function isShareOrgRequiredError(e) {
  * @param {unknown} e
  * @returns {string | null}
  */
+/**
+ * Why a save failed, for analytics: one of the two refusals, or 'error'.
+ *
+ * @param {unknown} e
+ * @returns {'share_org_not_allowed' | 'owned_by_other' | 'error'}
+ */
+export function publishFailureReason(e) {
+  if (isShareOrgRequiredError(e)) return 'share_org_not_allowed';
+  if (isOwnedByOtherUserError(e)) return 'owned_by_other';
+  return 'error';
+}
+
 export function publishRefusalMessage(e) {
   if (isOwnedByOtherUserError(e)) return i18n.t('publish.ownedByOther', { ns: 'artifacts' });
   if (isShareOrgRequiredError(e)) return e.message;

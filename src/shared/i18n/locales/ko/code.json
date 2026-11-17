@@ -27,11 +27,14 @@
       "branch": "브랜치",
       "openOriginalFolder": "원본 폴더 열기",
       "openIsolatedCopy": "격리된 사본 열기",
-      "openOriginal": "원본 열기"
+      "openOriginal": "원본 열기",
+      "openYourFolder": "내 폴더 열기"
     },
     "sourceChanged": {
       "title": "이 작업을 시작할 때 원본에 로컬 변경 사항이 있었습니다",
-      "body": "해당 변경 사항은 원본 폴더에 그대로 남아 있습니다. {product}에서 적용하기 전에 충돌 여부를 확인합니다."
+      "body": "해당 변경 사항은 원본 폴더에 그대로 남아 있습니다. {product}에서 적용하기 전에 충돌 여부를 확인합니다.",
+      "inPlaceTitle": "폴더에 커밋하지 않은 변경 사항이 이미 있었습니다",
+      "inPlaceBody": "이 변경 사항은 에이전트의 변경 사항과 함께 이 검토에 표시되며, 여기에서 커밋하면 함께 포함됩니다."
     },
     "reconcile": {
       "title": "원본 변경 사항 조정",
@@ -61,13 +64,20 @@
       "create": "만들기",
       "commitLabel": "작업 변경 사항 모두 커밋",
       "commitPlaceholder": "변경 내용 설명",
-      "commit": "커밋"
+      "commit": "커밋",
+      "branchLabelInPlace": "내 폴더에 브랜치를 만들고 전환",
+      "commitLabelInPlace": "내 폴더의 변경 사항 모두 커밋"
     },
     "applyConfirm": {
       "title": "원본 폴더에 변경 사항을 적용할까요?",
       "message": "검토한 작업 변경 사항으로 {target}을(를) 업데이트할까요? 충돌이 발견되면 {product}에서 폴더를 변경하기 전에 중단합니다.",
       "confirm": "변경 사항 적용",
       "error": "변경 사항을 적용하지 못했습니다. 다시 시도하세요."
+    },
+    "inPlace": {
+      "title": "{count, plural, other {이 작업은 폴더를 직접 편집합니다}}",
+      "body": "{count, plural, other {변경 사항이 이미 폴더에 있으므로 적용할 내용이 없습니다.}} 로컬 작업에서는 초안 풀 리퀘스트를 아직 사용할 수 없습니다. 여기에서 커밋한 다음 평소 사용하는 도구로 푸시하고 풀 리퀘스트를 여세요.",
+      "bodyWithoutGit": "{count, plural, other {변경 사항이 이미 폴더에 있으므로 적용할 내용이 없습니다.}}"
     }
   },
   "fileReview": {
@@ -86,7 +96,8 @@
     "discardConfirm": {
       "title": "이 파일의 변경 사항을 취소할까요?",
       "message": "{path} 파일이 현재 작업 버전으로 되돌아갑니다. 이 작업은 취소할 수 없습니다.",
-      "confirm": "변경 사항 취소"
+      "confirm": "변경 사항 취소",
+      "messageInPlace": "{path} 파일이 폴더의 마지막 커밋 버전으로 되돌아갑니다. 이 작업이 시작되기 전에 한 편집도 포함됩니다. 이 작업은 취소할 수 없습니다."
     }
   },
   "reviewFileCard": {
@@ -449,7 +460,9 @@
       "reasoning": "추론",
       "reasoningAriaLabel": "기본 추론 수준",
       "permissions": "권한",
-      "permissionsAriaLabel": "기본 코딩 권한"
+      "permissionsAriaLabel": "기본 코딩 권한",
+      "workspace": "작업 공간",
+      "workspaceAriaLabel": "작업의 기본 작업 공간"
     },
     "environment": {
       "title": "환경",
@@ -1497,7 +1510,9 @@
     "terminal": "터미널",
     "reviewChanges": "변경 사항 검토",
     "review": "검토",
-    "taskActionsAriaLabel": "코딩 작업 메뉴"
+    "taskActionsAriaLabel": "코딩 작업 메뉴",
+    "localFolder": "{count, plural, =1 {로컬 · 내 폴더} other {로컬 · 내 폴더 #개}}",
+    "openYourFolder": "내 폴더 열기"
   },
   "terminal": {
     "status": {
@@ -1591,5 +1606,24 @@
     "desktopOnly": "로컬 파일 첨부는 데스크톱 앱에서 사용할 수 있습니다.",
     "ariaLabel": "첨부된 컨텍스트",
     "removeAriaLabel": "{name} 제거"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "로컬",
+      "title": "폴더에서 직접 작업합니다. 한 저장소에서는 로컬 작업이 한 번에 하나만 실행됩니다."
+    },
+    "worktree": {
+      "label": "워크트리",
+      "title": "격리된 Git 워크트리에서 작업하므로 여러 작업을 동시에 실행할 수 있습니다."
+    },
+    "selectAriaLabel": "작업이 진행되는 위치",
+    "menuLabel": "작업 공간",
+    "default": {
+      "label": "기본값",
+      "title": "각 작업의 폴더와 컴퓨터에 따라 {product}에서 선택합니다."
+    },
+    "initializeGit": "Git 초기화",
+    "initializeFailed": "Git을 초기화하지 못했습니다. 다시 시도하세요.",
+    "unavailable": "이 폴더에서 사용할 수 있는 작업 공간 모드가 없습니다."
   }
 }

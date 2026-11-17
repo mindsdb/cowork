@@ -251,7 +251,8 @@ describe('resolveLook — the order', () => {
     expect(look).toMatchObject({
       skin: 'normal', skinSource: 'stock', customTheme: null,
       theme: 'dark', themeSource: 'stock',
-      greeting: STOCK_GREETING, greetingSource: 'stock',
+      // No greeting: the home screen shows its translated default.
+      greeting: null, greetingSource: 'stock',
       logo: null, logoSource: 'stock', favicon: null,
     });
     expect(Object.values(look.lockedByOrg).every((v) => v === false)).toBe(true);
@@ -308,6 +309,8 @@ describe('resolveLook — the order', () => {
   it("does not count the server's stock greeting or a blank one as a choice", () => {
     expect(resolve(org(ORG_LOOK), member({ greeting: STOCK_GREETING })).greeting).toBe('Welcome to Acme');
     expect(resolve(org(ORG_LOOK), member({ greeting: '  ' })).greeting).toBe('Welcome to Acme');
+    expect(resolve(null, member({ greeting: STOCK_GREETING })).greeting).toBeNull();
+    expect(resolve(null, member({ greeting: '' })).greeting).toBeNull();
   });
 
   // Row 2: org appearance when members can't choose.
