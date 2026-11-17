@@ -33,7 +33,7 @@ import {
 } from './api';
 import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
-import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
+import { isPermissionMode, permissionOptions } from './permissions';
 import { DEFAULT_WORKSPACE_MODE_VALUE, isWorkspaceMode, projectWorkspaceModeOptions, offersWorkspaceChoice } from './workspaceMode';
 import { MODEL_DEFAULT_VALUE, effortLevelsFor, projectEffortOptions } from './reasoning';
 import { parseEnvironmentVariables, parsePortNames } from './projectDefaults';
@@ -458,7 +458,7 @@ export function ProjectSettingsModal({
                 )}
                 <Field label={t('projectSettings.defaults.permissions')}><Select value={projectPermission} onValueChange={(value) => {
                   if (isPermissionMode(value)) setProjectPermission(value);
-                }} options={PERMISSION_OPTIONS} ariaLabel={t('projectSettings.defaults.permissionsAriaLabel')} /></Field>
+                }} options={permissionOptions(projectPermission)} ariaLabel={t('projectSettings.defaults.permissionsAriaLabel')} /></Field>
                 {workspaceModeChoice && (
                   <Field label={t('projectSettings.defaults.workspace')}><Select
                     value={projectWorkspaceMode || DEFAULT_WORKSPACE_MODE_VALUE}
