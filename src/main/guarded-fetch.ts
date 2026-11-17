@@ -87,6 +87,19 @@ export function createGuardedFetch(options: GuardedFetchOptions = {}): GuardedFe
   };
 }
 
+/** Throws a `GuardedFetchError` unless `input` is an https URL whose host is,
+ *  or resolves only to, public addresses. For an address the main process
+ *  hands to the browser rather than fetches itself (an authorize endpoint). */
+export async function checkPublicHttpsUrl(
+  input: string | URL,
+  options: Pick<GuardedFetchOptions, 'lookupAll' | 'isAllowedAddress'> = {},
+): Promise<URL> {
+  const url = parseUrl(input);
+  const lookupAll = options.lookupAll ?? ((hostname: string) => dnsLookup(hostname, { all: true, verbatim: true }));
+  await checkedAddresses(url.hostname, lookupAll, options.isAllowedAddress ?? isPublicAddress);
+  return url;
+}
+
 function parseUrl(input: string | URL): URL {
   let url: URL;
   try {

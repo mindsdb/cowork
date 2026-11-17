@@ -4,7 +4,7 @@ import { PassThrough } from 'node:stream';
 import * as https from 'node:https';
 import type { LookupAddress } from 'node:dns';
 import cases from './__fixtures__/public-address-cases.json';
-import { createGuardedFetch, GuardedFetchError, type GuardedFetchOptions } from './guarded-fetch';
+import { checkPublicHttpsUrl, createGuardedFetch, GuardedFetchError, type GuardedFetchOptions } from './guarded-fetch';
 
 type Responder = (options: https.RequestOptions & { servername?: string }, body: string) =>
   | { status: number; headers?: Record<string, string>; chunks?: string[] }
@@ -192,5 +192,24 @@ describe('createGuardedFetch', () => {
     expect(await refusal(proxied.fetchFn('https://mcp.example.com/'))).toBe('proxy_network');
     const direct = guarded(() => 'error', { proxyConfigured: async () => false });
     expect(await refusal(direct.fetchFn('https://mcp.example.com/'))).toBe('network');
+  });
+});
+
+describe('checkPublicHttpsUrl', () => {
+  it('accepts an https URL on a public host and returns it parsed', async () => {
+    const url = await checkPublicHttpsUrl('https://auth.example.com/authorize', { lookupAll: answers('93.184.215.14') });
+    expect(url.href).toBe('https://auth.example.com/authorize');
+  });
+
+  it.each([
+    ['http://auth.example.com/authorize', 'not_https'],
+    ['https://169.254.169.254/authorize', 'not_public'],
+    ['https://[::1]/authorize', 'not_public'],
+  ])('refuses %s', async (url, code) => {
+    expect(await refusal(checkPublicHttpsUrl(url, { lookupAll: answers('93.184.215.14') }))).toBe(code);
+  });
+
+  it('refuses a name that resolves privately', async () => {
+    expect(await refusal(checkPublicHttpsUrl('https://auth.example.com/', { lookupAll: answers('10.0.0.5') }))).toBe('not_public');
   });
 });
