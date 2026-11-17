@@ -259,12 +259,14 @@ export class ElectronTab implements TabView {
        under way. Electron reports the moves, presses and releases the
        debugger sends in before-mouse-event as it reports the person's, and
        its wheels in input-event, the only place a wheel shows, so the tab
-       can't tell whose they are then and notes neither. A move is no
-       input. */
+       can't tell whose they are then and notes neither. The pointer
+       entering, moving over or leaving the page reaches it too, and may
+       open or close a menu there. */
     contents.on('before-mouse-event', (_event, mouse) => {
       if (this.agentSends) return;
       if (mouse.type === 'mouseDown') hooks.personInput('press');
       else if (mouse.type === 'mouseUp') hooks.personInput('release');
+      else if (mouse.type === 'mouseMove' || mouse.type === 'mouseEnter' || mouse.type === 'mouseLeave') hooks.personInput('move');
     });
     contents.on('input-event', (_event, input) => {
       if (input.type === 'mouseWheel' && !this.agentSends) hooks.personInput('wheel');

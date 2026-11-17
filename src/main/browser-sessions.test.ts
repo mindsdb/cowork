@@ -634,7 +634,7 @@ describe('the pane', () => {
   /* The desktop never holds the person's input back during a step, so a
      change the step's settle saw may be theirs. The clock stands still: only
      input that came during the step counts, not input just before it. */
-  it("can't tell what a step changed when the person's press, release, key or wheel, or the pane's Back or address, reached the page during it, and says what the step alone changed otherwise", async () => {
+  it("can't tell what a step changed when the person's move, press, release, key or wheel, or the pane's Back or address, reached the page during it, and says what the step alone changed otherwise", async () => {
     const { sessions, tabs } = harness();
     sessions.open('t-a', 'https://a.test/');
     const click = step({ action: 'click', element: 1 });
@@ -647,7 +647,7 @@ describe('the pane', () => {
     };
     tabs[0].hooks.personInput('press');
     expect(await changed(click, { changed: true })).toBe(true);
-    for (const input of ['press', 'release', 'key', 'wheel'] as const) {
+    for (const input of ['move', 'press', 'release', 'key', 'wheel'] as const) {
       expect(await changed(click, { changed: true }, () => tabs[0].hooks.personInput(input)), input).toBeNull();
     }
     expect(await changed(click, { changed: true }, () => sessions.personNavigate('t-a', 'back')), 'Back').toBeNull();
@@ -664,12 +664,13 @@ describe('the pane', () => {
     await expect(sessions.action('t-a', step({ action: 'click', element: 1, include_page: true }))).resolves.toEqual({ ok: true, url: 'https://b.test/', changed: true, page: PAGE });
   });
 
-  /* A wheel isn't a gesture Chromium lets open a window, and a release
-     follows a press that already counts. */
-  it("opens no popup window on the person's wheel or release, which still count as use of the task", () => {
+  /* A move or a wheel isn't a gesture Chromium lets open a window, and a
+     release follows a press that already counts. */
+  it("opens no popup window on the person's move, wheel or release, which still count as use of the task", () => {
     const { sessions, tabs, advance, now } = harness();
     sessions.open('t-a', null);
     advance(60_000);
+    tabs[0].hooks.personInput('move');
     tabs[0].hooks.personInput('wheel');
     tabs[0].hooks.personInput('release');
     expect(tabs[0].hooks.popupAllowed()).toBe(false);

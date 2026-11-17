@@ -993,16 +993,18 @@ describe('ElectronTab', () => {
     });
   });
 
-  it("notes the person's press, release, key and wheel as their input, never a move or a scroll gesture", () => {
+  it("notes the person's move, press, release, key and wheel as their input, never a scroll gesture", () => {
     const { contents, hooks } = setup();
     const person = personAt(contents);
+    person.mouse('mouseEnter');
     person.mouse('mouseMove');
     person.mouse('mouseDown');
     person.mouse('mouseUp');
+    person.mouse('mouseLeave');
     person.event('gestureScrollUpdate');
     person.event('mouseWheel');
     person.key('keyDown');
-    expect(vi.mocked(hooks.personInput).mock.calls).toEqual([['press'], ['release'], ['wheel'], ['key']]);
+    expect(vi.mocked(hooks.personInput).mock.calls).toEqual([['move'], ['move'], ['press'], ['release'], ['move'], ['wheel'], ['key']]);
   });
 
   /* Electron 45 reports the moves, presses and releases the debugger sends
@@ -1355,7 +1357,7 @@ describe('ElectronTab', () => {
     /* The task's sessions over a real tab: the agent's click changes the
        page, and Electron reports its press and release as it reports the
        person's (reportAgentPointer). */
-    it("answers that the agent's click changed the page, and can't tell once the person's press, key or wheel reached it during the settle", async () => {
+    it("answers that the agent's click changed the page, and can't tell once the person's press, key, wheel or move reached it during the settle", async () => {
       const window = { contentView: { addChildView: vi.fn(), removeChildView: vi.fn() } };
       const profile = {} as Session;
       const sessions = new BrowserSessions({
@@ -1390,7 +1392,9 @@ describe('ElectronTab', () => {
         expect(await clickChanged(() => person.event('mouseWheel')), 'their wheel').toBeNull();
         expect(await clickChanged(() => person.mouse('mouseDown')), 'their press').toBeNull();
         expect(await clickChanged(() => person.key('keyDown')), 'their key').toBeNull();
-        expect(await clickChanged(() => person.mouse('mouseMove')), 'their pointer passing over').toBe(true);
+        expect(await clickChanged(() => person.mouse('mouseMove')), 'their pointer passing over').toBeNull();
+        expect(await clickChanged(() => person.mouse('mouseLeave')), 'their pointer leaving').toBeNull();
+        expect(await clickChanged()).toBe(true);
       } finally {
         vi.useRealTimers();
       }

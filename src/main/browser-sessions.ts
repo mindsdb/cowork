@@ -127,9 +127,9 @@ export interface LoginRequest {
 }
 
 /** The person's input that reached a tab's page: a mouse press or
-    release, a key, or a wheel (browser-view.ts tells these from the
-    agent's). */
-export type PersonInput = 'press' | 'release' | 'key' | 'wheel';
+    release, a key, a wheel, or the pointer entering, moving over or
+    leaving the page (browser-view.ts tells these from the agent's). */
+export type PersonInput = 'press' | 'release' | 'key' | 'wheel' | 'move';
 
 /** What a tab tells its session. */
 export interface TabHooks {
@@ -324,8 +324,8 @@ export class BrowserSessions {
       personInput: (input) => {
         session.personInputs += 1;
         session.lastUsed = this.now();
-        /* A wheel isn't a gesture Chromium lets open a window, and a
-           release follows a press that counted. */
+        /* A move or a wheel isn't a gesture Chromium lets open a window,
+           and a release follows a press that counted. */
         if (input === 'press' || input === 'key') session.lastPersonInputAt = session.lastUsed;
       },
       popupAllowed: () => {
