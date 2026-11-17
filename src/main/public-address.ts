@@ -45,6 +45,9 @@ for (const [network, prefix] of [
   ['2001:db8::', 32],
   // 6to4 carries an IPv4 address the host could be steered to.
   ['2002::', 16],
+  // Documentation (RFC 9637) and segment routing SIDs (RFC 9602).
+  ['3fff::', 20],
+  ['5f00::', 16],
   ['fc00::', 7],
   ['fe80::', 10],
   ['fec0::', 10],

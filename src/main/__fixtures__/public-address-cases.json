@@ -1,5 +1,5 @@
 {
-  "_source": "Copied from anton tests/core/mcp/test_egress.py (custom MCP servers, milestone 1). Keep both lists in step when either changes.",
+  "_source": "Copied from anton tests/core/mcp/test_egress.py (custom MCP servers, milestone 1), plus 3fff::1 and 5f00::1, which anton's is_public_destination also refuses. Keep both lists in step when either changes.",
   "refused": [
     "127.0.0.1",
     "10.0.0.5",
@@ -21,7 +21,9 @@
     "ff02::1",
     "fe80::1",
     "fd00::1",
-    "fd00:ec2::254"
+    "fd00:ec2::254",
+    "3fff::1",
+    "5f00::1"
   ],
   "public": [
     "93.184.215.14",
