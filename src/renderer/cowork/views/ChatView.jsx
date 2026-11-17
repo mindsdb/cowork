@@ -51,7 +51,8 @@ import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provis
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
+import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { useLiveApps } from '../../lib/liveApps';
 import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
@@ -635,7 +636,7 @@ export function artifactStepToCard(step, projectPath) {
 // down to the card because an artifact the agent created THIS turn cannot be in
 // an artifacts index that was loaded before it existed, and judging it against
 // one would mark a brand-new artifact "Deleted".
-function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
+function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
@@ -645,6 +646,7 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
           key={s.id}
           artifact={artifactStepToCard(s, projectPath)}
           onOpen={onOpen}
+          onShare={onShare}
           live={live}
         />
       ))}
@@ -864,13 +866,14 @@ function StepConnectorDrafts({ steps, onConnect }) {
   );
 }
 
-export function ArtifactCard({ artifact, onOpen, live = false }) {
+export function ArtifactCard({ artifact, onOpen, onShare = null, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
   // panel had already stopped offering them for the very same artifact.
   const { t } = useTranslation('chat');
   const orgMode = useOrgMode();
+  const liveApps = useLiveApps();
   // Same question the artifacts panel answers by simply not listing the row:
   // is this artifact still there? The card outlives the artifact because it is
   // rendered from the turn's persisted stream events, which no delete rewrites.
@@ -1129,6 +1132,19 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     ? { label: t('chatView.artifactCard.open'), onClick: openInDefaultApp, tooltip: t('chatView.artifactCard.openInDefaultApp') }
     : null;
   const secondaryAction = sharedLinkAction || downloadAction || openInAppAction;
+  /*
+   * Share offers the viewer's own Share panel, so it follows the viewer's rule
+   * for showing it: a page or document the person may edit, and not a full-stack
+   * live app without a page (those share through "Share with…"). On Desktop the
+   * panel needs the local file, which the viewer would show disabled without.
+   */
+  const shareAction = onShare && !deleted
+    && isPublishableArtifact(artifact)
+    && !(liveApps && BACKEND_ARTIFACT_TYPES.has(artifact.type) && !published)
+    && (artifact.capabilities ? artifact.capabilities.canEdit !== false : !orgMode)
+    && (orgMode || canAct)
+    ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(artifact), tooltip: t('chatView.artifactCard.shareTooltip') }
+    : null;
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
@@ -1209,6 +1225,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
           primary={!deleted && primaryAction
             ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
             : null}
+          secondary={shareAction}
         />
       </div>
       {/* The footer is the artifact's location bar: the path at rest, and the
@@ -2232,9 +2249,15 @@ export default function ChatView({
   // Anything else still routes through the Electron OS handler via
   // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
+  const [previewShare, setPreviewShare] = useState(false);
   const handleArtifactOpen = (artifact) => {
     // The card already filters: it only calls onOpen for previewable
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
+    setPreviewShare(false);
+    setPreviewArt(artifact);
+  };
+  const handleArtifactShare = (artifact) => {
+    setPreviewShare(true);
     setPreviewArt(artifact);
   };
   // Task settings menu (kebab in header).
@@ -3936,9 +3959,10 @@ export default function ChatView({
                     <ArtifactCard
                       artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
                       onOpen={handleArtifactOpen}
+                      onShare={handleArtifactShare}
                     />
                   )}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
                   {m.incompleteReason && (
@@ -4006,7 +4030,7 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} live />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
                 <StepConnectorDrafts steps={streamingMsg.steps} onConnect={onConnectCustomConnector} />
               </AnswerTurn>
@@ -4306,7 +4330,9 @@ export default function ChatView({
       <ArtifactViewer
         open={!!previewArt}
         artifact={previewArt}
-        onClose={() => setPreviewArt(null)}
+        openShare={previewShare}
+        shareEntry={previewShare ? 'chat_card' : 'viewer'}
+        onClose={() => { setPreviewArt(null); setPreviewShare(false); }}
         onChange={(updated) => setPreviewArt(updated)}
         conversationId={task?.id || null}
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}

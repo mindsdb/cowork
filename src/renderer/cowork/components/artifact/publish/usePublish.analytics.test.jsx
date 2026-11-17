@@ -88,6 +88,29 @@ describe('on Web, an artifact published automatically as "only me"', () => {
     expect(analytics.trackArtifactPublished).not.toHaveBeenCalled();
   });
 
+  it('names where sharing was opened from on the save it records', async () => {
+    wsMock.setArtifactAccess.mockResolvedValue({
+      url: 'https://share/abc', result: { report_id: 'rep-1' }, accessMode: 'restricted',
+      accessEmails: [], orgAllowed: true, ownerOnly: false,
+    });
+    const hook = renderHook(() => usePublish(AUTOPUBLISHED, { enabled: true, entry: 'chat_card' }));
+    await waitFor(() => expect(hook.result.current.accessLoaded).toBe(true));
+
+    await act(async () => { await hook.result.current.publish({ mode: 'restricted', org_allowed: true }); });
+
+    expect(changed()).toEqual([expect.objectContaining({ entry: 'chat_card', after: expect.objectContaining({ shared: true }) })]);
+  });
+
+  it('names where sharing was opened from on a refused save', async () => {
+    wsMock.setArtifactAccess.mockRejectedValue(new Error('boom'));
+    const hook = renderHook(() => usePublish(AUTOPUBLISHED, { enabled: true, entry: 'chat_card' }));
+    await waitFor(() => expect(hook.result.current.accessLoaded).toBe(true));
+
+    await act(async () => { await hook.result.current.publish({ mode: 'public' }); });
+
+    expect(analytics.trackArtifactAccessChangeFailed).toHaveBeenCalledWith(expect.objectContaining({ entry: 'chat_card' }));
+  });
+
   it('records nothing when the same access is saved again', async () => {
     wsMock.setArtifactAccess.mockResolvedValue({
       url: 'https://share/abc', accessMode: 'restricted',

@@ -71,7 +71,9 @@
       "thumbnailAlt": "아티팩트 썸네일",
       "deletedTitle": "이 아티팩트는 삭제되었습니다",
       "liveArtifact": "라이브 아티팩트",
-      "deletedBadge": "삭제됨"
+      "deletedBadge": "삭제됨",
+      "share": "공유",
+      "shareTooltip": "열 수 있는 사람 선택"
     },
     "kinds": {
       "provider": "공급자",

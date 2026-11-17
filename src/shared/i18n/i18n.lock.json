@@ -32979,6 +32979,74 @@
       "text": "5492c15056c4"
     }
   },
+  "chat:chatView.artifactCard.share": {
+    "de": {
+      "from": "29887a5ff984",
+      "text": "3050e581f294"
+    },
+    "es": {
+      "from": "29887a5ff984",
+      "text": "d5e9eac00ad8"
+    },
+    "fr": {
+      "from": "29887a5ff984",
+      "text": "1316622345e8"
+    },
+    "it": {
+      "from": "29887a5ff984",
+      "text": "5812e631c3aa"
+    },
+    "ja": {
+      "from": "29887a5ff984",
+      "text": "a8d79a099242"
+    },
+    "ko": {
+      "from": "29887a5ff984",
+      "text": "d62648e19143"
+    },
+    "pt-BR": {
+      "from": "29887a5ff984",
+      "text": "46737d1651cc"
+    },
+    "zh-CN": {
+      "from": "29887a5ff984",
+      "text": "7e564575eb7d"
+    }
+  },
+  "chat:chatView.artifactCard.shareTooltip": {
+    "de": {
+      "from": "9a56df4963c1",
+      "text": "727870d53c3a"
+    },
+    "es": {
+      "from": "9a56df4963c1",
+      "text": "19f2862bcf54"
+    },
+    "fr": {
+      "from": "9a56df4963c1",
+      "text": "cc8a9d179463"
+    },
+    "it": {
+      "from": "9a56df4963c1",
+      "text": "fbff73e522c3"
+    },
+    "ja": {
+      "from": "9a56df4963c1",
+      "text": "7685b3c691d2"
+    },
+    "ko": {
+      "from": "9a56df4963c1",
+      "text": "22863b54d305"
+    },
+    "pt-BR": {
+      "from": "9a56df4963c1",
+      "text": "20b985d01477"
+    },
+    "zh-CN": {
+      "from": "9a56df4963c1",
+      "text": "917763199283"
+    }
+  },
   "chat:chatView.artifactCard.sharedLink": {
     "de": {
       "from": "572f2642a447",

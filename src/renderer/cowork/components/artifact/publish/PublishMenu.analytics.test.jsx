@@ -64,4 +64,35 @@ describe('PublishMenu analytics', () => {
     expect(report.reportLinkCopied).toHaveBeenCalledTimes(1);
     expect(report.reportLinkCopied).toHaveBeenCalledWith(ARTIFACT, { entry: 'viewer' });
   });
+
+  it('opens with the viewer when asked, and records that open once, from where it was asked', () => {
+    render(<PublishMenu openOnMount controller={makeController({ entry: 'chat_card' })} />);
+
+    expect(screen.getByText('Share to the Web')).toBeInTheDocument();
+    expect(report.reportShareOpened).toHaveBeenCalledTimes(1);
+    expect(report.reportShareOpened).toHaveBeenCalledWith(ARTIFACT, { entry: 'chat_card', isShared: false });
+  });
+
+  it('stays closed and records nothing until clicked when not asked to open', () => {
+    render(<PublishMenu controller={makeController({ entry: 'chat_card' })} />);
+
+    expect(screen.queryByText('Share to the Web')).toBeNull();
+    expect(report.reportShareOpened).not.toHaveBeenCalled();
+  });
+
+  it('does not open a disabled panel, and records nothing', () => {
+    render(<PublishMenu openOnMount disabled controller={makeController({ entry: 'chat_card' })} />);
+
+    expect(screen.queryByText('Share to the Web')).toBeNull();
+    expect(report.reportShareOpened).not.toHaveBeenCalled();
+  });
+
+  it('names the card as where a link was copied from', async () => {
+    render(<PublishMenu openOnMount controller={makeController({ entry: 'chat_card', publishedUrl: 'https://view.example/r/a' })} />);
+    clipboard.copyText.mockResolvedValueOnce(true);
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /copy/i })); });
+
+    expect(report.reportLinkCopied).toHaveBeenCalledWith(ARTIFACT, { entry: 'chat_card' });
+  });
 });

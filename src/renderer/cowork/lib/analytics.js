@@ -42,7 +42,10 @@ const EVENTS = {
   // server predates the card field. acting_organization_id is the organization
   // the action ran under (actingOrganizationId); sso_organization_id is the
   // signed-in session's, which on Desktop can differ.
-  // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'rail'|'rail_delete'|'other'.
+  // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'chat_card'|'rail'|'rail_delete'|'other'.
+  // 'chat_card' is the Share panel opened by Share on the chat's artifact card,
+  // and every save, copy and pull-back made in that panel; 'chat' is the card's
+  // own Download.
   // Deleting a shared artifact reports a pull-back on both surfaces: on Desktop
   // after the client's own unpublish, on Web after the delete succeeds, since
   // the server's delete takes the page down or fails.

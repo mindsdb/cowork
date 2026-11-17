@@ -285,11 +285,14 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
 
 // ── Main control ─────────────────────────────────────────────────────────
 
-export function PublishMenu({ controller, disabled = false, disabledReason = '' }) {
+// `openOnMount` opens the panel as the viewer appears, for a Share clicked
+// outside the viewer.
+export function PublishMenu({ controller, disabled = false, disabledReason = '', openOnMount = false }) {
   const { t } = useTranslation('artifacts');
   const pub = controller;
   const isPublished = !!pub.publishedUrl;
-  const [open, setOpen] = useState(false);
+  const entry = pub.entry || 'viewer';
+  const [open, setOpen] = useState(() => openOnMount && !disabled);
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
   // Which reads the panel waits on, and whether it may claim "Shared"
@@ -434,6 +437,21 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
       : { background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', padding: '7px 16px' }),
   };
 
+  const reportOpened = () => reportShareOpened(pub.artifact, {
+    entry,
+    // Unknown until the artifact's access has been read, whatever the card's
+    // default mode says.
+    isShared: shareState.kind === 'unknown' || (isPublished && !pub.accessLoaded)
+      ? null
+      : isSharedWithSomeone,
+  });
+  // A panel opened with the viewer reports its open once, as a click does.
+  const openedOnMount = useRef(open);
+  useEffect(() => {
+    if (openedOnMount.current) reportOpened();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <>
       {/* Outside-press dismiss. Clicks inside the artifact preview <iframe>
@@ -456,16 +474,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
             if (!pub.busy) setNotifyPrompt(null);
             return;
           }
-          if (v && !open) {
-            reportShareOpened(pub.artifact, {
-              entry: 'viewer',
-              // Unknown until the artifact's access has been read, whatever the
-              // card's default mode says.
-              isShared: shareState.kind === 'unknown' || (isPublished && !pub.accessLoaded)
-                ? null
-                : isSharedWithSomeone,
-            });
-          }
+          if (v && !open) reportOpened();
           setOpen(v);
         }}
       >
@@ -549,7 +558,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                   <div className={SCROLL_BODY} data-testid="publish-menu-body">
                     <div className="py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
                       <SectionLabel>{t('publish.websiteUrl')}</SectionLabel>
-                      <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry: 'viewer' })} />
+                      <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry })} />
                     </div>
 
                     <div className="py-3 px-4">

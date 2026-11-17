@@ -71,7 +71,9 @@
       "thumbnailAlt": "アーティファクトのサムネイル",
       "deletedTitle": "このアーティファクトは削除されました",
       "liveArtifact": "ライブアーティファクト",
-      "deletedBadge": "削除済み"
+      "deletedBadge": "削除済み",
+      "share": "共有",
+      "shareTooltip": "開けるユーザーを選択"
     },
     "kinds": {
       "provider": "プロバイダー",

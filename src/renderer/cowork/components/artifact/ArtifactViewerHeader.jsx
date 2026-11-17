@@ -40,6 +40,7 @@ export function ArtifactViewerHeader({
     hasActionPath,
     isPublished,
     disabledReason,
+    openShare = false,
   } = publication;
   const showStats = !!stats && isPublished && canManage;
   // A caller with no address to give still gets the pill, named by the
@@ -155,6 +156,7 @@ export function ArtifactViewerHeader({
             controller={pub}
             disabled={!orgMode && !hasActionPath}
             disabledReason={disabledReason}
+            openOnMount={openShare}
           />
         )}
         {/* Download is a visible control on every web host, org mode included,

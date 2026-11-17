@@ -69,8 +69,8 @@ vi.mock('../../platform/host', () => ({
 // The viewer's workspace/network behaviour is covered by its own tests. Here
 // we only need to prove the inline card hands the complete artifact to it.
 vi.mock('../components/artifact', () => ({
-  ArtifactViewer: ({ open, artifact }) => open
-    ? <div data-testid="artifact-viewer">{artifact?.id}</div>
+  ArtifactViewer: ({ open, artifact, openShare, shareEntry }) => open
+    ? <div data-testid="artifact-viewer" data-open-share={String(!!openShare)} data-share-entry={shareEntry}>{artifact?.id}</div>
     : null,
 }));
 
@@ -89,6 +89,7 @@ vi.mock('../lib/artifactDownload', () => ({
 
 import ChatView, { artifactStepToCard } from './ChatView';
 import { setOrgMode } from '../../lib/orgMode';
+import { setLiveApps } from '../../lib/liveApps';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../lib/artifactActions';
 
 const PUBLISHED_URL = 'https://view.staging.mindshub.ai/view/97901f016/845b3777';
@@ -163,7 +164,7 @@ beforeEach(() => {
   canPreviewDocument.mockReset();
   canPreviewDocument.mockReturnValue(false);
 });
-afterEach(() => setOrgMode(false));
+afterEach(() => { setOrgMode(false); setLiveApps(false); });
 
 describe('inline artifact banner in org mode', () => {
   it('previews in the app instead of opening a browser tab', async () => {
@@ -1088,5 +1089,98 @@ describe('a live-turn .xlsx card on local web', () => {
     expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
       selector: '.chat-artifact-card__status',
     })).toBeInTheDocument();
+  });
+});
+
+describe('Share on the inline artifact card', () => {
+  const share = () => screen.queryByRole('button', { name: 'Share' });
+
+  it.each([
+    ['desktop', false],
+    ['org web', true],
+  ])('offers Share on a page the person owns (%s)', (_, org) => {
+    setOrgMode(org);
+    hostIsWeb = org;
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+    expect(share()).not.toBeNull();
+  });
+
+  it('offers Share on a markdown document', () => {
+    const md = '/proj/.anton/artifacts/notes/notes.md';
+    render(<ChatView task={taskWithArtifact(artifactStep({ ext: '.md', file_path: md, path: md, action: 'document' }))} />);
+    expect(share()).not.toBeNull();
+  });
+
+  it.each(['.csv', '.png', '.xlsx'])('offers no Share on a %s file, which has no link to share', (ext) => {
+    const path = `/proj/.anton/artifacts/data/file${ext}`;
+    setOrgMode(true);
+    hostIsWeb = true;
+    render(<ChatView task={taskWithArtifact(artifactStep({ ext, file_path: path, path }))} />);
+    expect(share()).toBeNull();
+  });
+
+  it('offers no Share on a live app without a page, which shares through "Share with…"', () => {
+    setOrgMode(true);
+    setLiveApps(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({ type: 'fullstack-stateless-app', publishedUrl: '' }))} />);
+    expect(share()).toBeNull();
+  });
+
+  it('offers no Share to someone who cannot edit the artifact', () => {
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({ capabilities: { role: 'reviewer', canEdit: false, canComment: true } }))} />);
+    expect(share()).toBeNull();
+  });
+
+  it.each([
+    ['desktop', false],
+    ['org web', true],
+  ])('offers no Share on a deleted artifact (%s)', (_, org) => {
+    setOrgMode(org);
+    hostIsWeb = org;
+    deleted.mockReturnValue(true);
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+    expect(share()).toBeNull();
+  });
+
+  // A path outside the project leaves the card no local file to act on.
+  const outside = '../elsewhere/index.html';
+
+  it('offers no Share on desktop without a usable local path, where the panel could not act', () => {
+    const { container } = render(<ChatView task={taskWithArtifact(artifactStep({ file_path: outside, path: outside }))} />);
+    expect(container.querySelector('.chat-artifact-card')).not.toBeNull();
+    expect(share()).toBeNull();
+  });
+
+  it('offers Share on org web without a local path, where the panel works from the draft', () => {
+    setOrgMode(true);
+    hostIsWeb = true;
+    render(<ChatView task={taskWithArtifact(artifactStep({ file_path: outside, path: outside }))} />);
+    expect(share()).not.toBeNull();
+  });
+
+  it('opens the viewer with the Share panel, named as opened from the chat card', async () => {
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    await user.click(share());
+
+    const viewer = screen.getByTestId('artifact-viewer');
+    expect(viewer).toHaveTextContent(ARTIFACT_ID);
+    expect(viewer).toHaveAttribute('data-open-share', 'true');
+    expect(viewer).toHaveAttribute('data-share-entry', 'chat_card');
+  });
+
+  it('opens Preview without the Share panel, as the viewer', async () => {
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    await user.click(share());
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+
+    const viewer = screen.getByTestId('artifact-viewer');
+    expect(viewer).toHaveAttribute('data-open-share', 'false');
+    expect(viewer).toHaveAttribute('data-share-entry', 'viewer');
   });
 });
