@@ -11,7 +11,7 @@ vi.mock('../api', () => ({
   updateArtifact: vi.fn(),
   deleteArtifact: vi.fn(),
   publishTargetPath: vi.fn(),
-  artifactServeUrl: vi.fn(() => ''),
+  artifactServeUrl: vi.fn((a) => (a?.serveUrl ? `http://api.test${a.serveUrl}` : '')),
   openArtifactFile: (...a) => api.openArtifactFile(...a),
 }));
 const hostMock = vi.hoisted(() => ({ isWeb: false, isMac: () => true, isElectron: true, openExternal: vi.fn() }));
@@ -93,5 +93,23 @@ describe('Edit with agent from a doc in the library', () => {
     expect(onAddressWithAgent).not.toHaveBeenCalled();
     // The library has no chat beside the doc: it closes for the chat to take over.
     expect(screen.queryByRole('region', { name: /Doc editor/ })).toBeNull();
+  });
+});
+
+describe('a doc opened outside the app in the web build', () => {
+  it('opens its rendered page in a tab, not its JSON', async () => {
+    hostMock.isWeb = true;
+    try {
+      const user = userEvent.setup();
+      const served = { ...doc, serveUrl: '/api/v1/artifacts/serve/general/q4-hiring-plan-tracker-36623b3b/doc.cdoc.json' };
+      render(<ArtifactsView artifacts={[served]} agentLabel="Anton" />);
+      await user.click(screen.getByRole('button', { name: 'Open' }));
+      expect(hostMock.openExternal).toHaveBeenCalledWith(
+        'http://api.test/api/v1/artifacts/serve/general/q4-hiring-plan-tracker-36623b3b/doc.html',
+      );
+      expect(api.openArtifactFile).not.toHaveBeenCalled();
+    } finally {
+      hostMock.isWeb = false;
+    }
   });
 });

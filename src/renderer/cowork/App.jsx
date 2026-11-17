@@ -1510,6 +1510,18 @@ function AppCore() {
       return next;
     });
   };
+  // The person took a queued message out. One that held its chat optimistic
+  // (a request from the library or an artifact's viewer) lets the mark go
+  // when no turn runs there and nothing else queued holds it.
+  const removeQueuedItem = (taskId, itemId) => {
+    const queued = messageQueueRef.current[taskId] || [];
+    const item = queued.find((q) => q.id === itemId);
+    removeFromQueue(taskId, itemId);
+    if (item?.holdsOptimistic && !hasLiveTurnHere(taskId)
+      && !queued.some((q) => q.id !== itemId && q.holdsOptimistic)) {
+      clearOptimisticConversation(taskId);
+    }
+  };
   // The first item that may run: a paused one waits for the person.
   const queueHead = (taskId) => (messageQueueRef.current[taskId] || []).find((q) => !q.paused) || null;
   const popQueueHead = (taskId) => {
@@ -4773,7 +4785,13 @@ function AppCore() {
         queuedAttachments ?? composerAttachments,
         mutesForSend,
         queuedReason,
-        { ...(opts.output ? { output: opts.output } : {}), ...(docContext ? { docContext } : {}) },
+        {
+          ...(opts.output ? { output: opts.output } : {}),
+          ...(docContext ? { docContext } : {}),
+          // Its sender marked the chat optimistic until this turn runs; removed
+          // from the queue, no turn comes to drop the mark (removeQueuedItem).
+          ...(opts.holdsOptimistic ? { holdsOptimistic: true } : {}),
+        },
       );
       // A voice call that sent it follows its queue item to its own turn.
       opts.onQueued?.(queuedId);
@@ -5652,7 +5670,7 @@ function AppCore() {
     try {
       // Queued when the chat is busy, including a turn waiting on the agent's
       // question: the repair prompt is not the user's answer to it.
-      started = await handleSendInTask(prompt, [], { targetTask, skipPendingAnswer: true });
+      started = await handleSendInTask(prompt, [], { targetTask, skipPendingAnswer: true, holdsOptimistic: true });
     } finally {
       if (!started) clearOptimisticConversation(target.id);
     }
@@ -5709,6 +5727,7 @@ function AppCore() {
       // waiting on the agent's question, never taken as the answer to it.
       started = await handleSendInTask(message, [], {
         targetTask: loaded, docRequest, disabledConnections: loaded.disabledConnections ?? [], skipPendingAnswer: true,
+        holdsOptimistic: true,
       });
     } finally {
       if (!started) clearOptimisticConversation(target.id);
@@ -7321,7 +7340,7 @@ function AppCore() {
             browserOn={taskBrowserOn({ switchShown: browserSwitchShown, taskBrowserOff: currentTask?.browserOff })}
             showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
-            onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
+            onRemoveFromQueue={(itemId) => removeQueuedItem(currentTask?.id, itemId)}
             onAddQueuedToTask={(itemId) => addons.handleAddQueuedToTask(currentTask?.id, itemId)}
             onMoveAddonToQueue={(addonId, text, decidedBy) => addons.handleMoveAddonToQueue(currentTask?.id, addonId, text, decidedBy)}
             onResendQueued={(itemId) => addons.handleResendQueued(currentTask?.id, itemId)}

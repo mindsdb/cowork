@@ -411,7 +411,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
   // OS path the user can't reach — open that "private" URL instead.
-  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
+  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(fileToOpen(artifact)) : '';
   /*
    * A click means "show me this artifact" in both deployments: Desktop renders
    * the local bytes, org mode renders the authenticated draft. What org mode
@@ -465,7 +465,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
   const canOpenOutside = liveAppCard
     ? Boolean(liveAppAddress)
     : isArtifactActionAvailable('open', { orgMode, published })
-      && (!host.isWeb || canShowInBrowserTab(artifact));
+      && (!host.isWeb || canShowInBrowserTab(fileToOpen(artifact)));
   return { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside };
 }
 

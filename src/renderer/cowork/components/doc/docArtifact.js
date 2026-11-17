@@ -16,5 +16,10 @@ export function isDocArtifact(artifact) {
  */
 export function docPageTarget(artifact) {
   if (!isDocArtifact(artifact) || !artifact.htmlPath) return null;
-  return { ...artifact, folder: undefined, canonicalPath: undefined, path: artifact.htmlPath, file_path: artifact.htmlPath };
+  const page = artifact.htmlPath;
+  // The serve URL (the web build's address for a file) names the doc's own
+  // file last; its page sits beside it in the same folder.
+  const name = page.split(/[\\/]/).pop();
+  const serveUrl = artifact.serveUrl ? artifact.serveUrl.replace(/[^/]+$/, encodeURIComponent(name)) : artifact.serveUrl;
+  return { ...artifact, folder: undefined, canonicalPath: undefined, path: page, file_path: page, serveUrl };
 }
