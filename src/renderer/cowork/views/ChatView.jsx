@@ -82,7 +82,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget, noPreviewDownloadedNote } from '../lib/artifactActions';
-import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
+import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactCardBySlug, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { displayModelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
@@ -878,6 +878,10 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
   // is this artifact still there? The card outlives the artifact because it is
   // rendered from the turn's persisted stream events, which no delete rewrites.
   const deleted = useArtifactLiveness(artifact, { live });
+  // A chat card carries no capabilities (only the artifacts list adds them),
+  // so the listed card for the same artifact says whether the person may edit it.
+  const listedCard = useArtifactCardBySlug(artifact.capabilities ? '' : artifact.slug);
+  const capabilities = artifact.capabilities || listedCard?.capabilities || null;
   const [status, setStatus] = useState(null);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
@@ -1135,13 +1139,16 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
   /*
    * Share offers the viewer's own Share panel, so it follows the viewer's rule
    * for showing it: a page or document the person may edit, and not a full-stack
-   * live app without a page (those share through "Share with…"). On Desktop the
-   * panel needs the local file, which the viewer would show disabled without.
+   * live app without a page (those share through "Share with…"). Where nothing
+   * says whether they may edit it yet (an artifact the list hasn't loaded), the
+   * card offers Share and the viewer decides: it opens without the panel for
+   * someone who can't manage it. On Desktop the panel needs the local file,
+   * which the viewer would show disabled without.
    */
   const shareAction = onShare && !deleted
     && isPublishableArtifact(artifact)
     && !(liveApps && BACKEND_ARTIFACT_TYPES.has(artifact.type) && !published)
-    && (artifact.capabilities ? artifact.capabilities.canEdit !== false : !orgMode)
+    && capabilities?.canEdit !== false
     && (orgMode || canAct)
     ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(artifact), tooltip: t('chatView.artifactCard.shareTooltip') }
     : null;
@@ -2262,15 +2269,16 @@ export default function ChatView({
   // Anything else still routes through the Electron OS handler via
   // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
-  const [previewShare, setPreviewShare] = useState(false);
+  // A new object per Share click, so the viewer opens its panel once per click.
+  const [previewShare, setPreviewShare] = useState(null);
   const handleArtifactOpen = (artifact) => {
     // The card already filters: it only calls onOpen for previewable
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
-    setPreviewShare(false);
+    setPreviewShare(null);
     setPreviewArt(artifact);
   };
   const handleArtifactShare = (artifact) => {
-    setPreviewShare(true);
+    setPreviewShare({});
     setPreviewArt(artifact);
   };
   // Task settings menu (kebab in header).
@@ -4343,9 +4351,9 @@ export default function ChatView({
       <ArtifactViewer
         open={!!previewArt}
         artifact={previewArt}
-        openShare={previewShare}
+        shareRequest={previewShare}
         shareEntry={previewShare ? 'chat_card' : 'viewer'}
-        onClose={() => { setPreviewArt(null); setPreviewShare(false); }}
+        onClose={() => { setPreviewArt(null); setPreviewShare(null); }}
         onChange={(updated) => setPreviewArt(updated)}
         conversationId={task?.id || null}
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}

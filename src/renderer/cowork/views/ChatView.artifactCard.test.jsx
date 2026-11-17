@@ -36,6 +36,9 @@ let hostIsWeb = false;
 // card against a controllable answer, because what shipped broken was the CARD:
 // it offered Open / Export / Show in Finder for an artifact that was gone.
 const deleted = vi.fn(() => false);
+/* The artifacts list's card for a slug: where a chat card, which carries no
+   capabilities, learns whether the person may edit the artifact. */
+const listedCard = vi.fn(() => null);
 const revalidate = vi.fn(() => Promise.resolve());
 /* The shared document gate, stubbed per test: whether the build has the
    type's renderer and the shell supports the frame is not the card's business. */
@@ -47,6 +50,7 @@ vi.mock('../preview/kinds', () => ({
 
 vi.mock('../lib/artifactsStore', () => ({
   useArtifactLiveness: (card, opts) => deleted(card, opts),
+  useArtifactCardBySlug: (slug) => (slug ? listedCard(slug) : null),
   setArtifactsScope: vi.fn(),
   revalidate: (...a) => revalidate(...a),
 }));
@@ -69,8 +73,8 @@ vi.mock('../../platform/host', () => ({
 // The viewer's workspace/network behaviour is covered by its own tests. Here
 // we only need to prove the inline card hands the complete artifact to it.
 vi.mock('../components/artifact', () => ({
-  ArtifactViewer: ({ open, artifact, openShare, shareEntry }) => open
-    ? <div data-testid="artifact-viewer" data-open-share={String(!!openShare)} data-share-entry={shareEntry}>{artifact?.id}</div>
+  ArtifactViewer: ({ open, artifact, shareRequest, shareEntry }) => open
+    ? <div data-testid="artifact-viewer" data-open-share={String(!!shareRequest)} data-share-entry={shareEntry}>{artifact?.id}</div>
     : null,
 }));
 
@@ -112,7 +116,8 @@ const artifactStep = (overrides = {}) => ({
     slug: 'clock',
     artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
     draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/index.html`,
-    capabilities: { role: 'owner', canEdit: true, canComment: true },
+    // No capabilities: cowork-server's chat cards don't carry them; only the
+    // artifacts list does.
     publishedUrl: PUBLISHED_URL,
     projectId: 'proj-1',
     projectName: 'general',
@@ -122,7 +127,8 @@ const artifactStep = (overrides = {}) => ({
 
 describe('inline artifact workspace payload', () => {
   it('reaches the viewer card without dropping identity or permissions', () => {
-    expect(artifactStepToCard(artifactStep(), '/proj')).toMatchObject({
+    const step = artifactStep({ capabilities: { role: 'owner', canEdit: true, canComment: true } });
+    expect(artifactStepToCard(step, '/proj')).toMatchObject({
       id: ARTIFACT_ID,
       artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
       draftUrl: expect.stringContaining('/artifacts/drafts/'),
@@ -160,6 +166,8 @@ beforeEach(() => {
   hostIsWeb = false;
   deleted.mockReset();
   deleted.mockReturnValue(false);
+  listedCard.mockReset();
+  listedCard.mockReturnValue(null);
   revalidate.mockClear();
   canPreviewDocument.mockReset();
   canPreviewDocument.mockReturnValue(false);
@@ -1124,6 +1132,28 @@ describe('Share on the inline artifact card', () => {
     setLiveApps(true);
     render(<ChatView task={taskWithArtifact(artifactStep({ type: 'fullstack-stateless-app', publishedUrl: '' }))} />);
     expect(share()).toBeNull();
+  });
+
+  describe('on Cloud Web, where the chat card carries no capabilities', () => {
+    beforeEach(() => { setOrgMode(true); hostIsWeb = true; });
+
+    it('offers Share when the artifacts list says the person can edit it', () => {
+      listedCard.mockReturnValue({ slug: 'clock', capabilities: { role: 'owner', canEdit: true } });
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+      expect(listedCard).toHaveBeenCalledWith('clock');
+      expect(share()).not.toBeNull();
+    });
+
+    it('offers no Share when the artifacts list says the person cannot edit it', () => {
+      listedCard.mockReturnValue({ slug: 'clock', capabilities: { role: 'reviewer', canEdit: false } });
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+      expect(share()).toBeNull();
+    });
+
+    it('offers Share for an artifact the list has not loaded yet, and leaves the viewer to decide', () => {
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+      expect(share()).not.toBeNull();
+    });
   });
 
   it('offers no Share to someone who cannot edit the artifact', () => {
