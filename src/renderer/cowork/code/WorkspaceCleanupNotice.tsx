@@ -4,12 +4,19 @@ import Button from '../components/ui/Button';
 import { useTranslation } from '../../lib/i18n';
 import { codingApi, type WorkspaceCleanupStatus } from './api';
 
-/** Cleanup outlives the deleted task, so its warning belongs to Code Mode. */
-export function WorkspaceCleanupNotice({ active }: { active: boolean }) {
+const POLL_MS = 5000;
+
+/** Cleanup outlives the deleted task, so its warning belongs to Code Mode.
+ *
+ * Cleanup almost never fails, so the status is checked when Code Mode opens
+ * and whenever the task list changes size (a delete starts a removal), and
+ * polled only while a removal runs or a failure is showing. */
+export function WorkspaceCleanupNotice({ active, taskCount }: { active: boolean; taskCount: number }) {
   const { t } = useTranslation('code');
   const [status, setStatus] = useState<WorkspaceCleanupStatus | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState(false);
+  const [round, setRound] = useState(0);
   const generation = useRef(0);
   useEffect(() => {
     if (!active) return;
@@ -17,19 +24,21 @@ export function WorkspaceCleanupNotice({ active }: { active: boolean }) {
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       const current = generation.current;
+      let next: WorkspaceCleanupStatus | null = null;
       try {
-        const next = await codingApi.workspaceCleanup();
+        next = await codingApi.workspaceCleanup();
         if (!disposed && generation.current === current) setStatus(next);
       } catch (reason) {
         // Older servers do not support cleanup status. Keep an existing
         // warning through transient disconnects rather than claiming success.
         if ((reason as { status?: number }).status === 404) return;
       }
-      if (!disposed) timer = setTimeout(() => void poll(), 5000);
+      const settled = next !== null && !next.running && !next.failed;
+      if (!disposed && !settled) timer = setTimeout(() => void poll(), POLL_MS);
     };
     void poll();
     return () => { disposed = true; clearTimeout(timer); };
-  }, [active]);
+  }, [active, taskCount, round]);
 
   async function retry() {
     generation.current += 1;
@@ -42,6 +51,8 @@ export function WorkspaceCleanupNotice({ active }: { active: boolean }) {
     } finally {
       generation.current += 1;
       setRetrying(false);
+      // Follow the retried removal until it settles.
+      setRound((value) => value + 1);
     }
   }
 

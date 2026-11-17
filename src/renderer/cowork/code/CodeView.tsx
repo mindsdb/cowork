@@ -351,7 +351,7 @@ export default function CodeView({
   return (
     <SkillScopeContext.Provider value={skillScopeKey}>
       <div className="code-page">
-        <WorkspaceCleanupNotice key={skillScopeKey} active={active} />
+        <WorkspaceCleanupNotice key={skillScopeKey} active={active} taskCount={sessions.length} />
         <TaskAttentionBar sessions={sessions} selectedId={newTask ? null : selectedId} active={active} scopeKey={skillScopeKey} onSelect={id => onAttentionSelect ? onAttentionSelect(id) : onSelectionChange(id, false)} />
         <DeliveryAutomationMonitor
           sessions={sessions}
