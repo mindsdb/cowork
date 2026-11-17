@@ -1412,7 +1412,8 @@
     "details": "Details",
     "moreOptions": "Weitere Optionen",
     "dismiss": "Ausblenden",
-    "viewBudgets": "Budgets anzeigen"
+    "viewBudgets": "Budgets anzeigen",
+    "allowWrites": "Bearbeitungen erlauben"
   },
   "composerNotices": {
     "thisModel": "Dieses Modell",
@@ -1466,6 +1467,9 @@
     "budgetExceeded": {
       "title": "Das Budget Ihrer Organisation ist aufgebraucht",
       "body": "Ein Inhaber oder Administrator kann es unter „Budgets“ erhöhen, oder Sie wählen ein verfügbares Modell, um in dieser Aufgabe fortzufahren."
+    },
+    "writesHeld": {
+      "body": "Dieser Ordner hat keinen Git-Verlauf, mit dem sich Änderungen prüfen oder rückgängig machen lassen. Der Agent fragt daher vor jeder Bearbeitung."
     }
   },
   "planModeCommand": {

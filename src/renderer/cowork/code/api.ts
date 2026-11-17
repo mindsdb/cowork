@@ -160,7 +160,7 @@ export interface RecoveryPlan {
   options: RecoveryOption[];
 }
 
-export type SessionUpdateBody = Partial<RuntimeControls>;
+export type SessionUpdateBody = Partial<RuntimeControls> & { writes_allowed?: boolean };
 
 export interface PendingApproval {
   id: string;
@@ -213,6 +213,8 @@ export interface CodingSession {
   network_access?: boolean;
   web_search?: boolean;
   additional_dirs?: string[];
+  /** False while a task on a folder without a commit is held to a read-only sandbox. */
+  writes_allowed?: boolean;
   status: CodingStatus;
   project_id?: string | null;
   project_name?: string | null;
