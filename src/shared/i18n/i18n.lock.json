@@ -159323,6 +159323,74 @@
       "text": "740a99844578"
     }
   },
+  "shell:home.signupWelcome.dismiss": {
+    "de": {
+      "from": "48845bff334a",
+      "text": "b808f6e97075"
+    },
+    "es": {
+      "from": "48845bff334a",
+      "text": "1a878a55c594"
+    },
+    "fr": {
+      "from": "48845bff334a",
+      "text": "711e5f2e198d"
+    },
+    "it": {
+      "from": "48845bff334a",
+      "text": "32d4079b315b"
+    },
+    "ja": {
+      "from": "48845bff334a",
+      "text": "f6c244f98893"
+    },
+    "ko": {
+      "from": "48845bff334a",
+      "text": "1e8c10206f5b"
+    },
+    "pt-BR": {
+      "from": "48845bff334a",
+      "text": "0a2fe40efa3c"
+    },
+    "zh-CN": {
+      "from": "48845bff334a",
+      "text": "3fd47edce45b"
+    }
+  },
+  "shell:home.signupWelcome.fromDesktop": {
+    "de": {
+      "from": "e40e504315ce",
+      "text": "d6e8a57cb99a"
+    },
+    "es": {
+      "from": "e40e504315ce",
+      "text": "bc6ce0d40811"
+    },
+    "fr": {
+      "from": "e40e504315ce",
+      "text": "a0674ede17aa"
+    },
+    "it": {
+      "from": "e40e504315ce",
+      "text": "4defd623c108"
+    },
+    "ja": {
+      "from": "e40e504315ce",
+      "text": "5e9f01cffda5"
+    },
+    "ko": {
+      "from": "e40e504315ce",
+      "text": "240c72a7dd8b"
+    },
+    "pt-BR": {
+      "from": "e40e504315ce",
+      "text": "8a1ca7c8c4cc"
+    },
+    "zh-CN": {
+      "from": "e40e504315ce",
+      "text": "c0bade3fced5"
+    }
+  },
   "shell:loadStatus.failed": {
     "de": {
       "from": "d8d02fb5b936",
@@ -168059,6 +168127,74 @@
     "zh-CN": {
       "from": "7e1b0d5641f2",
       "text": "061246bd31e0"
+    }
+  },
+  "shell:userMenu.apiDocs": {
+    "de": {
+      "from": "9e632d3b5010",
+      "text": "7b2502dbf986"
+    },
+    "es": {
+      "from": "9e632d3b5010",
+      "text": "90f7ca99cec5"
+    },
+    "fr": {
+      "from": "9e632d3b5010",
+      "text": "8e4e524efb47"
+    },
+    "it": {
+      "from": "9e632d3b5010",
+      "text": "fbd55016babf"
+    },
+    "ja": {
+      "from": "9e632d3b5010",
+      "text": "5013ba6e1aa9"
+    },
+    "ko": {
+      "from": "9e632d3b5010",
+      "text": "bf25afa9597e"
+    },
+    "pt-BR": {
+      "from": "9e632d3b5010",
+      "text": "215f5fdcc8a9"
+    },
+    "zh-CN": {
+      "from": "9e632d3b5010",
+      "text": "c7042fe4d3fb"
+    }
+  },
+  "shell:userMenu.apiKeys": {
+    "de": {
+      "from": "98aae8972102",
+      "text": "de526edf818f"
+    },
+    "es": {
+      "from": "98aae8972102",
+      "text": "abb073727833"
+    },
+    "fr": {
+      "from": "98aae8972102",
+      "text": "b2af93f82822"
+    },
+    "it": {
+      "from": "98aae8972102",
+      "text": "a83c54c7df4b"
+    },
+    "ja": {
+      "from": "98aae8972102",
+      "text": "4923a7f07bab"
+    },
+    "ko": {
+      "from": "98aae8972102",
+      "text": "c0099f474b9d"
+    },
+    "pt-BR": {
+      "from": "98aae8972102",
+      "text": "a8d60619b91b"
+    },
+    "zh-CN": {
+      "from": "98aae8972102",
+      "text": "5f600b307b4e"
     }
   },
   "shell:userMenu.billing": {

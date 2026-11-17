@@ -280,6 +280,8 @@
     "settings": "设置",
     "billing": "账单与用量",
     "members": "成员",
+    "apiKeys": "API 密钥",
+    "apiDocs": "API 文档",
     "help": "帮助与反馈",
     "manageOrg": "管理组织",
     "logout": "退出登录",
@@ -404,7 +406,11 @@
       "operatorBody": "开始任务前，请让运营方配置模型提供商。",
       "startFree": "免费开始"
     },
-    "handoffHint": "编辑此提示词，准备好后再发送。"
+    "handoffHint": "编辑此提示词，准备好后再发送。",
+    "signupWelcome": {
+      "fromDesktop": "你的账户已准备就绪。你可以直接在这里开始，或返回 {product} 应用并登录。",
+      "dismiss": "关闭"
+    }
   },
   "logout": {
     "title": "退出 {product} 登录？",

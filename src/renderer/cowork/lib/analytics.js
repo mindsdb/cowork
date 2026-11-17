@@ -172,6 +172,12 @@ const EVENTS = {
   ADDON_ADDED:              'addon_added',              // { decided_by: 'jev'|'user', via: 'send'|'queue' } — joined the running task
   ADDON_QUEUED:             'addon_queued',             // { reason } — queued as the next task: the server's reason, or 'attachments'|'no_conversation'|'no_live_stream'|'turn_ending'|'not_found'|'unsupported'|'timeout'|'error'|'unknown'
   ADDON_OVERRIDDEN:         'addon_overridden',         // { direction: 'to_queue'|'to_task', outcome, decided_by? } — the person moved a message against where it landed; decided_by 'jev' on to_queue is the accuracy signal
+  // The account menu's developer links (ENG-4288). Sign-in lands in Cowork now,
+  // so these are how a developer who came for the API still reaches it; the
+  // count is the measure of whether that path is being found.
+  MENU_API_KEYS_CLICKED:    'menu_api_keys_clicked',    // {}  user menu -> console API keys page
+  MENU_API_DOCS_CLICKED:    'menu_api_docs_clicked',    // {}  user menu -> docs.mindshub.ai
+  SIGNUP_LANDED:            'signup_landed',            // { from: 'desktop'|'web' }  a new account reached Cowork web Home from a sign-up link
 };
 
 const ORG_STAMPED_EVENTS = new Set([
@@ -1009,6 +1015,24 @@ export function trackBillingOpened(trigger, workspaceMode, kind) {
     workspace_mode: workspaceMode || undefined,
     kind: kind || undefined,
   });
+}
+
+// The user menu's API keys and API docs links (ENG-4288). One event each
+// rather than a shared one with a destination property, so each is a single
+// filter in PostHog. Every click counts: these measure use, not reach.
+export function trackMenuApiKeysClicked() {
+  capture(EVENTS.MENU_API_KEYS_CLICKED);
+}
+
+export function trackMenuApiDocsClicked() {
+  capture(EVENTS.MENU_API_DOCS_CLICKED);
+}
+
+// A new account reached Cowork web from a sign-up link (ENG-4288). `from` is
+// where the sign-up started: 'desktop' for the desktop app, 'web' for Cowork
+// web. Once per landing, since the landing marker is taken exactly once.
+export function trackSignupLanded(from) {
+  capture(EVENTS.SIGNUP_LANDED, { from: from === 'desktop' ? 'desktop' : 'web' });
 }
 
 // First switch into the Code workspace per launch, from any entry point. The
