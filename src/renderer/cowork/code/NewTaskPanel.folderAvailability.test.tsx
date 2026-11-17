@@ -165,6 +165,30 @@ describe('NewTaskPanel project folder availability', () => {
     expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
   });
 
+  it('cancels the start when the draft is edited while the folders are being checked', async () => {
+    const user = userEvent.setup();
+    const onCreate = renderComposer();
+    const prompt = screen.getByRole('textbox', { name: 'Coding task' });
+    await user.type(prompt, 'Add a file');
+    await waitFor(() => expect(startButton()).toBeEnabled());
+
+    // The check at Start is slow, and the prompt is still editable meanwhile.
+    let answer: (value: typeof present) => void = () => {};
+    projectFolders.mockReturnValue(new Promise<typeof present>((resolve) => { answer = resolve; }));
+    await user.click(startButton());
+    await waitFor(() => expect(startButton()).toBeDisabled());
+    await user.type(prompt, ' named notes.md');
+    projectFolders.mockResolvedValue(present);
+    await act(async () => { answer(present); });
+
+    // Neither the old prompt nor the new one is sent without a second Start.
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    expect(onCreate).not.toHaveBeenCalled();
+    await user.click(startButton());
+    await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Add a file named notes.md' }));
+  });
+
   it('clears the warning by itself once the folder is back', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
     const settle = async (ms: number) => {
