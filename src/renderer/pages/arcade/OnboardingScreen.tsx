@@ -12,7 +12,7 @@ import { type MindsOrg, needsOrgPick, organizationLabel, rankMindsOrgs } from '.
 import { fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { trackKeyProvisioningRefused } from '../../cowork/lib/analytics';
-import { MINDS_API_BASE, MINDS_DOWNLOAD_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_DOWNLOAD_URL, mindsRegisterUrl } from '../../lib/mindsUrls';
 import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite } from './sprites';
@@ -1036,7 +1036,7 @@ export default function OnboardingScreen({
                 <button
                   type="button"
                   className="arc-link"
-                  onClick={() => host.openExternal(MINDS_REGISTER_URL)}
+                  onClick={() => host.openExternal(mindsRegisterUrl(host.isElectron ? 'desktop' : 'web'))}
                 >{t('onboarding.minds.createOne')}</button>
               </div>
             </>

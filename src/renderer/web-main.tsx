@@ -49,6 +49,7 @@ import {
 import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
+import { captureSignupWelcome } from './cowork/lib/signupWelcome';
 import { keycloak, mobileSession, mobileShellAdapter } from './lib/keycloak';
 import { keycloakInitOptions } from './lib/mobileAuth';
 import { applyMobileShellDocument, mobileShell } from './lib/mobileShell';
@@ -88,6 +89,8 @@ if (mobileShell) startMobilePush();
 captureConsoleHandoff();
 // Same for a link into Settings (?settings=appearance&section=branding).
 captureSettingsDeepLink();
+// And a brand-new account's landing (?welcome=1&from=desktop, ENG-4288).
+captureSignupWelcome();
 
 // Base URL without query params. Keycloak validates redirect URIs strictly.
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;

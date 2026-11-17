@@ -280,6 +280,8 @@
     "settings": "Paramètres",
     "billing": "Facturation et utilisation",
     "members": "Membres",
+    "apiKeys": "Clés API",
+    "apiDocs": "Documentation de l’API",
     "help": "Aide et commentaires",
     "manageOrg": "Gérer l’organisation",
     "logout": "Se déconnecter",
@@ -404,7 +406,11 @@
       "operatorBody": "Demandez à votre opérateur de configurer le fournisseur de modèles avant de lancer une tâche.",
       "startFree": "Commencer gratuitement"
     },
-    "handoffHint": "Modifiez ce prompt, puis envoyez-le quand vous êtes prêt."
+    "handoffHint": "Modifiez ce prompt, puis envoyez-le quand vous êtes prêt.",
+    "signupWelcome": {
+      "fromDesktop": "Votre compte est prêt. Vous pouvez commencer ici, ou revenir dans l’app {product} et vous connecter.",
+      "dismiss": "Fermer"
+    }
   },
   "logout": {
     "title": "Se déconnecter de {product} ?",
