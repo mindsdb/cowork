@@ -161091,6 +161091,40 @@
       "text": "07e806fc2eef"
     }
   },
+  "shell:comingSoon.buildCustom": {
+    "de": {
+      "from": "d68eafe2966c",
+      "text": "4e8dd41cfb1c"
+    },
+    "es": {
+      "from": "d68eafe2966c",
+      "text": "4ac6797a67cb"
+    },
+    "fr": {
+      "from": "d68eafe2966c",
+      "text": "afc08b37e294"
+    },
+    "it": {
+      "from": "d68eafe2966c",
+      "text": "b2527c86ead1"
+    },
+    "ja": {
+      "from": "d68eafe2966c",
+      "text": "a75bd9193cc3"
+    },
+    "ko": {
+      "from": "d68eafe2966c",
+      "text": "63d4fc77f4e8"
+    },
+    "pt-BR": {
+      "from": "d68eafe2966c",
+      "text": "f42905aec8ee"
+    },
+    "zh-CN": {
+      "from": "d68eafe2966c",
+      "text": "e84f3fc84e9d"
+    }
+  },
   "shell:comingSoon.cloudBody": {
     "de": {
       "from": "a84452c543fc",
@@ -161123,6 +161157,40 @@
     "zh-CN": {
       "from": "a84452c543fc",
       "text": "b392933d1fe7"
+    }
+  },
+  "shell:comingSoon.cloudBodyCustom": {
+    "de": {
+      "from": "056cb605aef3",
+      "text": "b080d1a39ff2"
+    },
+    "es": {
+      "from": "056cb605aef3",
+      "text": "14042c0e2f9c"
+    },
+    "fr": {
+      "from": "056cb605aef3",
+      "text": "db1b63f80425"
+    },
+    "it": {
+      "from": "056cb605aef3",
+      "text": "5184b28800ae"
+    },
+    "ja": {
+      "from": "056cb605aef3",
+      "text": "9c8adebdcf2c"
+    },
+    "ko": {
+      "from": "056cb605aef3",
+      "text": "dcba8675112e"
+    },
+    "pt-BR": {
+      "from": "056cb605aef3",
+      "text": "c0804b5ef9d2"
+    },
+    "zh-CN": {
+      "from": "056cb605aef3",
+      "text": "ddda6be75681"
     }
   },
   "shell:comingSoon.cloudBodyNamed": {
@@ -161191,6 +161259,40 @@
     "zh-CN": {
       "from": "9d690fde91d2",
       "text": "85267ddbfc14"
+    }
+  },
+  "shell:comingSoon.connectCustom": {
+    "de": {
+      "from": "64963b69560f",
+      "text": "845cf63fc89e"
+    },
+    "es": {
+      "from": "64963b69560f",
+      "text": "08445d3cff8c"
+    },
+    "fr": {
+      "from": "64963b69560f",
+      "text": "cef57378d799"
+    },
+    "it": {
+      "from": "64963b69560f",
+      "text": "aa6b5d358ca1"
+    },
+    "ja": {
+      "from": "64963b69560f",
+      "text": "73c46b68368d"
+    },
+    "ko": {
+      "from": "64963b69560f",
+      "text": "ec2b25835a73"
+    },
+    "pt-BR": {
+      "from": "64963b69560f",
+      "text": "8233134083c2"
+    },
+    "zh-CN": {
+      "from": "64963b69560f",
+      "text": "9425286f9825"
     }
   },
   "shell:comingSoon.download": {

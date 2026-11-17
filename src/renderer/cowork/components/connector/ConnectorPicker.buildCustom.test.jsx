@@ -70,14 +70,25 @@ describe('ConnectorPicker build a custom connector', () => {
     expect(screen.queryByRole('button', { name: /Build a custom connector for/ })).toBeNull();
   });
 
-  it('ends the list with a permanent entry that carries no query', async () => {
-    const onBuildCustom = await openWith([GMAIL]);
+  it('starts the list with a permanent entry that carries no query', async () => {
+    const onBuildCustom = await openWith([GMAIL, POSTGRES]);
 
     const tiles = screen.getAllByRole('button').filter((b) => b.tagName === 'BUTTON' && b.closest('[class*="grid"]'));
-    expect(tiles.at(-1)).toHaveAccessibleName(/^Build a custom connector Connect a system/);
-    fireEvent.click(tiles.at(-1));
+    expect(tiles.length).toBeGreaterThan(2);
+    expect(tiles[0]).toHaveAccessibleName(/^Build a custom connector Connect a system/);
+    fireEvent.click(tiles[0]);
 
     expect(onBuildCustom).toHaveBeenCalledWith('');
+  });
+
+  it('keeps the permanent entry first while a search still matches', async () => {
+    await openWith([GMAIL, POSTGRES]);
+
+    fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'gma' } });
+
+    const tiles = screen.getAllByRole('button').filter((b) => b.tagName === 'BUTTON' && b.closest('[class*="grid"]'));
+    expect(tiles[0]).toHaveAccessibleName(/^Build a custom connector Connect a system/);
+    expect(tiles.some((b) => /Gmail/.test(b.textContent))).toBe(true);
   });
 
   it('keeps the permanent entry while a search still matches', async () => {

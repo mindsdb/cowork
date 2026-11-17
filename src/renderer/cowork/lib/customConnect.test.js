@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   ADDRESS_FIELD,
   keySentAs,
   connectSpecFor,
+  desktopOnlyOffer,
   mayConnectThroughChat,
+  connectSuccessSubtitle,
   customConnectPayload,
   describeConnectFailure,
   isCustomConnectionRow,
@@ -62,12 +64,12 @@ describe('the custom connect form', () => {
     },
   );
 
-  it('requires every field and offers Skip on none, whatever the template says', () => {
+  it('keeps a field the template marks optional optional with Skip, and requires every other', () => {
     const spec = toCustomConnectSpec({
       ...SPEC,
       fields: [
         ...SPEC.fields,
-        { name: 'workspace', label: 'Workspace', type: 'text', secret: false, required: false },
+        { name: 'workspace', label: 'Workspace', type: 'password', secret: true, required: false },
         { name: 'region', label: 'Region', type: 'text', secret: false },
       ],
     }, CHECK, 'Acme CRM');
@@ -75,9 +77,18 @@ describe('the custom connect form', () => {
     expect(spec.fields.map((f) => [f.name, f.required, f.skipable])).toEqual([
       [ADDRESS_FIELD, true, false],
       ['api_key', true, false],
-      ['workspace', true, false],
+      ['workspace', false, true],
       ['region', true, false],
     ]);
+  });
+
+  it('requires an optional field that is not secret', () => {
+    const spec = toCustomConnectSpec({
+      ...SPEC,
+      fields: [{ name: 'workspace', label: 'Workspace', type: 'text', secret: false, required: false }],
+    }, CHECK, 'Acme CRM');
+
+    expect(spec.fields.find((f) => f.name === 'workspace')).toMatchObject({ required: true, skipable: false });
   });
 
   it('says nothing of the key when the template cannot be connected', () => {
@@ -91,6 +102,7 @@ describe('the custom connect form', () => {
 
     expect(spec.fields).toEqual([]);
     expect(spec.form_warning).toMatch(/no connection check, so it cannot be connected/);
+    expect(spec.form_warning).toMatch(/if it takes none, Anton can use it without a connector/);
     expect(spec._custom_connect.hasCheck).toBe(false);
     expect(spec.actions).toEqual([{ id: 'cancel', label: 'Close', kind: 'cancel' }]);
   });
@@ -105,6 +117,12 @@ describe('the connect request', () => {
     });
   });
 
+  it('leaves a blank value out of the payload', () => {
+    const values = { [ADDRESS_FIELD]: 'api.acme.example', api_key: '   ' };
+
+    expect(customConnectPayload(values, 'Acme').values).toEqual({});
+  });
+
   it('keeps a template field whatever its name; the connection name travels apart', () => {
     const values = { [ADDRESS_FIELD]: 'api.acme.example', api_key: 'k', user_label: 'tenant-7' };
 
@@ -113,6 +131,26 @@ describe('the connect request', () => {
 });
 
 describe('a refused connect', () => {
+  it('shows no excerpt for a failed public check, even when the server sends one', () => {
+    const err = Object.assign(new Error(''), {
+      code: 'public_check_failed',
+      body: { detail: { code: 'public_check_failed', provider_status: 500, excerpt: 'secret-looking body' } },
+    });
+
+    expect(describeConnectFailure(err)).not.toMatch(/It said/);
+  });
+
+  it('says the public check path did not answer and that no key was sent', () => {
+    const err = Object.assign(new Error(''), {
+      code: 'public_check_failed',
+      body: { detail: { code: 'public_check_failed', provider_status: 404, excerpt: '' } },
+    });
+
+    expect(describeConnectFailure(err)).toBe(
+      'The public check path did not answer, and no key was sent. Check the address, or connect with a key. The provider answered 404.',
+    );
+  });
+
   it('names a failed check and shows the provider status and excerpt as text', () => {
     const err = Object.assign(new Error(''), {
       code: 'authentication_failed',
@@ -218,5 +256,104 @@ describe('a connector whose form could not be loaded', () => {
   it('may still fall back for any other connector, and on desktop', () => {
     expect(mayConnectThroughChat({ orgMode: true, connector: { id: 'gmail' } })).toBe(true);
     expect(mayConnectThroughChat({ orgMode: false, connector: { id: 'acme_crm', custom: true } })).toBe(true);
+  });
+});
+
+describe('the offer for a connector cloud does not run yet', () => {
+  const HASDATA_CUSTOM = { id: 'hasdata_custom', label: 'HasData', custom: true };
+
+  it("connects the member's own custom one first", () => {
+    const connect = vi.fn();
+    const build = vi.fn();
+    const offer = desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: HASDATA_CUSTOM, canBuild: true, connect, build });
+
+    expect(offer.kind).toBe('connect');
+    offer.onAccept();
+    expect(connect).toHaveBeenCalledWith(HASDATA_CUSTOM);
+    expect(build).not.toHaveBeenCalled();
+  });
+
+  it('offers to build one, naming the connector, when there is none', () => {
+    const build = vi.fn();
+    const offer = desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: null, canBuild: true, connect: vi.fn(), build });
+
+    expect(offer.kind).toBe('build');
+    offer.onAccept();
+    expect(build).toHaveBeenCalledWith('HasData');
+  });
+
+  it('offers nothing for SharePoint, which has its own form', () => {
+    const custom = { id: 'sharepoint_custom', label: 'SharePoint', custom: true };
+    expect(desktopOnlyOffer({ connector: { id: 'sharepoint', label: 'SharePoint' }, customMatch: custom, canBuild: true, connect: vi.fn(), build: vi.fn() })).toBeNull();
+  });
+
+  it('offers nothing when no custom one exists and none can be built', () => {
+    expect(desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: null, canBuild: false, connect: vi.fn(), build: vi.fn() })).toBeNull();
+  });
+});
+
+describe('the success screen after a connect', () => {
+  const basicSpec = toCustomConnectSpec({
+    ...SPEC,
+    fields: [
+      { name: 'username', label: 'Username', type: 'password', secret: true, required: true },
+      { name: 'password', label: 'Password', type: 'password', secret: true, required: false },
+    ],
+  }, CHECK, 'Acme CRM');
+
+  it('keeps the plain message when a required secret was entered beside a skipped password', () => {
+    expect(connectSuccessSubtitle(basicSpec, { username: 'u' }, ['password'])).toMatch(/your credentials are stored/);
+  });
+
+  it('keeps the plain message when a required org token was entered beside a skipped api key', () => {
+    const spec = toCustomConnectSpec({
+      ...SPEC,
+      fields: [
+        { name: 'org_token', label: 'Org token', type: 'password', secret: true, required: true },
+        { name: 'api_key', label: 'API key', type: 'password', secret: true, required: false },
+      ],
+    }, CHECK, 'Acme CRM');
+
+    expect(connectSuccessSubtitle(spec, { org_token: 't' }, ['api_key'])).toMatch(/your credentials are stored/);
+  });
+
+  it('counts a blank optional value as skipped', () => {
+    const spec = toCustomConnectSpec({
+      ...SPEC,
+      fields: [{ name: 'api_key', label: 'API key', type: 'password', secret: true, required: false }],
+    }, CHECK, 'Acme CRM');
+
+    expect(connectSuccessSubtitle(spec, { api_key: '   ' }, [])).toMatch(/proved only that the API answers/);
+  });
+
+  const optionalSpec = toCustomConnectSpec({
+    ...SPEC,
+    fields: [{ name: 'api_key', label: 'API key', type: 'password', secret: true, required: false }],
+  }, CHECK, 'Acme CRM');
+
+  it('says the check proved only that the API answers when every optional field was skipped', () => {
+    expect(connectSuccessSubtitle(optionalSpec, {}, ['api_key'])).toMatch(/proved only that the API answers, not that a key works/);
+  });
+
+  it('keeps the plain message when the optional key was entered', () => {
+    expect(connectSuccessSubtitle(optionalSpec, { api_key: 'k' }, [])).toMatch(/your credentials are stored/);
+  });
+
+  it('keeps the plain message when only some optional fields were skipped', () => {
+    const two = toCustomConnectSpec({
+      ...SPEC,
+      fields: [
+        { name: 'api_key', label: 'API key', type: 'password', secret: true, required: false },
+        { name: 'token', label: 'Token', type: 'password', secret: true, required: false },
+      ],
+    }, CHECK, 'Acme CRM');
+
+    expect(connectSuccessSubtitle(two, { token: 't' }, ['api_key'])).toMatch(/your credentials are stored/);
+  });
+
+  it('keeps the plain message when the form had no optional field', () => {
+    const required = toCustomConnectSpec(SPEC, CHECK, 'Acme CRM');
+
+    expect(connectSuccessSubtitle(required, { api_key: 'k' }, [])).toMatch(/your credentials are stored/);
   });
 });
