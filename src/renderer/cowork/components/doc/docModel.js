@@ -67,7 +67,7 @@ export function toneFor(value) {
   return 'gray';
 }
 
-export function chipHtml(kind, value) {
+function chipHtml(kind, value) {
   const raw = `${kind}:${value}`;
   let label = value;
   let cls = `doc-chip doc-chip--${kind}`;
@@ -100,20 +100,19 @@ export function chipHtml(kind, value) {
 // verbatim; only these marks escape; a link is inline, has words, and its
 // address is http(s):// or mailto: plus at least one character, up to ")";
 // strike is exactly two tildes; no raw HTML, entities, autolinks or hard breaks.
-const TOKEN = /\\[*`~[\]{}_\\]|[`[\]{]|\*+|_+|~+/g;
+const ESCAPABLE = '[*`~[\\]{}_\\\\]';
+const TOKEN = new RegExp(`\\\\${ESCAPABLE}|[\`[\\]{]|\\*+|_+|~+`, 'g');
+const BACKTICK = /`/g;
+const BRACE = /\}/g;
 // CommonMark's white space: tab, line feed, form feed, carriage return and the Unicode Zs spaces.
 const SPACE_CLASS = '[\\t\\n\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u202f\\u205f\\u3000]';
 const SPACE = new RegExp(SPACE_CLASS);
 const PUNCT = /[\p{P}\p{S}]/u; // CommonMark's Unicode punctuation
 const CHIP_HEAD = new RegExp(`\\{\\{${SPACE_CLASS}*(date|status|user)${SPACE_CLASS}*:`, 'y');
 const LINK_HEAD = /\]\((?:https?:\/\/|mailto:)/y;
-const HREF_ESCAPE = /\\([*`~[\]{}_\\])/g;
-// What each lookup finds at or after a position.
-const NEXT = {
-  '`': /`/g,
-  '}': /\}/g,
-  hrefEnd: /[)\x00-\x20\x7f]/g, // where CommonMark ends an address not in <…>
-};
+const HREF_END = /[)\x00-\x20\x7f]/g; // where CommonMark ends an address not in <…>
+const HREF_ESCAPE = new RegExp(`\\\\(${ESCAPABLE})`, 'g');
+const [EM, STRONG, STRIKE] = [['<em>', '</em>'], ['<strong>', '</strong>'], ['<s>', '</s>']];
 
 function execAt(re, s, pos) {
   re.lastIndex = pos;
@@ -136,23 +135,19 @@ function nextMatch(re, s) {
 
 const textHtml = (s) => escapeHtml(s).replace(/\n/g, '<br>');
 
-// A character beside a run of marks is white space (0), punctuation (1) or anything
-// else (2), read whole: an emoji is two UTF-16 units, and the server reads it as one
-// symbol (punctuation, to CommonMark). The text's edges count as white space. P and S
-// come from the engine's Unicode tables, which may be newer than the server's.
+/** A character beside a run of marks: white space (0), punctuation (1: CommonMark's
+ * Unicode P and S categories) or anything else (2). P and S come from the engine's
+ * Unicode tables, which may be newer than the server's. */
 function charClass(ch) {
   if (SPACE.test(ch)) return 0;
   return PUNCT.test(ch) ? 1 : 2;
 }
 
+// The characters around a run, read whole: an emoji is two UTF-16 units, and the server
+// reads it as one symbol (punctuation, to CommonMark). The text's edges count as white space.
 function classBefore(s, i) {
   if (i === 0) return 0;
-  const low = s.charCodeAt(i - 1);
-  if (low >= 0xdc00 && low <= 0xdfff && i >= 2) {
-    const high = s.charCodeAt(i - 2);
-    if (high >= 0xd800 && high <= 0xdbff) return charClass(s.slice(i - 2, i));
-  }
-  return charClass(s[i - 1]);
+  return charClass(i >= 2 && s.codePointAt(i - 2) > 0xffff ? s.slice(i - 2, i) : s[i - 1]);
 }
 
 const classAfter = (s, j) => (j < s.length ? charClass(String.fromCodePoint(s.codePointAt(j))) : 0);
@@ -177,6 +172,16 @@ function trimSpace(s) {
   return s.slice(a, b);
 }
 
+/** A run of *, _ or ~~ that may open or close emphasis (CommonMark's delimiter run). Live
+ * runs form a list through `prev`/`next`. Pairing spends marks from the run's inner side:
+ * an opener's from its end, a closer's from its start. */
+function delimiterRun(start, end, mark, canOpen, canClose, prev) {
+  const length = end - start;
+  // `opens` and `closes`: the tags it opens after its marks and closes before them,
+  // innermost first; most runs pair with nothing.
+  return { kind: 'run', start, end, mark, length, left: length, canOpen, canClose, prev, next: null, opens: null, closes: null };
+}
+
 // CommonMark's rule of 3: "*a**b*" is one emphasis, not two.
 const pairsWith = (opener, closer) => opener.mark === closer.mark && opener.canOpen
   && !((opener.canClose || closer.canOpen) && closer.length % 3 && (opener.length + closer.length) % 3 === 0);
@@ -197,39 +202,37 @@ function pairRuns(bottom) {
       continue;
     }
     const kind = `${closer.mark}${closer.canOpen}${closer.length % 3}`;
-    const lowest = floor.get(kind) ?? -1;
+    const lowest = floor.get(kind) ?? bottom.start;
     let opener = closer.prev;
-    while (opener !== bottom && opener.start > lowest && !pairsWith(opener, closer)) opener = opener.prev;
-    if (opener === bottom || opener.start <= lowest) {
+    while (opener.start > lowest && !pairsWith(opener, closer)) opener = opener.prev;
+    if (opener.start <= lowest) {
       floor.set(kind, closer.prev.start);
-      const after = closer.next;
       if (!closer.canOpen) dropRun(closer);
-      closer = after;
+      closer = closer.next;
       continue;
     }
     const used = opener.left >= 2 && closer.left >= 2 ? 2 : 1;
-    const tag = closer.mark === '~' ? 's' : used === 2 ? 'strong' : 'em';
+    const [openTag, closeTag] = closer.mark === '~' ? STRIKE : used === 2 ? STRONG : EM;
     opener.left -= used;
     closer.left -= used;
-    opener.opens.push(`<${tag}>`);
-    closer.closes.push(`</${tag}>`);
+    (opener.opens ??= []).push(openTag);
+    (closer.closes ??= []).push(closeTag);
     opener.next = closer; // the runs between pair with nothing now
     closer.prev = opener;
     if (!opener.left) dropRun(opener);
     if (!closer.left) {
-      const after = closer.next;
       dropRun(closer);
-      closer = after;
+      closer = closer.next;
     }
   }
   bottom.next = null;
 }
 
-function readChip(s, i, next) {
+function readChip(s, i, brace) {
   const head = execAt(CHIP_HEAD, s, i);
   if (!head) return null;
   const v = i + head[0].length;
-  const q = next('}', v); // the value runs to the first }
+  const q = brace(v); // the value runs to the first }
   if (q === v || s[q + 1] !== '}') return null;
   const raw = s.slice(v, q);
   // At least one character, as typed.
@@ -237,22 +240,13 @@ function readChip(s, i, next) {
 }
 
 /** The address and end of a "](address)" at `q`, or null. */
-function linkEnd(s, q, next) {
+function linkEnd(s, q, hrefEnd) {
   const head = execAt(LINK_HEAD, s, q);
   if (!head) return null;
   const u = q + head[0].length;
-  const e = next('hrefEnd', u);
+  const e = hrefEnd(u);
   if (e === u || s[e] !== ')') return null;
   return { href: s.slice(q + 2, e).replace(HREF_ESCAPE, '$1'), end: e + 1 };
-}
-
-/** A run of *, _ or ~~ that may open or close emphasis (CommonMark's delimiter run). Live
- * runs form a list through `prev`/`next`. Pairing spends marks from the run's inner side:
- * an opener's from its end, a closer's from its start. */
-function delimiterRun(start, end, mark, canOpen, canClose, prev) {
-  const length = end - start;
-  // `opens` and `closes`: the tags it opens after its marks and closes before them, innermost first.
-  return { kind: 'run', start, end, mark, length, left: length, canOpen, canClose, prev, next: null, opens: [], closes: [] };
 }
 
 /** What replaces parts of `s`, in text order: atoms (escapes, code spans, chips, a
@@ -261,11 +255,8 @@ function readInline(s) {
   const items = [];
   const base = delimiterRun(-1, -1, '', false, false, null); // below every live run
   let top = base;
-  const lookups = {};
-  const next = (key, pos) => (lookups[key] ??= nextMatch(NEXT[key], s))(pos);
+  const [backtick, brace, hrefEnd] = [nextMatch(BACKTICK, s), nextMatch(BRACE, s), nextMatch(HREF_END, s)];
   const brackets = [];
-  let seq = 0;
-  let linksFrom = 0; // a "[" numbered below this is before a link and opens none: links never nest
   let pos = 0;
   for (let m; (m = execAt(TOKEN, s, pos)); ) {
     const i = m.index;
@@ -281,33 +272,33 @@ function readInline(s) {
         items.push(run);
       }
     } else if (c === '\\') {
-      items.push({ kind: 'atom', start: i, end: pos, html: escapeHtml(s[i + 1]) });
+      items.push({ kind: 'atom', start: i, end: pos, html: s[i + 1] }); // no escapable mark is special to HTML
     } else if (c === '`') {
-      const k = next('`', pos); // the code runs to the next backtick
+      const k = backtick(pos); // the code runs to the next backtick
       if (k > pos && k < s.length) {
         items.push({ kind: 'atom', start: i, end: k + 1, html: `<code>${escapeHtml(s.slice(pos, k))}</code>` });
         pos = k + 1;
       }
     } else if (c === '{') {
-      const chip = readChip(s, i, next);
+      const chip = readChip(s, i, brace);
       if (chip) {
         items.push(chip);
         pos = chip.end;
       }
     } else if (c === '[') {
-      const bracket = { kind: 'bracket', start: i, end: i + 1, runs: top, seq: seq++, href: null };
+      const bracket = { kind: 'bracket', start: i, end: i + 1, runs: top, href: null };
       brackets.push(bracket);
       items.push(bracket);
     } else {
       const opener = brackets.pop(); // "]": the last "[" pairs with it or with none
       // A link needs words: "[](…)" would be a link no one sees.
-      const link = opener && opener.seq >= linksFrom && i > opener.end && linkEnd(s, i, next);
+      const link = opener && i > opener.end && linkEnd(s, i, hrefEnd);
       if (link) {
         opener.href = link.href;
         items.push({ kind: 'atom', start: i, end: link.end, html: '</a>' });
         pairRuns(opener.runs);
         top = opener.runs;
-        linksFrom = seq;
+        brackets.length = 0; // links never nest: a "[" before this link opens none
         pos = link.end;
       }
     }
@@ -318,13 +309,19 @@ function readInline(s) {
 
 function itemHtml(item) {
   if (item.kind === 'atom') return item.html;
-  if (item.kind === 'run') return item.closes.join('') + item.mark.repeat(item.left) + item.opens.slice().reverse().join('');
-  return item.href === null ? '[' : `<a href="${escapeHtml(item.href)}" target="_blank" rel="noopener noreferrer">`;
+  if (item.kind === 'bracket') {
+    return item.href === null ? '[' : `<a href="${escapeHtml(item.href)}" target="_blank" rel="noopener noreferrer">`;
+  }
+  let out = item.closes ? item.closes.join('') : '';
+  out += item.mark.repeat(item.left);
+  for (let k = item.opens?.length ?? 0; k-- > 0; ) out += item.opens[k];
+  return out;
 }
 
 /** Inline Markdown → HTML (safe: every text run is escaped). */
 export function inlineToHtml(text) {
   const s = String(text ?? '').replace(/\0/g, '');
+  if (!execAt(TOKEN, s, 0)) return textHtml(s);
   let out = '';
   let done = 0;
   for (const item of readInline(s)) {

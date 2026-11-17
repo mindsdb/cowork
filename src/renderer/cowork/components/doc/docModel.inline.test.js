@@ -2,32 +2,29 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import shared from '../../__fixtures__/docs-inline/cases.json';
 import { htmlToInline, inlineToHtml } from './docModel';
 
-const CASES_FILE = resolve(__dirname, '../../__fixtures__/docs-inline/cases.json');
+const CASES_BYTES = readFileSync(resolve(__dirname, '../../__fixtures__/docs-inline/cases.json'));
+const shared = JSON.parse(CASES_BYTES);
 // The same digest is pinned in cowork-server's tests/test_docs_inline.py.
-const CASES_SHA256 = '9d979b16ea87cc93abe4e00acdd19f1927c2db08bdd0cd290aeb6b440970603f';
-
-const ENTITY = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"' };
-const decode = (s) => s.replace(/&(?:amp|lt|gt|quot);/g, (e) => ENTITY[e]);
-const encode = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const CASES_SHA256 = '6297ddd5c762e12e18f2353dfce5869093267e0458001f22d71ad7256bd5cf0c';
 
 /** The editor's HTML in the form the shared cases hold (the server's): a link without its
- * target and rel, a chip as the server writes it, quotes unescaped in text. Throws on a
- * tag the editor should never write or one closed out of order. */
+ * target and rel, a chip as the server writes it. Text and addresses are escaped alike on
+ * both sides and compared as they are. Throws on a tag the editor should never write or one
+ * closed out of order. */
 function serverForm(markup) {
   const open = [];
   let out = '';
   for (const [, closing, tag, attrs, text] of markup.matchAll(/<(\/?)([a-z]+)([^>]*)>|([^<]+)/g)) {
-    if (text !== undefined) out += encode(decode(text));
+    if (text !== undefined) out += text;
     else if (tag === 'br') out += '<br>';
     else if (closing) {
       if (open.pop() !== tag) throw new Error(`</${tag}> closes out of order in ${markup}`);
       out += `</${tag}>`;
     } else {
       open.push(tag);
-      if (tag === 'a') out += `<a href="${encode(decode(/href="([^"]*)"/.exec(attrs)[1])).replace(/"/g, '&quot;')}">`;
+      if (tag === 'a') out += `<a ${/href="[^"]*"/.exec(attrs)[0]}>`;
       else if (tag === 'span') out += `<span class="chip chip-${/doc-chip--(\w+)/.exec(attrs)[1]}">`;
       else if (['em', 'strong', 's', 'code'].includes(tag)) out += `<${tag}>`;
       else throw new Error(`unexpected <${tag}> in ${markup}`);
@@ -40,15 +37,15 @@ function serverForm(markup) {
 // Pieces that open, close or break marks, and characters CommonMark counts as white space or punctuation.
 const PIECES = [
   '*', '**', '***', '_', '__', '~', '~~', '`', '\\', '\\*', '\\_', '\\`', '[', ']', '(', ')', '](', '](http://x)',
-  '](https://', '](mailto:a)', '{{', '}}', '{{date:', '{{ status :', '2026-10-21', ' ', '\n', '\r', ' ',
-  ' ', '　', 'a', 'b c', 'é', '1', '.', '&', '<', '"', '\u{1F600}', '\0',
+  '](https://', '](mailto:a)', '{{', '}}', '{{date:', '{{ status :', '2026-10-21', ' ', '\n', '\r', '\u00a0',
+  '\u2028', '\u3000', 'a', 'b c', 'é', '1', '.', '&', '<', '"', '\u{1F600}', '\0',
 ];
 
 describe('inline marks', () => {
-  it('runs the copy of the shared cases the server runs', () => {
-    // Changed here alone, the editor and the page drift apart unseen: copy the file to
-    // cowork-server and pin the new digest in both.
-    expect(createHash('sha256').update(readFileSync(CASES_FILE)).digest('hex')).toBe(CASES_SHA256);
+  it('runs the pinned copy of the shared cases', () => {
+    // A change to the cases stops here until its digest is pinned: the reminder to copy the
+    // file to cowork-server and pin the same digest there. Neither suite reads the other's copy.
+    expect(createHash('sha256').update(CASES_BYTES).digest('hex')).toBe(CASES_SHA256);
   });
 
   // cowork-server's render.inline_html runs an identical copy of these cases.

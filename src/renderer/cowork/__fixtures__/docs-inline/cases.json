@@ -1,5 +1,5 @@
 {
-  "description": "Inline Markdown of a doc block and the HTML it renders to. cowork-server (docs/render.inline_html) renders exactly `html`; the editor (cowork docModel.inlineToHtml) renders the same marks, compared after its own attributes are set aside (link target and rel, chip classes and data, &quot; in text). Both repositories keep an identical copy of this file.",
+  "description": "Inline Markdown of a doc block and the HTML it renders to. cowork-server (docs/render.inline_html) renders exactly `html`; the editor (cowork docModel.inlineToHtml) renders the same marks, compared after its own attributes are set aside (a link's target and rel, a chip's classes and data). Both repositories keep an identical copy of this file.",
   "cases": [
     {
       "name": "plain text",
@@ -19,7 +19,7 @@
     {
       "name": "text is escaped and never becomes markup",
       "text": "<script>alert(1)</script> & \"q\" 'r'",
-      "html": "&lt;script&gt;alert(1)&lt;/script&gt; &amp; \"q\" 'r'"
+      "html": "&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;q&quot; 'r'"
     },
     {
       "name": "only http(s):// and mailto: addresses link",
