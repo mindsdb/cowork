@@ -61,6 +61,11 @@ export interface TokenSet {
   scope?: string;
 }
 
+// RFC 6749 5.2's error code characters, and short: anything else from the
+// server is left out of messages, which may reach logs and the screen.
+const OAUTH_ERROR_CODE = /^[\x20\x21\x23-\x5B\x5D-\x7E]{1,64}$/;
+const MAX_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
+
 const INITIALIZE_BODY = JSON.stringify({
   jsonrpc: '2.0',
   id: 1,
@@ -118,7 +123,8 @@ export async function registerClient(
     throw new McpOAuthError('needs_client_id', 'this server needs a client ID');
   }
   const methods = authorizationServer.tokenEndpointAuthMethods;
-  const requested: ClientAuthMethod = !methods || methods.includes('none') ? 'none' : 'client_secret_basic';
+  // RFC 8414: an unlisted set means client_secret_basic only.
+  const requested: ClientAuthMethod = methods?.includes('none') ? 'none' : 'client_secret_basic';
   const response = await fetchFn(authorizationServer.registrationEndpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -205,18 +211,21 @@ async function tokenRequest(
   const response = await fetchFn(authorizationServer.tokenEndpoint, { method: 'POST', headers, body });
   if (response.status !== 200) {
     const error = await jsonObject(response, 'token_failed').catch(() => ({} as Record<string, unknown>));
-    const code = typeof error.error === 'string' ? `: ${error.error}` : '';
+    const code = typeof error.error === 'string' && OAUTH_ERROR_CODE.test(error.error) ? `: ${error.error}` : '';
     throw new McpOAuthError('token_failed', `the token endpoint answered ${response.status}${code}`);
   }
   const data = await jsonObject(response, 'token_failed');
   if (typeof data.access_token !== 'string' || !data.access_token) {
     throw new McpOAuthError('token_failed', 'the token answer has no access token');
   }
-  const lifetime = typeof data.expires_in === 'number' ? data.expires_in : Number(data.expires_in);
+  if (data.token_type !== undefined && (typeof data.token_type !== 'string' || data.token_type.toLowerCase() !== 'bearer')) {
+    throw new McpOAuthError('token_failed', 'the token answer is not a bearer token');
+  }
+  const lifetime = lifetimeSeconds(data.expires_in);
   return {
     accessToken: data.access_token,
     ...(typeof data.refresh_token === 'string' && data.refresh_token ? { refreshToken: data.refresh_token } : {}),
-    ...(Number.isFinite(lifetime) && lifetime > 0 ? { expiresAt: now() + lifetime * 1000 } : {}),
+    ...(lifetime !== undefined ? { expiresAt: now() + lifetime * 1000 } : {}),
     ...(typeof data.scope === 'string' ? { scope: data.scope } : {}),
   };
 }
@@ -237,6 +246,17 @@ function authenticated(client: OAuthClient, params: Record<string, string>): { h
     if (client.authMethod === 'client_secret_post' && client.clientSecret) body.set('client_secret', client.clientSecret);
   }
   return { headers, body };
+}
+
+/* An `expires_in` in seconds: a positive number or a string of digits,
+   capped at a year; anything else means no usable lifetime. */
+function lifetimeSeconds(value: unknown): number | undefined {
+  let seconds: number;
+  if (typeof value === 'number') seconds = value;
+  else if (typeof value === 'string' && /^\d{1,12}$/.test(value)) seconds = Number(value);
+  else return undefined;
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
+  return Math.min(seconds, MAX_LIFETIME_SECONDS);
 }
 
 function formEncode(value: string): string {
@@ -297,6 +317,7 @@ function checkedResource(server: URL, claimed: unknown): string {
     throw new McpOAuthError('resource_mismatch', 'the server names an invalid resource');
   }
   if (resource.search || resource.hash) throw new McpOAuthError('resource_mismatch', 'the resource must not carry a query or fragment');
+  if (resource.username || resource.password) throw new McpOAuthError('resource_mismatch', 'the resource must not carry a user or password');
   if (resource.href === server.href) return resource.href;
   const above = resource.pathname.endsWith('/') ? resource.pathname : `${resource.pathname}/`;
   if (resource.origin === server.origin && server.pathname.startsWith(above)) return resource.href;

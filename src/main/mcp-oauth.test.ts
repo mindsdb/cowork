@@ -145,6 +145,7 @@ describe('discoverMcpAuth against hostile answers', () => {
     ['the same path on another origin', 'https://other.example.com/mcp'],
     ['another port', 'https://mcp.example.com:8443/mcp'],
     ['a path above the server with a query', 'https://mcp.example.com/?tenant=x'],
+    ['the server with a user part', 'https://user@mcp.example.com/mcp'],
     ['not a URL', 'mcp'],
   ])('refuses a resource that is %s', async (_label, resource) => {
     const { fetchFn } = replay(hostile({ resource }));
@@ -220,8 +221,17 @@ describe('discoverMcpAuth against hostile answers', () => {
   it('treats a redirected metadata document as missing and falls back to the server origin', async () => {
     const { fetchFn, requests } = replay({
       [`POST ${SERVER}`]: { status: 401 },
-      'GET https://mcp.example.com/.well-known/oauth-protected-resource/mcp': { status: 302, headers: { location: 'https://10.0.0.5/' } },
-      'GET https://mcp.example.com/.well-known/oauth-protected-resource': { status: 302, headers: { location: 'https://evil.example.com/' } },
+      // Bodies that would be valid metadata, so only the status refuses them.
+      'GET https://mcp.example.com/.well-known/oauth-protected-resource/mcp': {
+        status: 302,
+        headers: { location: 'https://10.0.0.5/' },
+        json: { resource: SERVER, authorization_servers: ['https://evil.example.com'] },
+      },
+      'GET https://mcp.example.com/.well-known/oauth-protected-resource': {
+        status: 302,
+        headers: { location: 'https://evil.example.com/' },
+        json: { resource: SERVER, authorization_servers: ['https://evil.example.com'] },
+      },
     });
     const found = await discoverMcpAuth(SERVER, fetchFn);
     expect(found).toMatchObject({
@@ -254,6 +264,15 @@ describe('registerClient', () => {
     expect(client).toEqual({ clientId: 'abc', authMethod: 'none' });
     const sent = JSON.parse(String(requests[0].init.body));
     expect(sent).toMatchObject({ redirect_uris: ['http://127.0.0.1:47295/callback'], token_endpoint_auth_method: 'none' });
+  });
+
+  it("asks for RFC 8414's default, client_secret_basic, when the server lists no methods", async () => {
+    const { fetchFn, requests } = replay({
+      'POST https://auth.example.com/register': { status: 201, json: { client_id: 'abc', client_secret: 's3' } },
+    });
+    const client = await registerClient({ ...AS, tokenEndpointAuthMethods: undefined }, 'http://127.0.0.1:47295/callback', fetchFn);
+    expect(JSON.parse(String(requests[0].init.body)).token_endpoint_auth_method).toBe('client_secret_basic');
+    expect(client).toEqual({ clientId: 'abc', clientSecret: 's3', authMethod: 'client_secret_basic' });
   });
 
   it('keeps an issued secret and its method', async () => {
@@ -333,8 +352,13 @@ describe('token requests', () => {
     [-5, undefined],
     ['abc', undefined],
     [null, undefined],
+    [true, undefined],
+    [[5], undefined],
+    ['0x10', undefined],
+    ['1e3', undefined],
     ['3600', 1_000_000 + 3_600_000],
     [60, 1_000_000 + 60_000],
+    [1e300, 1_000_000 + 365 * 24 * 3_600_000],
   ])('expires_in %j gives expiresAt %j, never NaN', async (expiresIn, expected) => {
     const { fetchFn } = tokenAnswer({ access_token: 'at', expires_in: expiresIn });
     const tokens = await exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW);
@@ -351,6 +375,31 @@ describe('token requests', () => {
       expect((err as Error).message).toContain('invalid_grant');
       expect((err as Error).message).not.toContain('secret stuff');
     }
+  });
+
+  it.each([
+    ['a line break and a secret', 'invalid_grant\nrefresh_token=rt-SECRET-VALUE client_secret=s3'],
+    ['a very long value', 'x'.repeat(3000)],
+    ['a quote', 'bad"code'],
+  ])('leaves out an error code holding %s', async (_label, error) => {
+    const { fetchFn } = tokenAnswer({ error }, 400);
+    try {
+      await exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW);
+      throw new Error('expected a failure');
+    } catch (err) {
+      expect(err).toBeInstanceOf(McpOAuthError);
+      expect((err as Error).message).toBe('the token endpoint answered 400');
+    }
+  });
+
+  it.each(['Bearer', 'bearer', undefined])('accepts token_type %j', async (tokenType) => {
+    const { fetchFn } = tokenAnswer({ access_token: 'at', token_type: tokenType });
+    await expect(exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW)).resolves.toMatchObject({ accessToken: 'at' });
+  });
+
+  it.each(['mac', 'DPoP', 7])('refuses token_type %j', async (tokenType) => {
+    const { fetchFn } = tokenAnswer({ access_token: 'at', token_type: tokenType });
+    expect(await failure(exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW))).toBe('token_failed');
   });
 
   it('refuses an answer without an access token', async () => {
