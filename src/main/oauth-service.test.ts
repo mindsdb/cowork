@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import * as crypto from 'crypto';
 import * as http from 'http';
 // Renamed to avoid colliding with the `net` import from 'electron' below —
 // this one is the real loopback TCP socket used for the idle-connection
@@ -11,7 +12,13 @@ vi.mock('electron', () => ({
 }));
 
 import { shell, net } from 'electron';
-import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
+import {
+  authorizeInBrowser,
+  oauthConnect,
+  cancelCurrentOAuth,
+  CUSTOM_MCP_REDIRECT_PORT,
+  CUSTOM_MCP_REDIRECT_URI,
+} from './oauth-service';
 
 const OPTS = {
   authUrl: 'https://kc.example/realms/x/auth',
@@ -430,5 +437,80 @@ describe('oauthConnect', () => {
     await nextAuthUrl();
     cancelCurrentOAuth();
     await expect(second).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
+  });
+});
+
+describe('authorizeInBrowser', () => {
+  const BROWSER_OPTS = {
+    authUrl: 'https://auth.example.com/authorize',
+    clientId: 'client-1',
+    scopes: [],
+    extraAuthParams: { resource: 'https://mcp.example.com/mcp' },
+  };
+
+  it('returns the code, the PKCE verifier and the redirect URI, and exchanges nothing', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    const fetchMock = vi.fn();
+    net.fetch = fetchMock as unknown as typeof net.fetch;
+
+    const flow = authorizeInBrowser(BROWSER_OPTS);
+    const authUrl = await nextAuthUrl();
+    expect(authUrl.searchParams.get('resource')).toBe('https://mcp.example.com/mcp');
+    expect(authUrl.searchParams.has('scope')).toBe(false);
+    await hitCallback(authUrl, { code: 'the-code', state: authUrl.searchParams.get('state') as string });
+
+    const result = await flow;
+    expect(result).toMatchObject({ ok: true, code: 'the-code', redirectUri: authUrl.searchParams.get('redirect_uri') });
+    if (!result.ok) throw new Error('expected ok');
+    const challenge = crypto.createHash('sha256').update(result.codeVerifier).digest('base64url');
+    expect(authUrl.searchParams.get('code_challenge')).toBe(challenge);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps waiting through a callback with the wrong state', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    const flow = authorizeInBrowser(BROWSER_OPTS);
+    const authUrl = await nextAuthUrl();
+
+    const stray = await hitCallback(authUrl, { code: 'forged', state: 'not-the-state' });
+    expect(stray.status).toBe(400);
+    await hitCallback(authUrl, { code: 'real', state: authUrl.searchParams.get('state') as string });
+    await expect(flow).resolves.toMatchObject({ ok: true, code: 'real' });
+  });
+
+  it('times out when no callback arrives', async () => {
+    captureAuthUrl();
+    const result = await authorizeInBrowser({ ...BROWSER_OPTS, callbackTimeoutMs: 50 });
+    expect(result).toMatchObject({ ok: false });
+    expect(result.ok ? '' : result.reason).toMatch(/timed out/);
+  });
+
+  it('is cancelled by cancelCurrentOAuth', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    const flow = authorizeInBrowser(BROWSER_OPTS);
+    await nextAuthUrl();
+    cancelCurrentOAuth();
+    await expect(flow).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
+  });
+
+  it.each(['http://auth.example.com/authorize', 'file:///etc/passwd', 'not a url'])(
+    'refuses to open %s',
+    async (authUrl) => {
+      (shell.openExternal as ReturnType<typeof vi.fn>).mockClear();
+      expect(await authorizeInBrowser({ ...BROWSER_OPTS, authUrl })).toEqual({
+        ok: false,
+        reason: 'OAuth authorize URL must use https.',
+      });
+      expect(shell.openExternal).not.toHaveBeenCalled();
+    },
+  );
+
+  it('binds the custom MCP port on 127.0.0.1 when asked', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    const flow = authorizeInBrowser({ ...BROWSER_OPTS, redirectPort: CUSTOM_MCP_REDIRECT_PORT });
+    const authUrl = await nextAuthUrl();
+    expect(authUrl.searchParams.get('redirect_uri')).toBe(CUSTOM_MCP_REDIRECT_URI);
+    await hitCallback(authUrl, { code: 'c', state: authUrl.searchParams.get('state') as string });
+    await expect(flow).resolves.toMatchObject({ ok: true, redirectUri: CUSTOM_MCP_REDIRECT_URI });
   });
 });
