@@ -235,7 +235,8 @@
       "anotherFile": "別のファイルにも同じことをする",
       "makePage": "ページにする",
       "schedule": "スケジュールで実行する",
-      "scheduled": "「{title}」をスケジュールしました"
+      "scheduled": "「{title}」をスケジュールしました",
+      "scheduledDone": "スケジュール済み ✓"
     }
   },
   "composer": {

@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 
 const analytics = vi.hoisted(() => ({ trackNextStepsShown: vi.fn(), trackNextStepClicked: vi.fn() }));
 vi.mock('../../lib/analytics', () => analytics);
 
 import { NextSteps } from './NextSteps';
 import { NEXT_STEP, NEXT_STEP_PROMPTS } from '../../lib/nextSteps';
+import { markAnswerScheduled, resetScheduledAnswersForTests } from '../../lib/scheduledAnswers';
 
 const setup = (steps, extra = {}) => {
   const onSend = vi.fn();
@@ -18,6 +19,7 @@ const setup = (steps, extra = {}) => {
 
 describe('NextSteps', () => {
   beforeEach(() => {
+    resetScheduledAnswersForTests();
     analytics.trackNextStepsShown.mockClear();
     analytics.trackNextStepClicked.mockClear();
   });
@@ -74,5 +76,22 @@ describe('NextSteps', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Run this on a schedule' }));
     expect(analytics.trackNextStepClicked).toHaveBeenCalledWith({ step: NEXT_STEP.SCHEDULE, resultKind: 'research', position: 1 });
+  });
+
+  it('shows the schedule step as done once a schedule is saved from this answer', () => {
+    const { onSchedule } = setup([NEXT_STEP.MAKE_PAGE, NEXT_STEP.SCHEDULE]);
+    act(() => markAnswerScheduled('t1:m:a1'));
+    const done = screen.getByRole('button', { name: 'Scheduled ✓' });
+    expect(done).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Run this on a schedule' })).toBeNull();
+    fireEvent.click(done);
+    expect(onSchedule).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Turn it into a page' })).toBeEnabled();
+  });
+
+  it('keeps offering the schedule step under other answers', () => {
+    markAnswerScheduled('t1:m:other');
+    setup([NEXT_STEP.SCHEDULE]);
+    expect(screen.getByRole('button', { name: 'Run this on a schedule' })).toBeEnabled();
   });
 });

@@ -235,7 +235,8 @@
       "anotherFile": "对另一个文件做同样的事",
       "makePage": "做成一个页面",
       "schedule": "按计划运行",
-      "scheduled": "已安排“{title}”"
+      "scheduled": "已安排“{title}”",
+      "scheduledDone": "已安排 ✓"
     }
   },
   "composer": {

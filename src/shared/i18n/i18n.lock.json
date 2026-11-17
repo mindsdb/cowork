@@ -36855,6 +36855,40 @@
       "text": "550354873079"
     }
   },
+  "chat:chatView.nextSteps.scheduledDone": {
+    "de": {
+      "from": "54e3d0a559f5",
+      "text": "5d40a8a71212"
+    },
+    "es": {
+      "from": "54e3d0a559f5",
+      "text": "93d1c3b93f33"
+    },
+    "fr": {
+      "from": "54e3d0a559f5",
+      "text": "3a91edef7da2"
+    },
+    "it": {
+      "from": "54e3d0a559f5",
+      "text": "28277d017d5d"
+    },
+    "ja": {
+      "from": "54e3d0a559f5",
+      "text": "a0f81f6dc960"
+    },
+    "ko": {
+      "from": "54e3d0a559f5",
+      "text": "38bfe0a8a319"
+    },
+    "pt-BR": {
+      "from": "54e3d0a559f5",
+      "text": "3401dcffc36d"
+    },
+    "zh-CN": {
+      "from": "54e3d0a559f5",
+      "text": "69ce9ccb14a5"
+    }
+  },
   "chat:chatView.overloaded.body": {
     "de": {
       "from": "c56ef70d2b5d",

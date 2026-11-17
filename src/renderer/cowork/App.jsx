@@ -34,6 +34,7 @@ import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
 import ScheduleTaskModal from './components/schedule/ScheduleTaskModal';
 import { localFileAttachments } from './lib/localFileAttachments';
+import { createScheduleForAnswer } from './lib/scheduledAnswers';
 import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
@@ -6742,12 +6743,12 @@ function AppCore() {
   // The new-schedule form opened from a finished answer's next steps, over
   // the chat: { prompt, projectPath }, or null when closed.
   const [scheduleDraft, setScheduleDraft] = useState(null);
-  const openScheduleFromChat = ({ prompt, projectId }) => {
+  const openScheduleFromChat = ({ prompt, projectId, answerKey }) => {
     const project = projectId ? runnableProjects.find((p) => p.id === projectId) : null;
-    setScheduleDraft({ prompt, projectPath: project?.path || '' });
+    setScheduleDraft({ prompt, projectPath: project?.path || '', answerKey });
   };
   const handleScheduleFromChat = async (payload, _id, { runOnce = false } = {}) => {
-    const created = await handleCreateSchedule(payload);
+    const created = await createScheduleForAnswer(handleCreateSchedule, payload, scheduleDraft?.answerKey);
     toastManager.add({ type: 'success', title: i18n.t('chatView.nextSteps.scheduled', { ns: 'chat', title: payload.title }) });
     if (!runOnce || !created?.id) return;
     // Saved already: a failed trial run must not fail the save.

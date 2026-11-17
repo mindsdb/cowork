@@ -235,7 +235,8 @@
       "anotherFile": "Fazer o mesmo com outro arquivo",
       "makePage": "Transformar em uma página",
       "schedule": "Executar isso de forma agendada",
-      "scheduled": "“{title}” agendada"
+      "scheduled": "“{title}” agendada",
+      "scheduledDone": "Agendado ✓"
     }
   },
   "composer": {

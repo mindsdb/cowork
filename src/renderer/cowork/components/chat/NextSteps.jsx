@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import Ico from '../Icons';
 import { Button } from '../ui';
 import { useTranslation } from '../../../lib/i18n';
 import { trackNextStepClicked, trackNextStepsShown } from '../../lib/analytics';
 import { FILE_STEPS, NEXT_STEP, NEXT_STEP_PROMPTS } from '../../lib/nextSteps';
 import { localFileAttachments } from '../../lib/localFileAttachments';
+import { isAnswerScheduled, subscribeScheduledAnswers } from '../../lib/scheduledAnswers';
 
 const LABEL_KEYS = {
   [NEXT_STEP.OWN_DATA]: 'chatView.nextSteps.ownData',
@@ -29,6 +30,14 @@ export function NextSteps({ answerKey, resultKind, steps, onSend, onSchedule }) 
   const { t } = useTranslation('chat');
   const fileInputRef = useRef(null);
   const pendingStepRef = useRef(null);
+
+  // Once a schedule is saved from this answer, its step reads as done, so a
+  // second click can't make a duplicate.
+  const scheduled = useSyncExternalStore(
+    subscribeScheduledAnswers,
+    () => isAnswerScheduled(answerKey),
+    () => false,
+  );
 
   useEffect(() => {
     trackNextStepsShown(answerKey, { resultKind, steps });
@@ -60,12 +69,17 @@ export function NextSteps({ answerKey, resultKind, steps, onSend, onSchedule }) 
 
   return (
     <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={t('chatView.nextSteps.groupLabel')} data-testid="next-steps">
-      {steps.map((step, position) => (
+      {steps.map((step, position) => (step === NEXT_STEP.SCHEDULE && scheduled ? (
+        <Button key={step} variant="tinted" size="sm" disabled>
+          {ICONS[step]?.()}
+          {t('chatView.nextSteps.scheduledDone')}
+        </Button>
+      ) : (
         <Button key={step} variant="tinted" size="sm" onClick={() => run(step, position)}>
           {ICONS[step]?.()}
           {t(LABEL_KEYS[step])}
         </Button>
-      ))}
+      )))}
       <input
         ref={fileInputRef}
         type="file"

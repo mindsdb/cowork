@@ -37,7 +37,7 @@ describe('next steps under an answer', () => {
     const onScheduleFromChat = vi.fn();
     render(<ChatView task={taskWith(tableTurn)} onSend={vi.fn()} onScheduleFromChat={onScheduleFromChat} />);
     fireEvent.click(screen.getByRole('button', { name: 'Run this on a schedule' }));
-    expect(onScheduleFromChat).toHaveBeenCalledWith({ prompt: 'Find open grants for my NGO', projectId: 'p1' });
+    expect(onScheduleFromChat).toHaveBeenCalledWith({ prompt: 'Find open grants for my NGO', projectId: 'p1', answerKey: 'conv-a:m:a1' });
   });
 
   it('leaves the schedule step out where no schedule form is wired', () => {

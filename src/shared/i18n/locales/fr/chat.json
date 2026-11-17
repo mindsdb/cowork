@@ -235,7 +235,8 @@
       "anotherFile": "Faire de même avec un autre fichier",
       "makePage": "En faire une page",
       "schedule": "Exécuter selon un planning",
-      "scheduled": "« {title} » planifiée"
+      "scheduled": "« {title} » planifiée",
+      "scheduledDone": "Planifié ✓"
     }
   },
   "composer": {

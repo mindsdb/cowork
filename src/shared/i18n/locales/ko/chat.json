@@ -235,7 +235,8 @@
       "anotherFile": "다른 파일에도 똑같이 하기",
       "makePage": "페이지로 만들기",
       "schedule": "일정에 따라 실행하기",
-      "scheduled": "‘{title}’ 예약됨"
+      "scheduled": "‘{title}’ 예약됨",
+      "scheduledDone": "예약됨 ✓"
     }
   },
   "composer": {

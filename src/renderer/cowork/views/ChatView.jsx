@@ -2183,8 +2183,9 @@ export default function ChatView({
   // resurrects unanswered questions from persisted history, and a
   // click on one with no live run behind it would 404.
   inFlightSet,
-  // ({ prompt, projectId }) — opens the new-schedule form filled in with the
-  // message a finished answer replied to. Without it, no schedule step.
+  // ({ prompt, projectId, answerKey }) — opens the new-schedule form filled
+  // in with the message a finished answer replied to; a save marks that
+  // answer scheduled (lib/scheduledAnswers). Without it, no schedule step.
   onScheduleFromChat = null,
   // Pending composer redirects from App.jsx, keyed by conversation id:
   // {[taskId]: {text, attachments, bump}}. A question appeared while messages
@@ -4011,15 +4012,17 @@ export default function ChatView({
                       isFirstTurn: !task.hasMoreMessages && u >= 0 && u === firstUserIdx,
                       answer: m,
                     }, { canSchedule: !!onScheduleFromChat && !!scheduledPromptFor(userMessage) });
+                    const answerKey = `${task.id}:${messageKey(m, i)}`;
                     return (
                       <NextSteps
-                        answerKey={`${task.id}:${messageKey(m, i)}`}
+                        answerKey={answerKey}
                         resultKind={resultKind}
                         steps={steps}
                         onSend={onSend}
                         onSchedule={() => onScheduleFromChat?.({
                           prompt: scheduledPromptFor(userMessage),
                           projectId: task.projectId ?? null,
+                          answerKey,
                         })}
                       />
                     );
