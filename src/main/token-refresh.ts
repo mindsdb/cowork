@@ -4,6 +4,7 @@ import { getServerPort } from './server-process';
 import { getRefreshToken, setRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { authHeader } from './server-auth';
+import { appSecretHeader, serverMayReceiveTokens } from './app-secret';
 import { IPC } from '../shared/ipc-channels';
 import { describeFetchError } from './fetch-error';
 import { TOKEN_EXCHANGE_TIMEOUT_MS } from './oauth-service';
@@ -30,6 +31,18 @@ interface LoopState {
 }
 
 const loops = new Map<string, LoopState>();
+
+// Refreshes of one connection run one at a time: a rotating refresh token
+// (Notion) used twice revokes the whole grant, and a forced refresh on server
+// start can otherwise overlap a loop tick.
+const refreshChains = new Map<string, Promise<unknown>>();
+
+function serialized<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const run = (refreshChains.get(key) ?? Promise.resolve()).catch(() => {}).then(fn);
+  refreshChains.set(key, run);
+  run.finally(() => { if (refreshChains.get(key) === run) refreshChains.delete(key); }).catch(() => {});
+  return run;
+}
 
 // keychain:revoke adds here before deleting from keychain so an in-flight
 // tick sees the flag and exits without calling the token endpoint.
@@ -91,22 +104,59 @@ export function stopAllRefreshLoops(): void {
   loops.clear();
 }
 
-async function tick(engine: string, accountEmail: string, key: string): Promise<void> {
-  if (revokedConnections.has(key)) {
-    stopRefreshLoop(engine, accountEmail);
-    return;
+export function hasRefreshLoop(engine: string, accountEmail: string): boolean {
+  return loops.has(loopKey(engine, accountEmail));
+}
+
+/** Refreshes now, regardless of expiry, through the running loop for this
+ *  connection, and returns the new access token. Null when there is no loop
+ *  or the refresh did not produce a token. */
+export function refreshAccessTokenNow(
+  engine: string,
+  accountEmail: string,
+): Promise<{ access_token: string; expires_at: string } | null> {
+  const key = loopKey(engine, accountEmail);
+  return serialized(key, async () => {
+    if (revokedConnections.has(key)) return null;
+    const state = loops.get(key);
+    if (!state) return null;
+    return refresh(engine, accountEmail, key, state);
+  });
+}
+
+function tick(engine: string, accountEmail: string, key: string): Promise<void> {
+  return serialized(key, async () => {
+    if (revokedConnections.has(key)) {
+      stopRefreshLoop(engine, accountEmail);
+      return;
+    }
+
+    const state = loops.get(key);
+    if (!state) return;
+
+    const msUntilWindow = state.expiresAt - PRE_REFRESH_WINDOW_MS - Date.now();
+    diagnostic("main.token-refresh", "INFO", "token_refresh_tick_window_in_min", `[token-refresh] tick: ${key} window-in ${Math.round(msUntilWindow / 60000)}min`);
+    if (msUntilWindow > 0) return;
+
+    await refresh(engine, accountEmail, key, state);
+  });
+}
+
+async function refresh(
+  engine: string,
+  accountEmail: string,
+  key: string,
+  state: LoopState,
+): Promise<{ access_token: string; expires_at: string } | null> {
+  // Checked before the provider call: a rotating refresh token spent while
+  // the result cannot be delivered would be lost.
+  if (!serverMayReceiveTokens()) {
+    diagnostic("main.token-refresh", "INFO", "token_refresh_skipped_no_trusted_server", `[token-refresh] skipped for ${key}: no trusted server to deliver to`);
+    return null;
   }
-
-  const state = loops.get(key);
-  if (!state) return;
-
-  const msUntilWindow = state.expiresAt - PRE_REFRESH_WINDOW_MS - Date.now();
-  diagnostic("main.token-refresh", "INFO", "token_refresh_tick_window_in_min", `[token-refresh] tick: ${key} window-in ${Math.round(msUntilWindow / 60000)}min`);
-  if (msUntilWindow > 0) return;
-
   if (!OAUTH_CREDENTIALS[engine]) {
     diagnostic("main.token-refresh", "ERROR", "token_refresh_no_credentials_configured_for_engine", `[token-refresh] no credentials configured for engine: ${engine}`);
-    return;
+    return null;
   }
 
   let clientId: string;
@@ -118,14 +168,14 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
     );
     if (!credsRes.ok) {
       diagnostic("main.token-refresh", "ERROR", "token_refresh_credentials_endpoint_returned_for", `[token-refresh] credentials endpoint returned ${credsRes.status} for ${engine}`);
-      return;
+      return null;
     }
     const credsData = await credsRes.json() as { client_id: string; client_secret: string };
     clientId = credsData.client_id;
     clientSecret = credsData.client_secret;
   } catch (err) {
     diagnostic("main.token-refresh", "ERROR", "token_refresh_failed_to_fetch_credentials_for", `[token-refresh] failed to fetch credentials for ${engine}:`, err);
-    return;
+    return null;
   }
 
   const refreshToken = await getRefreshToken(engine, accountEmail);
@@ -135,14 +185,14 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
     // does), so once the access token has expired and the token is still
     // missing after a few ticks, the connection is dead. For any other
     // connector a missing token is a keychain miss, which the next tick retries.
-    if (!state.refreshTokenOptional || state.expiresAt > Date.now()) return;
+    if (!state.refreshTokenOptional || state.expiresAt > Date.now()) return null;
     state.missingRefreshTokenCount++;
     if (state.missingRefreshTokenCount >= MISSING_REFRESH_TOKEN_THRESHOLD) {
       await patchToken(engine, state.name, { status: 'needs_reconnect' });
       notifyRenderer({ engine, name: state.name, accountEmail, permanent: true });
       stopRefreshLoop(engine, accountEmail);
     }
-    return;
+    return null;
   }
   state.missingRefreshTokenCount = 0;
 
@@ -196,7 +246,7 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       await patchToken(engine, state.name, { status: 'needs_reconnect' });
       notifyRenderer({ engine, name: state.name, accountEmail, permanent: true });
       stopRefreshLoop(engine, accountEmail);
-      return;
+      return null;
     }
 
     if (!res.ok) {
@@ -212,7 +262,7 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
     // Re-check: a disconnect can land after the Google round-trip above but
     // before we write anything — without this, we could resurrect a keychain
     // entry (or vault token) for a connection the user just removed.
-    if (revokedConnections.has(key)) return;
+    if (revokedConnections.has(key)) return null;
 
     const newExpiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
     state.expiresAt = Date.now() + data.expires_in * 1000;
@@ -228,7 +278,7 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       expires_at: newExpiresAt,
     });
     diagnostic("main.token-refresh", "INFO", "token_refresh_refreshed_new_expiry", `[token-refresh] refreshed: ${key} new expiry ${newExpiresAt}`);
-
+    return { access_token: data.access_token, expires_at: newExpiresAt };
   } catch (err) {
     state.failureCount++;
     diagnostic("main.token-refresh", "ERROR", "token_refresh_refresh_failed_for_attempt", `[token-refresh] refresh failed for ${key} (attempt ${state.failureCount}):`, err);
@@ -237,6 +287,7 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       state.notifiedFailure = true;
       notifyRenderer({ engine, name: state.name, accountEmail, permanent: false });
     }
+    return null;
   }
 }
 
@@ -320,10 +371,11 @@ export function parseAppIdFromClientId(clientId: string): string {
 }
 
 async function patchToken(engine: string, name: string, updates: Record<string, string>): Promise<void> {
+  if (!serverMayReceiveTokens()) throw new Error('no trusted server');
   const url = `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}/token`;
   const res = await fetch(url, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...authHeader() },
+    headers: { 'Content-Type': 'application/json', ...authHeader(), ...appSecretHeader() },
     body: JSON.stringify(updates),
   });
   // 404 = connection was deleted while we were mid-refresh — discard silently

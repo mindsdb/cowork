@@ -659,8 +659,13 @@ describe('SkillsView with sharing in MindsHub mode', () => {
     it("shows who it's shared with in the Shared button's tooltip", async () => {
       const user = userEvent.setup();
       await renderPage([{ ...mine, access: { orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: ['u7', 'u8'] } }]);
-      await user.click(screen.getByText('weekly-report'));
-      await user.hover(screen.getByRole('button', { name: 'Shared' }));
+      // Sharing capabilities replace the initial flat list with sections.
+      // Wait for that list before clicking so the pointer sequence cannot
+      // target a row that disappears while capabilities finish loading.
+      const teamSection = await screen.findByRole('region', { name: 'My teams' });
+      await user.click(within(teamSection).getByRole('button', { name: 'weekly-report' }));
+      const actions = await screen.findByRole('group', { name: 'Skill actions' });
+      await user.hover(within(actions).getByRole('button', { name: 'Shared' }));
       expect(await screen.findByText('Shared with 1 team and 2 people')).toBeInTheDocument();
     });
   });

@@ -32,10 +32,9 @@ const SORT_OPTIONS = [
 export default function TasksView({
   tasks = [],
   projects = [],
-  // Schedules + flat sessionId→scheduleId index. When a task carries
-  // a `scheduledId` (or its id is keyed in the index), we collapse
-  // every run of that schedule into a single grouped row showing
-  // "Schedule: <title> · N runs". Click → open the latest run.
+  // Every run of a schedule collapses into one row ("<title> · N runs").
+  // A run is known by its `scheduledId`, or through this list when the
+  // server left that off (lib/scheduleRuns). Click → open the schedule.
   schedules = [],
   onOpenTask,
   onOpenProject,
@@ -67,8 +66,8 @@ export default function TasksView({
   }, [schedules]);
 
   const grouped = useMemo(
-    () => groupScheduleRuns(tasks),
-    [tasks],
+    () => groupScheduleRuns(tasks, schedules),
+    [tasks, schedules],
   );
 
   // Compute a row-shape representative for filtering / sorting that

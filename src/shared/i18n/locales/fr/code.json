@@ -27,11 +27,14 @@
       "branch": "Branche",
       "openOriginalFolder": "Ouvrir le dossier d’origine",
       "openIsolatedCopy": "Ouvrir la copie isolée",
-      "openOriginal": "Ouvrir l’original"
+      "openOriginal": "Ouvrir l’original",
+      "openYourFolder": "Ouvrir votre dossier"
     },
     "sourceChanged": {
       "title": "La source contenait des modifications locales au début de cette tâche",
-      "body": "Ces modifications sont restées dans le dossier source. {product} recherche les conflits avant d’appliquer."
+      "body": "Ces modifications sont restées dans le dossier source. {product} recherche les conflits avant d’appliquer.",
+      "inPlaceTitle": "Le dossier contenait déjà des modifications non commitées",
+      "inPlaceBody": "Elles apparaissent dans cette revue avec celles de l’agent, et un commit fait ici les inclut."
     },
     "reconcile": {
       "title": "Concilier les modifications d’origine",
@@ -61,13 +64,20 @@
       "create": "Créer",
       "commitLabel": "Commiter toutes les modifications de la tâche",
       "commitPlaceholder": "Décrivez la modification",
-      "commit": "Commiter"
+      "commit": "Commiter",
+      "branchLabelInPlace": "Créer une branche dans votre dossier et y basculer",
+      "commitLabelInPlace": "Commiter toutes les modifications de votre dossier"
     },
     "applyConfirm": {
       "title": "Appliquer les modifications au dossier source ?",
       "message": "Mettre à jour {target} avec les modifications revues de la tâche ? {product} s’arrêtera avant de modifier le moindre dossier en cas de conflit.",
       "confirm": "Appliquer",
       "error": "Impossible d’appliquer les modifications. Veuillez réessayer."
+    },
+    "inPlace": {
+      "title": "{count, plural, one {Cette tâche modifie directement votre dossier} other {Cette tâche modifie directement vos dossiers}}",
+      "body": "{count, plural, one {Ses modifications sont déjà dans votre dossier, il n’y a donc rien à appliquer.} other {Ses modifications sont déjà dans vos dossiers, il n’y a donc rien à appliquer.}} Les pull requests brouillons ne sont pas encore disponibles pour les tâches locales. Commitez ici, puis poussez et ouvrez une pull request avec vos outils habituels.",
+      "bodyWithoutGit": "{count, plural, one {Ses modifications sont déjà dans votre dossier, il n’y a donc rien à appliquer.} other {Ses modifications sont déjà dans vos dossiers, il n’y a donc rien à appliquer.}}"
     }
   },
   "fileReview": {
@@ -86,7 +96,8 @@
     "discardConfirm": {
       "title": "Annuler les modifications de ce fichier ?",
       "message": "{path} reviendra à la version actuelle de la tâche. Cette action est irréversible.",
-      "confirm": "Annuler les modifications"
+      "confirm": "Annuler les modifications",
+      "messageInPlace": "{path} reviendra à sa dernière version commitée dans votre dossier, y compris les modifications faites avant le début de cette tâche. Cette action est irréversible."
     }
   },
   "reviewFileCard": {
@@ -449,7 +460,9 @@
       "reasoning": "Raisonnement",
       "reasoningAriaLabel": "Niveau de raisonnement par défaut",
       "permissions": "Autorisations",
-      "permissionsAriaLabel": "Autorisations de code par défaut"
+      "permissionsAriaLabel": "Autorisations de code par défaut",
+      "workspace": "Espace de travail",
+      "workspaceAriaLabel": "Espace de travail par défaut des tâches"
     },
     "environment": {
       "title": "Environnement",
@@ -1037,16 +1050,16 @@
       "title": "Examiner et expliquer sans modifier les fichiers."
     },
     "supervised": {
-      "label": "Demander d’abord",
-      "title": "S’arrêter avant les commandes qui nécessitent votre approbation."
+      "label": "Demander l’approbation",
+      "title": "Toujours demander avant de modifier des fichiers hors de la tâche ou d’utiliser Internet."
     },
     "workspace": {
-      "label": "Auto dans l’espace de travail",
-      "title": "Travailler en autonomie dans la copie isolée de cette tâche."
+      "label": "Approuver pour moi",
+      "title": "Un réviseur approuve les demandes courantes et bloque celles qui sont risquées."
     },
     "fullAccess": {
       "label": "Accès complet",
-      "title": "Travailler en autonomie sans restriction d’accès aux fichiers."
+      "title": "Accès sans restriction à Internet et à tous les fichiers de votre ordinateur."
     }
   },
   "branchSelect": {
@@ -1497,7 +1510,9 @@
     "terminal": "Terminal",
     "reviewChanges": "Relire les modifications",
     "review": "Relire",
-    "taskActionsAriaLabel": "Actions de la tâche de code"
+    "taskActionsAriaLabel": "Actions de la tâche de code",
+    "localFolder": "{count, plural, one {Local · votre dossier} other {Local · vos # dossiers}}",
+    "openYourFolder": "Ouvrir votre dossier"
   },
   "terminal": {
     "status": {
@@ -1591,5 +1606,24 @@
     "desktopOnly": "Les pièces jointes de fichiers locaux sont disponibles dans l’application de bureau.",
     "ariaLabel": "Contexte joint",
     "removeAriaLabel": "Retirer {name}"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "Local",
+      "title": "Travailler dans le dossier lui-même. Une seule tâche locale s’exécute à la fois dans un dépôt."
+    },
+    "worktree": {
+      "label": "Worktree",
+      "title": "Travailler dans un worktree Git isolé, pour que les tâches puissent s’exécuter côte à côte."
+    },
+    "selectAriaLabel": "Où la tâche travaille",
+    "menuLabel": "Espace de travail",
+    "default": {
+      "label": "Par défaut",
+      "title": "Laisser {product} choisir selon le dossier et l’ordinateur de chaque tâche."
+    },
+    "initializeGit": "Initialiser Git",
+    "initializeFailed": "Impossible d’initialiser Git. Réessayez.",
+    "unavailable": "Aucun mode d’espace de travail n’est disponible pour ce dossier."
   }
 }

@@ -33,6 +33,8 @@ import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { analyticsEnv, antonDotenvNames, usageEventsOn } from './analytics-env';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
+import { APP_CHALLENGE_HEADER, APP_SECRET_STDIN_ENV, appSecretStdinLine, clearAppSecret, judgeServer, newAppChallenge, newAppSecret, serverTrust, setServerTrust } from './app-secret';
+import { isMcpAccessModeMigrated } from './keychain-service';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
 import {
@@ -63,13 +65,13 @@ export const SERVER_STOP_CEILING_MS = PREPARE_SHUTDOWN_TIMEOUT_MS + SIGTERM_GRAC
 const SERVER_HOST = '127.0.0.1';
 const DEV_OAUTH_ENV_FILE = path.join(os.homedir(), '.cowork-dev', '.env');
 
-// ENG-439: the sidecar binds a loopback port, which is machine-global, not
+// The sidecar binds a loopback port, which is machine-global, not
 // per-OS-user. With fast user switching, whichever user launches first owns
 // the port and every other user's app would adopt it — driving the first
 // user's server and reading/writing their data. Two guards close that:
 //   1. A per-OS-user port so two users don't land on the same port.
-//   2. An owner token echoed at /health — we adopt a running server only
-//      when its owner matches the token we generated.
+//   2. An owner token echoed at /health — a running server whose owner
+//      matches ours is stopped and replaced; any other is never touched.
 // Per-user port band: 26866..(26866+PORT_SPAN-1), clear of common dev ports.
 const PORT_SPAN = 2000;
 
@@ -90,10 +92,10 @@ function serverOwnerSecret(): string {
   }
   const token = crypto.randomBytes(16).toString('hex');
   try {
-    // Owner-only perms (0700 dir / 0600 file): the token gates server adoption
-    // (ENG-439). macOS home dirs are commonly traversable, so a readable token
-    // would let another OS user set the same COWORK_SERVER_OWNER and
-    // deliberately adopt our server — defeating the identity check. chmod after
+    // Owner-only perms (0700 dir / 0600 file): the token decides which
+    // servers count as ours. macOS home dirs are commonly
+    // traversable, so a readable token would let another OS user pass their
+    // server off as ours, or have ours routed around as foreign. chmod after
     // write pins the mode regardless of umask.
     fs.mkdirSync(coworkHome(), { recursive: true, mode: 0o700 });
     fs.writeFileSync(tokenPath, token + '\n', { encoding: 'utf-8', mode: 0o600 });
@@ -109,7 +111,7 @@ function serverOwnerSecret(): string {
 // bound to the account AND the organization whose stores it was started on.
 // `orgSegment` is null for the organization that owns the account root, so that
 // session's token is exactly what it was before organizations were partitioned
-// and an existing sidecar is still adopted across the upgrade.
+// and an existing sidecar is still recognised as ours across the upgrade.
 function serverOwnerToken(accountId?: string | null, orgSegment?: string | null): string {
   const base = accountOwnerToken(serverOwnerSecret(), accountId ?? null);
   if (!orgSegment) return base;
@@ -119,7 +121,7 @@ function serverOwnerToken(accountId?: string | null, orgSegment?: string | null)
 // Which organization subtree the session's stores sit in, or null when they are
 // the account root's own. The path, not the recorded id: a session with no
 // record yet and the organization that owns the root are the same stores, and
-// stamping them alike is what keeps an un-partitioned install adoptable.
+// stamping them alike is what keeps an un-partitioned install's server ours.
 function currentOrgSegment(): string | null {
   const account = accountDataRoot();
   const stores = currentOrgStoreRoot();
@@ -131,8 +133,8 @@ function currentOrgSegment(): string | null {
  *
  * Binding the token to the account means our own sidecar left over from a
  * previous account no longer matches the current one — but it is still ours, and
- * the branch for a genuinely foreign owner deliberately neither adopts nor reaps
- * it. Left there, that orphan keeps the preferred port while we move to a random
+ * the branch for a genuinely foreign owner deliberately never touches it.
+ * Left there, that orphan keeps the preferred port while we move to a random
  * one, and the renderer, whose port is a boot-time snapshot, would keep reading
  * the previous account's data from it. So: foreign owners move us off the port,
  * our own stale ones get reaped by the normal start path.
@@ -148,7 +150,7 @@ function isOwnerTokenOurs(owner: string): boolean {
 
 // Which account's stores this session uses, or null for the default root. Read
 // from disk each time so that during a switch the running server (still on the
-// old account) reads as foreign and is never adopted. Side-effect free, so the
+// old account) reads as foreign and is never touched. Side-effect free, so the
 // probe paths below and the spawn path agree without either writing a claim.
 function currentAccountRoot(): string | null {
   const home = coworkHome();
@@ -165,11 +167,11 @@ function currentOrgStoreRoot(): string {
 }
 
 // Deterministic per-OS-user, per-build-kind port. Stable across launches for a
-// given user+build (so we still adopt our OWN crash-orphan), distinct between
+// given user+build (so we still find and replace our OWN crash-orphan), distinct between
 // users (so one user's app can't land on another's server) AND between builds
 // (prod/preview/stable no longer share ~/.cowork, so they mustn't share a port
 // either — otherwise a non-prod build would perpetually route around prod's
-// server onto a fresh random port and never re-adopt its own orphan). Only
+// server onto a fresh random port and never reap its own orphan). Only
 // used in the packaged app: dev/web reach the server through Vite's proxy /
 // same-origin, which targets the fixed COWORK_SERVER_PORT||26866.
 function preferredServerPort(): number {
@@ -183,7 +185,7 @@ function preferredServerPort(): number {
     key = `home:${os.homedir()}`;
   }
   // Non-prod builds get their own port band. Prod's key is left untouched so an
-  // existing prod install still lands on its historical port and adopts the
+  // existing prod install still lands on its historical port and replaces the
   // orphan a pre-upgrade build may have left behind.
   const kind = buildKind();
   if (kind !== 'prod') key = `${key}|kind:${kind}`;
@@ -206,7 +208,7 @@ function findFreePort(): Promise<number> {
 }
 
 // Which account root the RUNNING sidecar was started on: an account id, or null
-// for the default root. `undefined` means we have not started or adopted one in
+// for the default root. `undefined` means we have not started one in
 // this process. Compared against the current resolution rather than diffing the
 // record, because the record is written at the auth choke point and so already
 // names the new account by the time a sign-in asks whether to restart.
@@ -228,7 +230,7 @@ let _startingOrgStoreRoot: string | undefined;
 let _runningAccountDataRoot: string | undefined;
 let _startingAccountDataRoot: string | undefined;
 
-// Whether the last sidecar this process started or adopted clears a store's
+// Whether the last sidecar this process started clears a store's
 // pending credential clear at startup, or null before one has answered. Kept
 // across a stop, and on disk for a run whose sidecar never comes up.
 let _serverClearsPendingCredentials: boolean | null = null;
@@ -403,7 +405,7 @@ function writeLog(text: string): void {
 // launcher and leaves python importing, unsupervised. It then binds our port
 // behind the app's back: the app has no handle on it, its own
 // isServerRunning() says nothing is up, and only a fresh app launch recovers
-// via the adopt path. `taskkill /T` walks the tree, which is the whole point.
+// by reaping it. `taskkill /T` walks the tree, which is the whole point.
 //
 // /F (force) is used for the graceful phase too, because on Windows there is
 // no polite form to try. Not because the sidecar can't answer one — uvicorn
@@ -550,18 +552,24 @@ function sleep(ms: number): Promise<void> {
 // Single-shot /health probe that also reads the `owner` token and runtime
 // capabilities. HTTP health alone is not compatibility: an older published
 // sidecar can answer this endpoint while returning 404 for every Code Mode
-// route. Requiring the capability here prevents both adopting that process and
-// declaring an incompatible freshly-spawned binary ready.
+// route. Requiring the capability here prevents declaring an incompatible
+// freshly-spawned binary ready.
 type HealthProbe = {
   state: 'unreachable' | 'compatible' | 'incompatible';
   owner: string | null;
   clearsPendingCredentials: boolean;
+  /** `app_secret_protocol` and `app_secret_proof` as /health sent them. */
+  appSecretProtocol?: unknown;
+  appSecretProof?: unknown;
 };
 
-function probeHealthOnce(port: number, timeoutMs: number): Promise<HealthProbe> {
+function probeHealthOnce(port: number, timeoutMs: number, challenge?: string): Promise<HealthProbe> {
   return new Promise((resolve) => {
     const req = http.get(
-      { hostname: SERVER_HOST, port, path: '/api/v1/health/', timeout: timeoutMs },
+      {
+        hostname: SERVER_HOST, port, path: '/api/v1/health/', timeout: timeoutMs,
+        ...(challenge ? { headers: { [APP_CHALLENGE_HEADER]: challenge } } : {}),
+      },
       (res) => {
         if (res.statusCode !== 200) { res.resume(); resolve({ state: 'unreachable', owner: null, clearsPendingCredentials: false }); return; }
         let body = '';
@@ -570,14 +578,18 @@ function probeHealthOnce(port: number, timeoutMs: number): Promise<HealthProbe> 
           let owner: string | null = null;
           let supportsCoding = false;
           let clearsPendingCredentials = false;
+          let appSecretProtocol: unknown;
+          let appSecretProof: unknown;
           try {
-            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown } | null;
+            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown; app_secret_protocol?: unknown; app_secret_proof?: unknown } | null;
             owner = payload?.owner ?? null;
             supportsCoding = Array.isArray(payload?.capabilities) && payload.capabilities.includes('coding');
             clearsPendingCredentials = Array.isArray(payload?.capabilities)
               && payload.capabilities.includes(PENDING_CLEAR_CAPABILITY);
+            appSecretProtocol = payload?.app_secret_protocol;
+            appSecretProof = payload?.app_secret_proof;
           } catch { /* non-JSON */ }
-          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials });
+          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials, appSecretProtocol, appSecretProof });
         });
       },
     );
@@ -619,14 +631,14 @@ export function fetchServerVersions(timeoutMs = 800): Promise<{ server: string |
 }
 
 // True when resolveServerPort() found a healthy server that proved to be
-// ours; startServer() re-verifies and adopts it instead of spawning.
+// ours; startServer() re-verifies it and replaces it.
 let _adoptPlanned = false;
 let _portResolved = false;
 
-// Decide the port (and whether we can adopt an already-running server)
+// Decide the port (and whether our own server is still running there)
 // BEFORE the window is created, so the resolved port can be handed to the
-// renderer. ENG-439: we adopt only a server whose /health owner matches our
-// own token; a foreign server holding our preferred port pushes us to a free
+// renderer. A server whose /health owner matches our token is replaced by
+// startServer; a foreign server holding our preferred port pushes us to a free
 // one. Bounded + best-effort — any failure falls back to the preferred port
 // so this can never block boot. Idempotent.
 export async function resolveServerPort(): Promise<number> {
@@ -641,21 +653,21 @@ export async function resolveServerPort(): Promise<number> {
 
     const probe = await probeHealthOnce(preferred, 700);
     if (probe.owner && !isOwnerTokenOurs(probe.owner)) {
-      // Owned by a DIFFERENT install (another OS user) — never adopt or touch
+      // Owned by a DIFFERENT install (another OS user) — never touch
       // it, compatible or not: reaping it would fail with EPERM and the spawn
       // with EADDRINUSE. Move to a free port we can own.
       const free = await findFreePort();
       if (free) serverPort = free;
       diagnostic("main.server-process", "INFO", "server_port_held_by_a_foreign_server_using_instead", `[server] port ${preferred} held by a foreign server; using ${serverPort} instead`);
     } else if (probe.state === 'compatible' && probe.owner) {
-      _adoptPlanned = true; // our own orphan — startServer will re-verify + adopt
+      _adoptPlanned = true; // our own orphan — startServer will re-verify + replace
     }
-    // else: not healthy, healthy but owner-less (a pre-ENG-439 server — on a
+    // else: not healthy, healthy but owner-less (a server from before owner tokens — on a
     // per-user port that's almost certainly our own from before this change),
     // or our own but too old. Keep the preferred port; startServer reaps
     // whatever's there and respawns. A cross-user kill can't succeed (different
     // OS user → EPERM), so the worst case there is a safe bind failure, never
-    // adopting a foreign server.
+    // using a foreign server.
   } catch (err) {
     diagnostic("main.server-process", "WARNING", "server_resolveserverport_failed_falling_back_to_preferred_port", '[server] resolveServerPort failed; falling back to preferred port', err);
   } finally {
@@ -663,6 +675,18 @@ export async function resolveServerPort(): Promise<number> {
   }
   return serverPort;
 }
+
+// An unreadable marker counts as set, so a keychain failure cannot open the
+// legacy path to a server that does not prove the secret.
+async function accessModesMigrated(storeRoot: string): Promise<boolean> {
+  try {
+    return await isMcpAccessModeMigrated(storeRoot);
+  } catch {
+    return true;
+  }
+}
+
+const UNTRUSTED_SERVER_ERROR = 'The backend did not prove it was started by this app, so it was stopped.';
 
 export interface StartServerResult {
   ok: boolean;
@@ -718,13 +742,17 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
 
 async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: number }): Promise<StartServerResult> {
   if (serverStarted) {
-    // An adopted server has no ChildProcess handle whose exit event can
-    // invalidate our state. Re-probe it when the renderer asks us to ensure
-    // the backend is running; otherwise a dead adopted process leaves every
-    // recovery attempt as a no-op.
+    // A server whose launcher handed off and exited has no ChildProcess handle
+    // whose exit event can invalidate our state. Re-probe it when the renderer
+    // asks us to ensure the backend is running; otherwise a dead one leaves
+    // every recovery attempt as a no-op.
+    // Whatever answers there now must still prove the secret, since the
+    // process we spawned is gone and the port could be someone else's.
     if (!_adoptedExternal) return { ok: true, port: serverPort };
-    const probe = await probeHealthOnce(serverPort, 700);
-    if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
+    const challenge = newAppChallenge();
+    const probe = await probeHealthOnce(serverPort, 700, challenge);
+    if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())
+      && judgeServer(probe, challenge, await accessModesMigrated(_runningOrgStoreRoot ?? currentOrgStoreRoot())) === serverTrust()) {
       return { ok: true, port: serverPort };
     }
     diagnostic("main.server-process", "WARNING", "server_adopted_instance_on_port_is_no_longer_healthy_starting_a_replacement", `[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
@@ -744,35 +772,24 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     await resolveServerPort();
   }
 
-  // Pre-flight adoption — adopt ONLY our own already-running server. The most
-  // common cause is an orphan python from a prior session that didn't get
-  // reaped on quit; re-verify via /health that the owner token is ours before
-  // adopting (a foreign server was already routed around in resolveServerPort).
-  let refusedAdoption = false;
+  // Our own server still running from an earlier app process (an orphan that
+  // was not reaped on quit) is replaced, never adopted. This process can only
+  // know the app secret of a server it spawned, and adopting one without a
+  // secret would let whatever answers with our owner token (readable on disk)
+  // receive MCP access tokens in legacy mode. A foreign server was already
+  // routed around in resolveServerPort.
+  let refusedAdoption: 'credential-clear' | 'not-spawned' | null = null;
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
     const ours = probe.state === 'compatible'
       && probe.owner !== null
       && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment());
-    // A process that is already running never re-runs its startup, so it would
-    // keep serving keys a sign-out marked for clearing. Replace it instead.
     if (ours && hasPendingCredentialClear(currentOrgStoreRoot())) {
-      refusedAdoption = true;
+      refusedAdoption = 'credential-clear';
       diagnostic("main.server-process", "INFO", "server_not_adopting_the_running_instance_its_store_has_a_pending_credential_clear", '[server] not adopting the running instance: its store has a pending credential clear');
     } else if (ours) {
-      serverStarted = true;
-      _adoptedExternal = true;
-      // Adoption only happens on an owner-token match, and the token is bound to
-      // the account, so an adopted server is on this session's root by definition.
-      _runningAccountRoot = currentAccountRoot();
-      _runningAccountDataRoot = accountDataRoot();
-      _runningOrgStoreRoot = currentOrgStoreRoot();
-      noteServerClearsPendingCredentials(probe.clearsPendingCredentials);
-      lastStartError = null;
-      lastStartErrorKind = null;
-      lastPortHolderPid = null;
-      diagnostic("main.server-process", "INFO", "server_adopted_our_own_existing_instance_on_port", `[server] adopted our own existing instance on port ${serverPort}`);
-      return { ok: true, port: serverPort };
+      refusedAdoption = 'not-spawned';
+      diagnostic("main.server-process", "INFO", "server_replacing_a_running_instance_this_process_did_not_spawn", '[server] replacing a running instance this app process did not spawn');
     }
   }
 
@@ -791,8 +808,10 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   if (refusedAdoption) {
     const holders = await findPortHolders(serverPort);
     if (holders.length > 0) {
-      lastStartError = `The previous Cowork server on port ${serverPort} could not be stopped, so its saved keys could not be cleared.`;
-      lastStartErrorKind = 'credential-clear';
+      lastStartError = refusedAdoption === 'credential-clear'
+        ? `The previous Cowork server on port ${serverPort} could not be stopped, so its saved keys could not be cleared.`
+        : `The previous Cowork server on port ${serverPort} could not be stopped.`;
+      lastStartErrorKind = refusedAdoption === 'credential-clear' ? 'credential-clear' : null;
       lastPortHolderPid = holders[0];
       diagnostic("main.server-process", "ERROR", "server_pid", `[server] ${lastStartError} (pid ${holders.join(', ')})`);
       return { ok: false, reason: lastStartError, port: serverPort };
@@ -936,11 +955,14 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // COWORK_HOME is set at all.
       ...accountEnv,
       ...orgEnv,
-      // ENG-439: stamp the server we spawn with our owner token so a future
-      // launch (ours) can tell this server is ours and adopt it, while another
-      // OS user's app sees a mismatch and never adopts it. Bound to the account
+      // The app secret itself goes over stdin below: cell code inherits this
+      // environment, so only the flag may appear here.
+      [APP_SECRET_STDIN_ENV]: '1',
+      // Stamp the server we spawn with our owner token so a future
+      // launch (ours) can tell this server is ours and replace it, while another
+      // OS user's app sees a mismatch and never touches it. Bound to the account
       // this server is started for, so an orphan still holding a previous
-      // account's stores reads as foreign rather than being adopted.
+      // account's stores reads as foreign.
       COWORK_SERVER_OWNER: ownerAtSpawn,
       /* cowork-server's owner setting has no prefix, so an OWNER variable in
          this app's environment or in the account dotenv wins over the value
@@ -966,12 +988,19 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // the grandchild python survives, holding the port.
     openLogStream();
 
+    const appSecret = newAppSecret();
     const child = spawn(spawnCmd, spawnArgs, {
       cwd: spawnCwd,
       env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
       detached: process.platform !== 'win32',
     });
+    // One line, then EOF, so processes the server starts inherit a closed stdin
+    // rather than a pipe that could still carry the secret.
+    child.stdin?.on('error', (err) => {
+      diagnostic("main.server-process", "WARNING", "server_app_secret_stdin_write_failed", err);
+    });
+    child.stdin?.end(appSecretStdinLine(appSecret));
 
     child.stdout.on('data', (d) => {
       const text = d.toString();
@@ -1010,6 +1039,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       diagnostic("main.server-process", "ERROR", "cowork_server_spawn_failed", err);
     });
     child.on('exit', (code, signal) => {
+      const wasCurrent = serverProcess === child;
       childExited = true;
       childExitCode = code;
       serverStarted = false;
@@ -1022,6 +1052,10 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // panel instead of a calm "you stopped it" message.
       lastStopIntentional = _stopRequested;
       _stopRequested = false;
+      // Until a new server proves the secret, whatever takes the port must get
+      // no tokens. A launcher that hands off exits before trust is set, so
+      // this changes nothing for it.
+      if (wasCurrent && !lastStopIntentional) setServerTrust('none');
       if (!lastStopIntentional && code !== 0) {
         // A signal death has no numeric exit code. Keep its terminal evidence
         // even when the backend could not write a diagnostic before it died.
@@ -1046,9 +1080,13 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     const waitStartedAt = Date.now();
     let step = decideStartWait({ healthy: false, spawnError, exited: childExited, elapsedMs: 0, capMs: startCapMs });
     let clearsPendingCredentials = false;
+    let lastProbe: HealthProbe | null = null;
+    let lastChallenge = '';
     while (step.action === 'poll') {
       await sleep(HEALTH_POLL_INTERVAL_MS);
-      const probe = await probeHealthOnce(serverPort, HEALTH_PROBE_TIMEOUT_MS);
+      lastChallenge = newAppChallenge();
+      const probe = await probeHealthOnce(serverPort, HEALTH_PROBE_TIMEOUT_MS, lastChallenge);
+      lastProbe = probe;
       clearsPendingCredentials = probe.clearsPendingCredentials;
       /* Only an answer naming the owner this child was stamped with can make
          the start ready. Anything else on the port (no owner, or another one)
@@ -1071,20 +1109,34 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       });
     }
 
-    if (step.action === 'fail') {
-      const elapsedMs = Date.now() - waitStartedAt;
-      // The one boot death with its own remedy: a sign-out's credential clear
-      // that the backend refused to start past.
-      const kind = step.kind === 'exited' && recentStderr.includes(PENDING_CLEAR_FAILURE_LOG)
-        ? 'credential-clear'
-        : step.kind;
-      lastStartErrorKind = kind;
-      lastStartError = startFailureMessage({
-        kind,
-        exitCode: childExitCode,
-        spawnError,
-        elapsedMs,
-      });
+    // The answer that made the start ready must prove the secret, or once
+    // access modes have left the vault file it gets nothing and is stopped.
+    let untrusted = false;
+    if (step.action !== 'fail' && lastProbe) {
+      const verdict = judgeServer(lastProbe, lastChallenge, await accessModesMigrated(orgStoreRootAtSpawn));
+      setServerTrust(verdict);
+      untrusted = verdict === 'untrusted';
+    }
+
+    if (step.action === 'fail' || untrusted) {
+      if (step.action === 'fail') {
+        const elapsedMs = Date.now() - waitStartedAt;
+        // The one boot death with its own remedy: a sign-out's credential clear
+        // that the backend refused to start past.
+        const kind = step.kind === 'exited' && recentStderr.includes(PENDING_CLEAR_FAILURE_LOG)
+          ? 'credential-clear'
+          : step.kind;
+        lastStartErrorKind = kind;
+        lastStartError = startFailureMessage({
+          kind,
+          exitCode: childExitCode,
+          spawnError,
+          elapsedMs,
+        });
+      } else {
+        lastStartErrorKind = null;
+        lastStartError = UNTRUSTED_SERVER_ERROR;
+      }
       diagnostic("main.server-process", "ERROR", "server_start_failed_on_port", `[server] start failed on port ${serverPort}: ${lastStartError}`);
       // Reap the spawned child instead of leaving it as a zombie
       // pinning the port. If we don't, every failed restart leaks a
@@ -1108,6 +1160,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
           await Promise.race([exited, sleep(1_000)]);
         }
       }
+      // The untrusted answer may have come from a handed-off server or from
+      // another process that took the port, so reap by port as well.
+      if (untrusted) await killProcessOnPort(serverPort);
       // Whatever still holds the port after the reap is a real, nameable
       // cause the user can act on — as opposed to the panel's old guess that
       // "a stale process" might be involved.
@@ -1139,9 +1194,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // still holds the previous account's.
     resetServerAuthTokenCache();
     // /health answered from a server whose launcher has already exited — the
-    // process handed off and there is no child left to supervise. Track it the
-    // same way as a server we adopted, so isServerRunning() doesn't call a
-    // healthy backend dead and stopServer() still reaps it by port.
+    // process handed off and there is no child left to supervise. Track it
+    // with _adoptedExternal, so isServerRunning() doesn't call a healthy
+    // backend dead and stopServer() still reaps it by port.
     if (childExited) _adoptedExternal = true;
     // How long the start actually took. Only failures used to say anything,
     // which meant a slow-but-successful boot — the case this budget exists for
@@ -1207,12 +1262,13 @@ async function stopServerUnlocked(): Promise<void> {
   // Allow the next start to re-resolve the port (re-derive the per-user port
   // and re-check whether anything is running there). ENG-439.
   _portResolved = false;
+  clearAppSecret();
   const proc = serverProcess;
   if (!proc) {
     if (_adoptedExternal) await prepareCodingTasksForShutdown();
     serverStarted = false;
     lastStopIntentional = true;
-    // If we adopted an external server (no child handle), try to kill
+    // A handed-off server has no child handle, so kill
     // whatever is listening on the port so the next launch gets a clean
     // slate. Without this, the orphan survives app quit and blocks the
     // port indefinitely.
@@ -1289,16 +1345,17 @@ export async function forceReapServer(): Promise<void> {
   if (serverProcess === proc) serverProcess = null;
 }
 
-// Track whether we adopted an external server (no child process to manage)
-// vs spawned our own. When adopted, serverProcess is expected to be null.
+// True for a server we spawned whose launcher handed off and exited, leaving
+// no child process to manage; serverProcess is then null. The name predates
+// the rule that a running server is never adopted.
 let _adoptedExternal = false;
 
 // True once /health has confirmed the python is responsive.
 // When we spawned the child ourselves, also checks that the process
 // handle is still alive — prevents returning true after an unexpected
 // crash that nulled serverProcess via the exit handler.
-// When we adopted an externally-started server (no child to track),
-// trusts the serverStarted flag since we don't own the process.
+// When the launcher handed off (no child to track), trusts the
+// serverStarted flag.
 export function isServerRunning(): boolean {
   if (!serverStarted) return false;
   if (_adoptedExternal) return true;
@@ -1313,7 +1370,7 @@ export function isServerStarting(): boolean {
 }
 
 /**
- * The port of the server this app started or adopted, else null. Null during a
+ * The port of the server this app started, else null. Null during a
  * start too: until the wait reads the owner this child was stamped with at
  * /health, whatever answers the port may be another process, so nothing the
  * sidecar keeps (the in-app browser's address and key) goes there. The started
@@ -1326,7 +1383,7 @@ export function runningServerPort(): number | null {
 /**
  * The store a sidecar is running or starting on, or null when there is none.
  * Read only through the live flags, because the recorded root outlives a stop
- * of an adopted or handed-off sidecar.
+ * of a handed-off sidecar.
  */
 export function activeStoreRoot(): string | null {
   if (isServerRunning()) return _runningOrgStoreRoot ?? null;
