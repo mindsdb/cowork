@@ -15,9 +15,10 @@ let nextKey = 0;
 
 /**
  * Registers `read`, which returns `{ title, type, text }` for an artifact on
- * screen now (or null), until the returned function is called.
+ * screen now (or null), until the returned function is called. `reading`
+ * says its text is still being read, when it has none yet.
  *
- * @param {() => ({ title?: string, type?: string, text?: string } | null)} read
+ * @param {() => ({ title?: string, type?: string, text?: string, reading?: boolean } | null)} read
  * @returns {() => void}
  */
 export function showArtifactOnScreen(read) {
@@ -54,13 +55,17 @@ export function htmlText(html) {
   return doc.body?.textContent || '';
 }
 
+/* What the heading says of an artifact with no text yet: one whose text is
+   still being read can be asked about again in a moment. */
+const noText = (a) => (a.reading ? 'Its text is still being read: ask again in a moment.' : 'No text of it can be read.');
+
 /** The snapshot's lines for the artifacts on screen: a heading and the excerpt, in short lines. */
 export function describeArtifacts(artifacts) {
   const lines = [];
   (artifacts || []).forEach((a) => {
     const excerpt = artifactExcerpt(a.text);
     const type = a.type ? ` (${a.type})` : '';
-    lines.push(`Open artifact: "${a.title || 'Untitled'}"${type}. ${excerpt ? 'The start of its visible text:' : 'No text of it can be read.'}`);
+    lines.push(`Open artifact: "${a.title || 'Untitled'}"${type}. ${excerpt ? 'The start of its visible text:' : noText(a)}`);
     for (let i = 0; i < excerpt.length; i += EXCERPT_LINE_CHARS) lines.push(`| ${excerpt.slice(i, i + EXCERPT_LINE_CHARS)}`);
   });
   return lines;

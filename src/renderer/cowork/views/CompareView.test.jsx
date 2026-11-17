@@ -21,9 +21,9 @@ vi.mock('../../platform/host', () => ({
 // Base UI pickers are not drivable in happy-dom; a native select stands in so
 // the test exercises what the screen does with a pick, not the popup.
 vi.mock('../components/ModelSelect.jsx', () => ({
-  default: ({ value, onValueChange, options, modelEfforts, effort, onEffortChange }) => (
+  default: ({ value, onValueChange, options, modelEfforts, effort, onEffortChange, onOpenChange }) => (
     <span>
-      <select aria-label="model" value={value} onChange={(e) => onValueChange(e.target.value)}>
+      <select aria-label="model" value={value} onFocus={() => onOpenChange?.(true)} onChange={(e) => onValueChange(e.target.value)}>
         <option value="">—</option>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -269,6 +269,15 @@ describe('CompareView', () => {
     }
   });
 
+  it('re-checks model availability when a side picker opens', async () => {
+    mockHistory([]);
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    render(<CompareView models={models} modelMeta={{ modelEnabled: {}, onRefresh }} projects={projects} />);
+    const [modelA] = await screen.findAllByLabelText('model');
+    fireEvent.focus(modelA);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
   it('will not start a comparison a side could not pay for', async () => {
     mockHistory([]);
     render(withUsage(usage(EMPTY), <CompareView models={models} projects={projects} />));
@@ -280,6 +289,37 @@ describe('CompareView', () => {
     // Both the card's send arrow and the button below it.
     expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
     expect(screen.getAllByRole('button', { name: /Add funds/ }).length).toBeGreaterThan(0);
+  });
+
+  it('inside the mobile app, explains the blocked start without offering to add funds', async () => {
+    hostMock.isMobileShell = true;
+    try {
+      mockHistory([]);
+      render(withUsage(usage(EMPTY), <CompareView models={models} projects={projects} />));
+      fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+      const [modelA, modelB] = screen.getAllByLabelText('model');
+      fireEvent.change(modelA, { target: { value: 'kimi' } });
+      fireEvent.change(modelB, { target: { value: 'qwen' } });
+      expect(screen.getByText('Balance empty')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /Add funds/ })).toBeNull();
+      expect(document.body.textContent).not.toMatch(/add funds/i);
+    } finally {
+      hostMock.isMobileShell = false;
+    }
+  });
+
+  it('inside the mobile app, a held follow-up offers no Add funds', async () => {
+    hostMock.isMobileShell = true;
+    try {
+      const ranOut = [{ role: 'user', content: 'p', created_at: '2026-09-23T10:00:00Z' }, { role: 'error', code: 'token_limit', content: 'out' }];
+      await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', ranOut) }, usage(EMPTY));
+      const held = screen.getByRole('status', { name: 'Follow-up message' });
+      expect(within(held).queryByRole('button', { name: 'Add funds' })).toBeNull();
+      expect(held).toHaveTextContent('stopped because the balance ran out');
+      expect(held.textContent).not.toMatch(/add funds/i);
+    } finally {
+      hostMock.isMobileShell = false;
+    }
   });
 
   it('warns that a comparison spends about twice a task on a low balance, and still starts', async () => {

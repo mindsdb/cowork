@@ -15,7 +15,7 @@ import { BrowserFrame, paneMayTakeFocus } from './BrowserFrame';
 import { BlankStartOver, browserRequestFor } from './BlankBrowserPanel';
 import { LocalBrowserStage } from './LocalBrowserStage';
 import { controlHint } from './controlHint';
-import { HAND_BACK_MESSAGE, registerHandBackViewer } from '../../lib/browserHandBack';
+import { HAND_BACK_MESSAGE, dropHandBack, registerHandBackViewer } from '../../lib/browserHandBack';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The person's browser beside the chat. The agent drives it through its
@@ -62,10 +62,11 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    unreachable or full) is a page that posts VIEWER_CLOSED, and so does the
    starting page's last load before its link lapses; afterViewerClose decides
    what the pane does then. After STARTING_TIMEOUT_MS of waiting, the pane
-   offers to try again. That clock runs on across the new links a close
+   offers to try again, and a hand-back waiting for its viewer ends
+   (lib/browserHandBack.js). That clock runs on across the new links a close
    brings, and starts over only when a viewer gets ready or the person, the
-   tab or the network asks again, so a router that keeps closing still
-   reaches it. */
+   tab, the network or a hand-back (`retrySignal`) asks again, so a router
+   that keeps closing still reaches it. */
 export const STARTING_TIMEOUT_MS = 90_000;
 
 /**
@@ -142,11 +143,12 @@ export function BrowserPanel(props) {
 }
 
 /**
- * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
+ * @param {{ sessionId: string, agentLabel?: string, onClose: () => void, retrySignal?: number }} props
+ *   `retrySignal`: bumped when a hand-back asks the pane to show its browser.
  */
 function WebBrowserStage({
   sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null,
-  taskKey = '', onSend, onOpenUrl, startBlank = false, onPageUrl = null, onDraft = null,
+  taskKey = '', onSend, onOpenUrl, startBlank = false, onPageUrl = null, onDraft = null, retrySignal = 0,
 }) {
   const { t } = useTranslation('chat');
   const onControlRef = useRef(onControl);
@@ -286,7 +288,9 @@ function WebBrowserStage({
   const showFailure = useCallback((description) => {
     endReconnect();
     setError({ title: unreachable(), description });
-  }, [endReconnect]);
+    // No viewer comes for this browser: a hand-back waiting for one ends.
+    dropHandBack(sessionId);
+  }, [endReconnect, sessionId]);
 
   // A new frame, with a fresh link.
   const mint = useCallback(async () => {
@@ -365,6 +369,15 @@ function WebBrowserStage({
     };
   }, [retry, endReconnect, dropRenewal]);
 
+  /* A hand-back asked for on a pane that gave up on its viewer (slow, or
+     stopped) asks again, as Try again does, so it gets a viewer or ends
+     (lib/browserHandBack.js). A pane that mounts has not given up, so this
+     does nothing then. */
+  useEffect(() => {
+    if (retrySignal && (slow || error)) retry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retrySignal]);
+
   useEffect(() => {
     /* A viewer with a port pauses while the tab is hidden and keeps its
        frame, then gets a fresh ticket in place, with the reconnect's wait,
@@ -381,6 +394,10 @@ function WebBrowserStage({
           port.postMessage({ type: VIEWER_PAUSE });
           liveRef.current = false;
           renewingRef.current = false;
+          /* A paused viewer posts no close and runs no Done: a hand-back
+             waits until its next socket says who holds the browser. */
+          unregisterHandBackRef.current();
+          unregisterHandBackRef.current = () => {};
           return;
         }
         setViewUrl(null);
@@ -439,12 +456,9 @@ function WebBrowserStage({
         setViewerReady(true);
         setSlow(false);
         postTheme(frameRef.current);
-        /* The hand-over card's Done, continue reaches the viewer's Done
-           through this frame (lib/browserHandBack.js). */
+        // A new viewer: a hand-back waits until it says who holds the browser.
         unregisterHandBackRef.current();
-        unregisterHandBackRef.current = registerHandBackViewer(sessionId, () => {
-          frameWindow.postMessage({ type: HAND_BACK_MESSAGE }, '*');
-        });
+        unregisterHandBackRef.current = () => {};
         return;
       }
       /* The viewer's current socket got the pod's hello: this connection
@@ -483,10 +497,23 @@ function WebBrowserStage({
           watching: event.data?.watching === true,
         };
         setControl(holds);
+        /* The hand-over card's Done, continue reaches the viewer's Done
+           through this frame (lib/browserHandBack.js), from when the viewer
+           knows the person holds the browser: before that it drops it. With
+           the agent holding it, there is nothing to hand back. */
+        unregisterHandBackRef.current();
+        unregisterHandBackRef.current = registerHandBackViewer(
+          sessionId,
+          holds.holder === 'human' ? () => frameWindow.postMessage({ type: HAND_BACK_MESSAGE }, '*') : null,
+        );
         onControlRef.current?.(holds.holder, holds.reason, holds.watching);
         return;
       }
       if (type !== VIEWER_CLOSED) return;
+      /* A closed viewer runs no Done: a hand-back waits until its next
+         socket's hello, or the next viewer, says who holds the browser. */
+      unregisterHandBackRef.current();
+      unregisterHandBackRef.current = () => {};
       /* While the tab is hidden the pane paused this viewer, and a close it
          posted before the pause reached it changes nothing: the viewer gets a
          fresh ticket when the tab shows again. */
@@ -518,6 +545,8 @@ function WebBrowserStage({
       endReconnect();
       setViewUrl(null);
       setError(STOPPED[next.stop]?.() ?? null);
+      // The pane stops asking for a viewer: a hand-back waiting for one ends.
+      dropHandBack(sessionId);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -584,9 +613,17 @@ function WebBrowserStage({
   }, [leaving]);
   useEffect(() => {
     if (!waiting) return undefined;
-    const timer = setTimeout(() => setSlow(true), STARTING_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      setSlow(true);
+      /* A viewer that never came in time ends a waiting hand-back, as a
+         viewer that stopped does: an edge error page, or the router's
+         starting page while it reloads, posts nothing at all. Here, when the
+         clock runs out, so a pane that was slow for one browser and then
+         shows another doesn't end the new one's wait. */
+      dropHandBack(sessionId);
+    }, STARTING_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [waiting, waitRound]);
+  }, [waiting, waitRound, sessionId]);
 
   return (
     <BrowserFrame

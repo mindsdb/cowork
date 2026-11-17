@@ -177,13 +177,17 @@
       "pendingAction": "{rule} En attente de la confirmation du dernier débit par votre banque.",
       "badgeOn": "Recharge automatique activée",
       "badgeFailed": "Échec de la recharge automatique",
-      "badgePaused": "Recharge automatique en pause"
+      "badgePaused": "Recharge automatique en pause",
+      "offMobile": "La recharge automatique est désactivée.",
+      "paymentFailedMobile": "Échec de la recharge automatique : nous n’avons pas pu débiter votre carte."
     },
     "low": {
       "off": "Solde bas. Ajoutez des fonds ou activez la recharge automatique pour que les tâches continuent.",
       "ok": "Solde bas. La recharge automatique va le réapprovisionner.",
       "pending": "Solde bas. La recharge automatique attend la confirmation de votre banque.",
-      "other": "Solde bas. Ajoutez des fonds pour que les tâches continuent."
+      "other": "Solde bas. Ajoutez des fonds pour que les tâches continuent.",
+      "offMobile": "Solde bas.",
+      "otherMobile": "Solde bas."
     },
     "balance": {
       "title": "Solde",
@@ -192,7 +196,8 @@
       "spentRange": "de crédit utilisé du {start} au {end}",
       "spentDate": "de crédit utilisé le {date}",
       "spentThisPeriod": "de crédit utilisé sur cette période",
-      "notOwner": "Seul le responsable de la facturation de votre organisation peut ajouter des fonds ou modifier la recharge automatique."
+      "notOwner": "Seul le responsable de la facturation de votre organisation peut ajouter des fonds ou modifier la recharge automatique.",
+      "emptyMobile": "Votre solde est vide. Les modèles payants sont indisponibles."
     },
     "signIn": {
       "title": "Connectez-vous pour voir votre utilisation",
@@ -203,7 +208,8 @@
     "error": {
       "title": "Impossible de charger l’utilisation",
       "body": "MindsHub n’a pas répondu. Réessayez, ou consultez votre utilisation dans la console.",
-      "tryAgain": "Réessayer"
+      "tryAgain": "Réessayer",
+      "bodyMobile": "MindsHub n’a pas répondu."
     },
     "empty": "Aucune utilisation à afficher pour ce compte pour l’instant."
   }

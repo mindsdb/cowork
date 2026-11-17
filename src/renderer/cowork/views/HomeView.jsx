@@ -11,8 +11,11 @@ import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked } from '../lib/analytics';
+import { billingCopyKey, offersBilling } from '../lib/billingLinks';
+import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded } from '../lib/analytics';
 import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
+import { takeSignupWelcome, SIGNUP_FROM_DESKTOP } from '../lib/signupWelcome';
+import { productName } from '../../lib/deploymentBrand';
 import { getDraft } from '../lib/draftStore';
 import i18n, { useTranslation } from '../../lib/i18n';
 
@@ -247,6 +250,7 @@ export default function HomeView({
   onSend, project, onProjectChange, model, onModelChange, effort, onEffortChange, projects, models, modelMeta,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
   onAddGoogleDriveFiles,
+  onAddNotionPages,
   disabledConnections = [],
   onUpdateConnectorMute,
   onStartVoiceCall = null,
@@ -293,6 +297,20 @@ export default function HomeView({
   // Leaving that mode (send, or removing the chip) retires it for good, so it
   // cannot reappear over a different mode picked afterwards.
   const [handoffHint, setHandoffHint] = useState(false);
+  // A brand-new account that signed up from the desktop app (ENG-4288). Home
+  // greets it with one line that says it can start here or go back to the app.
+  // A sign-up from Cowork web gets no notice: that person is already where
+  // they meant to be, with the composer ready.
+  const [desktopWelcome, setDesktopWelcome] = useState(false);
+  const welcomeTakenRef = useRef(false);
+  useEffect(() => {
+    if (welcomeTakenRef.current) return;
+    welcomeTakenRef.current = true;
+    const welcome = takeSignupWelcome();
+    if (!welcome) return;
+    trackSignupLanded(welcome.from);
+    if (welcome.from === SIGNUP_FROM_DESKTOP) setDesktopWelcome(true);
+  }, []);
   useEffect(() => {
     if (!taskMode) setHandoffHint(false);
   }, [taskMode]);
@@ -467,8 +485,8 @@ export default function HomeView({
     const exampleId = sample ? sampleId(sample.label) : (ownWork ? OWN_WORK_START : null);
     // The task is credited to the example only if the example was placed; a
     // kept draft of the user's own is not the example's doing.
-    setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null);
-    trackComposerReady(handoff.entrySource, exampleId, prefilled);
+    setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null, handoff.placement);
+    trackComposerReady(handoff.entrySource, exampleId, prefilled, handoff.placement);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerUsable]);
 
@@ -485,6 +503,24 @@ export default function HomeView({
       ref={homeRef}
       className="relative flex-1 overflow-auto flex flex-col items-center justify-center pt-0 px-10 pb-[60px] bg-transparent"
     >
+      {desktopWelcome && (
+        // Out of the flow, so the centred greeting and composer do not move
+        // when the notice appears or is dismissed.
+        <div
+          role="status"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-10 max-w-[calc(100%-32px)] flex items-center gap-2 w-max rounded-lg border border-line bg-surface-2 pl-4 pr-1.5 py-1 text-[12.5px] text-ink-2 shadow-sm"
+        >
+          <span className="min-w-0">{t('home.signupWelcome.fromDesktop', { product: productName('Cowork') })}</span>
+          <button
+            type="button"
+            className="mini-icon-btn shrink-0"
+            aria-label={t('home.signupWelcome.dismiss')}
+            onClick={() => setDesktopWelcome(false)}
+          >
+            {Ico.close(12)}
+          </button>
+        </div>
+      )}
       {topShortcuts && <div className="absolute top-3.5 right-3.5 z-10">{topShortcuts}</div>}
       {/* Deliberate exception to the .s-* ladder. This is the home hero, and
           the ladder has no rung between s-h1 (28px) and s-display (44px): 28px
@@ -600,11 +636,11 @@ export default function HomeView({
               <div className="home-connect-card__body">
                 <div className="text-base font-[650] text-strong">{PLATFORM_UI ? t('home.connectProvider.title') : t('home.connectProvider.operatorTitle')}</div>
                 <div className="text-sm text-[var(--frost-700)] mt-[3px]">{PLATFORM_UI
-                  ? t('home.connectProvider.body')
+                  ? t(billingCopyKey('home.connectProvider.body'))
                   : t('home.connectProvider.operatorBody')}</div>
               </div>
               {PLATFORM_UI && <div className="home-connect-card__actions">
-                <Button
+                {offersBilling() && <Button
                   variant="primary"
                   onClick={() => {
                     // Same card, same trigger as ChatView's provider_required
@@ -613,7 +649,7 @@ export default function HomeView({
                     trackBillingOpened('connect_provider');
                     host.openExternal(MINDS_BILLING_URL);
                   }}
-                >{t('home.connectProvider.startFree')}</Button>
+                >{t('home.connectProvider.startFree')}</Button>}
                 <Button
                   variant="primary"
                   onClick={() => onOpenSettings?.('agent')}
@@ -642,6 +678,7 @@ export default function HomeView({
               onNavigateToConnectors={onNavigateToConnectors}
               onAttachFiles={onAttachFiles}
               onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+              onAddNotionPages={onAddNotionPages}
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}

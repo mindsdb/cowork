@@ -12,6 +12,7 @@ export function ReviewFileCard({
   busy,
   onAction,
   onAgentAction,
+  editsOriginal = false,
 }: {
   file: DiffFile;
   workspaceName: string;
@@ -19,6 +20,8 @@ export function ReviewFileCard({
   busy: boolean;
   onAction: (action: ReviewFileAction) => Promise<void>;
   onAgentAction: (prompt: string) => Promise<void>;
+  /** The task works in the user's own folder, so actions change it directly. */
+  editsOriginal?: boolean;
 }) {
   const { t } = useTranslation('code');
   const [selection, setSelection] = useState<DiffLineSelection | null>(null);
@@ -40,6 +43,7 @@ export function ReviewFileCard({
       <FileReviewControls
         file={file}
         busy={busy}
+        editsOriginal={editsOriginal}
         selectionLabel={selection ? selectionDisplayLabel(selection) : ''}
         onAction={onAction}
         onAgentNote={(note) => onAgentAction([

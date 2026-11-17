@@ -32,8 +32,10 @@ vi.mock('../../platform/host', () => ({
 }));
 
 const embedBrowser = vi.fn();
+const submitAnswer = vi.hoisted(() => vi.fn(async () => ({ status: 'accepted' })));
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal()),
+  submitAnswer: (...args) => submitAnswer(...args),
   provisionBrowser: vi.fn(async () => ({ status: 'starting' })),
   embedBrowser: (...args) => embedBrowser(...args),
   openBrowserAt: (...args) => openBrowserAt(...args),
@@ -45,6 +47,7 @@ import { browserStep } from '../lib/browserSession';
 import { NOWHERE } from '../components/browser/LocalBrowserStage';
 import { resetBrowserPrefsForTests, syncBrowserPrefs } from '../lib/browserPrefs';
 import { BROWSER_ACTION_BADGE } from '../lib/browserSteps';
+import { handBackBrowser, handedBack, resetHandBack } from '../lib/browserHandBack';
 
 const VIEW = `${window.location.origin}/browser/sessions/t-abc/view?et=tok`;
 const step = (sessionId = 't-abc') => browserStep({ session_id: sessionId }, 1);
@@ -189,6 +192,243 @@ describe('ChatView shared browser pane', () => {
     await act(async () => {});
     await control('agent');
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  /* The card's Stop ends the turn only once anton reads it, so the turn
+     streams on a moment: it must not count as held through, or the watch's
+     hand-back after it would carry the stopped task on. */
+  it("Done after the hand-over card's Stop sends nothing, though the turn streamed on after it", async () => {
+    const onSend = vi.fn();
+    const handOver = {
+      id: 'question-browser:h1',
+      badge: 'AskUser',
+      status: 'in_progress',
+      data: {
+        question_id: 'browser:0123456789abcdef',
+        prompt: "Your turn on www.united.com: Sign in to United\n\nUse the browser beside the chat. I'll carry on by myself once that's done, or click Done in the browser.",
+        options: [{ value: 'later', label: 'Finish later' }, { value: 'stop', label: 'Stop' }],
+        answer: null,
+      },
+    };
+    const live = (extra = []) => ({ ...liveTurn(), steps: [...liveTurn().steps, handOver, ...extra] });
+    const { rerender } = render(<ChatView task={task('p-card-stop', [pastTurn[0], live()])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    await control('human');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'More actions' })); });
+    await act(async () => { fireEvent.click(await screen.findByRole('menuitem', { name: 'Stop' })); });
+    expect(submitAnswer).toHaveBeenCalledWith('p-card-stop', 'browser:0123456789abcdef', { values: ['stop'] });
+    // The turn streams on until anton reads the Stop.
+    rerender(<ChatView task={task('p-card-stop', [pastTurn[0], live([step('t-abc')])])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    rerender(<ChatView task={task('p-card-stop', pastTurn)} onSend={onSend} browserOn />);
+    await act(async () => {});
+    // The watch hands the browser back as the person's Done.
+    await control('agent');
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  /* A card left for later, with the browser off for the task: no pane can
+     show that browser, so the card's Done, continue can't reach its viewer.
+     The wait ends there, and the task isn't carried on with the browser
+     maybe still the person's. */
+  it("says the browser didn't open when no pane can show it for the card's Done, continue", async () => {
+    resetHandBack();
+    const onSend = vi.fn();
+    const leftForLater = {
+      id: 'question-browser:h2',
+      badge: 'AskUser',
+      status: 'completed',
+      data: {
+        question_id: 'browser:fedcba9876543210',
+        prompt: "Your turn on www.united.com: Sign in to United\n\nUse the browser beside the chat, and click Done in the browser when you're finished.",
+        options: [{ value: 'later', label: 'Finish later' }, { value: 'stop', label: 'Stop' }],
+        answer: { status: 'answered', values: ['later'], text: '' },
+      },
+    };
+    const turn = [pastTurn[0], { ...pastTurn[1], steps: [step(), leftForLater] }];
+    render(<ChatView task={task('p-unviewable', turn)} onSend={onSend} />);
+    await act(async () => {});
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Done, continue' })); });
+    await act(async () => {});
+    expect(screen.getByRole('alert')).toHaveTextContent("The browser didn't open. Open it and try Done, continue again.");
+    expect(screen.getByRole('button', { name: 'Done, continue' })).not.toBeDisabled();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(pane()).toBeNull();
+    // Nothing is left waiting for a viewer of that browser.
+    await expect(handedBack('t-abc')).resolves.toBe('sent');
+  });
+
+  /* The card's Done, continue opens the pane and waits for its viewer. The
+     person switches task before it comes, so the card and the pane go. A
+     later hand-over in that task must not get that old Done when its viewer
+     says the person holds the browser. */
+  it("ends the card's waiting hand-back when the card goes, so a later hand-over's viewer gets no Done", async () => {
+    resetHandBack();
+    const onSend = vi.fn();
+    const leftForLater = {
+      id: 'question-browser:h3',
+      badge: 'AskUser',
+      status: 'completed',
+      data: {
+        question_id: 'browser:00112233445566ff',
+        prompt: "Your turn on www.united.com: Sign in to United\n\nUse the browser beside the chat, and click Done in the browser when you're finished.",
+        options: [{ value: 'later', label: 'Finish later' }, { value: 'stop', label: 'Stop' }],
+        answer: { status: 'answered', values: ['later'], text: '' },
+      },
+    };
+    const turn = [pastTurn[0], { ...pastTurn[1], steps: [step(), leftForLater] }];
+    const { rerender } = render(<ChatView task={task('p-gone', turn)} onSend={onSend} browserOn />);
+    await act(async () => {});
+    expect(pane()).toBeNull();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Done, continue' })); });
+    await act(async () => {});
+    // The pane opens for the hand-back, and is still starting its browser.
+    expect(pane()).not.toBeNull();
+    rerender(<ChatView task={task('p-elsewhere', [{ id: 'u9', role: 'user', content: 'Hi' }])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    expect(pane()).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Done, continue' })).toBeNull();
+    // Back in the task, Anton hands the browser over again.
+    rerender(<ChatView task={task('p-gone', [...turn, { id: 'u2', role: 'user', content: 'Book it' }, liveTurn()])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    await control('human');
+    const win = pane().querySelector('iframe').__testWindow;
+    expect(win.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+    expect(onSend).not.toHaveBeenCalled();
+    resetHandBack();
+  });
+
+  /* A voice call's browser_done waits for the viewer with no card to own the
+     wait. The pane leaving that browser before the viewer comes ends it, so
+     a later hand-over in the task never gets that old Done. */
+  it('ends a hand-back with no card waiting on it when the task changes, so a later hand-over gets no Done', async () => {
+    resetHandBack();
+    const onSend = vi.fn();
+    const { rerender } = render(<ChatView task={task('p-voice', [pastTurn[0], liveTurn()])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+    expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+    let end = null;
+    void handedBack('t-abc').then((value) => { end = value; });
+    rerender(<ChatView task={task('p-other', [{ id: 'u9', role: 'user', content: 'Hi' }])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    expect(end).toBe('unreachable');
+    // Back in the task, Anton hands the browser over again.
+    rerender(<ChatView task={task('p-voice', [pastTurn[0], liveTurn()])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    await control('human');
+    expect(pane().querySelector('iframe').__testWindow.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+    expect(onSend).not.toHaveBeenCalled();
+    resetHandBack();
+  });
+
+  /* A voice call's browser_done waits for the pane's viewer, still starting.
+     The hand-over is answered another way (the watch handed the browser
+     back, or Done on the phone), and Anton hands over again in the same
+     turn: the viewer saying the person holds the browser for that one must
+     not get the old Done. */
+  it("ends a waiting Done once its hand-over is answered another way, so the next hand-over gets none", async () => {
+    resetHandBack();
+    const onSend = vi.fn();
+    const handOver = (questionId, answer = null) => ({
+      id: `question-${questionId}`,
+      badge: 'AskUser',
+      status: answer ? 'completed' : 'in_progress',
+      data: {
+        question_id: questionId,
+        prompt: "Your turn on www.united.com: Sign in to United\n\nUse the browser beside the chat. I'll carry on by myself once that's done, or click Done in the browser.",
+        options: [{ value: 'later', label: 'Finish later' }, { value: 'stop', label: 'Stop' }],
+        answer,
+      },
+    });
+    const done = { status: 'answered', values: ['done'], text: '' };
+    const live = (...cards) => ({ ...liveTurn(), steps: [...liveTurn().steps, ...cards] });
+    const { rerender } = render(<ChatView task={task('p-next', [pastTurn[0], live(handOver('browser:aaaa1111'))])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+    let end = null;
+    void handedBack('t-abc').then((value) => { end = value; });
+    rerender(<ChatView task={task('p-next', [pastTurn[0], live(handOver('browser:aaaa1111', done))])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    expect(end).toBe('unreachable');
+    rerender(<ChatView task={task('p-next', [pastTurn[0], live(handOver('browser:aaaa1111', done), handOver('browser:bbbb2222'))])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    await control('human');
+    expect(pane().querySelector('iframe').__testWindow.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+    expect(onSend).not.toHaveBeenCalled();
+    resetHandBack();
+  });
+
+  /* A Done asked for after the turn ended still waits for the viewer when
+     the person sends a new message. The new turn's hand-over must not get
+     it. A turn that ends with its hand-over open leaves the wait alone. */
+  it('ends a waiting Done when the task starts a new turn, and not when a turn ends', async () => {
+    resetHandBack();
+    const onSend = vi.fn();
+    const { rerender } = render(<ChatView task={task('p-turn', [pastTurn[0], liveTurn()])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+    let end = null;
+    void handedBack('t-abc').then((value) => { end = value; });
+    rerender(<ChatView task={task('p-turn', pastTurn)} onSend={onSend} browserOn />);
+    await act(async () => {});
+    expect(end).toBeNull();
+    rerender(<ChatView task={task('p-turn', [...pastTurn, { id: 'u2', role: 'user', content: 'Book it' }, liveTurn()])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    expect(end).toBe('unreachable');
+    await control('human');
+    expect(pane().querySelector('iframe').__testWindow.postMessage).not.toHaveBeenCalledWith({ type: 'browser-hand-back' }, '*');
+    resetHandBack();
+  });
+
+  /* The pane stopped before the person clicked the card's Done, continue:
+     the click asks it again, as Try again does, so the card hears whether a
+     viewer came rather than waiting on a pane that gave up. */
+  it("asks a pane that already stopped again for the card's Done, continue", async () => {
+    resetHandBack();
+    const handOver = {
+      id: 'question-browser:h4',
+      badge: 'AskUser',
+      status: 'in_progress',
+      data: {
+        question_id: 'browser:0011223344556677',
+        prompt: "Your turn on www.united.com: Sign in to United\n\nUse the browser beside the chat, and click Done in the browser when you're finished.",
+        options: [{ value: 'later', label: 'Finish later' }, { value: 'stop', label: 'Stop' }],
+        answer: null,
+      },
+    };
+    const live = { ...liveTurn(), steps: [...liveTurn().steps, handOver] };
+    render(<ChatView task={task('p-stalled', [pastTurn[0], live])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    await control('human');
+    // No browser slot: the pane stops asking for a viewer.
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { type: 'browser-viewer-closed', code: 4503 }, source: pane().querySelector('iframe').__testWindow,
+      }));
+    });
+    expect(within(pane()).getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(embedBrowser).toHaveBeenCalledTimes(1);
+    embedBrowser.mockRejectedValue(new Error('No such browser.'));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Done, continue' })); });
+    await act(async () => {});
+    expect(embedBrowser).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('alert')).toHaveTextContent("The browser didn't open. Open it and try Done, continue again.");
+    expect(screen.getByRole('button', { name: 'Done, continue' })).not.toBeDisabled();
+    resetHandBack();
+  });
+
+  it('ends a waiting hand-back when the person closes the pane', async () => {
+    resetHandBack();
+    render(<ChatView task={task('p-close', [pastTurn[0], liveTurn()])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(await handBackBrowser('t-abc', { desktop: false })).toBe('waiting');
+    let end = null;
+    void handedBack('t-abc').then((value) => { end = value; });
+    await act(async () => { fireEvent.click(within(pane()).getByRole('button', { name: 'Close browser' })); });
+    expect(pane()).toBeNull();
+    expect(end).toBe('unreachable');
+    resetHandBack();
   });
 
   it("opens the task's real browser on a blank tab from the Show browser icon", async () => {

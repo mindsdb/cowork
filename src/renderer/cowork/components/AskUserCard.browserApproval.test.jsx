@@ -28,7 +28,9 @@ const flush = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 /* The options anton's commit-hold card carries: its Approve, and the Cancel
    anton's ask helper adds to every card. anton is Python, so they are copied
    here. */
-const card = (questionId) => ({
+// When the server held the card, by its clock (the stream's `at_ms`).
+const HELD_AT = 1_700_000_000_000;
+const card = (questionId, heldAtMs = HELD_AT) => ({
   id: `question-${questionId}`,
   badge: 'AskUser',
   status: 'in_progress',
@@ -42,6 +44,7 @@ const card = (questionId) => ({
     select: 'one',
     allow_custom: false,
     timeout_s: 300,
+    held_at_ms: heldAtMs,
     answer: null,
   },
 });
@@ -203,25 +206,61 @@ describe('any other answer on a commit-hold card', () => {
 });
 
 describe('a commit-hold card while the person turned approvals off', () => {
+  // Approvals went off before the card was held, by the server's clock.
+  const offBefore = { browserApproveSteps: false, browserApproveStepsOffAt: String(HELD_AT - 1) };
+
   it('is kept out of sight while the app approves it', () => {
-    syncBrowserPrefs({ browserApproveSteps: false });
+    syncBrowserPrefs(offBefore);
     const { container } = render(<AskUserCard step={card(HOLD)} conversationId="c1" />);
     expect(container).toBeEmptyDOMElement();
     resetBrowserPrefsForTests();
   });
 
   it('shows again as soon as the setting turns approvals back on', () => {
-    syncBrowserPrefs({ browserApproveSteps: false });
+    syncBrowserPrefs(offBefore);
     const { container } = render(<AskUserCard step={card(HOLD)} conversationId="c1" />);
     expect(container).toBeEmptyDOMElement();
     act(() => { syncBrowserPrefs({ browserApproveSteps: true }); });
     expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
   });
+
+  /* A fresh page, or another device: no click in this tab, only the
+     person's settings. A card that was waiting when approvals went off,
+     wherever they turned them off, stays theirs to answer. */
+  it('shows a card that was waiting when approvals went off, after a reload or on another device', () => {
+    syncBrowserPrefs({ browserApproveSteps: false, browserApproveStepsOffAt: String(HELD_AT + 5) });
+    render(<AskUserCard step={card(HOLD)} conversationId="c1" />);
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
+    expect(isAutoApprovedCard(card(HOLD).data)).toBe(false);
+    expect(isAutoApprovedCard(card('browser:approve:t-abc:pa-later', HELD_AT + 6).data)).toBe(true);
+    resetBrowserPrefsForTests();
+  });
+
+  // A card with no time, or a server that doesn't say when approvals went off, asks.
+  it('shows a card with no held time, or with no time approvals went off', () => {
+    syncBrowserPrefs(offBefore);
+    expect(isAutoApprovedCard(card(HOLD, null).data)).toBe(false);
+    syncBrowserPrefs({ browserApproveSteps: false });
+    render(<AskUserCard step={card(HOLD)} conversationId="c1" />);
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
+    resetBrowserPrefsForTests();
+  });
 });
 
 describe("a held step's Skip approvals", () => {
+  /* The server as the card's save reaches it: each write of approvals off
+     stamps when, by its clock, after this card was held. */
+  const server = () => {
+    let stored = { browserApproveSteps: true };
+    const save = vi.fn(async (patch) => {
+      stored = { ...stored, ...patch, ...(patch.browserApproveSteps === false ? { browserApproveStepsOffAt: String(HELD_AT + 10) } : {}) };
+      syncBrowserPrefs(stored);
+    });
+    return { save, stored: () => stored };
+  };
+
   it('turns Approve browser steps off for later steps, and leaves this card to the person', async () => {
-    const save = vi.fn(async (patch) => { syncBrowserPrefs(patch); });
+    const { save } = server();
     setBrowserSettingSaver(save);
     render(<AskUserCard step={card(HOLD)} conversationId="c1" />);
     const skip = screen.getByRole('switch', { name: 'Skip approvals for later steps' });
@@ -232,19 +271,22 @@ describe("a held step's Skip approvals", () => {
     // This card still needs its own answer: it shows, and the app doesn't approve it.
     expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
     expect(isAutoApprovedCard(card(HOLD).data)).toBe(false);
-    expect(isAutoApprovedCard(card(`browser:approve:t-abc:pa-later`).data)).toBe(true);
+    // Nor any other card held before the Skip; a step held after it is the app's.
+    expect(isAutoApprovedCard(card('browser:approve:t-other:pa-1', HELD_AT - 60_000).data)).toBe(false);
+    expect(isAutoApprovedCard(card('browser:approve:t-abc:pa-later', HELD_AT + 11).data)).toBe(true);
     expect(submitAnswer).not.toHaveBeenCalled();
     resetBrowserPrefsForTests();
   });
 
   it('turns approvals back on when switched off again', async () => {
-    const save = vi.fn(async (patch) => { syncBrowserPrefs(patch); });
+    const { save, stored } = server();
     setBrowserSettingSaver(save);
-    syncBrowserPrefs({ browserApproveSteps: true });
+    syncBrowserPrefs(stored());
     render(<AskUserCard step={card(HOLD)} conversationId="c1" />);
     await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'Skip approvals for later steps' })); });
     await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'Skip approvals for later steps' })); });
     expect(save).toHaveBeenLastCalledWith({ browserApproveSteps: true });
+    expect(screen.getByRole('switch', { name: 'Skip approvals for later steps' })).not.toBeChecked();
     resetBrowserPrefsForTests();
   });
 
@@ -270,17 +312,89 @@ describe("a held step's site and action", () => {
   };
 
   it('shows as pills under one short line, with the options and Skip approvals', () => {
-    const { container } = render(<AskUserCard step={withPrompt(prompt('https://www.united.com/en/us', 'type "hunter2" into textbox "Password"'))} conversationId="c1" />);
+    const { container } = render(<AskUserCard step={withPrompt(prompt('https://www.united.com/en/us', 'click button "Book"'))} conversationId="c1" />);
     expect(container.querySelector('pre, code')).toBeNull();
     expect(screen.getByText('Approve this browser step?')).toBeTruthy();
     expect(screen.getByText(/runs only if you approve/)).toBeTruthy();
     expect(screen.queryByText(/This step may commit/)).toBeNull();
     expect(screen.getByText('united.com').closest('[title]').getAttribute('title')).toBe('https://www.united.com/en/us');
-    expect(screen.getByText('Type into textbox "Password"')).toBeTruthy();
-    expect(container.textContent).not.toContain('hunter2');
+    expect(screen.getByText('Click button "Book"')).toBeTruthy();
+    // A step that types nothing has no typed text to show.
+    expect(screen.queryByTestId('browser-step-typed')).toBeNull();
     expect(screen.getByRole('button', { name: /Approve/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Cancel/ })).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'Skip approvals for later steps' })).toBeTruthy();
+  });
+
+  /* Nothing is typed before Approve, so the page can't show it: the card is
+     the only place the person reads what a send or a payment types. */
+  const SEND = 'type "Pay the $4,800 invoice to IBAN DE89 3704\\nThanks, Sam" into textbox "Message" and press Enter';
+
+  it('shows the text a typing step types, whole and with its line breaks, and that it sends', () => {
+    render(<AskUserCard step={withPrompt(prompt('https://mail.example.test/compose', SEND))} conversationId="c1" />);
+    expect(screen.getByText('Type into textbox "Message" and press Enter')).toBeTruthy();
+    // Its line break can go in as the Enter key: marked where it falls, and the caption says it can send.
+    expect(screen.getByText('Text it types (⏎ marks a line break, which can send it; ⇥ marks a tab; ⟦U+…⟧ names an invisible character)')).toBeTruthy();
+    const typed = screen.getByTestId('browser-step-typed');
+    expect(typed.textContent).toBe('Pay the $4,800 invoice to IBAN DE89 3704⏎\nThanks, Sam');
+    expect(typed.className).toContain('whitespace-pre-wrap');
+    /* Whole, with no height cap: a line out of sight behind a scroll that
+       phones and macOS don't draw would be approved unread. */
+    expect(typed.className).not.toMatch(/max-h-|overflow-y-auto/);
+  });
+
+  it('says plainly when the text has nothing to mark', () => {
+    render(<AskUserCard step={withPrompt(prompt('https://mail.example.test/compose', 'type "Thanks, Sam" into textbox "Message"'))} conversationId="c1" />);
+    expect(screen.getByText('Text it types')).toBeTruthy();
+    expect(screen.getByTestId('browser-step-typed').textContent).toBe('Thanks, Sam');
+  });
+
+  /* anton holds a step whose text holds a line break even without "and press
+     Enter" (each host can type a "\n" as the Enter key), so the break is
+     the only sign on the card that the step may send. A lone carriage return goes in
+     as text, and is marked too, so it can't hide in blank space. */
+  it('marks a line break at the end, and a lone carriage return', () => {
+    const { unmount } = render(
+      <AskUserCard step={withPrompt(prompt('https://mail.example.test/compose', 'type "Pay the invoice\\n" into textbox "Message"'))} conversationId="c1" />,
+    );
+    expect(screen.getByText('Type into textbox "Message"')).toBeTruthy();
+    expect(screen.getByTestId('browser-step-typed').textContent).toBe('Pay the invoice⏎\n');
+    expect(screen.getByText('Text it types (⏎ marks a line break, which can send it; ⇥ marks a tab; ⟦U+…⟧ names an invisible character)')).toBeTruthy();
+    unmount();
+    render(<AskUserCard step={withPrompt(prompt('https://mail.example.test/compose', 'type "a\\rb" into textbox "Message"'))} conversationId="c1" />);
+    // The carriage return breaks the line too, so b starts its own.
+    expect(screen.getByTestId('browser-step-typed').textContent).toBe('a⏎\nb');
+  });
+
+  /* A page could steer the agent into typing a bidi control, which turns the
+     text around it on screen: the card names it where it falls. */
+  it('names an invisible character where it falls, so the card reads as what is typed', () => {
+    const step = 'type "Pay to DE89 \\u202e4321 8765\\u202c" into textbox "Message" and press Enter';
+    render(<AskUserCard step={withPrompt(prompt('https://mail.example.test/compose', step))} conversationId="c1" />);
+    expect(screen.getByTestId('browser-step-typed').textContent).toBe('Pay to DE89 ⟦U+202E⟧4321 8765⟦U+202C⟧');
+    expect(screen.getByText(/⟦U\+…⟧ names an invisible character/)).toBeTruthy();
+  });
+
+  it('keeps the typed text off the card once it is answered', () => {
+    const held = withPrompt(prompt('https://mail.example.test/compose', SEND));
+    const { container } = render(
+      <AskUserCard step={{ ...held, data: { ...held.data, answer: { status: 'answered', values: ['cancel'], text: '' } } }} conversationId="c1" />,
+    );
+    // It still names the step; the answered line in the turn's steps leaves the text out too (browserStepPrompt.test.js).
+    expect(screen.getByText('Type into textbox "Message" and press Enter')).toBeTruthy();
+    expect(screen.queryByTestId('browser-step-typed')).toBeNull();
+    expect(container.textContent).not.toContain('IBAN');
+  });
+
+  it('shows a long site and action whole, wrapping instead of cutting either', () => {
+    render(<AskUserCard step={withPrompt(prompt('https://www.examplebank.com.account-review.secure-pay.example/checkout', SEND))} conversationId="c1" />);
+    const site = screen.getByText('examplebank.com.account-review.secure-pay.example');
+    expect(site.className).not.toContain('truncate');
+    expect(site.parentElement.className).not.toContain('max-w-[45%]');
+    expect(site.parentElement.className).toContain('whitespace-normal');
+    const action = screen.getByText('Type into textbox "Message" and press Enter');
+    expect(action.className).not.toContain('truncate');
+    expect(action.parentElement.className).toContain('whitespace-normal');
   });
 
   it('falls back to the prompt as written when it is in another shape', () => {

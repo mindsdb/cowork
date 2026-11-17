@@ -331,6 +331,7 @@
     "modelUnavailable": "{model} ist nicht verfügbar. Wählen Sie ein anderes Modell oder wenden Sie sich an Ihren Administrator.",
     "modelRestricted": "{model} wurde von einem Administrator Ihrer Organisation eingeschränkt. Wählen Sie ein anderes Modell.",
     "modelNeedsCredits": "{model} benötigt Guthaben. {link}, um es zu nutzen.",
+    "modelNeedsCreditsNoLink": "{model} benötigt Guthaben.",
     "topUpBalance": "Laden Sie Ihr Guthaben auf",
     "modelBudgetReached": "{model} kann nicht ausgeführt werden, weil das Budget Ihrer Organisation aufgebraucht ist.",
     "viewBudgets": "Budgets anzeigen"

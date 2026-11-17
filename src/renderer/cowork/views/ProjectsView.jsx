@@ -261,10 +261,14 @@ function ProjectDetail({
   connectors = [],
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddNotionPages,
   onAddGoogleDriveProjectFiles,
   onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
+  onAddNotionProjectPages,
+  onFetchNotionProjectPages,
+  onRemoveNotionProjectPage,
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -444,7 +448,9 @@ function ProjectDetail({
         />
 
         <div data-scroll="true" className="min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[60px] bg-transparent [-webkit-app-region:no-drag]">
-          <div className="max-w-[720px] mx-auto flex flex-col gap-7">
+          {/* Composer caps itself at --composer-max-width (640px by default);
+              widen it to match the task list below. */}
+          <div className="max-w-[720px] mx-auto flex flex-col gap-7 [--composer-max-width:720px]">
             <div className="flex flex-col gap-2">
               <SharedResourceAttribution resource={project} />
               <Composer
@@ -463,6 +469,7 @@ function ProjectDetail({
                 onNavigateToConnectors={onNavigateToConnectors}
                 onAttachFiles={onAttachFiles}
                 onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+                onAddNotionPages={onAddNotionPages}
                 onAddSharePointFiles={onAddSharePointFiles}
                 onRemoveAttachment={onRemoveAttachment}
                 disabledConnections={disabledConnections}
@@ -491,6 +498,9 @@ function ProjectDetail({
                   onAddSharePointFiles={onAddSharePointFiles}
                   onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
                   onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
+                  onAddNotionPages={onAddNotionProjectPages}
+                  onFetchNotionPages={onFetchNotionProjectPages}
+                  onRemoveNotionPage={onRemoveNotionProjectPage}
                 />
               </div>
             )}
@@ -530,6 +540,9 @@ function ProjectDetail({
             onAddSharePointFiles={onAddSharePointFiles}
             onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
             onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
+            onAddNotionPages={onAddNotionProjectPages}
+            onFetchNotionPages={onFetchNotionProjectPages}
+            onRemoveNotionPage={onRemoveNotionProjectPage}
           />
           <ScheduledBox items={projectSchedules} onSelect={onOpenSchedule} />
         </aside>
@@ -544,10 +557,9 @@ export default function ProjectsView({
   projects = [],
   selectedProject,
   tasks = [],
+  // Forwarded to TaskList so the project's task list collapses a
+  // schedule's runs the same way TasksView does.
   scheduled = [],
-  // Flat sessionId → scheduleId map. Forwarded to TaskList so the
-  // project view's task list collapses scheduled runs the same way
-  // TasksView does.
   models = [],
   modelMeta,
   model,
@@ -571,10 +583,14 @@ export default function ProjectsView({
   connectors = [],
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddNotionPages,
   onAddGoogleDriveProjectFiles,
   onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
+  onAddNotionProjectPages,
+  onFetchNotionProjectPages,
+  onRemoveNotionProjectPage,
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -805,10 +821,14 @@ export default function ProjectsView({
         onNavigateToConnectors={onNavigateToConnectors}
         onAttachFiles={onAttachFiles}
         onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+        onAddNotionPages={onAddNotionPages}
         onAddSharePointFiles={onAddSharePointFiles}
         onAddGoogleDriveProjectFiles={onAddGoogleDriveProjectFiles}
         onFetchGoogleDriveProjectFiles={onFetchGoogleDriveProjectFiles}
         onRemoveGoogleDriveProjectFile={onRemoveGoogleDriveProjectFile}
+        onAddNotionProjectPages={onAddNotionProjectPages}
+        onFetchNotionProjectPages={onFetchNotionProjectPages}
+        onRemoveNotionProjectPage={onRemoveNotionProjectPage}
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}

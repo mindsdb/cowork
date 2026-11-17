@@ -108,7 +108,10 @@
       "tryAgain": "Riprova",
       "adminSpendingLimitBody": "È stato raggiunto il limite di spesa impostato dall’amministratore. Contatta l’amministratore.",
       "budgetUsedUpTitle": "Il budget della tua organizzazione è esaurito",
-      "viewBudgets": "Visualizza budget"
+      "viewBudgets": "Visualizza budget",
+      "balanceRanOutMobile": "Il saldo si è esaurito prima del completamento dell’attività.",
+      "autoTopUpFailedBodyMobile": "Non è stato possibile addebitare la tua carta.",
+      "connectProviderBodyMobile": "Collega il tuo provider in Impostazioni."
     },
     "usageAlert": {
       "freeLow": "Quota gratuita di Air rimanente: {percent}",
@@ -142,7 +145,8 @@
       "needsCreditsTitle": "{model} richiede crediti",
       "needsCreditsBody": "Non hai crediti sufficienti per questo modello. Ricarica il saldo per usarlo.",
       "disabledBody": "Questo modello è disattivato per la tua area di lavoro. Scegline un altro in Impostazioni.",
-      "topUpBalance": "Ricarica saldo"
+      "topUpBalance": "Ricarica saldo",
+      "needsCreditsBodyMobile": "Non hai crediti sufficienti per questo modello."
     },
     "overloaded": {
       "theModelProvider": "Il provider del modello",
@@ -221,7 +225,8 @@
         "files": "In coda: i messaggi con file vengono eseguiti dopo l’attività corrente.",
         "notRead": "In coda: l’attività è terminata prima di poterlo leggere."
       }
-    }
+    },
+    "reconnecting": "Tentativo di riconnessione"
   },
   "composer": {
     "placeholder": "Ciao capo, come posso aiutarti oggi?",
@@ -279,7 +284,8 @@
       "fixed": "Il progetto è fisso per questa attività",
       "none": "Nessun progetto"
     },
-    "chooseHarness": "Scegli ambiente di esecuzione"
+    "chooseHarness": "Scegli ambiente di esecuzione",
+    "voiceCall": "Chiamata vocale"
   },
   "attachmentThumbnail": {
     "open": "Apri immagine",
@@ -300,7 +306,9 @@
       "title": "Approvi questo passaggio nel browser?",
       "intro": "Può acquistare, inviare, eliminare o confermare qualcosa, e viene eseguito solo se lo approvi.",
       "approved": "Azione del browser approvata",
-      "cancelled": "Azione del browser annullata"
+      "cancelled": "Azione del browser annullata",
+      "typedText": "Testo che digita",
+      "typedTextKeys": "Testo che digita (⏎ indica un a capo, che può inviarlo; ⇥ indica una tabulazione; ⟦U+…⟧ indica un carattere invisibile)"
     },
     "handOver": {
       "title": "Tocca a te nel browser",
@@ -312,6 +320,7 @@
       "finishLater": "Finisci dopo",
       "stop": "Interrompi",
       "noBrowser": "Qui non c’è nessun browser da restituire.",
+      "notOpened": "Il browser non si è aperto. Aprilo e fai di nuovo clic su Fine, continua.",
       "handedBack": "Restituito, ripreso",
       "stopped": "Passaggio interrotto",
       "ended": "Passaggio terminato"
@@ -488,7 +497,10 @@
         "1": "Crea una landing page per il lancio di un prodotto",
         "2": "Crea un sito web con dashboard",
         "3": "Crea un sito portfolio",
-        "4": "Crea un blog aziendale"
+        "4": "Crea un blog aziendale",
+        "5": "Crea una pagina sullo stato del progetto",
+        "6": "Crea una pagina di invito a un offsite del team",
+        "7": "Crea una pagina per annunciare una funzionalità"
       }
     },
     "apps": {
@@ -517,7 +529,8 @@
         "2": "Crea una checklist di due diligence per un’acquisizione",
         "3": "Confronta i migliori VLM usando i dati di Hugging Face",
         "4": "Calcola l’IRR dei flussi di cassa di un investimento",
-        "5": "Riordina il mio foglio di calcolo e creane un grafico"
+        "5": "Riordina il mio foglio di calcolo e creane un grafico",
+        "6": "Estrai i termini chiave di un contratto"
       }
     },
     "visualization": {
@@ -528,7 +541,9 @@
         "0": "Mostra le vendite settimanali con una mappa di calore",
         "1": "Genera un’analisi dell’abbandono dei clienti con insight",
         "2": "Monitora i KPI mensili di tutti i reparti",
-        "3": "Analizza il panorama competitivo per segmento di mercato"
+        "3": "Analizza il panorama competitivo per segmento di mercato",
+        "4": "Crea una timeline di rilascio del progetto",
+        "5": "Rappresenta un processo come diagramma"
       }
     },
     "wide-research": {
@@ -543,7 +558,10 @@
         "4": "Definisci le buyer persona e le customer journey map",
         "5": "Riassumi un documento e prepara una bozza di risposta",
         "6": "Scegli un modello locale adatto al mio computer",
-        "7": "Rivedi cosa ho in programma questa settimana"
+        "7": "Rivedi cosa ho in programma questa settimana",
+        "8": "Fai ricerche su un potenziale cliente e prepara un primo contatto",
+        "9": "Consigliami su una trattativa a partire dalla trascrizione di una chiamata",
+        "10": "Trasforma le note di una riunione in azioni da fare"
       }
     },
     "games": {
@@ -691,7 +709,14 @@
       "closeIts": "Chiudi il suo browser (schede salvate)",
       "watching": "Qualcuno lo sta guardando"
     },
-    "phoneYourTurnWatching": "Tocca a te: {reason}. {agent} riprende da solo quando è fatto, oppure tocca Fine nel browser."
+    "phoneYourTurnWatching": "Tocca a te: {reason}. {agent} riprende da solo quando è fatto, oppure tocca Fine nel browser.",
+    "handOverFallback": "{agent} ha bisogno di te nel browser",
+    "phoneYourTurn": "Tocca a te: {reason}. Tocca Fine nel browser quando hai finito, poi riduci per continuare.",
+    "phoneQuestion": "{agent} ha una domanda per te. Riduci per rispondere.",
+    "phoneWorking": "Ci sto lavorando…",
+    "phoneDone": "Fatto. Riduci per vedere la risposta.",
+    "phoneMinimize": "Riduci",
+    "talkTo": "Parla con {agent}"
   },
   "voiceCall": {
     "dialogLabel": "Chiamata vocale con {agent}",
@@ -710,6 +735,23 @@
     "ended": "La chiamata è terminata.",
     "close": "Chiudi",
     "endCall": "Termina chiamata",
-    "mute": "Disattiva microfono"
+    "mute": "Disattiva microfono",
+    "orbLabel": "{state, select, starting {Connessione della voce} working {Ci sto lavorando} other {In chiamata}}",
+    "orbShow": "{state, select, starting {Connessione della voce. Mostra la chiamata} working {Ci sto lavorando. Mostra la chiamata} other {In chiamata. Mostra la chiamata}}",
+    "allowMicrophone": "Consenti il microfono nel browser per avviare una chiamata vocale.",
+    "noMicrophone": "Nessun microfono trovato.",
+    "couldNotStart": "Impossibile avviare la chiamata vocale.",
+    "endedReason": "La chiamata è terminata ({reason})."
+  },
+  "notionPicker": {
+    "title": "Aggiungi pagine da Notion",
+    "subtitle": "Cerca nel tuo Notion e scegli le pagine per questo messaggio.",
+    "searchPlaceholder": "Cerca pagine di Notion…",
+    "searchAriaLabel": "Cerca pagine di Notion",
+    "minQuery": "{count, plural, one {Digita almeno # carattere per cercare.} other {Digita almeno # caratteri per cercare.}}",
+    "noResults": "Nessuna pagina trovata.",
+    "database": "Database",
+    "cancel": "Annulla",
+    "add": "{count, plural, =0 {Aggiungi pagina} one {Aggiungi pagina} other {Aggiungi # pagine}}"
   }
 }

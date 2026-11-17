@@ -60,7 +60,7 @@
     "signOutHelp": "Apaga os cookies, logins e cache deste navegador e fecha as abas dele. As abas salvas permanecem.",
     "signOutUnconfirmed": "A saída não foi confirmada a tempo. Ela pode ter sido concluída; saia novamente para ter certeza.",
     "pageContent": "{mindshub, select, yes {Quando {agent} lê uma página, o texto e uma captura de tela vão para o provedor de modelos que atende sua vez, a MindsHub quando você está conectado.} other {Quando {agent} lê uma página, o texto e uma captura de tela vão para o provedor de modelos que atende sua vez.}}",
-    "webJevLine": "Com Respostas rápidas com Jev ativado, o Jev também recebe o objetivo de cada etapa do navegador, o endereço da página, o título, os nomes dos elementos e os primeiros 1.500 caracteres, e as etapas recentes, incluindo endereços anteriores, sem valores de campos nem o que você digita.",
+    "webJevLine": "Com Respostas rápidas com Jev ativado, o Jev também recebe o objetivo de cada etapa do navegador, o endereço da página, o título, os nomes dos elementos e os primeiros 1.500 caracteres, e as etapas recentes, incluindo endereços anteriores.",
     "usageEventsHelp": "{agent} envia à MindsDB eventos de uso anônimos, com um id de instalação, incluindo os do navegador, nunca texto de páginas nem endereços. Desativar interrompe o envio a partir da próxima vez que você reiniciar o app.",
     "signedOut": "Você saiu de todos os sites.",
     "clearFailed": "Não foi possível apagar os dados do navegador. Tente novamente.",
@@ -73,7 +73,7 @@
     "usageEventsTitle": "Eventos de uso",
     "sendUsageEvents": "Enviar eventos de uso anônimos",
     "approveStepsTitle": "Aprovar etapas do navegador",
-    "approveStepsHelp": "Ativado: {agent} espera seu OK antes de uma etapa que confirma algo, como uma compra, uma mensagem ou um formulário. Desativado: {agent} segue em frente.",
+    "approveStepsHelp": "Ativado: {agent} espera seu OK antes de uma etapa que confirma algo, como uma compra, uma mensagem ou um formulário. Desativado: {agent} segue em frente com as próximas etapas; uma etapa que já está esperando ainda pede seu OK.",
     "onlyWhenNeededTitle": "Mostrar o navegador só quando precisar de mim",
     "onlyWhenNeededHelp": "Desative para ver sempre o navegador e acompanhar {agent} navegando. Divertido para alguns, cansativo para outros.",
     "onlyWhenNeededLearn": "Sobre mostrar o navegador só quando você for necessário",
@@ -87,7 +87,8 @@
     "decisionsTesting": "Testando…",
     "decisionsFailed": "O modelo de decisão não respondeu como esperado ({error}). Verifique o endpoint e a chave.",
     "decisionsUntested": "Não foi possível testar o modelo de decisão. Tente de novo.",
-    "ownDecisionsLine": "O modelo de decisão da sua organização também recebe o objetivo de cada etapa do navegador, o endereço da página, o título, os nomes dos elementos e os primeiros 1.500 caracteres, e as etapas recentes, incluindo endereços anteriores, sem valores de campos nem o que você digita."
+    "ownDecisionsLine": "O modelo de decisão da sua organização também recebe o objetivo de cada etapa do navegador, o endereço da página, o título, os nomes dos elementos e os primeiros 1.500 caracteres, e as etapas recentes, incluindo endereços anteriores.",
+    "ownDecisionsUnused": "O modelo de decisão da sua organização ainda não consegue escolher as etapas do navegador aqui. Até que consiga, o navegador precisa do Jev no MindsHub."
   },
   "codingAgent": {
     "loadFailed": "Não foi possível carregar as opções do agente de código.",

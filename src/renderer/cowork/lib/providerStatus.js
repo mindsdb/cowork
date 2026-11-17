@@ -4,6 +4,7 @@
 // plus a little view context, which keeps it directly unit-testable without
 // rendering SettingsView.
 
+import { billingCopyKey } from './billingLinks';
 import i18n from '../../lib/i18n';
 
 /* User-facing copy, translated when it is read (never at import). */
@@ -150,7 +151,7 @@ export function probePolicyUnavailableSentence() {
    by the gateway reason. Shorter than the role-row notice, and it never names
    a refill time: the row has no room to be wrong about one. */
 const PROBE_REASON_ROW_COPY = {
-  wallet_empty: () => tr('row.walletEmpty'),
+  wallet_empty: () => tr(billingCopyKey('row.walletEmpty')),
   included_allowance_exhausted: () => tr('row.allowanceExhausted'),
   free_air_daily_spend_fuse_exceeded: () => tr('row.freeAirPaused'),
   budget_exceeded: () => tr('row.budgetExceeded'),
