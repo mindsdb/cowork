@@ -997,3 +997,29 @@ describe('parseKeyCombo', () => {
     expect(sent.find(([, p]) => p.key === 'v')?.[1]).not.toHaveProperty('commands');
   });
 });
+
+describe('AgentInput', () => {
+  /* What ElectronTab reads to tell the agent's pointer input from the
+     person's: Electron reports the event of a mouse command only while the
+     command is in flight, and a wheel tick's once more just after it
+     answers, inside the pause after it. */
+  it('says it sends the mouse only while a mouse command is in flight, and the wheel while its ticks run, the pause after the last one included', async () => {
+    const seen: string[] = [];
+    let input: AgentInput | null = null;
+    const note = (what: string) => {
+      seen.push(`${what} ${input?.sendingMouse ? 'mouse' : '-'} ${input?.sendingWheel ? 'wheel' : '-'}`);
+    };
+    input = new AgentInput(async (_method, params) => note(String(params.type)), { sleep: async () => note('pause'), random: () => 0.5 }, { x: 0, y: 0 });
+    await input.wheel({ x: 200, y: 0 }, 0, 240);
+    note('after');
+    expect(seen).toEqual([
+      ...Array.from({ length: 6 }, () => ['mouseMoved mouse -', 'pause - -']).flat(),
+      'mouseWheel mouse wheel', 'pause - wheel',
+      'mouseWheel mouse wheel', 'pause - wheel',
+      'after - -',
+    ]);
+    const failing = new AgentInput(async () => { throw new Error('detached'); }, pacing, { x: 0, y: 0 });
+    await expect(failing.wheel({ x: 0, y: 0 }, 0, 120)).rejects.toThrow('detached');
+    expect([failing.sendingMouse, failing.sendingWheel]).toEqual([false, false]);
+  });
+});

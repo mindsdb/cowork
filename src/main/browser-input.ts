@@ -223,6 +223,9 @@ const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2
 /** One step's input, sent through an attached debugger. */
 export class AgentInput {
   private mouse: Point;
+  /* This input's mouse commands in flight, and whether its wheel ticks run. */
+  private mouseCommands = 0;
+  private wheeling = false;
 
   constructor(
     private readonly send: (method: string, params: Record<string, unknown>) => Promise<unknown>,
@@ -237,12 +240,33 @@ export class AgentInput {
     return { ...this.mouse };
   }
 
+  /** Whether one of this input's mouse commands is in flight. Electron
+      reports the move, press or release a command sends as it reports the
+      person's, in before-mouse-event, and only until the command answers
+      (ElectronTab). */
+  get sendingMouse(): boolean {
+    return this.mouseCommands > 0;
+  }
+
+  /** Whether this input's wheel ticks run, the pause after each included.
+      Electron reports each tick as it reports the person's wheel, in
+      input-event, while its command is in flight and once more just after
+      it answers, which falls in that pause (ElectronTab). */
+  get sendingWheel(): boolean {
+    return this.wheeling;
+  }
+
   private pause(minMs: number, spreadMs: number): Promise<void> {
     return this.pacing.sleep(minMs + this.pacing.random() * spreadMs);
   }
 
-  private mouseEvent(type: string, at: Point, extra: Record<string, unknown>): Promise<unknown> {
-    return this.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, pointerType: 'mouse', ...extra });
+  private async mouseEvent(type: string, at: Point, extra: Record<string, unknown>): Promise<unknown> {
+    this.mouseCommands += 1;
+    try {
+      return await this.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, pointerType: 'mouse', ...extra });
+    } finally {
+      this.mouseCommands -= 1;
+    }
   }
 
   /** Moves along an eased curve from where the mouse is to `to`. */
@@ -290,9 +314,14 @@ export class AgentInput {
   async wheel(at: Point, deltaX: number, deltaY: number): Promise<void> {
     await this.moveTo(at);
     const ticks = Math.max(1, Math.ceil(Math.max(Math.abs(deltaX), Math.abs(deltaY)) / 120));
-    for (let i = 0; i < ticks; i += 1) {
-      await this.mouseEvent('mouseWheel', at, { button: 'none', buttons: 0, deltaX: deltaX / ticks, deltaY: deltaY / ticks });
-      await this.pause(16, 30);
+    this.wheeling = true;
+    try {
+      for (let i = 0; i < ticks; i += 1) {
+        await this.mouseEvent('mouseWheel', at, { button: 'none', buttons: 0, deltaX: deltaX / ticks, deltaY: deltaY / ticks });
+        await this.pause(16, 30);
+      }
+    } finally {
+      this.wheeling = false;
     }
   }
 

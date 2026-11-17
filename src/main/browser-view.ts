@@ -194,8 +194,9 @@ export class ElectronTab implements TabView {
   private mouse: Point | null = null;
   /* The step in flight, which abortInput ends. */
   private step: AbortController | null = null;
-  /* The agent's input is under way: the debugger is attached to send it. */
-  private agentSends = false;
+  /* The agent's input while the debugger is attached to send it, which says
+     when Electron may be reporting it as the person's. */
+  private agentInput: AgentInput | null = null;
   private closed = false;
   /* The settling step's watch, which counts main-frame navigations. */
   private watching: StepWatch | null = null;
@@ -255,21 +256,22 @@ export class ElectronTab implements TabView {
         else contents.reload();
       }
     });
-    /* The pointer's input is the person's only while the agent's isn't
-       under way. Electron reports the moves, presses and releases the
-       debugger sends in before-mouse-event as it reports the person's, and
-       its wheels in input-event, the only place a wheel shows, so the tab
-       can't tell whose they are then and notes neither. The pointer
-       entering, moving over or leaving the page reaches it too, and may
-       open or close a menu there. */
+    /* Electron reports the moves, presses and releases the debugger sends
+       in before-mouse-event as it reports the person's, but only while the
+       agent's mouse command is in flight, and its wheels in input-event,
+       the only place a wheel shows, only while its wheel ticks run
+       (AgentInput.sendingMouse and sendingWheel). The tab notes no pointer
+       input then, and all of it between the agent's commands, which is the
+       person's. The pointer entering, moving over or leaving the page
+       reaches it too, and may open or close a menu there. */
     contents.on('before-mouse-event', (_event, mouse) => {
-      if (this.agentSends) return;
+      if (this.agentInput?.sendingMouse) return;
       if (mouse.type === 'mouseDown') hooks.personInput('press');
       else if (mouse.type === 'mouseUp') hooks.personInput('release');
       else if (mouse.type === 'mouseMove' || mouse.type === 'mouseEnter' || mouse.type === 'mouseLeave') hooks.personInput('move');
     });
     contents.on('input-event', (_event, input) => {
-      if (input.type === 'mouseWheel' && !this.agentSends) hooks.personInput('wheel');
+      if (input.type === 'mouseWheel' && !this.agentInput?.sendingWheel) hooks.personInput('wheel');
     });
     contents.on('login', (event, _details, authInfo, callback) => {
       event.preventDefault();
@@ -548,17 +550,15 @@ export class ElectronTab implements TabView {
         const start = this.mouse ?? (await unlessTakenOver(signal, () => this.viewportCenter()));
         // The person may have taken over while the page answered.
         if (signal.aborted) throw tookOver();
-        /* Set for the whole attach. Each of the agent's wheels shows once
-           more in input-event just after its command answers, which falls
-           in the pause after every wheel tick (AgentInput.wheel), so it
-           lands while this is still set. */
-        this.agentSends = true;
         try {
-          const { result, mouse } = await withAgentInput(this.contents.debugger, start, pacing, run);
+          const { result, mouse } = await withAgentInput(this.contents.debugger, start, pacing, (input, frames) => {
+            this.agentInput = input;
+            return run(input, frames);
+          });
           this.mouse = mouse;
           return result;
         } finally {
-          this.agentSends = false;
+          this.agentInput = null;
         }
       },
     };
