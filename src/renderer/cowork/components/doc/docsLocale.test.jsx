@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
 import { changeLocale } from '../../../lib/i18n';
 import { dayLabel, timeLabel, whenPhrase, whenTitle } from './versionHistory';
-import { TURN_INTO, slashItems } from './canvasOps';
+import { slashItems } from './canvasOps';
+import { blockMenu } from './blockMenu';
 import { formatDate, inlineToHtml } from './docModel';
 import { VersionBanner } from './DocVersions';
 
@@ -40,10 +41,12 @@ describe('version times', () => {
 
 describe('block menus', () => {
   it('follow a language switch', async () => {
+    const turnInto = () => blockMenu([{ id: 'b_1', type: 'paragraph', text: 'Hi' }], 0)[0];
     await changeLocale('de');
-    expect(TURN_INTO[1].label).toBe('Überschrift 1');
+    expect(slashItems('', false)[1]).toMatchObject({ label: 'Überschrift 1', group: 'Grundlagen' });
+    expect(turnInto()).toMatchObject({ label: 'Umwandeln in', submenu: expect.arrayContaining([expect.objectContaining({ label: 'Überschrift 1' })]) });
     await changeLocale('en');
-    expect(TURN_INTO[1].label).toBe('Heading 1');
+    expect(slashItems('', false)[1].label).toBe('Heading 1');
   });
 
   it('find a block by its translated label, and still by its English one', async () => {

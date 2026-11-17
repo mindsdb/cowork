@@ -30,7 +30,7 @@ import { PublishMenu } from '../artifact/publish/PublishMenu';
 import { usePublish } from '../artifact/publish/usePublish';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
-import i18n, { useTranslation } from '../../../lib/i18n';
+import { sharedTranslator, useTranslation } from '../../../lib/i18n';
 import './doc.css';
 import './docPane.css';
 
@@ -50,14 +50,13 @@ export function headerCorner({ fillsWindow, expanded }) {
   return expanded ? 'main' : undefined;
 }
 
-const tr = (key, vars) => i18n.t(key, { ns: 'docs', ...vars });
+const tr = sharedTranslator('docs');
 
 // What a doc downloads as, in the menu's order: the formats the server offers
 // here (PDF needs a render service), or all of them from a server that doesn't say.
 const EXPORTS = ['docx', 'pdf', 'md', 'html'];
 export function exportChoices(offered) {
-  return EXPORTS.filter((fmt) => !Array.isArray(offered) || offered.includes(fmt))
-    .map((fmt) => [fmt, tr(`export.format.${fmt}`)]);
+  return EXPORTS.filter((fmt) => !Array.isArray(offered) || offered.includes(fmt));
 }
 
 const DELETES = new Set(['delete', 'delete_tab', 'delete_column', 'delete_rows']);
@@ -335,6 +334,8 @@ export default function DocPane({
   const canOpenLocally = host.isElectron && !!card?.htmlPath;
   const canOpenInBrowser = !!pub.publishedUrl || canOpenLocally;
   const openLabel = t(pub.publishedUrl ? 'pane.openSharedPage' : 'pane.openInBrowser');
+  const expandLabel = t(expanded ? 'pane.showChat' : 'pane.expand');
+  const exportLabel = t('export.label');
   const openInBrowser = async () => {
     try {
       if (pub.publishedUrl) {
@@ -392,13 +393,13 @@ export default function DocPane({
         {doc && editable && <VersionMenu history={history} />}
         {doc && (
           <Menu
-            ariaLabel={t('export.label')}
-            tooltip={t('export.label')}
-            trigger={<button type="button" className="doc-iconbtn" aria-label={t('export.label')}><Icon of={Download} size={16} /></button>}
+            ariaLabel={exportLabel}
+            tooltip={exportLabel}
+            trigger={<button type="button" className="doc-iconbtn" aria-label={exportLabel}><Icon of={Download} size={16} /></button>}
             items={[
               { heading: t('export.downloadAs') },
               ...exportChoices(capabilities?.exportFormats)
-                .map(([key, label]) => ({ key, label, onClick: () => exportAs(key) })),
+                .map((key) => ({ key, label: t(`export.format.${key}`), onClick: () => exportAs(key) })),
               { divider: true },
               { key: 'copy', label: t('export.copyMarkdown'), onClick: copyMarkdown },
             ]}
@@ -414,8 +415,8 @@ export default function DocPane({
           </Tooltip>
         )}
         {onToggleExpand && (
-          <Tooltip content={t(expanded ? 'pane.showChat' : 'pane.expand')}>
-            <button type="button" className="doc-iconbtn" aria-label={t(expanded ? 'pane.showChat' : 'pane.expand')} onClick={onToggleExpand}>
+          <Tooltip content={expandLabel}>
+            <button type="button" className="doc-iconbtn" aria-label={expandLabel} onClick={onToggleExpand}>
               <Icon of={expanded ? Minimize2 : Maximize2} size={16} />
             </button>
           </Tooltip>

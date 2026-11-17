@@ -9,9 +9,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchDocHistory, fetchDocVersion, restoreDocVersion } from './docApi';
 import { stepFrom } from './versionHistory';
-import i18n from '../../../lib/i18n';
+import { sharedTranslator } from '../../../lib/i18n';
 
-const tr = (key) => i18n.t(key, { ns: 'docs' });
+const tr = sharedTranslator('docs');
 
 // How long "Restored", with its Undo, stays in view: long enough to look the doc over first.
 export const RESTORED_SHOWN_MS = 20_000;

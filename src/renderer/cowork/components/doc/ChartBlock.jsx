@@ -282,6 +282,8 @@ export default function ChartBlock({ block, tab, editable, onOps, onShowTable })
   const unitWord = unitParts(block.unit).word;
   const subtitle = [unitWord ? t('chart.inUnit', { unit: unitWord }) : null, table ? t('chart.followsTable') : null].filter(Boolean).join(' · ');
 
+  const tableLabel = t(table ? 'chart.showTable' : 'chart.makeTable');
+
   const setKind = (next) => onOps?.([{ op: 'update', id: block.id, set: { chart: next } }]);
 
   const makeTable = () => {
@@ -316,15 +318,18 @@ export default function ChartBlock({ block, tab, editable, onOps, onShowTable })
         </div>
         {editable && (
           <div className="doc-chart__tools">
-            {KINDS.map((k) => (
-              <Tooltip key={k.id} content={t(`chart.kind.${k.id}`)}>
-                <button type="button" className="doc-iconbtn" aria-label={t(`chart.kind.${k.id}`)} aria-pressed={kind === k.id} onClick={() => setKind(k.id)}>
-                  <Icon of={k.icon} size={16} />
-                </button>
-              </Tooltip>
-            ))}
-            <Tooltip content={t(table ? 'chart.showTable' : 'chart.makeTable')}>
-              <button type="button" className="doc-iconbtn" aria-label={t(table ? 'chart.showTable' : 'chart.makeTable')}
+            {KINDS.map((k) => {
+              const name = t(`chart.kind.${k.id}`);
+              return (
+                <Tooltip key={k.id} content={name}>
+                  <button type="button" className="doc-iconbtn" aria-label={name} aria-pressed={kind === k.id} onClick={() => setKind(k.id)}>
+                    <Icon of={k.icon} size={16} />
+                  </button>
+                </Tooltip>
+              );
+            })}
+            <Tooltip content={tableLabel}>
+              <button type="button" className="doc-iconbtn" aria-label={tableLabel}
                 onClick={() => (table ? onShowTable?.(table.id) : makeTable())}>
                 <Icon of={Table2} size={16} />
               </button>

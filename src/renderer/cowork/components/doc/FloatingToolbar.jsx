@@ -45,11 +45,14 @@ export default function FloatingToolbar({ toolbar, canFormat, canAsk, onLinkMode
     <FloatPanel {...place} role="toolbar" aria-label={t('format.label')} onMouseDown={(e) => e.preventDefault()}>
       {canFormat && (
         <>
-          {FORMATS.map((f) => (
-            <button key={f.kind} type="button" className="doc-float__btn" aria-label={t(`format.${f.kind}`)} title={`${t(`format.${f.kind}`)} ${f.keys}`} onClick={() => applyInlineFormat(f.kind, el)}>
-              <Icon of={f.icon} size={14} />
-            </button>
-          ))}
+          {FORMATS.map((f) => {
+            const name = t(`format.${f.kind}`);
+            return (
+              <button key={f.kind} type="button" className="doc-float__btn" aria-label={name} title={`${name} ${f.keys}`} onClick={() => applyInlineFormat(f.kind, el)}>
+                <Icon of={f.icon} size={14} />
+              </button>
+            );
+          })}
           <button type="button" className="doc-float__btn" aria-label={t('format.link')} title={`${t('format.link')} ⌘K`} onClick={onLinkMode}><Icon of={Link} size={14} /></button>
         </>
       )}

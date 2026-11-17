@@ -2,9 +2,9 @@
 // offers, and what each does. BlockGutter draws it, with the icons.
 import { CALLOUT_TONES, TURN_INTO } from './canvasOps';
 import { isTextBlock, newId } from './docModel';
-import i18n from '../../../lib/i18n';
+import { sharedTranslator } from '../../../lib/i18n';
 
-const tr = (key) => i18n.t(key, { ns: 'docs' });
+const tr = sharedTranslator('docs');
 
 /**
  * The options for `blocks[i]`, each a `key` and `label` and what choosing it
@@ -16,12 +16,12 @@ export function blockMenu(blocks, i, { canAsk = false } = {}) {
   const b = blocks[i];
   const items = [];
   if (isTextBlock(b)) {
-    items.push({ key: 'turn', label: tr('menu.turnInto'), submenu: TURN_INTO.map((t) => ({ key: t.key, label: t.label, turnInto: t })) });
+    items.push({ key: 'turn', label: tr('menu.turnInto'), submenu: TURN_INTO.map((t) => ({ key: t.key, label: tr(`insert.item.${t.key}`), turnInto: t })) });
   }
   if (b.type === 'callout') {
     items.push({
-      key: 'tone', label: tr('menu.calloutColor'), submenu: CALLOUT_TONES.map((t) => ({
-        key: t.tone, label: t.label, ops: [{ op: 'update', id: b.id, set: { tone: t.tone } }],
+      key: 'tone', label: tr('menu.calloutColor'), submenu: CALLOUT_TONES.map((tone) => ({
+        key: tone, label: tr(`tone.${tone}`), ops: [{ op: 'update', id: b.id, set: { tone } }],
       })),
     });
   }

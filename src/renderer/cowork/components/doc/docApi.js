@@ -1,9 +1,9 @@
 // HTTP + SSE client for the docs API (cowork-server /api/v1/docs).
 import { BASE, authFetch } from '../../api';
 import { iterateSSE } from '../../lib/responseStreamAdapter';
-import i18n from '../../../lib/i18n';
+import { sharedTranslator } from '../../../lib/i18n';
 
-const tr = (key, vars) => i18n.t(key, { ns: 'docs', ...vars });
+const tr = sharedTranslator('docs');
 
 async function call(path, options = {}) {
   const res = await authFetch(BASE + path, {

@@ -9,19 +9,19 @@ import { Check, ChevronLeft, ChevronRight, Eye, History, Link2, Sparkles, Undo2,
 import { Icon } from '../ui/Icon';
 import { Button, Menu, Tooltip } from '../ui';
 import { Modal } from '../ui/Modal';
-import { WHO, ago, groupByDay, timeLabel, whatChanged, whenPhrase, whenShort, whenTitle } from './versionHistory';
-import i18n, { useTranslation } from '../../../lib/i18n';
+import { ago, groupByDay, timeLabel, whatChanged, whenPhrase, whenShort, whenTitle } from './versionHistory';
+import { sharedTranslator, useTranslation } from '../../../lib/i18n';
 import './docVersions.css';
 
 // A version kept before authors were recorded has none: a neutral mark, not a person.
 const GLYPH = { agent: Sparkles, user: UserRound };
 
-const tr = (key, vars) => i18n.t(key, { ns: 'docs', ...vars });
+const tr = sharedTranslator('docs');
 
-// A message whose `{when}` is set in bold: translated with a marker there, then split around it.
+// Message `key` with its `{when}` in bold: translated with a marker there, then split around it.
 const MARK = '\uE000';
-function withBoldWhen(message, when) {
-  const [before, after = ''] = message.split(MARK);
+function withBoldWhen(key, when) {
+  const [before, after = ''] = tr(key, { when: MARK }).split(MARK);
   return <>{before}<b>{when}</b>{after}</>;
 }
 
@@ -34,11 +34,12 @@ function Who({ by }) {
 }
 
 function Row({ when, by, what }) {
+  const { t } = useTranslation('docs');
   return (
     <span className="doc-versions__row">
       <span className="doc-versions__when">
         {when}
-        {WHO[by] && <span className="doc-versions__by"> · {WHO[by]}</span>}
+        {GLYPH[by] && <span className="doc-versions__by"> · {t(`versions.who.${by}`)}</span>}
       </span>
       <span className="doc-versions__what">{what}</span>
     </span>
@@ -79,6 +80,7 @@ export function versionItems({ list, previewing, onPick, onCurrent, now }) {
 
 export function VersionMenu({ history, now = new Date() }) {
   const { t } = useTranslation('docs');
+  const title = t('versions.title');
   const [open, setOpen] = useState(false);
   const items = versionItems({
     list: history.list, previewing: history.preview?.entry.rev, onPick: history.open, onCurrent: history.close, now,
@@ -90,10 +92,10 @@ export function VersionMenu({ history, now = new Date() }) {
         setOpen(next);
         if (next) history.load();
       }}
-      ariaLabel={t('versions.title')}
-      tooltip={t('versions.title')}
+      ariaLabel={title}
+      tooltip={title}
       width={340}
-      trigger={<button type="button" className="doc-iconbtn" aria-label={t('versions.title')}><Icon of={History} size={16} /></button>}
+      trigger={<button type="button" className="doc-iconbtn" aria-label={title}><Icon of={History} size={16} /></button>}
       items={items}
     />
   );
@@ -101,25 +103,26 @@ export function VersionMenu({ history, now = new Date() }) {
 
 export function VersionBanner({ history, now = new Date() }) {
   const { t } = useTranslation('docs');
+  const [older, newer] = [t('versions.older'), t('versions.newer')];
   const { entry } = history.preview;
   return (
     <div className="doc-version-bar" role="status">
       <span className="doc-version-bar__icon"><Icon of={History} size={16} /></span>
       <div className="doc-version-bar__text">
         <span className="doc-version-bar__title">
-          {withBoldWhen(t('versions.viewing', { when: MARK }), whenTitle(entry.at, now))}
+          {withBoldWhen('versions.viewing', whenTitle(entry.at, now))}
           <span className="doc-version-bar__what"> · {whatChanged(entry, now)}</span>
         </span>
         <span className="doc-version-bar__legend"><i aria-hidden="true" />{t('versions.changedSince')}</span>
       </div>
       <div className="doc-version-bar__actions">
         <span className="doc-version-bar__step">
-          <Tooltip content={t('versions.older')}>
-            <button type="button" className="doc-iconbtn" aria-label={t('versions.older')} disabled={!history.canStep.older}
+          <Tooltip content={older}>
+            <button type="button" className="doc-iconbtn" aria-label={older} disabled={!history.canStep.older}
               onClick={() => history.step('older')}><Icon of={ChevronLeft} size={16} /></button>
           </Tooltip>
-          <Tooltip content={t('versions.newer')}>
-            <button type="button" className="doc-iconbtn" aria-label={t('versions.newer')} disabled={!history.canStep.newer}
+          <Tooltip content={newer}>
+            <button type="button" className="doc-iconbtn" aria-label={newer} disabled={!history.canStep.newer}
               onClick={() => history.step('newer')}><Icon of={ChevronRight} size={16} /></button>
           </Tooltip>
         </span>
@@ -162,7 +165,7 @@ export function RestoreDialog({ history, shared = false, agentWriting = false, n
       <div className="doc-restore">
         <span className="doc-restore__icon"><Icon of={History} size={20} /></span>
         <h2 id={titleId} className="doc-restore__title">{t('versions.confirmTitle')}</h2>
-        <p className="doc-restore__lead">{withBoldWhen(t('versions.confirmLead', { when: MARK }), whenPhrase(entry.at, now))}</p>
+        <p className="doc-restore__lead">{withBoldWhen('versions.confirmLead', whenPhrase(entry.at, now))}</p>
         <div className="doc-restore__version">
           <Who by={entry.by} />
           <Row when={timeLabel(entry.at)} by={entry.by} what={whatChanged(entry, now)} />

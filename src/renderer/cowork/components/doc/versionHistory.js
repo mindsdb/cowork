@@ -1,20 +1,13 @@
 // What the version history shows, from the server's list (GET …/history):
-// the versions grouped under their day, when and who in words a person
-// reads, and which blocks of a version differ from the doc now (what
-// restoring it would change back). Pure, so it is tested directly; `now` is
-// passed in.
+// the versions grouped under their day, when in words a person reads, and
+// which blocks of a version differ from the doc now (what restoring it would
+// change back). Pure, so it is tested directly; `now` is passed in.
 
-import i18n, { currentLocale } from '../../../lib/i18n';
-import { dateLocale } from '../../lib/formatTime';
+import { currentLocale, sharedTranslator } from '../../../lib/i18n';
+import { dateLocale, weekdayName } from '../../lib/scheduleWhen';
 
 const DAY_MS = 86_400_000;
-const tr = (key, vars) => i18n.t(key, { ns: 'docs', ...vars });
-
-/** Who made a version, as the row names them. */
-export const WHO = {
-  get agent() { return tr('versions.who.agent'); },
-  get user() { return tr('versions.who.user'); },
-};
+const tr = sharedTranslator('docs');
 
 function dayStart(date) {
   const d = new Date(date);
@@ -27,10 +20,10 @@ function daysAgo(iso, now) {
   return Math.round((dayStart(now) - dayStart(new Date(iso))) / DAY_MS);
 }
 
-/** The weekday within the week, else "Oct 12" (and the year, when it isn't this one). */
-function dateLabel(iso, now) {
+/** The weekday within the week (`days` ago), else "Oct 12" (and the year, when it isn't this one). */
+function dateLabel(iso, now, days) {
   const d = new Date(iso);
-  if (daysAgo(iso, now) < 7) return d.toLocaleDateString(dateLocale(), { weekday: 'long' });
+  if (days < 7) return weekdayName(d.getDay());
   const year = d.getFullYear() !== new Date(now).getFullYear() ? { year: 'numeric' } : {};
   return d.toLocaleDateString(dateLocale(), { month: 'short', day: 'numeric', ...year });
 }
@@ -40,7 +33,7 @@ export function dayLabel(iso, now) {
   const days = daysAgo(iso, now);
   if (days <= 0) return tr('versions.today');
   if (days === 1) return tr('versions.yesterday');
-  const label = dateLabel(iso, now);
+  const label = dateLabel(iso, now, days);
   return label.charAt(0).toLocaleUpperCase(currentLocale()) + label.slice(1);
 }
 
@@ -54,7 +47,7 @@ export const whenTitle = (iso, now) => tr('versions.whenTitle', { day: dayLabel(
 export function whenPhrase(iso, now) {
   const days = daysAgo(iso, now);
   const day = days <= 0 ? 'today' : days === 1 ? 'yesterday' : 'other';
-  return tr('versions.whenPhrase', { day, date: day === 'other' ? dateLabel(iso, now) : '', time: timeLabel(iso) });
+  return tr('versions.whenPhrase', { day, date: day === 'other' ? dateLabel(iso, now, days) : '', time: timeLabel(iso) });
 }
 
 /** Short, for a version from today: "2:58 PM"; otherwise the phrase. */

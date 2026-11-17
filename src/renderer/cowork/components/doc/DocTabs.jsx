@@ -77,7 +77,7 @@ export function changedOffside(box, dots) {
 
 /** The strip: the tabs in a row, and `onAdd`'s + after them for an editor; `unseen`, as the rail's. */
 export function TabStrip({ tabs, activeId, onSelect, idBase, onAdd, unseen }) {
-  const { t: tr } = useTranslation('docs');
+  const { t } = useTranslation('docs');
   const onKeyDown = tabKeys({ tabs, activeId, onSelect, idBase, vertical: false });
   // A strip with more tabs than room scrolls, and a changed tab past its end
   // kept its dot out of sight (found in the packaged app). That end shows the
@@ -103,7 +103,7 @@ export function TabStrip({ tabs, activeId, onSelect, idBase, onAdd, unseen }) {
     return () => { list.removeEventListener('scroll', measure); ro?.disconnect(); };
   }, [measure]);
   const edge = (side) => offside[side] && (
-    <button type="button" className="doc-tabstrip__more" aria-label={tr('tabs.showChanged')}
+    <button type="button" className="doc-tabstrip__more" aria-label={t('tabs.showChanged')}
       onClick={() => document.getElementById(offside[side])?.scrollIntoView({ block: 'nearest', inline: 'nearest' })}>
       <span className="doc-tab__dot" aria-hidden="true" />
     </button>
@@ -111,17 +111,17 @@ export function TabStrip({ tabs, activeId, onSelect, idBase, onAdd, unseen }) {
   return (
     <div className="doc-tabstrip">
       {edge('left')}
-      <div className="doc-tabstrip__tabs" ref={listRef} role="tablist" aria-label={tr('tabs.label')} onKeyDown={onKeyDown}>
-        {tabs.map((t) => (
-          <button key={t.id} type="button" className="doc-tab" {...tabProps(idBase, t, activeId)} onClick={() => onSelect(t.id)}>
-            <span className="doc-tab__title">{t.title}</span>
-            {unseen?.has(t.id) && t.id !== activeId && <span className="doc-tab__dot" aria-label={tr('tabs.changed')} />}
+      <div className="doc-tabstrip__tabs" ref={listRef} role="tablist" aria-label={t('tabs.label')} onKeyDown={onKeyDown}>
+        {tabs.map((tab) => (
+          <button key={tab.id} type="button" className="doc-tab" {...tabProps(idBase, tab, activeId)} onClick={() => onSelect(tab.id)}>
+            <span className="doc-tab__title">{tab.title}</span>
+            {unseen?.has(tab.id) && tab.id !== activeId && <span className="doc-tab__dot" aria-label={t('tabs.changed')} />}
           </button>
         ))}
       </div>
       {edge('right')}
       {onAdd && (
-        <button type="button" className="doc-tabstrip__add" aria-label={tr('tabs.add')} onClick={onAdd}><Icon of={Plus} size={14} /></button>
+        <button type="button" className="doc-tabstrip__add" aria-label={t('tabs.add')} onClick={onAdd}><Icon of={Plus} size={14} /></button>
       )}
     </div>
   );
@@ -134,7 +134,7 @@ export function TabStrip({ tabs, activeId, onSelect, idBase, onAdd, unseen }) {
  * folds it away; `hidden`, it is folded, and out of reach of keys and readers.
  */
 export function TabRail({ tabs, activeId, unseen, editable, onSelect, apply, idBase, hidden = false, onHide }) {
-  const { t: tr } = useTranslation('docs');
+  const { t } = useTranslation('docs');
   const [renaming, setRenaming] = useState(null);
   const [menuFor, setMenuFor] = useState(null);
   const arrows = tabKeys({ tabs, activeId, onSelect, idBase, vertical: true });
@@ -145,56 +145,56 @@ export function TabRail({ tabs, activeId, unseen, editable, onSelect, apply, idB
     if (created) { onSelect(created.id); setRenaming(created.id); }
   };
   const onKeyDown = (e) => {
-    const t = tabs.find((x) => tabElementId(idBase, x.id) === e.target.id);
-    if (t && e.key === 'F2' && editable) { e.preventDefault(); setRenaming(t.id); return; }
+    const tab = tabs.find((x) => tabElementId(idBase, x.id) === e.target.id);
+    if (tab && e.key === 'F2' && editable) { e.preventDefault(); setRenaming(tab.id); return; }
     arrows(e);
   };
-  const rename = (t, value) => {
+  const rename = (tab, value) => {
     setRenaming(null);
     const v = value.trim();
-    if (v && v !== t.title) apply([{ op: 'rename_tab', tab: t.id, title: v }]);
+    if (v && v !== tab.title) apply([{ op: 'rename_tab', tab: tab.id, title: v }]);
   };
   return (
-    <nav className="doc-tabs" aria-label={tr('tabs.label')} data-hidden={hidden || undefined} aria-hidden={hidden || undefined}
+    <nav className="doc-tabs" aria-label={t('tabs.label')} data-hidden={hidden || undefined} aria-hidden={hidden || undefined}
       inert={hidden ? true : undefined}>
       <div className="doc-tabs__head">
-        <div className="doc-tabs__label">{tr('tabs.label')}</div>
+        <div className="doc-tabs__label">{t('tabs.label')}</div>
         {onHide && (
-          <Tooltip content={tr('tabs.hide')}>
-            <button type="button" className="doc-tabs__hide" aria-label={tr('tabs.hide')} onClick={onHide}>
+          <Tooltip content={t('tabs.hide')}>
+            <button type="button" className="doc-tabs__hide" aria-label={t('tabs.hide')} onClick={onHide}>
               <Icon of={PanelLeftClose} size={16} />
             </button>
           </Tooltip>
         )}
       </div>
-      <div className="doc-tabs__list" role="tablist" aria-orientation="vertical" aria-label={tr('tabs.label')} onKeyDown={onKeyDown}>
-        {tabs.map((t, i) => (
-          <div key={t.id} role="presentation" className="doc-tab" data-selected={t.id === activeId}
-            onClick={() => onSelect(t.id)}
-            onDoubleClick={() => editable && setRenaming(t.id)}>
-            {renaming === t.id ? (
-              <input className="doc-tab__input" autoFocus defaultValue={t.title} aria-label={tr('tabs.name')}
+      <div className="doc-tabs__list" role="tablist" aria-orientation="vertical" aria-label={t('tabs.label')} onKeyDown={onKeyDown}>
+        {tabs.map((tab, i) => (
+          <div key={tab.id} role="presentation" className="doc-tab" data-selected={tab.id === activeId}
+            onClick={() => onSelect(tab.id)}
+            onDoubleClick={() => editable && setRenaming(tab.id)}>
+            {renaming === tab.id ? (
+              <input className="doc-tab__input" autoFocus defaultValue={tab.title} aria-label={t('tabs.name')}
                 // The name selected, so a new tab's "Untitled" is typed over.
                 onFocus={(e) => e.currentTarget.select()}
                 onClick={(e) => e.stopPropagation()}
-                onBlur={(e) => rename(t, e.target.value)}
+                onBlur={(e) => rename(tab, e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setRenaming(null); }} />
             ) : (
-              <button type="button" className="doc-tab__title" {...tabProps(idBase, t, activeId)}>{t.title}</button>
+              <button type="button" className="doc-tab__title" {...tabProps(idBase, tab, activeId)}>{tab.title}</button>
             )}
-            {unseen.has(t.id) && t.id !== activeId && <span className="doc-tab__dot" aria-label={tr('tabs.changed')} />}
+            {unseen.has(tab.id) && tab.id !== activeId && <span className="doc-tab__dot" aria-label={t('tabs.changed')} />}
             {editable && (
               <span className="doc-tab__more" onClick={(e) => e.stopPropagation()}>
                 <Menu
-                  open={menuFor === t.id}
-                  onOpenChange={(o) => setMenuFor(o ? t.id : null)}
-                  ariaLabel={tr('tabs.menu', { title: t.title })}
-                  trigger={<button type="button" className="doc-gutter__btn" aria-label={tr('tabs.options', { title: t.title })}><Icon of={Ellipsis} size={14} /></button>}
+                  open={menuFor === tab.id}
+                  onOpenChange={(o) => setMenuFor(o ? tab.id : null)}
+                  ariaLabel={t('tabs.menu', { title: tab.title })}
+                  trigger={<button type="button" className="doc-gutter__btn" aria-label={t('tabs.options', { title: tab.title })}><Icon of={Ellipsis} size={14} /></button>}
                   items={[
-                    { key: 'rename', label: tr('tabs.rename'), onClick: () => setRenaming(t.id) },
-                    ...(i > 0 ? [{ key: 'up', label: tr('tabs.moveUp'), onClick: () => apply([{ op: 'move_tab', tab: t.id, index: opIndex(i - 1) }]) }] : []),
-                    ...(i < tabs.length - 1 ? [{ key: 'down', label: tr('tabs.moveDown'), onClick: () => apply([{ op: 'move_tab', tab: t.id, index: opIndex(i + 1) }]) }] : []),
-                    ...(tabs.length > 1 ? [{ divider: true }, { key: 'del', danger: true, label: tr('tabs.delete'), onClick: () => { apply([{ op: 'delete_tab', tab: t.id }]); if (t.id === activeId) onSelect(tabs[i === 0 ? 1 : 0].id); } }] : []),
+                    { key: 'rename', label: t('tabs.rename'), onClick: () => setRenaming(tab.id) },
+                    ...(i > 0 ? [{ key: 'up', label: t('tabs.moveUp'), onClick: () => apply([{ op: 'move_tab', tab: tab.id, index: opIndex(i - 1) }]) }] : []),
+                    ...(i < tabs.length - 1 ? [{ key: 'down', label: t('tabs.moveDown'), onClick: () => apply([{ op: 'move_tab', tab: tab.id, index: opIndex(i + 1) }]) }] : []),
+                    ...(tabs.length > 1 ? [{ divider: true }, { key: 'del', danger: true, label: t('tabs.delete'), onClick: () => { apply([{ op: 'delete_tab', tab: tab.id }]); if (tab.id === activeId) onSelect(tabs[i === 0 ? 1 : 0].id); } }] : []),
                   ]}
                 />
               </span>
@@ -203,7 +203,7 @@ export function TabRail({ tabs, activeId, unseen, editable, onSelect, apply, idB
         ))}
       </div>
       {editable && (
-        <button type="button" className="doc-tabs__add" onClick={add}><Icon of={Plus} size={14} /> {tr('tabs.add')}</button>
+        <button type="button" className="doc-tabs__add" onClick={add}><Icon of={Plus} size={14} /> {t('tabs.add')}</button>
       )}
     </nav>
   );

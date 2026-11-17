@@ -7,7 +7,9 @@
 // server's answer. Inline text stays the Markdown subset the agent writes;
 // `inlineToHtml` / `htmlToInline` translate it for contentEditable.
 
-import i18n, { currentLocale } from '../../../lib/i18n';
+import { currentLocale, sharedTranslator } from '../../../lib/i18n';
+
+const tr = sharedTranslator('docs');
 
 export const TEXT_TYPES = ['paragraph', 'heading', 'bullet', 'numbered', 'task', 'quote', 'callout'];
 export const LIST_TYPES = ['bullet', 'numbered', 'task'];
@@ -30,6 +32,9 @@ export const isListBlock = (b) => !!b && LIST_TYPES.includes(b.type);
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ESC[c]);
 
+// One formatter per language: a table renders a date cell for every row.
+let dateFormat = null;
+
 /** `2026-10-21` → `Oct 21, 2026` in the app's language; anything else unchanged. */
 export function formatDate(value) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
@@ -37,7 +42,11 @@ export function formatDate(value) {
   const [year, month, day] = [Number(m[1]), Number(m[2]) - 1, Number(m[3])];
   const date = new Date(Date.UTC(year, month, day));
   if (date.getUTCMonth() !== month || date.getUTCDate() !== day) return String(value);
-  return date.toLocaleDateString(currentLocale(), { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  const locale = currentLocale();
+  if (dateFormat?.locale !== locale) {
+    dateFormat = { locale, format: new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) };
+  }
+  return dateFormat.format.format(date);
 }
 
 const TONE_WORDS = [
@@ -61,7 +70,7 @@ function chipHtml(kind, value) {
   let label = value;
   let cls = `doc-chip doc-chip--${kind}`;
   if (kind === 'date') label = formatDate(value);
-  if (kind === 'user') label = value === 'me' ? i18n.t('chip.me', { ns: 'docs' }) : value;
+  if (kind === 'user') label = value === 'me' ? tr('chip.me') : value;
   if (kind === 'status') cls += ` doc-tone--${toneFor(value)}`;
   return `<span class="${cls}" contenteditable="false" data-chip="${escapeHtml(raw)}">${escapeHtml(label)}</span>`;
 }

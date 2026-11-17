@@ -14,8 +14,8 @@ function EditedAgo({ at }) {
   const { t } = useTranslation('docs');
   const [, tick] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => tick((n) => n + 1), 60_000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(timer);
   }, []);
   return <span>{at ? t('page.edited', { age: relativeAge(at) }) : t('page.new')}</span>;
 }

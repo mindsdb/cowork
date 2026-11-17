@@ -1,7 +1,7 @@
 // The version history's words and grouping, against a fixed clock (TZ=UTC in tests).
 import { describe, it, expect } from 'vitest';
 import {
-  WHO, ago, changedSince, dayLabel, groupByDay, stepFrom, timeLabel, whatChanged, whenPhrase, whenShort, whenTitle,
+  ago, changedSince, dayLabel, groupByDay, stepFrom, timeLabel, whatChanged, whenPhrase, whenShort, whenTitle,
 } from './versionHistory';
 
 const NOW = new Date('2026-10-23T16:05:00Z'); // a Friday
@@ -38,10 +38,6 @@ describe('when, in words', () => {
 });
 
 describe('what a row says', () => {
-  it('names who made a version', () => {
-    expect(WHO).toEqual({ agent: 'Agent', user: 'You' });
-  });
-
   it('is the summary, a restore said as one, or earlier changes when there is nothing to compare', () => {
     expect(whatChanged({ summary: 'Budget: Paid search 72 → 80' }, NOW)).toBe('Budget: Paid search 72 → 80');
     expect(whatChanged({ summary: 'x', restoredFrom: { rev: 3, at: '2026-10-23T14:58:00Z' } }, NOW))

@@ -421,7 +421,7 @@ describe('the header in a corner something is drawn over', () => {
 
 describe('the Export menu', () => {
   it('lists what the server offers here, all four from a server that does not say', () => {
-    const keys = (offered) => exportChoices(offered).map(([key]) => key);
+    const keys = exportChoices;
     expect(keys(undefined)).toEqual(['docx', 'pdf', 'md', 'html']);
     expect(keys(['docx', 'md', 'html'])).toEqual(['docx', 'md', 'html']);
     expect(keys(['md', 'html'])).toEqual(['md', 'html']);

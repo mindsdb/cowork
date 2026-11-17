@@ -3,18 +3,14 @@
 // the caret goes next (`focus`). DocCanvas reads the caret and applies these.
 // Data and decisions only: the icons each kind is drawn with are blockIcons'.
 import { blockPlainText, inlineToPlain, isListBlock, isTextBlock, makeBlock } from './docModel';
-import i18n from '../../../lib/i18n';
+import i18n, { sharedTranslator } from '../../../lib/i18n';
 
-const tr = (key, vars) => i18n.t(key, { ns: 'docs', ...vars });
-const englishLabel = (key) => i18n.getFixedT('en', 'docs')(`insert.item.${key}`);
+const tr = sharedTranslator('docs');
+const englishLabel = i18n.getFixedT('en', 'docs', 'insert.item');
 
-// Labels and group names are getters: they read the language each time a menu is drawn.
-const item = (spec) => Object.defineProperties({ ...spec }, {
-  label: { get: () => tr(`insert.item.${spec.key}`), enumerable: true },
-  ...(spec.group && { group: { get: () => tr(`insert.group.${spec.group}`), enumerable: true } }),
-});
-
-const TEXT_KINDS = [
+// Each menu item's `key` names its label (docs `insert.item.<key>`), and its
+// `group` its heading (`insert.group.<group>`): translated when a menu is built.
+export const TURN_INTO = [
   { type: 'paragraph' },
   { type: 'heading', level: 1, hint: '#' },
   { type: 'heading', level: 2, hint: '##' },
@@ -26,38 +22,33 @@ const TEXT_KINDS = [
   { type: 'callout' },
 ].map((t) => ({ ...t, key: `${t.type}${t.level || ''}` }));
 
-export const TURN_INTO = TEXT_KINDS.map(item);
-
 export const INSERTABLE = [
   { type: 'table', group: 'data' },
   { type: 'chart', group: 'data' },
   { type: 'metrics', group: 'data' },
   { type: 'code', group: 'other', hint: '```' },
   { type: 'divider', group: 'other', hint: '---' },
-].map((t) => item({ ...t, key: t.type }));
+].map((t) => ({ ...t, key: t.type }));
 
-export const CALLOUT_TONES = ['info', 'success', 'warning', 'danger', 'note'].map((tone) => ({
-  tone,
-  get label() { return tr(`tone.${tone}`); },
-}));
+export const CALLOUT_TONES = ['info', 'success', 'warning', 'danger', 'note'];
 
-const BASIC = TEXT_KINDS.map((t) => item({ ...t, group: 'basic' }));
-const ASK = item({ key: 'ask', type: 'ask', group: 'agent' });
-const IMAGE = item({ key: 'image', type: 'image', group: 'data' });
+const ASK = { key: 'ask', type: 'ask', group: 'agent' };
+const IMAGE = { key: 'image', type: 'image', group: 'data' };
 
 /**
- * The slash menu's items for `query`, matched on label or block type: a label
- * starting with it first, then one holding it, then the type ("/ask" is the
- * agent's item before To-do, whose type is "task"), then the English label.
+ * The slash menu's items for `query`, each with its label and group heading,
+ * matched on label or block type: a label starting with it first, then one
+ * holding it, then the type ("/ask" is the agent's item before To-do, whose
+ * type is "task"), then the English label.
  */
 export function slashItems(query, canAsk, canImage = false) {
   const q = query.trim().toLowerCase();
   const items = [
-    ...BASIC,
+    ...TURN_INTO.map((t) => ({ ...t, group: 'basic' })),
     ...INSERTABLE,
     ...(canImage ? [IMAGE] : []),
     ...(canAsk ? [ASK] : []),
-  ];
+  ].map((i) => ({ ...i, label: tr(`insert.item.${i.key}`), group: tr(`insert.group.${i.group}`) }));
   if (!q) return items;
   const match = (text) => {
     const label = text.toLowerCase();
