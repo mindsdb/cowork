@@ -12,7 +12,7 @@ import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingCopyKey, offersBilling } from '../lib/billingLinks';
-import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded, setPendingTaskMode } from '../lib/analytics';
+import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded } from '../lib/analytics';
 import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
 import { takeSignupWelcome, SIGNUP_FROM_DESKTOP } from '../lib/signupWelcome';
 import { productName } from '../../lib/deploymentBrand';
@@ -334,13 +334,11 @@ export default function HomeView({
   // through untouched.
   const sendTracked = async (text, meta) => {
     const { text: sent, modeLine } = modeMessage(taskMode, text, pickedSample);
-    setPendingTaskMode(modeLine && { task_mode: taskMode.id, mode_line: modeLine, example_placed: Boolean(pickedSample) });
-    let result;
-    try {
-      result = await onSend(sent, meta);
-    } finally {
-      if (!result) setPendingTaskMode(null);
-    }
+    // What became of the mode line, for analytics. It travels with this send,
+    // so a second Enter the app refuses mid-send cannot clear it.
+    const result = await onSend(sent, modeLine
+      ? { ...meta, taskMode: { task_mode: taskMode.id, mode_line: modeLine, example_placed: Boolean(pickedSample) } }
+      : meta);
     if (result) {
       const done = stepsCompletedBySend(text);
       // An example the person picked and then edited still counts as tried.

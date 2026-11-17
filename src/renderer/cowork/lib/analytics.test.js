@@ -2201,12 +2201,15 @@ describe('onboarding and start events', () => {
     expect(links).toEqual([true, false, false]);
   });
 
-  it('says which task mode the message went under and what became of its instruction, once', async () => {
+  it('says which task mode the message went under and what became of its instruction', async () => {
     const fetchMock = mockFetch();
-    const { setPendingTaskMode, trackNewTaskMessageSent } = await importAnalytics();
+    const { trackNewTaskMessageSent } = await importAnalytics();
 
-    setPendingTaskMode({ task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true });
-    trackNewTaskMessageSent({ text: 'plan a birthday party', start: { start_kind: 'free_text' } });
+    trackNewTaskMessageSent({
+      text: 'plan a birthday party',
+      start: { start_kind: 'free_text' },
+      taskMode: { task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true },
+    });
     trackNewTaskMessageSent({ text: 'next task', start: { start_kind: 'free_text' } });
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
@@ -2214,22 +2217,6 @@ describe('onboarding and start events', () => {
     expect(first).toMatchObject({ task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true });
     expect(second).not.toHaveProperty('task_mode');
     expect(second).not.toHaveProperty('mode_line');
-  });
-
-  it('does not carry a task mode set long ago onto a later message', async () => {
-    const fetchMock = mockFetch();
-    const { setPendingTaskMode, trackNewTaskMessageSent } = await importAnalytics();
-    const now = vi.spyOn(Date, 'now');
-    try {
-      now.mockReturnValue(5_000_000);
-      setPendingTaskMode({ task_mode: 'games', mode_line: 'appended', example_placed: false });
-      now.mockReturnValue(5_000_000 + 61 * 1000);
-      trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'free_text' } });
-    } finally {
-      now.mockRestore();
-    }
-
-    expect((await sentEvent(fetchMock, 'new_task_message_sent')).properties).not.toHaveProperty('task_mode');
   });
 
   it('labels a send that goes out, and says so for one the app starts itself', async () => {

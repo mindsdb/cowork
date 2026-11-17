@@ -4408,7 +4408,7 @@ function AppCore() {
       markInFlight(taskId);
     };
     // Before the session-start event, which clears the console attribution this reads.
-    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text) });
+    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text), taskMode: meta?.taskMode });
     trackAgentSessionStarted();
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
