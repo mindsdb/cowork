@@ -340,3 +340,29 @@ describe('Edit with agent from the doc beside the chat', () => {
     expect(docContextFor('conv-a')).not.toHaveProperty('request');
   });
 });
+
+describe('Try again on a message sent beside a doc', () => {
+  const failedTurn = (user) => ({
+    id: 'conv-a',
+    title: 'Shortlist',
+    status: 'idle',
+    messages: [user, { role: 'error', content: 'nothing ran', code: 'worker_unresponsive' }],
+  });
+
+  it('resends with the doc the message was sent beside, not the one open now', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const sentBeside = { artifactId: DOC_ID, title: 'Vendor shortlist', mode: 'edit', selection: { blockIds: ['b_1'], quote: 'Acme' } };
+    render(<ChatView task={failedTurn({ role: 'user', content: 'Make it shorter', docContext: sentBeside })} onSend={onSend} />);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('Make it shorter', [], { docContext: sentBeside });
+  });
+
+  it('resends a message with no doc of its own with none', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<ChatView task={failedTurn({ role: 'user', content: 'Plain question' })} onSend={onSend} />);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('Plain question', [], { docContext: null });
+  });
+});

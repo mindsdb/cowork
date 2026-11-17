@@ -51,6 +51,16 @@ describe('inline Markdown ⇄ HTML', () => {
     expect(inlineToPlain(md)).toBe('2 * 3 = 6 and `x`');
   });
 
+  it('keeps a typed _word_ literal and leaves snake_case as typed', () => {
+    // Saved unescaped, "_draft_" came back as italics the next time the doc opened.
+    const div = document.createElement('div');
+    div.textContent = 'a _draft_ of snake_case and __init__';
+    const md = htmlToInline(div);
+    expect(md).toBe('a \\_draft\\_ of snake_case and \\_\\_init\\_\\_');
+    expect(inlineToHtml(md)).not.toContain('<em>');
+    expect(inlineToPlain(md)).toBe('a _draft_ of snake_case and __init__');
+  });
+
   it('keeps a link whose address holds brackets or spaces whole when it is saved', () => {
     const div = document.createElement('div');
     div.innerHTML = 'See <a href="https://en.wikipedia.org/wiki/Up_(2009 film)">Up</a> today';

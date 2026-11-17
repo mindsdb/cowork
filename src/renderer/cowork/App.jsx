@@ -2796,7 +2796,7 @@ function AppCore() {
   const airAvailableForSwitch =
     (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
     && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
-  const handleSwitchToAirAndResend = (text, attachments = null) => {
+  const handleSwitchToAirAndResend = (text, attachments = null, docContext = null) => {
     if (!currentTask || !text) return;
     // Persist the switch on the task so follow-up sends stay on Air, and
     // override the same send explicitly — the state write isn't visible to
@@ -2804,7 +2804,7 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: MINDSHUB_AIR_MODEL_ID } : t)));
     /* `attachments` is the failed message's own list, so its files go with the
        resend and the composer's staged files stay put. */
-    handleSendInTask(text, attachments, { modelOverride: MINDSHUB_AIR_MODEL_ID });
+    handleSendInTask(text, attachments, { modelOverride: MINDSHUB_AIR_MODEL_ID, docContext });
   };
 
   useEffect(() => {
@@ -4388,7 +4388,7 @@ function AppCore() {
           ? {
               ...t,
               messages: withThinkingPlaceholder(
-                [{ role: 'user', content: text, attachments: sendingAttachments }],
+                [{ role: 'user', content: text, attachments: sendingAttachments, ...(docContext ? { docContext } : {}) }],
                 // New-task path: the placeholder phase is genuinely
                 // "spinning up the conversation" — anton-core has to
                 // boot the LLM session, attach memories, etc. — so
@@ -4890,7 +4890,9 @@ function AppCore() {
             ...t,
             status: 'active',
             attachments: [...(t.attachments || []), ...sendingAttachments],
-            messages: withThinkingPlaceholder([...t.messages, { role: 'user', content: text, attachments: sendingAttachments }]),
+            messages: withThinkingPlaceholder([...t.messages, {
+              role: 'user', content: text, attachments: sendingAttachments, ...(docContext ? { docContext } : {}),
+            }]),
             // "Reviving" a task (replying in an existing one) must
             // bump updatedAt locally — the server only rewrites
             // _meta.json when the turn completes, but we want
