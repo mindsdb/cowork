@@ -627,15 +627,14 @@ export function artifactStepToCard(step, projectPath) {
   };
 }
 
-// Renders any badge='Artifact' steps as inline ArtifactCards, except a generated
-// image's (`_shownInline`): its inline picture already shows it.
+// Renders any badge='Artifact' steps as inline ArtifactCards.
 //
 // `live` says whether these steps belong to a turn still in flight. It rides
 // down to the card because an artifact the agent created THIS turn cannot be in
 // an artifacts index that was loaded before it existed, and judging it against
 // one would mark a brand-new artifact "Deleted".
 function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
-  const artifacts = steps?.filter((s) => s.badge === 'Artifact' && !s._shownInline) || [];
+  const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
     <div className="flex flex-col gap-3 mt-1">

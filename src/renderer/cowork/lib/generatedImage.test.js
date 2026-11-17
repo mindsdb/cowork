@@ -24,16 +24,7 @@ describe('parseGeneratedImageResult (ENG-4024)', () => {
       mimeType: 'image/png',
       model: 'gpt-image-2.6-flare',
       prompt: '',
-      artifactSlug: '',
     });
-  });
-
-  it('reads the artifact the server files the picture under', () => {
-    expect(parseGeneratedImageResult({ ...RESULT, artifact_slug: 'a-cat-45ed7ced' })?.artifactSlug).toBe('a-cat-45ed7ced');
-    expect(generatedImagesFromEvent({
-      content: JSON.stringify({ ...RESULT, artifact_slug: 'a-cat-45ed7ced' }),
-      generated_images: [{ path: 'conversations/conv-a/cat.png' }],
-    })[0].artifactSlug).toBe('a-cat-45ed7ced');
   });
 
   it('reads an already-parsed result too', () => {
@@ -73,7 +64,6 @@ describe('generatedImagesFromEvent (ENG-4024)', () => {
       mimeType: 'image/png',
       model: 'gpt-image-2.6-flare',
       prompt: '',
-      artifactSlug: '',
     }]);
   });
 

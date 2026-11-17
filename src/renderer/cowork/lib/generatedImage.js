@@ -29,7 +29,7 @@ const baseName = (path) => path.split(/[\\/]/).filter(Boolean).pop() || path;
  *
  * @param {unknown} content the result event's `content`
  * @returns {{ path: string, name: string, width: number | null, height: number | null,
- *   mimeType: string, model: string, prompt: string, artifactSlug: string } | null}
+ *   mimeType: string, model: string, prompt: string } | null}
  */
 export function parseGeneratedImageResult(content) {
   let result = content;
@@ -52,8 +52,6 @@ export function parseGeneratedImageResult(content) {
     model: typeof result.model === 'string' ? result.model : '',
     // Not in the tool's result today; used for the alt text when it is.
     prompt: typeof result.prompt === 'string' ? result.prompt : '',
-    // The artifact the server files the picture under; its artifact card is folded into this image.
-    artifactSlug: typeof result.artifact_slug === 'string' ? result.artifact_slug : '',
   };
 }
 
@@ -87,7 +85,6 @@ export function generatedImagesFromEvent(event) {
       mimeType,
       model: result?.model || '',
       prompt: result?.prompt || '',
-      artifactSlug: typeof entry.artifact_slug === 'string' ? entry.artifact_slug : (result?.artifactSlug || ''),
     }];
   });
 }
