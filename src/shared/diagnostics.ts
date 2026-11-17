@@ -136,6 +136,7 @@ export function diagnostic(
                 [
                   "planning_model",
                   "coding_model",
+                  "image_model",
                   "conversation_model",
                   "intent_model",
                 ].includes(entry)) ||

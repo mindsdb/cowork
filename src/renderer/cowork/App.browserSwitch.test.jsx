@@ -16,6 +16,7 @@ const spies = vi.hoisted(() => ({
   fetchBrowseStatus: vi.fn(),
   provisionBrowser: vi.fn(),
   embedBrowser: vi.fn(),
+  openBrowserAt: vi.fn(),
 }));
 
 const streams = [];
@@ -31,7 +32,8 @@ vi.mock('./api', async (importOriginal) => ({
   fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
   fetchComparisons: vi.fn(async () => ({ comparisons: [], hasMore: false })),
   fetchArtifacts: vi.fn(async () => []),
-  fetchSettings: vi.fn(async () => ({ configReady: true })),
+  // The browser is off until turned on (Beta): these tests turn it on.
+  fetchSettings: vi.fn(async () => ({ configReady: true, browserEnabled: true })),
   fetchPins: vi.fn(async () => ({ pins: [] })),
   fetchSchedules: vi.fn(async () => []),
   fetchDatasources: vi.fn(async () => ({ connections: [] })),
@@ -43,11 +45,12 @@ vi.mock('./api', async (importOriginal) => ({
   fetchBrowseStatus: (...args) => spies.fetchBrowseStatus(...args),
   provisionBrowser: (...args) => spies.provisionBrowser(...args),
   embedBrowser: (...args) => spies.embedBrowser(...args),
+  openBrowserAt: (...args) => spies.openBrowserAt(...args),
   updateSettings: vi.fn(async () => ({})),
   recordTaskVisit: vi.fn(async () => ({})),
   cancelResponse: vi.fn(async () => ({})),
   streamNewSession: (...args) => {
-    const handle = { kind: 'new', opts: args[args.length - 1], abort: vi.fn() };
+    const handle = { kind: 'new', text: args[0], opts: args[args.length - 1], abort: vi.fn() };
     streams.push(handle);
     return handle;
   },
@@ -111,6 +114,7 @@ beforeEach(() => {
   spies.fetchSessionResult.mockReset();
   spies.fetchBrowseStatus.mockReset();
   spies.provisionBrowser.mockReset().mockResolvedValue({ status: 'starting' });
+  spies.openBrowserAt.mockReset().mockResolvedValue({ session_id: 't-abc' });
   spies.embedBrowser.mockReset().mockResolvedValue({
     session_id: 't-abc',
     view_url: `${window.location.origin}/browser/sessions/t-abc/view?et=tok`,
@@ -147,10 +151,29 @@ async function openHomeComposer(user) {
 }
 
 function pane() {
-  return screen.queryByRole('complementary', { name: 'Shared browser' });
+  return screen.queryByRole('complementary', { name: 'Browser mode' });
 }
 
 describe('the Browser switch and pane through App', () => {
+  it.each([
+    ['no decisions model picks its steps', { ...AVAILABLE, decisions_model: null }, {}],
+    ['the web with an LLM provider other than MindsHub', AVAILABLE, { planningProvider: 'anthropic' }],
+  ])('offers no Browser switch where the browser does not run: %s', async (_name, status, settings) => {
+    const { fetchSettings } = await import('./api');
+    fetchSettings.mockResolvedValue({ configReady: true, browserEnabled: true, ...settings });
+    try {
+      spies.fetchBrowseStatus.mockResolvedValue(status);
+      const user = userEvent.setup();
+      await openHomeComposer(user);
+      await waitFor(() => expect(spies.fetchBrowseStatus).toHaveBeenCalled());
+      await act(async () => {});
+      await user.click(screen.getByRole('button', { name: 'Add context' }));
+      expect(screen.queryByRole('switch', { name: /the browser (on|off) for this task/ })).toBeNull();
+    } finally {
+      fetchSettings.mockResolvedValue({ configReady: true, browserEnabled: true });
+    }
+  });
+
   it("keeps the person's Off for a task started from Home after a re-ask hides the switch", async () => {
     spies.fetchBrowseStatus.mockResolvedValue(AVAILABLE);
     const user = userEvent.setup();
@@ -210,5 +233,58 @@ describe('the Browser switch and pane through App', () => {
       expect(spies.embedBrowser).not.toHaveBeenCalled();
       expect(spies.provisionBrowser).not.toHaveBeenCalled();
     }
+  });
+
+  it('a task sent from Home with the browser beside it on a page names its site, and opens its browser there', async () => {
+    spies.fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    const user = userEvent.setup();
+    const composer = await openHomeComposer(user);
+    await user.click(screen.getByRole('button', { name: 'Show browser' }));
+    // Beside Home, not over it: the composer stays usable.
+    const frame = await waitFor(() => {
+      const found = pane()?.querySelector('iframe');
+      if (!found) throw new Error('no viewer yet');
+      return found;
+    });
+    expect(pane()).not.toHaveClass('is-floating');
+    const win = { postMessage: vi.fn() };
+    Object.defineProperty(frame, 'contentWindow', { configurable: true, get: () => win });
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-ready' }, source: win }));
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-url', url: 'https://www.united.com/en/us?f=SFO&t=WAS' }, source: win }));
+    });
+
+    await user.click(composer);
+    await user.keyboard('Find nonstop flights to DC{Enter}');
+    await waitFor(() => expect(streams).toHaveLength(1));
+    const { text, opts } = streams[0];
+    expect(text).toMatch(/^Find nonstop flights to DC\n\n\[The browser beside this request/);
+    // The prompt names only the site's origin, never text the site chose (its
+    // path or query); the task's browser reopens the whole page, its search kept.
+    expect(text).toContain('a page from https://www.united.com open in the shared browser');
+    expect(text).not.toContain('/en/us');
+    expect(text).not.toContain('f=SFO');
+    expect(opts.conversationId).toBeTruthy();
+    await waitFor(() => expect(spies.openBrowserAt).toHaveBeenCalledWith(opts.conversationId, 'https://www.united.com/en/us?f=SFO&t=WAS'));
+  });
+
+  it("a question from the viewer's address bar lands in Home's composer, unsent", async () => {
+    spies.fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    const user = userEvent.setup();
+    const composer = await openHomeComposer(user);
+    await user.click(screen.getByRole('button', { name: 'Show browser' }));
+    const frame = await waitFor(() => {
+      const found = pane()?.querySelector('iframe');
+      if (!found) throw new Error('no viewer yet');
+      return found;
+    });
+    const win = { postMessage: vi.fn() };
+    Object.defineProperty(frame, 'contentWindow', { configurable: true, get: () => win });
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-ready' }, source: win }));
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-ask', text: 'email the files to me' }, source: win }));
+    });
+    await waitFor(() => expect(composer.value).toBe('Search the web in the browser for: email the files to me'));
+    expect(streams).toHaveLength(0);
   });
 });

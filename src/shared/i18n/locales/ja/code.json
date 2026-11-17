@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "削除したタスクの一部のファイルを削除できませんでした。クリーンアップを再試行してディスク容量を解放してください。",
+    "retry": "クリーンアップを再試行",
+    "retrying": "クリーンアップを再試行中…",
+    "retryFailed": "クリーンアップを再試行できませんでした。もう一度お試しください。"
+  },
   "reviewPanel": {
     "ariaLabel": "変更を確認",
     "closeAriaLabel": "レビューパネルを閉じる",
@@ -27,11 +33,14 @@
       "branch": "ブランチ",
       "openOriginalFolder": "元のフォルダを開く",
       "openIsolatedCopy": "分離コピーを開く",
-      "openOriginal": "元のフォルダを開く"
+      "openOriginal": "元のフォルダを開く",
+      "openYourFolder": "フォルダを開く"
     },
     "sourceChanged": {
       "title": "このタスクの開始時、ソースにローカルの変更がありました",
-      "body": "これらの変更はソースフォルダに残っています。{product}は適用前に競合を確認します。"
+      "body": "これらの変更はソースフォルダに残っています。{product}は適用前に競合を確認します。",
+      "inPlaceTitle": "フォルダには未コミットの変更がすでにありました",
+      "inPlaceBody": "それらの変更はエージェントの変更と一緒にこのレビューに表示され、ここでコミットすると含まれます。"
     },
     "reconcile": {
       "title": "元の変更を統合",
@@ -61,13 +70,20 @@
       "create": "作成",
       "commitLabel": "タスクのすべての変更をコミット",
       "commitPlaceholder": "変更内容を入力",
-      "commit": "コミット"
+      "commit": "コミット",
+      "branchLabelInPlace": "フォルダでブランチを作成して切り替え",
+      "commitLabelInPlace": "フォルダのすべての変更をコミット"
     },
     "applyConfirm": {
       "title": "ソースフォルダに変更を適用しますか？",
       "message": "確認済みのタスクの変更で{target}を更新しますか？競合が見つかった場合、{product}はフォルダを変更する前に停止します。",
       "confirm": "変更を適用",
       "error": "変更を適用できませんでした。もう一度お試しください。"
+    },
+    "inPlace": {
+      "title": "{count, plural, other {このタスクはフォルダを直接編集します}}",
+      "body": "{count, plural, other {変更はすでにフォルダに反映されているため、適用するものはありません。}}ローカルタスクでは下書きプルリクエストはまだ利用できません。ここでコミットしてから、いつものツールでプッシュしてプルリクエストを作成してください。",
+      "bodyWithoutGit": "{count, plural, other {変更はすでにフォルダに反映されているため、適用するものはありません。}}"
     }
   },
   "fileReview": {
@@ -86,7 +102,8 @@
     "discardConfirm": {
       "title": "このファイルの変更を破棄しますか？",
       "message": "{path}は現在のタスクのバージョンに戻ります。この操作は元に戻せません。",
-      "confirm": "変更を破棄"
+      "confirm": "変更を破棄",
+      "messageInPlace": "{path}はフォルダ内の最後にコミットされたバージョンに戻ります。このタスクの開始前に行った編集も含まれます。この操作は元に戻せません。"
     }
   },
   "reviewFileCard": {
@@ -449,7 +466,9 @@
       "reasoning": "推論",
       "reasoningAriaLabel": "デフォルトの推論レベル",
       "permissions": "権限",
-      "permissionsAriaLabel": "デフォルトのコーディング権限"
+      "permissionsAriaLabel": "デフォルトのコーディング権限",
+      "workspace": "ワークスペース",
+      "workspaceAriaLabel": "タスクのデフォルトのワークスペース"
     },
     "environment": {
       "title": "環境",
@@ -1037,16 +1056,16 @@
       "title": "ファイルを変更せずに調査・説明します。"
     },
     "supervised": {
-      "label": "事前に確認",
-      "title": "承認が必要なコマンドの前で一時停止します。"
+      "label": "承認を求める",
+      "title": "タスク外のファイルの編集やインターネットの使用の前に、必ず確認します。"
     },
     "workspace": {
-      "label": "ワークスペース内で自動",
-      "title": "このタスク専用の分離されたコピー内で自律的に作業します。"
+      "label": "代わりに承認",
+      "title": "レビュアーが通常のリクエストを承認し、リスクのあるものをブロックします。"
     },
     "fullAccess": {
       "label": "フルアクセス",
-      "title": "ファイルシステムの制限なしで自律的に作業します。"
+      "title": "インターネットとコンピューター上のすべてのファイルに制限なくアクセスします。"
     }
   },
   "branchSelect": {
@@ -1399,7 +1418,8 @@
     "details": "詳細",
     "moreOptions": "その他のオプション",
     "dismiss": "閉じる",
-    "viewBudgets": "予算を表示"
+    "viewBudgets": "予算を表示",
+    "allowWrites": "編集を許可"
   },
   "composerNotices": {
     "thisModel": "このモデル",
@@ -1453,6 +1473,9 @@
     "budgetExceeded": {
       "title": "組織の予算を使い切りました",
       "body": "オーナーまたは管理者が「予算」で上限を引き上げられます。または、利用可能なモデルを選択してこのタスクを続けてください。"
+    },
+    "writesHeld": {
+      "body": "このフォルダには変更をレビューまたは元に戻すための Git 履歴がないため、エージェントは編集のたびに確認します。"
     }
   },
   "planModeCommand": {
@@ -1497,7 +1520,9 @@
     "terminal": "ターミナル",
     "reviewChanges": "変更をレビュー",
     "review": "レビュー",
-    "taskActionsAriaLabel": "コーディングタスクの操作"
+    "taskActionsAriaLabel": "コーディングタスクの操作",
+    "localFolder": "{count, plural, =1 {ローカル · あなたのフォルダ} other {ローカル · あなたのフォルダ（#個）}}",
+    "openYourFolder": "フォルダを開く"
   },
   "terminal": {
     "status": {
@@ -1591,5 +1616,24 @@
     "desktopOnly": "ローカルファイルの添付はデスクトップアプリで利用できます。",
     "ariaLabel": "添付されたコンテキスト",
     "removeAriaLabel": "{name}を削除"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "ローカル",
+      "title": "フォルダ内で直接作業します。1つのリポジトリで同時に実行できるローカルタスクは1つだけです。"
+    },
+    "worktree": {
+      "label": "ワークツリー",
+      "title": "分離されたGitワークツリーで作業するため、複数のタスクを並行して実行できます。"
+    },
+    "selectAriaLabel": "タスクの作業場所",
+    "menuLabel": "ワークスペース",
+    "default": {
+      "label": "デフォルト",
+      "title": "タスクごとのフォルダとコンピュータに応じて{product}が選択します。"
+    },
+    "initializeGit": "Git を初期化",
+    "initializeFailed": "Git を初期化できませんでした。もう一度お試しください。",
+    "unavailable": "このフォルダーで利用できるワークスペースモードはありません。"
   }
 }

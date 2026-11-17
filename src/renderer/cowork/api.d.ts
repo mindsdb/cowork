@@ -43,6 +43,14 @@ export interface RecommendedModels {
    * moving alias this entry is a frozen version of.
    */
   modelFamilies?: Record<string, string>;
+  /**
+   * MindsHub's image models (`kind: "image"` rows), in catalog order (ENG-4024).
+   * Never in a `recommendedModels` bucket; mergeRecommendedModels strips any
+   * that a bucket lists anyway.
+   */
+  imageModels?: string[];
+  /** The catalog's `default_for: ["image"]` model, when it declares one. */
+  imageModelDefault?: string;
   [key: string]: unknown;
 }
 
@@ -125,6 +133,49 @@ export interface SavedConnectorResult {
 
 export function fetchDatasources(): Promise<{ connections: ConnectorConnection[] }>;
 export function fetchConnector(id: string): Promise<ConnectorSpec>;
+export interface ConnectorDraftField {
+  name: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  placeholder?: string;
+  help?: string;
+}
+export interface ConnectorDraft {
+  connector_id: string;
+  label: string;
+  description?: string;
+  category?: string;
+  help_url?: string;
+  usage_notes?: string;
+  fields: ConnectorDraftField[];
+  auth:
+    | { type: 'header'; headers: Record<string, string> }
+    | { type: 'basic'; username: string; password: string }
+    | { type: 'query'; params: Record<string, string> };
+  check?: { path: string };
+}
+export function saveConnectorDraft(draft: ConnectorDraft): Promise<unknown>;
+export function fetchConnectorDraftSaved(id: string): Promise<boolean | null>;
+export interface CustomConnectPayload {
+  name: string;
+  address: string;
+  values: Record<string, string>;
+}
+export interface CustomConnection {
+  id: number;
+  connector_id: string;
+  name: string;
+  secure_keys: string[];
+  status: string;
+  credential_version: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  template_missing: boolean;
+}
+export function connectCustomConnector(connectorId: string, payload: CustomConnectPayload): Promise<CustomConnection>;
+export function listCustomConnections(): Promise<CustomConnection[]>;
+export function deleteCustomConnection(connectionId: number): Promise<unknown>;
 export function fetchSavedConnection(engine: string, name: string): Promise<SavedConnectorConnection>;
 export function deleteDatasource(engine: string, name: string): Promise<unknown>;
 export function validateAndSaveConnector(

@@ -1,0 +1,173 @@
+// ENG-4024: an image Anton's generate_image tool wrote into the workspace
+// shows inline in the chat, read through the project's files route (the
+// loopback <img src> CSP workaround AttachmentThumbnail uses), and a file that
+// is gone shows its name instead of a broken image.
+//
+// Drives the chain a live turn produces: the tool's result event, through the
+// stream reducer, into the turn's steps that ChatView renders.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+vi.mock('../../platform/host', () => ({
+  host: {
+    isElectron: false,
+    isWeb: false,
+    isMac: () => false,
+    getPlatform: () => 'linux',
+    getApiOrigin: () => 'http://127.0.0.1:26866',
+    openPath: vi.fn(),
+    openExternal: vi.fn(),
+  },
+  getAccessToken: vi.fn(async () => null),
+  isElectron: false,
+}));
+
+import ChatView from './ChatView';
+import { reduceAll } from '../lib/responseStreamAdapter';
+
+const PROJECT = { id: 'proj-1', name: 'general', path: '/home/u/Cowork/general' };
+const RAW_URL = 'http://127.0.0.1:26866/api/v1/projects/general/files-raw/images/cat.png';
+
+const imageResult = (path = 'images/cat.png', over = {}) => ({
+  type: 'response.in_progress',
+  thought_role: 'thought.tool_call.result',
+  tool_name: 'generate_image',
+  tool_use_id: 'gi_1',
+  content: JSON.stringify({
+    path, width: 1024, height: 1024, mime_type: 'image/png', model: 'gpt-image-2.6-flare',
+    usage: { input_tokens: 16, output_tokens: 824 },
+  }),
+  at_ms: 20,
+  ...over,
+});
+
+const taskWith = (events) => ({
+  id: 'conv-a',
+  title: 'Alpha task',
+  status: 'active',
+  projectId: PROJECT.id,
+  messages: [
+    { role: 'user', content: 'make me a picture of a cat' },
+    { role: 'assistant', content: 'Here is your cat.', steps: reduceAll(events).steps },
+  ],
+});
+
+beforeEach(() => {
+  // happy-dom does not implement the Blob URL registry.
+  URL.createObjectURL = vi.fn(() => 'blob:generated-cat');
+  URL.revokeObjectURL = vi.fn();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('inline generated image', () => {
+  it('reads the file from the project and shows it in the transcript', async () => {
+    const fetched = [];
+    globalThis.fetch = vi.fn(async (url) => {
+      fetched.push(String(url));
+      return { ok: true, blob: async () => new Blob(['png-bytes'], { type: 'image/png' }) };
+    });
+
+    render(<ChatView task={taskWith([imageResult()])} project={PROJECT} projects={[PROJECT]} />);
+
+    const img = await screen.findByRole('img', { name: 'Generated image cat.png' });
+    expect(img).toHaveAttribute('src', 'blob:generated-cat');
+    expect(fetched).toContain(RAW_URL);
+    // Above the answer text: the picture shows where it was made.
+    const text = document.body.textContent;
+    expect(text.indexOf('cat.png')).toBeLessThan(text.indexOf('Here is your cat.'));
+  });
+
+  it("reads the server's project-relative paths over the workspace path (web, cloud)", async () => {
+    // There the workspace is the conversation's folder, so the tool's own
+    // `cat.png` would 404 at the project's root; the server maps each image.
+    const fetched = [];
+    globalThis.fetch = vi.fn(async (url) => {
+      fetched.push(String(url));
+      return { ok: true, blob: async () => new Blob(['png-bytes'], { type: 'image/png' }) };
+    });
+
+    render(<ChatView
+      task={taskWith([imageResult('cat.png', {
+        generated_images: [{ path: 'conversations/conv-a/cat.png' }, { path: 'conversations/conv-a/cat-2.png' }],
+      })])}
+      project={PROJECT}
+      projects={[PROJECT]}
+    />);
+
+    await screen.findByRole('img', { name: 'Generated image cat.png' });
+    await screen.findByRole('img', { name: 'Generated image cat-2.png' });
+    const projectFiles = 'http://127.0.0.1:26866/api/v1/projects/general/files-raw';
+    expect(fetched).toContain(`${projectFiles}/conversations/conv-a/cat.png`);
+    expect(fetched).toContain(`${projectFiles}/conversations/conv-a/cat-2.png`);
+    expect(fetched).not.toContain(`${projectFiles}/cat.png`);
+  });
+
+  it('places an absolute workspace path inside the project', async () => {
+    const fetched = [];
+    globalThis.fetch = vi.fn(async (url) => {
+      fetched.push(String(url));
+      return { ok: true, blob: async () => new Blob(['png-bytes'], { type: 'image/png' }) };
+    });
+
+    render(<ChatView task={taskWith([imageResult(`${PROJECT.path}/images/cat.png`)])} project={PROJECT} projects={[PROJECT]} />);
+
+    await screen.findByRole('img', { name: 'Generated image cat.png' });
+    expect(fetched).toContain(RAW_URL);
+  });
+
+  it('opens the picture in the file viewer', async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers({ 'Content-Type': 'image/png' }),
+      blob: async () => new Blob(['png-bytes'], { type: 'image/png' }),
+    }));
+    const user = userEvent.setup();
+    render(<ChatView task={taskWith([imageResult()])} project={PROJECT} projects={[PROJECT]} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Open image: cat.png' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getAllByText(/cat\.png/).length).toBeGreaterThan(0);
+    // The agent named the path, so the viewer doesn't hand it to the OS
+    // default app; Reveal stays, as in the figure viewer.
+    expect(within(dialog).getByRole('button', { name: 'Reveal' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Open' })).toBeNull();
+  });
+
+  it('waits for the project on a cold start instead of saying the image is gone', async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, blob: async () => new Blob(['png-bytes'], { type: 'image/png' }) }));
+    const task = taskWith([imageResult()]);
+
+    // The projects list hasn't landed: no project yet.
+    const { rerender } = render(<ChatView task={task} project={null} projects={[]} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText(/could not be shown/)).toBeNull();
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(expect.stringContaining('files-raw'), expect.anything());
+
+    rerender(<ChatView task={task} project={PROJECT} projects={[PROJECT]} />);
+    expect(await screen.findByRole('img', { name: 'Generated image cat.png' })).toHaveAttribute('src', 'blob:generated-cat');
+    expect(screen.queryByText(/could not be shown/)).toBeNull();
+  });
+
+  it('says the image is gone instead of drawing a broken one', async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 404 }));
+
+    render(<ChatView task={taskWith([imageResult()])} project={PROJECT} projects={[PROJECT]} />);
+
+    expect(await screen.findByText(/could not be shown/)).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Generated image cat.png' })).toBeNull();
+  });
+
+  it('asks for no file outside the project', async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, blob: async () => new Blob([]) }));
+
+    render(<ChatView task={taskWith([imageResult('/etc/cat.png')])} project={PROJECT} projects={[PROJECT]} />);
+
+    expect(await screen.findByText(/could not be shown/)).toBeInTheDocument();
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(expect.stringContaining('/etc/'), expect.anything());
+  });
+});

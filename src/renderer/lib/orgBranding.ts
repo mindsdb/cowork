@@ -499,7 +499,10 @@ export function resolveLook({
   const memberGreeting = member.greeting && member.greeting.trim() && member.greeting.trim() !== STOCK_GREETING
     ? member.greeting
     : null;
-  const greeting = pick<string | null>(activeOrg?.appearance.greeting ?? null, orgLocks, memberGreeting, member.greeting);
+  // With no greeting set, the value is null and the home screen shows its own
+  // default, translated into the UI language. A greeting someone typed is
+  // shown as typed.
+  const greeting = pick<string | null>(activeOrg?.appearance.greeting ?? null, orgLocks, memberGreeting, null);
 
   // Sidebar logo. A deployment logo shuts the org out; the member's own logo
   // still wins over it, as before.

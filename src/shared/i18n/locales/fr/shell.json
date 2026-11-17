@@ -53,6 +53,8 @@
       "openNamedInDrive": "Ouvrir « {name} » dans Google Drive",
       "untitled": "sans titre",
       "openInDrive": "Ouvrir dans Google Drive",
+      "openNamedInNotion": "Ouvrir « {name} » dans Notion",
+      "openInNotion": "Ouvrir dans Notion",
       "removeFromProjectFiles": "Retirer des fichiers du projet",
       "removeFromProjectFilesAriaLabel": "Retirer {name} des fichiers du projet",
       "loadAttachmentsFailed": "Impossible de charger les pièces jointes",
@@ -171,10 +173,13 @@
     "unavailableTitle": "Fonctionnalité indisponible",
     "cloudBodyNamed": "{feature} n’est pas encore disponible dans le Cloud. En attendant, vous pouvez l’utiliser dans l’application de bureau.",
     "cloudBody": "Cette fonctionnalité n’est pas encore disponible dans le Cloud. En attendant, vous pouvez l’utiliser dans l’application de bureau.",
+    "cloudBodyCustom": "{feature} n’est pas encore disponible dans le Cloud. Vous pouvez dès maintenant le connecter comme connecteur personnalisé.",
     "unavailableBodyNamed": "{feature} n’est pas disponible dans ce déploiement.",
     "unavailableBody": "Cette fonctionnalité n’est pas disponible dans ce déploiement.",
     "notNow": "Plus tard",
-    "download": "Télécharger l’app"
+    "download": "Télécharger l’app",
+    "connectCustom": "Connecter votre connecteur personnalisé {feature}",
+    "buildCustom": "Créer un connecteur personnalisé"
   },
   "loadStatus": {
     "retry": "Réessayer",
@@ -278,6 +283,8 @@
     "settings": "Paramètres",
     "billing": "Facturation et utilisation",
     "members": "Membres",
+    "apiKeys": "Clés API",
+    "apiDocs": "Documentation de l’API",
     "help": "Aide et commentaires",
     "manageOrg": "Gérer l’organisation",
     "logout": "Se déconnecter",
@@ -360,7 +367,12 @@
     "total": "{count} au total",
     "noTasks": "Aucune tâche pour l’instant.",
     "untitledTask": "Tâche sans titre",
-    "seeAllTasks": "Voir toutes les tâches"
+    "seeAllTasks": "Voir toutes les tâches",
+    "recents": "Récents",
+    "showFewer": "Afficher moins",
+    "seeAllCount": "Tout voir ({count})",
+    "signedIn": "Connecté",
+    "logOut": "Se déconnecter"
   },
   "dispatch": {
     "qrAriaLabel": "Code d’association décoratif",
@@ -395,9 +407,14 @@
       "operatorTitle": "Un fournisseur doit être configuré",
       "body": "Commencez avec MindsHub et profitez d’un quota gratuit sur MindsHub Air, puis payez à l’usage. Ou ajoutez votre propre clé API (Anthropic, OpenAI ou tout point de terminaison compatible OpenAI) dans les paramètres.",
       "operatorBody": "Demandez à votre opérateur de configurer le fournisseur de modèles avant de lancer une tâche.",
-      "startFree": "Commencer gratuitement"
+      "startFree": "Commencer gratuitement",
+      "bodyMobile": "Connectez votre propre fournisseur dans les paramètres."
     },
-    "handoffHint": "Modifiez ce prompt, puis envoyez-le quand vous êtes prêt."
+    "handoffHint": "Modifiez ce prompt, puis envoyez-le quand vous êtes prêt.",
+    "signupWelcome": {
+      "fromDesktop": "Votre compte est prêt. Vous pouvez commencer ici, ou revenir dans l’app {product} et vous connecter.",
+      "dismiss": "Fermer"
+    }
   },
   "logout": {
     "title": "Se déconnecter de {product} ?",
@@ -409,5 +426,8 @@
     "confirm": "Se déconnecter",
     "failed": "Impossible de terminer la déconnexion. Veuillez réessayer.",
     "waitNote": "Déconnexion en cours. Vous pouvez fermer cette fenêtre, l’opération se terminera d’elle-même."
+  },
+  "shortcuts": {
+    "showBrowser": "Afficher le navigateur"
   }
 }
