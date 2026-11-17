@@ -240,6 +240,7 @@
     "noEditable": "未找到可直接编辑的文本",
     "clickToEdit": "点击产物中的任意文本即可编辑",
     "clickToEditOrNavigate": "点击文本即可编辑。按钮和链接仍可正常使用，因此你可以先切换到其他幻灯片或页面。按住 Alt 键（Mac 上为 Option 键）点击按钮或链接即可编辑其文字。",
+    "syncingView": "正在打开你在预览中查看的位置…",
     "htmlSource": "HTML 源代码",
     "editing": "正在编辑产物",
     "back": "返回产物",

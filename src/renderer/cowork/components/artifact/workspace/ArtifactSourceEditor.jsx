@@ -16,6 +16,8 @@ export function ArtifactSourceEditor({
   draftUrl,
   loadImage = null,
   onTextSelection,
+  active = true,
+  previewView = null,
 }) {
   const { t } = useTranslation('artifacts');
   const editorRef = useRef(null);
@@ -44,6 +46,8 @@ export function ArtifactSourceEditor({
         onSave={onSave}
         draftUrl={draftUrl}
         onTextSelection={onTextSelection}
+        active={active}
+        previewView={previewView}
       />
     );
   }

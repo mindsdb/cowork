@@ -240,6 +240,7 @@
     "noEditable": "No se encontró texto editable directamente",
     "clickToEdit": "Haz clic en cualquier texto del artefacto para editarlo",
     "clickToEditOrNavigate": "Haz clic en un texto para editarlo. Los botones y enlaces siguen funcionando, así que puedes ir antes a otra diapositiva o página. Haz Alt-clic (Opción-clic en Mac) en uno para editar su texto.",
+    "syncingView": "Abriendo el punto donde estabas en la vista previa…",
     "htmlSource": "Código HTML",
     "editing": "Editando artefacto",
     "back": "Volver al artefacto",

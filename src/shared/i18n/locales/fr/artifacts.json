@@ -240,6 +240,7 @@
     "noEditable": "Aucun texte directement modifiable trouvé",
     "clickToEdit": "Cliquez sur n’importe quel texte de l’artefact pour le modifier",
     "clickToEditOrNavigate": "Cliquez sur un texte pour le modifier. Les boutons et les liens fonctionnent toujours : vous pouvez d'abord aller à une autre diapositive ou page. Alt-clic (Option-clic sur Mac) sur l'un d'eux pour modifier son libellé.",
+    "syncingView": "Ouverture à l'endroit où vous étiez dans l'aperçu…",
     "htmlSource": "Source HTML",
     "editing": "Modification de l’artefact",
     "back": "Retour à l’artefact",

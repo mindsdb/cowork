@@ -48,6 +48,10 @@ export function ArtifactHtmlVisualEditor({
   onSave,
   draftUrl,
   onTextSelection,
+  // Whether the editor is on screen (Edit), not hidden behind Preview.
+  active = true,
+  // `{ view, seq }` from usePreviewView: where the user is in the Preview.
+  previewView = null,
 }) {
   const { t } = useTranslation('artifacts');
   const iframeRef = useRef(null);
@@ -72,8 +76,20 @@ export function ArtifactHtmlVisualEditor({
   const [interactiveCount, setInteractiveCount] = useState(0);
   const [selection, setSelection] = useState(null);
   const [error, setError] = useState('');
+  // Opening on the Preview's view. `seenViewSeqRef` is the last preview view
+  // considered, so a view is applied once and the editor otherwise keeps
+  // whatever slide the user moved it to. A replay needs the page as it loaded,
+  // so a canvas that may have moved (it was on screen, or already replayed a
+  // view) is rebuilt first. `pendingViewRef` waits for the frame to be ready.
+  const seenViewSeqRef = useRef(0);
+  const pendingViewRef = useRef(null);
+  const frameMovedRef = useRef(false);
+  const [viewRequest, setViewRequest] = useState(0);
+  const [syncingView, setSyncingView] = useState(false);
+  const syncTimerRef = useRef(0);
 
   const rebuildFrame = useCallback((content) => {
+    frameMovedRef.current = false;
     visualValueRef.current = content;
     frameValueRef.current = content;
     const nextFrame = buildFrame(content, documentUrl);
@@ -83,6 +99,7 @@ export function ArtifactHtmlVisualEditor({
     setEditableCount(nextFrame.editableCount);
     setInteractiveCount(0);
     setReady(false);
+    setSyncingView(false);
     setSelection(null);
     setError('');
   }, [documentUrl]);
@@ -155,11 +172,47 @@ export function ArtifactHtmlVisualEditor({
         }
       } else if (message.type === 'save') {
         onSave?.(visualValueRef.current);
+      } else if (message.type === 'view-applied') {
+        setSyncingView(false);
+        // The replay did not land on the Preview's slide. Start over from the
+        // page as it loads, which is where the editor opened before.
+        if (message.status === 'mismatch') rebuildFrame(visualValueRef.current);
       }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [frame.token, onChange, onSave]);
+  }, [frame.token, onChange, onSave, rebuildFrame]);
+
+  useEffect(() => {
+    if (!active || showSource || !previewView || previewView.seq === seenViewSeqRef.current) return;
+    seenViewSeqRef.current = previewView.seq;
+    // null: the Preview reloaded and the user has not moved it since.
+    if (!previewView.view) return;
+    pendingViewRef.current = previewView.view;
+    if (frameMovedRef.current) rebuildFrame(visualValueRef.current);
+    else setViewRequest((count) => count + 1);
+  }, [active, previewView, rebuildFrame, showSource]);
+
+  useEffect(() => {
+    // After the effect above: a canvas the user can see may be moved by them.
+    if (active && ready) frameMovedRef.current = true;
+  }, [active, ready]);
+
+  useEffect(() => {
+    const view = pendingViewRef.current;
+    const target = iframeRef.current?.contentWindow;
+    if (!view || !ready || !target) return;
+    pendingViewRef.current = null;
+    frameMovedRef.current = true;
+    setSyncingView(true);
+    target.postMessage({ source: HTML_VISUAL_EDITOR_PARENT_SOURCE, type: 'view', view }, '*');
+    // The frame answers within its own replay budget; never leave the status
+    // line on "opening" for a frame that stopped answering.
+    window.clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = window.setTimeout(() => setSyncingView(false), 12000);
+  }, [frame.token, ready, viewRequest]);
+
+  useEffect(() => () => window.clearTimeout(syncTimerRef.current), []);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -201,6 +254,7 @@ export function ArtifactHtmlVisualEditor({
   const guidance = useMemo(() => {
     if (showSource) return t('htmlEditor.advancedMode');
     if (error) return error;
+    if (syncingView) return t('htmlEditor.syncingView');
     if (selection) {
       const raw = selection.label || 'Text';
       const label = Object.hasOwn(ELEMENT_LABEL_KEYS, raw) ? t(`htmlEditor.elements.${ELEMENT_LABEL_KEYS[raw]}`) : raw;
@@ -210,7 +264,7 @@ export function ArtifactHtmlVisualEditor({
     if (editableCount === 0) return t('htmlEditor.noEditable');
     if (interactiveCount > 0) return t('htmlEditor.clickToEditOrNavigate');
     return t('htmlEditor.clickToEdit');
-  }, [editableCount, error, interactiveCount, ready, selection, showSource, t]);
+  }, [editableCount, error, interactiveCount, ready, selection, showSource, syncingView, t]);
 
   return (
     <div className="artifact-html-visual-editor">

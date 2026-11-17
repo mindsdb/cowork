@@ -69,6 +69,7 @@ import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
+import { usePreviewView } from './usePreviewView';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
@@ -364,6 +365,12 @@ export function ArtifactViewer({
   // agent-written HTML that could otherwise post into this channel. Same
   // rationale as the comments bridge's `commentsOpen` gate below.
   const diagnostics = usePreviewDiagnostics(iframeRef, {
+    enabled: open && !!(previewUrl || previewDoc),
+    resetKey: previewUrl || previewDoc,
+  });
+  // Where the user is in the preview, so Edit opens on the same slide. Same
+  // gate and reset as the diagnostics above, for the same reasons.
+  const previewView = usePreviewView(iframeRef, {
     enabled: open && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
   });
@@ -1489,6 +1496,7 @@ export function ArtifactViewer({
     doc: previewDoc,
     kind: previewKind,
     iframeRef,
+    view: previewView,
     title,
     iframeReady,
     setIframeReady,
