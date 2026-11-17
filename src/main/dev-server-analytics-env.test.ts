@@ -30,14 +30,18 @@ function write(file: string, text: string) {
 
 // Starts the server with a temp HOME and server dir, so the developer's own
 // dotenv files never decide the outcome, and returns the env it was spawned with.
-async function spawnedEnv(seedHome: (home: string) => void = () => {}) {
+async function spawnedEnv(
+  seedHome: (home: string) => void = () => {},
+  seedServer: (serverDir: string) => void = () => {},
+) {
   vi.stubEnv('ANTON_POSTHOG_KEY', undefined);
   vi.stubEnv('ANTON_DEPLOYMENT_ENV', undefined);
   const home = tempDir();
   seedHome(home);
   vi.stubEnv('HOME', home);
-  const serverDir = tempDir();
+  const serverDir = path.join(tempDir(), 'cowork-server');
   write(path.join(serverDir, 'pyproject.toml'), '');
+  seedServer(serverDir);
   vi.stubEnv('COWORK_SERVER_DIR', serverDir);
   spawn.mockReturnValue({ stdout: { on: vi.fn() }, stderr: { on: vi.fn() }, on: vi.fn(), kill: vi.fn() });
   const { start } = await loadScript();
@@ -93,6 +97,35 @@ describe('dev server analytics environment', () => {
     write(path.join(home, '.cowork', '.env'), 'ANTON_DEPLOYMENT_ENV=eval\n');
 
     expect([...antonDotenvNames(serverDir, home)].sort()).toEqual(['ANTON_DEPLOYMENT_ENV', 'ANTON_POSTHOG_KEY']);
+  });
+
+  // cowork-server's own load_dotenv(override=False) uses the first .env found
+  // walking up from the server, so with none in the server dir it takes a
+  // parent folder's.
+  it('reads the parent folder .env cowork-server loads when the server dir has none', async () => {
+    const { antonDotenvNames } = await loadScript();
+    const parent = tempDir();
+    const serverDir = path.join(parent, 'cowork-server');
+    fs.mkdirSync(serverDir);
+    write(path.join(parent, '.env'), 'ANTON_POSTHOG_KEY=\n');
+
+    expect(antonDotenvNames(serverDir, tempDir())).toContain('ANTON_POSTHOG_KEY');
+  });
+
+  it('ignores a parent folder .env when the server dir has its own, as cowork-server does', async () => {
+    const { antonDotenvNames } = await loadScript();
+    const parent = tempDir();
+    const serverDir = path.join(parent, 'cowork-server');
+    write(path.join(serverDir, '.env'), 'OTHER=1\n');
+    write(path.join(parent, '.env'), 'ANTON_POSTHOG_KEY=\n');
+
+    expect(antonDotenvNames(serverDir, tempDir())).not.toContain('ANTON_POSTHOG_KEY');
+  });
+
+  it('keeps the sink off for a developer who switched it off in a parent folder .env', async () => {
+    const env = await spawnedEnv(() => {}, (serverDir) => write(path.join(path.dirname(serverDir), '.env'), 'ANTON_POSTHOG_KEY=\n'));
+    expect(env).not.toHaveProperty('ANTON_POSTHOG_KEY');
+    expect(env.ANTON_DEPLOYMENT_ENV).toBe('dev');
   });
 
   it('hands both to the server it starts', async () => {

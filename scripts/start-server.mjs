@@ -31,10 +31,10 @@ const NON_PROD_POSTHOG_KEY = 'phc_zBzpZzh8kCPVpKeVyRRLNSfyTisRfLCq8SPhtiTHZway';
 
 /** A dev server's turns are ours: send them to the non-production project,
  *  labelled `dev`, as the desktop app does for its dev kind. A variable the
- *  developer set, exported or in one of anton's dotenv files (`dotenvNames`),
- *  is left alone, even an empty one: anton's documented way to switch the sink
- *  off is `ANTON_POSTHOG_KEY=` in such a file, and a spawned value would
- *  outrank it. */
+ *  developer set, exported or in a dotenv file that reaches anton
+ *  (`dotenvNames`), is left alone, even an empty one: anton's documented way
+ *  to switch the sink off is `ANTON_POSTHOG_KEY=` in such a file, and a
+ *  spawned value would outrank it. */
 export function devAnalyticsEnv(env = process.env, dotenvNames = new Set()) {
   const isSet = (name) => env[name] !== undefined || dotenvNames.has(name);
   const out = {};
@@ -43,18 +43,36 @@ export function devAnalyticsEnv(env = process.env, dotenvNames = new Set()) {
   return out;
 }
 
-/** The names assigned in the dotenv files anton reads for a server running in
- *  `serverDir`, upper-cased: `.env` and `.anton/.env` there, then
- *  `~/.anton/.env` and `~/.cowork/.env`. A line match, not python-dotenv's full
- *  grammar (src/main/analytics-env.ts has that), which is enough for a dev
- *  script. */
+/** The `.env` cowork-server's own `load_dotenv()` loads into the environment
+ *  anton then reads: python-dotenv walks up from the calling module
+ *  (`cowork/cli.py`) and takes the first `.env` it finds, so with none in the
+ *  server dir it is a parent folder's. Undefined when there is none. */
+export function coworkServerDotenv(serverDir) {
+  let dir = path.join(serverDir, 'cowork');
+  for (;;) {
+    const file = path.join(dir, '.env');
+    if (fs.existsSync(file)) return file;
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+/** The names assigned in the dotenv files that reach anton for a server
+ *  running in `serverDir`, upper-cased: the ones anton reads itself (`.env`
+ *  and `.anton/.env` there, then `~/.anton/.env` and `~/.cowork/.env`), and
+ *  the one cowork-server loads (`coworkServerDotenv`). A line match, not
+ *  python-dotenv's full grammar (src/main/analytics-env.ts has that), which
+ *  is enough for a dev script. */
 export function antonDotenvNames(serverDir, home = os.homedir()) {
-  const files = [
+  const files = new Set([
     path.join(serverDir, '.env'),
     path.join(serverDir, '.anton', '.env'),
     path.join(home, '.anton', '.env'),
     path.join(home, '.cowork', '.env'),
-  ];
+  ]);
+  const loaded = coworkServerDotenv(serverDir);
+  if (loaded) files.add(loaded);
   const names = new Set();
   for (const file of files) {
     let text;
