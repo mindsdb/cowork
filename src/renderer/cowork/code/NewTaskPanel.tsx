@@ -84,7 +84,7 @@ export function NewTaskPanel({
   const draft = useNewTaskDraft({
     busy: busy || sourceLoading, defaultEngineId, defaultModel, models, modelMeta,
     projects, selectedProjectId, onProjectChange, onOpenProjectSettings,
-    onCreate: input => onCreate({ ...input, ...(taskMode === 'plan' ? { taskMode } : {}) }), catalog,
+    onCreate: input => onCreate({ ...input, ...(taskMode === 'plan' ? { taskMode } : {}) }), startKey: taskMode, catalog,
   });
   const {
     prompt, setPrompt, catalogError,

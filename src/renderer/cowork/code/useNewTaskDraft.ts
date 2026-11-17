@@ -64,6 +64,9 @@ interface NewTaskDraftOptions {
   onProjectChange: (id: string | null) => void;
   onOpenProjectSettings: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
+  /* Whatever the owner adds to a Start on top of this draft (the panel's Plan
+     mode). A Start that had to wait is dropped if it changed meanwhile. */
+  startKey?: string;
   catalog?: CodingCatalog;
 }
 
@@ -118,6 +121,7 @@ export function useNewTaskDraft({
   onProjectChange,
   onOpenProjectSettings,
   onCreate,
+  startKey,
   catalog,
 }: NewTaskDraftOptions) {
   const localCatalog = useCodingCatalog(catalog === undefined);
@@ -531,7 +535,8 @@ export function useNewTaskDraft({
     return () => { draftRevision.current += 1; };
   }, [
     selectedProjectKey, prompt, engineId, model, explicitEffort, permissionMode, attachments, sourceContexts,
-    resourceScopeKey, computerId, repositorySetup, workspaceMode, workspaceModeChoice,
+    resourceScopeKey, repositoryKey, repositorySetup, workspaceMode, workspaceModeChoice, currentModeResponse?.known,
+    startKey,
   ]);
 
   const handleStart = async () => {
