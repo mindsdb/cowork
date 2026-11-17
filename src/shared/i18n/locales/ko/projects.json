@@ -12,11 +12,16 @@
       "allowanceStop": {
         "noGrant": "{noGrant} 잔액이 없으므로 계속하려면 잔액을 충전하세요.",
         "withTime": "MindsHub Air 무료 제공량을 모두 사용했고 잔액도 없습니다. 계속 작업하려면 잔액을 충전하거나 {time}에 제공량이 다시 채워질 때까지 기다리세요.",
-        "noTime": "MindsHub Air 무료 제공량을 모두 사용했고 잔액도 없습니다. 계속 작업하려면 잔액을 충전하세요."
+        "noTime": "MindsHub Air 무료 제공량을 모두 사용했고 잔액도 없습니다. 계속 작업하려면 잔액을 충전하세요.",
+        "noTimeMobile": "MindsHub Air 무료 제공량을 모두 사용했고 잔액도 없습니다.",
+        "noGrantMobile": "{noGrant} 잔액이 없습니다.",
+        "withTimeMobile": "MindsHub Air 무료 제공량을 모두 사용했고 잔액도 없습니다. {time}에 초기화됩니다."
       },
       "freeServingPaused": {
         "until": "무료 MindsHub Air가 {until}까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다. 지금 계속 작업하려면 잔액을 충전하세요.",
-        "dailyReset": "무료 MindsHub Air가 일일 예산이 초기화될 때까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다. 지금 계속 작업하려면 잔액을 충전하세요."
+        "dailyReset": "무료 MindsHub Air가 일일 예산이 초기화될 때까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다. 지금 계속 작업하려면 잔액을 충전하세요.",
+        "untilMobile": "무료 MindsHub Air가 {until}까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다.",
+        "dailyResetMobile": "무료 MindsHub Air가 일일 예산이 초기화될 때까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다."
       },
       "resting": {
         "resetsAt": "{time}에 초기화됩니다.",
@@ -26,13 +31,17 @@
       "percentLeft": "무료 제공량 {percent} 남음",
       "autoTopUpFailed": {
         "title": "자동 충전 실패",
-        "body": "카드 결제를 처리하지 못했습니다. 잔액을 충전하거나 결제 수단을 업데이트하세요."
+        "body": "카드 결제를 처리하지 못했습니다. 잔액을 충전하거나 결제 수단을 업데이트하세요.",
+        "bodyMobile": "카드 결제를 처리하지 못했습니다."
       },
       "balanceEmpty": {
         "title": "잔액 없음",
         "body": "다른 작업을 시작하려면 잔액을 충전하세요.",
         "freeUsedToo": "무료 제공량도 모두 사용했습니다. 잔액을 충전하거나 제공량이 다시 채워질 때까지 기다리세요.",
-        "freeUsedTooWithTime": "무료 제공량도 모두 사용했습니다. 잔액을 충전하거나 {time}에 제공량이 다시 채워질 때까지 기다리세요."
+        "freeUsedTooWithTime": "무료 제공량도 모두 사용했습니다. 잔액을 충전하거나 {time}에 제공량이 다시 채워질 때까지 기다리세요.",
+        "freeUsedTooMobile": "무료 제공량도 모두 사용했습니다.",
+        "freeUsedTooWithTimeMobile": "무료 제공량도 모두 사용했습니다. {time}에 초기화됩니다.",
+        "bodyMobile": "잔액이 없습니다. 유료 모델을 사용할 수 없습니다."
       },
       "balanceLow": {
         "title": "잔액 부족",
@@ -40,7 +49,9 @@
         "autoCovers": "{usd} 남았습니다. 자동 충전으로 충당됩니다.",
         "autoPending": "{usd} 남았습니다. 자동 충전이 은행의 승인을 기다리고 있습니다.",
         "autoCapReached": "{usd} 남았으며, 월 한도를 넘지 않도록 자동 충전이 일시 중지되었습니다. 계속하려면 잔액을 충전하세요.",
-        "body": "{usd} 남았습니다. 잔액을 충전하거나 자동 충전을 켜세요."
+        "body": "{usd} 남았습니다. 잔액을 충전하거나 자동 충전을 켜세요.",
+        "bodyMobile": "{usd} 남았습니다.",
+        "autoCapReachedMobile": "{usd} 남았으며, 월 한도를 넘지 않도록 자동 충전이 일시 중지되었습니다."
       },
       "freeUsed": {
         "title": "무료 제공량 모두 사용",
@@ -95,7 +106,8 @@
         "walletEmpty": "사용 가능한 크레딧이 없습니다. MindsHub를 사용하려면 잔액을 충전하세요.",
         "allowanceExhausted": "사용 가능한 무료 MindsHub Air 토큰이 없으며 잔액도 없습니다.",
         "freeAirPaused": "무료 MindsHub Air가 현재 일시 중지되었습니다.",
-        "budgetExceeded": "조직의 예산을 모두 사용했습니다."
+        "budgetExceeded": "조직의 예산을 모두 사용했습니다.",
+        "walletEmptyMobile": "사용 가능한 크레딧이 없습니다."
       },
       "missingApiKey": "오른쪽에서 API 키를 추가하세요.",
       "missingBaseUrl": "오른쪽에서 기본 URL을 추가하세요.",
@@ -223,7 +235,9 @@
         "oneWorking": "{name}이(가) 완료되면 후속 질문을 할 수 있습니다.",
         "bothContinued": "양쪽 모두 작업으로 이어서 진행되어 이 비교에서는 더 이상 메시지를 보낼 수 없습니다.",
         "sideContinued": "{name}은(는) 작업으로 이어서 진행되었습니다. {other}에만 보내세요.",
-        "sideWorking": "{name}이(가) 아직 작업 중입니다. {other}에만 보내거나 기다리세요."
+        "sideWorking": "{name}이(가) 아직 작업 중입니다. {other}에만 보내거나 기다리세요.",
+        "outOfCreditsBothMobile": "잔액이 소진되어 두 모델이 모두 중지되었습니다.",
+        "outOfCreditsOneMobile": "잔액이 소진되어 {name}이(가) 중지되었습니다."
       },
       "twiceTheCredits": "비교는 두 모델을 실행하므로 작업 하나보다 크레딧을 약 두 배 사용합니다.",
       "turnsTitle": "{nameA}: {countA, plural, other {#턴}} · {nameB}: {countB, plural, other {#턴}}",
@@ -377,6 +391,14 @@
     "browserSession": {
       "opened": "브라우저를 열었습니다"
     },
+    "browserSteps": {
+      "open": "{site} 여는 중",
+      "read": "페이지 읽는 중",
+      "look": "페이지 확인 중",
+      "act": "페이지에서 작업 중",
+      "handOver": "브라우저에서 기다리는 중",
+      "generic": "브라우저 사용 중"
+    },
     "figureSources": {
       "noSource": "출처 없음: 이 답변의 어떤 단계에서도 이 수치가 나오지 않았습니다. 활용하기 전에 확인하세요.",
       "repeated": "이전 답변에서 가져옴",
@@ -494,7 +516,8 @@
     },
     "antonErrors": {
       "noProvider": "이 계정에 연결된 LLM 공급자가 없습니다. MindsHub로 무료로 시작하거나 설정에서 직접 공급자를 추가하세요.",
-      "couldNotComplete": "이 작업을 완료하지 못했습니다."
+      "couldNotComplete": "이 작업을 완료하지 못했습니다.",
+      "noProviderMobile": "설정에서 직접 공급자를 연결하세요."
     },
     "displayToggle": {
       "switchStyle": "{style} 스타일로 전환"
@@ -543,6 +566,7 @@
     "missed": "누락됨",
     "lastFailed": "최근 실패",
     "lastRunFailed": "최근 실행 실패",
+    "stoppedAtLimit": "한도에서 중지됨",
     "done": "완료",
     "active": "활성"
   },
@@ -572,11 +596,14 @@
     "autoPausedNote": "‘재개’를 누르면 일정이 다시 켜지고 대기 중인 실행을 따라잡을 수 있습니다. ‘지금 실행’을 누르면 지금 한 번 실행됩니다.",
     "partialTitle": "최근 실행이 도중에 중지되었습니다",
     "partialNote": "일부 작업은 완료되었을 수 있습니다. 다시 실행하기 전에 실행 내역을 검토하세요.",
+    "limitTitle": "최근 실행이 한도에 도달해 중지되었습니다",
+    "limitNote": "작업 일부는 완료되었을 수 있습니다. 다시 실행하기 전에 실행 내역을 검토하세요.",
     "failedTitle": "최근 실행에 실패했습니다",
     "resume": "재개",
     "runNow": "지금 실행",
     "reviewRun": "실행 검토",
-    "runAgain": "다시 실행"
+    "runAgain": "다시 실행",
+    "openSettings": "설정 열기"
   },
   "scheduleRunNotice": {
     "untitled": "예약된 작업",
@@ -632,6 +659,8 @@
     "name": "이름",
     "namePlaceholder": "프롬프트에서 자동으로 지정",
     "project": "프로젝트",
+    "model": "모델",
+    "accountDefault": "계정 기본값",
     "cancel": "취소",
     "saveAndRunOnce": "저장하고 한 번 실행",
     "saving": "저장 중…",
@@ -671,7 +700,8 @@
       "running": "실행 중",
       "success": "성공",
       "failed": "실패",
-      "cancelled": "중지됨"
+      "cancelled": "중지됨",
+      "stoppedAtLimit": "한도에서 중지됨"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "지금 실행 중",
@@ -687,6 +717,8 @@
     "runNow": "지금 실행",
     "scheduleAriaLabel": "일정",
     "accountDefaultModel": "계정 기본 모델",
+    "ranOnDefaultModel": "기본 모델",
+    "modelUnavailable": "{model}을(를) 사용할 수 없어 이 실행에는 기본 모델을 사용했습니다.",
     "succeededCount": "{total, plural, other {#회 중 {succeeded}회 성공}}",
     "promptAriaLabel": "프롬프트",
     "runs": "실행 내역",

@@ -21,6 +21,7 @@ import { surfaceCopy } from '../lib/surface';
 import { brandLogoUrl, productName } from '../../lib/deploymentBrand';
 import { STOCK_PRODUCT_NAME, STOCK_WORDMARK } from '../../../shared/product-name';
 import { sharedTranslator, useTranslation } from '../../lib/i18n';
+import { scheduleRunResolver } from '../lib/scheduleRuns';
 
 // Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
 // share sage (progress is the same banner mid-download); `error` goes amber.
@@ -265,6 +266,8 @@ export default function Sidebar({
   onOpenCodingSkills,
   onOpenSearch,
   collapsed = false,
+  // The voice call's card, docked above the footer while a call runs.
+  callCard = null,
   onToggleCollapsed,
   onPinTask,
   onUnpinTask,
@@ -272,11 +275,11 @@ export default function Sidebar({
   onDeleteTask,
   onMoveTaskToProject,
   projects = [],
-  // Schedules + the flat sessionId → scheduleId index. When a
-  // recent task carries a scheduledId, we collapse all sibling
-  // runs of the same schedule into a single synthesized entry
-  // ("Daily digest · 3 runs") so the recents list isn't drowned
-  // out by repeat scheduled-run conversations.
+  // Every run of one schedule collapses into a single synthesized
+  // entry ("Daily digest · 3 runs") so the recents list isn't drowned
+  // out by repeat scheduled-run conversations. A run is known by its
+  // `scheduledId`, or through this list when the server left that off
+  // (lib/scheduleRuns).
   schedules = [],
   onOpenSchedule,
   onToggleServer,
@@ -377,7 +380,7 @@ export default function Sidebar({
     return Number.isFinite(t) ? t : 0;
   };
   const _scheduleById = new Map((schedules || []).map((s) => [s?.id, s]));
-  const _resolveSchedId = (t) => t?.scheduledId || null;
+  const _resolveSchedId = scheduleRunResolver(schedules);
 
   const scheduledTaskFallback = t('sidebar.scheduledTask');
   const recentsAll = (() => {
@@ -893,6 +896,9 @@ export default function Sidebar({
 
         {/* Onboarding tracker — docked above the footer on every screen.
             Hides itself once dismissed (post-completion). */}
+        {/* A running voice call, docked where the onboarding steps sit. */}
+        {callCard}
+
         {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} onOpenExamples={onOpenExamples} />}
 
         {/* One banner for all three update mechanisms, chosen by

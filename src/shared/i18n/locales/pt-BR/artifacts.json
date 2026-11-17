@@ -24,6 +24,12 @@
       "readyTimeoutMs": "A visualização demorou demais: não começou em {seconds} segundos, o limite da visualização.",
       "progressTimeoutMs": "A visualização demorou demais: ficou sem progresso por {seconds} segundos, o limite da visualização."
     },
+    "truncatedMobile": {
+      "xlsx": "Mostrando até {rows, number} linhas e {columns, number} colunas de cada planilha.",
+      "pptx": "{count, plural, one {Mostrando o primeiro slide.} other {Mostrando os primeiros # slides.}}",
+      "pdf": "Mostrando as primeiras {pages, number} páginas.",
+      "docx": "Mostrando parte deste documento."
+    },
     "truncated": {
       "xlsx": "Mostrando até {rows, number} linhas e {columns, number} colunas de cada planilha. {action, select, download {Baixar} other {Abrir}} mostra a planilha completa.",
       "pptx": "{count, plural, one {Mostrando o primeiro slide.} other {Mostrando os primeiros # slides.}} {action, select, download {Baixar} other {Abrir}} mostra a apresentação completa.",
@@ -161,7 +167,7 @@
   "modeTabs": {
     "ariaLabel": "Modo do artefato",
     "preview": "Visualizar",
-    "edit": "Editar",
+    "source": "Código-fonte",
     "review": "Revisar",
     "editDisabled": "Só o dono do artefato pode editar",
     "reviewDisabled": "A revisão não está disponível para este artefato",
@@ -335,7 +341,12 @@
     "reported": "{count, plural, one {A visualização relatou # erro} other {A visualização relatou # erros}}",
     "line": "linha {line}",
     "title": "Erros da visualização",
-    "ariaLabel": "Erros da visualização, {count}"
+    "ariaLabel": "Erros da visualização, {count}",
+    "kind": {
+      "rejection": "Rejeição de promise não tratada",
+      "console": "Erro no console",
+      "http": "Erro do servidor"
+    }
   },
   "liveAppPreview": {
     "failure": "Não foi possível conectar a este app. Recarregue para tentar novamente ou abra-o no navegador.",
@@ -441,7 +452,8 @@
     "discardMessage": "A alteração do agente fica no histórico do artefato, mas a sugestão é fechada e não será aplicada.",
     "discardFailed": "Não foi possível descartar essa sugestão.",
     "deleteTitle": "Excluir artefato?",
-    "deleteMessage": "\"{title}\" será excluído permanentemente. Não é possível desfazer."
+    "deleteMessage": "\"{title}\" será excluído permanentemente. Não é possível desfazer.",
+    "changedElsewhere": "Este artefato mudou. Recarregar"
   },
   "artifactsView": {
     "sort": {
@@ -630,5 +642,113 @@
         "prompt": "Escreva um anúncio de lançamento de um novo modo escuro em um app de anotações em três versões: um tuíte com menos de 280 caracteres, um e-mail simpático com menos de 120 palavras e uma entrada no changelog com menos de 50 palavras. Cada uma deve soar adequada ao seu canal."
       }
     }
+  },
+  "quickEdit": {
+    "ariaLabel": "Edição rápida",
+    "inputLabel": "Peça uma alteração",
+    "placeholder": "Peça uma alteração…",
+    "send": "Enviar",
+    "route": {
+      "edit": "Editando diretamente…",
+      "agent": "Passando para o agente…"
+    },
+    "stage": {
+      "routing": "Decidindo como fazer isso…",
+      "reading": "Lendo o artefato…",
+      "writing": "Escrevendo a alteração…",
+      "checking": "Verificando a prévia…",
+      "fixing": "Corrigindo o que a verificação encontrou…"
+    },
+    "handingOff": "Enviando para o chat…",
+    "applied": "Pronto.",
+    "undo": "Desfazer",
+    "undoing": "Desfazendo…",
+    "undone": "Desfeito.",
+    "noop": "Nada mudou.",
+    "failed": "Não foi possível fazer essa alteração aqui.",
+    "askAgent": "Perguntar ao agente",
+    "errors": {
+      "stale": "Este artefato mudou desde que você o abriu. Ele foi recarregado; tente novamente.",
+      "busy": "Outra alteração neste artefato ainda está em andamento. Tente novamente quando terminar.",
+      "failed": "Não foi possível fazer a alteração.",
+      "stopped": "A alteração parou antes de terminar.",
+      "chatFailed": "Não foi possível continuar no chat. Tente novamente pelo chat.",
+      "filesChanged": "Os arquivos desta alteração mudaram de novo depois, então ela não pode ser desfeita aqui.",
+      "filesChangedNamed": "{paths} mudou de novo depois, então esta alteração não pode ser desfeita aqui.",
+      "alreadyUndone": "Esta alteração já foi desfeita.",
+      "repairPending": "Uma sugestão do agente para este artefato aguarda sua decisão. Aceite ou descarte-a primeiro.",
+      "undoGone": "Esta alteração não pode mais ser desfeita aqui. Use o histórico para voltar."
+    },
+    "placeholderChat": "Pergunte sobre este artefato ou altere-o…",
+    "openInChat": "Abrir no chat",
+    "needsAnswer": "Precisa da sua resposta no chat",
+    "workingInChat": "Trabalhando no chat…",
+    "sentToChat": "Enviado para o chat.",
+    "chatStopped": "O turno do chat parou antes de responder.",
+    "unsavedConfirm": {
+      "title": "Você tem alterações não salvas. Salvá-las antes de enviar?",
+      "save": "Salvar e enviar",
+      "discard": "Descartar e enviar",
+      "cancel": "Cancelar",
+      "saveFailed": "Não foi possível salvar suas alterações, então nada foi enviado."
+    }
+  },
+  "stats": {
+    "toggle": {
+      "show": "Estatísticas",
+      "hide": "Ocultar estatísticas"
+    },
+    "title": "Estatísticas",
+    "close": "Fechar o painel de estatísticas",
+    "loading": "Carregando estatísticas",
+    "retry": "Tentar novamente",
+    "trackViews": "Contar visualizações",
+    "trackingOff": "O rastreamento está desativado. Ative-o para começar a contar visualizações.",
+    "metrics": {
+      "viewsInPeriod": "Visualizações (30 dias)",
+      "uniqueViewers": "Visitantes únicos (30 dias)",
+      "totalViews": "Total de visualizações",
+      "lastViewed": "Última visualização"
+    },
+    "daysInUtc": "Dias em UTC",
+    "chartLabel": "Visualizações por dia",
+    "viewers": {
+      "email": "E-mail",
+      "lastSeen": "Última visita",
+      "restrictedOnly": "Os nomes de quem visualiza só são registrados quando o compartilhamento é restrito."
+    },
+    "noViews": "Ainda sem visualizações",
+    "errors": {
+      "otherAccount": "As estatísticas não estão disponíveis para esta conta.",
+      "unavailable": "As estatísticas não estão disponíveis para este artefato.",
+      "reconnect": "Reconecte o MindsHub para ver as estatísticas.",
+      "temporarilyUnavailable": "As estatísticas estão temporariamente indisponíveis.",
+      "loadFailed": "Não foi possível carregar as estatísticas."
+    }
+  },
+  "refPill": {
+    "open": "Abrir {title}"
+  },
+  "quickEditCard": {
+    "title": "Editado no visualizador",
+    "count": "{count, plural, one {# alteração} other {# alterações}}",
+    "undone": "Desfeita",
+    "showAll": "{count, plural, other {Mostrar todas (#)}}",
+    "showFewer": "Mostrar menos"
+  },
+  "layers": {
+    "ariaLabel": "Camadas do visualizador",
+    "source": "Edição ao vivo",
+    "comments": "Comentários",
+    "sourceOffPrompt": {
+      "title": "Desativar Edição ao vivo?",
+      "message": "Suas alterações não salvas em Edição ao vivo serão descartadas.",
+      "confirmLabel": "Descartar alterações"
+    }
+  },
+  "address": {
+    "draft": "Rascunho",
+    "copy": "Copiar endereço",
+    "copied": "Copiado"
   }
 }

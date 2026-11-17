@@ -53,6 +53,8 @@
       "openNamedInDrive": "Google Drive에서 ‘{name}’ 열기",
       "untitled": "제목 없음",
       "openInDrive": "Google Drive에서 열기",
+      "openNamedInNotion": "Notion에서 ‘{name}’ 열기",
+      "openInNotion": "Notion에서 열기",
       "removeFromProjectFiles": "프로젝트 파일에서 제거",
       "removeFromProjectFilesAriaLabel": "프로젝트 파일에서 {name} 제거",
       "loadAttachmentsFailed": "첨부 파일을 불러오지 못했습니다",
@@ -278,6 +280,8 @@
     "settings": "설정",
     "billing": "결제 및 사용량",
     "members": "멤버",
+    "apiKeys": "API 키",
+    "apiDocs": "API 문서",
     "help": "도움말 및 피드백",
     "manageOrg": "조직 관리",
     "logout": "로그아웃",
@@ -360,7 +364,12 @@
     "total": "총 {count}개",
     "noTasks": "아직 작업이 없습니다.",
     "untitledTask": "제목 없는 작업",
-    "seeAllTasks": "모든 작업 보기"
+    "seeAllTasks": "모든 작업 보기",
+    "recents": "최근",
+    "showFewer": "간단히 보기",
+    "seeAllCount": "모두 보기({count})",
+    "signedIn": "로그인됨",
+    "logOut": "로그아웃"
   },
   "dispatch": {
     "qrAriaLabel": "장식용 페어링 코드",
@@ -395,9 +404,14 @@
       "operatorTitle": "제공업체 설정이 필요합니다",
       "body": "MindsHub로 시작하면 MindsHub Air의 무료 제공량을 받은 뒤 사용한 만큼 결제할 수 있습니다. 또는 설정에서 직접 API 키(Anthropic, OpenAI 또는 OpenAI 호환 엔드포인트)를 추가하세요.",
       "operatorBody": "작업을 시작하기 전에 운영자에게 모델 제공업체 구성을 요청하세요.",
-      "startFree": "무료로 시작"
+      "startFree": "무료로 시작",
+      "bodyMobile": "설정에서 직접 공급자를 연결하세요."
     },
-    "handoffHint": "이 프롬프트를 수정한 다음 준비되면 보내세요."
+    "handoffHint": "이 프롬프트를 수정한 다음 준비되면 보내세요.",
+    "signupWelcome": {
+      "fromDesktop": "계정이 준비되었습니다. 여기서 바로 시작하거나 {product} 앱으로 돌아가 로그인하세요.",
+      "dismiss": "닫기"
+    }
   },
   "logout": {
     "title": "{product}에서 로그아웃할까요?",
@@ -418,5 +432,8 @@
     "emptyTitle": "알림 없음",
     "emptyDescription": "확인이 필요한 예약 실행이 여기에 표시됩니다.",
     "loadFailed": "알림을 불러올 수 없습니다."
+  },
+  "shortcuts": {
+    "showBrowser": "브라우저 표시"
   }
 }

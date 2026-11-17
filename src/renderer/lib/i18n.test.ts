@@ -4,7 +4,6 @@ import i18n, {
   currentLocale,
   currentServerLocale,
   getLanguagePreference,
-  languagePickerEnabled,
   preferredLocale,
   setLanguagePreference,
   whenI18nReady,
@@ -83,21 +82,17 @@ describe('language preference', () => {
     expect(i18n.language).toBe('en');
   });
 
-  it('keeps everyone in English outside the preview', () => {
+  it('applies the saved choice, then the OS language, in every build', () => {
     vi.stubEnv('DEV', false);
     stubSystemLanguages(['es-MX']);
-    window.localStorage.setItem('cowork.language', 'pt-BR');
-    expect(languagePickerEnabled()).toBe(false);
-    expect(preferredLocale()).toBe('en');
+    expect(preferredLocale()).toBe('es');
 
-    window.localStorage.setItem('cowork.i18nPreview', '1');
-    expect(languagePickerEnabled()).toBe(true);
+    window.localStorage.setItem('cowork.language', 'pt-BR');
     expect(preferredLocale()).toBe('pt-BR');
   });
 
   it('ignores the pseudo-locale outside dev builds', () => {
     vi.stubEnv('DEV', false);
-    window.localStorage.setItem('cowork.i18nPreview', '1');
     window.localStorage.setItem('cowork.language', 'en-XA');
     stubSystemLanguages(['es']);
     expect(preferredLocale()).toBe('es');

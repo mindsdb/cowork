@@ -23,6 +23,20 @@ function errorLocation({ file, line }) {
   return line ? `${name}:${line}` : name;
 }
 
+// What kind of failure an entry is, for the kinds whose message alone does
+// not say: a script error's text and a failed load's sentence speak for
+// themselves, a console line or a server error does not.
+const KIND_LABELS = {
+  rejection: 'previewErrors.kind.rejection',
+  console: 'previewErrors.kind.console',
+  http: 'previewErrors.kind.http',
+};
+
+function errorKind({ type }) {
+  const key = KIND_LABELS[type];
+  return key ? i18n.t(key, { ns: 'artifacts' }) : '';
+}
+
 // The control after `el` in document order among its container's buttons,
 // or the one before it when `el` is last.
 function neighbourButton(el) {
@@ -86,6 +100,7 @@ function PreviewErrorsPopover({ errors, onDismiss }) {
                     folding into a failed load). */}
                 {errors.map((error, index) => {
                   const where = errorLocation(error);
+                  const kind = errorKind(error);
                   return (
                     <li
                       key={index}
@@ -94,6 +109,9 @@ function PreviewErrorsPopover({ errors, onDismiss }) {
                       <span className="block text-[12.5px] leading-[1.45] text-danger [overflow-wrap:anywhere]">
                         {error.message}
                       </span>
+                      {kind && (
+                        <span className="block mt-px text-[11.5px] text-ink-3">{kind}</span>
+                      )}
                       {where && (
                         <span className="block mt-px font-[family-name:var(--font-mono)] text-[11.5px] text-ink-3" title={error.file}>
                           {where}

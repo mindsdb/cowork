@@ -11,10 +11,12 @@
 
 import { MINDSHUB_AIR_MODEL_ID, MODEL_ROUTER_ID } from './modelCatalog';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
+import { billingCopyKey } from './billingLinks';
 import i18n, { currentLocale } from '../../lib/i18n';
 
 /* User-facing copy, translated when it is read (never at import). */
 const tr = (key, vars) => i18n.t(`messages.usage.${key}`, { ns: 'projects', ...vars });
+const trBilling = (key, vars) => tr(billingCopyKey(key), vars);
 
 /* The viewer's locale for dates and times; English (and the pseudo-locale)
    format as en-US, as they always have. */
@@ -222,6 +224,14 @@ export function isBalanceEmpty(balance) {
   return !!balance && (balance.alert === 'depleted' || balance.canConsume === false);
 }
 
+/** What in a usage read decides model locks, as a comparable string (null if unknown). Prefers
+ *  `walletCanConsume` (set for members too; never shown in UI), else the balance (ENG-4147). */
+export function modelAccessSignature(usage) {
+  if (!usage?.reachable) return null;
+  const walletEmpty = typeof usage.walletCanConsume === 'boolean' ? !usage.walletCanConsume : isBalanceEmpty(usage.balance);
+  return `${walletEmpty}|${freeAllowanceState(usage).status}`;
+}
+
 /** What a stop on `included_allowance_exhausted` says, for the stopped-task
  *  card and the Settings probe notice alike. The drained-wallet card's
  *  spent-allowance branch describes the same state, so it uses this too.
@@ -234,10 +244,10 @@ export function isBalanceEmpty(balance) {
 export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
   const free = freeAllowanceState(usage);
   if (free.status === 'no_grant') {
-    return tr('allowanceStop.noGrant', { noGrant: noFreeGrantSentence() });
+    return trBilling('allowanceStop.noGrant', { noGrant: noFreeGrantSentence() });
   }
   const time = formatResetTime(resetAt || free.resetsAt);
-  return time ? tr('allowanceStop.withTime', { time }) : tr('allowanceStop.noTime');
+  return time ? trBilling('allowanceStop.withTime', { time }) : trBilling('allowanceStop.noTime');
 }
 
 /** What a stop on auth's daily free-Air spend fuse says (`free_serving_paused`
@@ -248,7 +258,7 @@ export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
  *  instead. */
 export function freeServingPausedCopy(resetAt) {
   const until = formatResetTime(resetAt);
-  return until ? tr('freeServingPaused.until', { until }) : tr('freeServingPaused.dailyReset');
+  return until ? trBilling('freeServingPaused.until', { until }) : trBilling('freeServingPaused.dailyReset');
 }
 
 /** What a stop on the org's spent budget says (`budget_exceeded`), after a
@@ -281,9 +291,9 @@ function isExplicitPaidModel(model) {
 }
 
 /* `${key}WithTime` with the refill time, or `${key}` when none is quotable. */
-function withResetTime(free, key, vars) {
+function withResetTime(free, key, vars, translate = tr) {
   const time = formatResetTime(free?.resetsAt);
-  return time ? tr(`${key}WithTime`, { ...vars, time }) : tr(key, vars);
+  return time ? translate(`${key}WithTime`, { ...vars, time }) : translate(key, vars);
 }
 
 /* The standing allowance figure: what the bar says when nothing is wrong, to
@@ -362,15 +372,15 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
       kind: 'auto_top_up_failed',
       tone: 'danger',
       title: tr('autoTopUpFailed.title'),
-      body: tr('autoTopUpFailed.body'),
+      body: trBilling('autoTopUpFailed.body'),
       actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.updatePaymentMethod],
     };
   }
 
   if (balanceEmptyStopsNextTask) {
     const body = freeInUse && f.out
-      ? withResetTime(free, 'balanceEmpty.freeUsedToo')
-      : tr('balanceEmpty.body');
+      ? withResetTime(free, 'balanceEmpty.freeUsedToo', {}, trBilling)
+      : trBilling('balanceEmpty.body');
     return {
       kind: 'balance_empty',
       tone: 'danger',
@@ -412,7 +422,7 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
         dismissKey,
         tone: 'warning',
         title,
-        body: tr('balanceLow.autoCapReached', { usd }),
+        body: trBilling('balanceLow.autoCapReached', { usd }),
         actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.manageAutoTopUp],
       };
     }
@@ -421,7 +431,7 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
       dismissKey,
       tone: 'warning',
       title,
-      body: tr('balanceLow.body', { usd }),
+      body: trBilling('balanceLow.body', { usd }),
       actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.setUpAutoTopUp],
     };
   }
@@ -439,13 +449,20 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
     };
   }
 
+  // The allowance running low is not news to someone whose balance carries
+  // Air past it: that is what the balance is for (ENG-4208, as ENG-4188 did
+  // for the allowance running out).
+  if (freeInUse && f.low && balanceCarriesAir(balance, auto)) return null;
+
   if (freeInUse && f.low) {
     let body = withResetTime(free, 'freeLow.body');
     const actions = [USAGE_ACTIONS.viewUsage];
     if (balanceEmpty) {
       body += ` ${tr('balanceEmptySentence')}`;
       actions.push(USAGE_ACTIONS.addFunds);
-    } else if (balanceLow) {
+    } else if (balanceUsable) {
+      // Past the return above, a usable balance is under the line: say how
+      // much cash is left, since that is what runs out next.
       body += ` ${tr('freeLow.balanceLowToo', { usd })}`;
       actions.push(USAGE_ACTIONS.addFunds);
     }
@@ -520,6 +537,7 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
   // They stay because the step comparison carrying all of that alone does not
   // read as the rule it enforces.
   if (!before.out && !after.out && after.low && spendsFree
+      && !balanceCarriesAir(next.balance, next.autoTopUp)
       && before.fractionLeft !== null && after.fractionLeft !== null
       && freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft)) {
     out.push({

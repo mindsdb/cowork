@@ -331,6 +331,7 @@
     "modelUnavailable": "{model} não está disponível. Escolha outro modelo ou fale com seu administrador.",
     "modelRestricted": "Um administrador da sua organização restringiu {model}. Escolha outro modelo.",
     "modelNeedsCredits": "{model} precisa de créditos. {link} para usá-lo.",
+    "modelNeedsCreditsNoLink": "{model} precisa de créditos.",
     "topUpBalance": "Recarregue seu saldo",
     "modelBudgetReached": "{model} não pode ser executado porque o orçamento da sua organização acabou.",
     "viewBudgets": "Ver orçamentos"
@@ -494,5 +495,12 @@
       "saved": "Salvo. Os membros verão na próxima vez que abrirem o app ou as Configurações.",
       "clean": "Nenhuma alteração de marca não salva"
     }
+  },
+  "voice": {
+    "title": "Voz",
+    "agentTitle": "Agente de voz",
+    "agentHelp": "Converse com {agent} pelo botão de chamada. Desativado oculta os botões de chamada e encerra a chamada em andamento.",
+    "voiceTitle": "Voz",
+    "voiceHelp": "Escolha uma para ouvi-la. {agent} diz uma frase curta em cada voz nova."
   }
 }

@@ -53,6 +53,8 @@
       "openNamedInDrive": "Abrir \"{name}\" no Google Drive",
       "untitled": "sem título",
       "openInDrive": "Abrir no Google Drive",
+      "openNamedInNotion": "Abrir \"{name}\" no Notion",
+      "openInNotion": "Abrir no Notion",
       "removeFromProjectFiles": "Remover dos arquivos do projeto",
       "removeFromProjectFilesAriaLabel": "Remover {name} dos arquivos do projeto",
       "loadAttachmentsFailed": "Não foi possível carregar os anexos",
@@ -278,6 +280,8 @@
     "settings": "Configurações",
     "billing": "Faturamento e uso",
     "members": "Membros",
+    "apiKeys": "Chaves de API",
+    "apiDocs": "Documentação da API",
     "help": "Ajuda e feedback",
     "manageOrg": "Gerenciar organização",
     "logout": "Sair",
@@ -360,7 +364,12 @@
     "total": "{count} no total",
     "noTasks": "Ainda não há tarefas.",
     "untitledTask": "Tarefa sem título",
-    "seeAllTasks": "Ver todas as tarefas"
+    "seeAllTasks": "Ver todas as tarefas",
+    "recents": "Recentes",
+    "showFewer": "Mostrar menos",
+    "seeAllCount": "Ver todos ({count})",
+    "signedIn": "Conectado",
+    "logOut": "Sair"
   },
   "dispatch": {
     "qrAriaLabel": "Código de pareamento decorativo",
@@ -395,9 +404,14 @@
       "operatorTitle": "É preciso configurar um provedor",
       "body": "Comece com o MindsHub e ganhe uma franquia gratuita no MindsHub Air; depois, pague conforme o uso. Ou adicione sua própria chave de API (Anthropic, OpenAI ou qualquer endpoint compatível com OpenAI) em Configurações.",
       "operatorBody": "Peça ao seu operador para configurar o provedor de modelos antes de iniciar uma tarefa.",
-      "startFree": "Começar grátis"
+      "startFree": "Começar grátis",
+      "bodyMobile": "Conecte seu próprio provedor em Configurações."
     },
-    "handoffHint": "Edite este prompt e envie quando estiver pronto."
+    "handoffHint": "Edite este prompt e envie quando estiver pronto.",
+    "signupWelcome": {
+      "fromDesktop": "Sua conta está pronta. Você pode começar aqui mesmo ou voltar ao app {product} e entrar.",
+      "dismiss": "Dispensar"
+    }
   },
   "logout": {
     "title": "Sair do {product}?",
@@ -418,5 +432,8 @@
     "emptyTitle": "Nenhuma notificação",
     "emptyDescription": "Execuções agendadas que precisam da sua atenção aparecem aqui.",
     "loadFailed": "Não foi possível carregar as notificações."
+  },
+  "shortcuts": {
+    "showBrowser": "Mostrar navegador"
   }
 }

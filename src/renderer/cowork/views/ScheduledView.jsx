@@ -34,6 +34,8 @@ const SORT_IDS = ['next', 'name', 'created'];
 export default function ScheduledView({
   scheduled,
   projects,
+  models,
+  modelMeta,
   selectedProject,
   onCreate,
   onUpdate,
@@ -275,6 +277,8 @@ export default function ScheduledView({
         onSubmit={handleSubmit}
         task={editing}
         projects={projects}
+        models={models}
+        modelMeta={modelMeta}
         defaultProjectPath={selectedProject?.path || ''}
         agentLabel={agentLabel}
       />

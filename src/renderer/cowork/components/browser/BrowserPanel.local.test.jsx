@@ -409,6 +409,31 @@ describe('the desktop browser pane', () => {
     expect(screen.queryByText(BIGGER)).not.toBeInTheDocument();
   });
 
+  it('shows the start page in place of a blank tab, with the view parked, and the page once it has one', async () => {
+    const onOpenUrl = vi.fn(async () => {});
+    render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} taskKey="t-abc" onSend={vi.fn()} onOpenUrl={onOpenUrl} />);
+    await flush();
+    emit(state({ url: null, title: '', tabs: [{ id: 't1', url: '', title: '', active: true }] }));
+    await flush();
+    expect(calls('setBounds')).toEqual([['setBounds', NOWHERE]]);
+    fireEvent.change(screen.getByLabelText('What to look up'), { target: { value: 'example.com' } });
+    fireEvent.submit(screen.getByLabelText('What to look up').closest('form'));
+    await flush();
+    expect(onOpenUrl).toHaveBeenCalledWith('https://example.com');
+    emit(state());
+    await flush();
+    expect(screen.queryByLabelText('What to look up')).not.toBeInTheDocument();
+    expect(calls('setBounds').at(-1)).toEqual(['setBounds', { x: 600, y: 56, width: 600, height: 700 }]);
+  });
+
+  it('shows no start page without a way to act on it', async () => {
+    render(<BrowserPanel sessionId="t-abc" onClose={vi.fn()} />);
+    await flush();
+    emit(state({ url: null }));
+    await flush();
+    expect(screen.queryByLabelText('What to look up')).not.toBeInTheDocument();
+  });
+
   it("forgets the answer when the task's browser closes, and waits for the show sent on opening again", async () => {
     // A short window squeezes the stage.
     stageBox = { left: 600, top: 56, width: 600, height: 150 };
@@ -518,6 +543,35 @@ describe('the desktop browser pane', () => {
     expect(screen.getByRole('button', { name: 'Forward' })).toBeDisabled();
   });
 
+  it('says a hand-over that comes back by itself does, and Done still works', async () => {
+    render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} />);
+    emit(state({ watching: true, control: { holder: 'human', reason: 'Tick the policy box', since: 2, seq: 1, by: 'agent' } }));
+    expect(screen.getByText("Your turn on shop.example.test: Tick the policy box. Cowork carries on by itself once it's done — or click Done.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(calls('handBack')).toEqual([['handBack', 't-abc']]);
+  });
+
+  /* As the web viewer does, so the chat carries on a task whose turn ended
+     while the person held the browser, however the browser came back. */
+  it('reports who holds the browser to the chat, once per change', async () => {
+    const onControl = vi.fn();
+    render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} onControl={onControl} />);
+    emit(state());
+    expect(onControl.mock.calls).toEqual([['agent', '', false]]);
+    // A page change alone is no change of hands.
+    emit(state({ url: 'https://shop.example.test/checkout', loading: true }));
+    expect(onControl).toHaveBeenCalledTimes(1);
+    emit(state({ watching: true, control: { holder: 'human', reason: 'Tick the policy box', since: 2, seq: 1, by: 'agent' } }));
+    expect(onControl).toHaveBeenLastCalledWith('human', 'Tick the policy box', true);
+    // The watch hands it back by itself, as the person's Done.
+    emit(state({ control: { holder: 'agent', reason: '', since: 3, seq: 2, by: 'person' } }));
+    expect(onControl).toHaveBeenLastCalledWith('agent', '', false);
+    expect(onControl).toHaveBeenCalledTimes(3);
+    // A closed browser holds nothing.
+    emit({ ...state(), open: false });
+    expect(onControl).toHaveBeenCalledTimes(3);
+  });
+
   it("says sign-ins stay, in Settings' words, while the person holds the browser", async () => {
     render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} />);
     const providerLine = "Cowork's page reads and screenshots go to the model provider that serves your turn.";
@@ -544,6 +598,16 @@ describe('the desktop browser pane', () => {
     expect(screen.getByText(hint)).toBeInTheDocument();
     expect(document.querySelector('.browser-panel__site')).toHaveTextContent(slot);
     expect(document.querySelector('.browser-panel__site')).not.toHaveTextContent('accounts.mindshub.ai');
+  });
+
+  it("reports the page it shows, whole, for the off-task browser's carry-over (which strips it for prompts)", async () => {
+    const onPageUrl = vi.fn();
+    render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} onPageUrl={onPageUrl} />);
+    emit(state({ url: 'https://mail.example.test/inbox?session=s3cret#top' }));
+    expect(onPageUrl).toHaveBeenLastCalledWith('https://mail.example.test/inbox?session=s3cret#top');
+    emit(state({ url: 'file:///Users/me/notes.txt' }));
+    // The carry-over drops what isn't http(s) (pageOriginForContext); the stage reports what it shows.
+    expect(onPageUrl).toHaveBeenLastCalledWith('file:///Users/me/notes.txt');
   });
 
   it('ignores state for other tasks', async () => {

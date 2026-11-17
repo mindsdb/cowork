@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { diagnostic } from '../../../../shared/diagnostics';
+import { BrowserNote } from './BrowserNote';
 import Ico from '../Icons';
 import Button from '../ui/Button';
 import EmptyState from '../ui/EmptyState';
@@ -8,6 +9,7 @@ import Spinner from '../ui/Spinner';
 import { host } from '../../../platform/host';
 import { useNativeOverlayOpen } from '../../lib/nativeOverlay';
 import { BrowserFrame } from './BrowserFrame';
+import { BlankStartOver } from './BlankBrowserPanel';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The desktop pane: the app's own browser, a native view the app's main
@@ -33,7 +35,13 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    task, waits for main's answer to its own show.
 
    The person can click and type in the view at any time. Take over tells the
-   agent to stop; only Done hands the browser back, and the agent waits for it. */
+   agent to stop; only Done hands the browser back, and the agent waits for it.
+
+   Each change of who holds the browser goes to `onControl(holder, reason,
+   watching)`, as the web viewer's does (BrowserPanel), so the chat can carry
+   a task on when the browser comes back after its turn ended: from the
+   pane's Done, the card's Done, continue, or a watched hand-over that came
+   back by itself. */
 
 /**
  * @typedef {import('../../../../shared/browser-contract').BrowserViewState} BrowserViewState
@@ -139,7 +147,10 @@ export function downloadLine(download) {
   }
 }
 
-export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
+export function LocalBrowserStage({
+  sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null,
+  taskKey = '', onSend, onOpenUrl, onPageUrl = null, onControl = null,
+}) {
   const { t } = useTranslation('chat');
   const browser = host.inAppBrowser;
   const stageRef = useRef(null);
@@ -162,7 +173,26 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
 
   const closed = !exists || state?.open === false;
   const signIn = state?.login ?? null;
-  const mayDraw = !overlayOpen && !signIn;
+  /* A blank tab (no address, nothing loading) gets the start page in the
+     view's place, as on the web, so the view stays parked while it shows. */
+  // The page it shows, for whoever opened it (the off-task browser's
+  // carry-over, which strips it before it reaches a prompt).
+  const onPageUrlRef = useRef(onPageUrl);
+  onPageUrlRef.current = onPageUrl;
+  const shownUrl = state?.url ?? '';
+  useEffect(() => { onPageUrlRef.current?.(shownUrl); }, [shownUrl]);
+  // Who holds the browser, reported once per change (state arrives on every page change too).
+  const onControlRef = useRef(onControl);
+  onControlRef.current = onControl;
+  const holder = state && state.open !== false ? state.control.holder : null;
+  const controlReason = state?.control.reason ?? '';
+  const controlWatching = state?.watching === true;
+  useEffect(() => {
+    if (!holder) return;
+    onControlRef.current?.(holder === 'human' ? 'human' : 'agent', controlReason.slice(0, 300), controlWatching);
+  }, [holder, controlReason, controlWatching]);
+  const startPage = Boolean(state) && !closed && !signIn && !state.url && !state.loading && Boolean(onSend || onOpenUrl);
+  const mayDraw = !overlayOpen && !signIn && !startPage;
   // Whether the view may draw now, for the pane's effect below to read.
   const mayDrawRef = useRef(mayDraw);
   // Sends main what the view may draw on now, or null while the pane shows no task.
@@ -240,8 +270,12 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
   // The page's own host leads the agent's reason, so a lookalike page can't
   // pass its words off as the app's.
   const turnSite = site || t('browser.aNewTab');
+  /* A hand-over that comes back by itself once the person did what it
+     waits for (a box ticked, a page moved on) says so; Done still works. */
   const hint = personHolds
-    ? (reason
+    ? (reason && state?.watching
+      ? t('browser.yourTurnWatching', { site: turnSite, reason, agent: agentLabel })
+      : reason
       ? t('browser.yourTurnReason', { site: turnSite, reason, agent: agentLabel })
       : t('browser.yourTurn', { site: turnSite, agent: agentLabel }))
     : t('browser.agentUsing', { agent: agentLabel });
@@ -282,7 +316,7 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
      pane at its narrowest. */
   const below = state && !closed && (
     <>
-    <p className="browser-panel__note">{note}</p>
+    <BrowserNote agentLabel={agentLabel}>{note}</BrowserNote>
     <div className="browser-panel__status" role="status">
       {state.loading && <Spinner />}
       <span className="browser-panel__site">{site || t('browser.newTab')}</span>
@@ -321,7 +355,7 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
   );
 
   return (
-    <BrowserFrame hint={hint} actions={actions} below={below} stageRef={stageRef} onClose={onClose}>
+    <BrowserFrame hint={hint} actions={actions} below={below} stageRef={stageRef} onClose={onClose} floating={floating} extraActions={extraActions} dock={dock}>
       {closed ? (
         <EmptyState
           size="sm"
@@ -336,6 +370,8 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
           site={signIn.host}
           onAnswer={(answer) => report(browser.answerLogin(sessionId, answer))}
         />
+      ) : startPage ? (
+        <BlankStartOver taskKey={taskKey} agentLabel={agentLabel} onSend={onSend} onOpenUrl={onOpenUrl} inset={false} />
       ) : squeezed ? (
         <EmptyState size="sm" className="browser-panel__empty" title={t('browser.squeezed')} />
       ) : null}

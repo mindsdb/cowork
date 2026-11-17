@@ -41,6 +41,9 @@ function globalScope() {
 let _scope = globalScope();
 let _scopeKey = GLOBAL_SCOPE_KEY;
 let _index = null;
+// The cards the index was built from, for surfaces that name an artifact by
+// its slug (the chat's quick-edit pill, ENG-4227). Same load, same scope.
+let _cards = [];
 let _tombstones = emptyArtifactIndex();
 let _born = emptyArtifactIndex();
 // Born entries the in-flight load has promised to account for. Dropped when it
@@ -92,6 +95,7 @@ async function _load() {
       });
       if (gen !== _loadGen) return;
       _index = buildArtifactIndex(cards);
+      _cards = cards;
       _bornPending = null;
     } catch {
       if (gen !== _loadGen) return;
@@ -128,6 +132,7 @@ export function setArtifactsScope(scope) {
   _born = mergeArtifactIndex(_born, _bornPending);
   _bornPending = null;
   _index = null;
+  _cards = [];
   _recomputeBorn();
   _emit();
   if (_subscribers.size > 0) queueMicrotask(_load);
@@ -222,10 +227,33 @@ export function useArtifactLiveness(card, { live = false } = {}) {
   );
 }
 
+/** The loaded card with this slug, or null (not loaded, not in scope, gone). */
+export function artifactCardBySlug(slug) {
+  if (!slug) return null;
+  const card = _cards.find((c) => c?.slug === slug) || null;
+  if (!card || artifactDeletedNow(card)) return null;
+  return card;
+}
+
+/**
+ * React hook: the artifact card for a slug, from the same load the liveness
+ * index uses (subscribing starts it). Null until it loads or when no card in
+ * scope has that slug. The snapshot is the card object itself, which only
+ * changes when a load lands, so it cannot loop.
+ */
+export function useArtifactCardBySlug(slug) {
+  return useSyncExternalStore(
+    _subscribe,
+    () => artifactCardBySlug(slug),
+    () => null,
+  );
+}
+
 export function __resetForTests() {
   _scope = globalScope();
   _scopeKey = GLOBAL_SCOPE_KEY;
   _index = null;
+  _cards = [];
   _tombstones = emptyArtifactIndex();
   _born = emptyArtifactIndex();
   _bornPending = null;

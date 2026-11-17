@@ -34,10 +34,10 @@ const analyticsMock = vi.hoisted(() => ({
 vi.mock('../../lib/analytics', () => analyticsMock);
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
-import SettingsView from './SettingsView';
+import SettingsView, { MindsProbeNotice, UnavailableModelHint } from './SettingsView';
 import { HubUsageContext } from '../../lib/hubUsageContext';
 import { formatResetTime, NO_FREE_GRANT_SENTENCE } from '../../lib/usageWarnings';
-import { MINDS_BILLING_URL, MINDS_BUDGETS_URL } from '../../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_BUDGETS_URL, MINDS_ADD_FUNDS_URL } from '../../../lib/mindsUrls';
 
 function Harness({ initialSettings, usage = null }) {
   const [settings, setSettings] = useState(initialSettings);
@@ -287,5 +287,33 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
     await waitFor(() => expect(spies.testProviders).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByRole('button', { name: /Saved/ })).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'Save settings' })).toBeNull();
+  });
+});
+
+describe('credit links open the add-credits dialog for a billing owner', () => {
+  it.each([
+    [true, MINDS_ADD_FUNDS_URL],
+    [false, MINDS_BILLING_URL],
+  ])('the no-credits notice (billing owner: %s)', async (isBillingOwner, url) => {
+    const user = userEvent.setup();
+    hostMock.host.openExternal.mockClear();
+    render(<MindsProbeNotice notice={{ kind: 'no_credits' }} isBillingOwner={isBillingOwner} />);
+
+    await user.click(screen.getByRole('button', { name: 'Top up balance →' }));
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(url);
+  });
+
+  it.each([
+    [true, MINDS_ADD_FUNDS_URL],
+    [false, MINDS_BILLING_URL],
+  ])('the needs-credits hint under the picker (billing owner: %s)', async (isBillingOwner, url) => {
+    const user = userEvent.setup();
+    hostMock.host.openExternal.mockClear();
+    render(<UnavailableModelHint label="Claude Opus 5" isBillingOwner={isBillingOwner} />);
+
+    await user.click(screen.getByRole('button', { name: 'Top up your balance' }));
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(url);
   });
 });

@@ -18,6 +18,8 @@ export default function CodingAgentSettingsSection({
   available,
   enabled,
   onEnabledChange,
+  onModelMenuOpenChange,
+  modelRefreshing = false,
 }) {
   const { t } = useTranslation('settingsTools');
   const [engines, setEngines] = useState([]);
@@ -142,7 +144,8 @@ export default function CodingAgentSettingsSection({
             options={modelOptions}
             variant="field"
             disabled={modelOptions.length === 0}
-            loading={loading}
+            loading={loading || modelRefreshing}
+            onOpenChange={onModelMenuOpenChange}
             ariaLabel={t('codingAgent.modelAriaLabel')}
           />
         </Section>

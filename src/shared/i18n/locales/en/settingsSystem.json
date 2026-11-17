@@ -177,13 +177,17 @@
       "pendingAction": "{rule} Waiting on your bank to confirm the latest charge.",
       "badgeOn": "Auto top up on",
       "badgeFailed": "Auto top up failed",
-      "badgePaused": "Auto top up paused"
+      "badgePaused": "Auto top up paused",
+      "offMobile": "Auto top up is off.",
+      "paymentFailedMobile": "Auto top up failed: we couldn't charge your card."
     },
     "low": {
       "off": "Running low. Add funds or turn on auto top up to keep tasks running.",
       "ok": "Running low. Auto top up will refill it.",
       "pending": "Running low. Auto top up is waiting on your bank.",
-      "other": "Running low. Add funds to keep tasks running."
+      "other": "Running low. Add funds to keep tasks running.",
+      "offMobile": "Running low.",
+      "otherMobile": "Running low."
     },
     "balance": {
       "title": "Balance",
@@ -192,7 +196,8 @@
       "spentRange": "credit spent {start} to {end}",
       "spentDate": "credit spent {date}",
       "spentThisPeriod": "credit spent this period",
-      "notOwner": "Only your organization's billing owner can add funds or change auto top up."
+      "notOwner": "Only your organization's billing owner can add funds or change auto top up.",
+      "emptyMobile": "Your balance is empty. Paid models are unavailable."
     },
     "signIn": {
       "title": "Sign in to see your usage",
@@ -203,7 +208,8 @@
     "error": {
       "title": "Couldn't load usage",
       "body": "MindsHub didn't answer. Try again, or check your usage in the console.",
-      "tryAgain": "Try again"
+      "tryAgain": "Try again",
+      "bodyMobile": "MindsHub didn't answer."
     },
     "empty": "No usage to show for this account yet."
   }

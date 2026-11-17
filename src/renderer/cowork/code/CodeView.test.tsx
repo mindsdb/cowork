@@ -198,7 +198,8 @@ vi.mock('../components/ConfirmModal', () => ({
 }));
 
 import CodeView from './CodeView';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_ADD_FUNDS_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { HubUsageContext } from '../lib/hubUsageContext';
 
 const { useCodingSession: actualUseCodingSession } = await vi.importActual<typeof import('./useCodingSession')>('./useCodingSession');
 
@@ -236,7 +237,7 @@ function deferred<T>() {
 }
 
 
-function renderCode(overrides: Partial<React.ComponentProps<typeof CodeView>> = {}) {
+function renderCode(overrides: Partial<React.ComponentProps<typeof CodeView>> = {}, { isBillingOwner }: { isBillingOwner?: boolean } = {}) {
   const props: React.ComponentProps<typeof CodeView> = {
     sessions: [],
     selectedId: null,
@@ -249,7 +250,13 @@ function renderCode(overrides: Partial<React.ComponentProps<typeof CodeView>> = 
     onSelectionChange: vi.fn(),
     ...overrides,
   };
-  return { ...render(<CodeView {...props} />), props };
+  const view = <CodeView {...props} />;
+  return {
+    ...render(isBillingOwner === undefined ? view : (
+      <HubUsageContext.Provider value={{ usage: { isBillingOwner }, providerType: 'minds-cloud', refresh: () => {} }}>{view}</HubUsageContext.Provider>
+    )),
+    props,
+  };
 }
 
 
@@ -349,6 +356,39 @@ describe('CodeView session-list reconciliation', () => {
     expect(opened.searchParams.get('tab')).toBe('budgets');
     expect(opened.searchParams.get('organization')).toBe('org-123');
     expect(opened.searchParams.get('subject')).toBe('user-9');
+  });
+
+  it.each([
+    [true, MINDS_ADD_FUNDS_URL],
+    [false, MINDS_BILLING_URL],
+  ])('sends Add credits in the composer lip to the console (billing owner: %s)', (isBillingOwner, url) => {
+    const failed: CodingSession = { ...session('task-1'), status: 'failed', run_status: 'failed', last_error: 'The turn failed.' };
+    const allowance: CodingEvent = {
+      schema_version: 1,
+      seq: 1,
+      timestamp: '2026-08-21T09:05:00Z',
+      type: 'error',
+      title: '',
+      text: 'The turn failed.',
+      phase: 'failed',
+      data: { code: 'included_allowance_exhausted', detail: 'upstream 429' },
+    };
+    mocks.useCodingSession.mockReturnValue({
+      session: failed,
+      events: [allowance],
+      latestEvents: { error: { latest: allowance } },
+      git: null,
+      diff: [],
+      loading: false,
+      error: '',
+      refresh: vi.fn(async () => {}),
+      refreshReview: vi.fn(async () => {}),
+    });
+    renderCode({ sessions: [failed], selectedId: failed.id }, { isBillingOwner });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
+
+    expect(mocks.openCodeExternalUrl).toHaveBeenCalledWith(url);
   });
 
   it('opens project history instead of starting a task when a project is selected', async () => {

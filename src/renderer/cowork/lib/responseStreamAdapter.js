@@ -1,5 +1,8 @@
+import { applyAddonEvent } from './addons';
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
+import { artifactIdentity } from './artifactIdentity';
 import { browserStep, withBrowserStep } from './browserSession';
+import { BROWSER_ACTION_BADGE, BROWSER_TOOL, browserActionLabel, browserActionStep } from './browserSteps';
 import { parseFigureSources } from './figureSources';
 import i18n from '../../lib/i18n';
 
@@ -35,6 +38,9 @@ const tr = (key, vars) => i18n.t(`messages.responseStream.${key}`, { ns: 'projec
 //                                 carries an `artifact` payload → one card
 //   response.figure_sources     — where each figure in the final answer came
 //                                 from; sent once, before response.completed
+//   response.artifact_check     — the agent asks the open preview to check an
+//                                 artifact; answered by lib/artifactCheck,
+//                                 never a step
 //   response.completed | failed — terminal
 //
 // We collapse each scratchpad cell (start → end → progress → result) into
@@ -198,7 +204,7 @@ function closeOpenInspectableSteps(steps, completedAt) {
   return closeOpenSteps(
     steps,
     completedAt,
-    (step) => step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress',
+    (step) => step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress' || step.badge === BROWSER_ACTION_BADGE,
   );
 }
 
@@ -526,6 +532,11 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // collapses every `now()` to the same JS-tick value and reasoning
   // / execution durations all read as 0ms. Falls back to the live
   // clock when an event lacks `at_ms` (older persisted streams).
+  // A preview check the agent asked for (ENG-4207) is answered by
+  // lib/artifactCheck, never shown: it is not a step, and it is not news
+  // about the turn either, so it leaves even a model-wait line in place.
+  if (type === 'response.artifact_check') return state;
+
   const eventTs = (typeof event.at_ms === 'number' && Number.isFinite(event.at_ms))
     ? event.at_ms
     : now();
@@ -536,6 +547,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
    * without a model-wait line over it, and a reasoning delta starts a fresh
    * burst instead of appending to the status. */
   if (state.currentThought?.kind === 'model_wait'
+    // A message the person added is not news from the model.
+    && type !== 'response.addon'
     && !(type === 'response.in_progress'
       && event.thought_role === 'thought.progress'
       && event.phase === 'model_wait')) {
@@ -768,7 +781,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _scratchpadTabId: null,
     };
     if (!replay) {
-      try { _trackArtifactBuilt(art.type || 'unknown'); }
+      try { _trackArtifactBuilt(art.type || 'unknown', artifactIdentity(art) || art.id || ''); }
       catch { /* analytics must never break streaming */ }
     }
     return { ...state, steps: [...state.steps, step] };
@@ -856,6 +869,11 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         select: event.select === 'many' ? 'many' : 'one',
         allow_custom: event.allow_custom !== false,
         timeout_s: event.timeout_s ?? null,
+        // When the server held it (its clock, also on a replay), or null for
+        // an event without one: the app approves a held browser step for the
+        // person only if it was held after they turned approvals off
+        // (lib/browserPrefs.js), never by this tab's clock.
+        held_at_ms: Number.isFinite(event.at_ms) ? event.at_ms : null,
         answer: null,
       },
       output: null,
@@ -901,6 +919,17 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       };
     });
     return found ? { ...state, steps } : state;
+  }
+
+  /* A message the person sent while this turn ran (ENG-4194): added to the
+     running task, read by Anton, or handed back unread at turn end. The app
+     injects the same event for its own request (`sending`, then `added`), so
+     the row shows the moment Enter is pressed. Every add-on the server
+     relays shows, live or replayed (ENG-4208); only acting on one is limited
+     to this client's own. See lib/addons.js. */
+  if (type === 'response.addon') {
+    const steps = applyAddonEvent(state.steps, event, eventTs);
+    return steps === state.steps ? state : { ...state, steps };
   }
 
   /* The figures of the final answer and the steps they came from. Sent once,
@@ -1197,6 +1226,30 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // the two rounds makes it look like an answer (ENG-3554).
     if (startsTool(event) && state.bodyText.trim()) {
       state = { ...state, ...sealRoundOnToolStart(state, eventTs) };
+    }
+
+    /* The agent's browser tool (lib/browserSteps.js): each call is a step.
+       Its start names the tool, the next line for the same call carries its
+       arguments, which label it (the arguments themselves are not kept: a
+       step can type a password), and its tool_done ends it. */
+    const browserCallId = event.tool_use_id || '';
+    if (browserCallId) {
+      const idx = state.steps.findIndex((s) => s.badge === BROWSER_ACTION_BADGE && s._toolUseId === browserCallId);
+      if (!phase && !event.subtype && idx === -1 && event.content === BROWSER_TOOL) {
+        // A call whose tool_done never came (it can be throttled away) ends where the next starts.
+        const steps = closeOpenSteps(state.steps, eventTs, (s) => s.badge === BROWSER_ACTION_BADGE);
+        return { ...state, steps: [...steps, browserActionStep({ id: `step-${steps.length + 1}`, toolUseId: browserCallId, at: eventTs })] };
+      }
+      if (idx !== -1 && (phase === 'tool_done' || (!phase && !event.subtype))) {
+        const steps = state.steps.slice();
+        if (phase === 'tool_done') {
+          steps[idx] = { ...steps[idx], status: 'completed', completedAt: eventTs };
+        } else {
+          const args = safeJsonParse(event.content || '');
+          if (args && typeof args === 'object') steps[idx] = { ...steps[idx], label: browserActionLabel(args) };
+        }
+        return { ...state, steps };
+      }
     }
 
     // anton is deliberately idle, waiting out a velocity rate-limit before

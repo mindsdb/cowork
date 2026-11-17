@@ -11,6 +11,7 @@ import { OverflowMenu } from '../OverflowMenu';
 import { relativeAge } from '../../lib/formatTime';
 import { ItemActions, ListItem, StatusDot } from '../collection';
 import i18n, { useTranslation } from '../../../lib/i18n';
+import { scheduleRunResolver } from '../../lib/scheduleRuns';
 
 const tc = (key, vars) => i18n.t(key, { ns: 'chat', ...vars });
 
@@ -26,12 +27,15 @@ export const latestRun = (runs) => runs.reduce((max, r) =>
 runs[0]);
 
 // Lone tasks pass through as { kind: 'task' }; runs of one schedule roll into
-// a single { kind: 'group' } at the position of the first run.
-export function groupScheduleRuns(tasks) {
+// a single { kind: 'group' } at the position of the first run. `schedules`
+// lets a run the server did not label with its schedule still fold
+// (lib/scheduleRuns).
+export function groupScheduleRuns(tasks, schedules = []) {
+  const resolve = scheduleRunResolver(schedules);
   const out = [];
   const groups = new Map();
   for (const t of tasks || []) {
-    const sid = t.scheduledId || null;
+    const sid = resolve(t);
     if (!sid) {
       out.push({ kind: 'task', task: t });
       continue;
@@ -107,7 +111,7 @@ export function TaskRow({
 // Cowork task → row props. `projects` is omitted inside a project, where
 // every row's project is the page's own.
 export function chatTaskRow(task, { projects, onOpenProject } = {}) {
-  const updatedAt = task.updatedAt || task.subtitle || task.created_at;
+  const updatedAt = task.updatedAt || task.subtitle || task.createdAt;
   const age = relativeAge(updatedAt);
   return {
     title: task.title,
