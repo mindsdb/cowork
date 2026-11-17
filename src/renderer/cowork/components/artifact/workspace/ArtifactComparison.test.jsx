@@ -293,3 +293,59 @@ describe('ArtifactComparison', () => {
     });
   });
 });
+
+// A change to a published artifact, reviewed before it goes live (ENG-4409).
+describe('ArtifactComparison publish review', () => {
+  const PUBLISH_COMPARISON = {
+    kind: 'publish',
+    before: { id: 'r1', number: 1, path: 'notes.md', content: '# Old title\n' },
+    after: { id: 'r2', number: 2, path: 'notes.md', content: '# New title\n' },
+    afterContent: '# New title\n',
+    review: { replyId: 'qe-2' },
+  };
+  function renderReview(publishReview) {
+    const onClose = vi.fn();
+    render(
+      <ArtifactComparison
+        comparison={PUBLISH_COMPARISON}
+        contentType="md"
+        busy={false}
+        onClose={onClose}
+        publishReview={publishReview}
+      />,
+    );
+    return { onClose };
+  }
+
+  it('offers Publish this change, Keep as draft and Undo instead of Restore', () => {
+    const review = { onPublish: vi.fn(), onKeepDraft: vi.fn(), onUndo: vi.fn() };
+    renderReview(review);
+
+    expect(screen.getByRole('heading', { name: 'Review the change before publishing' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Restore as new revision' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Publish this change' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(review.onPublish).toHaveBeenCalledTimes(1);
+    expect(review.onKeepDraft).toHaveBeenCalledTimes(1);
+    expect(review.onUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the change as a draft when closed', () => {
+    const review = { onPublish: vi.fn(), onKeepDraft: vi.fn() };
+    const { onClose } = renderReview(review);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close comparison' }));
+    expect(review.onKeepDraft).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('offers no Undo without one, and shows publishing and its error', () => {
+    renderReview({ busy: true, error: 'Update failed: offline', onPublish: vi.fn(), onKeepDraft: vi.fn() });
+
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Publishing…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Keep as draft' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Update failed: offline');
+  });
+});

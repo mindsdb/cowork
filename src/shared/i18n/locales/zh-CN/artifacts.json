@@ -233,7 +233,12 @@
     "changePosition": "{count, plural, other {第 {current} 处，共 # 处更改}}",
     "previousChange": "上一处更改",
     "nextChange": "下一处更改",
-    "changeNavigation": "逐处查看更改"
+    "changeNavigation": "逐处查看更改",
+    "publishedArtifact": "已发布的产物",
+    "reviewBeforePublishing": "发布前检查此更改",
+    "keepDraft": "保留为草稿",
+    "publishChange": "发布此更改",
+    "publishing": "正在发布…"
   },
   "htmlEditor": {
     "blockGone": "所选文本块已不存在。",
@@ -391,7 +396,8 @@
     "artifactActions": "产物操作",
     "moreActions": "更多操作",
     "reloadPreview": "重新加载预览",
-    "close": "关闭"
+    "close": "关闭",
+    "unsharedChangesHint": "分享链接显示的是较早的版本。请在“分享”中使用“更新”来发布这些更改。"
   },
   "body": {
     "previewWatermark": "预览",
@@ -459,7 +465,8 @@
     "discardFailed": "无法放弃该建议。",
     "deleteTitle": "删除产物？",
     "deleteMessage": "“{title}”将被永久删除。此操作无法撤销。",
-    "changedElsewhere": "此产物已更改。重新加载"
+    "changedElsewhere": "此产物已更改。重新加载",
+    "changePublished": "已发布"
   },
   "artifactsView": {
     "sort": {

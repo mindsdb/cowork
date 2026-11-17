@@ -233,7 +233,12 @@
     "changePosition": "{count, plural, other {#件中 {current}件目の変更}}",
     "previousChange": "前の変更",
     "nextChange": "次の変更",
-    "changeNavigation": "変更を順に移動"
+    "changeNavigation": "変更を順に移動",
+    "publishedArtifact": "公開済みのアーティファクト",
+    "reviewBeforePublishing": "公開する前に変更を確認",
+    "keepDraft": "下書きのままにする",
+    "publishChange": "この変更を公開",
+    "publishing": "公開中…"
   },
   "htmlEditor": {
     "blockGone": "選択したテキストブロックは存在しません。",
@@ -391,7 +396,8 @@
     "artifactActions": "アーティファクトの操作",
     "moreActions": "その他の操作",
     "reloadPreview": "プレビューを再読み込み",
-    "close": "閉じる"
+    "close": "閉じる",
+    "unsharedChangesHint": "共有リンクには以前のバージョンが表示されています。変更を公開するには、［共有］の［更新］を使ってください。"
   },
   "body": {
     "previewWatermark": "プレビュー",
@@ -459,7 +465,8 @@
     "discardFailed": "その提案を破棄できませんでした。",
     "deleteTitle": "アーティファクトを削除しますか？",
     "deleteMessage": "「{title}」は完全に削除されます。この操作は取り消せません。",
-    "changedElsewhere": "このアーティファクトは変更されました。再読み込み"
+    "changedElsewhere": "このアーティファクトは変更されました。再読み込み",
+    "changePublished": "公開しました"
   },
   "artifactsView": {
     "sort": {

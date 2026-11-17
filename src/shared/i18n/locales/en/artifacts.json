@@ -233,7 +233,12 @@
     "changePosition": "{current} of {count, plural, one {# change} other {# changes}}",
     "previousChange": "Previous change",
     "nextChange": "Next change",
-    "changeNavigation": "Step through changes"
+    "changeNavigation": "Step through changes",
+    "publishedArtifact": "Published artifact",
+    "reviewBeforePublishing": "Review the change before publishing",
+    "keepDraft": "Keep as draft",
+    "publishChange": "Publish this change",
+    "publishing": "Publishing…"
   },
   "htmlEditor": {
     "blockGone": "The selected text block is no longer available.",
@@ -391,7 +396,8 @@
     "artifactActions": "Artifact actions",
     "moreActions": "More actions",
     "reloadPreview": "Reload preview",
-    "close": "Close"
+    "close": "Close",
+    "unsharedChangesHint": "The shared link shows an earlier version. Use Update in Share to publish the changes."
   },
   "body": {
     "previewWatermark": "Preview",
@@ -459,7 +465,8 @@
     "discardFailed": "Could not discard that suggestion.",
     "deleteTitle": "Delete artifact?",
     "deleteMessage": "\"{title}\" will be permanently deleted. This cannot be undone.",
-    "changedElsewhere": "This artifact changed. Reload"
+    "changedElsewhere": "This artifact changed. Reload",
+    "changePublished": "Published"
   },
   "artifactsView": {
     "sort": {

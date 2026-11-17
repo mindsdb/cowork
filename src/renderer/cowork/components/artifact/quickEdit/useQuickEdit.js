@@ -89,10 +89,12 @@ function undoErrorMessage(error) {
  *   after it (lib/quickEditPrompt chatReplyFor).
  * @param {() => { model: string | null, reasoningEffort: string | null }} [opts.picks]
  *   The model and effort the bar's picker holds, as the request sends them.
- * @param {(opts?: { previewFresh?: boolean }) => void | Promise<void>} opts.onApplied
+ * @param {(opts?: { previewFresh?: boolean, edit?: { replyId: string, revisionId: string | null, previousRevisionId: string | null } }) => void | Promise<void>} opts.onApplied
  *   A new revision landed (applied or undone): reload the workspace and the
  *   preview. `previewFresh` when the edit's own preview check already
  *   reloaded the preview after its last write, so it needs no second reload.
+ *   `edit` names the applied edit (absent after an undo): its reply and the
+ *   revisions before and after it.
  * @param {() => void} [opts.onStale]  The server refused a stale revision.
  */
 export function useQuickEdit(artifact, {
@@ -190,11 +192,15 @@ export function useQuickEdit(artifact, {
             state: 'applied',
             summary,
             revisionId: done.revisionId || null,
+            previousRevisionId: done.previousRevisionId || null,
             editId: typeof done.editId === 'string' && done.editId ? done.editId : null,
             undoable: done.undoable === true && !!done.editId,
           });
           if (lastCheck) await lastCheck;
-          await depsRef.current.onApplied?.({ previewFresh });
+          await depsRef.current.onApplied?.({
+            previewFresh,
+            edit: { replyId, revisionId: done.revisionId || null, previousRevisionId: done.previousRevisionId || null },
+          });
           break;
         case 'noop':
           patchReply(replyId, { state: 'noop', summary });

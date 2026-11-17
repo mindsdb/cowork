@@ -72,6 +72,10 @@ export function ArtifactComparison({
   onRestore,
   onAccept,
   onReject,
+  // A change to a published artifact (comparison.kind 'publish', ENG-4409):
+  // `{ busy, error, onPublish, onKeepDraft, onUndo }`, onUndo absent when the
+  // change has no undo.
+  publishReview = null,
 }) {
   const { t } = useTranslation('artifacts');
   const beforeRef = useRef(null);
@@ -146,6 +150,9 @@ export function ArtifactComparison({
 
   if (!comparison) return null;
   const isAgent = comparison.kind === 'agent';
+  const isPublish = comparison.kind === 'publish';
+  // Closing a publish review keeps the change as a draft, as the button says.
+  const close = isPublish && publishReview?.onKeepDraft ? publishReview.onKeepDraft : onClose;
   const before = comparison.before;
   const after = comparison.after;
   const changeCount = visualModel ? visualModel.changes.length : changes.count;
@@ -160,11 +167,17 @@ export function ArtifactComparison({
       <header className="artifact-compare-header">
         <div>
           <div className="artifact-compare-kicker">
-            <span className="section-label">{isAgent ? t('comparison.agentSuggestion') : t('comparison.revisionHistory')}</span>
+            <span className="section-label">
+              {isAgent ? t('comparison.agentSuggestion') : isPublish ? t('comparison.publishedArtifact') : t('comparison.revisionHistory')}
+            </span>
             {changeCount > 0 && <span className="artifact-compare-change-count">{changeLabel}</span>}
           </div>
           <h3 id="artifact-compare-title">
-            {isAgent ? t('comparison.reviewChange') : t('comparison.compareWith', { label: labelOf(before, t('comparison.earlierDraft')) })}
+            {isAgent
+              ? t('comparison.reviewChange')
+              : isPublish
+                ? t('comparison.reviewBeforePublishing')
+                : t('comparison.compareWith', { label: labelOf(before, t('comparison.earlierDraft')) })}
           </h3>
         </div>
         <div className="artifact-compare-header-actions">
@@ -178,7 +191,7 @@ export function ArtifactComparison({
               {showSource ? t('comparison.visual') : t('comparison.advanced')}
             </button>
           )}
-          <button type="button" aria-label={t('comparison.close')} onClick={onClose}>
+          <button type="button" aria-label={t('comparison.close')} onClick={close}>
             {Ico.close(16)}
           </button>
         </div>
@@ -219,7 +232,29 @@ export function ArtifactComparison({
         </div>
       )}
       <footer className="artifact-compare-footer">
-        {isAgent ? (
+        {isPublish ? (
+          <>
+            {publishReview?.error && (
+              <span className="artifact-compare-footer-error" role="alert">{publishReview.error}</span>
+            )}
+            {publishReview?.onUndo && (
+              <Button variant="subtle" disabled={busy || publishReview.busy} onClick={publishReview.onUndo}>
+                {Ico.undo(14)} {t('quickEdit.undo')}
+              </Button>
+            )}
+            <Button disabled={busy || publishReview?.busy} onClick={close}>
+              {t('comparison.keepDraft')}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={busy || publishReview?.busy}
+              aria-busy={publishReview?.busy || undefined}
+              onClick={publishReview?.onPublish}
+            >
+              {publishReview?.busy ? t('comparison.publishing') : t('comparison.publishChange')}
+            </Button>
+          </>
+        ) : isAgent ? (
           <>
             <Button variant="subtle" disabled={busy} onClick={onReject}>{t('comparison.reject')}</Button>
             <Button disabled={busy} onClick={onAccept}>{Ico.check(14)} {t('comparison.accept')}</Button>

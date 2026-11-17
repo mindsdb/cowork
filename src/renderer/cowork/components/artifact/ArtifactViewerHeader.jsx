@@ -1,5 +1,5 @@
 import Ico from '../Icons';
-import { Button, Menu, Tooltip } from '../ui';
+import { Badge, Button, Menu, Tooltip } from '../ui';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { canDownloadArtifact, canShowInBrowserTab } from '../../lib/artifactKinds';
@@ -154,6 +154,14 @@ export function ArtifactViewerHeader({
             way to share at all (ENG-2316). On Cloud this changes the audience of
             an already-autopublished artifact; the controller handles the
             transport difference. */}
+        {/* The draft is ahead of the published page (a change kept as a
+            draft, ENG-4409): the same warning the artifact card shows, until
+            Update in the Share panel publishes it. Desktop only, as Update is. */}
+        {canManage && publishable && isPublished && !orgMode && pub?.modified && (
+          <Tooltip content={t('header.unsharedChangesHint')}>
+            <Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge>
+          </Tooltip>
+        )}
         {canManage && publishable && (
           <PublishMenu
             controller={pub}

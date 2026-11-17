@@ -184,6 +184,8 @@
 .artifact-feedback-badge { position: absolute; top: -4px; right: -4px; min-width: 15px; height: 15px; display: grid; place-items: center; padding: 0 3px; border: 2px solid var(--surface); border-radius: 999px; color: white; background: var(--danger); font: 700 8px/1 var(--font-body); pointer-events: none; }
 .artifact-feedback-notice { align-self: flex-end; z-index: 4; display: inline-flex; align-items: center; gap: 7px; margin: 8px 12px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 8px; color: var(--ink); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); box-shadow: 0 4px 14px rgba(0, 0, 0, .08); font: 500 12px/1.35 var(--font-body); cursor: pointer; }
 .artifact-feedback-notice:hover { background: color-mix(in srgb, var(--accent) 11%, var(--surface)); }
+.artifact-feedback-notice.is-status { cursor: default; }
+.artifact-feedback-notice.is-status:hover { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 .artifact-repair-notice { align-self: flex-end; z-index: 4; display: inline-flex; align-items: center; gap: 10px; margin: 8px 12px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 8px; color: var(--ink); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); box-shadow: 0 4px 14px rgba(0, 0, 0, .08); font: 500 12px/1.35 var(--font-body); }
 .artifact-repair-notice button { color: var(--accent); font: inherit; text-decoration: underline; }
 .artifact-repair-notice button:disabled { opacity: .55; text-decoration: none; cursor: default; }
@@ -216,6 +218,7 @@
 /* The change just stepped to, briefly. */
 .artifact-compare-grid pre > span.is-flashing { background: color-mix(in srgb, var(--accent) 26%, transparent); box-shadow: inset 3px 0 var(--accent); }
 .artifact-compare-footer { min-height: 52px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); }
+.artifact-compare-footer-error { margin-right: auto; min-width: 0; font-size: 12px; color: var(--danger); }
 
 .artifact-visual-compare { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .artifact-visual-change-summary {

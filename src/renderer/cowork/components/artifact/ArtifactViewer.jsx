@@ -133,6 +133,9 @@ function isSameArtifact(a, b) {
   return (a.path || '') === (b.path || '');
 }
 
+// How long "Published" stays after a reviewed change goes live.
+const PUBLISHED_NOTICE_MS = 4000;
+
 /* The prompt's text when a close would drop Edit text. While the workspace
    status is 'saving', a request that has already gone out decides what
    happens to the text: a save keeps it unless the save fails, and a revision
@@ -1031,8 +1034,17 @@ export function ArtifactViewer({
   const [changedElsewhere, setChangedElsewhere] = useState(false);
   useEffect(() => { setChangedElsewhere(false); }, [open, artifact?.id]);
   const turnWatchRef = useRef({ live: false, startHead: null });
+  // A change to a published artifact from the bar is reviewed before it goes
+  // live (ENG-4409): the comparison opens with Publish this change, Keep as
+  // draft and, for a direct edit, Undo. Desktop only: MindsHub mode
+  // autopublishes, and has no Update to offer.
+  const reviewsPublish = !!pub.publishedUrl && !pub.orgMode && canManage && publishable && hasActionPath;
+  // The bar handed a message to this chat, so the turn that ends next is the
+  // one that made its change.
+  const handedOffRef = useRef(false);
+  useEffect(() => { handedOffRef.current = false; }, [open, artifact?.id]);
   const latestRef = useRef({});
-  latestRef.current = { workspace, artifact };
+  latestRef.current = { workspace, artifact, pub, reviewsPublish };
   useEffect(() => {
     const watch = turnWatchRef.current;
     if (!open) {
@@ -1042,6 +1054,8 @@ export function ArtifactViewer({
     if (chatLive && !watch.live) watch.startHead = workspace.currentRevision?.id || null;
     if (!chatLive && watch.live) {
       const startHead = watch.startHead;
+      const handedOff = handedOffRef.current;
+      handedOffRef.current = false;
       void (async () => {
         let head = null;
         try {
@@ -1063,6 +1077,11 @@ export function ArtifactViewer({
           reportChange({ ...card, mtime: Date.now() / 1000 });
         });
         try { await ws.load(); } catch { /* the preview shows the change either way */ }
+        const { pub: publication, reviewsPublish: reviews } = latestRef.current;
+        if (handedOff && reviews && startHead) {
+          void publication.refresh?.();
+          await ws.reviewPublish?.(startHead, head);
+        }
       })();
     }
     watch.live = chatLive;
@@ -1103,7 +1122,9 @@ export function ArtifactViewer({
     continueInChat: async (prompt) => {
       if (!onAddressWithAgent) return false;
       const target = (await resolveArtifactConversation()) || repairConversationId;
+      handedOffRef.current = true;
       const started = await onAddressWithAgent({ artifact, prompt, conversationId: target });
+      if (started === false) handedOffRef.current = false;
       return started !== false;
     },
     countInChat: (prompt) => countUserPrompts(chatMessages, prompt),
@@ -1116,7 +1137,7 @@ export function ArtifactViewer({
     },
     // As after a Source save: the host hears of the new content (its card
     // and any URL it derives), and the preview reloads in the same render.
-    onApplied: async ({ previewFresh = false } = {}) => {
+    onApplied: async ({ previewFresh = false, edit = null } = {}) => {
       // The server keeps the edit (or its undo) in the chat's quick-edit card;
       // the open chat fetches it again to show it.
       if (conversationId) requestConversationRefresh(conversationId);
@@ -1133,9 +1154,56 @@ export function ArtifactViewer({
         });
       }
       await loading;
+      if (!reviewsPublish) return;
+      // The draft is now ahead of the published page (or, after an undo, may
+      // be level with it again): the Share control learns which.
+      void pub.refresh();
+      if (edit?.previousRevisionId && edit.revisionId) {
+        await workspace.reviewPublish?.(edit.previousRevisionId, edit.revisionId, { replyId: edit.replyId });
+      }
     },
     onStale: () => { void workspace.load(); },
   });
+
+  // The publish review's choices (ENG-4409). Publish this change re-publishes
+  // the draft to the same link with the same access (usePublish update), then
+  // says "Published" for a moment. Keep as draft closes it, leaving the
+  // header's "Unshared changes" and the Share panel's Update. Undo is the
+  // bar's own, offered while that edit is still the one to undo.
+  const [publishReviewFailed, setPublishReviewFailed] = useState(false);
+  const [changePublished, setChangePublished] = useState(false);
+  const reviewingPublish = workspace.comparison?.kind === 'publish';
+  useEffect(() => { setPublishReviewFailed(false); }, [workspace.comparison]);
+  useEffect(() => { setChangePublished(false); }, [open, artifact?.id]);
+  useEffect(() => {
+    if (!changePublished) return undefined;
+    const timer = setTimeout(() => setChangePublished(false), PUBLISHED_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [changePublished]);
+  const reviewReplyId = reviewingPublish ? workspace.comparison.review?.replyId || null : null;
+  const reviewReply = reviewReplyId ? quickEdit.messages.find((m) => m.id === reviewReplyId) : null;
+  const publishReview = reviewingPublish ? {
+    busy: pub.phase === 'updating' || !!reviewReply?.undoing,
+    error: (publishReviewFailed && pub.error) || reviewReply?.undoError || '',
+    onPublish: async () => {
+      setPublishReviewFailed(false);
+      if (await pub.update()) {
+        workspace.setComparison(null);
+        setChangePublished(true);
+      } else {
+        setPublishReviewFailed(true);
+      }
+    },
+    onKeepDraft: () => {
+      workspace.setComparison(null);
+      void pub.refresh();
+    },
+    onUndo: reviewReplyId && quickEdit.undoableId === reviewReplyId && !quickEdit.running
+      ? async () => {
+        if (await quickEdit.undo(reviewReplyId)) workspace.setComparison(null);
+      }
+      : undefined,
+  } : null;
 
   // Live edit (`source`): the code editor, in the preview's place at any
   // width. Turning it off with unsaved text asks first.
@@ -1614,6 +1682,11 @@ export function ArtifactViewer({
           {Ico.reload(14)} <span>{t('viewer.linkExpired')}</span>
         </button>
       )}
+      {changePublished && (
+        <div className="artifact-feedback-notice is-status" role="status">
+          {Ico.check(14)} <span>{t('viewer.changePublished')}</span>
+        </div>
+      )}
       {feedbackNotice && (
         <button
           type="button"
@@ -1706,6 +1779,7 @@ export function ArtifactViewer({
         review={bodyReview}
         stats={bodyStats}
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
+        publishReview={publishReview}
       />
 
       {canQuickEdit && !layout.quickEditHidden && (

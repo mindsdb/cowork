@@ -87,6 +87,8 @@ export function ArtifactViewerBody({
   review,
   stats = null,
   agentReview,
+  // The publish review's actions (ArtifactComparison `publishReview`).
+  publishReview = null,
 }) {
   const { t } = useTranslation('artifacts');
   const {
@@ -378,6 +380,7 @@ export function ArtifactViewerBody({
           baseUrl={draftPreviewUrl}
           onClose={() => workspace.setComparison(null)}
           onRestore={workspace.restoreRevision}
+          publishReview={publishReview}
           onReject={async () => {
             setRepairBusy(true);
             try {

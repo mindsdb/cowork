@@ -233,7 +233,12 @@
     "changePosition": "{current} von {count, plural, one {# Änderung} other {# Änderungen}}",
     "previousChange": "Vorherige Änderung",
     "nextChange": "Nächste Änderung",
-    "changeNavigation": "Durch Änderungen blättern"
+    "changeNavigation": "Durch Änderungen blättern",
+    "publishedArtifact": "Veröffentlichtes Artefakt",
+    "reviewBeforePublishing": "Änderung vor dem Veröffentlichen prüfen",
+    "keepDraft": "Als Entwurf behalten",
+    "publishChange": "Diese Änderung veröffentlichen",
+    "publishing": "Wird veröffentlicht…"
   },
   "htmlEditor": {
     "blockGone": "Der ausgewählte Textblock ist nicht mehr verfügbar.",
@@ -391,7 +396,8 @@
     "artifactActions": "Artefakt-Aktionen",
     "moreActions": "Weitere Aktionen",
     "reloadPreview": "Vorschau neu laden",
-    "close": "Schließen"
+    "close": "Schließen",
+    "unsharedChangesHint": "Der geteilte Link zeigt eine frühere Version. Veröffentliche die Änderungen mit „Aktualisieren“ unter „Teilen“."
   },
   "body": {
     "previewWatermark": "Vorschau",
@@ -459,7 +465,8 @@
     "discardFailed": "Dieser Vorschlag konnte nicht verworfen werden.",
     "deleteTitle": "Artefakt löschen?",
     "deleteMessage": "„{title}“ wird endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
-    "changedElsewhere": "Dieses Artefakt wurde geändert. Neu laden"
+    "changedElsewhere": "Dieses Artefakt wurde geändert. Neu laden",
+    "changePublished": "Veröffentlicht"
   },
   "artifactsView": {
     "sort": {

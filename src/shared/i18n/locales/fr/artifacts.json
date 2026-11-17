@@ -233,7 +233,12 @@
     "changePosition": "{current} sur {count, plural, one {# modification} other {# modifications}}",
     "previousChange": "Modification précédente",
     "nextChange": "Modification suivante",
-    "changeNavigation": "Parcourir les modifications"
+    "changeNavigation": "Parcourir les modifications",
+    "publishedArtifact": "Artefact publié",
+    "reviewBeforePublishing": "Vérifiez la modification avant de la publier",
+    "keepDraft": "Garder en brouillon",
+    "publishChange": "Publier cette modification",
+    "publishing": "Publication…"
   },
   "htmlEditor": {
     "blockGone": "Le bloc de texte sélectionné n’est plus disponible.",
@@ -391,7 +396,8 @@
     "artifactActions": "Actions de l’artefact",
     "moreActions": "Plus d’actions",
     "reloadPreview": "Recharger l’aperçu",
-    "close": "Fermer"
+    "close": "Fermer",
+    "unsharedChangesHint": "Le lien partagé affiche une version antérieure. Utilisez Mettre à jour dans Partager pour publier les modifications."
   },
   "body": {
     "previewWatermark": "Aperçu",
@@ -459,7 +465,8 @@
     "discardFailed": "Impossible d’abandonner cette suggestion.",
     "deleteTitle": "Supprimer l’artefact ?",
     "deleteMessage": "« {title} » sera définitivement supprimé. Cette action est irréversible.",
-    "changedElsewhere": "Cet artefact a changé. Recharger"
+    "changedElsewhere": "Cet artefact a changé. Recharger",
+    "changePublished": "Publié"
   },
   "artifactsView": {
     "sort": {

@@ -233,7 +233,12 @@
     "changePosition": "{count, plural, other {변경 #건 중 {current}번째}}",
     "previousChange": "이전 변경",
     "nextChange": "다음 변경",
-    "changeNavigation": "변경 사항 이동"
+    "changeNavigation": "변경 사항 이동",
+    "publishedArtifact": "게시된 아티팩트",
+    "reviewBeforePublishing": "게시하기 전에 변경 사항 검토",
+    "keepDraft": "초안으로 유지",
+    "publishChange": "이 변경 사항 게시",
+    "publishing": "게시 중…"
   },
   "htmlEditor": {
     "blockGone": "선택한 텍스트 블록을 더 이상 사용할 수 없습니다.",
@@ -391,7 +396,8 @@
     "artifactActions": "아티팩트 작업",
     "moreActions": "추가 작업",
     "reloadPreview": "미리 보기 다시 불러오기",
-    "close": "닫기"
+    "close": "닫기",
+    "unsharedChangesHint": "공유 링크에는 이전 버전이 표시됩니다. 변경 사항을 게시하려면 공유에서 업데이트를 사용하세요."
   },
   "body": {
     "previewWatermark": "미리 보기",
@@ -459,7 +465,8 @@
     "discardFailed": "해당 제안을 취소하지 못했습니다.",
     "deleteTitle": "아티팩트를 삭제할까요?",
     "deleteMessage": "‘{title}’이(가) 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
-    "changedElsewhere": "이 아티팩트가 변경되었습니다. 다시 불러오기"
+    "changedElsewhere": "이 아티팩트가 변경되었습니다. 다시 불러오기",
+    "changePublished": "게시됨"
   },
   "artifactsView": {
     "sort": {
