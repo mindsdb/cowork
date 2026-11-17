@@ -94,4 +94,67 @@ describe('NextSteps', () => {
     setup([NEXT_STEP.SCHEDULE]);
     expect(screen.getByRole('button', { name: 'Run this on a schedule' })).toBeEnabled();
   });
+
+  it('sends a step once, however fast the row is clicked again', () => {
+    const onSend = vi.fn(() => new Promise(() => {}));
+    setup([NEXT_STEP.MAKE_PAGE, NEXT_STEP.SCHEDULE], { onSend });
+    const page = screen.getByRole('button', { name: 'Turn it into a page' });
+    fireEvent.click(page);
+    fireEvent.click(page);
+    expect(onSend).toHaveBeenCalledTimes(1);
+    for (const button of screen.getAllByRole('button')) expect(button).toBeDisabled();
+  });
+
+  it('sends once even when a second click lands before the row re-renders', () => {
+    const onSend = vi.fn(() => new Promise(() => {}));
+    setup([NEXT_STEP.MAKE_PAGE, NEXT_STEP.SCHEDULE], { onSend });
+    const page = screen.getByRole('button', { name: 'Turn it into a page' });
+    act(() => {
+      page.click();
+      page.click();
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(analytics.trackNextStepClicked).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing from files picked after another step of the row already sent', () => {
+    const onSend = vi.fn(() => new Promise(() => {}));
+    setup([NEXT_STEP.ANOTHER_FILE, NEXT_STEP.MAKE_PAGE], { onSend });
+    const input = screen.getByTestId('next-steps-file-input');
+    fireEvent.click(screen.getByRole('button', { name: 'Do the same to another file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn it into a page' }));
+    fireEvent.change(input, { target: { files: [new File(['a'], 'a.csv')] } });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith(NEXT_STEP_PROMPTS[NEXT_STEP.MAKE_PAGE], []);
+  });
+
+  it('sends picked files once, and offers nothing more from the row after', () => {
+    const onSend = vi.fn(() => new Promise(() => {}));
+    setup([NEXT_STEP.ANOTHER_FILE], { onSend });
+    const input = screen.getByTestId('next-steps-file-input');
+    fireEvent.click(screen.getByRole('button', { name: 'Do the same to another file' }));
+    fireEvent.change(input, { target: { files: [new File(['a'], 'a.csv')] } });
+    fireEvent.change(input, { target: { files: [new File(['b'], 'b.csv')] } });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Do the same to another file' })).toBeDisabled();
+  });
+
+  it('leaves the row usable when the file picker closes with nothing picked', () => {
+    const { onSend } = setup([NEXT_STEP.ANOTHER_FILE, NEXT_STEP.MAKE_PAGE]);
+    const input = screen.getByTestId('next-steps-file-input');
+    const picker = vi.spyOn(input, 'click');
+    fireEvent.click(screen.getByRole('button', { name: 'Do the same to another file' }));
+    fireEvent.change(input, { target: { files: [] } });
+    for (const button of screen.getAllByRole('button')) expect(button).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Do the same to another file' }));
+    expect(picker).toHaveBeenCalledTimes(2);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('leaves the row usable after the schedule form opens', () => {
+    const { onSchedule } = setup([NEXT_STEP.MAKE_PAGE, NEXT_STEP.SCHEDULE]);
+    fireEvent.click(screen.getByRole('button', { name: 'Run this on a schedule' }));
+    expect(onSchedule).toHaveBeenCalledTimes(1);
+    for (const button of screen.getAllByRole('button')) expect(button).toBeEnabled();
+  });
 });

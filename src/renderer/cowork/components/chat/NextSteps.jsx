@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Ico from '../Icons';
 import { Button } from '../ui';
 import { useTranslation } from '../../../lib/i18n';
@@ -30,6 +30,12 @@ export function NextSteps({ answerKey, resultKind, steps, onSend, onSchedule }) 
   const { t } = useTranslation('chat');
   const fileInputRef = useRef(null);
   const pendingStepRef = useRef(null);
+  // A row sends one step. The ref stops a second click that lands before the
+  // re-render (the send awaits a health check before the turn shows as
+  // running); the state disables the buttons. Opening the file picker or the
+  // schedule form sends nothing, so it leaves the row as it was.
+  const sentRef = useRef(false);
+  const [sent, setSent] = useState(false);
 
   // Once a schedule is saved from this answer, its step reads as done, so a
   // second click can't make a duplicate.
@@ -45,7 +51,15 @@ export function NextSteps({ answerKey, resultKind, steps, onSend, onSchedule }) 
 
   if (!steps?.length) return null;
 
+  const sendOnce = (prompt, attachments) => {
+    if (sentRef.current) return;
+    sentRef.current = true;
+    setSent(true);
+    onSend?.(prompt, attachments);
+  };
+
   const run = (step, position) => {
+    if (sentRef.current) return;
     trackNextStepClicked({ step, resultKind, position });
     if (step === NEXT_STEP.SCHEDULE) {
       onSchedule?.();
@@ -56,14 +70,14 @@ export function NextSteps({ answerKey, resultKind, steps, onSend, onSchedule }) 
       fileInputRef.current?.click();
       return;
     }
-    onSend?.(NEXT_STEP_PROMPTS[step], []);
+    sendOnce(NEXT_STEP_PROMPTS[step], []);
   };
 
   const onFilesPicked = (event) => {
     const step = pendingStepRef.current;
     const files = event.target.files;
     pendingStepRef.current = null;
-    if (step && files?.length) onSend?.(NEXT_STEP_PROMPTS[step], localFileAttachments(files));
+    if (step && files?.length) sendOnce(NEXT_STEP_PROMPTS[step], localFileAttachments(files));
     event.target.value = '';
   };
 
@@ -75,7 +89,7 @@ export function NextSteps({ answerKey, resultKind, steps, onSend, onSchedule }) 
           {t('chatView.nextSteps.scheduledDone')}
         </Button>
       ) : (
-        <Button key={step} variant="default" size="sm" onClick={() => run(step, position)}>
+        <Button key={step} variant="default" size="sm" disabled={sent} onClick={() => run(step, position)}>
           {ICONS[step]?.()}
           {t(LABEL_KEYS[step])}
         </Button>
