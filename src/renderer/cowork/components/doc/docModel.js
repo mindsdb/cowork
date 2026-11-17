@@ -37,11 +37,13 @@ let dateFormat = null;
 
 /** `2026-10-21` → `Oct 21, 2026` in the app's language; anything else unchanged. */
 export function formatDate(value) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
-  if (!m) return String(value || '');
+  const raw = String(value || '');
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimSpace(raw));
+  if (!m) return raw;
   const [year, month, day] = [Number(m[1]), Number(m[2]) - 1, Number(m[3])];
   const date = new Date(Date.UTC(year, month, day));
-  if (date.getUTCMonth() !== month || date.getUTCDate() !== day) return String(value);
+  // A real day of a four-digit year (Date.UTC reads years below 100 as 19xx), as the server's _date_label.
+  if (year < 1000 || date.getUTCMonth() !== month || date.getUTCDate() !== day) return raw;
   const locale = currentLocale();
   if (dateFormat?.locale !== locale) {
     dateFormat = { locale, format: new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) };
@@ -65,7 +67,7 @@ export function toneFor(value) {
   return 'gray';
 }
 
-export function chipHtml(kind, value) {
+function chipHtml(kind, value) {
   const raw = `${kind}:${value}`;
   let label = value;
   let cls = `doc-chip doc-chip--${kind}`;
@@ -75,38 +77,42 @@ export function chipHtml(kind, value) {
   return `<span class="${cls}" contenteditable="false" data-chip="${escapeHtml(raw)}">${escapeHtml(label)}</span>`;
 }
 
-// Marks are read left to right as one regex alternation would read them: the
-// mark that starts first wins, and at one position bold goes before italic.
-// Each mark is scanned rather than matched by its regex, because a lazy regex
-// rescans the rest of the line (or text) from every opener that never closes,
-// which is quadratic. A scan reads exactly what its regex reads:
-//   escape  \\([*`~\[\]{}_\\])         code    `([^`]+)`
-//   bold    \*\*(.+?)\*\*              strike  ~~(.+?)~~
-//   italic  (?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?![*\w])  and the same with _
-//   link    \[([^\]]+)\]\(((?:https?:|mailto:)[^)\s]+)\)
-//   chip    \{\{\s*(date|status|user)\s*:\s*([^}]+?)\s*\}\}
-// A mark's words are read again for marks of their own, as a window of the
-// text whose edges count as the start and end of a text, so every level shares
-// one set of closing-mark lookups. The server's render.inline_html uses the
-// same lookups but reads each kind of mark in a pass of its own.
-const MARK = /[\\`*~[{_]/g;
-const ESCAPED = /\\[*`~\[\]{}_\\]/y;
-const EM_OPEN = { '*': /(?<![*\w])\*(?!\s)/y, _: /(?<![_\w])_(?!\s)/y };
-const LINK_HREF = /\]\((?:https?:|mailto:)/y;
-const CHIP_HEAD = /\{\{\s*(date|status|user)\s*:/y;
-const SPACE = /\s/;
-// What each lookup finds at or after a position.
-const NEXT = {
-  '*': /(?<!\s)\*(?![*\w])/g, // an italic's closing mark
-  _: /(?<!\s)_(?![_\w])/g,
-  '**': /\*\*/g,
-  '~~': /~~/g,
-  '`': /`/g,
-  ']': /\]/g,
-  '}': /\}/g,
-  hrefEnd: /[)\s]/g,
-  lineEnd: /[\n\r\u2028\u2029]/g, // what a regex's `.` stops at
-};
+// Inline Markdown is read as CommonMark reads it, for the marks a doc uses:
+// backslash escapes, `code`, [links](https://…), {{chips}}, *emphasis*,
+// **strong** (with * or _) and ~~strike~~. The server (cowork-server
+// `docs/render.inline_html`, for the shared page and the exports) reads it
+// with the same steps; `__fixtures__/docs-inline/cases.json` holds the cases
+// both must render alike.
+//
+// One pass from the left finds escapes, code spans, chips and links. They bind
+// tighter than emphasis, so a mark inside them never opens or closes emphasis.
+// Emphasis is paired by CommonMark's delimiter-run rules: inside each link's
+// words on their own (at the link's "]"), then over the rest, so tags always
+// nest. Every look ahead is a cached "next match from here", which keeps all
+// of it linear in the length of the text.
+//
+// Looser than CommonMark: a run of * or ~~ opens unless white space follows it
+// and closes unless white space precedes it, so "**Note:**text" and
+// "价格**$5**起" are bold, as `htmlToInline` writes them. "_" keeps CommonMark's
+// rule, so snake_case stays as typed.
+//
+// Narrower than CommonMark: a code span is one backtick each side, kept
+// verbatim; only these marks escape; a link is inline, has words, and its
+// address is http(s):// or mailto: plus at least one character, up to ")";
+// strike is exactly two tildes; no raw HTML, entities, autolinks or hard breaks.
+const ESCAPABLE = '[*`~[\\]{}_\\\\]';
+const TOKEN = new RegExp(`\\\\${ESCAPABLE}|[\`[\\]{]|\\*+|_+|~+`, 'g');
+const BACKTICK = /`/g;
+const BRACE = /\}/g;
+// CommonMark's white space: tab, line feed, form feed, carriage return and the Unicode Zs spaces.
+const SPACE_CLASS = '[\\t\\n\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u202f\\u205f\\u3000]';
+const SPACE = new RegExp(SPACE_CLASS);
+const PUNCT = /[\p{P}\p{S}]/u; // CommonMark's Unicode punctuation
+const CHIP_HEAD = new RegExp(`\\{\\{${SPACE_CLASS}*(date|status|user)${SPACE_CLASS}*:`, 'y');
+const LINK_HEAD = /\]\((?:https?:\/\/|mailto:)/y;
+const HREF_END = /[)\x00-\x20\x7f]/g; // where CommonMark ends an address not in <…>
+const HREF_ESCAPE = new RegExp(`\\\\(${ESCAPABLE})`, 'g');
+const [EM, STRONG, STRIKE] = [['<em>', '</em>'], ['<strong>', '</strong>'], ['<s>', '</s>']];
 
 function execAt(re, s, pos) {
   re.lastIndex = pos;
@@ -129,81 +135,200 @@ function nextMatch(re, s) {
 
 const textHtml = (s) => escapeHtml(s).replace(/\n/g, '<br>');
 
-/** The mark that starts at `i` in the window `[lo, hi)` of `s`, as `{ end, open }`,
- * plus the window `[from, to)` of its words and a `close` tag when they are read
- * for marks of their own; null when no mark starts there. `next(key, pos)` finds
- * what `NEXT[key]` matches at or after `pos`. */
-function readMark(s, i, lo, hi, next) {
-  const c = s[i];
-  if (c === '\\') return i + 2 <= hi && execAt(ESCAPED, s, i) ? { end: i + 2, open: escapeHtml(s[i + 1]) } : null;
-  if (c === '`') {
-    const k = next('`', i + 1);
-    return k > i + 1 && k < hi ? { end: k + 1, open: `<code>${escapeHtml(s.slice(i + 1, k))}</code>` } : null;
+/** A character beside a run of marks: white space (0), punctuation (1: CommonMark's
+ * Unicode P and S categories) or anything else (2). P and S come from the engine's
+ * Unicode tables, which may be newer than the server's. */
+function charClass(ch) {
+  if (SPACE.test(ch)) return 0;
+  return PUNCT.test(ch) ? 1 : 2;
+}
+
+// The characters around a run, read whole: an emoji is two UTF-16 units, and the server
+// reads it as one symbol (punctuation, to CommonMark). The text's edges count as white space.
+function classBefore(s, i) {
+  if (i === 0) return 0;
+  return charClass(i >= 2 && s.codePointAt(i - 2) > 0xffff ? s.slice(i - 2, i) : s[i - 1]);
+}
+
+const classAfter = (s, j) => (j < s.length ? charClass(String.fromCodePoint(s.codePointAt(j))) : 0);
+
+/** Whether a run can open and close emphasis, by the classes of the characters around it. */
+function flanks(before, after, underscore) {
+  const [spaceBefore, punctBefore, spaceAfter, punctAfter] = [before === 0, before === 1, after === 0, after === 1];
+  if (!underscore) return [!spaceAfter, !spaceBefore];
+  const left = !spaceAfter && (!punctAfter || spaceBefore || punctBefore);
+  const right = !spaceBefore && (!punctBefore || spaceAfter || punctAfter);
+  // "_" never opens or closes inside a word.
+  return [left && (!right || punctBefore), right && (!left || punctAfter)];
+}
+
+const FLANKS = [false, true].map((underscore) => [0, 1, 2].flatMap((b) => [0, 1, 2].map((a) => flanks(b, a, underscore))));
+
+function trimSpace(s) {
+  let a = 0;
+  let b = s.length;
+  while (a < b && SPACE.test(s[a])) a++;
+  while (b > a && SPACE.test(s[b - 1])) b--;
+  return s.slice(a, b);
+}
+
+/** A run of *, _ or ~~ that may open or close emphasis (CommonMark's delimiter run). Live
+ * runs form a list through `prev`/`next`. Pairing spends marks from the run's inner side:
+ * an opener's from its end, a closer's from its start. */
+function delimiterRun(start, end, mark, canOpen, canClose, prev) {
+  const length = end - start;
+  // `opens` and `closes`: the tags it opens after its marks and closes before them,
+  // innermost first; most runs pair with nothing.
+  return { kind: 'run', start, end, mark, length, left: length, canOpen, canClose, prev, next: null, opens: null, closes: null };
+}
+
+// CommonMark's rule of 3: "*a**b*" is one emphasis, not two.
+const pairsWith = (opener, closer) => opener.mark === closer.mark && opener.canOpen
+  && !((opener.canClose || closer.canOpen) && closer.length % 3 && (opener.length + closer.length) % 3 === 0);
+
+function dropRun(run) {
+  run.prev.next = run.next;
+  if (run.next) run.next.prev = run.prev;
+}
+
+/** Pairs the live runs above `bottom` into emphasis, then drops them (CommonMark's "process emphasis"). */
+function pairRuns(bottom) {
+  // Per kind of closer, the start at or before which no opener pairs with it.
+  const floor = new Map();
+  let closer = bottom.next;
+  while (closer) {
+    if (!closer.canClose) {
+      closer = closer.next;
+      continue;
+    }
+    const kind = `${closer.mark}${closer.canOpen}${closer.length % 3}`;
+    const lowest = floor.get(kind) ?? bottom.start;
+    let opener = closer.prev;
+    while (opener.start > lowest && !pairsWith(opener, closer)) opener = opener.prev;
+    if (opener.start <= lowest) {
+      floor.set(kind, closer.prev.start);
+      if (!closer.canOpen) dropRun(closer);
+      closer = closer.next;
+      continue;
+    }
+    const used = opener.left >= 2 && closer.left >= 2 ? 2 : 1;
+    const [openTag, closeTag] = closer.mark === '~' ? STRIKE : used === 2 ? STRONG : EM;
+    opener.left -= used;
+    closer.left -= used;
+    (opener.opens ??= []).push(openTag);
+    (closer.closes ??= []).push(closeTag);
+    opener.next = closer; // the runs between pair with nothing now
+    closer.prev = opener;
+    if (!opener.left) dropRun(opener);
+    if (!closer.left) {
+      dropRun(closer);
+      closer = closer.next;
+    }
   }
-  if ((c === '*' || c === '~') && s[i + 1] === c) {
-    // The words run to the next pair of marks, on the same line.
-    const k = next(c + c, i + 3);
-    const tag = c === '*' ? 'strong' : 's';
-    if (k + 2 <= hi && next('lineEnd', i + 1) > k) return { end: k + 2, open: `<${tag}>`, from: i + 2, to: k, close: `</${tag}>` };
+  bottom.next = null;
+}
+
+function readChip(s, i, brace) {
+  const head = execAt(CHIP_HEAD, s, i);
+  if (!head) return null;
+  const v = i + head[0].length;
+  const q = brace(v); // the value runs to the first }
+  if (q === v || s[q + 1] !== '}') return null;
+  const raw = s.slice(v, q);
+  // At least one character, as typed.
+  return { kind: 'atom', start: i, end: q + 2, html: chipHtml(head[1], trimSpace(raw) || raw.at(-1)) };
+}
+
+/** The address and end of a "](address)" at `q`, or null. */
+function linkEnd(s, q, hrefEnd) {
+  const head = execAt(LINK_HEAD, s, q);
+  if (!head) return null;
+  const u = q + head[0].length;
+  const e = hrefEnd(u);
+  if (e === u || s[e] !== ')') return null;
+  return { href: s.slice(q + 2, e).replace(HREF_ESCAPE, '$1'), end: e + 1 };
+}
+
+/** What replaces parts of `s`, in text order: atoms (escapes, code spans, chips, a
+ * link's end) with their HTML, "[" brackets, and delimiter runs. */
+function readInline(s) {
+  const items = [];
+  const base = delimiterRun(-1, -1, '', false, false, null); // below every live run
+  let top = base;
+  const [backtick, brace, hrefEnd] = [nextMatch(BACKTICK, s), nextMatch(BRACE, s), nextMatch(HREF_END, s)];
+  const brackets = [];
+  let pos = 0;
+  for (let m; (m = execAt(TOKEN, s, pos)); ) {
+    const i = m.index;
+    const c = s[i];
+    pos = i + m[0].length;
+    if (c === '*' || c === '_' || c === '~') {
+      if (c === '~' && pos - i !== 2) continue;
+      const [canOpen, canClose] = FLANKS[c === '_' ? 1 : 0][classBefore(s, i) * 3 + classAfter(s, pos)];
+      if (canOpen || canClose) {
+        const run = delimiterRun(i, pos, c, canOpen, canClose, top);
+        top.next = run;
+        top = run;
+        items.push(run);
+      }
+    } else if (c === '\\') {
+      items.push({ kind: 'atom', start: i, end: pos, html: s[i + 1] }); // no escapable mark is special to HTML
+    } else if (c === '`') {
+      const k = backtick(pos); // the code runs to the next backtick
+      if (k > pos && k < s.length) {
+        items.push({ kind: 'atom', start: i, end: k + 1, html: `<code>${escapeHtml(s.slice(pos, k))}</code>` });
+        pos = k + 1;
+      }
+    } else if (c === '{') {
+      const chip = readChip(s, i, brace);
+      if (chip) {
+        items.push(chip);
+        pos = chip.end;
+      }
+    } else if (c === '[') {
+      const bracket = { kind: 'bracket', start: i, end: i + 1, runs: top, href: null };
+      brackets.push(bracket);
+      items.push(bracket);
+    } else {
+      const opener = brackets.pop(); // "]": the last "[" pairs with it or with none
+      // A link needs words: "[](…)" would be a link no one sees.
+      const link = opener && i > opener.end && linkEnd(s, i, hrefEnd);
+      if (link) {
+        opener.href = link.href;
+        items.push({ kind: 'atom', start: i, end: link.end, html: '</a>' });
+        pairRuns(opener.runs);
+        top = opener.runs;
+        brackets.length = 0; // links never nest: a "[" before this link opens none
+        pos = link.end;
+      }
+    }
   }
-  if (c === '*' || c === '_') {
-    // The words run to the first closing mark, on the same line; at the
-    // window's edges the lookarounds see a text's start and end.
-    if (i + 3 > hi || (i === lo ? SPACE.test(s[i + 1]) : !execAt(EM_OPEN[c], s, i))) return null;
-    let j = next(c, i + 2);
-    if (j >= hi - 1) j = s[hi - 1] === c && !SPACE.test(s[hi - 2]) ? hi - 1 : hi;
-    return j < hi && next('lineEnd', i + 1) > j ? { end: j + 1, open: '<em>', from: i + 1, to: j, close: '</em>' } : null;
+  pairRuns(base);
+  return items;
+}
+
+function itemHtml(item) {
+  if (item.kind === 'atom') return item.html;
+  if (item.kind === 'bracket') {
+    return item.href === null ? '[' : `<a href="${escapeHtml(item.href)}" target="_blank" rel="noopener noreferrer">`;
   }
-  if (c === '[') {
-    const q = next(']', i + 1); // the words run to the first ]
-    const head = q > i + 1 && q < hi && execAt(LINK_HREF, s, q);
-    if (!head) return null;
-    const u = q + head[0].length;
-    const e = next('hrefEnd', u);
-    if (e === u || e >= hi || s[e] !== ')') return null;
-    const href = escapeHtml(s.slice(q + 2, e));
-    return { end: e + 1, open: `<a href="${href}" target="_blank" rel="noopener noreferrer">`, from: i + 1, to: q, close: '</a>' };
-  }
-  const head = c === '{' && execAt(CHIP_HEAD, s, i);
-  if (head) {
-    const v = i + head[0].length;
-    const q = next('}', v); // the value runs to the first }
-    if (q === v || q + 2 > hi || s[q + 1] !== '}') return null;
-    const raw = s.slice(v, q);
-    // The regex's lazy value sheds the spaces around it but keeps at least one character.
-    return { end: q + 2, open: chipHtml(head[1], raw.trim() || raw.at(-1)) };
-  }
-  return null;
+  let out = item.closes ? item.closes.join('') : '';
+  out += item.mark.repeat(item.left);
+  for (let k = item.opens?.length ?? 0; k-- > 0; ) out += item.opens[k];
+  return out;
 }
 
 /** Inline Markdown → HTML (safe: every text run is escaped). */
 export function inlineToHtml(text) {
-  const s = String(text ?? '');
-  const lookups = {};
-  const next = (key, pos) => (lookups[key] ??= nextMatch(NEXT[key], s))(pos);
-  // Windows nest on an explicit stack: a crafted text nests marks thousands
-  // deep, past what a recursion's call stack holds.
-  const frame = (lo, hi, close) => ({ lo, hi, pos: lo, done: lo, close });
-  const stack = [frame(0, s.length, '')];
+  const s = String(text ?? '').replace(/\0/g, '');
+  if (!execAt(TOKEN, s, 0)) return textHtml(s);
   let out = '';
-  for (;;) {
-    const w = stack[stack.length - 1];
-    const mark = execAt(MARK, s, w.pos);
-    if (!mark || mark.index >= w.hi) {
-      out += textHtml(s.slice(w.done, w.hi)) + w.close;
-      stack.pop();
-      if (!stack.length) return out;
-      continue;
-    }
-    const hit = readMark(s, mark.index, w.lo, w.hi, next);
-    if (!hit) {
-      w.pos = mark.index + 1;
-      continue;
-    }
-    out += textHtml(s.slice(w.done, mark.index)) + hit.open;
-    w.done = w.pos = hit.end;
-    if (hit.close !== undefined) stack.push(frame(hit.from, hit.to, hit.close));
+  let done = 0;
+  for (const item of readInline(s)) {
+    out += textHtml(s.slice(done, item.start)) + itemHtml(item);
+    done = item.end;
   }
+  return out + textHtml(s.slice(done));
 }
 
 /** Plain words of inline Markdown (search, labels, the agent's quote). */
@@ -243,10 +368,12 @@ function wrap(inner, mark) {
   return core ? `${lead}${mark}${core}${mark}${trail}` : inner;
 }
 
-// A link's address as Markdown holds it: a bracket or a space would end it early, so
-// they go percent-encoded, which addresses the same page ("…/Up_(film)").
+// A link's address as Markdown holds it: a bracket, a space or a control character would
+// end it early, so they go percent-encoded, which addresses the same page ("…/Up_(film)").
+// A backslash is escaped, since an escape in the address is read as the character.
 function linkTarget(href) {
-  return href.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\s/g, '%20');
+  return href.replace(/\\/g, '\\\\').replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\s/g, '%20')
+    .replace(/[\x00-\x1f\x7f]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`);
 }
 
 function serializeNode(node) {
