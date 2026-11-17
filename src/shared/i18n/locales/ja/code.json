@@ -27,11 +27,14 @@
       "branch": "ブランチ",
       "openOriginalFolder": "元のフォルダを開く",
       "openIsolatedCopy": "分離コピーを開く",
-      "openOriginal": "元のフォルダを開く"
+      "openOriginal": "元のフォルダを開く",
+      "openYourFolder": "フォルダを開く"
     },
     "sourceChanged": {
       "title": "このタスクの開始時、ソースにローカルの変更がありました",
-      "body": "これらの変更はソースフォルダに残っています。{product}は適用前に競合を確認します。"
+      "body": "これらの変更はソースフォルダに残っています。{product}は適用前に競合を確認します。",
+      "inPlaceTitle": "フォルダには未コミットの変更がすでにありました",
+      "inPlaceBody": "それらの変更はエージェントの変更と一緒にこのレビューに表示され、ここでコミットすると含まれます。"
     },
     "reconcile": {
       "title": "元の変更を統合",
@@ -61,13 +64,20 @@
       "create": "作成",
       "commitLabel": "タスクのすべての変更をコミット",
       "commitPlaceholder": "変更内容を入力",
-      "commit": "コミット"
+      "commit": "コミット",
+      "branchLabelInPlace": "フォルダでブランチを作成して切り替え",
+      "commitLabelInPlace": "フォルダのすべての変更をコミット"
     },
     "applyConfirm": {
       "title": "ソースフォルダに変更を適用しますか？",
       "message": "確認済みのタスクの変更で{target}を更新しますか？競合が見つかった場合、{product}はフォルダを変更する前に停止します。",
       "confirm": "変更を適用",
       "error": "変更を適用できませんでした。もう一度お試しください。"
+    },
+    "inPlace": {
+      "title": "{count, plural, other {このタスクはフォルダを直接編集します}}",
+      "body": "{count, plural, other {変更はすでにフォルダに反映されているため、適用するものはありません。}}ローカルタスクでは下書きプルリクエストはまだ利用できません。ここでコミットしてから、いつものツールでプッシュしてプルリクエストを作成してください。",
+      "bodyWithoutGit": "{count, plural, other {変更はすでにフォルダに反映されているため、適用するものはありません。}}"
     }
   },
   "fileReview": {
@@ -86,7 +96,8 @@
     "discardConfirm": {
       "title": "このファイルの変更を破棄しますか？",
       "message": "{path}は現在のタスクのバージョンに戻ります。この操作は元に戻せません。",
-      "confirm": "変更を破棄"
+      "confirm": "変更を破棄",
+      "messageInPlace": "{path}はフォルダ内の最後にコミットされたバージョンに戻ります。このタスクの開始前に行った編集も含まれます。この操作は元に戻せません。"
     }
   },
   "reviewFileCard": {
@@ -1497,7 +1508,9 @@
     "terminal": "ターミナル",
     "reviewChanges": "変更をレビュー",
     "review": "レビュー",
-    "taskActionsAriaLabel": "コーディングタスクの操作"
+    "taskActionsAriaLabel": "コーディングタスクの操作",
+    "localFolder": "{count, plural, =1 {ローカル · あなたのフォルダ} other {ローカル · あなたのフォルダ（#個）}}",
+    "openYourFolder": "フォルダを開く"
   },
   "terminal": {
     "status": {
@@ -1591,5 +1604,17 @@
     "desktopOnly": "ローカルファイルの添付はデスクトップアプリで利用できます。",
     "ariaLabel": "添付されたコンテキスト",
     "removeAriaLabel": "{name}を削除"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "ローカル",
+      "title": "フォルダ内で直接作業します。1つのリポジトリで同時に実行できるローカルタスクは1つだけです。"
+    },
+    "worktree": {
+      "label": "ワークツリー",
+      "title": "分離されたGitワークツリーで作業するため、複数のタスクを並行して実行できます。"
+    },
+    "selectAriaLabel": "タスクの作業場所",
+    "menuLabel": "ワークスペース"
   }
 }
