@@ -63,6 +63,7 @@ vi.mock('../platform/host', async (importOriginal) => {
 import App from './App';
 import { listCustomConnections, listDatasourceConnections } from './api';
 import { setOrgMode } from '../lib/orgMode';
+import { PENDING_POLL_INTERVAL_MS } from './hooks/usePendingDatasourceRefresh';
 
 const QUOTES = { id: 7, connector_id: 'acme_quotes', name: 'Acme Quotes', status: 'verified' };
 const RATES = { id: 8, connector_id: 'acme_rates', name: 'Rates', status: 'verified' };
@@ -101,16 +102,22 @@ describe('the composer connection toggles in cloud', () => {
 describe('the poll for a database still being checked', () => {
   it('refetches the databases and leaves the custom connections alone', async () => {
     spies.databases = [{ id: 3, connector_id: 'postgres', name: 'Analytics', status: 'pending' }];
-    render(<App />);
-    await waitFor(() => expect(screen.getByTestId('toggles')).toBeTruthy());
-    await waitFor(() => expect(listCustomConnections).toHaveBeenCalled());
-    const databaseFetches = vi.mocked(listDatasourceConnections).mock.calls.length;
-    const customFetches = vi.mocked(listCustomConnections).mock.calls.length;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      render(<App />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(listCustomConnections).toHaveBeenCalled();
+      const databaseFetches = vi.mocked(listDatasourceConnections).mock.calls.length;
+      const customFetches = vi.mocked(listCustomConnections).mock.calls.length;
 
-    await waitFor(() => expect(listDatasourceConnections.mock.calls.length).toBeGreaterThan(databaseFetches), { timeout: 5000 });
+      await act(async () => { await vi.advanceTimersByTimeAsync(PENDING_POLL_INTERVAL_MS); });
 
-    expect(listCustomConnections.mock.calls.length).toBe(customFetches);
-  }, 10000);
+      expect(listDatasourceConnections.mock.calls.length).toBeGreaterThan(databaseFetches);
+      expect(listCustomConnections.mock.calls.length).toBe(customFetches);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('the composer connection toggles on desktop', () => {

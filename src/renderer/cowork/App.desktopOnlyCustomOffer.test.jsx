@@ -2,7 +2,7 @@
 // own custom connector for it, and accepting opens that connector's connect form.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const spies = vi.hoisted(() => ({ fetchConnector: vi.fn(), connectors: [] }));
@@ -39,13 +39,15 @@ vi.mock('./views/CustomizeView', () => ({
   ),
 }));
 
-vi.mock('./components/datavault/formStore', async (importOriginal) => {
-  const actual = await importOriginal();
-  return { ...actual, setForm: vi.fn(actual.setForm) };
-});
-
+// The chat page stands in with what it renders for a task: its messages and
+// the connect form the task holds.
 vi.mock('./views/ChatView', () => ({
-  default: () => <div>Chat</div>,
+  default: ({ task }) => (
+    <div>
+      <div data-testid="task">{(task?.messages || []).map((m) => `${m.role}:${m.content}`).join('||')}</div>
+      {task?.id ? <DataVaultFormPanel conversationId={task.id} /> : null}
+    </div>
+  ),
 }));
 
 vi.mock('../platform/host', async (importOriginal) => {
@@ -75,7 +77,7 @@ vi.mock('../platform/host', async (importOriginal) => {
 });
 
 import App from './App';
-import { setForm } from './components/datavault/formStore';
+import { DataVaultFormPanel } from './components/datavault/DataVaultFormPanel';
 import { setOrgMode } from '../lib/orgMode';
 
 const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
@@ -89,7 +91,6 @@ const CUSTOM_SPEC = {
 
 beforeEach(() => {
   setOrgMode(true);
-  vi.mocked(setForm).mockClear();
   spies.connectors = [HASDATA, HASDATA_CUSTOM];
   spies.fetchConnector.mockReset().mockResolvedValue(CUSTOM_SPEC);
   window.history.replaceState(null, '', '/connect');
@@ -116,14 +117,21 @@ describe('a connector only the desktop app runs, in cloud', () => {
     await user.click(screen.getByRole('button', { name: 'Connect your custom HasData' }));
 
     expect(spies.fetchConnector).toHaveBeenCalledWith('hasdata_custom');
-    await waitFor(() => expect(setForm).toHaveBeenCalledWith(
-      expect.stringMatching(/^tmp-connect-/),
-      expect.objectContaining({
-        _connector_id: 'hasdata_custom',
-        _custom_connect: expect.objectContaining({ connectorId: 'hasdata_custom', label: 'HasData' }),
-      }),
-    ));
+    expect(await screen.findByLabelText(/API address/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeTruthy();
     expect(screen.queryByText(/connect it now as a custom connector/)).toBeNull();
+  });
+
+  it('offers to build one for an API-key connector with none, and sends the request', async () => {
+    spies.connectors = [HASDATA];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await pickHasDataFromTheDirectory(user);
+    expect(await screen.findByText(/connect it now as a custom connector/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Build a custom connector' }));
+
+    expect((await screen.findByTestId('task')).textContent).toContain('user:Build a custom connector for HasData');
   });
 
   it('keeps the download when the member has no custom connector for it', async () => {

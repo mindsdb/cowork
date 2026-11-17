@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { changeLocale } from '../../lib/i18n';
 
 const openExternal = vi.hoisted(() => vi.fn());
 const hostState = vi.hoisted(() => ({ isMobileShell: false }));
@@ -12,6 +13,10 @@ import ComingSoonModal from './ComingSoonModal';
 beforeEach(() => {
   openExternal.mockClear();
   hostState.isMobileShell = false;
+});
+
+afterEach(async () => {
+  await changeLocale('en');
 });
 
 // ENG-4023: a phone cannot install the desktop app, so the app offers no
@@ -91,5 +96,18 @@ describe('ComingSoonModal', () => {
     expect(screen.queryByText(/connect it now as a custom connector/)).toBeNull();
     expect(screen.queryByText('Connect your custom HasData')).toBeNull();
     expect(screen.getByText(/HasData isn’t\s+available on Cloud just yet/)).toBeTruthy();
+  });
+
+  it('shows the offer body and both buttons in the UI language', async () => {
+    await changeLocale('de');
+    const { rerender } = render(<ComingSoonModal feature="HasData" onClose={vi.fn()}
+      offer={{ kind: 'connect', onAccept: vi.fn() }} />);
+
+    expect(screen.getByText(/HasData ist in der Cloud noch nicht verfügbar\. Sie können es jetzt als benutzerdefinierten Connector verbinden\./)).toBeTruthy();
+    expect(screen.getByText('Ihren benutzerdefinierten HasData-Connector verbinden')).toBeTruthy();
+
+    rerender(<ComingSoonModal feature="HasData" onClose={vi.fn()}
+      offer={{ kind: 'build', onAccept: vi.fn() }} />);
+    expect(screen.getByText('Benutzerdefinierten Connector erstellen')).toBeTruthy();
   });
 });
