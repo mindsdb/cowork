@@ -36651,6 +36651,210 @@
       "text": "a7c25200ce76"
     }
   },
+  "chat:chatView.nextSteps.anotherFile": {
+    "de": {
+      "from": "80895a4bb89e",
+      "text": "1d9586e99d85"
+    },
+    "es": {
+      "from": "80895a4bb89e",
+      "text": "80e802c1e5ae"
+    },
+    "fr": {
+      "from": "80895a4bb89e",
+      "text": "0e51bcbae579"
+    },
+    "it": {
+      "from": "80895a4bb89e",
+      "text": "c6e30db9c09a"
+    },
+    "ja": {
+      "from": "80895a4bb89e",
+      "text": "dc5b4f40d966"
+    },
+    "ko": {
+      "from": "80895a4bb89e",
+      "text": "2a78da6f891b"
+    },
+    "pt-BR": {
+      "from": "80895a4bb89e",
+      "text": "539430e7f548"
+    },
+    "zh-CN": {
+      "from": "80895a4bb89e",
+      "text": "1c7ee5453fb6"
+    }
+  },
+  "chat:chatView.nextSteps.groupLabel": {
+    "de": {
+      "from": "dd00d3d3e9f7",
+      "text": "89efd75817e7"
+    },
+    "es": {
+      "from": "dd00d3d3e9f7",
+      "text": "b3af5f8decf2"
+    },
+    "fr": {
+      "from": "dd00d3d3e9f7",
+      "text": "cd87c3007d4e"
+    },
+    "it": {
+      "from": "dd00d3d3e9f7",
+      "text": "5acf7647491e"
+    },
+    "ja": {
+      "from": "dd00d3d3e9f7",
+      "text": "8a1aef9b62a5"
+    },
+    "ko": {
+      "from": "dd00d3d3e9f7",
+      "text": "7ff6390c3baa"
+    },
+    "pt-BR": {
+      "from": "dd00d3d3e9f7",
+      "text": "73de256c4f60"
+    },
+    "zh-CN": {
+      "from": "dd00d3d3e9f7",
+      "text": "6854e28a2dc6"
+    }
+  },
+  "chat:chatView.nextSteps.makePage": {
+    "de": {
+      "from": "e1cbe34cd120",
+      "text": "f2dd2fee0d8f"
+    },
+    "es": {
+      "from": "e1cbe34cd120",
+      "text": "5c5a3fab20e3"
+    },
+    "fr": {
+      "from": "e1cbe34cd120",
+      "text": "18f4b13a7db2"
+    },
+    "it": {
+      "from": "e1cbe34cd120",
+      "text": "826f6338d7cb"
+    },
+    "ja": {
+      "from": "e1cbe34cd120",
+      "text": "d5baa0738bb0"
+    },
+    "ko": {
+      "from": "e1cbe34cd120",
+      "text": "9c004106121f"
+    },
+    "pt-BR": {
+      "from": "e1cbe34cd120",
+      "text": "1d7c8209b870"
+    },
+    "zh-CN": {
+      "from": "e1cbe34cd120",
+      "text": "9243ad4e9c11"
+    }
+  },
+  "chat:chatView.nextSteps.ownData": {
+    "de": {
+      "from": "63c42b34fa05",
+      "text": "01c0b94bc03f"
+    },
+    "es": {
+      "from": "63c42b34fa05",
+      "text": "537538c603e8"
+    },
+    "fr": {
+      "from": "63c42b34fa05",
+      "text": "d1b0e76b511a"
+    },
+    "it": {
+      "from": "63c42b34fa05",
+      "text": "22b2fd0eac1f"
+    },
+    "ja": {
+      "from": "63c42b34fa05",
+      "text": "9f3d0740c577"
+    },
+    "ko": {
+      "from": "63c42b34fa05",
+      "text": "940c4e06444f"
+    },
+    "pt-BR": {
+      "from": "63c42b34fa05",
+      "text": "2200d884c2ce"
+    },
+    "zh-CN": {
+      "from": "63c42b34fa05",
+      "text": "136dc10747c1"
+    }
+  },
+  "chat:chatView.nextSteps.schedule": {
+    "de": {
+      "from": "6afe0af691b7",
+      "text": "a60e425a2953"
+    },
+    "es": {
+      "from": "6afe0af691b7",
+      "text": "1095e38cc19f"
+    },
+    "fr": {
+      "from": "6afe0af691b7",
+      "text": "efb9e2d86f6e"
+    },
+    "it": {
+      "from": "6afe0af691b7",
+      "text": "10cb890033e4"
+    },
+    "ja": {
+      "from": "6afe0af691b7",
+      "text": "d28a4496ef4b"
+    },
+    "ko": {
+      "from": "6afe0af691b7",
+      "text": "b9579ee13135"
+    },
+    "pt-BR": {
+      "from": "6afe0af691b7",
+      "text": "b4856275ba7d"
+    },
+    "zh-CN": {
+      "from": "6afe0af691b7",
+      "text": "43148cd3a626"
+    }
+  },
+  "chat:chatView.nextSteps.scheduled": {
+    "de": {
+      "from": "20b8157773f1",
+      "text": "70eeee7b1d15"
+    },
+    "es": {
+      "from": "20b8157773f1",
+      "text": "3e82ae11efbb"
+    },
+    "fr": {
+      "from": "20b8157773f1",
+      "text": "248cc00f53ea"
+    },
+    "it": {
+      "from": "20b8157773f1",
+      "text": "0188740aeb21"
+    },
+    "ja": {
+      "from": "20b8157773f1",
+      "text": "f62038aa7b66"
+    },
+    "ko": {
+      "from": "20b8157773f1",
+      "text": "da66360c02b0"
+    },
+    "pt-BR": {
+      "from": "20b8157773f1",
+      "text": "593a5342413b"
+    },
+    "zh-CN": {
+      "from": "20b8157773f1",
+      "text": "550354873079"
+    }
+  },
   "chat:chatView.overloaded.body": {
     "de": {
       "from": "c56ef70d2b5d",

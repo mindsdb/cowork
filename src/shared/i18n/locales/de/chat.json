@@ -228,7 +228,15 @@
         "notRead": "In der Warteschlange: Die Aufgabe war fertig, bevor sie das lesen konnte."
       }
     },
-    "reconnecting": "Verbindung wird wiederhergestellt"
+    "reconnecting": "Verbindung wird wiederhergestellt",
+    "nextSteps": {
+      "groupLabel": "Nächste Schritte",
+      "ownData": "Mit meinen eigenen Daten machen",
+      "anotherFile": "Dasselbe mit einer anderen Datei",
+      "makePage": "Eine Seite daraus machen",
+      "schedule": "Regelmäßig ausführen",
+      "scheduled": "„{title}“ geplant"
+    }
   },
   "composer": {
     "placeholder": "Hallo Boss, wie kann ich Ihnen heute helfen?",

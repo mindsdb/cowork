@@ -228,7 +228,15 @@
         "notRead": "已加入队列：任务在读取之前就已结束。"
       }
     },
-    "reconnecting": "正在尝试重新连接"
+    "reconnecting": "正在尝试重新连接",
+    "nextSteps": {
+      "groupLabel": "后续步骤",
+      "ownData": "用我自己的数据做同样的事",
+      "anotherFile": "对另一个文件做同样的事",
+      "makePage": "做成一个页面",
+      "schedule": "按计划运行",
+      "scheduled": "已安排“{title}”"
+    }
   },
   "composer": {
     "placeholder": "老板好，今天有什么可以帮你？",

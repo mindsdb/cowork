@@ -103,6 +103,8 @@ import { ChatScroller } from '../components/chat/ChatScroller';
 import { useStickToBottom } from '../components/chat/useStickToBottom';
 import { useDockInset } from '../components/chat/useDockInset';
 import { TurnActions } from '../components/chat/TurnActions';
+import { NextSteps } from '../components/chat/NextSteps';
+import { nextStepsFor, offersNextSteps, scheduledPromptFor } from '../lib/nextSteps';
 import { UserTurn } from '../components/chat/UserTurn';
 import i18n, { currentLocale, useTranslation } from '../../lib/i18n';
 import { productName } from '../../lib/deploymentBrand';
@@ -2181,6 +2183,9 @@ export default function ChatView({
   // resurrects unanswered questions from persisted history, and a
   // click on one with no live run behind it would 404.
   inFlightSet,
+  // ({ prompt, projectId }) — opens the new-schedule form filled in with the
+  // message a finished answer replied to. Without it, no schedule step.
+  onScheduleFromChat = null,
   // Pending composer redirects from App.jsx, keyed by conversation id:
   // {[taskId]: {text, attachments, bump}}. A question appeared while messages
   // were queued for that task, so their text and files are handed back to its
@@ -3986,6 +3991,39 @@ export default function ChatView({
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
+                  {(() => {
+                    if (!onSend || !offersNextSteps({
+                      isLatest: i === lastTurnIdx,
+                      inFlight: isStreaming || !!inFlightSet?.has(task.id),
+                      answer: m,
+                      followedByFailure: visibleMessages.slice(i + 1)
+                        .some((row) => row.role === 'error' || row.role === 'provider_required'),
+                    })) return null;
+                    let u = i - 1;
+                    while (u >= 0 && visibleMessages[u].role !== 'user') u -= 1;
+                    const userMessage = u >= 0 ? visibleMessages[u] : null;
+                    const firstUserIdx = visibleMessages.findIndex((row) => row.role === 'user');
+                    const { resultKind, steps } = nextStepsFor({
+                      firstUserText: firstUserIdx >= 0 ? visibleMessages[firstUserIdx].content : '',
+                      userMessage,
+                      // Only when the history is loaded from its start can
+                      // the first loaded message be the conversation's first.
+                      isFirstTurn: !task.hasMoreMessages && u >= 0 && u === firstUserIdx,
+                      answer: m,
+                    }, { canSchedule: !!onScheduleFromChat && !!scheduledPromptFor(userMessage) });
+                    return (
+                      <NextSteps
+                        answerKey={`${task.id}:${messageKey(m, i)}`}
+                        resultKind={resultKind}
+                        steps={steps}
+                        onSend={onSend}
+                        onSchedule={() => onScheduleFromChat?.({
+                          prompt: scheduledPromptFor(userMessage),
+                          projectId: task.projectId ?? null,
+                        })}
+                      />
+                    );
+                  })()}
                   {m.incompleteReason && (
                     // role="note": a saved answer's notice must not be announced again on every reload.
                     <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">

@@ -228,7 +228,15 @@
         "notRead": "キューに追加：読み取る前にタスクが終了しました。"
       }
     },
-    "reconnecting": "再接続しています"
+    "reconnecting": "再接続しています",
+    "nextSteps": {
+      "groupLabel": "次のステップ",
+      "ownData": "自分のデータで同じことをする",
+      "anotherFile": "別のファイルにも同じことをする",
+      "makePage": "ページにする",
+      "schedule": "スケジュールで実行する",
+      "scheduled": "「{title}」をスケジュールしました"
+    }
   },
   "composer": {
     "placeholder": "こんにちは。今日は何をお手伝いしましょうか？",
