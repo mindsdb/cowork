@@ -8,7 +8,7 @@ const analyticsMock = vi.hoisted(() => ({ trackBillingOpened: vi.fn() }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
 import UsageBar from './UsageBar';
-import { USAGE_ACTIONS } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, deriveComposerWarning } from '../lib/usageWarnings';
 import { resetUsageBarDismissForTests } from '../lib/usageBarDismiss';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
 
@@ -55,6 +55,17 @@ describe('UsageBar', () => {
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('usage_notice');
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+  });
+
+  it('inside the mobile app, keeps the copy and drops its billing actions', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      render(<UsageBar warning={balanceLow} isBillingOwner />);
+      expect(screen.getByText('You have $8.42 left.')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Add funds' })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
   });
 
   it('the standing figure can be closed, and stays closed as the number moves', async () => {
@@ -280,6 +291,27 @@ describe('UsageBar', () => {
       expect(bar.classList).toContain('bg-bg');
       expect(bar.className).toContain(`linear-gradient(var(--${tone}-bg)`);
       unmount();
+    }
+  });
+});
+
+
+describe('mobile usage copy from real account states', () => {
+  it.each([
+    ['empty wallet', { balance: { usd: 0, canConsume: false } }, /balance is empty/i],
+    ['low wallet', { balance: { usd: 8.42, canConsume: true, alert: 'low' } }, /\$8.42/],
+    ['failed auto top up', { autoTopUp: { enabled: true, status: 'payment_failed' } }, /couldn't charge your card/i],
+    ['capped auto top up', { balance: { usd: 8.42, canConsume: true, alert: 'low' }, autoTopUp: { enabled: true, status: 'cap_reached' } }, /monthly cap/i],
+    ['exhausted allowance', { balance: { usd: 0, canConsume: false }, freeTokens: { limit: 100, remaining: 0, resetsAt: '2099-09-11T12:00:00Z' } }, /Resets at/],
+  ])('%s keeps its facts without a purchase prompt', (_name, overrides, fact) => {
+    hostMock.host.isMobileShell = true;
+    try {
+      const warning = deriveComposerWarning({ reachable: true, freeTokens: null, balance: null, autoTopUp: null, ...overrides }, { model: overrides.freeTokens ? null : 'claude-sonnet-4' });
+      const { container } = render(<UsageBar warning={warning} />);
+      expect(container.textContent).toMatch(fact);
+      expect(container.textContent).not.toMatch(/add funds|turn on|update your payment method|Mobile/);
+    } finally {
+      hostMock.host.isMobileShell = false;
     }
   });
 });
