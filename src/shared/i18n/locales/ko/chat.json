@@ -262,11 +262,17 @@
     },
     "dropFiles": "파일을 놓아 첨부",
     "addContext": "컨텍스트 추가",
+    "docOutput": {
+      "chip": "문서",
+      "remove": "출력: 문서. 제거",
+      "title": "답변이 문서로 작성됩니다. 클릭하여 제거하세요."
+    },
     "menu": {
       "attachFiles": "파일 또는 사진 첨부",
       "openingGoogleDrive": "Google Drive를 여는 중…",
       "addFromGoogleDrive": "Google Drive에서 파일 추가",
       "addFromSharePoint": "SharePoint에서 파일 추가",
+      "writeAsDoc": "문서로 작성",
       "browserTitle": "이 작업에서 {agent}이(가) 브라우저 모드를 사용할 수 있습니다. 끄면 다음 메시지부터 적용됩니다.",
       "browser": "브라우저",
       "browserOff": "이 작업에서 브라우저 끄기",

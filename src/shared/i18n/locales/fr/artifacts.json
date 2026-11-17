@@ -299,6 +299,8 @@
       "specificDesc": "Uniquement les personnes de votre liste"
     },
     "whoCanAccess": "Qui peut accéder à votre application",
+    "whoCanAccessDoc": "Qui peut accéder à votre document",
+    "updatesAsYouEdit": "Mis à jour à chaque modification",
     "addPassword": "Ajouter un mot de passe",
     "hide": "Masquer",
     "show": "Afficher",

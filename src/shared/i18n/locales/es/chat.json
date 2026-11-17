@@ -262,11 +262,17 @@
     },
     "dropFiles": "Suelta archivos para adjuntarlos",
     "addContext": "Agregar contexto",
+    "docOutput": {
+      "chip": "Documento",
+      "remove": "Salida: documento. Quitar",
+      "title": "La respuesta se escribirá como documento. Haz clic para quitar."
+    },
     "menu": {
       "attachFiles": "Adjuntar archivos o fotos",
       "openingGoogleDrive": "Abriendo Google Drive…",
       "addFromGoogleDrive": "Agregar archivos de Google Drive",
       "addFromSharePoint": "Agregar archivos de SharePoint",
+      "writeAsDoc": "Escribirlo como documento",
       "browserTitle": "{agent} puede usar el modo navegador en esta tarea. Desactivarlo se aplica desde tu próximo mensaje.",
       "browser": "Navegador",
       "browserOff": "Desactivar el navegador para esta tarea",

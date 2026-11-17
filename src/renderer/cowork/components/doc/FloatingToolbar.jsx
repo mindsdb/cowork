@@ -5,15 +5,17 @@ import { Bold, Code, Italic, Link, Sparkles, Strikethrough } from 'lucide-react'
 import { Icon } from '../ui/Icon';
 import FloatPanel from './FloatPanel';
 import { applyInlineFormat, wrapSelection } from './caret';
+import { useTranslation } from '../../../lib/i18n';
 
 const FORMATS = [
-  { kind: 'bold', label: 'Bold', title: 'Bold ⌘B', icon: Bold },
-  { kind: 'italic', label: 'Italic', title: 'Italic ⌘I', icon: Italic },
-  { kind: 'strike', label: 'Strikethrough', title: 'Strikethrough ⌘⇧X', icon: Strikethrough },
-  { kind: 'code', label: 'Code', title: 'Code ⌘E', icon: Code },
+  { kind: 'bold', keys: '⌘B', icon: Bold },
+  { kind: 'italic', keys: '⌘I', icon: Italic },
+  { kind: 'strike', keys: '⌘⇧X', icon: Strikethrough },
+  { kind: 'code', keys: '⌘E', icon: Code },
 ];
 
 export default function FloatingToolbar({ toolbar, canFormat, canAsk, onLinkMode, onClose, onAsk }) {
+  const { t } = useTranslation('docs');
   const [href, setHref] = useState('');
   if (!canFormat && !canAsk) return null;
   const { editable: el, range } = toolbar;
@@ -32,29 +34,32 @@ export default function FloatingToolbar({ toolbar, canFormat, canAsk, onLinkMode
   const place = { rect: toolbar.rect, side: 'above', align: 'center', gap: 8, className: 'doc-float' };
   if (toolbar.mode === 'link') {
     return (
-      <FloatPanel {...place} role="dialog" aria-label="Add link">
-        <input className="doc-float__input" autoFocus aria-label="Link address" placeholder="Paste a link and press Enter" value={href}
+      <FloatPanel {...place} role="dialog" aria-label={t('format.addLink')}>
+        <input className="doc-float__input" autoFocus aria-label={t('format.linkAddress')} placeholder={t('format.linkPlaceholder')} value={href}
           onChange={(e) => setHref(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (href.trim()) link(href.trim()); } if (e.key === 'Escape') onClose(); }} />
       </FloatPanel>
     );
   }
   return (
-    <FloatPanel {...place} role="toolbar" aria-label="Format" onMouseDown={(e) => e.preventDefault()}>
+    <FloatPanel {...place} role="toolbar" aria-label={t('format.label')} onMouseDown={(e) => e.preventDefault()}>
       {canFormat && (
         <>
-          {FORMATS.map((f) => (
-            <button key={f.kind} type="button" className="doc-float__btn" aria-label={f.label} title={f.title} onClick={() => applyInlineFormat(f.kind, el)}>
-              <Icon of={f.icon} size={14} />
-            </button>
-          ))}
-          <button type="button" className="doc-float__btn" aria-label="Link" title="Link ⌘K" onClick={onLinkMode}><Icon of={Link} size={14} /></button>
+          {FORMATS.map((f) => {
+            const name = t(`format.${f.kind}`);
+            return (
+              <button key={f.kind} type="button" className="doc-float__btn" aria-label={name} title={`${name} ${f.keys}`} onClick={() => applyInlineFormat(f.kind, el)}>
+                <Icon of={f.icon} size={14} />
+              </button>
+            );
+          })}
+          <button type="button" className="doc-float__btn" aria-label={t('format.link')} title={`${t('format.link')} ⌘K`} onClick={onLinkMode}><Icon of={Link} size={14} /></button>
         </>
       )}
       {canFormat && canAsk && <span className="doc-float__sep" />}
       {canAsk && (
         <button type="button" className="doc-float__btn doc-float__btn--agent" onClick={onAsk}>
-          <Icon of={Sparkles} size={14} /> Edit with agent
+          <Icon of={Sparkles} size={14} /> {t('ask.label')}
         </button>
       )}
     </FloatPanel>

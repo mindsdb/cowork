@@ -2,7 +2,7 @@
 // each option sends.
 import { describe, expect, it } from 'vitest';
 import { blockMenu } from './blockMenu';
-import { CALLOUT_TONES, TURN_INTO } from './canvasOps';
+import { TURN_INTO } from './canvasOps';
 
 const blocks = [
   { id: 'b_1', type: 'heading', level: 2, text: 'Risks' },
@@ -23,7 +23,7 @@ describe('blockMenu', () => {
 
   it('offers a callout its colours, each an update of its tone', () => {
     const tone = option(blockMenu(blocks, 1), 'tone');
-    expect(tone.submenu.map((t) => t.label)).toEqual(CALLOUT_TONES.map((t) => t.label));
+    expect(tone.submenu.map((t) => t.label)).toEqual(['Info', 'Success', 'Warning', 'Danger', 'Note']);
     expect(option(tone.submenu, 'danger').ops).toEqual([{ op: 'update', id: 'b_2', set: { tone: 'danger' } }]);
   });
 

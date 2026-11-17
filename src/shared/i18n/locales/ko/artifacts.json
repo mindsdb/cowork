@@ -299,6 +299,8 @@
       "specificDesc": "지정한 사람만"
     },
     "whoCanAccess": "앱에 액세스할 수 있는 사람",
+    "whoCanAccessDoc": "문서에 액세스할 수 있는 사람",
+    "updatesAsYouEdit": "편집할 때마다 업데이트됨",
     "addPassword": "비밀번호 추가",
     "hide": "숨기기",
     "show": "표시",

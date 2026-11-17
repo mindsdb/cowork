@@ -289,7 +289,7 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
 // doc), so there is nothing to update by hand and no versions to pick from.
 export function PublishMenu({ controller, disabled = false, disabledReason = '', noun = 'app', followsEdits = false }) {
   const { t } = useTranslation('artifacts');
-  const whoCanAccess = noun === 'app' ? t('publish.whoCanAccess') : `Who can access your ${noun}`;
+  const whoCanAccess = t(noun === 'doc' ? 'publish.whoCanAccessDoc' : 'publish.whoCanAccess');
   const pub = controller;
   const isPublished = !!pub.publishedUrl;
   const [open, setOpen] = useState(false);
@@ -524,7 +524,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                     {sharingSettingsStatus || (
                       <>
                         {permissionsNotice}
-                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} noun={noun} />
+                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} ariaLabel={whoCanAccess} />
                       </>
                     )}
                   </div>
@@ -583,7 +583,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} noun={noun} />
+                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} />
                             </>
                           )}
                         </>
@@ -675,7 +675,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                         <UpToDateTag />
                       )
                     ) : followsEdits ? (
-                      <UpToDateTag label="Updates as you edit" />
+                      <UpToDateTag label={t('publish.updatesAsYouEdit')} />
                     ) : (pub.modified && !orgMode) ? (
                       <FooterButton primary onClick={pub.update} disabled={pub.busy}
                         busy={pub.phase === 'updating'} busyLabel={t('status.updating')}>

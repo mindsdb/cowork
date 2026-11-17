@@ -3,57 +3,64 @@
 // the caret goes next (`focus`). DocCanvas reads the caret and applies these.
 // Data and decisions only: the icons each kind is drawn with are blockIcons'.
 import { blockPlainText, inlineToPlain, isListBlock, isTextBlock, makeBlock } from './docModel';
+import i18n, { sharedTranslator } from '../../../lib/i18n';
 
+const tr = sharedTranslator('docs');
+const englishLabel = i18n.getFixedT('en', 'docs', 'insert.item');
+
+// Each menu item's `key` names its label (docs `insert.item.<key>`), and its
+// `group` its heading (`insert.group.<group>`): translated when a menu is built.
 export const TURN_INTO = [
-  { type: 'paragraph', label: 'Text' },
-  { type: 'heading', level: 1, label: 'Heading 1', hint: '#' },
-  { type: 'heading', level: 2, label: 'Heading 2', hint: '##' },
-  { type: 'heading', level: 3, label: 'Heading 3', hint: '###' },
-  { type: 'bullet', label: 'Bulleted list', hint: '-' },
-  { type: 'numbered', label: 'Numbered list', hint: '1.' },
-  { type: 'task', label: 'To-do list', hint: '[]' },
-  { type: 'quote', label: 'Quote', hint: '>' },
-  { type: 'callout', label: 'Callout' },
+  { type: 'paragraph' },
+  { type: 'heading', level: 1, hint: '#' },
+  { type: 'heading', level: 2, hint: '##' },
+  { type: 'heading', level: 3, hint: '###' },
+  { type: 'bullet', hint: '-' },
+  { type: 'numbered', hint: '1.' },
+  { type: 'task', hint: '[]' },
+  { type: 'quote', hint: '>' },
+  { type: 'callout' },
 ].map((t) => ({ ...t, key: `${t.type}${t.level || ''}` }));
 
 export const INSERTABLE = [
-  { type: 'table', label: 'Table', group: 'Data' },
-  { type: 'chart', label: 'Chart', group: 'Data' },
-  { type: 'metrics', label: 'Metrics', group: 'Data' },
-  { type: 'code', label: 'Code', group: 'Other', hint: '```' },
-  { type: 'divider', label: 'Divider', group: 'Other', hint: '---' },
+  { type: 'table', group: 'data' },
+  { type: 'chart', group: 'data' },
+  { type: 'metrics', group: 'data' },
+  { type: 'code', group: 'other', hint: '```' },
+  { type: 'divider', group: 'other', hint: '---' },
 ].map((t) => ({ ...t, key: t.type }));
 
-export const CALLOUT_TONES = [
-  { tone: 'info', label: 'Info' },
-  { tone: 'success', label: 'Success' },
-  { tone: 'warning', label: 'Warning' },
-  { tone: 'danger', label: 'Danger' },
-  { tone: 'note', label: 'Note' },
-];
+export const CALLOUT_TONES = ['info', 'success', 'warning', 'danger', 'note'];
 
-const ASK = { key: 'ask', type: 'ask', label: 'Ask the agent to write…', group: 'Agent' };
-const IMAGE = { key: 'image', type: 'image', label: 'Image', group: 'Data' };
+const ASK = { key: 'ask', type: 'ask', group: 'agent' };
+const IMAGE = { key: 'image', type: 'image', group: 'data' };
 
 /**
- * The slash menu's items for `query`, matched on label or block type: a label
- * starting with it first, then one holding it, then the type ("/ask" is the
- * agent's item before To-do, whose type is "task").
+ * The slash menu's items for `query`, each with its label and group heading,
+ * matched on label or block type: a label starting with it first, then one
+ * holding it, then the type ("/ask" is the agent's item before To-do, whose
+ * type is "task"), then the English label.
  */
 export function slashItems(query, canAsk, canImage = false) {
   const q = query.trim().toLowerCase();
   const items = [
-    ...TURN_INTO.map((t) => ({ ...t, group: 'Basic' })),
+    ...TURN_INTO.map((t) => ({ ...t, group: 'basic' })),
     ...INSERTABLE,
     ...(canImage ? [IMAGE] : []),
     ...(canAsk ? [ASK] : []),
-  ];
+  ].map((i) => ({ ...i, label: tr(`insert.item.${i.key}`), group: tr(`insert.group.${i.group}`) }));
   if (!q) return items;
-  const rank = (i) => {
-    const label = i.label.toLowerCase();
+  const match = (text) => {
+    const label = text.toLowerCase();
     if (label.startsWith(q) || label.split(/\s+/).some((w) => w.startsWith(q))) return 0;
-    if (label.includes(q)) return 1;
-    return i.type.includes(q) ? 2 : -1;
+    return label.includes(q) ? 1 : -1;
+  };
+  const rank = (i) => {
+    const own = match(i.label);
+    if (own >= 0) return own;
+    if (i.type.includes(q)) return 2;
+    // In another language the English label still finds its block ("/list", "/text").
+    return match(englishLabel(i.key)) >= 0 ? 3 : -1;
   };
   return items.map((i) => [i, rank(i)]).filter(([, r]) => r >= 0).sort((a, b) => a[1] - b[1]).map(([i]) => i);
 }
@@ -226,19 +233,23 @@ export function listNumbers(blocks) {
   return out;
 }
 
-const KIND_NAMES = {
-  paragraph: 'Paragraph', heading: 'Heading', bullet: 'List item', numbered: 'List item', task: 'To-do',
-  quote: 'Quote', callout: 'Callout', table: 'Table', chart: 'Chart', metrics: 'Metrics', code: 'Code',
-  image: 'Image', divider: 'Divider', pending: 'Section to write',
+// The catalog's name for each block type (docs `block.kind.*` and `block.empty.*`).
+const KIND_KEYS = {
+  paragraph: 'paragraph', heading: 'heading', bullet: 'listItem', numbered: 'listItem', task: 'task',
+  quote: 'quote', callout: 'callout', table: 'table', chart: 'chart', metrics: 'metrics', code: 'code',
+  image: 'image', divider: 'divider', pending: 'pending',
 };
 
 /** A block named for a screen reader: its kind and its first words ("Heading 2 “Risks”"). */
 export function blockLabel(b) {
-  const kind = b.type === 'heading' ? `Heading ${b.level || 2}` : KIND_NAMES[b.type] || 'Block';
+  const key = KIND_KEYS[b.type] || 'other';
+  const level = b.level || 2;
   const words = (b.type === 'chart' ? b.title || '' : isTextBlock(b) || b.type === 'pending' ? blockPlainText(b) : '')
     .replace(/\s+/g, ' ').trim();
-  if (!words) return isTextBlock(b) ? `Empty ${kind.toLowerCase()}` : kind;
-  return `${kind} “${words.length > 40 ? `${words.slice(0, 39)}…` : words}”`;
+  if (!words && isTextBlock(b)) return tr(`block.empty.${key}`, { level });
+  const kind = tr(`block.kind.${key}`, { level });
+  if (!words) return kind;
+  return tr('block.named', { kind, words: words.length > 40 ? `${words.slice(0, 39)}…` : words });
 }
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));

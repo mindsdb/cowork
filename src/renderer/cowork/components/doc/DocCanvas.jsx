@@ -30,6 +30,7 @@ import {
   matchShortcut, pasteOps, turnIntoSet,
 } from './canvasOps';
 import { blockPlainText, isListBlock, isTextBlock, makeBlock } from './docModel';
+import { useTranslation } from '../../../lib/i18n';
 
 const NO_ITEMS = [];
 const NO_CHANGES = new Set();
@@ -40,6 +41,7 @@ export default function DocCanvas({
   doc, tab, editable, apply, flash = {}, changed = NO_CHANGES, agentLive = false, onAskAgent, onSelectionChange,
   onAddTab, nameTitle = false, onNamed, onUploadImage,
 }) {
+  const { t } = useTranslation('docs');
   const root = useRef(null);
   const picker = useRef(null);
   const pickFor = useRef(null);
@@ -382,7 +384,7 @@ export default function DocCanvas({
       {editable && (
         <div style={{ minHeight: 120, cursor: 'text' }} onMouseDown={(e) => { e.preventDefault(); startWriting(); }} aria-hidden="true">
           {/* A tab with nothing in it yet (one just added from the rail) said nothing at all. */}
-          {!blocks.length && <p className="doc-empty-hint">Start writing, or type / for blocks</p>}
+          {!blocks.length && <p className="doc-empty-hint">{t('block.startWriting')}</p>}
         </div>
       )}
 

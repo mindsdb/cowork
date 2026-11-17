@@ -7,6 +7,6 @@ import { CALLOUT_TONES, INSERTABLE, TURN_INTO, slashItems } from './canvasOps';
 describe('block icons', () => {
   it('cover every kind the menus offer, and every callout tone', () => {
     for (const item of [...TURN_INTO, ...INSERTABLE, ...slashItems('', true, true)]) expect(BLOCK_ICONS[item.key]).toBeTruthy();
-    for (const t of CALLOUT_TONES) expect(TONE_ICONS[t.tone]).toBeTruthy();
+    for (const tone of CALLOUT_TONES) expect(TONE_ICONS[tone]).toBeTruthy();
   });
 });

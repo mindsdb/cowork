@@ -3,14 +3,16 @@
 import { Icon } from '../ui/Icon';
 import FloatPanel from './FloatPanel';
 import { BLOCK_ICONS } from './blockIcons';
+import { useTranslation } from '../../../lib/i18n';
 
 export const slashOptionId = (menuId, index) => `${menuId}-${index}`;
 
 export default function SlashMenu({ id, items, query, index, rect, onHover, onPick }) {
+  const { t } = useTranslation('docs');
   return (
-    <FloatPanel id={id} rect={rect} gap={6} className="doc-slash" role="listbox" aria-label="Insert a block"
+    <FloatPanel id={id} rect={rect} gap={6} className="doc-slash" role="listbox" aria-label={t('insert.label')}
       onMouseDown={(e) => e.preventDefault()}>
-      {items.length === 0 && <div className="doc-slash__empty">No blocks match “{query}”</div>}
+      {items.length === 0 && <div className="doc-slash__empty">{t('insert.noMatch', { query })}</div>}
       {items.map((it, idx) => (
         <div key={it.key}>
           {(idx === 0 || items[idx - 1].group !== it.group) && <div className="doc-slash__group">{it.group}</div>}

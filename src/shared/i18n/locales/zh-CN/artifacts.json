@@ -299,6 +299,8 @@
       "specificDesc": "仅限你列出的人"
     },
     "whoCanAccess": "谁可以访问你的应用",
+    "whoCanAccessDoc": "谁可以访问你的文档",
+    "updatesAsYouEdit": "随编辑实时更新",
     "addPassword": "添加密码",
     "hide": "隐藏",
     "show": "显示",

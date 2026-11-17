@@ -299,6 +299,8 @@
       "specificDesc": "Nur die von Ihnen angegebenen Personen"
     },
     "whoCanAccess": "Wer auf Ihre App zugreifen kann",
+    "whoCanAccessDoc": "Wer auf Ihr Dokument zugreifen kann",
+    "updatesAsYouEdit": "Wird beim Bearbeiten aktualisiert",
     "addPassword": "Passwort hinzufügen",
     "hide": "Ausblenden",
     "show": "Anzeigen",

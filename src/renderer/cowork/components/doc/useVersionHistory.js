@@ -9,6 +9,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchDocHistory, fetchDocVersion, restoreDocVersion } from './docApi';
 import { stepFrom } from './versionHistory';
+import { sharedTranslator } from '../../../lib/i18n';
+
+const tr = sharedTranslator('docs');
 
 // How long "Restored", with its Undo, stays in view: long enough to look the doc over first.
 export const RESTORED_SHOWN_MS = 20_000;
@@ -54,7 +57,7 @@ export function useVersionHistory({ projectRef, artifactId, onError }) {
       const doc = await fetchDocVersion(projectRef, artifactId, entry.rev);
       if (run === docRun.current && pick === picked.current) setPreview({ entry, doc });
     } catch (e) {
-      if (run === docRun.current && pick === picked.current) onError?.(e?.message || 'Could not open that version');
+      if (run === docRun.current && pick === picked.current) onError?.(e?.message || tr('versions.openFailed'));
     }
   }, [projectRef, artifactId, onError]);
 
@@ -86,7 +89,7 @@ export function useVersionHistory({ projectRef, artifactId, onError }) {
       setList(null);
       setRestored({ entry, replacedRev });
     } catch (e) {
-      if (run === docRun.current) onError?.(e?.message || 'Could not restore that version');
+      if (run === docRun.current) onError?.(e?.message || tr('versions.restoreFailed'));
     } finally {
       if (run === docRun.current) {
         setRestoring(false);
@@ -108,7 +111,7 @@ export function useVersionHistory({ projectRef, artifactId, onError }) {
       if (run === docRun.current) setRestored(null);
     } catch (e) {
       if (run === docRun.current) {
-        onError?.(e?.message || 'Could not undo the restore');
+        onError?.(e?.message || tr('versions.undoFailed'));
         setRestored((cur) => cur && { ...cur });
       }
     } finally {
