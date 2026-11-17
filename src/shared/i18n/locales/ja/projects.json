@@ -80,7 +80,14 @@
       "daily": "毎日{time}",
       "weekdays": "平日の毎日{time}",
       "weekly": "毎週{weekday} {time}",
-      "weeklyNoDay": "毎週{time}"
+      "weeklyNoDay": "毎週{time}",
+      "monthlyDay": "毎月{day}日 {time}",
+      "monthlyDayOrLast": "毎月{day}日（短い月は末日） {time}",
+      "monthlyFirst": "毎月第1{weekday} {time}",
+      "monthlySecond": "毎月第2{weekday} {time}",
+      "monthlyThird": "毎月第3{weekday} {time}",
+      "monthlyFourth": "毎月第4{weekday} {time}",
+      "monthlyLast": "毎月最終{weekday} {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "この時刻にサーバーが停止していた場合、1時間以内に復旧すればタスクが実行されます。それを過ぎると「未実行」となり、手動で実行できます。",
@@ -578,7 +585,8 @@
       "hourly": "毎時",
       "daily": "毎日",
       "weekdays": "平日",
-      "weekly": "毎週"
+      "weekly": "毎週",
+      "monthly": "毎月"
     },
     "openProject": "{project}を開く",
     "descriptionWithNext": "{sentence} · 次回：{next}",
@@ -629,11 +637,13 @@
       "hourly": "1時間ごと",
       "daily": "毎日",
       "weekdays": "平日の毎日",
-      "weekly": "毎週"
+      "weekly": "毎週",
+      "monthly": "毎月"
     },
     "errorNoPrompt": "{agent}にやってほしいことを入力してください。",
     "errorPickFutureTime": "未来の時刻を選択してください。",
     "errorPickTime": "時刻を選択してください。",
+    "errorPickDays": "曜日を1つ以上選択してください。",
     "errorSave": "スケジュールを保存できませんでした。",
     "editTitle": "スケジュール済みタスクを編集",
     "createTitle": "タスクをスケジュール",
@@ -645,6 +655,17 @@
     "when": "日時",
     "howOften": "頻度",
     "dayOfWeek": "曜日",
+    "daysOfWeek": "曜日",
+    "dayOfMonth": "日付",
+    "monthBy": {
+      "label": "毎月のどの日",
+      "day": "日付",
+      "week1": "第1",
+      "week2": "第2",
+      "week3": "第3",
+      "week4": "第4",
+      "weekLast": "最終"
+    },
     "date": "日付",
     "atMinute": "分：",
     "at": "時刻：",

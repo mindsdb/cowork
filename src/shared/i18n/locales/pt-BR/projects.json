@@ -80,7 +80,14 @@
       "daily": "Todo dia às {time}",
       "weekdays": "Todo dia útil às {time}",
       "weekly": "Semanal: {weekday} às {time}",
-      "weeklyNoDay": "Toda semana às {time}"
+      "weeklyNoDay": "Toda semana às {time}",
+      "monthlyDay": "Todo mês no dia {day} às {time}",
+      "monthlyDayOrLast": "Todo mês no dia {day}, ou no último dia de um mês mais curto, às {time}",
+      "monthlyFirst": "Todo mês no(a) primeiro(a) {weekday} às {time}",
+      "monthlySecond": "Todo mês no(a) segundo(a) {weekday} às {time}",
+      "monthlyThird": "Todo mês no(a) terceiro(a) {weekday} às {time}",
+      "monthlyFourth": "Todo mês no(a) quarto(a) {weekday} às {time}",
+      "monthlyLast": "Todo mês no(a) último(a) {weekday} às {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "Se o servidor estiver fora do ar nesse horário, a tarefa é executada quando ele voltar, dentro de uma hora. Depois disso, ela é marcada como perdida e você pode executá-la.",
@@ -578,7 +585,8 @@
       "hourly": "De hora em hora",
       "daily": "Diária",
       "weekdays": "Dias úteis",
-      "weekly": "Semanal"
+      "weekly": "Semanal",
+      "monthly": "Mensal"
     },
     "openProject": "Abrir {project}",
     "descriptionWithNext": "{sentence} · próxima {next}",
@@ -629,11 +637,13 @@
       "hourly": "A cada hora",
       "daily": "Todo dia",
       "weekdays": "Todo dia útil",
-      "weekly": "Toda semana"
+      "weekly": "Toda semana",
+      "monthly": "Todo mês"
     },
     "errorNoPrompt": "Diga ao {agent} o que fazer.",
     "errorPickFutureTime": "Escolha um horário no futuro.",
     "errorPickTime": "Escolha um horário.",
+    "errorPickDays": "Escolha pelo menos um dia da semana.",
     "errorSave": "Não foi possível salvar o agendamento.",
     "editTitle": "Editar tarefa agendada",
     "createTitle": "Agendar uma tarefa",
@@ -645,6 +655,17 @@
     "when": "Quando",
     "howOften": "Frequência",
     "dayOfWeek": "Dia da semana",
+    "daysOfWeek": "Dias da semana",
+    "dayOfMonth": "Dia do mês",
+    "monthBy": {
+      "label": "Qual dia do mês",
+      "day": "Dia",
+      "week1": "Primeira",
+      "week2": "Segunda",
+      "week3": "Terceira",
+      "week4": "Quarta",
+      "weekLast": "Última"
+    },
     "date": "Data",
     "atMinute": "no minuto",
     "at": "às",

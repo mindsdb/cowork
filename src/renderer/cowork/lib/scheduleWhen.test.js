@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, usableZone, whenFromDate, zoneChoices,
+  defaultWhen, describeWhen, formatRun, nextRuns, recurrenceFromWhen, timeZoneLabel, usableZone, whenFromDate,
+  zoneChoices,
 } from './scheduleWhen';
 
 // Tests run with TZ=UTC (tests/ setup), so local and UTC agree.
@@ -47,6 +48,11 @@ describe('describeWhen', () => {
     [{ cadence: 'daily', time: '09:00' }, /^Every day at 9:00/],
     [{ cadence: 'weekdays', time: '09:00' }, /^Every weekday at 9:00/],
     [{ cadence: 'weekly', time: '09:00', weekday: 1 }, /^Every Monday at 9:00/],
+    [{ cadence: 'weekly', time: '09:00', days: [5, 1, 3] }, /^Every Monday, Wednesday, and Friday at 9:00/],
+    [{ cadence: 'monthly', time: '09:00', monthBy: 'day', monthDay: 15 }, /^Every month on day 15 at 9:00/],
+    [{ cadence: 'monthly', time: '09:00', monthBy: 'day', monthDay: 31 }, /^Every month on day 31, or the last day of a shorter month, at 9:00/],
+    [{ cadence: 'monthly', time: '09:00', monthBy: 'weekday', week: 1, weekday: 1 }, /^Every month on the first Monday at 9:00/],
+    [{ cadence: 'monthly', time: '09:00', monthBy: 'weekday', week: -1, weekday: 5 }, /^Every month on the last Friday at 9:00/],
     [{ cadence: 'hourly', time: '00:15' }, /^Every hour at :15$/],
     [{ cadence: 'every_15_minutes', time: '00:05' }, /^Every 15 minutes$/],
     [{ cadence: 'every_30_minutes', time: '00:05' }, /^Every 30 minutes$/],
@@ -58,11 +64,55 @@ describe('describeWhen', () => {
 
 describe('form starting points', () => {
   it('starts a new task an hour out, on the hour, daily', () => {
-    expect(defaultWhen(NOW)).toEqual({ cadence: 'daily', time: '11:00', weekday: 3, date: '2026-10-14' });
+    expect(defaultWhen(NOW)).toMatchObject({ cadence: 'daily', time: '11:00', weekday: 3, date: '2026-10-14' });
   });
 
   it('reads an existing task back from its next run', () => {
-    expect(whenFromDate(new Date(2026, 9, 19, 9, 0), 'weekly')).toEqual({ cadence: 'weekly', time: '09:00', weekday: 1, date: '2026-10-19' });
+    expect(whenFromDate(new Date(2026, 9, 19, 9, 0), 'weekly')).toMatchObject({
+      cadence: 'weekly', time: '09:00', weekday: 1, date: '2026-10-19', days: [1], monthBy: 'day', monthDay: 19, week: 3,
+    });
+  });
+
+  it('reads a saved rule back', () => {
+    const at = new Date(2026, 9, 19, 9, 0);
+    expect(whenFromDate(at, 'weekly', 'UTC', { days: ['mon', 'wed', 'fri'] }).days).toEqual([1, 3, 5]);
+    expect(whenFromDate(at, 'monthly', 'UTC', { monthDay: 31 })).toMatchObject({ monthBy: 'day', monthDay: 31 });
+    expect(whenFromDate(at, 'monthly', 'UTC', { week: -1, weekday: 'fri' })).toMatchObject({
+      monthBy: 'weekday', week: -1, weekday: 5,
+    });
+    // The last seven days of a month read as its last week.
+    expect(whenFromDate(new Date(2026, 9, 26, 9, 0), 'monthly').week).toBe(-1);
+  });
+});
+
+describe('recurrenceFromWhen', () => {
+  it('sends the days for weekly and monthly tasks only, Monday first', () => {
+    expect(recurrenceFromWhen({ cadence: 'weekly', days: [0, 5, 1, 1] })).toEqual({ days: ['mon', 'fri', 'sun'] });
+    expect(recurrenceFromWhen({ cadence: 'weekly', days: [] })).toBeNull();
+    expect(recurrenceFromWhen({ cadence: 'monthly', monthBy: 'day', monthDay: 15 })).toEqual({ monthDay: 15 });
+    expect(recurrenceFromWhen({ cadence: 'monthly', monthBy: 'weekday', week: 1, weekday: 1 })).toEqual({ week: 1, weekday: 'mon' });
+    expect(recurrenceFromWhen({ cadence: 'daily', days: [1] })).toBeNull();
+  });
+});
+
+describe('nextRuns with a rule', () => {
+  it('weekly: runs on each chosen day', () => {
+    // Wed Oct 14, 10:30: Wed's 9:00 has passed.
+    expect(iso(nextRuns({ cadence: 'weekly', time: '09:00', days: [1, 3, 5] }, NOW, 4)))
+      .toEqual(['16 9:00', '19 9:00', '21 9:00', '23 9:00']);
+    expect(nextRuns({ cadence: 'weekly', time: '09:00', days: [] }, NOW)).toEqual([]);
+  });
+
+  it('monthly on a day: a shorter month runs on its last day', () => {
+    const runs = nextRuns({ cadence: 'monthly', time: '09:00', monthBy: 'day', monthDay: 31 }, NOW, 3);
+    expect(runs.map((d) => `${d.getMonth() + 1}/${d.getDate()}`)).toEqual(['10/31', '11/30', '12/31']);
+  });
+
+  it('monthly on a weekday of the month', () => {
+    const first = nextRuns({ cadence: 'monthly', time: '09:00', monthBy: 'weekday', week: 1, weekday: 1 }, NOW, 3);
+    expect(first.map((d) => `${d.getMonth() + 1}/${d.getDate()}`)).toEqual(['11/2', '12/7', '1/4']);
+    const last = nextRuns({ cadence: 'monthly', time: '17:00', monthBy: 'weekday', week: -1, weekday: 5 }, NOW, 2);
+    expect(last.map((d) => `${d.getMonth() + 1}/${d.getDate()}`)).toEqual(['10/30', '11/27']);
   });
 });
 
@@ -117,7 +167,7 @@ describe('in a zone other than the device\'s', () => {
   });
 
   it('reads a saved run back in the task\'s zone', () => {
-    expect(whenFromDate('2026-10-19T16:00:00Z', 'weekly', LA)).toEqual({ cadence: 'weekly', time: '09:00', weekday: 1, date: '2026-10-19' });
+    expect(whenFromDate('2026-10-19T16:00:00Z', 'weekly', LA)).toMatchObject({ cadence: 'weekly', time: '09:00', weekday: 1, date: '2026-10-19' });
     expect(defaultWhen(NOW, LA)).toMatchObject({ time: '04:00', date: '2026-10-14' });
   });
 
