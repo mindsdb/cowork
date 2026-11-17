@@ -362,7 +362,8 @@ export interface PageSnapshot {
 
 /** What a step did to the page: whether it changed what the page shows,
     or null when the host can't tell (a frame, canvas or media element in
-    view or under the step, a hover, a wait, or a page it couldn't watch). */
+    view or under the step, a hover, a wait, a page it couldn't watch, or a
+    change the person's input during the step may have made). */
 export interface StepOutcome {
   changed: boolean | null;
 }

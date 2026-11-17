@@ -126,10 +126,15 @@ export interface LoginRequest {
   respond(answer: BrowserLoginAnswer | null): void;
 }
 
+/** The person's input that reached a tab's page: a mouse press or
+    release, a key, or a wheel (browser-view.ts tells these from the
+    agent's). */
+export type PersonInput = 'press' | 'release' | 'key' | 'wheel';
+
 /** What a tab tells its session. */
 export interface TabHooks {
   changed(): void;
-  personInput(): void;
+  personInput(input: PersonInput): void;
   popupAllowed(): boolean;
   adopt(tab: TabView): void;
   login(request: LoginRequest): void;
@@ -184,7 +189,14 @@ interface TaskSession {
   createdAt: number;
   lastUsed: number;
   lastAgentStepAt: number;
+  /** The person's last press or key in a page, or use of the pane's Back,
+      Forward, Reload or address: a popup may follow it, and a watched
+      hand-over waits for it. */
   lastPersonInputAt: number;
+  /** How many of the person's inputs reached a page, a pane button or
+      address included: a step one reached the page during can't tell its
+      own change from theirs (`action`). */
+  personInputs: number;
   login: LoginRequest | null;
   downloads: BrowserDownload[];
   /** A hand-over that comes back by itself once the person did what it waits for. */
@@ -280,6 +292,7 @@ export class BrowserSessions {
       lastUsed: now,
       lastAgentStepAt: 0,
       lastPersonInputAt: 0,
+      personInputs: 0,
       login: null,
       downloads: [],
       watch: null,
@@ -308,9 +321,12 @@ export class BrowserSessions {
   private hooksFor(session: TaskSession): TabHooks {
     return {
       changed: () => this.emitState(session),
-      personInput: () => {
-        session.lastPersonInputAt = this.now();
-        session.lastUsed = session.lastPersonInputAt;
+      personInput: (input) => {
+        session.personInputs += 1;
+        session.lastUsed = this.now();
+        /* A wheel isn't a gesture Chromium lets open a window, and a
+           release follows a press that counted. */
+        if (input === 'press' || input === 'key') session.lastPersonInputAt = session.lastUsed;
       },
       popupAllowed: () => {
         if (!this.sessions.has(session.id)) return false;
@@ -456,6 +472,7 @@ export class BrowserSessions {
     return this.enqueue(session, async () => {
       const tab = this.active(session);
       const seq = session.control.seq;
+      const personInputs = session.personInputs;
       session.stepRunning = INPUT_STEPS.has(request.step.action);
       let inputOver = false;
       /* A popup may open while the step's input runs and for
@@ -475,6 +492,12 @@ export class BrowserSessions {
       this.emitState(session);
       const current = this.active(session);
       const answer: ActionAnswer = { ok: true, url: current.view.url(), changed: outcome.changed };
+      /* The person's input reaches the page while a step runs and settles,
+         since the desktop holds none of it back: when any did, a change the
+         settle saw may be theirs, so a true becomes null. A false stays
+         false, and a wait's null stays null. Input during the page read
+         below comes after the settle answered. */
+      if (answer.changed && session.personInputs !== personInputs) answer.changed = null;
       /* The step ran, so it answers 200 even when the browser passed to the
          person during it or during its read, but without the page, and
          without saying what changed: the person may have changed it. anton
@@ -720,6 +743,7 @@ export class BrowserSessions {
     const session = this.person(id);
     if (!session) return;
     session.lastPersonInputAt = this.now();
+    session.personInputs += 1;
     const view = this.active(session).view;
     await (where === 'back' ? view.back() : where === 'forward' ? view.forward() : view.reload());
   }
@@ -739,6 +763,7 @@ export class BrowserSessions {
     if (url === null) return;
     existing.lastUsed = this.now();
     existing.lastPersonInputAt = this.now();
+    existing.personInputs += 1;
     await this.active(existing).view.load(url);
   }
 

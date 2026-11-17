@@ -97,7 +97,7 @@ function watched() {
     sessions,
     set: (next: PageSnapshot) => { current = next; },
     setStates: (next: Record<number, HandbackElement>) => { states = next; },
-    input: () => hooks?.personInput(),
+    input: () => hooks?.personInput('press'),
     advance: (ms: number) => { clock += ms; },
     ticks,
     stopped: () => stopped,

@@ -444,7 +444,7 @@ describe('live tasks', () => {
     sessions.show('t-a', BOUNDS);
     for (let minute = 0; minute < 20; minute += 1) {
       advance(60_000);
-      tabs[0].hooks.personInput();
+      tabs[0].hooks.personInput('press');
     }
     sessions.hide();
     advance(60_000);
@@ -454,7 +454,7 @@ describe('live tasks', () => {
 
   /* Each of the person's own calls on a task, after any setup it needs. */
   const personUses: Array<[string, (s: BrowserSessions, tabs: FakeTab[]) => void, (s: BrowserSessions, tabs: FakeTab[]) => unknown]> = [
-    ['input in the page', () => {}, (_s, tabs) => tabs[0].hooks.personInput()],
+    ['input in the page', () => {}, (_s, tabs) => tabs[0].hooks.personInput('press')],
     ['back', () => {}, (s) => s.personNavigate('t-a', 'back')],
     ['a tab switch', () => {}, (s) => s.personActivateTab('t-a', 't1')],
     ['Take over', () => {}, (s) => s.takeOver('t-a')],
@@ -580,7 +580,7 @@ describe('the pane', () => {
     expect(tabs[0].hooks.popupAllowed()).toBe(true);
     advance(1001);
     expect(tabs[0].hooks.popupAllowed()).toBe(false);
-    tabs[0].hooks.personInput();
+    tabs[0].hooks.personInput('press');
     expect(tabs[0].hooks.popupAllowed()).toBe(true);
   });
 
@@ -629,6 +629,53 @@ describe('the pane', () => {
       return { changed: true };
     });
     await expect(sessions.action('t-a', step({ action: 'click', element: 1 }))).resolves.toEqual({ ok: true, url: 'https://a.test/', changed: null });
+  });
+
+  /* The desktop never holds the person's input back during a step, so a
+     change the step's settle saw may be theirs. The clock stands still: only
+     input that came during the step counts, not input just before it. */
+  it("can't tell what a step changed when the person's press, release, key or wheel, or the pane's Back or address, reached the page during it, and says what the step alone changed otherwise", async () => {
+    const { sessions, tabs } = harness();
+    sessions.open('t-a', 'https://a.test/');
+    const click = step({ action: 'click', element: 1 });
+    const changed = async (request: StepRequest, outcome: StepOutcome, person?: () => unknown) => {
+      tabs[0].act.mockImplementationOnce(async () => {
+        await person?.();
+        return outcome;
+      });
+      return (await sessions.action('t-a', request)).changed;
+    };
+    tabs[0].hooks.personInput('press');
+    expect(await changed(click, { changed: true })).toBe(true);
+    for (const input of ['press', 'release', 'key', 'wheel'] as const) {
+      expect(await changed(click, { changed: true }, () => tabs[0].hooks.personInput(input)), input).toBeNull();
+    }
+    expect(await changed(click, { changed: true }, () => sessions.personNavigate('t-a', 'back')), 'Back').toBeNull();
+    expect(await changed(click, { changed: true }, () => sessions.personOpen('t-a', 'https://b.test/')), 'an address').toBeNull();
+    expect(await changed(click, { changed: true })).toBe(true);
+    expect(await changed(click, { changed: false }, () => tabs[0].hooks.personInput('wheel')), 'nothing changed').toBe(false);
+    expect(await changed(step({ action: 'wait', ms: 10 }), { changed: null }, () => tabs[0].hooks.personInput('press')), 'a wait').toBeNull();
+    // Input during the step's page read came after its settle answered.
+    tabs[0].read.mockImplementationOnce(async () => {
+      tabs[0].hooks.personInput('key');
+      return PAGE;
+    });
+    tabs[0].act.mockResolvedValueOnce({ changed: true });
+    await expect(sessions.action('t-a', step({ action: 'click', element: 1, include_page: true }))).resolves.toEqual({ ok: true, url: 'https://b.test/', changed: true, page: PAGE });
+  });
+
+  /* A wheel isn't a gesture Chromium lets open a window, and a release
+     follows a press that already counts. */
+  it("opens no popup window on the person's wheel or release, which still count as use of the task", () => {
+    const { sessions, tabs, advance, now } = harness();
+    sessions.open('t-a', null);
+    advance(60_000);
+    tabs[0].hooks.personInput('wheel');
+    tabs[0].hooks.personInput('release');
+    expect(tabs[0].hooks.popupAllowed()).toBe(false);
+    expect(sessions.info('t-a').last_active_at).toBe(new Date(now()).toISOString());
+    tabs[0].hooks.personInput('key');
+    expect(tabs[0].hooks.popupAllowed()).toBe(true);
   });
 
   it("allows a popup while the agent's input step runs, but not through a wait", async () => {

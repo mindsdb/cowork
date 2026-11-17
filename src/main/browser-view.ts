@@ -194,6 +194,8 @@ export class ElectronTab implements TabView {
   private mouse: Point | null = null;
   /* The step in flight, which abortInput ends. */
   private step: AbortController | null = null;
+  /* The agent's input is under way: the debugger is attached to send it. */
+  private agentSends = false;
   private closed = false;
   /* The settling step's watch, which counts main-frame navigations. */
   private watching: StepWatch | null = null;
@@ -228,7 +230,7 @@ export class ElectronTab implements TabView {
        debugger sends, go straight to the page (e2e/in-app-browser.spec.ts
        checks it). */
     contents.on('before-input-event', (event, input) => {
-      hooks.personInput();
+      hooks.personInput('key');
       if (input.type !== 'keyDown' || input.alt) return;
       /* Outside macOS the app menu's Close (the windowMenu role in app.ts) is
          Control+W, so closing a site's tab as a browser does would close the
@@ -253,8 +255,19 @@ export class ElectronTab implements TabView {
         else contents.reload();
       }
     });
+    /* The pointer's input is the person's only while the agent's isn't
+       under way. Electron reports the moves, presses and releases the
+       debugger sends in before-mouse-event as it reports the person's, and
+       its wheels in input-event, the only place a wheel shows, so the tab
+       can't tell whose they are then and notes neither. A move is no
+       input. */
     contents.on('before-mouse-event', (_event, mouse) => {
-      if (mouse.type === 'mouseDown') hooks.personInput();
+      if (this.agentSends) return;
+      if (mouse.type === 'mouseDown') hooks.personInput('press');
+      else if (mouse.type === 'mouseUp') hooks.personInput('release');
+    });
+    contents.on('input-event', (_event, input) => {
+      if (input.type === 'mouseWheel' && !this.agentSends) hooks.personInput('wheel');
     });
     contents.on('login', (event, _details, authInfo, callback) => {
       event.preventDefault();
@@ -533,9 +546,18 @@ export class ElectronTab implements TabView {
         const start = this.mouse ?? (await unlessTakenOver(signal, () => this.viewportCenter()));
         // The person may have taken over while the page answered.
         if (signal.aborted) throw tookOver();
-        const { result, mouse } = await withAgentInput(this.contents.debugger, start, pacing, run);
-        this.mouse = mouse;
-        return result;
+        /* Set for the whole attach. Each of the agent's wheels shows once
+           more in input-event just after its command answers, which falls
+           in the pause after every wheel tick (AgentInput.wheel), so it
+           lands while this is still set. */
+        this.agentSends = true;
+        try {
+          const { result, mouse } = await withAgentInput(this.contents.debugger, start, pacing, run);
+          this.mouse = mouse;
+          return result;
+        } finally {
+          this.agentSends = false;
+        }
       },
     };
   }

@@ -127,8 +127,9 @@ vi.mock('electron', () => ({ WebContentsView: electron.WebContentsView, nativeIm
 const diagnostics = vi.hoisted(() => ({ diagnostic: vi.fn() }));
 vi.mock('../shared/diagnostics', () => diagnostics);
 
-const { ElectronTab, FRAME_LOOK_MS, NAVIGATION_WAIT_MS } = await import('./browser-view');
+const { ElectronTab, electronTabFactory, FRAME_LOOK_MS, NAVIGATION_WAIT_MS } = await import('./browser-view');
 const { requestsInFlight } = await import('./browser-profile');
+const { BrowserSessions } = await import('./browser-sessions');
 
 type Contents = InstanceType<typeof electron.FakeContents>;
 
@@ -169,6 +170,62 @@ function setup(popupAllowed = false) {
   const tab = new ElectronTab(ctx, hooks, 'https://a.test/');
   const view = window.contentView.addChildView.mock.calls[0][0] as InstanceType<typeof electron.WebContentsView>;
   return { tab, hooks, window, view, contents: view.webContents as Contents, ctx, requests: requestsInFlight(profile) };
+}
+
+/* The person's input in the view, as Electron reports it: a mouse event in
+   before-mouse-event, a key in before-input-event, and any input event,
+   their wheel's included, in input-event. */
+function personAt(contents: Contents) {
+  const fire = (name: string, input: Record<string, unknown>) => {
+    for (const listener of contents.listeners[name] ?? []) listener({ preventDefault: vi.fn() }, input);
+  };
+  return {
+    mouse: (type: string) => {
+      fire('before-mouse-event', { type, x: 5, y: 5, button: 'left', clickCount: 1 });
+      fire('input-event', { type });
+    },
+    key: (type: 'keyDown' | 'keyUp') => {
+      fire('before-input-event', { type, key: 'a', code: 'KeyA', alt: false, control: false, meta: false, shift: false });
+      fire('input-event', { type: type === 'keyDown' ? 'rawKeyDown' : 'keyUp' });
+    },
+    event: (type: string) => fire('input-event', { type }),
+  };
+}
+
+/* As Electron 45 reports the agent's pointer input: each move, press and
+   release the debugger sends reaches before-mouse-event while its command
+   runs, and each wheel input-event then and once more just after the
+   command answers. The debugger's keys reach input-event only. `onPress`
+   runs at the agent's press. */
+function reportAgentPointer(contents: Contents) {
+  const send = contents.debugger.sendCommand;
+  const report = { reported: [] as string[], onPress: null as (() => void) | null };
+  const as = personAt(contents);
+  const MOUSE: Record<string, string> = { mouseMoved: 'mouseMove', mousePressed: 'mouseDown', mouseReleased: 'mouseUp' };
+  vi.spyOn(contents.debugger, 'sendCommand').mockImplementation(async (method: string, params: Record<string, unknown> = {}, sessionId?: string) => {
+    const type = String(params.type);
+    if (method === 'Input.dispatchMouseEvent' && MOUSE[type]) {
+      report.reported.push(MOUSE[type]);
+      as.mouse(MOUSE[type]);
+      if (type === 'mousePressed') report.onPress?.();
+    }
+    if (method === 'Input.dispatchMouseEvent' && type === 'mouseWheel') {
+      report.reported.push('mouseWheel');
+      as.event('mouseWheel');
+      as.event('gestureScrollBegin');
+    }
+    if (method === 'Input.dispatchKeyEvent') as.event(type);
+    const answer = await send(method, params, sessionId);
+    if (method === 'Input.dispatchMouseEvent' && type === 'mouseWheel') {
+      setTimeout(() => {
+        as.event('gestureScrollUpdate');
+        as.event('mouseWheel');
+        as.event('gestureScrollEnd');
+      }, 0);
+    }
+    return answer;
+  });
+  return report;
 }
 
 /* A request the page's main frame sends, as the profile's listeners report it. */
@@ -936,6 +993,47 @@ describe('ElectronTab', () => {
     });
   });
 
+  it("notes the person's press, release, key and wheel as their input, never a move or a scroll gesture", () => {
+    const { contents, hooks } = setup();
+    const person = personAt(contents);
+    person.mouse('mouseMove');
+    person.mouse('mouseDown');
+    person.mouse('mouseUp');
+    person.event('gestureScrollUpdate');
+    person.event('mouseWheel');
+    person.key('keyDown');
+    expect(vi.mocked(hooks.personInput).mock.calls).toEqual([['press'], ['release'], ['wheel'], ['key']]);
+  });
+
+  /* Electron 45 reports the moves, presses and releases the debugger sends
+     in before-mouse-event while the command runs, and its wheels in
+     input-event, one more just after the command answers (reportAgentPointer). */
+  it("notes none of the agent's own pointer input, which Electron reports as it does the person's, and still the person's key during it", async () => {
+    const { tab, contents, hooks } = setup();
+    const agent = reportAgentPointer(contents);
+    vi.useFakeTimers();
+    try {
+      for (const body of [
+        { action: 'click', element: 1 },
+        { action: 'scroll', direction: 'down', amount: 360 },
+        { action: 'drag', from: { x: 400, y: 300 }, to: { x: 600, y: 300 }, coords: 'page' },
+      ]) {
+        const step = tab.act(stepOf(body));
+        await vi.advanceTimersByTimeAsync(5_000);
+        await step;
+      }
+      expect(agent.reported).toEqual(expect.arrayContaining(['mouseMove', 'mouseDown', 'mouseUp', 'mouseWheel']));
+      expect(hooks.personInput).not.toHaveBeenCalled();
+      agent.onPress = () => personAt(contents).key('keyDown');
+      const step = tab.act(stepOf({ action: 'click', element: 1 }));
+      await vi.advanceTimersByTimeAsync(5_000);
+      await step;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(vi.mocked(hooks.personInput).mock.calls).toEqual([['key']]);
+  });
+
   it('answers a sign-in prompt only through the person', () => {
     const { contents, hooks } = setup();
     const callback = vi.fn();
@@ -1252,6 +1350,51 @@ describe('ElectronTab', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    /* The task's sessions over a real tab: the agent's click changes the
+       page, and Electron reports its press and release as it reports the
+       person's (reportAgentPointer). */
+    it("answers that the agent's click changed the page, and can't tell once the person's press, key or wheel reached it during the settle", async () => {
+      const window = { contentView: { addChildView: vi.fn(), removeChildView: vi.fn() } };
+      const profile = {} as Session;
+      const sessions = new BrowserSessions({
+        factory: electronTabFactory({ window: () => window as unknown as BrowserWindow, session: () => profile, register: vi.fn() }),
+        emit: () => {},
+        cookies: async () => ({ present: false, expiresAt: null }),
+      });
+      sessions.setAvailable(true);
+      sessions.open('t-a', 'https://a.test/');
+      const contents = (window.contentView.addChildView.mock.calls[0][0] as InstanceType<typeof electron.WebContentsView>).webContents as Contents;
+      const agent = reportAgentPointer(contents);
+      agent.onPress = () => contents.pageChanges();
+      const person = personAt(contents);
+      const look = contents.executeJavaScriptInIsolatedWorld.getMockImplementation()!;
+      /* The changed answer of a click, with `during` run at the settle's first look at the page. */
+      const clickChanged = async (during?: () => void) => {
+        let first = true;
+        contents.executeJavaScriptInIsolatedWorld.mockImplementation(async (world, scripts) => {
+          if (first && scripts[0].code.includes('"kind":"changeMark"')) {
+            first = false;
+            during?.();
+          }
+          return look(world, scripts);
+        });
+        const answer = sessions.action('t-a', stepOf({ action: 'click', element: 1 }));
+        await vi.advanceTimersByTimeAsync(5_000);
+        return (await answer).changed;
+      };
+      vi.useFakeTimers();
+      try {
+        expect(await clickChanged()).toBe(true);
+        expect(await clickChanged(() => person.event('mouseWheel')), 'their wheel').toBeNull();
+        expect(await clickChanged(() => person.mouse('mouseDown')), 'their press').toBeNull();
+        expect(await clickChanged(() => person.key('keyDown')), 'their key').toBeNull();
+        expect(await clickChanged(() => person.mouse('mouseMove')), 'their pointer passing over').toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(agent.reported).toEqual(expect.arrayContaining(['mouseDown', 'mouseUp']));
     });
   });
 
