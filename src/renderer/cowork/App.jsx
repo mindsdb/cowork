@@ -2212,13 +2212,15 @@ function AppCore() {
   );
   const refreshDatasourceConnectors = useCallback(() => {
     if (!orgMode) return Promise.resolve();
-    const databases = listDatasourceConnections()
+    return listDatasourceConnections()
       .then((rows) => setDatasourceConnectors(toDatasourceRows(rows)))
       .catch(() => setDatasourceConnectors([]));
-    const customs = listCustomConnections()
+  }, [orgMode]);
+  const refreshCustomConnectors = useCallback(() => {
+    if (!orgMode) return Promise.resolve();
+    return listCustomConnections()
       .then((rows) => setCustomConnectors(toCustomConnectionRows(rows)))
       .catch(() => setCustomConnectors([]));
-    return Promise.all([databases, customs]);
   }, [orgMode]);
   // Connecting or removing a database happens in two other places — the
   // connect form's panel and the connections page — and both already announce
@@ -2227,10 +2229,10 @@ function AppCore() {
   // the rest of the session: a connection made now would never appear, and a
   // removed one would never leave.
   useEffect(() => {
-    const onChanged = () => { refreshDatasourceConnectors(); };
+    const onChanged = () => { refreshDatasourceConnectors(); refreshCustomConnectors(); };
     window.addEventListener('anton:connections-changed', onChanged);
     return () => window.removeEventListener('anton:connections-changed', onChanged);
-  }, [refreshDatasourceConnectors]);
+  }, [refreshDatasourceConnectors, refreshCustomConnectors]);
   // That one refresh lands while a fresh connection can still be pending, and
   // the composer offers verified connections only, so without this a database
   // that passes its check a moment later stays absent until a reload.
@@ -2626,6 +2628,7 @@ function AppCore() {
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
     refreshDatasourceConnectors();
+    refreshCustomConnectors();
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));

@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 
-const spies = vi.hoisted(() => ({ customs: [] }));
+const spies = vi.hoisted(() => ({ customs: [], databases: [] }));
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -18,7 +18,7 @@ vi.mock('./api', async (importOriginal) => ({
   fetchPins: vi.fn(async () => ({ pins: [] })),
   fetchSchedules: vi.fn(async () => []),
   fetchDatasources: vi.fn(async () => ({ connections: [{ engine: 'gmail', name: 'Work mail' }] })),
-  listDatasourceConnections: vi.fn(async () => []),
+  listDatasourceConnections: vi.fn(async () => spies.databases),
   listCustomConnections: vi.fn(async () => spies.customs),
   fetchInFlightList: vi.fn(async () => []),
   fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
@@ -61,7 +61,7 @@ vi.mock('../platform/host', async (importOriginal) => {
 });
 
 import App from './App';
-import { listCustomConnections } from './api';
+import { listCustomConnections, listDatasourceConnections } from './api';
 import { setOrgMode } from '../lib/orgMode';
 
 const QUOTES = { id: 7, connector_id: 'acme_quotes', name: 'Acme Quotes', status: 'verified' };
@@ -70,6 +70,9 @@ const RATES = { id: 8, connector_id: 'acme_rates', name: 'Rates', status: 'verif
 beforeEach(() => {
   setOrgMode(true);
   spies.customs = [QUOTES, { ...RATES, status: 'pending' }];
+  spies.databases = [];
+  vi.mocked(listCustomConnections).mockClear();
+  vi.mocked(listDatasourceConnections).mockClear();
   window.history.replaceState(null, '', '/');
 });
 
@@ -93,6 +96,21 @@ describe('the composer connection toggles in cloud', () => {
 
     await waitFor(() => expect(screen.getByTestId('toggles').textContent).toContain('acme_rates:Rates'));
   });
+});
+
+describe('the poll for a database still being checked', () => {
+  it('refetches the databases and leaves the custom connections alone', async () => {
+    spies.databases = [{ id: 3, connector_id: 'postgres', name: 'Analytics', status: 'pending' }];
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('toggles')).toBeTruthy());
+    await waitFor(() => expect(listCustomConnections).toHaveBeenCalled());
+    const databaseFetches = vi.mocked(listDatasourceConnections).mock.calls.length;
+    const customFetches = vi.mocked(listCustomConnections).mock.calls.length;
+
+    await waitFor(() => expect(listDatasourceConnections.mock.calls.length).toBeGreaterThan(databaseFetches), { timeout: 5000 });
+
+    expect(listCustomConnections.mock.calls.length).toBe(customFetches);
+  }, 10000);
 });
 
 describe('the composer connection toggles on desktop', () => {

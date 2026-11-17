@@ -18,9 +18,11 @@ import { useTranslation } from '../../lib/i18n';
 const DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-web';
 
 // `offer`, when set, replaces the download with a way to connect the API now:
-// { label, onAccept }, worded by the caller.
+// { kind: 'connect' | 'build', onAccept }. It shows only where the download would.
 export default function ComingSoonModal({ feature, onClose, offer = null }) {
   const { t } = useTranslation('shell');
+  const hasFooterActions = PLATFORM_UI && !host.isMobileShell;
+  const shownOffer = hasFooterActions ? offer : null;
   return (
     <Modal
       open={feature != null}
@@ -36,15 +38,15 @@ export default function ComingSoonModal({ feature, onClose, offer = null }) {
       <ModalBody>
         <p className="s-body">
           {PLATFORM_UI
-            ? (offer
-              ? `${feature || 'This feature'} isn’t available on Cloud just yet. You can connect it now as a custom connector.`
+            ? (shownOffer
+              ? t('comingSoon.cloudBodyCustom', { feature })
               : (feature ? t('comingSoon.cloudBodyNamed', { feature }) : t('comingSoon.cloudBody')))
             : (feature ? t('comingSoon.unavailableBodyNamed', { feature }) : t('comingSoon.unavailableBody'))}
         </p>
       </ModalBody>
       {/* The mobile app (ENG-4023) offers no installer: a phone cannot run
           the desktop app, so the note stands alone with a Close button. */}
-      {PLATFORM_UI && !host.isMobileShell ? (
+      {hasFooterActions ? (
         <ModalFooter
           cancel={(
             <Button variant="subtle" onClick={onClose}>
@@ -52,15 +54,15 @@ export default function ComingSoonModal({ feature, onClose, offer = null }) {
             </Button>
           )}
         >
-          {offer ? (
+          {shownOffer ? (
             <Button
               variant="primary"
               onClick={() => {
                 onClose();
-                offer.onAccept();
+                shownOffer.onAccept();
               }}
             >
-              {offer.label}
+              {shownOffer.kind === 'connect' ? t('comingSoon.connectCustom', { feature }) : t('comingSoon.buildCustom')}
             </Button>
           ) : (
             <Button

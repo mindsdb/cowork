@@ -199,16 +199,16 @@ export function toCustomConnectionRows(connections) {
  * SharePoint has its own form, so it keeps the plain dialog.
  * @param {{connector: {id: string, label?: string}, customMatch: object|null, canBuild: boolean,
  *   connect: (connector: object) => void, build: (name: string) => void}} args
- * @returns {{label: string, onAccept: () => void} | null}
+ * @returns {{kind: 'connect' | 'build', onAccept: () => void} | null}
  */
 export function desktopOnlyOffer({ connector, customMatch, canBuild, connect, build }) {
   if (!connector?.id || connector.id === SHAREPOINT_ENGINE) return null;
   const label = connector.label || 'This connector';
   if (customMatch) {
-    return { label: `Connect your custom ${label}`, onAccept: () => connect(customMatch) };
+    return { kind: 'connect', onAccept: () => connect(customMatch) };
   }
   if (canBuild) {
-    return { label: 'Build a custom connector', onAccept: () => build(label) };
+    return { kind: 'build', onAccept: () => build(label) };
   }
   return null;
 }

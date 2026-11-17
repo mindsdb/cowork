@@ -267,7 +267,7 @@ describe('the offer for a connector cloud does not run yet', () => {
     const build = vi.fn();
     const offer = desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: HASDATA_CUSTOM, canBuild: true, connect, build });
 
-    expect(offer.label).toBe('Connect your custom HasData');
+    expect(offer.kind).toBe('connect');
     offer.onAccept();
     expect(connect).toHaveBeenCalledWith(HASDATA_CUSTOM);
     expect(build).not.toHaveBeenCalled();
@@ -277,7 +277,7 @@ describe('the offer for a connector cloud does not run yet', () => {
     const build = vi.fn();
     const offer = desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: null, canBuild: true, connect: vi.fn(), build });
 
-    expect(offer.label).toBe('Build a custom connector');
+    expect(offer.kind).toBe('build');
     offer.onAccept();
     expect(build).toHaveBeenCalledWith('HasData');
   });

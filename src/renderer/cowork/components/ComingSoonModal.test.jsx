@@ -65,7 +65,7 @@ describe('ComingSoonModal', () => {
     const onClose = vi.fn();
     const onAccept = vi.fn();
     render(<ComingSoonModal feature="HasData" onClose={onClose}
-      offer={{ label: 'Connect your custom HasData', onAccept }} />);
+      offer={{ kind: 'connect', onAccept }} />);
 
     expect(screen.queryByText('Download the app')).toBeNull();
     expect(screen.getByText(/connect it now as a custom connector/)).toBeTruthy();
@@ -74,5 +74,22 @@ describe('ComingSoonModal', () => {
     expect(onAccept).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('words the build offer without the feature name', () => {
+    render(<ComingSoonModal feature="HasData" onClose={vi.fn()}
+      offer={{ kind: 'build', onAccept: vi.fn() }} />);
+
+    expect(screen.getByText('Build a custom connector')).toBeTruthy();
+  });
+
+  it('keeps the download copy, and no offer, inside the mobile app', () => {
+    hostState.isMobileShell = true;
+    render(<ComingSoonModal feature="HasData" onClose={vi.fn()}
+      offer={{ kind: 'connect', onAccept: vi.fn() }} />);
+
+    expect(screen.queryByText(/connect it now as a custom connector/)).toBeNull();
+    expect(screen.queryByText('Connect your custom HasData')).toBeNull();
+    expect(screen.getByText(/HasData isn’t\s+available on Cloud just yet/)).toBeTruthy();
   });
 });
