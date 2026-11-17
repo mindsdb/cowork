@@ -141,6 +141,7 @@ vi.mock('./lib/analytics', () => ({
   trackAgentSessionStarted: vi.fn(),
   trackNewTaskMessageSent: vi.fn(),
   sendWithStartVia: vi.fn((via, send) => send()),
+  setPendingTaskMode: vi.fn(),
   trackAppInstalled: vi.fn(),
   trackFirstQuery: vi.fn(),
   classifyFirstResponse: vi.fn(() => ({})),

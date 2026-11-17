@@ -66,7 +66,7 @@ const EVENTS = {
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
   EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
-  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app', attachments, has_link, chars, added_chars? } — the first message of a new task; never carries its text
+  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app', attachments, has_link, chars, added_chars?, task_mode?, mode_line?: 'appended'|'replaced_example'|'example', example_placed? } — the first message of a new task; never carries its text
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
@@ -913,6 +913,15 @@ export function setStartVia(via) {
   pendingStartVia = via ? { via, at: Date.now() } : null;
 }
 
+// The Home task mode the next new task is sent under, and what became of its
+// instruction line (`modeMessage`). Only Home knows whether an example was
+// placed, so it is handed over here rather than read back from the text.
+let pendingTaskMode = null;
+
+export function setPendingTaskMode(note) {
+  pendingTaskMode = note ? { ...note, at: Date.now() } : null;
+}
+
 // Runs a send that starts a new task under a start label. The label is kept
 // only if the send goes out: a refused one (answers false) or a failed one
 // (throws) must not leave it for the next, unrelated message.
@@ -954,6 +963,8 @@ export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
   const pending = pendingStartVia;
   pendingStartVia = null;
   const fresh = pending && Date.now() - pending.at <= START_VIA_TTL_MS;
+  const mode = pendingTaskMode && Date.now() - pendingTaskMode.at <= START_VIA_TTL_MS ? pendingTaskMode : null;
+  pendingTaskMode = null;
   const via = fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer');
   const body = typeof text === 'string' ? text : '';
   const props = {
@@ -965,6 +976,11 @@ export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
   };
   if (start?.example_id) props.example_id = start.example_id;
   if (start?.added_chars != null) props.added_chars = start.added_chars;
+  if (mode) {
+    props.task_mode = mode.task_mode;
+    props.mode_line = mode.mode_line;
+    props.example_placed = mode.example_placed;
+  }
   Object.assign(props, placementProps(entry?.entry_placement));
   capture(EVENTS.NEW_TASK_MESSAGE_SENT, props);
 }

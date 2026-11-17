@@ -7,10 +7,16 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import HomeView from './HomeView';
 import { TASK_MODES } from '../components/taskmodes/taskModes';
+import { setPendingTaskMode } from '../lib/analytics';
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, fetchSkills: vi.fn(async () => []) };
+});
+
+vi.mock('../lib/analytics', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, setPendingTaskMode: vi.fn() };
 });
 
 const renderHome = (overrides = {}) => {
@@ -68,6 +74,39 @@ describe('HomeView task modes (ENG-1594)', () => {
     });
     // Default view restored: pill row is back.
     expect(screen.getByRole('button', { name: 'Create slides' })).toBeInTheDocument();
+  });
+
+  it('sends a request typed over a picked example without the mode\'s instruction', async () => {
+    const user = userEvent.setup();
+    const props = renderHome();
+    const viz = TASK_MODES.find((m) => m.id === 'visualization');
+    await user.click(screen.getByRole('button', { name: viz.pillLabel }));
+    await user.click(screen.getByRole('button', { name: viz.samples[0].label }));
+    // onPrefill is the app's; here the person clears the box and types instead.
+    await user.type(screen.getByPlaceholderText(viz.placeholder), 'plan a birthday party');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(props.onSend).toHaveBeenCalledWith(
+      'plan a birthday party',
+      { harness: 'anton', model: undefined },
+    ));
+    expect(setPendingTaskMode).toHaveBeenCalledWith({ task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true });
+  });
+
+  it('hands the mode to analytics before sending, and withdraws it when the send is refused', async () => {
+    const user = userEvent.setup();
+    setPendingTaskMode.mockClear();
+    let atSend;
+    const onSend = vi.fn(async () => {
+      atSend = setPendingTaskMode.mock.lastCall?.[0];
+      return false;
+    });
+    renderHome({ onSend });
+    await user.click(screen.getByRole('button', { name: 'Create slides' }));
+    await user.type(screen.getByPlaceholderText(slides.placeholder), 'Make a deck');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(atSend).toEqual({ task_mode: 'slides', mode_line: 'appended', example_placed: false });
+    await waitFor(() => expect(setPendingTaskMode).toHaveBeenLastCalledWith(null));
   });
 
   it('keeps the mode when the send fails', async () => {

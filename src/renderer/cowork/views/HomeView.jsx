@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import TaskModePills from '../components/taskmodes/TaskModePills';
 import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
-import { composeModeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE } from '../components/taskmodes/taskModes';
+import { modeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE } from '../components/taskmodes/taskModes';
 import { completeStepTracked } from '../components/onboarding/track';
 import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
 import { stepsCompletedBySend } from '../components/onboarding/completion';
@@ -12,7 +12,7 @@ import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingCopyKey, offersBilling } from '../lib/billingLinks';
-import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded } from '../lib/analytics';
+import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded, setPendingTaskMode } from '../lib/analytics';
 import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
 import { takeSignupWelcome, SIGNUP_FROM_DESKTOP } from '../lib/signupWelcome';
 import { productName } from '../../lib/deploymentBrand';
@@ -328,11 +328,19 @@ export default function HomeView({
   // the sidebar checklist, or the user typing it by hand) — but only once the
   // send has gone out: onSend answers false when the provider preflight
   // fails (ENG-2307). A selected task mode appends its instruction line after
-  // the user text (titles and search derive from the message head) and
-  // clears itself after a successful send. `meta` (harness/model,
-  // ENG-1656) passes through untouched.
+  // the user text (titles and search derive from the message head), unless the
+  // person replaced a placed example with a request of their own, and clears
+  // itself after a successful send. `meta` (harness/model, ENG-1656) passes
+  // through untouched.
   const sendTracked = async (text, meta) => {
-    const result = await onSend(composeModeMessage(taskMode, text, pickedSample), meta);
+    const { text: sent, modeLine } = modeMessage(taskMode, text, pickedSample);
+    setPendingTaskMode(modeLine && { task_mode: taskMode.id, mode_line: modeLine, example_placed: Boolean(pickedSample) });
+    let result;
+    try {
+      result = await onSend(sent, meta);
+    } finally {
+      if (!result) setPendingTaskMode(null);
+    }
     if (result) {
       const done = stepsCompletedBySend(text);
       // An example the person picked and then edited still counts as tried.

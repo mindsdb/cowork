@@ -74,14 +74,14 @@ describe('an example picked and then edited', () => {
     expect(onSend.mock.calls[0][0]).toBe(`${edited}\n\n${mode.instruction}`);
   });
 
-  it('treats text that replaces the example as an ordinary message: instruction added, nothing ticked', async () => {
+  it('sends text that replaces the example as the person\'s own request: no instruction, nothing ticked', async () => {
     const onSend = vi.fn(async () => true);
     renderHome(onSend);
 
     await pickThenSend(userEvent.setup(), plain, 'AI in 2026');
 
     await waitFor(() => expect(onSend).toHaveBeenCalled());
-    expect(onSend.mock.calls[0][0]).toBe(`AI in 2026\n\n${mode.instruction}`);
+    expect(onSend.mock.calls[0][0]).toBe('AI in 2026');
     expect(getSnapshot().completed.has('see-it-work')).toBe(false);
   });
 

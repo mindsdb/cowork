@@ -339,17 +339,27 @@ export function resemblesSample(sample, text) {
   return want.length > 0 && want.filter((w) => have.has(w)).length / want.length >= 0.5;
 }
 
-export function composeModeMessage(mode, text, pickedSample) {
-  if (!mode || !mode.instruction) return text;
+/** The outgoing message for a selected mode, and what happened to the mode's
+    instruction line: `appended`, `replaced_example` (an example was placed and
+    the person sent something else instead, so the line would describe a
+    request they did not make), or `example` (the text is an example, which
+    already says what it wants). `modeLine` is null when no mode applies. */
+export function modeMessage(mode, text, pickedSample) {
+  if (!mode || !mode.instruction) return { text, modeLine: null };
+  if (pickedSample && !resemblesSample(pickedSample, text)) return { text, modeLine: 'replaced_example' };
   // A plain example the person picked keeps its own wording however they edit it.
-  if (pickedSample?.plain && mode.samples.includes(pickedSample) && resemblesSample(pickedSample, text)) return text;
+  if (pickedSample?.plain && mode.samples.includes(pickedSample)) return { text, modeLine: 'example' };
   const sent = text.trim();
   // A picked sample is already a full prompt — appending the instruction
   // would send a doubled signal ("…zen garden.\n\nCreate a playable game.").
-  if (mode.samples.some((s) => s.prompt === sent)) return text;
+  if (mode.samples.some((s) => s.prompt === sent)) return { text, modeLine: 'example' };
   // A plain sample keeps its own wording once the person adds to it.
-  if (mode.samples.some((s) => s.plain && sent.startsWith(s.prompt))) return text;
-  return `${text}\n\n${mode.instruction}`;
+  if (mode.samples.some((s) => s.plain && sent.startsWith(s.prompt))) return { text, modeLine: 'example' };
+  return { text: `${text}\n\n${mode.instruction}`, modeLine: 'appended' };
+}
+
+export function composeModeMessage(mode, text, pickedSample) {
+  return modeMessage(mode, text, pickedSample).text;
 }
 
 // What the checklist's "Try an example" row opens on Home: one short list that
