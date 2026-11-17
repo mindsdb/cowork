@@ -1,13 +1,15 @@
 // The project modal edits the environment as free text; these helpers own the
 // text format it is saved in.
 
+import i18n from '../../lib/i18n';
+
 export function parseEnvironmentVariables(text: string): [string, string][] {
   return text
     .split('\n')
     .filter((line) => line.trim())
     .map((line) => {
       const separator = line.indexOf('=');
-      if (separator < 1) throw new Error(`Environment line needs NAME=value: ${line}`);
+      if (separator < 1) throw new Error(i18n.t('projectDefaults.invalidEnvironmentLine', { ns: 'code', line }));
       return [line.slice(0, separator).trim(), line.slice(separator + 1)];
     });
 }

@@ -44,4 +44,22 @@ describe('CodingAgentSettingsSection model picker', () => {
     expect(walletRow).toHaveTextContent('Needs credits');
     expect(within(walletRow).getByRole('button', { name: 'Add credits' })).toBeInTheDocument();
   });
+
+  it('asks for a model availability re-check when the picker opens', async () => {
+    const user = userEvent.setup();
+    const onModelMenuOpenChange = vi.fn();
+    render(
+      <CodingAgentSettingsSection
+        settings={settings}
+        setSetting={vi.fn()}
+        available
+        enabled
+        onEnabledChange={vi.fn()}
+        onModelMenuOpenChange={onModelMenuOpenChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Coding agent model' }));
+    expect(onModelMenuOpenChange.mock.calls[0][0]).toBe(true);
+  });
 });

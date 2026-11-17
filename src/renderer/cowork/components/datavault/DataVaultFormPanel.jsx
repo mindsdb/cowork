@@ -17,6 +17,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button, Tooltip } from '../ui';
+import { ConnectorTestPrompt } from './ConnectorTestPrompt';
+import { clearPendingTest, dropPendingTest, getPendingTest, pendingTestFromAnswer, setPendingTest, setPendingTestCanceller, subscribePendingTest } from './connectorTestStore';
 import { DataVaultForm } from './DataVaultForm';
 import { providerNameFromSpec } from './methodHero';
 import {
@@ -24,12 +26,23 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { allowConnectorTestHost, cancelConnectorTest, confirmConnectorTest, createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, fetchSubmissionReplaces, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { buildDatasourcePayload, describeConnectionState } from '../../lib/datasourceSubmission';
 import { host } from '../../../platform/host';
 import { PLATFORM_UI } from '../../../lib/deployment';
 import { trackDataSourceConnected } from '../../lib/analytics';
 
 import { submitDataVaultForm } from '../../api';
+import { useTranslation } from '../../../lib/i18n';
+import { productName } from '../../../lib/deploymentBrand';
+
+// Ends a waiting connection test on the server, which otherwise keeps the
+// typed values until its timeout. Registered so every drop path uses it.
+function cancelPendingTestOnServer(pending) {
+  cancelConnectorTest(pending.kind === 'approval' ? { approvalId: pending.id } : { confirmId: pending.id })
+    .catch((err) => console.warn('Could not cancel a connection test', err));
+}
+setPendingTestCanceller(cancelPendingTestOnServer);
 
 const BROWSER_OAUTH_POLL_MS    = 3000;
 const BROWSER_OAUTH_TIMEOUT_MS = 2 * 60 * 1000;
@@ -45,10 +58,24 @@ function getOAuthMethod(spec, methodId) {
 
 const FONT_BODY = 'var(--font-body)';
 
-export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose, highlighted = false }) {
+export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose, highlighted = false, onUseBrowser }) {
+  const { t } = useTranslation('library');
   const [spec, setSpec] = useState(() => getForm(conversationId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const errorRef = useRef(null);
+  // The error renders under the submit button, below the fold on a long
+  // database form. Each submit clears it first, so a repeat refusal scrolls too.
+  useEffect(() => {
+    if (!error || !spec?._cloud_datasource) return;
+    errorRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [error, spec?._cloud_datasource]);
+  const clearCloudDatasourceError = () => {
+    if (spec?._cloud_datasource) setError('');
+  };
+  // A new connection that would overwrite a saved one waits here for the
+  // user to choose Replace or Cancel.
+  const [replacePrompt, setReplacePrompt] = useState(null);
   // Track the form_id we last animated in for. A new form for the
   // same conversation (e.g. user starts a second connection in the
   // same chat) should re-trigger the appearance, but a patch into
@@ -103,6 +130,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   useEffect(() => {
     setSpec(getForm(conversationId));
     return subscribe(conversationId, (next) => setSpec(next));
+  }, [conversationId]);
+
+  // A custom connector's test waiting on the user. Read from its own store,
+  // never from the spec, so no key the model writes can show these buttons.
+  const [pendingTest, setPendingTestState] = useState(() => getPendingTest(conversationId));
+  const [testBusy, setTestBusy] = useState(false);
+  const [testError, setTestError] = useState('');
+  useEffect(() => {
+    setPendingTestState(getPendingTest(conversationId));
+    return subscribePendingTest(conversationId, (next) => { setPendingTestState(next); setTestError(''); });
   }, [conversationId]);
 
   useEffect(() => {
@@ -170,7 +207,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             _is_probing: false,
             _is_success: true,
             title: successTitle,
-            subtitle: "Saved to the data vault. Cowork can now use this connection in tasks.",
+            subtitle: t('dataVault.saved.now', { product: productName('Cowork') }),
           });
         } else if (outcome?.status === 'error') {
           clearInterval(oauthPollRef.current);
@@ -178,7 +215,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           patchForm(conversationId, {
             form_id: formId,
             _is_probing: false,
-            form_error: outcome.error || 'Sign-in failed. Please try again.',
+            form_error: outcome.error || t('dataVault.oauth.signInFailed'),
             _is_success: false,
           });
         }
@@ -186,17 +223,21 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     }, BROWSER_OAUTH_POLL_MS);
   };
 
-  const handleAction = async ({ id, kind, values, skipped, authMethod }) => {
+  const handleAction = async ({ id, kind, values, skipped, authMethod, replaceName }) => {
     if (!spec) return;
     setError('');
+    setReplacePrompt(null);
 
-    // Success branch — two intents:
+    // Nothing left to submit branch — two intents:
     //   • view_connectors → route to the Connect Apps and Data page,
     //     then clear the panel
     //   • dismiss / cancel → just clear the panel
-    // The connection is already in the vault either way; nothing
-    // to dispatch back to anton.
-    if (spec._is_success) {
+    // The connection is already stored either way; nothing to dispatch back
+    // to anton. A pending cloud database belongs here too: its credential is
+    // in auth and a separate check decides the rest, so routing these buttons
+    // through the generic paths would send a chat message on Close and
+    // attempt a duplicate create on View connections.
+    if (spec._is_success || spec._datasource_pending) {
       if (id === 'view_connectors') {
         onNavigateToConnectors?.();
       }
@@ -254,32 +295,32 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         });
         const options = (result.projects || []).map((project) => ({
           value: String(project.id),
-          label: project.name || `Project ${project.id}`,
+          label: project.name || t('dataVault.posthog.project', { id: project.id }),
         }));
         if (!options.length) {
-          throw new Error('No PostHog projects are available to this personal API key. Enter a project ID manually or check the key access.');
+          throw new Error(t('dataVault.posthog.none'));
         }
         patchForm(conversationId, {
           form_id: spec.form_id,
           form_error: null,
-          subtitle: 'Choose the PostHog project to connect.',
+          subtitle: t('dataVault.posthog.choose'),
           methods: {
             [authMethod || 'personal-api-key']: {
               fields: {
                 posthog_project_choice: {
                   name: 'posthog_project_choice',
-                  label: 'PostHog project',
+                  label: t('dataVault.posthog.label'),
                   type: 'select',
                   required: true,
                   options,
-                  help: 'Choose the PostHog project to connect, or type its numeric ID directly in the Project ID field.',
+                  help: t('dataVault.posthog.help'),
                 },
               },
             },
           },
         });
       } catch (err) {
-        setError(err?.message || 'Could not find PostHog projects.');
+        setError(err?.message || t('dataVault.posthog.findFailed'));
       } finally {
         setBusy(false);
       }
@@ -295,7 +336,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     if ((authMethod === 'browser_oauth_builtin' || authMethod === 'mcp') && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
       const providerLabel = providerNameFromSpec(spec);
-      const successTitle = `${providerLabel} connected`;
+      const successTitle = t('dataVault.providerConnected', { provider: providerLabel });
       setBusy(true);
       setError('');
 
@@ -305,12 +346,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         patchForm(conversationId, {
           form_id: spec.form_id,
           _is_probing: true,
-          status_text: `Waiting for ${providerLabel} sign-in…`,
+          status_text: t('dataVault.oauth.waiting', { provider: providerLabel }),
           form_error: null,
         });
         try {
           const result = await host.oauthConnect({ engine, name: values?.label || '', extraFields: values || {} });
-          if (!result || result.ok === false) throw new Error(result?.reason || 'OAuth flow failed.');
+          if (!result || result.ok === false) throw new Error(result?.reason || t('dataVault.oauth.failed'));
           setBusy(false);
           try { await fetchDatasources(); } catch { /* best effort */ }
           patchForm(conversationId, {
@@ -318,12 +359,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             _is_probing: false,
             _is_success: true,
             title: successTitle,
-            subtitle: 'Saved to the data vault. Cowork can now use this connection in tasks.',
+            subtitle: t('dataVault.saved.now', { product: productName('Cowork') }),
           });
           trackDataSourceConnected(engine);
-          onContinue?.({ text: `Connected ${successTitle} — saved to the data vault.` });
+          // The chat continuation stays in English: it is addressed to the agent.
+          onContinue?.({ text: `Connected ${providerLabel} connected — saved to the data vault.` });
         } catch (e) {
-          patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || 'OAuth flow failed.' });
+          patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || t('dataVault.oauth.failed') });
           setBusy(false);
         }
         return;
@@ -332,18 +374,18 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       // Web fallback — server-side redirect flow.
       const serviceId = getOAuthMethod(spec, authMethod)?.oauth?.service_id;
       if (!serviceId) {
-        setError(`No OAuth configuration for "${engine}".`);
+        setError(t('dataVault.oauth.noConfig', { engine }));
         setBusy(false);
         return;
       }
       try {
         const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
-        if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);
+        if (!result?.authUrl || !result?.state) throw new Error(t('dataVault.oauth.startFailedServer', { provider: providerLabel }));
         window.open(result.authUrl, '_blank');
-        patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: `Waiting for ${providerLabel} sign-in…`, form_error: null });
+        patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: t('dataVault.oauth.waiting', { provider: providerLabel }), form_error: null });
         startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
       } catch (e) {
-        patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || `Could not start ${providerLabel} sign-in.` });
+        patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || t('dataVault.oauth.startFailed', { provider: providerLabel }) });
         setBusy(false);
       }
       return;
@@ -369,17 +411,17 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // `wireMethodId` falls through to `authMethod` for ordinary
     // (non-synthetic) methods so create-flow behaviour is unchanged.
     const wireMethodId = activeMethodSpec?._underlying_method || authMethod;
-    const connectionName = spec._existing_name || spec.name || '';
+    const connectionName = replaceName || spec._existing_name || spec.name || '';
     if (activeMethodSpec?.submit_action === 'oauth_launch' && kind === 'primary') {
       const oauthMeta = activeMethodSpec.oauth || {};
       const clientId = oauthMeta.client_id || (values && values.client_id) || '';
       const clientSecret = oauthMeta.client_secret || (values && values.client_secret) || undefined;
       if (!clientId) {
-        setError('Missing OAuth client ID — fill the Client ID field below.');
+        setError(t('dataVault.oauth.missingClientId'));
         return;
       }
       if (!oauthMeta.auth_url || !oauthMeta.token_url || !Array.isArray(oauthMeta.scopes)) {
-        setError('OAuth metadata is incomplete in the connector spec (auth_url / token_url / scopes).');
+        setError(t('dataVault.oauth.incompleteMeta'));
         return;
       }
 
@@ -395,8 +437,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         const connectorId = spec._connector_id || null;
         if (!connectorId) {
           setError(PLATFORM_UI
-            ? 'This connector cannot be authorized in the browser (no connector id). Use the desktop app.'
-            : 'This connector cannot be authorized in this web UI.');
+            ? t('dataVault.oauth.noBrowserDesktop')
+            : t('dataVault.oauth.noBrowser'));
           return;
         }
         setBusy(true);
@@ -417,7 +459,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           });
           if (!started?.authUrl || !started?.state) {
             if (popup) { try { popup.close(); } catch {} }
-            setError('Could not start the OAuth flow.');
+            setError(t('dataVault.oauth.startFlowFailed'));
             setBusy(false);
             return;
           }
@@ -449,19 +491,19 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             }
             if (status?.status === 'success') { outcome = status; break; }
             if (status?.status === 'error') {
-              setError(status.error || 'OAuth flow failed.');
+              setError(status.error || t('dataVault.oauth.failed'));
               setBusy(false);
               return;
             }
             if (status?.status === 'expired') {
-              setError('The sign-in expired before it completed. Try again.');
+              setError(t('dataVault.oauth.expired'));
               setBusy(false);
               return;
             }
             // 'pending' → keep waiting.
           }
           if (!outcome) {
-            setError('Timed out waiting for the OAuth sign-in to complete.');
+            setError(t('dataVault.oauth.timeout'));
             setBusy(false);
             return;
           }
@@ -484,15 +526,15 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           patchForm(conversationId, {
             form_id: spec.form_id,
             _is_success: true,
-            title: `${outcome.label || connectorId} connected`,
-            subtitle: 'Saved to the data vault. Cowork can use this connection in tasks.',
+            title: t('dataVault.providerConnected', { provider: outcome.label || connectorId }),
+            subtitle: t('dataVault.saved.can', { product: productName('Cowork') }),
           });
           trackDataSourceConnected(connectorId);
           onContinue?.({
             text: `Connected ${outcome.label || connectorId} — saved to the data vault.`,
           });
         } catch (e) {
-          setError(e?.message || 'OAuth flow failed.');
+          setError(e?.message || t('dataVault.oauth.failed'));
           setBusy(false);
         }
         return;
@@ -510,7 +552,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           redirectPort: oauthMeta.redirect_port,
         });
         if (!result || result.ok === false) {
-          setError(result?.reason || 'OAuth flow failed.');
+          setError(result?.reason || t('dataVault.oauth.failed'));
           setBusy(false);
           return;
         }
@@ -559,8 +601,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             patchForm(conversationId, {
               form_id: spec.form_id,
               _is_success: true,
-              title: `${saved.label || connectorId} connected`,
-              subtitle: 'Saved to the data vault. The agent can use this connection in tasks.',
+              title: t('dataVault.providerConnected', { provider: saved.label || connectorId }),
+              subtitle: t('dataVault.saved.agent'),
             });
             trackDataSourceConnected(connectorId);
             // Surface a one-line confirmation in the chat too.
@@ -568,7 +610,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               text: `Connected ${saved.label || connectorId} — saved to the data vault.`,
             });
           } catch (e) {
-            setError(e?.message || 'Could not save the connection.');
+            setError(e?.message || t('dataVault.saveFailed'));
             setBusy(false);
           }
         } else if (onSubmit) {
@@ -589,7 +631,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           });
         }
       } catch (e) {
-        setError(e?.message || 'OAuth flow failed.');
+        setError(e?.message || t('dataVault.oauth.failed'));
         setBusy(false);
       }
       return;
@@ -610,6 +652,83 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           submissionValues.project_id = submissionValues.posthog_project_choice;
         }
         delete submissionValues.posthog_project_choice;
+      }
+      // Cloud datasource: straight to the relay, never through the chat
+      // submission stream. The credential belongs to auth and this form is
+      // dedicated entry kept out of the conversation, so nothing about it is
+      // narrated into a turn. The relay answers with the connection, and its
+      // status decides what the user sees: auth creates one `pending` and
+      // only the gateway's probe completion moves it to verified or failed.
+      if (spec._cloud_datasource) {
+        const payload = buildDatasourcePayload({
+          spec,
+          method: wireMethodId || spec.selected_method || null,
+          values: submissionValues,
+          // The label field is the name, on an edit too: the relay renames a
+          // connection it is sent a new name for, so the stored name is only
+          // the fallback for a label left empty.
+          name: userLabel || connectionName,
+        });
+        const edit = spec._datasource_edit;
+        const connection = edit
+          ? await editDatasourceConnection(edit.id, payload, edit.expectedRevision)
+          : await createDatasourceConnection(payload);
+        const state = describeConnectionState(connection);
+        patchForm(conversationId, {
+          // Without the form id the store treats this as a different form and
+          // replaces the spec outright, which leaves a failed capture looking
+          // at an empty form with its fields and values gone.
+          form_id: spec.form_id,
+          _is_probing: false,
+          status_text: '',
+          // `state.detail` is auth's own "validation failed", which is all it
+          // stores; the hint is the only text that tells anyone what to change.
+          form_error: state.kind === 'failed' ? (state.hint || state.detail || state.title) : '',
+          // A failed connection is already stored, so submitting the corrected
+          // form again has to edit that one. Creating a second would earn a
+          // duplicate-name refusal and leave the first sitting there failed.
+          ...(state.kind === 'failed' && connection?.id
+            ? {
+              _datasource_edit: { id: connection.id, expectedRevision: connection.revision },
+              // The error card replaces the form, so returning to it starts
+              // from an empty one. Saying so beats letting someone press
+              // Connect on a blank password and read a second refusal.
+              subtitle: t('dataVault.datasource.retryNote'),
+            }
+            : {}),
+          ...(state.kind === 'verified'
+            ? { _is_success: true, title: state.title, subtitle: t('dataVault.datasource.ready', { name: connection.name }) }
+            : {}),
+          ...(state.kind === 'pending'
+            ? { _datasource_pending: true, title: state.title, subtitle: state.detail }
+            : {}),
+          _datasource_connection_id: connection?.id ?? null,
+        });
+        if (state.kind === 'verified') trackDataSourceConnected(spec._connector_id || spec.engine || 'datasource');
+        // The connections page and the composer's per-conversation toggles
+        // both hold their own copy of this list; this is how they learn.
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+        setBusy(false);
+        return;
+      }
+      if (!connectionName) {
+        // Advisory: a failed check must not stop the user connecting.
+        let replaces = null;
+        try {
+          replaces = await fetchSubmissionReplaces({
+            formId: spec.form_id,
+            formSpec: wireMethodId ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId } : spec,
+            values: { ...submissionValues, user_label: userLabel },
+            skipped: skipped || [],
+            method: wireMethodId || null,
+          });
+        } catch (e) {
+          console.warn('Could not check whether this connection replaces a saved one', e);
+        }
+        if (replaces?.name) {
+          setReplacePrompt({ ...replaces, action: { id, kind, values, skipped, authMethod } });
+          return;
+        }
       }
       // Endpoint-as-agent path: hand the submission off to the
       // host (App.jsx → handleSubmitDataVaultForm). It opens an SSE
@@ -660,7 +779,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         }));
       }
     } catch (e) {
-      setError(e?.message || 'Could not submit form');
+      // The relay names this one, and only this one, as a conflict: the
+      // connection moved on while this form was open, so the revision the
+      // form carries is no longer the one to edit.
+      setError(
+        e?.code === 'stale_version'
+          ? t('dataVault.staleVersion')
+          : (e?.message || t('dataVault.submitFailed')),
+      );
     } finally {
       setBusy(false);
     }
@@ -668,11 +794,50 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
 
   if (!spec) return null;
 
+  // Applies the server's answer to a waiting test: the next question, the
+  // preview to confirm, or a patch that ends it.
+  const answerPendingTest = async (call, { saved = false } = {}) => {
+    const pending = getPendingTest(conversationId);
+    if (!pending || testBusy) return;
+    setTestBusy(true);
+    setTestError('');
+    try {
+      const answer = await call(pending);
+      const next = pendingTestFromAnswer(pending.formId, answer);
+      if (saved && answer?.saved_slug) {
+        trackDataSourceConnected(spec?.engine || spec?._connector_id || 'custom');
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      }
+      // A new form or test replaced this one while the server answered.
+      if (getPendingTest(conversationId) !== pending) {
+        if (next) cancelPendingTestOnServer(next);
+        return;
+      }
+      if (next) {
+        setPendingTest(conversationId, next);
+        return;
+      }
+      clearPendingTest(conversationId);
+      if (answer?.patch) patchForm(conversationId, answer.patch);
+    } catch (err) {
+      if (getPendingTest(conversationId) !== pending) return;
+      if (err?.status === 404) {
+        clearPendingTest(conversationId);
+        patchForm(conversationId, { form_id: spec?.form_id, form_error: t('dataVault.connectionTest.notWaiting') });
+      } else {
+        setTestError(err?.message || t('dataVault.connectionTest.failed'));
+      }
+    } finally {
+      setTestBusy(false);
+    }
+  };
+
   // The user can always dismiss the form panel — even after a
   // successful save where there's no useful action left, or while
   // a stuck/abandoned form is sitting there. Clears the form from
   // the conversation's store; the panel unmounts.
   const handleClose = () => {
+    dropPendingTest(conversationId);
     // Host may own dismissal (e.g. returning the user to where they opened
     // the connect flow, ENG-1534); fall back to a plain form-clear.
     if (onClose) { onClose(conversationId); return; }
@@ -708,19 +873,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // same form_id → no remount → no re-animation.
     <div
       key={appearKey}
-      // `shrink-0`: the panel sits in the right rail's flex column —
-      // without it, the rail squeezes the panel down to fit its own
-      // height, our `overflow-hidden` clips the content, and the rail's
-      // `overflow-y-auto` never sees anything to scroll. Pinning shrink
-      // to 0 makes the panel claim its full content height so the rail's
-      // scroll engages naturally.
-      className="relative bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0"
+      // The <Modal> around it draws the card (border, radius, shadow).
+      className="relative bg-surface"
       style={{
         // Highlight ring driven from outside (e.g. the chat's
-        // connect-intro bubble on hover) — accent border + soft
-        // halo so the form card draws the eye without layout shift.
+        // connect-intro bubble on hover). Inset, so the modal's clipping
+        // can't hide it.
         boxShadow: highlighted
-          ? '0 0 0 2px var(--accent), 0 0 22px color-mix(in srgb, var(--accent) 28%, transparent)'
+          ? 'inset 0 0 0 2px var(--accent)'
           : 'none',
         transition: 'box-shadow var(--dur-hover) ease',
         animation: 'dvf-appear var(--dur-layout) var(--ease-out) both',
@@ -731,11 +891,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           active) or a plain "Connect" label. On the SUCCESS screen the
           breadcrumb is dropped — the connection is done, there's nothing
           to go back to — leaving just the close button (ENG-1534). The X
-          sits flush right in every case. */}
+          sits flush right in every case. While a connection test waits
+          it reads "Connect", so no form text sits above Allow or Confirm. */}
       <div className="flex items-stretch border-b border-t-0 border-x-0 border-solid border-line min-h-[42px]">
         {spec._is_success ? (
           <div className="flex-1 min-w-0" />
-        ) : activeMethodSpec ? (
+        ) : activeMethodSpec && !pendingTest ? (
           <button
             type="button"
             onClick={onBackToOptions}
@@ -751,7 +912,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           >
             <span className="text-accent text-[13px] font-semibold inline-flex items-center gap-1 shrink-0">
               <span aria-hidden>{'←'}</span>
-              Back to options
+              {t('dataVault.backToOptions')}
             </span>
             <span className="text-ink-4 text-sm overflow-hidden text-ellipsis whitespace-nowrap min-w-0 flex-1">
               · {activeMethodSpec.label || activeMethodSpec.id}
@@ -759,14 +920,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           </button>
         ) : (
           <div className="flex-1 min-w-0 flex items-center px-[14px] py-0 font-[family-name:var(--font-body)] text-[13px] font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap">
-            Connect
+            {t('connections.connect')}
           </div>
         )}
-        <Tooltip content="Close form">
+        <Tooltip content={t('dataVault.closeForm')}>
           <button
             type="button"
             onClick={handleClose}
-            aria-label="Close form"
+            aria-label={t('dataVault.closeForm')}
             className="shrink-0 w-[38px] self-stretch bg-transparent border-0 text-ink-4 inline-grid place-items-center cursor-pointer"
             style={{ transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease' }}
             onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
@@ -778,7 +939,19 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       </div>
 
       <div className="pt-[10px] px-[14px] pb-[14px]">
-        {spec._is_probing ? (
+        {pendingTest ? (
+          <ConnectorTestPrompt
+            pending={pendingTest}
+            busy={testBusy}
+            error={testError}
+            onAllow={() => answerPendingTest((p) => allowConnectorTestHost(p.id))}
+            onConfirm={() => answerPendingTest((p) => confirmConnectorTest(p.id), { saved: true })}
+            onCancel={() => {
+              dropPendingTest(conversationId);
+              patchForm(conversationId, { form_id: spec.form_id, _awaiting_confirmation: false, _awaiting_private_approval: false, status_text: null });
+            }}
+          />
+        ) : spec._is_probing ? (
           /* Probe running — replace the form with a spinner so the
              popup shows clear progress instead of appearing frozen. */
           <div className="flex flex-col items-center justify-center pt-8 px-5 pb-[36px] gap-3">
@@ -792,13 +965,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               }}
             />
             <span className="text-ink-2 text-[13px] text-center">
-              {spec.status_text || 'Testing connection…'}
+              {spec.status_text || t('dataVault.testing')}
             </span>
           </div>
         ) : spec.form_error && !spec._is_error ? (
           /* Probe returned failure — show error card + Try again. */
           <div className="flex flex-col gap-3 pt-1 px-0 pb-[2px]">
-            <Alert variant="danger" title="Connection failed">
+            <Alert variant="danger" title={t('dataVault.connectionFailed')}>
               <div className="text-sm text-ink-2 leading-[1.55]">
                 {spec.form_error}
               </div>
@@ -841,7 +1014,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               }}
               className="self-start"
             >
-              Try again
+              {t('datasource.tryAgain')}
             </Button>
           </div>
         ) : (
@@ -869,11 +1042,11 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                   {spec.status_text}
                 </span>
-                <Tooltip content="Dismiss">
+                <Tooltip content={t('share.dismiss')}>
                   <button
                     type="button"
                     onClick={() => setDismissedStatus(spec.status_text)}
-                    aria-label="Dismiss status"
+                    aria-label={t('dataVault.dismissStatus')}
                     className="w-[20px] h-[20px] rounded-[5px] bg-transparent border-0 p-0 text-ink-4 inline-grid place-items-center cursor-pointer flex-[0_0_20px]"
                     style={{ transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease' }}
                     onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
@@ -888,9 +1061,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               spec={spec}
               busy={busy}
               onAction={handleAction}
+              onUseBrowser={onUseBrowser}
               conversationId={conversationId}
               userLabel={!spec._is_success ? userLabel : undefined}
-              onUserLabelChange={setUserLabel}
+              onUserLabelChange={(label) => {
+                setUserLabel(label);
+                clearCloudDatasourceError();
+              }}
+              onFieldChange={clearCloudDatasourceError}
               onMethodChange={async (methodId) => {
                 // 'mcp' (HubSpot, ENG-487) drives the identical zero-field
                 // auto-start flow as browser_oauth_builtin — found in code
@@ -905,21 +1083,21 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 // No fields — auto-start immediately on method selection.
                 const engine = spec.engine || spec._connector_id || 'google_drive';
                 const providerLabel = providerNameFromSpec(spec);
-                const successTitle = `${providerLabel} connected`;
+                const successTitle = t('dataVault.providerConnected', { provider: providerLabel });
                 setBusy(true);
                 setError('');
 
                 if (host.isElectron) {
-                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: `Waiting for ${providerLabel} sign-in…`, form_error: null });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: t('dataVault.oauth.waiting', { provider: providerLabel }), form_error: null });
                   try {
                     const result = await host.oauthConnect({ engine, name: '' });
-                    if (!result || result.ok === false) throw new Error(result?.reason || 'OAuth flow failed.');
+                    if (!result || result.ok === false) throw new Error(result?.reason || t('dataVault.oauth.failed'));
                     setBusy(false);
                     try { await fetchDatasources(); } catch { /* best effort */ }
-                    patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, _is_success: true, title: successTitle, subtitle: 'Saved to the data vault. Cowork can now use this connection in tasks.' });
+                    patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, _is_success: true, title: successTitle, subtitle: t('dataVault.saved.now', { product: productName('Cowork') }) });
                     trackDataSourceConnected(engine);
                   } catch (e) {
-                    patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || 'OAuth flow failed.' });
+                    patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || t('dataVault.oauth.failed') });
                     setBusy(false);
                   }
                   return;
@@ -928,24 +1106,47 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 // Web fallback — server-side redirect flow.
                 const serviceId = method?.oauth?.service_id;
                 if (!serviceId) {
-                  setError(`No OAuth configuration for "${engine}".`);
+                  setError(t('dataVault.oauth.noConfig', { engine }));
                   setBusy(false);
                   return;
                 }
                 try {
                   const result = await startConnectorOAuth(serviceId);
-                  if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);
+                  if (!result?.authUrl || !result?.state) throw new Error(t('dataVault.oauth.startFailedServer', { provider: providerLabel }));
                   window.open(result.authUrl, '_blank');
-                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: `Waiting for ${providerLabel} sign-in…`, form_error: null });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: t('dataVault.oauth.waiting', { provider: providerLabel }), form_error: null });
                   startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
                 } catch (e) {
-                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || `Could not start ${providerLabel} sign-in.` });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || t('dataVault.oauth.startFailed', { provider: providerLabel }) });
                   setBusy(false);
                 }
               }}
             />
+            {replacePrompt && (
+              <Alert variant="warning" title={t('dataVault.replace.title')} className="mt-2.5">
+                <div className="text-sm text-ink-2 leading-[1.55]">
+                  {replacePrompt.label
+                    ? t('dataVault.replace.messageLabeled', { provider: providerNameFromSpec(spec), label: replacePrompt.label })
+                    : t('dataVault.replace.message', { provider: providerNameFromSpec(spec) })}
+                </div>
+                <div className="flex gap-2 mt-2.5">
+                  <Button
+                    variant="primary"
+                    disabled={busy}
+                    onClick={() => handleAction({ ...replacePrompt.action, replaceName: replacePrompt.name })}
+                  >
+                    {t('dataVault.replace.confirm')}
+                  </Button>
+                  <Button variant="subtle" disabled={busy} onClick={() => setReplacePrompt(null)}>
+                    {t('skillModal.cancel')}
+                  </Button>
+                </div>
+              </Alert>
+            )}
             {error && (
-              <Alert variant="danger" className="mt-2.5">{error}</Alert>
+              <div ref={errorRef}>
+                <Alert variant="danger" className="mt-2.5">{error}</Alert>
+              </div>
             )}
           </>
         )}

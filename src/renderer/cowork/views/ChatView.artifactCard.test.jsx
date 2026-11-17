@@ -398,7 +398,7 @@ describe('inline artifact banner in org mode', () => {
     await user.click(screen.getByRole('button', { name: 'Download' }));
     expect(downloadArtifactFile).toHaveBeenCalledWith(
       expect.objectContaining({ draftUrl: expect.stringContaining('model.zip') }),
-      { actionPath: '/proj/.anton/artifacts/model/model.zip' },
+      { actionPath: '/proj/.anton/artifacts/model/model.zip', entry: 'chat' },
     );
     expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
     expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {

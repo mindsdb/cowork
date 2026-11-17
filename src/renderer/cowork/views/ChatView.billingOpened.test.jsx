@@ -29,8 +29,12 @@ const analyticsMock = vi.hoisted(() => ({
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
+// Signed out by default; one test signs in to check View budgets names the org.
+const accountUser = vi.hoisted(() => vi.fn(() => null));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountUser() }));
+
 import ChatView, { ModelUnavailableCard } from './ChatView';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_BUDGETS_URL } from '../../lib/mindsUrls';
 import { HubUsageContext } from '../lib/hubUsageContext';
 
 const taskWith = (messages) => ({
@@ -49,11 +53,13 @@ beforeEach(() => {
   analyticsMock.trackBillingOpened.mockClear();
   analyticsMock.trackKeyProvisioningRefused.mockClear();
   hostMock.host.openExternal.mockClear();
+  accountUser.mockReset().mockReturnValue(null);
   hostMock.host.mindshubFinalize.mockReset().mockResolvedValue({ ok: true });
   // Reset rather than clear: one test below overrides the resolved value, and
   // without this both that value and the call count leak into every test after
   // it, in file order.
   hostMock.host.mindshubLogin.mockReset().mockResolvedValue({ ok: true });
+  hostMock.host.isMobileShell = false;
 });
 
 describe('billing_opened trigger per call site', () => {
@@ -92,6 +98,30 @@ describe('billing_opened trigger per call site', () => {
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('free_serving_paused');
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledTimes(1);
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it('budget_exceeded: View budgets records its own trigger and opens the Budgets tab', async () => {
+    const user = userEvent.setup();
+    render(<ChatView task={taskWith(failedTurn('budget_exceeded', "Your organization's spending budget is used up."))} />);
+
+    await user.click(screen.getByRole('button', { name: 'View budgets' }));
+
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('budget_exceeded');
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledTimes(1);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BUDGETS_URL);
+  });
+
+  it("budget_exceeded: signed in, View budgets opens the task organization's Budgets tab", async () => {
+    const user = userEvent.setup();
+    accountUser.mockReturnValue({ orgId: 'org-123', sub: 'user-9' });
+    render(<ChatView task={taskWith(failedTurn('budget_exceeded', "Your organization's spending budget is used up."))} />);
+
+    await user.click(screen.getByRole('button', { name: 'View budgets' }));
+
+    const opened = new URL(hostMock.host.openExternal.mock.calls[0][0]);
+    expect(opened.searchParams.get('tab')).toBe('budgets');
+    expect(opened.searchParams.get('organization')).toBe('org-123');
+    expect(opened.searchParams.get('subject')).toBe('user-9');
   });
 
   it('free_serving_paused: a billing owner lands on the add-funds form, like the other stopped-task cards', async () => {
@@ -141,6 +171,46 @@ describe('billing_opened trigger per call site', () => {
     await user.click(screen.getByRole('button', { name: 'Top up balance' }));
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('model_access_denied');
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it('model_access_denied: a billing owner lands on the add-credits dialog', async () => {
+    const user = userEvent.setup();
+    render(
+      <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: true }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView task={taskWith(failedTurn('model_access_denied', 'Payment required.'))} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Top up balance' }));
+
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('model_access_denied');
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+  });
+
+  it('model_access_denied: a member gets the billing page, not a dialog they cannot submit', async () => {
+    const user = userEvent.setup();
+    render(
+      <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: false }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView task={taskWith(failedTurn('model_access_denied', 'Payment required.'))} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Top up balance' }));
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it('model_disabled: even a billing owner gets the plain billing page, since credits cannot re-enable it', async () => {
+    const user = userEvent.setup();
+    render(
+      <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: true }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView task={taskWith(failedTurn('model_disabled', 'Model disabled.'))} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Top up balance' }));
+
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
 
@@ -211,5 +281,58 @@ describe('key_provisioning_refused on the reconnect handler', () => {
 
     expect(analyticsMock.trackKeyProvisioningRefused).not.toHaveBeenCalled();
     expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+  });
+});
+
+describe('inside the mobile app', () => {
+  beforeEach(() => { hostMock.host.isMobileShell = true; });
+
+  it.each([
+    ['token_limit', "You've run out of credits.", {}, 'Task stopped'],
+    ['included_allowance_exhausted', "You've used this month's free tokens.", { resetAt: '2099-01-01T00:00:00Z' }, 'Task stopped'],
+    ['free_serving_paused', 'Free MindsHub Air is paused.', {}, 'Free MindsHub Air is paused'],
+  ])('%s: the stopped-task card says what happened and offers no purchase', (code, content, extra, title) => {
+    render(<ChatView task={taskWith(failedTurn(code, content, extra))} />);
+
+    expect(screen.getAllByText(title, { exact: false }).length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    expect(screen.queryByRole('button', { name: 'Add funds' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Set up auto top up' })).toBeNull();
+  });
+
+  it('budget_exceeded: no link to Budgets', () => {
+    render(<ChatView task={taskWith(failedTurn('budget_exceeded', "Your organization's spending budget is used up."))} />);
+
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    expect(screen.queryByRole('button', { name: 'View budgets' })).toBeNull();
+  });
+
+  it('a model that needs credits keeps the way back to Air and loses Top up balance', () => {
+    const usage = { reachable: true, isBillingOwner: true, freeTokens: { limit: 100, used: 20, remaining: 80, resetsAt: null } };
+    render(
+      <HubUsageContext.Provider value={{ usage, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ModelUnavailableCard code="model_access_denied" failedModel="opus" onSwitchToAir={() => {}} />
+      </HubUsageContext.Provider>,
+    );
+
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    expect(screen.queryByRole('button', { name: 'Top up balance' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Switch to MindsHub Air' })).toBeInTheDocument();
+  });
+
+  it('a disabled model keeps Open Settings and loses Top up balance', () => {
+    render(<ModelUnavailableCard code="model_disabled" failedModel="opus" />);
+
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    expect(screen.queryByRole('button', { name: 'Top up balance' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
+  });
+
+  it('connect_provider: Open Settings stays, Start for free goes', () => {
+    render(<ChatView task={taskWith([{ role: 'provider_required' }])} />);
+
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    expect(screen.queryByRole('button', { name: 'Start for free' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
   });
 });

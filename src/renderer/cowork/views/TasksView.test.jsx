@@ -15,14 +15,13 @@ const PROJECTS = [
   { name: 'ops', display_name: 'Ops' },
 ];
 
-// Two runs of one schedule: r1 carries its scheduledId, r2 is only known
-// through the runs index (older records saved before the field existed).
+// Two runs of one schedule, each carrying its scheduledId.
 const TASKS = [
   { id: 't1', title: 'Alpha report', projectName: 'metrics', updatedAt: '2026-09-28T10:00:00Z' },
   { id: 't2', title: 'Beta notes', projectName: 'ops', updatedAt: '2026-09-30T10:00:00Z' },
   { id: 't3', title: 'Gamma idea', updatedAt: '2026-09-25T10:00:00Z' },
   { id: 'r1', title: 'Digest run one', projectName: 'metrics', scheduledId: 's1', updatedAt: '2026-09-29T10:00:00Z' },
-  { id: 'r2', title: 'Digest run two', projectName: 'metrics', updatedAt: '2026-10-01T10:00:00Z' },
+  { id: 'r2', title: 'Digest run two', scheduledId: 's1', projectName: 'metrics', updatedAt: '2026-10-01T10:00:00Z' },
 ];
 const SCHEDULES = [{ id: 's1', title: 'Daily digest', project: 'metrics' }];
 const TITLES = ['Alpha report', 'Beta notes', 'Gamma idea', 'Daily digest'];
@@ -32,7 +31,6 @@ function setup(overrides = {}) {
     tasks: TASKS,
     projects: PROJECTS,
     schedules: SCHEDULES,
-    scheduleRunsIndex: { r2: 's1' },
     onOpenTask: vi.fn(),
     onOpenProject: vi.fn(),
     onOpenSchedule: vi.fn(),

@@ -1,0 +1,30 @@
+{
+  "picker": {
+    "placeholder": "모델 선택",
+    "empty": "모델을 찾을 수 없습니다",
+    "searchAriaLabel": "모델 검색",
+    "unavailable": "사용 불가",
+    "addCredits": "크레딧 충전",
+    "addCreditsTooltip": "이 모델을 사용하려면 크레딧을 충전하세요"
+  },
+  "groups": {
+    "openWeight": "오픈 웨이트",
+    "other": "기타"
+  },
+  "effort": {
+    "label": "추론 수준",
+    "description": "추론 수준이 높을수록 답변이 더 철저해지지만, 시간이 더 걸리고 사용 한도도 더 빨리 소진됩니다.",
+    "default": "기본값",
+    "levels": {
+      "none": "없음",
+      "minimal": "최소",
+      "low": "낮음",
+      "medium": "중간",
+      "high": "높음",
+      "xhigh": "매우 높음",
+      "max": "최대",
+      "fast": "빠름",
+      "slow": "느림"
+    }
+  }
+}

@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   assessShellSupport,
+  deriveShellOsCappedNotice,
   deriveShellTooOldNotice,
+  MIN_MACOS_FOR_LATEST_SHELL,
   MIN_SUPPORTED_SHELL,
   SUPPORTED_SHELL_WINDOW_DAYS,
 } from './shell-support';
@@ -143,5 +145,71 @@ describe('deriveShellTooOldNotice', () => {
       .toMatchObject({ action: 'retry' });
     expect(deriveShellTooOldNotice(tooOld, { phase: 'failed', recoverable: false }))
       .toMatchObject({ action: 'open-download-page' });
+  });
+});
+
+const onMac = (shellVersion: string, macosMajor: number | null, latestShellVersion: string = LATEST) =>
+  assessShellSupport({ shellVersion, latestShellVersion, source: 'ota', buildKind: 'prod', macosMajor });
+
+describe('assessShellSupport — macOS 12 after the newest shell dropped it', () => {
+  it('pins macOS 13 as the newest shell\'s minimum', () => {
+    expect(MIN_MACOS_FOR_LATEST_SHELL).toBe(13);
+  });
+
+  it('caps a macOS 12 shell inside the window', () => {
+    // 2.26.10.1.1 is 3 days behind: "supported" on any other OS.
+    expect(onMac('2.26.10.1.1', 12)).toMatchObject({ status: 'os-capped', reason: 'behind', macosMajor: 12, daysBehind: 3 });
+  });
+
+  it('caps a macOS 12 shell outside the window as behind', () => {
+    // 1 Oct → 20 Oct is 19 days, and 2.26.10.1.1 is above the floor.
+    expect(onMac('2.26.10.1.1', 12, '2.26.10.20.1')).toMatchObject({ status: 'os-capped', reason: 'behind', daysBehind: 19 });
+  });
+
+  it('keeps the floor reason for a macOS 12 shell below it', () => {
+    expect(onMac('2.26.9.1.3', 12)).toMatchObject({ status: 'os-capped', reason: 'below-floor' });
+  });
+
+  it('leaves the newest shell supported on macOS 12', () => {
+    expect(onMac(LATEST, 12)).toMatchObject({ status: 'supported' });
+  });
+
+  it('does not change the verdict on macOS 13+ or when the version is unknown', () => {
+    expect(onMac('2.26.9.1.3', 13)).toMatchObject({ status: 'too-old', reason: 'below-floor' });
+    expect(onMac('2.26.10.1.1', 15)).toMatchObject({ status: 'supported' });
+    expect(onMac('2.26.10.1.1', null)).toMatchObject({ status: 'supported' });
+    expect(onMac('2.26.9.1.3', null)).toMatchObject({ status: 'too-old' });
+  });
+
+  it('never caps web, stable or preview', () => {
+    expect(assessShellSupport({ shellVersion: '2.26.10.1.1', latestShellVersion: LATEST, source: 'bundled', buildKind: 'stable', macosMajor: 12 }))
+      .toMatchObject({ status: 'not-applicable', reason: 'non-prod' });
+  });
+});
+
+describe('deriveShellOsCappedNotice', () => {
+  const capped = (reason: 'behind' | 'below-floor') => ({
+    status: 'os-capped' as const, reason, shellVersion: '2.26.10.1.1', latestShellVersion: LATEST, daysBehind: 3, macosMajor: 12,
+  });
+
+  it('tells a macOS 12 user updates stopped, once', () => {
+    const n = deriveShellOsCappedNotice(capped('behind'))!;
+    expect(n.title).toBe('Your version of macOS no longer receives app updates');
+    expect(n.body).toContain('macOS 13 or later');
+    expect(n.body).toContain('Some features may stop working over time.');
+    expect(n.dismissal).toBe('once');
+  });
+
+  it('names the account risk below the floor, every launch', () => {
+    const n = deriveShellOsCappedNotice(capped('below-floor'))!;
+    expect(n.body).toContain('more than one person signs in to Cowork on this Mac user account');
+    expect(n.body).toContain('macOS 13 or later');
+    expect(n.body).not.toContain('last version');
+    expect(n.dismissal).toBe('this-launch');
+  });
+
+  it('returns null for any other verdict', () => {
+    expect(deriveShellOsCappedNotice(prod(LATEST))).toBeNull();
+    expect(deriveShellOsCappedNotice(null)).toBeNull();
   });
 });

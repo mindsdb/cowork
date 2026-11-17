@@ -3,6 +3,7 @@ import { searchGoogleDriveFiles } from '../api';
 import Ico from './Icons';
 import { Alert, Button, Input, Spinner } from './ui';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from './ui/Modal';
+import { currentLocale, useTranslation } from '../../lib/i18n';
 
 const SEARCH_DELAY_MS = 300;
 
@@ -23,7 +24,7 @@ export function iconForMimeType(mimeType = '') {
 function formatModified(iso) {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(currentLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /* The in-app Google Drive file chooser, for a connection that can read the
@@ -32,6 +33,7 @@ function formatModified(iso) {
    through onConfirm(files) with the DrivePickerFile shape the Google Picker
    flows return, or onClose() when dismissed. */
 export default function DriveFilePickerModal({ open, connection, onConfirm, onClose }) {
+  const { t } = useTranslation('chat');
   const [query, setQuery] = useState('');
   const [files, setFiles] = useState([]);
   const [nextPageToken, setNextPageToken] = useState('');
@@ -54,7 +56,7 @@ export default function DriveFilePickerModal({ open, connection, onConfirm, onCl
       setNextPageToken(page?.next_page_token || '');
     } catch (err) {
       if (requestRef.current !== requestId) return;
-      setError(err?.message || 'Could not search Google Drive.');
+      setError(err?.message || t('drivePicker.searchFailed'));
       if (!pageToken) setFiles([]);
     } finally {
       if (requestRef.current === requestId) setLoading(false);
@@ -94,8 +96,8 @@ export default function DriveFilePickerModal({ open, connection, onConfirm, onCl
     <Modal open={open} onClose={onClose} size="md" labelledBy="gdrive-file-chooser-title">
       <ModalHeader
         id="gdrive-file-chooser-title"
-        title="Add files from Google Drive"
-        subtitle={accountLabel ? `From ${accountLabel}` : undefined}
+        title={t('drivePicker.title')}
+        subtitle={accountLabel ? t('drivePicker.subtitle', { account: accountLabel }) : undefined}
         onClose={onClose}
       />
       <ModalBody>
@@ -103,13 +105,13 @@ export default function DriveFilePickerModal({ open, connection, onConfirm, onCl
           <Input
             value={query}
             onChange={setQuery}
-            placeholder="Search your Drive by file name"
-            aria-label="Search Google Drive"
+            placeholder={t('drivePicker.searchPlaceholder')}
+            aria-label={t('drivePicker.searchAriaLabel')}
             autoFocus
           />
           {error && <Alert variant="danger">{error}</Alert>}
-          <div className="text-[12px] text-ink-3">{query ? 'Matching files' : 'Recently opened'}</div>
-          <ul className="m-0 flex max-h-[360px] list-none flex-col gap-1 overflow-y-auto p-0" aria-label="Google Drive files">
+          <div className="text-[12px] text-ink-3">{query ? t('drivePicker.matching') : t('drivePicker.recent')}</div>
+          <ul className="m-0 flex max-h-[360px] list-none flex-col gap-1 overflow-y-auto p-0" aria-label={t('drivePicker.listAriaLabel')}>
             {files.map((f) => {
               const meta = [f.owner, formatModified(f.modifiedTime)].filter(Boolean).join(' · ');
               return (
@@ -133,25 +135,25 @@ export default function DriveFilePickerModal({ open, connection, onConfirm, onCl
           </ul>
           {loading && (
             <div className="flex items-center gap-2 text-[12px] text-ink-3">
-              <Spinner className="text-ink-3" /> Searching Google Drive…
+              <Spinner className="text-ink-3" /> {t('drivePicker.searching')}
             </div>
           )}
           {!loading && !error && files.length === 0 && (
             <div className="text-[12px] italic text-ink-4">
-              {query ? 'No files match that name.' : 'No files in this Drive yet.'}
+              {query ? t('drivePicker.noMatches') : t('drivePicker.empty')}
             </div>
           )}
           {!loading && nextPageToken && (
             <Button variant="subtle" size="sm" className="self-start" onClick={() => runSearch(query, nextPageToken)}>
-              Load more
+              {t('drivePicker.loadMore')}
             </Button>
           )}
         </div>
       </ModalBody>
       <ModalFooter>
-        <Button variant="subtle" onClick={onClose}>Cancel</Button>
+        <Button variant="subtle" onClick={onClose}>{t('drivePicker.cancel')}</Button>
         <Button variant="primary" disabled={count === 0} onClick={() => onConfirm([...selected.values()])}>
-          {count > 1 ? `Add ${count} files` : 'Add file'}
+          {t('drivePicker.add', { count })}
         </Button>
       </ModalFooter>
     </Modal>

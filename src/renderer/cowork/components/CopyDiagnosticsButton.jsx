@@ -9,8 +9,10 @@ import { copyText } from '../lib/clipboard';
 import { diagnosticsText } from '../lib/diagnostics';
 import { versionRows } from '../lib/versionRows';
 import { host, getVersionInfo } from '../../platform/host';
+import { useTranslation } from '../../lib/i18n';
 
-const LABELS = { idle: 'Copy diagnostics', copied: 'Copied', failed: "Couldn't copy" };
+// Message keys; translated at render.
+const LABELS = { idle: 'diagnostics.copy', copied: 'diagnostics.copied', failed: 'diagnostics.copyFailed' };
 
 /**
  * @param {object} props
@@ -21,6 +23,7 @@ const LABELS = { idle: 'Copy diagnostics', copied: 'Copied', failed: "Couldn't c
  *   may have failed precisely because the server is gone.
  */
 export default function CopyDiagnosticsButton({ requestId, code, health }) {
+  const { t } = useTranslation('shell');
   const [state, setState] = useState('idle');
   const busy = useRef(false);
 
@@ -79,7 +82,7 @@ export default function CopyDiagnosticsButton({ requestId, code, health }) {
         onBlur={() => setState('idle')}
         className="bg-transparent border-none p-0 cursor-pointer text-accent text-xs"
       >
-        {LABELS[state]}
+        {t(LABELS[state])}
       </button>
     </span>
   );

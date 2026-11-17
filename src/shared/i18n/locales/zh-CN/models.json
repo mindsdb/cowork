@@ -1,0 +1,30 @@
+{
+  "picker": {
+    "placeholder": "选择模型",
+    "empty": "未找到模型",
+    "searchAriaLabel": "搜索模型",
+    "unavailable": "不可用",
+    "addCredits": "充值积分",
+    "addCreditsTooltip": "充值积分后即可使用此模型"
+  },
+  "groups": {
+    "openWeight": "开放权重",
+    "other": "其他"
+  },
+  "effort": {
+    "label": "推理强度",
+    "description": "强度越高，回答越周全，但耗时更长，用量上限也消耗得更快。",
+    "default": "默认",
+    "levels": {
+      "none": "无",
+      "minimal": "最低",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高",
+      "max": "最高",
+      "fast": "快速",
+      "slow": "慢速"
+    }
+  }
+}

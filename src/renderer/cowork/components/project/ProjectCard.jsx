@@ -18,6 +18,7 @@ import { belongsToProject } from '../../lib/artifactProject';
 import SharedResourceAttribution from '../SharedResourceAttribution';
 import SharedProjectReference from './SharedProjectReference';
 import { isReservedProjectName } from '../../lib/sharedResourceAccess';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 function tasksFor(project, tasks) {
   if (project?.shared) return [];
@@ -50,7 +51,7 @@ function activitySummary(project, tasks) {
   });
   const top = sorted[0];
   return {
-    text: top?.title || 'Untitled task',
+    text: top?.title || i18n.t('projectCard.untitledTask', { ns: 'projects' }),
     time: relativeAge(top?.updatedAt) || top?.subtitle || '',
   };
 }
@@ -90,14 +91,9 @@ function useProjectStats(project, { tasks = [], scheduled = [] }) {
 }
 
 // Full-word pluralized labels for the stats row, keyed the same as the
-// `useProjectStats` shape. Pure — exported so the pluralization + zero-
-// filtering logic can be unit-tested without mounting the card.
-const STAT_LABELS = {
-  tasks:     ['task', 'tasks'],
-  memories:  ['memory', 'memories'],
-  schedules: ['schedule', 'schedules'],
-  artifacts: ['artifact', 'artifacts'],
-};
+// `useProjectStats` shape (catalog keys projectCard.stats.<key>, ICU plurals).
+// Pure — exported so the pluralization + zero-filtering logic can be
+// unit-tested without mounting the card.
 
 // Zero/undefined stats are omitted entirely (not dimmed) — a quieter
 // take on "nothing here yet" than the old D1Stat's ink-5 treatment.
@@ -106,8 +102,7 @@ export function visibleStats(stats = {}) {
   for (const key of ['tasks', 'memories', 'schedules', 'artifacts']) {
     const value = Number(stats?.[key]) || 0;
     if (value <= 0) continue;
-    const [singular, plural] = STAT_LABELS[key];
-    out.push({ key, label: `${value} ${value === 1 ? singular : plural}` });
+    out.push({ key, label: i18n.t(`projectCard.stats.${key}`, { ns: 'projects', count: value }) });
   }
   return out;
 }
@@ -134,6 +129,7 @@ function useProjectSlots({
   onRenameSubmit,
   onRenameCancel,
 }) {
+  const { t } = useTranslation('projects');
   const stats = useProjectStats(project, { tasks, scheduled });
   const cardStats = visibleStats(stats);
   const summary = activitySummary(project, tasks);
@@ -193,14 +189,14 @@ function useProjectSlots({
   // a reserved project, so no stylesheet can revive a control that must not fire.
   const actions = !deleting && (
     <>
-      <Tooltip content={pinned ? 'Unpin project' : 'Pin project'}>
+      <Tooltip content={pinned ? t('projectCard.unpin') : t('projectCard.pin')}>
         <Button
           icon
           size="sm"
           variant="subtle"
           onClick={(e) => { e.stopPropagation(); onTogglePin?.(project, !pinned); }}
           onKeyDown={(e) => e.stopPropagation()}
-          aria-label={pinned ? 'Unpin project' : 'Pin project'}
+          aria-label={pinned ? t('projectCard.unpin') : t('projectCard.pin')}
           aria-pressed={pinned}
           className={ACTION_TRIGGER}
         >
@@ -209,7 +205,7 @@ function useProjectSlots({
         </Button>
       </Tooltip>
       {!isReserved && (
-        <Tooltip content="Project menu">
+        <Tooltip content={t('projectCard.menu')}>
           <Button
             ref={triggerRef}
             icon
@@ -220,7 +216,7 @@ function useProjectSlots({
               onMenuOpen?.(project, triggerRef.current?.getBoundingClientRect());
             }}
             onKeyDown={(e) => e.stopPropagation()}
-            aria-label="Project menu"
+            aria-label={t('projectCard.menu')}
             className={ACTION_TRIGGER}
           >
             {Ico.moreVert(16)}
@@ -239,10 +235,10 @@ function useProjectSlots({
     selected: isSelected || editing,
     busy: deleting,
     onActivate: editing ? undefined : () => onOpen?.(project),
-    description: deleting ? 'Deleting…'
-      : project.shared ? 'Shared with you · Read only'
+    description: deleting ? t('projectCard.deleting')
+      : project.shared ? t('projectCard.sharedReadOnly')
       : summary ? summary.text
-      : <span className="italic text-ink-4">No activity yet</span>,
+      : <span className="italic text-ink-4">{t('projectCard.noActivity')}</span>,
     children: <>
       <SharedProjectReference project={project} />
       <SharedResourceAttribution resource={project} />
@@ -250,7 +246,7 @@ function useProjectSlots({
     meta: (
       <>
         {active ? <StatusDot tone="success">{when}</StatusDot> : <span className="whitespace-nowrap">{when}</span>}
-        {running > 0 && <span className="whitespace-nowrap text-accent">{running} running</span>}
+        {running > 0 && <span className="whitespace-nowrap text-accent">{t('projectCard.running', { count: running })}</span>}
         {cardStats.length > 0 && <span className="truncate">{cardStats.map((s) => s.label).join(' · ')}</span>}
       </>
     ),

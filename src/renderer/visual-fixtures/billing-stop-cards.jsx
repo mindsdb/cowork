@@ -8,6 +8,7 @@ import '../cowork/styles/tailwind.css';
 import {
   AllowanceExhaustedCard,
   BalanceEmptyCard,
+  BudgetExceededCard,
   ConnectProviderCard,
   FreeServingPausedCard,
   ModelUnavailableCard,
@@ -116,6 +117,16 @@ const CASES = [
     id: 'free-paused-no-time',
     label: 'The same pause with no usable time (a hosted turn from an older cowork-server).',
     render: () => <FreeServingPausedCard {...COMMON} resetAt={null} isBillingOwner />,
+  },
+  {
+    id: 'budget-exceeded-air-room',
+    label: "The org's spending budget is used up and Air's free allowance has room: View budgets, and Switch to MindsHub Air.",
+    render: () => <BudgetExceededCard {...COMMON} usage={ROOM} onSwitchToAir={noop} />,
+  },
+  {
+    id: 'budget-exceeded-no-grant',
+    label: 'The same stop on an org with no free grant, where Air is paid too: View budgets only.',
+    render: () => <BudgetExceededCard {...COMMON} usage={NO_GRANT} onSwitchToAir={noop} />,
   },
   {
     id: 'model-restricted-named',

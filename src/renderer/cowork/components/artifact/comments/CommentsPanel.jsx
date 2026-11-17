@@ -21,6 +21,7 @@ import { InboxCard } from './InboxCard';
 import { UnanchoredComposer } from './UnanchoredComposer';
 import { XIcon } from './icons';
 import { Tooltip } from '../../ui';
+import { useTranslation } from '../../../../lib/i18n';
 
 // Slide-in entrance (mirrors the reference #act-panel: translateX(16px)→0 +
 // fade, same easing as the toolbar) — the `cw-comments-panel-in` keyframe
@@ -30,18 +31,8 @@ import { Tooltip } from '../../ui';
 
 const isClosed = (t) => t.status === 'resolved' || t.status === 'dismissed';
 
-// Empty-state copy — exact reference strings.
-const EMPTY_COPY = {
-  open: 'No open comments',
-  resolved: 'No resolved comments',
-  all: 'No comments yet',
-};
-
-const TABS = [
-  ['open', 'Open'],
-  ['resolved', 'Resolved'],
-  ['all', 'All'],
-];
+// Empty-state copy — exact reference strings (comments.panel.empty.*).
+const TABS = ['open', 'resolved', 'all'];
 
 export function CommentsPanel({
   threads = [],
@@ -61,6 +52,7 @@ export function CommentsPanel({
   onLeaveThread,
   onFocusThread,
 }) {
+  const { t: tr } = useTranslation('artifacts');
   const [tab, setTab] = useState('open');
   const listRef = useRef(null);
   // Pending delete confirmation, panel-level so there's ONE modal instance.
@@ -98,11 +90,11 @@ export function CommentsPanel({
     >
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
-        <span className="text-[18px] font-semibold leading-[28px] text-ink">Comments</span>
-        <Tooltip content="Close comments panel">
+        <span className="text-[18px] font-semibold leading-[28px] text-ink">{tr('comments.panel.title')}</span>
+        <Tooltip content={tr('comments.panel.close')}>
           <button
             type="button"
-            aria-label="Close comments panel"
+            aria-label={tr('comments.panel.close')}
             className="w-[24px] h-[24px] flex items-center justify-center bg-transparent border-0
               rounded-[6px] p-0 cursor-pointer text-ink-3 transition-colors
               hover:text-ink hover:bg-surface-2"
@@ -116,7 +108,7 @@ export function CommentsPanel({
       {/* Notices */}
       {expired && (
         <div className="shrink-0 rounded-[6px] px-2 py-[6px] text-[12px] leading-[16px] bg-[#FEF3C7] text-[#B45309]">
-          Session expired — reload to see new comments.
+          {tr('comments.panel.expired')}
         </div>
       )}
       {error && (
@@ -133,10 +125,11 @@ export function CommentsPanel({
           const pick = next.find((v) => v !== tab);
           if (pick) setTab(pick);
         }}
-        aria-label="Filter comments"
+        aria-label={tr('comments.panel.filter')}
         className="flex gap-[2px] bg-surface-2 rounded-card-row p-[2px] shrink-0"
       >
-        {TABS.map(([value, label]) => {
+        {TABS.map((value) => {
+          const label = tr(`comments.panel.tabs.${value}`);
           const n = groups[value].length;
           return (
             <BaseToggle
@@ -165,7 +158,7 @@ export function CommentsPanel({
         className="flex-1 overflow-y-auto flex flex-col gap-[10px] -mr-[10px] pr-1 overscroll-contain">
         {visible.length === 0 && (
           <div className="text-center text-[12px] leading-[16px] text-ink-4 py-6">
-            {EMPTY_COPY[tab]}
+            {tr(`comments.panel.empty.${tab}`)}
           </div>
         )}
         {visible.map((t) => (
@@ -193,15 +186,15 @@ export function CommentsPanel({
       <UnanchoredComposer
         onCreate={onCreate}
         kind={viewer?.role === 'reviewer' ? 'issue' : 'review'}
-        placeholder={viewer?.role === 'reviewer' ? 'Report an issue…' : 'Add a comment…'}
+        placeholder={viewer?.role === 'reviewer' ? tr('comments.panel.reportIssue') : tr('comments.composer.placeholder')}
         onPosted={() => listRef.current?.scrollTo({ top: 0 })}
       />
 
       <ConfirmModal
         open={!!pendingDelete}
-        title="Delete this comment thread?"
-        message="The entire comment thread will be permanently deleted."
-        confirmLabel="Delete"
+        title={tr('comments.panel.deleteTitle')}
+        message={tr('comments.panel.deleteMessage')}
+        confirmLabel={tr('common.delete')}
         destructive
         onConfirm={runPendingDelete}
         onClose={() => setPendingDelete(null)}

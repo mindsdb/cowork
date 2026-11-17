@@ -1,3 +1,4 @@
+import i18n from '../../lib/i18n';
 import { getApiOrigin, isElectron, serverStart } from '../../platform/host';
 import { getCodeFixtureApi } from './fixtures';
 import type { RepositoryStatus, TaskRepositorySetup } from './repositorySetupModels';
@@ -51,6 +52,34 @@ export interface PendingQuestion {
   }>;
 }
 
+/**
+ * Approximate storage Cowork manages for each task: workspaces, baselines and
+ * recovery data in its own folders. The user's checkout and the repository
+ * objects worktrees share are not counted, and on macOS folder copies share
+ * blocks with their source, so deleting a task can free much less.
+ */
+export interface WorkspaceUsagePage {
+  items: Array<{ session_id: string; bytes: number; recovery_bytes?: number }>;
+  /** Storage still held for removed tasks; older servers omit it. */
+  removed_task_bytes?: number;
+  total_bytes: number;
+  measured_at: string | null;
+  measuring: boolean;
+}
+
+/** ``in_place`` works in the chosen folder itself; ``worktree`` isolates the task. */
+export type WorkspaceMode = 'in_place' | 'worktree';
+
+/** The modes a new task could run in, resolved by the server for its project and computer. */
+export interface WorkspaceModeOptions {
+  supported: WorkspaceMode[];
+  default: WorkspaceMode | null;
+  /** Why working in the folder itself is not offered; older servers omit it. */
+  in_place_unavailable_reason?: string | null;
+  worktree_unavailable_reason?: string | null;
+  can_initialize_git?: boolean;
+}
+
 export interface SessionCreateBody {
   repository_setup?: TaskRepositorySetup;
   task_mode?: TaskMode;
@@ -60,6 +89,8 @@ export interface SessionCreateBody {
   computer_id?: string;
   prompt: string;
   allow_direct_folder?: boolean;
+  /** Omit to let the server choose for the project and computer. */
+  workspace_mode?: WorkspaceMode;
   engine_id?: string;
   model?: string;
   permission_mode?: PermissionMode;
@@ -86,6 +117,8 @@ interface CreateCodeTaskBase {
   sourceContexts: SourceContext[];
   resourceIds?: string[];
   computerId?: string;
+  /** Set only when the composer offered a choice. */
+  workspaceMode?: WorkspaceMode;
 }
 
 export type CreateCodeTaskInput = CreateCodeTaskBase & (
@@ -197,11 +230,19 @@ export interface CodingSession {
   source_path: string;
   workspace_path: string;
   workspace_kind: 'git_worktree' | 'local_copy' | 'direct_folder';
+  /** Absent on tasks created before modes were recorded; those are all isolated. */
+  workspace_mode?: WorkspaceMode | null;
   workspaces?: TaskWorkspace[];
   repository_root?: string | null;
   base_revision?: string | null;
   source_dirty: boolean;
   workspace_warning?: string | null;
+  /** Set while the workspace is put away to save disk; it is rebuilt on next use. */
+  workspace_released_at?: string | null;
+  /** Why archiving kept the workspace instead of putting it away. */
+  workspace_kept_reason?: string | null;
+  /** Why rebuilding a put-away workspace last failed; its work is still saved. */
+  workspace_restore_error?: string | null;
   guidance_summary?: string | null;
   resolved_skills?: ResolvedSkill[];
   skill_roots?: string[];
@@ -434,6 +475,8 @@ export interface CodeProject {
   default_model: string;
   default_reasoning_effort?: ReasoningEffort | null;
   permission_mode: PermissionMode;
+  /** Null lets the server choose for each task's folder and computer. */
+  default_workspace_mode?: WorkspaceMode | null;
   created_at: string;
   updated_at: string;
 }
@@ -751,12 +794,12 @@ export async function requestJson<T>(path: string, init?: RequestInit, policy: R
     if (!isElectron || (method !== 'GET' && method !== 'HEAD')) throw error;
     const recovered = await serverStart();
     if (!recovered.running) {
-      throw new Error(recovered.error || 'The local Code service could not start.');
+      throw new Error(recovered.error || i18n.t('api.serviceStartFailed', { ns: 'code' }));
     }
     response = await fetch(url, request);
   }
   if (!response.ok) {
-    let detail = `Coding request failed (${response.status})`;
+    let detail = i18n.t('api.requestFailed', { ns: 'code', status: String(response.status) });
     try {
       const body = await response.json();
       if (typeof body?.detail === 'string') detail = body.detail;
@@ -764,7 +807,7 @@ export async function requestJson<T>(path: string, init?: RequestInit, policy: R
       // Preserve the status-based message when an intermediary returns HTML.
     }
     if (response.status === 404 && detail === 'Not Found') {
-      detail = 'This desktop build is connected to an older backend that does not support Code Mode. Restart the app with the matching cowork-server build.';
+      detail = i18n.t('api.outdatedBackend', { ns: 'code' });
     }
     const error = new Error(detail) as CodingRequestError;
     error.status = response.status;
@@ -782,7 +825,7 @@ async function ensureCodeService(): Promise<void> {
   if (!isElectron) return;
   const result = await serverStart();
   if (!result.running) {
-    throw new Error(result.error || 'The local Code service could not start.');
+    throw new Error(result.error || i18n.t('api.serviceStartFailed', { ns: 'code' }));
   }
 }
 
@@ -808,6 +851,20 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  workspaceUsage: (sessionId?: string) => requestJson<WorkspaceUsagePage>(
+    `/workspace-usage${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
+  ),
+  workspaceModes: (projectId: string | null, computerId?: string, path?: string) => {
+    const query = new URLSearchParams();
+    if (projectId) query.set('project_id', projectId);
+    if (computerId) query.set('computer_id', computerId);
+    if (path) query.set('path', path);
+    const suffix = query.size ? `?${query.toString()}` : '';
+    return requestJson<WorkspaceModeOptions>(`/workspace-modes${suffix}`);
+  },
+  initializeGit: (path: string) => requestJson<WorkspaceModeOptions>('/workspace/initialize-git', {
+    method: 'POST', body: JSON.stringify({ path }),
+  }),
   computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
     method: 'POST',
   }),
@@ -820,7 +877,7 @@ const liveCodingApi = {
   resolveLocalResource: (body: ProjectFolder) => requestJson<ProjectResource>('/project-resources/inspect', {
     method: 'POST', body: JSON.stringify(body),
   }),
-  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'default_reasoning_effort' | 'permission_mode'>) =>
+  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'default_reasoning_effort' | 'permission_mode' | 'default_workspace_mode'>) =>
     requestJson<CodeProject>('/projects', { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id: string, body: Partial<CodeProject>) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(body),
@@ -999,10 +1056,12 @@ export function openCodingEventStream(
   after: number,
   onEvent: (event: CodingEvent) => void,
   onError: () => void,
+  onOpen?: () => void,
 ): () => void {
   if (fixtureCodingApi) return () => {};
   const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/stream?after=${after}`;
   const source = new EventSource(url);
+  if (onOpen) source.onopen = onOpen;
   source.addEventListener('coding-event', (raw) => {
     try {
       const parsed: unknown = JSON.parse((raw as MessageEvent).data);

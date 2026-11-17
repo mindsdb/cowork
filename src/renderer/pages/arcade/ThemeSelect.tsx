@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ArcadeShell, PressPrompt } from './components';
+import { useTranslation } from '../../lib/i18n';
 
 export interface ThemePreset {
   id: string;
@@ -131,6 +132,19 @@ export default function ThemeSelect({
   onSelect: (preset: ThemePreset) => void;
   onBack?: () => void;
 }) {
+  const { t } = useTranslation('setup');
+  // On-screen text for a preset, by id; `name`/`sub`/`desc` on the preset
+  // objects stay the English source.
+  const presetText = (tp: ThemePreset) => ({
+    name: t(`theme.presets.${tp.id}.name`),
+    sub: t(`theme.presets.${tp.id}.sub`),
+    desc: t(`theme.presets.${tp.id}.desc`),
+  });
+  const customText = {
+    name: t('theme.custom.name'),
+    sub: t('theme.custom.sub'),
+    desc: t('theme.custom.desc'),
+  };
   // Slots 0..3 are the presets; the last slot is the CREATE YOUR OWN
   // card (focusable for its explainer, not pickable here).
   const SLOT_COUNT = THEME_PRESETS.length + 1;
@@ -173,11 +187,12 @@ export default function ThemeSelect({
   }, [focus]);
 
   return (
-    <ArcadeShell title="CHOOSE YOUR DISPLAY" subtitle="pick your screen · change it anytime">
+    <ArcadeShell title={t('theme.title')} subtitle={t('theme.subtitle')}>
       <div className="arc-stack arc-fade-in" style={{ gap: 0, width: '100%' }}>
-        <div className="arc-cart-row" role="radiogroup" aria-label="Choose your display theme">
+        <div className="arc-cart-row" role="radiogroup" aria-label={t('theme.groupAriaLabel')}>
           {THEME_PRESETS.map((tp, idx) => {
             const isFocused = idx === focus;
+            const text = presetText(tp);
             return (
               <div className="arc-cart-wrap" key={tp.id}>
                 {isFocused && (
@@ -189,7 +204,7 @@ export default function ThemeSelect({
                   type="button"
                   role="radio"
                   aria-checked={isFocused}
-                  aria-label={`${tp.name} — ${tp.sub}`}
+                  aria-label={t('theme.cardAriaLabel', { name: text.name, sub: text.sub })}
                   tabIndex={isFocused ? 0 : -1}
                   ref={(el) => { cardRefs.current[idx] = el; }}
                   className={`arc-cart${isFocused ? ' focused' : ''}`}
@@ -203,8 +218,8 @@ export default function ThemeSelect({
                   <div style={{ width: '100%' }}>
                     <MiniApp preset={tp} />
                   </div>
-                  <span className="arc-cart-name" style={{ fontSize: 12 }}>{tp.name}</span>
-                  <span style={{ fontSize: 9, letterSpacing: '0.12em', color: 'var(--arc-muted)', marginTop: -14 }}>{tp.sub}</span>
+                  <span className="arc-cart-name" style={{ fontSize: 12 }}>{text.name}</span>
+                  <span style={{ fontSize: 9, letterSpacing: '0.12em', color: 'var(--arc-muted)', marginTop: -14 }}>{text.sub}</span>
                 </button>
               </div>
             );
@@ -221,7 +236,7 @@ export default function ThemeSelect({
               type="button"
               role="radio"
               aria-checked={isCustomSlot}
-              aria-label={`${CUSTOM_SLOT.name} — design your own theme inside the app`}
+              aria-label={t('theme.customAriaLabel', { name: customText.name })}
               tabIndex={isCustomSlot ? 0 : -1}
               ref={(el) => { cardRefs.current[customIdx] = el; }}
               className={`arc-cart${isCustomSlot ? ' focused' : ''}`}
@@ -231,8 +246,8 @@ export default function ThemeSelect({
               <div style={{ width: '100%' }}>
                 <MiniDesigner />
               </div>
-              <span className="arc-cart-name" style={{ fontSize: 12 }}>{CUSTOM_SLOT.name}</span>
-              <span style={{ fontSize: 9, letterSpacing: '0.12em', color: 'var(--arc-muted)', marginTop: -14 }}>{CUSTOM_SLOT.sub}</span>
+              <span className="arc-cart-name" style={{ fontSize: 12 }}>{customText.name}</span>
+              <span style={{ fontSize: 9, letterSpacing: '0.12em', color: 'var(--arc-muted)', marginTop: -14 }}>{customText.sub}</span>
             </button>
           </div>
         </div>
@@ -243,13 +258,13 @@ export default function ThemeSelect({
           key={focused ? focused.id : CUSTOM_SLOT.id}
           style={{ width: '100%', maxWidth: 760, boxSizing: 'border-box', marginTop: 24, padding: '14px 22px', display: 'flex', alignItems: 'center', gap: 16 }}
         >
-          <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: '0.10em', color: (focused ?? CUSTOM_SLOT).color, flex: 'none' }}>{(focused ?? CUSTOM_SLOT).name}</span>
-          <span style={{ fontSize: 10.5, letterSpacing: '0.05em', lineHeight: 1.6, color: 'var(--arc-muted)', textAlign: 'left' }}>{(focused ?? CUSTOM_SLOT).desc}</span>
+          <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: '0.10em', color: (focused ?? CUSTOM_SLOT).color, flex: 'none' }}>{(focused ? presetText(focused) : customText).name}</span>
+          <span style={{ fontSize: 10.5, letterSpacing: '0.05em', lineHeight: 1.6, color: 'var(--arc-muted)', textAlign: 'left' }}>{(focused ? presetText(focused) : customText).desc}</span>
         </div>
 
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
           <PressPrompt
-            label={focused ? `PRESS ⏎ TO PICK ${focused.name}` : 'DESIGN IT INSIDE THE APP — PICK A PRESET TO START'}
+            label={focused ? t('theme.pick', { name: presetText(focused).name }) : t('theme.customPrompt')}
             onPress={() => { if (focused) onSelect(focused); }}
             disabled={!focused}
           />
@@ -265,7 +280,7 @@ export default function ThemeSelect({
               }}
               style={{ marginTop: 4 }}
             >
-              ← back
+              {t('theme.back')}
             </button>
           )}
         </div>

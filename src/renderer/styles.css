@@ -142,3 +142,16 @@ body.gf-dots-off .gravity-field { display: none; }
   background: var(--accent-red);
   box-shadow: 0 0 8px rgba(255, 82, 82, 0.5);
 }
+
+/* ─── Mobile app shell (ENG-4023) ───
+   html[data-shell="ios|android"] is set only inside the mobile app,
+   which also sets viewport-fit=cover, so the page draws under the notch and
+   the home indicator. The phone layout (.mshell, globals.css) already pads
+   for the safe areas; the full-screen onboarding, sign-in and update screens
+   (.arc-root) get the same padding here. Browsers never match these rules. */
+html[data-shell] .arc-root {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}

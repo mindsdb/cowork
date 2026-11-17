@@ -6,11 +6,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Ico from './Icons';
-import { Alert, Button, Tooltip } from './ui';
-import { Modal } from './ui/Modal';
+import { Alert, Button } from './ui';
+import { Modal, ModalBody, ModalFooter, ModalHeader } from './ui/Modal';
 import { host } from '../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
 import { scrubLog } from '../lib/diagnostics';
+import { sharedTranslator, useTranslation } from '../../lib/i18n';
 
 export default function ServerOfflineHelpModal({
   open,
@@ -31,7 +32,9 @@ export default function ServerOfflineHelpModal({
   serverBusyKind = 'starting',
   agentLabel,
 }) {
+  const { t } = useTranslation('shell');
   const [diag, setDiag] = useState(null);
+  const agent = agentLabel || 'Anton';
   const [busy, setBusy] = useState(false);
 
   // Pull diagnostics fresh on each open — the recentLog only grows
@@ -70,13 +73,13 @@ export default function ServerOfflineHelpModal({
     kind: errorKind,
     exitCode: diag?.lastExitCode ?? null,
     stopIntentional: diag?.lastStopIntentional ?? null,
-  });
+  }, sharedTranslator('app'));
   const failureCopy = backendFailureCopy({
     kind: errorKind,
     hasLog: log.length > 0,
     port: port ?? null,
     portHolderPid: diag?.portHolderPid ?? null,
-  });
+  }, sharedTranslator('app'));
 
   // Live state → title + header colour + subtitle. The same modal is
   // used in every state — clicking the status pill while the backend
@@ -105,33 +108,33 @@ export default function ServerOfflineHelpModal({
     : 'failed';
   const HEADER = {
     online:   {
-      title:    `${agentLabel || 'Anton'} backend is running`,
-      subtitle: `Live on port ${port ?? '—'}. The local Python server is responding to /health.`,
+      title:    t('serverHelp.online.title', { agent }),
+      subtitle: t('serverHelp.online.subtitle', { port: port ?? '—' }),
       iconColor:  'var(--success, #1F8F5F)',
       iconBgMix:  'var(--success, #1F8F5F)',
     },
     starting: {
-      title:    `${agentLabel || 'Anton'} backend is starting…`,
-      subtitle: 'Spawning the local Python server. This usually takes a few seconds — the modal will reflect the result automatically.',
+      title:    t('serverHelp.starting.title', { agent }),
+      subtitle: t('serverHelp.starting.subtitle'),
       iconColor:  'var(--accent)',
       iconBgMix:  'var(--accent)',
     },
     stopping: {
-      title:    `${agentLabel || 'Anton'} backend is stopping…`,
-      subtitle: 'Waiting for the local Python server to terminate.',
+      title:    t('serverHelp.stopping.title', { agent }),
+      subtitle: t('serverHelp.stopping.subtitle'),
       iconColor:  'var(--ink-3)',
       iconBgMix:  'var(--ink-3)',
     },
     offline: offlineKind === 'stopped'
       ? {
-          title:    `${agentLabel || 'Anton'} backend is stopped`,
-          subtitle: 'You stopped the local Python server. Click "Start backend" below to bring it back up.',
+          title:    t('serverHelp.stopped.title', { agent }),
+          subtitle: t('serverHelp.stopped.subtitle'),
           iconColor:  'var(--ink-3)',
           iconBgMix:  'var(--ink-3)',
         }
       : {
-          title:    `${agentLabel || 'Anton'} backend isn't running`,
-          subtitle: "The local Python server didn't start. Below is the most recent error and log tail captured from the process.",
+          title:    t('serverHelp.failed.title', { agent }),
+          subtitle: t('serverHelp.failed.subtitle'),
           iconColor:  'var(--danger)',
           iconBgMix:  'var(--danger)',
         },
@@ -207,9 +210,14 @@ export default function ServerOfflineHelpModal({
       size="md"
       width="min(640px, 92vw)"
       maxHeight="min(640px, 88vh)"
-      ariaLabel={HEADER.title}
+      labelledBy="server-help-title"
     >
-        <div className="flex items-start gap-3 py-4 px-[18px] border-b border-t-0 border-x-0 border-solid border-line">
+        <ModalHeader
+          id="server-help-title"
+          title={HEADER.title}
+          subtitle={HEADER.subtitle}
+          onClose={onClose}
+          leading={(
           <span
             className="inline-grid place-items-center w-9 h-9 rounded-card-row shrink-0 border border-solid"
             style={{
@@ -221,42 +229,29 @@ export default function ServerOfflineHelpModal({
           >
             {Ico.power(20)}
           </span>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-[14.5px] text-ink">{HEADER.title}</div>
-            <div className="text-sm text-ink-3 mt-[2px] leading-[1.5]">
-              {HEADER.subtitle}
-            </div>
-          </div>
-          <Tooltip content="Close">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="cursor-pointer bg-transparent border-0 text-ink-3 w-[28px] h-[28px] rounded-[6px] inline-grid place-items-center text-[18px] leading-none shrink-0"
-            >×</button>
-          </Tooltip>
-        </div>
+          )}
+        />
 
-        <div className="flex-1 overflow-y-auto py-[14px] px-[18px] flex flex-col gap-[14px]">
+        <ModalBody padding="14px 18px" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* Quick facts row — exit code only renders when the
               backend isn't running, otherwise it's irrelevant noise.
               The grid auto-fits whichever tiles are present. */}
           <div
-            className="grid gap-[10px] font-[family-name:var(--font-mono)] text-xs"
+            className="grid gap-[10px] text-xs tabular-nums"
             style={{ gridTemplateColumns: `repeat(${state === 'offline' ? 3 : 2}, minmax(0, 1fr))` }}
           >
             <div className="py-2 px-[10px] rounded-[7px] bg-surface-2 border border-solid border-line">
-              <div className="section-label">Port</div>
+              <div className="section-label">{t('serverHelp.port')}</div>
               <div className="text-ink mt-[2px]">{port ?? '—'}</div>
             </div>
             {state === 'offline' && (
               <div className="py-2 px-[10px] rounded-[7px] bg-surface-2 border border-solid border-line">
-                <div className="section-label">Exit code</div>
+                <div className="section-label">{t('serverHelp.exitCode')}</div>
                 <div className="text-ink mt-[2px]">{exitLabel}</div>
               </div>
             )}
             <div className="py-2 px-[10px] rounded-[7px] bg-surface-2 border border-solid border-line">
-              <div className="section-label">Last attempt</div>
+              <div className="section-label">{t('serverHelp.lastAttempt')}</div>
               <div className="text-ink mt-[2px]">{startedAt ?? '—'}</div>
             </div>
           </div>
@@ -269,14 +264,14 @@ export default function ServerOfflineHelpModal({
             <Alert variant="danger" className="font-[family-name:var(--font-mono)] break-words">{error}</Alert>
           ) : (
             <div className="py-[10px] px-3 rounded-card-row bg-surface-2 border border-solid border-line text-ink-3 text-[13px] leading-[1.5]">
-              No specific start error was captured. Check the log tail below — the python process may have died after a successful start.
+              {t('serverHelp.noError')}
             </div>
           ))}
 
           {/* Recent log */}
           <div>
-            <div className="section-label mb-[6px]">Recent log</div>
-            <pre className="m-0 py-[10px] px-3 bg-surface-2 border border-solid border-line rounded-card-row font-[family-name:var(--font-mono)] text-[11.5px] leading-[1.55] text-ink-2 max-h-[280px] overflow-auto whitespace-pre-wrap break-words select-text">{log || '(no log captured yet)'}</pre>
+            <div className="section-label mb-[6px]">{t('serverHelp.recentLog')}</div>
+            <pre className="m-0 py-[10px] px-3 bg-surface-2 border border-solid border-line rounded-card-row font-[family-name:var(--font-mono)] text-[11.5px] leading-[1.55] text-ink-2 max-h-[280px] overflow-auto whitespace-pre-wrap break-words select-text">{log || t('serverHelp.noLog')}</pre>
           </div>
 
           {/* What actually happened + what to do about it. Driven by the
@@ -290,13 +285,9 @@ export default function ServerOfflineHelpModal({
               </ul>
             </div>
           )}
-        </div>
+        </ModalBody>
 
-        <div className="flex items-center justify-end gap-2 py-3 px-[18px] border-t border-b-0 border-x-0 border-solid border-line bg-surface">
-          <Button
-            variant="subtle"
-            onClick={onClose}
-          >Close</Button>
+        <ModalFooter cancel={<Button variant="subtle" onClick={onClose}>{t('ui.modal.close')}</Button>}>
           {/* Action buttons — split by intent so the user can stop
               the backend without it immediately restarting:
                 * online   → [Stop] [Restart]   (Restart = stop + start)
@@ -312,7 +303,7 @@ export default function ServerOfflineHelpModal({
                   onClick={handleStop}
                   disabled={busy || serverBusy || !onStop}
                 >
-                  {(busy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
+                  {(busy && serverBusyKind === 'stopping') ? t('serverHelp.actions.stopping') : t('serverHelp.actions.stop')}
                 </Button>
               )}
               <Button
@@ -321,8 +312,8 @@ export default function ServerOfflineHelpModal({
                 disabled={busy || serverBusy || (state === 'offline' ? !onStart : !(onStart && onStop))}
               >
                 {busy
-                  ? (state === 'offline' ? 'Starting…' : 'Restarting…')
-                  : (state === 'offline' ? 'Start backend' : 'Restart backend')}
+                  ? (state === 'offline' ? t('serverHelp.actions.starting') : t('serverHelp.actions.restarting'))
+                  : (state === 'offline' ? t('serverHelp.actions.start') : t('serverHelp.actions.restart'))}
               </Button>
             </>
           ) : (
@@ -332,11 +323,11 @@ export default function ServerOfflineHelpModal({
               disabled={busy || serverBusy}
             >
               {busy
-                ? (state === 'offline' ? 'Starting…' : 'Restarting…')
-                : (state === 'offline' ? 'Start backend' : 'Restart backend')}
+                ? (state === 'offline' ? t('serverHelp.actions.starting') : t('serverHelp.actions.restarting'))
+                : (state === 'offline' ? t('serverHelp.actions.start') : t('serverHelp.actions.restart'))}
             </Button>
           )}
-        </div>
+        </ModalFooter>
     </Modal>
   );
 }

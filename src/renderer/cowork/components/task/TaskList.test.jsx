@@ -12,7 +12,7 @@ const TASKS = [
   { id: 't1', title: 'Alpha report', subtitle: 'Drafted the Q3 summary', updatedAt: '2026-09-28T10:00:00Z', projectName: 'metrics' },
   { id: 't2', title: 'Beta notes', updatedAt: '2026-09-27T10:00:00Z' },
   { id: 'r1', title: 'Digest run one', scheduledId: 's1', subtitle: 'first run', updatedAt: '2026-09-29T10:00:00Z' },
-  { id: 'r2', title: 'Digest run two', subtitle: 'latest run', updatedAt: '2026-10-01T10:00:00Z' },
+  { id: 'r2', title: 'Digest run two', scheduledId: 's1', subtitle: 'latest run', updatedAt: '2026-10-01T10:00:00Z' },
 ];
 const SCHEDULES = [{ id: 's1', title: 'Daily digest', project: 'metrics' }];
 
@@ -20,7 +20,6 @@ function setup(overrides = {}) {
   const props = {
     tasks: TASKS,
     schedules: SCHEDULES,
-    scheduleRunsIndex: { r2: 's1' },
     onSelectTask: vi.fn(),
     onOpenSchedule: vi.fn(),
     onDeleteTask: vi.fn(),
@@ -95,5 +94,12 @@ describe('TaskList', () => {
   it('shows the empty state', () => {
     setup({ tasks: [] });
     expect(screen.getByText('No tasks in this project yet')).toBeInTheDocument();
+  });
+});
+
+describe('TaskList — run counts', () => {
+  it('counts the schedule’s whole history, not just the runs on this page', () => {
+    setup({ schedules: [{ ...SCHEDULES[0], runCount: 42 }] });
+    expect(screen.getByText('42 runs')).toBeInTheDocument();
   });
 });

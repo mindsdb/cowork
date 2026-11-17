@@ -91,6 +91,7 @@ jobs:
             --build-arg VITE_PLATFORM_UI=true
             --build-arg VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=${{ inputs.build-environment == 'production' && secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN || '' }}
             --build-arg VITE_APP_VERSION=${{ env.SLUG }}
+            --build-arg VITE_BRAND_ENV=${{ inputs.build-environment }}
           build-for-environment: ${{ inputs.build-environment }}
 
   scan:

@@ -9,6 +9,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { ArrowUpIcon } from './icons';
 import { Tooltip } from '../../ui';
+import { useTranslation } from '../../../../lib/i18n';
 
 const MAX_HEIGHT = 120; // px — ~5 lines before the textarea scrolls
 
@@ -16,8 +17,10 @@ export function UnanchoredComposer({
   onCreate,
   onPosted,
   kind = 'review',
-  placeholder = 'Add a comment…',
+  placeholder: placeholderProp,
 }) {
+  const { t } = useTranslation('artifacts');
+  const placeholder = placeholderProp ?? t('comments.composer.placeholder');
   const [text, setText] = useState('');
   const [pending, setPending] = useState(false);
   const taRef = useRef(null);
@@ -55,7 +58,7 @@ export function UnanchoredComposer({
         rows={1}
         value={text}
         placeholder={placeholder}
-        aria-label="Add a comment"
+        aria-label={t('comments.composer.ariaLabel')}
         disabled={pending}
         className="flex-1 min-w-0 resize-none outline-none border-0 bg-transparent
           text-[14px] leading-[24px] text-ink placeholder:text-ink-4 px-[4px]"
@@ -65,10 +68,10 @@ export function UnanchoredComposer({
           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
         }}
       />
-      <Tooltip content="Send">
+      <Tooltip content={t('comments.composer.send')}>
         <button
           type="button"
-          aria-label="Send"
+          aria-label={t('comments.composer.send')}
           disabled={!canSend}
           onClick={send}
           className={[

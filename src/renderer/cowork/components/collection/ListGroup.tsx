@@ -65,7 +65,7 @@ export function ListGroup({
 }
 
 const listItem = cva(
-  [ITEM_ROOT, 'flex flex-wrap items-center gap-x-3 gap-y-1.5 transition-colors'],
+  [ITEM_ROOT, 'flex items-center gap-x-3 transition-colors'],
   {
     variants: {
       activatable: { true: 'hover:bg-surface-2', false: '' },
@@ -99,35 +99,33 @@ export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem
       {...rest}
     >
       {leading && <span className="inline-flex w-6 shrink-0 justify-center text-ink-4">{leading}</span>}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <ItemTitle
-            title={title}
-            onActivate={onActivate}
-            activateLabel={activateLabel}
-            busy={busy}
-            className="font-body text-base font-medium text-ink has-[input]:flex-1"
-          />
-          {badges}
+      {/* Title and meta wrap as one unit: the title column claims at least
+          14rem, so once the row can't fit that beside the meta, the meta
+          drops under the title rather than squeezing it. This follows the
+          row's own width, not the viewport, since the sidebar and panes make
+          the list narrower than the window. Actions stay outside, beside the
+          title. A long unbroken meta word wraps instead of widening the page. */}
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="flex min-w-0 flex-[1_1_14rem] flex-col gap-0.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <ItemTitle
+              title={title}
+              onActivate={onActivate}
+              activateLabel={activateLabel}
+              busy={busy}
+              className="font-body text-base font-medium text-ink has-[input]:flex-1"
+            />
+            {badges}
+          </div>
+          {description && <div className="truncate font-body text-sm text-ink-3">{description}</div>}
+          {children}
         </div>
-        {description && <div className="truncate font-body text-sm text-ink-3">{description}</div>}
-        {children}
+        {meta && (
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1 font-body text-sm text-ink-4 [overflow-wrap:anywhere]">
+            {meta}
+          </div>
+        )}
       </div>
-      {/* Phone width: meta drops under the title instead of squeezing it, and
-          wraps rather than widening the page; it may shrink so a long unbroken
-          name stays in the row. It moves after the actions, so they stay
-          beside the title. Desktop never wraps (shrink-0). */}
-      {meta && (
-        <div
-          className={cn(
-            'flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 font-body text-sm text-ink-4',
-            'max-sm:order-last max-sm:min-w-0 max-sm:basis-full max-sm:[overflow-wrap:anywhere]',
-            leading && 'max-sm:pl-9',
-          )}
-        >
-          {meta}
-        </div>
-      )}
       {actions && <ItemActions>{actions}</ItemActions>}
     </Comp>
   );

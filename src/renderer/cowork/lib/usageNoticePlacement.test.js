@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { currentTurnAnchorId, usageNoticeBuckets, dropNoticesFromTurn } from './usageNoticePlacement';
+import { currentTurnAnchorId, usageNoticeBuckets, dropNoticesFromTurn, withUsageNotices } from './usageNoticePlacement';
 
 const user = (id, content) => ({ role: 'user', id, content });
 const assistant = (id, content) => ({ role: 'assistant', id, content });
@@ -136,5 +136,26 @@ describe('dropNoticesFromTurn (a turn delete removes a suffix of ids)', () => {
     expect(dropNoticesFromTurn(undefined, ['u1'])).toBeUndefined();
     expect(dropNoticesFromTurn([at('u2')], undefined)).toEqual([at('u2')]);
     expect(dropNoticesFromTurn([at('u2')], [])).toEqual([at('u2')]);
+  });
+});
+
+describe('withUsageNotices', () => {
+  const low = (fractionLeft, anchorId) => ({ kind: 'free_low', fractionLeft, anchorId });
+  const used = (anchorId) => ({ kind: 'free_used', anchorId });
+  const topUp = (anchorId) => ({ kind: 'auto_top_up_failed', anchorId });
+
+  // A long task stepped through 20%, 10% and 5% and then ran out, and showed
+  // four near-identical notices. The allowance is one figure: one notice.
+  it('keeps one allowance notice, the latest, at the turn it happened in', () => {
+    let notices = withUsageNotices(undefined, [low(0.18, 'u1')]);
+    notices = withUsageNotices(notices, [low(0.07, 'u2')]);
+    expect(notices).toEqual([low(0.07, 'u2')]);
+    notices = withUsageNotices(notices, [used('u3')]);
+    expect(notices).toEqual([used('u3')]);
+  });
+
+  it('keeps an auto top up failure beside the allowance notice', () => {
+    const notices = withUsageNotices([low(0.18, 'u1'), topUp('u1')], [used('u2'), topUp('u2')]);
+    expect(notices).toEqual([topUp('u1'), used('u2'), topUp('u2')]);
   });
 });

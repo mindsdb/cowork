@@ -279,8 +279,8 @@ describe('useGoogleDrivePicker — which chooser opens', () => {
     await addPromise;
 
     expect(hostMock.pickDriveFiles).not.toHaveBeenCalled();
-    const [engine, name, saved, project] = apiMock.savePickedFiles.mock.calls[0];
-    expect([engine, name, project]).toEqual(['google_drive', 'user-gmail-com', 'Launch']);
+    const [engine, name, saved] = apiMock.savePickedFiles.mock.calls[0];
+    expect([engine, name]).toEqual(['google_drive', 'user-gmail-com']);
     expect(saved).toEqual([{
       id: 'f1', name: 'Roadmap', mimeType: 'application/vnd.google-apps.document',
       iconUrl: 'https://icon', url: 'https://docs/f1', resourceKey: null, projects: ['Launch'],

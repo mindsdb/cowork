@@ -33,6 +33,11 @@ function Fixture() {
       <ListItem data-testid="long-meta-row" title="Long meta" onActivate={record('Long meta open')} actions={menu('Long meta')}
         meta={<span data-testid="long-meta">{'x'.repeat(120)}</span>} />
     </ListGroup>
+    {/* A desktop window whose list is narrow (sidebar, split pane) with a full meta. */}
+    <ListGroup aria-label="Narrow" className="m-8" style={{ width: 560 }}>
+      <ListItem data-testid="narrow-row" title="Weekly competitor pricing digest" onActivate={record('Narrow open')} actions={menu('Narrow')}
+        meta={<><span>Market research</span><span>Every weekday at 9:00</span><span>in 3h</span><span>Active</span></>} />
+    </ListGroup>
     <output aria-label="Events">{log.join('|')}</output>
   </>;
 }

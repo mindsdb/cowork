@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   commit: vi.fn(),
   setGitIdentity: vi.fn(),
   updateProject: vi.fn(),
+  updateSession: vi.fn(),
   projectsLoad: vi.fn(async () => {}),
   projectsReplace: vi.fn(),
   projectsSetSelectedId: vi.fn(),
@@ -30,7 +31,7 @@ const mocks = vi.hoisted(() => ({
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
   trackBillingOpened: vi.fn(),
-  openCodeExternalUrl: vi.fn(async () => true),
+  openCodeExternalUrl: vi.fn(async (_url: string) => true),
   create: vi.fn(),
 }));
 
@@ -67,6 +68,7 @@ vi.mock('./api', () => ({
     setGitIdentity: mocks.setGitIdentity,
     updateProject: mocks.updateProject,
     create: mocks.create,
+    updateSession: mocks.updateSession,
   },
   openCodingEventStream: vi.fn(() => () => {}),
   codingErrorCode: (reason: unknown) => (reason instanceof Error ? (reason as Error & { code?: string }).code : undefined),
@@ -85,16 +87,18 @@ vi.mock('./CodeCommandPalette', async (importOriginal) => {
 });
 vi.mock('./fixtures', () => ({ codeFixtureReviewOpen: () => false }));
 vi.mock('./TaskBar', () => ({
-  TaskBar: ({ onDelete, onStatus, onRunProjectAction, onToggleReview }: {
+  TaskBar: ({ onDelete, onStatus, onRunProjectAction, onToggleReview, onOpenControls }: {
     onDelete: () => void;
     onStatus: () => void;
     onToggleReview: () => void;
+    onOpenControls: () => void;
     onRunProjectAction: (action: { id: string; label: string; resource_id: string; resource_name: string; command: string; preview: boolean }) => void;
   }) => (
     <>
       <button type="button" onClick={onDelete}>Delete menu action</button>
       <button type="button" onClick={onStatus}>Status menu action</button>
       <button type="button" onClick={onToggleReview}>Review menu action</button>
+      <button type="button" onClick={onOpenControls}>Task controls menu action</button>
       <button type="button" onClick={() => onRunProjectAction({
         id: 'preview', label: 'Start preview', resource_id: 'resource-1', resource_name: 'App', command: 'npm run dev', preview: true,
       })}>Run project action</button>
@@ -194,7 +198,8 @@ vi.mock('../components/ConfirmModal', () => ({
 }));
 
 import CodeView from './CodeView';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_ADD_FUNDS_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { HubUsageContext } from '../lib/hubUsageContext';
 
 const { useCodingSession: actualUseCodingSession } = await vi.importActual<typeof import('./useCodingSession')>('./useCodingSession');
 
@@ -232,7 +237,7 @@ function deferred<T>() {
 }
 
 
-function renderCode(overrides: Partial<React.ComponentProps<typeof CodeView>> = {}) {
+function renderCode(overrides: Partial<React.ComponentProps<typeof CodeView>> = {}, { isBillingOwner }: { isBillingOwner?: boolean } = {}) {
   const props: React.ComponentProps<typeof CodeView> = {
     sessions: [],
     selectedId: null,
@@ -245,7 +250,13 @@ function renderCode(overrides: Partial<React.ComponentProps<typeof CodeView>> = 
     onSelectionChange: vi.fn(),
     ...overrides,
   };
-  return { ...render(<CodeView {...props} />), props };
+  const view = <CodeView {...props} />;
+  return {
+    ...render(isBillingOwner === undefined ? view : (
+      <HubUsageContext.Provider value={{ usage: { isBillingOwner }, providerType: 'minds-cloud', refresh: () => {} }}>{view}</HubUsageContext.Provider>
+    )),
+    props,
+  };
 }
 
 
@@ -307,6 +318,77 @@ describe('CodeView session-list reconciliation', () => {
 
     expect(mocks.trackBillingOpened).toHaveBeenCalledWith('included_allowance_exhausted', 'code');
     expect(mocks.openCodeExternalUrl).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it("opens the session organization's Budgets tab from View budgets in the composer lip", () => {
+    const failed: CodingSession = { ...session('task-1'), status: 'failed', run_status: 'failed', last_error: 'The turn failed.' };
+    const budget: CodingEvent = {
+      schema_version: 1,
+      seq: 1,
+      timestamp: '2026-08-21T09:05:00Z',
+      type: 'error',
+      title: '',
+      text: 'The turn failed.',
+      phase: 'failed',
+      data: { code: 'budget_exceeded', detail: 'upstream 402' },
+    };
+    mocks.useCodingSession.mockReturnValue({
+      session: failed,
+      events: [budget],
+      latestEvents: { error: { latest: budget } },
+      git: null,
+      diff: [],
+      loading: false,
+      error: '',
+      refresh: vi.fn(async () => {}),
+      refreshReview: vi.fn(async () => {}),
+    });
+    renderCode({
+      sessions: [failed],
+      selectedId: failed.id,
+      account: { name: 'Ian', email: 'ian@example.com', orgId: 'org-123', sub: 'user-9' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'View budgets' }));
+
+    expect(mocks.trackBillingOpened).toHaveBeenCalledWith('budget_exceeded', 'code');
+    const opened = new URL(mocks.openCodeExternalUrl.mock.calls[0][0]);
+    expect(opened.searchParams.get('tab')).toBe('budgets');
+    expect(opened.searchParams.get('organization')).toBe('org-123');
+    expect(opened.searchParams.get('subject')).toBe('user-9');
+  });
+
+  it.each([
+    [true, MINDS_ADD_FUNDS_URL],
+    [false, MINDS_BILLING_URL],
+  ])('sends Add credits in the composer lip to the console (billing owner: %s)', (isBillingOwner, url) => {
+    const failed: CodingSession = { ...session('task-1'), status: 'failed', run_status: 'failed', last_error: 'The turn failed.' };
+    const allowance: CodingEvent = {
+      schema_version: 1,
+      seq: 1,
+      timestamp: '2026-08-21T09:05:00Z',
+      type: 'error',
+      title: '',
+      text: 'The turn failed.',
+      phase: 'failed',
+      data: { code: 'included_allowance_exhausted', detail: 'upstream 429' },
+    };
+    mocks.useCodingSession.mockReturnValue({
+      session: failed,
+      events: [allowance],
+      latestEvents: { error: { latest: allowance } },
+      git: null,
+      diff: [],
+      loading: false,
+      error: '',
+      refresh: vi.fn(async () => {}),
+      refreshReview: vi.fn(async () => {}),
+    });
+    renderCode({ sessions: [failed], selectedId: failed.id }, { isBillingOwner });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
+
+    expect(mocks.openCodeExternalUrl).toHaveBeenCalledWith(url);
   });
 
   it('opens project history instead of starting a task when a project is selected', async () => {
@@ -534,7 +616,7 @@ describe('CodeView session-list reconciliation', () => {
     renderCode({ sessions: [active], selectedId: active.id });
     fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
     expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
 
     pending.reject(new Error('The agent is between turns; queue this instruction instead.'));
 
@@ -544,7 +626,7 @@ describe('CodeView session-list reconciliation', () => {
     expect(screen.queryByRole('button', { name: 'Steer with queued instruction 1' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Show 1 more notice' }));
     expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeEnabled();
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeEnabled();
   });
 
   it.each(['approval', 'question'] as const)('keeps the pending %s actionable without offering a new queued steer', async kind => {
@@ -597,7 +679,7 @@ describe('CodeView session-list reconciliation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
     current = awaiting;
     view.rerender(<CodeView {...view.props} sessions={[current]} />);
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
 
     expect(screen.getByRole('button', { name: 'Approval' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
@@ -629,14 +711,14 @@ describe('CodeView session-list reconciliation', () => {
     current = awaiting;
     view.rerender(<CodeView {...view.props} sessions={[current]} />);
     fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
 
     // The approval answers first; the steer is still outstanding.
     await act(async () => { approval.resolve(awaiting); for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
 
     await act(async () => { steer.resolve(awaiting); for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeEnabled();
   });
 
   it('can answer a question that arrives while a steer RPC is still pending', async () => {
@@ -652,7 +734,7 @@ describe('CodeView session-list reconciliation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
     current = { ...current, status: 'awaiting_approval', pending_question: { id: 'q1', questions: [{ id: 'layout', header: 'Layout', question: 'Which layout?', isOther: true, isSecret: false }] } };
     view.rerender(<CodeView {...view.props} sessions={[current]} />);
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
     fireEvent.change(screen.getByRole('textbox', { name: 'Your answer' }), { target: { value: 'Compact' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     await waitFor(() => expect(mocks.answerQuestion).toHaveBeenCalledWith(current.id, 'q1', { layout: ['Compact'] }));
@@ -693,7 +775,7 @@ describe('CodeView session-list reconciliation', () => {
 
       renderCode({ sessions: [active], selectedId: active.id });
       fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
-      expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
 
       await act(async () => {
         vi.advanceTimersByTime(20_000);
@@ -701,7 +783,7 @@ describe('CodeView session-list reconciliation', () => {
       });
 
       expect(screen.getByText(/did not accept the steer in time/)).toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeEnabled();
     } finally {
       vi.useRealTimers();
     }
@@ -725,6 +807,20 @@ describe('CodeView session-list reconciliation', () => {
     expect(await screen.findByText('The task computer did not acknowledge the stop request.')).toBeInTheDocument();
     expect(mocks.cancel).toHaveBeenCalledWith(active.id);
     expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
+  });
+
+  it('reports a rejected task settings update in the modal only and keeps it open', async () => {
+    const user = userEvent.setup();
+    mocks.updateSession.mockRejectedValueOnce(new Error('Stop the task terminal before changing task controls'));
+    renderCode({ sessions: [session('task-1')], selectedId: 'task-1' });
+
+    await user.click(screen.getByRole('button', { name: 'Task controls menu action' }));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Stop the task terminal before changing task controls')).toBeInTheDocument();
+    expect(screen.getAllByText('Stop the task terminal before changing task controls')).toHaveLength(1);
+    expect(dialog).toBeInTheDocument();
   });
 
   it('does not present a local folder as a warning just because it is not a Git repository', async () => {

@@ -6,28 +6,47 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { setOrgMode } from '../../../lib/orgMode';
 
+const fetchConnectors = vi.fn();
 vi.mock('../../api', () => ({
-  fetchConnectors: vi.fn(() => Promise.resolve([
-    { id: 'google_drive', label: 'Google Drive', category: 'files' },
-    { id: 'gmail', label: 'Gmail', category: 'communication' },
-  ])),
+  fetchConnectors: (...args) => fetchConnectors(...args),
 }));
 const openExternal = vi.fn();
+const hostState = vi.hoisted(() => ({ isMobileShell: false }));
 vi.mock('../../../platform/host', () => ({
-  host: { openExternal: (...args) => openExternal(...args) },
+  host: {
+    openExternal: (...args) => openExternal(...args),
+    get isMobileShell() { return hostState.isMobileShell; },
+  },
 }));
 
 import ConnectorPicker from './ConnectorPicker';
 
-const NOTE_TEXT = /The full range of connectors is coming soon to Cowork Cloud\./;
+const NOTE_TEXT = /More connectors are on the way here\./;
 
 describe('ConnectorPicker org-mode desktop note', () => {
   beforeEach(() => {
     openExternal.mockClear();
+    // Cloud's real shape: some connectors run here, the rest are desktop-only.
+    fetchConnectors.mockResolvedValue([
+      { id: 'google_drive', label: 'Google Drive', category: 'files' },
+      { id: 'gmail', label: 'Gmail', category: 'communication' },
+      { id: 'jira', label: 'Jira', category: 'productivity', cloud_available: false },
+    ]);
   });
 
   afterEach(() => {
     setOrgMode(false);
+    hostState.isMobileShell = false;
+  });
+
+  // ENG-4023: the note stays, as plain text; a phone cannot install the app.
+  it('names the desktop app without a download link inside the mobile app', async () => {
+    hostState.isMobileShell = true;
+    setOrgMode(true);
+    render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
+
+    expect(await screen.findByText(NOTE_TEXT)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cowork Desktop App' })).toBeNull();
   });
 
   it('renders the note and links to the desktop download page when org mode is on', async () => {
@@ -44,6 +63,18 @@ describe('ConnectorPicker org-mode desktop note', () => {
     render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
 
     await screen.findByText('Google Drive');
+    expect(screen.queryByText(NOTE_TEXT)).toBeNull();
+  });
+
+  it('says nothing about the desktop app once every connector runs here', async () => {
+    setOrgMode(true);
+    fetchConnectors.mockResolvedValue([
+      { id: 'postgres', label: 'PostgreSQL', category: 'database' },
+      { id: 'gmail', label: 'Gmail', category: 'communication' },
+    ]);
+    render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
+
+    await screen.findByText('PostgreSQL');
     expect(screen.queryByText(NOTE_TEXT)).toBeNull();
   });
 });

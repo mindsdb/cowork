@@ -158,10 +158,6 @@ describe('UtilitiesView memory editor targeting', () => {
 
 describe('UtilitiesView memory capability gates', () => {
   it('offers edit and delete on a memory the server says is writable', async () => {
-    Object.defineProperty(window, 'confirm', {
-      configurable: true,
-      value: vi.fn(() => true),
-    });
     render(<UtilitiesView kind="memory" />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Rules/ }));
@@ -171,6 +167,9 @@ describe('UtilitiesView memory capability gates', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(api.deleteMemory).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog', { name: 'Delete "Rules" memory?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(api.deleteMemory).toHaveBeenCalledWith({
       scope: 'Project',
@@ -294,7 +293,6 @@ describe('UtilitiesView own memory on a deployment that saves it on its own', ()
   });
 
   it('says the memory is the person\'s own, keeps Edit closed and lets them delete it', async () => {
-    Object.defineProperty(window, 'confirm', { configurable: true, value: vi.fn(() => true) });
     render(<UtilitiesView kind="memory" />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Profile/ }));
@@ -304,6 +302,8 @@ describe('UtilitiesView own memory on a deployment that saves it on its own', ()
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute('title', expect.not.stringContaining('shared'));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const confirm = await screen.findByRole('dialog', { name: /^Delete .* memory\?$/ });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(api.deleteMemory).toHaveBeenCalledWith({
       scope: 'Global',

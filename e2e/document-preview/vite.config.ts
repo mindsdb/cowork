@@ -86,6 +86,8 @@ export default defineConfig(async () => {
   await generatePreviewBundles();
   return {
     root: __dirname,
+    // host.ts reads the build target (src/renderer/lib/buildTarget.ts).
+    define: { __WEB_BUILD__: 'false' },
     plugins: [react(), fixtureFiles(), navigationBundle(), fileViewerStubs()],
     optimizeDeps: { include: ['react', 'react-dom/client'] },
     server: { host: '127.0.0.1', port: 5210, strictPort: true, fs: { allow: [REPO_ROOT] } },

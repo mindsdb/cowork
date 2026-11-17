@@ -1,4 +1,4 @@
-import { MODEL_ROUTER_ID, isModelLocked, orderByFamily, unavailableModelFields } from './modelCatalog';
+import { MODEL_ROUTER_ID, isModelLocked, latestAliasIds, orderByFamily, unavailableModelFields } from './modelCatalog';
 import type { ModelDisabledReason } from './modelCatalog';
 
 
@@ -23,12 +23,16 @@ export interface ModelPickerOption {
   value: string;
   label: string;
   tag?: string;
+  /** Muted text after the name, on the row only; the trigger and search see `label`. */
+  note?: string;
   provider?: string;
   disabled?: boolean;
   /** The wallet or the spent allowance closes this row; ModelSelect adds "Add credits". */
   locked?: boolean;
   /** An org admin's model rule closes this row; no credits action applies. */
   restricted?: boolean;
+  /** The org's spending budget is used up; no credits action applies. */
+  budgetReached?: boolean;
   /** Row tooltip. */
   title?: string;
 }
@@ -67,18 +71,19 @@ export function buildModelPickerOptions(
   const ordered = orderByFamily(ids, modelFamilies)
     .map((id: string) => byId.get(id))
     .filter((model: ModelPickerSource | undefined): model is ModelPickerSource => Boolean(model));
+  const latest = latestAliasIds(ids, modelFamilies);
 
   return ordered.map((model: ModelPickerSource) => {
     return {
       value: model.id,
       label: model.name,
       /* Availability is the only row tag: "Needs credits" for the
-         wallet or the allowance, "Restricted" for an admin's model rule, from
-         the helper the Settings builder shares. Version state needs none: the
-         name carries the version and orderByFamily seats a pinned version
-         under its head. The old "Latest" / "Older version" pills sat on most
-         rows and pushed long names into an ellipsis. */
+         wallet or the allowance, "Restricted" for an admin's model rule,
+         "Budget reached" for the org's spent budget, from
+         the helper the Settings builder shares. Version state is a muted note,
+         not a pill: pills on most rows pushed long names into an ellipsis. */
       ...unavailableModelFields(modelEnabled, modelDisabledReasons, model.id),
+      ...(latest.has(model.id) ? { note: 'latest' } : {}),
       ...(modelProviders[model.id] ? { provider: modelProviders[model.id] } : {}),
     };
   });

@@ -15,6 +15,12 @@
 // section of docs/update-behavior.md.
 
 import { parseCalVer, compareCalVer, calverDate } from './version';
+import { sourceTranslator, type Translate } from './i18n/translate';
+import appSource from './i18n/locales/en/app.json';
+
+/* The notices' copy lives in the `app` catalog under `shellSupport`. The
+   renderer passes its `app` translator; without one the copy is English. */
+const english: Translate = sourceTranslator(appSource);
 
 /**
  * The oldest prod shell the current UI and cowork-server support.
@@ -43,6 +49,14 @@ export const SUPPORTED_SHELL_WINDOW_DAYS = 14;
 /** Where a shell that cannot update itself sends the user (ENG-849/ENG-1103). */
 export const SHELL_DOWNLOAD_PAGE = 'https://mindshub.ai/download';
 
+/**
+ * The oldest macOS major the newest published shell runs on. Shells on older
+ * macOS stop receiving shell updates (the feed and the installer refuse them),
+ * so "too old" with a download button would send them to an installer that
+ * cannot install.
+ */
+export const MIN_MACOS_FOR_LATEST_SHELL = 13;
+
 export type ShellBuildKind = 'dev' | 'preview' | 'stable' | 'prod';
 export type ShellVersionSource = 'bundled' | 'ota' | 'web';
 
@@ -55,6 +69,8 @@ export interface ShellSupportInput {
   source: ShellVersionSource | null | undefined;
   /** The shell's build kind when it reports one; null on legacy shells. */
   buildKind: ShellBuildKind | null | undefined;
+  /** macOS major version of this machine; null off macOS or when unknown. */
+  macosMajor?: number | null;
 }
 
 export type ShellSupportNotApplicableReason =
@@ -80,6 +96,16 @@ export type ShellSupportVerdict =
     latestShellVersion: string;
     daysBehind: number;
     reason: 'below-floor' | 'outside-window';
+  }
+  | {
+    /** The newest shell does not run on this macOS, so this shell cannot
+     *  update. `below-floor` keeps the floor's data risk visible. */
+    status: 'os-capped';
+    reason: 'behind' | 'below-floor';
+    shellVersion: string;
+    latestShellVersion: string;
+    daysBehind: number;
+    macosMajor: number;
   };
 
 const DAY_MS = 86_400_000;
@@ -123,7 +149,19 @@ export function assessShellSupport(input: ShellSupportInput): ShellSupportVerdic
   }
 
   const floor = parseCalVer(MIN_SUPPORTED_SHELL)!;
-  if (compareCalVer(shell, floor) < 0) {
+  const belowFloor = compareCalVer(shell, floor) < 0;
+  const macosMajor = input.macosMajor;
+  if (macosMajor != null && macosMajor < MIN_MACOS_FOR_LATEST_SHELL) {
+    return {
+      status: 'os-capped',
+      reason: belowFloor ? 'below-floor' : 'behind',
+      shellVersion,
+      latestShellVersion,
+      daysBehind,
+      macosMajor,
+    };
+  }
+  if (belowFloor) {
     return { status: 'too-old', shellVersion, latestShellVersion, daysBehind, reason: 'below-floor' };
   }
   if (daysBehind > SUPPORTED_SHELL_WINDOW_DAYS) {
@@ -166,35 +204,71 @@ export interface ShellAutoUpdateView {
 export function deriveShellTooOldNotice(
   verdict: ShellSupportVerdict | null | undefined,
   shellAuto: ShellAutoUpdateView | null | undefined,
+  t: Translate = english,
 ): ShellTooOldNotice | null {
   if (!verdict || verdict.status !== 'too-old') return null;
 
-  const title = 'This app is too old for this version of Cowork';
-  const body = `App shell ${verdict.shellVersion} is installed; ${verdict.latestShellVersion} is current. `
-    + 'Some features are hidden until the app updates.';
+  const title = t('shellSupport.tooOld.title');
+  const body = t('shellSupport.tooOld.body', { installed: verdict.shellVersion, current: verdict.latestShellVersion });
 
   const phase = shellAuto?.phase;
   switch (phase) {
     case 'ready-to-install':
-      return { title, body, actionLabel: 'Restart to update', action: 'install' };
+      return { title, body, actionLabel: t('shellSupport.tooOld.restartToUpdate'), action: 'install' };
     case 'available':
-      return { title, body, actionLabel: 'Download update', action: 'download' };
+      return { title, body, actionLabel: t('shellSupport.tooOld.downloadUpdate'), action: 'download' };
     case 'checking':
-      return { title, body, actionLabel: 'Checking for update…', action: null };
+      return { title, body, actionLabel: t('shellSupport.tooOld.checking'), action: null };
     case 'downloading': {
       const pct = shellAuto?.progress?.percent;
-      const actionLabel = pct != null ? `Downloading (${Math.round(pct)}%)` : 'Downloading…';
+      const actionLabel = pct != null ? t('shellSupport.tooOld.downloadingPercent', { percent: Math.round(pct) }) : t('shellSupport.tooOld.downloading');
       return { title, body, actionLabel, action: null };
     }
     case 'installing':
-      return { title, body, actionLabel: 'Installing…', action: null };
+      return { title, body, actionLabel: t('shellSupport.tooOld.installing'), action: null };
     case 'failed':
-      if (shellAuto?.recoverable) return { title, body, actionLabel: 'Retry update', action: 'retry' };
-      return { title, body, actionLabel: 'Download the latest app', action: 'open-download-page' };
+      if (shellAuto?.recoverable) return { title, body, actionLabel: t('shellSupport.tooOld.retryUpdate'), action: 'retry' };
+      return { title, body, actionLabel: t('shellSupport.tooOld.downloadLatest'), action: 'open-download-page' };
     default:
       // disabled, idle, complete, or no snapshot at all (a shell older than the
       // auto-updater): the shell will not update itself, so send the user to
       // the installer.
-      return { title, body, actionLabel: 'Download the latest app', action: 'open-download-page' };
+      return { title, body, actionLabel: t('shellSupport.tooOld.downloadLatest'), action: 'open-download-page' };
   }
+}
+
+// ---------------------------------------------------------------------------
+// The macOS notice
+// ---------------------------------------------------------------------------
+
+export interface ShellOsCappedNotice {
+  title: string;
+  body: string;
+  /** `once`: dismissed for good; `this-launch`: back on the next launch. */
+  dismissal: 'once' | 'this-launch';
+}
+
+/**
+ * What to tell a user whose macOS the newest shell no longer runs on. No
+ * action: nothing the app can do helps, only a macOS update. Returns null
+ * unless the verdict is `os-capped`.
+ */
+export function deriveShellOsCappedNotice(
+  verdict: ShellSupportVerdict | null | undefined,
+  t: Translate = english,
+): ShellOsCappedNotice | null {
+  if (!verdict || verdict.status !== 'os-capped') return null;
+  const minimum = t('shellSupport.osCapped.minimum', { version: MIN_MACOS_FOR_LATEST_SHELL });
+  if (verdict.reason === 'below-floor') {
+    return {
+      title: t('shellSupport.osCapped.belowFloorTitle'),
+      body: t('shellSupport.osCapped.belowFloorBody', { minimum }),
+      dismissal: 'this-launch',
+    };
+  }
+  return {
+    title: t('shellSupport.osCapped.title'),
+    body: t('shellSupport.osCapped.body', { major: verdict.macosMajor, minimum }),
+    dismissal: 'once',
+  };
 }

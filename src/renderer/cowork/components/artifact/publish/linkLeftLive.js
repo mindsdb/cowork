@@ -10,24 +10,30 @@
  * administrator, not a command.
  */
 
+import i18n from '../../../../lib/i18n';
+import { productName } from '../../../../lib/deploymentBrand';
+
+const tr = (key, vars) => i18n.t(`publish.linkLeftLive.${key}`, { ns: 'artifacts', product: productName('Cowork'), ...vars });
+
+/* The English text, for tests; the UI shows unrecordedLinkWarning(). */
 export const UNRECORDED_LINK_WARNING = 'This link was shared before Cowork recorded who shares each page, '
   + 'so Cowork can’t update it or take it down. Update shares a new link, and Stop sharing or deleting '
   + 'the artifact leaves this one open to anyone who has it. Ask your administrator to remove it.';
+
+export const unrecordedLinkWarning = () => tr('unrecorded');
 
 /* The sentence for Stop sharing's result, or '' when the page came down. */
 export function stopSharingNotice(result) {
   if (!result || result.takenDown !== false || !result.liveLink) return '';
   if (result.reason === 'other_artifact') {
-    return `Nothing was taken down: this artifact’s record pointed at another artifact’s page, ${result.liveLink}.`;
+    return tr('otherArtifact', { link: result.liveLink });
   }
-  return `Cowork couldn’t take this page down, so anyone with its link can still open it: ${result.liveLink}. `
-    + 'It was shared before Cowork recorded who shares each page. Ask your administrator to remove it.';
+  return tr('notTakenDown', { link: result.liveLink });
 }
 
 /* The sentence for a publish or Update that shared a new link in place of
    one with no owner on record, or '' when it kept the link. */
 export function republishNotice(result) {
   if (!result?.replacedLink) return '';
-  return `Shared at a new link. The old link, ${result.replacedLink}, still shows the earlier version, `
-    + 'because it was shared before Cowork recorded who shares each page. Ask your administrator to remove it.';
+  return tr('replaced', { link: result.replacedLink });
 }

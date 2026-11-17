@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
 import { Tooltip } from './ui';
 import { fetchAuthenticatedBlob } from '../lib/authenticatedResource';
+import { useTranslation } from '../../lib/i18n';
 
 // Shared by AttachmentThumbnail and ArtifactViewer's image preview — both
 // need the same blob-fetch workaround for the loopback-<img> CSP block (see
@@ -74,6 +75,7 @@ export function AttachmentThumbnail({
   maxW = 240,
   maxH = 200,
 }) {
+  const { t } = useTranslation('chat');
   const { src, failed } = useBlobImageSrc({ file, url });
 
   const frameStyle = {
@@ -108,11 +110,11 @@ export function AttachmentThumbnail({
 
   if (onOpen) {
     return (
-      <Tooltip content={alt || 'Open image'}>
+      <Tooltip content={alt || t('attachmentThumbnail.open')}>
         <button
           type="button"
           onClick={onOpen}
-          aria-label={alt ? `Open image: ${alt}` : 'Open image'}
+          aria-label={alt ? t('attachmentThumbnail.openNamed', { name: alt }) : t('attachmentThumbnail.open')}
           style={{ ...frameStyle, padding: 0, cursor: 'pointer' }}
         >
           {inner}

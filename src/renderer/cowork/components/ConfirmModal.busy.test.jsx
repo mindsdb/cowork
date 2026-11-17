@@ -92,3 +92,36 @@ describe('ConfirmModal while busy', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ConfirmModal header X', () => {
+  it('closes from the X like Cancel does', async () => {
+    const { onClose } = open();
+
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the X while locked', async () => {
+    open({ busy: true });
+    await screen.findByRole('dialog');
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the X while busy when the caller opts in', async () => {
+    open({ busy: true, dismissableWhileBusy: true });
+    await screen.findByRole('dialog');
+    expect(screen.getByRole('button', { name: 'Close' })).toBeEnabled();
+  });
+
+  it('keeps Cancel on the left and focus on confirm', async () => {
+    open();
+    await screen.findByRole('dialog');
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const confirm = screen.getByRole('button', { name: 'Sign out' });
+
+    expect(cancel.parentElement.firstElementChild).toBe(cancel);
+    expect(confirm.parentElement).not.toBe(cancel.parentElement);
+    await waitFor(() => expect(confirm).toHaveFocus());
+  });
+});

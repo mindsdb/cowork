@@ -7,7 +7,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 // The host bridge is stubbed once, below, together with the `isWeb` gate.
 // Keep it that way: two `vi.mock()` calls for one path do not merge, they race,
 // and the loser taking `isWeb` with it fails every web case in this file.
-vi.mock('../../lib/skillsStore', () => ({ useSkillNames: () => new Set() }));
+// A spy, so the memo test below can count MarkdownContent renders.
+const useSkillNames = vi.hoisted(() => vi.fn(() => new Set()));
+vi.mock('../../lib/skillsStore', () => ({ useSkillNames }));
 vi.mock('./MarkdownCode', () => ({
   MarkdownCode: (props) => <code>{props.children}</code>,
 }));
@@ -638,7 +640,7 @@ describe('MarkdownContent HTML comments', () => {
     const { container } = render(
       <MarkdownContent text={'intro\n\n<!-- topic:api -->\n\n<!-- TODO -->\n\nnext'} complete />,
     );
-    expect(container.querySelector('span.font-mono')?.textContent).toBe('topic: api');
+    expect(container.querySelector('span.rounded-md.bg-surface-2')?.textContent).toBe('topic: api');
     expect(container.textContent).toContain('intro');
     expect(container.textContent).toContain('next');
     expect(container.textContent).not.toContain('TODO');
@@ -650,7 +652,7 @@ describe('MarkdownContent HTML comments', () => {
       <MarkdownContent text={'- rate limit is 50/min <!-- topic:api -->'} complete />,
     );
     expect(container.querySelector('[title="Link blocked: unsupported URL scheme"]')).toBeNull();
-    expect(container.querySelector('span.font-mono')?.textContent).toBe('topic: api');
+    expect(container.querySelector('span.rounded-md.bg-surface-2')?.textContent).toBe('topic: api');
   });
 
   it('still blocks a link to an unsafe scheme', () => {
@@ -795,5 +797,18 @@ describe('MarkdownContent images', () => {
     );
     expect(container.querySelector('img').getAttribute('src')).toBe('https://cdn.example/logo.png');
     expect(loadImage).not.toHaveBeenCalled();
+  });
+});
+
+describe('MarkdownContent memoization', () => {
+  // A streamed event re-renders the whole transcript; settled messages must
+  // not re-run the markdown pipeline when their props have not changed.
+  it('skips re-rendering when the parent re-renders with the same props', () => {
+    const { rerender } = render(<MarkdownContent text="settled answer" id="m1" complete />);
+    const renders = useSkillNames.mock.calls.length;
+    rerender(<MarkdownContent text="settled answer" id="m1" complete />);
+    expect(useSkillNames.mock.calls.length).toBe(renders);
+    rerender(<MarkdownContent text="settled answer, edited" id="m1" complete />);
+    expect(useSkillNames.mock.calls.length).toBe(renders + 1);
   });
 });

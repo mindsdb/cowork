@@ -6,7 +6,7 @@
 // active theme automatically.
 
 import {
-  Children, cloneElement, createContext, isValidElement, useContext, useEffect, useMemo, useRef,
+  Children, cloneElement, createContext, isValidElement, memo, useContext, useEffect, useMemo, useRef,
 } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -29,6 +29,7 @@ import { host } from '../../../platform/host';
 import { isArtifactLocalPath, isSafeExternalHref, openMarkdownHref } from './markdownLinks';
 import { useSkillNames } from '../../lib/skillsStore';
 import { carryFigure, hasFigureMarks, locateFigure, placeFigures } from '../../lib/figureSources';
+import i18n from '../../../lib/i18n';
 
 // Shared walk for the text-splitting remark plugins below: every `text` node
 // is replaced by the nodes `splitText(value, node)` returns (kept as-is when it
@@ -186,8 +187,6 @@ function FigureSourceMark({ index, children }) {
   return <FigureMark figure={figure} onOpenStep={onOpenStep} onViewFile={onViewFile}>{children}</FigureMark>;
 }
 
-const _ARTIFACT_LOCAL_LINK_TITLE =
-  'This file is in the Live Artifacts panel — open or download it there';
 
 // Rewrite a link targeting a local file path (or fabricated sandbox:/file: URL)
 // into an inert <span> — link text kept, tooltip pointing at the Live Artifacts
@@ -203,7 +202,7 @@ function remarkArtifactLocalLinks({ web = false } = {}) {
       hProperties: {
         ...((node.data && node.data.hProperties) || {}),
         className: ['artifact-local-link'],
-        title: _ARTIFACT_LOCAL_LINK_TITLE,
+        title: i18n.t('markdown.artifactLocalLinkTitle', { ns: 'chat' }),
       },
     };
   };
@@ -583,9 +582,9 @@ function _markdownUrlTransform(url, key) {
   return key === 'href' && url.startsWith('engram:') ? url : defaultUrlTransform(url);
 }
 
-// Density-scoped class strings. `dense` halves the rhythm and shaves
-// a step off every body-text role; used by memory previews where the
-// reading column is narrower and we want more lessons on screen.
+// Size-scoped class strings, picked by the `size` prop. `dense` halves the
+// rhythm and shaves a step off every body-text role; used by memory previews
+// where the reading column is narrower and we want more lessons on screen.
 const _SIZES = {
   default: {
     root: 'markdown-content space-y-3 break-words text-body text-ink-2',
@@ -596,6 +595,10 @@ const _SIZES = {
     ul: 'list-disc pl-5 my-3 text-body text-ink-2 space-y-1',
     ol: 'list-decimal pl-5 my-3 text-body text-ink-2 space-y-1',
     blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-3',
+    li: 'text-ink-2 marker:text-ink-4',
+    strong: 'font-semibold text-ink',
+    em: 'italic text-ink-2',
+    hr: 'my-5 border-t border-line opacity-25',
   },
   // `dense` is the memory-preview density. Trimmed one notch off
   // chat defaults (and a comfortable line-height) for an elegant
@@ -609,6 +612,38 @@ const _SIZES = {
     ul: 'list-disc pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
     ol: 'list-decimal pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
     blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2 text-[12.5px]',
+    li: 'text-ink-2 marker:text-ink-4',
+    strong: 'font-semibold text-ink',
+    em: 'italic text-ink-2',
+    hr: 'my-5 border-t border-line opacity-25',
+  },
+  // `steps` is Anton's note between steps in the steps list (ENG-4195): the
+  // step rows' 12.5px and line height, and no colour of its own, so a note
+  // takes the row's muted ink (ink-3, ink while in progress). Headings are
+  // bold body text and lists keep the rows' rhythm, so a note never dwarfs
+  // the steps around it. Code blocks and inline code are toned down by the
+  // `markdown-steps` root class in globals.css; tables are compact and
+  // scroll sideways; images are not rendered.
+  steps: {
+    root: 'markdown-content markdown-steps space-y-1 break-words text-[12.5px] leading-[1.5]',
+    p: 'my-0',
+    h1: 'text-[12.5px] font-semibold my-0',
+    h2: 'text-[12.5px] font-semibold my-0',
+    h3: 'text-[12.5px] font-semibold my-0',
+    ul: 'list-disc pl-4 my-0',
+    ol: 'list-decimal pl-5 my-0',
+    blockquote: 'border-l-2 border-line pl-2 italic my-0',
+    li: 'marker:text-ink-4',
+    strong: 'font-semibold',
+    em: 'italic',
+    hr: 'my-1.5 border-t border-line opacity-25',
+    table: {
+      wrap: 'my-0 overflow-x-auto',
+      table: 'border-collapse text-[12px] leading-[1.4]',
+      th: 'border-0 border-b border-solid border-line pl-0 pr-3 py-0.5 text-left font-semibold whitespace-nowrap',
+      td: 'border-0 border-solid border-line pl-0 pr-3 py-0.5 align-top',
+    },
+    images: false,
   },
 };
 
@@ -623,12 +658,20 @@ export function MarkdownPlainText({ children }) {
   );
 }
 
-export function MarkdownContent({
+// Memoized because react-markdown re-runs its whole parse pipeline on every
+// render: without it, each streamed event re-parses every message already in
+// the transcript. Props are primitives apart from the figure props, which
+// callers keep referentially stable for a settled message, so the shallow
+// compare is exact.
+export const MarkdownContent = memo(function MarkdownContent({
   text,
   id,
   complete = true,
   conversationId = null,
   dense = false,
+  /* The type scale: 'default' (chat), 'dense' (memory previews; what `dense`
+     picks) or 'steps' (a note in the steps list, see _SIZES.steps). */
+  size = dense ? 'dense' : 'default',
   // Variant + capability flags — assistant turns default to the full
   // feature set (forms, charts, engram chips). User turns pass
   // `variant="user"` with forms/charts off so a user typing
@@ -712,7 +755,7 @@ export function MarkdownContent({
     },
     [text, enableForms, isAssistant, variant],
   );
-  const sz = dense ? _SIZES.dense : _SIZES.default;
+  const sz = _SIZES[size] || _SIZES.default;
 
   // Skill names from the shared store → colour "/mention" tokens. useSkillNames
   // returns a stable Set rebuilt once per reload in the store, so all instances
@@ -762,10 +805,10 @@ export function MarkdownContent({
       const finish = () => {
         const label = btn.querySelector('.anton-code-block-copy-label');
         btn.classList.add('is-copied');
-        if (label) label.textContent = 'Copied';
+        if (label) label.textContent = i18n.t('markdown.copied', { ns: 'chat' });
         clearTimeout(btn._copyTimer);
         btn._copyTimer = setTimeout(() => {
-          if (label) label.textContent = 'Copy';
+          if (label) label.textContent = i18n.t('markdown.copy', { ns: 'chat' });
           btn.classList.remove('is-copied');
         }, 1200);
       };
@@ -835,12 +878,20 @@ export function MarkdownContent({
         {...props}
       />
     ),
-    table: (props) => <MarkdownTable {...props} />,
+    ...(sz.table ? {
+      table: ({ node, ...rest }) => (
+        <div className={sz.table.wrap}><table className={sz.table.table} {...rest} /></div>
+      ),
+      th: ({ node, ...rest }) => <th className={sz.table.th} {...rest} />,
+      td: ({ node, ...rest }) => <td className={sz.table.td} {...rest} />,
+    } : {
+      table: (props) => <MarkdownTable {...props} />,
+      th: TableHead,
+      td: TableCell,
+    }),
     thead: TableHeader,
     tbody: TableBody,
     tr: TableRow,
-    th: TableHead,
-    td: TableCell,
     // Inline body styling — keep paragraphs compact and consistent
     // with the rest of the chat column. During streaming, words are
     // individually wrapped so each new word fades in.
@@ -859,7 +910,7 @@ export function MarkdownContent({
     ul: (props) => <ul className={sz.ul} {...props} />,
     ol: (props) => <ol className={sz.ol} {...props} />,
     li: ({ children, node, ...rest }) => (
-      <li className="text-ink-2 marker:text-ink-4" {...rest}>{_animate ? _animate(children) : children}</li>
+      <li className={sz.li} {...rest}>{_animate ? _animate(children) : children}</li>
     ),
     a: (props) => {
       const href = props.href || '';
@@ -870,7 +921,7 @@ export function MarkdownContent({
       if (href.startsWith('engram:')) {
         return (
           <span
-            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-[10.5px] font-mono text-ink-3 leading-[1.4] no-underline"
+            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-xs text-ink-3 leading-[1.4] no-underline"
             // Strip the children's <a> wrapper styling — react-markdown
             // hands us the linkified text as plain text children, so
             // we render straight into the chip.
@@ -887,7 +938,7 @@ export function MarkdownContent({
       // Identification) in spirit.
       if (!isSafeExternalHref(href)) {
         return (
-          <span title="Link blocked: unsupported URL scheme">
+          <span title={i18n.t('markdown.linkBlocked', { ns: 'chat' })}>
             {props.children}
           </span>
         );
@@ -917,7 +968,7 @@ export function MarkdownContent({
           }}
         >
           {props.children}
-          <span className="sr-only"> (opens in new window)</span>
+          <span className="sr-only">{i18n.t('markdown.opensInNewWindow', { ns: 'chat' })}</span>
         </a>
       );
     },
@@ -929,10 +980,11 @@ export function MarkdownContent({
         <MarkdownImage src={src} alt={alt} title={title} loadImage={loadImage} />
       ),
     } : {}),
+    ...(sz.images === false ? { img: () => null } : {}),
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
-    strong: (props) => <strong className="font-semibold text-ink" {...props} />,
-    em: (props) => <em className="italic text-ink-2" {...props} />,
-    hr: () => <hr className="my-5 border-t border-line opacity-25" />,
+    strong: (props) => <strong className={sz.strong} {...props} />,
+    em: (props) => <em className={sz.em} {...props} />,
+    hr: () => <hr className={sz.hr} />,
     pre: (props) => {
       // Fenced code blocks with a language are handled by MarkdownCode,
       // which renders its own anton-code-block wrapper. We drop the outer
@@ -957,7 +1009,7 @@ export function MarkdownContent({
     },
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, codeOverflowCue, animateStreamingWords, loadImage]);
+  }, [id, complete, conversationId, sz, variant, enableForms, enableCharts, codeOverflowCue, animateStreamingWords, loadImage]);
 
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
@@ -981,4 +1033,4 @@ export function MarkdownContent({
       </FigureSourcesContext.Provider>
     </div>
   );
-}
+});

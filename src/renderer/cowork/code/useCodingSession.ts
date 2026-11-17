@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import i18n from '../../lib/i18n';
 import {
   codingApi,
   openCodingEventStream,
@@ -63,6 +64,18 @@ export function indexLatestEvents(
     };
   }
   return next;
+}
+
+
+const RECONCILE_TICK_MS = 2_500;
+const MAX_RECONCILE_MS = 30_000;
+
+// A connected stream already delivers every event, so polling then is only a
+// slow safety net. Without one, poll at the tick, backing off while the
+// backend keeps failing; the first retry stays at the tick so a blip clears fast.
+export function reconcileDelayMs(streamHealthy: boolean, failures: number): number {
+  if (streamHealthy) return MAX_RECONCILE_MS;
+  return Math.min(RECONCILE_TICK_MS * 2 ** Math.max(0, failures - 1), MAX_RECONCILE_MS);
 }
 
 
@@ -161,7 +174,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
       ingestEvents(sessionId, eventResult.value.items, eventResult.value.next_seq, true);
     }
     if (sessionResult.status === 'rejected' && eventResult.status === 'rejected') {
-      setError(sessionResult.reason instanceof Error ? sessionResult.reason.message : 'Could not refresh this coding task.');
+      setError(sessionResult.reason instanceof Error ? sessionResult.reason.message : i18n.t('session.refreshFailed', { ns: 'code' }));
     } else {
       setError('');
     }
@@ -196,12 +209,17 @@ export function useCodingSession(sessionId: string | null, active = true) {
 
     let alive = true;
     let historyLoaded = false;
-    let closeStream = () => {};
+    let stopStream: (() => void) | null = null;
+    let streamHealthy = false;
+    const closeStream = () => {
+      stopStream?.();
+      stopStream = null;
+      streamHealthy = false;
+    };
     const openStream = () => {
       closeStream();
-      closeStream = () => {};
       if (!historyLoaded || !isAppVisible()) return;
-      closeStream = openCodingEventStream(
+      stopStream = openCodingEventStream(
         sessionId,
         cursor.current,
         (event) => {
@@ -215,7 +233,13 @@ export function useCodingSession(sessionId: string | null, active = true) {
             scheduleReview(sessionId);
           }
         },
-        () => { if (alive) setError('Live updates disconnected. Reconnecting…'); },
+        () => {
+          streamHealthy = false;
+          if (alive) setError(i18n.t('session.liveDisconnected', { ns: 'code' }));
+        },
+        // EventSource reconnects from the URL's original cursor, so a reopen
+        // replays rather than skips; ingest dedupes by seq.
+        () => { streamHealthy = true; },
       );
     };
     setLoading(true);
@@ -224,7 +248,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
       setSession(value);
       setError('');
     }).catch((reason) => {
-      if (alive) setError(reason instanceof Error ? reason.message : 'Could not load this coding task.');
+      if (alive) setError(reason instanceof Error ? reason.message : i18n.t('session.loadFailed', { ns: 'code' }));
     }).finally(() => {
       if (alive) setLoading(false);
     });
@@ -233,7 +257,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
       if (!alive) return;
       ingestEvents(sessionId, page.items, page.next_seq, true);
     }).catch(() => {
-      if (alive) setError('Task history is reconnecting…');
+      if (alive) setError(i18n.t('session.historyReconnecting', { ns: 'code' }));
     }).finally(() => {
       if (!alive) return;
       historyLoaded = true;
@@ -243,8 +267,12 @@ export function useCodingSession(sessionId: string | null, active = true) {
     // prerequisite for restoring the conversation or accepting input.
     void refreshReview(sessionId);
 
+    let failures = 0;
+    // Counted in ticks, not wall time, so timer jitter never skips a due poll.
+    let ticksSinceReconcile = 0;
     const reconcile = () => {
       if (!isAppVisible()) return;
+      ticksSinceReconcile = 0;
       Promise.allSettled([
         codingApi.session(sessionId),
         codingApi.events(sessionId, cursor.current),
@@ -259,21 +287,27 @@ export function useCodingSession(sessionId: string | null, active = true) {
           }
         }
         if (sessionResult.status === 'fulfilled' || eventResult.status === 'fulfilled') {
+          failures = 0;
           setError('');
         } else {
+          failures += 1;
           // Both reads failed: the backend is unreachable or answering errors.
           // Say so instead of leaving the last known state on screen as if it
           // were live.
           const reason = sessionResult.reason;
-          setError(reason instanceof Error && reason.message ? reason.message : 'Could not refresh this coding task.');
+          setError(reason instanceof Error && reason.message ? reason.message : i18n.t('session.refreshFailed', { ns: 'code' }));
         }
       });
     };
     const onVisibilityChange = () => {
-      openStream();
+      if (!isAppVisible()) closeStream();
+      else if (!stopStream) openStream();
       reconcile();
     };
-    const reconcileTimer = window.setInterval(reconcile, 2_500);
+    const reconcileTimer = window.setInterval(() => {
+      ticksSinceReconcile += 1;
+      if (ticksSinceReconcile * RECONCILE_TICK_MS >= reconcileDelayMs(streamHealthy, failures)) reconcile();
+    }, RECONCILE_TICK_MS);
     const unsubscribeVisibility = subscribeAppVisibility(onVisibilityChange);
     return () => {
       alive = false;

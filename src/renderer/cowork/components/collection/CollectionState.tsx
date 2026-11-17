@@ -18,14 +18,21 @@
 // `empty` takes `<EmptyState>` props, so each page keeps its own copy and CTA.
 // No-match reads "No results for “query”" with a Clear search action; pages
 // whose filters go beyond search pass `noMatchTitle` and `clearLabel`.
+//
+// Both states sit in a hairline frame where the list would be, so the
+// message is anchored to the page without filling the space: the frame has
+// no background. `empty.className` places the frame (page margins).
+
+// The ListGroup's outline without its surface: empty space, outlined.
+const FRAME = 'rounded-card border border-solid border-line';
 
 import type { ReactNode } from 'react';
 import Ico from '../Icons';
-import Button from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import type { EmptyStateProps } from '../ui/EmptyState';
 import { cn } from '../../lib/cn';
 import { ListGroup } from './ListGroup';
+import { useTranslation } from '../../../lib/i18n';
 
 // One shimmer bar. The `background` stays inline: the shorthand resets
 // background-image, which keeps .collection-shimmer's gradient suppressed
@@ -103,7 +110,7 @@ export function CollectionState({
   query = '',
   onClear,
   noMatchTitle,
-  clearLabel = 'Clear search',
+  clearLabel,
   skeleton = 'cards',
   skeletonCount = 6,
   skeletonClassName,
@@ -111,11 +118,12 @@ export function CollectionState({
   empty,
   children,
 }: CollectionStateProps) {
+  const { t } = useTranslation('library');
   if (loading) {
     const items = Array.from({ length: skeletonCount });
     if (skeleton === 'group') {
       return (
-        <ListGroup aria-busy="true" aria-label="Loading" className={skeletonClassName}>
+        <ListGroup aria-busy="true" aria-label={t('collection.loading')} className={skeletonClassName}>
           {items.map((_, i) => <SkeletonGroupRow key={i} />)}
         </ListGroup>
       );
@@ -123,23 +131,28 @@ export function CollectionState({
     return (
       <div
         aria-busy="true"
-        aria-label="Loading"
+        aria-label={t('collection.loading')}
         className={cn(skeleton === 'cards' && skeletonGridClassName, skeletonClassName)}
       >
         {items.map((_, i) => (skeleton === 'cards' ? <SkeletonCard key={i} /> : <SkeletonRow key={i} />))}
       </div>
     );
   }
-  if (total === 0) return <EmptyState {...empty} />;
+  const { className: frameClassName, ...emptyProps } = empty;
+  if (total === 0) {
+    return <div className={cn(FRAME, frameClassName)}><EmptyState {...emptyProps} /></div>;
+  }
   if (shown === 0) {
     const q = query.trim();
     return (
-      <EmptyState
-        icon={<span className="inline-flex text-ink-4">{Ico.search(20)}</span>}
-        title={noMatchTitle ?? (q ? `No results for “${q}”` : 'No results')}
-        action={onClear && <Button variant="subtle" onClick={onClear}>{clearLabel}</Button>}
-        style={{ minHeight: 240 }}
-      />
+      <div className={cn(FRAME, frameClassName)}>
+        <EmptyState
+          icon={Ico.search(20)}
+          title={noMatchTitle ?? (q ? t('collection.noResultsFor', { query: q }) : t('collection.noResults'))}
+          action={onClear && { label: clearLabel ?? t('collection.clearSearch'), onClick: onClear }}
+          style={{ minHeight: 240 }}
+        />
+      </div>
     );
   }
   return <>{children}</>;

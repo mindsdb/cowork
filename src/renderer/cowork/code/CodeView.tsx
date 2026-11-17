@@ -14,9 +14,10 @@ import { CodeTasksView } from './CodeTasksView';
 import { CodeSkillsView } from './CodeSkillsView';
 import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
+import { useDockInset } from '../components/chat/useDockInset';
 import { ComposerLip } from './ComposerLip';
 import { PromptQueue } from './ComposerMenus';
-import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice, releaseNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -28,6 +29,7 @@ import { ProjectSettingsModal } from './ProjectSettingsModal';
 import type { CodeTaskListActions } from './useCodeTaskMenu';
 import { RecoveryModal } from './RecoveryModal';
 import { TaskBar } from './TaskBar';
+import { taskDiskUsage, useWorkspaceUsage } from './workspaceUsage';
 import { TaskTerminal } from './TaskTerminal';
 import { useCodingSession } from './useCodingSession';
 import { supportsTaskCapability } from './taskCapabilities';
@@ -44,13 +46,14 @@ import { isActiveStatus, promptHistory } from './presentation';
 import { useComposerNotice } from './useComposerNotice';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
 import { trackBillingOpened } from '../lib/analytics';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_BUDGETS_URL, consoleUrlFor } from '../../lib/mindsUrls';
+import { USAGE_ACTIONS, usageActionUrl } from '../lib/usageWarnings';
+import { useHubUsageContext } from '../lib/hubUsageContext';
 import { openCodeExternalUrl } from './shellLinks';
+import { useTranslation } from '../../lib/i18n';
 import './code.css';
 
 
-const STEER_TIMEOUT_MESSAGE = 'The task did not accept the steer in time. If an approval is pending, resolve it first and try again.';
-const STOP_TIMEOUT_MESSAGE = 'The task did not acknowledge the stop request in time. Try again.';
 
 
 export default function CodeView({
@@ -95,7 +98,7 @@ export default function CodeView({
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
   /** The signed-in account, used to prefill a Git identity when a commit needs one. */
-  account?: { name?: string | null; email?: string | null } | null;
+  account?: { name?: string | null; email?: string | null; orgId?: string | null; sub?: string | null } | null;
   skillScopeKey?: string;
   connections?: ConnectorConnection[];
   onConnectionsChange?: (connections: ConnectorConnection[]) => void;
@@ -112,6 +115,8 @@ export default function CodeView({
   /** Row actions for the All tasks list; without them its rows have no menu. */
   taskActions?: CodeTaskListActions;
 }) {
+  const { t } = useTranslation('code');
+  const isBillingOwner = !!useHubUsageContext()?.usage?.isBillingOwner;
   const [filesOpen, setFilesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
   const openReview = useCallback(() => {
@@ -120,17 +125,7 @@ export default function CodeView({
     setPreviewOpen(false);
   }, []);
   // The transcript reserves the floating dock's height so its end scrolls clear.
-  const dockObserver = useRef<ResizeObserver | null>(null);
-  const dockRef = useCallback((dock: HTMLDivElement | null) => {
-    dockObserver.current?.disconnect();
-    dockObserver.current = null;
-    const stage = dock?.parentElement;
-    if (!dock || !stage || typeof ResizeObserver === 'undefined') return;
-    const sync = () => stage.style.setProperty('--code-dock-height', `${dock.offsetHeight}px`);
-    sync();
-    dockObserver.current = new ResizeObserver(sync);
-    dockObserver.current.observe(dock);
-  }, []);
+  const dockRef = useDockInset();
   // A commit that stopped because Git has no author identity on this
   // computer; Review › Deliver shows a setup card and retries this message.
   const [gitIdentitySetup, setGitIdentitySetup] = useState<{ sessionId: string; message: string } | null>(null);
@@ -228,7 +223,7 @@ export default function CodeView({
       return false;
     });
   }, [catalog.engines, engineId, canSlashCommands, canFork, canControls, canTerminal, canExtensions]);
-  const project = useProjectActions(session?.id);
+  const project = useProjectActions(session?.id, active);
 
   useEffect(() => {
     setReviewOpen(codeFixtureReviewOpen());
@@ -271,6 +266,11 @@ export default function CodeView({
 
   const restoring = !!selectedId && !session;
   const taskBarSession = session;
+  // Only this computer's workspaces are measured; a task elsewhere has none here.
+  const workspaceUsage = useWorkspaceUsage(
+    taskBarSession && taskBarSession.computer_is_local !== false ? taskBarSession.id : null,
+    taskBarSession?.workspace_path || '',
+  );
   const automationError = selectedId ? automationErrors[selectedId] || '' : '';
   const conversationError = detail.error || (reviewOpen ? '' : actionError || automationError || taskList.error);
   // A local folder is a first-class Code workspace, not an exceptional state.
@@ -289,6 +289,7 @@ export default function CodeView({
       models.find((model) => model.id === session.model)?.name || session.model,
     ),
     recoveryNotice(session, latestSessionEvent, latestErrorEvent, taskRecovering),
+    releaseNotice(session),
     messageNotice('error', conversationError),
     messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
     queueNotice(session),
@@ -309,7 +310,7 @@ export default function CodeView({
       );
       setRecoveryPlan(null);
     } catch (reason) {
-      setRecoveryError(reason instanceof Error ? reason.message : 'The task could not be resumed.');
+      setRecoveryError(reason instanceof Error ? reason.message : t('codeView.resumeFailed'));
     } finally {
       setRecoveringTaskId((current) => current === sessionId ? null : current);
     }
@@ -327,7 +328,7 @@ export default function CodeView({
       setRecoveryPlan(plan);
       setRecoveryComputerId(recommended?.computer.id || '');
     } catch (reason) {
-      setActionError(reason instanceof Error ? reason.message : 'Recovery options could not be loaded.');
+      setActionError(reason instanceof Error ? reason.message : t('codeView.recoveryOptionsFailed'));
     } finally {
       setRecoveringTaskId((current) => current === sessionId ? null : current);
     }
@@ -343,7 +344,7 @@ export default function CodeView({
       const result = await project.run(action);
       setTerminalFocusId(result.terminal_id);
     } catch (reason) {
-      setActionError(reason instanceof Error ? reason.message : 'The project action could not be started.');
+      setActionError(reason instanceof Error ? reason.message : t('codeView.projectActionFailed'));
     }
   };
   return (
@@ -400,6 +401,7 @@ export default function CodeView({
               setReviewOpen(false);
             }}
             onRunProjectAction={(action) => void startProjectAction(action)}
+            diskUsage={taskDiskUsage(workspaceUsage, taskBarSession.id)}
             onOpenControls={() => setControlsOpen(true)}
             onFork={() => void forkTask()}
           />
@@ -473,7 +475,7 @@ export default function CodeView({
             onRetry={() => { void taskList.retry(); void projects.load(); }}
           />
         ) : taskList.loading && !sessions.length ? (
-          <div className="code-loading"><Spinner className="text-lg" /> Loading coding tasks…</div>
+          <div className="code-loading"><Spinner className="text-lg" /> {t('codeView.loadingTasks')}</div>
         ) : newTask || !selectedId || draftSuspended ? (
           <NewTaskPanel
             suspended={draftSuspended}
@@ -502,7 +504,7 @@ export default function CodeView({
             onCreateProject={() => setProjectEditor({ id: null })}
           />
         ) : restoring && !session ? (
-          <div className="code-loading"><Spinner className="text-lg" /> Restoring task…</div>
+          <div className="code-loading"><Spinner className="text-lg" /> {t('codeView.restoringTask')}</div>
         ) : session ? (
           <div className="code-workspace">
             <section className="code-conversation">
@@ -524,7 +526,7 @@ export default function CodeView({
                       active={isActiveStatus(session.status) && !session.pending_question && !session.pending_approval}
                       busy={busy}
                       onSteer={(instructionId) => runAction(
-                        () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
+                        () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), t('codeView.steerTimeout')),
                         true,
                       )}
                       onRemove={(instructionId) => runAction(
@@ -543,7 +545,15 @@ export default function CodeView({
                       onChooseModel={() => setControlsOpen(true)}
                       onAddCredits={(billingTrigger) => {
                         trackBillingOpened(billingTrigger, 'code');
-                        void openCodeExternalUrl(MINDS_BILLING_URL);
+                        void openCodeExternalUrl(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+                      }}
+                      onViewBudgets={() => {
+                        trackBillingOpened('budget_exceeded', 'code');
+                        // The session's organization, so the console opens its Budgets tab.
+                        void openCodeExternalUrl(consoleUrlFor(MINDS_BUDGETS_URL, {
+                          organizationId: account?.orgId ?? null,
+                          subject: account?.sub ?? null,
+                        }));
                       }}
                       onReopen={() => void recoverTask(session.id)}
                       onDismiss={lip.dismiss}
@@ -596,14 +606,14 @@ export default function CodeView({
                     )}
                     onSend={(prompt, delivery, attachments) => runAction(
                       () => delivery === 'steer'
-                        ? withControlTimeout(codingApi.steer(session.id, prompt, attachments), STEER_TIMEOUT_MESSAGE)
+                        ? withControlTimeout(codingApi.steer(session.id, prompt, attachments), t('codeView.steerTimeout'))
                         : delivery === 'queue'
                           ? codingApi.queue(session.id, prompt, attachments)
                           : codingApi.turn(session.id, prompt, attachments),
                       true,
                       true,
                     )}
-                    onStop={() => runAction(() => withControlTimeout(codingApi.cancel(session.id), STOP_TIMEOUT_MESSAGE), true)}
+                    onStop={() => runAction(() => withControlTimeout(codingApi.cancel(session.id), t('codeView.stopTimeout')), true)}
                     commands={commands}
                     onPermissionChange={(permissionMode) => runAction(
                       () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
@@ -631,7 +641,7 @@ export default function CodeView({
                         void forkTask();
                         return;
                       }
-                      setActionError(`/${command.name} controls are not available in this build yet.`);
+                      setActionError(t('codeView.commandUnavailable', { command: command.name }));
                     }}
                   />
                 </div>
@@ -670,7 +680,7 @@ export default function CodeView({
                   await project.refresh();
                   return summary;
                 }, false, true);
-                if (!refreshed) throw new Error('Project commands were not updated.');
+                if (!refreshed) throw new Error(t('codeView.projectCommandsNotUpdated'));
                 return refreshed;
               }}
               connections={projects.selected?.connections || []}
@@ -732,7 +742,7 @@ export default function CodeView({
             />
           </div>
         ) : (
-          <div className="code-loading"><Alert variant="danger">{detail.error || 'This coding task could not be restored.'}</Alert></div>
+          <div className="code-loading"><Alert variant="danger">{detail.error || t('codeView.restoreFailed')}</Alert></div>
         )}
         {session && can('task_controls') && (
           <RuntimeControlsModal
@@ -741,7 +751,7 @@ export default function CodeView({
             value={{
               model: session.model,
               permission_mode: session.permission_mode,
-              reasoning_effort: session.reasoning_effort || 'high',
+              reasoning_effort: session.reasoning_effort ?? null,
               service_tier: session.service_tier || 'standard',
               personality: session.personality || 'pragmatic',
               network_access: !!session.network_access,
@@ -751,10 +761,16 @@ export default function CodeView({
             models={models}
             modelMeta={modelMeta}
             busy={busy}
-            applyBlockedReason={isActiveStatus(session.status) ? 'Changes can be applied after the current turn finishes' : undefined}
+            applyBlockedReason={isActiveStatus(session.status) ? t('codeView.applyBlocked') : undefined}
             onClose={() => setControlsOpen(false)}
             onApply={async (value) => {
-              await runAction(() => codingApi.updateSession(session.id, value), true, true);
+              try {
+                await runAction(() => codingApi.updateSession(session.id, value), true, true);
+              } catch (reason) {
+                // The modal shows this failure; the page banner sits behind it.
+                setActionError('');
+                throw reason;
+              }
               setControlsOpen(false);
             }}
           />
