@@ -14,6 +14,8 @@ const hostMock = vi.hoisted(() => ({
   isElectron: true,
   getApiOrigin: () => 'http://127.0.0.1:26866',
   getAccessToken: vi.fn(async () => null),
+  // The real host always answers; analytics holds an event while a read fails.
+  getVersionInfo: vi.fn(async () => ({ app: '', ui: null, source: 'bundled', buildKind: null })),
 }));
 vi.mock('../platform/host', async (importOriginal) => ({
   ...(await importOriginal()),

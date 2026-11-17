@@ -22,10 +22,11 @@ import { host, onMindsHubCredentialChanged } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
 import { startCreditsFlow } from './creditsFlow';
 import { subscribeOrganizationChanges } from './organizationChanges';
+import { posthogKeyForBuildKind } from '../../../shared/analytics-project';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
-// device_id, aid (desktop, once health resolves), and (once identity resolves)
+// device_id, build_kind and aid (desktop, once known), and (once identity resolves)
 // is_internal + a `$set` person update on all of them. `$identify` is a PostHog protocol event, not a product event,
 // so it lives inline in the merge rather than here.
 const EVENTS = {
@@ -221,6 +222,40 @@ const IS_PROD_BUILD =
 const APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : undefined;
 
+// The desktop shell's build kind, which decides the project an event goes to:
+// installers bake the production token whatever their kind, so a staging or
+// preview install has to re-route itself (posthogKeyForBuildKind). The shell's
+// answer is cached, including "no kind" from a shell too old to report one.
+// A failed read is not an answer: the events waiting on it are held while the
+// shell is asked again, so a staging install's event isn't sent to production
+// on one bad read. Only when every retry fails does an event fall back to
+// production, so a production install never loses one; the next event asks
+// again.
+const BUILD_KIND_RETRY_DELAYS_MS = [250, 1000, 3000];
+let cachedBuildKind; // undefined until the shell has answered
+let buildKindLookup = null; // the read in progress, shared by every waiting event
+function shellBuildKind() {
+  if (SURFACE !== 'desktop') return Promise.resolve(null);
+  if (cachedBuildKind !== undefined) return Promise.resolve(cachedBuildKind);
+  if (!buildKindLookup) {
+    buildKindLookup = (async () => {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          const info = await host.getVersionInfo();
+          cachedBuildKind = info?.buildKind || null;
+          return cachedBuildKind;
+        } catch {
+          if (attempt >= BUILD_KIND_RETRY_DELAYS_MS.length) return null;
+          await new Promise((resolve) => setTimeout(resolve, BUILD_KIND_RETRY_DELAYS_MS[attempt]));
+        }
+      }
+    })().finally(() => {
+      buildKindLookup = null;
+    });
+  }
+  return buildKindLookup;
+}
+
 // ── Session flags ──────────────────────────────────────────────────
 // CI-hygiene and debug-logging each resolve to a boolean once (from a build-time
 // env var OR a per-session `?query`), then memoize. These are session-level and
@@ -340,8 +375,9 @@ function actingOrganizationId() {
   if (host.isElectron) return credentialOrganizationId();
   return Promise.resolve(identity.personProps.organization_id);
 }
-// Synchronous guard against the merge firing twice when two events resolve
-// identity in the same tick, before the async localStorage marker is written.
+// Guard against the merge firing twice before the async localStorage marker is
+// written, keyed by project and account: a merge sent to production while the
+// shell was unreachable must not stop the one its events' project needs.
 // Entries are cleared on failure so a later event can still retry.
 const mergeInFlight = new Set();
 
@@ -542,10 +578,10 @@ async function getDistinctId() {
 // event, and buckets by `timestamp`, so a late send lands on the day the
 // thing happened.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function postCapture(event, distinctId, properties, envelope = {}) {
+function postCapture(event, distinctId, properties, envelope = {}, apiKey = POSTHOG_KEY) {
   const at = envelope.timestamp ? new Date(envelope.timestamp) : null;
   const body = JSON.stringify({
-    api_key: POSTHOG_KEY,
+    api_key: apiKey,
     event,
     distinct_id: distinctId,
     properties: { ...properties, $lib: LIB },
@@ -574,36 +610,48 @@ function postCapture(event, distinctId, properties, envelope = {}) {
 // `$identify` event carrying `$anon_distinct_id`. Idempotent via a localStorage
 // marker so it fires once per account, not on every event.
 const IDENTITY_MERGED_KEY = 'cowork_identity_merged_sub';
+// The merge happens in the project the events go to, so its marker is kept per
+// project: an install that merged into production before it was routed
+// elsewhere still merges once where its events now land. Production keeps the
+// original key, so no production install merges again.
+function identityMergedKey(apiKey) {
+  return apiKey === POSTHOG_KEY ? IDENTITY_MERGED_KEY : `${IDENTITY_MERGED_KEY}:${apiKey}`;
+}
 function mergeAnonIntoAccount(sub) {
   if (!POSTHOG_KEY || isCi() || !sub) return;
-  if (mergeInFlight.has(sub)) return;
-  try {
-    if (window.localStorage.getItem(IDENTITY_MERGED_KEY) === sub) return;
-  } catch {
-    // localStorage unavailable: fall through and attempt the merge anyway.
-  }
   const deviceId = getDeviceId();
   // Nothing to merge if there's no distinct device id to alias from.
   if (!deviceId || deviceId === sub) return;
-  mergeInFlight.add(sub);
-  dlog('$identify merge', { distinct_id: sub, $anon_distinct_id: deviceId });
-  postCapture('$identify', sub, {
-    $anon_distinct_id: deviceId,
-    // Carry device_id onto the person too (via personSet), so the deterministic
-    // join key survives even if PostHog declines the person-merge.
-    $set: personSet(),
-    surface: SURFACE,
-    is_internal: identity.isInternal,
-  }).then((ok) => {
-    if (ok) {
-      try {
-        window.localStorage.setItem(IDENTITY_MERGED_KEY, sub);
-      } catch {
-        /* best effort: a re-merge next session is harmless */
-      }
-    } else {
-      mergeInFlight.delete(sub); // non-ok or network error: let a later event retry
+  shellBuildKind().then((buildKind) => {
+    const apiKey = posthogKeyForBuildKind(buildKind, POSTHOG_KEY);
+    const flight = `${apiKey}:${sub}`;
+    if (mergeInFlight.has(flight)) return;
+    const markerKey = identityMergedKey(apiKey);
+    try {
+      if (window.localStorage.getItem(markerKey) === sub) return;
+    } catch {
+      // localStorage unavailable: fall through and attempt the merge anyway.
     }
+    mergeInFlight.add(flight);
+    dlog('$identify merge', { distinct_id: sub, $anon_distinct_id: deviceId });
+    postCapture('$identify', sub, {
+      $anon_distinct_id: deviceId,
+      // Carry device_id onto the person too (via personSet), so the deterministic
+      // join key survives even if PostHog declines the person-merge.
+      $set: personSet(),
+      surface: SURFACE,
+      is_internal: identity.isInternal,
+    }, {}, apiKey).then((ok) => {
+      if (ok) {
+        try {
+          window.localStorage.setItem(markerKey, sub);
+        } catch {
+          /* best effort: a re-merge next session is harmless */
+        }
+      } else {
+        mergeInFlight.delete(flight); // non-ok or network error: let a later event retry
+      }
+    });
   });
 }
 
@@ -642,7 +690,12 @@ function capture(event, properties = {}, envelope = {}) {
         dlog('skip', event, '— no identity and no device id');
         return false;
       }
+      const buildKind = await shellBuildKind();
       const eventProps = {
+        // Omitted while unknown. An event that reports its own build_kind
+        // keeps it, null included: update_phase journals the kind it ran
+        // under, and boot_screen_resolved sends null when the shell has none.
+        ...(buildKind ? { build_kind: buildKind } : {}),
         ...properties,
         surface: SURFACE,
         app_version: APP_VERSION,
@@ -715,7 +768,7 @@ function capture(event, properties = {}, envelope = {}) {
       // inherit these via the `$identify` merge on sign-in.
       if (distinctId) eventProps.$set = personSet();
       dlog('POST', event, { distinct_id: captureId, identified: Boolean(distinctId) });
-      return postCapture(event, captureId, eventProps, envelope);
+      return postCapture(event, captureId, eventProps, envelope, posthogKeyForBuildKind(buildKind, POSTHOG_KEY));
     })
     .catch((err) => {
       dlog('capture failed for', event, err);
