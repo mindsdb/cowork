@@ -523,6 +523,17 @@ export function useNewTaskDraft({
       ? 'folder'
       : 'locked';
 
+  /* Counts every change to what a Start would send, and the composer going
+     away, so a Start that had to wait can tell whether it is still current. */
+  const draftRevision = useRef(0);
+  useEffect(() => {
+    draftRevision.current += 1;
+    return () => { draftRevision.current += 1; };
+  }, [
+    selectedProjectKey, prompt, engineId, model, explicitEffort, permissionMode, attachments, sourceContexts,
+    resourceScopeKey, computerId, repositorySetup, workspaceMode, workspaceModeChoice,
+  ]);
+
   const handleStart = async () => {
     if (!prompt.trim()) {
       promptRef.current?.focus();
@@ -544,12 +555,17 @@ export function useNewTaskDraft({
       if (startCheck.current) return;
       startCheck.current = true;
       setStartChecking(true);
+      const checkedDraft = draftRevision.current;
       try {
         if (await checkProjectFolders(true)) return;
       } finally {
         startCheck.current = false;
         setStartChecking(false);
       }
+      /* Everything below was read before the wait. If the draft was edited,
+         or the composer closed, meanwhile, this would start a task nobody
+         asked for in that form: drop it, and Start is there to press again. */
+      if (checkedDraft !== draftRevision.current) return;
     }
     const task = {
       prompt: prompt.trim(),
