@@ -4,6 +4,7 @@ import { Icon } from './ui/Icon';
 import { host } from '../../platform/host';
 import { trackBillingOpened } from '../lib/analytics';
 import { usageActionUrl } from '../lib/usageWarnings';
+import { billingActions } from '../lib/billingLinks';
 import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDismiss';
 import { useTranslation } from '../../lib/i18n';
 
@@ -71,6 +72,7 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
   // Separated from `usage_notice` so the standing figure can be graded as a
   // conversion surface on its own rather than inside the warning's number.
   const clickTrigger = shown.resting ? 'usage_at_rest' : trigger;
+  const actions = billingActions(shown.actions);
   return (
     <>
       {live}
@@ -82,9 +84,9 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
       >
         <span className="font-semibold">{shown.title}.</span>{' '}
         <span>{shown.body}</span>
-        {shown.actions.length > 0 && (
+        {actions.length > 0 && (
           <span className="inline-flex flex-wrap gap-x-3 ml-2">
-            {shown.actions.map((a) => (
+            {actions.map((a) => (
               <button
                 key={a.key}
                 type="button"

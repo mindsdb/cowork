@@ -101,6 +101,14 @@ export interface Control {
   by: ControlBy;
 }
 
+/** POST /sessions/{id}/control's answer: the control record, and whether
+    this host watches the hand-over for what it waits for (`wait_for`), so it
+    comes back by itself once the person did it. anton promises that only
+    when `watching` is true; a host that predates the field omits it. */
+export interface ControlAnswer extends Control {
+  watching: boolean;
+}
+
 /** POST /sessions: 201 for a new session, 200 with `resumed` for one that
     exists. `url` is null before a page loads. anton discards the answer. */
 export interface OpenSessionAnswer {
@@ -450,7 +458,25 @@ export function parseOpenSession(body: unknown): Parsed<OpenSessionRequest> {
 
 /** POST /sessions/{id}/control. The API only hands the browser to the person;
     `person_only` marks the take-back the API refuses. */
-export type ControlRequest = { holder: 'human'; reason: string };
+export type ControlRequest = { holder: 'human'; reason: string; waitFor?: WaitFor };
+
+/** What a hand-over waits for, so the browser comes back by itself once the
+    person did it: a checkbox, radio or switch checked, a field filled (its
+    value never read out), or the page changed. */
+export type WaitFor =
+  | { element: number; state: 'checked' | 'filled' }
+  | { page: 'changes' };
+
+export function parseWaitFor(value: unknown): WaitFor | null {
+  if (!isRecord(value)) return null;
+  const keys = Object.keys(value).sort().join(',');
+  if (keys === 'page') return value.page === 'changes' ? { page: 'changes' } : null;
+  if (keys !== 'element,state') return null;
+  const { element, state } = value;
+  if (typeof element !== 'number' || !Number.isInteger(element) || element < 0) return null;
+  if (state !== 'checked' && state !== 'filled') return null;
+  return { element, state };
+}
 
 export function parseControlRequest(body: unknown): Parsed<ControlRequest> & { personOnly?: true } {
   if (!isRecord(body)) return refuse('body must be a JSON object');
@@ -460,7 +486,10 @@ export function parseControlRequest(body: unknown): Parsed<ControlRequest> & { p
   if (typeof reason !== 'string' || reason.length > MAX_CONTROL_REASON) {
     return refuse(`reason must be a string of at most ${MAX_CONTROL_REASON} characters`);
   }
-  return ok({ holder: 'human', reason });
+  if (body.wait_for === undefined || body.wait_for === null) return ok({ holder: 'human', reason });
+  const waitFor = parseWaitFor(body.wait_for);
+  if (!waitFor) return refuse('wait_for must be {"element": <id>, "state": "checked" | "filled"} or {"page": "changes"}');
+  return ok({ holder: 'human', reason, waitFor });
 }
 
 /** POST /sessions/{id}/tabs. */
@@ -550,6 +579,9 @@ export interface BrowserViewState {
   canGoForward: boolean;
   tabs: Tab[];
   control: Control;
+  /** The person holds it for a hand-over that comes back by itself once
+      they did what it waits for (ControlRequest.waitFor). */
+  watching?: boolean;
   /** A site asked for a username and password (HTTP authentication). */
   login: { host: string } | null;
   downloads: BrowserDownload[];
@@ -610,6 +642,11 @@ export interface InAppBrowserBridge {
       task still shown. Bounds big enough show it there again. Main answers
       whether it draws. */
   setBounds(bounds: StageBounds): Promise<PaneDrawAnswer>;
+  /** The person opens an address in a task's browser, typed in the pane: a
+      new session at it, or the session's active tab goes there. No agent is
+      involved. A null address opens the task's browser on a blank tab, and
+      leaves one already open as it is. */
+  open(sessionId: string, url: string | null): Promise<void>;
   back(sessionId: string): Promise<void>;
   forward(sessionId: string): Promise<void>;
   reload(sessionId: string): Promise<void>;

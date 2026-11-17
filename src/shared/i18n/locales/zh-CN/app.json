@@ -265,6 +265,13 @@
     "moveFailed": "无法将该消息移到队列。请重试。",
     "stayQueued": "{agent} 现在无法接收。它仍在队列中。"
   },
+  "voiceCall": {
+    "backToCall": "返回与 {agent} 的通话",
+    "onCall": "正在与 {agent} 通话",
+    "callBackPending": "完成后 {agent} 会回电给你",
+    "call": "呼叫 {agent}",
+    "anotherCall": "另一个通话正在进行"
+  },
   "notion": {
     "connectTitle": "连接 Notion？",
     "connectMessage": "你需要连接 Notion 工作区才能从 Notion 添加页面。"

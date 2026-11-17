@@ -636,6 +636,10 @@
       "working": "Working…",
       "allow": "Allow for this test",
       "confirm": "Confirm and save"
+    },
+    "browserInstead": {
+      "title": "Use the browser instead",
+      "help": "No connection: you sign in to {name} in browser mode and the work happens there. Slower than connecting."
     }
   },
   "legacyConnect": {
