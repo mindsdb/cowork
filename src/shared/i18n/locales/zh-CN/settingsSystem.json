@@ -142,6 +142,17 @@
     "cancel": "取消",
     "signingOut": "正在退出登录…",
     "signOut": "退出登录",
+    "delete": {
+      "title": "删除账户",
+      "subtitle": "永久删除你的 MindsHub 账户以及仅属于你的数据。",
+      "button": "删除账户",
+      "confirmTitle": "删除你的 MindsHub 账户？",
+      "confirmBody": "我们会在 30 天内永久删除你的账户以及仅属于你的数据，完成后会发邮件通知你。你与他人共享的组织会保留给其他成员。此操作无法撤销。",
+      "sending": "正在发送…",
+      "requested": "已于 {requestedOn} 申请删除。我们会在 {deleteBy} 前删除你的账户。",
+      "error": "无法发送你的请求。请重试。",
+      "desktopHint": "要删除账户，请登录 cowork.mindshub.ai 并打开 设置 → 账户。"
+    },
     "web": {
       "title": "通过 MindsHub 管理",
       "body": "网页版的账户通过 MindsHub 管理。"

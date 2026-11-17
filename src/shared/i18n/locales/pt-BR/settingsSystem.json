@@ -142,6 +142,17 @@
     "cancel": "Cancelar",
     "signingOut": "Saindo…",
     "signOut": "Sair",
+    "delete": {
+      "title": "Excluir conta",
+      "subtitle": "Exclua permanentemente sua conta MindsHub e os dados que são só seus.",
+      "button": "Excluir conta",
+      "confirmTitle": "Excluir sua conta MindsHub?",
+      "confirmBody": "Vamos excluir permanentemente sua conta e os dados que são só seus em até 30 dias, e enviar um e-mail quando terminar. As organizações que você compartilha com outras pessoas ficam com os demais membros. Isso não pode ser desfeito.",
+      "sending": "Enviando…",
+      "requested": "Exclusão solicitada em {requestedOn}. Vamos excluir sua conta até {deleteBy}.",
+      "error": "Não foi possível enviar sua solicitação. Tente de novo.",
+      "desktopHint": "Para excluir sua conta, entre em cowork.mindshub.ai e abra Configurações → Conta."
+    },
     "web": {
       "title": "Gerenciada pelo MindsHub",
       "body": "Na versão web, a conta é gerenciada pelo MindsHub."

@@ -2886,10 +2886,9 @@ export default function SettingsView({
   const renderUsageSection = () => (
     <UsageSection
       isSsoConnected={isSsoConnected}
-      // Only where Account is a section this host actually offers. `account`
-      // is not in WEB_NAV_IDS, so on web the deep link resolves to the first
-      // visible section (Agent) on desktop widths and pops back to the
-      // section list on mobile — a button that silently goes somewhere else.
+      // Only where Account can sign someone in. On web it shows the account
+      // but offers no sign-in, so the button would land on a page that cannot
+      // do what it promised.
       onOpenAccount={!host.isWeb && onSectionChange ? () => onSectionChange('account') : undefined}
     />
   );

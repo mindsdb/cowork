@@ -49,6 +49,14 @@ it('offers Agent, Appearance and Channels and rejects an old Usage deep link', (
   expect(screen.queryByRole('button', { name: 'Usage' })).not.toBeInTheDocument();
 });
 
+// No MindsHub platform, no MindsHub account: the public account link opens
+// Settings on its first page rather than an account page with nothing in it.
+it('rejects an Account deep link', () => {
+  renderSettings(settings, undefined, 'account');
+  expect(screen.getByRole('heading', { name: 'Memory', exact: true })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Account' })).not.toBeInTheDocument();
+});
+
 it.each([
   ['local inference with a publishing credential', settings],
   ['MindsHub inference', {

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeftRight, Server, Cloud, Sparkle, LogIn, LogOut } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowLeftRight, Server, Cloud, Sparkle, LogIn, LogOut, Trash2 } from 'lucide-react';
 import { Icon } from '../../components/ui/Icon';
 import { Alert, Button, Tooltip } from '../../components/ui';
 import { ConfirmModal } from '../../components/ConfirmModal';
@@ -11,10 +11,103 @@ import { organizationLabel, orgDisplayName } from '../../../../shared/minds-orgs
 import { accountInitials } from '../../lib/accountUser';
 import { MINDS_CONSOLE_HOME_URL, consoleUrlFor } from '../../../lib/mindsUrls';
 import { Section, SettingsSectionPanel } from './settingsLayout';
-import { sharedTranslator, useTranslation } from '../../../lib/i18n';
+import { currentLocale, sharedTranslator, useTranslation } from '../../../lib/i18n';
+import { getDeletionRequest, requestAccountDeletion } from '../../api';
+
+// A request date as the person reads dates. Falls back to the raw value so a
+// malformed answer still says something rather than throwing mid-render.
+function formatDay(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return String(iso ?? '');
+  return new Intl.DateTimeFormat(currentLocale(), { dateStyle: 'long' }).format(date);
+}
+
+// Asking for the account to be deleted. The app stores require that anyone who
+// can sign up here can also start deleting their account here. Confirming
+// records a request that support carries out, so once one is open the row
+// says when rather than offering the button again.
+//
+// Web only: there the server always speaks for a MindsHub account. A desktop
+// on its local server has no MindsHub credential to forward, so it could
+// neither read nor send a request; it points to the web app instead.
+function DeleteAccountRow({ card }) {
+  const { t } = useTranslation('settingsSystem');
+  // undefined while the first read is in flight, null when there is no open
+  // request, else `{ requestedAt, deleteBy }`.
+  const [request, setRequest] = useState(undefined);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDeletionRequest()
+      .then((open) => { if (!cancelled) setRequest(open ?? null); })
+      // A failed read leaves the button available: asking again is harmless,
+      // since the server answers an open request rather than opening another.
+      .catch(() => { if (!cancelled) setRequest(null); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const confirm = async () => {
+    setSending(true);
+    setError(false);
+    try {
+      const open = await requestAccountDeletion();
+      setRequest(open);
+    } catch {
+      setError(true);
+    } finally {
+      setSending(false);
+      setConfirmOpen(false);
+    }
+  };
+
+  return (
+    <div className={`${card} pt-0 px-[18px] pb-2`}>
+      <Section
+        title={t('account.delete.title')}
+        subtitle={t('account.delete.subtitle')}
+        notice={error && <Alert variant="danger">{t('account.delete.error')}</Alert>}
+      >
+        {request ? (
+          <div className="text-[13px] text-ink-2" role="status">
+            {t('account.delete.requested', {
+              requestedOn: formatDay(request.requestedAt),
+              deleteBy: formatDay(request.deleteBy),
+            })}
+          </div>
+        ) : (
+          <div className="flex justify-end">
+            <Button
+              variant="danger"
+              onClick={() => setConfirmOpen(true)}
+              disabled={request === undefined || sending}
+            >
+              <Icon of={Trash2} size={14} />
+              {t('account.delete.button')}
+            </Button>
+          </div>
+        )}
+      </Section>
+      <ConfirmModal
+        open={confirmOpen}
+        title={t('account.delete.confirmTitle')}
+        message={t('account.delete.confirmBody')}
+        confirmLabel={t('account.delete.button')}
+        cancelLabel={t('account.cancel')}
+        destructive
+        busy={sending}
+        busyLabel={t('account.delete.sending')}
+        onConfirm={confirm}
+        onClose={() => setConfirmOpen(false)}
+      />
+    </div>
+  );
+}
 
 // The Account settings section: the signed-in user card, the MindsHub sign-in
-// pitch when signed out, and sign-out. The account identity and the sign-out
+// pitch when signed out, sign-out, and asking for the account to be deleted. The account identity and the sign-out
 // sequence live in shared hooks (useAccountUser / useLogout) since the sidebar
 // user menu (ENG-1408) runs the same flows; this section owns only its confirm
 // modal and layout.
@@ -184,6 +277,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
               <div className="max-w-[320px]">{t('account.web.body')}</div>
             </div>
           )}
+          {accountUser && host.isWeb && <DeleteAccountRow card={CARD} />}
         </SettingsSectionPanel>
         {logoutConfirm}
       </>
@@ -207,6 +301,11 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
             </div>
           </Section>
         </div>}
+        {accountUser && (
+          <div className={`${CARD} py-3 px-[18px] text-[13px] text-ink-3`}>
+            {t('account.delete.desktopHint')}
+          </div>
+        )}
       </SettingsSectionPanel>
       {logoutConfirm}
     </>

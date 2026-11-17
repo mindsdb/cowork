@@ -142,6 +142,17 @@
     "cancel": "Annulla",
     "signingOut": "Uscita in corso…",
     "signOut": "Esci",
+    "delete": {
+      "title": "Elimina account",
+      "subtitle": "Elimina definitivamente il tuo account MindsHub e i dati che appartengono solo a te.",
+      "button": "Elimina account",
+      "confirmTitle": "Eliminare il tuo account MindsHub?",
+      "confirmBody": "Elimineremo definitivamente il tuo account e i dati che appartengono solo a te entro 30 giorni e ti invieremo un’email quando avremo finito. Le organizzazioni che condividi con altre persone restano ai loro altri membri. Questa operazione non può essere annullata.",
+      "sending": "Invio in corso…",
+      "requested": "Eliminazione richiesta il {requestedOn}. Elimineremo il tuo account entro il {deleteBy}.",
+      "error": "Impossibile inviare la richiesta. Riprova.",
+      "desktopHint": "Per eliminare il tuo account, accedi a cowork.mindshub.ai e apri Impostazioni → Account."
+    },
     "web": {
       "title": "Gestito tramite MindsHub",
       "body": "Nella versione web, l’account si gestisce tramite MindsHub."

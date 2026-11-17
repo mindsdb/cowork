@@ -144159,6 +144159,312 @@
       "text": "2cd0f3be8738"
     }
   },
+  "settingsSystem:account.delete.button": {
+    "de": {
+      "from": "a2e20a335700",
+      "text": "205096fdbbc3"
+    },
+    "es": {
+      "from": "a2e20a335700",
+      "text": "17e08f1db7bf"
+    },
+    "fr": {
+      "from": "a2e20a335700",
+      "text": "d2d80f8122e6"
+    },
+    "it": {
+      "from": "a2e20a335700",
+      "text": "dec19e9ee827"
+    },
+    "ja": {
+      "from": "a2e20a335700",
+      "text": "45cab1025718"
+    },
+    "ko": {
+      "from": "a2e20a335700",
+      "text": "07051913f67d"
+    },
+    "pt-BR": {
+      "from": "a2e20a335700",
+      "text": "8d9113221273"
+    },
+    "zh-CN": {
+      "from": "a2e20a335700",
+      "text": "c42bae7b4fd9"
+    }
+  },
+  "settingsSystem:account.delete.confirmBody": {
+    "de": {
+      "from": "657bee66ff8c",
+      "text": "5e65b3579cf6"
+    },
+    "es": {
+      "from": "657bee66ff8c",
+      "text": "d13ecb5cbb4d"
+    },
+    "fr": {
+      "from": "657bee66ff8c",
+      "text": "adf5ab5d4869"
+    },
+    "it": {
+      "from": "657bee66ff8c",
+      "text": "99012b02ac29"
+    },
+    "ja": {
+      "from": "657bee66ff8c",
+      "text": "2ce7d09dc494"
+    },
+    "ko": {
+      "from": "657bee66ff8c",
+      "text": "3cd165e2fd53"
+    },
+    "pt-BR": {
+      "from": "657bee66ff8c",
+      "text": "aa9734a63b84"
+    },
+    "zh-CN": {
+      "from": "657bee66ff8c",
+      "text": "699ef67a7aed"
+    }
+  },
+  "settingsSystem:account.delete.confirmTitle": {
+    "de": {
+      "from": "473d4ccb2fba",
+      "text": "da090785ac4b"
+    },
+    "es": {
+      "from": "473d4ccb2fba",
+      "text": "a7d759837f70"
+    },
+    "fr": {
+      "from": "473d4ccb2fba",
+      "text": "9fc6f5c483b1"
+    },
+    "it": {
+      "from": "473d4ccb2fba",
+      "text": "4de1d83f5d97"
+    },
+    "ja": {
+      "from": "473d4ccb2fba",
+      "text": "be0f6e7d4cab"
+    },
+    "ko": {
+      "from": "473d4ccb2fba",
+      "text": "678584a75afb"
+    },
+    "pt-BR": {
+      "from": "473d4ccb2fba",
+      "text": "a3b5d011e720"
+    },
+    "zh-CN": {
+      "from": "473d4ccb2fba",
+      "text": "4fe85f2bbef1"
+    }
+  },
+  "settingsSystem:account.delete.desktopHint": {
+    "de": {
+      "from": "304b39a5b123",
+      "text": "c2fe547aacff"
+    },
+    "es": {
+      "from": "304b39a5b123",
+      "text": "7f06dc1b2def"
+    },
+    "fr": {
+      "from": "304b39a5b123",
+      "text": "aac169a20c4e"
+    },
+    "it": {
+      "from": "304b39a5b123",
+      "text": "b58d35469fb6"
+    },
+    "ja": {
+      "from": "304b39a5b123",
+      "text": "e31ea0c2a311"
+    },
+    "ko": {
+      "from": "304b39a5b123",
+      "text": "403412269c47"
+    },
+    "pt-BR": {
+      "from": "304b39a5b123",
+      "text": "753c3317579c"
+    },
+    "zh-CN": {
+      "from": "304b39a5b123",
+      "text": "74c6716dd601"
+    }
+  },
+  "settingsSystem:account.delete.error": {
+    "de": {
+      "from": "dcf32d1bbcca",
+      "text": "59504a7d9dc1"
+    },
+    "es": {
+      "from": "dcf32d1bbcca",
+      "text": "0826ceba85aa"
+    },
+    "fr": {
+      "from": "dcf32d1bbcca",
+      "text": "7e7d1f04456a"
+    },
+    "it": {
+      "from": "dcf32d1bbcca",
+      "text": "63203ed93ef4"
+    },
+    "ja": {
+      "from": "dcf32d1bbcca",
+      "text": "7e1a7dc06a74"
+    },
+    "ko": {
+      "from": "dcf32d1bbcca",
+      "text": "bbb741128abe"
+    },
+    "pt-BR": {
+      "from": "dcf32d1bbcca",
+      "text": "f47708c44d22"
+    },
+    "zh-CN": {
+      "from": "dcf32d1bbcca",
+      "text": "2f854fce10bc"
+    }
+  },
+  "settingsSystem:account.delete.requested": {
+    "de": {
+      "from": "3d3d7945be73",
+      "text": "2c163069bf93"
+    },
+    "es": {
+      "from": "3d3d7945be73",
+      "text": "eee14640e34a"
+    },
+    "fr": {
+      "from": "3d3d7945be73",
+      "text": "e299915fcf59"
+    },
+    "it": {
+      "from": "3d3d7945be73",
+      "text": "43daa35be74c"
+    },
+    "ja": {
+      "from": "3d3d7945be73",
+      "text": "809b9edcce8b"
+    },
+    "ko": {
+      "from": "3d3d7945be73",
+      "text": "209e22433862"
+    },
+    "pt-BR": {
+      "from": "3d3d7945be73",
+      "text": "b78e21b7c4be"
+    },
+    "zh-CN": {
+      "from": "3d3d7945be73",
+      "text": "42836739b7de"
+    }
+  },
+  "settingsSystem:account.delete.sending": {
+    "de": {
+      "from": "b8ed5279e897",
+      "text": "754ed3f63a88"
+    },
+    "es": {
+      "from": "b8ed5279e897",
+      "text": "9415ac2416c5"
+    },
+    "fr": {
+      "from": "b8ed5279e897",
+      "text": "1ccef8a10ca7"
+    },
+    "it": {
+      "from": "b8ed5279e897",
+      "text": "40230a6f35ae"
+    },
+    "ja": {
+      "from": "b8ed5279e897",
+      "text": "a2fafca6c983"
+    },
+    "ko": {
+      "from": "b8ed5279e897",
+      "text": "e9df042ad1aa"
+    },
+    "pt-BR": {
+      "from": "b8ed5279e897",
+      "text": "9415ac2416c5"
+    },
+    "zh-CN": {
+      "from": "b8ed5279e897",
+      "text": "22eb0f8779ab"
+    }
+  },
+  "settingsSystem:account.delete.subtitle": {
+    "de": {
+      "from": "04e542391180",
+      "text": "1088167da092"
+    },
+    "es": {
+      "from": "04e542391180",
+      "text": "45f9c9c7db23"
+    },
+    "fr": {
+      "from": "04e542391180",
+      "text": "c3d5bdc6e683"
+    },
+    "it": {
+      "from": "04e542391180",
+      "text": "ab7bf75eb103"
+    },
+    "ja": {
+      "from": "04e542391180",
+      "text": "2d6b2bdde1ed"
+    },
+    "ko": {
+      "from": "04e542391180",
+      "text": "8c987d5e55f6"
+    },
+    "pt-BR": {
+      "from": "04e542391180",
+      "text": "9aa0e4a3b60f"
+    },
+    "zh-CN": {
+      "from": "04e542391180",
+      "text": "2bfa897b4cd5"
+    }
+  },
+  "settingsSystem:account.delete.title": {
+    "de": {
+      "from": "a2e20a335700",
+      "text": "205096fdbbc3"
+    },
+    "es": {
+      "from": "a2e20a335700",
+      "text": "17e08f1db7bf"
+    },
+    "fr": {
+      "from": "a2e20a335700",
+      "text": "d2d80f8122e6"
+    },
+    "it": {
+      "from": "a2e20a335700",
+      "text": "dec19e9ee827"
+    },
+    "ja": {
+      "from": "a2e20a335700",
+      "text": "45cab1025718"
+    },
+    "ko": {
+      "from": "a2e20a335700",
+      "text": "07051913f67d"
+    },
+    "pt-BR": {
+      "from": "a2e20a335700",
+      "text": "8d9113221273"
+    },
+    "zh-CN": {
+      "from": "a2e20a335700",
+      "text": "c42bae7b4fd9"
+    }
+  },
   "settingsSystem:account.organization": {
     "de": {
       "from": "d764d42592fc",
