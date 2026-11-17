@@ -1159,6 +1159,23 @@ describe('Share on the inline artifact card', () => {
     expect(share()).not.toBeNull();
   });
 
+  it('leads with a filled Share and keeps Preview as an outlined button beside it', () => {
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    const preview = screen.getByRole('button', { name: 'Preview' });
+    expect(share()).toHaveClass('btn', 'primary');
+    expect(preview).toHaveClass('btn', 'default');
+    expect(preview).not.toHaveClass('primary');
+    expect(preview.compareDocumentPosition(share()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('keeps Preview as the filled action where there is no Share', () => {
+    const path = '/proj/.anton/artifacts/data/file.csv';
+    render(<ChatView task={taskWithArtifact(artifactStep({ ext: '.csv', file_path: path, path }))} />);
+
+    expect(screen.getByRole('button', { name: 'Preview' })).toHaveClass('btn', 'primary');
+  });
+
   it('opens the viewer with the Share panel, named as opened from the chat card', async () => {
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep())} />);

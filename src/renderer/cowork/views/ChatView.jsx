@@ -1147,6 +1147,9 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
     : null;
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
+  const openAction = !deleted && primaryAction
+    ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+    : null;
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -1218,15 +1221,25 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
       >
-        <ActionBar
-          size="sm"
-          align="start"
-          className="flex-wrap"
-          primary={!deleted && primaryAction
-            ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
-            : null}
-          secondary={shareAction}
-        />
+        {shareAction ? (
+          /* Share leads once the artifact can be shared, and the open action
+             stays a full outlined button beside it: ActionBar's secondary is
+             the quiet one, which would make Preview read as an afterthought. */
+          <div className="flex min-w-0 flex-wrap items-center justify-start gap-1.5">
+            {openAction && (
+              <Tooltip content={openAction.tooltip} side="top">
+                <Button size="sm" variant="default" disabled={openAction.disabled} onClick={openAction.onClick}>
+                  {openAction.label}
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip content={shareAction.tooltip} side="top">
+              <Button size="sm" variant="primary" onClick={shareAction.onClick}>{shareAction.label}</Button>
+            </Tooltip>
+          </div>
+        ) : (
+          <ActionBar size="sm" align="start" className="flex-wrap" primary={openAction} />
+        )}
       </div>
       {/* The footer is the artifact's location bar: the path at rest, and the
           result of an action for the moment it is on screen. One or the

@@ -286,7 +286,8 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
 // ── Main control ─────────────────────────────────────────────────────────
 
 // `openOnMount` opens the panel as the viewer appears, for a Share clicked
-// outside the viewer.
+// outside the viewer. That panel picks no audience for a first share: the
+// person chose to share and has not yet said with whom.
 export function PublishMenu({ controller, disabled = false, disabledReason = '', openOnMount = false }) {
   const { t } = useTranslation('artifacts');
   const pub = controller;
@@ -314,7 +315,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
   // The draft the live access reads as.
   const seedDraft = () => accessDraftFromArtifact(pub, draftOptions);
   // Editable access draft for the publish + change-access flows.
-  const [draft, setDraft] = useState(() => (isPublished ? seedDraft() : newAccessDraft()));
+  const firstShareDraft = () => newAccessDraft({ preselect: !openOnMount });
+  const [draft, setDraft] = useState(() => (isPublished ? seedDraft() : firstShareDraft()));
   // Has the user touched the access draft? Gates the late-arrival re-seed below
   // so we never clobber edits-in-progress when the server list lands (ENG-931).
   const [draftDirty, setDraftDirty] = useState(false);
@@ -339,7 +341,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
       pub.loadVersions();  // lazy-load history for the rollback section
     } else {
       setView('publish');
-      setDraft(newAccessDraft());
+      setDraft(firstShareDraft());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isPublished]);
