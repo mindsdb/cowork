@@ -70,12 +70,12 @@ export function NextSteps({ answerKey, resultKind, steps, onSend, onSchedule }) 
   return (
     <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={t('chatView.nextSteps.groupLabel')} data-testid="next-steps">
       {steps.map((step, position) => (step === NEXT_STEP.SCHEDULE && scheduled ? (
-        <Button key={step} variant="tinted" size="sm" disabled>
+        <Button key={step} variant="default" size="sm" disabled>
           {ICONS[step]?.()}
           {t('chatView.nextSteps.scheduledDone')}
         </Button>
       ) : (
-        <Button key={step} variant="tinted" size="sm" onClick={() => run(step, position)}>
+        <Button key={step} variant="default" size="sm" onClick={() => run(step, position)}>
           {ICONS[step]?.()}
           {t(LABEL_KEYS[step])}
         </Button>
