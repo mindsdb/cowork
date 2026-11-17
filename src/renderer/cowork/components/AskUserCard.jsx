@@ -6,9 +6,17 @@ import {
   browserApprovalIds,
   declineBrowserApproval,
   isBrowserApprovalCard,
+  isBrowserStepCard,
+  isAutoApprovedCard,
+  isPositionClickCard,
+  POSITION_AUTO_APPROVE_MS,
   recordBrowserApproval,
 } from '../lib/browserApproval';
 import { host } from '../../platform/host';
+import { saveApproveSteps, useBrowserPrefs } from '../lib/browserPrefs';
+import { parseBrowserStepPrompt, typedTextHasMarks, typedTextShown } from '../lib/browserStepPrompt';
+import BrowserStepPills from './BrowserStepPills';
+import { Switch } from './ui/Switch';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 import ChatCardShell from './ChatCardShell';
 import { cn } from '../lib/cn';
@@ -53,6 +61,31 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
 
   const settled = !reopened && (Boolean(answer) || expired || gone);
 
+  /* A position card always, and a held browser step with Approve browser
+     steps off, is approved by the app (lib/browserApproval.js
+     approveCardsForPerson): it stays hidden, and shows only if that approval
+     hasn't landed in time. */
+  const browserPrefs = useBrowserPrefs();
+  const positionCard = !reopened && isAutoApprovedCard(q, browserPrefs);
+  const [positionLate, setPositionLate] = useState(false);
+  useEffect(() => {
+    if (!positionCard || settled) return undefined;
+    const timer = setTimeout(() => setPositionLate(true), POSITION_AUTO_APPROVE_MS);
+    return () => clearTimeout(timer);
+  }, [positionCard, settled]);
+
+  /* A held browser step's card offers Skip approvals: it turns Approve
+     browser steps off (the person's setting, as in Settings) for steps held
+     later. This card, and every other that was waiting then, still needs its
+     own answer (lib/browserPrefs.js). */
+  const offersSkip = !reopened && !settled && isBrowserStepCard(q) && !isPositionClickCard(q);
+  const [skipSaving, setSkipSaving] = useState(false);
+  const setSkipApprovals = async (skip) => {
+    setSkipSaving(true);
+    await saveApproveSteps(!skip);
+    setSkipSaving(false);
+  };
+
   // Only a multi-line prompt is markdown: the ask_user tool asks for one
   // plain-text line, and markdown would lose text in it ("<div>" vanishes,
   // "__init__" turns bold). The multi-line PRD brief needs softBreaks for its
@@ -61,9 +94,44 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
   // person approves what the brief shows.
   // Memoised: ChatView re-renders on every streamed delta, and each card
   // would otherwise re-parse its brief every time.
+  // A held browser step's card says its site and action as pills, under one
+  // short line, in place of anton's fenced address and step
+  // (lib/browserStepPrompt.js); any other prompt shows as written. The pills
+  // wrap rather than cut, so a long address keeps its owning domain on a
+  // phone. A typing step's text shows whole under them, line breaks kept,
+  // with no height cap: nothing is typed before Approve, so this is the only
+  // place the person reads what a send or a payment types, and a line out of
+  // sight behind a scroll would be approved unread. Each line break and tab
+  // is marked where it falls (⏎, ⇥), and each invisible character is named
+  // by its code point (⟦U+202E⟧), and the caption says what the marks mean,
+  // since each host can type a line break as the Enter key, which can send
+  // the text. Only while it waits: an answered card, like the turn's steps,
+  // leaves the text out.
   const prompt = q.prompt || '';
+  const stepPills = useMemo(() => (isBrowserStepCard(q) ? parseBrowserStepPrompt(prompt) : null), [q, prompt]);
   const promptBody = useMemo(
-    () => (prompt.trim().includes('\n') ? (
+    () => (stepPills ? (
+      <div className="flex flex-col gap-1.5">
+        <MarkdownPlainText>
+          <strong className="font-semibold text-ink">{t('askUser.browserStep.title')}</strong>
+          {' '}<span className="text-ink-3">{t('askUser.browserStep.intro')}</span>
+        </MarkdownPlainText>
+        <BrowserStepPills pills={stepPills} wrap />
+        {stepPills.typed && !settled ? (
+          <figure className="m-0 flex flex-col gap-1">
+            <figcaption className="text-xs text-ink-3">
+              {t(typedTextHasMarks(stepPills.typed) ? 'askUser.browserStep.typedTextKeys' : 'askUser.browserStep.typedText')}
+            </figcaption>
+            <blockquote
+              data-testid="browser-step-typed"
+              className="m-0 whitespace-pre-wrap rounded-md border-l-2 border-line bg-surface-2 px-3 py-2 font-body text-sm text-ink [overflow-wrap:anywhere]"
+            >
+              {typedTextShown(stepPills.typed)}
+            </blockquote>
+          </figure>
+        ) : null}
+      </div>
+    ) : prompt.trim().includes('\n') ? (
       <MarkdownContent
         text={prompt}
         softBreaks
@@ -75,7 +143,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
     ) : (
       <MarkdownPlainText>{prompt.trim()}</MarkdownPlainText>
     )),
-    [prompt],
+    [prompt, stepPills, settled, t],
   );
 
   // This is the only interactive control in an otherwise static stream, it
@@ -183,6 +251,8 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       : null,
   };
 
+  if (positionCard && (answer || !positionLate)) return null;
+
   return (
     // No kind row: the turn's "Question for you" step already names the card.
     <ChatCardShell
@@ -280,6 +350,19 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       </div>
 
       {refusal && !settled ? <div role="alert" className="mt-2 text-xs text-danger">{refusal}</div> : null}
+
+      {offersSkip ? (
+        <div className="mt-2 flex items-center justify-end gap-2 px-3">
+          <span aria-hidden className="text-xs text-ink-4">{t('askUser.skipApprovals')}</span>
+          <Switch
+            size="sm"
+            checked={browserPrefs.askToApprove === false}
+            disabled={skipSaving}
+            onCheckedChange={(skip) => void setSkipApprovals(skip)}
+            aria-label={t('askUser.skipApprovals')}
+          />
+        </div>
+      ) : null}
     </ChatCardShell>
   );
 }

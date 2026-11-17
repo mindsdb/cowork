@@ -88,5 +88,6 @@ describe('scrubEnvCredentials (ENG-1206)', () => {
     // Models are deliberately preserved (ENG-739).
     expect(LOGOUT_ENV_KEYS).not.toContain('ANTON_PLANNING_MODEL');
     expect(LOGOUT_ENV_KEYS).not.toContain('ANTON_CODING_MODEL');
+    expect(LOGOUT_ENV_KEYS).not.toContain('ANTON_IMAGE_MODEL');
   });
 });

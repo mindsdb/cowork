@@ -18,7 +18,9 @@ import {
 import { useTranslation } from '../../../lib/i18n';
 import { productName } from '../../../lib/deploymentBrand';
 
-export const SHAREPOINT_ENGINE = 'sharepoint';
+import { SHAREPOINT_ENGINE } from '../../lib/connectorIds';
+
+export { SHAREPOINT_ENGINE };
 
 const EMPTY = { name: '', userLabel: '', tenantId: '', clientId: '', siteUrls: '' };
 

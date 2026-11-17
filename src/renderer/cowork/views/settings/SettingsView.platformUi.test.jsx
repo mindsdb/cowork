@@ -96,11 +96,12 @@ it('keeps "Show where figures came from" in Appearance on a build without the pl
 
 it('puts the shared browser in its own group after Memory, not inside it', async () => {
   fetchBrowseStatus.mockResolvedValueOnce({ enabled: true, available: true, status: 'running' });
-  renderSettings();
-  const toggle = await screen.findByRole('switch', { name: 'Shared browser' });
+  // The web offers the browser only where MindsHub is the LLM provider.
+  renderSettings({ ...settings, planningProvider: 'minds-cloud' });
+  const toggle = await screen.findByRole('switch', { name: 'Browser mode' });
   const memory = screen.getByRole('heading', { name: 'Memory', exact: true }).parentElement;
-  expect(within(memory).queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
-  const group = screen.getByRole('heading', { level: 2, name: 'Shared browser' }).parentElement;
-  expect(within(group).getByRole('switch', { name: 'Shared browser' })).toBe(toggle);
+  expect(within(memory).queryByRole('switch', { name: 'Browser mode' })).not.toBeInTheDocument();
+  const group = screen.getByRole('heading', { level: 2, name: 'Browser mode' }).parentElement;
+  expect(within(group).getByRole('switch', { name: 'Browser mode' })).toBe(toggle);
   expect(memory.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

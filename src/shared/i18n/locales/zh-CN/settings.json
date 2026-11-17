@@ -315,7 +315,9 @@
       "router": "路由与摘要模型",
       "coding": "编程模型",
       "planningSubtitle": "用于推理、编排和回复。",
-      "codingSubtitle": "用于在草稿区生成代码。"
+      "codingSubtitle": "用于在草稿区生成代码。",
+      "image": "图像模型",
+      "imageSubtitle": "用于生成和编辑图像。"
     },
     "providerLabel": "服务商：",
     "modelLabel": "模型：",
@@ -332,9 +334,12 @@
     "modelRestricted": "{model} 已被你所在组织的管理员限制使用。请选择其他模型。",
     "modelZdrRestricted": "{model} 不符合 ZDR 要求，且你所在组织已开启零数据保留。请选择其他模型。",
     "modelNeedsCredits": "{model} 需要积分。{link}后即可使用。",
+    "modelNeedsCreditsNoLink": "{model} 需要积分。",
     "topUpBalance": "充值余额",
     "modelBudgetReached": "你所在组织的预算已用完，无法运行 {model}。",
-    "viewBudgets": "查看预算"
+    "viewBudgets": "查看预算",
+    "imageModelNeedsMindsHub": "图像生成在 MindsHub 上运行。请在 LLM 服务商中添加 MindsHub 以选择图像模型。",
+    "imageModelHint": "选择用于生成图像的模型。"
   },
   "memory": {
     "title": "记忆",
@@ -496,5 +501,12 @@
       "saved": "已保存。成员下次打开应用或设置时就会看到。",
       "clean": "没有未保存的品牌更改"
     }
+  },
+  "voice": {
+    "title": "语音",
+    "agentTitle": "语音智能体",
+    "agentHelp": "通过通话按钮与 {agent} 交谈。关闭后会隐藏通话按钮，并结束正在进行的通话。",
+    "voiceTitle": "语音",
+    "voiceHelp": "选择一个即可试听。每换一种新语音，{agent} 都会说一句简短的话。"
   }
 }

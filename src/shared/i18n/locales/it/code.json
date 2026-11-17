@@ -27,11 +27,14 @@
       "branch": "Branch",
       "openOriginalFolder": "Apri la cartella originale",
       "openIsolatedCopy": "Apri la copia isolata",
-      "openOriginal": "Apri l’originale"
+      "openOriginal": "Apri l’originale",
+      "openYourFolder": "Apri la tua cartella"
     },
     "sourceChanged": {
       "title": "All’avvio dell’attività l’origine aveva modifiche locali",
-      "body": "Quelle modifiche sono rimaste nella cartella di origine. {product} verifica i conflitti prima di applicarle."
+      "body": "Quelle modifiche sono rimaste nella cartella di origine. {product} verifica i conflitti prima di applicarle.",
+      "inPlaceTitle": "La cartella aveva già modifiche non salvate in un commit",
+      "inPlaceBody": "Compaiono in questa revisione insieme a quelle dell’agente, e il commit fatto qui le include."
     },
     "reconcile": {
       "title": "Concilia le modifiche originali",
@@ -61,13 +64,20 @@
       "create": "Crea",
       "commitLabel": "Esegui il commit di tutte le modifiche",
       "commitPlaceholder": "Descrivi la modifica",
-      "commit": "Commit"
+      "commit": "Commit",
+      "branchLabelInPlace": "Crea un branch nella tua cartella e passa a quel branch",
+      "commitLabelInPlace": "Esegui il commit di tutte le modifiche nella tua cartella"
     },
     "applyConfirm": {
       "title": "Applicare le modifiche alla cartella di origine?",
       "message": "Aggiornare {target} con le modifiche riviste dell’attività? Se trova un conflitto, {product} si fermerà prima di modificare qualsiasi cartella.",
       "confirm": "Applica modifiche",
       "error": "Impossibile applicare le modifiche. Riprova."
+    },
+    "inPlace": {
+      "title": "{count, plural, one {Questa attività modifica direttamente la tua cartella} other {Questa attività modifica direttamente le tue cartelle}}",
+      "body": "{count, plural, one {Le modifiche sono già nella tua cartella, quindi non c’è nulla da applicare.} other {Le modifiche sono già nelle tue cartelle, quindi non c’è nulla da applicare.}} Le bozze di pull request non sono ancora disponibili per le attività locali: esegui il commit qui, poi fai push e apri una pull request con i tuoi strumenti abituali.",
+      "bodyWithoutGit": "{count, plural, one {Le modifiche sono già nella tua cartella, quindi non c’è nulla da applicare.} other {Le modifiche sono già nelle tue cartelle, quindi non c’è nulla da applicare.}}"
     }
   },
   "fileReview": {
@@ -86,7 +96,8 @@
     "discardConfirm": {
       "title": "Annullare le modifiche a questo file?",
       "message": "{path} tornerà alla versione attuale dell’attività. L’operazione non può essere annullata.",
-      "confirm": "Annulla modifiche"
+      "confirm": "Annulla modifiche",
+      "messageInPlace": "{path} tornerà all’ultima versione salvata in un commit nella tua cartella, incluse le modifiche fatte prima dell’inizio di questa attività. Questa operazione non può essere annullata."
     }
   },
   "reviewFileCard": {
@@ -449,7 +460,9 @@
       "reasoning": "Ragionamento",
       "reasoningAriaLabel": "Livello di ragionamento predefinito",
       "permissions": "Autorizzazioni",
-      "permissionsAriaLabel": "Autorizzazioni di codice predefinite"
+      "permissionsAriaLabel": "Autorizzazioni di codice predefinite",
+      "workspace": "Spazio di lavoro",
+      "workspaceAriaLabel": "Spazio di lavoro predefinito delle attività"
     },
     "environment": {
       "title": "Ambiente",
@@ -1038,16 +1051,16 @@
       "title": "Esamina e spiega senza modificare i file."
     },
     "supervised": {
-      "label": "Chiedi prima",
-      "title": "Si ferma prima dei comandi che richiedono la tua approvazione."
+      "label": "Chiedi approvazione",
+      "title": "Chiede sempre prima di modificare file fuori dall’attività o di usare Internet."
     },
     "workspace": {
-      "label": "Auto nell’area di lavoro",
-      "title": "Lavora in autonomia nella copia isolata di questa attività."
+      "label": "Approva per me",
+      "title": "Un revisore approva le richieste di routine e blocca quelle rischiose."
     },
     "fullAccess": {
       "label": "Accesso completo",
-      "title": "Lavora in autonomia senza restrizioni sul file system."
+      "title": "Accesso senza restrizioni a Internet e a tutti i file del tuo computer."
     }
   },
   "branchSelect": {
@@ -1400,7 +1413,8 @@
     "details": "Dettagli",
     "moreOptions": "Altre opzioni",
     "dismiss": "Ignora",
-    "viewBudgets": "Visualizza budget"
+    "viewBudgets": "Visualizza budget",
+    "allowWrites": "Consenti modifiche"
   },
   "composerNotices": {
     "thisModel": "Questo modello",
@@ -1454,6 +1468,9 @@
     "budgetExceeded": {
       "title": "Il budget della tua organizzazione è esaurito",
       "body": "Un proprietario o un amministratore può aumentarlo in «Budget», oppure scegli un modello disponibile per continuare in questa attività."
+    },
+    "writesHeld": {
+      "body": "Questa cartella non ha una cronologia Git per rivedere o annullare le modifiche, quindi l’agente chiede prima di ogni modifica."
     }
   },
   "planModeCommand": {
@@ -1498,7 +1515,9 @@
     "terminal": "Terminale",
     "reviewChanges": "Rivedi le modifiche",
     "review": "Rivedi",
-    "taskActionsAriaLabel": "Azioni dell’attività di codice"
+    "taskActionsAriaLabel": "Azioni dell’attività di codice",
+    "localFolder": "{count, plural, one {Locale · la tua cartella} other {Locale · le tue # cartelle}}",
+    "openYourFolder": "Apri la tua cartella"
   },
   "terminal": {
     "status": {
@@ -1592,5 +1611,24 @@
     "desktopOnly": "Gli allegati di file locali sono disponibili nell’app desktop.",
     "ariaLabel": "Contesto allegato",
     "removeAriaLabel": "Rimuovi {name}"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "Locale",
+      "title": "Lavora direttamente nella cartella. In un repository viene eseguita una sola attività locale alla volta."
+    },
+    "worktree": {
+      "label": "Worktree",
+      "title": "Lavora in un worktree Git isolato, così le attività possono essere eseguite in parallelo."
+    },
+    "selectAriaLabel": "Dove lavora l’attività",
+    "menuLabel": "Spazio di lavoro",
+    "default": {
+      "label": "Predefinito",
+      "title": "Lascia che {product} scelga in base alla cartella e al computer di ogni attività."
+    },
+    "initializeGit": "Inizializza Git",
+    "initializeFailed": "Impossibile inizializzare Git. Riprova.",
+    "unavailable": "Nessuna modalità di lavoro è disponibile per questa cartella."
   }
 }

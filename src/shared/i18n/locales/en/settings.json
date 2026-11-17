@@ -315,7 +315,9 @@
       "router": "Routing and summarization model",
       "coding": "Coding model",
       "planningSubtitle": "Used for reasoning, orchestration, and responses.",
-      "codingSubtitle": "Used for scratchpad code generation."
+      "codingSubtitle": "Used for scratchpad code generation.",
+      "image": "Image model",
+      "imageSubtitle": "Used to generate and edit images."
     },
     "providerLabel": "Provider:",
     "modelLabel": "Model:",
@@ -332,9 +334,12 @@
     "modelRestricted": "{model} is restricted by an admin in your organization. Choose another model.",
     "modelZdrRestricted": "{model} is not ZDR-compliant, and zero data retention is on for your organization. Choose another model.",
     "modelNeedsCredits": "{model} needs credits. {link} to use it.",
+    "modelNeedsCreditsNoLink": "{model} needs credits.",
     "topUpBalance": "Top up your balance",
     "modelBudgetReached": "{model} can't run because your organization's budget is used up.",
-    "viewBudgets": "View budgets"
+    "viewBudgets": "View budgets",
+    "imageModelNeedsMindsHub": "Image generation runs on MindsHub. Add it under LLM Providers to choose an image model.",
+    "imageModelHint": "Pick the model used to generate images."
   },
   "memory": {
     "title": "Memory",
@@ -496,5 +501,12 @@
       "saved": "Saved. Members see it the next time they open the app or Settings.",
       "clean": "No unsaved branding changes"
     }
+  },
+  "voice": {
+    "title": "Voice",
+    "agentTitle": "Voice agent",
+    "agentHelp": "Talk with {agent} from the call button. Off hides the call buttons and ends a call that is running.",
+    "voiceTitle": "Voice",
+    "voiceHelp": "Pick one to hear it. {agent} says a short line in each new voice."
   }
 }

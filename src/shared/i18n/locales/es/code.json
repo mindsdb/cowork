@@ -27,11 +27,14 @@
       "branch": "Rama",
       "openOriginalFolder": "Abrir carpeta original",
       "openIsolatedCopy": "Abrir copia aislada",
-      "openOriginal": "Abrir original"
+      "openOriginal": "Abrir original",
+      "openYourFolder": "Abrir tu carpeta"
     },
     "sourceChanged": {
       "title": "El origen tenía cambios locales cuando empezó esta tarea",
-      "body": "Esos cambios se quedaron en la carpeta de origen. {product} busca conflictos antes de aplicar."
+      "body": "Esos cambios se quedaron en la carpeta de origen. {product} busca conflictos antes de aplicar.",
+      "inPlaceTitle": "La carpeta ya tenía cambios sin commit",
+      "inPlaceBody": "Aparecen en esta revisión junto a los del agente, y el commit que hagas aquí los incluye."
     },
     "reconcile": {
       "title": "Conciliar los cambios originales",
@@ -61,13 +64,20 @@
       "create": "Crear",
       "commitLabel": "Hacer commit de todos los cambios de la tarea",
       "commitPlaceholder": "Describe el cambio",
-      "commit": "Commit"
+      "commit": "Commit",
+      "branchLabelInPlace": "Crear una rama en tu carpeta y cambiar a ella",
+      "commitLabelInPlace": "Hacer commit de todos los cambios de tu carpeta"
     },
     "applyConfirm": {
       "title": "¿Aplicar los cambios a la carpeta de origen?",
       "message": "¿Actualizar {target} con los cambios revisados de la tarea? {product} se detendrá antes de modificar cualquier carpeta si encuentra un conflicto.",
       "confirm": "Aplicar cambios",
       "error": "No se pudieron aplicar los cambios. Inténtalo de nuevo."
+    },
+    "inPlace": {
+      "title": "{count, plural, one {Esta tarea edita tu carpeta directamente} other {Esta tarea edita tus carpetas directamente}}",
+      "body": "{count, plural, one {Sus cambios ya están en tu carpeta, así que no hay nada que aplicar.} other {Sus cambios ya están en tus carpetas, así que no hay nada que aplicar.}} Las pull requests en borrador aún no están disponibles para tareas locales: haz commit aquí y luego haz push y abre una pull request con tus herramientas habituales.",
+      "bodyWithoutGit": "{count, plural, one {Sus cambios ya están en tu carpeta, así que no hay nada que aplicar.} other {Sus cambios ya están en tus carpetas, así que no hay nada que aplicar.}}"
     }
   },
   "fileReview": {
@@ -86,7 +96,8 @@
     "discardConfirm": {
       "title": "¿Descartar los cambios de este archivo?",
       "message": "{path} volverá a la versión actual de la tarea. Esto no se puede deshacer.",
-      "confirm": "Descartar cambios"
+      "confirm": "Descartar cambios",
+      "messageInPlace": "{path} volverá a su última versión con commit en tu carpeta, incluidos los cambios hechos antes de que empezara esta tarea. Esto no se puede deshacer."
     }
   },
   "reviewFileCard": {
@@ -449,7 +460,9 @@
       "reasoning": "Razonamiento",
       "reasoningAriaLabel": "Esfuerzo de razonamiento predeterminado",
       "permissions": "Permisos",
-      "permissionsAriaLabel": "Permisos de código predeterminados"
+      "permissionsAriaLabel": "Permisos de código predeterminados",
+      "workspace": "Espacio de trabajo",
+      "workspaceAriaLabel": "Espacio de trabajo predeterminado de las tareas"
     },
     "environment": {
       "title": "Entorno",
@@ -1038,16 +1051,16 @@
       "title": "Inspeccionar y explicar sin cambiar archivos."
     },
     "supervised": {
-      "label": "Preguntar antes",
-      "title": "Pausar antes de comandos que necesitan tu aprobación."
+      "label": "Pedir aprobación",
+      "title": "Preguntar siempre antes de editar archivos fuera de la tarea o usar internet."
     },
     "workspace": {
-      "label": "Auto en espacio de trabajo",
-      "title": "Trabajar de forma autónoma dentro de la copia aislada de esta tarea."
+      "label": "Aprobar por mí",
+      "title": "Un revisor aprueba las solicitudes habituales y bloquea las arriesgadas."
     },
     "fullAccess": {
       "label": "Acceso total",
-      "title": "Trabajar de forma autónoma sin restricciones del sistema de archivos."
+      "title": "Acceso sin restricciones a internet y a todos los archivos de tu computadora."
     }
   },
   "branchSelect": {
@@ -1400,7 +1413,8 @@
     "details": "Detalles",
     "moreOptions": "Más opciones",
     "dismiss": "Descartar",
-    "viewBudgets": "Ver presupuestos"
+    "viewBudgets": "Ver presupuestos",
+    "allowWrites": "Permitir ediciones"
   },
   "composerNotices": {
     "thisModel": "Este modelo",
@@ -1454,6 +1468,9 @@
     "budgetExceeded": {
       "title": "Se agotó el presupuesto de tu organización",
       "body": "Un propietario o administrador puede aumentarlo en Presupuestos, o puedes elegir un modelo disponible para seguir con esta tarea."
+    },
+    "writesHeld": {
+      "body": "Esta carpeta no tiene historial de Git para revisar o deshacer cambios, así que el agente pregunta antes de cada edición."
     }
   },
   "planModeCommand": {
@@ -1498,7 +1515,9 @@
     "terminal": "Terminal",
     "reviewChanges": "Revisar cambios",
     "review": "Revisar",
-    "taskActionsAriaLabel": "Acciones de la tarea de código"
+    "taskActionsAriaLabel": "Acciones de la tarea de código",
+    "localFolder": "{count, plural, one {Local · tu carpeta} other {Local · tus # carpetas}}",
+    "openYourFolder": "Abrir tu carpeta"
   },
   "terminal": {
     "status": {
@@ -1592,5 +1611,24 @@
     "desktopOnly": "Los archivos locales adjuntos están disponibles en la app de escritorio.",
     "ariaLabel": "Contexto adjunto",
     "removeAriaLabel": "Quitar {name}"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "Local",
+      "title": "Trabajar en la propia carpeta. Solo una tarea local se ejecuta a la vez en un repositorio."
+    },
+    "worktree": {
+      "label": "Worktree",
+      "title": "Trabajar en un worktree de Git aislado, para que las tareas puedan ejecutarse en paralelo."
+    },
+    "selectAriaLabel": "Dónde trabaja la tarea",
+    "menuLabel": "Espacio de trabajo",
+    "default": {
+      "label": "Predeterminado",
+      "title": "Deja que {product} elija según la carpeta y la computadora de cada tarea."
+    },
+    "initializeGit": "Inicializar Git",
+    "initializeFailed": "No se pudo inicializar Git. Inténtalo de nuevo.",
+    "unavailable": "No hay ningún modo de espacio de trabajo disponible para esta carpeta."
   }
 }
