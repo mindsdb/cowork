@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "无法移除已删除任务的部分文件。请重试清理以释放磁盘空间。",
+    "retry": "重试清理",
+    "retrying": "正在重试清理…",
+    "retryFailed": "无法重试清理。请再试一次。"
+  },
   "reviewPanel": {
     "ariaLabel": "审查更改",
     "closeAriaLabel": "关闭审查面板",

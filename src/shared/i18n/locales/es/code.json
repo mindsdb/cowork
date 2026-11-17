@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "No se pudieron eliminar algunos archivos de tareas borradas. Reintenta la limpieza para liberar espacio en disco.",
+    "retry": "Reintentar limpieza",
+    "retrying": "Reintentando limpieza…",
+    "retryFailed": "No se pudo reintentar la limpieza. Inténtalo de nuevo."
+  },
   "reviewPanel": {
     "ariaLabel": "Revisar cambios",
     "closeAriaLabel": "Cerrar panel de revisión",

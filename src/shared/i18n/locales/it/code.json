@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Non è stato possibile rimuovere alcuni file delle attività eliminate. Riprova la pulizia per liberare spazio su disco.",
+    "retry": "Riprova la pulizia",
+    "retrying": "Pulizia in corso…",
+    "retryFailed": "Impossibile riprovare la pulizia. Riprova."
+  },
   "reviewPanel": {
     "ariaLabel": "Rivedi le modifiche",
     "closeAriaLabel": "Chiudi il pannello di revisione",

@@ -52,6 +52,11 @@ export interface PendingQuestion {
   }>;
 }
 
+export interface WorkspaceCleanupStatus {
+  failed: number;
+  running: boolean;
+}
+
 /**
  * Approximate storage Cowork manages for each task: workspaces, baselines and
  * recovery data in its own folders. The user's checkout and the repository
@@ -851,6 +856,8 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  workspaceCleanup: () => requestJson<WorkspaceCleanupStatus>('/workspace-cleanup'),
+  retryWorkspaceCleanup: () => requestJson<WorkspaceCleanupStatus>('/workspace-cleanup/retry', { method: 'POST' }),
   workspaceUsage: (sessionId?: string) => requestJson<WorkspaceUsagePage>(
     `/workspace-usage${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
   ),

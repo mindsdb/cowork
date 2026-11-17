@@ -89215,6 +89215,142 @@
       "text": "22c0364dfa91"
     }
   },
+  "code:workspaceCleanup.failed": {
+    "de": {
+      "from": "44080c2274c1",
+      "text": "44cc54d4dca0"
+    },
+    "es": {
+      "from": "44080c2274c1",
+      "text": "5fd67e1a2936"
+    },
+    "fr": {
+      "from": "44080c2274c1",
+      "text": "cb6138865afc"
+    },
+    "it": {
+      "from": "44080c2274c1",
+      "text": "294108052d0a"
+    },
+    "ja": {
+      "from": "44080c2274c1",
+      "text": "a02e27eea4ff"
+    },
+    "ko": {
+      "from": "44080c2274c1",
+      "text": "01b1fd3b9204"
+    },
+    "pt-BR": {
+      "from": "44080c2274c1",
+      "text": "dfb20f9ed043"
+    },
+    "zh-CN": {
+      "from": "44080c2274c1",
+      "text": "6dfe5a16b4fc"
+    }
+  },
+  "code:workspaceCleanup.retry": {
+    "de": {
+      "from": "8b02bf7e658b",
+      "text": "8d02c1f8efe1"
+    },
+    "es": {
+      "from": "8b02bf7e658b",
+      "text": "547da5ceea3c"
+    },
+    "fr": {
+      "from": "8b02bf7e658b",
+      "text": "801f2f667d55"
+    },
+    "it": {
+      "from": "8b02bf7e658b",
+      "text": "a6ec92b4f4f8"
+    },
+    "ja": {
+      "from": "8b02bf7e658b",
+      "text": "204d3991f1b1"
+    },
+    "ko": {
+      "from": "8b02bf7e658b",
+      "text": "d18277de0b48"
+    },
+    "pt-BR": {
+      "from": "8b02bf7e658b",
+      "text": "813cbfb8e871"
+    },
+    "zh-CN": {
+      "from": "8b02bf7e658b",
+      "text": "77b9d0a61b6d"
+    }
+  },
+  "code:workspaceCleanup.retryFailed": {
+    "de": {
+      "from": "349790856e8a",
+      "text": "52a998774908"
+    },
+    "es": {
+      "from": "349790856e8a",
+      "text": "ad4d80ee098b"
+    },
+    "fr": {
+      "from": "349790856e8a",
+      "text": "5adbd20037b8"
+    },
+    "it": {
+      "from": "349790856e8a",
+      "text": "23e6ac9e0a1d"
+    },
+    "ja": {
+      "from": "349790856e8a",
+      "text": "d9a1f79793af"
+    },
+    "ko": {
+      "from": "349790856e8a",
+      "text": "eebdad5d5b8e"
+    },
+    "pt-BR": {
+      "from": "349790856e8a",
+      "text": "8b7f7d2303ff"
+    },
+    "zh-CN": {
+      "from": "349790856e8a",
+      "text": "d15ba5bfd5b8"
+    }
+  },
+  "code:workspaceCleanup.retrying": {
+    "de": {
+      "from": "f5152a97c052",
+      "text": "5d3242f0809c"
+    },
+    "es": {
+      "from": "f5152a97c052",
+      "text": "d15d49304b46"
+    },
+    "fr": {
+      "from": "f5152a97c052",
+      "text": "e11bd141a2ca"
+    },
+    "it": {
+      "from": "f5152a97c052",
+      "text": "b029330f51fd"
+    },
+    "ja": {
+      "from": "f5152a97c052",
+      "text": "5aa7510ae83a"
+    },
+    "ko": {
+      "from": "f5152a97c052",
+      "text": "c0dfca5abe01"
+    },
+    "pt-BR": {
+      "from": "f5152a97c052",
+      "text": "1644501fdb1c"
+    },
+    "zh-CN": {
+      "from": "f5152a97c052",
+      "text": "df26ade3434f"
+    }
+  },
   "code:workspaceMode.default.label": {
     "de": {
       "from": "21b111cbfe6e",

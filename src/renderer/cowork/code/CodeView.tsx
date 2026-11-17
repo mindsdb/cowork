@@ -7,6 +7,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { QuestionCard } from './QuestionCard';
 import { PlanDecision } from './PlanDecision';
 import { TaskAttentionBar } from './TaskAttentionBar';
+import { WorkspaceCleanupNotice } from './WorkspaceCleanupNotice';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
 import { CodeProjectsView } from './CodeProjectsView';
@@ -350,6 +351,7 @@ export default function CodeView({
   return (
     <SkillScopeContext.Provider value={skillScopeKey}>
       <div className="code-page">
+        <WorkspaceCleanupNotice key={skillScopeKey} active={active} />
         <TaskAttentionBar sessions={sessions} selectedId={newTask ? null : selectedId} active={active} scopeKey={skillScopeKey} onSelect={id => onAttentionSelect ? onAttentionSelect(id) : onSelectionChange(id, false)} />
         <DeliveryAutomationMonitor
           sessions={sessions}

@@ -623,7 +623,13 @@ export function getCodeFixtureApi() {
     }
   };
 
+  let cleanupFailed = name === 'cleanup-failed';
   return {
+    workspaceCleanup: async () => ({ failed: cleanupFailed ? 1 : 0, running: false }),
+    retryWorkspaceCleanup: async () => {
+      cleanupFailed = false;
+      return { failed: 1, running: true };
+    },
     engines: async () => copy(engines),
     workspaceModes: async (): Promise<WorkspaceModeOptions> => plainFolder ? {
       supported: ['in_place'], default: 'in_place', can_initialize_git: !gitInitialized,
