@@ -29,7 +29,7 @@ const checked = () => screen.getAllByRole('radio').filter((r) => r.getAttribute(
 describe('a first share opened from the chat card', () => {
   it('picks no audience and keeps Share disabled', () => {
     const ctrl = makeController();
-    render(<PublishMenu openOnMount controller={ctrl} />);
+    render(<PublishMenu openRequest={{}} controller={ctrl} />);
 
     expect(checked()).toEqual([]);
     expect(footerShare()).toBeDisabled();
@@ -39,7 +39,7 @@ describe('a first share opened from the chat card', () => {
 
   it('enables Share once the person picks who can open it', () => {
     const ctrl = makeController();
-    render(<PublishMenu openOnMount controller={ctrl} />);
+    render(<PublishMenu openRequest={{}} controller={ctrl} />);
 
     fireEvent.click(screen.getByRole('radio', { name: /Only me/ }));
     expect(footerShare()).toBeEnabled();
@@ -47,13 +47,17 @@ describe('a first share opened from the chat card', () => {
     expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'restricted' }));
   });
 
-  it('still picks nothing when the panel is closed and opened again', () => {
-    render(<PublishMenu openOnMount controller={makeController()} />);
+  it('hands back to the header once that panel closes: a reopen starts on Public, as the header does', () => {
+    const onRequestClosed = vi.fn();
+    render(<PublishMenu openRequest={{}} onRequestClosed={onRequestClosed} controller={makeController()} />);
 
     fireEvent.mouseDown(screen.getByTestId('publish-menu-outside-dismiss'));
+    expect(onRequestClosed).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText('Share'));
 
-    expect(checked()).toEqual([]);
+    expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.mouseDown(screen.getByTestId('publish-menu-outside-dismiss'));
+    expect(onRequestClosed).toHaveBeenCalledTimes(1);
   });
 });
 

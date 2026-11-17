@@ -285,15 +285,28 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
 
 // ── Main control ─────────────────────────────────────────────────────────
 
-// `openOnMount` opens the panel as the viewer appears, for a Share clicked
-// outside the viewer. That panel picks no audience for a first share: the
-// person chose to share and has not yet said with whom.
-export function PublishMenu({ controller, disabled = false, disabledReason = '', openOnMount = false }) {
+// Requests already opened. A request opens one panel: StrictMode's second
+// mount and a later remount of the menu don't open or report it again.
+const openedRequests = new WeakSet();
+
+// `openRequest` is one Share clicked outside the viewer: the menu opens its
+// panel once, when it mounts, even if it mounts after the viewer, and calls
+// `onRequestClosed` when that panel closes. That panel picks no audience for a
+// first share: the person chose to share and has not yet said with whom. Any
+// later open is the header's own.
+export function PublishMenu({ controller, disabled = false, disabledReason = '', openRequest = null, onRequestClosed }) {
   const { t } = useTranslation('artifacts');
   const pub = controller;
   const isPublished = !!pub.publishedUrl;
   const entry = pub.entry || 'viewer';
-  const [open, setOpen] = useState(() => openOnMount && !disabled);
+  const [fromRequest, setFromRequest] = useState(() => !!openRequest && !disabled && !openedRequests.has(openRequest));
+  const [open, setOpen] = useState(fromRequest);
+  const close = () => {
+    setOpen(false);
+    if (!fromRequest) return;
+    setFromRequest(false);
+    onRequestClosed?.();
+  };
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
   // Which reads the panel waits on, and whether it may claim "Shared"
@@ -315,7 +328,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
   // The draft the live access reads as.
   const seedDraft = () => accessDraftFromArtifact(pub, draftOptions);
   // Editable access draft for the publish + change-access flows.
-  const firstShareDraft = () => newAccessDraft({ preselect: !openOnMount });
+  const firstShareDraft = () => newAccessDraft({ preselect: !fromRequest });
   const [draft, setDraft] = useState(() => (isPublished ? seedDraft() : firstShareDraft()));
   // Has the user touched the access draft? Gates the late-arrival re-seed below
   // so we never clobber edits-in-progress when the server list lands (ENG-931).
@@ -422,7 +435,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
   const doUnpublish = async () => {
     const result = await pub.unpublish();
     // Stays open when the page itself is still live, so the person reads why.
-    if (result?.ok && !result.notice) setOpen(false);
+    if (result?.ok && !result.notice) close();
   };
   const doActivate = async (md5) => {
     if (pub.busy) return;
@@ -447,10 +460,11 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
       ? null
       : isSharedWithSomeone,
   });
-  // A panel opened with the viewer reports its open once, as a click does.
-  const openedOnMount = useRef(open);
+  // A panel opened by a request reports its open once, as a click does.
   useEffect(() => {
-    if (openedOnMount.current) reportOpened();
+    if (!fromRequest || openedRequests.has(openRequest)) return;
+    openedRequests.add(openRequest);
+    reportOpened();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -463,7 +477,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
       {open && (
         <OutsidePressLayer
           data-testid="publish-menu-outside-dismiss"
-          onPress={() => setOpen(false)}
+          onPress={close}
           zIndex={89}
         />
       )}
@@ -476,8 +490,12 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
             if (!pub.busy) setNotifyPrompt(null);
             return;
           }
-          if (v && !open) reportOpened();
-          setOpen(v);
+          if (!v) {
+            close();
+            return;
+          }
+          if (!open) reportOpened();
+          setOpen(true);
         }}
       >
         {/* Who can open it, on hover, once it's shared (not over the open

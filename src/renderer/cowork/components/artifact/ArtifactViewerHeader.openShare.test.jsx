@@ -1,7 +1,7 @@
 // The header opens its Share panel with the viewer when the viewer was opened
 // by a Share clicked outside it.
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('../../../platform/host', () => ({
   host: {
@@ -13,12 +13,14 @@ vi.mock('../../../platform/host', () => ({
   },
 }));
 vi.mock('./publish/PublishMenu', () => ({
-  PublishMenu: ({ openOnMount }) => <button type="button" data-open-on-mount={String(!!openOnMount)}>Share</button>,
+  PublishMenu: ({ openRequest, onRequestClosed }) => (
+    <button type="button" data-open-request={String(!!openRequest)} onClick={onRequestClosed}>Share</button>
+  ),
 }));
 
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 
-function renderHeader({ isPublished = true, canManage = true, stats, openShare } = {}) {
+function renderHeader({ isPublished = true, canManage = true, stats, shareRequest, onShareRequestClosed } = {}) {
   const statsProp = stats === undefined ? { open: false, onToggle: vi.fn() } : stats;
   render(
     <ArtifactViewerHeader
@@ -44,7 +46,8 @@ function renderHeader({ isPublished = true, canManage = true, stats, openShare }
         hasActionPath: true,
         isPublished,
         disabledReason: '',
-        openShare,
+        shareRequest,
+        onShareRequestClosed,
       }}
       actions={{
         canOpenInBrowser: false,
@@ -70,13 +73,18 @@ function renderHeader({ isPublished = true, canManage = true, stats, openShare }
 }
 
 describe('Share panel on open', () => {
-  it('opens with the viewer when asked', () => {
-    renderHeader({ openShare: true });
-    expect(screen.getByRole('button', { name: 'Share' })).toHaveAttribute('data-open-on-mount', 'true');
+  it('hands the menu the request, and its close back to the viewer', () => {
+    const closed = vi.fn();
+    renderHeader({ shareRequest: {}, onShareRequestClosed: closed });
+    const share = screen.getByRole('button', { name: 'Share' });
+
+    expect(share).toHaveAttribute('data-open-request', 'true');
+    fireEvent.click(share);
+    expect(closed).toHaveBeenCalledTimes(1);
   });
 
   it('stays closed by default', () => {
     renderHeader();
-    expect(screen.getByRole('button', { name: 'Share' })).toHaveAttribute('data-open-on-mount', 'false');
+    expect(screen.getByRole('button', { name: 'Share' })).toHaveAttribute('data-open-request', 'false');
   });
 });

@@ -76,7 +76,10 @@ vi.mock('./workspace/useArtifactWorkspace', () => ({
 }));
 vi.mock('./ArtifactViewerHeader', () => ({
   ArtifactViewerHeader: ({ publication }) => (
-    <div data-testid="open-share">{String(publication?.openShare)}</div>
+    <>
+      <div data-testid="open-share">{String(!!publication?.shareRequest)}</div>
+      <button type="button" onClick={() => publication?.onShareRequestClosed?.()}>close the panel</button>
+    </>
   ),
 }));
 vi.mock('./ArtifactViewerBody', () => ({ ArtifactViewerBody: () => null }));
@@ -101,9 +104,26 @@ describe('opening the viewer from a Share outside it', () => {
   afterEach(() => { published.url = ''; });
 
   it('asks the header for the Share panel and names the entry for the sharing events', () => {
-    render(<ArtifactViewer open artifact={page} onClose={vi.fn()} openShare shareEntry="chat_card" />);
+    render(<ArtifactViewer open artifact={page} onClose={vi.fn()} shareRequest={{}} shareEntry="chat_card" />);
 
     expect(screen.getByTestId('open-share')).toHaveTextContent('true');
+    expect(published.options).toMatchObject({ entry: 'chat_card' });
+  });
+
+  it('names the header as the entry once that panel has closed', () => {
+    render(<ArtifactViewer open artifact={page} onClose={vi.fn()} shareRequest={{}} shareEntry="chat_card" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'close the panel' }));
+
+    expect(published.options).toMatchObject({ entry: 'viewer' });
+  });
+
+  it('names the card again for the next Share clicked on it', () => {
+    const view = render(<ArtifactViewer open artifact={page} onClose={vi.fn()} shareRequest={{}} shareEntry="chat_card" />);
+    fireEvent.click(screen.getByRole('button', { name: 'close the panel' }));
+
+    view.rerender(<ArtifactViewer open artifact={page} onClose={vi.fn()} shareRequest={{}} shareEntry="chat_card" />);
+
     expect(published.options).toMatchObject({ entry: 'chat_card' });
   });
 

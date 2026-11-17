@@ -246,6 +246,19 @@ describe('on Desktop', () => {
     })]);
   });
 
+  it('names where sharing was opened from on a pull-back', async () => {
+    apiMock.unpublishArtifact.mockResolvedValue({});
+    const published = { ...LOCAL, publishedUrl: 'https://share/x', accessMode: 'public' };
+    const { result } = renderHook(() => usePublish(published, { enabled: true, entry: 'chat_card' }));
+
+    await act(async () => { await result.current.unpublish(); });
+
+    expect(changed()).toEqual([expect.objectContaining({
+      entry: 'chat_card',
+      after: expect.objectContaining({ shared: false, audience: 'unpublished' }),
+    })]);
+  });
+
   it('records a Stop sharing that left the page live as a failed attempt, not a pull-back', async () => {
     apiMock.unpublishArtifact.mockResolvedValue({ status: 'ok', takenDown: false, liveLink: 'https://view.example/r/a', reason: 'no_owner_record' });
     const published = { ...LOCAL, publishedUrl: 'https://share/x', accessMode: 'public' };

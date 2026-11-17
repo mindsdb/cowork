@@ -139,9 +139,12 @@ export interface ArtifactViewerProps {
    * empty string to let the viewer mint a new one.
    */
   resolveRepairConversation?: ((artifact: ArtifactViewerArtifact) => Promise<string>) | null;
-  /** Open with the Share panel showing, for a Share clicked outside the viewer. */
-  openShare?: boolean;
-  /** Where sharing was opened from, for the sharing events. Defaults to 'viewer'. */
+  /**
+   * One Share clicked outside the viewer, a new object per click: the viewer
+   * opens with its Share panel showing, once.
+   */
+  shareRequest?: object | null;
+  /** Where that panel was opened from, for its sharing events. Defaults to 'viewer'. */
   shareEntry?: string;
 }
 

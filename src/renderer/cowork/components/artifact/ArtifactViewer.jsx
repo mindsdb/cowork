@@ -149,9 +149,10 @@ export function ArtifactViewer({
   onAddressWithAgent,
   conversationId = null,
   resolveRepairConversation = null,
-  // Opens with the Share panel showing, for a Share clicked outside the viewer;
-  // `shareEntry` names where, for the sharing events.
-  openShare = false,
+  // One Share clicked outside the viewer (a new object per click): the viewer
+  // opens with its Share panel showing. `shareEntry` names where, for the
+  // sharing events of that panel only; later opens are the header's own.
+  shareRequest = null,
   shareEntry = 'viewer',
 }) {
   const { t } = useTranslation('artifacts');
@@ -282,7 +283,9 @@ export function ArtifactViewer({
     if (!openRef.current || !isSameArtifact(updated, artifactRef.current)) return;
     onChangeRef.current?.(updated);
   }, []);
-  const pub = usePublish(artifact, { onChange: reportChange, enabled: open, entry: shareEntry });
+  const [closedShareRequest, setClosedShareRequest] = useState(null);
+  const panelEntry = shareRequest && closedShareRequest !== shareRequest ? shareEntry : 'viewer';
+  const pub = usePublish(artifact, { onChange: reportChange, enabled: open, entry: panelEntry });
   const workspace = useArtifactWorkspace(artifact, {
     open,
     onChange: reportChange,
@@ -1431,7 +1434,8 @@ export function ArtifactViewer({
     hasActionPath,
     isPublished,
     disabledReason,
-    openShare,
+    shareRequest,
+    onShareRequestClosed: () => setClosedShareRequest(shareRequest),
   };
   const artifactActions = {
     canOpenInBrowserTab: !!browserTabUrl,
