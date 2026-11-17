@@ -1308,6 +1308,7 @@
     "record": {
       "approvalDenied": "Aprobación denegada",
       "approvalResolved": "Aprobación resuelta",
+      "folderBusy": "Otra tarea está trabajando en esta carpeta, así que esta trabaja en un worktree.",
       "followUpDelivered": "Mensaje de seguimiento entregado",
       "requestRejected": "Solicitud rechazada",
       "taskStatus": "Estado de la tarea"

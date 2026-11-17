@@ -1308,6 +1308,7 @@
     "record": {
       "approvalDenied": "승인 거부됨",
       "approvalResolved": "승인 처리됨",
+      "folderBusy": "다른 작업이 이 폴더에서 진행 중이므로 이 작업은 워크트리에서 진행합니다.",
       "followUpDelivered": "후속 지시 전달됨",
       "requestRejected": "요청 거부됨",
       "taskStatus": "작업 상태"

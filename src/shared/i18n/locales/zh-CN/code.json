@@ -1308,6 +1308,7 @@
     "record": {
       "approvalDenied": "已拒绝批准",
       "approvalResolved": "已处理批准请求",
+      "folderBusy": "另一个任务正在此文件夹中工作，因此此任务在工作树中工作。",
       "followUpDelivered": "已送达追加指令",
       "requestRejected": "请求被拒绝",
       "taskStatus": "任务状态"
