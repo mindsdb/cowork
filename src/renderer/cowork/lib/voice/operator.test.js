@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api', () => ({ voiceOperate: vi.fn() }));
 
-import { describeScreen, describeSteps, MAX_ROUNDS, runOperator } from './operator';
+import { describeScreen, describeSteps, MAX_REQUEST_CHARS, MAX_ROUNDS, runOperator } from './operator';
 
 describe('the voice operator', () => {
   it('runs the calls in order, sends their results back and returns what to say', async () => {
@@ -35,6 +35,18 @@ describe('the voice operator', () => {
       { role: 'tool', tool_call_id: 'c2', content: 'Moved.' },
     ]);
     expect(history.at(-1)).toEqual({ role: 'assistant', content: 'Made Sales and moved the task there.' });
+  });
+
+  it('cuts a request past the server limit to its end, what the person said last', async () => {
+    const operate = vi.fn().mockResolvedValueOnce({ content: 'On it.', tool_calls: [] });
+    const request = `${'a'.repeat(MAX_REQUEST_CHARS)} and then stop the task`;
+
+    await runOperator({ request, history: [], snapshot: () => 'Home', actions: {}, operate });
+
+    const sent = operate.mock.calls[0][0].at(-1).content;
+    expect(sent.length).toBe(MAX_REQUEST_CHARS);
+    expect(sent.startsWith('…')).toBe(true);
+    expect(sent.endsWith(' and then stop the task')).toBe(true);
   });
 
   it('keeps overlapping requests apart: a stop while Anton works never lands inside the other exchange', async () => {
