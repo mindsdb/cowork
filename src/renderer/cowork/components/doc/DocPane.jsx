@@ -367,7 +367,7 @@ export default function DocPane({
       ref={rootRef}
       className={`doc-root ${variant === 'modal' ? 'doc-pane--modal' : 'doc-pane'} ${narrow ? 'doc-root--narrow' : ''}`}
       data-corner={headerCorner({ fillsWindow, expanded })}
-      aria-label={doc?.title || fallbackTitle || 'Doc'}
+      aria-label={shown?.title || fallbackTitle || 'Doc'}
       onKeyDownCapture={onKeyDownCapture}
     >
       <header className="doc-header">
@@ -382,7 +382,8 @@ export default function DocPane({
         ) : (
           <span className="doc-header__icon"><Icon of={FileText} size={16} /></span>
         )}
-        <span className="doc-header__title" title={doc?.title || fallbackTitle}>{doc?.title || fallbackTitle || 'Doc'}</span>
+        {/* A version looked at shows its own title: restoring it brings that back too. */}
+        <span className="doc-header__title" title={shown?.title || fallbackTitle}>{shown?.title || fallbackTitle || 'Doc'}</span>
         <span aria-live="polite">{statusEl}</span>
         {doc && editable && <VersionMenu history={history} />}
         {doc && (

@@ -21,6 +21,10 @@ export function useVersionHistory({ projectRef, artifactId, onError }) {
   const [restored, setRestored] = useState(null); // { entry, replacedRev }
   const docRun = useRef(0);
   const picked = useRef(0);
+  // The newest list asked for: one that answers after a later ask is let go.
+  const asked = useRef(0);
+  // While Undo's request is out, "Restored" stays: it can't expire under it.
+  const [undoBusy, setUndoBusy] = useState(false);
 
   useEffect(() => {
     docRun.current += 1;
@@ -33,11 +37,13 @@ export function useVersionHistory({ projectRef, artifactId, onError }) {
 
   const load = useCallback(async () => {
     const run = docRun.current;
+    const ask = ++asked.current;
+    const current = () => run === docRun.current && ask === asked.current;
     try {
       const got = await fetchDocHistory(projectRef, artifactId);
-      if (run === docRun.current) setList(got);
+      if (current()) setList(got);
     } catch {
-      if (run === docRun.current) setList({ failed: true });
+      if (current()) setList({ failed: true });
     }
   }, [projectRef, artifactId]);
 
@@ -75,6 +81,7 @@ export function useVersionHistory({ projectRef, artifactId, onError }) {
       const { replacedRev } = await restoreDocVersion(projectRef, artifactId, entry.rev);
       if (run !== docRun.current) return;
       picked.current += 1;
+      asked.current += 1; // a list asked for before the restore is out of date
       setPreview(null);
       setList(null);
       setRestored({ entry, replacedRev });
@@ -95,6 +102,7 @@ export function useVersionHistory({ projectRef, artifactId, onError }) {
     if (!restored || undoing.current) return;
     const run = docRun.current;
     undoing.current = true;
+    setUndoBusy(true);
     try {
       await restoreDocVersion(projectRef, artifactId, restored.replacedRev);
       if (run === docRun.current) setRestored(null);
@@ -105,14 +113,15 @@ export function useVersionHistory({ projectRef, artifactId, onError }) {
       }
     } finally {
       undoing.current = false;
+      if (run === docRun.current) setUndoBusy(false);
     }
   }, [restored, projectRef, artifactId, onError]);
 
   useEffect(() => {
-    if (!restored) return undefined;
+    if (!restored || undoBusy) return undefined;
     const t = setTimeout(() => setRestored(null), RESTORED_SHOWN_MS);
     return () => clearTimeout(t);
-  }, [restored]);
+  }, [restored, undoBusy]);
 
   return {
     list,

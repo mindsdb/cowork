@@ -99,6 +99,15 @@ describe('DocPane version history', () => {
     expect(screen.getByRole('checkbox', { name: 'Mark done' })).toBeDisabled(); // read-only
   });
 
+  it('heads a version with its own title, which restoring it brings back', async () => {
+    api.fetchDocVersion.mockImplementation(async () => ({ ...BEFORE, title: 'Launch plan (draft)' }));
+    const user = userEvent.setup();
+    await lookAtVersion7(user);
+    expect(document.querySelector('.doc-header__title')).toHaveTextContent('Launch plan (draft)');
+    await user.click(screen.getByRole('button', { name: 'Back to current' }));
+    expect(document.querySelector('.doc-header__title')).toHaveTextContent('Launch plan');
+  });
+
   it('steps through the versions with the arrows, and goes back to the doc', async () => {
     const user = userEvent.setup();
     await lookAtVersion7(user);
