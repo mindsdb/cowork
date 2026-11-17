@@ -112,7 +112,10 @@ export function inlineToPlain(text) {
 
 function escapeMd(text) {
   let s = String(text).replace(/\\/g, '\\\\').replace(/\*/g, '\\*').replace(/`/g, '\\`')
-    .replace(/~~/g, '\\~\\~').replace(/\{\{/g, '\\{{');
+    .replace(/~~/g, '\\~\\~').replace(/\{\{/g, '\\{{')
+    // Only an underscore that could open or close emphasis: one inside a word
+    // (snake_case) never does, and stays as typed.
+    .replace(/(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])/g, '\\_');
   if (s.includes('](')) s = s.replace(/\[/g, '\\[');
   return s;
 }
