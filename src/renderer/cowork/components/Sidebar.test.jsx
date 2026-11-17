@@ -709,3 +709,27 @@ describe('Sidebar — Compare models', () => {
     expect(onNavigate).toHaveBeenCalledWith('compare');
   });
 });
+
+describe('Sidebar — a schedule’s runs fold into one Recents row', () => {
+  const schedules = [{
+    id: 's1', title: 'Daily digest', projectId: 'p1',
+    createdAt: '2026-10-01T00:00:00Z', lastResultConversationId: 'r3',
+  }];
+  const run = (id, day) => ({
+    id, title: 'Daily digest', projectId: 'p1', projectName: 'general', messages: [],
+    createdAt: `2026-10-0${day}T08:00:00Z`, updatedAt: `2026-10-0${day}T08:05:00Z`,
+  });
+
+  it('folds runs the server sent without a scheduledId', () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        schedules={schedules}
+        tasks={[run('r3', 4), run('r2', 3), run('r1', 2), { id: 't1', title: 'Chat', messages: [] }]}
+      />
+    );
+    expect(screen.getAllByText('Daily digest')).toHaveLength(1);
+    expect(screen.getByText('3 runs')).toBeInTheDocument();
+    expect(screen.getByText('Chat')).toBeInTheDocument();
+  });
+});

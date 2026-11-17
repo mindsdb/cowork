@@ -1500,6 +1500,7 @@ describe('Code Mode events', () => {
       permission_mode: 'workspace_write',
       task_mode: 'plan',
       workspace_kind: 'git_worktree',
+      workspace_mode: 'worktree',
       in_project: true,
       computer_is_local: true,
       attachment_count: 2,
@@ -1519,6 +1520,16 @@ describe('Code Mode events', () => {
     const { properties } = await sentEvent(fetchMock, 'code_task_started');
     expect(properties).toMatchObject({ origin: 'fork', in_project: false, task_mode: 'build', workspace_kind: 'direct_folder' });
     expect(properties).not.toHaveProperty('attachment_count');
+  });
+
+  it('code_task_started records a task working in the original folder', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStarted } = await importAnalytics();
+
+    trackCodeTaskStarted({ ...created, project_id: null, workspace_kind: 'direct_folder', workspace_mode: 'in_place' });
+
+    const { properties } = await sentEvent(fetchMock, 'code_task_started');
+    expect(properties).toMatchObject({ workspace_kind: 'direct_folder', workspace_mode: 'in_place' });
   });
 
   it('code_task_started sends nothing for a session without an id', async () => {
@@ -2114,5 +2125,41 @@ describe('mid-task message events (ENG-4194)', () => {
     fetchMock.mockClear();
     trackAddonOverridden('to_task', 'free text', 'robot');
     expect((await sentEvent(fetchMock, 'addon_overridden')).properties).toMatchObject({ outcome: 'unknown', decided_by: 'jev' });
+  });
+});
+
+describe('user menu developer links (ENG-4288)', () => {
+  it.each([
+    ['trackMenuApiKeysClicked', 'menu_api_keys_clicked'],
+    ['trackMenuApiDocsClicked', 'menu_api_docs_clicked'],
+  ])('%s sends %s on every click', async (fn, eventName) => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    const sent = () => fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body).event)
+      .filter((event) => event === eventName).length;
+
+    analytics[fn]();
+    const event = await sentEvent(fetchMock, eventName);
+    expect(event.properties.surface).toBe('desktop');
+    analytics[fn]();
+    await vi.waitFor(() => expect(sent()).toBe(2));
+  });
+});
+
+describe('signup_landed (ENG-4288)', () => {
+  it.each([
+    ['desktop', 'desktop'],
+    ['web', 'web'],
+    // Anything unexpected reads as the web, never as free text.
+    ['someone@example.com', 'web'],
+  ])('sends from=%s as %s and nothing else about the person', async (from, expected) => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+
+    analytics.trackSignupLanded(from);
+    const event = await sentEvent(fetchMock, 'signup_landed');
+    expect(event.properties.from).toBe(expected);
+    expect(JSON.stringify(event.properties)).not.toContain('example.com');
   });
 });

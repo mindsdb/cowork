@@ -23,6 +23,7 @@ import { useToastManager } from '../components/ui/Toast';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleRow from '../components/schedule/ScheduleRow';
+import ScheduleNotifyMenu from '../components/schedule/ScheduleNotifyMenu';
 import { lastRunFailed, scheduleState } from '../components/schedule/ScheduleStatusBadge';
 import { host } from '../../platform/host';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
@@ -53,6 +54,9 @@ export default function ScheduledView({
   // (useAutoPauseNotifications). Shown here until each is reviewed, so a
   // pause is not missed when its desktop notification was not.
   unseenAutoPauses = [],
+  // Which run endings this device notifies about, and (patch) to change them.
+  notifyPrefs,
+  onNotifyPrefsChange,
   agentLabel,
 }) {
   const { t } = useTranslation('projects');
@@ -168,9 +172,12 @@ export default function ScheduledView({
           ? t('scheduledView.subtitleDesktop', { product: STOCK_PRODUCT_NAME, agent: agentLabel })
           : t('scheduledView.subtitleWeb', { agent: agentLabel })}
         actions={
-          <Button variant="primary" onClick={openCreate}>
-            {Ico.plus(14)} {t('scheduledView.scheduleTask')}
-          </Button>
+          <div className="flex items-center gap-2">
+            {notifyPrefs && <ScheduleNotifyMenu prefs={notifyPrefs} onChange={onNotifyPrefsChange} />}
+            <Button variant="primary" onClick={openCreate}>
+              {Ico.plus(14)} {t('scheduledView.scheduleTask')}
+            </Button>
+          </div>
         }
       />
 
