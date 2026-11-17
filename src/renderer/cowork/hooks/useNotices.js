@@ -87,7 +87,7 @@ export function useNotices({
     for (const notice of fresh) announcedRef.current.add(notice.id);
     const allowed = typeof Notification !== 'undefined' && Notification.permission === 'granted';
     let schedules = null;
-    if (allowed && fresh.some((n) => runKind(n) === 'failed')) {
+    if (allowed && fresh.some((n) => ['failed', 'stopped'].includes(runKind(n)))) {
       try { schedules = await refs.current.resolveSchedules?.(); } catch { /* announce anyway */ }
     }
     if (!mountedRef.current) return;
@@ -109,7 +109,7 @@ export function useNotices({
         });
         continue;
       }
-      if (text.kind === 'failed' && autoPausedSchedule(schedules, notice.target?.scheduleId)) continue;
+      if (['failed', 'stopped'].includes(text.kind) && autoPausedSchedule(schedules, notice.target?.scheduleId)) continue;
       const shown = new Notification(text.title, { body: text.body, tag: `notice-${notice.id}` });
       shown.onclick = () => {
         window.focus();

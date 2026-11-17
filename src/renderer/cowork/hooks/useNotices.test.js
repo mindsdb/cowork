@@ -209,7 +209,7 @@ describe('useNotices', () => {
     expect(shown).toHaveLength(0);
   });
 
-  it('raises one notification, not two, for the failure that auto-paused a task', async () => {
+  it.each(['scheduled_run.failed', 'scheduled_run.stopped'])('raises one notification for auto-pause: %s', async (kind) => {
     const api = fakeApi();
     const active = { id: 's1', title: 'Weekly digest', enabled: true, state: 'active' };
     const paused = { ...active, enabled: false, state: 'auto_paused', autoPausedAt: new Date(NOW + 1_000).toISOString() };
@@ -222,7 +222,7 @@ describe('useNotices', () => {
       return useNotices({ api, resolveSchedules });
     }, { initialProps: { list: schedules } });
     await flush();
-    api.list = [notice({ createdAt: new Date(NOW + 1_000).toISOString() })];
+    api.list = [notice({ kind, createdAt: new Date(NOW + 1_000).toISOString() })];
     await act(async () => { vi.advanceTimersByTime(NOTICE_POLL_MS); });
     await flush();
     expect(resolveSchedules).toHaveBeenCalled();

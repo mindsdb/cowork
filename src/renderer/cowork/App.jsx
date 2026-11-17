@@ -5745,6 +5745,27 @@ function AppCore() {
     },
   );
 
+  const openScheduleRun = (sessionId) => {
+    if (!sessionId) return;
+    // Scheduled runs create real conversations on the
+    // server, but they may not be in our local recents list
+    // yet (e.g. the run fired while we were on another
+    // device or before this session's last fetch). Refresh
+    // tasks in parallel so currentTask resolves once the
+    // server response lands, and route immediately so the
+    // user sees the navigation happen.
+    fetchSessions().then((data) => {
+      if (Array.isArray(data)) {
+        setTasks((prev) =>
+          mergeTasksFromServer(data, prev)
+            .filter((t) => !deletedTaskIdsRef.current.has(t.id))
+        );
+      }
+    }).catch(() => {});
+    setActiveTaskId(sessionId);
+    setRoute('task');
+  };
+
   // Which run endings post a notice: account settings, edited from the
   // Scheduled Tasks page.
   const {
@@ -5756,13 +5777,17 @@ function AppCore() {
   // The sidebar bell: the account's notices, polled about once a minute and
   // on every navigation. A notice that has just arrived also raises a
   // notification where the OS allows one, a toast otherwise. A scheduled-run
-  // notice opens the task's page, which says why and offers the run.
+  // notice opens its run, or the schedule if no conversation was created.
   const notices = useNotices({
     routeKey: `${effectiveWorkspaceMode}:${route}:${activeTaskId || ''}:${selectedScheduleId || ''}`,
     onOpen: (notice) => {
-      const scheduleId = notice?.target?.scheduleId;
-      if (!scheduleId) return;
+      const { conversationId, scheduleId } = notice?.target || {};
+      if (!conversationId && !scheduleId) return;
       setWorkspaceMode('cowork');
+      if (conversationId) {
+        openScheduleRun(conversationId);
+        return;
+      }
       setSelectedScheduleId(scheduleId);
       setRoute('schedule-detail');
     },
@@ -6484,26 +6509,7 @@ function AppCore() {
             onRunNow={handleRunScheduleNow}
             onReviewedAutoPause={markAutoPauseReviewed}
             onStopRun={handleStopScheduleRun}
-            onOpenRunSession={(sessionId) => {
-              if (!sessionId) return;
-              // Scheduled runs create real conversations on the
-              // server, but they may not be in our local recents list
-              // yet (e.g. the run fired while we were on another
-              // device or before this session's last fetch). Refresh
-              // tasks in parallel so currentTask resolves once the
-              // server response lands, and route immediately so the
-              // user sees the navigation happen.
-              fetchSessions().then((data) => {
-                if (Array.isArray(data)) {
-                  setTasks((prev) =>
-                    mergeTasksFromServer(data, prev)
-                      .filter((t) => !deletedTaskIdsRef.current.has(t.id))
-                  );
-                }
-              }).catch(() => {});
-              setActiveTaskId(sessionId);
-              setRoute('task');
-            }}
+            onOpenRunSession={openScheduleRun}
           />
         )}
 
