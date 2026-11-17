@@ -1222,19 +1222,19 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
       >
         {shareAction ? (
-          /* Share leads once the artifact can be shared, and the open action
-             stays a full outlined button beside it: ActionBar's secondary is
-             the quiet one, which would make Preview read as an afterthought. */
+          /* Preview stays the filled action, with Share a full outlined
+             button after it: ActionBar would put its secondary before the
+             primary, in the quiet style. */
           <div className="flex min-w-0 flex-wrap items-center justify-start gap-1.5">
             {openAction && (
               <Tooltip content={openAction.tooltip} side="top">
-                <Button size="sm" variant="default" disabled={openAction.disabled} onClick={openAction.onClick}>
+                <Button size="sm" variant="primary" disabled={openAction.disabled} onClick={openAction.onClick}>
                   {openAction.label}
                 </Button>
               </Tooltip>
             )}
             <Tooltip content={shareAction.tooltip} side="top">
-              <Button size="sm" variant="primary" onClick={shareAction.onClick}>{shareAction.label}</Button>
+              <Button size="sm" variant="default" onClick={shareAction.onClick}>{shareAction.label}</Button>
             </Tooltip>
           </div>
         ) : (

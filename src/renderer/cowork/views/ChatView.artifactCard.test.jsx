@@ -1159,13 +1159,13 @@ describe('Share on the inline artifact card', () => {
     expect(share()).not.toBeNull();
   });
 
-  it('leads with a filled Share and keeps Preview as an outlined button beside it', () => {
+  it('keeps Preview filled and puts an outlined Share after it', () => {
     render(<ChatView task={taskWithArtifact(artifactStep())} />);
 
     const preview = screen.getByRole('button', { name: 'Preview' });
-    expect(share()).toHaveClass('btn', 'primary');
-    expect(preview).toHaveClass('btn', 'default');
-    expect(preview).not.toHaveClass('primary');
+    expect(preview).toHaveClass('btn', 'primary');
+    expect(share()).toHaveClass('btn', 'default');
+    expect(share()).not.toHaveClass('primary');
     expect(preview.compareDocumentPosition(share()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
