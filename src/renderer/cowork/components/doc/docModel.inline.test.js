@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, inlineToHtml, toneFor } from './docModel';
+import { chipHtml, escapeHtml, inlineToHtml } from './docModel';
 
 // inlineToHtml as it was when every mark was one alternative of one regex.
 // Italic, links and chips are scanned now (their regexes are quadratic on
@@ -15,31 +15,23 @@ const REGEX_SRC = [
   '(?<![_\\w])_(?!\\s)(.+?)(?<!\\s)_(?![_\\w])',
 ].join('|');
 
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-
-function chip(kind, value) {
-  const label = kind === 'date' ? formatDate(value) : kind === 'user' && value === 'me' ? 'You' : value;
-  const tone = kind === 'status' ? ` doc-tone--${toneFor(value)}` : '';
-  return `<span class="doc-chip doc-chip--${kind}${tone}" contenteditable="false" data-chip="${esc(`${kind}:${value}`)}">${esc(label)}</span>`;
-}
-
 function regexInlineToHtml(src) {
   const re = new RegExp(REGEX_SRC, 'g');
   let out = '';
   let last = 0;
   let m;
   while ((m = re.exec(src))) {
-    out += esc(src.slice(last, m.index)).replace(/\n/g, '<br>');
-    if (m[1] !== undefined) out += esc(m[1]);
-    else if (m[2] !== undefined) out += `<code>${esc(m[2])}</code>`;
+    out += escapeHtml(src.slice(last, m.index)).replace(/\n/g, '<br>');
+    if (m[1] !== undefined) out += escapeHtml(m[1]);
+    else if (m[2] !== undefined) out += `<code>${escapeHtml(m[2])}</code>`;
     else if (m[3] !== undefined) out += `<strong>${regexInlineToHtml(m[3])}</strong>`;
     else if (m[4] !== undefined) out += `<s>${regexInlineToHtml(m[4])}</s>`;
-    else if (m[5] !== undefined) out += `<a href="${esc(m[6])}" target="_blank" rel="noopener noreferrer">${regexInlineToHtml(m[5])}</a>`;
-    else if (m[7] !== undefined) out += chip(m[7], m[8]);
+    else if (m[5] !== undefined) out += `<a href="${escapeHtml(m[6])}" target="_blank" rel="noopener noreferrer">${regexInlineToHtml(m[5])}</a>`;
+    else if (m[7] !== undefined) out += chipHtml(m[7], m[8]);
     else out += `<em>${regexInlineToHtml(m[9] ?? m[10])}</em>`;
     last = re.lastIndex;
   }
-  return out + esc(src.slice(last)).replace(/\n/g, '<br>');
+  return out + escapeHtml(src.slice(last)).replace(/\n/g, '<br>');
 }
 
 // Pieces that open, close or break marks, and the characters the regexes' \s, \w and . treat apart.

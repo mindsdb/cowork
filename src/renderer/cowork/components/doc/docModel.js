@@ -54,7 +54,7 @@ export function toneFor(value) {
   return 'gray';
 }
 
-function chipHtml(kind, value) {
+export function chipHtml(kind, value) {
   const raw = `${kind}:${value}`;
   let label = value;
   let cls = `doc-chip doc-chip--${kind}`;
@@ -120,45 +120,47 @@ const textHtml = (s) => escapeHtml(s).replace(/\n/g, '<br>');
 
 /** The mark that starts at `i` in the window `[lo, hi)` of `s`, as `{ end, open }`,
  * plus the window `[from, to)` of its words and a `close` tag when they are read
- * for marks of their own; null when no mark starts there. */
+ * for marks of their own; null when no mark starts there. `next(key, pos)` finds
+ * what `NEXT[key]` matches at or after `pos`. */
 function readMark(s, i, lo, hi, next) {
   const c = s[i];
-  let m;
   if (c === '\\') return i + 2 <= hi && execAt(ESCAPED, s, i) ? { end: i + 2, open: escapeHtml(s[i + 1]) } : null;
   if (c === '`') {
-    const k = next['`'](i + 1);
+    const k = next('`', i + 1);
     return k > i + 1 && k < hi ? { end: k + 1, open: `<code>${escapeHtml(s.slice(i + 1, k))}</code>` } : null;
   }
   if ((c === '*' || c === '~') && s[i + 1] === c) {
     // The words run to the next pair of marks, on the same line.
-    const k = next[c + c](i + 3);
+    const k = next(c + c, i + 3);
     const tag = c === '*' ? 'strong' : 's';
-    if (k + 2 <= hi && next.lineEnd(i + 1) > k) return { end: k + 2, open: `<${tag}>`, from: i + 2, to: k, close: `</${tag}>` };
+    if (k + 2 <= hi && next('lineEnd', i + 1) > k) return { end: k + 2, open: `<${tag}>`, from: i + 2, to: k, close: `</${tag}>` };
   }
   if (c === '*' || c === '_') {
-    // The words run to the first closing mark, on the same line. Lookarounds
-    // that reach past the window see the start or end of a text.
+    // The words run to the first closing mark, on the same line; at the
+    // window's edges the lookarounds see a text's start and end.
     if (i + 3 > hi || (i === lo ? SPACE.test(s[i + 1]) : !execAt(EM_OPEN[c], s, i))) return null;
-    let j = next[c](i + 2);
+    let j = next(c, i + 2);
     if (j >= hi - 1) j = s[hi - 1] === c && !SPACE.test(s[hi - 2]) ? hi - 1 : hi;
-    return j < hi && next.lineEnd(i + 1) > j ? { end: j + 1, open: '<em>', from: i + 1, to: j, close: '</em>' } : null;
+    return j < hi && next('lineEnd', i + 1) > j ? { end: j + 1, open: '<em>', from: i + 1, to: j, close: '</em>' } : null;
   }
   if (c === '[') {
-    const q = next[']'](i + 1); // the words run to the first ]
-    if (q <= i + 1 || q >= hi || !(m = execAt(LINK_HREF, s, q))) return null;
-    const u = q + m[0].length;
-    const e = next.hrefEnd(u);
+    const q = next(']', i + 1); // the words run to the first ]
+    const head = q > i + 1 && q < hi && execAt(LINK_HREF, s, q);
+    if (!head) return null;
+    const u = q + head[0].length;
+    const e = next('hrefEnd', u);
     if (e === u || e >= hi || s[e] !== ')') return null;
     const href = escapeHtml(s.slice(q + 2, e));
     return { end: e + 1, open: `<a href="${href}" target="_blank" rel="noopener noreferrer">`, from: i + 1, to: q, close: '</a>' };
   }
-  if (c === '{' && (m = execAt(CHIP_HEAD, s, i))) {
-    const v = i + m[0].length;
-    const q = next['}'](v); // the value runs to the first }
+  const head = c === '{' && execAt(CHIP_HEAD, s, i);
+  if (head) {
+    const v = i + head[0].length;
+    const q = next('}', v); // the value runs to the first }
     if (q === v || q + 2 > hi || s[q + 1] !== '}') return null;
     const raw = s.slice(v, q);
     // The regex's lazy value sheds the spaces around it but keeps at least one character.
-    return { end: q + 2, open: chipHtml(m[1], raw.trim() || raw.at(-1)) };
+    return { end: q + 2, open: chipHtml(head[1], raw.trim() || raw.at(-1)) };
   }
   return null;
 }
@@ -166,18 +168,20 @@ function readMark(s, i, lo, hi, next) {
 /** Inline Markdown → HTML (safe: every text run is escaped). */
 export function inlineToHtml(text) {
   const s = String(text ?? '');
-  const next = Object.fromEntries(Object.entries(NEXT).map(([key, re]) => [key, nextMatch(re, s)]));
+  const lookups = {};
+  const next = (key, pos) => (lookups[key] ??= nextMatch(NEXT[key], s))(pos);
   // Windows nest on an explicit stack: a crafted text nests marks thousands
   // deep, past what a recursion's call stack holds.
-  const stack = [{ lo: 0, hi: s.length, pos: 0, done: 0, out: '', close: '' }];
+  const frame = (lo, hi, close) => ({ lo, hi, pos: lo, done: lo, close });
+  const stack = [frame(0, s.length, '')];
+  let out = '';
   for (;;) {
     const w = stack[stack.length - 1];
     const mark = execAt(MARK, s, w.pos);
     if (!mark || mark.index >= w.hi) {
-      const html = w.out + textHtml(s.slice(w.done, w.hi)) + w.close;
+      out += textHtml(s.slice(w.done, w.hi)) + w.close;
       stack.pop();
-      if (!stack.length) return html;
-      stack[stack.length - 1].out += html;
+      if (!stack.length) return out;
       continue;
     }
     const hit = readMark(s, mark.index, w.lo, w.hi, next);
@@ -185,9 +189,9 @@ export function inlineToHtml(text) {
       w.pos = mark.index + 1;
       continue;
     }
-    w.out += textHtml(s.slice(w.done, mark.index)) + hit.open;
+    out += textHtml(s.slice(w.done, mark.index)) + hit.open;
     w.done = w.pos = hit.end;
-    if (hit.close !== undefined) stack.push({ lo: hit.from, hi: hit.to, pos: hit.from, done: hit.from, out: '', close: hit.close });
+    if (hit.close !== undefined) stack.push(frame(hit.from, hit.to, hit.close));
   }
 }
 
