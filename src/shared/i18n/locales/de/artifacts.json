@@ -229,7 +229,11 @@
     "close": "Vergleich schließen",
     "reject": "Ablehnen & wiederherstellen",
     "accept": "Annehmen & erledigen",
-    "restore": "Als neue Revision wiederherstellen"
+    "restore": "Als neue Revision wiederherstellen",
+    "changePosition": "{current} von {count, plural, one {# Änderung} other {# Änderungen}}",
+    "previousChange": "Vorherige Änderung",
+    "nextChange": "Nächste Änderung",
+    "changeNavigation": "Durch Änderungen blättern"
   },
   "htmlEditor": {
     "blockGone": "Der ausgewählte Textblock ist nicht mehr verfügbar.",

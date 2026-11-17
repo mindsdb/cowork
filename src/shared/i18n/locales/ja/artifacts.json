@@ -229,7 +229,11 @@
     "close": "比較を閉じる",
     "reject": "却下して元に戻す",
     "accept": "承認して解決",
-    "restore": "新しいリビジョンとして復元"
+    "restore": "新しいリビジョンとして復元",
+    "changePosition": "{count, plural, other {#件中 {current}件目の変更}}",
+    "previousChange": "前の変更",
+    "nextChange": "次の変更",
+    "changeNavigation": "変更を順に移動"
   },
   "htmlEditor": {
     "blockGone": "選択したテキストブロックは存在しません。",

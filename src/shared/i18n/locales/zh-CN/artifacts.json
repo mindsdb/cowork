@@ -229,7 +229,11 @@
     "close": "关闭对比",
     "reject": "拒绝并还原",
     "accept": "接受并解决",
-    "restore": "还原为新的修订版本"
+    "restore": "还原为新的修订版本",
+    "changePosition": "{count, plural, other {第 {current} 处，共 # 处更改}}",
+    "previousChange": "上一处更改",
+    "nextChange": "下一处更改",
+    "changeNavigation": "逐处查看更改"
   },
   "htmlEditor": {
     "blockGone": "所选文本块已不存在。",

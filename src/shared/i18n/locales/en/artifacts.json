@@ -229,7 +229,11 @@
     "close": "Close comparison",
     "reject": "Reject & restore",
     "accept": "Accept & resolve",
-    "restore": "Restore as new revision"
+    "restore": "Restore as new revision",
+    "changePosition": "{current} of {count, plural, one {# change} other {# changes}}",
+    "previousChange": "Previous change",
+    "nextChange": "Next change",
+    "changeNavigation": "Step through changes"
   },
   "htmlEditor": {
     "blockGone": "The selected text block is no longer available.",
