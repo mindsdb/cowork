@@ -257,7 +257,9 @@ export function configureShellAutoUpdate(options: {
     : null;
   // Stranded evidence stays on disk until the boot check has answered, so a
   // crash in between does not lose the record (settleStrandedEvidence).
-  if (evidence && !strandedTarget) clearEvidence();
+  // Another channel's record is left alone: deleting it would lose that
+  // channel's pending install and its relaunch verdict.
+  if (channelEvidence && !strandedTarget) clearEvidence();
   // A failed install must be remembered even through a launch that never
   // reaches ready-to-install (offline, say), so rewrite its record now. The
   // relaunch verdict goes to the renderer this launch, so mark it reported.

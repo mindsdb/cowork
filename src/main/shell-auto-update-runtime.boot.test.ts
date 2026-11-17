@@ -296,6 +296,16 @@ describe('boot install of a stranded shell update (ENG-2764)', () => {
     expect(quitAndInstall).not.toHaveBeenCalled();
   });
 
+  // Stable and prod can share a userData folder. Deleting the other channel's
+  // record lost its pending boot install and its relaunch verdict.
+  it('leaves another channel\'s record on disk', async () => {
+    const stable = { targetVersion: TARGET, channel: 'stable', downloadedAt: new Date().toISOString() };
+    env.files.set('/userdata/shell-update-target.json', JSON.stringify(stable));
+    const { quitAndInstall } = await launch({ cached: true, hangCheck: true });
+    expect(quitAndInstall).not.toHaveBeenCalled();
+    expect(evidenceOnDisk()).toEqual(stable);
+  });
+
   it('does not hold the gate once the downloaded target is running', async () => {
     env.files.set('/userdata/shell-update-target.json', JSON.stringify({
       targetVersion: env.version, channel: 'prod', downloadedAt: new Date().toISOString(),
