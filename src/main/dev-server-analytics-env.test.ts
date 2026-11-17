@@ -85,6 +85,16 @@ describe('dev server analytics environment', () => {
     expect([...antonDotenvNames(serverDir, home)].sort()).toEqual(['ANTON_DEPLOYMENT_ENV', 'ANTON_POSTHOG_KEY']);
   });
 
+  it('reads the server dir\'s .anton/.env and ~/.cowork/.env too', async () => {
+    const { antonDotenvNames } = await loadScript();
+    const serverDir = tempDir();
+    const home = tempDir();
+    write(path.join(serverDir, '.anton', '.env'), 'ANTON_POSTHOG_KEY=\n');
+    write(path.join(home, '.cowork', '.env'), 'ANTON_DEPLOYMENT_ENV=eval\n');
+
+    expect([...antonDotenvNames(serverDir, home)].sort()).toEqual(['ANTON_DEPLOYMENT_ENV', 'ANTON_POSTHOG_KEY']);
+  });
+
   it('hands both to the server it starts', async () => {
     const env = await spawnedEnv();
     expect(env.ANTON_POSTHOG_KEY).toBe(NON_PROD_POSTHOG_KEY);
