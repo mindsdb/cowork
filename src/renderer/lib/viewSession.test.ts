@@ -13,6 +13,7 @@ function setUrl(url: string) {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   setUrl('http://localhost:3000/');
@@ -46,19 +47,65 @@ describe('endViewSession', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('settles quietly when the view host cannot be reached or refuses', async () => {
+  it('sends nothing from a page that is not next to the view host', async () => {
+    // A self-hosted Cowork web that signs in to MindsHub: another site.
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.mindshub.ai');
+    setUrl('https://cowork.customer.example/');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { endViewSession } = await importViewSession();
+
+    await endViewSession();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reaches the view host of a PR environment from its Cowork web', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', '');
+    setUrl('https://cowork-pr-cowork-744.dev.mindshub.ai/');
+    const fetchMock = vi.fn(async () => new Response('{"ok":true}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { endViewSession } = await importViewSession();
+
+    await endViewSession();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://view-pr-cowork-744.dev.mindshub.ai/_session/end',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('settles with a warning when the view host cannot be reached or refuses', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', '');
     setUrl('https://cowork.staging.mindshub.ai/');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { endViewSession } = await importViewSession();
 
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
     await expect(endViewSession()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenLastCalledWith('Could not end the artifact viewer session (TypeError).');
 
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 403 })));
     await expect(endViewSession()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenLastCalledWith('Could not end the artifact viewer session (HTTP 403).');
+  });
+
+  it('stays quiet when the view host clears the session', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', '');
+    setUrl('https://cowork.staging.mindshub.ai/');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"ok":true}', { status: 200 })));
+    const { endViewSession } = await importViewSession();
+
+    await endViewSession();
+
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('gives up on a view host that does not answer', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', '');
     setUrl('https://cowork.staging.mindshub.ai/');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { endViewSession, VIEW_SESSION_END_TIMEOUT_MS } = await importViewSession();
     vi.useFakeTimers();
     let signal: AbortSignal | undefined;
@@ -74,5 +121,6 @@ describe('endViewSession', () => {
 
     await expect(pending).resolves.toBeUndefined();
     expect(signal?.aborted).toBe(true);
+    expect(warn).toHaveBeenCalledWith('Could not end the artifact viewer session (AbortError).');
   });
 });

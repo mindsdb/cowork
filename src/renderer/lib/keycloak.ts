@@ -529,9 +529,8 @@ export function __resetOrganizationTransitionForTests(): void {
 export const logout = async (): Promise<void> => {
   if (!keycloak.authenticated) return;
   // Never blocked by the preview revoke: a stuck sign-out would keep this
-  // browser's session for the next person at the machine.
-  await closeLiveAppPreviewsForSignOut();
-  // Before Keycloak: its redirect leaves this page.
-  await endViewSession();
+  // browser's session for the next person at the machine. Both finish before
+  // Keycloak, whose redirect leaves this page.
+  await Promise.all([closeLiveAppPreviewsForSignOut(), endViewSession()]);
   await keycloak.logout({ redirectUri });
 };

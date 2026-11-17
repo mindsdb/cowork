@@ -179,6 +179,25 @@ it('clears the view session before ending the account session', async () => {
   expect(instance.logout).toHaveBeenCalledOnce();
 });
 
+it('ends the view session while the previews close, not after', async () => {
+  keycloak.authenticated = true;
+  let releasePreviews: () => void = () => {};
+  previews.closeLiveAppPreviewsForSignOut.mockReturnValueOnce(new Promise<void>(resolve => { releasePreviews = resolve; }));
+  const pending = logout();
+  await vi.waitFor(() => expect(viewSession.endViewSession).toHaveBeenCalledOnce());
+  expect(instance.logout).not.toHaveBeenCalled();
+  releasePreviews();
+  await pending;
+  expect(instance.logout).toHaveBeenCalledOnce();
+});
+
+it('does not end the account session when the preview revoke fails', async () => {
+  keycloak.authenticated = true;
+  previews.closeLiveAppPreviewsForSignOut.mockRejectedValueOnce(new Error('revoke failed'));
+  await expect(logout()).rejects.toThrow('revoke failed');
+  expect(instance.logout).not.toHaveBeenCalled();
+});
+
 it('does not touch the view session when there is no account session', async () => {
   keycloak.authenticated = false;
   await logout();
