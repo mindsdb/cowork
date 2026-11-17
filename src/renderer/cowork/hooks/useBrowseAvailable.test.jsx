@@ -57,12 +57,19 @@ describe('useBrowseAvailable', () => {
     ['not offered', () => fetchBrowseStatus.mockResolvedValue(UNAVAILABLE)],
     ['turned off by the organization', () => fetchBrowseStatus.mockResolvedValue({ enabled: true, available: false, status: 'organization_off' })],
     ['a server with no status route', () => fetchBrowseStatus.mockRejectedValue(refusal(404))],
+    ['offered with no decisions model to pick its steps', () => fetchBrowseStatus.mockResolvedValue({ ...AVAILABLE, decisions_model: null })],
   ])('is false when the answer is %s', async (_name, arrange) => {
     arrange();
     const { result } = renderHook(() => useBrowseAvailable('ok'));
     await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalled());
     await flush();
     expect(result.current).toBe(false);
+  });
+
+  it.each([['mindshub'], ['own']])('is true when the browser has a decisions model (%s)', async (decisions) => {
+    fetchBrowseStatus.mockResolvedValue({ ...AVAILABLE, decisions_model: decisions });
+    const { result } = renderHook(() => useBrowseAvailable('ok'));
+    await waitFor(() => expect(result.current).toBe(true));
   });
 
   it.each([

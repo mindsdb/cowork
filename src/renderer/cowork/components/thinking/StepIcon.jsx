@@ -14,6 +14,10 @@ const ICON_MAP = {
   cube:     Ico.cube,
   // Anton's narration between steps (ENG-3554).
   note:     Ico.chats,
+  // A picture generate_image wrote (ENG-4024).
+  image:    Ico.image,
+  // The agent's browser (lib/browserSteps.js).
+  globe:    Ico.globe,
 };
 
 export function StepIcon({ type, size = 12 }) {
