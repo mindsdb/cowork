@@ -517,11 +517,30 @@ describe('authorizeInBrowser', () => {
     await flow;
   });
 
-  it('refuses an authorize endpoint with a fragment', async () => {
-    (shell.openExternal as ReturnType<typeof vi.fn>).mockClear();
-    const result = await authorizeInBrowser({ ...BROWSER_OPTS, authUrl: 'https://auth.example.com/authorize#frag' });
-    expect(result).toEqual({ ok: false, reason: 'OAuth authorize URL must use https.' });
-    expect(shell.openExternal).not.toHaveBeenCalled();
+  it.each(['https://auth.example.com/authorize#frag', 'https://auth.example.com/authorize#'])(
+    'refuses the authorize endpoint %s, naming the fragment',
+    async (authUrl) => {
+      (shell.openExternal as ReturnType<typeof vi.fn>).mockClear();
+      expect(await authorizeInBrowser({ ...BROWSER_OPTS, authUrl })).toEqual({
+        ok: false,
+        reason: 'OAuth authorize URL must not have a fragment.',
+      });
+      expect(await oauthConnect({ ...OPTS, authUrl })).toEqual({
+        ok: false,
+        reason: 'OAuth authorize URL must not have a fragment.',
+      });
+      expect(shell.openExternal).not.toHaveBeenCalled();
+    },
+  );
+
+  it("replaces an OAuth parameter the endpoint's query already names, instead of repeating it", async () => {
+    const nextAuthUrl = captureAuthUrl();
+    const flow = authorizeInBrowser({ ...BROWSER_OPTS, authUrl: 'https://auth.example.com/authorize?response_type=token&tenant=a' });
+    const authUrl = await nextAuthUrl();
+    expect(authUrl.searchParams.getAll('response_type')).toEqual(['code']);
+    expect(authUrl.searchParams.get('tenant')).toBe('a');
+    cancelCurrentOAuth();
+    await flow;
   });
 
   it('binds the custom MCP port on 127.0.0.1 when asked', async () => {

@@ -61,9 +61,18 @@ export interface TokenSet {
   scope?: string;
 }
 
-// RFC 6749 5.2's error code characters, and short: anything else from the
-// server is left out of messages, which may reach logs and the screen.
-const OAUTH_ERROR_CODE = /^[\x20\x21\x23-\x5B\x5D-\x7E]{1,64}$/;
+// The registered error codes (RFC 6749 5.2, RFC 8707): only these reach
+// messages, which may land in logs and on screen; any other text a server
+// sends could carry a token.
+const OAUTH_ERROR_CODES = new Set([
+  'invalid_request',
+  'invalid_client',
+  'invalid_grant',
+  'unauthorized_client',
+  'unsupported_grant_type',
+  'invalid_scope',
+  'invalid_target',
+]);
 const MAX_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
 const INITIALIZE_BODY = JSON.stringify({
@@ -211,7 +220,7 @@ async function tokenRequest(
   const response = await fetchFn(authorizationServer.tokenEndpoint, { method: 'POST', headers, body });
   if (response.status !== 200) {
     const error = await jsonObject(response, 'token_failed').catch(() => ({} as Record<string, unknown>));
-    const code = typeof error.error === 'string' && OAUTH_ERROR_CODE.test(error.error) ? `: ${error.error}` : '';
+    const code = typeof error.error === 'string' && OAUTH_ERROR_CODES.has(error.error) ? `: ${error.error}` : '';
     throw new McpOAuthError('token_failed', `the token endpoint answered ${response.status}${code}`);
   }
   const data = await jsonObject(response, 'token_failed');

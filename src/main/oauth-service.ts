@@ -165,15 +165,18 @@ function endAttempt(attempt: Attempt): void {
   if (_activeAttempt === attempt) _activeAttempt = null;
 }
 
-/* An https URL without a fragment: an authorize endpoint may carry a query
-   but never a fragment (RFC 6749 3.1). */
-function isHttpsUrl(value: string): boolean {
+/* Why `value` cannot be opened as an authorize endpoint, or null: it must be
+   an https URL, and may carry a query but never a fragment (RFC 6749 3.1). */
+function authorizeUrlProblem(value: string): string | null {
+  let url: URL;
   try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && !url.hash && !value.includes('#');
+    url = new URL(value);
   } catch {
-    return false;
+    return 'OAuth authorize URL must use https.';
   }
+  if (url.protocol !== 'https:') return 'OAuth authorize URL must use https.';
+  if (url.hash || value.includes('#')) return 'OAuth authorize URL must not have a fragment.';
+  return null;
 }
 
 /**
@@ -185,7 +188,8 @@ function isHttpsUrl(value: string): boolean {
  */
 export async function authorizeInBrowser(opts: BrowserAuthorizeOpts): Promise<BrowserAuthorizeResult> {
   if (!opts?.authUrl || !opts?.clientId) return { ok: false, reason: 'OAuth opts missing authUrl or clientId.' };
-  if (!isHttpsUrl(opts.authUrl)) return { ok: false, reason: 'OAuth authorize URL must use https.' };
+  const problem = authorizeUrlProblem(opts.authUrl);
+  if (problem) return { ok: false, reason: problem };
   const attempt = beginAttempt();
   try {
     return await browserStep(opts, attempt);
@@ -202,9 +206,8 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   // The authorize URL goes to shell.openExternal, which hands any scheme to the
   // OS (file:, custom app handlers). Only an https provider page may open, and
   // the check runs before cancelling, so a refused call leaves a live flow alone.
-  if (!isHttpsUrl(opts.authUrl)) {
-    return { ok: false, reason: 'OAuth authorize URL must use https.' };
-  }
+  const problem = authorizeUrlProblem(opts.authUrl);
+  if (problem) return { ok: false, reason: problem };
 
   const attempt = beginAttempt();
   const exchangeController = new AbortController();

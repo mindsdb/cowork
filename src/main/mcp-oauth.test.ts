@@ -145,7 +145,8 @@ describe('discoverMcpAuth against hostile answers', () => {
     ['the same path on another origin', 'https://other.example.com/mcp'],
     ['another port', 'https://mcp.example.com:8443/mcp'],
     ['a path above the server with a query', 'https://mcp.example.com/?tenant=x'],
-    ['the server with a user part', 'https://user@mcp.example.com/mcp'],
+    ['a path above the server with a user part', 'https://user@mcp.example.com/'],
+    ['a path above the server with a password only', 'https://:pw@mcp.example.com/'],
     ['not a URL', 'mcp'],
   ])('refuses a resource that is %s', async (_label, resource) => {
     const { fetchFn } = replay(hostile({ resource }));
@@ -379,6 +380,8 @@ describe('token requests', () => {
 
   it.each([
     ['a line break and a secret', 'invalid_grant\nrefresh_token=rt-SECRET-VALUE client_secret=s3'],
+    ['a space and a secret', 'invalid_grant refresh_token=rt-SECRET-VALUE'],
+    ['an opaque value', 'a'.repeat(64)],
     ['a very long value', 'x'.repeat(3000)],
     ['a quote', 'bad"code'],
   ])('leaves out an error code holding %s', async (_label, error) => {
