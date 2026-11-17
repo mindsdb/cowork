@@ -52291,6 +52291,40 @@
       "text": "2c363db2eabc"
     }
   },
+  "code:composerLip.allowWrites": {
+    "de": {
+      "from": "a8fa19f8631e",
+      "text": "7537b68e269a"
+    },
+    "es": {
+      "from": "a8fa19f8631e",
+      "text": "35dfc7c321ea"
+    },
+    "fr": {
+      "from": "a8fa19f8631e",
+      "text": "fe7b68c4b1f3"
+    },
+    "it": {
+      "from": "a8fa19f8631e",
+      "text": "894831bece59"
+    },
+    "ja": {
+      "from": "a8fa19f8631e",
+      "text": "c5d5996c7c55"
+    },
+    "ko": {
+      "from": "a8fa19f8631e",
+      "text": "b58108aaefb5"
+    },
+    "pt-BR": {
+      "from": "a8fa19f8631e",
+      "text": "5e5b22a4ce16"
+    },
+    "zh-CN": {
+      "from": "a8fa19f8631e",
+      "text": "1249e7a9e051"
+    }
+  },
   "code:composerLip.chooseAnotherModel": {
     "de": {
       "from": "850f57c096f8",
@@ -53547,6 +53581,40 @@
     "zh-CN": {
       "from": "0c46baecf003",
       "text": "f73afcce3d70"
+    }
+  },
+  "code:composerNotices.writesHeld.body": {
+    "de": {
+      "from": "00caedea8f40",
+      "text": "2a3580a62056"
+    },
+    "es": {
+      "from": "00caedea8f40",
+      "text": "901f01d6e27e"
+    },
+    "fr": {
+      "from": "00caedea8f40",
+      "text": "d802561dff6b"
+    },
+    "it": {
+      "from": "00caedea8f40",
+      "text": "c8ef5304b087"
+    },
+    "ja": {
+      "from": "00caedea8f40",
+      "text": "3aca51d4158e"
+    },
+    "ko": {
+      "from": "00caedea8f40",
+      "text": "15b938062971"
+    },
+    "pt-BR": {
+      "from": "00caedea8f40",
+      "text": "164c1f93bcf2"
+    },
+    "zh-CN": {
+      "from": "00caedea8f40",
+      "text": "ce1262325c3f"
     }
   },
   "code:connectors.addAccount": {

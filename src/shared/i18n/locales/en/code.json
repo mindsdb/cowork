@@ -1412,7 +1412,8 @@
     "details": "Details",
     "moreOptions": "More options",
     "dismiss": "Dismiss",
-    "viewBudgets": "View budgets"
+    "viewBudgets": "View budgets",
+    "allowWrites": "Allow edits"
   },
   "composerNotices": {
     "thisModel": "This model",
@@ -1466,6 +1467,9 @@
     "budgetExceeded": {
       "title": "Your organization's budget is used up",
       "body": "An owner or admin can raise it in Budgets, or choose an available model to continue in this task."
+    },
+    "writesHeld": {
+      "body": "This folder has no Git history to review or undo changes, so the agent asks before each edit."
     }
   },
   "planModeCommand": {

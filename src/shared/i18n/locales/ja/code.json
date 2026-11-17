@@ -1412,7 +1412,8 @@
     "details": "詳細",
     "moreOptions": "その他のオプション",
     "dismiss": "閉じる",
-    "viewBudgets": "予算を表示"
+    "viewBudgets": "予算を表示",
+    "allowWrites": "編集を許可"
   },
   "composerNotices": {
     "thisModel": "このモデル",
@@ -1466,6 +1467,9 @@
     "budgetExceeded": {
       "title": "組織の予算を使い切りました",
       "body": "オーナーまたは管理者が「予算」で上限を引き上げられます。または、利用可能なモデルを選択してこのタスクを続けてください。"
+    },
+    "writesHeld": {
+      "body": "このフォルダには変更をレビューまたは元に戻すための Git 履歴がないため、エージェントは編集のたびに確認します。"
     }
   },
   "planModeCommand": {

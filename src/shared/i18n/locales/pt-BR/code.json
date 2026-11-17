@@ -1412,7 +1412,8 @@
     "details": "Detalhes",
     "moreOptions": "Mais opções",
     "dismiss": "Dispensar",
-    "viewBudgets": "Ver orçamentos"
+    "viewBudgets": "Ver orçamentos",
+    "allowWrites": "Permitir edições"
   },
   "composerNotices": {
     "thisModel": "Este modelo",
@@ -1466,6 +1467,9 @@
     "budgetExceeded": {
       "title": "O orçamento da sua organização acabou",
       "body": "Um proprietário ou administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa."
+    },
+    "writesHeld": {
+      "body": "Esta pasta não tem histórico do Git para revisar ou desfazer alterações, então o agente pergunta antes de cada edição."
     }
   },
   "planModeCommand": {

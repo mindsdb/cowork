@@ -1412,7 +1412,8 @@
     "details": "Dettagli",
     "moreOptions": "Altre opzioni",
     "dismiss": "Ignora",
-    "viewBudgets": "Visualizza budget"
+    "viewBudgets": "Visualizza budget",
+    "allowWrites": "Consenti modifiche"
   },
   "composerNotices": {
     "thisModel": "Questo modello",
@@ -1466,6 +1467,9 @@
     "budgetExceeded": {
       "title": "Il budget della tua organizzazione è esaurito",
       "body": "Un proprietario o un amministratore può aumentarlo in «Budget», oppure scegli un modello disponibile per continuare in questa attività."
+    },
+    "writesHeld": {
+      "body": "Questa cartella non ha una cronologia Git per rivedere o annullare le modifiche, quindi l’agente chiede prima di ogni modifica."
     }
   },
   "planModeCommand": {

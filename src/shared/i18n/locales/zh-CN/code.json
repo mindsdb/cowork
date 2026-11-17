@@ -1412,7 +1412,8 @@
     "details": "详情",
     "moreOptions": "更多选项",
     "dismiss": "忽略",
-    "viewBudgets": "查看预算"
+    "viewBudgets": "查看预算",
+    "allowWrites": "允许编辑"
   },
   "composerNotices": {
     "thisModel": "此模型",
@@ -1466,6 +1467,9 @@
     "budgetExceeded": {
       "title": "你的组织预算已用完",
       "body": "所有者或管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。"
+    },
+    "writesHeld": {
+      "body": "此文件夹没有可用于审阅或撤销更改的 Git 历史记录，因此智能体每次编辑前都会先询问。"
     }
   },
   "planModeCommand": {

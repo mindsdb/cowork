@@ -1412,7 +1412,8 @@
     "details": "Détails",
     "moreOptions": "Plus d’options",
     "dismiss": "Ignorer",
-    "viewBudgets": "Voir les budgets"
+    "viewBudgets": "Voir les budgets",
+    "allowWrites": "Autoriser les modifications"
   },
   "composerNotices": {
     "thisModel": "Ce modèle",
@@ -1466,6 +1467,9 @@
     "budgetExceeded": {
       "title": "Le budget de votre organisation est épuisé",
       "body": "Un propriétaire ou un administrateur peut l’augmenter dans Budgets, ou vous pouvez choisir un modèle disponible pour continuer dans cette tâche."
+    },
+    "writesHeld": {
+      "body": "Ce dossier n’a pas d’historique Git pour relire ou annuler les modifications ; l’agent demande donc avant chaque modification."
     }
   },
   "planModeCommand": {

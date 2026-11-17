@@ -1412,7 +1412,8 @@
     "details": "세부 정보",
     "moreOptions": "옵션 더 보기",
     "dismiss": "닫기",
-    "viewBudgets": "예산 보기"
+    "viewBudgets": "예산 보기",
+    "allowWrites": "편집 허용"
   },
   "composerNotices": {
     "thisModel": "이 모델",
@@ -1466,6 +1467,9 @@
     "budgetExceeded": {
       "title": "조직의 예산을 모두 사용했습니다",
       "body": "소유자 또는 관리자가 ‘예산’에서 한도를 늘릴 수 있습니다. 또는 사용 가능한 모델을 선택해 이 작업을 계속하세요."
+    },
+    "writesHeld": {
+      "body": "이 폴더에는 변경 사항을 검토하거나 되돌릴 Git 기록이 없으므로 에이전트가 편집할 때마다 확인합니다."
     }
   },
   "planModeCommand": {
