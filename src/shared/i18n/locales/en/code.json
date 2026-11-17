@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Some files from deleted tasks could not be removed. Retry cleanup to free their disk space.",
+    "retry": "Retry cleanup",
+    "retrying": "Retrying cleanup…",
+    "retryFailed": "Cleanup could not be retried. Try again."
+  },
   "reviewPanel": {
     "ariaLabel": "Review changes",
     "closeAriaLabel": "Close review panel",
@@ -1050,16 +1056,16 @@
       "title": "Inspect and explain without changing files."
     },
     "supervised": {
-      "label": "Ask first",
-      "title": "Pause before commands that need your approval."
+      "label": "Ask for approval",
+      "title": "Always ask before editing files outside the task or using the internet."
     },
     "workspace": {
-      "label": "Workspace auto",
-      "title": "Work autonomously inside this task’s isolated copy."
+      "label": "Approve for me",
+      "title": "A reviewer approves routine requests and blocks risky ones."
     },
     "fullAccess": {
       "label": "Full access",
-      "title": "Work autonomously without filesystem restrictions."
+      "title": "Unrestricted access to the internet and every file on your computer."
     }
   },
   "branchSelect": {
@@ -1308,6 +1314,7 @@
     "record": {
       "approvalDenied": "Approval denied",
       "approvalResolved": "Approval resolved",
+      "folderBusy": "Another task is working in this folder, so this one works in a worktree.",
       "followUpDelivered": "Follow-up delivered",
       "requestRejected": "Request rejected",
       "taskStatus": "Task status"
@@ -1412,7 +1419,8 @@
     "details": "Details",
     "moreOptions": "More options",
     "dismiss": "Dismiss",
-    "viewBudgets": "View budgets"
+    "viewBudgets": "View budgets",
+    "allowWrites": "Allow edits"
   },
   "composerNotices": {
     "thisModel": "This model",
@@ -1466,6 +1474,9 @@
     "budgetExceeded": {
       "title": "Your organization's budget is used up",
       "body": "An owner or admin can raise it in Budgets, or choose an available model to continue in this task."
+    },
+    "writesHeld": {
+      "body": "This folder has no Git history to review or undo changes, so the agent asks before each edit."
     }
   },
   "planModeCommand": {
@@ -1624,6 +1635,16 @@
     },
     "initializeGit": "Initialize Git",
     "initializeFailed": "Could not initialize Git. Try again.",
-    "unavailable": "No workspace mode is available for this folder."
+    "unavailable": "No workspace mode is available for this folder.",
+    "reason": {
+      "notARepository": "This folder isn’t a Git repository. Initialize Git to use a Worktree.",
+      "notARepositoryInFolder": "{folder} isn’t a Git repository. Initialize Git to use a Worktree.",
+      "noCommits": "This repository has no commits yet. Make a first commit to use a Worktree.",
+      "noCommitsInFolder": "{folder} has no commits yet. Make a first commit to use a Worktree.",
+      "noLocalCheckout": "{folder} has no checkout on this computer to work in. Choose Worktree.",
+      "inPlaceUnsupportedPlatform": "Working in the original folder isn’t available on this platform yet. Choose Worktree.",
+      "inPlaceOtherComputer": "Tasks on another computer run in an isolated worktree. Choose Worktree.",
+      "sharedRepository": "Two project folders are in the same repository, so they can’t both work in place. Choose Worktree."
+    }
   }
 }

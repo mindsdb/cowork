@@ -27,7 +27,7 @@ export function PermissionSelect({
           onValueChange={(next) => {
             if (isPermissionMode(next)) onValueChange(next);
           }}
-          options={permissionOptions()}
+          options={permissionOptions(value)}
           variant="unstyled"
           size="sm"
           ariaLabel={t('permissions.ariaLabel')}

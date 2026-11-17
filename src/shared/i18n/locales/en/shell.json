@@ -173,10 +173,13 @@
     "unavailableTitle": "Feature unavailable",
     "cloudBodyNamed": "{feature} isn’t available on Cloud just yet. In the meantime, you can use it in the desktop app.",
     "cloudBody": "This feature isn’t available on Cloud just yet. In the meantime, you can use it in the desktop app.",
+    "cloudBodyCustom": "{feature} isn’t available on Cloud just yet. You can connect it now as a custom connector.",
     "unavailableBodyNamed": "{feature} isn’t available in this deployment.",
     "unavailableBody": "This feature isn’t available in this deployment.",
     "notNow": "Not now",
-    "download": "Download the app"
+    "download": "Download the app",
+    "connectCustom": "Connect your custom {feature}",
+    "buildCustom": "Build a custom connector"
   },
   "loadStatus": {
     "retry": "Retry",

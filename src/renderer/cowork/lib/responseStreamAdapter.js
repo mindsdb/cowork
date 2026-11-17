@@ -4,6 +4,7 @@ import { artifactIdentity } from './artifactIdentity';
 import { browserStep, withBrowserStep } from './browserSession';
 import { BROWSER_ACTION_BADGE, BROWSER_TOOL, browserActionLabel, browserActionStep } from './browserSteps';
 import { parseFigureSources } from './figureSources';
+import { GENERATE_IMAGE_TOOL, generatedImagesFromEvent } from './generatedImage';
 import i18n from '../../lib/i18n';
 
 /* User-facing copy, translated when the event is reduced (never at import). */
@@ -38,6 +39,9 @@ const tr = (key, vars) => i18n.t(`messages.responseStream.${key}`, { ns: 'projec
 //                                 carries an `artifact` payload → one card
 //   response.figure_sources     — where each figure in the final answer came
 //                                 from; sent once, before response.completed
+//   thought.tool_call.result    — (under response.in_progress) a tool's own
+//                                 result, today only generate_image's: the
+//                                 image it wrote → one inline `Image` step
 //   response.artifact_check     — the agent asks the open preview to check an
 //                                 artifact; answered by lib/artifactCheck,
 //                                 never a step
@@ -829,6 +833,35 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, steps: [...state.steps, step] };
   }
 
+  // Inline connector template card. A cloud turn built the template for an API
+  // connector; the server checked it again and stored nothing. The member saves
+  // it from the card. Deduped by connector id within a turn so a replay can't
+  // double a card.
+  if (type === 'response.connector_drafted') {
+    const c = (event.connector && typeof event.connector === 'object') ? event.connector : null;
+    const key = typeof c?.connector_id === 'string' ? c.connector_id : '';
+    if (!key) return state;
+    if (state.steps.some((s) => s.badge === 'Connector' && s._connectorKey === key)) {
+      return state;
+    }
+    const step = {
+      id: `connector-${key}`,
+      label: typeof c.label === 'string' ? c.label : key,
+      badge: 'Connector',
+      icon: 'link',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: c,
+      output: null,
+      result: null,
+      _connectorKey: key,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
   // Inline ask_user card. The harness pauses mid-turn to ask the user a
   // multiple-choice question; the payload is self-contained so the card
   // renders from this event alone, including on replay. Deduped by
@@ -966,6 +999,45 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         data: { markdown },
       }],
     };
+  }
+
+  // Images Anton's generate_image tool wrote (ENG-4024). The result carries
+  // file paths, never bytes; the chat shows each file inline where the tool
+  // finished, like a tool's message, one step per image (see
+  // generatedImagesFromEvent for which path each is read by). Its own role
+  // (`thought.tool_call.result`), and also accepted on the scratchpad result's
+  // role, which is where a server with no branch for this tool relays a tool
+  // result: matched by tool name ahead of the scratchpad handlers below, so an
+  // image is never filed into the last scratchpad cell. Deduped by
+  // tool_use_id + path so a replayed event can't double a picture.
+  if ((role === 'thought.tool_call.result' || role === 'thought.scratchpad.result')
+    && event.tool_name === GENERATE_IMAGE_TOOL) {
+    const toolUseId = event.tool_use_id || null;
+    const shown = (path) => state.steps.some((s) => s.badge === 'Image' && s._toolUseId === toolUseId && s.data?.path === path);
+    const images = generatedImagesFromEvent(event).filter((image) => !shown(image.path));
+    if (images.length === 0) return state;
+    // The tool's progress row is done once its pictures show. A copy either
+    // way: closeOpenToolProgress hands back the state's own array when it
+    // closed nothing.
+    const steps = [...(toolUseId ? closeOpenToolProgress(state.steps, eventTs, toolUseId) : state.steps)];
+    for (const image of images) {
+      steps.push({
+        id: `step-${steps.length + 1}`,
+        label: image.name,
+        badge: 'Image',
+        icon: 'image',
+        status: 'completed',
+        startedAt: eventTs,
+        completedAt: eventTs,
+        data: image,
+        output: null,
+        result: null,
+        _isScratchpad: false,
+        _isToolCall: false,
+        _toolUseId: toolUseId,
+      });
+    }
+    return { ...state, steps };
   }
 
   // New scratchpad cell starts. We push a placeholder step now so the

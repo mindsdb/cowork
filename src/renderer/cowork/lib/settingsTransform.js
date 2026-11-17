@@ -48,6 +48,9 @@ export const SETTINGS_KEY_MAP = {
   // runs on this pick for openai-compatible, which has no default to fall to.
   router_provider: 'routerProvider',
   router_model: 'routerModel',
+  // The model Anton's generate_image tool runs on (ENG-4024). Image models are
+  // served by MindsHub alone, so the role has no provider of its own.
+  image_model: 'imageModel',
   openai_base_url: 'openaiBaseUrl',
   model_mode: 'modelMode',
   model_overrides: 'modelOverrides',
@@ -193,7 +196,16 @@ export const STATIC_SETTINGS = {
   recommendedPair: {
     'minds-cloud': ['', '', ''], anthropic: ['', '', ''], openai: ['', '', ''], gemini: ['', '', ''], 'openai-compatible': ['', '', ''],
   },
+  // Image model ids (ENG-4024): MindsHub's `kind: "image"` rows, in catalog
+  // order, kept out of every chat list above (filled at runtime by the
+  // overlay). `imageModelDefault` is the catalog's `default_for: ["image"]`.
+  imageModels: [],
+  imageModelDefault: '',
 };
+
+/** The image role's compiled default (ENG-4024), shown only when neither the
+ *  saved setting nor the catalog names one. Same value as cowork-server's. */
+export const IMAGE_MODEL_FALLBACK = 'gpt-image-2.6-flare';
 
 // ─── Model label derivation ─────────────────────────────────────────
 
@@ -312,14 +324,41 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
   const hasEntries = (live) => !!live && typeof live === 'object' && Object.keys(live).length > 0;
   const overlayMap = (current, live) => (hasEntries(live) ? live : (current || {}));
   const liveReasons = knownModelDisabledReasons(rec.modelDisabledReasons);
+  // Image models (ENG-4024): a non-empty live list replaces ours, and so does an
+  // empty one once MindsHub was read (its chat bucket is filled only then).
+  const liveImageModels = Array.isArray(rec.imageModels)
+    ? rec.imageModels.filter((id) => typeof id === 'string' && id)
+    : [];
+  const mindsHubRead = Array.isArray(rec.recommendedModels?.['minds-cloud'])
+    && rec.recommendedModels['minds-cloud'].length > 0;
+  const imageListLive = liveImageModels.length > 0 || (mindsHubRead && Array.isArray(rec.imageModels));
+  const imageModels = liveImageModels.length
+    ? (keepOrder ? keepListOrder(base.imageModels, liveImageModels) : liveImageModels)
+    : (imageListLive ? [] : (Array.isArray(base.imageModels) ? base.imageModels : []));
+  // No chat picker may offer one: a planning or coding role pinned to an image
+  // model fails every turn. cowork-server already leaves them out of the chat
+  // lists; stripping them here as well covers a bucket that lists them anyway
+  // (an OpenAI-compatible endpoint pointed at MindsHub, say).
+  const withoutImageModels = (buckets) => {
+    if (imageModels.length === 0) return buckets;
+    const image = new Set(imageModels);
+    return Object.fromEntries(Object.entries(buckets).map(([k, ids]) => (
+      [k, Array.isArray(ids) ? ids.filter((id) => !image.has(id)) : ids]
+    )));
+  };
   return {
     // `keepOrder` is for the refresh a picker fires as it opens: the list is on
     // screen by the time the response lands, so a row that moves is a row that
     // jumps under the cursor (ENG-1737). Ids we already hold keep their place,
     // new ids go on the end, ids the server dropped go. The mount-time load
     // takes the server's order as-is; it is the order the next open starts from.
-    recommendedModels: overlayLists(base.recommendedModels, rec.recommendedModels, keepOrder ? keepListOrder : null),
+    recommendedModels: withoutImageModels(
+      overlayLists(base.recommendedModels, rec.recommendedModels, keepOrder ? keepListOrder : null),
+    ),
     recommendedPair: overlayLists(base.recommendedPair, rec.recommendedPair),
+    imageModels,
+    imageModelDefault: (typeof rec.imageModelDefault === 'string' && rec.imageModelDefault)
+      || (imageListLive ? '' : base.imageModelDefault) || '',
     // Merged, not replaced: when the MindsHub fetch fails the server still
     // sends the static direct-provider entries, and taking that partial map
     // as the whole catalog dropped every MindsHub model's levels (ENG-2591).
@@ -445,6 +484,25 @@ export function resolveRoleModel(providerWasRepointed, storedModel, modelList, a
   const list = Array.isArray(modelList) ? modelList : [];
   const modelStaleForProvider = !!storedModel && !allowOther && !list.includes(storedModel);
   return (providerWasRepointed || modelStaleForProvider) ? fallbackModel : storedModel;
+}
+
+/**
+ * The model the Image model picker shows as current (ENG-4024): the saved
+ * `image_model`, else the server's image default (`imageModelDefault`, from
+ * cowork-server's `_image_model_default`), else the compiled default, exactly
+ * as the server resolves it. Only a pick the user makes is ever written, so an
+ * untouched picker leaves the server's default in charge (ENG-1632).
+ *
+ * Never substitutes another listed model: an id missing from `imageModels`
+ * (saved or default) is returned as-is, and the picker shows it as one to
+ * re-pick (resolveModelPickerValue) rather than reading as a different model
+ * than generate_image will ask for.
+ *
+ * @param {string | null | undefined} stored settings.imageModel
+ * @param {{ catalogDefault?: string }} [opts]
+ */
+export function resolveImageModel(stored, { catalogDefault = '' } = {}) {
+  return stored || catalogDefault || IMAGE_MODEL_FALLBACK;
 }
 
 /**
@@ -629,6 +687,9 @@ export function transformSettingsRows(rows) {
       const served = row.default ?? (row.is_set === false ? row.value : null);
       if (served != null) result.budgetDefaults = { ...result.budgetDefaults, [clientKey]: String(served) };
     }
+    // An unset image_model carries the server's start-time default, not a pick:
+    // leave it unset so the picker follows the live `imageModelDefault`.
+    if (clientKey === 'imageModel' && row.is_set === false) continue;
     if (row.is_sensitive) {
       result[clientKey] = row.is_set ? '***' : '';
     } else if (row.value != null) {

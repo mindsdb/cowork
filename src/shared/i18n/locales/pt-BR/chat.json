@@ -744,6 +744,31 @@
     "couldNotStart": "Não foi possível iniciar a chamada de voz.",
     "endedReason": "A chamada terminou ({reason})."
   },
+  "connectorDraft": {
+    "notSaved": "Modelo de conector · não salvo",
+    "kept": "Você já tem um conector com este id. Salvar de novo o substitui.",
+    "saved": "Salvo. Adicione suas credenciais em Conectar apps e dados.",
+    "savedConnect": "Salvo. Conecte-o para adicionar suas credenciais.",
+    "saveFailed": "Não foi possível salvar o conector.",
+    "button": {
+      "save": "Salvar conector",
+      "saveAgain": "Salvar de novo",
+      "saving": "Salvando…",
+      "done": "Salvo",
+      "connect": "Conectar"
+    },
+    "modal": {
+      "fieldsTitle": "O que você vai informar",
+      "usageTitle": "Como o Anton vai usar",
+      "helpUrl": "Onde encontrar: {url}"
+    },
+    "field": {
+      "secret": "secreto",
+      "required": "obrigatório",
+      "optional": "opcional",
+      "example": "Exemplo: {value}"
+    }
+  },
   "notionPicker": {
     "title": "Adicionar páginas do Notion",
     "subtitle": "Pesquise no seu Notion e escolha páginas para esta mensagem.",
@@ -754,5 +779,10 @@
     "database": "Banco de dados",
     "cancel": "Cancelar",
     "add": "{count, plural, =0 {Adicionar página} one {Adicionar página} other {Adicionar # páginas}}"
+  },
+  "generatedImage": {
+    "fallbackName": "imagem",
+    "alt": "Imagem gerada {name}",
+    "notShown": "Não foi possível mostrar {name}. Talvez tenha sido movido ou excluído."
   }
 }

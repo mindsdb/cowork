@@ -7,6 +7,8 @@ import {
   offersWorkspaceChoice,
   storeWorkspaceMode,
   storedWorkspaceMode,
+  workspaceReasonText,
+  worktreeUnavailableText,
 } from './workspaceMode';
 
 const BOTH: WorkspaceModeOptions = { supported: ['worktree', 'in_place'], default: 'worktree' };
@@ -48,5 +50,27 @@ describe('workspace mode choice', () => {
     expect(storedWorkspaceMode()).toBe('in_place');
     window.localStorage.setItem('mindshub-code:workspace-mode', 'container');
     expect(storedWorkspaceMode()).toBeNull();
+  });
+});
+
+describe('workspace mode reasons', () => {
+  it('words a known reason in the UI language, naming the folder when there is one', () => {
+    expect(workspaceReasonText('not_a_repository', null, 'server text'))
+      .toBe('This folder isn’t a Git repository. Initialize Git to use a Worktree.');
+    expect(workspaceReasonText('no_commits', 'Notes', 'server text'))
+      .toBe('Notes has no commits yet. Make a first commit to use a Worktree.');
+    expect(worktreeUnavailableText({
+      supported: ['in_place'], default: 'in_place',
+      worktree_unavailable_reason: 'Notes: This folder isn\'t a Git repository',
+      worktree_unavailable_code: 'not_a_repository', worktree_unavailable_folder: 'Notes',
+    })).toBe('Notes isn’t a Git repository. Initialize Git to use a Worktree.');
+  });
+
+  it('shows the server text for a code it does not know, or none', () => {
+    expect(workspaceReasonText('needs_a_newer_app', null, 'From a newer server')).toBe('From a newer server');
+    expect(workspaceReasonText(null, null, 'From an older server')).toBe('From an older server');
+    // A message that needs a folder the server did not send falls back too.
+    expect(workspaceReasonText('no_local_checkout', null, 'lib has no checkout')).toBe('lib has no checkout');
+    expect(worktreeUnavailableText(BOTH)).toBe('');
   });
 });

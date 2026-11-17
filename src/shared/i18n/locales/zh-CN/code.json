@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "无法移除已删除任务的部分文件。请重试清理以释放磁盘空间。",
+    "retry": "重试清理",
+    "retrying": "正在重试清理…",
+    "retryFailed": "无法重试清理。请再试一次。"
+  },
   "reviewPanel": {
     "ariaLabel": "审查更改",
     "closeAriaLabel": "关闭审查面板",
@@ -1050,16 +1056,16 @@
       "title": "只检查和解释，不更改文件。"
     },
     "supervised": {
-      "label": "先询问",
-      "title": "执行需要你批准的命令前先暂停。"
+      "label": "请求批准",
+      "title": "编辑任务之外的文件或使用互联网前，始终先询问。"
     },
     "workspace": {
-      "label": "工作区内自动",
-      "title": "在此任务的隔离副本中自主工作。"
+      "label": "替我批准",
+      "title": "审核者会批准常规请求，并阻止有风险的请求。"
     },
     "fullAccess": {
       "label": "完全访问",
-      "title": "自主工作，不受文件系统限制。"
+      "title": "不受限制地访问互联网和你电脑上的所有文件。"
     }
   },
   "branchSelect": {
@@ -1308,6 +1314,7 @@
     "record": {
       "approvalDenied": "已拒绝批准",
       "approvalResolved": "已处理批准请求",
+      "folderBusy": "另一个任务正在此文件夹中工作，因此此任务在工作树中工作。",
       "followUpDelivered": "已送达追加指令",
       "requestRejected": "请求被拒绝",
       "taskStatus": "任务状态"
@@ -1412,7 +1419,8 @@
     "details": "详情",
     "moreOptions": "更多选项",
     "dismiss": "忽略",
-    "viewBudgets": "查看预算"
+    "viewBudgets": "查看预算",
+    "allowWrites": "允许编辑"
   },
   "composerNotices": {
     "thisModel": "此模型",
@@ -1466,6 +1474,9 @@
     "budgetExceeded": {
       "title": "你的组织预算已用完",
       "body": "所有者或管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。"
+    },
+    "writesHeld": {
+      "body": "此文件夹没有可用于审阅或撤销更改的 Git 历史记录，因此智能体每次编辑前都会先询问。"
     }
   },
   "planModeCommand": {
@@ -1624,6 +1635,16 @@
     },
     "initializeGit": "初始化 Git",
     "initializeFailed": "无法初始化 Git。请重试。",
-    "unavailable": "此文件夹没有可用的工作区模式。"
+    "unavailable": "此文件夹没有可用的工作区模式。",
+    "reason": {
+      "notARepository": "此文件夹不是 Git 仓库。要使用工作树，请初始化 Git。",
+      "notARepositoryInFolder": "{folder} 不是 Git 仓库。要使用工作树，请初始化 Git。",
+      "noCommits": "此仓库还没有提交。要使用工作树，请先进行首次提交。",
+      "noCommitsInFolder": "{folder} 还没有提交。要使用工作树，请先进行首次提交。",
+      "noLocalCheckout": "{folder} 在此计算机上没有可用于工作的检出副本。请选择工作树。",
+      "inPlaceUnsupportedPlatform": "此平台暂不支持在原始文件夹中工作。请选择工作树。",
+      "inPlaceOtherComputer": "其他计算机上的任务在隔离的工作树中运行。请选择工作树。",
+      "sharedRepository": "两个项目文件夹位于同一个仓库中，因此不能都直接在文件夹中工作。请选择工作树。"
+    }
   }
 }

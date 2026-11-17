@@ -136,6 +136,10 @@ export interface ComposerNotice {
   /** The remote run stopped but kept its work; Reopen task restores it. */
   reopen?: boolean;
   reopening?: boolean;
+  /** The task reads only until the user lets it change the folder. */
+  allowWrites?: boolean;
+  /** Task controls cannot change while a turn runs. */
+  actionDisabled?: boolean;
   /** Queued follow-ups take the lip's place instead of a line of text. */
   queue?: boolean;
   dismissible?: boolean;
@@ -214,6 +218,25 @@ export function recoveryNotice(
 
 export function queueNotice(session: CodingSession): ComposerNotice | null {
   return session.queued_instructions?.length ? { key: 'queue', tone: 'neutral', icon: 'clock', title: '', queue: true } : null;
+}
+
+
+/**
+ * A task on a folder with no commit to review or undo against starts with a
+ * read-only sandbox. Full access never had one, and older servers omit the flag.
+ */
+export function writesNotice(session: CodingSession): ComposerNotice | null {
+  if (session.writes_allowed !== false || session.permission_mode === 'full_access') return null;
+  return {
+    key: 'writes-held',
+    tone: 'warning',
+    icon: 'warning',
+    title: '',
+    body: i18n.t('composerNotices.writesHeld.body', { ns: 'code' }),
+    allowWrites: true,
+    actionDisabled: isActiveStatus(session.status),
+    dismissible: true,
+  };
 }
 
 

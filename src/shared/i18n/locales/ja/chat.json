@@ -744,6 +744,31 @@
     "couldNotStart": "音声通話を開始できませんでした。",
     "endedReason": "通話が終了しました（{reason}）。"
   },
+  "connectorDraft": {
+    "notSaved": "コネクタのテンプレート · 未保存",
+    "kept": "このIDのコネクタはすでに保存されています。もう一度保存すると置き換えられます。",
+    "saved": "保存しました。認証情報は「アプリとデータを接続」で追加してください。",
+    "savedConnect": "保存しました。接続して認証情報を追加してください。",
+    "saveFailed": "コネクタを保存できませんでした。",
+    "button": {
+      "save": "コネクタを保存",
+      "saveAgain": "もう一度保存",
+      "saving": "保存中…",
+      "done": "保存しました",
+      "connect": "接続"
+    },
+    "modal": {
+      "fieldsTitle": "入力する内容",
+      "usageTitle": "Antonによる利用方法",
+      "helpUrl": "入手先: {url}"
+    },
+    "field": {
+      "secret": "シークレット",
+      "required": "必須",
+      "optional": "任意",
+      "example": "例: {value}"
+    }
+  },
   "notionPicker": {
     "title": "Notionからページを追加",
     "subtitle": "Notionを検索して、このメッセージに追加するページを選択します。",
@@ -754,5 +779,10 @@
     "database": "データベース",
     "cancel": "キャンセル",
     "add": "{count, plural, =0 {ページを追加} other {#ページを追加}}"
+  },
+  "generatedImage": {
+    "fallbackName": "画像",
+    "alt": "生成された画像 {name}",
+    "notShown": "{name} を表示できません。移動または削除された可能性があります。"
   }
 }

@@ -16,7 +16,7 @@ import {
 import { codingApi, type PermissionMode, type Personality, type RuntimeControls } from './api';
 import { effortLabel, effortLevelsFor, resolveEffort } from './reasoning';
 import { host } from '../../platform/host';
-import { PERMISSION_OPTIONS } from './permissions';
+import { permissionOptions } from './permissions';
 import { useTranslation } from '../../lib/i18n';
 
 const PERSONALITY_VALUES = ['pragmatic', 'friendly', 'none'] as const;
@@ -175,7 +175,7 @@ export function RuntimeControlsModal({
                 permission_mode: next as PermissionMode,
                 network_access: next === 'full_access' ? true : current.network_access,
               }))}
-              options={PERMISSION_OPTIONS}
+              options={permissionOptions(draft.permission_mode)}
               ariaLabel={t('runtimeControls.permissionsAriaLabel')}
               disabled={busy}
             />

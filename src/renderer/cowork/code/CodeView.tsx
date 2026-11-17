@@ -7,6 +7,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { QuestionCard } from './QuestionCard';
 import { PlanDecision } from './PlanDecision';
 import { TaskAttentionBar } from './TaskAttentionBar';
+import { WorkspaceCleanupNotice } from './WorkspaceCleanupNotice';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
 import { CodeProjectsView } from './CodeProjectsView';
@@ -17,7 +18,7 @@ import { EventTimeline } from './EventTimeline';
 import { useDockInset } from '../components/chat/useDockInset';
 import { ComposerLip } from './ComposerLip';
 import { PromptQueue } from './ComposerMenus';
-import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice, releaseNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice, releaseNotice, writesNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -292,6 +293,7 @@ export default function CodeView({
     releaseNotice(session),
     messageNotice('error', conversationError),
     messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
+    writesNotice(session),
     queueNotice(session),
   ] : [], selectedId);
   const approval = session?.pending_approval?.id === resolvingApprovalId
@@ -350,6 +352,7 @@ export default function CodeView({
   return (
     <SkillScopeContext.Provider value={skillScopeKey}>
       <div className="code-page">
+        <WorkspaceCleanupNotice key={skillScopeKey} active={active} taskCount={sessions.length} />
         <TaskAttentionBar sessions={sessions} selectedId={newTask ? null : selectedId} active={active} scopeKey={skillScopeKey} onSelect={id => onAttentionSelect ? onAttentionSelect(id) : onSelectionChange(id, false)} />
         <DeliveryAutomationMonitor
           sessions={sessions}
@@ -556,6 +559,10 @@ export default function CodeView({
                         }));
                       }}
                       onReopen={() => void recoverTask(session.id)}
+                      onAllowWrites={() => runAction(
+                        () => codingApi.updateSession(session.id, { writes_allowed: true }),
+                        true,
+                      )}
                       onDismiss={lip.dismiss}
                     />
                   )}

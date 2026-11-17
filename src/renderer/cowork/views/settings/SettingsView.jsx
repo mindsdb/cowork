@@ -4,7 +4,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted, isModelBudgetReached } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -938,7 +938,7 @@ export default function SettingsView({
   // Per-role "refetching model list on dropdown open" flag — drives the
   // trigger's spinner so a still-open dropdown showing possibly-stale
   // locked/unlocked state doesn't read as done loading.
-  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false, codingAgent: false });
+  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false, codingAgent: false, image: false });
   // Start by distrusting a persisted provider failure. The mount-time check
   // below decides whether it is still real before failure UI is shown. A deployment
   // with testing disabled keeps the stored result without running connectivity tests.
@@ -1747,6 +1747,13 @@ export default function SettingsView({
                   visibleProviders[0];
                 const multipleProviders = visibleProviders.length > 1;
 
+                // Plain bold field label. Note: no dotted underline — that reads as
+                // a "hover for a tooltip" affordance, and none is wired here.
+                const fieldLabel = (text) => (
+                  <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}</span>
+                );
+
+
                 // For each role: render provider selector (when N>1) +
                 // model field. When the user picks a new provider, auto-
                 // fill the role with that provider's recommended default
@@ -1847,12 +1854,6 @@ export default function SettingsView({
                     // send an effort the newly-selected model doesn't accept.
                     if (effortKey) setSetting(effortKey, '');
                   };
-
-                  // Plain bold field label. Note: no dotted underline — that reads as
-                  // a "hover for a tooltip" affordance, and none is wired here.
-                  const fieldLabel = (text) => (
-                    <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}</span>
-                  );
 
                   const probeNoticeNode = probeNotice ? (
                     <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} providerTestsAvailable={providerTestsAvailable} />
@@ -2015,6 +2016,71 @@ export default function SettingsView({
                     </Section>
                   );
                 };
+                // The model Anton's generate_image tool runs on (ENG-4024).
+                // MindsHub serves every image model, so there is no provider to
+                // pick and no free-text id: just the catalog's `kind: "image"`
+                // rows, which no chat row above ever lists.
+                const ImageModelRow = () => {
+                  const imageModels = Array.isArray(settings.imageModels) ? settings.imageModels : [];
+                  const subtitle = t('agent.roles.imageSubtitle');
+                  if (imageModels.length === 0) {
+                    // With MindsHub connected and still no image models, the
+                    // catalog has none to offer (or could not be read), and a
+                    // row with nothing in it is noise. An org runs on its
+                    // managed MindsHub, and has no LLM Providers section to
+                    // point at, so the same holds there.
+                    const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
+                    if (orgMode || (minds && providerConfigured(minds))) return null;
+                    return (
+                      <Section title={t('agent.roles.image')} subtitle={subtitle}>
+                        <div className="text-[11.5px] text-ink-3">
+                          {t('agent.imageModelNeedsMindsHub')}
+                        </div>
+                      </Section>
+                    );
+                  }
+                  const modelEnabled = settings.modelEnabled || {};
+                  const curModel = resolveImageModel(settings.imageModel, {
+                    catalogDefault: settings.imageModelDefault,
+                  });
+                  // No free text here (allowOther false), so a saved id the
+                  // catalog dropped shows as a stale pin to re-pick.
+                  const { showStalePin, selectValue } = resolveModelPickerValue(curModel, imageModels, false);
+                  const modelOptions = buildModelOptions(
+                    curModel, imageModels, false, showStalePin, modelEnabled,
+                    settings.modelLabels || {},
+                    {
+                      modelProviders: settings.modelProviders,
+                      modelFamilies: settings.modelFamilies,
+                      modelDisabledReasons: settings.modelDisabledReasons,
+                    },
+                  );
+                  return (
+                    <Section title={t('agent.roles.image')} subtitle={subtitle}>
+                      <div className="grid gap-1.5">
+                        <label className="grid gap-1">
+                          {fieldLabel(t('agent.modelLabel'))}
+                          <ModelSelect
+                            value={selectValue}
+                            onValueChange={(next) => setSetting('imageModel', next)}
+                            onOpenChange={(isOpen) => refreshModelsOnOpen('image', isOpen)}
+                            loading={modelRefreshing.image}
+                            title={t('agent.imageModelHint')}
+                            options={modelOptions}
+                          />
+                        </label>
+                        {!!curModel && isModelLocked(modelEnabled, curModel) && (
+                          <UnavailableModelHint
+                            label={displayModelLabel(curModel, settings.modelLabels || {})}
+                            restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
+                            budgetReached={isModelBudgetReached(modelEnabled, settings.modelDisabledReasons, curModel)}
+                            isBillingOwner={isBillingOwner}
+                          />
+                        )}
+                      </div>
+                    </Section>
+                  );
+                };
                 return (
                   <>
                     {RoleRow({ role: 'planning', label: t('agent.roles.planning') })}
@@ -2023,6 +2089,7 @@ export default function SettingsView({
                     {showRouterRoleRow(settings.routing, settings.gate)
                       && RoleRow({ role: 'router', label: t('agent.roles.router') })}
                     {RoleRow({ role: 'coding', label: t('agent.roles.coding') })}
+                    {ImageModelRow()}
                     {/* The decision model: Jev when signed in to MindsHub for
                         inference, else the organization's own endpoint, for
                         whoever may set it (routing.canSetDecisionModel). */}

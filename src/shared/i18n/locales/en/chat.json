@@ -744,6 +744,31 @@
     "couldNotStart": "Couldn't start the voice call.",
     "endedReason": "The call ended ({reason})."
   },
+  "connectorDraft": {
+    "notSaved": "Connector template · not saved",
+    "kept": "You already keep a connector with this id. Saving again replaces it.",
+    "saved": "Saved. Add your credentials in Connect Apps and Data.",
+    "savedConnect": "Saved. Connect it to add your credentials.",
+    "saveFailed": "Could not save the connector.",
+    "button": {
+      "save": "Save connector",
+      "saveAgain": "Save again",
+      "saving": "Saving…",
+      "done": "Saved",
+      "connect": "Connect"
+    },
+    "modal": {
+      "fieldsTitle": "What you will enter",
+      "usageTitle": "How Anton will use it",
+      "helpUrl": "Where to find them: {url}"
+    },
+    "field": {
+      "secret": "secret",
+      "required": "required",
+      "optional": "optional",
+      "example": "Example: {value}"
+    }
+  },
   "notionPicker": {
     "title": "Add pages from Notion",
     "subtitle": "Search your Notion and pick pages for this message.",
@@ -754,5 +779,10 @@
     "database": "Database",
     "cancel": "Cancel",
     "add": "{count, plural, =0 {Add page} one {Add page} other {Add # pages}}"
+  },
+  "generatedImage": {
+    "fallbackName": "image",
+    "alt": "Generated image {name}",
+    "notShown": "{name} could not be shown. It may have been moved or deleted."
   }
 }

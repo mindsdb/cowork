@@ -40,6 +40,7 @@ import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
+import ConnectorDraftCard from '../components/ConnectorDraftCard';
 import AskUserCard from '../components/AskUserCard';
 import HandOverCard from '../components/HandOverCard';
 import ChatCardShell, { cardActions } from '../components/ChatCardShell';
@@ -48,6 +49,7 @@ import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as 
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser, openBrowserAt } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
+import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
 import { canPreviewDocument } from '../preview/kinds';
@@ -688,7 +690,7 @@ function justFinished(message) {
    hand-over handed back or stopped follow the turn's Browser row. */
 const followsBrowserRow = (step) => answeredBrowserStep(step) || finishedHandOverStep(step);
 
-function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false, agentLabel = null, onMoveAddonToQueue = null }) {
+function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false, agentLabel = null, onMoveAddonToQueue = null, imageSource = null }) {
   // Only show the browser when I'm needed (Settings): a turn's browser steps
   // are one row, labelled by the latest (lib/browserSteps.js).
   const { onlyWhenNeeded } = useBrowserPrefs();
@@ -708,6 +710,22 @@ function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conver
   const out = [];
   let prevWasCard = false;
   segments.forEach((seg, idx) => {
+    if (seg.kind === 'image') {
+      out.push(
+        // A picture generate_image wrote, where it was made (ENG-4024). Same
+        // spacing as a tool's message: it is not part of a block.
+        <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          <GeneratedImageCard
+            image={seg.step.data || {}}
+            projectName={imageSource?.projectName ?? null}
+            projectPath={imageSource?.projectPath || ''}
+            onOpen={imageSource?.onOpen ?? null}
+          />
+        </div>,
+      );
+      prevWasCard = true;
+      return;
+    }
     if (seg.kind === 'message') {
       out.push(
         // Same spacing as a question card: the message is not part of a block.
@@ -827,6 +845,20 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
     <div className="flex flex-col gap-3 mt-1">
       {skills.map((s) => (
         <SkillCard key={s.id} skill={s.data || {}} projectName={projectName} />
+      ))}
+    </div>
+  );
+}
+
+// Renders any badge='Connector' steps as inline connector template cards: a
+// template a cloud turn built, which the member saves from the card.
+function StepConnectorDrafts({ steps, onConnect }) {
+  const drafts = steps?.filter((s) => s.badge === 'Connector') || [];
+  if (drafts.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3 mt-1">
+      {drafts.map((s) => (
+        <ConnectorDraftCard key={s.id} connector={s.data || {}} onConnect={onConnect} />
       ))}
     </div>
   );
@@ -2076,6 +2108,8 @@ export default function ChatView({
   deletingTurnMessageId = null,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
+  // Opens a saved custom connector's connect form from its draft card.
+  onConnectCustomConnector,
   onDismissConnectForm,
   onCancelModify,
   onDisconnectModify,
@@ -2189,6 +2223,9 @@ export default function ChatView({
   /* The figure source (a LinkedFigureSource) whose file is open in the
      figure viewer. null = closed. */
   const [figureFileSource, setFigureFileSource] = useState(null);
+  /* The project-relative path of a generated image open in the file viewer
+     (ENG-4024). null = closed. */
+  const [openImagePath, setOpenImagePath] = useState(null);
   // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
   // iframe modal; text artifacts (.md/.txt/.csv) open the same viewer
   // but render via the inline text path (no iframe, no OS handoff).
@@ -2287,6 +2324,16 @@ export default function ChatView({
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
+  // Where an inline generated image (ENG-4024) is read from: the project the
+  // chat runs in, whose folder is Anton's workspace. The project's slug
+  // addresses its files route and is never shown. Memoised so the turn
+  // segments it rides into don't re-render on its account.
+  const projectSlug = project?.name ?? null;
+  const generatedImageSource = useMemo(() => ({
+    projectName: projectSlug,
+    projectPath: artifactProjectPath,
+    onOpen: setOpenImagePath,
+  }), [projectSlug, artifactProjectPath]);
   // Which project's artifacts the liveness store should describe. An effect, not
   // a render-time call: the store emits. Both deps are primitives, so an equal
   // scope cannot re-trigger it.
@@ -3870,6 +3917,7 @@ export default function ChatView({
                     // Only right after it finished live: reopening the task
                     // later shows the steps already folded.
                     collapseOnMount={justFinished(m)}
+                    imageSource={generatedImageSource}
                   />
                   <TextBlock
                     text={m.content}
@@ -3892,6 +3940,7 @@ export default function ChatView({
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
+                  <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
                   {m.incompleteReason && (
                     // role="note": a saved answer's notice must not be announced again on every reload.
                     <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
@@ -3942,6 +3991,7 @@ export default function ChatView({
                   idPrefix={streamingKey}
                   agentLabel={agentLabel}
                   onMoveAddonToQueue={onMoveAddonToQueue}
+                  imageSource={generatedImageSource}
                   live={{
                     isActive: isThinkingActive(streamingMsg.streamStatus),
                     currentThought: streamingMsg.currentThought,
@@ -3958,6 +4008,7 @@ export default function ChatView({
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
+                <StepConnectorDrafts steps={streamingMsg.steps} onConnect={onConnectCustomConnector} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" showActions={false}>
@@ -4232,6 +4283,21 @@ export default function ChatView({
         remover={null}
         note={figureFileNote(figureFileSource)}
         onClose={() => setFigureFileSource(null)}
+      />
+
+      {/* A generated image opened from its inline card (ENG-4024). Read only:
+          the picture is the agent's output, and edits belong in a new turn.
+          The agent named the path, so, as in the figure viewer, no Open (it
+          hands the file to the OS default app). */}
+      <ContextFileModal
+        open={openImagePath != null}
+        projectName={project?.name}
+        projectPath={artifactProjectPath}
+        filePath={openImagePath || ''}
+        showOpenAction={false}
+        showEditAction={false}
+        remover={null}
+        onClose={() => setOpenImagePath(null)}
       />
 
       {/* Inline ArtifactCard viewer — same modal the Live artifacts
