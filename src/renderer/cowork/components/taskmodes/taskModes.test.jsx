@@ -183,6 +183,7 @@ describe('TASK_MODES data', () => {
       'Pull key terms out of a contract',
       'Coach me on a deal from a call transcript',
       'Turn meeting notes into action items',
+      'Make a study guide from course material',
     ].sort());
   });
 

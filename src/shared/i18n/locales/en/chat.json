@@ -497,7 +497,8 @@
         "1": "Analyze competitor landscape and positioning",
         "2": "Automate weekly team status reporting",
         "3": "Research market opportunity for product launch",
-        "4": "Draft this week's update from last week's"
+        "4": "Draft this week's update from last week's",
+        "5": "Turn a report into a presentation"
       }
     },
     "website": {
@@ -542,7 +543,8 @@
         "3": "Compare top VLM models using Hugging Face data",
         "4": "Calculate IRR for investment cash flows",
         "5": "Clean up my spreadsheet and chart it",
-        "6": "Pull key terms out of a contract"
+        "6": "Pull key terms out of a contract",
+        "7": "Turn a bank statement into a spreadsheet"
       }
     },
     "visualization": {
@@ -573,7 +575,10 @@
         "7": "Review what is on my plate this week",
         "8": "Research a prospect and draft outreach",
         "9": "Coach me on a deal from a call transcript",
-        "10": "Turn meeting notes into action items"
+        "10": "Turn meeting notes into action items",
+        "11": "Map a competitor's go-to-market",
+        "12": "Make a study guide from course material",
+        "13": "Build a ranked lead list"
       }
     },
     "games": {

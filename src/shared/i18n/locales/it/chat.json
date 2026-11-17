@@ -497,7 +497,8 @@
         "1": "Analizza il panorama competitivo e il posizionamento",
         "2": "Automatizza il report settimanale sullo stato del team",
         "3": "Valuta l’opportunità di mercato per il lancio di un prodotto",
-        "4": "Prepara l’aggiornamento di questa settimana partendo da quello della scorsa"
+        "4": "Prepara l’aggiornamento di questa settimana partendo da quello della scorsa",
+        "5": "Trasforma un report in una presentazione"
       }
     },
     "website": {
@@ -542,7 +543,8 @@
         "3": "Confronta i migliori VLM usando i dati di Hugging Face",
         "4": "Calcola l’IRR dei flussi di cassa di un investimento",
         "5": "Riordina il mio foglio di calcolo e creane un grafico",
-        "6": "Estrai i termini chiave di un contratto"
+        "6": "Estrai i termini chiave di un contratto",
+        "7": "Trasforma un estratto conto in un foglio di calcolo"
       }
     },
     "visualization": {
@@ -573,7 +575,10 @@
         "7": "Rivedi cosa ho in programma questa settimana",
         "8": "Fai ricerche su un potenziale cliente e prepara un primo contatto",
         "9": "Consigliami su una trattativa a partire dalla trascrizione di una chiamata",
-        "10": "Trasforma le note di una riunione in azioni da fare"
+        "10": "Trasforma le note di una riunione in azioni da fare",
+        "11": "Mappa la strategia go-to-market di un concorrente",
+        "12": "Crea una guida di studio dal materiale del corso",
+        "13": "Crea una lista di lead in ordine di priorità"
       }
     },
     "games": {
