@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -29,7 +29,7 @@ vi.mock('../../../platform/host', async (importOriginal) => {
 });
 vi.mock('../../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
 
-import { MarkdownContent } from './MarkdownContent';
+import { MarkdownContent, _loadKatex } from './MarkdownContent';
 import { NO_SOURCE_TEXT, REPEATED_TEXT, linkFigureSteps, rebaseFigureSources } from '../../lib/figureSources';
 import { initialStreamState, reduceStream } from '../../lib/responseStreamAdapter';
 import { hydrateMessagesFromServerEvents } from '../../lib/conversationHistory';
@@ -55,6 +55,12 @@ const RICH = [
   'SELECT 250;',
   '```',
 ].join('\n');
+
+// KaTeX loads on first use; load it up front so math renders as it does once
+// the app has it, rather than as the code fallback shown while it loads.
+beforeAll(async () => {
+  await _loadKatex();
+});
 
 describe('MarkdownContent without figure sources', () => {
   it('renders an answer exactly as it did before figure sources existed', () => {

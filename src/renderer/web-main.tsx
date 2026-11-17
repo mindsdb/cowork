@@ -33,10 +33,6 @@ import { ReactKeycloakProvider } from '@react-keycloak/web';
 // the Electron bundle, where the App-subtree CSS imports execute before
 // main.tsx's tailwind.css import. Before this reorder the web bundle had
 // the opposite tie-resolution from Electron for every migrated component.
-/* KaTeX's stylesheet for the math MarkdownContent renders (remark-math and
- * rehype-katex), before globals.css so its `.katex-display` tweaks win, as in
- * main.tsx. Without it the browser shows each formula's MathML copy as text. */
-import 'katex/dist/katex.min.css';
 import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';

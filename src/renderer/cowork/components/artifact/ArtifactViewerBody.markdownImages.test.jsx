@@ -153,7 +153,8 @@ describe('ArtifactViewerBody Markdown images', () => {
 
     rerender(renderBody({ mode: 'edit', text }));
 
-    const pane = screen.getByRole('region', { name: 'Markdown preview' });
+    // The source editor is lazy-loaded, so its preview mounts once the chunk resolves.
+    const pane = await screen.findByRole('region', { name: 'Markdown preview' });
     await waitFor(() => expect(pane.querySelector('img')?.getAttribute('src')).toBe('blob:chart'));
     expect(mocks.authFetch).toHaveBeenCalledTimes(1);
   });
@@ -182,7 +183,8 @@ describe('ArtifactViewerBody Markdown images', () => {
     mocks.authFetch.mockResolvedValue({ ok: false, status: 404 });
     const { rerender } = render(renderBody({ mode: 'edit', text: '![Missing chart](missing.png)' }));
 
-    const pane = screen.getByRole('region', { name: 'Markdown preview' });
+    // The source editor is lazy-loaded, so its preview mounts once the chunk resolves.
+    const pane = await screen.findByRole('region', { name: 'Markdown preview' });
     await waitFor(() => expect(pane).toHaveTextContent('Missing chart'));
 
     rerender(renderBody({ mode: 'edit', text: '# Added heading\n\n![Missing chart](missing.png)' }));
