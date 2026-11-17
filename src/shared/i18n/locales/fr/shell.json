@@ -53,6 +53,8 @@
       "openNamedInDrive": "Ouvrir « {name} » dans Google Drive",
       "untitled": "sans titre",
       "openInDrive": "Ouvrir dans Google Drive",
+      "openNamedInNotion": "Ouvrir « {name} » dans Notion",
+      "openInNotion": "Ouvrir dans Notion",
       "removeFromProjectFiles": "Retirer des fichiers du projet",
       "removeFromProjectFilesAriaLabel": "Retirer {name} des fichiers du projet",
       "loadAttachmentsFailed": "Impossible de charger les pièces jointes",
@@ -278,6 +280,8 @@
     "settings": "Paramètres",
     "billing": "Facturation et utilisation",
     "members": "Membres",
+    "apiKeys": "Clés API",
+    "apiDocs": "Documentation de l’API",
     "help": "Aide et commentaires",
     "manageOrg": "Gérer l’organisation",
     "logout": "Se déconnecter",
@@ -400,9 +404,14 @@
       "operatorTitle": "Un fournisseur doit être configuré",
       "body": "Commencez avec MindsHub et profitez d’un quota gratuit sur MindsHub Air, puis payez à l’usage. Ou ajoutez votre propre clé API (Anthropic, OpenAI ou tout point de terminaison compatible OpenAI) dans les paramètres.",
       "operatorBody": "Demandez à votre opérateur de configurer le fournisseur de modèles avant de lancer une tâche.",
-      "startFree": "Commencer gratuitement"
+      "startFree": "Commencer gratuitement",
+      "bodyMobile": "Connectez votre propre fournisseur dans les paramètres."
     },
-    "handoffHint": "Modifiez ce prompt, puis envoyez-le quand vous êtes prêt."
+    "handoffHint": "Modifiez ce prompt, puis envoyez-le quand vous êtes prêt.",
+    "signupWelcome": {
+      "fromDesktop": "Votre compte est prêt. Vous pouvez commencer ici, ou revenir dans l’app {product} et vous connecter.",
+      "dismiss": "Fermer"
+    }
   },
   "logout": {
     "title": "Se déconnecter de {product} ?",

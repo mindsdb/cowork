@@ -104,6 +104,29 @@ test('finds English hard-coded in JSX text and readable attributes', () => {
   assert.deepEqual(findLiterals(source).map((h) => h.text), ['Sidebar logo', 'Changes are saved automatically.']);
 });
 
+test('keeps apostrophes inside and at the end of JSX text', () => {
+  const source = [
+    "<span>Don't lose the users' files</span>",
+    "<b>Save the users'</b>",
+    '<p>It’s ready, isn’t it?</p>',
+  ].join('\n');
+  assert.deepEqual(findLiterals(source).map((h) => h.text), [
+    "Don't lose the users' files",
+    "Save the users'",
+    'It’s ready, isn’t it?',
+  ]);
+});
+
+test('gives up on a line of repeated apostrophe words in linear time', () => {
+  /* The shape CodeQL's js/redos names: "Aa A" then many "'A", with no tag
+     after it. A pattern whose separator and word classes both take the
+     apostrophe needs seconds on this line; a linear one needs microseconds. */
+  const line = `>Aa A${"'A".repeat(26)}! x`;
+  const started = performance.now();
+  assert.deepEqual(findLiterals(line), []);
+  assert.ok(performance.now() - started < 1000, 'findLiterals backtracked on a repeated-apostrophe line');
+});
+
 test('skips allowlisted names', () => {
   assert.deepEqual(findLiterals('<span>MindsHub Cowork</span>', new Set(['MindsHub Cowork'])), []);
 });

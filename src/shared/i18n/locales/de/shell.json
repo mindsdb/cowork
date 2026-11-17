@@ -53,6 +53,8 @@
       "openNamedInDrive": "„{name}“ in Google Drive öffnen",
       "untitled": "Unbenannt",
       "openInDrive": "In Google Drive öffnen",
+      "openNamedInNotion": "„{name}“ in Notion öffnen",
+      "openInNotion": "In Notion öffnen",
       "removeFromProjectFiles": "Aus Projektdateien entfernen",
       "removeFromProjectFilesAriaLabel": "{name} aus Projektdateien entfernen",
       "loadAttachmentsFailed": "Anhänge konnten nicht geladen werden",
@@ -278,6 +280,8 @@
     "settings": "Einstellungen",
     "billing": "Abrechnung und Nutzung",
     "members": "Mitglieder",
+    "apiKeys": "API-Schlüssel",
+    "apiDocs": "API-Dokumentation",
     "help": "Hilfe und Feedback",
     "manageOrg": "Organisation verwalten",
     "logout": "Abmelden",
@@ -400,9 +404,14 @@
       "operatorTitle": "Anbieter muss eingerichtet werden",
       "body": "Starten Sie mit MindsHub und erhalten Sie ein Gratiskontingent für MindsHub Air, danach zahlen Sie nach Nutzung. Oder fügen Sie in den Einstellungen Ihren eigenen API-Schlüssel hinzu (Anthropic, OpenAI oder ein beliebiger OpenAI-kompatibler Endpunkt).",
       "operatorBody": "Bitten Sie Ihren Betreiber, den Modellanbieter zu konfigurieren, bevor Sie eine Aufgabe starten.",
-      "startFree": "Kostenlos starten"
+      "startFree": "Kostenlos starten",
+      "bodyMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen."
     },
-    "handoffHint": "Bearbeiten Sie diesen Prompt und senden Sie ihn, wenn Sie bereit sind."
+    "handoffHint": "Bearbeiten Sie diesen Prompt und senden Sie ihn, wenn Sie bereit sind.",
+    "signupWelcome": {
+      "fromDesktop": "Ihr Konto ist bereit. Sie können direkt hier loslegen oder zur {product}-App zurückkehren und sich anmelden.",
+      "dismiss": "Schließen"
+    }
   },
   "logout": {
     "title": "Von {product} abmelden?",

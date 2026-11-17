@@ -364,6 +364,8 @@ export type PageWorldRequest =
   /* Element `id`'s state for a hand-over's watch (HandbackElement), or null
      once it left the page. */
   | { kind: 'handbackElement'; id: number }
+  /* The control a click at this point of the viewport lands on. */
+  | { kind: 'atPoint'; x: number; y: number }
   | { kind: 'watch' };
 
 export interface RawSnapshot {
@@ -405,6 +407,12 @@ export type LocateResult =
 export type SelectResult =
   | { ok: true; chosen: string[] }
   | { ok: false; reason: 'not_found' | 'secret' | 'not_select' | 'no_option' | 'single'; options?: string[] };
+
+/** The control under a point that a click there would press: a button, a
+    link, a menu item, a tab, an option or another clickable element, with its
+    element id. Null when the point is on none of those (plain content, a text
+    field, a check box, a slider) or on a frame, whose inside isn't readable. */
+export type PointControl = { id: number; role: string; name: string } | null;
 
 /** A text field focused for typing. `selected`: its text is selected, so a
     Backspace clears it. A secret field is left alone, and `unfocusable` means
@@ -648,6 +656,13 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     if (el.hasAttribute('onclick') || (tabindex !== null && tabindex !== '-1')) return 'clickable';
     return '';
   };
+
+  /* Roles a click by position may not land on: one of them can commit
+     something (Place order, Send, Delete), and only the agent's gate can tell
+     which, so the step must name the element. */
+  const POINT_CONTROL_ROLES = new Set([
+    'button', 'link', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'tab', 'option', 'treeitem', 'clickable',
+  ]);
 
   const textOf = (el: Element): string => (el as HTMLElement).innerText ?? el.textContent ?? '';
 
@@ -1844,6 +1859,23 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     }
     case 'frameOwner':
       return ownerAt(request.path, request.url);
+    case 'atPoint': {
+      // The deepest element there, inside open shadow roots too.
+      const el = typeof doc.elementFromPoint === 'function' ? hitAt(request.x, request.y) : null;
+      /* The nearest element a person would click: a label inside a button
+         is the button. Frame owners are never elements here (roleOf names
+         none), so the walk stops at one that holds a frame: a click there
+         lands in its document, which frameGuard holds. */
+      for (let at: Node | null = el; at; at = parentAcross(at)) {
+        if (at.nodeType !== 1) continue;
+        if (holdsFrame(at as Element)) return null;
+        const role = roleOf(at as Element);
+        if (!role) continue;
+        if (!POINT_CONTROL_ROLES.has(role)) return null;
+        return { id: idOf(at as Element), role, name: nameOf(at as Element, role) } satisfies PointControl;
+      }
+      return null;
+    }
     case 'watch':
       world.observer ??= new MutationObserver(onMutations);
       watchRoot(doc);

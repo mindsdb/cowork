@@ -97,6 +97,7 @@ import { Icon } from './ui/Icon';
 import { cn } from '../lib/cn';
 import { groupModelOptions, modelMaker } from '../lib/modelCatalog';
 import { USAGE_ACTIONS, usageActionUrl } from '../lib/usageWarnings';
+import { offersBilling } from '../lib/billingLinks';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
@@ -168,6 +169,7 @@ const PIN_BOTTOM = '__pinned-bottom__';
  * disabled, which the builders never produce.
  */
 function creditsAction(t, isBillingOwner) {
+  if (!offersBilling()) return null;
   return (
     <Tooltip content={t('picker.addCreditsTooltip')}>
       <button

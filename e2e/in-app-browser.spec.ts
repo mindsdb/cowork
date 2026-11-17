@@ -450,13 +450,13 @@ async function startFixtureServer(): Promise<void> {
         .end(`<title>Clear</title><button style="${at}">Under</button><iframe src="${buy}" style="${at};opacity:0"></iframe>`);
     }
     if (url.pathname === '/moving-frame') {
-      /* Another site's frame that slides over the button once the pointer
-         moves on the page. */
+      /* Another site's frame that slides over the button, and over the
+         page's own content below it, once the pointer moves on the page. */
       const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Moving</title><style>body{margin:0}</style>'
           + '<button onclick="document.title = \'clicked\'" style="position:absolute;left:0;top:200px;width:300px;height:100px">Go</button>'
-          + `<iframe id="f" src="${buy}" style="position:absolute;left:600px;top:0;width:300px;height:100px;border:0"></iframe>`
+          + `<iframe id="f" src="${buy}" style="position:absolute;left:600px;top:0;width:300px;height:160px;border:0"></iframe>`
           + '<script>addEventListener("pointermove", () => { const f = document.getElementById("f"); f.style.left = "0px"; f.style.top = "200px"; }, { once: true })</script>');
     }
     if (url.pathname === '/swap-frame') {
@@ -1314,7 +1314,8 @@ test('refuses a click whose point a frame slides over as the pointer arrives, by
   expect(byNumber.status, byNumber.body.toString()).toBe(409);
   expect(byNumber.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
   await openAt('/moving-frame');
-  const byPosition = await act({ action: 'click', x: 20, y: 220, coords: 'page' });
+  // By position on the page's content below Go: a click by position on Go itself is refused as one on a control.
+  const byPosition = await act({ action: 'click', x: 20, y: 330, coords: 'page' });
   expect(byPosition.status, byPosition.body.toString()).toBe(409);
   expect(byPosition.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
   await new Promise((resolve) => setTimeout(resolve, 500));

@@ -108,7 +108,10 @@
       "tryAgain": "Riprova",
       "adminSpendingLimitBody": "È stato raggiunto il limite di spesa impostato dall’amministratore. Contatta l’amministratore.",
       "budgetUsedUpTitle": "Il budget della tua organizzazione è esaurito",
-      "viewBudgets": "Visualizza budget"
+      "viewBudgets": "Visualizza budget",
+      "balanceRanOutMobile": "Il saldo si è esaurito prima del completamento dell’attività.",
+      "autoTopUpFailedBodyMobile": "Non è stato possibile addebitare la tua carta.",
+      "connectProviderBodyMobile": "Collega il tuo provider in Impostazioni."
     },
     "usageAlert": {
       "freeLow": "Quota gratuita di Air rimanente: {percent}",
@@ -142,7 +145,8 @@
       "needsCreditsTitle": "{model} richiede crediti",
       "needsCreditsBody": "Non hai crediti sufficienti per questo modello. Ricarica il saldo per usarlo.",
       "disabledBody": "Questo modello è disattivato per la tua area di lavoro. Scegline un altro in Impostazioni.",
-      "topUpBalance": "Ricarica saldo"
+      "topUpBalance": "Ricarica saldo",
+      "needsCreditsBodyMobile": "Non hai crediti sufficienti per questo modello."
     },
     "overloaded": {
       "theModelProvider": "Il provider del modello",
@@ -739,5 +743,16 @@
     "noMicrophone": "Nessun microfono trovato.",
     "couldNotStart": "Impossibile avviare la chiamata vocale.",
     "endedReason": "La chiamata è terminata ({reason})."
+  },
+  "notionPicker": {
+    "title": "Aggiungi pagine da Notion",
+    "subtitle": "Cerca nel tuo Notion e scegli le pagine per questo messaggio.",
+    "searchPlaceholder": "Cerca pagine di Notion…",
+    "searchAriaLabel": "Cerca pagine di Notion",
+    "minQuery": "{count, plural, one {Digita almeno # carattere per cercare.} other {Digita almeno # caratteri per cercare.}}",
+    "noResults": "Nessuna pagina trovata.",
+    "database": "Database",
+    "cancel": "Annulla",
+    "add": "{count, plural, =0 {Aggiungi pagina} one {Aggiungi pagina} other {Aggiungi # pagine}}"
   }
 }

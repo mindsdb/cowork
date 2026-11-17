@@ -69,6 +69,7 @@ import {
   pageAnswer,
   pageWorldSource,
   type PageWorldRequest,
+  type PointControl,
   type RawFrame,
   type RawSnapshot,
   screenshotMasks,
@@ -538,6 +539,7 @@ export class ElectronTab implements TabView {
         viewport: () => inStep<{ width: number; height: number }>({ kind: 'viewport' }),
         hitTest: (id, points) => inStep<HitTestResult>({ kind: 'hitTest', id, points, childFrames: this.contents.mainFrame.frames.length }),
         secretAt: (at) => inStep<boolean>({ kind: 'secretAt', at }),
+        atPoint: (at) => inStep<PointControl>({ kind: 'atPoint', x: at.x, y: at.y }),
       },
       nav: {
         load: (url) => unlessTakenOver(signal, () => this.load(url)),

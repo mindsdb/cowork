@@ -106,7 +106,7 @@ export async function declineBrowserApproval(ids, decline = declineBrowserStep) 
    without the person's approval, whatever the setting: the app approves that
    card itself and never shows it. A step that commits something (a purchase,
    a message, a deletion) keeps its card while the person approves browser
-   steps (Settings > Shared browser, on by default); with that off, the app
+   steps (Settings > Browser mode, on by default); with that off, the app
    approves it too (isAutoApprovedCard). */
 export const POSITION_APPROVE_DETAIL = 'Allow clicks by position on this page';
 

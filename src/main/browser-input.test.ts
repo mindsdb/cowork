@@ -44,6 +44,7 @@ function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing, cdp: 
     viewport: vi.fn(async () => VIEWPORT),
     hitTest: vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: 0, throughFrame: -1 })),
     secretAt: vi.fn(async () => false),
+    atPoint: vi.fn(async () => null),
     ...over,
   };
   const nav = { load: vi.fn(async () => {}), back: vi.fn(async () => {}), forward: vi.fn(async () => {}), reload: vi.fn(async () => {}) };
@@ -157,6 +158,25 @@ describe('runStep', () => {
     const pressed = events(dbg.sent, 'Input.dispatchMouseEvent').find((e) => e.type === 'mousePressed')!;
     expect(pressed.x).toBeCloseTo(800);
     expect(pressed.y).toBeCloseTo(156.25);
+  });
+
+  it('refuses a click by position on a control and names its element, so the gate can hold it', async () => {
+    const { dbg, page, stepHost } = host({ atPoint: vi.fn(async () => ({ id: 9, role: 'button', name: 'Place order' })) });
+    await expect(runStep(stepHost, step({ action: 'click', x: 412, y: 230, coords: 'page' }))).rejects.toMatchObject({
+      code: 'bad_request',
+      message: 'the point (412, 230) is on button "Place order", element 9; take this step on element 9 instead of by position',
+    });
+    expect(page.atPoint).toHaveBeenCalledWith({ x: 412, y: 230 });
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
+  });
+
+  it('refuses a drag that ends on a control, and never asks about an element the step names', async () => {
+    const atPoint = vi.fn(async () => ({ id: 4, role: 'link', name: '' }));
+    const { dbg, stepHost } = host({ atPoint });
+    await expect(runStep(stepHost, step({ action: 'drag', from: { element: 5 }, to: { x: 600, y: 300 }, coords: 'page' })))
+      .rejects.toThrow('the point (600, 300) is on link, element 4; take this step on element 4 instead of by position');
+    expect(atPoint).toHaveBeenCalledTimes(1);
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
   });
 
   it('types key by key, shift for capitals, and inserts what has no key', async () => {

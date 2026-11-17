@@ -11,6 +11,10 @@ describe('scheduleStatusBadge', () => {
     [{ running: false, state: 'auto_paused', lastRun: failedRun }, { label: 'Auto-paused', variant: 'danger' }],
     [{ running: false, state: 'missed', cadence: 'once' }, { label: 'Missed', variant: 'warning' }],
     [{ running: false, state: 'active', lastRun: failedRun }, { label: 'Last failed', variant: 'danger' }],
+    [
+      { running: false, state: 'active', lastRun: { status: 'failed', outcome: 'stopped_at_limit', error: 'limit' } },
+      { label: 'Stopped at a limit', variant: 'warning' },
+    ],
     // A one-off is disabled by its own run; its failure still shows.
     [{ running: false, state: 'done', cadence: 'once', lastRun: failedRun }, { label: 'Last failed', variant: 'danger' }],
     [{ running: false, state: 'done', cadence: 'once', lastRun: { status: 'success' } }, { label: 'Done', variant: 'muted' }],

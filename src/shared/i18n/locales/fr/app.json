@@ -271,5 +271,9 @@
     "callBackPending": "{agent} vous rappellera une fois terminé",
     "call": "Appeler {agent}",
     "anotherCall": "Un autre appel est en cours"
+  },
+  "notion": {
+    "connectTitle": "Connecter Notion ?",
+    "connectMessage": "Vous devez connecter votre espace de travail Notion pour ajouter des pages depuis Notion."
   }
 }

@@ -11,6 +11,7 @@ import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError, mindsProbeNotice, probePolicyUnavailableSentence, probeRateLimitedSentence } from '../../lib/providerStatus';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../../lib/usageWarnings';
+import { offersBilling } from '../../lib/billingLinks';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../components/ui';
@@ -19,8 +20,10 @@ import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { stockBackground } from '../../../lib/stockThemeTokens';
-import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../../lib/mindsUrls';
+import { STOCK_GREETING } from '../../../lib/orgBranding';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, mindsRegisterUrl, consoleUrlFor } from '../../../lib/mindsUrls';
 import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
+import { useAccountUser } from '../../hooks/useAccountUser';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
@@ -105,7 +108,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger font-semibold">{t('probe.noCredits')}{' '}</span>
-          <button
+          {offersBilling() && <button
             type="button"
             // Recorded before the navigation, so web and
             // desktop count identically. `host.openExternal` is
@@ -118,7 +121,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
               return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
             }}
             className={LINK_BTN}
-          >{t('probe.topUp')}</button>
+          >{t('probe.topUp')}</button>}
         </div>
         {byok}
       </div>
@@ -136,7 +139,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger">{body} </span>
-          <button
+          {offersBilling() && <button
             type="button"
             onClick={() => {
               // Literal triggers inline, so the analytics vocabulary sweep sees them.
@@ -144,7 +147,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
               return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
             }}
             className={LINK_BTN}
-          >{t('probe.addFunds')}</button>
+          >{t('probe.addFunds')}</button>}
         </div>
         {byok}
       </div>
@@ -182,6 +185,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
 /** The Budgets tab for this session's organization; credits do not lift a budget. */
 function ViewBudgetsLink({ children }) {
   const budgetsUrl = useBudgetsUrl();
+  if (!offersBilling()) return null;
   return (
     <button
       type="button"
@@ -219,6 +223,9 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
         <ViewBudgetsLink>{t('agent.viewBudgets')}</ViewBudgetsLink>
       </div>
     );
+  }
+  if (!offersBilling()) {
+    return <div className="text-[11.5px] text-ink-3">{t('agent.modelNeedsCreditsNoLink', { model: label })}</div>;
   }
   return (
     <div className="text-[11.5px] text-ink-3">
@@ -356,6 +363,13 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
       )}
     </div>
   );
+}
+
+// The greeting someone typed, or '' while it is still the server's stock
+// English, so the field shows the translated default as its placeholder.
+function ownGreeting(greeting) {
+  const text = typeof greeting === 'string' ? greeting.trim() : '';
+  return text && text !== STOCK_GREETING ? greeting : '';
 }
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel, disabled }) {
@@ -870,6 +884,15 @@ export default function SettingsView({
   const { settings, setSetting, dirty: settingsDirty } = draft;
   const lastSavedSettings = committedSettings;
   const codeModeAccess = useCodeModeAccess();
+  /* The MindsHub key link names the organization and account it was opened
+     for, as the account menu's console links do (ENG-3274), so the console
+     opens its API keys page on this organization rather than whichever one the
+     browser's own session has active. Whatever the token knows is sent; the
+     other providers' pages are not the console and stay bare. */
+  const accountUser = useAccountUser(isSsoConnected);
+  const getKeyHref = (type) => (type === 'minds-cloud' && GET_KEY_URL[type]
+    ? consoleUrlFor(GET_KEY_URL[type], { organizationId: accountUser?.orgId ?? null, subject: accountUser?.sub ?? null })
+    : GET_KEY_URL[type]);
   const canEditBranding = Boolean(orgBranding?.enabled && orgBranding?.canEdit);
   const visibleNav = navItemsForHost(
     host.isWeb,
@@ -1595,7 +1618,7 @@ export default function SettingsView({
                             {withLink(t('providers.getKey', { link: LINK_TOKEN }), (
                               <Tooltip content={t('providers.openInBrowser', { url: GET_KEY_URL[p.type].replace(/^https?:\/\//, '') })}>
                                 <a
-                                  href={GET_KEY_URL[p.type]}
+                                  href={getKeyHref(p.type)}
                                   target="_blank"
                                   rel="noreferrer noopener"
                                   className="text-accent"
@@ -1609,7 +1632,7 @@ export default function SettingsView({
                             {t('providers.noAccount')}{' '}
                             <Tooltip content={t('providers.signUpTooltip')}>
                               <a
-                                href={MINDS_REGISTER_URL}
+                                href={mindsRegisterUrl(isElectron ? 'desktop' : 'web')}
                                 target="_blank"
                                 rel="noreferrer noopener"
                                 className="text-accent"
@@ -2526,8 +2549,9 @@ export default function SettingsView({
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
-                value={orgLocks.greeting ? look.greeting : settings.greeting}
+                value={orgLocks.greeting ? look.greeting : ownGreeting(settings.greeting)}
                 onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
+                placeholder={t('shell:home.greetingFallback')}
                 disabled={orgLocks.greeting}
                 title={t('appearance.greeting.hint')}
                 ariaLabel={t('appearance.greeting.ariaLabel')}
