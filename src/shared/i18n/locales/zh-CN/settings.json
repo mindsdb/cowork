@@ -331,6 +331,7 @@
     "modelUnavailable": "{model} 不可用。请选择其他模型，或联系你的管理员。",
     "modelRestricted": "{model} 已被你所在组织的管理员限制使用。请选择其他模型。",
     "modelNeedsCredits": "{model} 需要积分。{link}后即可使用。",
+    "modelNeedsCreditsNoLink": "{model} 需要积分。",
     "topUpBalance": "充值余额",
     "modelBudgetReached": "你所在组织的预算已用完，无法运行 {model}。",
     "viewBudgets": "查看预算"

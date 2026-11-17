@@ -28,6 +28,7 @@ import {
 import { normalizeExternalBrowserUrl } from '../../shared/external-url';
 import { guardRestart, type GuardedRestartResult } from './restart-guard';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
+import { isMobileShell, mobileShell } from '../lib/mobileShell';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -43,6 +44,11 @@ const bridge: any =
 
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
+
+// Inside the mobile app (ENG-4023): a web build running in the
+// iOS/Android shell's webview. Always also `isWeb`. Use it to hide what makes
+// no sense on a phone (installers, "get the desktop app" offers).
+export { isMobileShell, mobileShell };
 
 // Static deployment capability. The user's opt-in is intentionally owned by
 // the renderer and stored per device; this flag only answers whether this
@@ -1165,6 +1171,42 @@ export async function keychainRevoke(engine: string, name: string, accountEmail:
   return { ok: false, reason: 'keychainRevoke is Electron-only.' };
 }
 
+// Desktop only: main holds the app secret the server requires for this change.
+// Null when this shell predates the bridge, so the caller makes the request itself.
+export async function setConnectionAccessMode(
+  engine: string,
+  name: string,
+  accessMode: string,
+): Promise<{ ok: boolean; access_mode?: string; status?: number; reason?: string } | null> {
+  if (isElectron && typeof bridge.setConnectionAccessMode === 'function') {
+    return bridge.setConnectionAccessMode({ engine, name, accessMode });
+  }
+  return null;
+}
+
+// What main returns for a Notion page search or fetch: the server's JSON, the
+// server's refusal as it sent it, or main's own refusal.
+export type NotionPagesBridgeResult =
+  | { ok: true; data: unknown }
+  | { ok: false; status: number; text: string; retryAfter: string | null }
+  | { ok: false; reason: string };
+
+// Desktop only: main holds the app secret the server requires for these. Null
+// when this shell predates the bridge, so the caller makes the request itself.
+export async function notionSearchPages(name: string, query: string): Promise<NotionPagesBridgeResult | null> {
+  if (isElectron && typeof bridge.notionSearchPages === 'function') {
+    return bridge.notionSearchPages({ name, query });
+  }
+  return null;
+}
+
+export async function notionFetchPage(name: string, page: string): Promise<NotionPagesBridgeResult | null> {
+  if (isElectron && typeof bridge.notionFetchPage === 'function') {
+    return bridge.notionFetchPage({ name, page });
+  }
+  return null;
+}
+
 export interface DrivePickerFile {
   id: string;
   name: string;
@@ -1925,6 +1967,8 @@ export async function decideAccountOwnership(
 export const host = {
   isWeb,
   isElectron,
+  isMobileShell,
+  mobileShell,
   codeModeAvailable,
   supportsDocumentPreview,
   supportsInAppBrowser,
@@ -2006,6 +2050,9 @@ export const host = {
   getAccessToken,
   logout,
   keychainRevoke,
+  setConnectionAccessMode,
+  notionSearchPages,
+  notionFetchPage,
   onOAuthRefreshError,
   pickDriveFiles,
   cancelDrivePicker,

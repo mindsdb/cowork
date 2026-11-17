@@ -331,6 +331,7 @@
     "modelUnavailable": "{model} no está disponible. Elige otro modelo o contacta a tu administrador.",
     "modelRestricted": "Un administrador de tu organización restringió {model}. Elige otro modelo.",
     "modelNeedsCredits": "{model} necesita créditos. {link} para usarlo.",
+    "modelNeedsCreditsNoLink": "{model} necesita créditos.",
     "topUpBalance": "Recarga tu saldo",
     "modelBudgetReached": "{model} no puede ejecutarse porque se agotó el presupuesto de tu organización.",
     "viewBudgets": "Ver presupuestos"

@@ -112,6 +112,18 @@ describe('control', () => {
     expect(sessions.info('t-a').control).toMatchObject({ holder: 'agent', seq: 2, by: 'person' });
   });
 
+  /* anton promises the carry-on only when the answer says the host watches. */
+  it('answers whether it watches the hand-over, as the pane state says', () => {
+    const { sessions } = harness();
+    sessions.open('t-a', null);
+    const plain = sessions.control('t-a', { holder: 'human', reason: 'Sign in' });
+    expect(plain).toMatchObject({ holder: 'human', reason: 'Sign in', by: 'agent', watching: false });
+    const watched = sessions.control('t-a', { holder: 'human', reason: 'Tick the box', waitFor: { element: 12, state: 'checked' } });
+    expect(watched).toMatchObject({ holder: 'human', reason: 'Tick the box', watching: true });
+    // The session's own control record stays the contract's, with no watching in it.
+    expect(sessions.info('t-a').control).not.toHaveProperty('watching');
+  });
+
   it('takes over for the person and counts each change', () => {
     const { sessions } = harness();
     sessions.open('t-a', null);

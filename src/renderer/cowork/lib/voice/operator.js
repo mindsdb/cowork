@@ -17,6 +17,15 @@ import { describeWaiting } from './callNeeds';
 export const MAX_ROUNDS = 6;
 const MAX_HISTORY = 40;
 const MAX_RESULT_CHARS = 4000;
+// The server refuses a message longer than this (MAX_MESSAGE_CHARS in
+// cowork-server's voice operator). A request is everything heard since the
+// last one, so a long one keeps its end: what the person said last.
+export const MAX_REQUEST_CHARS = 8000;
+
+function fitRequest(request) {
+  const text = String(request ?? '');
+  return text.length > MAX_REQUEST_CHARS ? `…${text.slice(-(MAX_REQUEST_CHARS - 1))}` : text;
+}
 
 function asCall(call) {
   return { id: call.id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.arguments || {}) } };
@@ -27,7 +36,7 @@ function asCall(call) {
  * every round, so it sees what the previous round's actions changed.
  */
 export async function runOperator({ request, history, snapshot, actions, operate = voiceOperate, maxRounds = MAX_ROUNDS }) {
-  const exchange = [{ role: 'user', content: request }];
+  const exchange = [{ role: 'user', content: fitRequest(request) }];
   const settle = (said) => {
     history.push(...exchange, { role: 'assistant', content: said });
     return said;
@@ -64,7 +73,9 @@ export function describeScreen({
 }) {
   const lines = [];
   if (route === 'task' && currentTask) {
-    lines.push(`On screen: the task "${currentTask.title || 'Untitled'}" (id ${currentTask.id}) in project "${currentTask.projectName || 'general'}".`);
+    // Each id comes before the text around it: the server cuts every snapshot
+    // line to a fixed length, and a long title must not cut off the id.
+    lines.push(`On screen: the task (id ${currentTask.id}) "${currentTask.title || 'Untitled'}" in project "${currentTask.projectName || 'general'}".`);
   } else if (route === 'projects' && selectedProject) {
     lines.push(`On screen: the project "${selectedProject.name}".`);
   } else {
@@ -78,10 +89,10 @@ export function describeScreen({
   // What Anton waits on the person for, which they can answer on the call.
   lines.push(...describeWaiting(waiting));
   const callTask = callTaskId && (tasks || []).find((t) => t.id === callTaskId);
-  if (callTask) lines.push(`The task this call last gave Anton work in: "${callTask.title || 'Untitled'}" (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}.`);
+  if (callTask) lines.push(`The task this call last gave Anton work in (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}: "${callTask.title || 'Untitled'}".`);
   if (working) {
     const where = (tasks || []).find((t) => t.id === working.taskId);
-    lines.push(`Anton is busy right now on the call's request "${working.request}"${where ? ` in "${where.title || 'Untitled'}" (id ${where.id})` : ''}. New work waits for it.`);
+    lines.push(`Anton is busy right now${where ? ` in task ${where.id} ("${where.title || 'Untitled'}")` : ''} on the call's request "${working.request}". New work waits for it.`);
   }
   lines.push(`Projects: ${(projects || []).map((p) => `"${p.name}"`).join(', ') || 'none'}.`);
   const recent = (tasks || []).slice(0, maxTasks);

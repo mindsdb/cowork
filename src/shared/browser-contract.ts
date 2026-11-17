@@ -101,6 +101,14 @@ export interface Control {
   by: ControlBy;
 }
 
+/** POST /sessions/{id}/control's answer: the control record, and whether
+    this host watches the hand-over for what it waits for (`wait_for`), so it
+    comes back by itself once the person did it. anton promises that only
+    when `watching` is true; a host that predates the field omits it. */
+export interface ControlAnswer extends Control {
+  watching: boolean;
+}
+
 /** POST /sessions: 201 for a new session, 200 with `resumed` for one that
     exists. `url` is null before a page loads. anton discards the answer. */
 export interface OpenSessionAnswer {

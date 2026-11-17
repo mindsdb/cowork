@@ -60,7 +60,7 @@
     "signOutHelp": "Clears this browser's cookies, sign-ins and cache, and closes its tabs. Saved tabs stay.",
     "signOutUnconfirmed": "The sign-out didn't confirm in time. It may have finished; sign out again to be sure.",
     "pageContent": "{mindshub, select, yes {When {agent} reads a page, its text and a screenshot go to the model provider that serves your turn, MindsHub when you're signed in.} other {When {agent} reads a page, its text and a screenshot go to the model provider that serves your turn.}}",
-    "webJevLine": "With Fast answers with Jev on, Jev also gets the goal of each browser step, the page's address, title, element names and first 1,500 characters, and the recent steps, earlier addresses included, without field values or what you type.",
+    "webJevLine": "With Fast answers with Jev on, Jev also gets the goal of each browser step, the page's address, title, element names and first 1,500 characters, and the recent steps, earlier addresses included.",
     "usageEventsHelp": "{agent} sends MindsDB anonymous usage events, with an installation id, the browser's included, never page text or addresses. Off stops them from the next time you restart the app.",
     "signedOut": "Signed out of all sites.",
     "clearFailed": "Couldn't clear the browser's data. Try again.",
@@ -73,7 +73,7 @@
     "usageEventsTitle": "Usage events",
     "sendUsageEvents": "Send anonymous usage events",
     "approveStepsTitle": "Approve browser steps",
-    "approveStepsHelp": "On: {agent} waits for your OK before a step that commits something, like a purchase, a message or a form. Off: {agent} goes ahead.",
+    "approveStepsHelp": "On: {agent} waits for your OK before a step that commits something, like a purchase, a message or a form. Off: {agent} goes ahead with later steps; a step already waiting still asks you.",
     "onlyWhenNeededTitle": "Only show the browser when I'm needed",
     "onlyWhenNeededHelp": "Turn this off to always see the browser and watch {agent} browse. Fun for some, tedious for others.",
     "onlyWhenNeededLearn": "About showing the browser only when needed",
@@ -87,7 +87,8 @@
     "decisionsTesting": "Testing…",
     "decisionsFailed": "The decision model didn't answer as expected ({error}). Check the endpoint and key.",
     "decisionsUntested": "Couldn't test the decision model. Try again.",
-    "ownDecisionsLine": "Your organization's decision model also gets the goal of each browser step, the page's address, title, element names and first 1,500 characters, and the recent steps, earlier addresses included, without field values or what you type."
+    "ownDecisionsLine": "Your organization's decision model also gets the goal of each browser step, the page's address, title, element names and first 1,500 characters, and the recent steps, earlier addresses included.",
+    "ownDecisionsUnused": "Your organization's decision model can't pick browser steps here yet. Until it can, the browser needs Jev on MindsHub."
   },
   "codingAgent": {
     "loadFailed": "Could not load coding agent options.",

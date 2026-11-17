@@ -6,6 +6,7 @@ import { MarkdownContent } from '../markdown/MarkdownContent';
 import { ConfirmModal } from '../ConfirmModal';
 import { CommentsPanel, CommentsToolbar } from './comments';
 import { useDraftImageLoader } from './draftImages';
+import { StatsPanel } from './stats/StatsPanel';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
@@ -79,8 +80,12 @@ function LiveAppPanel({ notice, state, reloadKey, onOpen, onLaunch }) {
 
 export function ArtifactViewerBody({
   workspace,
+  // The viewer's Live edit layer (ENG-4227): `{ source }`, the code editor in
+  // the preview's place. Without it the body follows `workspace.mode`.
+  layers = null,
   preview,
   review,
+  stats = null,
   agentReview,
 }) {
   const { t } = useTranslation('artifacts');
@@ -112,6 +117,7 @@ export function ArtifactViewerBody({
     iframeReady,
     setIframeReady,
     onReload,
+    reloadPhase = 'idle',
   } = preview;
   const {
     layer,
@@ -138,7 +144,7 @@ export function ArtifactViewerBody({
     || /\.html?$/i.test(sourcePath)
   );
   const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
-  const showEditor = workspace.mode === 'edit' && !!workspace.source;
+  const showEditor = (layers ? layers.source : workspace.mode === 'edit') && !!workspace.source;
   const [retainedEditorKey, setRetainedEditorKey] = useState('');
   // Rejecting restores the pre-agent content over head. Once the artifact has
   // moved on, that also discards the work written since, so the server refuses
@@ -266,7 +272,17 @@ export function ArtifactViewerBody({
           }}
         />
       )}
-      {(loading || !(previewUrl || previewDoc) || !iframeReady) && <PreviewPlaceholder />}
+      {/* Under the reload cover the page reloads unseen: no placeholder
+          flashes in between, the cover itself is the wait. */}
+      {(loading || !(previewUrl || previewDoc) || !iframeReady) && reloadPhase === 'idle' && <PreviewPlaceholder />}
+      {reloadPhase !== 'idle' && (
+        <div
+          className="artifact-preview-reload-cover"
+          data-phase={reloadPhase}
+          data-testid="preview-reload-cover"
+          aria-hidden="true"
+        />
+      )}
     </>
   );
 
@@ -284,10 +300,10 @@ export function ArtifactViewerBody({
             {htmlSource || !(isText || isImage) ? (
               <>
                 {htmlSource && (showEditor || retainedEditorKey === editorKey) && (
-                  <div className="artifact-mode-surface" hidden={!showEditor}>{sourceEditor}</div>
+                  <div className="artifact-mode-surface is-source-side" data-testid="source-surface" hidden={!showEditor}>{sourceEditor}</div>
                 )}
                 {!htmlSource && showEditor ? sourceEditor : (
-                  <div className="artifact-mode-surface" hidden={showEditor}>{previewContent}</div>
+                  <div className="artifact-mode-surface is-preview-side" data-testid="preview-surface" hidden={showEditor}>{previewContent}</div>
                 )}
               </>
             ) : showEditor ? sourceEditor : previewContent}
@@ -305,7 +321,8 @@ export function ArtifactViewerBody({
               onClose={toggleComments}
             />
           )}
-          {textSelection && workspace.mode === 'review' && (
+          {/* Stats replaces the comments chrome, so no composer opens beside it. */}
+          {textSelection && commentsOpen && !stats?.open && (
             <TextSelectionComment
               selection={textSelection}
               onCancel={() => setTextSelection(null)}
@@ -336,6 +353,19 @@ export function ArtifactViewerBody({
             onLeaveThread={layer.hlOff}
             onFocusThread={layer.focus}
             onClose={() => setInboxOpen(false)}
+          />
+        )}
+        {stats?.open && (
+          <StatsPanel
+            data={stats.controller?.data ?? null}
+            loading={!!stats.controller?.loading}
+            error={stats.controller?.error ?? null}
+            trackingBusy={!!stats.controller?.trackingBusy}
+            accessMode={stats.accessMode}
+            accessLoaded={!!stats.accessLoaded}
+            onToggleTracking={stats.controller?.setTracking}
+            onRetry={stats.controller?.reload}
+            onClose={stats.onClose}
           />
         )}
         <ArtifactComparison

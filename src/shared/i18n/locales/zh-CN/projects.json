@@ -12,11 +12,16 @@
       "allowanceStop": {
         "noGrant": "{noGrant}你的余额已用完，请充值后继续。",
         "withTime": "你的 MindsHub Air 免费额度已用完，余额也已用完。请充值以继续工作，或等待额度在 {time} 恢复。",
-        "noTime": "你的 MindsHub Air 免费额度已用完，余额也已用完。请充值以继续工作。"
+        "noTime": "你的 MindsHub Air 免费额度已用完，余额也已用完。请充值以继续工作。",
+        "noTimeMobile": "你的 MindsHub Air 免费额度已用完，余额也已用完。",
+        "noGrantMobile": "{noGrant} 你的余额已用完。",
+        "withTimeMobile": "你的 MindsHub Air 免费额度已用完，余额也已用完。 将于 {time} 重置。"
       },
       "freeServingPaused": {
         "until": "免费 MindsHub Air 已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
-        "dailyReset": "免费 MindsHub Air 已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。如需立即继续工作，请充值。"
+        "dailyReset": "免费 MindsHub Air 已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
+        "untilMobile": "免费 MindsHub Air 已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。",
+        "dailyResetMobile": "免费 MindsHub Air 已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。"
       },
       "resting": {
         "resetsAt": "将于 {time} 重置。",
@@ -26,13 +31,17 @@
       "percentLeft": "免费额度剩余 {percent}",
       "autoTopUpFailed": {
         "title": "自动充值失败",
-        "body": "无法从你的银行卡扣款。请充值或更新付款方式。"
+        "body": "无法从你的银行卡扣款。请充值或更新付款方式。",
+        "bodyMobile": "无法从你的银行卡扣款。"
       },
       "balanceEmpty": {
         "title": "余额已用完",
         "body": "请充值以开始新任务。",
         "freeUsedToo": "你的免费额度也已用完。请充值，或等待额度恢复。",
-        "freeUsedTooWithTime": "你的免费额度也已用完。请充值，或等待额度在 {time} 恢复。"
+        "freeUsedTooWithTime": "你的免费额度也已用完。请充值，或等待额度在 {time} 恢复。",
+        "freeUsedTooMobile": "你的免费额度也已用完。",
+        "freeUsedTooWithTimeMobile": "你的免费额度也已用完。 将于 {time} 重置。",
+        "bodyMobile": "你的余额已用完。付费模型不可用。"
       },
       "balanceLow": {
         "title": "余额不足",
@@ -40,7 +49,9 @@
         "autoCovers": "剩余 {usd}。自动充值将补足余额。",
         "autoPending": "剩余 {usd}。自动充值正在等待银行处理。",
         "autoCapReached": "剩余 {usd}。为避免超出每月上限，自动充值已暂停。请充值以继续。",
-        "body": "剩余 {usd}。请充值或开启自动充值。"
+        "body": "剩余 {usd}。请充值或开启自动充值。",
+        "bodyMobile": "剩余 {usd}。",
+        "autoCapReachedMobile": "剩余 {usd}。为避免超出每月上限，自动充值已暂停。"
       },
       "freeUsed": {
         "title": "免费额度已用完",
@@ -95,7 +106,8 @@
         "walletEmpty": "没有可用积分。请充值以使用 MindsHub。",
         "allowanceExhausted": "没有可用的免费 MindsHub Air 令牌，余额也已用完。",
         "freeAirPaused": "免费 MindsHub Air 目前已暂停。",
-        "budgetExceeded": "你所在组织的预算已用完。"
+        "budgetExceeded": "你所在组织的预算已用完。",
+        "walletEmptyMobile": "没有可用积分。"
       },
       "missingApiKey": "请在右侧添加 API 密钥。",
       "missingBaseUrl": "请在右侧添加基础 URL。",
@@ -223,7 +235,9 @@
         "oneWorking": "{name} 完成后，即可继续发送。",
         "bothContinued": "两侧都已作为任务继续，此对比无法再发送消息。",
         "sideContinued": "{name} 已作为任务继续。只能发送给 {other}。",
-        "sideWorking": "{name} 仍在处理。只能发送给 {other}，或请等待。"
+        "sideWorking": "{name} 仍在处理。只能发送给 {other}，或请等待。",
+        "outOfCreditsBothMobile": "余额已用完，两个模型均已停止。",
+        "outOfCreditsOneMobile": "余额已用完，{name} 已停止。"
       },
       "twiceTheCredits": "对比会运行两个模型，因此消耗的积分约为单个任务的两倍。",
       "turnsTitle": "{nameA}：{countA, plural, other {# 轮}} · {nameB}：{countB, plural, other {# 轮}}",
@@ -502,7 +516,8 @@
     },
     "antonErrors": {
       "noProvider": "此账户未连接任何 LLM 提供商。你可以通过 MindsHub 免费开始，或在“设置”中添加你自己的提供商。",
-      "couldNotComplete": "无法完成此任务。"
+      "couldNotComplete": "无法完成此任务。",
+      "noProviderMobile": "在“设置”中连接你自己的提供商。"
     },
     "displayToggle": {
       "switchStyle": "切换到 {style} 风格"
@@ -551,6 +566,7 @@
     "missed": "已错过",
     "lastFailed": "上次失败",
     "lastRunFailed": "上次运行失败",
+    "stoppedAtLimit": "达到上限后停止",
     "done": "已完成",
     "active": "已启用"
   },
@@ -580,11 +596,30 @@
     "autoPausedNote": "“恢复”会重新启用定时，并可能补上一次待运行的任务。“立即运行”会马上运行一次。",
     "partialTitle": "上次运行中途停止",
     "partialNote": "部分操作可能已经完成。再次运行前，请先查看本次运行。",
+    "limitTitle": "上次运行达到上限后停止",
+    "limitNote": "部分工作可能已经完成。再次运行前，请先查看本次运行。",
     "failedTitle": "上次运行失败",
     "resume": "恢复",
     "runNow": "立即运行",
     "reviewRun": "查看运行",
-    "runAgain": "再次运行"
+    "runAgain": "再次运行",
+    "openSettings": "打开设置"
+  },
+  "scheduleRunNotice": {
+    "untitled": "定时任务",
+    "failedTitle": "定时任务失败",
+    "failedBody": "“{title}”上次运行未完成。点击查看。",
+    "failedToast": "定时任务“{title}”上次运行未完成。",
+    "succeededTitle": "定时任务已完成",
+    "succeededBody": "“{title}”已完成一次运行。点击打开。",
+    "succeededToast": "定时任务“{title}”已完成一次运行。",
+    "openAction": "打开任务"
+  },
+  "scheduleNotifyMenu": {
+    "label": "通知",
+    "heading": "通知我",
+    "failed": "失败的运行",
+    "succeeded": "成功的运行"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -619,6 +654,8 @@
     "name": "名称",
     "namePlaceholder": "根据提示词自动命名",
     "project": "项目",
+    "model": "模型",
+    "accountDefault": "账户默认",
     "cancel": "取消",
     "saveAndRunOnce": "保存并运行一次",
     "saving": "正在保存…",
@@ -658,7 +695,8 @@
       "running": "运行中",
       "success": "成功",
       "failed": "失败",
-      "cancelled": "已停止"
+      "cancelled": "已停止",
+      "stoppedAtLimit": "达到上限后停止"
     },
     "sentence": "{when}（{zone}）",
     "runningNow": "正在运行",
@@ -674,6 +712,8 @@
     "runNow": "立即运行",
     "scheduleAriaLabel": "定时",
     "accountDefaultModel": "账户默认模型",
+    "ranOnDefaultModel": "默认模型",
+    "modelUnavailable": "{model} 不可用，因此本次运行使用了你的默认模型。",
     "succeededCount": "{total, plural, other {# 次运行中成功 {succeeded} 次}}",
     "promptAriaLabel": "提示词",
     "runs": "运行记录",

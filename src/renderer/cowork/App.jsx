@@ -54,6 +54,9 @@ import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
 import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
+import { handleArtifactCheckEvent } from './lib/artifactCheck';
+import { ModelPickerContext } from './lib/modelPickerContext';
+import { onConversationRefresh } from './lib/conversationRefresh';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, moveForm as moveDataVaultForm, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
@@ -71,6 +74,8 @@ import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useNotionPagePicker } from './hooks/useNotionPagePicker';
+import NotionPagePickerModal from './components/NotionPagePickerModal';
 import { useAccountUser } from './hooks/useAccountUser';
 import { LiveAppAvailabilityWatcher } from './hooks/useLiveAppAvailability';
 import { skillScopeKey } from './lib/accountUser';
@@ -83,8 +88,10 @@ import { useServerControl } from './hooks/useServerControl';
 import { useSidebarNav } from './hooks/useSidebarNav';
 import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
+import { useModelAvailabilityTriggers } from './hooks/useModelAvailabilityTriggers';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
+import { createAvailabilityRefresher, mergeChangesNothing, REFRESH_SCOPE, serverHonorsRefreshScope } from './lib/modelRefresh';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useOrgBranding } from './hooks/useOrgBranding';
@@ -97,6 +104,7 @@ import { deriveUpdateBanner, restartUnderway } from '../../shared/update-banner'
 import { useSchedules } from './hooks/useSchedules';
 import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
+import { useScheduleRunNotifications } from './hooks/useScheduleRunNotifications';
 import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -110,7 +118,8 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
-         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchVoiceStatus} from './api';
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchVoiceStatus, readBrowserApproveSteps} from './api';
+import { describeNotionReferencePages, loadNotionPageTexts } from './lib/notionReferencePages';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
@@ -142,6 +151,7 @@ import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
 import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
 import { PLATFORM_UI } from '../lib/deployment';
+import { noteMobilePushTaskStarted, setMobilePushNavigator } from '../lib/mobilePush';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -167,6 +177,7 @@ import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
 import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import { artifactsOnScreen } from './lib/voice/screenArtifacts';
+import { createSeenCallBack } from './lib/voice/seenCallBack';
 import {
   callNeedActions, createCallNeeds, openNeeds,
 } from './lib/voice/callNeeds';
@@ -176,7 +187,7 @@ import {
 } from './lib/browserSession';
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import {
-  approveIfApprovalsOff, autoApprovePositionClick, browserApprovalIds, declineBrowserApproval, isAutoApprovedCard, isPositionClickCard,
+  approveCardsForPerson, browserApprovalIds, declineBrowserApproval, isAutoApprovedCard,
 } from './lib/browserApproval';
 import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
@@ -261,9 +272,10 @@ function isPendingFileAttachment(a) {
 // directly via the connector's persisted `_picked_files` grant (see
 // cowork-server's harness integration_guidance), independent of any one
 // message. The chip is a visual confirmation only, so it must never be
-// resolved to an upload or sent as a real attachment id.
+// resolved to an upload or sent as a real attachment id. Notion pages work the
+// same way: the agent reads them with its notion-fetch tool.
 function isReferenceOnlyAttachment(a) {
-  return !!(a && a.source === 'gdrive');
+  return !!(a && (a.source === 'gdrive' || a.source === 'notion'));
 }
 
 // Activation gate (ENG-736): fire from the chat send/reply terminal handlers,
@@ -513,14 +525,20 @@ function describeOpenBrowserPage(origin) {
 }
 
 function describeGoogleDriveReferenceFiles(reference) {
-  if (!reference?.length) return '';
-  const lines = reference.map((f) => `- ${f.name || 'untitled'} (Drive file id: ${f.driveFileId || f.id})`);
+  const drive = (reference || []).filter((a) => a.source === 'gdrive');
+  if (!drive.length) return '';
+  const lines = drive.map((f) => `- ${f.name || 'untitled'} (Drive file id: ${f.driveFileId || f.id})`);
   return [
     '[Google Drive files added via the picker for this message — Anton-only context, do not echo back]',
     'The user just added the following Google Drive file(s). When they refer to "this file"/"these files" '
       + 'in the message above, they mean these — read them with files.get(fileId=...):',
     ...lines,
   ].join('\n');
+}
+
+function describeReferenceAttachments(reference, notionTexts) {
+  return [describeGoogleDriveReferenceFiles(reference), describeNotionReferencePages(reference, notionTexts)]
+    .filter(Boolean).join('\n\n');
 }
 
 const ACCENT_VARS = {
@@ -643,11 +661,24 @@ export default function App() {
   );
 }
 
+// The picks a send to `task` goes back to the default on: its own Model Router
+// or "Operator default" pick, and an effort the composer left on "Default"
+// (''). Both go out as no value, which cowork-server reads as "keep the saved
+// pick", as it must for a pinned model the picker no longer offers. Naming
+// them in reset_picks makes the server clear them, so a reload shows the
+// default too. A same-tick override sends a value, so it resets nothing.
+export function turnResetPicks(task, { modelOverride, effortOverride } = {}) {
+  return [
+    ...(!modelOverride && task?.model === MODEL_ROUTER_ID ? ['model'] : []),
+    ...(effortOverride == null && task?.reasoningEffort === '' ? ['reasoning_effort'] : []),
+  ];
+}
+
 // Cmd+K's starting list before anything is typed: the five most recently
 // updated tasks and the first three projects, from state App already holds.
-function searchRecents(tasks, projects) {
+export function searchRecents(tasks, projects) {
   const labelFor = (task) => {
-    const project = projects.find((p) => p.name === task.projectId || p.path === task.projectPath);
+    const project = resolveTaskProject(task, projects);
     return project ? projectLabel(project) : undefined;
   };
   return [
@@ -669,8 +700,12 @@ function AppCore() {
   // Approve browser steps is the person's setting (lib/browserPrefs.js): the
   // cards read it as it changes here, and the old device-only copy goes.
   useEffect(() => {
-    syncBrowserPrefs({ browserApproveSteps: settings.browserApproveSteps, browserOnlyWhenNeeded: settings.browserOnlyWhenNeeded });
-  }, [settings.browserApproveSteps, settings.browserOnlyWhenNeeded]);
+    syncBrowserPrefs({
+      browserApproveSteps: settings.browserApproveSteps,
+      browserOnlyWhenNeeded: settings.browserOnlyWhenNeeded,
+      browserApproveStepsOffAt: settings.browserApproveStepsOffAt,
+    });
+  }, [settings.browserApproveSteps, settings.browserOnlyWhenNeeded, settings.browserApproveStepsOffAt]);
   useEffect(() => { forgetLegacyBrowserPrefs(); }, []);
   // Whether this session's settings have arrived from the server, so a choice
   // that depends on them (such as the models an operator offers) is final.
@@ -758,6 +793,8 @@ function AppCore() {
   // The call hung up while Anton worked on its requests: it calls back with the result.
   const callBackRef = useRef(false);
   const callBackSeenRef = useRef({ canCallBack: false });
+  // The call back for finished work, once the tab is in sight (lib/voice/seenCallBack.js).
+  const seenCallBackRef = useRef(null);
   const [callBackPending, setCallBackPending] = useState(false);
   // What the call's work stops on the person for (lib/voice/callNeeds.js),
   // and the stream's hook for it, set each render below.
@@ -771,6 +808,18 @@ function AppCore() {
     busy: () => callWorkRef.current.busy(),
     onAway: () => { callBackRef.current = true; setCallBackPending(true); },
   });
+  if (!seenCallBackRef.current) {
+    // The call as this render has it (callNeedsSeenRef, refreshed below).
+    seenCallBackRef.current = createSeenCallBack({
+      announce: (news, { asks }) => callNeedsSeenRef.current.voiceCall.announce(news, { asks }),
+      canCallBack: () => callBackSeenRef.current.canCallBack,
+      take: () => {
+        callBackRef.current = false;
+        setCallBackPending(false);
+      },
+      callBack: (news, { asks }) => { void callNeedsSeenRef.current.voiceCall.callBack(news, getVoicePrefs().voice, { asks }); },
+    });
+  }
   // Settings > Voice (lib/voice/voicePrefs.js): off hides every call button
   // and ends a call; a new voice moves a call to it at once, or, with no
   // call, says a short line in it.
@@ -1199,6 +1248,50 @@ function AppCore() {
 
   // The reconcile body. Wrapped by refreshInFlightSet below with a re-entrancy
   // guard; declared first so the wrapper can reference it without a TDZ.
+  // Fetch a conversation's newest page and merge it into the task, the way a
+  // run that finished elsewhere is caught up. Also asked for by the artifact
+  // viewer's chat bar (ENG-4227) after a quick edit, whose group message the
+  // server updates in place in the artifact's chat (lib/conversationRefresh).
+  const refetchConversationMessages = useCallback((cid) => {
+    const knownIds = knownIdsOf(cid);
+    fetchSession(cid).then((fresh) => {
+      if (!fresh || !Array.isArray(fresh.messages)) return;
+      const reconciled = applySessionMessages(cid, fresh.messages);
+      setTasks((tasksPrev) => tasksPrev.map((t) => {
+        if (t.id !== cid) return t;
+        // Only the most recent page — merge against what the task
+        // already has. The server never saved refused questions, so
+        // any the merge dropped go back after it.
+        // With no stream of ours on it, a placeholder or live stub
+        // here is left over from opening the run while the server
+        // still listed it; the merge would carry it past the answer.
+        const local = hasLiveTurnHere(cid)
+          ? t.messages
+          : removeThinkingPlaceholder(stripStreaming(t.messages));
+        const merged = mergeMessagePage(local, reconciled, knownIds);
+        const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
+        return {
+          ...t,
+          messages: [...merged, ...refused],
+          // Same array the merge just used. Inert today — applySessionMessages
+          // neither adds nor removes an id-bearing row, so both see the
+          // same oldest id — but the two decisions must agree on which
+          // rows the page covers, and only one of them should pick.
+          ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
+          status: 'idle',
+        };
+      }));
+    }).catch(() => {});
+  }, [hasLiveTurnHere]);
+
+  // A quick edit changed the artifact's chat (ENG-4227). Skipped while a turn
+  // of ours runs there: the server writes no note then, and the turn's own
+  // end refetches.
+  useEffect(() => onConversationRefresh((cid) => {
+    if (hasLiveTurnHere(cid)) return;
+    refetchConversationMessages(cid);
+  }), [hasLiveTurnHere, refetchConversationMessages]);
+
   const reconcileInFlight = useCallback(async () => {
     const items = await fetchInFlightList();
     // A failed poll returns null, NOT [] — don't reconcile: treating it as "server
@@ -1279,41 +1372,13 @@ function AppCore() {
         // re-render storm.
         setTimeout(() => {
           finished.forEach((cid) => {
-            const knownIds = knownIdsOf(cid);
-            fetchSession(cid).then((fresh) => {
-              if (!fresh || !Array.isArray(fresh.messages)) return;
-              const reconciled = applySessionMessages(cid, fresh.messages);
-              setTasks((tasksPrev) => tasksPrev.map((t) => {
-                if (t.id !== cid) return t;
-                // Only the most recent page — merge against what the task
-                // already has. The server never saved refused questions, so
-                // any the merge dropped go back after it.
-                // With no stream of ours on it, a placeholder or live stub
-                // here is left over from opening the run while the server
-                // still listed it; the merge would carry it past the answer.
-                const local = hasLiveTurnHere(cid)
-                  ? t.messages
-                  : removeThinkingPlaceholder(stripStreaming(t.messages));
-                const merged = mergeMessagePage(local, reconciled, knownIds);
-                const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
-                return {
-                  ...t,
-                  messages: [...merged, ...refused],
-                  // Same array the merge just used. Inert today — applySessionMessages
-                  // neither adds nor removes an id-bearing row, so both see the
-                  // same oldest id — but the two decisions must agree on which
-                  // rows the page covers, and only one of them should pick.
-                  ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
-                  status: 'idle',
-                };
-              }));
-            }).catch(() => {});
+            refetchConversationMessages(cid);
           });
         }, 0);
       }
       return next;
     });
-  }, [abortStream, hasLiveTurnHere]);
+  }, [abortStream, hasLiveTurnHere, refetchConversationMessages]);
 
   const refreshInFlightSet = useCallback(async () => {
     // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
@@ -1500,28 +1565,16 @@ function AppCore() {
   // something else or leaving them queued to deadlock.
   // Clicks by position are approved for the person whatever the setting,
   // and so are held browser steps with Approve browser steps off (Settings >
-  // Shared browser): once per card, never shown (lib/browserApproval.js). For
-  // a held step the setting is read fresh from the server first, so approvals
-  // turned on from another device since this tab read settings count: then
-  // the card shows. A card the approval didn't land on shows after
-  // POSITION_AUTO_APPROVE_MS, so the person can still answer it.
+  // Shared browser), held after they turned it off: once per card, never
+  // shown (lib/browserApproval.js approveCardsForPerson). For a held step the
+  // setting is read fresh from the server first, and this tab takes what it
+  // read, so approvals turned on, or off again later, on another device since
+  // this tab read settings count: then the card shows.
   const autoApprovedRef = useRef(new Set());
-  const approvePositionClicks = (taskIds, steps) => {
-    (steps || []).forEach((s) => {
-      const questionId = s.badge === 'AskUser' && !s.data?.answer ? s.data?.question_id : null;
-      if (!questionId || autoApprovedRef.current.has(questionId) || !isAutoApprovedCard(s.data)) return;
-      autoApprovedRef.current.add(questionId);
-      const approval = { conversationIds: taskIds, questionId, isWeb: host.isWeb, submit: submitAnswer };
-      if (isPositionClickCard(s.data)) {
-        void autoApprovePositionClick(approval).catch(() => false);
-        return;
-      }
-      void approveIfApprovalsOff(approval)
-        .then((outcome) => {
-          if (outcome === 'asks') setSettings((prev) => ({ ...prev, browserApproveSteps: true }));
-        })
-        .catch(() => false);
-    });
+  const readApproveStepsHere = async () => {
+    const setting = await readBrowserApproveSteps();
+    if (setting) setSettings((prev) => ({ ...prev, browserApproveSteps: setting.asks, browserApproveStepsOffAt: setting.offAtMs }));
+    return setting;
   };
 
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
@@ -1537,7 +1590,9 @@ function AppCore() {
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
-    approvePositionClicks(taskIds, steps);
+    void approveCardsForPerson({
+      taskIds, steps, seen: autoApprovedRef.current, isWeb: host.isWeb, submit: submitAnswer, readAsks: readApproveStepsHere,
+    });
     noteCallNeedsRef.current?.(taskIds, steps);
     // Mid-task messages (ENG-4194): queue the ones this client added that the
     // turn handed back, and drop queued copies the turn took after all —
@@ -2040,23 +2095,22 @@ function AppCore() {
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
-  // Re-check wallet availability when the composer's model menu opens, so a top-up
-  // made outside the app unlocks its models without a restart. This is what makes
-  // it safe for the composer to DISABLE a locked model at all: `modelEnabled` is
-  // otherwise refreshed only by the Settings picker, so a user who hits "Add
-  // credits" (which opens an external browser), tops up and comes back would find
-  // the row still greyed until they visited Settings or restarted. Settings has had
-  // this since ENG-412; this is parity with it.
-  //
-  // A failed refresh leaves the map we hold in place — mergeRecommendedModels never
-  // lets an empty response overwrite it, and a model absent from the map counts as
-  // available — so this can never lock the picker.
-  const refreshModelAvailability = useCallback(async () => {
-    const data = await fetchRecommendedModels({ refresh: true });
-    // keepOrder: the menu is already open on the list we hold when this lands.
-    const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
-    if (merged) setSettings((prev) => ({ ...prev, ...merged }));
-  }, [settings]);
+  // One throttled re-check for every picker outside Settings ('all') and the availability
+  // triggers ('minds'). A deferred call is queued, not dropped; stale responses are dropped.
+  const availability = useRef(null);
+  if (!availability.current) {
+    availability.current = createAvailabilityRefresher({
+      fetch: (scope) => fetchRecommendedModels({ refresh: true, scope }),
+      // keepOrder: a menu may be open on this list. Skipping a no-op keeps App from re-rendering per poll.
+      apply: (data) => setSettings((prev) => {
+        const merged = mergeRecommendedModels(prev, data, { keepOrder: true });
+        return merged && !mergeChangesNothing(prev, merged) ? { ...prev, ...merged } : prev;
+      }),
+    });
+  }
+  useEffect(() => () => availability.current?.cancel(), []);
+  const refreshModelAvailability = useCallback(() => availability.current.refresh(REFRESH_SCOPE.all), []);
+  const refreshCreditLocks = useCallback(() => availability.current.refresh(REFRESH_SCOPE.minds), []);
 
   const modelMeta = useMemo(() => ({
     modelProviders: settings.modelProviders,
@@ -2077,6 +2131,9 @@ function AppCore() {
     planningReasoningEffort: settings.planningReasoningEffort,
     onRefresh: refreshModelAvailability,
   }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
+  // The composer's catalog and picker metadata for the artifact viewer's chat
+  // bar (ENG-4227), the same ones the composer gets.
+  const modelPickerCtx = useMemo(() => ({ models, modelMeta }), [models, modelMeta]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -2353,6 +2410,9 @@ function AppCore() {
   // web). It's stateless w.r.t. AppCore — nav state flows through context.
   const routerRef = useRef(null);
   if (!routerRef.current) routerRef.current = createCoworkRouter();
+  // Mobile app (ENG-4023): a tapped push notification opens its route here,
+  // including one tapped before the router existed (cold start). No-op elsewhere.
+  useEffect(() => setMobilePushNavigator((path) => { routerRef.current?.navigate(path); }), []);
   const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
@@ -2708,10 +2768,13 @@ function AppCore() {
     ? (sendableModelId(currentTask.model) === MODEL_ROUTER_ID
         ? MODEL_ROUTER
         : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: tApp('tasks.configuredPlanningModel') }))
-    : selectedModel;
-  // Sibling to currentTaskModel (ENG-1940): the task's own effort pick if
-  // it has one, else whatever the home composer currently shows.
-  const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
+    : (currentTask ? MODEL_ROUTER : selectedModel);
+  /* A task with no saved pick is on the default: Model Router and the
+     "Default" effort (''), which is what the server runs a turn that sends
+     neither on. The home composer's picks seed a new task when it is created;
+     an existing task never borrows them, since a send would then save them
+     onto the conversation. */
+  const currentTaskEffort = currentTask ? (currentTask.reasoningEffort ?? '') : selectedEffort;
 
   /* "Switch to MindsHub Air" escape hatch on the model-denial and drained-wallet
      cards (ENG-1304): offered only while Air itself is payable — the free
@@ -2809,6 +2872,8 @@ function AppCore() {
                   // possible later if we see network overhead.
       onEvent(ev) {
         if (!isCurrentStream(taskId, ctrl)) return;
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
@@ -3609,6 +3674,18 @@ function AppCore() {
     setRoute,
   });
 
+  const {
+    notionPicker,
+    notionConnectPrompt,
+    resolveNotionPicker,
+    cancelNotionPicker,
+    confirmNotionConnect,
+    cancelNotionConnect,
+    handleAddNotionPages,
+    handleAddNotionProjectPages,
+    fetchNotionProjectPages,
+    removeNotionProjectPage,
+  } = useNotionPagePicker({ selectedProject, setComposerAttachments });
   const { startSharePointImport, sharePointModals } = useSharePointImport({
     connections: connectors,
     projects,
@@ -3718,6 +3795,14 @@ function AppCore() {
   // finishes too, so a task that just spent the last free tokens flips the
   // notice without waiting for the next tick.
   const { usage: hubUsage, refresh: refreshHubUsage } = useHubUsage(codeAccountUser);
+  useModelAvailabilityTriggers({
+    refresh: refreshCreditLocks,
+    modelEnabled: settings.modelEnabled,
+    modelDisabledReasons: settings.modelDisabledReasons,
+    mindsIds: settings.recommendedModels?.['minds-cloud'],
+    usage: hubUsage,
+    canNarrowRefresh: () => serverHonorsRefreshScope(REFRESH_SCOPE.minds),
+  });
   const hubUsageCtx = useMemo(() => ({
     usage: hubUsage,
     providerType: providerValueToType(settings.planningProvider) || 'minds-cloud',
@@ -4157,9 +4242,10 @@ function AppCore() {
       hasPendingFiles ? taskId : null,
       rawComposer,
     );
+    const notionTexts = await loadNotionPageTexts(reference);
     const sendText = [
       text,
-      reference.length ? describeGoogleDriveReferenceFiles(reference) : '',
+      reference.length ? describeReferenceAttachments(reference, notionTexts) : '',
       carried ? describeOpenBrowserPage(pageOriginForContext(carried)) : '',
     ].filter(Boolean).join('\n\n');
     if (carried) void carryBrowserInto(taskId, carried);
@@ -4210,6 +4296,9 @@ function AppCore() {
     setTasks((prev) => [newT, ...prev]);
     setActiveTaskId(taskId);
     setRoute('task');
+    // Mobile app (ENG-4023): the first task started is when the app offers
+    // "notify me when tasks finish" (once; no-op outside the app).
+    noteMobilePushTaskStarted();
 
     let resolvedId = taskId;
     /*
@@ -4315,6 +4404,8 @@ function AppCore() {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
@@ -4456,6 +4547,21 @@ function AppCore() {
   // A task the app starts for the person (a connector button, an artifact
   // repair), so analytics can tell it from one they typed.
   const sendFromApp = (text, meta) => sendWithStartVia('app', () => handleSendFromHome(text, meta));
+
+  // The home composer clears only once a send resolves, which can take ~10s
+  // while attached Notion pages load, so a second Enter would open a second
+  // chat with the same text. The Composer itself can't guard this: one
+  // Composer serves every chat, and other chats must still queue meanwhile.
+  const homeComposerSendingRef = useRef(false);
+  const sendFromHomeComposer = async (text, meta) => {
+    if (homeComposerSendingRef.current) return false;
+    homeComposerSendingRef.current = true;
+    try {
+      return await handleSendFromHome(text, meta);
+    } finally {
+      homeComposerSendingRef.current = false;
+    }
+  };
 
   // Send inside an existing task
   //
@@ -4688,27 +4794,18 @@ function AppCore() {
     // opts.modelOverride carries a same-tick model switch (the "Switch to
     // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
     // closure, so a setTasks({...model}) just before this call would not be
-    // visible here yet. The `selectedModel` fallback is the on-screen model
-    // picker, so only a live send to the task on screen may inherit it; a
-    // drained off-screen task must not pick up whatever model the current
-    // view happens to show — it falls through to the server default instead.
-    const taskModel = sendableModelId(opts.modelOverride
-      || targetTask.model
-      || (opts.targetTask ? null : selectedModel?.id)
-      || null);
+    // visible here yet. A task with no pick sends none and runs on the
+    // server default, as currentTaskModel shows it; it never borrows the
+    // home composer's pick, which the server would then save on the chat.
+    const taskModel = sendableModelId(opts.modelOverride || targetTask.model || null);
     // Sibling precedence chain to taskModel (ENG-1940): a same-tick
-    // override, else the task's own saved pick, else — only for a live
-    // send to the task on screen — the home composer's current pick.
-    // selectedEffort defaults to '', so the trailing `|| null` collapses
-    // that (and any other falsy pick) to null the same way taskModel's does.
-    const taskEffort = (opts.effortOverride
-      ?? targetTask.reasoningEffort
-      ?? (opts.targetTask ? null : selectedEffort))
-      || null;
+    // override, else the task's own saved pick. The "Default" effort ('')
+    // collapses to null, so it sends no effort.
+    const taskEffort = (opts.effortOverride ?? targetTask.reasoningEffort) || null;
 
-    let sendingAttachments, attachmentIds, driveReference;
+    let sendingAttachments, attachmentIds, referenceAttachments;
     try {
-      ({ merged: sendingAttachments, attachmentIds, reference: driveReference } = await resolveComposerAttachmentsForSend(
+      ({ merged: sendingAttachments, attachmentIds, reference: referenceAttachments } = await resolveComposerAttachmentsForSend(
         taskProjectName,
         id,
         // A drained queued item carries its own attachments; only a
@@ -4742,6 +4839,9 @@ function AppCore() {
       });
       throw err;
     }
+    // Before the Thinking placeholder: its Stop button can't cancel this
+    // wait, and the turn would start once it ended.
+    const notionTexts = await loadNotionPageTexts(referenceAttachments);
 
     setTasks((prev) => prev.map((t) =>
       t.id === id
@@ -4826,8 +4926,8 @@ function AppCore() {
      // keeps the original text — Anton-only context, never shown.
     const connectFormState = getDataVaultFormState(id);
     const connectContext = describeConnectFormState(connectFormState);
-    const driveContext = describeGoogleDriveReferenceFiles(driveReference);
-    const hiddenContext = [connectContext, driveContext].filter(Boolean).join('\n\n');
+    const referenceContext = describeReferenceAttachments(referenceAttachments, notionTexts);
+    const hiddenContext = [connectContext, referenceContext].filter(Boolean).join('\n\n');
     const sendText = hiddenContext ? `${text}\n\n${hiddenContext}` : text;
 
     // Tag this task as currently streaming so reconcileTaskMessages
@@ -4840,6 +4940,7 @@ function AppCore() {
       projectPath: taskProjectPath,
       model: taskModel,
       reasoningEffort: taskEffort,
+      resetPicks: turnResetPicks(targetTask, opts),
       attachmentIds,
       disabledConnections: disabledForSend,
       browserOff: browserOffForSend,
@@ -4850,6 +4951,8 @@ function AppCore() {
         // fresh id; the new value rides on `response.created`.
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
@@ -5019,30 +5122,21 @@ function AppCore() {
     // A call that is up (or connecting, or fading out) says it; one hanging up
     // or gone refuses it, and the call back below takes over.
     if (voiceCall.announce(news)) return;
+    // A call back already waits for the tab to show: this news goes with it.
+    if (seenCallBackRef.current.join(news)) return;
     if (!callBackRef.current) return;
     callBackRef.current = false;
     setCallBackPending(false);
     if (!callBackSeenRef.current.canCallBack) return;
     // In a tab out of sight the call would start unheard: it waits for the person to come back.
-    const callBackNow = () => void voiceCall.callBack(news, getVoicePrefs().voice);
-    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
-      callBackNow();
-      return;
-    }
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      document.removeEventListener('visibilitychange', onVisible);
-      // A call started meanwhile hears it; otherwise call back if it still may.
-      if (voiceCall.announce(news)) return;
-      if (callBackSeenRef.current.canCallBack) callBackNow();
-    };
-    document.addEventListener('visibilitychange', onVisible);
+    seenCallBackRef.current.callBack(news);
   };
   /* Work the call gave Anton stopped on the person: a browser hand-over, a
      browser step to approve, or a question. The call says what he needs while
-     it is up, or calls back as finished work does, with the same rules (a
-     tab out of sight waits, the microphone stays off until Anton speaks). A
-     request answered on screen first, within the grace or while the tab
+     it is up, or calls back as finished work does, in the same call back (a
+     tab out of sight waits, and a result or another request that comes
+     meanwhile is said with it; the microphone stays off until Anton speaks).
+     A request answered on screen first, within the grace or while the tab
      waits, is never called about. The call back leaves the work's own call
      back armed: it hangs up when quiet with the work still running, and the
      result calls back again. */
@@ -5054,11 +5148,7 @@ function AppCore() {
       announce: (news) => callNeedsSeenRef.current.voiceCall.announce(news, { asks: true }),
       callBackDue: () => callBackRef.current,
       canCallBack: () => callBackSeenRef.current.canCallBack,
-      takeCallBack: () => {
-        callBackRef.current = false;
-        setCallBackPending(false);
-      },
-      callBack: (news) => { void callNeedsSeenRef.current.voiceCall.callBack(news, getVoicePrefs().voice, { asks: true }); },
+      seen: seenCallBackRef.current,
       agentLabel: () => callNeedsSeenRef.current.agentLabel,
     });
   }
@@ -5224,7 +5314,8 @@ function AppCore() {
       return `Showing the browser from "${task.title}".`;
     },
     // What Anton waits on, answered by voice as the person's own click on its
-    // card would (lib/voice/callNeeds.js).
+    // card would (lib/voice/callNeeds.js). A held browser step can only be
+    // cancelled this way: it is approved on the screen alone.
     ...callNeedActions({
       taskOf: callTask,
       stepsOf: (tid) => liveStepsRef.current[tid],
@@ -5234,9 +5325,6 @@ function AppCore() {
         selectTask(task.id);
         setBrowserRequest({ taskId: task.id, sessionId, at: Date.now() });
       },
-      approve: ({ conversationIds, questionId }) => autoApprovePositionClick({
-        conversationIds, questionId, isWeb: host.isWeb, submit: submitAnswer,
-      }),
       decline: async (questionId) => {
         const held = host.isWeb ? browserApprovalIds(questionId) : null;
         if (held) await declineBrowserApproval(held);
@@ -5344,17 +5432,17 @@ function AppCore() {
     voiceCallShortcut = null;
   } else if (voiceCall.lingering) {
     // Fading out, still listening: the button brings the call back as an ordinary one.
-    voiceCallShortcut = { label: `Back to the call with ${agentLabel}`, live: true, onClick: () => voiceCall.resume() };
+    voiceCallShortcut = { label: tApp('voiceCall.backToCall', { agent: agentLabel }), live: true, onClick: () => voiceCall.resume() };
   } else if (voiceCallRunning(voiceCall.phase)) {
-    voiceCallShortcut = { label: `On a call with ${agentLabel}`, live: true };
+    voiceCallShortcut = { label: tApp('voiceCall.onCall', { agent: agentLabel }), live: true };
   } else if (startVoiceCall) {
     voiceCallShortcut = {
-      label: callBackPending ? `${agentLabel} will call you back when it's done` : `Call ${agentLabel}`,
+      label: callBackPending ? tApp('voiceCall.callBackPending', { agent: agentLabel }) : tApp('voiceCall.call', { agent: agentLabel }),
       onClick: () => { if (voiceCall.phase === 'ended') voiceCall.dismiss(); startVoiceCall(); },
     };
   } else if (voiceAvailable) {
     voiceCallShortcut = {
-      label: 'Another call is running',
+      label: tApp('voiceCall.anotherCall'),
       disabled: true,
     };
   }
@@ -5607,6 +5695,8 @@ function AppCore() {
         // A custom connector's test waiting on the user: its id goes to the
         // panel's own store, never into the stream state or the message.
         if (applyConnectorTestEvent(resolvedId || id, ev)) return;
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
@@ -6589,6 +6679,19 @@ function AppCore() {
     },
   );
 
+  // The same for a run that fails, or succeeds if the user asked to hear
+  // about those: a notification where the OS allows one, a toast otherwise.
+  // Clicking opens the task's page, which says why and offers the run.
+  const { prefs: scheduleNotifyPrefs, setPrefs: setScheduleNotifyPrefs } = useScheduleRunNotifications(scheduled, {
+    onOpen: (schedule) => {
+      setWorkspaceMode('cowork');
+      setSelectedScheduleId(schedule.id);
+      setRoute('schedule-detail');
+    },
+    toast: (notice) => toastManager.add(notice),
+    closeToast: (id) => toastManager.close(id),
+  });
+
   // Stop a schedule's run in flight the way the chat's Stop does: cancel its
   // conversation's turn. The schedule list doesn't carry that conversation,
   // so it is read from the newest runs.
@@ -7030,7 +7133,7 @@ function AppCore() {
             activeTasks={activeTasks}
             onSelectTask={selectTask}
             onClearActive={clearActive}
-            onSend={handleSendFromHome}
+            onSend={sendFromHomeComposer}
             project={canRunProject(selectedProject) ? selectedProject : null}
             onProjectChange={setSelectedProject}
             model={selectedModel}
@@ -7045,6 +7148,7 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
@@ -7121,10 +7225,14 @@ function AppCore() {
             connectors={composerConnectors}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
+            onAddNotionProjectPages={handleAddNotionProjectPages}
+            onFetchNotionProjectPages={fetchNotionProjectPages}
+            onRemoveNotionProjectPage={removeNotionProjectPage}
             disabledConnections={currentTask?.disabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
@@ -7244,7 +7352,7 @@ function AppCore() {
               // Sending from project detail = same path as home, but
               // selectedProject is already pinned to this project so
               // the new task lands in the right workspace.
-              return handleSendFromHome(text, meta);
+              return sendFromHomeComposer(text, meta);
             }}
             codingModeEnabled={false}
             onSelectTask={selectTask}
@@ -7257,10 +7365,14 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddNotionPages={handleAddNotionPages}
             onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
+            onAddNotionProjectPages={handleAddNotionProjectPages}
+            onFetchNotionProjectPages={fetchNotionProjectPages}
+            onRemoveNotionProjectPage={removeNotionProjectPage}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
@@ -7286,6 +7398,7 @@ function AppCore() {
             scheduled={scheduled}
             projects={runnableProjects}
             models={modelOptions}
+            modelMeta={modelMeta}
             selectedProject={runnableSelectedProject}
             selectedModel={selectedModel}
             onCreate={handleCreateSchedule}
@@ -7304,6 +7417,8 @@ function AppCore() {
               setRoute('projects');
             }}
             unseenAutoPauses={unseenAutoPauses}
+            notifyPrefs={scheduleNotifyPrefs}
+            onNotifyPrefsChange={setScheduleNotifyPrefs}
             agentLabel={agentLabel}
           />
         )}
@@ -7313,6 +7428,7 @@ function AppCore() {
             task={scheduled.find((s) => s.id === selectedScheduleId) || null}
             projects={runnableProjects}
             models={modelOptions}
+            modelMeta={modelMeta}
             agentLabel={agentLabel}
             onBack={() => { setSelectedScheduleId(null); setRoute('scheduled'); }}
             onUpdate={handleUpdateSchedule}
@@ -7326,6 +7442,7 @@ function AppCore() {
             onRunNow={handleRunScheduleNow}
             onReviewedAutoPause={markAutoPauseReviewed}
             onStopRun={handleStopScheduleRun}
+            onOpenSettings={openSettings}
             onOpenRunSession={(sessionId) => {
               if (!sessionId) return;
               // Scheduled runs create real conversations on the
@@ -7796,6 +7913,23 @@ function AppCore() {
         </ModalBody>
       </Modal>
 
+      {/* Composer "+" → "Add pages from Notion" — see useNotionPagePicker. */}
+      <ConfirmModal
+        open={!!notionConnectPrompt}
+        title={tApp('notion.connectTitle')}
+        message={tApp('notion.connectMessage')}
+        confirmLabel={tApp('common.connect')}
+        cancelLabel={tApp('common.cancel')}
+        onConfirm={confirmNotionConnect}
+        onClose={cancelNotionConnect}
+      />
+      <NotionPagePickerModal
+        open={!!notionPicker}
+        connections={notionPicker?.connections}
+        onClose={cancelNotionPicker}
+        onConfirm={resolveNotionPicker}
+      />
+
       {/* OTA update overlay — shown during auto-update download/reload */}
       {updateCurtainUp && (
         <div style={{
@@ -7849,10 +7983,12 @@ function AppCore() {
 
   return (
     <HubUsageContext.Provider value={hubUsageCtx}>
-      <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
-      <CoworkProvider value={coworkValue}>
-        <CoworkRouterProvider router={routerRef.current} />
-      </CoworkProvider>
+      <ModelPickerContext.Provider value={modelPickerCtx}>
+        <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
+        <CoworkProvider value={coworkValue}>
+          <CoworkRouterProvider router={routerRef.current} />
+        </CoworkProvider>
+      </ModelPickerContext.Provider>
     </HubUsageContext.Provider>
   );
 }

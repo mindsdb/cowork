@@ -40,7 +40,7 @@ describe('favicon settings translation', () => {
 describe('shared browser settings', () => {
   it('maps only the switch and the approvals choice', () => {
     const browserKeys = Object.keys(SETTINGS_KEY_MAP).filter((key) => key.startsWith('browser_'));
-    expect(browserKeys).toEqual(['browser_enabled', 'browser_approve_steps', 'browser_only_when_needed']);
+    expect(browserKeys).toEqual(['browser_enabled', 'browser_approve_steps', 'browser_only_when_needed', 'browser_approve_steps_off_at']);
   });
 
   it('round-trips Only show the browser when needed as a server setting', () => {
@@ -54,6 +54,29 @@ describe('shared browser settings', () => {
     expect(transformSettingsRows([{ key: 'browser_approve_steps', value: 'True' }]).browserApproveSteps).toBe(true);
     expect(diffSettingsForWrite({ browserApproveSteps: false }, { browserApproveSteps: true }))
       .toEqual({ browser_approve_steps: 'false' });
+  });
+
+  /* The server stamps when approvals last went off, by its clock; the app
+     reads it to approve only steps held after it, and never writes it. */
+  it('reads when approvals went off, and never writes it back', () => {
+    expect(transformSettingsRows([{ key: 'browser_approve_steps_off_at', value: '1700000000123' }]).browserApproveStepsOffAt)
+      .toBe('1700000000123');
+    expect(diffSettingsForWrite({ browserApproveStepsOffAt: '1' }, { browserApproveStepsOffAt: '1700000000123' })).toEqual({});
+    expect(committedSettingsPatch({ browserApproveStepsOffAt: '1' }, ['browser_approve_steps_off_at'])).toEqual({});
+  });
+
+  /* Each write of approvals off moves the server's stamp past the cards
+     waiting then, so a card's Skip approvals must reach it even when this
+     tab already reads approvals off; and turning them back on from a card
+     is never dropped as unchanged from a stale read. */
+  it('writes the approvals switch as given, whatever this tab last read', () => {
+    expect(diffSettingsForWrite({ browserApproveSteps: false }, { browserApproveSteps: false })).toEqual({ browser_approve_steps: 'false' });
+    expect(diffSettingsForWrite({ browserApproveSteps: false }, {})).toEqual({ browser_approve_steps: 'false' });
+    expect(diffSettingsForWrite({ browserApproveSteps: true }, { browserApproveSteps: true })).toEqual({ browser_approve_steps: 'true' });
+    // Only a real switch value: a missing one is never written.
+    expect(diffSettingsForWrite({ browserApproveSteps: undefined }, {})).toEqual({});
+    // Other switches still skip an unchanged value.
+    expect(diffSettingsForWrite({ browserOnlyWhenNeeded: false }, { browserOnlyWhenNeeded: false })).toEqual({});
   });
 
   it('reads no server address, key, proxy switch or city from the settings rows', () => {

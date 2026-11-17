@@ -42,6 +42,15 @@ describe('responseStreamAdapter — ask_user', () => {
     expect(step.data.answer).toBeNull();
   });
 
+  /* The server's own stamp of when it held the question, never this tab's
+     clock: the app approves a held browser step for the person only if it
+     was held after they turned approvals off. */
+  it('keeps when the server held the question, or null without a stamp', () => {
+    expect(question(reduceStream(initialStreamState(), { ...ASK, at_ms: 1_700_000_000_123 })).data.held_at_ms).toBe(1_700_000_000_123);
+    expect(question(reduceStream(initialStreamState(), ASK)).data.held_at_ms).toBeNull();
+    expect(question(reduceStream(initialStreamState(), { ...ASK, at_ms: '1700000000123' })).data.held_at_ms).toBeNull();
+  });
+
   it('is idempotent — a replayed duplicate does not add a second card', () => {
     const once = reduceStream(initialStreamState(), ASK);
     const twice = reduceStream(once, ASK);

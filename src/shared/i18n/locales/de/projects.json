@@ -12,11 +12,16 @@
       "allowanceStop": {
         "noGrant": "{noGrant} Ihr Guthaben ist aufgebraucht. Laden Sie es auf, um weiterzumachen.",
         "withTime": "Ihr Gratiskontingent für MindsHub Air und Ihr Guthaben sind aufgebraucht. Laden Sie Guthaben auf, um weiterzuarbeiten, oder warten Sie, bis das Kontingent um {time} wieder aufgefüllt wird.",
-        "noTime": "Ihr Gratiskontingent für MindsHub Air und Ihr Guthaben sind aufgebraucht. Laden Sie Guthaben auf, um weiterzuarbeiten."
+        "noTime": "Ihr Gratiskontingent für MindsHub Air und Ihr Guthaben sind aufgebraucht. Laden Sie Guthaben auf, um weiterzuarbeiten.",
+        "noTimeMobile": "Ihr Gratiskontingent für MindsHub Air und Ihr Guthaben sind aufgebraucht.",
+        "noGrantMobile": "{noGrant} Ihr Guthaben ist aufgebraucht.",
+        "withTimeMobile": "Ihr Gratiskontingent für MindsHub Air und Ihr Guthaben sind aufgebraucht. Wird um {time} zurückgesetzt."
       },
       "freeServingPaused": {
         "until": "Das kostenlose MindsHub Air ist für alle bis {until} pausiert. Ihr Kontingent wird dadurch nicht verbraucht. Laden Sie Guthaben auf, um jetzt weiterzuarbeiten.",
-        "dailyReset": "Das kostenlose MindsHub Air ist für alle pausiert, bis das Tagesbudget zurückgesetzt wird. Ihr Kontingent wird dadurch nicht verbraucht. Laden Sie Guthaben auf, um jetzt weiterzuarbeiten."
+        "dailyReset": "Das kostenlose MindsHub Air ist für alle pausiert, bis das Tagesbudget zurückgesetzt wird. Ihr Kontingent wird dadurch nicht verbraucht. Laden Sie Guthaben auf, um jetzt weiterzuarbeiten.",
+        "untilMobile": "Das kostenlose MindsHub Air ist für alle bis {until} pausiert. Ihr Kontingent wird dadurch nicht verbraucht.",
+        "dailyResetMobile": "Das kostenlose MindsHub Air ist für alle pausiert, bis das Tagesbudget zurückgesetzt wird. Ihr Kontingent wird dadurch nicht verbraucht."
       },
       "resting": {
         "resetsAt": "Wird um {time} zurückgesetzt.",
@@ -26,13 +31,17 @@
       "percentLeft": "Noch {percent} Ihres Gratiskontingents übrig",
       "autoTopUpFailed": {
         "title": "Automatische Aufladung fehlgeschlagen",
-        "body": "Ihre Karte konnte nicht belastet werden. Laden Sie Guthaben auf oder aktualisieren Sie Ihre Zahlungsmethode."
+        "body": "Ihre Karte konnte nicht belastet werden. Laden Sie Guthaben auf oder aktualisieren Sie Ihre Zahlungsmethode.",
+        "bodyMobile": "Ihre Karte konnte nicht belastet werden."
       },
       "balanceEmpty": {
         "title": "Guthaben aufgebraucht",
         "body": "Laden Sie Guthaben auf, um eine weitere Aufgabe zu starten.",
         "freeUsedToo": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent wieder aufgefüllt wird.",
-        "freeUsedTooWithTime": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent um {time} wieder aufgefüllt wird."
+        "freeUsedTooWithTime": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent um {time} wieder aufgefüllt wird.",
+        "freeUsedTooMobile": "Auch Ihr Gratiskontingent ist aufgebraucht.",
+        "freeUsedTooWithTimeMobile": "Auch Ihr Gratiskontingent ist aufgebraucht. Wird um {time} zurückgesetzt.",
+        "bodyMobile": "Ihr Guthaben ist aufgebraucht. Kostenpflichtige Modelle sind nicht verfügbar."
       },
       "balanceLow": {
         "title": "Guthaben wird knapp",
@@ -40,7 +49,9 @@
         "autoCovers": "Noch {usd} übrig. Die automatische Aufladung übernimmt das.",
         "autoPending": "Noch {usd} übrig. Die automatische Aufladung wartet auf Ihre Bank.",
         "autoCapReached": "Noch {usd} übrig. Die automatische Aufladung ist pausiert, um im monatlichen Limit zu bleiben. Laden Sie Guthaben auf, um weiterzumachen.",
-        "body": "Noch {usd} übrig. Laden Sie Guthaben auf oder aktivieren Sie die automatische Aufladung."
+        "body": "Noch {usd} übrig. Laden Sie Guthaben auf oder aktivieren Sie die automatische Aufladung.",
+        "bodyMobile": "Noch {usd} übrig.",
+        "autoCapReachedMobile": "Noch {usd} übrig. Die automatische Aufladung ist pausiert, um im monatlichen Limit zu bleiben."
       },
       "freeUsed": {
         "title": "Gratiskontingent aufgebraucht",
@@ -95,7 +106,8 @@
         "walletEmpty": "Kein Guthaben verfügbar. Laden Sie Guthaben auf, um MindsHub zu nutzen.",
         "allowanceExhausted": "Keine kostenlosen MindsHub Air-Tokens verfügbar und das Guthaben ist aufgebraucht.",
         "freeAirPaused": "Das kostenlose MindsHub Air ist derzeit pausiert.",
-        "budgetExceeded": "Das Budget Ihrer Organisation ist aufgebraucht."
+        "budgetExceeded": "Das Budget Ihrer Organisation ist aufgebraucht.",
+        "walletEmptyMobile": "Kein Guthaben verfügbar."
       },
       "missingApiKey": "Fügen Sie rechts einen API-Schlüssel hinzu.",
       "missingBaseUrl": "Fügen Sie rechts eine Basis-URL hinzu.",
@@ -223,7 +235,9 @@
         "oneWorking": "Sie können nachfragen, sobald {name} fertig ist.",
         "bothContinued": "Beide Seiten wurden als Aufgaben fortgesetzt, daher nimmt dieser Vergleich keine weiteren Nachrichten an.",
         "sideContinued": "{name} wurde als Aufgabe fortgesetzt. Senden Sie nur an {other}.",
-        "sideWorking": "{name} arbeitet noch. Senden Sie nur an {other} oder warten Sie."
+        "sideWorking": "{name} arbeitet noch. Senden Sie nur an {other} oder warten Sie.",
+        "outOfCreditsBothMobile": "Beide Modelle wurden gestoppt, weil das Guthaben aufgebraucht ist.",
+        "outOfCreditsOneMobile": "{name} wurde gestoppt, weil das Guthaben aufgebraucht ist."
       },
       "twiceTheCredits": "Ein Vergleich nutzt zwei Modelle und verbraucht daher etwa doppelt so viel Guthaben wie eine Aufgabe.",
       "turnsTitle": "{nameA}: {countA, plural, one {# Durchgang} other {# Durchgänge}} · {nameB}: {countB, plural, one {# Durchgang} other {# Durchgänge}}",
@@ -502,7 +516,8 @@
     },
     "antonErrors": {
       "noProvider": "Für dieses Konto ist kein LLM-Anbieter verbunden. Starten Sie kostenlos mit MindsHub oder fügen Sie in den Einstellungen Ihren eigenen Anbieter hinzu.",
-      "couldNotComplete": "Diese Aufgabe konnte nicht abgeschlossen werden."
+      "couldNotComplete": "Diese Aufgabe konnte nicht abgeschlossen werden.",
+      "noProviderMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen."
     },
     "displayToggle": {
       "switchStyle": "Zum Stil {style} wechseln"
@@ -551,6 +566,7 @@
     "missed": "Verpasst",
     "lastFailed": "Zuletzt fehlgeschlagen",
     "lastRunFailed": "Letzte Ausführung fehlgeschlagen",
+    "stoppedAtLimit": "An Limit gestoppt",
     "done": "Fertig",
     "active": "Aktiv"
   },
@@ -580,11 +596,30 @@
     "autoPausedNote": "„Fortsetzen“ aktiviert den Zeitplan wieder und holt eventuell eine ausstehende Ausführung nach. „Jetzt ausführen“ führt sie sofort einmal aus.",
     "partialTitle": "Die letzte Ausführung wurde vorzeitig beendet",
     "partialNote": "Einige Aktionen wurden möglicherweise abgeschlossen. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
+    "limitTitle": "Die letzte Ausführung wurde an einem Limit gestoppt",
+    "limitNote": "Ein Teil der Arbeit ist möglicherweise erledigt. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
     "failedTitle": "Die letzte Ausführung ist fehlgeschlagen",
     "resume": "Fortsetzen",
     "runNow": "Jetzt ausführen",
     "reviewRun": "Ausführung prüfen",
-    "runAgain": "Erneut ausführen"
+    "runAgain": "Erneut ausführen",
+    "openSettings": "Einstellungen öffnen"
+  },
+  "scheduleRunNotice": {
+    "untitled": "Geplante Aufgabe",
+    "failedTitle": "Geplante Aufgabe fehlgeschlagen",
+    "failedBody": "„{title}“ hat die letzte Ausführung nicht abgeschlossen. Zum Prüfen klicken.",
+    "failedToast": "Die geplante Aufgabe „{title}“ hat die letzte Ausführung nicht abgeschlossen.",
+    "succeededTitle": "Geplante Aufgabe abgeschlossen",
+    "succeededBody": "„{title}“ hat eine Ausführung abgeschlossen. Zum Öffnen klicken.",
+    "succeededToast": "Die geplante Aufgabe „{title}“ hat eine Ausführung abgeschlossen.",
+    "openAction": "Aufgabe öffnen"
+  },
+  "scheduleNotifyMenu": {
+    "label": "Benachrichtigungen",
+    "heading": "Benachrichtigen bei",
+    "failed": "Fehlgeschlagenen Ausführungen",
+    "succeeded": "Erfolgreichen Ausführungen"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -619,6 +654,8 @@
     "name": "Name",
     "namePlaceholder": "Wird aus dem Prompt abgeleitet",
     "project": "Projekt",
+    "model": "Modell",
+    "accountDefault": "Kontostandard",
     "cancel": "Abbrechen",
     "saveAndRunOnce": "Speichern und einmal ausführen",
     "saving": "Wird gespeichert…",
@@ -658,7 +695,8 @@
       "running": "Läuft",
       "success": "Erfolgreich",
       "failed": "Fehlgeschlagen",
-      "cancelled": "Gestoppt"
+      "cancelled": "Gestoppt",
+      "stoppedAtLimit": "An Limit gestoppt"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Läuft gerade",
@@ -674,6 +712,8 @@
     "runNow": "Jetzt ausführen",
     "scheduleAriaLabel": "Zeitplan",
     "accountDefaultModel": "Standardmodell des Kontos",
+    "ranOnDefaultModel": "Standardmodell",
+    "modelUnavailable": "{model} ist nicht verfügbar, daher wurde für diese Ausführung Ihr Standardmodell verwendet.",
     "succeededCount": "{total, plural, one {{succeeded} von # Ausführung erfolgreich} other {{succeeded} von # Ausführungen erfolgreich}}",
     "promptAriaLabel": "Prompt",
     "runs": "Ausführungen",

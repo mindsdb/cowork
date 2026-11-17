@@ -69,6 +69,44 @@ describe('keychain-service — per-channel service namespacing', () => {
     await svc.deleteRefreshToken('slack', 'x@y.com');
     expect(keytar.deletePassword).toHaveBeenCalledWith('cowork-oauth-preview', 'slack:x@y.com');
   });
+
+  /** A stand-in keychain that stores what is written, per (service, account). */
+  function storingKeytar(): Map<string, string> {
+    const entries = new Map<string, string>();
+    keytar.getPassword.mockImplementation(async (svc: string, acct: string) => entries.get(`${svc}/${acct}`) ?? null);
+    keytar.setPassword.mockImplementation(async (svc: string, acct: string, v: string) => { entries.set(`${svc}/${acct}`, v); });
+    keytar.deletePassword.mockImplementation(async (svc: string, acct: string) => { entries.delete(`${svc}/${acct}`); });
+    return entries;
+  }
+
+  it('keeps an MCP access mode per store root, in a service of its own', async () => {
+    const entries = storingKeytar();
+    const svc = await loadForKind('prod');
+    await svc.setMcpAccessMode('/home/.cowork', 'notion', 'ws', 'write');
+    await svc.setMcpAccessMode('/home/.cowork/accounts/b', 'notion', 'ws', 'read');
+
+    await expect(svc.getMcpAccessMode('/home/.cowork', 'notion', 'ws')).resolves.toBe('write');
+    await expect(svc.getMcpAccessMode('/home/.cowork/accounts/b', 'notion', 'ws')).resolves.toBe('read');
+    for (const key of entries.keys()) {
+      expect(key).toMatch(/^cowork-mcp-access-mode\/[0-9a-f]{32}\|notion:ws$/);
+      expect(key).not.toContain('/home');
+    }
+
+    await svc.deleteMcpAccessMode('/home/.cowork/accounts/b', 'notion', 'ws');
+    await expect(svc.getMcpAccessMode('/home/.cowork', 'notion', 'ws')).resolves.toBe('write');
+    await expect(svc.getMcpAccessMode('/home/.cowork/accounts/b', 'notion', 'ws')).resolves.toBeNull();
+  });
+
+  it('keeps the migration marker per store root', async () => {
+    storingKeytar();
+    const svc = await loadForKind('preview');
+
+    await svc.markMcpAccessModeMigrated('/home/.cowork');
+
+    await expect(svc.isMcpAccessModeMigrated('/home/.cowork')).resolves.toBe(true);
+    await expect(svc.isMcpAccessModeMigrated('/home/.cowork/accounts/b')).resolves.toBe(false);
+    expect(keytar.setPassword).toHaveBeenCalledWith('cowork-mcp-access-mode-preview', expect.stringMatching(/^__migration_done__\|[0-9a-f]{32}$/), '1');
+  });
 });
 
 // keytar throws (rather than returning null) when the OS secure-store

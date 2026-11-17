@@ -21,6 +21,15 @@ afterEach(() => vi.unstubAllGlobals());
 
 
 describe('coding API boundary', () => {
+  it('initializes Git only through the explicit folder action and returns its modes', async () => {
+    const options = { supported: ['in_place'], default: 'in_place', can_initialize_git: false };
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => options }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(codingApi.initializeGit('/notes & drafts')).resolves.toEqual(options);
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:26866/api/v1/coding/workspace/initialize-git', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ path: '/notes & drafts' }),
+    }));
+  });
   it('encodes repository connection names and pages without leaking URL structure', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ items: [], next_page: null }) }));
     vi.stubGlobal('fetch', fetchMock);

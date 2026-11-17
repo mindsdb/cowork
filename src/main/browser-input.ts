@@ -28,7 +28,7 @@ import {
   type StepRequest,
   type StepTarget,
 } from '../shared/browser-contract';
-import type { FocusFieldResult, FocusResult, LocateResult, SelectResult, TypingFocus } from './browser-page-script';
+import type { FocusFieldResult, FocusResult, LocateResult, PointControl, SelectResult, TypingFocus } from './browser-page-script';
 import { screenshotScale } from './browser-screenshot';
 
 /** The only commands main ever sends through a view's debugger. */
@@ -391,6 +391,8 @@ export interface PageReader {
   focus(id: number, editing: boolean): Promise<FocusResult>;
   select(id: number, values: string[]): Promise<SelectResult>;
   viewport(): Promise<{ width: number; height: number }>;
+  /** The control a click at this point of the viewport lands on. */
+  atPoint(at: Point): Promise<PointControl>;
 }
 
 export interface Navigation {
@@ -450,6 +452,11 @@ async function elementPoint(host: StepHost, input: AgentInput, id: number): Prom
   return { at: { x: left + (right - left) * spread(), y: top + (bottom - top) * spread() }, located };
 }
 
+/* A point the step names lands on its element. A step by position that lands
+   on a control is refused and told the control's element id: this browser
+   holds nothing, so the agent's gate is the only check, and it reads the
+   element a step names, not what lies under a point. Named, a Place order a
+   page steered the agent's click onto waits for the person's approval. */
 async function targetPoint(host: StepHost, input: AgentInput, target: StepTarget, coords: 'page' | 'screenshot'): Promise<Point> {
   if ('element' in target) return (await elementPoint(host, input, target.element)).at;
   const viewport = await host.page.viewport();
@@ -457,6 +464,14 @@ async function targetPoint(host: StepHost, input: AgentInput, target: StepTarget
   const at = { x: target.x * scale, y: target.y * scale };
   if (at.x >= viewport.width || at.y >= viewport.height) {
     throw new BridgeError('bad_request', `the point (${target.x}, ${target.y}) is outside the page's view`);
+  }
+  const control = await host.page.atPoint(at);
+  if (control) {
+    const named = control.name ? ` ${JSON.stringify(control.name)}` : '';
+    throw new BridgeError(
+      'bad_request',
+      `the point (${target.x}, ${target.y}) is on ${control.role}${named}, element ${control.id}; take this step on element ${control.id} instead of by position`,
+    );
   }
   return at;
 }

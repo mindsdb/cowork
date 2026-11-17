@@ -108,7 +108,10 @@
       "tryAgain": "다시 시도",
       "adminSpendingLimitBody": "관리자가 설정한 지출 한도에 도달했습니다. 관리자에게 문의하세요.",
       "budgetUsedUpTitle": "조직의 예산이 모두 소진되었습니다",
-      "viewBudgets": "예산 보기"
+      "viewBudgets": "예산 보기",
+      "balanceRanOutMobile": "이 작업이 끝나기 전에 잔액이 모두 소진되었습니다.",
+      "autoTopUpFailedBodyMobile": "카드 결제를 처리하지 못했습니다.",
+      "connectProviderBodyMobile": "설정에서 직접 공급자를 연결하세요."
     },
     "usageAlert": {
       "freeLow": "Air 무료 제공량 {percent} 남음",
@@ -142,7 +145,8 @@
       "needsCreditsTitle": "{model}을(를) 사용하려면 크레딧이 필요합니다",
       "needsCreditsBody": "이 모델을 사용할 크레딧이 부족합니다. 잔액을 충전한 후 사용하세요.",
       "disabledBody": "워크스페이스에서 이 모델이 꺼져 있습니다. 설정에서 다른 모델을 선택하세요.",
-      "topUpBalance": "잔액 충전"
+      "topUpBalance": "잔액 충전",
+      "needsCreditsBodyMobile": "이 모델을 사용할 크레딧이 부족합니다."
     },
     "overloaded": {
       "theModelProvider": "모델 공급자",
@@ -221,7 +225,8 @@
         "files": "대기열에 추가됨: 파일이 있는 메시지는 현재 작업 후에 실행됩니다.",
         "notRead": "대기열에 추가됨: 읽기 전에 작업이 끝났습니다."
       }
-    }
+    },
+    "reconnecting": "다시 연결하는 중"
   },
   "composer": {
     "placeholder": "안녕하세요, 오늘은 무엇을 도와드릴까요?",
@@ -279,7 +284,8 @@
       "fixed": "이 작업의 프로젝트는 고정되어 있습니다",
       "none": "프로젝트 없음"
     },
-    "chooseHarness": "하네스 선택"
+    "chooseHarness": "하네스 선택",
+    "voiceCall": "음성 통화"
   },
   "attachmentThumbnail": {
     "open": "이미지 열기",
@@ -300,7 +306,9 @@
       "title": "이 브라우저 단계를 승인하시겠습니까?",
       "intro": "구매, 전송, 삭제 또는 제출을 할 수 있으며, 승인한 경우에만 실행됩니다.",
       "approved": "브라우저 작업 승인됨",
-      "cancelled": "브라우저 작업 취소됨"
+      "cancelled": "브라우저 작업 취소됨",
+      "typedText": "입력할 텍스트",
+      "typedTextKeys": "입력할 텍스트(⏎는 줄바꿈을 나타내며 전송될 수 있고, ⇥는 탭을, ⟦U+…⟧는 보이지 않는 문자를 나타냅니다)"
     },
     "handOver": {
       "title": "브라우저에서 진행해 주세요",
@@ -312,6 +320,7 @@
       "finishLater": "나중에 마치기",
       "stop": "중지",
       "noBrowser": "여기에는 돌려줄 브라우저가 없습니다.",
+      "notOpened": "브라우저가 열리지 않았습니다. 브라우저를 열고 완료하고 계속을 다시 클릭합니다.",
       "handedBack": "돌려줌 — 계속 진행함",
       "stopped": "넘겨주기 중지됨",
       "ended": "넘겨주기 종료됨"
@@ -488,7 +497,10 @@
         "1": "제품 출시용 랜딩 페이지 만들기",
         "2": "대시보드 웹사이트 만들기",
         "3": "포트폴리오 웹사이트 만들기",
-        "4": "회사 블로그 만들기"
+        "4": "회사 블로그 만들기",
+        "5": "프로젝트 현황 페이지 만들기",
+        "6": "팀 오프사이트 초대 페이지 만들기",
+        "7": "기능 발표 페이지 만들기"
       }
     },
     "apps": {
@@ -517,7 +529,8 @@
         "2": "인수 실사 체크리스트 만들기",
         "3": "Hugging Face 데이터로 주요 VLM 모델 비교하기",
         "4": "투자 현금 흐름의 IRR 계산하기",
-        "5": "스프레드시트를 정리하고 차트로 만들기"
+        "5": "스프레드시트를 정리하고 차트로 만들기",
+        "6": "계약서에서 핵심 조건 추출하기"
       }
     },
     "visualization": {
@@ -528,7 +541,9 @@
         "0": "주간 영업 활동을 히트맵으로 보여 주기",
         "1": "고객 이탈 분석 및 인사이트 도출하기",
         "2": "부서별 월간 KPI 추적하기",
-        "3": "시장 세그먼트별 경쟁 환경 분석하기"
+        "3": "시장 세그먼트별 경쟁 환경 분석하기",
+        "4": "프로젝트 출시 일정표 만들기",
+        "5": "프로세스를 다이어그램으로 나타내기"
       }
     },
     "wide-research": {
@@ -543,7 +558,10 @@
         "4": "고객 페르소나와 여정 지도 조사하기",
         "5": "문서를 요약하고 답장 초안 작성하기",
         "6": "내 컴퓨터에 맞는 로컬 모델 고르기",
-        "7": "이번 주 할 일 검토하기"
+        "7": "이번 주 할 일 검토하기",
+        "8": "잠재 고객을 조사하고 첫 연락 메일 작성하기",
+        "9": "통화 기록으로 거래 코칭 받기",
+        "10": "회의 메모를 실행 항목으로 정리하기"
       }
     },
     "games": {
@@ -692,7 +710,14 @@
       "closeIts": "해당 브라우저 닫기(탭 저장됨)",
       "watching": "누군가 보고 있습니다"
     },
-    "phoneYourTurnWatching": "진행해 주세요: {reason}. 완료되면 {agent}이(가) 알아서 이어 갑니다. 또는 브라우저에서 완료를 탭합니다."
+    "phoneYourTurnWatching": "진행해 주세요: {reason}. 완료되면 {agent}이(가) 알아서 이어 갑니다. 또는 브라우저에서 완료를 탭합니다.",
+    "handOverFallback": "{agent}이(가) 브라우저에서 도움이 필요합니다",
+    "phoneYourTurn": "진행해 주세요: {reason}. 끝나면 브라우저에서 완료를 탭한 다음 최소화하여 계속합니다.",
+    "phoneQuestion": "{agent}이(가) 질문이 있습니다. 최소화하여 답해 주세요.",
+    "phoneWorking": "작업 중…",
+    "phoneDone": "완료되었습니다. 최소화하여 답변을 확인하세요.",
+    "phoneMinimize": "최소화",
+    "talkTo": "{agent}와(과) 대화"
   },
   "voiceCall": {
     "dialogLabel": "{agent}와(과)의 음성 통화",
@@ -711,6 +736,23 @@
     "ended": "통화가 종료되었습니다.",
     "close": "닫기",
     "endCall": "통화 종료",
-    "mute": "음소거"
+    "mute": "음소거",
+    "orbLabel": "{state, select, starting {음성 연결 중} working {작업 중} other {통화 중}}",
+    "orbShow": "{state, select, starting {음성 연결 중. 통화 보기} working {작업 중. 통화 보기} other {통화 중. 통화 보기}}",
+    "allowMicrophone": "음성 통화를 시작하려면 브라우저에서 마이크를 허용하세요.",
+    "noMicrophone": "마이크를 찾을 수 없습니다.",
+    "couldNotStart": "음성 통화를 시작할 수 없습니다.",
+    "endedReason": "통화가 종료되었습니다({reason})."
+  },
+  "notionPicker": {
+    "title": "Notion에서 페이지 추가",
+    "subtitle": "Notion을 검색하여 이 메시지에 추가할 페이지를 선택하세요.",
+    "searchPlaceholder": "Notion 페이지 검색…",
+    "searchAriaLabel": "Notion 페이지 검색",
+    "minQuery": "{count, plural, other {검색하려면 #자 이상 입력하세요.}}",
+    "noResults": "페이지를 찾을 수 없습니다.",
+    "database": "데이터베이스",
+    "cancel": "취소",
+    "add": "{count, plural, =0 {페이지 추가} other {페이지 #개 추가}}"
   }
 }
