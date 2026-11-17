@@ -460,7 +460,9 @@
       "reasoning": "Raisonnement",
       "reasoningAriaLabel": "Niveau de raisonnement par défaut",
       "permissions": "Autorisations",
-      "permissionsAriaLabel": "Autorisations de code par défaut"
+      "permissionsAriaLabel": "Autorisations de code par défaut",
+      "workspace": "Espace de travail",
+      "workspaceAriaLabel": "Espace de travail par défaut des tâches"
     },
     "environment": {
       "title": "Environnement",
@@ -1615,6 +1617,13 @@
       "title": "Travailler dans un worktree Git isolé, pour que les tâches puissent s’exécuter côte à côte."
     },
     "selectAriaLabel": "Où la tâche travaille",
-    "menuLabel": "Espace de travail"
+    "menuLabel": "Espace de travail",
+    "default": {
+      "label": "Par défaut",
+      "title": "Laisser {product} choisir selon le dossier et l’ordinateur de chaque tâche."
+    },
+    "initializeGit": "Initialiser Git",
+    "initializeFailed": "Impossible d’initialiser Git. Réessayez.",
+    "unavailable": "Aucun mode d’espace de travail n’est disponible pour ce dossier."
   }
 }

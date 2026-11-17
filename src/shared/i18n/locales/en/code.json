@@ -460,7 +460,9 @@
       "reasoning": "Reasoning",
       "reasoningAriaLabel": "Default reasoning effort",
       "permissions": "Permissions",
-      "permissionsAriaLabel": "Default coding permissions"
+      "permissionsAriaLabel": "Default coding permissions",
+      "workspace": "Workspace",
+      "workspaceAriaLabel": "Default task workspace"
     },
     "environment": {
       "title": "Environment",
@@ -1615,6 +1617,13 @@
       "title": "Work in an isolated Git worktree, so tasks can run side by side."
     },
     "selectAriaLabel": "Where the task works",
-    "menuLabel": "Workspace"
+    "menuLabel": "Workspace",
+    "default": {
+      "label": "Default",
+      "title": "Let {product} choose for each task’s folder and computer."
+    },
+    "initializeGit": "Initialize Git",
+    "initializeFailed": "Could not initialize Git. Try again.",
+    "unavailable": "No workspace mode is available for this folder."
   }
 }

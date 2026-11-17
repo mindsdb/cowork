@@ -460,7 +460,9 @@
       "reasoning": "Raciocínio",
       "reasoningAriaLabel": "Esforço de raciocínio padrão",
       "permissions": "Permissões",
-      "permissionsAriaLabel": "Permissões de código padrão"
+      "permissionsAriaLabel": "Permissões de código padrão",
+      "workspace": "Espaço de trabalho",
+      "workspaceAriaLabel": "Espaço de trabalho padrão das tarefas"
     },
     "environment": {
       "title": "Ambiente",
@@ -1615,6 +1617,13 @@
       "title": "Trabalhar em uma worktree Git isolada, para que as tarefas possam ser executadas lado a lado."
     },
     "selectAriaLabel": "Onde a tarefa trabalha",
-    "menuLabel": "Espaço de trabalho"
+    "menuLabel": "Espaço de trabalho",
+    "default": {
+      "label": "Padrão",
+      "title": "Deixe o {product} escolher de acordo com a pasta e o computador de cada tarefa."
+    },
+    "initializeGit": "Inicializar Git",
+    "initializeFailed": "Não foi possível inicializar o Git. Tente novamente.",
+    "unavailable": "Nenhum modo de espaço de trabalho está disponível para esta pasta."
   }
 }

@@ -460,7 +460,9 @@
       "reasoning": "Reasoning",
       "reasoningAriaLabel": "Standard-Reasoning-Aufwand",
       "permissions": "Berechtigungen",
-      "permissionsAriaLabel": "Standard-Coding-Berechtigungen"
+      "permissionsAriaLabel": "Standard-Coding-Berechtigungen",
+      "workspace": "Arbeitsbereich",
+      "workspaceAriaLabel": "Standard-Arbeitsbereich für Aufgaben"
     },
     "environment": {
       "title": "Umgebung",
@@ -1615,6 +1617,13 @@
       "title": "In einem isolierten Git-Worktree arbeiten, damit Aufgaben parallel laufen können."
     },
     "selectAriaLabel": "Wo die Aufgabe arbeitet",
-    "menuLabel": "Arbeitsbereich"
+    "menuLabel": "Arbeitsbereich",
+    "default": {
+      "label": "Standard",
+      "title": "{product} entscheidet anhand des Ordners und Computers jeder Aufgabe."
+    },
+    "initializeGit": "Git initialisieren",
+    "initializeFailed": "Git konnte nicht initialisiert werden. Versuche es erneut.",
+    "unavailable": "Für diesen Ordner ist kein Arbeitsbereichsmodus verfügbar."
   }
 }

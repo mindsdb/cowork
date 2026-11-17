@@ -222,12 +222,15 @@ export function NewTaskPanel({
                     draft.setRepositorySetup(setup);
                   }}
                 />
-                {draft.workspaceModeChoice && (
+                {draft.workspaceModeChoice && draft.workspaceMode && (
                   <WorkspaceModeSelect
                     value={draft.workspaceMode}
                     onValueChange={draft.setWorkspaceMode}
-                    disabled={busy || executionLoading}
+                    disabled={busy || executionLoading || draft.workspaceModesLoading}
                   />
+                )}
+                {!draft.workspaceModesLoading && !draft.workspaceModeChoice && draft.workspaceMode === 'in_place' && (
+                  <span className="meta-pill" title={t('workspaceMode.local.title')}>{t('taskBar.localFolder', { count: selectedProject ? resourceIds.length : 1 })}</span>
                 )}
                 <ExecutionTargetSelect
                   computers={allComputers}
@@ -242,12 +245,15 @@ export function NewTaskPanel({
             )}
             {!selectedProject && (
               <div className="code-task-execution-controls">
-                {draft.workspaceModeChoice && (
+                {draft.workspaceModeChoice && draft.workspaceMode && (
                   <WorkspaceModeSelect
                     value={draft.workspaceMode}
                     onValueChange={draft.setWorkspaceMode}
                     disabled={busy}
                   />
+                )}
+                {!draft.workspaceModesLoading && !draft.workspaceModeChoice && draft.workspaceMode === 'in_place' && (
+                  <span className="meta-pill" title={t('workspaceMode.local.title')}>{t('taskBar.localFolder', { count: selectedProject ? resourceIds.length : 1 })}</span>
                 )}
                 <ExecutionTargetSelect
                   computers={allComputers}
@@ -261,6 +267,17 @@ export function NewTaskPanel({
               </div>
             )}
           </div>
+          {draft.workspaceModeOptions.worktree_unavailable_reason && !draft.workspaceModesLoading && (
+            <div className="flex flex-wrap items-center gap-x-2 px-2 py-2 text-xs text-ink-2">
+              <span>{draft.workspaceModeOptions.worktree_unavailable_reason}</span>
+              {!selectedProject && draft.workspaceModeOptions.can_initialize_git && (
+                <Button size="sm" variant="subtle" disabled={busy || draft.initializingGit} onClick={() => void draft.initializeGit()}>
+                  {t('workspaceMode.initializeGit')}
+                </Button>
+              )}
+            </div>
+          )}
+          {draft.initializeGitError && <Alert variant="danger">{draft.initializeGitError}</Alert>}
           {commandQuery != null && (
             <CodeCommandPalette
               items={paletteItems}

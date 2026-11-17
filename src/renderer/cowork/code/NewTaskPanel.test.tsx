@@ -61,6 +61,7 @@ vi.mock('./api', () => ({
       last_seen_at: '2026-08-23T09:00:00Z',
       capabilities: { platform: 'windows', architecture: 'x64', runtime_version: '1', protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['powershell'], has_git: true, has_terminal: true, supports_local_folders: true, max_concurrent_runs: 4 },
     }] })),
+    initializeGit: vi.fn(),
     workspaceModes: vi.fn(async () => ({ supported: ['worktree'], default: 'worktree' })),
     computers: vi.fn(async () => ({ items: [{
       schema_version: 1, id: 'local', name: 'This computer', is_local: true, status: 'online', active_run_count: 0,
@@ -154,6 +155,7 @@ describe('NewTaskPanel', () => {
   beforeEach(() => {
     localStorage.removeItem('mindshub-code:last-folder');
     localStorage.removeItem('mindshub-code:workspace-mode');
+    vi.mocked(codingApi.initializeGit).mockReset();
     vi.mocked(codingApi.workspaceModes).mockReset().mockResolvedValue({ supported: ['worktree'], default: 'worktree' });
     vi.mocked(codingApi.repositoryBranches).mockReset().mockResolvedValue({ items: ['staging', 'main'] });
     vi.mocked(codingApi.engines).mockResolvedValue([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]);
@@ -190,6 +192,117 @@ describe('NewTaskPanel', () => {
     searchWorkItems.mockResolvedValue({ items: [], incomplete: false });
   });
 
+  it('shows Local for a plain folder, initializes Git on request, and explains the first commit', async () => {
+    const user = userEvent.setup();
+    vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: ['in_place'], default: 'in_place',
+      worktree_unavailable_reason: 'Initialize Git to use a Worktree', can_initialize_git: true });
+    vi.mocked(codingApi.initializeGit).mockResolvedValue({ supported: ['in_place'], default: 'in_place',
+      worktree_unavailable_reason: 'Make a first commit to use a Worktree', can_initialize_git: false });
+    const onCreate = vi.fn(async () => {});
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} selectedProjectId={null} onCreate={onCreate} />);
+    await user.click(screen.getByRole('button', { name: 'Choose folder' }));
+    await waitFor(() => expect(codingApi.workspaceModes).toHaveBeenCalledWith(null, undefined, 'C:\\Users\\Ian & Team\\plain folder'));
+    expect(await screen.findByText('Local · your folder')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Where the task works' })).not.toBeInTheDocument();
+    expect(codingApi.initializeGit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Initialize Git' }));
+    expect(codingApi.initializeGit).toHaveBeenCalledWith('C:\\Users\\Ian & Team\\plain folder');
+    expect(await screen.findByText('Make a first commit to use a Worktree')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Initialize Git' })).not.toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Fix it');
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ workspaceMode: 'in_place' })));
+  });
+
+  it('blocks Start when no mode is possible and lets a failed Git initialization be retried', async () => {
+    const user = userEvent.setup();
+    vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: [], default: null,
+      worktree_unavailable_reason: 'Initialize Git to use a Worktree', can_initialize_git: true });
+    vi.mocked(codingApi.initializeGit).mockRejectedValueOnce(new Error('Git is not installed'))
+      .mockResolvedValue({ supported: [], default: null, worktree_unavailable_reason: 'Make a first commit to use a Worktree' });
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} selectedProjectId={null} onCreate={vi.fn(async () => {})} />);
+    await user.click(screen.getByRole('button', { name: 'Choose folder' }));
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Fix it');
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Initialize Git' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Git is not installed');
+    await user.click(screen.getByRole('button', { name: 'Initialize Git' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+  });
+
+  it('does not apply an old Git initialization response to a newly selected folder', async () => {
+    const user = userEvent.setup();
+    const localOnly = { supported: ['in_place'] as const, default: 'in_place' as const, can_initialize_git: true,
+      worktree_unavailable_reason: 'Initialize Git to use a Worktree' };
+    vi.mocked(codingApi.workspaceModes).mockImplementation(async (_project, _computer, path) => path === '/another-repo'
+      ? { supported: ['worktree', 'in_place'], default: 'worktree' }
+      : { ...localOnly, supported: ['in_place'] });
+    let complete!: (value: Awaited<ReturnType<typeof codingApi.initializeGit>>) => void;
+    vi.mocked(codingApi.initializeGit).mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} selectedProjectId={null} onCreate={vi.fn(async () => {})} />);
+    await user.click(screen.getByRole('button', { name: 'Choose folder' }));
+    await user.click(await screen.findByRole('button', { name: 'Initialize Git' }));
+    pickCodeFolder.mockResolvedValueOnce({ ok: true, path: '/another-repo' });
+    await user.click(screen.getByRole('button', { name: /Change folder, currently/ }));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Where the task works' })).toHaveTextContent('Worktree'));
+    await act(async () => complete({ supported: ['in_place'], default: 'in_place', can_initialize_git: false }));
+    expect(screen.getByRole('combobox', { name: 'Where the task works' })).toHaveTextContent('Worktree');
+    await user.click(screen.getByRole('button', { name: /Change folder, currently/ }));
+    expect(await screen.findByRole('button', { name: 'Initialize Git' })).toBeEnabled();
+  });
+
+  it('waits for the folder modes before starting and preserves older-server compatibility', async () => {
+    const user = userEvent.setup();
+    let rejectModes!: (error: Error) => void;
+    vi.mocked(codingApi.workspaceModes).mockImplementation(() => new Promise((_, reject) => { rejectModes = reject; }));
+    const onCreate = vi.fn(async () => {});
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Fix it');
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+    await act(async () => rejectModes(new Error('Not found')));
+    await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalled());
+    expect(onCreate).toHaveBeenCalledWith(expect.not.objectContaining({ workspaceMode: expect.anything() }));
+  });
+
+  it('sends the only usable mode when the project default is unavailable', async () => {
+    const user = userEvent.setup();
+    vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: ['in_place'], default: 'in_place' });
+    const localProject = { ...project, default_workspace_mode: 'worktree' as const };
+    const onCreate = vi.fn(async () => {});
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} projects={[localProject]} onCreate={onCreate} />);
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Fix it');
+    const start = screen.getByRole('button', { name: /start task/i });
+    await waitFor(() => expect(start).toBeEnabled());
+    await user.click(start);
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ workspaceMode: 'in_place' })));
+  });
+
+  it('Local ignores a missing isolated base branch', async () => {
+    const user = userEvent.setup();
+    vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: ['worktree', 'in_place'], default: 'in_place' });
+    projectFolders.mockResolvedValue({items: project.folders.map(folder => ({folder,
+      inspection: {path: folder.path, exists:true, is_directory:true, is_git:true, dirty:false},
+      base_branch_available:false,
+    }))});
+    const localProject = { ...project, default_workspace_mode: 'in_place' as const };
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} projects={[localProject]} onCreate={vi.fn(async () => {})} />);
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Fix it');
+    await waitFor(() => expect(screen.getByRole('combobox', {name:'Where the task works'})).toHaveTextContent('Local'));
+    const start = screen.getByRole('button', { name: /start task/i });
+    await waitFor(() => expect(start).toBeEnabled());
+    await user.click(screen.getByRole('combobox', { name: 'Where the task works' }));
+    await user.click(screen.getByRole('option', { name: 'Worktree' }));
+    await waitFor(() => expect(start).toBeDisabled());
+  });
   it('starts a plan explicitly and preserves the selected build permissions', async () => {
     vi.mocked(codingApi.engines).mockResolvedValue([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true, features: { planning: 'supported' } }]);
     const user = userEvent.setup();
@@ -925,6 +1038,43 @@ describe('NewTaskPanel', () => {
     await user.click(screen.getByRole('button', { name: /start task/i }));
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ workspaceMode: 'in_place' })));
     expect(onCreate).toHaveBeenCalledWith(expect.not.objectContaining({ repositorySetup: expect.anything() }));
+  });
+
+  it('starts a project task in the project’s default mode, keeps a choice for this task, and resets it on another project', async () => {
+    localStorage.setItem('mindshub-code:workspace-mode', 'worktree');
+    const user = userEvent.setup();
+    vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: ['worktree', 'in_place'], default: 'worktree' });
+    const localProject = { ...project, default_workspace_mode: 'in_place' as const };
+    const other = { ...project, id: 'project-2', name: 'Other', default_workspace_mode: null };
+    const props = {
+      busy: false,
+      error: '',
+      defaultEngineId: 'codex',
+      defaultModel: 'gpt-5.6-sol',
+      models,
+      modelMeta,
+      projects: [localProject, other],
+      onProjectChange: vi.fn(),
+      onOpenProjectSettings: vi.fn(),
+      onCreate: vi.fn(async () => {}),
+    };
+    const picker = () => screen.getByRole('combobox', { name: 'Where the task works' });
+    const view = render(<NewTaskPanel {...props} selectedProjectId={localProject.id} />);
+
+    // The project's default beats the remembered Worktree.
+    await waitFor(() => expect(picker()).toHaveTextContent('Local'));
+    await waitFor(() => expect(picker()).toBeEnabled());
+    await user.click(picker());
+    await user.click(await screen.findByRole('option', { name: 'Worktree' }));
+    expect(picker()).toHaveTextContent('Worktree');
+
+    // Another project with no default uses the remembered choice.
+    view.rerender(<NewTaskPanel {...props} selectedProjectId={other.id} />);
+    await waitFor(() => expect(picker()).toHaveTextContent('Worktree'));
+
+    // Back on the first project, the choice made there no longer applies.
+    view.rerender(<NewTaskPanel {...props} selectedProjectId={localProject.id} />);
+    await waitFor(() => expect(picker()).toHaveTextContent('Local'));
   });
 
   it('offers a direct route to create another Code Project', async () => {

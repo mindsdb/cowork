@@ -73,9 +73,11 @@ export type WorkspaceMode = 'in_place' | 'worktree';
 /** The modes a new task could run in, resolved by the server for its project and computer. */
 export interface WorkspaceModeOptions {
   supported: WorkspaceMode[];
-  default: WorkspaceMode;
+  default: WorkspaceMode | null;
   /** Why working in the folder itself is not offered; older servers omit it. */
   in_place_unavailable_reason?: string | null;
+  worktree_unavailable_reason?: string | null;
+  can_initialize_git?: boolean;
 }
 
 export interface SessionCreateBody {
@@ -473,6 +475,8 @@ export interface CodeProject {
   default_model: string;
   default_reasoning_effort?: ReasoningEffort | null;
   permission_mode: PermissionMode;
+  /** Null lets the server choose for each task's folder and computer. */
+  default_workspace_mode?: WorkspaceMode | null;
   created_at: string;
   updated_at: string;
 }
@@ -858,6 +862,9 @@ const liveCodingApi = {
     const suffix = query.size ? `?${query.toString()}` : '';
     return requestJson<WorkspaceModeOptions>(`/workspace-modes${suffix}`);
   },
+  initializeGit: (path: string) => requestJson<WorkspaceModeOptions>('/workspace/initialize-git', {
+    method: 'POST', body: JSON.stringify({ path }),
+  }),
   computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
     method: 'POST',
   }),
@@ -870,7 +877,7 @@ const liveCodingApi = {
   resolveLocalResource: (body: ProjectFolder) => requestJson<ProjectResource>('/project-resources/inspect', {
     method: 'POST', body: JSON.stringify(body),
   }),
-  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'default_reasoning_effort' | 'permission_mode'>) =>
+  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'default_reasoning_effort' | 'permission_mode' | 'default_workspace_mode'>) =>
     requestJson<CodeProject>('/projects', { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id: string, body: Partial<CodeProject>) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(body),
