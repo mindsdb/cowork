@@ -25,6 +25,9 @@ const previews = vi.hoisted(() => ({
 }));
 vi.mock('../cowork/lib/liveAppPreview', () => previews);
 
+const viewSession = vi.hoisted(() => ({ endViewSession: vi.fn(async () => {}) }));
+vi.mock('./viewSession', () => viewSession);
+
 import { MINDS_KEYCLOAK_URL } from './mindsUrls';
 import {
   __resetOrganizationTransitionForTests,
@@ -111,6 +114,7 @@ function signedIn(options: {
 beforeEach(() => {
   previews.closeLiveAppPreviews.mockReset().mockResolvedValue(undefined);
   previews.closeLiveAppPreviewsForSignOut.mockReset().mockResolvedValue(undefined);
+  viewSession.endViewSession.mockReset().mockResolvedValue(undefined);
   __resetOrganizationTransitionForTests();
   lockHeld = false;
   locks.request.mockClear();
@@ -161,6 +165,24 @@ it('closes app previews before ending the account session', async () => {
   await pending;
   expect(instance.logout).toHaveBeenCalledOnce();
   expect(previews.closeLiveAppPreviews).not.toHaveBeenCalled();
+});
+
+it('clears the view session before ending the account session', async () => {
+  keycloak.authenticated = true;
+  let release: () => void = () => {};
+  viewSession.endViewSession.mockReturnValueOnce(new Promise<void>(resolve => { release = resolve; }));
+  const pending = logout();
+  await vi.waitFor(() => expect(viewSession.endViewSession).toHaveBeenCalledOnce());
+  expect(instance.logout).not.toHaveBeenCalled();
+  release();
+  await pending;
+  expect(instance.logout).toHaveBeenCalledOnce();
+});
+
+it('does not touch the view session when there is no account session', async () => {
+  keycloak.authenticated = false;
+  await logout();
+  expect(viewSession.endViewSession).not.toHaveBeenCalled();
 });
 
 describe('getAccessToken()', () => {
