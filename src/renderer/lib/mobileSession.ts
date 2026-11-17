@@ -122,33 +122,30 @@ export async function restoreMobileSession(deps: RestoreDeps): Promise<RestoreRe
 
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
-  let response: Response;
+  let body: { access_token?: unknown; refresh_token?: unknown; id_token?: unknown };
   try {
-    response = await fetchImpl(tokenUrl, {
+    const response = await fetchImpl(tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'refresh_token', client_id: clientId, refresh_token: saved.refreshToken }),
       signal: controller.signal,
     });
-  } catch {
-    return { kind: 'unavailable' };
-  } finally {
-    globalThis.clearTimeout(timeout);
-  }
 
-  // 400 invalid_grant (expired, revoked, signed out elsewhere) or 401: the
-  // session is gone for good.
-  if (response.status === 400 || response.status === 401) {
-    await clearMobileSession(store);
-    return { kind: 'none' };
-  }
-  if (!response.ok) return { kind: 'unavailable' };
+    // 400 invalid_grant (expired, revoked, signed out elsewhere) or 401: the
+    // session is gone for good.
+    if (response.status === 400 || response.status === 401) {
+      await clearMobileSession(store);
+      return { kind: 'none' };
+    }
+    if (!response.ok) return { kind: 'unavailable' };
 
-  let body: { access_token?: unknown; refresh_token?: unknown; id_token?: unknown };
-  try {
     body = await response.json();
   } catch {
     return { kind: 'unavailable' };
+  } finally {
+    // Headers can arrive before the body stalls. Keep the deadline active
+    // through body consumption so that failure still offers a retry.
+    globalThis.clearTimeout(timeout);
   }
   if (typeof body.access_token !== 'string' || typeof body.refresh_token !== 'string') {
     return { kind: 'unavailable' };

@@ -86,6 +86,41 @@ describe('restoreMobileSession', () => {
     }
   });
 
+  it.each(['headers', 'body'] as const)('keeps the session and offers a retry when response %s stall', async (phase) => {
+    vi.useFakeTimers();
+    try {
+      const { store, current } = memoryStore();
+      let settled = false;
+      const result = restoreMobileSession({
+        store,
+        tokenUrl: TOKEN_URL,
+        clientId: 'cowork-mobile',
+        timeoutMs: 100,
+        fetch: vi.fn(async (_url, init) => {
+          const stalled = new Promise<never>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+          });
+          if (phase === 'headers') return stalled;
+          const response = new Response('{}');
+          vi.spyOn(response, 'json').mockReturnValue(stalled);
+          return response;
+        }) as typeof fetch,
+      }).then((value) => { settled = true; return value; });
+
+      await vi.advanceTimersByTimeAsync(99);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(true);
+      expect(await result).toEqual({ kind: 'unavailable' });
+      expect(current()).toEqual(SAVED);
+      expect(store.clearSession).not.toHaveBeenCalled();
+      expect(store.saveSession).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not call Keycloak with nothing saved, a corrupt save, or no store', async () => {
     for (const saved of [null, 'not json', JSON.stringify({ token: 'at-only' })]) {
       const { store } = memoryStore(saved);
