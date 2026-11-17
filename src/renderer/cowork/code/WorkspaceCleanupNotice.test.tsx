@@ -65,6 +65,16 @@ describe('WorkspaceCleanupNotice', () => {
     expect(screen.getByRole('button', { name: 'Retry cleanup' })).toBeEnabled();
   });
 
+  it('ignores a status that arrives after Code Mode closes', async () => {
+    let resolve!: (value: unknown) => void;
+    vi.mocked(codingApi.workspaceCleanup).mockReturnValue(new Promise((done) => { resolve = done; }) as never);
+    const view = render(<WorkspaceCleanupNotice active taskCount={1} />);
+    view.unmount();
+    // A reset mock resolves with nothing, as at the end of a test run.
+    await act(async () => { resolve(undefined); });
+    expect(codingApi.workspaceCleanup).toHaveBeenCalledOnce();
+  });
+
   it('stops polling an older server and does not poll while inactive', async () => {
     vi.useFakeTimers();
     vi.mocked(codingApi.workspaceCleanup).mockRejectedValue({ status: 404 });

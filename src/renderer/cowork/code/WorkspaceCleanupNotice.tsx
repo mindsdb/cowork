@@ -33,8 +33,10 @@ export function WorkspaceCleanupNotice({ active, taskCount }: { active: boolean;
         // warning through transient disconnects rather than claiming success.
         if ((reason as { status?: number }).status === 404) return;
       }
-      const settled = next !== null && !next.running && !next.failed;
-      if (!disposed && !settled) timer = setTimeout(() => void poll(), POLL_MS);
+      // A poll can resolve after Code Mode closes; nothing is left to update.
+      if (disposed) return;
+      const settled = !!next && !next.running && !next.failed;
+      if (!settled) timer = setTimeout(() => void poll(), POLL_MS);
     };
     void poll();
     return () => { disposed = true; clearTimeout(timer); };
