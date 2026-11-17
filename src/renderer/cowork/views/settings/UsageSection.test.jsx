@@ -159,3 +159,23 @@ describe('UsageSection', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
   });
 });
+
+
+describe('mobile usage details', () => {
+  it.each([
+    ['auto top up off', {}],
+    ['empty balance', { balance: { usd: 0, canConsume: false } }],
+    ['low balance', { balance: { usd: 8.42, canConsume: true, alert: 'low' } }],
+    ['failed payment', { autoTopUp: { enabled: true, status: 'payment_failed' } }],
+    ['non-owner', { isBillingOwner: false }],
+    ['unreachable', { reachable: false }],
+  ])('%s contains no purchase instructions', (_name, overrides) => {
+    hostMock.host.isMobileShell = true;
+    try {
+      const { container } = renderWith(usage(overrides));
+      expect(container.textContent).not.toMatch(/add funds|turn it on|turn on|update your payment method|in the console|Mobile/i);
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+});

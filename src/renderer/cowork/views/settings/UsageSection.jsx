@@ -5,7 +5,7 @@ import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
 import { trackBillingOpened } from '../../lib/analytics';
-import { offersBilling } from '../../lib/billingLinks';
+import { billingCopyKey, offersBilling } from '../../lib/billingLinks';
 import {
   USAGE_ACTIONS,
   usageActionUrl,
@@ -105,13 +105,13 @@ function FreeTokensCard({ free, isBillingOwner }) {
 }
 
 function autoTopUpLine(t, auto) {
-  if (!auto?.enabled) return { text: t('usage.autoTopUp.off'), tone: 'text-ink-3' };
+  if (!auto?.enabled) return { text: t(billingCopyKey('usage.autoTopUp.off')), tone: 'text-ink-3' };
   const target = auto.rechargeToUsd != null ? formatUsd(auto.rechargeToUsd) : null;
   const floor = auto.thresholdUsd != null ? formatUsd(auto.thresholdUsd) : null;
   const rule = target && floor ? t('usage.autoTopUp.rule', { target, floor }) : t('usage.autoTopUp.on');
   switch (auto.status) {
     case 'payment_failed':
-      return { text: t('usage.autoTopUp.paymentFailed'), tone: 'text-danger-text' };
+      return { text: t(billingCopyKey('usage.autoTopUp.paymentFailed')), tone: 'text-danger-text' };
     case 'cap_reached':
       return { text: t('usage.autoTopUp.capReached', { rule }), tone: 'text-warning-text' };
     case 'pending_action':
@@ -123,10 +123,10 @@ function autoTopUpLine(t, auto) {
 
 // Mirrors the usage bar's balance_low copy, so "turn on" only shows when auto top up is off.
 function lowBalanceLine(t, auto) {
-  if (!auto?.enabled) return t('usage.low.off');
+  if (!auto?.enabled) return t(billingCopyKey('usage.low.off'));
   if (auto.status === 'ok') return t('usage.low.ok');
   if (auto.status === 'pending_action') return t('usage.low.pending');
-  return t('usage.low.other');
+  return t(billingCopyKey('usage.low.other'));
 }
 
 function spentLabel(t, spend) {
@@ -156,7 +156,7 @@ function BalanceCard({ balance, auto, spend, isBillingOwner }) {
       <div className={`text-[26px] font-semibold tabular-nums leading-tight ${amountTone}`}>{formatUsd(balance.usd)}</div>
       <div className="text-[12px] text-ink-3 mt-1">
         {empty
-          ? t('usage.balance.empty')
+          ? t(billingCopyKey('usage.balance.empty'))
           : low
             ? lowBalanceLine(t, auto)
             : t('usage.balance.usedBy')}
@@ -168,7 +168,7 @@ function BalanceCard({ balance, auto, spend, isBillingOwner }) {
         </div>
       )}
       <div className={`text-[12px] mt-3 ${autoLine.tone}`}>{autoLine.text}</div>
-      {!isBillingOwner && (
+      {!isBillingOwner && offersBilling() && (
         <div className="text-[12px] text-ink-3 mt-2">{t('usage.balance.notOwner')}</div>
       )}
       <div className="flex flex-wrap gap-2 mt-3">
@@ -205,7 +205,7 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
     body = (
       <div className={`${CARD} flex flex-col items-start gap-3`}>
         <div className="text-base font-semibold text-ink">{t('usage.error.title')}</div>
-        <div className="text-[13px] text-ink-3">{t('usage.error.body')}</div>
+        <div className="text-[13px] text-ink-3">{t(billingCopyKey('usage.error.body'))}</div>
         <div className="flex gap-2">
           {ctx?.refresh && (
             <Button variant="default" size="sm" onClick={() => ctx.refresh()}>

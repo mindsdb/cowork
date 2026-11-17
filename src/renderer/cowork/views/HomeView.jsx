@@ -11,7 +11,7 @@ import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { offersBilling } from '../lib/billingLinks';
+import { billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked } from '../lib/analytics';
 import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
 import { getDraft } from '../lib/draftStore';
@@ -602,7 +602,7 @@ export default function HomeView({
               <div className="home-connect-card__body">
                 <div className="text-base font-[650] text-strong">{PLATFORM_UI ? t('home.connectProvider.title') : t('home.connectProvider.operatorTitle')}</div>
                 <div className="text-sm text-[var(--frost-700)] mt-[3px]">{PLATFORM_UI
-                  ? t('home.connectProvider.body')
+                  ? t(billingCopyKey('home.connectProvider.body'))
                   : t('home.connectProvider.operatorBody')}</div>
               </div>
               {PLATFORM_UI && <div className="home-connect-card__actions">

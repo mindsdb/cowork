@@ -108,7 +108,10 @@
       "tryAgain": "Riprova",
       "adminSpendingLimitBody": "È stato raggiunto il limite di spesa impostato dall’amministratore. Contatta l’amministratore.",
       "budgetUsedUpTitle": "Il budget della tua organizzazione è esaurito",
-      "viewBudgets": "Visualizza budget"
+      "viewBudgets": "Visualizza budget",
+      "balanceRanOutMobile": "Il saldo si è esaurito prima del completamento dell’attività.",
+      "autoTopUpFailedBodyMobile": "Non è stato possibile addebitare la tua carta.",
+      "connectProviderBodyMobile": "Collega il tuo provider in Impostazioni."
     },
     "usageAlert": {
       "freeLow": "Quota gratuita di Air rimanente: {percent}",
@@ -142,7 +145,8 @@
       "needsCreditsTitle": "{model} richiede crediti",
       "needsCreditsBody": "Non hai crediti sufficienti per questo modello. Ricarica il saldo per usarlo.",
       "disabledBody": "Questo modello è disattivato per la tua area di lavoro. Scegline un altro in Impostazioni.",
-      "topUpBalance": "Ricarica saldo"
+      "topUpBalance": "Ricarica saldo",
+      "needsCreditsBodyMobile": "Non hai crediti sufficienti per questo modello."
     },
     "overloaded": {
       "theModelProvider": "Il provider del modello",

@@ -17,3 +17,8 @@ export function offersBilling(): boolean {
 export function billingActions<T>(actions: readonly T[] | null | undefined): T[] {
   return offersBilling() && actions ? [...actions] : [];
 }
+
+/** Select informational mobile copy without changing browser/desktop wording. */
+export function billingCopyKey(key: string): string {
+  return offersBilling() ? key : `${key}Mobile`;
+}

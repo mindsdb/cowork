@@ -302,6 +302,7 @@ describe('CompareView', () => {
       fireEvent.change(modelB, { target: { value: 'qwen' } });
       expect(screen.getByText('Balance empty')).toBeTruthy();
       expect(screen.queryByRole('button', { name: /Add funds/ })).toBeNull();
+      expect(document.body.textContent).not.toMatch(/add funds/i);
     } finally {
       hostMock.isMobileShell = false;
     }
@@ -314,6 +315,8 @@ describe('CompareView', () => {
       await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', ranOut) }, usage(EMPTY));
       const held = screen.getByRole('status', { name: 'Follow-up message' });
       expect(within(held).queryByRole('button', { name: 'Add funds' })).toBeNull();
+      expect(held).toHaveTextContent('stopped because the balance ran out');
+      expect(held.textContent).not.toMatch(/add funds/i);
     } finally {
       hostMock.isMobileShell = false;
     }

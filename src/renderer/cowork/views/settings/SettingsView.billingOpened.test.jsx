@@ -189,6 +189,7 @@ describe('SettingsView inside the mobile app', () => {
     }} />);
 
     await waitFor(() => expect(screen.getAllByText(/No credits available/i).length).toBeGreaterThan(0));
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button', { name: /Top up balance/ })).toBeNull();
   });
 
@@ -201,6 +202,7 @@ describe('SettingsView inside the mobile app', () => {
     }} />);
 
     await waitFor(() => expect(screen.getAllByText(/needs credits\.$/).length).toBeGreaterThan(0));
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button', { name: 'Top up your balance' })).toBeNull();
   });
 
@@ -208,6 +210,7 @@ describe('SettingsView inside the mobile app', () => {
     render(<UnavailableModelHint label="Opus" budgetReached />);
 
     expect(screen.getByText(/Opus/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button')).toBeNull();
   });
 });

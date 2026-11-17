@@ -89,7 +89,7 @@ import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
 import { addonRowLabel, queuedReasonKey } from '../lib/addons';
 import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { billingActions, offersBilling } from '../lib/billingLinks';
+import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
@@ -1413,7 +1413,7 @@ export function BalanceEmptyCard({
   };
   // Fixed copy, not the server string: the
   // gateway's wording predates pay as you go.
-  let body = t('chatView.cards.balanceRanOut');
+  let body = t(billingCopyKey('chatView.cards.balanceRanOut'));
   let buttons = billingActions([addFunds]);
   if (!walletPaysNow && free.status === 'has_room' && onSwitchToAir) {
     body = t('chatView.cards.balanceEmptyAirLeft');
@@ -1549,7 +1549,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
       kind={t('chatView.kinds.connection')}
       title={PLATFORM_UI ? t('chatView.cards.connectProviderTitle') : t('chatView.cards.providerSetupRequiredTitle')}
       body={PLATFORM_UI
-        ? t('chatView.cards.connectProviderBody')
+        ? t(billingCopyKey('chatView.cards.connectProviderBody'))
         : t('chatView.cards.providerSetupRequiredBody')}
       buttons={PLATFORM_UI ? [
         ...billingActions([{
@@ -1590,7 +1590,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
         agentLabel={agentLabel}
         kind={t('chatView.kinds.billing')}
         title={t('chatView.cards.autoTopUpFailedTitle')}
-        body={t('chatView.cards.autoTopUpFailedBody')}
+        body={t(billingCopyKey('chatView.cards.autoTopUpFailedBody'))}
         buttons={billingActions([
           { label: USAGE_ACTIONS.addFunds.label, onClick: open(USAGE_ACTIONS.addFunds), primary: true },
           { label: USAGE_ACTIONS.updatePaymentMethod.label, onClick: open(USAGE_ACTIONS.updatePaymentMethod) },
@@ -1903,7 +1903,7 @@ export function ModelUnavailableCard({
       kind={t('chatView.kinds.model')}
       title={title}
       body={denied
-        ? t('chatView.model.needsCreditsBody')
+        ? t(billingCopyKey('chatView.model.needsCreditsBody'))
         : t('chatView.model.disabledBody')}
       buttons={denied
         ? [

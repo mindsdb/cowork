@@ -64,7 +64,7 @@ describe('HomeView — connect-a-provider route to billing', () => {
 
   it('shows no billing route at all once a provider is configured', () => {
     renderHome({ configReady: true });
-    expect(screen.queryByRole('button', { name: 'Start for free' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Start for free' })).toBeNull();
     expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
   });
 });
@@ -74,6 +74,7 @@ describe('HomeView inside the mobile app', () => {
     hostMock.host.isMobileShell = true;
     try {
       renderHome();
+      expect(document.body.textContent).not.toMatch(/pay as you go|start for free/i);
       expect(screen.queryByRole('button', { name: 'Start for free' })).toBeNull();
       expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
     } finally {

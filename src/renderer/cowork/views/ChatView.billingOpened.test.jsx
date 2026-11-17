@@ -295,6 +295,7 @@ describe('inside the mobile app', () => {
     render(<ChatView task={taskWith(failedTurn(code, content, extra))} />);
 
     expect(screen.getAllByText(title, { exact: false }).length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button', { name: 'Add funds' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Set up auto top up' })).toBeNull();
   });
@@ -302,6 +303,7 @@ describe('inside the mobile app', () => {
   it('budget_exceeded: no link to Budgets', () => {
     render(<ChatView task={taskWith(failedTurn('budget_exceeded', "Your organization's spending budget is used up."))} />);
 
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button', { name: 'View budgets' })).toBeNull();
   });
 
@@ -313,6 +315,7 @@ describe('inside the mobile app', () => {
       </HubUsageContext.Provider>,
     );
 
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button', { name: 'Top up balance' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Switch to MindsHub Air' })).toBeInTheDocument();
   });
@@ -320,6 +323,7 @@ describe('inside the mobile app', () => {
   it('a disabled model keeps Open Settings and loses Top up balance', () => {
     render(<ModelUnavailableCard code="model_disabled" failedModel="opus" />);
 
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button', { name: 'Top up balance' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
   });
@@ -327,6 +331,7 @@ describe('inside the mobile app', () => {
   it('connect_provider: Open Settings stays, Start for free goes', () => {
     render(<ChatView task={taskWith([{ role: 'provider_required' }])} />);
 
+    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button', { name: 'Start for free' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
   });

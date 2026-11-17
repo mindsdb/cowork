@@ -402,7 +402,8 @@
       "operatorTitle": "Un fournisseur doit être configuré",
       "body": "Commencez avec MindsHub et profitez d’un quota gratuit sur MindsHub Air, puis payez à l’usage. Ou ajoutez votre propre clé API (Anthropic, OpenAI ou tout point de terminaison compatible OpenAI) dans les paramètres.",
       "operatorBody": "Demandez à votre opérateur de configurer le fournisseur de modèles avant de lancer une tâche.",
-      "startFree": "Commencer gratuitement"
+      "startFree": "Commencer gratuitement",
+      "bodyMobile": "Connectez votre propre fournisseur dans les paramètres."
     },
     "handoffHint": "Modifiez ce prompt, puis envoyez-le quand vous êtes prêt."
   },
