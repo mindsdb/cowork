@@ -81,6 +81,8 @@ describe('inline marks are scanned', () => {
     ['[a](http://x y)', '[a](http://x y)'],
     ['[a]](http://x.io)', '[a]](http://x.io)'],
     ['[](http://x.io)', '[](http://x.io)'],
+    ['[a](http:)', '[a](http:)'],
+    ['[a](mailto:)', '[a](mailto:)'],
     ['{{ date : 2026-10-21 }}', '<span class="doc-chip doc-chip--date" contenteditable="false" data-chip="date:2026-10-21">Oct 21, 2026</span>'],
     ['{{status:   }}', '<span class="doc-chip doc-chip--status doc-tone--gray" contenteditable="false" data-chip="status: "> </span>'],
     ['{{user: {{status: done}}', '<span class="doc-chip doc-chip--user" contenteditable="false" data-chip="user:{{status: done">{{status: done</span>'],
@@ -103,9 +105,13 @@ describe('inline marks are scanned', () => {
     expect(performance.now() - start).toBeLessThan(1000);
   });
 
-  it('renders marks nested thousands deep', () => {
-    // Each *a but the innermost opens one more italic; recursion overflowed the call stack here.
-    const html = inlineToHtml('*a '.repeat(8000) + '*'.repeat(8000));
-    expect(html.split('<em>').length - 1).toBe(7999);
+  it('renders marks nested thousands deep in linear time', () => {
+    // Each *a but the innermost opens one more italic. Recursing into each
+    // italic's words overflowed the call stack here, and re-reading them as a
+    // string of their own took time proportional to length times depth.
+    const start = performance.now();
+    const html = inlineToHtml('*a '.repeat(50_000) + '*'.repeat(50_000));
+    expect(performance.now() - start).toBeLessThan(1000);
+    expect(html.split('<em>').length - 1).toBe(49_999);
   });
 });
