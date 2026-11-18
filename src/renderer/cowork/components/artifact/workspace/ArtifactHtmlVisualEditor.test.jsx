@@ -372,6 +372,126 @@ describe('ArtifactHtmlVisualEditor opening on the preview view', () => {
     expect(canvas()).toBe(frame);
     expect(viewsSentTo(frame)).toHaveLength(1);
   });
+
+  // Keeping its own place across a rebuild (ENG-4383): a quick edit, an
+  // agent change, a save or a discard replaces the content under the canvas.
+  function Controlled({ value, onViewChange = vi.fn() }) {
+    return (
+      <ArtifactHtmlVisualEditor
+        source={SOURCE}
+        value={value}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        draftUrl={DRAFT_URL}
+        active
+        previewView={{ view: null, seq: 0 }}
+        onViewChange={onViewChange}
+      />
+    );
+  }
+  const CHANGED = VALUE.replace('Title', 'New title');
+
+  it('replays its own place into a canvas rebuilt because the content changed', async () => {
+    const onViewChange = vi.fn();
+    const rendered = render(<Controlled value={VALUE} onViewChange={onViewChange} />);
+    const frame = await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    sendFromFrame({ token: frameToken(), type: 'view', view: VIEW });
+    expect(onViewChange).toHaveBeenLastCalledWith({
+      hash: '', scrollX: 0, scrollY: 0, container: null, inputs: VIEW.inputs, overflow: false, heading: 'Slide 3',
+    });
+
+    rendered.rerender(<Controlled value={CHANGED} onViewChange={onViewChange} />);
+
+    const rebuilt = await screen.findByTitle('Edit artifact on canvas');
+    expect(rebuilt).not.toBe(frame);
+    ready();
+    const [sent] = viewsSentTo(rebuilt);
+    expect(sent.view).toMatchObject({ inputs: VIEW.inputs, heading: 'Slide 3' });
+    expect(screen.getByText('Going back to where you were…')).toBeInTheDocument();
+    sendFromFrame({ token: frameToken(), type: 'view-applied', status: 'ok' });
+    expect(screen.queryByText('Going back to where you were…')).not.toBeInTheDocument();
+  });
+
+  it('replays nothing into a rebuilt canvas the user never moved', async () => {
+    const rendered = render(<Controlled value={VALUE} />);
+    await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    rendered.rerender(<Controlled value={CHANGED} />);
+    const rebuilt = await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    expect(viewsSentTo(rebuilt)).toEqual([]);
+  });
+
+  it('takes no place from the canvas that it would not take from the Preview', async () => {
+    const onViewChange = vi.fn();
+    const rendered = render(<Controlled value={VALUE} onViewChange={onViewChange} />);
+    await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    sendFromFrame({ token: frameToken(), type: 'view', view: { ...VIEW, inputs: [{ type: 'key', key: 'Delete' }] } });
+    sendFromFrame({ token: 'forged', type: 'view', view: VIEW });
+    expect(onViewChange).not.toHaveBeenCalled();
+
+    rendered.rerender(<Controlled value={CHANGED} onViewChange={onViewChange} />);
+    const rebuilt = await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    expect(viewsSentTo(rebuilt)).toEqual([]);
+  });
+
+  it('keeps its place when a discard puts the saved source back', async () => {
+    // The draft follows the canvas's edits (onChange), and Discard sets it
+    // back to the saved source, as useArtifactWorkspace.discard does.
+    function Discardable() {
+      const [value, setValue] = useState(VALUE);
+      return (
+        <>
+          <button type="button" onClick={() => setValue(VALUE)}>Discard</button>
+          <ArtifactHtmlVisualEditor
+            source={SOURCE}
+            value={value}
+            onChange={setValue}
+            onSave={vi.fn()}
+            draftUrl={DRAFT_URL}
+            active
+            previewView={{ view: null, seq: 0 }}
+          />
+        </>
+      );
+    }
+    render(<Discardable />);
+    const frame = await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    sendFromFrame({ token: frameToken(), type: 'view', view: VIEW });
+    sendFromFrame({ token: frameToken(), type: 'change', elementId: 'cowork-edit-0', html: 'Typed' });
+    // Typing in the canvas does not rebuild it.
+    expect(canvas()).toBe(frame);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+
+    const rebuilt = await screen.findByTitle('Edit artifact on canvas');
+    expect(rebuilt).not.toBe(frame);
+    ready();
+    expect(viewsSentTo(rebuilt)).toHaveLength(1);
+    expect(viewsSentTo(rebuilt)[0].view).toMatchObject({ inputs: VIEW.inputs, heading: 'Slide 3' });
+  });
+
+  it('forgets its place after a replay that missed, so it does not loop', async () => {
+    const rendered = render(<Controlled value={VALUE} />);
+    await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    sendFromFrame({ token: frameToken(), type: 'view', view: VIEW });
+    rendered.rerender(<Controlled value={CHANGED} />);
+    const rebuilt = await screen.findByTitle('Edit artifact on canvas');
+    ready();
+    expect(viewsSentTo(rebuilt)).toHaveLength(1);
+
+    sendFromFrame({ token: frameToken(), type: 'view-applied', status: 'mismatch' });
+
+    const fresh = await screen.findByTitle('Edit artifact on canvas');
+    expect(fresh).not.toBe(rebuilt);
+    ready();
+    expect(viewsSentTo(fresh)).toEqual([]);
+  });
 });
 
 // With the viewer's toolbar hidden, the editor carries its own way out of

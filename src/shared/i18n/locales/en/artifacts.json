@@ -249,6 +249,7 @@
     "noEditable": "No directly editable text was found",
     "clickToEdit": "Click any text to edit it, including buttons and links.",
     "syncingView": "Opening where you were in Preview…",
+    "keepingPlace": "Going back to where you were…",
     "htmlSource": "HTML source",
     "editing": "Editing artifact",
     "back": "Back to artifact",

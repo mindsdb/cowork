@@ -398,9 +398,12 @@ export function ArtifactViewer({
   });
   // Where the user is in the preview, so Edit opens on the same slide. Same
   // gate and reset as the diagnostics above, for the same reasons.
+  // A reload the viewer makes after a change keeps the place
+  // (`keepPlace`, below): the preview goes back to the same slide.
   const previewView = usePreviewView(iframeRef, {
     enabled: open && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
+    scopeKey: open ? `${artifact?.id || ''}:${artifact?.path || ''}` : '',
   });
   const comments = useArtifactComments(commentUserDir, commentReportId, {
     enabled: open && commentsEnabled,
@@ -1023,8 +1026,10 @@ export function ArtifactViewer({
   useEffect(() => {
     if (!open || !commentsOpen || !commentLayerRequested) return;
     if (!(previewUrl || previewDoc) || commentLayerMountedRef.current) return;
+    // The page comes back on the slide the user was commenting on.
+    previewView.keepPlace();
     setReloadNonce((n) => n + 1);
-  }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc]);
+  }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc, previewView.keepPlace]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -1039,17 +1044,50 @@ export function ArtifactViewer({
 
   // Keep these callbacks above the early return: the viewer remains mounted
   // while `open` changes, so every render must execute the same hook sequence.
-  const onReload = useCallback(() => {
+  const reloadPreview = useCallback(() => {
     if (!hasPreviewSource) return;
     setIframeReady(false);
     setReloadNonce((n) => n + 1);
   }, [hasPreviewSource]);
 
+  // Keeping the place across a reload the viewer makes after a change
+  // (ENG-4383): a save, a quick edit, an agent's change, the preview check,
+  // the comment layer arriving. The preview goes back to the slide it was
+  // on, or, with Live edit on, to the one the editor is on, since that is
+  // where the user was working. The user's own Reload (the ⋯ menu) starts
+  // the page over, as a reload in a browser would.
+  const editorViewRef = useRef(null);
+  const onEditorView = useCallback((view) => { editorViewRef.current = view; }, []);
+  useEffect(() => { editorViewRef.current = null; }, [open, artifact?.id, artifact?.path]);
+  const sourceOnRef = useRef(false);
+  const { keepPlace, forgetPlace } = previewView;
+  const keepPreviewPlace = useCallback(() => {
+    keepPlace(sourceOnRef.current ? editorViewRef.current : null);
+  }, [keepPlace]);
+  const reloadKeepingPlace = useCallback(() => {
+    keepPreviewPlace();
+    reloadPreview();
+  }, [keepPreviewPlace, reloadPreview]);
+  const onReload = useCallback(() => {
+    forgetPlace();
+    reloadPreview();
+  }, [forgetPlace, reloadPreview]);
+  // Content that changed elsewhere (the host reports a new mtime) reloads
+  // the preview through its new version: that keeps the place too.
+  const mtimeRef = useRef({ key: '', mtime: null });
+  useEffect(() => {
+    const key = `${artifact?.id || ''}:${artifact?.path || ''}`;
+    const mtime = artifact?.mtime ?? null;
+    const previous = mtimeRef.current;
+    mtimeRef.current = { key, mtime };
+    if (open && previous.key === key && previous.mtime !== null && mtime !== previous.mtime) keepPreviewPlace();
+  }, [open, artifact?.id, artifact?.path, artifact?.mtime, keepPreviewPlace]);
+
   const saveWorkspace = useCallback(async (...args) => {
     const saved = await workspace.save(...args);
-    if (saved) onReload();
+    if (saved) reloadKeepingPlace();
     return saved;
-  }, [onReload, workspace.save]);
+  }, [reloadKeepingPlace, workspace.save]);
 
   // The agent's preview check (ENG-4207): while this viewer shows an iframe
   // preview, a check for its slug reloads it here and reports what it saw.
@@ -1061,10 +1099,14 @@ export function ArtifactViewer({
   // A quick edit's reloads (its preview check, the applied edit, its Undo)
   // cover the preview while it reloads instead of flashing it blank
   // (usePreviewReloadTransition). Other reloads stay as they were.
-  const previewReload = usePreviewReloadTransition({ enabled: framedPreview, iframeReady });
+  const previewReload = usePreviewReloadTransition({
+    enabled: framedPreview,
+    iframeReady,
+    hold: previewView.whenRestored,
+  });
   const reloadPreviewSmoothly = useCallback(() => {
-    void previewReload.reload(onReload);
-  }, [onReload, previewReload.reload]);
+    void previewReload.reload(reloadKeepingPlace);
+  }, [reloadKeepingPlace, previewReload.reload]);
   usePreviewCheckTarget({
     slug: artifact?.slug || artifactFolder.split(/[\\/]/).filter(Boolean).pop() || '',
     enabled: framedPreview,
@@ -1131,7 +1173,7 @@ export function ArtifactViewer({
           return;
         }
         void previewReload.reload(() => {
-          onReload();
+          reloadKeepingPlace();
           reportChange({ ...card, mtime: Date.now() / 1000 });
         });
         try { await ws.load(); } catch { /* the preview shows the change either way */ }
@@ -1148,7 +1190,7 @@ export function ArtifactViewer({
   const reloadChangedElsewhere = () => {
     setChangedElsewhere(false);
     void previewReload.reload(() => {
-      onReload();
+      reloadKeepingPlace();
       reportChange({ ...artifact, mtime: Date.now() / 1000 });
     });
     void workspace.load().catch(() => {});
@@ -1207,7 +1249,7 @@ export function ArtifactViewer({
         // preview reloads, in one render, behind the reload cover. Not
         // awaited: the bar is free again while the cover fades.
         void previewReload.reload(() => {
-          onReload();
+          reloadKeepingPlace();
           reportChange({ ...artifact, mtime: Date.now() / 1000 });
         });
       }
@@ -1267,6 +1309,7 @@ export function ArtifactViewer({
   // width. Turning it off with unsaved text asks first.
   const canSource = !!workspace.source && workspace.capabilities?.canEdit !== false;
   const sourceOn = layers.source && canSource;
+  sourceOnRef.current = sourceOn;
   const setSourceLayer = (on) => {
     if (!on && workspace.dirty) {
       setSourceOffPrompt(true);
@@ -1639,6 +1682,8 @@ export function ArtifactViewer({
     kind: previewKind,
     iframeRef,
     view: previewView,
+    // The Live editor's own place, for a save made from it (keepPreviewPlace).
+    onEditorView,
     title,
     iframeReady,
     setIframeReady,

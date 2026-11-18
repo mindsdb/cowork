@@ -249,6 +249,7 @@
     "noEditable": "Kein direkt bearbeitbarer Text gefunden",
     "clickToEdit": "Klicke auf einen beliebigen Text, um ihn zu bearbeiten – auch auf Schaltflächen und Links.",
     "syncingView": "Öffnet die Stelle, an der du in der Vorschau warst…",
+    "keepingPlace": "Zurück zu der Stelle, an der du warst…",
     "htmlSource": "HTML-Quelltext",
     "editing": "Artefakt wird bearbeitet",
     "back": "Zurück zum Artefakt",

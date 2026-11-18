@@ -17815,6 +17815,40 @@
       "text": "a23f17a62faf"
     }
   },
+  "artifacts:htmlEditor.keepingPlace": {
+    "de": {
+      "from": "e48088cee9c6",
+      "text": "f4282e9300ed"
+    },
+    "es": {
+      "from": "e48088cee9c6",
+      "text": "b417475c5317"
+    },
+    "fr": {
+      "from": "e48088cee9c6",
+      "text": "fbe5915ae988"
+    },
+    "it": {
+      "from": "e48088cee9c6",
+      "text": "45c066e05d18"
+    },
+    "ja": {
+      "from": "e48088cee9c6",
+      "text": "37c9479371da"
+    },
+    "ko": {
+      "from": "e48088cee9c6",
+      "text": "969c8585a778"
+    },
+    "pt-BR": {
+      "from": "e48088cee9c6",
+      "text": "6b1423ad2594"
+    },
+    "zh-CN": {
+      "from": "e48088cee9c6",
+      "text": "7f47579505b7"
+    }
+  },
   "artifacts:htmlEditor.mode.ariaLabel": {
     "de": {
       "from": "033784fdd2ff",

@@ -5,6 +5,7 @@ import {
   HTML_VISUAL_EDITOR_ATTRIBUTE as ATTR,
   HTML_VISUAL_EDITOR_PARENT_SOURCE,
   HTML_VISUAL_EDITOR_SOURCE,
+  VIEW_KEY_CODES,
 } from './htmlVisualEditorRuntime';
 
 // Opening the editor on the slide the Preview shows: the runtime replays the
@@ -26,6 +27,8 @@ const DECK = `
 
 describe('HTML visual editor runtime: opening on the preview view', () => {
   let messages;
+  let token;
+  let runs = 0;
   let registered;
   let originalRect;
   let slide;
@@ -51,7 +54,7 @@ describe('HTML visual editor runtime: opening on the preview view', () => {
       data: { source: HTML_VISUAL_EDITOR_PARENT_SOURCE, type: 'view', view },
     })));
   };
-  const applied = () => messages.filter((m) => m.type === 'view-applied');
+  const applied = () => messages.filter((m) => m.type === 'view-applied' && m.token === token);
 
   beforeEach(() => {
     messages = [];
@@ -80,7 +83,10 @@ describe('HTML visual editor runtime: opening on the preview view', () => {
     document.body.innerHTML = DECK;
     slide = 0;
     // eslint-disable-next-line no-new-func
-    new Function(createHtmlVisualEditorRuntime('tok'))();
+    // A token per test: an earlier test's runtime can still have a report
+    // timer pending, and it must not count here.
+    token = `tok-${++runs}`;
+    new Function(createHtmlVisualEditorRuntime(token))();
     // The page's own handlers, bound after the runtime as a page's would be.
     document.addEventListener('keydown', onDeckKey);
     document.addEventListener('click', onDeckClick);
@@ -104,7 +110,7 @@ describe('HTML visual editor runtime: opening on the preview view', () => {
     });
     await waitFor(() => expect(applied()).toHaveLength(1));
     expect(current()).toBe(2);
-    expect(applied()[0]).toMatchObject({ status: 'ok', token: 'tok' });
+    expect(applied()[0]).toMatchObject({ status: 'ok', token });
   });
 
   it('resolves a tag:index path from <body>', async () => {
@@ -210,5 +216,66 @@ describe('HTML visual editor runtime: opening on the preview view', () => {
     await waitFor(() => expect(applied()).toHaveLength(1));
     expect(seen).not.toBeNull();
     expect(seen.defaultPrevented).toBe(true);
+  });
+  // Its own place (ENG-4383): recorded the way the preview shim records it,
+  // so a rebuilt canvas can go back there.
+  const ownViews = () => messages.filter((m) => m.type === 'view' && m.token === token).map((m) => m.view);
+  const pressKey = (key, target = document.body) => {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'keyCode', { get: () => VIEW_KEY_CODES[key] });
+    target.dispatchEvent(trusted(event));
+  };
+  const sendMode = (mode) => {
+    window.dispatchEvent(trusted(new MessageEvent('message', {
+      source: window,
+      data: { source: HTML_VISUAL_EDITOR_PARENT_SOURCE, type: 'mode', mode },
+    })));
+  };
+  const pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+  const ARROW = { type: 'key', key: 'ArrowRight', shiftKey: false };
+
+  it('reports a key the page moved on, with the heading it landed on', async () => {
+    pressKey('ArrowRight');
+    await waitFor(() => expect(ownViews().at(-1)).toMatchObject({ inputs: [ARROW], heading: 'Two', overflow: false }));
+  });
+
+  it('records a control click in Navigate mode, and none in Edit mode', async () => {
+    const next = document.querySelector('#nav button:last-child');
+    next.dispatchEvent(trusted(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })));
+    await pause(500);
+    expect(ownViews()).toEqual([]);
+    expect(current()).toBe(0);
+
+    sendMode('navigate');
+    next.dispatchEvent(trusted(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })));
+    await waitFor(() => expect(ownViews().at(-1)?.inputs).toEqual([
+      { type: 'click', path: '#nav/button:1', label: 'Next' },
+    ]));
+    expect(current()).toBe(1);
+  });
+
+  it('does not record keys typed into the text being edited, or the editing itself', async () => {
+    const heading = document.querySelector(`[${ATTR}="e0"]`);
+    heading.dispatchEvent(trusted(new MouseEvent('pointerdown', { bubbles: true, cancelable: true })));
+    expect(heading.getAttribute('contenteditable')).toBe('true');
+    pressKey('ArrowRight', heading);
+    await pause(500);
+    expect(ownViews()).toEqual([]);
+    expect(current()).toBe(0);
+  });
+
+  it('makes a replay that landed its own record, so the next rebuild replays it all', async () => {
+    sendView({ inputs: [ARROW], heading: 'Two' });
+    await waitFor(() => expect(applied()).toHaveLength(1));
+    await waitFor(() => expect(ownViews().at(-1)).toMatchObject({ inputs: [ARROW], heading: 'Two' }));
+    pressKey('ArrowRight');
+    await waitFor(() => expect(ownViews().at(-1)).toMatchObject({ inputs: [ARROW, ARROW], heading: 'Three' }));
+  });
+
+  it('accepts a slide whose heading the change rewrote', async () => {
+    sendView({ inputs: [ARROW], heading: 'Old title of two' });
+    await waitFor(() => expect(applied()).toHaveLength(1));
+    expect(applied()[0].status).toBe('ok');
+    expect(current()).toBe(1);
   });
 });

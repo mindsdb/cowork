@@ -1,11 +1,15 @@
 import { useRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { normalizePreviewView, usePreviewView } from './usePreviewView';
+import { act } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { KEEP_PLACE_MS, normalizePreviewView, usePreviewView } from './usePreviewView';
 
-function Harness({ resetKey = 'a' }) {
+let hook = null;
+
+function Harness({ resetKey = 'a', scopeKey = 'x' }) {
   const iframeRef = useRef(null);
-  const state = usePreviewView(iframeRef, { enabled: true, resetKey });
+  const state = usePreviewView(iframeRef, { enabled: true, resetKey, scopeKey });
+  hook = state;
   return (
     <>
       <iframe ref={iframeRef} title="Draft preview" srcDoc="<html></html>" />
@@ -135,5 +139,120 @@ describe('usePreviewView', () => {
     send(frame.contentWindow, VIEW);
     rendered.rerender(<Harness resetKey="b" />);
     expect(view()).toBeNull();
+  });
+});
+
+// Keeping the place across a reload the viewer makes (ENG-4383).
+describe('usePreviewView keepPlace', () => {
+  const PLACE = normalizePreviewView(VIEW);
+  const setup = () => {
+    const rendered = render(<Harness />);
+    const frame = screen.getByTitle('Draft preview');
+    const post = vi.spyOn(frame.contentWindow, 'postMessage').mockImplementation(() => {});
+    const restores = () => post.mock.calls.map(([message]) => message);
+    return { rendered, frame, restores };
+  };
+  const seq = () => screen.getByTestId('seq').textContent;
+
+  it('sends the kept view down to the reloaded document, once, and keeps it', () => {
+    const { rendered, frame, restores } = setup();
+    send(frame.contentWindow, VIEW);
+    act(() => hook.keepPlace());
+    // The reload changes the preview URL: the kept place is not dropped.
+    rendered.rerender(<Harness resetKey="b" />);
+    expect(view()).toEqual(PLACE);
+
+    send(frame.contentWindow, { type: 'document-start' });
+    expect(restores()).toEqual([{ source: 'anton-preview-parent', type: 'restore', view: PLACE }]);
+    expect(view()).toEqual(PLACE);
+    expect(seq()).toBe('1');
+
+    // The shim says it landed, then reports where it is: not a move of the
+    // user's, so an open editor keeps its own slide.
+    send(frame.contentWindow, { type: 'view-restored', status: 'ok' });
+    send(frame.contentWindow, { ...VIEW, scrollY: 140 });
+    expect(view().scrollY).toBe(140);
+    expect(seq()).toBe('1');
+
+    // A later document (the user's own Reload) starts over.
+    send(frame.contentWindow, { type: 'document-start' });
+    expect(restores()).toHaveLength(1);
+    expect(view()).toBeNull();
+  });
+
+  it('restores the editor\'s place when one is passed', () => {
+    const { frame, restores } = setup();
+    send(frame.contentWindow, VIEW);
+    const editor = { ...VIEW, inputs: [], heading: 'Editor slide' };
+    act(() => hook.keepPlace(editor));
+    send(frame.contentWindow, { type: 'document-start' });
+    expect(restores()[0].view).toMatchObject({ inputs: [], heading: 'Editor slide' });
+  });
+
+  it('keeps nothing it would not accept from the frame', () => {
+    const { frame, restores } = setup();
+    act(() => hook.keepPlace({ ...VIEW, inputs: [{ type: 'key', key: 'Delete' }] }));
+    send(frame.contentWindow, { type: 'document-start' });
+    act(() => hook.keepPlace());
+    send(frame.contentWindow, { type: 'document-start' });
+    expect(restores()).toEqual([]);
+  });
+
+  it('starts over when the restore missed', () => {
+    const { frame } = setup();
+    send(frame.contentWindow, VIEW);
+    act(() => hook.keepPlace());
+    send(frame.contentWindow, { type: 'document-start' });
+    send(frame.contentWindow, { type: 'view-restored', status: 'mismatch' });
+    // The shim reloads its document.
+    send(frame.contentWindow, { type: 'document-start' });
+    expect(view()).toBeNull();
+  });
+
+  it('ignores a restore answer from another window', () => {
+    const { frame } = setup();
+    send(frame.contentWindow, VIEW);
+    act(() => hook.keepPlace());
+    send(frame.contentWindow, { type: 'document-start' });
+    send(window, { type: 'view-restored', status: 'invalid' });
+    expect(view()).toEqual(PLACE);
+  });
+
+  it('forgets a kept place on the user\'s own reload, another artifact, or after a while', () => {
+    const { rendered, frame, restores } = setup();
+    send(frame.contentWindow, VIEW);
+    act(() => hook.keepPlace());
+    act(() => hook.forgetPlace());
+    send(frame.contentWindow, { type: 'document-start' });
+
+    send(frame.contentWindow, VIEW);
+    act(() => hook.keepPlace());
+    rendered.rerender(<Harness scopeKey="y" />);
+    send(frame.contentWindow, { type: 'document-start' });
+
+    send(frame.contentWindow, VIEW);
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    act(() => hook.keepPlace());
+    clock.mockReturnValue(now + KEEP_PLACE_MS + 1);
+    send(frame.contentWindow, { type: 'document-start' });
+    clock.mockRestore();
+
+    expect(restores()).toEqual([]);
+  });
+
+  it('settles whenRestored once the restore is answered', async () => {
+    const { frame } = setup();
+    await expect(hook.whenRestored()).resolves.toBeUndefined();
+    send(frame.contentWindow, VIEW);
+    act(() => hook.keepPlace());
+    let done = false;
+    hook.whenRestored().then(() => { done = true; });
+    send(frame.contentWindow, { type: 'document-start' });
+    await Promise.resolve();
+    expect(done).toBe(false);
+    send(frame.contentWindow, { type: 'view-restored', status: 'ok' });
+    await Promise.resolve();
+    expect(done).toBe(true);
   });
 });

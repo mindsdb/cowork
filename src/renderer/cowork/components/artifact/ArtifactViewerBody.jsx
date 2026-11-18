@@ -116,6 +116,7 @@ export function ArtifactViewerBody({
     kind: previewKind,
     iframeRef,
     view: previewView = null,
+    onEditorView = null,
     title,
     iframeReady,
     setIframeReady,
@@ -187,6 +188,7 @@ export function ArtifactViewerBody({
       loadImage={loadDraftImage}
       active={showEditor}
       previewView={previewView}
+      onViewChange={onEditorView}
       onExit={layers?.onExitSource || null}
     />
   ) : null;

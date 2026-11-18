@@ -10,6 +10,7 @@ import {
   HTML_VISUAL_EDITOR_SOURCE,
 } from './htmlVisualEditorRuntime';
 import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
+import { normalizePreviewView } from '../usePreviewView';
 import { EditModeSwitch } from './EditModeSwitch';
 import { useTranslation } from '../../../../lib/i18n';
 
@@ -41,6 +42,9 @@ export function ArtifactHtmlVisualEditor({
   active = true,
   // `{ view, seq }` from usePreviewView: where the user is in the Preview.
   previewView = null,
+  // Hears where the user is in the canvas (a normalized view, as the
+  // Preview's), so a save made here keeps the Preview on the same slide.
+  onViewChange = null,
   // Leaves Live edit; given when the viewer's toolbar (and its toggle) is hidden.
   onExit = null,
 }) {
@@ -80,8 +84,19 @@ export function ArtifactHtmlVisualEditor({
   const pendingViewRef = useRef(null);
   const frameMovedRef = useRef(false);
   const [viewRequest, setViewRequest] = useState(0);
+  // false, or what is being replayed: 'preview' (opening on the Preview's
+  // view) or 'own' (going back to the canvas's own place after a rebuild).
   const [syncingView, setSyncingView] = useState(false);
+  const pendingKindRef = useRef('preview');
   const syncTimerRef = useRef(0);
+  // Keeping the place across a rebuild (ENG-4383). The runtime reports where
+  // the user is in the canvas (htmlVisualEditorRuntime.js view recorder); a
+  // rebuild because the content changed replays it into the new canvas, as
+  // the Preview's view is replayed when Edit opens. The report comes from
+  // inside the artifact: it is checked like the Preview's.
+  const ownViewRef = useRef(null);
+  const onViewChangeRef = useRef(onViewChange);
+  onViewChangeRef.current = onViewChange;
 
   const postMode = useCallback((mode) => {
     iframeRef.current?.contentWindow?.postMessage({
@@ -95,7 +110,17 @@ export function ArtifactHtmlVisualEditor({
     postMode(mode);
   }, [postMode]);
 
-  const rebuildFrame = useCallback((content) => {
+  // keepPlace: the content changed under the user, who stays where they
+  // were. Otherwise the canvas starts over (a replay that missed, another
+  // file) and its own place is forgotten.
+  const rebuildFrame = useCallback((content, { keepPlace = false } = {}) => {
+    if (keepPlace && ownViewRef.current && !pendingViewRef.current) {
+      pendingViewRef.current = ownViewRef.current;
+      pendingKindRef.current = 'own';
+    } else if (!keepPlace) {
+      ownViewRef.current = null;
+      onViewChangeRef.current?.(null);
+    }
     frameMovedRef.current = false;
     visualValueRef.current = content;
     frameValueRef.current = content;
@@ -114,7 +139,7 @@ export function ArtifactHtmlVisualEditor({
     const sourceChanged = sourceKeyRef.current !== sourceKey;
     if (sourceChanged) sourceKeyRef.current = sourceKey;
     if (sourceChanged || (!showSource && value !== visualValueRef.current)) {
-      rebuildFrame(value);
+      rebuildFrame(value, { keepPlace: !sourceChanged });
     } else if (showSource && value !== visualValueRef.current) {
       // A discard or external refresh can still replace the draft while the
       // advanced source view is open. Keep the next canvas mount in sync.
@@ -178,6 +203,12 @@ export function ArtifactHtmlVisualEditor({
         }
       } else if (message.type === 'save') {
         onSave?.(visualValueRef.current);
+      } else if (message.type === 'view') {
+        const raw = message.view;
+        const view = raw && typeof raw === 'object' ? normalizePreviewView({ ...raw, type: 'view' }) : null;
+        if (!view) return;
+        ownViewRef.current = view;
+        onViewChangeRef.current?.(view);
       } else if (message.type === 'view-applied') {
         setSyncingView(false);
         // The replay did not land on the Preview's slide. Start over from the
@@ -195,6 +226,7 @@ export function ArtifactHtmlVisualEditor({
     // null: the Preview reloaded and the user has not moved it since.
     if (!previewView.view) return;
     pendingViewRef.current = previewView.view;
+    pendingKindRef.current = 'preview';
     if (frameMovedRef.current) rebuildFrame(visualValueRef.current);
     else setViewRequest((count) => count + 1);
   }, [active, previewView, rebuildFrame, showSource]);
@@ -210,7 +242,7 @@ export function ArtifactHtmlVisualEditor({
     if (!view || !ready || !target) return;
     pendingViewRef.current = null;
     frameMovedRef.current = true;
-    setSyncingView(true);
+    setSyncingView(pendingKindRef.current);
     target.postMessage({ source: HTML_VISUAL_EDITOR_PARENT_SOURCE, type: 'view', view }, '*');
     // The frame answers within its own replay budget; never leave the status
     // line on "opening" for a frame that stopped answering.
@@ -241,7 +273,7 @@ export function ArtifactHtmlVisualEditor({
 
   const toggleSource = () => {
     if (!showSource) finishEditing();
-    else if (visualValueRef.current !== frameValueRef.current) rebuildFrame(visualValueRef.current);
+    else if (visualValueRef.current !== frameValueRef.current) rebuildFrame(visualValueRef.current, { keepPlace: true });
     setShowSource((current) => !current);
   };
 
@@ -260,6 +292,7 @@ export function ArtifactHtmlVisualEditor({
   const guidance = useMemo(() => {
     if (showSource) return t('htmlEditor.advancedMode');
     if (error) return error;
+    if (syncingView === 'own') return t('htmlEditor.keepingPlace');
     if (syncingView) return t('htmlEditor.syncingView');
     if (selection) {
       const raw = selection.label || 'Text';

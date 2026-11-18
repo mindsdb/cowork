@@ -12,7 +12,7 @@
 // our preview frame's window may send it, and every field is type-checked and
 // capped here before it goes anywhere near the editor frame.
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { VIEW_KEY_CODES, VIEW_LIMITS } from './workspace/htmlVisualEditorRuntime';
 
 const PATH_STEP = /^(?:#[A-Za-z][A-Za-z0-9_.:-]{0,99}|[A-Za-z][A-Za-z0-9-]{0,63}:[0-9]{1,4})$/;
@@ -91,20 +91,75 @@ export function normalizePreviewView(data) {
   };
 }
 
+// The parent's tag on a `restore` sent down to the shim (preview_shim.js).
+export const PREVIEW_PARENT_SOURCE = 'anton-preview-parent';
+// A place kept for a reload that never produced a new document (the reload
+// failed, the viewer moved on) is not applied to some later one.
+export const KEEP_PLACE_MS = 60000;
+
 /**
- * The latest view of the preview frame in `iframeRef`.
+ * The latest view of the preview frame in `iframeRef`, and keeping it across
+ * a reload the app makes (ENG-4383).
  *
- * `seq` counts changes, so the editor can tell a view it has already applied
- * from a new one. A new document (the shim's document-start, or `resetKey`)
- * sets `view` to null: the preview is back at its start, and the user has not
- * moved it, so there is nothing to carry over. That keeps a save, which
- * reloads the preview, from sending the editor back to the first slide.
+ * `seq` counts the user's own moves, so the editor can tell a view it has
+ * already applied from a new one. A new document (the shim's document-start,
+ * or `resetKey`) sets `view` to null: the preview is back at its start.
  *
- * @returns {{ view: PreviewView | null, seq: number }}
+ * Unless `keepPlace()` was called first: a save, a quick edit or an agent
+ * change reloads the preview, and the user should land where they were. The
+ * kept view (the latest report, or one passed in, such as the inline
+ * editor's) is sent back down to the reloaded document, once, when it says
+ * document-start, and the shim replays it. Until the shim answers, and after
+ * a replay that landed, `view` holds that place and `seq` does not move: the
+ * user did not move anything, so an open editor keeps its own slide. A replay
+ * that missed reloads the document, which then announces itself again with
+ * nothing kept, and the view is null as before. `whenRestored()` settles once
+ * no restore is in flight, so the reload cover can stay up until it is done.
+ *
+ * @returns {{
+ *   view: PreviewView | null,
+ *   seq: number,
+ *   keepPlace: (view?: object | null) => void,
+ *   forgetPlace: () => void,
+ *   whenRestored: () => Promise<void>,
+ * }}
  */
-export function usePreviewView(iframeRef, { enabled = true, resetKey = '' } = {}) {
+export function usePreviewView(iframeRef, { enabled = true, resetKey = '', scopeKey = '' } = {}) {
   const [state, setState] = useState({ view: null, seq: 0 });
   const lastRef = useRef('');
+  const viewRef = useRef(null);
+  viewRef.current = state.view;
+  // { view, at } kept for the next document; the view being restored; the
+  // next report is the restored place (no `seq` move).
+  const pendingRef = useRef(null);
+  const restoringRef = useRef(null);
+  const quietRef = useRef(false);
+  const waitersRef = useRef(new Set());
+
+  const settleWaiters = useCallback(() => {
+    if (pendingRef.current || restoringRef.current) return;
+    const waiters = [...waitersRef.current];
+    waitersRef.current.clear();
+    waiters.forEach((resolve) => resolve());
+  }, []);
+
+  const keepPlace = useCallback((override) => {
+    const view = override ? normalizePreviewView({ ...override, type: 'view' }) : viewRef.current;
+    pendingRef.current = view ? { view, at: Date.now() } : null;
+    if (!view) settleWaiters();
+  }, [settleWaiters]);
+
+  const forgetPlace = useCallback(() => {
+    pendingRef.current = null;
+    restoringRef.current = null;
+    quietRef.current = false;
+    settleWaiters();
+  }, [settleWaiters]);
+
+  const whenRestored = useCallback(() => {
+    if (!pendingRef.current && !restoringRef.current) return Promise.resolve();
+    return new Promise((resolve) => { waitersRef.current.add(resolve); });
+  }, []);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -116,29 +171,66 @@ export function usePreviewView(iframeRef, { enabled = true, resetKey = '' } = {}
       const win = iframeRef.current && iframeRef.current.contentWindow;
       if (!win || event.source !== win) return;
       if (data.type === 'document-start') {
+        const pending = pendingRef.current;
+        pendingRef.current = null;
+        restoringRef.current = null;
+        quietRef.current = false;
+        if (pending && Date.now() - pending.at < KEEP_PLACE_MS) {
+          restoringRef.current = pending.view;
+          win.postMessage({ source: PREVIEW_PARENT_SOURCE, type: 'restore', view: pending.view }, '*');
+          lastRef.current = JSON.stringify(pending.view);
+          setState((prev) => ({ view: pending.view, seq: prev.seq }));
+          return;
+        }
+        settleWaiters();
         if (!lastRef.current) return;
         lastRef.current = '';
         setState((prev) => ({ view: null, seq: prev.seq + 1 }));
         return;
       }
+      if (data.type === 'view-restored') {
+        if (!restoringRef.current) return;
+        restoringRef.current = null;
+        // A replay that landed reports its place next. One that missed
+        // reloads, and that document-start resets the view.
+        quietRef.current = data.status === 'ok';
+        settleWaiters();
+        if (data.status !== 'ok' && data.status !== 'mismatch') {
+          // Refused: the page never moved from its start.
+          lastRef.current = '';
+          setState((prev) => ({ view: null, seq: prev.seq + 1 }));
+        }
+        return;
+      }
       const view = normalizePreviewView(data);
       if (!view) return;
+      const quiet = quietRef.current;
+      quietRef.current = false;
       const key = JSON.stringify(view);
       if (key === lastRef.current) return;
       lastRef.current = key;
-      setState((prev) => ({ view, seq: prev.seq + 1 }));
+      setState((prev) => ({ view, seq: quiet ? prev.seq : prev.seq + 1 }));
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [enabled, iframeRef]);
+  }, [enabled, iframeRef, settleWaiters]);
 
   useEffect(() => {
+    // A reload that keeps its place changes the URL too; the restore (or its
+    // document-start) decides.
+    if (pendingRef.current || restoringRef.current) return;
     if (!lastRef.current) return;
     lastRef.current = '';
     setState((prev) => ({ view: null, seq: prev.seq + 1 }));
   }, [enabled, resetKey]);
 
-  return state;
+  // Another artifact: nothing kept carries over to it.
+  useEffect(() => () => forgetPlace(), [scopeKey, forgetPlace]);
+
+  return useMemo(
+    () => ({ ...state, keepPlace, forgetPlace, whenRestored }),
+    [state, keepPlace, forgetPlace, whenRestored],
+  );
 }
 
 export default usePreviewView;

@@ -18,6 +18,8 @@ export function ArtifactSourceEditor({
   onTextSelection,
   active = true,
   previewView = null,
+  // Where the user is in the HTML editor's canvas (ArtifactHtmlVisualEditor).
+  onViewChange = null,
   // Leaves Live edit; given when the viewer's toolbar (and its toggle) is hidden.
   onExit = null,
 }) {
@@ -50,6 +52,7 @@ export function ArtifactSourceEditor({
         onTextSelection={onTextSelection}
         active={active}
         previewView={previewView}
+        onViewChange={onViewChange}
         onExit={onExit}
       />
     );

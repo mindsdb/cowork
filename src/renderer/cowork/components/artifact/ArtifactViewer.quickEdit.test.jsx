@@ -103,8 +103,14 @@ vi.mock('./comments', () => ({
 vi.mock('./workspace/useArtifactWorkspace', () => ({
   useArtifactWorkspace: () => workspaceMock,
 }));
+// The props the viewer last gave the code editor, so a test can stand in for
+// the editor's own reports (its place) and its Save.
+const sourceEditorProps = vi.hoisted(() => ({ current: null }));
 vi.mock('./workspace/ArtifactSourceEditor', () => ({
-  ArtifactSourceEditor: ({ value }) => <textarea data-testid="source-editor" readOnly value={value ?? ''} />,
+  ArtifactSourceEditor: (props) => {
+    sourceEditorProps.current = props;
+    return <textarea data-testid="source-editor" readOnly value={props.value ?? ''} />;
+  },
 }));
 vi.mock('./workspace/ArtifactComparison', () => ({ ArtifactComparison: () => null }));
 vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () => null }));
@@ -925,6 +931,83 @@ describe('ArtifactViewer quick edit bar', () => {
       } finally {
         window.matchMedia = original;
       }
+    });
+  });
+
+  // A save, a quick edit or an agent change reloads the preview; it goes
+  // back to the slide the user was on (ENG-4383).
+  describe('keeping the place across a reload', () => {
+    const loads = () => workspaceApi.loadArtifactDraftDocument.mock.calls.length;
+    const PLACE = {
+      hash: '', scrollX: 0, scrollY: 0, container: null,
+      inputs: [{ type: 'key', key: 'ArrowRight', shiftKey: false }], overflow: false, heading: 'Slide 2',
+    };
+    const fromPreview = (data) => {
+      const frame = document.querySelector('iframe[title="Launch brief"]');
+      fireEvent(window, new MessageEvent('message', {
+        source: frame.contentWindow,
+        data: { source: 'anton-preview', ...data },
+      }));
+    };
+    // The reloaded document announces itself; what the viewer sends it back.
+    const restoresAfterReload = () => {
+      const frame = document.querySelector('iframe[title="Launch brief"]');
+      const post = vi.spyOn(frame.contentWindow, 'postMessage').mockImplementation(() => {});
+      fromPreview({ type: 'document-start' });
+      return post.mock.calls.map(([message]) => message).filter((m) => m?.source === 'anton-preview-parent');
+    };
+    const previewShown = () => waitFor(() => expect(document.querySelector('iframe[title="Launch brief"]')).not.toBeNull());
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    it('sends the preview back to its slide after an applied quick edit', async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      await previewShown();
+      fromPreview({ type: 'view', ...PLACE });
+      const before = loads();
+
+      ask('Make the title blue');
+
+      await waitFor(() => expect(loads()).toBe(before + 1), { timeout: 2000 });
+      expect(restoresAfterReload()).toEqual([
+        { source: 'anton-preview-parent', type: 'restore', view: PLACE },
+      ]);
+    });
+
+    it('sends the preview to the Live editor\'s slide after a save from it', async () => {
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.draft = HTML_SOURCE.content;
+      workspaceMock.save.mockResolvedValue({ ...HTML_SOURCE, revision: { id: 'r2' } });
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      await previewShown();
+      fromPreview({ type: 'view', ...PLACE });
+      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+      const editorPlace = { ...PLACE, inputs: [...PLACE.inputs, ...PLACE.inputs], heading: 'Slide 3' };
+      act(() => sourceEditorProps.current.onViewChange(editorPlace));
+      const before = loads();
+
+      await act(async () => { await sourceEditorProps.current.onSave('<p>Hi</p>'); });
+
+      await waitFor(() => expect(loads()).toBe(before + 1));
+      expect(restoresAfterReload()).toEqual([
+        { source: 'anton-preview-parent', type: 'restore', view: editorPlace },
+      ]);
+    });
+
+    it('starts the page over on the user\'s own Reload', async () => {
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      await previewShown();
+      fromPreview({ type: 'view', ...PLACE });
+      const before = loads();
+
+      await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Reload preview' }));
+
+      await waitFor(() => expect(loads()).toBe(before + 1));
+      expect(restoresAfterReload()).toEqual([]);
     });
   });
 

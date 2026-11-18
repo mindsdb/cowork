@@ -248,6 +248,17 @@ export function createHtmlVisualEditorRuntime(token) {
       return best ? clipText(best.textContent, LIMITS.heading) : '';
     };
 
+    // A heading the change itself rewrote ("retitle this slide") is gone from
+    // the page and can't be checked; one still on the page but not on screen
+    // means the replay went somewhere else.
+    const headingOnPage = (text) => {
+      const nodes = document.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]');
+      for (let i = 0; i < nodes.length && i < 500; i += 1) {
+        if (clipText(nodes[i].textContent, LIMITS.heading) === text) return true;
+      }
+      return false;
+    };
+
     const replayKey = (input) => {
       const key = input.key;
       if (typeof key !== 'string' || !Object.hasOwn(KEY_CODES, key)) return false;
@@ -325,6 +336,8 @@ export function createHtmlVisualEditorRuntime(token) {
       syncing = true;
       finish();
       let status = 'ok';
+      let done = 0;
+      const replayed = [];
       try {
         await Promise.race([loaded(), wait(5000)]);
         await settle();
@@ -334,11 +347,12 @@ export function createHtmlVisualEditorRuntime(token) {
         let missed = false;
         for (const input of inputs) {
           if (Date.now() > deadline) { missed = true; break; }
-          let replayed = false;
-          if (input?.type === 'key') replayed = replayKey(input);
-          else if (input?.type === 'click') replayed = replayClick(input);
-          if (!replayed) { missed = true; break; }
+          let ok = false;
+          if (input?.type === 'key') ok = replayKey(input);
+          else if (input?.type === 'click') ok = replayClick(input);
+          if (!ok) { missed = true; break; }
           moved = true;
+          done += 1;
           await settle();
         }
         const hash = typeof view.hash === 'string' && view.hash[0] === '#'
@@ -350,14 +364,19 @@ export function createHtmlVisualEditorRuntime(token) {
         }
         restoreScroll(view);
         const expected = typeof view.heading === 'string' ? clipText(view.heading, LIMITS.heading) : '';
-        if (expected && (moved || missed)) status = visibleHeading() === expected ? 'ok' : 'mismatch';
-        else if (missed) status = 'mismatch';
+        if (expected && (moved || missed)) {
+          status = visibleHeading() === expected || (!missed && !headingOnPage(expected)) ? 'ok' : 'mismatch';
+        } else if (missed) {
+          status = 'mismatch';
+        }
+        if (status === 'ok') replayed.push(...inputs.slice(0, done));
       } catch {
         status = 'mismatch';
       } finally {
         syncing = false;
       }
       send('view-applied', { status });
+      if (status === 'ok') adoptReplayedView(replayed);
     };
 
     // Registered on window before any artifact script runs, so these see a
@@ -376,6 +395,162 @@ export function createHtmlVisualEditorRuntime(token) {
       const link = event.target.closest('a[href], area[href]');
       if (link && !(link.getAttribute('href') || '').startsWith('#')) event.preventDefault();
     });
+
+
+    // ---- View recorder (ENG-4383) -------------------------------------------
+    // Where the user is in this canvas, reported to the parent so a rebuild
+    // (a quick edit or an agent change landed, a save changed the source, a
+    // discard) reopens on the same slide, and so a save made from Live edit
+    // keeps the Preview there too. The same record the preview shim keeps
+    // (cowork-server preview_shim.js): hash, scroll, the last scrolled
+    // container, the heading on screen, and the user's navigation inputs
+    // since load — a trusted key or click is kept only when the page changed
+    // its DOM within SETTLE_MS. Changes the editor makes itself (selecting,
+    // typing, the mode attribute) are not the page reacting. Kept apart from
+    // the editing handlers on purpose; it only reads the mode.
+    const NAV_SETTLE_MS = 250;
+    const FIELD = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+    const EDITOR_ATTRIBUTES = new Set([
+      'contenteditable', 'spellcheck', 'data-cowork-editor-selected', 'data-cowork-editor-mode', 'tabindex', ATTRIBUTE,
+    ]);
+    const ID_RE = /^[A-Za-z][\\w.:-]{0,99}$/;
+    let viewInputs = [];
+    let viewOverflow = false;
+    let scrolledElement = null;
+    let lastViewText = '';
+    let viewTimers = [];
+    let scrollTimer = 0;
+
+    const pathOf = (start) => {
+      const steps = [];
+      let element = start;
+      while (element && element.nodeType === 1 && element !== document.body) {
+        if (steps.length >= LIMITS.steps) return '';
+        const id = element.id;
+        if (id && ID_RE.test(id) && document.getElementById(id) === element) {
+          steps.unshift('#' + id);
+          break;
+        }
+        const tag = element.localName;
+        let index = 0;
+        for (let sibling = element.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
+          if (sibling.localName === tag) index += 1;
+        }
+        steps.unshift(tag + ':' + index);
+        element = element.parentElement;
+      }
+      if (!element || !steps.length || (element !== document.body && steps[0][0] !== '#')) return '';
+      const path = steps.join('/');
+      return path.length <= LIMITS.path ? path : '';
+    };
+
+    const sendEditorView = () => {
+      if (syncing) return;
+      const view = {
+        type: 'view',
+        hash: String(window.location.hash || '').slice(0, LIMITS.hash),
+        scrollX: Math.round(window.scrollX || 0),
+        scrollY: Math.round(window.scrollY || 0),
+        container: null,
+        inputs: viewOverflow ? [] : viewInputs.slice(),
+        overflow: viewOverflow,
+        heading: visibleHeading(),
+      };
+      if (scrolledElement && scrolledElement.isConnected) {
+        const where = pathOf(scrolledElement);
+        if (where) {
+          view.container = {
+            path: where,
+            top: Math.round(scrolledElement.scrollTop || 0),
+            left: Math.round(scrolledElement.scrollLeft || 0),
+          };
+        }
+      }
+      const text = JSON.stringify(view);
+      if (text === lastViewText) return;
+      lastViewText = text;
+      send('view', { view });
+    };
+
+    const scheduleEditorView = () => {
+      viewTimers.forEach((timer) => clearTimeout(timer));
+      viewTimers = [setTimeout(sendEditorView, 150), setTimeout(sendEditorView, 900)];
+    };
+
+    // After a replay that landed, the canvas is where those inputs lead: they
+    // are its own from here on, so the next rebuild replays the whole way.
+    const adoptReplayedView = (inputs) => {
+      viewInputs = inputs.slice(0, LIMITS.inputs);
+      viewOverflow = false;
+      lastViewText = '';
+      sendEditorView();
+    };
+
+    const pageReacted = (records) => records.some((record) => {
+      const target = record.target;
+      if (active && (target === active || active.contains(target))) return false;
+      if (record.type === 'attributes' && EDITOR_ATTRIBUTES.has(record.attributeName)) return false;
+      return true;
+    });
+
+    const recordInput = (input) => {
+      if (viewOverflow || typeof MutationObserver !== 'function' || !document.body) return;
+      let changed = false;
+      const observer = new MutationObserver((records) => {
+        if (!changed && pageReacted(records)) changed = true;
+      });
+      observer.observe(document.body, { attributes: true, childList: true, subtree: true, characterData: true });
+      setTimeout(() => {
+        observer.disconnect();
+        if (!changed) return;
+        if (viewInputs.length >= LIMITS.inputs) {
+          viewOverflow = true;
+          viewInputs = [];
+        } else {
+          viewInputs.push(input);
+        }
+        scheduleEditorView();
+      }, NAV_SETTLE_MS);
+    };
+
+    // On window, ahead of the editing handlers below (which stop events):
+    // the recorder only looks.
+    window.addEventListener('keydown', (event) => {
+      try {
+        if (syncing || !event.isTrusted || active) return;
+        if (event.ctrlKey || event.metaKey || event.altKey || !Object.hasOwn(KEY_CODES, event.key)) return;
+        const target = event.target;
+        // Typing in a field is not navigation; Space or Enter on a control
+        // also clicks it, which is recorded on its own.
+        if (target instanceof Element && (target.closest(FIELD) || target.closest(INTERACTIVE))) return;
+        recordInput({ type: 'key', key: event.key, shiftKey: !!event.shiftKey });
+      } catch { /* never break the page */ }
+    }, true);
+
+    window.addEventListener('click', (event) => {
+      try {
+        // In Edit mode a click edits and never reaches the page.
+        if (syncing || !event.isTrusted || event.button !== 0 || mode !== 'navigate') return;
+        if (!(event.target instanceof Element)) return;
+        const control = event.target.closest(INTERACTIVE) || event.target;
+        const where = pathOf(control);
+        if (!where) return;
+        recordInput({ type: 'click', path: where, label: clipText(control.textContent, LIMITS.label) });
+      } catch { /* never break the page */ }
+    }, true);
+
+    window.addEventListener('hashchange', () => {
+      try { scheduleEditorView(); } catch { /* never break the page */ }
+    });
+
+    window.addEventListener('scroll', (event) => {
+      try {
+        if (event.target instanceof Element) scrolledElement = event.target;
+        clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(sendEditorView, 200);
+      } catch { /* never break the page */ }
+    }, { capture: true, passive: true });
+    // ---- end view recorder ---------------------------------------------------
 
     // Edit mode holds the page still: on window, ahead of any listener the
     // artifact adds, a person's pointer goes to the editor and never on to

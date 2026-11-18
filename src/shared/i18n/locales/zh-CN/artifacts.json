@@ -249,6 +249,7 @@
     "noEditable": "未找到可直接编辑的文本",
     "clickToEdit": "点击任意文本即可编辑，包括按钮和链接。",
     "syncingView": "正在打开你在预览中查看的位置…",
+    "keepingPlace": "正在回到你刚才查看的位置…",
     "htmlSource": "HTML 源代码",
     "editing": "正在编辑产物",
     "back": "返回产物",

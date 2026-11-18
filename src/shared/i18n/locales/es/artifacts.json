@@ -249,6 +249,7 @@
     "noEditable": "No se encontró texto editable directamente",
     "clickToEdit": "Haz clic en cualquier texto para editarlo, incluidos botones y enlaces.",
     "syncingView": "Abriendo el punto donde estabas en la vista previa…",
+    "keepingPlace": "Volviendo al punto donde estabas…",
     "htmlSource": "Código HTML",
     "editing": "Editando artefacto",
     "back": "Volver al artefacto",
