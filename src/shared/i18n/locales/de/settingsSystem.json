@@ -150,8 +150,7 @@
       "confirmBody": "Wir löschen dein Konto und die Daten, die nur dir gehören, innerhalb von 30 Tagen dauerhaft. Organisationen, die du mit anderen teilst, bleiben bei ihren anderen Mitgliedern. Das lässt sich nicht rückgängig machen.",
       "sending": "Wird gesendet…",
       "requested": "Löschung beantragt am {requestedOn}. Wir löschen dein Konto bis spätestens {deleteBy}.",
-      "error": "Deine Anfrage konnte nicht gesendet werden. Versuch es noch einmal.",
-      "desktopHint": "Um dein Konto zu löschen, melde dich bei cowork.mindshub.ai an und öffne Einstellungen → Konto."
+      "error": "Deine Anfrage konnte nicht gesendet werden. Versuch es noch einmal."
     },
     "web": {
       "title": "Über MindsHub verwaltet",

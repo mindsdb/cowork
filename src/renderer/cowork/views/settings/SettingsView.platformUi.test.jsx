@@ -44,17 +44,11 @@ function renderSettings(data = settings, onSave = vi.fn(async () => ({})), secti
 
 it('offers Agent, Appearance and Channels and rejects an old Usage deep link', () => {
   expect(navItemsForHost(true, true, true).map(({ id }) => id)).toEqual(['agent', 'appearance', 'channels']);
+  // No MindsHub platform, no MindsHub account to delete, even inside the mobile app.
+  expect(navItemsForHost(true, true, true, { mobileShell: true }).map(({ id }) => id)).not.toContain('account');
   renderSettings(settings, undefined, 'usage');
   expect(screen.getByRole('heading', { name: 'Memory', exact: true })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Usage' })).not.toBeInTheDocument();
-});
-
-// No MindsHub platform, no MindsHub account: the public account link opens
-// Settings on its first page rather than an account page with nothing in it.
-it('rejects an Account deep link', () => {
-  renderSettings(settings, undefined, 'account');
-  expect(screen.getByRole('heading', { name: 'Memory', exact: true })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Account' })).not.toBeInTheDocument();
 });
 
 it.each([

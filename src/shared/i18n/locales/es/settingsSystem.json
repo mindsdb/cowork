@@ -150,8 +150,7 @@
       "confirmBody": "Eliminaremos para siempre tu cuenta y los datos que solo son tuyos en un plazo de 30 días. Las organizaciones que compartes con otras personas se quedan con sus demás miembros. Esto no se puede deshacer.",
       "sending": "Enviando…",
       "requested": "Eliminación solicitada el {requestedOn}. Eliminaremos tu cuenta antes del {deleteBy}.",
-      "error": "No se pudo enviar tu solicitud. Inténtalo de nuevo.",
-      "desktopHint": "Para eliminar tu cuenta, inicia sesión en cowork.mindshub.ai y abre Configuración → Cuenta."
+      "error": "No se pudo enviar tu solicitud. Inténtalo de nuevo."
     },
     "web": {
       "title": "Gestionada a través de MindsHub",

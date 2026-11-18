@@ -277,7 +277,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
               <div className="max-w-[320px]">{t('account.web.body')}</div>
             </div>
           )}
-          {accountUser && host.isWeb && <DeleteAccountRow card={CARD} />}
+          {accountUser && host.isMobileShell && <DeleteAccountRow card={CARD} />}
         </SettingsSectionPanel>
         {logoutConfirm}
       </>
@@ -301,11 +301,6 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
             </div>
           </Section>
         </div>}
-        {accountUser && (
-          <div className={`${CARD} py-3 px-[18px] text-[13px] text-ink-3`}>
-            {t('account.delete.desktopHint')}
-          </div>
-        )}
       </SettingsSectionPanel>
       {logoutConfirm}
     </>

@@ -150,8 +150,7 @@
       "confirmBody": "We'll permanently delete your account and the data that's only yours within 30 days. Organizations you share with other people stay with their other members. This can't be undone.",
       "sending": "Sending…",
       "requested": "Deletion requested on {requestedOn}. We'll delete your account by {deleteBy}.",
-      "error": "Couldn't send your request. Try again.",
-      "desktopHint": "To delete your account, sign in at cowork.mindshub.ai and open Settings → Account."
+      "error": "Couldn't send your request. Try again."
     },
     "web": {
       "title": "Managed via MindsHub",

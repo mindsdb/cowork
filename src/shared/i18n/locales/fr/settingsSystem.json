@@ -150,8 +150,7 @@
       "confirmBody": "Nous supprimerons définitivement votre compte et les données qui ne sont qu’à vous sous 30 jours. Les organisations que vous partagez avec d’autres personnes restent à leurs autres membres. Cette action est irréversible.",
       "sending": "Envoi…",
       "requested": "Suppression demandée le {requestedOn}. Nous supprimerons votre compte au plus tard le {deleteBy}.",
-      "error": "Impossible d’envoyer votre demande. Réessayez.",
-      "desktopHint": "Pour supprimer votre compte, connectez-vous sur cowork.mindshub.ai et ouvrez Paramètres → Compte."
+      "error": "Impossible d’envoyer votre demande. Réessayez."
     },
     "web": {
       "title": "Géré via MindsHub",

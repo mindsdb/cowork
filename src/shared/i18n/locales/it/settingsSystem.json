@@ -150,8 +150,7 @@
       "confirmBody": "Elimineremo definitivamente il tuo account e i dati che appartengono solo a te entro 30 giorni. Le organizzazioni che condividi con altre persone restano ai loro altri membri. Questa operazione non può essere annullata.",
       "sending": "Invio in corso…",
       "requested": "Eliminazione richiesta il {requestedOn}. Elimineremo il tuo account entro il {deleteBy}.",
-      "error": "Impossibile inviare la richiesta. Riprova.",
-      "desktopHint": "Per eliminare il tuo account, accedi a cowork.mindshub.ai e apri Impostazioni → Account."
+      "error": "Impossibile inviare la richiesta. Riprova."
     },
     "web": {
       "title": "Gestito tramite MindsHub",

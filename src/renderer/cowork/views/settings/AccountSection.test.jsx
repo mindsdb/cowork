@@ -5,6 +5,7 @@ const hostMock = vi.hoisted(() => ({
   host: {
     isWeb: false,
     isElectron: true,
+    isMobileShell: false,
     isMac: () => false,
     logout: vi.fn(async () => { }),
   },
@@ -40,6 +41,7 @@ beforeEach(() => {
   accountMock.orgs = { orgs: [], activeOrg: null, activeOrgId: null, switching: false };
   hostMock.host.isWeb = false;
   hostMock.host.isElectron = true;
+  hostMock.host.isMobileShell = false;
   apiMock.getDeletionRequest.mockReset().mockResolvedValue(null);
   apiMock.requestAccountDeletion.mockReset();
 });
@@ -108,11 +110,12 @@ describe('AccountSection console link', () => {
 describe('AccountSection account deletion', () => {
   const OPEN_REQUEST = { requestedAt: '2026-11-17T10:00:00Z', deleteBy: '2026-12-17T10:00:00Z' };
 
-  // Deletion is asked for from web (and the mobile app, a web build), where
-  // the server always speaks for a MindsHub account.
+  // Deletion is asked for inside the mobile app, which is a web build: the
+  // app stores require it there. The website and desktop do not offer it.
   beforeEach(() => {
     hostMock.host.isWeb = true;
     hostMock.host.isElectron = false;
+    hostMock.host.isMobileShell = true;
   });
   const STATUS = 'Deletion requested on November 17, 2026. We\'ll delete your account by December 17, 2026.';
 
@@ -187,21 +190,21 @@ describe('AccountSection account deletion', () => {
     expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument();
   });
 
-  // A desktop on its local server has no MindsHub credential to forward, so
-  // it can neither read nor send a request: it points to the web app instead.
-  it('points desktop to the web app instead of offering the button', () => {
-    hostMock.host.isWeb = false;
-    hostMock.host.isElectron = true;
+  it.each([['the website', true], ['desktop', false]])('does not offer the button on %s', (_host, isWeb) => {
+    hostMock.host.isWeb = isWeb;
+    hostMock.host.isElectron = !isWeb;
+    hostMock.host.isMobileShell = false;
     render(<AccountSection isSsoConnected />);
 
-    expect(screen.getByText('To delete your account, sign in at cowork.mindshub.ai and open Settings → Account.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/delete your account/i)).not.toBeInTheDocument();
     expect(apiMock.getDeletionRequest).not.toHaveBeenCalled();
   });
 
-  it.each([['web', true], ['desktop', false]])('offers nothing to delete when signed out on %s', (_host, isWeb) => {
+  it.each([['the mobile app', true], ['desktop', false]])('offers nothing to delete when signed out on %s', (_host, isWeb) => {
     hostMock.host.isWeb = isWeb;
     hostMock.host.isElectron = !isWeb;
+    hostMock.host.isMobileShell = isWeb;
     accountMock.user = null;
     render(<AccountSection onSsoSignIn={vi.fn()} />);
 

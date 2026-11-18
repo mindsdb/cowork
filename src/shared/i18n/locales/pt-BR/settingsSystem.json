@@ -150,8 +150,7 @@
       "confirmBody": "Vamos excluir permanentemente sua conta e os dados que são só seus em até 30 dias. As organizações que você compartilha com outras pessoas ficam com os demais membros. Isso não pode ser desfeito.",
       "sending": "Enviando…",
       "requested": "Exclusão solicitada em {requestedOn}. Vamos excluir sua conta até {deleteBy}.",
-      "error": "Não foi possível enviar sua solicitação. Tente de novo.",
-      "desktopHint": "Para excluir sua conta, entre em cowork.mindshub.ai e abra Configurações → Conta."
+      "error": "Não foi possível enviar sua solicitação. Tente de novo."
     },
     "web": {
       "title": "Gerenciada pelo MindsHub",

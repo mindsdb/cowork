@@ -43,15 +43,15 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     ]);
   });
 
-  it('gives web exactly Agent, Appearance, Channels, Usage, Account', () => {
-    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels', 'usage', 'account']);
+  it('gives web exactly Agent, Appearance, Channels, Usage', () => {
+    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels', 'usage']);
   });
 
-  it('offers Account on web, so a person can ask for their account to be deleted', () => {
-    // The app stores require that deleting an account can start inside the
-    // app, and the mobile app is a web build: without Account on web it has
-    // nowhere to do that.
-    expect(ids(navItemsForHost(true, true, true))).toContain('account');
+  it('adds Account inside the mobile app, where the app stores require account deletion', () => {
+    expect(ids(navItemsForHost(true, true, true, { mobileShell: true })))
+      .toEqual(['agent', 'appearance', 'channels', 'usage', 'account']);
+    // The website stays as it was.
+    expect(ids(navItemsForHost(true, true, true, { mobileShell: false }))).not.toContain('account');
   });
 
   it('keeps Agent on web — it carries the reasoning-effort control', () => {
@@ -62,12 +62,14 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     expect(ids(navItemsForHost(true, true, true))).toContain('agent');
   });
 
-  it('omits the sections web cannot act on', () => {
+  it('omits the three sections web cannot act on', () => {
     const web = ids(navItemsForHost(true, true, true));
     // backend — start/stop/diagnostics of a server the user doesn't control.
     // updates — App-shell version / OTA source are meaningless on hosted.
+    // account — a second sign-in surface for an already-authenticated user.
     expect(web).not.toContain('backend');
     expect(web).not.toContain('updates');
+    expect(web).not.toContain('account');
   });
 
   it('omits rather than disables — a row that opens a dead end is worse', () => {
@@ -84,7 +86,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     // for both hosts beats a web-only exception. Pinned so the next nav
     // change sees it.
     expect(navItemsForHost(true, true, true).map((i) => i.group))
-      .toEqual(['General', 'App', 'App', 'System', 'System']);
+      .toEqual(['General', 'App', 'App', 'System']);
   });
 
   it('offers Usage on web: it reads a route both hosts call and only links out', () => {
@@ -97,7 +99,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
 
   it('preserves each section\'s label and icon, and the desktop ordering', () => {
     const web = navItemsForHost(true, true, true);
-    expect(web.map((i) => i.label)).toEqual(['Agent', 'Appearance', 'Channels', 'Usage', 'Account']);
+    expect(web.map((i) => i.label)).toEqual(['Agent', 'Appearance', 'Channels', 'Usage']);
     expect(web.every((i) => typeof i.icon === 'string' && i.icon.length > 0)).toBe(true);
     // Filtered, not reordered — web order must be a subsequence of desktop's.
     const desktop = ids(navItemsForHost(false, true, true));
@@ -107,7 +109,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
   it('does not hand out the shared array for callers to mutate', () => {
     const a = navItemsForHost(true, true, true);
     a.pop();
-    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels', 'usage', 'account']);
+    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels', 'usage']);
     // Desktop returns a copy too — without the spread it would hand back the
     // module-level NAV_ITEMS itself, and this pop() would corrupt every
     // later call on both platforms.

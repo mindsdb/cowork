@@ -6,16 +6,11 @@
 //   /?settings=appearance&section=display      display preferences
 //   /?settings=appearance&section=branding     same as ?settings=branding (the
 //                                              console's help card links here)
-//   /?settings=account                         your account, where you can ask
-//                                              for it to be deleted (the public
-//                                              deletion link the app stores ask for)
 //
 // Like consoleHandoff.js, it is captured before the Keycloak redirect (whose
 // redirectUri is the bare pathname, so the query would not survive login),
 // stripped from the address bar with replaceState, and consumed once by App.
 // Only the pages and parts listed here are accepted; anything else is dropped.
-// Settings itself still resolves the page against what this host offers, so a
-// page listed here but hidden on this host opens Settings without showing it.
 
 const STORAGE_KEY = 'anton.settingsDeepLink';
 const PARAMS = ['settings', 'section'];
@@ -26,7 +21,6 @@ const MAX_AGE_MS = 10 * 60 * 1000;
 export const SETTINGS_DEEP_LINKS = Object.freeze({
   appearance: Object.freeze(['style', 'display']),
   branding: Object.freeze([]),
-  account: Object.freeze([]),
 });
 
 /** `appearance&section=branding` is the console's older name for Branding. */

@@ -898,7 +898,7 @@ export default function SettingsView({
     host.isWeb,
     codeModeAccess.available,
     codeModeAccess.enabled,
-    { branding: canEditBranding },
+    { branding: canEditBranding, mobileShell: host.isMobileShell },
   );
   // Branding is for org admins; anyone else sent there (a deep link, a
   // stale section) lands on Appearance, where their own look is.
@@ -2886,9 +2886,10 @@ export default function SettingsView({
   const renderUsageSection = () => (
     <UsageSection
       isSsoConnected={isSsoConnected}
-      // Only where Account can sign someone in. On web it shows the account
-      // but offers no sign-in, so the button would land on a page that cannot
-      // do what it promised.
+      // Only where Account is a section this host actually offers. `account`
+      // is not in WEB_NAV_IDS, so on web the deep link resolves to the first
+      // visible section (Agent) on desktop widths and pops back to the
+      // section list on mobile — a button that silently goes somewhere else.
       onOpenAccount={!host.isWeb && onSectionChange ? () => onSectionChange('account') : undefined}
     />
   );

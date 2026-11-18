@@ -144261,40 +144261,6 @@
       "text": "4fe85f2bbef1"
     }
   },
-  "settingsSystem:account.delete.desktopHint": {
-    "de": {
-      "from": "304b39a5b123",
-      "text": "c2fe547aacff"
-    },
-    "es": {
-      "from": "304b39a5b123",
-      "text": "7f06dc1b2def"
-    },
-    "fr": {
-      "from": "304b39a5b123",
-      "text": "aac169a20c4e"
-    },
-    "it": {
-      "from": "304b39a5b123",
-      "text": "b58d35469fb6"
-    },
-    "ja": {
-      "from": "304b39a5b123",
-      "text": "e31ea0c2a311"
-    },
-    "ko": {
-      "from": "304b39a5b123",
-      "text": "403412269c47"
-    },
-    "pt-BR": {
-      "from": "304b39a5b123",
-      "text": "753c3317579c"
-    },
-    "zh-CN": {
-      "from": "304b39a5b123",
-      "text": "74c6716dd601"
-    }
-  },
   "settingsSystem:account.delete.error": {
     "de": {
       "from": "dcf32d1bbcca",

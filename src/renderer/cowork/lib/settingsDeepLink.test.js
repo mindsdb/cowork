@@ -22,9 +22,6 @@ describe('parseSettingsDeepLink', () => {
     ['?settings=appearance&section=style', { page: 'appearance', section: 'style' }],
     ['?settings=appearance', { page: 'appearance', section: null }],
     ['?settings=appearance&section=elsewhere', { page: 'appearance', section: null }],
-    // The public link for asking to delete your account.
-    ['?settings=account', { page: 'account', section: null }],
-    ['?settings=account&section=delete', { page: 'account', section: null }],
     ['?settings=backend&section=branding', null],
     ['?section=branding', null],
     ['', null],
@@ -40,11 +37,6 @@ describe('captureSettingsDeepLink', () => {
     expect(replace).toHaveBeenCalledWith(window.history.state, '', '/c/abc?keep=1#x');
     // The console's older link opens Branding.
     expect(takeSettingsDeepLink()).toEqual({ page: 'branding', section: null });
-  });
-
-  it('carries the account link across sign-in', () => {
-    captureSettingsDeepLink(loc('?settings=account'));
-    expect(takeSettingsDeepLink()).toEqual({ page: 'account', section: null });
   });
 
   it('strips an unknown link without stashing it', () => {
