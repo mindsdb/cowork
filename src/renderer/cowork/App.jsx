@@ -34,7 +34,7 @@ import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
 import ScheduleTaskModal from './components/schedule/ScheduleTaskModal';
 import { localFileAttachments } from './lib/localFileAttachments';
-import { createScheduleForAnswer } from './lib/scheduledAnswers';
+import { useScheduleFromAnswer } from './hooks/useScheduleFromAnswer';
 import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
@@ -6747,14 +6747,13 @@ function AppCore() {
     const project = projectId ? runnableProjects.find((p) => p.id === projectId) : null;
     setScheduleDraft({ prompt, projectPath: project?.path || '', answerKey });
   };
-  const handleScheduleFromChat = async (payload, _id, { runOnce = false } = {}) => {
-    const created = await createScheduleForAnswer(handleCreateSchedule, payload, scheduleDraft?.answerKey);
-    toastManager.add({ type: 'success', title: i18n.t('chatView.nextSteps.scheduled', { ns: 'chat', title: payload.title }) });
-    if (!runOnce || !created?.id) return;
-    // Saved already: a failed trial run must not fail the save.
-    try {
-      await handleRunScheduleNow(created.id, { trial: true });
-    } catch (err) {
+  const scheduleFromAnswer = useScheduleFromAnswer({
+    create: handleCreateSchedule,
+    runNow: (id) => handleRunScheduleNow(id, { trial: true }),
+    onSaved: (payload) => {
+      toastManager.add({ type: 'success', title: i18n.t('chatView.nextSteps.scheduled', { ns: 'chat', title: payload.title }) });
+    },
+    onRunFailed: (payload, err) => {
       toastManager.add({
         type: 'danger',
         title: i18n.t('scheduledView.trialRunFailed', {
@@ -6763,8 +6762,11 @@ function AppCore() {
           reason: err?.message || i18n.t('scheduledView.trialRunFallback', { ns: 'projects' }),
         }),
       });
-    }
-  };
+    },
+  });
+  const handleScheduleFromChat = (payload, _id, options) => (
+    scheduleFromAnswer.submit(payload, scheduleDraft?.answerKey, options)
+  );
 
   const handleRunScheduleNow = async (id, options) => {
     const result = await runScheduleNow(id, options);
@@ -7484,6 +7486,7 @@ function AppCore() {
           open={!!scheduleDraft}
           onClose={() => setScheduleDraft(null)}
           onSubmit={handleScheduleFromChat}
+          busy={scheduleFromAnswer.busy}
           initial={scheduleDraft}
           projects={runnableProjects}
           models={modelOptions}

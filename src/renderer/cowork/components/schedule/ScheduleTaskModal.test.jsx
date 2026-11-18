@@ -210,3 +210,16 @@ describe('ScheduleTaskModal — started from a chat', () => {
     expect(screen.getByLabelText(/What should Anton do/)).toHaveValue('');
   });
 });
+
+describe('ScheduleTaskModal — while a save is out', () => {
+  it('disables both ways to submit and says it is saving', () => {
+    const { onSubmit } = renderModal({ initial: { prompt: 'Find open grants for my NGO' }, busy: true });
+    const saving = screen.getByRole('button', { name: 'Saving…' });
+    const runOnce = screen.getByRole('button', { name: 'Save and run once' });
+    expect(saving).toBeDisabled();
+    expect(runOnce).toBeDisabled();
+    fireEvent.click(saving);
+    fireEvent.click(runOnce);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
