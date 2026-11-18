@@ -438,3 +438,10 @@
    with its other actions): the same quiet secondary button. */
 .artifact-pane-label .artifact-exit-live-edit { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-3); background: var(--surface); font: 600 12px/1 var(--font-body); cursor: pointer; }
 .artifact-pane-label .artifact-exit-live-edit:hover { color: var(--ink); background: var(--surface-2); }
+/* Save and Discard beside Exit in the plain source editor's header, the same
+   quiet buttons; Save takes the accent, as in the HTML editor's toolbar. */
+.artifact-pane-actions { flex: none; display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.artifact-pane-label .artifact-discard-edit,
+.artifact-pane-label .artifact-save-edit { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-3); background: var(--surface); font: 600 12px/1 var(--font-body); cursor: pointer; }
+.artifact-pane-label .artifact-save-edit { border-color: color-mix(in srgb, var(--accent) 25%, var(--line)); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.artifact-pane-label .artifact-save-edit:disabled { opacity: .6; cursor: default; }

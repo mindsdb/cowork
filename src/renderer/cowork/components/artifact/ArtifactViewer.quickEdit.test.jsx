@@ -1371,13 +1371,13 @@ describe('ArtifactViewer layout controls', () => {
     expect(bar()).not.toBeNull();
   });
 
-  it('keeps the toolbar, with Save on it, while there is unsaved work', async () => {
+  it('keeps the toolbar hidden with unsaved work: Save is in Live edit\'s own toolbar', async () => {
     window.localStorage.setItem('cowork.artifactViewer.layout.v1', JSON.stringify({ toolbarHidden: true }));
     workspaceMock.dirty = true;
     renderViewer();
     await screen.findByTitle('Launch brief');
 
-    expect(revisionBar()).not.toBeNull();
+    expect(revisionBar()).toBeNull();
   });
 
   it('opens the next artifact the way the last one was left', async () => {

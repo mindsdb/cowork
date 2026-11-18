@@ -190,6 +190,7 @@ export function ArtifactViewerBody({
       previewView={previewView}
       onViewChange={onEditorView}
       onExit={layers?.onExitSource || null}
+      editActions={layers?.editActions || null}
     />
   ) : null;
 

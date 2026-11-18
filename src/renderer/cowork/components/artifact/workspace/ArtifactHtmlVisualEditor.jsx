@@ -12,6 +12,7 @@ import {
 import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
 import { normalizePreviewView } from '../usePreviewView';
 import { EditModeSwitch } from './EditModeSwitch';
+import { Tooltip } from '../../ui';
 import { useTranslation } from '../../../../lib/i18n';
 
 /* The frame runtime names a selected element in English (or by the page's own
@@ -47,6 +48,9 @@ export function ArtifactHtmlVisualEditor({
   onViewChange = null,
   // Leaves Live edit; given when the viewer's toolbar (and its toggle) is hidden.
   onExit = null,
+  // `{ dirty, saving, canEdit, onSave, onDiscard }`: Save and Discard, right
+  // of Advanced, while there is unsaved text.
+  editActions = null,
 }) {
   const { t } = useTranslation('artifacts');
   const iframeRef = useRef(null);
@@ -314,15 +318,11 @@ export function ArtifactHtmlVisualEditor({
           <span className={error ? 'is-error' : ''}>{guidance}</span>
         </div>
         <div className="artifact-html-edit-actions">
-          {selection && !showSource && (
-            <button type="button" onClick={finishEditing}>
-              {Ico.check(14)} {t('common.done')}
-            </button>
-          )}
           <button type="button" className="is-secondary" onClick={toggleSource}>
             {showSource ? Ico.edit(14) : Ico.code(14)}
             {showSource ? t('htmlEditor.back') : t('comparison.advanced')}
           </button>
+          <SaveDiscardButtons actions={editActions} />
           {onExit && <ExitLiveEditButton onExit={onExit} />}
         </div>
       </div>
@@ -370,6 +370,24 @@ export function ArtifactHtmlVisualEditor({
         )}
       </div>
     </div>
+  );
+}
+
+/** Save and Discard for Live edit's unsaved text; nothing while there is none. */
+export function SaveDiscardButtons({ actions }) {
+  const { t } = useTranslation('artifacts');
+  if (!actions?.canEdit || !actions.dirty) return null;
+  return (
+    <>
+      <button type="button" className="is-secondary artifact-discard-edit" onClick={actions.onDiscard}>
+        {t('revisionBar.discard')}
+      </button>
+      <Tooltip content={t('revisionBar.saveTooltip')}>
+        <button type="button" className="artifact-save-edit" disabled={actions.saving} onClick={actions.onSave}>
+          {Ico.save(14)} {t('revisionBar.save')}
+        </button>
+      </Tooltip>
+    </>
   );
 }
 

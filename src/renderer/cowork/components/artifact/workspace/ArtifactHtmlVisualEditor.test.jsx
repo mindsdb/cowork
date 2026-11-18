@@ -515,3 +515,44 @@ describe('ArtifactHtmlVisualEditor exit', () => {
     expect(screen.queryByRole('button', { name: /Exit Live edit/ })).toBeNull();
   });
 });
+
+// Live edit's Save and Discard sit right of Advanced and before Exit, only
+// while there is unsaved text; there is no Done button (ENG-4383).
+describe('ArtifactHtmlVisualEditor save and discard', () => {
+  function renderWith(editActions, extra = {}) {
+    render(
+      <ArtifactHtmlVisualEditor
+        source={SOURCE} value={VALUE} onChange={vi.fn()} onSave={vi.fn()} draftUrl={DRAFT_URL}
+        editActions={editActions} {...extra}
+      />,
+    );
+    return screen.findByTitle('Edit artifact on canvas');
+  }
+
+  it('shows Discard and Save in order after Advanced and before Exit, and runs them', async () => {
+    const onSave = vi.fn();
+    const onDiscard = vi.fn();
+    await renderWith({ dirty: true, saving: false, canEdit: true, onSave, onDiscard }, { onExit: vi.fn() });
+
+    const labels = [...document.querySelectorAll('.artifact-html-edit-actions button')].map((b) => b.textContent.trim());
+    expect(labels).toEqual(['Advanced', 'Discard', 'Save', 'Exit Live edit']);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows neither with nothing unsaved, and never a Done button', async () => {
+    await renderWith({ dirty: false, saving: false, canEdit: true, onSave: vi.fn(), onDiscard: vi.fn() });
+    sendFromFrame({ token: frameToken(), type: 'selection', elementId: 'cowork-edit-0', label: 'Heading' });
+
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Done/ })).toBeNull();
+  });
+
+  it('holds Save while saving', async () => {
+    await renderWith({ dirty: true, saving: true, canEdit: true, onSave: vi.fn(), onDiscard: vi.fn() });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+});
