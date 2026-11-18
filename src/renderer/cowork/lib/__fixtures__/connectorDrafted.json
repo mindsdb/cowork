@@ -1,0 +1,38 @@
+{
+  "type": "response.connector_drafted",
+  "sequence_number": 7,
+  "connector": {
+    "connector_id": "acme_crm",
+    "label": "Acme CRM",
+    "description": "Contacts and deals in Acme CRM.",
+    "category": "CRM",
+    "help_url": "https://docs.acme.example/api-keys",
+    "usage_notes": "Base URL https://api.acme.example/v2. Send the key as Authorization: Bearer <api_key>.",
+    "fields": [
+      {
+        "name": "api_key",
+        "label": "API key",
+        "secret": true,
+        "required": true,
+        "help": "Settings, then API."
+      },
+      {
+        "name": "region",
+        "label": "Region",
+        "secret": false,
+        "required": true,
+        "placeholder": "eu"
+      }
+    ],
+    "auth": {
+      "type": "header",
+      "headers": {
+        "Authorization": "Bearer {api_key}",
+        "X-Region": "{region}"
+      }
+    },
+    "check": {
+      "path": "/v2/me"
+    }
+  }
+}

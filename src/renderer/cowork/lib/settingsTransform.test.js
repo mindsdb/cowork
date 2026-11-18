@@ -110,6 +110,27 @@ describe('keep-awake setting translation', () => {
   });
 });
 
+describe('scheduled-run notification settings translation', () => {
+  const served = { scheduleNotifyFailed: true, scheduleNotifySucceeded: false };
+
+  it('reads both server rows and writes a change back to them', () => {
+    const settings = transformSettingsRows([
+      { key: 'schedule_notify_failed', value: 'False' },
+      { key: 'schedule_notify_succeeded', value: 'True' },
+    ]);
+    expect(settings.scheduleNotifyFailed).toBe(false);
+    expect(settings.scheduleNotifySucceeded).toBe(true);
+    expect(diffSettingsForWrite({ scheduleNotifyFailed: false, scheduleNotifySucceeded: true }, served))
+      .toEqual({ schedule_notify_failed: 'false', schedule_notify_succeeded: 'true' });
+    expect(committedSettingsPatch({ scheduleNotifySucceeded: true }, ['schedule_notify_succeeded']))
+      .toEqual({ scheduleNotifySucceeded: true });
+  });
+
+  it('does not write them to a server that has not served them', () => {
+    expect(diffSettingsForWrite({ scheduleNotifyFailed: false }, {})).toEqual({});
+  });
+});
+
 describe('show_figure_sources translation', () => {
   it('round-trips the switch both ways and commits it', () => {
     expect(transformSettingsRows([{ key: 'show_figure_sources', value: 'False', is_sensitive: false }]).showFigureSources).toBe(false);

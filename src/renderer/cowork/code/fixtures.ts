@@ -623,18 +623,26 @@ export function getCodeFixtureApi() {
     }
   };
 
+  let cleanupFailed = name === 'cleanup-failed';
   return {
+    workspaceCleanup: async () => ({ failed: cleanupFailed ? 1 : 0, running: false }),
+    retryWorkspaceCleanup: async () => {
+      cleanupFailed = false;
+      return { failed: 1, running: true };
+    },
     engines: async () => copy(engines),
     workspaceModes: async (): Promise<WorkspaceModeOptions> => plainFolder ? {
       supported: ['in_place'], default: 'in_place', can_initialize_git: !gitInitialized,
       worktree_unavailable_reason: gitInitialized
         ? 'This repository has no commits yet. Make a first commit to use a Worktree'
         : "This folder isn't a Git repository. Initialize Git to use a Worktree",
+      worktree_unavailable_code: gitInitialized ? 'no_commits' : 'not_a_repository',
     } : { supported: ['worktree', 'in_place'], default: 'in_place' },
     initializeGit: async (): Promise<WorkspaceModeOptions> => {
       gitInitialized = true;
       return { supported: ['in_place'], default: 'in_place', can_initialize_git: false,
-        worktree_unavailable_reason: 'This repository has no commits yet. Make a first commit to use a Worktree' };
+        worktree_unavailable_reason: 'This repository has no commits yet. Make a first commit to use a Worktree',
+        worktree_unavailable_code: 'no_commits' };
     },
     models: async () => ({ items: [...FIXTURE_MODEL_IDS] }),
     inspect: async (path: string): Promise<WorkspaceInspection> => ({

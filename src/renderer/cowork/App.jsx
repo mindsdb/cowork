@@ -4,7 +4,8 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
-import { toCloudSpec } from './lib/cloudConnectorSpec';
+import { connectSpecFor, desktopOnlyOffer, mayConnectThroughChat, toCustomConnectionRows } from './lib/customConnect';
+import { composerConnectorList } from './lib/composerConnectors';
 import { toDatasourceRows } from './lib/datasourceConnectionRows';
 import { buildCustomConnectorRequest } from './lib/customConnectorRequest';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
@@ -31,6 +32,9 @@ import HomeView from './views/HomeView';
 import ChatView, { warmBrowser } from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
+import ScheduleTaskModal from './components/schedule/ScheduleTaskModal';
+import { localFileAttachments } from './lib/localFileAttachments';
+import { useScheduleFromAnswer } from './hooks/useScheduleFromAnswer';
 import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
@@ -118,7 +122,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
-         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchVoiceStatus, readBrowserApproveSteps} from './api';
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, listCustomConnections, fetchVoiceStatus, readBrowserApproveSteps} from './api';
 import { describeNotionReferencePages, loadNotionPageTexts } from './lib/notionReferencePages';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
@@ -2202,21 +2206,24 @@ function AppCore() {
   }, [look]);
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
-  // One list for the composer's per-conversation toggles: the OAuth
-  // connections and the cloud database ones, each keyed by (engine, name),
-  // which is the pair the server filters a turn's grants on.
+  // The custom route the "Coming soon" dialog offers for a connector cloud doesn't run.
+  const [comingSoonOffer, setComingSoonOffer] = useState(null);
+  const [customConnectors, setCustomConnectors] = useState([]);
   const composerConnectors = useMemo(
-    // Only a verified database is offered here: the producer grants exactly
-    // those, so listing a pending or failed one with its toggle on would say a
-    // chat can use something it cannot.
-    () => [...connectors, ...datasourceConnectors.filter((c) => c.status === 'connected')],
-    [connectors, datasourceConnectors],
+    () => composerConnectorList(connectors, datasourceConnectors, customConnectors),
+    [connectors, datasourceConnectors, customConnectors],
   );
   const refreshDatasourceConnectors = useCallback(() => {
     if (!orgMode) return Promise.resolve();
     return listDatasourceConnections()
       .then((rows) => setDatasourceConnectors(toDatasourceRows(rows)))
       .catch(() => setDatasourceConnectors([]));
+  }, [orgMode]);
+  const refreshCustomConnectors = useCallback(() => {
+    if (!orgMode) return Promise.resolve();
+    return listCustomConnections()
+      .then((rows) => setCustomConnectors(toCustomConnectionRows(rows)))
+      .catch(() => setCustomConnectors([]));
   }, [orgMode]);
   // Connecting or removing a database happens in two other places — the
   // connect form's panel and the connections page — and both already announce
@@ -2225,10 +2232,10 @@ function AppCore() {
   // the rest of the session: a connection made now would never appear, and a
   // removed one would never leave.
   useEffect(() => {
-    const onChanged = () => { refreshDatasourceConnectors(); };
+    const onChanged = () => { refreshDatasourceConnectors(); refreshCustomConnectors(); };
     window.addEventListener('anton:connections-changed', onChanged);
     return () => window.removeEventListener('anton:connections-changed', onChanged);
-  }, [refreshDatasourceConnectors]);
+  }, [refreshDatasourceConnectors, refreshCustomConnectors]);
   // That one refresh lands while a fresh connection can still be pending, and
   // the composer offers verified connections only, so without this a database
   // that passes its check a moment later stays absent until a reload.
@@ -2624,6 +2631,7 @@ function AppCore() {
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
     refreshDatasourceConnectors();
+    refreshCustomConnectors();
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
@@ -3539,7 +3547,10 @@ function AppCore() {
     // Microsoft first, so it opens its own form instead of a connect chat.
     if (connector.id === SHAREPOINT_ENGINE) {
       // The SharePoint routes are refused in org mode; offer the desktop app.
-      if (orgMode) setComingSoonFeature(connector.label || 'SharePoint');
+      if (orgMode) {
+        setComingSoonOffer(null);
+        setComingSoonFeature(connector.label || 'SharePoint');
+      }
       else setSharePointSetupOpen(true);
       return;
     }
@@ -3558,13 +3569,22 @@ function AppCore() {
     const label = full?.label || connector.label || connector.id;
     const tempId = 'tmp-connect-' + Date.now();
     const hasLiteralForm = !!(full && full.form);
+    const chatBlocked = !hasLiteralForm && !mayConnectThroughChat({ orgMode, connector });
 
     setTasks((prev) => [{
       id: tempId,
       title: tApp('connect.taskTitle', { name: label }),
       subtitle: tApp('common.justNow'),
-      status: hasLiteralForm ? 'idle' : 'active',
-      messages: hasLiteralForm
+      status: hasLiteralForm || chatBlocked ? 'idle' : 'active',
+      messages: chatBlocked
+        ? [
+            {
+              role: 'assistant',
+              content: `Could not open ${label}. Try again from Connect Apps and Data.`,
+              _client_only: true,
+            },
+          ]
+        : hasLiteralForm
         ? [
             {
               role: 'assistant',
@@ -3633,7 +3653,7 @@ function AppCore() {
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
       };
-      const connectSpec = orgMode ? toCloudSpec(baseSpec, editingConnection) : baseSpec;
+      const connectSpec = connectSpecFor({ full, baseSpec, label, orgMode, editingConnection });
       setDataVaultForm(tempId, connectSpec);
       // Remember where to return if the user closes the connect modal
       // before actually connecting — the connect task above is throwaway
@@ -3648,7 +3668,7 @@ function AppCore() {
           m && m._kind === 'connect_intro' ? { ...m, _form_spec: connectSpec } : m
         ),
       }));
-    } else {
+    } else if (!chatBlocked) {
       // No registry entry — fall back to the chat-agent flow. This IS a real
       // connect attempt (anton drives it), so there's no throwaway task to
       // return from.
@@ -3964,14 +3984,7 @@ function AppCore() {
   const attachmentSessionId = route === 'task' && currentTask && !String(currentTask.id).startsWith('tmp-') ? currentTask.id : null;
 
   const handleAttachFiles = (files) => {
-    const list = Array.from(files || []).map((file) => ({
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-      source: 'file',
-      pendingFile: file,
-      name: file.name,
-      mime: file.type || undefined,
-      size: file.size,
-    }));
+    const list = localFileAttachments(files);
     setComposerAttachments((prev) => [...prev, ...list]);
   };
 
@@ -6691,7 +6704,14 @@ function AppCore() {
   // The same for a run that fails, or succeeds if the user asked to hear
   // about those: a notification where the OS allows one, a toast otherwise.
   // Clicking opens the task's page, which says why and offers the run.
-  const { prefs: scheduleNotifyPrefs, setPrefs: setScheduleNotifyPrefs } = useScheduleRunNotifications(scheduled, {
+  const {
+    prefs: scheduleNotifyPrefs,
+    setPrefs: setScheduleNotifyPrefs,
+    canEdit: canEditScheduleNotifyPrefs,
+  } = useScheduleRunNotifications(scheduled, {
+    settings,
+    settingsLoaded,
+    saveSettings,
     onOpen: (schedule) => {
       setWorkspaceMode('cowork');
       setSelectedScheduleId(schedule.id);
@@ -6720,6 +6740,34 @@ function AppCore() {
     host.setScheduleKeepAwake(keepAwake);
   }, [keepAwake, scheduled]);
   useEffect(() => () => { host.setScheduleKeepAwake(false); }, []);
+  // The new-schedule form opened from a finished answer's next steps, over
+  // the chat: { prompt, projectPath }, or null when closed.
+  const [scheduleDraft, setScheduleDraft] = useState(null);
+  const openScheduleFromChat = ({ prompt, projectId, answerKey }) => {
+    const project = projectId ? runnableProjects.find((p) => p.id === projectId) : null;
+    setScheduleDraft({ prompt, projectPath: project?.path || '', answerKey });
+  };
+  const scheduleFromAnswer = useScheduleFromAnswer({
+    create: handleCreateSchedule,
+    runNow: (id) => handleRunScheduleNow(id, { trial: true }),
+    onSaved: (payload) => {
+      toastManager.add({ type: 'success', title: i18n.t('chatView.nextSteps.scheduled', { ns: 'chat', title: payload.title }) });
+    },
+    onRunFailed: (payload, err) => {
+      toastManager.add({
+        type: 'danger',
+        title: i18n.t('scheduledView.trialRunFailed', {
+          ns: 'projects',
+          title: payload.title,
+          reason: err?.message || i18n.t('scheduledView.trialRunFallback', { ns: 'projects' }),
+        }),
+      });
+    },
+  });
+  const handleScheduleFromChat = (payload, _id, options) => (
+    scheduleFromAnswer.submit(payload, scheduleDraft?.answerKey, options)
+  );
+
   const handleRunScheduleNow = async (id, options) => {
     const result = await runScheduleNow(id, options);
     // The server creates the conversation eagerly and returns its id.
@@ -7195,6 +7243,7 @@ function AppCore() {
             health={health}
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
+            onScheduleFromChat={openScheduleFromChat}
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
@@ -7267,6 +7316,7 @@ function AppCore() {
             onStop={() => handleStopStream({ taskId: currentTask?.id })}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
+            onConnectCustomConnector={(connector) => { void handleConnectorPicked(connector); }}
             onDismissConnectForm={handleConnectFormDismiss}
             onCancelModify={handleCancelModify}
             onDisconnectModify={handleDisconnectFromModify}
@@ -7426,11 +7476,24 @@ function AppCore() {
               setRoute('projects');
             }}
             unseenAutoPauses={unseenAutoPauses}
-            notifyPrefs={scheduleNotifyPrefs}
+            notifyPrefs={canEditScheduleNotifyPrefs ? scheduleNotifyPrefs : undefined}
             onNotifyPrefsChange={setScheduleNotifyPrefs}
             agentLabel={agentLabel}
           />
         )}
+
+        <ScheduleTaskModal
+          open={!!scheduleDraft}
+          onClose={() => setScheduleDraft(null)}
+          onSubmit={handleScheduleFromChat}
+          busy={scheduleFromAnswer.busy}
+          initial={scheduleDraft}
+          projects={runnableProjects}
+          models={modelOptions}
+          modelMeta={modelMeta}
+          defaultProjectPath={scheduleDraft?.projectPath || ''}
+          agentLabel={agentLabel}
+        />
 
         {route === 'schedule-detail' && (
           <ScheduleDetailView
@@ -7751,9 +7814,15 @@ function AppCore() {
         // Cloud: the directory also lists connectors only the desktop app can
         // run. Picking one closes the directory and offers the download rather
         // than opening a connect form that couldn't work here.
-        onDesktopOnly={(c) => {
+        onDesktopOnly={(c, { customMatch = null, canBuild = false } = {}) => {
           setConnectorPickerOpen(false);
-          setComingSoonFeature(c?.label || tApp('connect.thisConnector'));
+          const label = c?.label || tApp('connect.thisConnector');
+          setComingSoonOffer(desktopOnlyOffer({
+            connector: c, customMatch, canBuild,
+            connect: (connector) => { void handleConnectorPicked(connector); },
+            build: (name) => sendFromApp(buildCustomConnectorRequest(name)),
+          }));
+          setComingSoonFeature(label);
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);
@@ -7773,7 +7842,8 @@ function AppCore() {
 
       <ComingSoonModal
         feature={comingSoonFeature}
-        onClose={() => setComingSoonFeature(null)}
+        offer={comingSoonOffer}
+        onClose={() => { setComingSoonFeature(null); setComingSoonOffer(null); }}
       />
 
       {!host.isWeb && (

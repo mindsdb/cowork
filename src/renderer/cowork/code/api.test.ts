@@ -199,6 +199,29 @@ describe('coding API boundary', () => {
     expect(codingErrorCode(new Error('plain'))).toBeUndefined();
   });
 
+  it('words a refused workspace mode from its code and folder, keeping unknown codes as sent', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      headers: new Headers({ 'X-MindsHub-Error-Code': 'not_a_repository', 'X-MindsHub-Error-Folder': 'Caf%C3%A9' }),
+      json: async () => ({ detail: 'Café: This folder isn\'t a Git repository. Initialize Git to use a Worktree' }),
+    })));
+    await expect(codingApi.create({ project_id: 'p1', prompt: 'Go' })).rejects.toMatchObject({
+      message: 'Café isn’t a Git repository. Initialize Git to use a Worktree.',
+      code: 'not_a_repository',
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      headers: new Headers({ 'X-MindsHub-Error-Code': 'some_future_reason' }),
+      json: async () => ({ detail: 'A reason this UI predates' }),
+    })));
+    await expect(codingApi.create({ project_id: 'p1', prompt: 'Go' })).rejects.toMatchObject({
+      message: 'A reason this UI predates',
+    });
+  });
+
   it('explains the generic 404 produced by an incompatible backend', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: false,
