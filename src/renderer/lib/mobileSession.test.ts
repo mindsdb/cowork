@@ -78,6 +78,13 @@ describe('restoreMobileSession', () => {
     expect(current()).toBeNull();
   });
 
+  it('still shows sign-in when a revoked session cannot be cleared', async () => {
+    const { store } = memoryStore();
+    store.clearSession.mockRejectedValueOnce(new Error('keystore unavailable'));
+    const { result } = restore(store, json({ error: 'invalid_grant' }, 400));
+    expect(await result).toEqual({ kind: 'none' });
+  });
+
   it('keeps the session when Keycloak cannot be reached', async () => {
     for (const response of [new TypeError('offline'), json({}, 503)]) {
       const { store, current } = memoryStore();

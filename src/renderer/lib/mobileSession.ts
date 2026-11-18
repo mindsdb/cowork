@@ -129,7 +129,10 @@ export async function restoreMobileSession(deps: RestoreDeps): Promise<RestoreRe
     // 400 invalid_grant (expired, revoked, signed out elsewhere) or 401: the
     // session is gone for good.
     if (response.status === 400 || response.status === 401) {
-      await clearMobileSession(store);
+      // A clear that fails must not read as "unreachable": retrying would get
+      // the same refusal forever and never offer sign-in. The stale session is
+      // refused again on the next launch, and a new sign-in overwrites it.
+      await clearMobileSession(store).catch(() => {});
       return { kind: 'none' };
     }
     if (!response.ok) return { kind: 'unavailable' };
