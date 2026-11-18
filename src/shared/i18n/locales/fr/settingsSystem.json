@@ -144,13 +144,13 @@
     "signOut": "Se déconnecter",
     "delete": {
       "title": "Supprimer le compte",
-      "subtitle": "Supprimez définitivement votre compte MindsHub et les données qui ne sont qu’à vous.",
+      "subtitle": "Demandez la suppression définitive de votre compte MindsHub.",
       "button": "Supprimer le compte",
       "confirmTitle": "Supprimer votre compte MindsHub ?",
-      "confirmBody": "Nous supprimerons définitivement votre compte et les données qui ne sont qu’à vous sous 30 jours. Les organisations que vous partagez avec d’autres personnes restent à leurs autres membres. Cette action est irréversible.",
+      "confirmBody": "L’assistance vérifiera votre demande et organisera la suppression de votre compte et de vos données personnelles sous 30 jours. Certains dossiers liés au compte, à la facturation et à l’assistance peuvent être conservés. Si vous êtes propriétaire d’une organisation comptant d’autres membres, l’assistance vous aidera d’abord à en transférer la propriété. Les autres membres conserveront l’organisation et ses données partagées. La suppression est irréversible.",
       "sending": "Envoi…",
-      "requested": "Suppression demandée le {requestedOn}. Nous supprimerons votre compte au plus tard le {deleteBy}.",
-      "error": "Impossible d’envoyer votre demande. Réessayez."
+      "requested": "Demande du {requestedOn}. Date de suppression prévue : {deleteBy}.",
+      "error": "Nous n’avons pas pu confirmer votre demande. Vous pouvez réessayer sans risque."
     },
     "web": {
       "title": "Géré via MindsHub",

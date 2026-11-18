@@ -144,13 +144,13 @@
     "signOut": "Sign out",
     "delete": {
       "title": "Delete account",
-      "subtitle": "Permanently delete your MindsHub account and the data that's only yours.",
+      "subtitle": "Request permanent deletion of your MindsHub account.",
       "button": "Delete account",
       "confirmTitle": "Delete your MindsHub account?",
-      "confirmBody": "We'll permanently delete your account and the data that's only yours within 30 days. Organizations you share with other people stay with their other members. This can't be undone.",
+      "confirmBody": "Support will verify your request and arrange deletion of your account and personal data within 30 days. Some account, billing, and support records may be retained. If you own an organization with other members, support will help you transfer ownership first. The organization and its shared data stay with the remaining members. Deletion can't be undone.",
       "sending": "Sending…",
-      "requested": "Deletion requested on {requestedOn}. We'll delete your account by {deleteBy}.",
-      "error": "Couldn't send your request. Try again."
+      "requested": "Requested on {requestedOn}. Target deletion date: {deleteBy}.",
+      "error": "We couldn’t confirm your request. You can safely try again."
     },
     "web": {
       "title": "Managed via MindsHub",

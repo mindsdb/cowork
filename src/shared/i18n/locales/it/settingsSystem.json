@@ -144,13 +144,13 @@
     "signOut": "Esci",
     "delete": {
       "title": "Elimina account",
-      "subtitle": "Elimina definitivamente il tuo account MindsHub e i dati che appartengono solo a te.",
+      "subtitle": "Richiedi l’eliminazione definitiva del tuo account MindsHub.",
       "button": "Elimina account",
       "confirmTitle": "Eliminare il tuo account MindsHub?",
-      "confirmBody": "Elimineremo definitivamente il tuo account e i dati che appartengono solo a te entro 30 giorni. Le organizzazioni che condividi con altre persone restano ai loro altri membri. Questa operazione non può essere annullata.",
+      "confirmBody": "Il supporto verificherà la richiesta e organizzerà l’eliminazione del tuo account e dei tuoi dati personali entro 30 giorni. Alcuni dati relativi all’account, alla fatturazione e all’assistenza potrebbero essere conservati. Se possiedi un’organizzazione con altri membri, il supporto ti aiuterà prima a trasferirne la proprietà. Gli altri membri manterranno l’organizzazione e i dati condivisi. L’eliminazione è irreversibile.",
       "sending": "Invio in corso…",
-      "requested": "Eliminazione richiesta il {requestedOn}. Elimineremo il tuo account entro il {deleteBy}.",
-      "error": "Impossibile inviare la richiesta. Riprova."
+      "requested": "Richiesta del {requestedOn}. Data di eliminazione prevista: {deleteBy}.",
+      "error": "Non è stato possibile confermare la richiesta. Puoi riprovare senza rischi."
     },
     "web": {
       "title": "Gestito tramite MindsHub",

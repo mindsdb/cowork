@@ -117,7 +117,7 @@ describe('AccountSection account deletion', () => {
     hostMock.host.isElectron = false;
     hostMock.host.isMobileShell = true;
   });
-  const STATUS = 'Deletion requested on November 17, 2026. We\'ll delete your account by December 17, 2026.';
+  const STATUS = 'Requested on November 17, 2026. Target deletion date: December 17, 2026.';
 
   async function deleteButton() {
     const button = screen.getByRole('button', { name: 'Delete account' });
@@ -135,7 +135,9 @@ describe('AccountSection account deletion', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Delete your MindsHub account?')).toBeInTheDocument();
     expect(textOf(dialog)).toContain('within 30 days');
-    expect(textOf(dialog)).toContain('This can\'t be undone.');
+    expect(textOf(dialog)).toContain('billing, and support records may be retained');
+    expect(textOf(dialog)).toContain('transfer ownership first');
+    expect(textOf(dialog)).toContain('Deletion can\'t be undone.');
     expect(apiMock.requestAccountDeletion).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete account' }));
@@ -171,7 +173,7 @@ describe('AccountSection account deletion', () => {
     fireEvent.click(await deleteButton());
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete account' }));
 
-    expect(await screen.findByText('Couldn\'t send your request. Try again.')).toBeInTheDocument();
+    expect(await screen.findByText('We couldn’t confirm your request. You can safely try again.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete account' })).toBeEnabled();
   });
 

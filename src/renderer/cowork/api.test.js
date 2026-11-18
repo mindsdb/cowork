@@ -1713,18 +1713,37 @@ describe('account deletion requests', () => {
     await expect(getDeletionRequest()).rejects.toMatchObject({ status: 502 });
   });
 
-  it('gives up on a read that never answers, so the button does not stay disabled', async () => {
-    vi.useFakeTimers();
-    try {
-      vi.stubGlobal('fetch', vi.fn((_url, options) => new Promise((_resolve, reject) => {
-        options.signal.addEventListener('abort', () => reject(options.signal.reason ?? new DOMException('Aborted', 'AbortError')));
-      })));
-      const settled = getDeletionRequest().then(() => 'resolved', () => 'rejected');
-      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS + 1);
-      await expect(settled).resolves.toBe('rejected');
-    } finally {
-      vi.useRealTimers();
-    }
+  describe.each([
+    ['GET', getDeletionRequest],
+    ['POST', requestAccountDeletion],
+  ])('%s deadline', (_method, send) => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('covers the wait for the access token', async () => {
+      hostMock.getAccessToken.mockImplementationOnce(() => new Promise(() => {}));
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const onError = vi.fn();
+      send().catch(onError);
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'AbortError' }));
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('aborts a stalled network request', async () => {
+      const fetchMock = _abortAwareFetch(2 * SHORT_REQUEST_TIMEOUT_MS, OPEN);
+      vi.stubGlobal('fetch', fetchMock);
+
+      const onError = vi.fn();
+      send().catch(onError);
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'AbortError' }));
+    });
   });
 
   it('posts the request and rejects with the status on failure', async () => {

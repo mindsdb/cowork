@@ -144195,36 +144195,36 @@
   },
   "settingsSystem:account.delete.confirmBody": {
     "de": {
-      "from": "20beab5cfe9f",
-      "text": "71211a275d20"
+      "from": "8c698d0bc36e",
+      "text": "2965c3b89896"
     },
     "es": {
-      "from": "20beab5cfe9f",
-      "text": "defda9c3b524"
+      "from": "8c698d0bc36e",
+      "text": "5acfcf9ebb9e"
     },
     "fr": {
-      "from": "20beab5cfe9f",
-      "text": "7770ed5e8f2e"
+      "from": "8c698d0bc36e",
+      "text": "cea7b6be7057"
     },
     "it": {
-      "from": "20beab5cfe9f",
-      "text": "ac6b66eb42a6"
+      "from": "8c698d0bc36e",
+      "text": "2347a19bc956"
     },
     "ja": {
-      "from": "20beab5cfe9f",
-      "text": "c684e42c9217"
+      "from": "8c698d0bc36e",
+      "text": "7c13653fe188"
     },
     "ko": {
-      "from": "20beab5cfe9f",
-      "text": "28daf64232e6"
+      "from": "8c698d0bc36e",
+      "text": "4ee5bb89a241"
     },
     "pt-BR": {
-      "from": "20beab5cfe9f",
-      "text": "fda43a911200"
+      "from": "8c698d0bc36e",
+      "text": "cc7ffda584e9"
     },
     "zh-CN": {
-      "from": "20beab5cfe9f",
-      "text": "fa3b0e2c10b2"
+      "from": "8c698d0bc36e",
+      "text": "b781db640be8"
     }
   },
   "settingsSystem:account.delete.confirmTitle": {
@@ -144263,70 +144263,70 @@
   },
   "settingsSystem:account.delete.error": {
     "de": {
-      "from": "dcf32d1bbcca",
-      "text": "59504a7d9dc1"
+      "from": "0b3db2de6aa5",
+      "text": "564b63014944"
     },
     "es": {
-      "from": "dcf32d1bbcca",
-      "text": "0826ceba85aa"
+      "from": "0b3db2de6aa5",
+      "text": "88dc18bf09f8"
     },
     "fr": {
-      "from": "dcf32d1bbcca",
-      "text": "7e7d1f04456a"
+      "from": "0b3db2de6aa5",
+      "text": "cbe0131ae174"
     },
     "it": {
-      "from": "dcf32d1bbcca",
-      "text": "63203ed93ef4"
+      "from": "0b3db2de6aa5",
+      "text": "9efbf62ecc7c"
     },
     "ja": {
-      "from": "dcf32d1bbcca",
-      "text": "7e1a7dc06a74"
+      "from": "0b3db2de6aa5",
+      "text": "5930e933d6f9"
     },
     "ko": {
-      "from": "dcf32d1bbcca",
-      "text": "bbb741128abe"
+      "from": "0b3db2de6aa5",
+      "text": "9779ae93c5b0"
     },
     "pt-BR": {
-      "from": "dcf32d1bbcca",
-      "text": "f47708c44d22"
+      "from": "0b3db2de6aa5",
+      "text": "8273f9480cfb"
     },
     "zh-CN": {
-      "from": "dcf32d1bbcca",
-      "text": "2f854fce10bc"
+      "from": "0b3db2de6aa5",
+      "text": "351aad0d098f"
     }
   },
   "settingsSystem:account.delete.requested": {
     "de": {
-      "from": "3d3d7945be73",
-      "text": "2c163069bf93"
+      "from": "bb6cc13f88d0",
+      "text": "a99f51fff12c"
     },
     "es": {
-      "from": "3d3d7945be73",
-      "text": "eee14640e34a"
+      "from": "bb6cc13f88d0",
+      "text": "3e206acfc1d4"
     },
     "fr": {
-      "from": "3d3d7945be73",
-      "text": "e299915fcf59"
+      "from": "bb6cc13f88d0",
+      "text": "6b6469bd3300"
     },
     "it": {
-      "from": "3d3d7945be73",
-      "text": "43daa35be74c"
+      "from": "bb6cc13f88d0",
+      "text": "91616a8a9763"
     },
     "ja": {
-      "from": "3d3d7945be73",
-      "text": "809b9edcce8b"
+      "from": "bb6cc13f88d0",
+      "text": "2d74ed8816f1"
     },
     "ko": {
-      "from": "3d3d7945be73",
-      "text": "209e22433862"
+      "from": "bb6cc13f88d0",
+      "text": "5244ae7ddcd5"
     },
     "pt-BR": {
-      "from": "3d3d7945be73",
-      "text": "b78e21b7c4be"
+      "from": "bb6cc13f88d0",
+      "text": "4a5f8060f1f9"
     },
     "zh-CN": {
-      "from": "3d3d7945be73",
-      "text": "42836739b7de"
+      "from": "bb6cc13f88d0",
+      "text": "4eb477852e36"
     }
   },
   "settingsSystem:account.delete.sending": {
@@ -144365,36 +144365,36 @@
   },
   "settingsSystem:account.delete.subtitle": {
     "de": {
-      "from": "04e542391180",
-      "text": "1088167da092"
+      "from": "2b91090071f0",
+      "text": "8dd8f79e6867"
     },
     "es": {
-      "from": "04e542391180",
-      "text": "45f9c9c7db23"
+      "from": "2b91090071f0",
+      "text": "9dfe3a685118"
     },
     "fr": {
-      "from": "04e542391180",
-      "text": "c3d5bdc6e683"
+      "from": "2b91090071f0",
+      "text": "055b4a417c24"
     },
     "it": {
-      "from": "04e542391180",
-      "text": "ab7bf75eb103"
+      "from": "2b91090071f0",
+      "text": "3a3a25c01519"
     },
     "ja": {
-      "from": "04e542391180",
-      "text": "2d6b2bdde1ed"
+      "from": "2b91090071f0",
+      "text": "c9ee571e302f"
     },
     "ko": {
-      "from": "04e542391180",
-      "text": "8c987d5e55f6"
+      "from": "2b91090071f0",
+      "text": "f7dab9118e6e"
     },
     "pt-BR": {
-      "from": "04e542391180",
-      "text": "9aa0e4a3b60f"
+      "from": "2b91090071f0",
+      "text": "4eff6404ab9e"
     },
     "zh-CN": {
-      "from": "04e542391180",
-      "text": "2bfa897b4cd5"
+      "from": "2b91090071f0",
+      "text": "ae7dd8ab9143"
     }
   },
   "settingsSystem:account.delete.title": {

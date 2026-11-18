@@ -1942,7 +1942,7 @@ export async function updateOrgAppearance(payload) {
 export async function getDeletionRequest() {
   try {
     // Bounded: the Delete account button stays disabled until this settles.
-    return await req('/hub/deletion-request/', { headers: await hubHeaders(), timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+    return await req('/hub/deletion-request/', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
   } catch (err) {
     if (err?.status === 404) return null;
     throw err;
@@ -1956,7 +1956,7 @@ export async function getDeletionRequest() {
  * there is no MindsHub account behind the server).
  */
 export async function requestAccountDeletion() {
-  return req('/hub/deletion-request/', { method: 'POST', headers: await hubHeaders() });
+  return req('/hub/deletion-request/', { method: 'POST', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
 }
 
 // The lock-owning wrappers decide how to handle failure. A save must never
