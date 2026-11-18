@@ -15,6 +15,8 @@ export function ArtifactRevisionBar({
   canEdit,
   onSave,
   onDiscard,
+  // Live edit carries its own Save and Discard (ArtifactHtmlVisualEditor).
+  saveInEditor = false,
   onCompare,
   // The viewer's layer toggles (ENG-4227), in the centre of the line.
   layerControls = null,
@@ -66,7 +68,7 @@ export function ArtifactRevisionBar({
             </select>
           </label>
         )}
-        {canEdit && dirty && (
+        {canEdit && dirty && !saveInEditor && (
           <>
             <Button variant="subtle" onClick={onDiscard}>{t('revisionBar.discard')}</Button>
             <Tooltip content={t('revisionBar.saveTooltip')}>

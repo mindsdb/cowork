@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { MarkdownContent } from '../../markdown/MarkdownContent';
-import { ArtifactHtmlVisualEditor } from './ArtifactHtmlVisualEditor';
+import { ArtifactHtmlVisualEditor, ExitLiveEditButton, SaveDiscardButtons } from './ArtifactHtmlVisualEditor';
 import { useTranslation } from '../../../../lib/i18n';
 
 function extensionOf(path) {
@@ -16,6 +16,15 @@ export function ArtifactSourceEditor({
   draftUrl,
   loadImage = null,
   onTextSelection,
+  active = true,
+  previewView = null,
+  // Where the user is in the HTML editor's canvas (ArtifactHtmlVisualEditor).
+  onViewChange = null,
+  // Leaves Live edit; given when the viewer's toolbar (and its toggle) is hidden.
+  onExit = null,
+  // `{ dirty, saving, canEdit, onSave, onDiscard }`: Save and Discard, shown
+  // in the editor's own toolbar while there is unsaved text.
+  editActions = null,
 }) {
   const { t } = useTranslation('artifacts');
   const editorRef = useRef(null);
@@ -44,6 +53,11 @@ export function ArtifactSourceEditor({
         onSave={onSave}
         draftUrl={draftUrl}
         onTextSelection={onTextSelection}
+        active={active}
+        previewView={previewView}
+        onViewChange={onViewChange}
+        onExit={onExit}
+        editActions={editActions}
       />
     );
   }
@@ -66,6 +80,10 @@ export function ArtifactSourceEditor({
         <div className="artifact-pane-label section-label">
           <span>{t('sourceEditor.sourceLabel')}</span>
           <code>{source.path}</code>
+          <span className="artifact-pane-actions">
+            <SaveDiscardButtons actions={editActions} />
+            {onExit && <ExitLiveEditButton onExit={onExit} />}
+          </span>
         </div>
         <textarea
           ref={editorRef}

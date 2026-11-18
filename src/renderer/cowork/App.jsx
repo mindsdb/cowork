@@ -5556,7 +5556,9 @@ function AppCore() {
     return target.id;
   }, []);
 
-  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId }) => {
+  // `attachments`: pending image attachments (lib/imageAttachments) that ride
+  // with the prompt, uploaded on send as the composer's are (ENG-4410).
+  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId, attachments = [] }) => {
     const project = projects.find((item) =>
       String(item.id || '') === String(artifact?.projectId || ''))
       || projects.find((item) => item.name === artifact?.projectName)
@@ -5567,7 +5569,7 @@ function AppCore() {
     // (no origin, unreachable chat, a stale resolution) starts a new one.
     if (!target || !conversationId || target.id !== String(conversationId)) {
       // A new chat owes nothing to the composer of the chat that was open last.
-      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
+      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments });
     }
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
     // Every refusal is settled while the viewer is still open to report it:
@@ -5603,7 +5605,7 @@ function AppCore() {
     try {
       // Queued when the chat is busy, including a turn waiting on the agent's
       // question: the repair prompt is not the user's answer to it.
-      started = await handleSendInTask(prompt, [], { targetTask, skipPendingAnswer: true });
+      started = await handleSendInTask(prompt, attachments, { targetTask, skipPendingAnswer: true });
     } finally {
       if (!started) clearOptimisticConversation(target.id);
     }

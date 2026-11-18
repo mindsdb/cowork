@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "댓글 도구 모음",
       "comment": "댓글 — 요소를 클릭하세요(⌥를 누르면 컨테이너 선택)",
-      "inbox": "댓글 받은 편지함",
-      "hideComment": "댓글 숨기기",
-      "showComment": "댓글 표시",
-      "close": "댓글 닫기"
+      "navigate": "탐색",
+      "navigateHint": "댓글을 고정해 둔 채 평소처럼 페이지 사용",
+      "commentLabel": "댓글"
     },
     "composer": {
       "placeholder": "댓글 추가…",
@@ -147,7 +146,12 @@
       "reopen": "다시 열기",
       "markResolved": "해결됨으로 표시",
       "resolve": "해결",
-      "more": "더 보기"
+      "more": "더 보기",
+      "agentQueued": "대기 중",
+      "edit": "편집",
+      "editAriaLabel": "댓글 편집",
+      "pinned": "고정됨",
+      "pinnedTip": "아티팩트의 특정 부분에 고정된 댓글입니다. 댓글을 클릭하면 해당 위치로 이동합니다."
     },
     "errors": {
       "load": "댓글을 불러오지 못했습니다",
@@ -229,7 +233,16 @@
     "close": "비교 닫기",
     "reject": "거부 및 복원",
     "accept": "수락 및 해결",
-    "restore": "새 리비전으로 복원"
+    "restore": "새 리비전으로 복원",
+    "changePosition": "{count, plural, other {변경 #건 중 {current}번째}}",
+    "previousChange": "이전 변경",
+    "nextChange": "다음 변경",
+    "changeNavigation": "변경 사항 이동",
+    "publishedArtifact": "게시된 아티팩트",
+    "reviewBeforePublishing": "게시하기 전에 변경 사항 검토",
+    "keepDraft": "초안으로 유지",
+    "publishChange": "이 변경 사항 게시",
+    "publishing": "게시 중…"
   },
   "htmlEditor": {
     "blockGone": "선택한 텍스트 블록을 더 이상 사용할 수 없습니다.",
@@ -238,7 +251,9 @@
     "selected": "{label} 선택됨 — 입력하여 변경하세요",
     "preparing": "편집할 수 있는 텍스트를 준비하는 중…",
     "noEditable": "직접 편집할 수 있는 텍스트가 없습니다",
-    "clickToEdit": "아티팩트에서 편집할 텍스트를 클릭하세요",
+    "clickToEdit": "버튼과 링크를 포함해 텍스트를 클릭하면 편집할 수 있습니다.",
+    "syncingView": "미리 보기에서 보던 위치를 여는 중…",
+    "keepingPlace": "보던 위치로 돌아가는 중…",
     "htmlSource": "HTML 소스",
     "editing": "아티팩트 편집 중",
     "back": "아티팩트로 돌아가기",
@@ -251,6 +266,15 @@
       "buttonLabel": "버튼 레이블",
       "caption": "캡션",
       "text": "텍스트"
+    },
+    "exitLiveEdit": "실시간 편집 종료",
+    "mode": {
+      "ariaLabel": "실시간 편집 모드",
+      "navigate": "탐색",
+      "edit": "텍스트 편집",
+      "navigateHint": "평소처럼 페이지 사용: 슬라이드, 탭, 링크 이동",
+      "editHint": "텍스트를 클릭해 변경",
+      "navigateGuidance": "탐색 중입니다. 평소처럼 페이지를 사용한 뒤 무언가 바꾸려면 텍스트 편집으로 전환하세요."
     }
   },
   "workspace": {
@@ -385,7 +409,8 @@
     "artifactActions": "아티팩트 작업",
     "moreActions": "추가 작업",
     "reloadPreview": "미리 보기 다시 불러오기",
-    "close": "닫기"
+    "close": "닫기",
+    "unsharedChangesHint": "공유 링크에는 이전 버전이 표시됩니다. 변경 사항을 게시하려면 공유에서 업데이트를 사용하세요."
   },
   "body": {
     "previewWatermark": "미리 보기",
@@ -453,7 +478,8 @@
     "discardFailed": "해당 제안을 취소하지 못했습니다.",
     "deleteTitle": "아티팩트를 삭제할까요?",
     "deleteMessage": "‘{title}’이(가) 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
-    "changedElsewhere": "이 아티팩트가 변경되었습니다. 다시 불러오기"
+    "changedElsewhere": "이 아티팩트가 변경되었습니다. 다시 불러오기",
+    "changePublished": "게시됨"
   },
   "artifactsView": {
     "sort": {
@@ -691,6 +717,14 @@
       "discard": "버리고 보내기",
       "cancel": "취소",
       "saveFailed": "변경 사항을 저장하지 못해 아무것도 보내지 않았습니다."
+    },
+    "queued": "대기 중",
+    "queueLabel": "실행 대기",
+    "removeQueued": "대기열에서 제거",
+    "comment": {
+      "onArtifact": "아티팩트에 대한 이 댓글을 처리하세요:",
+      "onText": "텍스트 “{quote}”에 대한 이 댓글을 처리하세요:",
+      "onElement": "요소 `{selector}`에 대한 이 댓글을 처리하세요:"
     }
   },
   "stats": {
@@ -750,5 +784,20 @@
     "draft": "초안",
     "copy": "주소 복사",
     "copied": "복사됨"
+  },
+  "layout": {
+    "maximize": "최대화",
+    "restore": "원래 크기로"
+  },
+  "imageAttachments": {
+    "onlyImages": "PNG, JPEG, GIF, WebP 이미지만 첨부할 수 있습니다.",
+    "tooLarge": "{name}이(가) 5MB를 초과합니다.",
+    "tooMany": "메시지당 이미지는 최대 {count}개입니다.",
+    "drop": "이미지를 놓아 첨부",
+    "uploadFailed": "이미지를 업로드하지 못했습니다. 다시 시도하세요.",
+    "unavailable": "이미지를 표시할 수 없음",
+    "enlarge": "이미지 확대",
+    "shrink": "이미지 축소",
+    "image": "이미지"
   }
 }
