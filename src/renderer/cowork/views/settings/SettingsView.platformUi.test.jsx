@@ -41,7 +41,7 @@ function renderSettings(data = settings, onSave = vi.fn(async () => ({})), secti
   />);
 }
 
-it('offers Agent, Appearance and Channels and rejects an old Usage deep link', () => {
+it('offers Agent and Appearance and rejects an old Usage deep link', () => {
   expect(navItemsForHost(true, true, true).map(({ id }) => id)).toEqual(['agent', 'appearance']);
   renderSettings(settings, undefined, 'usage');
   expect(screen.getByRole('heading', { name: 'Memory', exact: true })).toBeInTheDocument();

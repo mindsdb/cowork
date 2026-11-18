@@ -43,7 +43,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     ]);
   });
 
-  it('gives web exactly Agent, Appearance, Channels, Usage', () => {
+  it('gives web exactly Agent, Appearance, Usage', () => {
     expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'usage']);
   });
 

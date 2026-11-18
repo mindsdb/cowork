@@ -161,28 +161,6 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
   });
 });
 
-describe('Sidebar — Channels has no standalone entry on either platform (ENG-932)', () => {
-  // ENG-720 gave web a standalone Channels row *because* the web shell hid
-  // Settings entirely, and Channels lives under Settings. ENG-932 makes
-  // Settings reachable on web, so the workaround is removed — shipping both
-  // would leave web with two ways in and desktop with one.
-  beforeEach(() => {
-    hostMock.isWeb = true;
-  });
-
-  it('does not render a standalone Channels nav item in the web build', () => {
-    hostMock.isWeb = true;
-    render(<Sidebar {...baseProps} />);
-    expect(screen.queryByRole('button', { name: 'Channels' })).toBeNull();
-  });
-
-  it('does not render one in the Electron build either (reachable via Settings)', () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} />);
-    expect(screen.queryByRole('button', { name: 'Channels' })).toBeNull();
-  });
-});
-
 describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
   // The web shell hid the whole Settings entry point, which also hid the
   // reasoning-effort control — the only user-side workaround for a turn that

@@ -7,8 +7,8 @@ const spies = vi.hoisted(() => ({
   getAccessToken: vi.fn(async () => null),
 }));
 
-// SettingsView reaches for the API, the platform host bridge, analytics, and
-// the Channels sub-view on mount. Stub them so this stays focused on the
+// SettingsView reaches for the API, the platform host bridge and analytics on
+// mount. Stub them so this stays focused on the
 // mobile master-detail shell and its section-driven loading (ENG-990/ENG-991).
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),

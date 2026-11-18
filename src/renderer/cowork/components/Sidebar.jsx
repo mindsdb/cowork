@@ -676,11 +676,6 @@ export default function Sidebar({
               active={activeRoute === 'customize'}
               badge={showCounters ? (connectorsCount || null) : null}
             />
-            {/* Channels used to have a standalone entry here, web-only, purely
-                because the web shell hid Settings entirely — Channels lives
-                under Settings on desktop. Settings is now reachable on web too,
-                so the workaround is removed and both platforms find Channels
-                in the same place. */}
           </div>
         )}
 

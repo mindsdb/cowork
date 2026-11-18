@@ -1,5 +1,5 @@
 // "Coming soon to Cloud" modal — shown when a feature isn't available in the
-// hosted/web build yet (e.g. Channels, Connect Apps and Data) and points the
+// hosted/web build yet (e.g. Connect Apps and Data) and points the
 // user at the desktop app. A thin wrapper over the shared <Modal> primitive.
 //
 // Usage: lift the feature name to the parent as state (null = closed) and pass
