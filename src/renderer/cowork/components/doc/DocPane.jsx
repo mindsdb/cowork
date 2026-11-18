@@ -30,6 +30,7 @@ import { PublishMenu } from '../artifact/publish/PublishMenu';
 import { usePublish } from '../artifact/publish/usePublish';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { useDocsEnabled } from '../../../lib/docsEnabled';
 import { sharedTranslator, useTranslation } from '../../../lib/i18n';
 import './doc.css';
 import './docPane.css';
@@ -106,6 +107,7 @@ export default function DocPane({
   // only blob: images from its own server).
   const loadImage = useDraftImageLoader(card?.draftUrl, null);
   const orgMode = useOrgMode();
+  const docsEnabled = useDocsEnabled();
   // A doc is shared as its rendered page (doc.html), through the same publish
   // flow and access choices (public, password, named people, only me) as any
   // HTML artifact. The controller addresses the page, not the JSON beside it.
@@ -135,6 +137,11 @@ export default function DocPane({
   // already took from a new one by it.
   const selection = useRef(null);
   const editable = capabilities?.canEdit !== false;
+  // Every "Edit with agent" entry in the canvas hangs off this handler. The
+  // server's canAddressWithAgent already includes the right to edit (and, in
+  // org mode, to run the agent); missing capabilities keep the entry, as they
+  // keep `editable`.
+  const askAgent = docsEnabled && capabilities?.canAddressWithAgent !== false ? onAskAgent : undefined;
   const warn = useCallback((text) => setNotice({ tone: 'warn', text }), []);
 
   // Every edit from the page and the tabs comes through here: a deletion,
@@ -481,7 +488,7 @@ export default function DocPane({
                   flash={version ? NO_FLASH : flash}
                   changed={changed}
                   agentLive={live}
-                  onAskAgent={version ? undefined : onAskAgent}
+                  onAskAgent={version ? undefined : askAgent}
                   onSelectionChange={onSelectionChange}
                   onAddTab={addTab}
                   nameTitle={naming === shownTab.id}

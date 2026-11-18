@@ -10,6 +10,7 @@ import DocPane, { deletionNotice, exportChoices, headerCorner, writeErrorText } 
 import * as api from './docApi';
 import { host } from '../../../platform/host';
 import { COMMIT_MS } from './EditableText';
+import { setDocsEnabled } from '../../../lib/docsEnabled';
 
 const doc = (rev = 2, extra = []) => ({
   schema: 'cowork.doc/1',
@@ -560,5 +561,92 @@ describe('DocPane undo, notices and shortcuts', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Copy as Markdown' }));
     expect(await screen.findByText('Copied as Markdown')).toBeInTheDocument();
     expect(document.execCommand).toHaveBeenCalledWith('copy');
+  });
+});
+
+describe('DocPane "Edit with agent"', () => {
+  /** Picks the first `n` letters of `el`'s first words, as the person dragging over them. */
+  function pick(el, n) {
+    const range = document.createRange();
+    range.setStart(el.firstChild, 0);
+    range.setEnd(el.firstChild, n);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    act(() => { document.dispatchEvent(new Event('selectionchange')); });
+  }
+  /** Waits until the pane has seen the pick: it reports it for the chat in the same frame as the bar. */
+  const pickSeen = (onViewChange) => waitFor(() => expect(onViewChange.mock.calls.at(-1)[0].selection)
+    .toEqual({ blockIds: ['b_lead'], quote: 'Acme' }));
+  const openLeadMenu = async (user) => user.click(
+    await screen.findByRole('button', { name: 'Options for Paragraph “Acme is the pick.”' }),
+  );
+
+  afterEach(() => {
+    window.getSelection().removeAllRanges();
+    act(() => setDocsEnabled(true));
+  });
+
+  // A server that does not send the capability keeps the entry, as it keeps
+  // editing for a missing canEdit.
+  it.each([
+    ['says the agent may address it', { canEdit: true, canAddressWithAgent: true }],
+    ['does not say', { canEdit: true }],
+  ])('is offered when the server %s', async (_label, capabilities) => {
+    api.fetchDoc.mockResolvedValue({ doc: doc(), capabilities });
+    const user = userEvent.setup();
+    const onViewChange = vi.fn();
+    render(<DocPane projectRef="p1" artifactId="a1" onAskAgent={() => {}} onViewChange={onViewChange} />);
+    await openLeadMenu(user);
+    expect(await screen.findByRole('menuitem', { name: 'Edit with agent…' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    pick((await screen.findByText('pick')).parentElement, 4);
+    await pickSeen(onViewChange);
+    expect(await screen.findByRole('button', { name: /Edit with agent/ })).toBeInTheDocument();
+  });
+
+  it('is not offered on a doc the person cannot edit', async () => {
+    // Another member's doc: the server lowers both capabilities.
+    api.fetchDoc.mockResolvedValue({ doc: doc(), capabilities: { canEdit: false, canAddressWithAgent: false } });
+    const onViewChange = vi.fn();
+    render(<DocPane projectRef="p1" artifactId="a1" onAskAgent={() => {}} onViewChange={onViewChange} />);
+    pick((await screen.findByText('pick')).parentElement, 4);
+    await pickSeen(onViewChange);
+    expect(screen.queryByRole('button', { name: /Edit with agent/ })).toBeNull();
+  });
+
+  it('is not offered on a doc the person can edit but not run the agent on', async () => {
+    // Org mode without product.execute: editing by hand stays, the agent entry goes.
+    api.fetchDoc.mockResolvedValue({ doc: doc(), capabilities: { canEdit: true, canAddressWithAgent: false } });
+    const user = userEvent.setup();
+    const onViewChange = vi.fn();
+    render(<DocPane projectRef="p1" artifactId="a1" onAskAgent={() => {}} onViewChange={onViewChange} />);
+    await openLeadMenu(user);
+    expect(await screen.findByRole('menuitem', { name: 'Duplicate' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Edit with agent…' })).toBeNull();
+    await user.keyboard('{Escape}');
+    pick((await screen.findByText('pick')).parentElement, 4);
+    await pickSeen(onViewChange);
+    expect(await screen.findByRole('toolbar', { name: 'Format' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edit with agent/ })).toBeNull();
+  });
+
+  it('is not in the block menu when the deployment gives the agent no doc tools', async () => {
+    setDocsEnabled(false);
+    const user = userEvent.setup();
+    render(<DocPane projectRef="p1" artifactId="a1" onAskAgent={() => {}} />);
+    await openLeadMenu(user);
+    expect(await screen.findByRole('menuitem', { name: 'Duplicate' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Edit with agent…' })).toBeNull();
+  });
+
+  it('is not on the selection bar when the deployment gives the agent no doc tools', async () => {
+    setDocsEnabled(false);
+    const onViewChange = vi.fn();
+    render(<DocPane projectRef="p1" artifactId="a1" onAskAgent={() => {}} onViewChange={onViewChange} />);
+    pick((await screen.findByText('pick')).parentElement, 4);
+    await pickSeen(onViewChange);
+    // Formatting stays: only the agent's entry goes.
+    expect(await screen.findByRole('toolbar', { name: 'Format' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edit with agent/ })).toBeNull();
   });
 });
