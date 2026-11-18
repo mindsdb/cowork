@@ -46,11 +46,13 @@ export function connectionIdentity(connection) {
   const c = connection || {};
   const slug = c.name || c.slug || 'unnamed';
   // A custom MCP server is known by the name its user gave it; its engine
-  // and random id mean nothing to a reader. The id's tail keeps two servers
-  // of one name apart.
+  // and random id mean nothing to a reader. The subtitle reads like other
+  // connections' names (a slug of the name and a short tail of the id, which
+  // keeps two servers of one name apart); the stored id stays as it is.
   if (c.engine === 'custom_mcp') {
-    const named = typeof c.user_label === 'string' && c.user_label ? c.user_label : tr('mcpServer');
-    return { title: named, subtitle: `${tr('mcpServer')} · ${slug.slice(-6)}` };
+    const label = typeof c.user_label === 'string' ? c.user_label.trim() : '';
+    const nameSlug = label.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 24).replace(/-+$/, '') || 'mcp';
+    return { title: label || tr('mcpServer'), subtitle: `${tr('mcpServer')} · ${nameSlug}-${slug.slice(-6)}` };
   }
   const identity = c.display_name || c.displayName || null;
   const title = c.label
