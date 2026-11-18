@@ -31,12 +31,12 @@ const RUNNING_STEP_STATUSES = new Set([
   'pending', 'thinking', 'streaming', 'in_progress', 'running',
 ]);
 
-// The latest time an assistant turn recorded: its end, or any step's start or
-// end. Null when it recorded none.
+// The latest time an assistant turn recorded, including a step's execution
+// boundaries when Stop left its lifecycle unfinished. Null when none exist.
 function lastRecordedTime(message) {
   let latest = Number.isFinite(message.endedAt) ? message.endedAt : null;
   for (const s of message.steps) {
-    for (const t of [s?.startedAt, s?.completedAt]) {
+    for (const t of [s?.startedAt, s?.completedAt, s?.executionStartedAt, s?.executionCompletedAt]) {
       if (Number.isFinite(t) && (latest == null || t > latest)) latest = t;
     }
   }
