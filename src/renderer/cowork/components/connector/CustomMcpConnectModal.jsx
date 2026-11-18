@@ -41,6 +41,7 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.needsClientId');
     case 'timeout':
       return t('customMcp.error.timeout');
+    case 'grant_refused':
     case 'login_failed':
       return t('customMcp.error.loginFailed', { reason: result.reason || '' });
     case 'unavailable':

@@ -14,6 +14,7 @@ import { diagnostic } from '../shared/diagnostics';
 import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import type { GuardedFetch } from './guarded-fetch';
 import { McpOAuthError } from './mcp-oauth';
+import { notifyRenderer } from './token-refresh';
 import { activeStoreRoot } from './server-process';
 import { deleteConnection as deleteKeychainEntries } from './custom-mcp-keychain';
 import { CONNECTION_MISSING, CustomMcpRouteError, errorName, putHeld } from './custom-mcp-routes';
@@ -115,6 +116,11 @@ function schedule(storeRoot: string, id: string, loop: Loop, delay: number, fail
   }, delay);
 }
 
+/** The "reconnect needed" warning built-in connectors show, named by the server's label. */
+export function notifyRefused(id: string, label: string): void {
+  notifyRenderer({ engine: label, name: id, accountEmail: '', permanent: true });
+}
+
 /** Whether the loop may still call the login server for its store's run. */
 function stillOwned(storeRoot: string, loop: Loop): boolean {
   return !loop.stopped && isCustomMcpAvailable() && activeStoreRoot() === storeRoot && appSecretGeneration() === loop.generation;
@@ -125,8 +131,10 @@ async function refreshOnce(storeRoot: string, id: string, loop: Loop, failures: 
     stopLoop(storeRoot, id, loop);
     return;
   }
+  let label = id;
   try {
     const settings = await readStoredSettings(storeRoot, id);
+    if (settings) label = settings.label;
     const tokens = settings ? await refreshedToken(storeRoot, id, settings, loop.fetchFn) : null;
     if (!tokens) {
       stopLoop(storeRoot, id, loop);
@@ -146,9 +154,10 @@ async function refreshOnce(storeRoot: string, id: string, loop: Loop, failures: 
       });
       return;
     }
-    if (err instanceof McpOAuthError && err.code === 'token_failed') {
+    if (err instanceof McpOAuthError && err.code === 'grant_refused') {
       diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_refresh_refused', `[custom-mcp] the login server refused the refresh of ${id}; it needs reconnecting`);
       stopLoop(storeRoot, id, loop);
+      notifyRefused(id, label);
       return;
     }
     diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_refresh_failed', `[custom-mcp] refresh of ${id} failed: ${errorName(err)}`);

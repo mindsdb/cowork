@@ -405,6 +405,20 @@ describe('token requests', () => {
     expect(await failure(exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW))).toBe('token_failed');
   });
 
+  it.each([
+    [400, { error: 'invalid_grant' }, 'grant_refused'],
+    [400, { error: 'invalid_client' }, 'grant_refused'],
+    [400, { error: 'unauthorized_client' }, 'grant_refused'],
+    [401, {}, 'grant_refused'],
+    [400, { error: 'invalid_request' }, 'token_failed'],
+    [429, {}, 'token_failed'],
+    [503, { error: 'temporarily_unavailable' }, 'token_failed'],
+    [500, {}, 'token_failed'],
+  ])('tells a refused grant (%i %j) from a failure worth retrying', async (status, body, code) => {
+    const fetchFn: GuardedFetch = async () => new Response(JSON.stringify(body), { status });
+    expect(await failure(refreshTokens(AS, { clientId: 'id', authMethod: 'none' }, { refreshToken: 'rt', resource: SERVER }, fetchFn, NOW))).toBe(code);
+  });
+
   it('refuses an answer without an access token', async () => {
     const { fetchFn } = tokenAnswer({ token_type: 'Bearer' });
     expect(await failure(exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW))).toBe('token_failed');

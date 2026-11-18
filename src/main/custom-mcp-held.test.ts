@@ -9,7 +9,12 @@ vi.mock('./app-secret', () => ({
   appSecretGeneration: () => 'run-1',
   appSecretHeader: () => ({ 'X-Cowork-App-Secret': 'secret' }),
 }));
-vi.mock('electron', () => ({ session: { defaultSession: { resolveProxy: async () => 'DIRECT' } } }));
+/** What main sends the window: the refresh-error warnings. */
+const sent = vi.hoisted(() => [] as Array<{ channel: string; payload: unknown }>);
+vi.mock('electron', () => ({
+  session: { defaultSession: { resolveProxy: async () => 'DIRECT' } },
+  BrowserWindow: { getAllWindows: () => [{ webContents: { send: (channel: string, payload: unknown) => sent.push({ channel, payload }) } }] },
+}));
 vi.mock('./cowork-home', () => ({ buildKind: () => 'dev' }));
 vi.mock('./keychain-fallback', () => ({ getFallbackPassword: vi.fn(), setFallbackPassword: vi.fn(), deleteFallbackPassword: vi.fn() }));
 
@@ -107,6 +112,7 @@ const current = () => true;
 let live = true;
 
 beforeEach(() => {
+  sent.length = 0;
   trust.customMcp = true;
   keychain.entries.clear();
   keychain.failFind = false;
@@ -173,10 +179,20 @@ describe('handing custom MCP connections over at server start', () => {
     expect(server.puts[0].body).toHaveProperty('access_token', 'AT-2');
   });
 
-  it('still hands the settings over when the refresh fails, and asks for a retry', async () => {
+  it('asks for no retry and warns the user when the login server refuses the grant', async () => {
     await seed(ROOT, ID, { refresh: 'RT-1' });
     tokens.status = 400;
     tokens.body = { error: 'invalid_grant' };
+
+    expect(await handOverCustomConnection(ROOT, ID, current, fetchFn)).toBe('done');
+    expect(server.puts[0].body).not.toHaveProperty('access_token');
+    expect(sent).toEqual([{ channel: 'oauth:refresh-error', payload: { engine: 'Tracker', name: ID, accountEmail: '', permanent: true } }]);
+  });
+
+  it('still hands the settings over when the refresh fails, and asks for a retry', async () => {
+    await seed(ROOT, ID, { refresh: 'RT-1' });
+    tokens.status = 503;
+    tokens.body = { error: 'temporarily_unavailable' };
 
     expect(await handOverCustomConnection(ROOT, ID, current, fetchFn)).toBe('retry');
     expect(server.puts[0].body).not.toHaveProperty('access_token');

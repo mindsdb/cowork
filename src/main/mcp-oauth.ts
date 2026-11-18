@@ -23,6 +23,7 @@ export type McpOAuthErrorCode =
   | 'needs_client_id'
   | 'registration_failed'
   | 'token_failed'
+  | 'grant_refused'
   | 'invalid_response';
 
 export class McpOAuthError extends Error {
@@ -73,6 +74,7 @@ const OAUTH_ERROR_CODES = new Set([
   'invalid_scope',
   'invalid_target',
 ]);
+const REFUSED_GRANT_CODES = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client']);
 const MAX_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
 const INITIALIZE_BODY = JSON.stringify({
@@ -221,7 +223,11 @@ async function tokenRequest(
   if (response.status !== 200) {
     const error = await jsonObject(response, 'token_failed').catch(() => ({} as Record<string, unknown>));
     const code = typeof error.error === 'string' && OAUTH_ERROR_CODES.has(error.error) ? `: ${error.error}` : '';
-    throw new McpOAuthError('token_failed', `the token endpoint answered ${response.status}${code}`);
+    // Only these mean the grant or client itself is refused (RFC 6749 5.2);
+    // a rate limit, an outage or an error page is worth retrying.
+    const refused = response.status === 401
+      || (response.status === 400 && typeof error.error === 'string' && REFUSED_GRANT_CODES.has(error.error));
+    throw new McpOAuthError(refused ? 'grant_refused' : 'token_failed', `the token endpoint answered ${response.status}${code}`);
   }
   const data = await jsonObject(response, 'token_failed');
   if (typeof data.access_token !== 'string' || !data.access_token) {

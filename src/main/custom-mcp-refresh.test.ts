@@ -9,7 +9,12 @@ vi.mock('./app-secret', () => ({
   appSecretGeneration: () => run.generation,
   appSecretHeader: () => ({ 'X-Cowork-App-Secret': 'secret' }),
 }));
-vi.mock('electron', () => ({ session: { defaultSession: { resolveProxy: async () => 'DIRECT' } } }));
+/** What main sends the window: the refresh-error warnings. */
+const sent = vi.hoisted(() => [] as Array<{ channel: string; payload: unknown }>);
+vi.mock('electron', () => ({
+  session: { defaultSession: { resolveProxy: async () => 'DIRECT' } },
+  BrowserWindow: { getAllWindows: () => [{ webContents: { send: (channel: string, payload: unknown) => sent.push({ channel, payload }) } }] },
+}));
 vi.mock('./cowork-home', () => ({ buildKind: () => 'dev' }));
 vi.mock('./keychain-fallback', () => ({ getFallbackPassword: vi.fn(), setFallbackPassword: vi.fn(), deleteFallbackPassword: vi.fn() }));
 
@@ -62,6 +67,7 @@ async function seed() {
 }
 
 beforeEach(async () => {
+  sent.length = 0;
   vi.useFakeTimers();
   run.root = ROOT;
   run.generation = 'run-1';
@@ -157,6 +163,28 @@ describe('custom MCP refresh loops', () => {
     expect(login.calls).toBe(1);
     expect(hasRefreshLoop(ROOT, ID)).toBe(false);
     expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-1');
+    expect(sent).toEqual([{ channel: 'oauth:refresh-error', payload: { engine: 'Tracker', name: ID, accountEmail: '', permanent: true } }]);
+  });
+
+  it.each([
+    ['a 503', 503, { error: 'temporarily_unavailable' }],
+    ['a 429', 429, {}],
+    ['a 500', 500, {}],
+    ['a 400 that is not a refused grant', 400, { error: 'invalid_request' }],
+  ])('keeps refreshing after %s from the login server, with no warning', async (_label, status, body) => {
+    login.status = status;
+    login.body = body;
+    startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, fetchFn);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(login.calls).toBe(1);
+    login.status = 200;
+    login.body = { access_token: 'AT-3', token_type: 'Bearer', expires_in: 3600 };
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(login.calls).toBe(2);
+    expect(server.puts).toEqual([expect.objectContaining({ access_token: 'AT-3' })]);
+    expect(sent).toEqual([]);
   });
 
   it('tries again after a minute when the login server cannot be reached', async () => {
