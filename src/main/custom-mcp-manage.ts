@@ -118,6 +118,7 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
     if (!settings) return { ok: false, code: 'unusable', reason: 'This connection has no usable settings; remove it and add it again.' };
     const login = await logIn(settings.serverUrl, {
       client: await storedClient(storeRoot, id, settings),
+      ...(settings.authorizationServer ? { expectedIssuer: settings.authorizationServer.issuer } : {}),
       ...(confirmedLoginHosts ? { confirmedLoginHosts } : {}),
     }, deps);
     if (login === null) return { ok: true };

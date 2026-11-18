@@ -133,6 +133,8 @@ function allConfirmed(confirmed: string[] | undefined, hosts: string[]): boolean
  *  typed, or neither, which registers one. */
 export interface LoginClient {
   client?: OAuthClient;
+  /** The issuer `client` belongs to; a login server with another issuer is refused. */
+  expectedIssuer?: string;
   clientId?: string;
   clientSecret?: string;
 }
@@ -147,6 +149,10 @@ export async function logIn(
   const discovery = await discoverMcpAuth(serverUrl, deps.fetchFn);
   if (!discovery.needsLogin) return null;
   const { authorizationServer, resource } = discovery;
+  // The held client, and its secret, belong to one login server only.
+  if (request.expectedIssuer !== undefined && authorizationServer.issuer !== request.expectedIssuer) {
+    return { ok: false, code: 'login_server_changed', reason: 'The server now uses another login server; remove the connection and add it again.' };
+  }
   const authorizeUrl = await deps.checkAuthorizeUrl(authorizationServer.authorizationEndpoint);
   const loginHosts = credentialHosts(authorizeUrl, authorizationServer, !request.client && !request.clientId);
   if (!allConfirmed(request.confirmedLoginHosts, loginHosts)) return { ok: false, code: 'confirm_login_hosts', loginHosts };

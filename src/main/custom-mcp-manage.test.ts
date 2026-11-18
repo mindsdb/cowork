@@ -240,6 +240,31 @@ describe('reconnect', () => {
     expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
   });
 
+  it('refuses a login server with another issuer before any request carries the client', async () => {
+    await seed();
+    await writePart(ROOT, ID, 'secret', 'shh');
+    const other = 'https://login.example.net';
+    const table: Record<string, Answer> = {
+      ...LOGIN_SERVER,
+      'GET https://mcp.example.com/.well-known/oauth-protected-resource/mcp': { status: 200, json: { resource: SERVER_URL, authorization_servers: [other] } },
+      [`GET ${other}/.well-known/oauth-authorization-server`]: {
+        status: 200,
+        json: {
+          issuer: other, authorization_endpoint: `${other}/authorize`, token_endpoint: `${other}/token`,
+          code_challenge_methods_supported: ['S256'], token_endpoint_auth_methods_supported: ['client_secret_basic'],
+        },
+      },
+    };
+    const { deps, requests, authorize } = loginServer(table);
+
+    const result = await reconnectCustom({ id: ID, confirmedLoginHosts: ['login.example.net'] }, deps);
+
+    expect(result).toMatchObject({ ok: false, code: 'login_server_changed' });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(requests.some((r) => r.url.startsWith(`${other}/token`))).toBe(false);
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
+  });
+
   it('refuses a connection with no usable settings', async () => {
     server.records.add(ID);
     expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, loginServer().deps)).toMatchObject({ code: 'unusable' });
