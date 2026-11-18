@@ -17477,70 +17477,36 @@
   },
   "artifacts:htmlEditor.clickToEdit": {
     "de": {
-      "from": "eca9dbcfdbb1",
-      "text": "e6e454f69f98"
+      "from": "e0c0fafe1580",
+      "text": "3f3567c94dbb"
     },
     "es": {
-      "from": "eca9dbcfdbb1",
-      "text": "1bf6fc4a0363"
+      "from": "e0c0fafe1580",
+      "text": "2ad8e81659e7"
     },
     "fr": {
-      "from": "eca9dbcfdbb1",
-      "text": "fea90badb589"
+      "from": "e0c0fafe1580",
+      "text": "6a7bbbf14d7c"
     },
     "it": {
-      "from": "eca9dbcfdbb1",
-      "text": "be2bd3553513"
+      "from": "e0c0fafe1580",
+      "text": "16d14ad7c9f1"
     },
     "ja": {
-      "from": "eca9dbcfdbb1",
-      "text": "d5d52b9ee09a"
+      "from": "e0c0fafe1580",
+      "text": "ff50c6802fa5"
     },
     "ko": {
-      "from": "eca9dbcfdbb1",
-      "text": "d6190be257cf"
+      "from": "e0c0fafe1580",
+      "text": "d8713eeb7ca7"
     },
     "pt-BR": {
-      "from": "eca9dbcfdbb1",
-      "text": "22384302938b"
+      "from": "e0c0fafe1580",
+      "text": "3456581d06a6"
     },
     "zh-CN": {
-      "from": "eca9dbcfdbb1",
-      "text": "9aa5bb918bbb"
-    }
-  },
-  "artifacts:htmlEditor.clickToEditOrNavigate": {
-    "de": {
-      "from": "be901f1c05d9",
-      "text": "f659f1053afb"
-    },
-    "es": {
-      "from": "be901f1c05d9",
-      "text": "68b9bf1174a3"
-    },
-    "fr": {
-      "from": "be901f1c05d9",
-      "text": "74679cfe18a1"
-    },
-    "it": {
-      "from": "be901f1c05d9",
-      "text": "d0a8a6b14ebd"
-    },
-    "ja": {
-      "from": "be901f1c05d9",
-      "text": "636aad1b8b46"
-    },
-    "ko": {
-      "from": "be901f1c05d9",
-      "text": "557d1f581d3e"
-    },
-    "pt-BR": {
-      "from": "be901f1c05d9",
-      "text": "46fbbaeb4659"
-    },
-    "zh-CN": {
-      "from": "be901f1c05d9",
-      "text": "ac4b5dc57b23"
+      "from": "e0c0fafe1580",
+      "text": "ff4cc417fe09"
     }
   },
   "artifacts:htmlEditor.editing": {
@@ -17847,6 +17813,210 @@
     "zh-CN": {
       "from": "8c8329c964bb",
       "text": "a23f17a62faf"
+    }
+  },
+  "artifacts:htmlEditor.mode.ariaLabel": {
+    "de": {
+      "from": "033784fdd2ff",
+      "text": "982092ec6268"
+    },
+    "es": {
+      "from": "033784fdd2ff",
+      "text": "c8f2acdca246"
+    },
+    "fr": {
+      "from": "033784fdd2ff",
+      "text": "779d32d09134"
+    },
+    "it": {
+      "from": "033784fdd2ff",
+      "text": "bb32c191461b"
+    },
+    "ja": {
+      "from": "033784fdd2ff",
+      "text": "4f912e303172"
+    },
+    "ko": {
+      "from": "033784fdd2ff",
+      "text": "cb16e9053969"
+    },
+    "pt-BR": {
+      "from": "033784fdd2ff",
+      "text": "f38617301c6a"
+    },
+    "zh-CN": {
+      "from": "033784fdd2ff",
+      "text": "f1794016aec9"
+    }
+  },
+  "artifacts:htmlEditor.mode.edit": {
+    "de": {
+      "from": "7967d9448995",
+      "text": "83a74b87600e"
+    },
+    "es": {
+      "from": "7967d9448995",
+      "text": "47076b850d05"
+    },
+    "fr": {
+      "from": "7967d9448995",
+      "text": "c170d750ef45"
+    },
+    "it": {
+      "from": "7967d9448995",
+      "text": "6a594231dcb6"
+    },
+    "ja": {
+      "from": "7967d9448995",
+      "text": "53370ea882e6"
+    },
+    "ko": {
+      "from": "7967d9448995",
+      "text": "023eaa3d1971"
+    },
+    "pt-BR": {
+      "from": "7967d9448995",
+      "text": "47076b850d05"
+    },
+    "zh-CN": {
+      "from": "7967d9448995",
+      "text": "57641a68c4a5"
+    }
+  },
+  "artifacts:htmlEditor.mode.editHint": {
+    "de": {
+      "from": "e686a72c898f",
+      "text": "d753d582580b"
+    },
+    "es": {
+      "from": "e686a72c898f",
+      "text": "936cc7825aba"
+    },
+    "fr": {
+      "from": "e686a72c898f",
+      "text": "07245205555d"
+    },
+    "it": {
+      "from": "e686a72c898f",
+      "text": "1423cb326c50"
+    },
+    "ja": {
+      "from": "e686a72c898f",
+      "text": "3473452f3a8c"
+    },
+    "ko": {
+      "from": "e686a72c898f",
+      "text": "544fb5946401"
+    },
+    "pt-BR": {
+      "from": "e686a72c898f",
+      "text": "3532c5bdf78e"
+    },
+    "zh-CN": {
+      "from": "e686a72c898f",
+      "text": "e4f920236fb0"
+    }
+  },
+  "artifacts:htmlEditor.mode.navigate": {
+    "de": {
+      "from": "5ea5fbe811db",
+      "text": "2201359e3778"
+    },
+    "es": {
+      "from": "5ea5fbe811db",
+      "text": "88088f31d729"
+    },
+    "fr": {
+      "from": "5ea5fbe811db",
+      "text": "cb03095bb936"
+    },
+    "it": {
+      "from": "5ea5fbe811db",
+      "text": "268074269f40"
+    },
+    "ja": {
+      "from": "5ea5fbe811db",
+      "text": "ed31fbb483ee"
+    },
+    "ko": {
+      "from": "5ea5fbe811db",
+      "text": "4ea159b30a6b"
+    },
+    "pt-BR": {
+      "from": "5ea5fbe811db",
+      "text": "88088f31d729"
+    },
+    "zh-CN": {
+      "from": "5ea5fbe811db",
+      "text": "a8c81f93f2e0"
+    }
+  },
+  "artifacts:htmlEditor.mode.navigateGuidance": {
+    "de": {
+      "from": "6056e978baac",
+      "text": "874c6b25b2e1"
+    },
+    "es": {
+      "from": "6056e978baac",
+      "text": "a3b693cee929"
+    },
+    "fr": {
+      "from": "6056e978baac",
+      "text": "6bfac2a2effa"
+    },
+    "it": {
+      "from": "6056e978baac",
+      "text": "d5428a04aa70"
+    },
+    "ja": {
+      "from": "6056e978baac",
+      "text": "03f82577e30f"
+    },
+    "ko": {
+      "from": "6056e978baac",
+      "text": "3d485ba5c1d1"
+    },
+    "pt-BR": {
+      "from": "6056e978baac",
+      "text": "9662ae6f1dd8"
+    },
+    "zh-CN": {
+      "from": "6056e978baac",
+      "text": "d04d893a5cf8"
+    }
+  },
+  "artifacts:htmlEditor.mode.navigateHint": {
+    "de": {
+      "from": "53a3271860c4",
+      "text": "5d1c4e338d7e"
+    },
+    "es": {
+      "from": "53a3271860c4",
+      "text": "a51fda7f0152"
+    },
+    "fr": {
+      "from": "53a3271860c4",
+      "text": "54b8cc34ebe4"
+    },
+    "it": {
+      "from": "53a3271860c4",
+      "text": "a54c398a2fd3"
+    },
+    "ja": {
+      "from": "53a3271860c4",
+      "text": "40dacf31d13d"
+    },
+    "ko": {
+      "from": "53a3271860c4",
+      "text": "016964713a4c"
+    },
+    "pt-BR": {
+      "from": "53a3271860c4",
+      "text": "0ea8f4ca4be3"
+    },
+    "zh-CN": {
+      "from": "53a3271860c4",
+      "text": "aaa4aa3991e9"
     }
   },
   "artifacts:htmlEditor.noEditable": {

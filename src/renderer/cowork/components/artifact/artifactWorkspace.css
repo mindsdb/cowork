@@ -167,7 +167,7 @@
 .artifact-html-edit-actions button.is-secondary { border-color: var(--line); color: var(--ink-3); background: var(--surface); }
 .artifact-html-edit-actions button.is-secondary:hover { color: var(--ink); background: var(--surface-2); }
 .artifact-html-edit-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.artifact-html-edit-canvas { flex: 1; min-height: 0; padding: 10px; }
+.artifact-html-edit-canvas { position: relative; flex: 1; min-height: 0; padding: 10px; }
 .artifact-html-edit-canvas[hidden] { display: none; }
 .artifact-html-edit-iframe {
   width: 100%;

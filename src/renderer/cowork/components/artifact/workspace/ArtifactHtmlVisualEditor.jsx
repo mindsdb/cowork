@@ -10,6 +10,7 @@ import {
   HTML_VISUAL_EDITOR_SOURCE,
 } from './htmlVisualEditorRuntime';
 import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
+import { EditModeSwitch } from './EditModeSwitch';
 import { useTranslation } from '../../../../lib/i18n';
 
 /* The frame runtime names a selected element in English (or by the page's own
@@ -63,7 +64,11 @@ export function ArtifactHtmlVisualEditor({
   const cancelSnapshotRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [editableCount, setEditableCount] = useState(frame.editableCount);
-  const [interactiveCount, setInteractiveCount] = useState(0);
+  // Navigate / Edit (EditModeSwitch); kept across canvas rebuilds, which
+  // hear it again on their 'ready'.
+  const [editMode, setEditMode] = useState('edit');
+  const editModeRef = useRef(editMode);
+  editModeRef.current = editMode;
   const [selection, setSelection] = useState(null);
   const [error, setError] = useState('');
   // Opening on the Preview's view. `seenViewSeqRef` is the last preview view
@@ -78,6 +83,18 @@ export function ArtifactHtmlVisualEditor({
   const [syncingView, setSyncingView] = useState(false);
   const syncTimerRef = useRef(0);
 
+  const postMode = useCallback((mode) => {
+    iframeRef.current?.contentWindow?.postMessage({
+      source: HTML_VISUAL_EDITOR_PARENT_SOURCE,
+      type: 'mode',
+      mode,
+    }, '*');
+  }, []);
+  const changeEditMode = useCallback((mode) => {
+    setEditMode(mode);
+    postMode(mode);
+  }, [postMode]);
+
   const rebuildFrame = useCallback((content) => {
     frameMovedRef.current = false;
     visualValueRef.current = content;
@@ -87,7 +104,6 @@ export function ArtifactHtmlVisualEditor({
     cancelSnapshotRef.current = null;
     setFrame(nextFrame);
     setEditableCount(nextFrame.editableCount);
-    setInteractiveCount(0);
     setReady(false);
     setSyncingView(false);
     setSelection(null);
@@ -121,7 +137,7 @@ export function ArtifactHtmlVisualEditor({
       if (message.type === 'ready') {
         setReady(true);
         setEditableCount(message.editableCount || 0);
-        setInteractiveCount(message.interactiveCount || 0);
+        postMode(editModeRef.current);
       } else if (message.type === 'selection') {
         setSelection(message.elementId ? { id: message.elementId, label: message.label } : null);
         if (message.elementId) {
@@ -171,7 +187,7 @@ export function ArtifactHtmlVisualEditor({
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [frame.token, onChange, onSave, rebuildFrame]);
+  }, [frame.token, onChange, onSave, postMode, rebuildFrame]);
 
   useEffect(() => {
     if (!active || showSource || !previewView || previewView.seq === seenViewSeqRef.current) return;
@@ -252,9 +268,9 @@ export function ArtifactHtmlVisualEditor({
     }
     if (!ready) return t('htmlEditor.preparing');
     if (editableCount === 0) return t('htmlEditor.noEditable');
-    if (interactiveCount > 0) return t('htmlEditor.clickToEditOrNavigate');
+    if (editMode === 'navigate') return t('htmlEditor.mode.navigateGuidance');
     return t('htmlEditor.clickToEdit');
-  }, [editableCount, error, interactiveCount, ready, selection, showSource, syncingView, t]);
+  }, [editMode, editableCount, error, ready, selection, showSource, syncingView, t]);
 
   return (
     <div className="artifact-html-visual-editor">
@@ -301,6 +317,7 @@ export function ArtifactHtmlVisualEditor({
       {/* Hidden, not unmounted, behind the source view: the page keeps the
           slide or section the user had moved it to. */}
       <div className="artifact-html-edit-canvas" hidden={showSource}>
+        {ready && editableCount > 0 && <EditModeSwitch mode={editMode} onChange={changeEditMode} />}
         {!inlined.pending && (
           <iframe
             key={frame.key}

@@ -247,8 +247,7 @@
     "selected": "{label} seleccionado: escribe para cambiarlo",
     "preparing": "Preparando el texto editable…",
     "noEditable": "No se encontró texto editable directamente",
-    "clickToEdit": "Haz clic en cualquier texto del artefacto para editarlo",
-    "clickToEditOrNavigate": "Haz clic en un texto para editarlo. Los botones y enlaces siguen funcionando, así que puedes ir antes a otra diapositiva o página. Haz Alt-clic (Opción-clic en Mac) en uno para editar su texto.",
+    "clickToEdit": "Haz clic en cualquier texto para editarlo, incluidos botones y enlaces.",
     "syncingView": "Abriendo el punto donde estabas en la vista previa…",
     "htmlSource": "Código HTML",
     "editing": "Editando artefacto",
@@ -263,7 +262,15 @@
       "caption": "Leyenda",
       "text": "Texto"
     },
-    "exitLiveEdit": "Salir de la edición en vivo"
+    "exitLiveEdit": "Salir de la edición en vivo",
+    "mode": {
+      "ariaLabel": "Modo de edición en vivo",
+      "navigate": "Navegar",
+      "edit": "Editar texto",
+      "navigateHint": "Usa la página como siempre: pasa diapositivas, pestañas y enlaces",
+      "editHint": "Haz clic en cualquier texto para cambiarlo",
+      "navigateGuidance": "Navegando. Usa la página como siempre y luego cambia a Editar texto para modificar algo."
+    }
   },
   "workspace": {
     "noWorkspace": "Este artefacto se creó antes de que existiera la edición",

@@ -165,20 +165,55 @@ describe('ArtifactHtmlVisualEditor multi-view pages', () => {
     return screen.findByTitle('Edit artifact on canvas');
   }
 
-  it('says buttons and links still work when the page has any', async () => {
+  // Live edit's Navigate / Edit switch (ENG-4383).
+  const modeMessages = (frame) => frame.contentWindow.postMessage.mock.calls
+    .map(([message]) => message)
+    .filter((message) => message?.type === 'mode');
+
+  it('starts in Edit, tells the page, and says any text can be edited', async () => {
     await renderReadyEditor();
+    const frame = screen.getByTitle('Edit artifact on canvas');
+    vi.spyOn(frame.contentWindow, 'postMessage');
 
-    sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 3, interactiveCount: 1 });
+    sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 3 });
 
-    expect(screen.getByText(/Buttons and links still work/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Edit text/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(modeMessages(frame).at(-1)).toMatchObject({ mode: 'edit' });
+    expect(screen.getByText('Click any text to edit it, including buttons and links.')).toBeInTheDocument();
   });
 
-  it('keeps the plain hint when no editable text is a control', async () => {
+  it('switches to Navigate and back, telling the page each time', async () => {
     await renderReadyEditor();
+    const frame = screen.getByTitle('Edit artifact on canvas');
+    vi.spyOn(frame.contentWindow, 'postMessage');
+    sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 3 });
 
-    sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 3, interactiveCount: 0 });
+    fireEvent.click(screen.getByRole('button', { name: /Navigate/ }));
+    expect(modeMessages(frame).at(-1)).toMatchObject({ mode: 'navigate' });
+    expect(screen.getByRole('button', { name: /Navigate/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/^Navigating\./)).toBeInTheDocument();
 
-    expect(screen.getByText('Click any text in the artifact to edit it')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Edit text/ }));
+    expect(modeMessages(frame).at(-1)).toMatchObject({ mode: 'edit' });
+  });
+
+  it('tells a rebuilt page the mode it was in', async () => {
+    await renderReadyEditor();
+    const frame = screen.getByTitle('Edit artifact on canvas');
+    vi.spyOn(frame.contentWindow, 'postMessage');
+    sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 3 });
+    fireEvent.click(screen.getByRole('button', { name: /Navigate/ }));
+    frame.contentWindow.postMessage.mockClear();
+
+    sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 3 });
+
+    expect(modeMessages(frame)).toEqual([expect.objectContaining({ mode: 'navigate' })]);
+  });
+
+  it('offers no switch when nothing on the page can be edited', async () => {
+    await renderReadyEditor();
+    sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 0 });
+    expect(screen.queryByRole('toolbar', { name: 'Live edit mode' })).toBeNull();
   });
 
   it('keeps the canvas, and the slide it is on, across a look at the source', async () => {

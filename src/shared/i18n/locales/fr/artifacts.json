@@ -247,8 +247,7 @@
     "selected": "Sélection : {label} — tapez pour modifier",
     "preparing": "Préparation du texte modifiable…",
     "noEditable": "Aucun texte directement modifiable trouvé",
-    "clickToEdit": "Cliquez sur n’importe quel texte de l’artefact pour le modifier",
-    "clickToEditOrNavigate": "Cliquez sur un texte pour le modifier. Les boutons et les liens fonctionnent toujours : vous pouvez d'abord aller à une autre diapositive ou page. Alt-clic (Option-clic sur Mac) sur l'un d'eux pour modifier son libellé.",
+    "clickToEdit": "Cliquez sur n'importe quel texte pour le modifier, y compris les boutons et les liens.",
     "syncingView": "Ouverture à l'endroit où vous étiez dans l'aperçu…",
     "htmlSource": "Source HTML",
     "editing": "Modification de l’artefact",
@@ -263,7 +262,15 @@
       "caption": "Légende",
       "text": "Texte"
     },
-    "exitLiveEdit": "Quitter la modification en direct"
+    "exitLiveEdit": "Quitter la modification en direct",
+    "mode": {
+      "ariaLabel": "Mode de modification en direct",
+      "navigate": "Naviguer",
+      "edit": "Modifier le texte",
+      "navigateHint": "Utilisez la page normalement : diapositives, onglets et liens",
+      "editHint": "Cliquez sur un texte pour le modifier",
+      "navigateGuidance": "Navigation. Utilisez la page normalement, puis passez à « Modifier le texte » pour changer quelque chose."
+    }
   },
   "workspace": {
     "noWorkspace": "Cet artefact a été créé avant que la modification soit disponible",

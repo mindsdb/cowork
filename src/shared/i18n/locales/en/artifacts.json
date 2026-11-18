@@ -247,8 +247,7 @@
     "selected": "{label} selected — type to change it",
     "preparing": "Preparing editable text…",
     "noEditable": "No directly editable text was found",
-    "clickToEdit": "Click any text in the artifact to edit it",
-    "clickToEditOrNavigate": "Click text to edit it. Buttons and links still work, so you can go to another slide or page first. Alt-click (Option-click on Mac) one to edit its label.",
+    "clickToEdit": "Click any text to edit it, including buttons and links.",
     "syncingView": "Opening where you were in Preview…",
     "htmlSource": "HTML source",
     "editing": "Editing artifact",
@@ -263,7 +262,15 @@
       "caption": "Caption",
       "text": "Text"
     },
-    "exitLiveEdit": "Exit Live edit"
+    "exitLiveEdit": "Exit Live edit",
+    "mode": {
+      "ariaLabel": "Live edit mode",
+      "navigate": "Navigate",
+      "edit": "Edit text",
+      "navigateHint": "Use the page as usual: click through slides, tabs and links",
+      "editHint": "Click any text to change it",
+      "navigateGuidance": "Navigating. Use the page as usual, then switch to Edit text to change something."
+    }
   },
   "workspace": {
     "noWorkspace": "This artifact was created before editing was available",

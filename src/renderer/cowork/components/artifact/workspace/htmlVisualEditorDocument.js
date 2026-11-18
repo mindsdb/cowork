@@ -28,13 +28,19 @@ const INLINE_TAGS = new Set([
 ]);
 
 const DROP_FRAGMENT_TAGS = new Set(['base', 'embed', 'iframe', 'object', 'script', 'style']);
+// Edit mode only (the runtime's Navigate / Edit switch sets the attribute):
+// editable text shows a text cursor and an outline, and everything else an
+// arrow, since a click there no longer does what the page would do. In
+// Navigate mode the page keeps its own cursors and shows no outlines.
+const EDIT_MODE = 'html[data-cowork-editor-mode="edit"]';
 const EDITOR_STYLE = `
-[${HTML_VISUAL_EDITOR_ATTRIBUTE}] { cursor: text !important; }
-[${HTML_VISUAL_EDITOR_ATTRIBUTE}]:hover {
+${EDIT_MODE} body, ${EDIT_MODE} body * { cursor: default !important; }
+${EDIT_MODE} [${HTML_VISUAL_EDITOR_ATTRIBUTE}], ${EDIT_MODE} [${HTML_VISUAL_EDITOR_ATTRIBUTE}] * { cursor: text !important; }
+${EDIT_MODE} [${HTML_VISUAL_EDITOR_ATTRIBUTE}]:hover {
   outline: 1px dashed rgba(52, 195, 222, .92) !important;
   outline-offset: 4px !important;
 }
-[${HTML_VISUAL_EDITOR_ATTRIBUTE}][data-cowork-editor-selected] {
+${EDIT_MODE} [${HTML_VISUAL_EDITOR_ATTRIBUTE}][data-cowork-editor-selected] {
   outline: 2px solid rgb(52, 195, 222) !important;
   outline-offset: 4px !important;
   box-shadow: 0 0 0 5px rgba(52, 195, 222, .16) !important;

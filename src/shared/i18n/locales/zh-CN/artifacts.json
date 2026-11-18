@@ -247,8 +247,7 @@
     "selected": "已选择 {label} — 输入即可修改",
     "preparing": "正在准备可编辑文本…",
     "noEditable": "未找到可直接编辑的文本",
-    "clickToEdit": "点击产物中的任意文本即可编辑",
-    "clickToEditOrNavigate": "点击文本即可编辑。按钮和链接仍可正常使用，因此你可以先切换到其他幻灯片或页面。按住 Alt 键（Mac 上为 Option 键）点击按钮或链接即可编辑其文字。",
+    "clickToEdit": "点击任意文本即可编辑，包括按钮和链接。",
     "syncingView": "正在打开你在预览中查看的位置…",
     "htmlSource": "HTML 源代码",
     "editing": "正在编辑产物",
@@ -263,7 +262,15 @@
       "caption": "说明文字",
       "text": "文本"
     },
-    "exitLiveEdit": "退出实时编辑"
+    "exitLiveEdit": "退出实时编辑",
+    "mode": {
+      "ariaLabel": "实时编辑模式",
+      "navigate": "浏览",
+      "edit": "编辑文本",
+      "navigateHint": "像平常一样使用页面：切换幻灯片、标签页和链接",
+      "editHint": "点击任意文本进行修改",
+      "navigateGuidance": "正在浏览。像平常一样使用页面，需要修改时切换到“编辑文本”。"
+    }
   },
   "workspace": {
     "noWorkspace": "此产物创建于编辑功能推出之前",

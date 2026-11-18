@@ -247,8 +247,7 @@
     "selected": "{label} selezionato: scrivi per modificarlo",
     "preparing": "Preparazione del testo modificabile…",
     "noEditable": "Nessun testo modificabile direttamente",
-    "clickToEdit": "Fai clic su qualsiasi testo dell’artefatto per modificarlo",
-    "clickToEditOrNavigate": "Fai clic su un testo per modificarlo. Pulsanti e link continuano a funzionare, così puoi prima passare a un'altra slide o pagina. Fai Alt-clic (Opzione-clic su Mac) su uno di essi per modificarne l'etichetta.",
+    "clickToEdit": "Fai clic su qualsiasi testo per modificarlo, compresi pulsanti e link.",
     "syncingView": "Apertura del punto in cui eri nell'anteprima…",
     "htmlSource": "Sorgente HTML",
     "editing": "Modifica dell’artefatto",
@@ -263,7 +262,15 @@
       "caption": "Didascalia",
       "text": "Testo"
     },
-    "exitLiveEdit": "Esci dalla modifica dal vivo"
+    "exitLiveEdit": "Esci dalla modifica dal vivo",
+    "mode": {
+      "ariaLabel": "Modalità della modifica dal vivo",
+      "navigate": "Naviga",
+      "edit": "Modifica testo",
+      "navigateHint": "Usa la pagina come sempre: scorri slide, schede e link",
+      "editHint": "Fai clic su un testo per cambiarlo",
+      "navigateGuidance": "Navigazione. Usa la pagina come sempre, poi passa a Modifica testo per cambiare qualcosa."
+    }
   },
   "workspace": {
     "noWorkspace": "Questo artefatto è stato creato prima che la modifica fosse disponibile",

@@ -247,8 +247,7 @@
     "selected": "{label} 선택됨 — 입력하여 변경하세요",
     "preparing": "편집할 수 있는 텍스트를 준비하는 중…",
     "noEditable": "직접 편집할 수 있는 텍스트가 없습니다",
-    "clickToEdit": "아티팩트에서 편집할 텍스트를 클릭하세요",
-    "clickToEditOrNavigate": "텍스트를 클릭하면 편집할 수 있습니다. 버튼과 링크는 그대로 작동하므로 먼저 다른 슬라이드나 페이지로 이동할 수 있습니다. 버튼이나 링크의 레이블을 편집하려면 Alt 키(Mac에서는 Option 키)를 누른 채 클릭하세요.",
+    "clickToEdit": "버튼과 링크를 포함해 텍스트를 클릭하면 편집할 수 있습니다.",
     "syncingView": "미리 보기에서 보던 위치를 여는 중…",
     "htmlSource": "HTML 소스",
     "editing": "아티팩트 편집 중",
@@ -263,7 +262,15 @@
       "caption": "캡션",
       "text": "텍스트"
     },
-    "exitLiveEdit": "실시간 편집 종료"
+    "exitLiveEdit": "실시간 편집 종료",
+    "mode": {
+      "ariaLabel": "실시간 편집 모드",
+      "navigate": "탐색",
+      "edit": "텍스트 편집",
+      "navigateHint": "평소처럼 페이지 사용: 슬라이드, 탭, 링크 이동",
+      "editHint": "텍스트를 클릭해 변경",
+      "navigateGuidance": "탐색 중입니다. 평소처럼 페이지를 사용한 뒤 무언가 바꾸려면 텍스트 편집으로 전환하세요."
+    }
   },
   "workspace": {
     "noWorkspace": "이 아티팩트는 편집 기능이 제공되기 전에 만들어졌습니다",

@@ -58,19 +58,24 @@ export function createHtmlVisualEditorRuntime(token) {
       return target.closest('[' + ATTRIBUTE + ']');
     };
 
-    // Text that is also a control (a deck's "Next" button, a site's nav link,
-    // a tab) keeps working on a plain click, so the page can still be moved
-    // to the slide or section to edit. Option/Alt-click edits its label.
-    // tabindex is not a sign of a control: the editor adds it to every
-    // editable element.
+    // Controls the replay below can click by their label. tabindex is not a
+    // sign of a control: the editor adds it to every editable element.
     const INTERACTIVE = 'a[href], button, summary, label, select, [role="button"], [role="tab"], '
       + '[role="link"], [role="menuitem"], [role="option"], [onclick]';
-    const isInteractive = (element) => !!element?.closest(INTERACTIVE);
-    const navigates = (event, element) => (
-      !!element && element !== active && !event.altKey && isInteractive(element)
-    );
-    // A click focuses a button after pointerdown; that focus must not start
-    // editing it. Keyboard focus (Tab) still does.
+    // The parent's Navigate / Edit switch (ENG-4383). 'navigate': the page is
+    // the page, every click and key its own, nothing outlined or editable.
+    // 'edit': the page holds still, no click reaches it and no link opens,
+    // and any text, a button's or a link's included, is edited on click.
+    // The CSS keys on the attribute (htmlVisualEditorDocument EDITOR_STYLE).
+    let mode = 'edit';
+    const setMode = (next) => {
+      if (next !== 'edit' && next !== 'navigate') return;
+      if (next !== mode) finish();
+      mode = next;
+      document.documentElement.setAttribute('data-cowork-editor-mode', mode);
+    };
+    // A click focuses what it lands on after pointerdown; that focus must not
+    // start editing a second time. Keyboard focus (Tab) still does.
     let pointerFocus = false;
 
     const labelFor = (element) => {
@@ -372,40 +377,68 @@ export function createHtmlVisualEditorRuntime(token) {
       if (link && !(link.getAttribute('href') || '').startsWith('#')) event.preventDefault();
     });
 
-    const setup = () => {
-      const elements = document.querySelectorAll('[' + ATTRIBUTE + ']');
-      const readyDetail = () => ({
-        editableCount: elements.length,
-        interactiveCount: [...elements].filter(isInteractive).length,
-      });
-      send('ready', readyDetail());
-
-      document.addEventListener('pointerdown', (event) => {
-        if (!event.isTrusted) return;
-        const next = editableFrom(event.target);
-        pointerFocus = true;
-        setTimeout(() => { pointerFocus = false; }, 0);
-        if (navigates(event, next)) {
-          finish();
-          return;
-        }
-        if (next) {
-          activate(next);
-          event.stopImmediatePropagation();
-        } else {
-          finish();
-        }
-      }, true);
-
-      document.addEventListener('click', (event) => {
-        const target = editableFrom(event.target);
-        if (!event.isTrusted || !target || navigates(event, target)) return;
-        event.preventDefault();
+    // Edit mode holds the page still: on window, ahead of any listener the
+    // artifact adds, a person's pointer goes to the editor and never on to
+    // the page. Caret placement is the default action, so it still happens;
+    // a link's or a form's is not, so neither navigates.
+    window.addEventListener('pointerdown', (event) => {
+      if (!event.isTrusted || syncing || mode !== 'edit') return;
+      const next = editableFrom(event.target);
+      pointerFocus = true;
+      setTimeout(() => { pointerFocus = false; }, 0);
+      if (next) activate(next);
+      else finish();
+      event.stopImmediatePropagation();
+    }, true);
+    ['mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu', 'submit'].forEach((type) => {
+      window.addEventListener(type, (event) => {
+        if (!event.isTrusted || syncing || mode !== 'edit') return;
+        // The caret is placed on mousedown, so cancelling the click costs
+        // the editing nothing and keeps a link, or a button in a form, still.
+        if (type === 'click' || type === 'auxclick' || type === 'submit') event.preventDefault();
         event.stopImmediatePropagation();
       }, true);
+    });
+
+    // Keys typed into the text being edited are the editor's alone: on
+    // window, ahead of the artifact's listeners, so an arrow key moves the
+    // caret and never the deck. With nothing being edited, keys are the
+    // page's, in either mode.
+    window.addEventListener('keydown', (event) => {
+      if (!event.isTrusted || syncing || !active) return;
+      event.stopImmediatePropagation();
+      const modifier = event.metaKey || event.ctrlKey;
+      if (modifier && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        send('save');
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        active.innerHTML = originalHtml;
+        send('cancel', { elementId: active.getAttribute(ATTRIBUTE) });
+        finish();
+        return;
+      }
+      if (event.key === 'Tab') {
+        if (moveSelection(event.shiftKey ? -1 : 1)) event.preventDefault();
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        document.execCommand('insertLineBreak');
+        reportChange();
+      }
+    }, true);
+
+    const setup = () => {
+      const elements = document.querySelectorAll('[' + ATTRIBUTE + ']');
+      setMode(mode);
+      const readyDetail = () => ({ editableCount: elements.length });
+      send('ready', readyDetail());
 
       document.addEventListener('focusin', (event) => {
-        if (!event.isTrusted || pointerFocus) return;
+        if (!event.isTrusted || pointerFocus || mode !== 'edit') return;
         const next = editableFrom(event.target);
         if (next && next !== active) activate(next, true);
       }, true);
@@ -428,31 +461,6 @@ export function createHtmlVisualEditorRuntime(token) {
         event.preventDefault();
       }, true);
 
-      document.addEventListener('keydown', (event) => {
-        if (!event.isTrusted || !active) return;
-        const modifier = event.metaKey || event.ctrlKey;
-        if (modifier && event.key.toLowerCase() === 's') {
-          event.preventDefault();
-          send('save');
-          return;
-        }
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          active.innerHTML = originalHtml;
-          send('cancel', { elementId: active.getAttribute(ATTRIBUTE) });
-          finish();
-          return;
-        }
-        if (event.key === 'Tab') {
-          if (moveSelection(event.shiftKey ? -1 : 1)) event.preventDefault();
-          return;
-        }
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          document.execCommand('insertLineBreak');
-          reportChange();
-        }
-      }, true);
 
       window.addEventListener('message', (event) => {
         const message = event.data;
@@ -464,6 +472,8 @@ export function createHtmlVisualEditorRuntime(token) {
           send('ready', readyDetail());
         } else if (message.type === 'view') {
           applyView(message.view);
+        } else if (message.type === 'mode') {
+          setMode(message.mode);
         }
       });
     };
