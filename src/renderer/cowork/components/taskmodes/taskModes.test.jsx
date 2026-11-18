@@ -113,6 +113,22 @@ describe('TASK_MODES data', () => {
     }
   });
 
+  it('adds no instruction when a different request keeps most of the example\'s words', () => {
+    const viz = TASK_MODES.find((m) => m.id === 'visualization');
+    const heatmap = viz.samples.find((s) => s.label === 'Show weekly sales activity via heatmap');
+    const email = 'Write an email about weekly sales activity across regions and product categories, '
+      + 'and highlight the peaks and the weak spots. Do not create a chart.';
+    // Most of the example's words are still there; the request is not the example.
+    expect(resemblesSample(heatmap, email)).toBe(true);
+    expect(modeMessage(viz, email, heatmap)).toEqual({ text: email, modeLine: 'replaced_example' });
+    // Selecting the example and typing over its start replaces it too.
+    const typedOver = heatmap.prompt.replace(/^Create a heatmap/, 'Write a summary');
+    expect(modeMessage(viz, typedOver, heatmap)).toEqual({ text: typedOver, modeLine: 'replaced_example' });
+    // An edit that keeps the opening is still the example.
+    const narrowed = heatmap.prompt.replace('regions', 'the EMEA regions');
+    expect(modeMessage(viz, narrowed, heatmap)).toEqual({ text: `${narrowed}\n\n${viz.instruction}`, modeLine: 'appended' });
+  });
+
   it('still adds the instruction to an edited ordinary example, and says what it did', () => {
     const slides = TASK_MODES.find((m) => m.id === 'slides');
     const ordinary = slides.samples.find((s) => !s.plain);

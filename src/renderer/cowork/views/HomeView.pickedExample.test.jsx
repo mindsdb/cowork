@@ -66,7 +66,10 @@ describe('an example picked and then edited', () => {
   it('still adds the mode instruction to an edited ordinary example', async () => {
     const onSend = vi.fn(async () => true);
     renderHome(onSend);
-    const edited = ordinary.prompt.replace(/\b\w{4,}\b/, 'changed');
+    // An edit past the opening: rewording the opening counts as a different request.
+    const words = ordinary.prompt.split(' ');
+    words[words.length - 2] = 'changed';
+    const edited = words.join(' ');
 
     await pickThenSend(userEvent.setup(), ordinary, edited);
 

@@ -339,6 +339,17 @@ export function resemblesSample(sample, text) {
   return want.length > 0 && want.filter((w) => have.has(w)).length / want.length >= 0.5;
 }
 
+// Whether the text still opens the way the example does. Most of an example's
+// words can survive in a different request ("Write an email about weekly sales
+// activity…" against "Create a heatmap of weekly sales activity…"), and the
+// opening is where a request says what it wants made.
+const OPENING_WORDS = 3;
+const openingOf = (text) => (String(text).toLowerCase().match(/[a-z0-9']+/g) || []).slice(0, OPENING_WORDS).join(' ');
+function opensLikeSample(sample, text) {
+  const want = openingOf(sample.prompt);
+  return want.length > 0 && openingOf(text) === want;
+}
+
 /** The outgoing message for a selected mode, and what happened to the mode's
     instruction line: `appended`, `replaced_example` (an example was placed and
     the person sent something else instead, so the line would describe a
@@ -346,7 +357,12 @@ export function resemblesSample(sample, text) {
     already says what it wants). `modeLine` is null when no mode applies. */
 export function modeMessage(mode, text, pickedSample) {
   if (!mode || !mode.instruction) return { text, modeLine: null };
-  if (pickedSample && !resemblesSample(pickedSample, text)) return { text, modeLine: 'replaced_example' };
+  // When in doubt it counts as replaced: a request left without the line
+  // still says what it wants, while a line under a different request
+  // contradicts it.
+  if (pickedSample && !(resemblesSample(pickedSample, text) && opensLikeSample(pickedSample, text))) {
+    return { text, modeLine: 'replaced_example' };
+  }
   // A plain example the person picked keeps its own wording however they edit it.
   if (pickedSample?.plain && mode.samples.includes(pickedSample)) return { text, modeLine: 'example' };
   const sent = text.trim();
