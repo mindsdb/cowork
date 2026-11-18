@@ -352,6 +352,7 @@ export function ArtifactViewerBody({
               : undefined}
             onDeleteThread={comments.deleteThread}
             onCreate={createArtifactComment}
+            loadImage={review.loadCommentImage}
             onHoverThread={layer.hlOn}
             onLeaveThread={layer.hlOff}
             onFocusThread={layer.focus}

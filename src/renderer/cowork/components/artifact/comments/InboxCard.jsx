@@ -8,6 +8,8 @@
 // Owner actions remain visible so they are usable from touch and keyboard.
 
 import Ico from '../../Icons';
+import { parseCommentText } from '../../../lib/commentImages';
+import { CommentImages } from './CommentImages';
 import { threadAuthorEmail, threadReplies, threadText, viewerCanEdit, isoToEpoch }
   from '../../../lib/commentsReducer';
 import { Tooltip } from '../../ui';
@@ -79,7 +81,11 @@ export function InboxCard({
   onHover,
   onLeave,
   onFocus,
+  // Reads a comment image by id (CommentImages); absent: images aren't shown.
+  loadImage = null,
 }) {
+  // The text's image markers become thumbnails under the words (ENG-4410).
+  const { body, images } = parseCommentText(threadText(thread));
   const { t } = useTranslation('artifacts');
   const resolved = thread.status === 'resolved';
   const done = resolved || thread.status === 'dismissed';
@@ -124,8 +130,9 @@ export function InboxCard({
 
       {/* Text — clamped to 4 lines; the full text lives in the thread popover. */}
       <div className="text-base leading-[20px] text-ink whitespace-pre-wrap break-words line-clamp-4">
-        {threadText(thread)}
+        {body}
       </div>
+      <CommentImages images={images} loadImage={loadImage} />
 
       {/* Foot: reply count and plain-language location context. */}
       {(repliesTxt || unanchored || hidden) && (

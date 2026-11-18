@@ -14,6 +14,10 @@ import { ArrowUpIcon } from '../comments/icons';
 import { Spinner, Tooltip } from '../../ui';
 import { MarkdownContent } from '../../markdown/MarkdownContent';
 import { chatReplyFor } from '../../../lib/quickEditPrompt';
+import { useImageAttachments } from '../../../lib/imageAttachments';
+import { FileDropOverlay } from '../../../lib/useFileDrop';
+import { AttachmentStrip } from '../../AttachmentChip';
+import { AttachmentThumbnail } from '../../AttachmentThumbnail';
 import { useTranslation } from '../../../../lib/i18n';
 
 const MAX_HEIGHT = 120; // px — ~5 lines before the textarea scrolls
@@ -96,6 +100,18 @@ function useThreadHeight(innerRef, active) {
   return height;
 }
 const KNOWN_STAGES = new Set(['reading', 'writing', 'checking', 'fixing']);
+
+// The images a sent message carried, small, under its text.
+function SentImages({ images }) {
+  if (!images?.length) return null;
+  return (
+    <span className="artifact-quick-edit-msg-images">
+      {images.map((image) => (
+        <AttachmentThumbnail key={image.id} file={image.pendingFile} cover size={40} alt={image.name || ''} />
+      ))}
+    </span>
+  );
+}
 
 // A quiet action under a reply: icon and label in ink-3, filled on hover, the
 // composer's ghost-button treatment at reply size.
@@ -247,6 +263,8 @@ export function QuickEditBar({
   const { t } = useTranslation('artifacts');
   const { messages, running, direct = true, send, askAgent, undo, undoableId } = controller;
   const [text, setText] = useState('');
+  // Pasted or dropped images, sent with the message (ENG-4410).
+  const attachments = useImageAttachments({ disabled: running });
   const taRef = useRef(null);
   const threadRef = useRef(null);
   const threadInnerRef = useRef(null);
@@ -284,11 +302,13 @@ export function QuickEditBar({
 
   const dispatch = useCallback((options) => {
     const message = text;
+    const images = attachments.images;
     setText('');
+    attachments.clear();
     setConfirm(null);
     requestAnimationFrame(grow);
-    void send(message, options);
-  }, [grow, send, text]);
+    void send(message, { ...options, images });
+  }, [attachments, grow, send, text]);
 
   const submit = useCallback(() => {
     if (!canSend) return;
@@ -338,7 +358,7 @@ export function QuickEditBar({
               key={m.id}
               className={`artifact-quick-edit-msg is-user${entryClass(m.id)}`}
               onAnimationEnd={() => entered(m.id)}
-            >{m.text}</div>
+            >{m.text}<SentImages images={m.images} /></div>
           ) : (
             // The bubble takes the row's width; Undo or "Ask the agent instead"
             // sits beside it, centred on it, never shrinking or wrapping.
@@ -403,46 +423,54 @@ export function QuickEditBar({
           </span>
         </div>
       )}
-      {sendError && <div className="artifact-quick-edit-error artifact-quick-edit-hint" role="alert">{sendError}</div>}
+      {(sendError || attachments.error) && (
+        <div className="artifact-quick-edit-error artifact-quick-edit-hint" role="alert">{sendError || attachments.error}</div>
+      )}
       {/* The main composer's frame, slimmer: hairline border, soft radius,
-          one step stronger on hover, accent while focused (artifactWorkspace.css). */}
-      <div className="artifact-quick-edit-input shrink-0 flex items-end gap-[2px] py-[7px] pl-[8px] pr-[4px]">
-        <textarea
-          ref={taRef}
-          rows={1}
-          value={text}
-          // Chat only: the bar is a way into the chat, for questions too.
-          placeholder={direct ? t('quickEdit.placeholder') : t('quickEdit.placeholderChat')}
-          aria-label={t('quickEdit.inputLabel')}
-          className="flex-1 min-w-0 resize-none outline-none border-0 bg-transparent
-            text-[14px] leading-[24px] text-ink placeholder:text-ink-4 px-[4px]"
-          style={{ fontFamily: 'inherit', height: 24, overflowY: 'hidden' }}
-          onChange={(e) => { setText(e.target.value); requestAnimationFrame(grow); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-        />
-        {picker && <div className="artifact-quick-edit-picker">{picker}</div>}
-        <Tooltip content={t('quickEdit.send')}>
-          <button
-            type="button"
-            aria-label={t('quickEdit.send')}
-            disabled={!canSend}
-            onClick={submit}
-            className={[
-              'w-[24px] h-[24px] rounded-full flex items-center justify-center shrink-0',
-              'border-0 p-0 transition-[background,opacity,transform] active:scale-[.92]',
-              canSend
-                ? 'bg-[#146573] text-white opacity-100 cursor-pointer'
-                : 'bg-transparent text-ink opacity-45 cursor-default',
-            ].join(' ')}
-          >
-            <ArrowUpIcon />
-          </button>
-        </Tooltip>
+          one step stronger on hover, accent while focused (artifactWorkspace.css).
+          Images dropped anywhere on it attach, as in the main composer. */}
+      <div className="artifact-quick-edit-input relative shrink-0 flex flex-col" {...attachments.dropHandlers}>
+        <AttachmentStrip attachments={attachments.images} onRemove={attachments.remove} className="artifact-image-strip" />
+        <div className="flex items-end gap-[2px] py-[7px] pl-[8px] pr-[4px]">
+          <textarea
+            ref={taRef}
+            rows={1}
+            value={text}
+            // Chat only: the bar is a way into the chat, for questions too.
+            placeholder={direct ? t('quickEdit.placeholder') : t('quickEdit.placeholderChat')}
+            aria-label={t('quickEdit.inputLabel')}
+            className="flex-1 min-w-0 resize-none outline-none border-0 bg-transparent
+              text-[14px] leading-[24px] text-ink placeholder:text-ink-4 px-[4px]"
+            style={{ fontFamily: 'inherit', height: 24, overflowY: 'hidden' }}
+            onChange={(e) => { setText(e.target.value); requestAnimationFrame(grow); }}
+            onPaste={attachments.onPaste}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+          />
+          {picker && <div className="artifact-quick-edit-picker">{picker}</div>}
+          <Tooltip content={t('quickEdit.send')}>
+            <button
+              type="button"
+              aria-label={t('quickEdit.send')}
+              disabled={!canSend}
+              onClick={submit}
+              className={[
+                'w-[24px] h-[24px] rounded-full flex items-center justify-center shrink-0',
+                'border-0 p-0 transition-[background,opacity,transform] active:scale-[.92]',
+                canSend
+                  ? 'bg-[#146573] text-white opacity-100 cursor-pointer'
+                  : 'bg-transparent text-ink opacity-45 cursor-default',
+              ].join(' ')}
+            >
+              <ArrowUpIcon />
+            </button>
+          </Tooltip>
+        </div>
+        <FileDropOverlay active={attachments.isDragging} label={t('imageAttachments.drop')} />
       </div>
     </div>
   );

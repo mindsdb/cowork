@@ -764,5 +764,16 @@
     "showToolbar": "显示工具栏",
     "hideQuickEdit": "隐藏快速编辑",
     "showQuickEdit": "显示快速编辑"
+  },
+  "imageAttachments": {
+    "onlyImages": "只能附加 PNG、JPEG、GIF 和 WebP 图片。",
+    "tooLarge": "{name} 超过 5 MB。",
+    "tooMany": "每条消息最多 {count} 张图片。",
+    "drop": "拖放图片以附加",
+    "uploadFailed": "图片上传失败，请重试。",
+    "unavailable": "图片不可用",
+    "enlarge": "放大图片",
+    "shrink": "缩小图片",
+    "image": "图片"
   }
 }

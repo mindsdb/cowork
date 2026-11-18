@@ -40,7 +40,11 @@ import {
   loadArtifactDraftText,
   loadArtifactDraftDocument,
   loadArtifactRevisions,
+  loadCommentImage,
+  uploadCommentImage,
 } from '../../lib/artifactWorkspaceApi';
+import { composeCommentText, threadImageFiles } from '../../lib/commentImages';
+import { imageAttachment } from '../../lib/imageAttachments';
 import {
   RefusedDraftLink,
   draftLinkLifetimeMs,
@@ -415,10 +419,42 @@ export function ArtifactViewer({
     }
     return ok;
   }, [comments, workspace]);
-  const createArtifactComment = useCallback((payload) => comments.create({
-    ...payload,
-    revisionId: workspace.currentRevision?.id || null,
-  }), [comments.create, workspace.currentRevision?.id]);
+  // A comment's images (Files, from a composer here or the on-artifact layer)
+  // are stored with the artifact first; the comment's text then names them
+  // (lib/commentImages, ENG-4410). A failed upload posts nothing, so the
+  // draft stays where it was typed.
+  const commentTextWithImages = useCallback(async (text, images) => {
+    const files = Array.isArray(images) ? images.filter(Boolean) : [];
+    if (!files.length) return text;
+    try {
+      const stored = await Promise.all(files.map(async (file) => {
+        const saved = await uploadCommentImage(artifact, file);
+        return { id: saved.id, name: file.name };
+      }));
+      return composeCommentText(text, stored);
+    } catch (uploadError) {
+      setErr(uploadError?.message || t('imageAttachments.uploadFailed'));
+      return null;
+    }
+  }, [artifact, t]);
+  const createArtifactComment = useCallback(async ({ images, ...payload }) => {
+    const text = await commentTextWithImages(payload.text, images);
+    if (text === null) return false;
+    return comments.create({
+      ...payload,
+      text,
+      revisionId: workspace.currentRevision?.id || null,
+    });
+  }, [commentTextWithImages, comments.create, workspace.currentRevision?.id]);
+  const readCommentImage = useCallback(
+    (imageId, options) => loadCommentImage(artifact, imageId, options),
+    [artifact],
+  );
+  const replyToComment = useCallback(async (threadId, text, images) => {
+    const withImages = await commentTextWithImages(text, images);
+    if (withImages === null) return false;
+    return comments.reply(threadId, withImages);
+  }, [commentTextWithImages, comments.reply]);
   // The injected layer owns the on-artifact UI (pins, hover highlight, thread
   // popovers) and reports mode changes; this hook pushes the thread list down
   // and exposes the imperative controls the toolbar + inbox drive. Marker
@@ -435,12 +471,13 @@ export function ArtifactViewer({
     enabled: open && commentsEnabled && commentsOpen && !liveAppView,
     markersVisible: commentsOpen && markersShown,
     onCreate: createArtifactComment,
-    onReply: comments.reply,
+    onReply: replyToComment,
     onStatus: setCommentStatus,
     onEditThread: comments.editThread,
     onDeleteThread: comments.deleteThread,
     onEditReply: comments.editReply,
     onDeleteReply: comments.deleteReply,
+    loadImage: readCommentImage,
   });
 
   // One switch for the whole comments chrome. Opening resets to the default
@@ -523,6 +560,9 @@ export function ArtifactViewer({
         previewErrors: diagnostics.errors,
       });
       if (requested) {
+        // The thread's images go with the prompt, which names them in order
+        // (ENG-4410).
+        const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
         let started;
         try {
           started = await onAddressWithAgent({
@@ -530,6 +570,7 @@ export function ArtifactViewer({
             prompt: requested.prompt,
             repair: requested.repair,
             conversationId: targetConversationId,
+            attachments: imageFiles.map(imageAttachment),
           });
         } catch (startError) {
           try { await workspace.cancelRepair(requested.repair.id); } catch { /* keep original error */ }
@@ -1100,10 +1141,10 @@ export function ArtifactViewer({
     headRevisionId: workspace.currentRevision?.id || null,
     resolveConversation: async () => (await resolveArtifactConversation()) || null,
     // Same send the comment repair uses, with a fresh chat as the last resort.
-    continueInChat: async (prompt) => {
+    continueInChat: async (prompt, images = []) => {
       if (!onAddressWithAgent) return false;
       const target = (await resolveArtifactConversation()) || repairConversationId;
-      const started = await onAddressWithAgent({ artifact, prompt, conversationId: target });
+      const started = await onAddressWithAgent({ artifact, prompt, conversationId: target, attachments: images });
       return started !== false;
     },
     countInChat: (prompt) => countUserPrompts(chatMessages, prompt),
@@ -1533,6 +1574,7 @@ export function ArtifactViewer({
     onStatus: setCommentStatus,
     onAddressWithAgent: documentType ? undefined : addressCommentWithAgent,
     onCreate: createArtifactComment,
+    loadCommentImage: readCommentImage,
     textSelection,
     setTextSelection,
   };

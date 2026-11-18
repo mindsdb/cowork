@@ -410,3 +410,18 @@
   .artifact-quick-edit-row > .artifact-quick-edit-msg.is-reply { max-width: 100%; }
   .artifact-quick-edit-side { margin-left: auto; }
 }
+
+/* Images pasted or dropped into the chat bar and comment composers
+   (ENG-4410): the main composer's chip strip, inset to these smaller frames. */
+.artifact-image-strip { padding: 8px 8px 0; margin: 0; }
+.artifact-selection-comment .artifact-image-strip { padding: 8px 0 0; }
+.artifact-image-error { padding: 6px 12px 0; color: var(--danger); font: 12px/1.4 var(--font-body); }
+.artifact-quick-edit-msg-images { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.artifact-quick-edit-msg-images img { border-radius: 6px; }
+.artifact-comment-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.artifact-comment-image { padding: 0; border: 0; background: none; cursor: zoom-in; line-height: 0; }
+.artifact-comment-image img { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: var(--surface-2); }
+.artifact-comment-image.is-large { flex-basis: 100%; cursor: zoom-out; }
+.artifact-comment-image.is-large img { width: 100%; height: auto; max-height: 420px; object-fit: contain; }
+.artifact-comment-image-placeholder { width: 72px; height: 72px; border-radius: 6px; background: var(--surface-2); }
+.artifact-comment-image-missing { color: var(--ink-4); font: 12px/1.4 var(--font-body); }

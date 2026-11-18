@@ -764,5 +764,16 @@
     "showToolbar": "Show toolbar",
     "hideQuickEdit": "Hide quick edit",
     "showQuickEdit": "Show quick edit"
+  },
+  "imageAttachments": {
+    "onlyImages": "Only PNG, JPEG, GIF and WebP images can be attached.",
+    "tooLarge": "{name} is larger than 5 MB.",
+    "tooMany": "Up to {count} images per message.",
+    "drop": "Drop images to attach",
+    "uploadFailed": "The image couldn't be uploaded. Try again.",
+    "unavailable": "Image unavailable",
+    "enlarge": "Enlarge image",
+    "shrink": "Shrink image",
+    "image": "Image"
   }
 }

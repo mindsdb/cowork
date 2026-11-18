@@ -764,5 +764,16 @@
     "showToolbar": "Afficher la barre d'outils",
     "hideQuickEdit": "Masquer la modification rapide",
     "showQuickEdit": "Afficher la modification rapide"
+  },
+  "imageAttachments": {
+    "onlyImages": "Seules les images PNG, JPEG, GIF et WebP peuvent être jointes.",
+    "tooLarge": "{name} dépasse 5 Mo.",
+    "tooMany": "Jusqu'à {count} images par message.",
+    "drop": "Déposez des images pour les joindre",
+    "uploadFailed": "L'image n'a pas pu être envoyée. Réessayez.",
+    "unavailable": "Image indisponible",
+    "enlarge": "Agrandir l'image",
+    "shrink": "Réduire l'image",
+    "image": "Image"
   }
 }

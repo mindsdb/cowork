@@ -124,3 +124,32 @@ describe('InboxCard agent action feedback', () => {
     expect(onAddressWithAgent).not.toHaveBeenCalled();
   });
 });
+
+// Images (ENG-4410): the text's image markers show as thumbnails, read with
+// the viewer's credential, never as the raw marker.
+describe('InboxCard images', () => {
+  const ID = '0123456789abcdef0123456789abcdef.png';
+  const withImage = {
+    ...THREAD,
+    payload: { ...THREAD.payload, text: `Like this\n\n![shot.png](cowork-image:${ID})` },
+  };
+
+  it('shows the words and a thumbnail, not the marker', async () => {
+    URL.createObjectURL ||= () => 'blob:thumb';
+    URL.revokeObjectURL ||= () => {};
+    const loadImage = vi.fn(async () => new Blob(['png'], { type: 'image/png' }));
+    render(<InboxCard thread={withImage} viewer={{ user_id: 'owner', role: 'owner' }} loadImage={loadImage} />);
+
+    expect(screen.getByText('Like this')).toBeInTheDocument();
+    expect(screen.queryByText(/cowork-image:/)).not.toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: 'shot.png' })).toBeInTheDocument();
+    expect(loadImage).toHaveBeenCalledWith(ID, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  });
+
+  it('says so when an image cannot be read', async () => {
+    const loadImage = vi.fn(async () => { throw new Error('gone'); });
+    render(<InboxCard thread={withImage} viewer={{ user_id: 'owner', role: 'owner' }} loadImage={loadImage} />);
+
+    expect(await screen.findByText('Image unavailable')).toBeInTheDocument();
+  });
+});

@@ -764,5 +764,16 @@
     "showToolbar": "Mostra barra degli strumenti",
     "hideQuickEdit": "Nascondi modifica rapida",
     "showQuickEdit": "Mostra modifica rapida"
+  },
+  "imageAttachments": {
+    "onlyImages": "Si possono allegare solo immagini PNG, JPEG, GIF e WebP.",
+    "tooLarge": "{name} supera i 5 MB.",
+    "tooMany": "Fino a {count} immagini per messaggio.",
+    "drop": "Trascina qui le immagini da allegare",
+    "uploadFailed": "Impossibile caricare l'immagine. Riprova.",
+    "unavailable": "Immagine non disponibile",
+    "enlarge": "Ingrandisci immagine",
+    "shrink": "Riduci immagine",
+    "image": "Immagine"
   }
 }
