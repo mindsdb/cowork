@@ -265,6 +265,9 @@ beforeEach(() => {
   spies.cancelResponse.mockImplementation(async () => ({}));
   trackTurnFailed.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
+  // mockReset, not just a new implementation: a waitFor on its calls would
+  // otherwise pass at once on the previous test's calls.
+  spies.fetchInFlightStatus.mockReset();
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
   spies.fetchSessionResult.mockReset();
   spies.fetchSessionResult.mockImplementation(async () => ({ status: 'unavailable', code: 0 }));
@@ -3509,7 +3512,7 @@ describe('"Run now" before the server has started the run', () => {
   it('loads the answer of a run that started and ended between asks', async () => {
     const user = userEvent.setup();
     await runNow(user);
-    expect(screen.getByText(/Running task/)).toBeInTheDocument();
+    expect(await screen.findByText(/Running task/)).toBeInTheDocument();
 
     // The next ask finds the run already over: no producer, but its buffer.
     spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false, has_buffer: true }));
