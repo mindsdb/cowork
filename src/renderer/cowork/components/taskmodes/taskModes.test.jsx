@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Ico from '../Icons';
-import { TASK_MODES, FEATURED_EXAMPLES_MODE, composeModeMessage, modeMessage, resemblesSample } from './taskModes';
+import { TASK_MODES, FEATURED_EXAMPLES_MODE, composeModeMessage, modeMessage, resemblesSample, wipesSample } from './taskModes';
 import { sampleId } from '../../lib/consoleHandoff';
 import { HABIT_TRACKER_PROMPT } from '../onboarding/steps';
 import enChat from '../../../../shared/i18n/locales/en/chat.json';
@@ -127,6 +127,21 @@ describe('TASK_MODES data', () => {
     // An edit that keeps the opening is still the example.
     const narrowed = heatmap.prompt.replace('regions', 'the EMEA regions');
     expect(modeMessage(viz, narrowed, heatmap)).toEqual({ text: `${narrowed}\n\n${viz.instruction}`, modeLine: 'appended' });
+  });
+
+  it('adds no instruction once the example was wiped, whatever the new text shares with it', () => {
+    const slides = TASK_MODES.find((m) => m.id === 'slides');
+    const weekly = slides.samples.find((s) => s.label === 'Automate weekly team status reporting');
+    const email = 'Create a weekly email for my team covering milestones, completed tasks, blockers, '
+      + 'and upcoming priorities. Keep it short. No slides.';
+    // Without knowing the box was cleared, the text alone reads as an edit.
+    expect(modeMessage(slides, email, weekly).modeLine).toBe('appended');
+    expect(modeMessage(slides, email, weekly, { exampleWiped: true })).toEqual({ text: email, modeLine: 'replaced_example' });
+    // Clearing the box, or typing over it, wipes the example; editing it does not.
+    expect(wipesSample(weekly, '')).toBe(true);
+    expect(wipesSample(weekly, 'C')).toBe(true);
+    expect(wipesSample(weekly, `${weekly.prompt} Ten slides.`)).toBe(false);
+    expect(wipesSample(weekly, weekly.prompt.slice(0, Math.floor(weekly.prompt.length / 2)))).toBe(false);
   });
 
   it('still adds the instruction to an edited ordinary example, and says what it did', () => {

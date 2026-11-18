@@ -339,6 +339,17 @@ export function resemblesSample(sample, text) {
   return want.length > 0 && want.filter((w) => have.has(w)).length / want.length >= 0.5;
 }
 
+// Whether a keystroke left the composer without the example: emptied, or down
+// to under a quarter of its words, as clearing it or selecting it all and
+// typing over it does. Home remembers this until the next example is placed,
+// so retyping words the example also had does not bring it back.
+export function wipesSample(sample, text) {
+  if (!String(text).trim()) return true;
+  const have = wordsOf(text);
+  const want = [...wordsOf(sample.prompt)];
+  return want.length > 0 && want.filter((w) => have.has(w)).length / want.length < 0.25;
+}
+
 // Whether the text still opens the way the example does. Most of an example's
 // words can survive in a different request ("Write an email about weekly sales
 // activity…" against "Create a heatmap of weekly sales activity…"), and the
@@ -355,12 +366,14 @@ function opensLikeSample(sample, text) {
     the person sent something else instead, so the line would describe a
     request they did not make), or `example` (the text is an example, which
     already says what it wants). `modeLine` is null when no mode applies. */
-export function modeMessage(mode, text, pickedSample) {
+export function modeMessage(mode, text, pickedSample, { exampleWiped = false } = {}) {
   if (!mode || !mode.instruction) return { text, modeLine: null };
   // When in doubt it counts as replaced: a request left without the line
   // still says what it wants, while a line under a different request
-  // contradicts it.
-  if (pickedSample && !(resemblesSample(pickedSample, text) && opensLikeSample(pickedSample, text))) {
+  // contradicts it. `exampleWiped`: the person cleared or typed over the
+  // example before writing this (`wipesSample`), whatever words it shares.
+  if (pickedSample && (exampleWiped
+    || !(resemblesSample(pickedSample, text) && opensLikeSample(pickedSample, text)))) {
     return { text, modeLine: 'replaced_example' };
   }
   // A plain example the person picked keeps its own wording however they edit it.
@@ -374,8 +387,8 @@ export function modeMessage(mode, text, pickedSample) {
   return { text: `${text}\n\n${mode.instruction}`, modeLine: 'appended' };
 }
 
-export function composeModeMessage(mode, text, pickedSample) {
-  return modeMessage(mode, text, pickedSample).text;
+export function composeModeMessage(mode, text, pickedSample, options) {
+  return modeMessage(mode, text, pickedSample, options).text;
 }
 
 // What the checklist's "Try an example" row opens on Home: one short list that

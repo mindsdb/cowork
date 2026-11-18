@@ -142,6 +142,62 @@ describe('HomeView console handoff', () => {
     await waitFor(() => expect(getSnapshot().completed.has('see-it-work')).toBe(true));
   });
 
+  it('sends no mode line after the linked example is cleared, even if the new request shares its words', async () => {
+    const slides = TASK_MODES.find((m) => m.id === 'slides');
+    const weekly = slides.samples.find((s) => s.label === 'Automate weekly team status reporting');
+    arriveFromConsole(`?from=console&mode=slides&sample=${sampleId(weekly.label)}`);
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    const box = await screen.findByDisplayValue(weekly.prompt);
+
+    // Opens like the example and shares its topic words, but asks for an email.
+    const email = 'Create a weekly email for my team covering milestones, completed tasks, blockers, '
+      + 'and upcoming priorities. Keep it short. No slides.';
+    const user = userEvent.setup();
+    await user.clear(box);
+    await user.type(box, email);
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toBe(email);
+  });
+
+  it('sends no mode line after the linked example is selected and typed over', async () => {
+    const slides = TASK_MODES.find((m) => m.id === 'slides');
+    const weekly = slides.samples.find((s) => s.label === 'Automate weekly team status reporting');
+    arriveFromConsole(`?from=console&mode=slides&sample=${sampleId(weekly.label)}`);
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    const box = await screen.findByDisplayValue(weekly.prompt);
+
+    const email = 'Create a weekly email for my team covering milestones, completed tasks, blockers, '
+      + 'and upcoming priorities. Keep it short. No slides.';
+    const user = userEvent.setup();
+    await user.tripleClick(box);
+    await user.keyboard(email);
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toBe(email);
+  });
+
+  it('still adds the mode line to a linked example edited in place, without clearing it', async () => {
+    const slides = TASK_MODES.find((m) => m.id === 'slides');
+    const weekly = slides.samples.find((s) => s.label === 'Automate weekly team status reporting');
+    arriveFromConsole(`?from=console&mode=slides&sample=${sampleId(weekly.label)}`);
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    const box = await screen.findByDisplayValue(weekly.prompt);
+
+    const user = userEvent.setup();
+    await user.click(box);
+    await user.keyboard('{End} Ten slides.');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toBe(`${weekly.prompt} Ten slides.\n\n${slides.instruction}`);
+  });
+
   it('sends a linked plain example as written when it is edited inside its text', async () => {
     const mode = TASK_MODES.find((m) => m.instruction && m.samples.some((s) => s.plain));
     const plain = mode.samples.find((s) => s.plain);

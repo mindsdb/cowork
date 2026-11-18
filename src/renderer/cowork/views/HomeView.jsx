@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import TaskModePills from '../components/taskmodes/TaskModePills';
 import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
-import { modeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE } from '../components/taskmodes/taskModes';
+import { modeMessage, findSampleByPrompt, resemblesSample, wipesSample, FEATURED_EXAMPLES_MODE } from '../components/taskmodes/taskModes';
 import { completeStepTracked } from '../components/onboarding/track';
 import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
 import { stepsCompletedBySend } from '../components/onboarding/completion';
@@ -293,6 +293,17 @@ export default function HomeView({
   useEffect(() => {
     if (!taskMode) setPickedSample(null);
   }, [taskMode]);
+  // Set once the person empties the composer or types over the placed example
+  // (`wipesSample`): what they send after that is their own request, even if
+  // it shares the example's words. A ref, since nothing renders from it.
+  const exampleWipedRef = useRef(false);
+  const placeSample = (sample) => {
+    exampleWipedRef.current = false;
+    setPickedSample(sample);
+  };
+  const noteComposerText = (text) => {
+    if (pickedSample && wipesSample(pickedSample, text)) exampleWipedRef.current = true;
+  };
   // Shown under the composer while a sample from a console link is in it.
   // Leaving that mode (send, or removing the chip) retires it for good, so it
   // cannot reappear over a different mode picked afterwards.
@@ -333,7 +344,7 @@ export default function HomeView({
   // itself after a successful send. `meta` (harness/model, ENG-1656) passes
   // through untouched.
   const sendTracked = async (text, meta) => {
-    const { text: sent, modeLine } = modeMessage(taskMode, text, pickedSample);
+    const { text: sent, modeLine } = modeMessage(taskMode, text, pickedSample, { exampleWiped: exampleWipedRef.current });
     // What became of the mode line, for analytics. It travels with this send,
     // so a second Enter the app refuses mid-send cannot clear it.
     const result = await onSend(sent, modeLine
@@ -346,7 +357,7 @@ export default function HomeView({
       done.forEach((id) => completeStepTracked(id, 'composer'));
     }
     setTaskMode(null);
-    setPickedSample(null);
+    placeSample(null);
     return result;
   };
 
@@ -479,7 +490,7 @@ export default function HomeView({
     if (prefilled) {
       if (sample) {
         setTaskMode(handoff.mode);
-        setPickedSample(sample);
+        placeSample(sample);
         setHandoffHint(true);
       }
       onPrefill(placed);
@@ -692,6 +703,7 @@ export default function HomeView({
               browserSwitch={browserSwitch}
               onCreateProject={onCreateProject}
               onTypingChange={setIsTyping}
+              onTextChange={noteComposerText}
               codingModeEnabled={codingModeEnabled}
               onOpenSettings={onOpenSettings}
               codingModelDefault={codingModelDefault}
@@ -724,7 +736,7 @@ export default function HomeView({
                     mode={taskMode}
                     onPick={(prompt) => {
                       const hit = findSampleByPrompt(prompt);
-                      setPickedSample(hit?.sample ?? null);
+                      placeSample(hit?.sample ?? null);
                       if (hit) trackExamplePicked(sampleId(hit.sample.label), taskMode.id);
                       onPrefill(prompt);
                     }}
