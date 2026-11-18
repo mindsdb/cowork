@@ -704,7 +704,13 @@
       "unavailable": "MCP-Server per URL sind gerade nicht verfügbar. Starte die App neu und versuche es erneut.",
       "keychain": "Der Systemschlüsselbund ist nicht verfügbar, daher kann die Verbindung nicht sicher gespeichert werden.",
       "serverChanged": "Die App hat während der Anmeldung das Konto gewechselt oder neu gestartet. Versuche es erneut.",
-      "generic": "Der Server konnte nicht verbunden werden: {reason}"
+      "generic": "Der Server konnte nicht verbunden werden: {reason}",
+      "invalidRequest": "Diese Anfrage ist ungültig: {reason}",
+      "tokenRejected": "Der Server akzeptiert diese Anmeldung nicht mehr. Verbinde dich neu, um dich wieder anzumelden.",
+      "unreachable": "Der Server war nicht erreichbar. Versuche es später erneut.",
+      "notHandedOver": "Die App hat diesem Server seine Einstellungen noch nicht übergeben. Starte die App neu und versuche es erneut.",
+      "missing": "Diese Verbindung gibt es nicht mehr.",
+      "unreadable": "Der Eintrag dieser Verbindung kann gerade nicht gelesen werden. Versuche es später erneut."
     },
     "detail": {
       "server": "Server",

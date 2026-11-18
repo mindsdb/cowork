@@ -3468,7 +3468,7 @@ function AppCore() {
     setDisconnectError('');
     setDisconnectBusy(true);
     try {
-      if (isCustomMcp(engine)) await disconnectCustomMcp(name);
+      if (isCustomMcp(engine)) await disconnectCustomMcp(name, () => deleteDatasource(engine, name));
       else await deleteDatasource(engine, name);
     } catch (e) {
       // eslint-disable-next-line no-console

@@ -704,7 +704,13 @@
       "unavailable": "目前无法使用通过 URL 添加的 MCP 服务器。请重启应用后重试。",
       "keychain": "系统钥匙串不可用，因此无法安全地保存此连接。",
       "serverChanged": "登录期间应用切换了账户或重新启动。请重试。",
-      "generic": "无法连接服务器：{reason}"
+      "generic": "无法连接服务器：{reason}",
+      "invalidRequest": "该请求无效：{reason}",
+      "tokenRejected": "服务器不再接受此登录。请重新连接以再次登录。",
+      "unreachable": "无法访问服务器。请稍后重试。",
+      "notHandedOver": "应用尚未将设置交给此服务器。请重启应用后重试。",
+      "missing": "此连接已不存在。",
+      "unreadable": "暂时无法读取此连接的记录。请稍后重试。"
     },
     "detail": {
       "server": "服务器",

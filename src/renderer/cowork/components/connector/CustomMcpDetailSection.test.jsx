@@ -65,11 +65,27 @@ describe('CustomMcpDetailSection', () => {
     expect(screen.getByText("MCP servers by URL aren't available right now. Restart the app and try again.")).toBeTruthy();
   });
 
+  it('tells the user to reconnect when the server no longer accepts the login', async () => {
+    bridge.customMcpTools.mockResolvedValue({ ok: false, code: 'token_rejected', reason: 'the server answered 409' });
+    renderSection();
+
+    expect(await screen.findByText('The server no longer accepts this login. Reconnect to sign in again.')).toBeTruthy();
+  });
+
+  it('says a refused switch was not a valid request, not a bad URL', async () => {
+    bridge.customMcpSetTools.mockResolvedValue({ ok: false, code: 'invalid_request', reason: 'Tools must be a list of at most 500 names.' });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(await screen.findByText("That request isn't valid: Tools must be a list of at most 500 names.")).toBeTruthy();
+  });
+
   it('says so when the server cannot list its tools', async () => {
     bridge.customMcpTools.mockResolvedValue({ ok: false, code: 'unreachable', reason: 'the server answered 502' });
     renderSection();
 
-    expect(await screen.findByText("Couldn't connect the server: the server answered 502")).toBeTruthy();
+    expect(await screen.findByText("The server couldn't be reached. Try again later.")).toBeTruthy();
     expect(screen.queryByRole('switch')).toBeNull();
   });
 

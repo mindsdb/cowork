@@ -692,7 +692,7 @@ export default function CustomizeView({
         return true;
       }
       if (isCustomMcp(connection.engine)) {
-        await disconnectCustomMcp(connection.name);
+        await disconnectCustomMcp(connection.name, () => deleteDatasource(connection.engine, connection.name));
         await syncAfterDelete();
         return true;
       }

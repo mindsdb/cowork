@@ -51,6 +51,20 @@ describe('CustomizeView custom MCP connection', () => {
     expect(screen.getByText('This server lists no tools.')).toBeTruthy();
   });
 
+  it('removes a record main never drew with the generic delete', async () => {
+    const planted = [{ engine: 'custom_mcp', name: 'foo', label: 'Planted', user_label: null, display_name: null }];
+    api.fetchDatasources.mockResolvedValue({ connections: planted });
+    api.deleteDatasource.mockResolvedValue({});
+    render(<CustomizeView connectors={planted} />);
+    await userEvent.click(screen.getByRole('button', { name: /Manage Planted/i }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    const confirmDialog = await screen.findByRole('dialog', { name: /^Disconnect / });
+    await userEvent.click(within(confirmDialog).getByRole('button', { name: 'Disconnect' }));
+
+    await waitFor(() => expect(api.deleteDatasource).toHaveBeenCalledWith('custom_mcp', 'foo'));
+    expect(bridge.customMcpDisconnect).not.toHaveBeenCalled();
+  });
+
   it('removes the connection through main, never the generic delete', async () => {
     await openPanel();
 

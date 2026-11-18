@@ -704,7 +704,13 @@
       "unavailable": "Les serveurs MCP par URL ne sont pas disponibles pour le moment. Redémarrez l'application et réessayez.",
       "keychain": "Le trousseau du système n'est pas disponible, donc la connexion ne peut pas être enregistrée en sécurité.",
       "serverChanged": "L'application a changé de compte ou redémarré pendant la connexion. Réessayez.",
-      "generic": "Impossible de connecter le serveur : {reason}"
+      "generic": "Impossible de connecter le serveur : {reason}",
+      "invalidRequest": "Cette demande n'est pas valide : {reason}",
+      "tokenRejected": "Le serveur n'accepte plus cette connexion. Reconnectez-vous pour vous identifier à nouveau.",
+      "unreachable": "Le serveur est injoignable. Réessayez plus tard.",
+      "notHandedOver": "L'application n'a pas encore transmis ses réglages à ce serveur. Redémarrez l'application et réessayez.",
+      "missing": "Cette connexion n'existe plus.",
+      "unreadable": "L'enregistrement de cette connexion est illisible pour le moment. Réessayez plus tard."
     },
     "detail": {
       "server": "Serveur",

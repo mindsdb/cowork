@@ -704,7 +704,13 @@
       "unavailable": "Los servidores MCP por URL no están disponibles ahora. Reinicia la app e inténtalo de nuevo.",
       "keychain": "El llavero del sistema no está disponible, así que la conexión no se puede guardar de forma segura.",
       "serverChanged": "La app cambió de cuenta o se reinició durante el inicio de sesión. Inténtalo de nuevo.",
-      "generic": "No se pudo conectar el servidor: {reason}"
+      "generic": "No se pudo conectar el servidor: {reason}",
+      "invalidRequest": "Esa solicitud no es válida: {reason}",
+      "tokenRejected": "El servidor ya no acepta este inicio de sesión. Reconecta para iniciar sesión de nuevo.",
+      "unreachable": "No se pudo contactar con el servidor. Inténtalo más tarde.",
+      "notHandedOver": "La app aún no le ha pasado su configuración a este servidor. Reinicia la app e inténtalo de nuevo.",
+      "missing": "Esta conexión ya no existe.",
+      "unreadable": "El registro de esta conexión no se puede leer ahora. Inténtalo más tarde."
     },
     "detail": {
       "server": "Servidor",

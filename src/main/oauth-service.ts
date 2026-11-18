@@ -107,11 +107,7 @@ export function cancelCurrentOAuth(): void {
   attempt?.cancel();
 }
 
-/* Fixed loopback port for custom MCP servers, so a user who registers their
-   own client can enter one exact redirect URI. Built-in connectors use
-   47289-47294 (their specs' redirect_port); this one must stay apart. */
-export const CUSTOM_MCP_REDIRECT_PORT = 47295;
-export const CUSTOM_MCP_REDIRECT_URI = `http://127.0.0.1:${CUSTOM_MCP_REDIRECT_PORT}/callback`;
+export { CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI } from '../shared/custom-mcp';
 
 export interface BrowserAuthorizeOpts {
   /** The authorization server's authorize endpoint; must be https. */

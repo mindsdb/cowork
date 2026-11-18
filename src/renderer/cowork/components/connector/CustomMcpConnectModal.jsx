@@ -10,9 +10,9 @@ import { Alert, Button, Collapsible, Field, Input } from '../ui';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import { host } from '../../../platform/host';
 import { useTranslation } from '../../../lib/i18n';
+import { CUSTOM_MCP_REDIRECT_URI } from '../../../../shared/custom-mcp';
 
-// Main's fixed loopback redirect for custom MCP servers (oauth-service.ts).
-export const CUSTOM_MCP_REDIRECT_URI = 'http://127.0.0.1:47295/callback';
+export { CUSTOM_MCP_REDIRECT_URI } from '../../../../shared/custom-mcp';
 
 const EMPTY = { label: '', url: '', clientId: '', clientSecret: '' };
 
@@ -27,9 +27,11 @@ export function connectErrorMessage(t, result) {
   switch (result.code) {
     case 'invalid_url':
     case 'not_https':
-    case 'invalid_request':
       return t('customMcp.error.invalidUrl');
+    case 'invalid_request':
+      return t('customMcp.error.invalidRequest', { reason: result.reason || '' });
     case 'not_public':
+    case 'refused_address':
       return t('customMcp.error.notPublic');
     case 'unresolved':
       return t('customMcp.error.unresolved');
@@ -47,6 +49,16 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.keychain');
     case 'server_changed':
       return t('customMcp.error.serverChanged');
+    case 'token_rejected':
+      return t('customMcp.error.tokenRejected');
+    case 'unreachable':
+      return t('customMcp.error.unreachable');
+    case 'not_handed_over':
+      return t('customMcp.error.notHandedOver');
+    case 'custom_connection_missing':
+      return t('customMcp.error.missing');
+    case 'custom_connection_unreadable':
+      return t('customMcp.error.unreadable');
     default:
       return t('customMcp.error.generic', { reason: result.reason || result.code });
   }
@@ -180,10 +192,13 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
         </div>
       </ModalBody>
       <ModalFooter>
-        {loginHosts ? (
-          <Button type="button" variant="subtle" onClick={() => setLoginHosts(null)} disabled={busy}>{t('customMcp.back')}</Button>
+        {busy ? (
+          // The browser login can wait minutes; cancelling ends it, and the connect reports it.
+          <Button type="button" variant="subtle" onClick={() => void host.oauthCancel()}>{t('skillModal.cancel')}</Button>
+        ) : loginHosts ? (
+          <Button type="button" variant="subtle" onClick={() => setLoginHosts(null)}>{t('customMcp.back')}</Button>
         ) : (
-          <Button type="button" variant="subtle" onClick={onClose} disabled={busy}>{t('skillModal.cancel')}</Button>
+          <Button type="button" variant="subtle" onClick={onClose}>{t('skillModal.cancel')}</Button>
         )}
         <Button type="submit" variant="primary" disabled={!complete || busy}>
           {busy ? t('customMcp.connecting') : loginHosts ? t('customMcp.continue') : t('customMcp.connect')}

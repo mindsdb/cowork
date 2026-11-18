@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const customMcpConnect = vi.hoisted(() => vi.fn());
-vi.mock('../../../platform/host', () => ({ host: { customMcpConnect } }));
+const oauthCancel = vi.hoisted(() => vi.fn());
+vi.mock('../../../platform/host', () => ({ host: { customMcpConnect, oauthCancel } }));
 
 import CustomMcpConnectModal, { CUSTOM_MCP_REDIRECT_URI } from './CustomMcpConnectModal';
 
@@ -119,6 +120,23 @@ describe('CustomMcpConnectModal', () => {
 
     expect(await screen.findByText(message)).toBeTruthy();
     expect(screen.getByLabelText(/^Server URL/)).toBeTruthy();
+  });
+
+  it('cancels a login in progress', async () => {
+    const user = userEvent.setup();
+    let finish = () => {};
+    customMcpConnect.mockImplementation(() => new Promise((resolve) => {
+      finish = () => resolve({ ok: false, code: 'login_failed', reason: 'cancelled' });
+    }));
+    oauthCancel.mockImplementation(async () => finish());
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+    expect(oauthCancel).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("The login didn't finish: cancelled")).toBeTruthy();
   });
 
   it('warns when the server could not list its tools', async () => {
