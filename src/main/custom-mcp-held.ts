@@ -11,7 +11,7 @@ import type { GuardedFetch } from './guarded-fetch';
 import { deleteConnection as deleteKeychainEntries, listConnectionIds, writePart } from './custom-mcp-keychain';
 import { CONNECTION_MISSING, CustomMcpRouteError, errorName, heldSummary, listRecordIds, putHeld, type HeldSettings } from './custom-mcp-routes';
 import { customMcpFetch, readStoredSettings, readStoredTools, refreshedToken } from './custom-mcp-tokens';
-import { startRefreshLoop } from './custom-mcp-refresh';
+import { startRefreshLoop, withConnectionLock } from './custom-mcp-refresh';
 
 const CONNECTION_ID = /^cm-[0-9a-f]{32}$/;
 const RETRY_DELAYS_MS = [5_000, 15_000, 60_000];
@@ -67,6 +67,16 @@ export async function handOverCustomConnection(
   id: string,
   stillCurrent: () => boolean,
   fetchFn: GuardedFetch = customMcpFetch(),
+): Promise<HandOverOutcome> {
+  // Its refresh rotates the refresh token, so it holds the lock reconnect and disconnect take.
+  return withConnectionLock(storeRoot, id, () => handOverLocked(storeRoot, id, stillCurrent, fetchFn));
+}
+
+async function handOverLocked(
+  storeRoot: string,
+  id: string,
+  stillCurrent: () => boolean,
+  fetchFn: GuardedFetch,
 ): Promise<HandOverOutcome> {
   try {
     const changesSeen = toolChangeCount(storeRoot, id);

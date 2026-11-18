@@ -29,6 +29,7 @@ vi.mock('keytar', () => ({
 import { disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
 import { listConnectionIds, readPart, writePart } from './custom-mcp-keychain';
 import { hasRefreshLoop, startRefreshLoop, stopRefreshLoop } from './custom-mcp-refresh';
+import { handOverCustomConnection } from './custom-mcp-held';
 import type { ConnectDeps } from './custom-mcp-connect';
 
 const ROOT = '/home/user/.cowork';
@@ -299,6 +300,21 @@ describe('reconnect', () => {
     expect(JSON.parse((await readPart(ROOT, ID, 'settings'))!)).toMatchObject({ clientId: 'new-client', authMethod: 'client_secret_basic' });
   });
 
+  it('drops a stale client secret when the new client has none', async () => {
+    server.records.add(ID);
+    await writePart(ROOT, ID, 'settings', JSON.stringify({ serverUrl: SERVER_URL, label: 'Docs' }));
+    await writePart(ROOT, ID, 'tools', '[]');
+    await writePart(ROOT, ID, 'secret', 'stale');
+    const table: Record<string, Answer> = {
+      ...LOGIN_SERVER,
+      [`POST ${AUTH}/register`]: { status: 201, json: { client_id: 'public-client', token_endpoint_auth_method: 'none' } },
+    };
+
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, loginServer(table).deps)).toEqual({ ok: true });
+
+    expect(await readPart(ROOT, ID, 'secret')).toBeNull();
+  });
+
   it('refuses more confirmed hosts than a login can have', async () => {
     await seed();
     expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['a', 'b', 'c', 'd', 'e'] }, loginServer().deps)).toMatchObject({ code: 'invalid_request' });
@@ -345,6 +361,51 @@ describe('reconnect', () => {
   it('refuses a connection with no usable settings', async () => {
     server.records.add(ID);
     expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, loginServer().deps)).toMatchObject({ code: 'unusable' });
+  });
+});
+
+describe('a start-up hand-over in flight', () => {
+  /** A hand-over whose refresh waits until released, then rotates to RT-h. */
+  function slowHandOver() {
+    let release = () => {};
+    const fetchFn: GuardedFetch = async () => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return new Response(JSON.stringify({ access_token: 'AT-h', refresh_token: 'RT-h', token_type: 'Bearer', expires_in: 3600 }), { status: 200 });
+    };
+    const done = handOverCustomConnection(ROOT, ID, () => true, fetchFn);
+    return { done, release: () => release() };
+  }
+
+  it('finishes before disconnect, which then revokes its rotated token and leaves no loop', async () => {
+    await seed();
+    const handOver = slowHandOver();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const { deps, requests } = loginServer();
+
+    const disconnecting = disconnectCustom({ id: ID }, deps);
+    handOver.release();
+    await handOver.done;
+
+    expect(await disconnecting).toEqual({ ok: true, revoked: true });
+    expect(String(requests.find((r) => r.url === `${AUTH}/revoke`)?.init.body)).toContain('token=RT-h');
+    expect(hasRefreshLoop(ROOT, ID)).toBe(false);
+    expect(await listConnectionIds(ROOT)).toEqual([]);
+  });
+
+  it('finishes before reconnect writes, so the new login\'s tokens win', async () => {
+    await seed();
+    const handOver = slowHandOver();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const { deps } = loginServer();
+
+    const reconnecting = reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    handOver.release();
+    await handOver.done;
+
+    expect(await reconnecting).toEqual({ ok: true });
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-new');
+    expect(server.held.get(ID)?.access_token).toBe('AT-new');
   });
 });
 
