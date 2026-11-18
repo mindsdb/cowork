@@ -4,7 +4,13 @@
 // The layer is credential-free and owns DOM concerns only; this hook is the
 // renderer-side half of the contract:
 //   layer -> here : ready / create / reply / status / count / mode
-//   here -> layer : list / enter-mode / exit-mode / focus / hl-on / hl-off
+//   here -> layer : list / images / enter-mode / exit-mode / focus / hl-on / hl-off
+//
+// Images (ENG-4410): `create` and `reply` may carry the Files pasted into the
+// layer's composer; they are checked here like any other paste and handed to
+// the viewer, which stores them and names them in the text. The layer has no
+// credential, so the images the threads name are read here (`loadImage`) and
+// pushed down as Blobs in an `images` message, which the layer shows.
 //
 // It pushes the (normalized) comment set down whenever it changes or the layer
 // (re)announces readiness, dispatches the layer's mutation intents to the
@@ -13,6 +19,20 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { normalizeThreadForLayer } from '../../../lib/commentsReducer';
+import { threadImages } from '../../../lib/commentImages';
+import { IMAGE_TYPES, MAX_IMAGE_BYTES, MAX_IMAGES } from '../../../lib/imageAttachments';
+
+// The layer runs inside the artifact's frame, so what it sends is checked as
+// untrusted: Blobs of an image type and size the paste would take, a few.
+export function layerImages(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((item) => item instanceof Blob
+      && IMAGE_TYPES.includes(String(item.type || '').toLowerCase())
+      && item.size > 0 && item.size <= MAX_IMAGE_BYTES)
+    .slice(0, MAX_IMAGES)
+    .map((item) => (item instanceof File ? item : new File([item], 'image', { type: item.type })));
+}
 
 export function useArtifactCommentLayer(
   iframeRef,
@@ -24,6 +44,8 @@ export function useArtifactCommentLayer(
     // WITHOUT a server change by pushing an empty list; showing re-pushes the
     // real set. Baked into every push so a (re)loading layer can't flash pins.
     markersVisible = true,
+    // Reads a comment image by id as a Blob; absent: the layer shows none.
+    loadImage = null,
   } = {},
 ) {
   const [mode, setMode] = useState(false); // comment-placement active in the iframe
@@ -38,6 +60,10 @@ export function useArtifactCommentLayer(
   viewerRef.current = viewer;
   const markersRef = useRef(markersVisible);
   markersRef.current = markersVisible;
+  const loadImageRef = useRef(loadImage);
+  loadImageRef.current = loadImage;
+  // id -> Blob, or a Promise while it loads; kept for the viewer's life.
+  const imagesRef = useRef(new Map());
   const handlersRef = useRef({});
   handlersRef.current = {
     onCreate, onReply, onStatus, onEditThread, onDeleteThread, onEditReply, onDeleteReply,
@@ -49,6 +75,29 @@ export function useArtifactCommentLayer(
     try { win.postMessage({ source: 'anton-comments', ...msg }, '*'); } catch { /* frame gone */ }
   }, [iframeRef]);
 
+  // Every image the shown threads name: those already read go down at once,
+  // the rest as each arrives. An image that can't be read is simply not shown.
+  const sendImages = useCallback(() => {
+    const load = loadImageRef.current;
+    if (!load || !markersRef.current) return;
+    const ready = {};
+    for (const thread of threadsRef.current || []) {
+      for (const { id } of threadImages(thread)) {
+        const known = imagesRef.current.get(id);
+        if (known instanceof Blob) {
+          ready[id] = known;
+        } else if (!known) {
+          const loading = load(id).then((blob) => {
+            imagesRef.current.set(id, blob);
+            postToLayer({ type: 'images', images: { [id]: blob } });
+          }, () => { /* left as the layer's placeholder */ });
+          imagesRef.current.set(id, loading);
+        }
+      }
+    }
+    if (Object.keys(ready).length) postToLayer({ type: 'images', images: ready });
+  }, [postToLayer]);
+
   const sendList = useCallback(() => {
     postToLayer({
       type: 'list',
@@ -57,7 +106,8 @@ export function useArtifactCommentLayer(
         : [], // "Hide comment": empty list clears the layer's pins (no server change)
       viewer: viewerRef.current || null,
     });
-  }, [postToLayer]);
+    sendImages();
+  }, [postToLayer, sendImages]);
 
   // Inbound messages from the layer. One stable listener; reads live values via
   // refs so it never needs re-subscribing.
@@ -81,8 +131,8 @@ export function useArtifactCommentLayer(
         // ordering between 'ready' and load can't strand the layer with a stale
         // or empty list.
         case 'ready': sendList(); break;
-        case 'create': h.onCreate && h.onCreate({ selector: d.selector || null, text: d.text }); break;
-        case 'reply': h.onReply && h.onReply(d.id, d.text); break;
+        case 'create': h.onCreate && h.onCreate({ selector: d.selector || null, text: d.text, images: layerImages(d.images) }); break;
+        case 'reply': h.onReply && h.onReply(d.id, d.text, layerImages(d.images)); break;
         case 'status': h.onStatus && h.onStatus(d.id, d.status); break;
         case 'edit': h.onEditThread && h.onEditThread(d.id, d.text); break;
         case 'delete': h.onDeleteThread && h.onDeleteThread(d.id); break;
@@ -113,12 +163,13 @@ export function useArtifactCommentLayer(
   const onIframeLoad = useCallback(() => { if (enabled) sendList(); }, [enabled, sendList]);
 
   const exitMode = useCallback(() => postToLayer({ type: 'exit-mode' }), [postToLayer]);
+  const setPlacing = useCallback((on) => postToLayer({ type: on ? 'enter-mode' : 'exit-mode' }), [postToLayer]);
   const toggleMode = useCallback(() => postToLayer({ type: mode ? 'exit-mode' : 'enter-mode' }), [postToLayer, mode]);
   const focus = useCallback((id) => postToLayer({ type: 'focus', commentId: id }), [postToLayer]);
   const hlOn = useCallback((id) => postToLayer({ type: 'hl-on', commentId: id }), [postToLayer]);
   const hlOff = useCallback((id) => postToLayer({ type: 'hl-off', commentId: id }), [postToLayer]);
 
-  return { mode, anchorStates, onIframeLoad, exitMode, toggleMode, focus, hlOn, hlOff };
+  return { mode, anchorStates, onIframeLoad, exitMode, toggleMode, setPlacing, focus, hlOn, hlOff };
 }
 
 export default useArtifactCommentLayer;

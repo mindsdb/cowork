@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "Comments toolbar",
       "comment": "Comment — click an element (⌥ selects the container)",
-      "inbox": "Comments inbox",
-      "hideComment": "Hide comment",
-      "showComment": "Show comment",
-      "close": "Close comments"
+      "navigate": "Navigate",
+      "navigateHint": "Use the page as usual, with the comments pinned on it",
+      "commentLabel": "Comment"
     },
     "composer": {
       "placeholder": "Add a comment…",
@@ -147,7 +146,12 @@
       "reopen": "Reopen",
       "markResolved": "Mark as resolved",
       "resolve": "Resolve",
-      "more": "More"
+      "more": "More",
+      "agentQueued": "Queued",
+      "edit": "Edit",
+      "editAriaLabel": "Edit comment",
+      "pinned": "pinned",
+      "pinnedTip": "Pinned to a specific part of the artifact. Click the comment to go there."
     },
     "errors": {
       "load": "Failed to load comments",
@@ -229,7 +233,16 @@
     "close": "Close comparison",
     "reject": "Reject & restore",
     "accept": "Accept & resolve",
-    "restore": "Restore as new revision"
+    "restore": "Restore as new revision",
+    "changePosition": "{current} of {count, plural, one {# change} other {# changes}}",
+    "previousChange": "Previous change",
+    "nextChange": "Next change",
+    "changeNavigation": "Step through changes",
+    "publishedArtifact": "Published artifact",
+    "reviewBeforePublishing": "Review the change before publishing",
+    "keepDraft": "Keep as draft",
+    "publishChange": "Publish this change",
+    "publishing": "Publishing…"
   },
   "htmlEditor": {
     "blockGone": "The selected text block is no longer available.",
@@ -238,7 +251,9 @@
     "selected": "{label} selected — type to change it",
     "preparing": "Preparing editable text…",
     "noEditable": "No directly editable text was found",
-    "clickToEdit": "Click any text in the artifact to edit it",
+    "clickToEdit": "Click any text to edit it, including buttons and links.",
+    "syncingView": "Opening where you were in Preview…",
+    "keepingPlace": "Going back to where you were…",
     "htmlSource": "HTML source",
     "editing": "Editing artifact",
     "back": "Back to artifact",
@@ -251,6 +266,15 @@
       "buttonLabel": "Button label",
       "caption": "Caption",
       "text": "Text"
+    },
+    "exitLiveEdit": "Exit Live edit",
+    "mode": {
+      "ariaLabel": "Live edit mode",
+      "navigate": "Navigate",
+      "edit": "Edit text",
+      "navigateHint": "Use the page as usual: click through slides, tabs and links",
+      "editHint": "Click any text to change it",
+      "navigateGuidance": "Navigating. Use the page as usual, then switch to Edit text to change something."
     }
   },
   "workspace": {
@@ -385,7 +409,8 @@
     "artifactActions": "Artifact actions",
     "moreActions": "More actions",
     "reloadPreview": "Reload preview",
-    "close": "Close"
+    "close": "Close",
+    "unsharedChangesHint": "The shared link shows an earlier version. Use Update in Share to publish the changes."
   },
   "body": {
     "previewWatermark": "Preview",
@@ -453,7 +478,8 @@
     "discardFailed": "Could not discard that suggestion.",
     "deleteTitle": "Delete artifact?",
     "deleteMessage": "\"{title}\" will be permanently deleted. This cannot be undone.",
-    "changedElsewhere": "This artifact changed. Reload"
+    "changedElsewhere": "This artifact changed. Reload",
+    "changePublished": "Published"
   },
   "artifactsView": {
     "sort": {
@@ -691,6 +717,14 @@
       "discard": "Discard and send",
       "cancel": "Cancel",
       "saveFailed": "Your changes couldn't be saved, so nothing was sent."
+    },
+    "queued": "Queued",
+    "queueLabel": "Waiting to run",
+    "removeQueued": "Remove from queue",
+    "comment": {
+      "onArtifact": "Address this comment on the artifact:",
+      "onText": "Address this comment on the text “{quote}”:",
+      "onElement": "Address this comment on the element `{selector}`:"
     }
   },
   "stats": {
@@ -750,5 +784,20 @@
     "draft": "Draft",
     "copy": "Copy address",
     "copied": "Copied"
+  },
+  "layout": {
+    "maximize": "Maximize",
+    "restore": "Restore size"
+  },
+  "imageAttachments": {
+    "onlyImages": "Only PNG, JPEG, GIF and WebP images can be attached.",
+    "tooLarge": "{name} is larger than 5 MB.",
+    "tooMany": "Up to {count} images per message.",
+    "drop": "Drop images to attach",
+    "uploadFailed": "The image couldn't be uploaded. Try again.",
+    "unavailable": "Image unavailable",
+    "enlarge": "Enlarge image",
+    "shrink": "Shrink image",
+    "image": "Image"
   }
 }

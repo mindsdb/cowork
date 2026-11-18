@@ -26,17 +26,22 @@ import { preferredCodingModel } from './defaults';
 import { mergeReferences, referencesFromFiles } from './PromptReferences';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 import { useTaskExecutionTarget } from './useTaskExecutionTarget';
+import { isAppVisible } from './useAppVisible';
 import type { TaskRepositorySetup } from './repositorySetupModels';
 import {
   WORKTREE_ONLY,
   effectiveWorkspaceMode,
+  inPlaceUnavailableText,
   offersWorkspaceChoice,
   storeWorkspaceMode,
   storedWorkspaceMode,
+  worktreeUnavailableText,
 } from './workspaceMode';
 
 // The folder of the last folder-only task, preselected for the next one.
 const LAST_FOLDER_KEY = 'mindshub-code:last-folder';
+// The interval the composer already uses while no computer can take the task.
+const FOLDER_ISSUE_RECHECK_MS = 5_000;
 
 function storedFolder(): string {
   try { return window.localStorage.getItem(LAST_FOLDER_KEY) || ''; } catch { return ''; }
@@ -61,6 +66,9 @@ interface NewTaskDraftOptions {
   onProjectChange: (id: string | null) => void;
   onOpenProjectSettings: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
+  /* Whatever the owner adds to a Start on top of this draft (the panel's Plan
+     mode). A Start that had to wait is dropped if it changed meanwhile. */
+  startKey?: string;
   catalog?: CodingCatalog;
 }
 
@@ -115,6 +123,7 @@ export function useNewTaskDraft({
   onProjectChange,
   onOpenProjectSettings,
   onCreate,
+  startKey,
   catalog,
 }: NewTaskDraftOptions) {
   const localCatalog = useCodingCatalog(catalog === undefined);
@@ -124,6 +133,8 @@ export function useNewTaskDraft({
   const [engineId, setEngineId] = useState(defaultEngineId);
   const [model, setModel] = useState(defaultModel);
   const [foldersLoading, setFoldersLoading] = useState(false);
+  const [startChecking, setStartChecking] = useState(false);
+  const startCheck = useRef(false);
   const [folderIssue, setFolderIssue] = useState('');
   const [standaloneFolderPath, setStandaloneFolderPath] = useState('');
   const [standaloneFolderLoading, setStandaloneFolderLoading] = useState(false);
@@ -268,23 +279,69 @@ export function useNewTaskDraft({
 
   useEffect(() => { void codingCatalog.loadModels(engineId); }, [codingCatalog.loadModels, codingCatalog.revision, engineId]);
 
-  useEffect(() => {
-    let active = true;
-    setFolderIssue('');
+  /* A project's folders can be renamed away and back while this composer is
+     open, so one answer per project load goes stale in both directions. A
+     quiet check keeps the last answer on screen until the new one is in, and
+     keeps it if the check itself fails. The newest check is the one that
+     settles; the answer is returned either way so Start can act on it. */
+  const folderCheckSeq = useRef(0);
+  const folderChecksPending = useRef(0);
+  const checkProjectFolders = useCallback(async (quiet: boolean): Promise<string | null> => {
+    const seq = folderCheckSeq.current += 1;
     if (!selectedProject) {
+      setFolderIssue('');
       setFoldersLoading(false);
-      return () => { active = false; };
+      return '';
     }
-    setFoldersLoading(true);
-    codingApi.projectFolders(selectedProject.id).then(async ({ items }) => {
-      if (!active) return;
+    if (!quiet) {
+      setFolderIssue('');
+      setFoldersLoading(true);
+    }
+    folderChecksPending.current += 1;
+    try {
+      const { items } = await codingApi.projectFolders(selectedProject.id);
       const issue = await projectFolderIssue(selectedProject.id, items.filter(item => resourceIds.includes(item.folder.id)), repositorySetup, workspaceMode);
-      if (active) setFolderIssue(issue);
-    }).catch((reason) => {
-      if (active) setFolderIssue(reason instanceof Error ? reason.message : i18n.t('newTaskDraft.foldersCheckFailed', { ns: 'code' }));
-    }).finally(() => { if (active) setFoldersLoading(false); });
-    return () => { active = false; };
+      if (seq === folderCheckSeq.current) setFolderIssue(issue);
+      return issue;
+    } catch (reason) {
+      if (!quiet && seq === folderCheckSeq.current) {
+        setFolderIssue(reason instanceof Error ? reason.message : i18n.t('newTaskDraft.foldersCheckFailed', { ns: 'code' }));
+      }
+      return null;
+    } finally {
+      folderChecksPending.current -= 1;
+      if (seq === folderCheckSeq.current) setFoldersLoading(false);
+    }
   }, [selectedProject, resourceScopeKey, repositorySetup, workspaceMode]);
+
+  useEffect(() => {
+    void checkProjectFolders(false);
+    // An answer for the previous project, resources or branches is not ours.
+    return () => { folderCheckSeq.current += 1; };
+  }, [checkProjectFolders]);
+
+  const recheckProjectFolders = useCallback(() => {
+    // One already on its way is as fresh as this one would be.
+    if (folderChecksPending.current === 0) void checkProjectFolders(true);
+  }, [checkProjectFolders]);
+
+  /* Coming back to the window is when a folder is most likely to have
+     changed, so that re-checks. While a problem is shown it is also checked
+     on a timer, so fixing the folder clears the message without a reload.
+     A hidden window asks nothing, as with the task polls. */
+  useEffect(() => {
+    if (!selectedProjectKey) return undefined;
+    const recheckIfVisible = () => { if (isAppVisible()) recheckProjectFolders(); };
+    // A focused window is in use whatever the visibility signals say so far.
+    window.addEventListener('focus', recheckProjectFolders);
+    document.addEventListener('visibilitychange', recheckIfVisible);
+    const timer = folderIssue ? window.setInterval(recheckIfVisible, FOLDER_ISSUE_RECHECK_MS) : undefined;
+    return () => {
+      window.removeEventListener('focus', recheckProjectFolders);
+      document.removeEventListener('visibilitychange', recheckIfVisible);
+      window.clearInterval(timer);
+    };
+  }, [folderIssue, recheckProjectFolders, selectedProjectKey]);
 
   useEffect(() => {
     setEngineId(selectedProject?.default_engine_id || defaultEngineId);
@@ -404,10 +461,10 @@ export function useNewTaskDraft({
   const selectedModelValid = !!selectedModelOption && !selectedModelOption.disabled;
   const selectedEngine = engines.find((engine) => engine.id === engineId);
   const selectedEngineAvailable = selectedEngine?.available === true;
-  const workspaceLoading = selectedProject ? foldersLoading : standaloneFolderLoading;
+  const workspaceLoading = selectedProject ? foldersLoading || startChecking : standaloneFolderLoading;
   const modeIssue = currentModeResponse?.known && (workspaceModeOptions.supported.length === 0
     || (!!repositorySetup && !workspaceModeOptions.supported.includes('worktree')))
-    ? workspaceModeOptions.worktree_unavailable_reason || workspaceModeOptions.in_place_unavailable_reason || i18n.t('workspaceMode.unavailable', { ns: 'code' })
+    ? worktreeUnavailableText(workspaceModeOptions) || inPlaceUnavailableText(workspaceModeOptions) || i18n.t('workspaceMode.unavailable', { ns: 'code' })
     : '';
   const workspaceIssue = (selectedProject ? folderIssue : standaloneFolderIssue) || modeIssue;
   const workspaceSelected = !!selectedProject || !!standaloneFolderPath;
@@ -472,6 +529,18 @@ export function useNewTaskDraft({
       ? 'folder'
       : 'locked';
 
+  /* Counts every change to what a Start would send, and the composer going
+     away, so a Start that had to wait can tell whether it is still current. */
+  const draftRevision = useRef(0);
+  useEffect(() => {
+    draftRevision.current += 1;
+    return () => { draftRevision.current += 1; };
+  }, [
+    selectedProjectKey, prompt, engineId, model, explicitEffort, permissionMode, attachments, sourceContexts,
+    resourceScopeKey, repositoryKey, repositorySetup, workspaceMode, workspaceModeChoice, currentModeResponse?.known,
+    startKey,
+  ]);
+
   const handleStart = async () => {
     if (!prompt.trim()) {
       promptRef.current?.focus();
@@ -486,6 +555,25 @@ export function useNewTaskDraft({
       return;
     }
     if (!taskReady) return;
+    if (selectedProject) {
+      /* The last look at the folders may be minutes old. A task started on a
+         folder that has since gone is accepted and then fails, leaving a dead
+         task behind, so look once more and let the message stop it here. */
+      if (startCheck.current) return;
+      startCheck.current = true;
+      setStartChecking(true);
+      const checkedDraft = draftRevision.current;
+      try {
+        if (await checkProjectFolders(true)) return;
+      } finally {
+        startCheck.current = false;
+        setStartChecking(false);
+      }
+      /* Everything below was read before the wait. If the draft was edited,
+         or the composer closed, meanwhile, this would start a task nobody
+         asked for in that form: drop it, and Start is there to press again. */
+      if (checkedDraft !== draftRevision.current) return;
+    }
     const task = {
       prompt: prompt.trim(),
       engineId,
@@ -497,7 +585,12 @@ export function useNewTaskDraft({
       ...(selectedProject && resourceIds.length < projectResources.length ? { resourceIds } : {}),
       ...(selectedProject ? { computerId } : {}),
       ...(repositorySetup ? { repositorySetup } : {}),
-      ...(currentModeResponse?.known && workspaceMode && (workspaceModeChoice || workspaceMode === 'in_place') ? { workspaceMode } : {}),
+      ...(currentModeResponse?.known && workspaceMode && (workspaceModeChoice || workspaceMode === 'in_place') ? {
+        workspaceMode,
+        // Only a choice made for this task is binding; a default lets the
+        // server move a task into a worktree when the folder is busy.
+        workspaceModeIsDefault: explicitWorkspaceMode?.key !== workspaceModeKey,
+      } : {}),
     };
     await onCreate(selectedProject
       ? { ...task, projectId: selectedProject.id }
@@ -574,5 +667,6 @@ export function useNewTaskDraft({
     readinessMessage,
     readinessKind,
     handleStart,
+    recheckProjectFolders,
   };
 }

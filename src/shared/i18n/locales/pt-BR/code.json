@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Não foi possível remover alguns arquivos de tarefas excluídas. Tente a limpeza novamente para liberar espaço em disco.",
+    "retry": "Tentar limpeza novamente",
+    "retrying": "Tentando limpar novamente…",
+    "retryFailed": "Não foi possível tentar a limpeza novamente. Tente de novo."
+  },
   "reviewPanel": {
     "ariaLabel": "Revisar alterações",
     "closeAriaLabel": "Fechar painel de revisão",
@@ -1308,6 +1314,7 @@
     "record": {
       "approvalDenied": "Aprovação negada",
       "approvalResolved": "Aprovação resolvida",
+      "folderBusy": "Outra tarefa está trabalhando nesta pasta, então esta trabalha em uma worktree.",
       "followUpDelivered": "Mensagem de acompanhamento entregue",
       "requestRejected": "Solicitação rejeitada",
       "taskStatus": "Status da tarefa"
@@ -1412,7 +1419,8 @@
     "details": "Detalhes",
     "moreOptions": "Mais opções",
     "dismiss": "Dispensar",
-    "viewBudgets": "Ver orçamentos"
+    "viewBudgets": "Ver orçamentos",
+    "allowWrites": "Permitir edições"
   },
   "composerNotices": {
     "thisModel": "Este modelo",
@@ -1466,6 +1474,9 @@
     "budgetExceeded": {
       "title": "O orçamento da sua organização acabou",
       "body": "Um proprietário ou administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa."
+    },
+    "writesHeld": {
+      "body": "Esta pasta não tem histórico do Git para revisar ou desfazer alterações, então o agente pergunta antes de cada edição."
     }
   },
   "planModeCommand": {
@@ -1624,6 +1635,16 @@
     },
     "initializeGit": "Inicializar Git",
     "initializeFailed": "Não foi possível inicializar o Git. Tente novamente.",
-    "unavailable": "Nenhum modo de espaço de trabalho está disponível para esta pasta."
+    "unavailable": "Nenhum modo de espaço de trabalho está disponível para esta pasta.",
+    "reason": {
+      "notARepository": "Esta pasta não é um repositório Git. Inicialize o Git para usar uma Worktree.",
+      "notARepositoryInFolder": "{folder} não é um repositório Git. Inicialize o Git para usar uma Worktree.",
+      "noCommits": "Este repositório ainda não tem commits. Faça um primeiro commit para usar uma Worktree.",
+      "noCommitsInFolder": "{folder} ainda não tem commits. Faça um primeiro commit para usar uma Worktree.",
+      "noLocalCheckout": "{folder} não tem uma cópia local neste computador para trabalhar. Escolha Worktree.",
+      "inPlaceUnsupportedPlatform": "Trabalhar na pasta original ainda não está disponível nesta plataforma. Escolha Worktree.",
+      "inPlaceOtherComputer": "Tarefas em outro computador são executadas em uma worktree isolada. Escolha Worktree.",
+      "sharedRepository": "Duas pastas do projeto estão no mesmo repositório, então não podem trabalhar as duas diretamente na pasta. Escolha Worktree."
+    }
   }
 }

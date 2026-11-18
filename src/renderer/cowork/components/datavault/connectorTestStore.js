@@ -66,6 +66,11 @@ export function clearPendingTest(conversationId) {
   _notify(conversationId, null);
 }
 
+// Why a waiting test was dropped, sent to the server so the conversation does
+// not read a new form or a closed panel as the member declining.
+export const TEST_DECLINED = 'declined';
+export const TEST_ENDED = 'ended';
+
 // The server call that drops a waiting test. The panel registers it, so this
 // store and formStore never load the API module.
 let _cancelOnServer = null;
@@ -75,12 +80,13 @@ export function setPendingTestCanceller(fn) {
 }
 
 // Drop the conversation's waiting test and tell the server, which otherwise
-// keeps the typed values until its timeout.
-export function dropPendingTest(conversationId) {
+// keeps the typed values until its timeout. Only the member's own Cancel or
+// Don't allow passes TEST_DECLINED.
+export function dropPendingTest(conversationId, reason = TEST_ENDED) {
   const pending = getPendingTest(conversationId);
   if (!pending) return;
   clearPendingTest(conversationId);
-  if (_cancelOnServer) _cancelOnServer(pending);
+  if (_cancelOnServer) _cancelOnServer(pending, reason);
 }
 
 // Carry a waiting test over when the conversation's temporary id is replaced

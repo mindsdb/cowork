@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "评论工具栏",
       "comment": "评论 — 点击某个元素（⌥ 选择其容器）",
-      "inbox": "评论收件箱",
-      "hideComment": "隐藏评论",
-      "showComment": "显示评论",
-      "close": "关闭评论"
+      "navigate": "浏览",
+      "navigateHint": "保留评论标记，像平常一样使用页面",
+      "commentLabel": "评论"
     },
     "composer": {
       "placeholder": "添加评论…",
@@ -147,7 +146,12 @@
       "reopen": "重新打开",
       "markResolved": "标记为已解决",
       "resolve": "解决",
-      "more": "更多"
+      "more": "更多",
+      "agentQueued": "排队中",
+      "edit": "编辑",
+      "editAriaLabel": "编辑评论",
+      "pinned": "已固定",
+      "pinnedTip": "固定在产物的特定位置。点击评论即可跳转到该处。"
     },
     "errors": {
       "load": "无法加载评论",
@@ -229,7 +233,16 @@
     "close": "关闭对比",
     "reject": "拒绝并还原",
     "accept": "接受并解决",
-    "restore": "还原为新的修订版本"
+    "restore": "还原为新的修订版本",
+    "changePosition": "{count, plural, other {第 {current} 处，共 # 处更改}}",
+    "previousChange": "上一处更改",
+    "nextChange": "下一处更改",
+    "changeNavigation": "逐处查看更改",
+    "publishedArtifact": "已发布的产物",
+    "reviewBeforePublishing": "发布前检查此更改",
+    "keepDraft": "保留为草稿",
+    "publishChange": "发布此更改",
+    "publishing": "正在发布…"
   },
   "htmlEditor": {
     "blockGone": "所选文本块已不存在。",
@@ -238,7 +251,9 @@
     "selected": "已选择 {label} — 输入即可修改",
     "preparing": "正在准备可编辑文本…",
     "noEditable": "未找到可直接编辑的文本",
-    "clickToEdit": "点击产物中的任意文本即可编辑",
+    "clickToEdit": "点击任意文本即可编辑，包括按钮和链接。",
+    "syncingView": "正在打开你在预览中查看的位置…",
+    "keepingPlace": "正在回到你刚才查看的位置…",
     "htmlSource": "HTML 源代码",
     "editing": "正在编辑产物",
     "back": "返回产物",
@@ -251,6 +266,15 @@
       "buttonLabel": "按钮文字",
       "caption": "说明文字",
       "text": "文本"
+    },
+    "exitLiveEdit": "退出实时编辑",
+    "mode": {
+      "ariaLabel": "实时编辑模式",
+      "navigate": "浏览",
+      "edit": "编辑文本",
+      "navigateHint": "像平常一样使用页面：切换幻灯片、标签页和链接",
+      "editHint": "点击任意文本进行修改",
+      "navigateGuidance": "正在浏览。像平常一样使用页面，需要修改时切换到“编辑文本”。"
     }
   },
   "workspace": {
@@ -385,7 +409,8 @@
     "artifactActions": "产物操作",
     "moreActions": "更多操作",
     "reloadPreview": "重新加载预览",
-    "close": "关闭"
+    "close": "关闭",
+    "unsharedChangesHint": "分享链接显示的是较早的版本。请在“分享”中使用“更新”来发布这些更改。"
   },
   "body": {
     "previewWatermark": "预览",
@@ -453,7 +478,8 @@
     "discardFailed": "无法放弃该建议。",
     "deleteTitle": "删除产物？",
     "deleteMessage": "“{title}”将被永久删除。此操作无法撤销。",
-    "changedElsewhere": "此产物已更改。重新加载"
+    "changedElsewhere": "此产物已更改。重新加载",
+    "changePublished": "已发布"
   },
   "artifactsView": {
     "sort": {
@@ -691,6 +717,14 @@
       "discard": "放弃并发送",
       "cancel": "取消",
       "saveFailed": "无法保存你的更改，因此未发送任何内容。"
+    },
+    "queued": "排队中",
+    "queueLabel": "等待执行",
+    "removeQueued": "从队列中移除",
+    "comment": {
+      "onArtifact": "处理关于此产物的这条评论：",
+      "onText": "处理关于文本“{quote}”的这条评论：",
+      "onElement": "处理关于元素 `{selector}` 的这条评论："
     }
   },
   "stats": {
@@ -750,5 +784,20 @@
     "draft": "草稿",
     "copy": "复制地址",
     "copied": "已复制"
+  },
+  "layout": {
+    "maximize": "最大化",
+    "restore": "恢复大小"
+  },
+  "imageAttachments": {
+    "onlyImages": "只能附加 PNG、JPEG、GIF 和 WebP 图片。",
+    "tooLarge": "{name} 超过 5 MB。",
+    "tooMany": "每条消息最多 {count} 张图片。",
+    "drop": "拖放图片以附加",
+    "uploadFailed": "图片上传失败，请重试。",
+    "unavailable": "图片不可用",
+    "enlarge": "放大图片",
+    "shrink": "缩小图片",
+    "image": "图片"
   }
 }
