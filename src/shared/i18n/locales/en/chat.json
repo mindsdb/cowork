@@ -228,7 +228,16 @@
         "notRead": "Queued: the task finished before it could read this."
       }
     },
-    "reconnecting": "Trying to reconnect"
+    "reconnecting": "Trying to reconnect",
+    "nextSteps": {
+      "groupLabel": "Next steps",
+      "ownData": "Do this with my own data",
+      "anotherFile": "Do the same to another file",
+      "makePage": "Turn it into a page",
+      "schedule": "Run this on a schedule",
+      "scheduled": "Scheduled “{title}”",
+      "scheduledDone": "Scheduled ✓"
+    }
   },
   "composer": {
     "placeholder": "Hi Boss, how can I help you today?",

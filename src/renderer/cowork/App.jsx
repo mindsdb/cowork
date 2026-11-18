@@ -32,6 +32,9 @@ import HomeView from './views/HomeView';
 import ChatView, { warmBrowser } from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
+import ScheduleTaskModal from './components/schedule/ScheduleTaskModal';
+import { localFileAttachments } from './lib/localFileAttachments';
+import { useScheduleFromAnswer } from './hooks/useScheduleFromAnswer';
 import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
@@ -3981,14 +3984,7 @@ function AppCore() {
   const attachmentSessionId = route === 'task' && currentTask && !String(currentTask.id).startsWith('tmp-') ? currentTask.id : null;
 
   const handleAttachFiles = (files) => {
-    const list = Array.from(files || []).map((file) => ({
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-      source: 'file',
-      pendingFile: file,
-      name: file.name,
-      mime: file.type || undefined,
-      size: file.size,
-    }));
+    const list = localFileAttachments(files);
     setComposerAttachments((prev) => [...prev, ...list]);
   };
 
@@ -6744,6 +6740,34 @@ function AppCore() {
     host.setScheduleKeepAwake(keepAwake);
   }, [keepAwake, scheduled]);
   useEffect(() => () => { host.setScheduleKeepAwake(false); }, []);
+  // The new-schedule form opened from a finished answer's next steps, over
+  // the chat: { prompt, projectPath }, or null when closed.
+  const [scheduleDraft, setScheduleDraft] = useState(null);
+  const openScheduleFromChat = ({ prompt, projectId, answerKey }) => {
+    const project = projectId ? runnableProjects.find((p) => p.id === projectId) : null;
+    setScheduleDraft({ prompt, projectPath: project?.path || '', answerKey });
+  };
+  const scheduleFromAnswer = useScheduleFromAnswer({
+    create: handleCreateSchedule,
+    runNow: (id) => handleRunScheduleNow(id, { trial: true }),
+    onSaved: (payload) => {
+      toastManager.add({ type: 'success', title: i18n.t('chatView.nextSteps.scheduled', { ns: 'chat', title: payload.title }) });
+    },
+    onRunFailed: (payload, err) => {
+      toastManager.add({
+        type: 'danger',
+        title: i18n.t('scheduledView.trialRunFailed', {
+          ns: 'projects',
+          title: payload.title,
+          reason: err?.message || i18n.t('scheduledView.trialRunFallback', { ns: 'projects' }),
+        }),
+      });
+    },
+  });
+  const handleScheduleFromChat = (payload, _id, options) => (
+    scheduleFromAnswer.submit(payload, scheduleDraft?.answerKey, options)
+  );
+
   const handleRunScheduleNow = async (id, options) => {
     const result = await runScheduleNow(id, options);
     // The server creates the conversation eagerly and returns its id.
@@ -7219,6 +7243,7 @@ function AppCore() {
             health={health}
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
+            onScheduleFromChat={openScheduleFromChat}
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
@@ -7456,6 +7481,19 @@ function AppCore() {
             agentLabel={agentLabel}
           />
         )}
+
+        <ScheduleTaskModal
+          open={!!scheduleDraft}
+          onClose={() => setScheduleDraft(null)}
+          onSubmit={handleScheduleFromChat}
+          busy={scheduleFromAnswer.busy}
+          initial={scheduleDraft}
+          projects={runnableProjects}
+          models={modelOptions}
+          modelMeta={modelMeta}
+          defaultProjectPath={scheduleDraft?.projectPath || ''}
+          agentLabel={agentLabel}
+        />
 
         {route === 'schedule-detail' && (
           <ScheduleDetailView

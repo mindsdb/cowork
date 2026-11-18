@@ -176,6 +176,13 @@ const EVENTS = {
   ADDON_ADDED:              'addon_added',              // { decided_by: 'jev'|'user', via: 'send'|'queue' } — joined the running task
   ADDON_QUEUED:             'addon_queued',             // { reason } — queued as the next task: the server's reason, or 'attachments'|'no_conversation'|'no_live_stream'|'turn_ending'|'not_found'|'unsupported'|'timeout'|'error'|'unknown'
   ADDON_OVERRIDDEN:         'addon_overridden',         // { direction: 'to_queue'|'to_task', outcome, decided_by? } — the person moved a message against where it landed; decided_by 'jev' on to_queue is the accuracy signal
+  // Next steps under a finished answer (lib/nextSteps). Step and result kinds
+  // only, never message text. `steps` lists what was offered, in order;
+  // `position` is the clicked step's 0-based place in that list. An
+  // artifact's card holds Preview and Share and is not part of this row: its
+  // Share is counted by artifact_share_opened with entry 'chat_card'.
+  NEXT_STEPS_SHOWN:         'next_steps_shown',         // { result_kind: 'example'|'file'|'artifact'|'table'|'research'|'other', steps: ('own_data'|'another_file'|'make_page'|'schedule')[] } — once per answer per app run
+  NEXT_STEP_CLICKED:        'next_step_clicked',        // { step, result_kind, position }
   // The account menu's developer links (ENG-4288). Sign-in lands in Cowork now,
   // so these are how a developer who came for the API still reaches it; the
   // count is the measure of whether that path is being found.
@@ -1527,4 +1534,22 @@ export function resetDeviceIdentity() {
   } catch {
     /* localStorage unavailable: the in-memory reset above still applies */
   }
+}
+
+// Once per answer per app run: a re-render or a remount of the same answer
+// does not count as showing it again.
+const nextStepsShownFor = new Set();
+
+export function trackNextStepsShown(answerKey, { resultKind, steps } = {}) {
+  if (!answerKey || nextStepsShownFor.has(answerKey) || !steps?.length) return;
+  nextStepsShownFor.add(answerKey);
+  capture(EVENTS.NEXT_STEPS_SHOWN, { result_kind: resultKind || 'other', steps: [...steps] });
+}
+
+export function trackNextStepClicked({ step, resultKind, position } = {}) {
+  capture(EVENTS.NEXT_STEP_CLICKED, {
+    step: step || 'unknown',
+    result_kind: resultKind || 'other',
+    position: Number.isInteger(position) ? position : null,
+  });
 }

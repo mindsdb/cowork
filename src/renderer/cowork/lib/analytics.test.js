@@ -2370,3 +2370,39 @@ describe('signup_landed (ENG-4288)', () => {
     expect(JSON.stringify(event.properties)).not.toContain('example.com');
   });
 });
+
+describe('next steps under an answer', () => {
+  const count = (fetchMock, eventName) => fetchMock.mock.calls
+    .filter((c) => c[1]?.body)
+    .map((c) => JSON.parse(c[1].body).event)
+    .filter((event) => event === eventName).length;
+
+  it('next_steps_shown names the result kind and the steps, once per answer', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackNextStepsShown('t1:m:a1', { resultKind: 'research', steps: ['make_page', 'schedule'] });
+    const event = await sentEvent(fetchMock, 'next_steps_shown');
+    expect(event.properties).toMatchObject({ result_kind: 'research', steps: ['make_page', 'schedule'] });
+
+    analytics.trackNextStepsShown('t1:m:a1', { resultKind: 'research', steps: ['make_page', 'schedule'] });
+    analytics.trackNextStepsShown('t1:m:a2', { resultKind: 'file', steps: ['another_file'] });
+    await vi.waitFor(() => expect(count(fetchMock, 'next_steps_shown')).toBe(2));
+  });
+
+  it('sends nothing for an answer with no steps', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackNextStepsShown('t1:m:empty', { resultKind: 'other', steps: [] });
+    analytics.trackNextStepClicked({ step: 'make_page', resultKind: 'table', position: 0 });
+    await sentEvent(fetchMock, 'next_step_clicked');
+    expect(count(fetchMock, 'next_steps_shown')).toBe(0);
+  });
+
+  it('next_step_clicked carries the step, the result kind and its place in the row', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackNextStepClicked({ step: 'schedule', resultKind: 'research', position: 1 });
+    const event = await sentEvent(fetchMock, 'next_step_clicked');
+    expect(event.properties).toMatchObject({ step: 'schedule', result_kind: 'research', position: 1 });
+  });
+});

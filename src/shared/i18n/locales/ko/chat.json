@@ -228,7 +228,16 @@
         "notRead": "대기열에 추가됨: 읽기 전에 작업이 끝났습니다."
       }
     },
-    "reconnecting": "다시 연결하는 중"
+    "reconnecting": "다시 연결하는 중",
+    "nextSteps": {
+      "groupLabel": "다음 단계",
+      "ownData": "내 데이터로 이렇게 하기",
+      "anotherFile": "다른 파일에도 똑같이 하기",
+      "makePage": "페이지로 만들기",
+      "schedule": "일정에 따라 실행하기",
+      "scheduled": "‘{title}’ 예약됨",
+      "scheduledDone": "예약됨 ✓"
+    }
   },
   "composer": {
     "placeholder": "안녕하세요, 오늘은 무엇을 도와드릴까요?",

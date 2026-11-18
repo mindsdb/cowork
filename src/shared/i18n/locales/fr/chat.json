@@ -228,7 +228,16 @@
         "notRead": "En file d’attente : la tâche s’est terminée avant de pouvoir lire ceci."
       }
     },
-    "reconnecting": "Tentative de reconnexion"
+    "reconnecting": "Tentative de reconnexion",
+    "nextSteps": {
+      "groupLabel": "Étapes suivantes",
+      "ownData": "Le faire avec mes propres données",
+      "anotherFile": "Faire de même avec un autre fichier",
+      "makePage": "En faire une page",
+      "schedule": "Exécuter selon un planning",
+      "scheduled": "« {title} » planifiée",
+      "scheduledDone": "Planifié ✓"
+    }
   },
   "composer": {
     "placeholder": "Bonjour chef, comment puis-je vous aider aujourd’hui ?",

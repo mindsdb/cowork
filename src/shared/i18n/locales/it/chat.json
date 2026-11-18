@@ -228,7 +228,16 @@
         "notRead": "In coda: l’attività è terminata prima di poterlo leggere."
       }
     },
-    "reconnecting": "Tentativo di riconnessione"
+    "reconnecting": "Tentativo di riconnessione",
+    "nextSteps": {
+      "groupLabel": "Prossimi passi",
+      "ownData": "Farlo con i miei dati",
+      "anotherFile": "Fare lo stesso con un altro file",
+      "makePage": "Trasformarlo in una pagina",
+      "schedule": "Eseguirlo a intervalli regolari",
+      "scheduled": "“{title}” pianificata",
+      "scheduledDone": "Pianificato ✓"
+    }
   },
   "composer": {
     "placeholder": "Ciao capo, come posso aiutarti oggi?",

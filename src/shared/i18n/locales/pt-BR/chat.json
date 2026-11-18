@@ -228,7 +228,16 @@
         "notRead": "Na fila: a tarefa terminou antes de conseguir ler isto."
       }
     },
-    "reconnecting": "Tentando reconectar"
+    "reconnecting": "Tentando reconectar",
+    "nextSteps": {
+      "groupLabel": "Próximos passos",
+      "ownData": "Fazer isso com meus próprios dados",
+      "anotherFile": "Fazer o mesmo com outro arquivo",
+      "makePage": "Transformar em uma página",
+      "schedule": "Executar isso de forma agendada",
+      "scheduled": "“{title}” agendada",
+      "scheduledDone": "Agendado ✓"
+    }
   },
   "composer": {
     "placeholder": "Olá, chefe. Como posso ajudar hoje?",
