@@ -1936,7 +1936,7 @@ export async function updateOrgAppearance(payload) {
  * The signed-in account's open deletion request, `{ requestedAt, deleteBy }`,
  * or null. The server answers 404 both when there is no open request and when
  * there is no MindsHub account behind it (a desktop on its local server), so
- * callers only ask where a MindsHub account is certain: the web build. Anything
+ * callers only ask where a MindsHub account is certain: the mobile app. Anything
  * else rejects, so a failed read is never mistaken for "no request".
  */
 export async function getDeletionRequest() {

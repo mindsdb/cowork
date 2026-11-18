@@ -27,9 +27,9 @@ function formatDay(iso) {
 // records a request that support carries out, so once one is open the row
 // says when rather than offering the button again.
 //
-// Web only: there the server always speaks for a MindsHub account. A desktop
-// on its local server has no MindsHub credential to forward, so it could
-// neither read nor send a request; it points to the web app instead.
+// Only inside the mobile app, where the stores require it; the website and
+// desktop don't offer it. The app is a web build, so its server always speaks
+// for a MindsHub account.
 function DeleteAccountRow({ card }) {
   const { t } = useTranslation('settingsSystem');
   // undefined while the first read is in flight, null when there is no open

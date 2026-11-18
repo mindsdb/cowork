@@ -199,7 +199,7 @@ describe('AccountSection account deletion', () => {
     render(<AccountSection isSsoConnected />);
 
     expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/delete your account/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Delete account')).not.toBeInTheDocument();
     expect(apiMock.getDeletionRequest).not.toHaveBeenCalled();
   });
 
@@ -211,7 +211,7 @@ describe('AccountSection account deletion', () => {
     render(<AccountSection onSsoSignIn={vi.fn()} />);
 
     expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/To delete your account/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Delete account')).not.toBeInTheDocument();
     expect(apiMock.getDeletionRequest).not.toHaveBeenCalled();
   });
 });
