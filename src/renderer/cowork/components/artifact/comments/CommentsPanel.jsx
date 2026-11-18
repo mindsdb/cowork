@@ -51,6 +51,7 @@ export function CommentsPanel({
   onHoverThread,
   onLeaveThread,
   onFocusThread,
+  loadImage = null,
 }) {
   const { t: tr } = useTranslation('artifacts');
   const [tab, setTab] = useState('open');
@@ -173,6 +174,7 @@ export function CommentsPanel({
             agentWorking={agentWorkingThreadId === t.id}
             onStatus={onStatus}
             onAddressWithAgent={onAddressWithAgent}
+            loadImage={loadImage}
             onRequestDelete={setPendingDelete}
             onHover={onHoverThread}
             onLeave={onLeaveThread}

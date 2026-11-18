@@ -375,6 +375,51 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
   });
 
+  // Images pasted into the bar (ENG-4410) go to the editor's model with the
+  // request, and with the prompt when the change is handed to the chat.
+  function pasteImage(file) {
+    fireEvent.paste(bar(), {
+      clipboardData: {
+        files: [file],
+        items: [{ kind: 'file', type: file.type, getAsFile: () => file }],
+        types: ['Files'],
+        getData: () => '',
+      },
+    });
+  }
+
+  it('sends a pasted image with the request', async () => {
+    URL.createObjectURL ||= () => 'blob:thumb';
+    URL.revokeObjectURL ||= () => {};
+    workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    pasteImage(new File(['hello'], 'shot.png', { type: 'image/png' }));
+    ask('Make it look like this');
+
+    await within(thread()).findByText('Made the title blue.');
+    expect(workspaceApi.streamQuickEdit.mock.calls[0][1].images).toEqual([{ name: 'shot.png', data: 'aGVsbG8=' }]);
+  });
+
+  it('hands a pasted image to the chat with the prompt', async () => {
+    URL.createObjectURL ||= () => 'blob:thumb';
+    URL.revokeObjectURL ||= () => {};
+    const onAddressWithAgent = vi.fn(async () => true);
+    workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+    renderViewer({ onAddressWithAgent });
+    await screen.findByTitle('Launch brief');
+
+    pasteImage(new File(['hello'], 'shot.png', { type: 'image/png' }));
+    ask('Redo the chart like this');
+
+    await within(thread()).findByText('Sent to the chat.');
+    const [{ attachments }] = onAddressWithAgent.mock.calls[0];
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]).toMatchObject({ source: 'file', name: 'shot.png', mime: 'image/png' });
+    expect(attachments[0].pendingFile).toBeInstanceOf(File);
+  });
+
   it.each(['agent', 'escalate'])('continues in the artifact chat on %s', async (status) => {
     const onAddressWithAgent = vi.fn(async () => true);
     const onClose = vi.fn();
@@ -389,6 +434,7 @@ describe('ArtifactViewer quick edit bar', () => {
       artifact,
       prompt: 'Add last quarter sales from the warehouse\n\n(About the artifact `launch-brief`.)',
       conversationId: 'conv-1',
+      attachments: [],
     });
     // Closing the viewer shows the chat; the bar adds no button for it.
     expect(within(thread()).queryByRole('button', { name: 'Open in chat' })).toBeNull();
@@ -449,6 +495,7 @@ describe('ArtifactViewer quick edit bar', () => {
         artifact,
         prompt: 'Why is revenue down?\n\n(About the artifact `launch-brief`.)',
         conversationId: 'conv-1',
+        attachments: [],
       });
     });
   });

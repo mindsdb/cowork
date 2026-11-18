@@ -771,5 +771,16 @@
     "showToolbar": "Symbolleiste einblenden",
     "hideQuickEdit": "Schnellbearbeitung ausblenden",
     "showQuickEdit": "Schnellbearbeitung einblenden"
+  },
+  "imageAttachments": {
+    "onlyImages": "Nur PNG-, JPEG-, GIF- und WebP-Bilder können angehängt werden.",
+    "tooLarge": "{name} ist größer als 5 MB.",
+    "tooMany": "Bis zu {count} Bilder pro Nachricht.",
+    "drop": "Bilder zum Anhängen ablegen",
+    "uploadFailed": "Das Bild konnte nicht hochgeladen werden. Versuche es erneut.",
+    "unavailable": "Bild nicht verfügbar",
+    "enlarge": "Bild vergrößern",
+    "shrink": "Bild verkleinern",
+    "image": "Bild"
   }
 }

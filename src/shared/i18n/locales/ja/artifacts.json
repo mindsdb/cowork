@@ -771,5 +771,16 @@
     "showToolbar": "ツールバーを表示",
     "hideQuickEdit": "クイック編集を隠す",
     "showQuickEdit": "クイック編集を表示"
+  },
+  "imageAttachments": {
+    "onlyImages": "添付できるのは PNG、JPEG、GIF、WebP 画像のみです。",
+    "tooLarge": "{name} は 5 MB を超えています。",
+    "tooMany": "1 件のメッセージにつき画像は {count} 枚までです。",
+    "drop": "画像をドロップして添付",
+    "uploadFailed": "画像をアップロードできませんでした。もう一度お試しください。",
+    "unavailable": "画像を表示できません",
+    "enlarge": "画像を拡大",
+    "shrink": "画像を縮小",
+    "image": "画像"
   }
 }
