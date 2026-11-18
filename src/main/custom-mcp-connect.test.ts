@@ -1,0 +1,334 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { GuardedFetch, GuardedRequestInit } from './guarded-fetch';
+
+const store = vi.hoisted(() => ({ root: '/home/user/.cowork' as string | null }));
+vi.mock('./server-process', () => ({ getServerPort: () => 4000, activeStoreRoot: () => store.root }));
+vi.mock('./server-auth', () => ({ authHeader: () => ({ Authorization: 'Bearer bearer' }) }));
+const trust = vi.hoisted(() => ({ protected: true, customMcp: true }));
+vi.mock('./app-secret', () => ({
+  isAppSecretProtected: () => trust.protected,
+  isCustomMcpAvailable: () => trust.protected && trust.customMcp,
+  appSecretHeader: () => (trust.protected ? { 'X-Cowork-App-Secret': 'secret' } : {}),
+}));
+vi.mock('electron', () => ({ session: { defaultSession: { resolveProxy: async () => 'DIRECT' } } }));
+vi.mock('./cowork-home', () => ({ buildKind: () => 'dev' }));
+vi.mock('./keychain-fallback', () => ({ getFallbackPassword: vi.fn(), setFallbackPassword: vi.fn(), deleteFallbackPassword: vi.fn() }));
+
+/** The OS keychain: account -> password, for the one custom MCP service. */
+const keychain = vi.hoisted(() => ({ entries: new Map<string, string>(), failWrites: false, failFind: false, writesBeforeFailure: Infinity }));
+vi.mock('keytar', () => ({
+  default: {
+    getPassword: async (_svc: string, account: string) => keychain.entries.get(account) ?? null,
+    setPassword: async (_svc: string, account: string, password: string) => {
+      if (keychain.failWrites || keychain.writesBeforeFailure-- <= 0) throw new Error('locked');
+      keychain.entries.set(account, password);
+    },
+    deletePassword: async (_svc: string, account: string) => keychain.entries.delete(account),
+    findCredentials: async () => {
+      if (keychain.failFind) throw new Error('no secret service');
+      return [...keychain.entries].map(([account, password]) => ({ account, password }));
+    },
+  },
+}));
+
+import { connectCustomMcp, parseConnectRequest, type ConnectDeps } from './custom-mcp-connect';
+import { listConnectionIds, readPart } from './custom-mcp-keychain';
+
+const SERVER_URL = 'https://mcp.example.com/mcp';
+const AUTH = 'https://auth.example.com';
+
+/** cowork-server's custom MCP routes, as far as the connect uses them. */
+const server = vi.hoisted(() => ({
+  records: new Set<string>(),
+  held: new Map<string, Record<string, unknown>>(),
+  tools: [] as Array<{ name: string; description: string; read_only: boolean; allowed: boolean }> | 'unreachable',
+  calls: [] as string[],
+  canonical: (url: string) => url,
+}));
+
+function json(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+}
+
+async function serverFetch(input: string | URL | Request, init: RequestInit = {}): Promise<Response> {
+  const url = new URL(String(input));
+  const method = init.method ?? 'GET';
+  const path = url.pathname.replace('/api/v1/connectors/connections/custom_mcp', '');
+  const body = init.body ? JSON.parse(String(init.body)) : undefined;
+  const headers = init.headers as Record<string, string>;
+  server.calls.push(`${method} ${url.pathname}`);
+  if (url.pathname.startsWith('/api/v1/connectors/connections/custom_mcp') && method !== 'DELETE' && headers['X-Cowork-App-Secret'] !== 'secret') {
+    return json(403, { detail: 'app secret required' });
+  }
+  if (method === 'POST' && path === '/check-url') return json(200, { url: server.canonical(body.url) });
+  if (method === 'POST' && path === '') {
+    if (server.records.has(body.id)) return json(409, { detail: 'custom_connection_exists' });
+    server.records.add(body.id);
+    const { id, ...settings } = body;
+    server.held.set(id, { ...settings, allowed_tools: [] });
+    return json(201, { id, server_url: body.server_url });
+  }
+  const [, id, action] = path.split('/');
+  if (method === 'DELETE') {
+    server.records.delete(id);
+    server.held.delete(id);
+    return json(200, {});
+  }
+  if (!server.records.has(id)) return json(404, { detail: { error: 'custom_connection_missing' } });
+  if (method === 'PUT' && action === 'held') {
+    server.held.set(id, { ...server.held.get(id), ...body });
+    return json(200, {});
+  }
+  if (method === 'PUT' && action === 'allowed-tools') {
+    server.held.set(id, { ...server.held.get(id), allowed_tools: body.tools });
+    return json(200, { allowed_tools: body.tools });
+  }
+  if (method === 'GET' && action === 'tools') {
+    if (server.tools === 'unreachable') return json(502, { detail: { error: 'unreachable' } });
+    return json(200, { tools: server.tools });
+  }
+  return json(404, { detail: 'no route' });
+}
+
+type Answer = { status: number; headers?: Record<string, string>; json?: unknown };
+
+/** The MCP server and its authorization server, answering by "METHOD url". */
+function mcpServer(table: Record<string, Answer>) {
+  const requests: Array<{ url: string; init: GuardedRequestInit }> = [];
+  const fetchFn: GuardedFetch = async (input, init = {}) => {
+    requests.push({ url: String(input), init });
+    const answer = table[`${init.method ?? 'GET'} ${String(input)}`] ?? { status: 404 };
+    return new Response(answer.json === undefined ? '' : JSON.stringify(answer.json), { status: answer.status, headers: answer.headers });
+  };
+  return { fetchFn, requests };
+}
+
+const LOGIN_SERVER: Record<string, Answer> = {
+  [`POST ${SERVER_URL}`]: { status: 401, headers: { 'www-authenticate': 'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"' } },
+  'GET https://mcp.example.com/.well-known/oauth-protected-resource/mcp': {
+    status: 200, json: { resource: SERVER_URL, authorization_servers: [AUTH], scopes_supported: ['read'] },
+  },
+  'GET https://auth.example.com/.well-known/oauth-authorization-server': {
+    status: 200,
+    json: {
+      issuer: AUTH,
+      authorization_endpoint: `${AUTH}/authorize`,
+      token_endpoint: `${AUTH}/token`,
+      registration_endpoint: `${AUTH}/register`,
+      revocation_endpoint: `${AUTH}/revoke`,
+      code_challenge_methods_supported: ['S256'],
+      token_endpoint_auth_methods_supported: ['none', 'client_secret_basic'],
+    },
+  },
+  [`POST ${AUTH}/register`]: { status: 201, json: { client_id: 'registered-client', token_endpoint_auth_method: 'none' } },
+  [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-1', refresh_token: 'RT-1', token_type: 'Bearer', expires_in: 3600 } },
+};
+
+const NO_LOGIN_SERVER: Record<string, Answer> = { [`POST ${SERVER_URL}`]: { status: 200, json: { jsonrpc: '2.0', id: 1, result: {} } } };
+
+let ids: string[];
+function deps(table: Record<string, Answer>, overrides: Partial<ConnectDeps> = {}) {
+  const mcp = mcpServer(table);
+  const authorize = vi.fn(async () => ({ ok: true as const, code: 'code-1', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' }));
+  return {
+    mcp,
+    authorize,
+    deps: {
+      fetchFn: mcp.fetchFn,
+      authorize,
+      newId: () => ids.shift()!,
+      checkAuthorizeUrl: async (url: string) => new URL(url),
+      ...overrides,
+    } satisfies ConnectDeps,
+  };
+}
+
+const ID = `cm-${'a'.repeat(32)}`;
+const READ_TOOLS = [
+  { name: 'search', description: '', read_only: true, allowed: false },
+  { name: 'delete', description: '', read_only: false, allowed: false },
+];
+
+beforeEach(() => {
+  store.root = '/home/user/.cowork';
+  trust.protected = true;
+  trust.customMcp = true;
+  keychain.entries.clear();
+  keychain.failWrites = false;
+  keychain.failFind = false;
+  keychain.writesBeforeFailure = Infinity;
+  server.records.clear();
+  server.held.clear();
+  server.tools = READ_TOOLS;
+  server.calls = [];
+  server.canonical = (url) => url;
+  ids = [ID, `cm-${'b'.repeat(32)}`];
+  vi.stubGlobal('fetch', vi.fn(serverFetch));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('connectCustomMcp', () => {
+  it('asks to show the login host before opening the browser, and opens nothing yet', async () => {
+    const { deps: d, authorize } = deps(LOGIN_SERVER);
+
+    const result = await connectCustomMcp({ label: 'Tracker', url: SERVER_URL }, d);
+
+    expect(result).toEqual({ ok: false, code: 'confirm_login_host', loginHost: 'auth.example.com' });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(server.records.size).toBe(0);
+    expect(keychain.entries.size).toBe(0);
+  });
+
+  it('logs in with automatic registration, holds the settings and token, and switches on read-only tools', async () => {
+    const { deps: d, authorize, mcp } = deps(LOGIN_SERVER);
+
+    const result = await connectCustomMcp({ label: 'Tracker', url: SERVER_URL, confirmedLoginHost: 'auth.example.com' }, d);
+
+    expect(result).toEqual({ ok: true, id: ID, label: 'Tracker', serverUrl: SERVER_URL, toolsOn: 1, toolsUnavailable: false });
+    expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
+      authUrl: `${AUTH}/authorize`, clientId: 'registered-client', scopes: ['read'],
+      extraAuthParams: { resource: SERVER_URL }, redirectPort: 47295, redirectHost: '127.0.0.1',
+    }));
+    expect(mcp.requests.some((r) => r.url === `${AUTH}/register`)).toBe(true);
+    expect(server.held.get(ID)).toMatchObject({
+      server_url: SERVER_URL, label: 'Tracker', resource: SERVER_URL, token_endpoint: `${AUTH}/token`,
+      revocation_endpoint: `${AUTH}/revoke`, client_id: 'registered-client', access_token: 'AT-1', allowed_tools: ['search'],
+    });
+    const root = store.root!;
+    expect(await readPart(root, ID, 'refresh')).toBe('RT-1');
+    expect(JSON.parse((await readPart(root, ID, 'tools'))!)).toEqual(['search']);
+    expect(JSON.parse((await readPart(root, ID, 'settings'))!)).toMatchObject({ serverUrl: SERVER_URL, clientId: 'registered-client', authMethod: 'none' });
+    expect(await readPart(root, ID, 'secret')).toBeNull();
+  });
+
+  it('connects a server with no login without opening the browser or holding a token', async () => {
+    const { deps: d, authorize } = deps(NO_LOGIN_SERVER);
+
+    const result = await connectCustomMcp({ label: 'Docs', url: SERVER_URL }, d);
+
+    expect(result).toMatchObject({ ok: true, id: ID, toolsOn: 1 });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(server.held.get(ID)).not.toHaveProperty('access_token');
+    expect(await readPart(store.root!, ID, 'refresh')).toBeNull();
+  });
+
+  it('uses a given client ID and keeps its secret in the keychain only', async () => {
+    const { deps: d, mcp } = deps(LOGIN_SERVER);
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, clientId: 'mine', clientSecret: 'shh', confirmedLoginHost: 'auth.example.com' }, d);
+
+    expect(result.ok).toBe(true);
+    expect(mcp.requests.some((r) => r.url === `${AUTH}/register`)).toBe(false);
+    expect(await readPart(store.root!, ID, 'secret')).toBe('shh');
+    expect(JSON.stringify([...server.held.values()])).not.toContain('shh');
+  });
+
+  it('asks again when the login host changed since the user accepted one', async () => {
+    const { deps: d, authorize } = deps(LOGIN_SERVER);
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHost: 'other.example.com' }, d);
+
+    expect(result).toMatchObject({ code: 'confirm_login_host', loginHost: 'auth.example.com' });
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it('draws a new ID for every connection', async () => {
+    await connectCustomMcp({ label: 'One', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+    await connectCustomMcp({ label: 'Two', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+
+    expect([...server.records]).toEqual([ID, `cm-${'b'.repeat(32)}`]);
+  });
+
+  it('writes the keychain only after the server created the connection', async () => {
+    server.records.add(ID);
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+
+    expect(result).toMatchObject({ ok: false });
+    expect(keychain.entries.size).toBe(0);
+  });
+
+  it('undoes the connection when a keychain write fails part-way', async () => {
+    keychain.writesBeforeFailure = 3;
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+
+    expect(result).toMatchObject({ ok: false, code: 'keychain_unavailable' });
+    expect(server.records.has(ID)).toBe(false);
+    expect(await listConnectionIds(store.root!)).toEqual([]);
+  });
+
+  it('stops before anything when the keychain does not work', async () => {
+    keychain.failFind = true;
+    const { deps: d } = deps(NO_LOGIN_SERVER);
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'keychain_unavailable' });
+    expect(server.calls).toEqual([]);
+  });
+
+  it.each([
+    ['without the app secret', () => { trust.protected = false; }],
+    ['against a server without the custom MCP flag', () => { trust.customMcp = false; }],
+    ['with no running store', () => { store.root = null; }],
+  ])('refuses %s', async (_label, set) => {
+    set();
+    const { deps: d } = deps(NO_LOGIN_SERVER);
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'unavailable' });
+    expect(server.calls).toEqual([]);
+  });
+
+  it('refuses a URL whose form differs from the canonical one', async () => {
+    server.canonical = () => 'https://mcp.example.com/other';
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+
+    expect(result).toMatchObject({ ok: false, code: 'invalid_url' });
+    expect(server.records.size).toBe(0);
+  });
+
+  it('keeps every tool off with a notice when the server cannot list its tools', async () => {
+    server.tools = 'unreachable';
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+
+    expect(result).toMatchObject({ ok: true, toolsOn: 0, toolsUnavailable: true });
+    expect(server.held.get(ID)?.allowed_tools).toEqual([]);
+    expect(await readPart(store.root!, ID, 'tools')).toBe('[]');
+  });
+
+  it('reports a login the browser step did not finish, and creates nothing', async () => {
+    const { deps: d } = deps(LOGIN_SERVER, { authorize: async () => ({ ok: false, reason: 'cancelled' }) });
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHost: 'auth.example.com' }, d);
+
+    expect(result).toEqual({ ok: false, code: 'login_failed', reason: 'cancelled' });
+    expect(server.records.size).toBe(0);
+  });
+});
+
+describe('parseConnectRequest', () => {
+  it.each([
+    [null],
+    [{ url: SERVER_URL }],
+    [{ label: '   ', url: SERVER_URL }],
+    [{ label: 'x'.repeat(129), url: SERVER_URL }],
+    [{ label: 'T' }],
+    [{ label: 'T', url: 'x'.repeat(2049) }],
+    [{ label: 'T', url: SERVER_URL, clientId: 5 }],
+    [{ label: 'T', url: SERVER_URL, clientSecret: 'shh' }],
+    [{ label: 'T', url: SERVER_URL, clientId: 'x'.repeat(513) }],
+  ])('refuses %j', (raw) => {
+    expect(typeof parseConnectRequest(raw)).toBe('string');
+  });
+
+  it('trims the label and URL and drops empty optional fields', () => {
+    expect(parseConnectRequest({ label: ' T ', url: ` ${SERVER_URL} `, clientId: '', clientSecret: '' })).toEqual({ label: 'T', url: SERVER_URL });
+  });
+});

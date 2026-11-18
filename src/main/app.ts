@@ -28,6 +28,7 @@ import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefresh
 import { serverMayReceiveTokens, serverTrust } from './app-secret';
 import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNotionPagesInMain } from './notion-pages';
 import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
+import { connectCustomMcp } from './custom-mcp-connect';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
@@ -1132,6 +1133,8 @@ function setupIPC() {
       return { ok: false, reason: 'Could not change tool access.' };
     }
   });
+
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_CONNECT, (_event, opts) => connectCustomMcp(opts));
 
   // Desktop only, for the same reason: these read pages with the app-held token.
   ipcMain.handle(IPC.NOTION_SEARCH_PAGES, (_event, opts) => searchNotionPagesInMain(opts?.name, opts?.query));
