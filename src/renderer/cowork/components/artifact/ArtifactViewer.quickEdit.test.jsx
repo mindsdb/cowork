@@ -1208,6 +1208,27 @@ describe('ArtifactViewer quick edit bar', () => {
       expect(pressed('Live edit')).toBe('false');
     });
 
+    // ENG-4455: Stats is the third exclusive layer, so it asks first too.
+    it('asks before Stats turns Live edit off over unsaved text, then opens Stats', async () => {
+      publishMock.url = 'https://pages.example/launch-brief';
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.discard.mockClear();
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      fireEvent.click(toggle('Live edit'));
+      workspaceMock.dirty = true;
+
+      fireEvent.click(toggle('Stats'));
+      const prompt = screen.getByRole('alertdialog', { name: 'Turn off Live edit?' });
+      expect(pressed('Stats')).toBe('false');
+
+      fireEvent.click(within(prompt).getByRole('button', { name: 'Discard changes' }));
+
+      expect(workspaceMock.discard).toHaveBeenCalledTimes(1);
+      expect(pressed('Live edit')).toBe('false');
+      await waitFor(() => expect(pressed('Stats')).toBe('true'));
+    });
+
     it('shows a published artifact by its address, with copy and open-in-a-tab inside the pill', async () => {
       publishMock.url = 'https://pages.example/launch-brief';
       renderViewer();
