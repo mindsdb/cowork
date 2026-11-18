@@ -36,6 +36,7 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "CODING_TERMINAL_KILL": "coding:terminal-kill",
   "CODING_TERMINAL_RESIZE": "coding:terminal-resize",
   "CODING_TERMINAL_START": "coding:terminal-start",
+  "CONNECTIONS_CUSTOM_MCP_CONNECT": "connections:custom-mcp-connect",
   "CONNECTIONS_SET_ACCESS_MODE": "connections:set-access-mode",
   "INSTALL_CANCEL": "install:cancel",
   "INSTALL_CANCELLED": "install:cancelled",

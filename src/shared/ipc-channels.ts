@@ -81,6 +81,9 @@ export const IPC = {
   // Changes an MCP connection's tool access on the desktop: main writes the
   // keychain and calls the server with the app secret.
   CONNECTIONS_SET_ACCESS_MODE: 'connections:set-access-mode',
+  // Custom MCP servers added by URL (desktop, protected mode): main logs in,
+  // holds the keychain entries and calls the server with the app secret.
+  CONNECTIONS_CUSTOM_MCP_CONNECT: 'connections:custom-mcp-connect',
   // The chat's Notion page picker: main calls the server with the app secret.
   NOTION_SEARCH_PAGES: 'notion:search-pages',
   NOTION_FETCH_PAGE: 'notion:fetch-page',
