@@ -188,6 +188,7 @@ export function ArtifactViewerBody({
       active={showEditor}
       previewView={previewView}
       onExit={layers?.onExitSource || null}
+      editActions={layers?.editActions || null}
     />
   ) : null;
 

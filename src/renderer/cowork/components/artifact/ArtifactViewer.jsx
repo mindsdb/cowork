@@ -1666,10 +1666,10 @@ export function ArtifactViewer({
     setTextSelection,
   };
 
-  // The toolbar holds Save and Discard, so it shows while there is unsaved
-  // work even when the user hid it.
+  // Unsaved work lives in Live edit, whose own toolbar carries Save and
+  // Discard, so hiding this one hides nothing that work needs.
   const hasToolbar = !!workspace.currentRevision || !!layerControls;
-  const toolbarShown = hasToolbar && (!layout.toolbarHidden || !!workspace.dirty);
+  const toolbarShown = hasToolbar && !layout.toolbarHidden;
   const headerLayout = {
     ...layout,
     canHideToolbar: hasToolbar,
@@ -1712,6 +1712,7 @@ export function ArtifactViewer({
           onSave={() => saveWorkspace()}
           onDiscard={workspace.discard}
           onCompare={workspace.compareRevision}
+          saveInEditor={sourceOn}
         />
       )}
       {/* No revision line to sit on (a published page someone reviews, say):
@@ -1835,7 +1836,18 @@ export function ArtifactViewer({
 
       <ArtifactViewerBody
         // With the toolbar hidden, Live edit's own way out is in the editor.
-        layers={{ source: sourceOn, onExitSource: toolbarShown ? null : () => setSourceLayer(false) }}
+        layers={{
+          source: sourceOn,
+          onExitSource: toolbarShown ? null : () => setSourceLayer(false),
+          // Save and Discard, in Live edit's own toolbar.
+          editActions: {
+            dirty: !!workspace.dirty,
+            saving: workspace.status === 'saving',
+            canEdit: workspace.capabilities?.canEdit !== false,
+            onSave: () => saveWorkspace(),
+            onDiscard: workspace.discard,
+          },
+        }}
         workspace={{ ...workspaceView, save: saveWorkspace }}
         preview={previewModel}
         review={bodyReview}
