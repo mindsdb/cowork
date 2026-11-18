@@ -5,4 +5,4 @@
  * Record that the token's account opened Cowork web in this browser. The first
  * call per account decides `first_visit` for this document. Never throws.
  */
-export function noteAccountVisit(accessToken?: string, storage?: Storage | null): void;
+export function noteAccountVisit(accessToken?: string, storage?: Storage | null, session?: Storage | null, now?: number): void;

@@ -2436,6 +2436,8 @@ describe('the console arrival and the sign-up landing carry what grading needs',
     hostState.isElectron = false;
     getAccessToken.mockResolvedValue(fakeJwt({ sub, email: 'p@example.com', activate_organization: ORG }));
   };
+  // A first visit is kept in the tab (sessionStorage) for a reload; each case is a new tab.
+  beforeEach(() => { window.sessionStorage.clear(); });
   afterEach(() => { hostState.isElectron = true; });
 
   it('composer_ready carries the session organization as both the SSO and the acting organization', async () => {

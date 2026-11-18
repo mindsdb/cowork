@@ -15,6 +15,12 @@
 // The caches mean an account that used Cowork web before our mark existed
 // still reads as returning. It is still "this browser" only: a new browser,
 // a private window or cleared site data reads as a first visit.
+//
+// A first visit can reload before the arrival is recorded: Cowork reloads when
+// it clears another account's data from this browser, or when the organization
+// changes. By then our mark is written, so a first visit is also kept in this
+// tab for as long as a console link stays waiting, and a reload inside that
+// window reads it back.
 
 import { decodeJwtPayload } from './jwtClaims';
 
@@ -25,11 +31,28 @@ export const ANALYTICS_MERGED_SUB_KEY = 'cowork_identity_merged_sub';
 const VISITED_PREFIX = 'anton.coworkVisited:subject:';
 const ACCOUNT_CACHE_PREFIXES = ['anton.settingsCache:', 'anton.composerDrafts:', 'anton.orgBrandingCache:'];
 
+const FIRST_VISIT_KEY = 'anton.coworkFirstVisit';
+// The console handoff's own lifetime (consoleHandoff.js), so a link that is
+// still waiting is still read against the visit it arrived on.
+const FIRST_VISIT_MAX_AGE_MS = 10 * 60 * 1000;
+
 const decided = new Map();
 
 const localStore = () => {
   try { return window.localStorage; } catch { return null; }
 };
+const sessionStore = () => {
+  try { return window.sessionStorage; } catch { return null; }
+};
+
+function firstVisitKeptInTab(session, sub, now) {
+  try {
+    const kept = JSON.parse(session?.getItem(FIRST_VISIT_KEY) ?? 'null');
+    return kept?.sub === sub && typeof kept.at === 'number' && kept.at <= now && now - kept.at <= FIRST_VISIT_MAX_AGE_MS;
+  } catch {
+    return false;
+  }
+}
 
 function holdsAccountState(storage, sub) {
   const subject = encodeURIComponent(sub);
@@ -46,14 +69,21 @@ function holdsAccountState(storage, sub) {
 /** Record that the token's account opened Cowork web here. The first call per
     account decides `first_visit` for this document; later calls (a refreshed
     token) change nothing. Unknown when storage cannot be read. Never throws. */
-export function noteAccountVisit(accessToken, storage = localStore()) {
+export function noteAccountVisit(accessToken, storage = localStore(), session = sessionStore(), now = Date.now()) {
   const sub = decodeJwtPayload(accessToken)?.sub;
   if (typeof sub !== 'string' || !sub || decided.has(sub)) return;
   let first = null;
-  try {
-    if (storage) first = !holdsAccountState(storage, sub);
-  } catch {
-    first = null;
+  if (firstVisitKeptInTab(session, sub, now)) {
+    first = true;
+  } else {
+    try {
+      if (storage) first = !holdsAccountState(storage, sub);
+    } catch {
+      first = null;
+    }
+    if (first) {
+      try { session?.setItem(FIRST_VISIT_KEY, JSON.stringify({ sub, at: now })); } catch {}
+    }
   }
   decided.set(sub, first);
   try { storage?.setItem(`${VISITED_PREFIX}${encodeURIComponent(sub)}`, '1'); } catch {}

@@ -2,12 +2,14 @@
 // the account's from an earlier Cowork web visit.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { noteAccountVisit, isFirstVisit, __resetAccountVisitForTests } from './accountVisit';
+import { purgeStaleAccountState } from './accountLocalState';
 
 const b64url = (obj) => btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const tokenFor = (sub) => `${b64url({ alg: 'none' })}.${b64url({ sub, activate_organization: { id: 'org-1' } })}.sig`;
 
 beforeEach(() => {
   window.localStorage.clear();
+  window.sessionStorage.clear();
   __resetAccountVisitForTests();
 });
 
@@ -17,12 +19,54 @@ describe('account visit', () => {
     expect(isFirstVisit('user-new')).toBe(true);
   });
 
-  it('reads the next load in the same browser as a return', () => {
+  it('reads a later visit in the same browser as a return', () => {
     noteAccountVisit(tokenFor('user-a'));
-    __resetAccountVisitForTests(); // a new document
+    __resetAccountVisitForTests(); // a new document, in a new tab
+    window.sessionStorage.clear();
 
     noteAccountVisit(tokenFor('user-a'));
     expect(isFirstVisit('user-a')).toBe(false);
+  });
+
+  // Cowork reloads when it clears another account's data from the browser, and
+  // the console link is only taken once the composer is usable, so the arrival
+  // is recorded from the reloaded page, after our mark was written.
+  it("keeps a new account's first visit through the reload that clears another account's data", () => {
+    window.localStorage.setItem('anton.lastAccount', 'user-a');
+    window.localStorage.setItem('anton.settingsCache:subject:user-a:organization:org-1', '{}');
+
+    noteAccountVisit(tokenFor('user-b'));
+    expect(isFirstVisit('user-b')).toBe(true);
+    expect(purgeStaleAccountState('user-b', 'keep')).toBe(true);
+
+    __resetAccountVisitForTests(); // the reload: same tab, new document
+    noteAccountVisit(tokenFor('user-b'));
+    expect(isFirstVisit('user-b')).toBe(true);
+  });
+
+  it('stops reading a first visit back once the console link would have expired', () => {
+    const t0 = 1_000_000;
+    noteAccountVisit(tokenFor('user-a'), window.localStorage, window.sessionStorage, t0);
+    __resetAccountVisitForTests();
+
+    noteAccountVisit(tokenFor('user-a'), window.localStorage, window.sessionStorage, t0 + 10 * 60 * 1000 + 1);
+    expect(isFirstVisit('user-a')).toBe(false);
+  });
+
+  it("does not lend one account's first visit to another account in the same tab", () => {
+    noteAccountVisit(tokenFor('user-a'));
+    __resetAccountVisitForTests();
+    window.localStorage.setItem('anton.coworkVisited:subject:user-b', '1');
+
+    noteAccountVisit(tokenFor('user-b'));
+    expect(isFirstVisit('user-b')).toBe(false);
+  });
+
+  it('keeps nothing in the tab for a returning account', () => {
+    window.localStorage.setItem('anton.coworkVisited:subject:user-a', '1');
+    noteAccountVisit(tokenFor('user-a'));
+    expect(isFirstVisit('user-a')).toBe(false);
+    expect(window.sessionStorage.getItem('anton.coworkFirstVisit')).toBeNull();
   });
 
   // An account that used Cowork web before the mark existed has these caches,
