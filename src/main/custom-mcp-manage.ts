@@ -143,7 +143,19 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
       if (appSecretGeneration() !== generation || activeStoreRoot() !== storeRoot || !isCustomMcpAvailable()) {
         return { ok: false as const, code: 'server_changed', reason: 'The app switched accounts or restarted its server during the login.' };
       }
-      stopRefreshLoop(storeRoot, id);
+      // The login can outlast a disconnect: write nothing for a connection
+      // the server no longer has, and revoke the grant the login just made.
+      try {
+        await heldSummary(id);
+      } catch (err) {
+        if (login.tokens.refreshToken) {
+          await revokeToken(login.authorizationServer, login.client, { token: login.tokens.refreshToken, hint: 'refresh_token' }, deps.fetchFn)
+            .catch((revokeErr) => {
+              diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_revoke_failed', `[custom-mcp] could not revoke the new token of ${id}: ${errorName(revokeErr)}`);
+            });
+        }
+        throw err;
+      }
       const updated: StoredSettings = {
         ...settings,
         resource: login.resource,
@@ -183,7 +195,6 @@ export async function disconnectCustom(raw: unknown, deps: Pick<ConnectDeps, 'fe
   const where = target(raw);
   if (isFailure(where)) return where;
   const { storeRoot, id } = where;
-  stopRefreshLoop(storeRoot, id);
   // Under the lock, a refresh or hand-over in flight has saved its rotated
   // token first, which is the one to revoke, and none runs after.
   return withConnectionLock(storeRoot, id, () => removeConnection(storeRoot, id, deps));

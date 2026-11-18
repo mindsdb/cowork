@@ -337,6 +337,24 @@ describe('reconnect', () => {
     expect(await readPart(ROOT, ID, 'secret')).toBeNull();
   });
 
+  it('writes nothing and revokes the new grant when the connection was removed during the login', async () => {
+    await seed();
+    const { deps, requests } = loginServer();
+    deps.authorize = async () => {
+      // The user disconnects while the browser login is still open.
+      expect(await disconnectCustom({ id: ID }, deps)).toMatchObject({ ok: true });
+      return { ok: true as const, code: 'code-2', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' };
+    };
+
+    const result = await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps);
+
+    expect(result).toMatchObject({ ok: false, code: 'custom_connection_missing' });
+    expect(await listConnectionIds(ROOT)).toEqual([]);
+    expect(hasRefreshLoop(ROOT, ID)).toBe(false);
+    const revokes = requests.filter((r) => r.url === `${AUTH}/revoke`).map((r) => String(r.init.body));
+    expect(revokes.some((body) => body.includes('token=RT-new'))).toBe(true);
+  });
+
   it('refuses more confirmed hosts than a login can have', async () => {
     await seed();
     expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['a', 'b', 'c', 'd', 'e'] }, loginServer().deps)).toMatchObject({ code: 'invalid_request' });

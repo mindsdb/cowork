@@ -45,6 +45,10 @@ export function errorName(err: unknown): string {
   return err instanceof Error ? err.name : typeof err;
 }
 
+// A stuck call would hold the connection's lock; the tool listing waits on
+// the remote server too, so this is generous.
+const LOOPBACK_TIMEOUT_MS = 60_000;
+
 function routeUrl(suffix: string): string {
   return `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${CUSTOM_MCP_ENGINE}${suffix}`;
 }
@@ -54,6 +58,7 @@ async function send(method: string, suffix: string, body?: unknown): Promise<unk
     method,
     headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...authHeader(), ...appSecretHeader() },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(LOOPBACK_TIMEOUT_MS),
   });
   const data = await res.json().catch(() => null) as { detail?: unknown } | null;
   if (!res.ok) {
@@ -102,14 +107,17 @@ export async function heldSummary(id: string): Promise<{ label: string; server_u
 export async function deleteRecord(id: string): Promise<void> {
   const res = await fetch(
     `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${CUSTOM_MCP_ENGINE}/${encodeURIComponent(id)}`,
-    { method: 'DELETE', headers: authHeader() },
+    { method: 'DELETE', headers: authHeader(), signal: AbortSignal.timeout(LOOPBACK_TIMEOUT_MS) },
   );
   if (!res.ok && res.status !== 404) throw new CustomMcpRouteError(res.status, null, `the server answered ${res.status}`);
 }
 
 /** The custom connections the server has records for. */
 export async function listRecordIds(): Promise<string[]> {
-  const res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/`, { headers: authHeader() });
+  const res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/`, {
+    headers: authHeader(),
+    signal: AbortSignal.timeout(LOOPBACK_TIMEOUT_MS),
+  });
   if (!res.ok) throw new CustomMcpRouteError(res.status, null, `the server answered ${res.status}`);
   const rows = await res.json() as Array<{ engine?: unknown; name?: unknown }>;
   return rows.filter((row) => row.engine === CUSTOM_MCP_ENGINE && typeof row.name === 'string').map((row) => row.name as string);
