@@ -8295,6 +8295,40 @@
       "text": "0aab1db629ea"
     }
   },
+  "artifacts:comments.card.agentQueued": {
+    "de": {
+      "from": "661ff40a07e0",
+      "text": "e7bf084c9efb"
+    },
+    "es": {
+      "from": "661ff40a07e0",
+      "text": "d197619adfc6"
+    },
+    "fr": {
+      "from": "661ff40a07e0",
+      "text": "dee94fd486b9"
+    },
+    "it": {
+      "from": "661ff40a07e0",
+      "text": "097924137109"
+    },
+    "ja": {
+      "from": "661ff40a07e0",
+      "text": "2f3ee0fc0581"
+    },
+    "ko": {
+      "from": "661ff40a07e0",
+      "text": "6a0a0fec486c"
+    },
+    "pt-BR": {
+      "from": "661ff40a07e0",
+      "text": "56564f145e9b"
+    },
+    "zh-CN": {
+      "from": "661ff40a07e0",
+      "text": "d6f766f2adf5"
+    }
+  },
   "artifacts:comments.card.agentWorking": {
     "de": {
       "from": "3d63e6dabc96",
@@ -22473,6 +22507,108 @@
       "text": "2a4eec28dbdb"
     }
   },
+  "artifacts:quickEdit.comment.onArtifact": {
+    "de": {
+      "from": "f2707d17d7c0",
+      "text": "9e20213c8357"
+    },
+    "es": {
+      "from": "f2707d17d7c0",
+      "text": "af5c71842626"
+    },
+    "fr": {
+      "from": "f2707d17d7c0",
+      "text": "2d0240e63712"
+    },
+    "it": {
+      "from": "f2707d17d7c0",
+      "text": "3c1fd5927a92"
+    },
+    "ja": {
+      "from": "f2707d17d7c0",
+      "text": "eff6f2c7e336"
+    },
+    "ko": {
+      "from": "f2707d17d7c0",
+      "text": "bc8e889c1d3e"
+    },
+    "pt-BR": {
+      "from": "f2707d17d7c0",
+      "text": "01167b825119"
+    },
+    "zh-CN": {
+      "from": "f2707d17d7c0",
+      "text": "13b4a3aa32f2"
+    }
+  },
+  "artifacts:quickEdit.comment.onElement": {
+    "de": {
+      "from": "35a6bcc3a861",
+      "text": "16503b5349b6"
+    },
+    "es": {
+      "from": "35a6bcc3a861",
+      "text": "5578ae75de7e"
+    },
+    "fr": {
+      "from": "35a6bcc3a861",
+      "text": "7338942faff4"
+    },
+    "it": {
+      "from": "35a6bcc3a861",
+      "text": "129cc2a519a6"
+    },
+    "ja": {
+      "from": "35a6bcc3a861",
+      "text": "1c17e227bcae"
+    },
+    "ko": {
+      "from": "35a6bcc3a861",
+      "text": "8c22d08d2d7d"
+    },
+    "pt-BR": {
+      "from": "35a6bcc3a861",
+      "text": "31ce91df69eb"
+    },
+    "zh-CN": {
+      "from": "35a6bcc3a861",
+      "text": "28e8b6759bfa"
+    }
+  },
+  "artifacts:quickEdit.comment.onText": {
+    "de": {
+      "from": "37c977dba0d0",
+      "text": "532b072d6f72"
+    },
+    "es": {
+      "from": "37c977dba0d0",
+      "text": "cd5e37a2c6ab"
+    },
+    "fr": {
+      "from": "37c977dba0d0",
+      "text": "94bf30b4d97e"
+    },
+    "it": {
+      "from": "37c977dba0d0",
+      "text": "3cce5b53ec20"
+    },
+    "ja": {
+      "from": "37c977dba0d0",
+      "text": "094ddec33a50"
+    },
+    "ko": {
+      "from": "37c977dba0d0",
+      "text": "b462bb3ff850"
+    },
+    "pt-BR": {
+      "from": "37c977dba0d0",
+      "text": "e5bbe3f7bcea"
+    },
+    "zh-CN": {
+      "from": "37c977dba0d0",
+      "text": "821ad95e45b8"
+    }
+  },
   "artifacts:quickEdit.errors.alreadyUndone": {
     "de": {
       "from": "a68a2fb2dc57",
@@ -23083,6 +23219,108 @@
     "zh-CN": {
       "from": "d9e5d617a5eb",
       "text": "50a3d06c0362"
+    }
+  },
+  "artifacts:quickEdit.queueLabel": {
+    "de": {
+      "from": "916b9b853c91",
+      "text": "275376db9c74"
+    },
+    "es": {
+      "from": "916b9b853c91",
+      "text": "dfc3e3fa0e61"
+    },
+    "fr": {
+      "from": "916b9b853c91",
+      "text": "2f6c8477e92b"
+    },
+    "it": {
+      "from": "916b9b853c91",
+      "text": "6f3524690512"
+    },
+    "ja": {
+      "from": "916b9b853c91",
+      "text": "e74820111e96"
+    },
+    "ko": {
+      "from": "916b9b853c91",
+      "text": "2517cae39bdb"
+    },
+    "pt-BR": {
+      "from": "916b9b853c91",
+      "text": "c454737d8f0f"
+    },
+    "zh-CN": {
+      "from": "916b9b853c91",
+      "text": "4f021f59121c"
+    }
+  },
+  "artifacts:quickEdit.queued": {
+    "de": {
+      "from": "661ff40a07e0",
+      "text": "e7bf084c9efb"
+    },
+    "es": {
+      "from": "661ff40a07e0",
+      "text": "d197619adfc6"
+    },
+    "fr": {
+      "from": "661ff40a07e0",
+      "text": "dee94fd486b9"
+    },
+    "it": {
+      "from": "661ff40a07e0",
+      "text": "097924137109"
+    },
+    "ja": {
+      "from": "661ff40a07e0",
+      "text": "2f3ee0fc0581"
+    },
+    "ko": {
+      "from": "661ff40a07e0",
+      "text": "6a0a0fec486c"
+    },
+    "pt-BR": {
+      "from": "661ff40a07e0",
+      "text": "56564f145e9b"
+    },
+    "zh-CN": {
+      "from": "661ff40a07e0",
+      "text": "d6f766f2adf5"
+    }
+  },
+  "artifacts:quickEdit.removeQueued": {
+    "de": {
+      "from": "c0b9d9e9ac1d",
+      "text": "a91c2d7a65e5"
+    },
+    "es": {
+      "from": "c0b9d9e9ac1d",
+      "text": "930cbc0c359c"
+    },
+    "fr": {
+      "from": "c0b9d9e9ac1d",
+      "text": "464b6b80e57c"
+    },
+    "it": {
+      "from": "c0b9d9e9ac1d",
+      "text": "f7ebcbc447b5"
+    },
+    "ja": {
+      "from": "c0b9d9e9ac1d",
+      "text": "31c78a453dfb"
+    },
+    "ko": {
+      "from": "c0b9d9e9ac1d",
+      "text": "80e807d9f77f"
+    },
+    "pt-BR": {
+      "from": "c0b9d9e9ac1d",
+      "text": "59edc3f0849b"
+    },
+    "zh-CN": {
+      "from": "c0b9d9e9ac1d",
+      "text": "07727c02a3ed"
     }
   },
   "artifacts:quickEdit.route.agent": {

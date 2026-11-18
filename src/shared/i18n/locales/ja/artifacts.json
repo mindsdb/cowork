@@ -146,7 +146,8 @@
       "reopen": "再開",
       "markResolved": "解決済みにする",
       "resolve": "解決",
-      "more": "その他"
+      "more": "その他",
+      "agentQueued": "待機中"
     },
     "errors": {
       "load": "コメントを読み込めませんでした",
@@ -712,6 +713,14 @@
       "discard": "破棄して送信",
       "cancel": "キャンセル",
       "saveFailed": "変更を保存できなかったため、何も送信されませんでした。"
+    },
+    "queued": "待機中",
+    "queueLabel": "実行待ち",
+    "removeQueued": "キューから削除",
+    "comment": {
+      "onArtifact": "アーティファクトへのこのコメントに対応してください：",
+      "onText": "テキスト「{quote}」へのこのコメントに対応してください：",
+      "onElement": "要素 `{selector}` へのこのコメントに対応してください："
     }
   },
   "stats": {

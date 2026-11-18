@@ -146,7 +146,8 @@
       "reopen": "Reopen",
       "markResolved": "Mark as resolved",
       "resolve": "Resolve",
-      "more": "More"
+      "more": "More",
+      "agentQueued": "Queued"
     },
     "errors": {
       "load": "Failed to load comments",
@@ -712,6 +713,14 @@
       "discard": "Discard and send",
       "cancel": "Cancel",
       "saveFailed": "Your changes couldn't be saved, so nothing was sent."
+    },
+    "queued": "Queued",
+    "queueLabel": "Waiting to run",
+    "removeQueued": "Remove from queue",
+    "comment": {
+      "onArtifact": "Address this comment on the artifact:",
+      "onText": "Address this comment on the text “{quote}”:",
+      "onElement": "Address this comment on the element `{selector}`:"
     }
   },
   "stats": {

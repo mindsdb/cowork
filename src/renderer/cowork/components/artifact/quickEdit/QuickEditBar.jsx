@@ -261,7 +261,10 @@ export function QuickEditBar({
   unsaved = false, onSaveUnsaved, onDiscardUnsaved,
 }) {
   const { t } = useTranslation('artifacts');
-  const { messages, running, direct = true, send, askAgent, undo, undoableId } = controller;
+  const {
+    messages, running, direct = true, send, askAgent, undo, undoableId,
+    queue = [], removeQueued,
+  } = controller;
   const [text, setText] = useState('');
   // Pasted or dropped images, sent with the message (ENG-4410).
   const attachments = useImageAttachments({ disabled: running });
@@ -298,7 +301,8 @@ export function QuickEditBar({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, threadHeight]);
 
-  const canSend = !running && !confirm && !!text.trim();
+  // A message sent while another runs joins the queue (useQuickEdit).
+  const canSend = !confirm && !!text.trim();
 
   const dispatch = useCallback((options) => {
     const message = text;
@@ -422,6 +426,26 @@ export function QuickEditBar({
             </button>
           </span>
         </div>
+      )}
+      {queue.length > 0 && (
+        <ol className="artifact-quick-edit-queue" aria-label={t('quickEdit.queueLabel')}>
+          {queue.map((entry) => (
+            <li key={entry.id} className="artifact-quick-edit-queued">
+              <span className="artifact-quick-edit-queued-tag">{t('quickEdit.queued')}</span>
+              <span className="artifact-quick-edit-queued-text">{entry.text}</span>
+              <Tooltip content={t('quickEdit.removeQueued')}>
+                <button
+                  type="button"
+                  className="mini-icon-btn shrink-0"
+                  aria-label={t('quickEdit.removeQueued')}
+                  onClick={() => removeQueued?.(entry.id)}
+                >
+                  {Ico.close(12)}
+                </button>
+              </Tooltip>
+            </li>
+          ))}
+        </ol>
       )}
       {(sendError || attachments.error) && (
         <div className="artifact-quick-edit-error artifact-quick-edit-hint" role="alert">{sendError || attachments.error}</div>

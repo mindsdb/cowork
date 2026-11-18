@@ -153,3 +153,20 @@ describe('InboxCard images', () => {
     expect(await screen.findByText('Image unavailable')).toBeInTheDocument();
   });
 });
+
+describe('InboxCard queued for the agent', () => {
+  it('says Queued and holds the button while the comment waits its turn', () => {
+    render(
+      <InboxCard
+        thread={THREAD}
+        viewer={{ user_id: 'owner', role: 'owner' }}
+        canResolve
+        canAddressWithAgent
+        agentQueued
+        onAddressWithAgent={vi.fn()}
+        onStatus={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Queued' })).toBeDisabled();
+  });
+});

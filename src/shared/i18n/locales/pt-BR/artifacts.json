@@ -146,7 +146,8 @@
       "reopen": "Reabrir",
       "markResolved": "Marcar como resolvido",
       "resolve": "Resolver",
-      "more": "Mais"
+      "more": "Mais",
+      "agentQueued": "Na fila"
     },
     "errors": {
       "load": "Falha ao carregar comentários",
@@ -712,6 +713,14 @@
       "discard": "Descartar e enviar",
       "cancel": "Cancelar",
       "saveFailed": "Não foi possível salvar suas alterações, então nada foi enviado."
+    },
+    "queued": "Na fila",
+    "queueLabel": "Aguardando a vez",
+    "removeQueued": "Remover da fila",
+    "comment": {
+      "onArtifact": "Resolva este comentário sobre o artefato:",
+      "onText": "Resolva este comentário sobre o texto “{quote}”:",
+      "onElement": "Resolva este comentário sobre o elemento `{selector}`:"
     }
   },
   "stats": {

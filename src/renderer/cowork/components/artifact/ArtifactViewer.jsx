@@ -44,6 +44,7 @@ import {
   uploadCommentImage,
 } from '../../lib/artifactWorkspaceApi';
 import { composeCommentText, threadImageFiles } from '../../lib/commentImages';
+import { commentFixMessage } from '../../lib/commentFixRequest';
 import { imageAttachment } from '../../lib/imageAttachments';
 import {
   RefusedDraftLink,
@@ -562,6 +563,19 @@ export function ArtifactViewer({
   }, [comments.markRead, comments.unreadCount, inboxOpen]);
 
   const addressCommentWithAgent = async (thread) => {
+    // With the "Ask for a change" bar, the comment is sent there as a message,
+    // so its progress shows where every other change does, and comments sent
+    // while one runs queue up behind it (ENG-4383).
+    if (canQuickEdit && thread?.id) {
+      if (quickEdit.runningThreadId === thread.id || quickEdit.queuedThreadIds.includes(thread.id)) return;
+      const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
+      // Not awaited: the bar shows the run, and the inbox follows it there.
+      void quickEdit.send(commentFixMessage(thread), {
+        images: imageFiles.map(imageAttachment),
+        threadId: thread.id,
+      });
+      return;
+    }
     if (!onAddressWithAgent || repairBusy) return;
     setRepairBusy(true);
     setErr('');
@@ -1707,6 +1721,10 @@ export function ArtifactViewer({
     onAddressWithAgent: documentType ? undefined : addressCommentWithAgent,
     onCreate: createArtifactComment,
     loadCommentImage: readCommentImage,
+    // Comments sent to the "Ask for a change" bar: the one it is on, and
+    // those waiting their turn.
+    agentRunningThreadId: canQuickEdit ? quickEdit.runningThreadId : null,
+    agentQueuedThreadIds: canQuickEdit ? quickEdit.queuedThreadIds : [],
     textSelection,
     setTextSelection,
   };

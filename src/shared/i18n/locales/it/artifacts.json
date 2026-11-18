@@ -146,7 +146,8 @@
       "reopen": "Riapri",
       "markResolved": "Segna come risolto",
       "resolve": "Risolvi",
-      "more": "Altro"
+      "more": "Altro",
+      "agentQueued": "In coda"
     },
     "errors": {
       "load": "Impossibile caricare i commenti",
@@ -712,6 +713,14 @@
       "discard": "Scarta e invia",
       "cancel": "Annulla",
       "saveFailed": "Non è stato possibile salvare le modifiche, quindi non è stato inviato nulla."
+    },
+    "queued": "In coda",
+    "queueLabel": "In attesa",
+    "removeQueued": "Rimuovi dalla coda",
+    "comment": {
+      "onArtifact": "Gestisci questo commento sull'artefatto:",
+      "onText": "Gestisci questo commento sul testo «{quote}»:",
+      "onElement": "Gestisci questo commento sull'elemento `{selector}`:"
     }
   },
   "stats": {

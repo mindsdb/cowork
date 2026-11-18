@@ -146,7 +146,8 @@
       "reopen": "Wieder öffnen",
       "markResolved": "Als erledigt markieren",
       "resolve": "Erledigt",
-      "more": "Mehr"
+      "more": "Mehr",
+      "agentQueued": "In Warteschlange"
     },
     "errors": {
       "load": "Kommentare konnten nicht geladen werden",
@@ -712,6 +713,14 @@
       "discard": "Verwerfen und senden",
       "cancel": "Abbrechen",
       "saveFailed": "Deine Änderungen konnten nicht gespeichert werden, daher wurde nichts gesendet."
+    },
+    "queued": "In Warteschlange",
+    "queueLabel": "Wartet auf Ausführung",
+    "removeQueued": "Aus der Warteschlange entfernen",
+    "comment": {
+      "onArtifact": "Bearbeite diesen Kommentar zum Artefakt:",
+      "onText": "Bearbeite diesen Kommentar zum Text „{quote}“:",
+      "onElement": "Bearbeite diesen Kommentar zum Element `{selector}`:"
     }
   },
   "stats": {

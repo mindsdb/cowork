@@ -146,7 +146,8 @@
       "reopen": "다시 열기",
       "markResolved": "해결됨으로 표시",
       "resolve": "해결",
-      "more": "더 보기"
+      "more": "더 보기",
+      "agentQueued": "대기 중"
     },
     "errors": {
       "load": "댓글을 불러오지 못했습니다",
@@ -712,6 +713,14 @@
       "discard": "버리고 보내기",
       "cancel": "취소",
       "saveFailed": "변경 사항을 저장하지 못해 아무것도 보내지 않았습니다."
+    },
+    "queued": "대기 중",
+    "queueLabel": "실행 대기",
+    "removeQueued": "대기열에서 제거",
+    "comment": {
+      "onArtifact": "아티팩트에 대한 이 댓글을 처리하세요:",
+      "onText": "텍스트 “{quote}”에 대한 이 댓글을 처리하세요:",
+      "onElement": "요소 `{selector}`에 대한 이 댓글을 처리하세요:"
     }
   },
   "stats": {

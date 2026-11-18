@@ -75,6 +75,8 @@ export function InboxCard({
   // thread is the one an agent is currently working on.
   agentBusy = false,
   agentWorking = false,
+  // Waiting its turn in the "Ask for a change" bar's queue.
+  agentQueued = false,
   onStatus,
   onAddressWithAgent,
   onRequestDelete, // ({ threadId }) → panel confirms + dispatches
@@ -175,12 +177,16 @@ export function InboxCard({
           <button
             type="button"
             className="artifact-comment-agent-action"
-            disabled={agentBusy || agentWorking}
+            disabled={agentBusy || agentWorking || agentQueued}
             aria-busy={agentBusy || agentWorking}
             onClick={() => onAddressWithAgent(thread)}
           >
             {Ico.sparkle(14)}
-            {agentWorking ? t('comments.card.agentWorking') : agentBusy ? t('comments.card.starting') : t('comments.card.addressWithAgent')}
+            {agentWorking
+              ? t('comments.card.agentWorking')
+              : agentQueued
+                ? t('comments.card.agentQueued')
+                : agentBusy ? t('comments.card.starting') : t('comments.card.addressWithAgent')}
           </button>
         )}
         {canResolve && (

@@ -146,7 +146,8 @@
       "reopen": "Rouvrir",
       "markResolved": "Marquer comme résolu",
       "resolve": "Résoudre",
-      "more": "Plus"
+      "more": "Plus",
+      "agentQueued": "En file d'attente"
     },
     "errors": {
       "load": "Impossible de charger les commentaires",
@@ -712,6 +713,14 @@
       "discard": "Abandonner et envoyer",
       "cancel": "Annuler",
       "saveFailed": "Vos modifications n'ont pas pu être enregistrées ; rien n'a été envoyé."
+    },
+    "queued": "En file d'attente",
+    "queueLabel": "En attente",
+    "removeQueued": "Retirer de la file d'attente",
+    "comment": {
+      "onArtifact": "Traite ce commentaire sur l'artefact :",
+      "onText": "Traite ce commentaire sur le texte « {quote} » :",
+      "onElement": "Traite ce commentaire sur l'élément `{selector}` :"
     }
   },
   "stats": {

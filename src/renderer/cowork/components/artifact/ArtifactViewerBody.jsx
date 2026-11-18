@@ -350,9 +350,9 @@ export function ArtifactViewerBody({
             capabilities={comments.capabilities}
             onStatus={review.onStatus || comments.setStatus}
             agentBusy={repairBusy}
-            agentWorkingThreadId={workspace.repair?.status === 'queued'
-              ? workspace.repair.commentThreadId
-              : null}
+            agentWorkingThreadId={review.agentRunningThreadId
+              || (workspace.repair?.status === 'queued' ? workspace.repair.commentThreadId : null)}
+            agentQueuedThreadIds={review.agentQueuedThreadIds}
             onAddressWithAgent={workspace.capabilities?.canAddressWithAgent !== false
               ? addressCommentWithAgent
               : undefined}

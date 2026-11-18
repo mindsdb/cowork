@@ -146,7 +146,8 @@
       "reopen": "重新打开",
       "markResolved": "标记为已解决",
       "resolve": "解决",
-      "more": "更多"
+      "more": "更多",
+      "agentQueued": "排队中"
     },
     "errors": {
       "load": "无法加载评论",
@@ -712,6 +713,14 @@
       "discard": "放弃并发送",
       "cancel": "取消",
       "saveFailed": "无法保存你的更改，因此未发送任何内容。"
+    },
+    "queued": "排队中",
+    "queueLabel": "等待执行",
+    "removeQueued": "从队列中移除",
+    "comment": {
+      "onArtifact": "处理关于此产物的这条评论：",
+      "onText": "处理关于文本“{quote}”的这条评论：",
+      "onElement": "处理关于元素 `{selector}` 的这条评论："
     }
   },
   "stats": {

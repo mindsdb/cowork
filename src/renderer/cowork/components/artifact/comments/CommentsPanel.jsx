@@ -45,6 +45,7 @@ export function CommentsPanel({
   onAddressWithAgent,
   agentBusy = false,
   agentWorkingThreadId = null,
+  agentQueuedThreadIds = [],
   onDeleteThread,
   onCreate,
   onClose,
@@ -185,6 +186,7 @@ export function CommentsPanel({
             canAddressWithAgent={capabilities?.canAddressWithAgent === true}
             agentBusy={agentBusy}
             agentWorking={agentWorkingThreadId === t.id}
+            agentQueued={(agentQueuedThreadIds || []).includes(t.id)}
             onStatus={onStatus}
             onAddressWithAgent={onAddressWithAgent}
             loadImage={loadImage}

@@ -463,3 +463,8 @@
   .artifact-mode-surface.is-source-side:not([hidden]) .artifact-html-edit-toolbar,
   .artifact-mode-surface.is-source-side:not([hidden]) .artifact-pane-label { animation: none; }
 }
+/* Messages waiting their turn in the quick edit bar (ENG-4383). */
+.artifact-quick-edit-queue { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.artifact-quick-edit-queued { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 4px 4px 10px; border: 1px dashed var(--line); border-radius: 10px; background: var(--surface-2); font: 12.5px/1.4 var(--font-body); color: var(--ink-3); }
+.artifact-quick-edit-queued-tag { flex: none; font-weight: 600; font-size: 11px; color: var(--ink-4); text-transform: uppercase; letter-spacing: .03em; }
+.artifact-quick-edit-queued-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }

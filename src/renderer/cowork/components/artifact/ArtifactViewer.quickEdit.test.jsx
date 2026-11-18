@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+const commentsPanel = vi.hoisted(() => ({ props: null }));
 const workspaceMock = vi.hoisted(() => ({
   supported: true,
   mode: 'preview',
@@ -97,7 +98,7 @@ vi.mock('./comments', () => ({
     mode: false, anchorStates: {}, onIframeLoad: vi.fn(), exitMode: vi.fn(),
     toggleMode: vi.fn(), focus: vi.fn(), hlOn: vi.fn(), hlOff: vi.fn(),
   }),
-  CommentsPanel: () => null,
+  CommentsPanel: (props) => { commentsPanel.props = props; return null; },
   CommentsToolbar: () => null,
 }));
 vi.mock('./workspace/useArtifactWorkspace', () => ({
@@ -557,7 +558,7 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(await within(thread()).findByRole('alert')).toHaveTextContent('The editor is not available.');
   });
 
-  it('disables send while an edit runs, and aborts it when the viewer closes', async () => {
+  it('queues a message sent while an edit runs, and aborts the edit when the viewer closes', async () => {
     let signal;
     workspaceApi.streamQuickEdit.mockImplementation((_a, _b, opts) => {
       signal = opts.signal;
@@ -568,16 +569,53 @@ describe('ArtifactViewer quick edit bar', () => {
     ask('Make the title blue');
     await waitFor(() => expect(signal).toBeDefined());
 
-    fireEvent.change(bar(), { target: { value: 'And bigger' } });
-    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
-    fireEvent.keyDown(bar(), { key: 'Enter' });
+    ask('And bigger');
     expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
+    const queue = screen.getByRole('list', { name: 'Waiting to run' });
+    expect(within(queue).getByText('And bigger')).toBeInTheDocument();
 
     await act(async () => {
       view.rerender(<ArtifactViewer open={false} artifact={artifact} onClose={vi.fn()} conversationId="conv-1" />);
     });
 
     expect(signal.aborted).toBe(true);
+  });
+
+  it('runs queued messages one after another, oldest first', async () => {
+    const finishes = [];
+    workspaceApi.streamQuickEdit.mockImplementation((_a, _body, { onEvent }) => new Promise((resolve) => {
+      finishes.push(() => { onEvent({ ...applied, summary: `Done ${finishes.length}.` }); resolve(); });
+    }));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    ask('First');
+    await waitFor(() => expect(finishes).toHaveLength(1));
+    ask('Second');
+    ask('Third');
+    expect(within(screen.getByRole('list', { name: 'Waiting to run' })).getAllByRole('listitem')).toHaveLength(2);
+
+    await act(async () => { finishes[0](); });
+    await waitFor(() => expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(2));
+    expect(workspaceApi.streamQuickEdit.mock.calls[1][1].message).toBe('Second');
+
+    await act(async () => { finishes[1](); });
+    await waitFor(() => expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(3));
+    expect(workspaceApi.streamQuickEdit.mock.calls[2][1].message).toBe('Third');
+    expect(screen.queryByRole('list', { name: 'Waiting to run' })).toBeNull();
+  });
+
+  it('drops a queued message on remove', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation(() => new Promise(() => {}));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    ask('First');
+    await waitFor(() => expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1));
+    ask('Second');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from queue' }));
+
+    expect(screen.queryByRole('list', { name: 'Waiting to run' })).toBeNull();
   });
 
   it('aborts a running edit when the viewer unmounts', async () => {
@@ -1384,4 +1422,63 @@ describe('ArtifactViewer layout controls', () => {
     expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Restore size', 'Close']);
   });
 
+});
+
+// "Address with agent" sends the comment to the "Ask for a change" bar, so
+// its progress shows there, and more than one queue up (ENG-4383).
+describe('ArtifactViewer comments to the change bar', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    workspaceMock.mode = 'preview';
+    workspaceMock.dirty = false;
+    workspaceMock.source = null;
+    workspaceMock.commentsReady = true;
+    workspaceMock.capabilities = { role: 'owner', canEdit: true, canQuickEdit: true, canAddressWithAgent: true };
+    workspaceMock.addressWithAgent.mockReset();
+    workspaceMock.draft = '';
+    workspaceMock.load.mockImplementation(async () => {});
+    publishMock.url = '';
+    vi.useRealTimers();
+    workspaceApi.loadArtifactDraftDocument.mockResolvedValue({
+      content: '<html><body>Hi</body></html>', contentType: 'text/html', isHtml: true,
+    });
+    workspaceApi.streamQuickEdit.mockReset();
+    commentsPanel.props = null;
+  });
+
+  const commentThread = (id, text) => ({ id, selector: 'h1', status: 'open', payload: { text, replies: [] } });
+
+  it('sends the comment as a bar message, queues a second, and marks both on the inbox', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation(() => new Promise(() => {}));
+    renderViewer();
+    await screen.findAllByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(commentThread('t1', 'Make it blue')); });
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(commentThread('t2', 'Shorter title')); });
+
+    expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
+    expect(workspaceApi.streamQuickEdit.mock.calls[0][1].message)
+      .toBe('Address this comment on the element `h1`:\n> Make it blue');
+    expect(within(thread()).getByText(/Make it blue/)).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Waiting to run' })).getByText(/Shorter title/)).toBeInTheDocument();
+    expect(commentsPanel.props.agentWorkingThreadId).toBe('t1');
+    expect(commentsPanel.props.agentQueuedThreadIds).toEqual(['t2']);
+    expect(workspaceMock.addressWithAgent).not.toHaveBeenCalled();
+  });
+
+  it('does not queue the same comment twice', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation(() => new Promise(() => {}));
+    renderViewer();
+    await screen.findAllByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(commentThread('t1', 'Make it blue')); });
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(commentThread('t1', 'Make it blue')); });
+
+    expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('list', { name: 'Waiting to run' })).toBeNull();
+  });
 });
