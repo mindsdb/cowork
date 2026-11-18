@@ -34,11 +34,10 @@ interface Loop {
   stopped: boolean;
   generation: string | null;
   fetchFn: GuardedFetch;
-  /** The refresh running now, if any. */
-  inFlight: Promise<void> | null;
 }
 
 const loops = new Map<string, Loop>();
+const chains = new Map<string, Promise<unknown>>();
 
 function loopKey(storeRoot: string, id: string): string {
   return `${storeRoot}|${id}`;
@@ -50,33 +49,50 @@ function delayUntilRefresh(expiresAt: number | undefined, now: number): number {
 }
 
 /**
+ * Runs `run` once every earlier holder of this connection's lock is done.
+ * Everything that changes a connection's tokens holds it: a loop's refresh,
+ * the start-up hand-over, reconnect and disconnect, so none of them writes a
+ * refresh token another has replaced or removed.
+ */
+export function withConnectionLock<T>(storeRoot: string, id: string, run: () => Promise<T>): Promise<T> {
+  const key = loopKey(storeRoot, id);
+  const previous = chains.get(key) ?? Promise.resolve();
+  const next = previous.then(run, run);
+  const tail = next.then(() => undefined, () => undefined);
+  chains.set(key, tail);
+  void tail.then(() => {
+    if (chains.get(key) === tail) chains.delete(key);
+  });
+  return next;
+}
+
+/**
  * Starts (or restarts) the refresh loop of one connection for the current
  * server run. `expiresAt` is the held token's expiry in milliseconds, if known.
  * Side effects: replaces any loop of the same store and id.
  */
 export function startRefreshLoop(storeRoot: string, id: string, expiresAt: number | undefined, fetchFn: GuardedFetch = customMcpFetch()): void {
   stopRefreshLoop(storeRoot, id);
-  const loop: Loop = { timer: null, stopped: false, generation: appSecretGeneration(), fetchFn, inFlight: null };
+  const loop: Loop = { timer: null, stopped: false, generation: appSecretGeneration(), fetchFn };
   loops.set(loopKey(storeRoot, id), loop);
   schedule(storeRoot, id, loop, delayUntilRefresh(expiresAt, Date.now()), 0);
 }
 
-/** Stops the loop of one connection, so no later refresh runs for it. */
-export function stopRefreshLoop(storeRoot: string, id: string): void {
-  const key = loopKey(storeRoot, id);
-  const loop = loops.get(key);
-  if (!loop) return;
+/** Stops `loop`, and removes it from the map only while it is still the
+ *  connection's loop, so a stopped loop never ends a newer one. */
+function stopLoop(storeRoot: string, id: string, loop: Loop): void {
   loop.stopped = true;
   if (loop.timer) clearTimeout(loop.timer);
-  loops.delete(key);
+  loop.timer = null;
+  const key = loopKey(storeRoot, id);
+  if (loops.get(key) === loop) loops.delete(key);
 }
 
-/** Stops the loop of one connection and waits for a refresh already
- *  running, so the keychain then holds whatever refresh token it saved. */
-export async function stopRefreshLoopAndSettle(storeRoot: string, id: string): Promise<void> {
+/** Stops the loop of one connection, so no later refresh runs for it. A
+ *  refresh already waiting on the lock sees the stop and does nothing. */
+export function stopRefreshLoop(storeRoot: string, id: string): void {
   const loop = loops.get(loopKey(storeRoot, id));
-  stopRefreshLoop(storeRoot, id);
-  await loop?.inFlight;
+  if (loop) stopLoop(storeRoot, id, loop);
 }
 
 /** Stops every loop, as the app quits. */
@@ -92,9 +108,10 @@ export function hasRefreshLoop(storeRoot: string, id: string): boolean {
 }
 
 function schedule(storeRoot: string, id: string, loop: Loop, delay: number, failures: number): void {
+  if (loop.stopped) return;
   loop.timer = setTimeout(() => {
     loop.timer = null;
-    loop.inFlight = refreshOnce(storeRoot, id, loop, failures).finally(() => { loop.inFlight = null; });
+    void withConnectionLock(storeRoot, id, () => refreshOnce(storeRoot, id, loop, failures));
   }, delay);
 }
 
@@ -105,14 +122,14 @@ function stillOwned(storeRoot: string, loop: Loop): boolean {
 
 async function refreshOnce(storeRoot: string, id: string, loop: Loop, failures: number): Promise<void> {
   if (!stillOwned(storeRoot, loop)) {
-    stopRefreshLoop(storeRoot, id);
+    stopLoop(storeRoot, id, loop);
     return;
   }
   try {
     const settings = await readStoredSettings(storeRoot, id);
     const tokens = settings ? await refreshedToken(storeRoot, id, settings, loop.fetchFn) : null;
     if (!tokens) {
-      stopRefreshLoop(storeRoot, id);
+      stopLoop(storeRoot, id, loop);
       return;
     }
     if (!stillOwned(storeRoot, loop)) return;
@@ -123,7 +140,7 @@ async function refreshOnce(storeRoot: string, id: string, loop: Loop, failures: 
     schedule(storeRoot, id, loop, delayUntilRefresh(tokens.expiresAt, Date.now()), 0);
   } catch (err) {
     if (err instanceof CustomMcpRouteError && err.status === 404 && err.error === CONNECTION_MISSING) {
-      stopRefreshLoop(storeRoot, id);
+      stopLoop(storeRoot, id, loop);
       await deleteKeychainEntries(storeRoot, id).catch((deleteErr) => {
         diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_cleanup_failed', `[custom-mcp] could not remove keychain entries of ${id}: ${errorName(deleteErr)}`);
       });
@@ -131,10 +148,10 @@ async function refreshOnce(storeRoot: string, id: string, loop: Loop, failures: 
     }
     if (err instanceof McpOAuthError && err.code === 'token_failed') {
       diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_refresh_refused', `[custom-mcp] the login server refused the refresh of ${id}; it needs reconnecting`);
-      stopRefreshLoop(storeRoot, id);
+      stopLoop(storeRoot, id, loop);
       return;
     }
     diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_refresh_failed', `[custom-mcp] refresh of ${id} failed: ${errorName(err)}`);
-    if (!loop.stopped) schedule(storeRoot, id, loop, RETRY_DELAYS_MS[failures] ?? RETRY_STEADY_MS, failures + 1);
+    schedule(storeRoot, id, loop, RETRY_DELAYS_MS[failures] ?? RETRY_STEADY_MS, failures + 1);
   }
 }

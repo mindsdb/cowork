@@ -23,7 +23,9 @@ vi.mock('keytar', () => ({
   },
 }));
 
-import { hasRefreshLoop, startRefreshLoop, stopRefreshLoop, stopRefreshLoopAndSettle } from './custom-mcp-refresh';
+import {
+  hasRefreshLoop, startRefreshLoop, stopAllCustomRefreshLoops, stopRefreshLoop, withConnectionLock,
+} from './custom-mcp-refresh';
 import { listConnectionIds, readPart, writePart } from './custom-mcp-keychain';
 
 const ROOT = '/home/user/.cowork';
@@ -202,8 +204,9 @@ describe('custom MCP refresh loops', () => {
     startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, gated);
     await vi.advanceTimersByTimeAsync(5 * 60_000);
 
+    stopRefreshLoop(ROOT, ID);
     let settled = false;
-    const stopping = stopRefreshLoopAndSettle(ROOT, ID).then(() => { settled = true; });
+    const stopping = withConnectionLock(ROOT, ID, async () => { settled = true; });
     await vi.advanceTimersByTimeAsync(0);
     expect(settled).toBe(false);
     release();
@@ -211,6 +214,40 @@ describe('custom MCP refresh loops', () => {
 
     expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-2');
     expect(server.puts).toEqual([]);
+  });
+
+  it('never lets a loop stopped mid-refresh end the loop that replaced it', async () => {
+    let releasePut = () => {};
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
+      if (server.puts.length === 0 && init.method === 'PUT') await new Promise<void>((resolve) => { releasePut = resolve; });
+      return serverFetch(input, init);
+    }));
+    startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, fetchFn);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+    // As reconnect does: a new loop while the old one's hand-over is in flight.
+    stopRefreshLoop(ROOT, ID);
+    startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, fetchFn);
+    releasePut();
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(login.calls).toBe(2);
+    await vi.advanceTimersByTimeAsync(HOUR);
+
+    expect(hasRefreshLoop(ROOT, ID)).toBe(true);
+    expect(login.calls).toBe(3);
+  });
+
+  it('stops every loop as the app quits', async () => {
+    const other = `cm-${'b'.repeat(32)}`;
+    startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, fetchFn);
+    startRefreshLoop('/home/user/.cowork|org', other, Date.now() + 10 * 60_000, fetchFn);
+
+    stopAllCustomRefreshLoops();
+    await vi.advanceTimersByTimeAsync(HOUR);
+
+    expect(hasRefreshLoop(ROOT, ID)).toBe(false);
+    expect(hasRefreshLoop('/home/user/.cowork|org', other)).toBe(false);
+    expect(login.calls).toBe(0);
   });
 
   it('runs no refresh after the loop is stopped', async () => {

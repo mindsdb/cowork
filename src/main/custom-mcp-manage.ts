@@ -16,7 +16,7 @@ import { deleteConnection as deleteKeychainEntries, deletePart, readPart, writeP
 import { deleteRecord, errorName, heldSummary, listTools, putAllowedTools, putHeld } from './custom-mcp-routes';
 import { readStoredSettings, readStoredTools, type StoredSettings } from './custom-mcp-tokens';
 import { writeToolSwitch } from './custom-mcp-held';
-import { startRefreshLoop, stopRefreshLoopAndSettle } from './custom-mcp-refresh';
+import { startRefreshLoop, stopRefreshLoop, withConnectionLock } from './custom-mcp-refresh';
 import { defaultDeps, failure, isConnectionId, logIn, type ConnectDeps } from './custom-mcp-connect';
 
 const MAX_TOOLS = 500;
@@ -137,34 +137,37 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
     }, deps);
     if (login === null) return { ok: true };
     if ('ok' in login) return login;
-    if (appSecretGeneration() !== generation || activeStoreRoot() !== storeRoot || !isCustomMcpAvailable()) {
-      return { ok: false, code: 'server_changed', reason: 'The app switched accounts or restarted its server during the login.' };
-    }
-    // A refresh still running would write the old grant's token over the new one.
-    await stopRefreshLoopAndSettle(storeRoot, id);
-    const updated: StoredSettings = {
-      ...settings,
-      resource: login.resource,
-      authorizationServer: login.authorizationServer,
-      clientId: login.client.clientId,
-      authMethod: login.client.authMethod,
-    };
-    await writePart(storeRoot, id, 'settings', JSON.stringify(updated));
-    if (login.client.clientSecret) await writePart(storeRoot, id, 'secret', login.client.clientSecret);
-    else await deletePart(storeRoot, id, 'secret');
-    if (login.tokens.refreshToken) await writePart(storeRoot, id, 'refresh', login.tokens.refreshToken);
-    else await deletePart(storeRoot, id, 'refresh');
-    await putHeld(id, {
-      resource: login.resource,
-      authorization_endpoint: login.authorizationServer.authorizationEndpoint,
-      token_endpoint: login.authorizationServer.tokenEndpoint,
-      ...(login.authorizationServer.revocationEndpoint ? { revocation_endpoint: login.authorizationServer.revocationEndpoint } : {}),
-      client_id: login.client.clientId,
-      access_token: login.tokens.accessToken,
-      ...(login.tokens.expiresAt ? { expires_at: new Date(login.tokens.expiresAt).toISOString() } : {}),
+    // Held for the writes: a refresh or hand-over of the old grant must not
+    // write its token over the new one, before or after.
+    return await withConnectionLock(storeRoot, id, async () => {
+      if (appSecretGeneration() !== generation || activeStoreRoot() !== storeRoot || !isCustomMcpAvailable()) {
+        return { ok: false as const, code: 'server_changed', reason: 'The app switched accounts or restarted its server during the login.' };
+      }
+      stopRefreshLoop(storeRoot, id);
+      const updated: StoredSettings = {
+        ...settings,
+        resource: login.resource,
+        authorizationServer: login.authorizationServer,
+        clientId: login.client.clientId,
+        authMethod: login.client.authMethod,
+      };
+      await writePart(storeRoot, id, 'settings', JSON.stringify(updated));
+      if (login.client.clientSecret) await writePart(storeRoot, id, 'secret', login.client.clientSecret);
+      else await deletePart(storeRoot, id, 'secret');
+      if (login.tokens.refreshToken) await writePart(storeRoot, id, 'refresh', login.tokens.refreshToken);
+      else await deletePart(storeRoot, id, 'refresh');
+      await putHeld(id, {
+        resource: login.resource,
+        authorization_endpoint: login.authorizationServer.authorizationEndpoint,
+        token_endpoint: login.authorizationServer.tokenEndpoint,
+        ...(login.authorizationServer.revocationEndpoint ? { revocation_endpoint: login.authorizationServer.revocationEndpoint } : {}),
+        client_id: login.client.clientId,
+        access_token: login.tokens.accessToken,
+        ...(login.tokens.expiresAt ? { expires_at: new Date(login.tokens.expiresAt).toISOString() } : {}),
+      });
+      if (login.tokens.refreshToken) startRefreshLoop(storeRoot, id, login.tokens.expiresAt, deps.fetchFn);
+      return { ok: true as const };
     });
-    if (login.tokens.refreshToken) startRefreshLoop(storeRoot, id, login.tokens.expiresAt, deps.fetchFn);
-    return { ok: true };
   } catch (err) {
     return failure(err);
   }
@@ -180,8 +183,15 @@ export async function disconnectCustom(raw: unknown, deps: Pick<ConnectDeps, 'fe
   const where = target(raw);
   if (isFailure(where)) return where;
   const { storeRoot, id } = where;
-  // Settled first: a refresh in flight saves a rotated token, which is the one to revoke.
-  await stopRefreshLoopAndSettle(storeRoot, id);
+  stopRefreshLoop(storeRoot, id);
+  // Under the lock, a refresh or hand-over in flight has saved its rotated
+  // token first, which is the one to revoke, and none runs after.
+  return withConnectionLock(storeRoot, id, () => removeConnection(storeRoot, id, deps));
+}
+
+async function removeConnection(storeRoot: string, id: string, deps: Pick<ConnectDeps, 'fetchFn'>): Promise<{ ok: true; revoked: boolean } | Failure> {
+  // A hand-over that held the lock before this may have started a loop.
+  stopRefreshLoop(storeRoot, id);
   let revoked = false;
   try {
     const settings = await readStoredSettings(storeRoot, id);
