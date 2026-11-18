@@ -396,6 +396,28 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     }
   }, [artifact, source]);
 
+  // A change to a published artifact (ENG-4409), shown before it goes live:
+  // both sides are read by id, since the source this closure holds may be the
+  // one from before the change landed. `review` rides along on the comparison
+  // for the viewer (which quick edit it was, so Undo can reach it).
+  const reviewPublish = useCallback(async (beforeId, afterId, review = {}) => {
+    if (!supported || !beforeId || !afterId || beforeId === afterId) return false;
+    const generation = workspaceGeneration.current;
+    try {
+      const [before, after] = await Promise.all([
+        loadArtifactRevision(artifact, beforeId),
+        loadArtifactRevision(artifact, afterId),
+      ]);
+      if (workspaceGeneration.current !== generation) return false;
+      setComparison({ kind: 'publish', before, after, afterContent: after?.content ?? '', review });
+      return true;
+    } catch (compareError) {
+      if (workspaceGeneration.current !== generation) return false;
+      setError(compareError.message || tr('loadRevisionFailed'));
+      return false;
+    }
+  }, [artifact, supported]);
+
   const restoreRevision = useCallback(async (revisionId) => {
     if (!source) {
       // Reachable when the source never loaded - a binary or oversized
@@ -575,6 +597,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     comparison,
     setComparison,
     compareRevision,
+    reviewPublish,
     restoreRevision,
     repair,
     repairPending,
@@ -589,7 +612,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     commentsOffReason,
     compareRevision, comparison, conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
     mode, previewOnly, refreshRepair, releaseRepairsForComment, repair, repairPending,
-    repairSuperseded, restoreRevision, revisions, save, source, status,
+    repairSuperseded, restoreRevision, reviewPublish, revisions, save, source, status,
     supported, unsupportedReason,
   ]);
 }

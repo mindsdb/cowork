@@ -24,6 +24,71 @@ const SERVER_HOST = '127.0.0.1';
 let serverProcess = null;
 let serverStarted = false;
 
+// The non-production PostHog project (NON_PROD_POSTHOG_KEY in
+// src/main/analytics-env.ts; a test keeps the two equal). Without these, anton
+// in a dev server reports its turns to production with no `environment`.
+const NON_PROD_POSTHOG_KEY = 'phc_zBzpZzh8kCPVpKeVyRRLNSfyTisRfLCq8SPhtiTHZway';
+
+/** A dev server's turns are ours: send them to the non-production project,
+ *  labelled `dev`, as the desktop app does for its dev kind. A variable the
+ *  developer set, exported or in a dotenv file that reaches anton
+ *  (`dotenvNames`), is left alone, even an empty one: anton's documented way
+ *  to switch the sink off is `ANTON_POSTHOG_KEY=` in such a file, and a
+ *  spawned value would outrank it. */
+export function devAnalyticsEnv(env = process.env, dotenvNames = new Set()) {
+  const isSet = (name) => env[name] !== undefined || dotenvNames.has(name);
+  const out = {};
+  if (!isSet('ANTON_POSTHOG_KEY')) out.ANTON_POSTHOG_KEY = NON_PROD_POSTHOG_KEY;
+  if (!isSet('ANTON_DEPLOYMENT_ENV')) out.ANTON_DEPLOYMENT_ENV = 'dev';
+  return out;
+}
+
+/** The `.env` cowork-server's own `load_dotenv()` loads into the environment
+ *  anton then reads: python-dotenv walks up from the calling module
+ *  (`cowork/cli.py`) and takes the first `.env` it finds, so with none in the
+ *  server dir it is a parent folder's. Undefined when there is none. */
+export function coworkServerDotenv(serverDir) {
+  let dir = path.join(serverDir, 'cowork');
+  for (;;) {
+    const file = path.join(dir, '.env');
+    if (fs.existsSync(file)) return file;
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+/** The names assigned in the dotenv files that reach anton for a server
+ *  running in `serverDir`, upper-cased: the ones anton reads itself (`.env`
+ *  and `.anton/.env` there, then `~/.anton/.env` and `~/.cowork/.env`), and
+ *  the one cowork-server loads (`coworkServerDotenv`). A line match, not
+ *  python-dotenv's full grammar (src/main/analytics-env.ts has that), which
+ *  is enough for a dev script. */
+export function antonDotenvNames(serverDir, home = os.homedir()) {
+  const files = new Set([
+    path.join(serverDir, '.env'),
+    path.join(serverDir, '.anton', '.env'),
+    path.join(home, '.anton', '.env'),
+    path.join(home, '.cowork', '.env'),
+  ]);
+  const loaded = coworkServerDotenv(serverDir);
+  if (loaded) files.add(loaded);
+  const names = new Set();
+  for (const file of files) {
+    let text;
+    try {
+      text = fs.readFileSync(file, 'utf-8');
+    } catch {
+      continue;
+    }
+    for (const line of text.split(/\r?\n/)) {
+      const m = line.match(/^\s*(?:export\s+)?['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?\s*=/);
+      if (m) names.add(m[1].toUpperCase());
+    }
+  }
+  return names;
+}
+
 // Locate the cowork-server directory. Convention: sibling of this repo
 // (../cowork-server relative to the cowork repo root). Override with
 // COWORK_SERVER_DIR env var for non-standard layouts.
@@ -90,6 +155,7 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
 
   const env = {
     ...process.env,
+    ...devAnalyticsEnv(process.env, antonDotenvNames(serverDir)),
     PATH: getEnvPath(),
     PYTHONUNBUFFERED: '1',
     // Pin the dev home; unset COWORK_HOME defaults to ~/.cowork (prod). Mirrors

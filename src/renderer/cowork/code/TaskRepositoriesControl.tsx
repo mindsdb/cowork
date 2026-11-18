@@ -21,6 +21,7 @@ export function TaskRepositoriesControl({
   resourceStates = [],
   computers = [],
   onApply,
+  onRefresh,
 }: {
   projectId: string;
   resources: ProjectResource[];
@@ -29,6 +30,8 @@ export function TaskRepositoriesControl({
   local: boolean;
   disabled?: boolean;
   onApply: (ids: string[], setup: TaskRepositorySetup | undefined) => void;
+  // Refresh re-reads the checkouts here; the owner re-checks what it knows of them.
+  onRefresh?: () => void;
   resourceStates?: ProjectResourceState[];
   computers?: CodeComputer[];
 }) {
@@ -101,7 +104,10 @@ export function TaskRepositoriesControl({
           error={error}
           local={local}
           leftOffset={leftOffset}
-          onRefresh={() => setRevision((value) => value + 1)}
+          onRefresh={() => {
+            setRevision((value) => value + 1);
+            onRefresh?.();
+          }}
           onClose={() => setOpen(false)}
           onApply={(ids, value) => {
             onApply(ids, local ? value : undefined);

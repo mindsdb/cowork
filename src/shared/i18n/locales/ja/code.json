@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "削除したタスクの一部のファイルを削除できませんでした。クリーンアップを再試行してディスク容量を解放してください。",
+    "retry": "クリーンアップを再試行",
+    "retrying": "クリーンアップを再試行中…",
+    "retryFailed": "クリーンアップを再試行できませんでした。もう一度お試しください。"
+  },
   "reviewPanel": {
     "ariaLabel": "変更を確認",
     "closeAriaLabel": "レビューパネルを閉じる",
@@ -1308,6 +1314,7 @@
     "record": {
       "approvalDenied": "承認が拒否されました",
       "approvalResolved": "承認が処理されました",
+      "folderBusy": "別のタスクがこのフォルダで作業中のため、このタスクはワークツリーで作業します。",
       "followUpDelivered": "追加の指示を送信しました",
       "requestRejected": "リクエストが拒否されました",
       "taskStatus": "タスクのステータス"
@@ -1412,7 +1419,8 @@
     "details": "詳細",
     "moreOptions": "その他のオプション",
     "dismiss": "閉じる",
-    "viewBudgets": "予算を表示"
+    "viewBudgets": "予算を表示",
+    "allowWrites": "編集を許可"
   },
   "composerNotices": {
     "thisModel": "このモデル",
@@ -1466,6 +1474,9 @@
     "budgetExceeded": {
       "title": "組織の予算を使い切りました",
       "body": "オーナーまたは管理者が「予算」で上限を引き上げられます。または、利用可能なモデルを選択してこのタスクを続けてください。"
+    },
+    "writesHeld": {
+      "body": "このフォルダには変更をレビューまたは元に戻すための Git 履歴がないため、エージェントは編集のたびに確認します。"
     }
   },
   "planModeCommand": {
@@ -1624,6 +1635,16 @@
     },
     "initializeGit": "Git を初期化",
     "initializeFailed": "Git を初期化できませんでした。もう一度お試しください。",
-    "unavailable": "このフォルダーで利用できるワークスペースモードはありません。"
+    "unavailable": "このフォルダーで利用できるワークスペースモードはありません。",
+    "reason": {
+      "notARepository": "このフォルダはGitリポジトリではありません。ワークツリーを使うには、Gitを初期化してください。",
+      "notARepositoryInFolder": "{folder}はGitリポジトリではありません。ワークツリーを使うには、Gitを初期化してください。",
+      "noCommits": "このリポジトリにはまだコミットがありません。ワークツリーを使うには、最初のコミットを作成してください。",
+      "noCommitsInFolder": "{folder}にはまだコミットがありません。ワークツリーを使うには、最初のコミットを作成してください。",
+      "noLocalCheckout": "{folder}には、このコンピュータ上に作業できるチェックアウトがありません。ワークツリーを選択してください。",
+      "inPlaceUnsupportedPlatform": "元のフォルダでの作業は、このプラットフォームではまだ利用できません。ワークツリーを選択してください。",
+      "inPlaceOtherComputer": "別のコンピュータ上のタスクは、分離されたワークツリーで実行されます。ワークツリーを選択してください。",
+      "sharedRepository": "2つのプロジェクトフォルダが同じリポジトリにあるため、両方をフォルダ内で直接作業させることはできません。ワークツリーを選択してください。"
+    }
   }
 }

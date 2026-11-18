@@ -15,6 +15,7 @@ import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
 import { launchLiveAppLabel } from '../../lib/liveAppState';
 import { DocumentPreview } from '../../preview/DocumentPreview';
 import { csvPreviewNotice } from './artifactPreviewUtils';
+import { usePresence } from './usePresence';
 import { useTranslation } from '../../../lib/i18n';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
@@ -87,6 +88,8 @@ export function ArtifactViewerBody({
   review,
   stats = null,
   agentReview,
+  // The publish review's actions (ArtifactComparison `publishReview`).
+  publishReview = null,
 }) {
   const { t } = useTranslation('artifacts');
   const {
@@ -113,6 +116,8 @@ export function ArtifactViewerBody({
     doc: previewDoc = '',
     kind: previewKind,
     iframeRef,
+    view: previewView = null,
+    onEditorView = null,
     title,
     iframeReady,
     setIframeReady,
@@ -124,7 +129,6 @@ export function ArtifactViewerBody({
     open: commentsOpen,
     enabled: commentsEnabled,
     inboxOpen,
-    setInboxOpen,
     markersShown,
     setMarkersShown,
     onToggle: toggleComments,
@@ -146,6 +150,10 @@ export function ArtifactViewerBody({
   const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
   const showEditor = (layers ? layers.source : workspace.mode === 'edit') && !!workspace.source;
   const [retainedEditorKey, setRetainedEditorKey] = useState('');
+  // The inbox slides out rather than vanishing when Comments turns off.
+  const inboxPresence = usePresence(
+    !!(commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId),
+  );
   // Rejecting restores the pre-agent content over head. Once the artifact has
   // moved on, that also discards the work written since, so the server refuses
   // until the user has been told exactly that and said yes.
@@ -183,6 +191,11 @@ export function ArtifactViewerBody({
       onSave={(content) => workspace.save('Edited artifact', content)}
       draftUrl={draftPreviewUrl}
       loadImage={loadDraftImage}
+      active={showEditor}
+      previewView={previewView}
+      onViewChange={onEditorView}
+      onExit={layers?.onExitSource || null}
+      editActions={layers?.editActions || null}
     />
   ) : null;
 
@@ -289,7 +302,7 @@ export function ArtifactViewerBody({
   return (
     <>
       {/* Text renders inline; other artifacts use a sandboxed iframe. */}
-      <div className={`artifact-viewer-body${commentsOpen && inboxOpen ? ' has-comments-inbox' : ''}`}>
+      <div className={`artifact-viewer-body${inboxPresence.mounted ? ' has-comments-inbox' : ''}`}>
         <div className="artifact-review-stage">
           <div className="artifact-viewer-canvas" style={{ overflow: isText ? 'auto' : 'hidden' }}>
             {/* A framed preview sits in its surface from the first render. The
@@ -308,17 +321,12 @@ export function ArtifactViewerBody({
               </>
             ) : showEditor ? sourceEditor : previewContent}
           </div>
-          {/* The compact toolbar is for placing and revealing comments. The
-              inbox replaces it while open so controls never overlap. */}
-          {commentsOpen && commentsEnabled && !inboxOpen && (
+          {/* The compact toolbar is for placing and revealing comments. It
+              shows with the inbox, and closing either turns Comments off. */}
+          {commentsOpen && commentsEnabled && (
             <CommentsToolbar
               mode={layer.mode}
-              onToggleMode={layer.toggleMode}
-              inboxOpen={inboxOpen}
-              onToggleInbox={() => setInboxOpen((v) => !v)}
-              markersShown={markersShown}
-              onToggleMarkers={() => setMarkersShown((v) => !v)}
-              onClose={toggleComments}
+              onChangeMode={(on) => (layer.setPlacing ? layer.setPlacing(on) : layer.toggleMode())}
             />
           )}
           {/* Stats replaces the comments chrome, so no composer opens beside it. */}
@@ -331,8 +339,9 @@ export function ArtifactViewerBody({
           )}
         </div>
         {/* Review is a docked workspace on desktop and a full panel on compact screens. */}
-        {commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId && (
+        {inboxPresence.mounted && (
           <CommentsPanel
+            leaving={inboxPresence.leaving}
             threads={comments.threads}
             anchorStates={layer.anchorStates}
             error={comments.error}
@@ -341,18 +350,20 @@ export function ArtifactViewerBody({
             capabilities={comments.capabilities}
             onStatus={review.onStatus || comments.setStatus}
             agentBusy={repairBusy}
-            agentWorkingThreadId={workspace.repair?.status === 'queued'
-              ? workspace.repair.commentThreadId
-              : null}
+            agentWorkingThreadId={review.agentRunningThreadId
+              || (workspace.repair?.status === 'queued' ? workspace.repair.commentThreadId : null)}
+            agentQueuedThreadIds={review.agentQueuedThreadIds}
             onAddressWithAgent={workspace.capabilities?.canAddressWithAgent !== false
               ? addressCommentWithAgent
               : undefined}
             onDeleteThread={comments.deleteThread}
+            onEditThread={comments.editThread}
             onCreate={createArtifactComment}
+            loadImage={review.loadCommentImage}
             onHoverThread={layer.hlOn}
             onLeaveThread={layer.hlOff}
             onFocusThread={layer.focus}
-            onClose={() => setInboxOpen(false)}
+            onClose={toggleComments}
           />
         )}
         {stats?.open && (
@@ -375,6 +386,7 @@ export function ArtifactViewerBody({
           baseUrl={draftPreviewUrl}
           onClose={() => workspace.setComparison(null)}
           onRestore={workspace.restoreRevision}
+          publishReview={publishReview}
           onReject={async () => {
             setRepairBusy(true);
             try {
