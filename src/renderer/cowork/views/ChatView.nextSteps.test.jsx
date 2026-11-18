@@ -33,6 +33,19 @@ describe('next steps under an answer', () => {
     expect(onSend).toHaveBeenCalledWith('Turn this into a web page I can share.', []);
   });
 
+  it('offers a page after a table written without outer pipes, which the chat renders as a table', () => {
+    const { container } = render(<ChatView
+      task={taskWith([
+        { id: 'u1', role: 'user', content: 'Find open grants for my NGO' },
+        { id: 'a1', role: 'assistant', content: 'Here they are.\n\nFunder | Deadline\n--- | ---\nA | Dec 31', steps: [] },
+      ])}
+      onSend={vi.fn()}
+      onScheduleFromChat={vi.fn()}
+    />);
+    expect(container.querySelector('table')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Turn it into a page' })).toBeInTheDocument();
+  });
+
   it('opens the schedule form with the message the answer replied to', () => {
     const onScheduleFromChat = vi.fn();
     render(<ChatView task={taskWith(tableTurn)} onSend={vi.fn()} onScheduleFromChat={onScheduleFromChat} />);

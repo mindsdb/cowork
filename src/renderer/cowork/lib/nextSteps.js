@@ -54,12 +54,56 @@ function messageText(content) {
   return '';
 }
 
-// A GFM table: a pipe row followed by its delimiter row.
-const TABLE_RE = /^\s*\|.*\|\s*\n\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/m;
 const LINK_RE = /https?:\/\/[^\s)\]>"']+/g;
 
+/*
+ * A table the chat renders, by GitHub-flavored Markdown's rule (remark-gfm,
+ * which MarkdownContent uses): a header row, then a delimiter row of `-`
+ * cells (`:` for alignment) with the same number of cells. Outer pipes are
+ * optional on both, and the header needs none, but the delimiter row needs at
+ * least one pipe, so a `---` rule under a line of prose is not a table. Rows
+ * indented as code or inside a fenced block don't count.
+ */
+const DELIMITER_CELL = /^\s*:?-+:?\s*$/;
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+
+function tableCells(line) {
+  let row = line.trim();
+  if (row.startsWith('|')) row = row.slice(1);
+  if (row.endsWith('|') && !row.endsWith('\\|')) row = row.slice(0, -1);
+  return row.split(/(?<!\\)\|/);
+}
+
+function isDelimiterRow(line) {
+  if (/^ {4,}/.test(line) || !/(?<!\\)\|/.test(line)) return false;
+  return tableCells(line).every((cell) => DELIMITER_CELL.test(cell));
+}
+
+function isHeaderRow(line) {
+  return !/^ {4,}/.test(line) && line.trim() !== '';
+}
+
 export function hasMarkdownTable(text) {
-  return typeof text === 'string' && TABLE_RE.test(text);
+  if (typeof text !== 'string') return false;
+  const lines = text.split(/\r?\n/);
+  let fence = null;
+  for (let i = 0; i < lines.length; i += 1) {
+    const open = lines[i].match(FENCE);
+    if (fence) {
+      if (open && open[1][0] === fence[0] && open[1].length >= fence.length) fence = null;
+      continue;
+    }
+    if (open) {
+      fence = open[1];
+      continue;
+    }
+    const next = lines[i + 1];
+    if (next !== undefined && isHeaderRow(lines[i]) && isDelimiterRow(next)
+      && tableCells(lines[i]).length === tableCells(next).length) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function distinctLinkCount(text) {

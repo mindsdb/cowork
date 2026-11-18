@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { FEATURED_EXAMPLES_MODE, TASK_MODES, exampleTakesOwnData } from '../components/taskmodes/taskModes';
 import {
   NEXT_STEP,
@@ -23,6 +27,32 @@ describe('reading the reply', () => {
     expect(hasMarkdownTable(TABLE)).toBe(true);
     expect(hasMarkdownTable('| a | b |\n| c | d |')).toBe(false);
     expect(hasMarkdownTable('no table here')).toBe(false);
+  });
+
+  // Each case is also rendered the way the chat renders Markdown
+  // (react-markdown with remark-gfm), so the rule and the renderer agree.
+  const renders = (text) => renderToStaticMarkup(createElement(Markdown, { remarkPlugins: [remarkGfm] }, text)).includes('<table');
+  it.each([
+    ['outer pipes', TABLE, true],
+    ['no outer pipes', 'Funder | Deadline\n--- | ---\nA | Dec 31', true],
+    ['no outer pipes, after prose', 'Here they are.\n\nFunder | Deadline\n--- | ---\nA | Dec 31', true],
+    ['one-dash cells and alignment', 'a | b\n:- | -:', true],
+    ['a single column', '| Funder |\n| --- |\n| A |', true],
+    ['a rule under prose', 'Some notes\n\n---\n\nMore notes', false],
+    ['a setext rule under a piped line', 'a | b\n---', false],
+    ['a single pipe in prose', 'Pipe it with `a | b` or use a | b.\nThen carry on.', false],
+    ['cell counts that differ', 'a | b | c\n--- | ---', false],
+    ['a table inside a fenced code block', '```\n| a | b |\n| --- | --- |\n```', false],
+    ['a table indented as code', '    | a | b |\n    | --- | --- |', false],
+    ['a header indented as code', '    a | b\n--- | ---', false],
+    ['a delimiter indented as code', 'a | b\n    --- | ---', false],
+    ['a one-cell header over a plain rule', '| a |\n---', false],
+    ['a header without pipes over a piped delimiter', 'Title\n|---|', true],
+    ['a table after a closed code fence', '```\ncode\n```\n\n| a | b |\n| --- | --- |', true],
+    ['a lone delimiter after a blank line', 'Notes\n\n|---|', false],
+  ])('%s', (_name, text, expected) => {
+    expect(hasMarkdownTable(text)).toBe(expected);
+    expect(renders(text)).toBe(expected);
   });
 
   it('counts distinct links, ignoring trailing punctuation', () => {
