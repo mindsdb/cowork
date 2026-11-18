@@ -57,9 +57,10 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 // The draft a first share starts from. With MindsHub UI on it starts on
 // Public, as it always has. With it off nothing is picked, so the person
 // chooses who can open the link first: `isAccessDraftValid` refuses a draft
-// with no mode, which keeps Share disabled until then.
-export function newAccessDraft() {
-  return { mode: PLATFORM_UI ? AUDIENCE_CHOICE.PUBLIC : '', password: '', emailsText: '', teamIds: [], userIds: [] };
+// with no mode, which keeps Share disabled until then. `preselect: false`
+// leaves nothing picked with MindsHub UI on too.
+export function newAccessDraft({ preselect = true } = {}) {
+  return { mode: PLATFORM_UI && preselect ? AUDIENCE_CHOICE.PUBLIC : '', password: '', emailsText: '', teamIds: [], userIds: [] };
 }
 
 // Seed a draft from an artifact's current (owner-side) access state, so

@@ -71,7 +71,9 @@
       "thumbnailAlt": "Artifact thumbnail",
       "deletedTitle": "This artifact was deleted",
       "liveArtifact": "live artifact",
-      "deletedBadge": "Deleted"
+      "deletedBadge": "Deleted",
+      "share": "Share",
+      "shareTooltip": "Choose who can open it"
     },
     "kinds": {
       "provider": "Provider",
@@ -226,7 +228,16 @@
         "notRead": "Queued: the task finished before it could read this."
       }
     },
-    "reconnecting": "Trying to reconnect"
+    "reconnecting": "Trying to reconnect",
+    "nextSteps": {
+      "groupLabel": "Next steps",
+      "ownData": "Do this with my own data",
+      "anotherFile": "Do the same to another file",
+      "makePage": "Turn it into a page",
+      "schedule": "Run this on a schedule",
+      "scheduled": "Scheduled “{title}”",
+      "scheduledDone": "Scheduled ✓"
+    }
   },
   "composer": {
     "placeholder": "Hi Boss, how can I help you today?",
@@ -749,6 +760,31 @@
     "noMicrophone": "No microphone found.",
     "couldNotStart": "Couldn't start the voice call.",
     "endedReason": "The call ended ({reason})."
+  },
+  "connectorDraft": {
+    "notSaved": "Connector template · not saved",
+    "kept": "You already keep a connector with this id. Saving again replaces it.",
+    "saved": "Saved. Add your credentials in Connect Apps and Data.",
+    "savedConnect": "Saved. Connect it to add your credentials.",
+    "saveFailed": "Could not save the connector.",
+    "button": {
+      "save": "Save connector",
+      "saveAgain": "Save again",
+      "saving": "Saving…",
+      "done": "Saved",
+      "connect": "Connect"
+    },
+    "modal": {
+      "fieldsTitle": "What you will enter",
+      "usageTitle": "How Anton will use it",
+      "helpUrl": "Where to find them: {url}"
+    },
+    "field": {
+      "secret": "secret",
+      "required": "required",
+      "optional": "optional",
+      "example": "Example: {value}"
+    }
   },
   "notionPicker": {
     "title": "Add pages from Notion",

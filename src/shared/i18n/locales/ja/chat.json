@@ -71,7 +71,9 @@
       "thumbnailAlt": "アーティファクトのサムネイル",
       "deletedTitle": "このアーティファクトは削除されました",
       "liveArtifact": "ライブアーティファクト",
-      "deletedBadge": "削除済み"
+      "deletedBadge": "削除済み",
+      "share": "共有",
+      "shareTooltip": "開けるユーザーを選択"
     },
     "kinds": {
       "provider": "プロバイダー",
@@ -226,7 +228,16 @@
         "notRead": "キューに追加：読み取る前にタスクが終了しました。"
       }
     },
-    "reconnecting": "再接続しています"
+    "reconnecting": "再接続しています",
+    "nextSteps": {
+      "groupLabel": "次のステップ",
+      "ownData": "自分のデータで同じことをする",
+      "anotherFile": "別のファイルにも同じことをする",
+      "makePage": "ページにする",
+      "schedule": "スケジュールで実行する",
+      "scheduled": "「{title}」をスケジュールしました",
+      "scheduledDone": "スケジュール済み ✓"
+    }
   },
   "composer": {
     "placeholder": "こんにちは。今日は何をお手伝いしましょうか？",
@@ -749,6 +760,31 @@
     "noMicrophone": "マイクが見つかりません。",
     "couldNotStart": "音声通話を開始できませんでした。",
     "endedReason": "通話が終了しました（{reason}）。"
+  },
+  "connectorDraft": {
+    "notSaved": "コネクタのテンプレート · 未保存",
+    "kept": "このIDのコネクタはすでに保存されています。もう一度保存すると置き換えられます。",
+    "saved": "保存しました。認証情報は「アプリとデータを接続」で追加してください。",
+    "savedConnect": "保存しました。接続して認証情報を追加してください。",
+    "saveFailed": "コネクタを保存できませんでした。",
+    "button": {
+      "save": "コネクタを保存",
+      "saveAgain": "もう一度保存",
+      "saving": "保存中…",
+      "done": "保存しました",
+      "connect": "接続"
+    },
+    "modal": {
+      "fieldsTitle": "入力する内容",
+      "usageTitle": "Antonによる利用方法",
+      "helpUrl": "入手先: {url}"
+    },
+    "field": {
+      "secret": "シークレット",
+      "required": "必須",
+      "optional": "任意",
+      "example": "例: {value}"
+    }
   },
   "notionPicker": {
     "title": "Notionからページを追加",

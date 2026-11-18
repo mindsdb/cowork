@@ -209,6 +209,8 @@ vi.mock('./lib/analytics', () => ({
   trackAddonAdded: vi.fn(),
   trackAddonQueued: vi.fn(),
   trackAddonOverridden: vi.fn(),
+  trackNextStepsShown: vi.fn(),
+  trackNextStepClicked: vi.fn(),
 }));
 
 import App, { unsavedRefusedQuestions } from './App';
