@@ -775,11 +775,7 @@
   },
   "layout": {
     "maximize": "Maximizar",
-    "restore": "Restaurar tamaño",
-    "hideToolbar": "Ocultar barra de herramientas",
-    "showToolbar": "Mostrar barra de herramientas",
-    "hideQuickEdit": "Ocultar edición rápida",
-    "showQuickEdit": "Mostrar edición rápida"
+    "restore": "Restaurar tamaño"
   },
   "imageAttachments": {
     "onlyImages": "Solo se pueden adjuntar imágenes PNG, JPEG, GIF y WebP.",

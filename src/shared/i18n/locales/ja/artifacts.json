@@ -775,11 +775,7 @@
   },
   "layout": {
     "maximize": "最大化",
-    "restore": "元のサイズに戻す",
-    "hideToolbar": "ツールバーを隠す",
-    "showToolbar": "ツールバーを表示",
-    "hideQuickEdit": "クイック編集を隠す",
-    "showQuickEdit": "クイック編集を表示"
+    "restore": "元のサイズに戻す"
   },
   "imageAttachments": {
     "onlyImages": "添付できるのは PNG、JPEG、GIF、WebP 画像のみです。",

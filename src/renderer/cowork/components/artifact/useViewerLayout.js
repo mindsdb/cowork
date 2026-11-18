@@ -1,17 +1,16 @@
 // How much room the artifact viewer gives the artifact (ENG-4387): the modal
-// maximized to the window, and the version toolbar and the quick-edit bar each
-// collapsed out of the way. Remembered on this device, like the layers, so the
+// maximized to the window. Remembered on this device, like the layers, so the
 // next artifact opens the same way. Storage can be unavailable (private mode,
-// blocked site data), so every read and write is guarded and the defaults
-// apply then: a normal-sized modal with everything shown.
+// blocked site data), so every read and write is guarded and the default
+// applies then: a normal-sized modal. (The toolbar and quick edit bar could be
+// hidden once; they always show now, and a saved choice to hide them is
+// ignored.)
 
 import { useCallback, useState } from 'react';
 
 export const LAYOUT_STORAGE_KEY = 'cowork.artifactViewer.layout.v1';
 export const DEFAULT_LAYOUT = Object.freeze({
   maximized: false,
-  toolbarHidden: false,
-  quickEditHidden: false,
 });
 const NAMES = Object.keys(DEFAULT_LAYOUT);
 

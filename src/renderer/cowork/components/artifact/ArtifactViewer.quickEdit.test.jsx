@@ -1352,65 +1352,36 @@ describe('ArtifactViewer layout controls', () => {
     expect(screen.getByRole('button', { name: 'Maximize' })).toBeInTheDocument();
   });
 
-  it('hides and brings back the toolbar and the quick edit bar, each on its own', async () => {
+  it('offers no way to hide the toolbar or the quick edit bar, and ignores an old choice to', async () => {
+    window.localStorage.setItem('cowork.artifactViewer.layout.v1', JSON.stringify({ toolbarHidden: true, quickEditHidden: true }));
     renderViewer();
     await screen.findByTitle('Launch brief');
-    expect(revisionBar()).not.toBeNull();
-    expect(bar()).not.toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide toolbar' }));
-    expect(revisionBar()).toBeNull();
-    expect(bar()).not.toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Hide quick edit' }));
-    expect(bar()).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show toolbar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Show quick edit' }));
+    expect(screen.queryByRole('button', { name: /toolbar/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /quick edit/i })).toBeNull();
     expect(revisionBar()).not.toBeNull();
     expect(bar()).not.toBeNull();
   });
 
-  it('keeps the toolbar hidden with unsaved work: Save is in Live edit\'s own toolbar', async () => {
-    window.localStorage.setItem('cowork.artifactViewer.layout.v1', JSON.stringify({ toolbarHidden: true }));
-    workspaceMock.dirty = true;
-    renderViewer();
-    await screen.findByTitle('Launch brief');
-
-    expect(revisionBar()).toBeNull();
-  });
-
-  it('opens the next artifact the way the last one was left', async () => {
+  it('opens the next artifact maximized when the last one was left so', async () => {
     const first = renderViewer();
     await screen.findByTitle('Launch brief');
     fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Hide toolbar' }));
     first.unmount();
 
     renderViewer();
     await screen.findByTitle('Launch brief');
     expect(modal()).toHaveAttribute('data-full-bleed', 'true');
-    expect(revisionBar()).toBeNull();
   });
 
-  it('keeps close at the end of the line in every layout', async () => {
+  it('keeps close at the end of the line, after maximize', async () => {
     renderViewer();
     await screen.findByTitle('Launch brief');
     fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Hide toolbar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Hide quick edit' }));
 
     const controls = document.querySelector('.artifact-viewer-window-controls');
     const buttons = within(controls).getAllByRole('button');
-    expect(buttons.at(-1)).toHaveAccessibleName('Close');
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Restore size', 'Close']);
   });
 
-  it('offers no quick edit toggle where there is no quick edit bar', async () => {
-    workspaceMock.capabilities = { role: 'owner', canEdit: true };
-    renderViewer();
-    await screen.findByTitle('Launch brief');
-
-    expect(screen.queryByRole('button', { name: 'Hide quick edit' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Maximize' })).toBeInTheDocument();
-  });
 });

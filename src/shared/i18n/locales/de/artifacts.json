@@ -775,11 +775,7 @@
   },
   "layout": {
     "maximize": "Maximieren",
-    "restore": "Größe wiederherstellen",
-    "hideToolbar": "Symbolleiste ausblenden",
-    "showToolbar": "Symbolleiste einblenden",
-    "hideQuickEdit": "Schnellbearbeitung ausblenden",
-    "showQuickEdit": "Schnellbearbeitung einblenden"
+    "restore": "Größe wiederherstellen"
   },
   "imageAttachments": {
     "onlyImages": "Nur PNG-, JPEG-, GIF- und WebP-Bilder können angehängt werden.",

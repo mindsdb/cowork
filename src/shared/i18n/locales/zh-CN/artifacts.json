@@ -775,11 +775,7 @@
   },
   "layout": {
     "maximize": "最大化",
-    "restore": "恢复大小",
-    "hideToolbar": "隐藏工具栏",
-    "showToolbar": "显示工具栏",
-    "hideQuickEdit": "隐藏快速编辑",
-    "showQuickEdit": "显示快速编辑"
+    "restore": "恢复大小"
   },
   "imageAttachments": {
     "onlyImages": "只能附加 PNG、JPEG、GIF 和 WebP 图片。",

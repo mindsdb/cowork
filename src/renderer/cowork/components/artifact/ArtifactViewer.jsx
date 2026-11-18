@@ -1711,14 +1711,11 @@ export function ArtifactViewer({
     setTextSelection,
   };
 
-  // Unsaved work lives in Live edit, whose own toolbar carries Save and
-  // Discard, so hiding this one hides nothing that work needs.
-  const hasToolbar = !!workspace.currentRevision || !!layerControls;
-  const toolbarShown = hasToolbar && !layout.toolbarHidden;
+  // The toolbar always shows where there is one; without one (no revision
+  // and no layer toggles), Live edit carries its own way out.
+  const toolbarShown = !!workspace.currentRevision || !!layerControls;
   const headerLayout = {
     ...layout,
-    canHideToolbar: hasToolbar,
-    canHideQuickEdit: canQuickEdit,
     onToggle: toggleLayout,
   };
 
@@ -1901,7 +1898,7 @@ export function ArtifactViewer({
         publishReview={publishReview}
       />
 
-      {canQuickEdit && !layout.quickEditHidden && (
+      {canQuickEdit && (
         <QuickEditBar
           controller={quickEdit}
           chatMessages={chatMessages}
