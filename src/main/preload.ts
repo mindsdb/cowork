@@ -115,6 +115,8 @@ contextBridge.exposeInMainWorld('antontron', {
   customMcpReconnect: (opts: { id: string; confirmedLoginHosts?: string[] }) =>
     ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_RECONNECT, opts),
   customMcpDisconnect: (opts: { id: string }) => ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_DISCONNECT, opts),
+  customMcpAvailable: () => ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_AVAILABLE),
+  customMcpSummary: (opts: { id: string }) => ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_SUMMARY, opts),
   notionSearchPages: (opts: { name: string; query: string }) =>
     ipcRenderer.invoke(IPC.NOTION_SEARCH_PAGES, opts),
   notionFetchPage: (opts: { name: string; page: string }) =>

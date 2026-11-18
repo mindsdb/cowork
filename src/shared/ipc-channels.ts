@@ -88,6 +88,8 @@ export const IPC = {
   CONNECTIONS_CUSTOM_MCP_SET_TOOLS: 'connections:custom-mcp-set-tools',
   CONNECTIONS_CUSTOM_MCP_RECONNECT: 'connections:custom-mcp-reconnect',
   CONNECTIONS_CUSTOM_MCP_DISCONNECT: 'connections:custom-mcp-disconnect',
+  CONNECTIONS_CUSTOM_MCP_AVAILABLE: 'connections:custom-mcp-available',
+  CONNECTIONS_CUSTOM_MCP_SUMMARY: 'connections:custom-mcp-summary',
   // The chat's Notion page picker: main calls the server with the app secret.
   NOTION_SEARCH_PAGES: 'notion:search-pages',
   NOTION_FETCH_PAGE: 'notion:fetch-page',

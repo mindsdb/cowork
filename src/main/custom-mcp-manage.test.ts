@@ -26,7 +26,7 @@ vi.mock('keytar', () => ({
   },
 }));
 
-import { disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
+import { customMcpAvailable, customSummary, disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
 import { listConnectionIds, readPart, writePart } from './custom-mcp-keychain';
 import { hasRefreshLoop, startRefreshLoop, stopRefreshLoop } from './custom-mcp-refresh';
 import type { ConnectDeps } from './custom-mcp-connect';
@@ -64,6 +64,9 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
   }
   if (!server.records.has(id)) return json(404, { detail: { error: 'custom_connection_missing' } });
   const body = init.body ? JSON.parse(String(init.body)) : undefined;
+  if (method === 'GET' && action === 'held-summary') {
+    return json(200, { label: 'Tracker', server_url: SERVER_URL });
+  }
   if (method === 'GET' && action === 'tools') {
     const allowed = (server.held.get(id)?.allowed_tools as string[]) ?? [];
     return json(200, { tools: ['search', 'delete'].map((name) => ({ name, description: '', read_only: name === 'search', allowed: allowed.includes(name) })) });
@@ -146,6 +149,25 @@ describe('every operation', () => {
     run.customMcp = false;
     expect(await operation({ id: ID })).toMatchObject({ ok: false, code: 'unavailable' });
     expect(await listConnectionIds(ROOT)).toEqual([ID]);
+  });
+});
+
+describe('availability and summary', () => {
+  it('offers custom MCP only with the flag and a running store', () => {
+    expect(customMcpAvailable()).toBe(true);
+    run.root = null;
+    expect(customMcpAvailable()).toBe(false);
+    run.root = ROOT;
+    run.customMcp = false;
+    expect(customMcpAvailable()).toBe(false);
+  });
+
+  it('gives the held label and URL, and the server\'s missing answer for a gone connection', async () => {
+    server.records.add(ID);
+    expect(await customSummary({ id: ID })).toEqual({ ok: true, label: 'Tracker', serverUrl: SERVER_URL });
+    server.records.delete(ID);
+    expect(await customSummary({ id: ID })).toMatchObject({ ok: false, code: 'custom_connection_missing' });
+    expect(await customSummary({ id: 'hubspot' })).toMatchObject({ ok: false, code: 'invalid_request' });
   });
 });
 

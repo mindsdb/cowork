@@ -29,7 +29,7 @@ import { serverMayReceiveTokens, serverTrust } from './app-secret';
 import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNotionPagesInMain } from './notion-pages';
 import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
 import { connectCustomMcp } from './custom-mcp-connect';
-import { disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
+import { customMcpAvailable, customSummary, disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
 import { stopAllCustomRefreshLoops } from './custom-mcp-refresh';
 import { CUSTOM_MCP_ENGINE } from './custom-mcp-routes';
 import { OAUTH_CREDENTIALS } from './credentials';
@@ -1143,6 +1143,8 @@ function setupIPC() {
   ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_SET_TOOLS, (_event, opts) => setCustomTools(opts));
   ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_RECONNECT, (_event, opts) => reconnectCustom(opts));
   ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_DISCONNECT, (_event, opts) => disconnectCustom(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_AVAILABLE, () => customMcpAvailable());
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_SUMMARY, (_event, opts) => customSummary(opts));
 
   // Desktop only, for the same reason: these read pages with the app-held token.
   ipcMain.handle(IPC.NOTION_SEARCH_PAGES, (_event, opts) => searchNotionPagesInMain(opts?.name, opts?.query));

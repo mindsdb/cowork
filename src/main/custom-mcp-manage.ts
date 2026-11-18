@@ -13,7 +13,7 @@ import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { activeStoreRoot } from './server-process';
 import { revokeToken, type OAuthClient } from './mcp-oauth';
 import { deleteConnection as deleteKeychainEntries, deletePart, readPart, writePart } from './custom-mcp-keychain';
-import { deleteRecord, errorName, listTools, putAllowedTools, putHeld } from './custom-mcp-routes';
+import { deleteRecord, errorName, heldSummary, listTools, putAllowedTools, putHeld } from './custom-mcp-routes';
 import { readStoredSettings, readStoredTools, type StoredSettings } from './custom-mcp-tokens';
 import { writeToolSwitch } from './custom-mcp-held';
 import { startRefreshLoop, stopRefreshLoopAndSettle } from './custom-mcp-refresh';
@@ -39,6 +39,24 @@ function target(raw: unknown): { storeRoot: string; id: string } | Failure {
 
 function isFailure<T extends object>(value: T | Failure): value is Failure {
   return 'ok' in value && value.ok === false;
+}
+
+/** Whether the screens may offer custom MCP servers: a protected server that
+ *  reports it keeps their settings, and a running store. */
+export function customMcpAvailable(): boolean {
+  return isCustomMcpAvailable() && activeStoreRoot() !== null;
+}
+
+/** The label and server URL the server holds for a connection, for its detail panel. */
+export async function customSummary(raw: unknown): Promise<{ ok: true; label: string; serverUrl: string } | Failure> {
+  const where = target(raw);
+  if (isFailure(where)) return where;
+  try {
+    const summary = await heldSummary(where.id);
+    return { ok: true, label: summary.label, serverUrl: summary.server_url };
+  } catch (err) {
+    return failure(err);
+  }
 }
 
 /** The server's tools with their read-only label and whether each is on. */
