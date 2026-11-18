@@ -147,7 +147,11 @@
       "markResolved": "Mark as resolved",
       "resolve": "Resolve",
       "more": "More",
-      "agentQueued": "Queued"
+      "agentQueued": "Queued",
+      "edit": "Edit",
+      "editAriaLabel": "Edit comment",
+      "pinned": "pinned",
+      "pinnedTip": "Pinned to a specific part of the artifact. Click the comment to go there."
     },
     "errors": {
       "load": "Failed to load comments",

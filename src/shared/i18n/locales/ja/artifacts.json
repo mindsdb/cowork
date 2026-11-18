@@ -147,7 +147,11 @@
       "markResolved": "解決済みにする",
       "resolve": "解決",
       "more": "その他",
-      "agentQueued": "待機中"
+      "agentQueued": "待機中",
+      "edit": "編集",
+      "editAriaLabel": "コメントを編集",
+      "pinned": "ピン留め",
+      "pinnedTip": "アーティファクトの特定の箇所にピン留めされています。コメントをクリックするとその場所に移動します。"
     },
     "errors": {
       "load": "コメントを読み込めませんでした",

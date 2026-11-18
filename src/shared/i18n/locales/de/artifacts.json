@@ -147,7 +147,11 @@
       "markResolved": "Als erledigt markieren",
       "resolve": "Erledigt",
       "more": "Mehr",
-      "agentQueued": "In Warteschlange"
+      "agentQueued": "In Warteschlange",
+      "edit": "Bearbeiten",
+      "editAriaLabel": "Kommentar bearbeiten",
+      "pinned": "angeheftet",
+      "pinnedTip": "An eine bestimmte Stelle des Artefakts angeheftet. Klicke auf den Kommentar, um dorthin zu gelangen."
     },
     "errors": {
       "load": "Kommentare konnten nicht geladen werden",

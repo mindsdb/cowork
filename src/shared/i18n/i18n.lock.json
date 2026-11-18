@@ -8431,6 +8431,74 @@
       "text": "9b0f0fc9289b"
     }
   },
+  "artifacts:comments.card.edit": {
+    "de": {
+      "from": "464c4ffd019e",
+      "text": "84e45ee73411"
+    },
+    "es": {
+      "from": "464c4ffd019e",
+      "text": "2eba946b2e1e"
+    },
+    "fr": {
+      "from": "464c4ffd019e",
+      "text": "42e37604b638"
+    },
+    "it": {
+      "from": "464c4ffd019e",
+      "text": "49e493ba9d9c"
+    },
+    "ja": {
+      "from": "464c4ffd019e",
+      "text": "11f9049ddab5"
+    },
+    "ko": {
+      "from": "464c4ffd019e",
+      "text": "87b0acef85a7"
+    },
+    "pt-BR": {
+      "from": "464c4ffd019e",
+      "text": "2eba946b2e1e"
+    },
+    "zh-CN": {
+      "from": "464c4ffd019e",
+      "text": "051836569928"
+    }
+  },
+  "artifacts:comments.card.editAriaLabel": {
+    "de": {
+      "from": "4f346f7772f1",
+      "text": "19dbb66fb893"
+    },
+    "es": {
+      "from": "4f346f7772f1",
+      "text": "f0083785faf3"
+    },
+    "fr": {
+      "from": "4f346f7772f1",
+      "text": "cdfba4603038"
+    },
+    "it": {
+      "from": "4f346f7772f1",
+      "text": "d75e9d71401b"
+    },
+    "ja": {
+      "from": "4f346f7772f1",
+      "text": "63dbf61c5cd6"
+    },
+    "ko": {
+      "from": "4f346f7772f1",
+      "text": "2c2dac0536ef"
+    },
+    "pt-BR": {
+      "from": "4f346f7772f1",
+      "text": "9102762110f2"
+    },
+    "zh-CN": {
+      "from": "4f346f7772f1",
+      "text": "64d7767474ea"
+    }
+  },
   "artifacts:comments.card.edited": {
     "de": {
       "from": "de44febe4cc8",
@@ -8803,6 +8871,74 @@
     "zh-CN": {
       "from": "db75acf418f2",
       "text": "0748e1639b65"
+    }
+  },
+  "artifacts:comments.card.pinned": {
+    "de": {
+      "from": "3fab5c181bd2",
+      "text": "916a52056fbf"
+    },
+    "es": {
+      "from": "3fab5c181bd2",
+      "text": "0cf63099b670"
+    },
+    "fr": {
+      "from": "3fab5c181bd2",
+      "text": "823bd7577f43"
+    },
+    "it": {
+      "from": "3fab5c181bd2",
+      "text": "96a0e778f828"
+    },
+    "ja": {
+      "from": "3fab5c181bd2",
+      "text": "d6fce0ce812f"
+    },
+    "ko": {
+      "from": "3fab5c181bd2",
+      "text": "1300f4beec76"
+    },
+    "pt-BR": {
+      "from": "3fab5c181bd2",
+      "text": "a9672fdb4b81"
+    },
+    "zh-CN": {
+      "from": "3fab5c181bd2",
+      "text": "317c1a85ec1c"
+    }
+  },
+  "artifacts:comments.card.pinnedTip": {
+    "de": {
+      "from": "38f07a92be70",
+      "text": "621c76d43188"
+    },
+    "es": {
+      "from": "38f07a92be70",
+      "text": "38873c61473a"
+    },
+    "fr": {
+      "from": "38f07a92be70",
+      "text": "53d34f3191ea"
+    },
+    "it": {
+      "from": "38f07a92be70",
+      "text": "f1f25ffdf96c"
+    },
+    "ja": {
+      "from": "38f07a92be70",
+      "text": "5070f57598a0"
+    },
+    "ko": {
+      "from": "38f07a92be70",
+      "text": "99621d86d175"
+    },
+    "pt-BR": {
+      "from": "38f07a92be70",
+      "text": "ffd28d3c531c"
+    },
+    "zh-CN": {
+      "from": "38f07a92be70",
+      "text": "6b75550e3986"
     }
   },
   "artifacts:comments.card.reopen": {

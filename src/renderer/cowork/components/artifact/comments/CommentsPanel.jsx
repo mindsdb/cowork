@@ -47,6 +47,8 @@ export function CommentsPanel({
   agentWorkingThreadId = null,
   agentQueuedThreadIds = [],
   onDeleteThread,
+  // Saves an edit of your own comment made right in its card.
+  onEditThread,
   onCreate,
   onClose,
   onHoverThread,
@@ -190,6 +192,7 @@ export function CommentsPanel({
             onStatus={onStatus}
             onAddressWithAgent={onAddressWithAgent}
             loadImage={loadImage}
+            onEditThread={onEditThread}
             onRequestDelete={setPendingDelete}
             onHover={onHoverThread}
             onLeave={onLeaveThread}

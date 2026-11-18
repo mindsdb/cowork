@@ -147,7 +147,11 @@
       "markResolved": "Segna come risolto",
       "resolve": "Risolvi",
       "more": "Altro",
-      "agentQueued": "In coda"
+      "agentQueued": "In coda",
+      "edit": "Modifica",
+      "editAriaLabel": "Modifica commento",
+      "pinned": "appuntato",
+      "pinnedTip": "Appuntato a una parte specifica dell'artefatto. Fai clic sul commento per andarci."
     },
     "errors": {
       "load": "Impossibile caricare i commenti",

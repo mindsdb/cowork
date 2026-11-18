@@ -147,7 +147,11 @@
       "markResolved": "Marcar como resuelto",
       "resolve": "Resolver",
       "more": "Más",
-      "agentQueued": "En cola"
+      "agentQueued": "En cola",
+      "edit": "Editar",
+      "editAriaLabel": "Editar comentario",
+      "pinned": "fijado",
+      "pinnedTip": "Fijado a una parte concreta del artefacto. Haz clic en el comentario para ir allí."
     },
     "errors": {
       "load": "No se pudieron cargar los comentarios",

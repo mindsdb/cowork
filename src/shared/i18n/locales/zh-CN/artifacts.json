@@ -147,7 +147,11 @@
       "markResolved": "标记为已解决",
       "resolve": "解决",
       "more": "更多",
-      "agentQueued": "排队中"
+      "agentQueued": "排队中",
+      "edit": "编辑",
+      "editAriaLabel": "编辑评论",
+      "pinned": "已固定",
+      "pinnedTip": "固定在产物的特定位置。点击评论即可跳转到该处。"
     },
     "errors": {
       "load": "无法加载评论",

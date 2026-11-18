@@ -357,6 +357,7 @@ export function ArtifactViewerBody({
               ? addressCommentWithAgent
               : undefined}
             onDeleteThread={comments.deleteThread}
+            onEditThread={comments.editThread}
             onCreate={createArtifactComment}
             loadImage={review.loadCommentImage}
             onHoverThread={layer.hlOn}
