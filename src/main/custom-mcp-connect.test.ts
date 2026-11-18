@@ -176,7 +176,7 @@ describe('connectCustomMcp', () => {
 
     const result = await connectCustomMcp({ label: 'Tracker', url: SERVER_URL }, d);
 
-    expect(result).toEqual({ ok: false, code: 'confirm_login_host', loginHost: 'auth.example.com' });
+    expect(result).toEqual({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] });
     expect(authorize).not.toHaveBeenCalled();
     expect(server.records.size).toBe(0);
     expect(keychain.entries.size).toBe(0);
@@ -185,7 +185,7 @@ describe('connectCustomMcp', () => {
   it('logs in with automatic registration, holds the settings and token, and switches on read-only tools', async () => {
     const { deps: d, authorize, mcp } = deps(LOGIN_SERVER);
 
-    const result = await connectCustomMcp({ label: 'Tracker', url: SERVER_URL, confirmedLoginHost: 'auth.example.com' }, d);
+    const result = await connectCustomMcp({ label: 'Tracker', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
 
     expect(result).toEqual({ ok: true, id: ID, label: 'Tracker', serverUrl: SERVER_URL, toolsOn: 1, toolsUnavailable: false });
     expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
@@ -218,7 +218,7 @@ describe('connectCustomMcp', () => {
   it('uses a given client ID and keeps its secret in the keychain only', async () => {
     const { deps: d, mcp } = deps(LOGIN_SERVER);
 
-    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, clientId: 'mine', clientSecret: 'shh', confirmedLoginHost: 'auth.example.com' }, d);
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, clientId: 'mine', clientSecret: 'shh', confirmedLoginHosts: ['auth.example.com'] }, d);
 
     expect(result.ok).toBe(true);
     expect(mcp.requests.some((r) => r.url === `${AUTH}/register`)).toBe(false);
@@ -229,10 +229,53 @@ describe('connectCustomMcp', () => {
   it('asks again when the login host changed since the user accepted one', async () => {
     const { deps: d, authorize } = deps(LOGIN_SERVER);
 
-    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHost: 'other.example.com' }, d);
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['other.example.com'] }, d);
 
-    expect(result).toMatchObject({ code: 'confirm_login_host', loginHost: 'auth.example.com' });
+    expect(result).toMatchObject({ code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] });
     expect(authorize).not.toHaveBeenCalled();
+  });
+
+  describe('when the token endpoint is on another host', () => {
+    const SPLIT: Record<string, Answer> = {
+      ...LOGIN_SERVER,
+      'GET https://auth.example.com/.well-known/oauth-authorization-server': {
+        status: 200,
+        json: {
+          ...(LOGIN_SERVER['GET https://auth.example.com/.well-known/oauth-authorization-server'].json as object),
+          token_endpoint: 'https://collector.example.net/token',
+          registration_endpoint: 'https://register.example.org/register',
+        },
+      },
+      'POST https://register.example.org/register': { status: 201, json: { client_id: 'registered-client', token_endpoint_auth_method: 'none' } },
+      'POST https://collector.example.net/token': { status: 200, json: { access_token: 'AT-1', token_type: 'Bearer' } },
+    };
+
+    it('names every host that receives credentials, the authorize host first', async () => {
+      const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, deps(SPLIT).deps);
+
+      expect(result).toEqual({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com', 'collector.example.net', 'register.example.org'] });
+    });
+
+    it('sends no code or client secret when only the authorize host was confirmed', async () => {
+      const { deps: d, authorize, mcp } = deps(SPLIT);
+
+      const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, clientId: 'mine', clientSecret: 'shh', confirmedLoginHosts: ['auth.example.com'] }, d);
+
+      expect(result).toEqual({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com', 'collector.example.net'] });
+      expect(authorize).not.toHaveBeenCalled();
+      expect(mcp.requests.some((r) => r.url.startsWith('https://collector.example.net'))).toBe(false);
+    });
+
+    it('goes on once every host was confirmed', async () => {
+      const { deps: d, mcp } = deps(SPLIT);
+
+      const result = await connectCustomMcp(
+        { label: 'T', url: SERVER_URL, confirmedLoginHosts: ['register.example.org', 'auth.example.com', 'collector.example.net'] }, d,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(mcp.requests.some((r) => r.url === 'https://collector.example.net/token')).toBe(true);
+    });
   });
 
   it('draws a new ID for every connection', async () => {
@@ -306,7 +349,7 @@ describe('connectCustomMcp', () => {
   it('reports a login the browser step did not finish, and creates nothing', async () => {
     const { deps: d } = deps(LOGIN_SERVER, { authorize: async () => ({ ok: false, reason: 'cancelled' }) });
 
-    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHost: 'auth.example.com' }, d);
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
 
     expect(result).toEqual({ ok: false, code: 'login_failed', reason: 'cancelled' });
     expect(server.records.size).toBe(0);

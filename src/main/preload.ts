@@ -108,7 +108,7 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.invoke(IPC.KEYCHAIN_REVOKE, opts),
   setConnectionAccessMode: (opts: { engine: string; name: string; accessMode: string }) =>
     ipcRenderer.invoke(IPC.CONNECTIONS_SET_ACCESS_MODE, opts),
-  customMcpConnect: (opts: { label: string; url: string; clientId?: string; clientSecret?: string; confirmedLoginHost?: string }) =>
+  customMcpConnect: (opts: { label: string; url: string; clientId?: string; clientSecret?: string; confirmedLoginHosts?: string[] }) =>
     ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_CONNECT, opts),
   notionSearchPages: (opts: { name: string; query: string }) =>
     ipcRenderer.invoke(IPC.NOTION_SEARCH_PAGES, opts),

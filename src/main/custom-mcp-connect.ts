@@ -5,17 +5,20 @@
  * the connection, writes its keychain entries, hands its settings and token
  * to the server, and switches its read-only tools on.
  *
- * The login host is shown before the browser opens: a first call that finds
- * a login answers `confirm_login_host`, and only a call naming that same host
- * goes on. Nothing is kept between the two calls.
+ * Every host that will receive login credentials (the authorize, token,
+ * registration and revocation endpoints' hosts) is shown before the browser
+ * opens: a first call that finds a login answers `confirm_login_hosts`, and
+ * only a call that confirmed each of those hosts goes on. A server cannot show a
+ * trusted authorize host while sending the code and a client secret to
+ * another one. Nothing is kept between the two calls.
  */
 
 import * as crypto from 'crypto';
-import { session } from 'electron';
 import { diagnostic } from '../shared/diagnostics';
 import { activeStoreRoot } from './server-process';
 import { isCustomMcpAvailable } from './app-secret';
-import { checkPublicHttpsUrl, createGuardedFetch, GuardedFetchError, type GuardedFetch } from './guarded-fetch';
+import { checkPublicHttpsUrl, GuardedFetchError, type GuardedFetch } from './guarded-fetch';
+import { customMcpFetch, type StoredSettings } from './custom-mcp-tokens';
 import {
   discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, registerClient,
   type AuthorizationServer, type OAuthClient, type TokenSet,
@@ -31,24 +34,14 @@ export interface CustomMcpConnectRequest {
   url: string;
   clientId?: string;
   clientSecret?: string;
-  /** The login host the user was shown and accepted. */
-  confirmedLoginHost?: string;
+  /** The login hosts the user was shown and accepted. */
+  confirmedLoginHosts?: string[];
 }
 
 export type CustomMcpConnectResult =
   | { ok: true; id: string; label: string; serverUrl: string; toolsOn: number; toolsUnavailable: boolean }
-  | { ok: false; code: 'confirm_login_host'; loginHost: string }
+  | { ok: false; code: 'confirm_login_hosts'; loginHosts: string[] }
   | { ok: false; code: string; reason: string };
-
-/** What main keeps in the keychain to refresh and revoke a connection's tokens. */
-export interface StoredSettings {
-  serverUrl: string;
-  label: string;
-  resource?: string;
-  authorizationServer?: AuthorizationServer;
-  clientId?: string;
-  authMethod?: OAuthClient['authMethod'];
-}
 
 export interface ConnectDeps {
   fetchFn: GuardedFetch;
@@ -62,6 +55,8 @@ const MAX_LABEL = 128;
 const MAX_URL = 2048;
 const MAX_CLIENT_FIELD = 512;
 const CONNECTION_ID = /^cm-[0-9a-f]{32}$/;
+const MAX_HOSTS = 4;
+const MAX_HOST = 255;
 
 export function isConnectionId(value: unknown): value is string {
   return typeof value === 'string' && CONNECTION_ID.test(value);
@@ -86,24 +81,24 @@ export function parseConnectRequest(raw: unknown): CustomMcpConnectRequest | str
   if (typeof input.url !== 'string' || !input.url.trim() || input.url.length > MAX_URL) return 'A server URL is required.';
   const clientId = optionalString(input.clientId, MAX_CLIENT_FIELD);
   const clientSecret = optionalString(input.clientSecret, MAX_CLIENT_FIELD);
-  const confirmedLoginHost = optionalString(input.confirmedLoginHost, MAX_URL);
-  if (clientId === null || clientSecret === null || confirmedLoginHost === null) return 'The client fields are not valid.';
+  const hosts = input.confirmedLoginHosts;
+  const confirmedLoginHosts = hosts === undefined || hosts === null ? undefined
+    : Array.isArray(hosts) && hosts.length <= MAX_HOSTS && hosts.every((host) => typeof host === 'string' && host.length > 0 && host.length <= MAX_HOST)
+      ? hosts as string[] : null;
+  if (clientId === null || clientSecret === null) return 'The client fields are not valid.';
+  if (confirmedLoginHosts === null) return 'The confirmed login hosts are not valid.';
   if (clientSecret && !clientId) return 'A client secret needs a client ID.';
   return {
     label,
     url: input.url.trim(),
     ...(clientId ? { clientId } : {}),
     ...(clientSecret ? { clientSecret } : {}),
-    ...(confirmedLoginHost ? { confirmedLoginHost } : {}),
+    ...(confirmedLoginHosts ? { confirmedLoginHosts } : {}),
   };
 }
 
-async function proxyConfigured(url: URL): Promise<boolean> {
-  return (await session.defaultSession.resolveProxy(url.href)).trim() !== 'DIRECT';
-}
-
 function defaultDeps(): ConnectDeps {
-  return { fetchFn: createGuardedFetch({ proxyConfigured }), authorize: authorizeInBrowser, newId: newConnectionId, checkAuthorizeUrl: (url) => checkPublicHttpsUrl(url) };
+  return { fetchFn: customMcpFetch(), authorize: authorizeInBrowser, newId: newConnectionId, checkAuthorizeUrl: (url) => checkPublicHttpsUrl(url) };
 }
 
 function failure(err: unknown): { ok: false; code: string; reason: string } {
@@ -117,17 +112,30 @@ function failure(err: unknown): { ok: false; code: string; reason: string } {
 
 type Login = { tokens: TokenSet; client: OAuthClient; resource: string; authorizationServer: AuthorizationServer };
 
+/** The hosts that receive login credentials, the authorize host first: the
+ *  token endpoint gets the code and any client secret, registration and
+ *  revocation get requests from this app. Registration only when it runs. */
+function credentialHosts(authorizeUrl: URL, as: AuthorizationServer, registering: boolean): string[] {
+  const endpoints = [as.tokenEndpoint, ...(registering && as.registrationEndpoint ? [as.registrationEndpoint] : []), ...(as.revocationEndpoint ? [as.revocationEndpoint] : [])];
+  return [...new Set([authorizeUrl.host, ...endpoints.map((endpoint) => new URL(endpoint).host)])];
+}
+
+function allConfirmed(confirmed: string[] | undefined, hosts: string[]): boolean {
+  return !!confirmed && hosts.every((host) => confirmed.includes(host));
+}
+
 /** Logs in when the server asks for it. Null for a server with no login. */
 async function logIn(
   serverUrl: string,
   request: CustomMcpConnectRequest,
   deps: ConnectDeps,
-): Promise<Login | null | { ok: false; code: 'confirm_login_host'; loginHost: string } | { ok: false; code: string; reason: string }> {
+): Promise<Login | null | { ok: false; code: 'confirm_login_hosts'; loginHosts: string[] } | { ok: false; code: string; reason: string }> {
   const discovery = await discoverMcpAuth(serverUrl, deps.fetchFn);
   if (!discovery.needsLogin) return null;
   const { authorizationServer, resource } = discovery;
   const authorizeUrl = await deps.checkAuthorizeUrl(authorizationServer.authorizationEndpoint);
-  if (request.confirmedLoginHost !== authorizeUrl.host) return { ok: false, code: 'confirm_login_host', loginHost: authorizeUrl.host };
+  const loginHosts = credentialHosts(authorizeUrl, authorizationServer, !request.clientId);
+  if (!allConfirmed(request.confirmedLoginHosts, loginHosts)) return { ok: false, code: 'confirm_login_hosts', loginHosts };
   const client = request.clientId
     ? givenClient(request.clientId, request.clientSecret, authorizationServer)
     : await registerClient(authorizationServer, CUSTOM_MCP_REDIRECT_URI, deps.fetchFn);
