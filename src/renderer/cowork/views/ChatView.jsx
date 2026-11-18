@@ -40,6 +40,7 @@ import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
+import ConnectorDraftCard from '../components/ConnectorDraftCard';
 import AskUserCard from '../components/AskUserCard';
 import HandOverCard from '../components/HandOverCard';
 import ChatCardShell, { cardActions } from '../components/ChatCardShell';
@@ -48,8 +49,10 @@ import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as 
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser, openBrowserAt } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
+import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
+import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { useLiveApps } from '../../lib/liveApps';
 import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
@@ -79,7 +82,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget, noPreviewDownloadedNote } from '../lib/artifactActions';
-import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
+import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactCardBySlug, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { displayModelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
@@ -100,6 +103,8 @@ import { ChatScroller } from '../components/chat/ChatScroller';
 import { useStickToBottom } from '../components/chat/useStickToBottom';
 import { useDockInset } from '../components/chat/useDockInset';
 import { TurnActions } from '../components/chat/TurnActions';
+import { NextSteps } from '../components/chat/NextSteps';
+import { nextStepsFor, offersNextSteps, scheduledPromptFor } from '../lib/nextSteps';
 import { UserTurn } from '../components/chat/UserTurn';
 import i18n, { currentLocale, useTranslation } from '../../lib/i18n';
 import { productName } from '../../lib/deploymentBrand';
@@ -633,7 +638,7 @@ export function artifactStepToCard(step, projectPath) {
 // down to the card because an artifact the agent created THIS turn cannot be in
 // an artifacts index that was loaded before it existed, and judging it against
 // one would mark a brand-new artifact "Deleted".
-function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
+function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
@@ -643,6 +648,7 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
           key={s.id}
           artifact={artifactStepToCard(s, projectPath)}
           onOpen={onOpen}
+          onShare={onShare}
           live={live}
         />
       ))}
@@ -688,7 +694,7 @@ function justFinished(message) {
    hand-over handed back or stopped follow the turn's Browser row. */
 const followsBrowserRow = (step) => answeredBrowserStep(step) || finishedHandOverStep(step);
 
-function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false, agentLabel = null, onMoveAddonToQueue = null }) {
+function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false, agentLabel = null, onMoveAddonToQueue = null, imageSource = null }) {
   // Only show the browser when I'm needed (Settings): a turn's browser steps
   // are one row, labelled by the latest (lib/browserSteps.js).
   const { onlyWhenNeeded } = useBrowserPrefs();
@@ -708,6 +714,22 @@ function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conver
   const out = [];
   let prevWasCard = false;
   segments.forEach((seg, idx) => {
+    if (seg.kind === 'image') {
+      out.push(
+        // A picture generate_image wrote, where it was made (ENG-4024). Same
+        // spacing as a tool's message: it is not part of a block.
+        <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          <GeneratedImageCard
+            image={seg.step.data || {}}
+            projectName={imageSource?.projectName ?? null}
+            projectPath={imageSource?.projectPath || ''}
+            onOpen={imageSource?.onOpen ?? null}
+          />
+        </div>,
+      );
+      prevWasCard = true;
+      return;
+    }
     if (seg.kind === 'message') {
       out.push(
         // Same spacing as a question card: the message is not part of a block.
@@ -832,17 +854,36 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
   );
 }
 
-export function ArtifactCard({ artifact, onOpen, live = false }) {
+// Renders any badge='Connector' steps as inline connector template cards: a
+// template a cloud turn built, which the member saves from the card.
+function StepConnectorDrafts({ steps, onConnect }) {
+  const drafts = steps?.filter((s) => s.badge === 'Connector') || [];
+  if (drafts.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3 mt-1">
+      {drafts.map((s) => (
+        <ConnectorDraftCard key={s.id} connector={s.data || {}} onConnect={onConnect} />
+      ))}
+    </div>
+  );
+}
+
+export function ArtifactCard({ artifact, onOpen, onShare = null, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
   // panel had already stopped offering them for the very same artifact.
   const { t } = useTranslation('chat');
   const orgMode = useOrgMode();
+  const liveApps = useLiveApps();
   // Same question the artifacts panel answers by simply not listing the row:
   // is this artifact still there? The card outlives the artifact because it is
   // rendered from the turn's persisted stream events, which no delete rewrites.
   const deleted = useArtifactLiveness(artifact, { live });
+  // A chat card carries no capabilities (only the artifacts list adds them),
+  // so the listed card for the same artifact says whether the person may edit it.
+  const listedCard = useArtifactCardBySlug(artifact.capabilities ? '' : artifact.slug);
+  const capabilities = artifact.capabilities || listedCard?.capabilities || null;
   const [status, setStatus] = useState(null);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
@@ -1097,8 +1138,27 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     ? { label: t('chatView.artifactCard.open'), onClick: openInDefaultApp, tooltip: t('chatView.artifactCard.openInDefaultApp') }
     : null;
   const secondaryAction = sharedLinkAction || downloadAction || openInAppAction;
+  /*
+   * Share offers the viewer's own Share panel, so it follows the viewer's rule
+   * for showing it: a page or document the person may edit, and not a full-stack
+   * live app without a page (those share through "Share with…"). Where nothing
+   * says whether they may edit it yet (an artifact the list hasn't loaded), the
+   * card offers Share and the viewer decides: it opens without the panel for
+   * someone who can't manage it. On Desktop the panel needs the local file,
+   * which the viewer would show disabled without.
+   */
+  const shareAction = onShare && !deleted
+    && isPublishableArtifact(artifact)
+    && !(liveApps && BACKEND_ARTIFACT_TYPES.has(artifact.type) && !published)
+    && capabilities?.canEdit !== false
+    && (orgMode || canAct)
+    ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(artifact), tooltip: t('chatView.artifactCard.shareTooltip') }
+    : null;
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
+  const openAction = !deleted && primaryAction
+    ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+    : null;
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -1170,14 +1230,25 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
       >
-        <ActionBar
-          size="sm"
-          align="start"
-          className="flex-wrap"
-          primary={!deleted && primaryAction
-            ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
-            : null}
-        />
+        {shareAction ? (
+          /* Preview stays the filled action, with Share a full outlined
+             button after it: ActionBar would put its secondary before the
+             primary, in the quiet style. */
+          <div className="flex min-w-0 flex-wrap items-center justify-start gap-1.5">
+            {openAction && (
+              <Tooltip content={openAction.tooltip} side="top">
+                <Button size="sm" variant="primary" disabled={openAction.disabled} onClick={openAction.onClick}>
+                  {openAction.label}
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip content={shareAction.tooltip} side="top">
+              <Button size="sm" variant="default" onClick={shareAction.onClick}>{shareAction.label}</Button>
+            </Tooltip>
+          </div>
+        ) : (
+          <ActionBar size="sm" align="start" className="flex-wrap" primary={openAction} />
+        )}
       </div>
       {/* The footer is the artifact's location bar: the path at rest, and the
           result of an action for the moment it is on screen. One or the
@@ -2076,6 +2147,8 @@ export default function ChatView({
   deletingTurnMessageId = null,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
+  // Opens a saved custom connector's connect form from its draft card.
+  onConnectCustomConnector,
   onDismissConnectForm,
   onCancelModify,
   onDisconnectModify,
@@ -2110,6 +2183,10 @@ export default function ChatView({
   // resurrects unanswered questions from persisted history, and a
   // click on one with no live run behind it would 404.
   inFlightSet,
+  // ({ prompt, projectId, answerKey }) — opens the new-schedule form filled
+  // in with the message a finished answer replied to; a save marks that
+  // answer scheduled (lib/scheduledAnswers). Without it, no schedule step.
+  onScheduleFromChat = null,
   // Pending composer redirects from App.jsx, keyed by conversation id:
   // {[taskId]: {text, attachments, bump}}. A question appeared while messages
   // were queued for that task, so their text and files are handed back to its
@@ -2189,15 +2266,25 @@ export default function ChatView({
   /* The figure source (a LinkedFigureSource) whose file is open in the
      figure viewer. null = closed. */
   const [figureFileSource, setFigureFileSource] = useState(null);
+  /* The project-relative path of a generated image open in the file viewer
+     (ENG-4024). null = closed. */
+  const [openImagePath, setOpenImagePath] = useState(null);
   // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
   // iframe modal; text artifacts (.md/.txt/.csv) open the same viewer
   // but render via the inline text path (no iframe, no OS handoff).
   // Anything else still routes through the Electron OS handler via
   // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
+  // A new object per Share click, so the viewer opens its panel once per click.
+  const [previewShare, setPreviewShare] = useState(null);
   const handleArtifactOpen = (artifact) => {
     // The card already filters: it only calls onOpen for previewable
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
+    setPreviewShare(null);
+    setPreviewArt(artifact);
+  };
+  const handleArtifactShare = (artifact) => {
+    setPreviewShare({});
     setPreviewArt(artifact);
   };
   // Task settings menu (kebab in header).
@@ -2287,6 +2374,16 @@ export default function ChatView({
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
+  // Where an inline generated image (ENG-4024) is read from: the project the
+  // chat runs in, whose folder is Anton's workspace. The project's slug
+  // addresses its files route and is never shown. Memoised so the turn
+  // segments it rides into don't re-render on its account.
+  const projectSlug = project?.name ?? null;
+  const generatedImageSource = useMemo(() => ({
+    projectName: projectSlug,
+    projectPath: artifactProjectPath,
+    onOpen: setOpenImagePath,
+  }), [projectSlug, artifactProjectPath]);
   // Which project's artifacts the liveness store should describe. An effect, not
   // a render-time call: the store emits. Both deps are primitives, so an equal
   // scope cannot re-trigger it.
@@ -3870,6 +3967,7 @@ export default function ChatView({
                     // Only right after it finished live: reopening the task
                     // later shows the steps already folded.
                     collapseOnMount={justFinished(m)}
+                    imageSource={generatedImageSource}
                   />
                   <TextBlock
                     text={m.content}
@@ -3888,10 +3986,47 @@ export default function ChatView({
                     <ArtifactCard
                       artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
                       onOpen={handleArtifactOpen}
+                      onShare={handleArtifactShare}
                     />
                   )}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
+                  <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
+                  {(() => {
+                    if (!onSend || !offersNextSteps({
+                      isLatest: i === lastTurnIdx,
+                      inFlight: isStreaming || !!inFlightSet?.has(task.id),
+                      answer: m,
+                      followedByFailure: visibleMessages.slice(i + 1)
+                        .some((row) => row.role === 'error' || row.role === 'provider_required'),
+                    })) return null;
+                    let u = i - 1;
+                    while (u >= 0 && visibleMessages[u].role !== 'user') u -= 1;
+                    const userMessage = u >= 0 ? visibleMessages[u] : null;
+                    const firstUserIdx = visibleMessages.findIndex((row) => row.role === 'user');
+                    const { resultKind, steps } = nextStepsFor({
+                      firstUserText: firstUserIdx >= 0 ? visibleMessages[firstUserIdx].content : '',
+                      userMessage,
+                      // Only when the history is loaded from its start can
+                      // the first loaded message be the conversation's first.
+                      isFirstTurn: !task.hasMoreMessages && u >= 0 && u === firstUserIdx,
+                      answer: m,
+                    }, { canSchedule: !!onScheduleFromChat && !!scheduledPromptFor(userMessage) });
+                    const answerKey = `${task.id}:${messageKey(m, i)}`;
+                    return (
+                      <NextSteps
+                        answerKey={answerKey}
+                        resultKind={resultKind}
+                        steps={steps}
+                        onSend={onSend}
+                        onSchedule={() => onScheduleFromChat?.({
+                          prompt: scheduledPromptFor(userMessage),
+                          projectId: task.projectId ?? null,
+                          answerKey,
+                        })}
+                      />
+                    );
+                  })()}
                   {m.incompleteReason && (
                     // role="note": a saved answer's notice must not be announced again on every reload.
                     <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
@@ -3942,6 +4077,7 @@ export default function ChatView({
                   idPrefix={streamingKey}
                   agentLabel={agentLabel}
                   onMoveAddonToQueue={onMoveAddonToQueue}
+                  imageSource={generatedImageSource}
                   live={{
                     isActive: isThinkingActive(streamingMsg.streamStatus),
                     currentThought: streamingMsg.currentThought,
@@ -3956,8 +4092,9 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} live />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
+                <StepConnectorDrafts steps={streamingMsg.steps} onConnect={onConnectCustomConnector} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" showActions={false}>
@@ -4234,13 +4371,30 @@ export default function ChatView({
         onClose={() => setFigureFileSource(null)}
       />
 
+      {/* A generated image opened from its inline card (ENG-4024). Read only:
+          the picture is the agent's output, and edits belong in a new turn.
+          The agent named the path, so, as in the figure viewer, no Open (it
+          hands the file to the OS default app). */}
+      <ContextFileModal
+        open={openImagePath != null}
+        projectName={project?.name}
+        projectPath={artifactProjectPath}
+        filePath={openImagePath || ''}
+        showOpenAction={false}
+        showEditAction={false}
+        remover={null}
+        onClose={() => setOpenImagePath(null)}
+      />
+
       {/* Inline ArtifactCard viewer — same modal the Live artifacts
           page and the Working folder card use. The card only routes
           HTML here; non-HTML opens straight in the OS via openPath. */}
       <ArtifactViewer
         open={!!previewArt}
         artifact={previewArt}
-        onClose={() => setPreviewArt(null)}
+        shareRequest={previewShare}
+        shareEntry={previewShare ? 'chat_card' : 'viewer'}
+        onClose={() => { setPreviewArt(null); setPreviewShare(null); }}
         onChange={(updated) => setPreviewArt(updated)}
         conversationId={task?.id || null}
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}

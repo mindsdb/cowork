@@ -173,10 +173,13 @@
     "unavailableTitle": "Funzione non disponibile",
     "cloudBodyNamed": "{feature} non è ancora disponibile su Cloud. Nel frattempo puoi usarla nell’app desktop.",
     "cloudBody": "Questa funzione non è ancora disponibile su Cloud. Nel frattempo puoi usarla nell’app desktop.",
+    "cloudBodyCustom": "{feature} non è ancora disponibile su Cloud. Puoi collegarlo subito come connettore personalizzato.",
     "unavailableBodyNamed": "{feature} non è disponibile in questa installazione.",
     "unavailableBody": "Questa funzione non è disponibile in questa installazione.",
     "notNow": "Non ora",
-    "download": "Scarica l’app"
+    "download": "Scarica l’app",
+    "connectCustom": "Collega il tuo connettore personalizzato {feature}",
+    "buildCustom": "Crea un connettore personalizzato"
   },
   "loadStatus": {
     "retry": "Riprova",

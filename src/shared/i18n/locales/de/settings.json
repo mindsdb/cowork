@@ -315,7 +315,9 @@
       "router": "Modell für Routing und Zusammenfassung",
       "coding": "Coding-Modell",
       "planningSubtitle": "Für Schlussfolgern, Orchestrierung und Antworten.",
-      "codingSubtitle": "Für die Codegenerierung im Scratchpad."
+      "codingSubtitle": "Für die Codegenerierung im Scratchpad.",
+      "image": "Bildmodell",
+      "imageSubtitle": "Zum Erzeugen und Bearbeiten von Bildern."
     },
     "providerLabel": "Anbieter:",
     "modelLabel": "Modell:",
@@ -334,7 +336,9 @@
     "modelNeedsCreditsNoLink": "{model} benötigt Guthaben.",
     "topUpBalance": "Laden Sie Ihr Guthaben auf",
     "modelBudgetReached": "{model} kann nicht ausgeführt werden, weil das Budget Ihrer Organisation aufgebraucht ist.",
-    "viewBudgets": "Budgets anzeigen"
+    "viewBudgets": "Budgets anzeigen",
+    "imageModelNeedsMindsHub": "Die Bildgenerierung läuft über MindsHub. Füge MindsHub unter LLM-Anbieter hinzu, um ein Bildmodell auszuwählen.",
+    "imageModelHint": "Wähle das Modell, mit dem Bilder erzeugt werden."
   },
   "memory": {
     "title": "Gedächtnis",

@@ -145,6 +145,7 @@ export function useCodeTaskActions({
         ...(input.repositorySetup ? { repository_setup: input.repositorySetup } : {}),
         computer_id: input.computerId,
         ...(input.workspaceMode ? { workspace_mode: input.workspaceMode } : {}),
+        ...(input.workspaceMode && input.workspaceModeIsDefault ? { workspace_mode_is_default: true } : {}),
         prompt: input.prompt,
         engine_id: input.engineId,
         model: input.model,

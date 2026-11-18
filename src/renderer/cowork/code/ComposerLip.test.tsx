@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CodingEvent, CodingSession } from './api';
 import { ComposerLip } from './ComposerLip';
-import { accountFailure, failureNotice, messageNotice, pickNotice, recoveryNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, pickNotice, recoveryNotice, writesNotice } from './composerNotices';
 
 
 function session(overrides: Partial<CodingSession> = {}): CodingSession {
@@ -233,5 +233,30 @@ describe('ComposerLip', () => {
   it('leaves an account limit to its own notice rather than a paused-task one', () => {
     expect(recoveryNotice(session(), undefined, failure('insufficient_credits', '402'))).toBeNull();
     expect(recoveryNotice(session({ status: 'running', run_status: 'running' }), undefined, undefined)).toBeNull();
+  });
+
+  it('offers to allow edits on a task held to a read-only sandbox', async () => {
+    const onAllowWrites = vi.fn();
+    const notice = writesNotice(session({ status: 'completed', run_status: 'ready', workspace_kind: 'direct_folder', writes_allowed: false }));
+    if (!notice) throw new Error('no writes notice');
+    render(<ComposerLip notice={notice} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onReopen={vi.fn()} onAllowWrites={onAllowWrites} onDismiss={vi.fn()} />);
+
+    expect(screen.getByText(/no Git history/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Allow edits' }));
+    expect(onAllowWrites).toHaveBeenCalledOnce();
+  });
+
+  it('holds Allow edits while a turn runs', () => {
+    const notice = writesNotice(session({ status: 'running', run_status: 'running', writes_allowed: false }));
+    if (!notice) throw new Error('no writes notice');
+    render(<ComposerLip notice={notice} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onReopen={vi.fn()} onDismiss={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Allow edits' })).toBeDisabled();
+  });
+
+  it('says nothing about edits once they are allowed, under Full access, or to an older server', () => {
+    expect(writesNotice(session({ writes_allowed: true }))).toBeNull();
+    expect(writesNotice(session({ writes_allowed: false, permission_mode: 'full_access' }))).toBeNull();
+    expect(writesNotice(session())).toBeNull();
   });
 });
