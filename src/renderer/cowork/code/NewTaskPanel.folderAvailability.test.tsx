@@ -1,5 +1,5 @@
 // A project folder can disappear and come back while the composer is open
-// (ENG-4346). The warning has to follow the folder, not the moment the
+// so the warning has to follow the folder, not the moment the
 // project list was last loaded.
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -31,7 +31,7 @@ vi.mock('./api', () => ({
     ] })),
     repositoryBranches: vi.fn(async () => ({ items: ['main'] })),
     projectResources: vi.fn(async () => ({ items: [
-      { resource: { kind: 'repository', id: 'proj', name: 'proj', local_path: '/Users/olha/proj', checkout_strategy: 'worktree', commands: [] }, availability: { resource_id: 'proj', status: 'available', eligible_computer_ids: ['local'], detail: '' } },
+      { resource: { kind: 'repository', id: 'proj', name: 'proj', local_path: '/Users/me/proj', checkout_strategy: 'worktree', commands: [] }, availability: { resource_id: 'proj', status: 'available', eligible_computer_ids: ['local'], detail: '' } },
     ] })),
     projectComputers: vi.fn(async () => ({ items: [computer] })),
     computers: vi.fn(async () => ({ items: [computer] })),
@@ -48,7 +48,7 @@ vi.mock('./api', () => ({
 import { codingApi } from './api';
 import { NewTaskPanel } from './NewTaskPanel';
 
-const folder = { id: 'proj', name: 'proj', path: '/Users/olha/proj', base_branch: 'main', commands: [] };
+const folder = { id: 'proj', name: 'proj', path: '/Users/me/proj', base_branch: 'main', commands: [] };
 
 const project = {
   schema_version: 2,
@@ -56,7 +56,7 @@ const project = {
   name: 'proj',
   folders: [folder],
   resources: [
-    { kind: 'repository' as const, id: 'proj', name: 'proj', source_url: null, local_path: '/Users/olha/proj', computer_id: 'local', default_branch: 'main', checkout_strategy: 'worktree' as const, commands: [] },
+    { kind: 'repository' as const, id: 'proj', name: 'proj', source_url: null, local_path: '/Users/me/proj', computer_id: 'local', default_branch: 'main', checkout_strategy: 'worktree' as const, commands: [] },
   ],
   connections: [],
   environment: { variables: {}, port_names: [] },
