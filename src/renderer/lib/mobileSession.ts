@@ -130,8 +130,9 @@ export async function restoreMobileSession(deps: RestoreDeps): Promise<RestoreRe
     // session is gone for good.
     if (response.status === 400 || response.status === 401) {
       // A clear that fails must not read as "unreachable": retrying would get
-      // the same refusal forever and never offer sign-in. The stale session is
-      // refused again on the next launch, and a new sign-in overwrites it.
+      // the same refusal forever and never offer sign-in. The stale session
+      // stays in storage and is refused again on the next load, until the save
+      // that follows a new sign-in replaces it.
       await clearMobileSession(store).catch(() => {});
       return { kind: 'none' };
     }
@@ -159,8 +160,14 @@ export async function restoreMobileSession(deps: RestoreDeps): Promise<RestoreRe
   return { kind: 'restored', session };
 }
 
+/** A store whose writes are serialized, and which can be closed by sign-out. */
+export interface SerializedMobileSessionStore extends MobileSessionStore {
+  /** Clear the session and ignore every later save: the person signed out. */
+  signOut(): Promise<void>;
+}
+
 /** Serialize native writes so a slow token save cannot finish after sign-out. */
-export function serializedMobileSessionStore(store: MobileSessionStore): MobileSessionStore {
+export function serializedMobileSessionStore(store: MobileSessionStore): SerializedMobileSessionStore {
   let pending: Promise<unknown> = Promise.resolve();
   let signedOut = false;
   const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -173,6 +180,10 @@ export function serializedMobileSessionStore(store: MobileSessionStore): MobileS
     // A refresh already in flight may deliver tokens after logout began.
     // A new native sign-in reloads the page and creates a fresh store wrapper.
     saveSession: (options) => signedOut ? Promise.resolve() : enqueue(() => store.saveSession(options)),
-    clearSession: () => { signedOut = true; return enqueue(() => store.clearSession()); },
+    // Clearing a session Keycloak refused must not close the store: the
+    // sign-in that follows saves through this same wrapper, and if the clear
+    // failed that save is what replaces the stale session.
+    clearSession: () => enqueue(() => store.clearSession()),
+    signOut: () => { signedOut = true; return enqueue(() => store.clearSession()); },
   };
 }

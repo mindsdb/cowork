@@ -82,7 +82,7 @@ export const mobileShellAdapter = isMobileShell
   ? createMobileShellAdapter({
     keycloak,
     logoutUrl: `${realmOidcUrl}/logout`,
-    forgetSession: () => clearMobileSession(sessionStore),
+    forgetSession: async () => { await sessionStore?.signOut(); },
     // Stop this phone's push notifications for the user signing out, while
     // the access token can still authenticate the call. Imported lazily:
     // mobilePush pulls in the API client, which reaches back here through host.ts.

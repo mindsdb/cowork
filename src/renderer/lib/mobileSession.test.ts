@@ -176,7 +176,7 @@ describe('serializedMobileSessionStore', () => {
       saveSession: async (options) => { await stalled; return originalSave(options); },
     });
     const save = store.saveSession({ session: JSON.stringify(SAVED) });
-    const clear = store.clearSession();
+    const clear = store.signOut();
     const read = store.loadSession();
     expect(memory.store.clearSession).not.toHaveBeenCalled();
     release();
@@ -187,11 +187,31 @@ describe('serializedMobileSessionStore', () => {
   it('ignores a token refresh delivered after sign-out has begun', async () => {
     const memory = memoryStore();
     const store = serializedMobileSessionStore(memory.store);
-    const clearing = store.clearSession();
+    const clearing = store.signOut();
     await store.saveSession({ session: JSON.stringify(SAVED) });
     await clearing;
     expect(memory.current()).toBeNull();
     expect(memory.store.saveSession).not.toHaveBeenCalled();
+  });
+
+  it('saves a new sign-in over a refused session that could not be cleared', async () => {
+    const memory = memoryStore();
+    memory.store.clearSession.mockRejectedValue(new Error('keystore unavailable'));
+    const store = serializedMobileSessionStore(memory.store);
+
+    const { result } = restore(store, json({ error: 'invalid_grant' }, 400));
+    expect(await result).toEqual({ kind: 'none' });
+    expect(memory.current()).toEqual(SAVED);
+
+    const fresh = { token: 'at-new', refreshToken: 'rt-new', idToken: 'id-new' };
+    await saveMobileSession(store, fresh);
+    expect(memory.current()).toEqual(fresh);
+  });
+
+  it('rejects a sign-out whose clear fails, so the caller can say so', async () => {
+    const memory = memoryStore();
+    memory.store.clearSession.mockRejectedValue(new Error('keystore unavailable'));
+    await expect(serializedMobileSessionStore(memory.store).signOut()).rejects.toThrow('keystore unavailable');
   });
 
   it('still clears after a rejected save', async () => {
