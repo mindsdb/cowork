@@ -13,7 +13,7 @@ import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { activeStoreRoot } from './server-process';
 import { revokeToken, type OAuthClient } from './mcp-oauth';
 import { deleteConnection as deleteKeychainEntries, deletePart, readPart, writePart } from './custom-mcp-keychain';
-import { deleteRecord, errorName, listTools, putAllowedTools, putHeld } from './custom-mcp-routes';
+import { deleteRecord, errorName, heldSummary, listTools, putAllowedTools, putHeld } from './custom-mcp-routes';
 import { readStoredSettings, readStoredTools, type StoredSettings } from './custom-mcp-tokens';
 import { writeToolSwitch } from './custom-mcp-held';
 import { startRefreshLoop, stopRefreshLoop, withConnectionLock } from './custom-mcp-refresh';
@@ -125,7 +125,19 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
       if (appSecretGeneration() !== generation || activeStoreRoot() !== storeRoot || !isCustomMcpAvailable()) {
         return { ok: false as const, code: 'server_changed', reason: 'The app switched accounts or restarted its server during the login.' };
       }
-      stopRefreshLoop(storeRoot, id);
+      // The login can outlast a disconnect: write nothing for a connection
+      // the server no longer has, and revoke the grant the login just made.
+      try {
+        await heldSummary(id);
+      } catch (err) {
+        if (login.tokens.refreshToken) {
+          await revokeToken(login.authorizationServer, login.client, { token: login.tokens.refreshToken, hint: 'refresh_token' }, deps.fetchFn)
+            .catch((revokeErr) => {
+              diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_revoke_failed', `[custom-mcp] could not revoke the new token of ${id}: ${errorName(revokeErr)}`);
+            });
+        }
+        throw err;
+      }
       const updated: StoredSettings = {
         ...settings,
         resource: login.resource,
@@ -165,7 +177,6 @@ export async function disconnectCustom(raw: unknown, deps: Pick<ConnectDeps, 'fe
   const where = target(raw);
   if (isFailure(where)) return where;
   const { storeRoot, id } = where;
-  stopRefreshLoop(storeRoot, id);
   // Under the lock, a refresh or hand-over in flight has saved its rotated
   // token first, which is the one to revoke, and none runs after.
   return withConnectionLock(storeRoot, id, () => removeConnection(storeRoot, id, deps));

@@ -65,6 +65,9 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
   }
   if (!server.records.has(id)) return json(404, { detail: { error: 'custom_connection_missing' } });
   const body = init.body ? JSON.parse(String(init.body)) : undefined;
+  if (method === 'GET' && action === 'held-summary') {
+    return json(200, { label: 'Tracker', server_url: SERVER_URL });
+  }
   if (method === 'GET' && action === 'tools') {
     const allowed = (server.held.get(id)?.allowed_tools as string[]) ?? [];
     return json(200, { tools: ['search', 'delete'].map((name) => ({ name, description: '', read_only: name === 'search', allowed: allowed.includes(name) })) });
@@ -313,6 +316,24 @@ describe('reconnect', () => {
     expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, loginServer(table).deps)).toEqual({ ok: true });
 
     expect(await readPart(ROOT, ID, 'secret')).toBeNull();
+  });
+
+  it('writes nothing and revokes the new grant when the connection was removed during the login', async () => {
+    await seed();
+    const { deps, requests } = loginServer();
+    deps.authorize = async () => {
+      // The user disconnects while the browser login is still open.
+      expect(await disconnectCustom({ id: ID }, deps)).toMatchObject({ ok: true });
+      return { ok: true as const, code: 'code-2', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' };
+    };
+
+    const result = await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps);
+
+    expect(result).toMatchObject({ ok: false, code: 'custom_connection_missing' });
+    expect(await listConnectionIds(ROOT)).toEqual([]);
+    expect(hasRefreshLoop(ROOT, ID)).toBe(false);
+    const revokes = requests.filter((r) => r.url === `${AUTH}/revoke`).map((r) => String(r.init.body));
+    expect(revokes.some((body) => body.includes('token=RT-new'))).toBe(true);
   });
 
   it('refuses more confirmed hosts than a login can have', async () => {
