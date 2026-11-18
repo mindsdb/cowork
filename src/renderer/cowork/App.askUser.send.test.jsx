@@ -149,6 +149,8 @@ vi.mock('./lib/analytics', () => ({
   trackAddonAdded: vi.fn(),
   trackAddonQueued: vi.fn(),
   trackAddonOverridden: vi.fn(),
+  trackNextStepsShown: vi.fn(),
+  trackNextStepClicked: vi.fn(),
 }));
 
 import App, { unsavedRefusedQuestions } from './App';
@@ -1469,7 +1471,12 @@ describe('the first message of a new task (analytics)', () => {
       return ta;
     });
 
-    await send(user, composer, OWN_WORK_PROMPT);
+    // Paste the long onboarding prompt instead of typing it: typing renders the
+    // whole App once per character, which can push this test past its timeout
+    // on a busy CI runner.
+    await user.click(composer);
+    await user.paste(OWN_WORK_PROMPT);
+    await user.keyboard('{Enter}');
     await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
 
     expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1);

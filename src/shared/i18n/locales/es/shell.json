@@ -173,10 +173,13 @@
     "unavailableTitle": "Función no disponible",
     "cloudBodyNamed": "{feature} aún no está disponible en Cloud. Mientras tanto, puedes usarlo en la app de escritorio.",
     "cloudBody": "Esta función aún no está disponible en Cloud. Mientras tanto, puedes usarla en la app de escritorio.",
+    "cloudBodyCustom": "{feature} aún no está disponible en Cloud. Ya puedes conectarlo como un conector personalizado.",
     "unavailableBodyNamed": "{feature} no está disponible en esta implementación.",
     "unavailableBody": "Esta función no está disponible en esta implementación.",
     "notNow": "Ahora no",
-    "download": "Descargar la app"
+    "download": "Descargar la app",
+    "connectCustom": "Conectar tu conector personalizado de {feature}",
+    "buildCustom": "Crear un conector personalizado"
   },
   "loadStatus": {
     "retry": "Reintentar",
@@ -404,7 +407,8 @@
       "operatorTitle": "Se requiere configurar un proveedor",
       "body": "Empieza con MindsHub y obtén una asignación gratuita en MindsHub Air; luego paga según lo que uses. O agrega tu propia clave de API (Anthropic, OpenAI o cualquier endpoint compatible con OpenAI) en Configuración.",
       "operatorBody": "Pide a tu operador que configure el proveedor de modelos antes de iniciar una tarea.",
-      "startFree": "Empezar gratis"
+      "startFree": "Empezar gratis",
+      "bodyMobile": "Conecta tu propio proveedor en Configuración."
     },
     "handoffHint": "Edita este prompt y envíalo cuando estés listo.",
     "signupWelcome": {

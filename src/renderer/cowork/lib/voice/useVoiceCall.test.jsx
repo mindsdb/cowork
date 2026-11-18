@@ -9,7 +9,7 @@ vi.mock('../../api', () => ({ startVoiceSession: vi.fn() }));
 
 import { startVoiceSession } from '../../api';
 import {
-  ANALYZE_MAX_MS, AWAY_MS, IDLE_MS, LINGER_MS, MAX_SPOKEN_CHARS, useVoiceCall, voiceCallRunning, voiceStartFailure,
+  ABANDONED_CONNECT_MS, ANALYZE_MAX_MS, AWAY_MS, IDLE_MS, LINGER_MS, MAX_SPOKEN_CHARS, useVoiceCall, voiceCallRunning, voiceStartFailure,
 } from './useVoiceCall';
 
 class FakeChannel {
@@ -22,6 +22,7 @@ class FakeChannel {
   send(data) { this.sent.push(JSON.parse(data)); }
   close() { this.readyState = 'closed'; }
   emit(event) { (this.listeners.message || []).forEach((fn) => fn({ data: JSON.stringify(event) })); }
+  open() { this.readyState = 'open'; (this.listeners.open || []).forEach((fn) => fn()); }
 }
 
 let peer;
@@ -530,6 +531,73 @@ describe('a call that changed under a pending step', () => {
     act(() => second.channel.emit({ type: 'session.started' }));
     await act(async () => { answer('Booked.'); await vi.advanceTimersByTimeAsync(0); });
     expect(second.channel.sent.some((e) => e.type === 'session.commentary.append')).toBe(false);
+  });
+});
+
+describe('a call hung up while its session is being made', () => {
+  function connecting() {
+    let answer;
+    let refuse;
+    startVoiceSession.mockReturnValueOnce(new Promise((resolve, reject) => { answer = resolve; refuse = reject; }));
+    return { answer: (sdp = 'answer-sdp') => answer({ session: { id: 'live_1' }, transport: { type: 'webrtc', sdp } }), refuse: (err) => refuse(err) };
+  }
+
+  async function hungUpWhileConnecting() {
+    const session = connecting();
+    const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '' }));
+    act(() => { void hook.result.current.start(); });
+    await waitFor(() => expect(startVoiceSession).toHaveBeenCalled());
+    const abandoned = peer;
+    abandoned.channel.readyState = 'connecting';
+    await act(() => hook.result.current.hangUp());
+    return { ...hook, session, abandoned };
+  }
+
+  it('connects to the session once it is made, closes it, then drops the connection', async () => {
+    const { result, session, abandoned } = await hungUpWhileConnecting();
+    expect(result.current.phase).toBe('idle');
+    expect(abandoned.closed).toBe(false);
+
+    await act(async () => { session.answer(); });
+    expect(abandoned.remote).toEqual({ type: 'answer', sdp: 'answer-sdp' });
+    act(() => abandoned.channel.open());
+    expect(abandoned.channel.sent).toEqual([{ type: 'session.close' }]);
+    expect(abandoned.closed).toBe(false);
+
+    await act(async () => { abandoned.channel.emit({ type: 'session.closed', reason: 'client_requested' }); });
+    await waitFor(() => expect(abandoned.closed).toBe(true));
+    expect(result.current.phase).toBe('idle');
+  });
+
+  it('drops the connection when the session never connects', async () => {
+    const { session, abandoned } = await hungUpWhileConnecting();
+    await act(async () => { session.answer(); });
+    await act(async () => { vi.advanceTimersByTime(ABANDONED_CONNECT_MS); });
+    await waitFor(() => expect(abandoned.closed).toBe(true));
+    expect(abandoned.channel.sent).toEqual([]);
+  });
+
+  it('just drops the connection when the server made no session', async () => {
+    const { result, session, abandoned } = await hungUpWhileConnecting();
+    await act(async () => { session.refuse(new Error('refused')); });
+    await waitFor(() => expect(abandoned.closed).toBe(true));
+    expect(abandoned.remote).toBe(null);
+    expect(result.current.notice).toBe('');
+  });
+
+  it('leaves the call that replaced it alone', async () => {
+    const { result, session, abandoned } = await hungUpWhileConnecting();
+    await act(() => result.current.start());
+    const next = peer;
+    act(() => next.channel.emit({ type: 'session.started' }));
+
+    await act(async () => { session.answer(); });
+    act(() => abandoned.channel.open());
+    await act(async () => { abandoned.channel.emit({ type: 'session.closed', reason: 'client_requested' }); });
+    await waitFor(() => expect(abandoned.closed).toBe(true));
+    expect(next.closed).toBe(false);
+    expect(result.current.phase).not.toBe('ended');
+    expect(result.current.phase).not.toBe('idle');
   });
 });
 

@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Some files from deleted tasks could not be removed. Retry cleanup to free their disk space.",
+    "retry": "Retry cleanup",
+    "retrying": "Retrying cleanup…",
+    "retryFailed": "Cleanup could not be retried. Try again."
+  },
   "reviewPanel": {
     "ariaLabel": "Review changes",
     "closeAriaLabel": "Close review panel",
@@ -25,13 +31,21 @@
       "heading": "Deliver this task",
       "project": "Project",
       "branch": "Branch",
+      "openYourFolder": "Open your folder",
       "openOriginalFolder": "Open original folder",
       "openIsolatedCopy": "Open isolated copy",
       "openOriginal": "Open original"
     },
+    "inPlace": {
+      "title": "{count, plural, one {This task edits your folder directly} other {This task edits your folders directly}}",
+      "body": "{count, plural, one {Its changes are already in your folder, so there is nothing to apply.} other {Its changes are already in your folders, so there is nothing to apply.}} Draft pull requests are not available for Local tasks yet: commit here, then push and open a pull request with your usual tools.",
+      "bodyWithoutGit": "{count, plural, one {Its changes are already in your folder, so there is nothing to apply.} other {Its changes are already in your folders, so there is nothing to apply.}}"
+    },
     "sourceChanged": {
       "title": "Source had local changes when this task began",
-      "body": "Those changes stayed in the source folder. {product} checks for conflicts before applying."
+      "body": "Those changes stayed in the source folder. {product} checks for conflicts before applying.",
+      "inPlaceTitle": "The folder already had uncommitted changes",
+      "inPlaceBody": "They appear in this review alongside the agent’s, and committing here includes them."
     },
     "reconcile": {
       "title": "Reconcile the original changes",
@@ -58,8 +72,10 @@
     "git": {
       "title": "Git options",
       "branchLabel": "Create a branch in the task worktree",
+      "branchLabelInPlace": "Create and switch to a branch in your folder",
       "create": "Create",
       "commitLabel": "Commit all task changes",
+      "commitLabelInPlace": "Commit all changes in your folder",
       "commitPlaceholder": "Describe the change",
       "commit": "Commit"
     },
@@ -86,6 +102,7 @@
     "discardConfirm": {
       "title": "Discard this file’s changes?",
       "message": "{path} will return to the current task version. This cannot be undone.",
+      "messageInPlace": "{path} will go back to its last committed version in your folder, including any edits made before this task started. This cannot be undone.",
       "confirm": "Discard changes"
     }
   },
@@ -449,7 +466,9 @@
       "reasoning": "Reasoning",
       "reasoningAriaLabel": "Default reasoning effort",
       "permissions": "Permissions",
-      "permissionsAriaLabel": "Default coding permissions"
+      "permissionsAriaLabel": "Default coding permissions",
+      "workspace": "Workspace",
+      "workspaceAriaLabel": "Default task workspace"
     },
     "environment": {
       "title": "Environment",
@@ -1037,16 +1056,16 @@
       "title": "Inspect and explain without changing files."
     },
     "supervised": {
-      "label": "Ask first",
-      "title": "Pause before commands that need your approval."
+      "label": "Ask for approval",
+      "title": "Always ask before editing files outside the task or using the internet."
     },
     "workspace": {
-      "label": "Workspace auto",
-      "title": "Work autonomously inside this task’s isolated copy."
+      "label": "Approve for me",
+      "title": "A reviewer approves routine requests and blocks risky ones."
     },
     "fullAccess": {
       "label": "Full access",
-      "title": "Work autonomously without filesystem restrictions."
+      "title": "Unrestricted access to the internet and every file on your computer."
     }
   },
   "branchSelect": {
@@ -1295,6 +1314,7 @@
     "record": {
       "approvalDenied": "Approval denied",
       "approvalResolved": "Approval resolved",
+      "folderBusy": "Another task is working in this folder, so this one works in a worktree.",
       "followUpDelivered": "Follow-up delivered",
       "requestRejected": "Request rejected",
       "taskStatus": "Task status"
@@ -1399,7 +1419,8 @@
     "details": "Details",
     "moreOptions": "More options",
     "dismiss": "Dismiss",
-    "viewBudgets": "View budgets"
+    "viewBudgets": "View budgets",
+    "allowWrites": "Allow edits"
   },
   "composerNotices": {
     "thisModel": "This model",
@@ -1453,6 +1474,9 @@
     "budgetExceeded": {
       "title": "Your organization's budget is used up",
       "body": "An owner or admin can raise it in Budgets, or choose an available model to continue in this task."
+    },
+    "writesHeld": {
+      "body": "This folder has no Git history to review or undo changes, so the agent asks before each edit."
     }
   },
   "planModeCommand": {
@@ -1462,12 +1486,14 @@
   },
   "taskBar": {
     "originalFolder": "Original folder",
+    "localFolder": "{count, plural, one {Local · your folder} other {Local · your # folders}}",
     "isolatedFolders": "{count, plural, one {# isolated folder} other {# isolated folders}}",
     "isolatedCopy": "Isolated copy",
     "allProjectFiles": "All project files",
     "allProjectFolders": "{count, plural, one {All # project folder} other {All # project folders}}",
     "selectedFolders": "{count, plural, one {# selected folder} other {# selected folders}}",
     "openOriginalFolder": "Open original folder",
+    "openYourFolder": "Open your folder",
     "openIsolatedCopy": "Open isolated copy",
     "forkTask": "Fork task",
     "taskSettings": "Task settings",
@@ -1591,5 +1617,34 @@
     "desktopOnly": "Local file attachments are available in the desktop app.",
     "ariaLabel": "Attached context",
     "removeAriaLabel": "Remove {name}"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "Local",
+      "title": "Work in the folder itself. One local task runs in a repository at a time."
+    },
+    "worktree": {
+      "label": "Worktree",
+      "title": "Work in an isolated Git worktree, so tasks can run side by side."
+    },
+    "selectAriaLabel": "Where the task works",
+    "menuLabel": "Workspace",
+    "default": {
+      "label": "Default",
+      "title": "Let {product} choose for each task’s folder and computer."
+    },
+    "initializeGit": "Initialize Git",
+    "initializeFailed": "Could not initialize Git. Try again.",
+    "unavailable": "No workspace mode is available for this folder.",
+    "reason": {
+      "notARepository": "This folder isn’t a Git repository. Initialize Git to use a Worktree.",
+      "notARepositoryInFolder": "{folder} isn’t a Git repository. Initialize Git to use a Worktree.",
+      "noCommits": "This repository has no commits yet. Make a first commit to use a Worktree.",
+      "noCommitsInFolder": "{folder} has no commits yet. Make a first commit to use a Worktree.",
+      "noLocalCheckout": "{folder} has no checkout on this computer to work in. Choose Worktree.",
+      "inPlaceUnsupportedPlatform": "Working in the original folder isn’t available on this platform yet. Choose Worktree.",
+      "inPlaceOtherComputer": "Tasks on another computer run in an isolated worktree. Choose Worktree.",
+      "sharedRepository": "Two project folders are in the same repository, so they can’t both work in place. Choose Worktree."
+    }
   }
 }

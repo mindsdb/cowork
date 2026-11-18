@@ -71,7 +71,9 @@
       "thumbnailAlt": "Artifact thumbnail",
       "deletedTitle": "This artifact was deleted",
       "liveArtifact": "live artifact",
-      "deletedBadge": "Deleted"
+      "deletedBadge": "Deleted",
+      "share": "Share",
+      "shareTooltip": "Choose who can open it"
     },
     "kinds": {
       "provider": "Provider",
@@ -108,7 +110,10 @@
       "tryAgain": "Try again",
       "adminSpendingLimitBody": "Your administrator's spending limit was reached. Contact your administrator.",
       "budgetUsedUpTitle": "Your organization's budget is used up",
-      "viewBudgets": "View budgets"
+      "viewBudgets": "View budgets",
+      "balanceRanOutMobile": "Your balance ran out before this task finished.",
+      "autoTopUpFailedBodyMobile": "We couldn't charge your card.",
+      "connectProviderBodyMobile": "Connect your own provider in Settings."
     },
     "usageAlert": {
       "freeLow": "Free Air allowance {percent} left",
@@ -142,7 +147,8 @@
       "needsCreditsTitle": "{model} needs credits",
       "needsCreditsBody": "You don't have enough credits for this model. Top up your balance to use it.",
       "disabledBody": "This model is turned off for your workspace. Choose another model in Settings.",
-      "topUpBalance": "Top up balance"
+      "topUpBalance": "Top up balance",
+      "needsCreditsBodyMobile": "You don't have enough credits for this model."
     },
     "overloaded": {
       "theModelProvider": "The model provider",
@@ -222,7 +228,16 @@
         "notRead": "Queued: the task finished before it could read this."
       }
     },
-    "reconnecting": "Trying to reconnect"
+    "reconnecting": "Trying to reconnect",
+    "nextSteps": {
+      "groupLabel": "Next steps",
+      "ownData": "Do this with my own data",
+      "anotherFile": "Do the same to another file",
+      "makePage": "Turn it into a page",
+      "schedule": "Run this on a schedule",
+      "scheduled": "Scheduled “{title}”",
+      "scheduledDone": "Scheduled ✓"
+    }
   },
   "composer": {
     "placeholder": "Hi Boss, how can I help you today?",
@@ -740,6 +755,31 @@
     "couldNotStart": "Couldn't start the voice call.",
     "endedReason": "The call ended ({reason})."
   },
+  "connectorDraft": {
+    "notSaved": "Connector template · not saved",
+    "kept": "You already keep a connector with this id. Saving again replaces it.",
+    "saved": "Saved. Add your credentials in Connect Apps and Data.",
+    "savedConnect": "Saved. Connect it to add your credentials.",
+    "saveFailed": "Could not save the connector.",
+    "button": {
+      "save": "Save connector",
+      "saveAgain": "Save again",
+      "saving": "Saving…",
+      "done": "Saved",
+      "connect": "Connect"
+    },
+    "modal": {
+      "fieldsTitle": "What you will enter",
+      "usageTitle": "How Anton will use it",
+      "helpUrl": "Where to find them: {url}"
+    },
+    "field": {
+      "secret": "secret",
+      "required": "required",
+      "optional": "optional",
+      "example": "Example: {value}"
+    }
+  },
   "notionPicker": {
     "title": "Add pages from Notion",
     "subtitle": "Search your Notion and pick pages for this message.",
@@ -750,5 +790,10 @@
     "database": "Database",
     "cancel": "Cancel",
     "add": "{count, plural, =0 {Add page} one {Add page} other {Add # pages}}"
+  },
+  "generatedImage": {
+    "fallbackName": "image",
+    "alt": "Generated image {name}",
+    "notShown": "{name} could not be shown. It may have been moved or deleted."
   }
 }

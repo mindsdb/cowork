@@ -12,11 +12,16 @@
       "allowanceStop": {
         "noGrant": "{noGrant} Tu saldo está vacío, así que agrega fondos para continuar.",
         "withTime": "Tu cupo gratuito de MindsHub Air se agotó y tu saldo está vacío. Agrega fondos para seguir trabajando o espera a que se renueve a las {time}.",
-        "noTime": "Tu cupo gratuito de MindsHub Air se agotó y tu saldo está vacío. Agrega fondos para seguir trabajando."
+        "noTime": "Tu cupo gratuito de MindsHub Air se agotó y tu saldo está vacío. Agrega fondos para seguir trabajando.",
+        "noTimeMobile": "Tu cupo gratuito de MindsHub Air se agotó y tu saldo está vacío.",
+        "noGrantMobile": "{noGrant} Tu saldo está vacío.",
+        "withTimeMobile": "Tu cupo gratuito de MindsHub Air se agotó y tu saldo está vacío. Se renueva a las {time}."
       },
       "freeServingPaused": {
         "until": "MindsHub Air gratuito está en pausa para todos hasta {until}. Esto no usa tu cupo. Agrega fondos para seguir trabajando ahora.",
-        "dailyReset": "MindsHub Air gratuito está en pausa para todos hasta que se reinicie el presupuesto diario. Esto no usa tu cupo. Agrega fondos para seguir trabajando ahora."
+        "dailyReset": "MindsHub Air gratuito está en pausa para todos hasta que se reinicie el presupuesto diario. Esto no usa tu cupo. Agrega fondos para seguir trabajando ahora.",
+        "untilMobile": "MindsHub Air gratuito está en pausa para todos hasta {until}. Esto no usa tu cupo.",
+        "dailyResetMobile": "MindsHub Air gratuito está en pausa para todos hasta que se reinicie el presupuesto diario. Esto no usa tu cupo."
       },
       "resting": {
         "resetsAt": "Se renueva a las {time}.",
@@ -26,13 +31,17 @@
       "percentLeft": "Te queda {percent} de tu cupo gratuito",
       "autoTopUpFailed": {
         "title": "Falló la recarga automática",
-        "body": "No pudimos cobrar a tu tarjeta. Agrega fondos o actualiza tu método de pago."
+        "body": "No pudimos cobrar a tu tarjeta. Agrega fondos o actualiza tu método de pago.",
+        "bodyMobile": "No pudimos cobrar a tu tarjeta."
       },
       "balanceEmpty": {
         "title": "Saldo vacío",
         "body": "Agrega fondos para iniciar otra tarea.",
         "freeUsedToo": "Tu cupo gratuito también se agotó. Agrega fondos o espera a que se renueve.",
-        "freeUsedTooWithTime": "Tu cupo gratuito también se agotó. Agrega fondos o espera a que se renueve a las {time}."
+        "freeUsedTooWithTime": "Tu cupo gratuito también se agotó. Agrega fondos o espera a que se renueve a las {time}.",
+        "freeUsedTooMobile": "Tu cupo gratuito también se agotó.",
+        "freeUsedTooWithTimeMobile": "Tu cupo gratuito también se agotó. Se renueva a las {time}.",
+        "bodyMobile": "Tu saldo está vacío. Los modelos de pago no están disponibles."
       },
       "balanceLow": {
         "title": "Saldo bajo",
@@ -40,7 +49,9 @@
         "autoCovers": "Quedan {usd}. La recarga automática lo cubrirá.",
         "autoPending": "Quedan {usd}. La recarga automática está esperando a tu banco.",
         "autoCapReached": "Quedan {usd} y la recarga automática está en pausa para no superar su límite mensual. Agrega fondos para continuar.",
-        "body": "Quedan {usd}. Agrega fondos o activa la recarga automática."
+        "body": "Quedan {usd}. Agrega fondos o activa la recarga automática.",
+        "bodyMobile": "Quedan {usd}.",
+        "autoCapReachedMobile": "Quedan {usd} y la recarga automática está en pausa para no superar su límite mensual."
       },
       "freeUsed": {
         "title": "Cupo gratuito agotado",
@@ -95,7 +106,8 @@
         "walletEmpty": "No hay créditos disponibles. Agrega fondos para usar MindsHub.",
         "allowanceExhausted": "No hay tokens gratuitos de MindsHub Air disponibles y el saldo está vacío.",
         "freeAirPaused": "MindsHub Air gratuito está en pausa en este momento.",
-        "budgetExceeded": "Se agotó el presupuesto de tu organización."
+        "budgetExceeded": "Se agotó el presupuesto de tu organización.",
+        "walletEmptyMobile": "No hay créditos disponibles."
       },
       "missingApiKey": "Agrega una clave de API a la derecha.",
       "missingBaseUrl": "Agrega una URL base a la derecha.",
@@ -223,7 +235,9 @@
         "oneWorking": "Podrás continuar cuando {name} termine.",
         "bothContinued": "Ambos lados se continuaron como tareas, así que esta comparación no acepta más mensajes.",
         "sideContinued": "{name} se continuó como tarea. Envía solo a {other}.",
-        "sideWorking": "{name} sigue trabajando. Envía solo a {other} o espera."
+        "sideWorking": "{name} sigue trabajando. Envía solo a {other} o espera.",
+        "outOfCreditsBothMobile": "Ambos modelos se detuvieron porque se acabó el saldo.",
+        "outOfCreditsOneMobile": "{name} se detuvo porque se acabó el saldo."
       },
       "twiceTheCredits": "Una comparación ejecuta dos modelos, así que usa cerca del doble de créditos que una tarea.",
       "turnsTitle": "{nameA}: {countA, plural, one {# turno} other {# turnos}} · {nameB}: {countB, plural, one {# turno} other {# turnos}}",
@@ -502,7 +516,8 @@
     },
     "antonErrors": {
       "noProvider": "No hay ningún proveedor de LLM conectado a esta cuenta. Empieza gratis con MindsHub o agrega tu propio proveedor en Configuración.",
-      "couldNotComplete": "No se pudo completar esta tarea."
+      "couldNotComplete": "No se pudo completar esta tarea.",
+      "noProviderMobile": "Conecta tu propio proveedor en Configuración."
     },
     "displayToggle": {
       "switchStyle": "Cambiar al estilo {style}"
@@ -551,6 +566,7 @@
     "missed": "Perdida",
     "lastFailed": "Última falló",
     "lastRunFailed": "Última ejecución fallida",
+    "stoppedAtLimit": "Detenida en un límite",
     "done": "Terminada",
     "active": "Activa"
   },
@@ -580,11 +596,30 @@
     "autoPausedNote": "Reanudar vuelve a activar la programación y puede recuperar una ejecución pendiente. Ejecutar ahora la ejecuta una vez, ahora.",
     "partialTitle": "La última ejecución se detuvo a medias",
     "partialNote": "Algunas de sus acciones pueden haberse completado. Revisa la ejecución antes de volver a ejecutarla.",
+    "limitTitle": "La última ejecución se detuvo en un límite",
+    "limitNote": "Puede que parte del trabajo esté hecho. Revisa la ejecución antes de volver a ejecutarla.",
     "failedTitle": "La última ejecución falló",
     "resume": "Reanudar",
     "runNow": "Ejecutar ahora",
     "reviewRun": "Revisar ejecución",
-    "runAgain": "Ejecutar de nuevo"
+    "runAgain": "Ejecutar de nuevo",
+    "openSettings": "Abrir Ajustes"
+  },
+  "scheduleRunNotice": {
+    "untitled": "Tarea programada",
+    "failedTitle": "La tarea programada falló",
+    "failedBody": "«{title}» no terminó su última ejecución. Haz clic para revisarla.",
+    "failedToast": "La tarea programada «{title}» no terminó su última ejecución.",
+    "succeededTitle": "Tarea programada terminada",
+    "succeededBody": "«{title}» terminó una ejecución. Haz clic para abrirla.",
+    "succeededToast": "La tarea programada «{title}» terminó una ejecución.",
+    "openAction": "Abrir tarea"
+  },
+  "scheduleNotifyMenu": {
+    "label": "Notificaciones",
+    "heading": "Notificarme sobre",
+    "failed": "Ejecuciones fallidas",
+    "succeeded": "Ejecuciones correctas"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -614,6 +649,7 @@
     "atMinute": "en el minuto",
     "at": "a las",
     "time": "Hora",
+    "timeZone": "Zona horaria",
     "nextRuns": "{count, plural, one {Próxima ejecución: {runs}} other {Próximas ejecuciones: {runs}}}",
     "timePassed": "Esa hora ya pasó.",
     "name": "Nombre",
@@ -660,7 +696,8 @@
       "running": "En ejecución",
       "success": "Correcta",
       "failed": "Fallida",
-      "cancelled": "Detenida"
+      "cancelled": "Detenida",
+      "stoppedAtLimit": "Detenida en un límite"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Ejecutándose ahora",

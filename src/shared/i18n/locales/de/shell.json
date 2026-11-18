@@ -173,10 +173,13 @@
     "unavailableTitle": "Funktion nicht verfügbar",
     "cloudBodyNamed": "{feature} ist in der Cloud noch nicht verfügbar. Bis dahin können Sie die Funktion in der Desktop-App nutzen.",
     "cloudBody": "Diese Funktion ist in der Cloud noch nicht verfügbar. Bis dahin können Sie sie in der Desktop-App nutzen.",
+    "cloudBodyCustom": "{feature} ist in der Cloud noch nicht verfügbar. Sie können es jetzt als benutzerdefinierten Connector verbinden.",
     "unavailableBodyNamed": "{feature} ist in dieser Bereitstellung nicht verfügbar.",
     "unavailableBody": "Diese Funktion ist in dieser Bereitstellung nicht verfügbar.",
     "notNow": "Nicht jetzt",
-    "download": "App herunterladen"
+    "download": "App herunterladen",
+    "connectCustom": "Ihren benutzerdefinierten {feature}-Connector verbinden",
+    "buildCustom": "Benutzerdefinierten Connector erstellen"
   },
   "loadStatus": {
     "retry": "Erneut versuchen",
@@ -404,7 +407,8 @@
       "operatorTitle": "Anbieter muss eingerichtet werden",
       "body": "Starten Sie mit MindsHub und erhalten Sie ein Gratiskontingent für MindsHub Air, danach zahlen Sie nach Nutzung. Oder fügen Sie in den Einstellungen Ihren eigenen API-Schlüssel hinzu (Anthropic, OpenAI oder ein beliebiger OpenAI-kompatibler Endpunkt).",
       "operatorBody": "Bitten Sie Ihren Betreiber, den Modellanbieter zu konfigurieren, bevor Sie eine Aufgabe starten.",
-      "startFree": "Kostenlos starten"
+      "startFree": "Kostenlos starten",
+      "bodyMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen."
     },
     "handoffHint": "Bearbeiten Sie diesen Prompt und senden Sie ihn, wenn Sie bereit sind.",
     "signupWelcome": {

@@ -12,11 +12,16 @@
       "allowanceStop": {
         "noGrant": "{noGrant} Votre solde est épuisé : ajoutez des fonds pour continuer.",
         "withTime": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer, ou attendez qu’il se renouvelle à {time}.",
-        "noTime": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer."
+        "noTime": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer.",
+        "noTimeMobile": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde.",
+        "noGrantMobile": "{noGrant} Votre solde est épuisé.",
+        "withTimeMobile": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Réinitialisation à {time}."
       },
       "freeServingPaused": {
         "until": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
-        "dailyReset": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant."
+        "dailyReset": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
+        "untilMobile": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé.",
+        "dailyResetMobile": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé."
       },
       "resting": {
         "resetsAt": "Réinitialisation à {time}.",
@@ -26,13 +31,17 @@
       "percentLeft": "{percent} de votre quota gratuit restant",
       "autoTopUpFailed": {
         "title": "Échec de la recharge auto",
-        "body": "Nous n’avons pas pu débiter votre carte. Ajoutez des fonds ou mettez à jour votre moyen de paiement."
+        "body": "Nous n’avons pas pu débiter votre carte. Ajoutez des fonds ou mettez à jour votre moyen de paiement.",
+        "bodyMobile": "Nous n’avons pas pu débiter votre carte."
       },
       "balanceEmpty": {
         "title": "Solde épuisé",
         "body": "Ajoutez des fonds pour lancer une autre tâche.",
         "freeUsedToo": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle.",
-        "freeUsedTooWithTime": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle à {time}."
+        "freeUsedTooWithTime": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle à {time}.",
+        "freeUsedTooMobile": "Votre quota gratuit est également épuisé.",
+        "freeUsedTooWithTimeMobile": "Votre quota gratuit est également épuisé. Réinitialisation à {time}.",
+        "bodyMobile": "Votre solde est vide. Les modèles payants sont indisponibles."
       },
       "balanceLow": {
         "title": "Solde bientôt épuisé",
@@ -40,7 +49,9 @@
         "autoCovers": "Il reste {usd}. La recharge auto s’en chargera.",
         "autoPending": "Il reste {usd}. La recharge auto attend la réponse de votre banque.",
         "autoCapReached": "Il reste {usd} et la recharge auto est suspendue pour respecter son plafond mensuel. Ajoutez des fonds pour continuer.",
-        "body": "Il reste {usd}. Ajoutez des fonds ou activez la recharge auto."
+        "body": "Il reste {usd}. Ajoutez des fonds ou activez la recharge auto.",
+        "bodyMobile": "Il reste {usd}.",
+        "autoCapReachedMobile": "Il reste {usd} et la recharge auto est suspendue pour respecter son plafond mensuel."
       },
       "freeUsed": {
         "title": "Quota gratuit épuisé",
@@ -95,7 +106,8 @@
         "walletEmpty": "Aucun crédit disponible. Ajoutez des fonds pour utiliser MindsHub.",
         "allowanceExhausted": "Aucun jeton MindsHub Air gratuit disponible et le solde est épuisé.",
         "freeAirPaused": "MindsHub Air gratuit est actuellement suspendu.",
-        "budgetExceeded": "Le budget de votre organisation est épuisé."
+        "budgetExceeded": "Le budget de votre organisation est épuisé.",
+        "walletEmptyMobile": "Aucun crédit disponible."
       },
       "missingApiKey": "Ajoutez une clé API à droite.",
       "missingBaseUrl": "Ajoutez une URL de base à droite.",
@@ -223,7 +235,9 @@
         "oneWorking": "Vous pourrez poursuivre quand {name} aura terminé.",
         "bothContinued": "Les deux côtés ont été poursuivis en tâches : cette comparaison n’accepte plus de messages.",
         "sideContinued": "{name} a été poursuivi en tâche. Envoyez uniquement à {other}.",
-        "sideWorking": "{name} est encore en cours. Envoyez uniquement à {other}, ou patientez."
+        "sideWorking": "{name} est encore en cours. Envoyez uniquement à {other}, ou patientez.",
+        "outOfCreditsBothMobile": "Les deux modèles se sont arrêtés, faute de solde.",
+        "outOfCreditsOneMobile": "{name} s’est arrêté, faute de solde."
       },
       "twiceTheCredits": "Une comparaison exécute deux modèles : elle consomme donc environ deux fois plus de crédits qu’une tâche.",
       "turnsTitle": "{nameA} : {countA, plural, one {# tour} other {# tours}} · {nameB} : {countB, plural, one {# tour} other {# tours}}",
@@ -502,7 +516,8 @@
     },
     "antonErrors": {
       "noProvider": "Aucun fournisseur de LLM n’est connecté à ce compte. Commencez gratuitement avec MindsHub ou ajoutez votre propre fournisseur dans les paramètres.",
-      "couldNotComplete": "Impossible de terminer cette tâche."
+      "couldNotComplete": "Impossible de terminer cette tâche.",
+      "noProviderMobile": "Connectez votre propre fournisseur dans les paramètres."
     },
     "displayToggle": {
       "switchStyle": "Passer au style {style}"
@@ -551,6 +566,7 @@
     "missed": "Manquée",
     "lastFailed": "Dernier échec",
     "lastRunFailed": "Échec de la dernière exécution",
+    "stoppedAtLimit": "Arrêtée à une limite",
     "done": "Terminée",
     "active": "Active"
   },
@@ -580,11 +596,30 @@
     "autoPausedNote": "« Reprendre » réactive la planification et peut rattraper une exécution en attente. « Exécuter maintenant » l’exécute une fois, tout de suite.",
     "partialTitle": "La dernière exécution s’est arrêtée en cours de route",
     "partialNote": "Certaines de ses actions ont pu aboutir. Vérifiez l’exécution avant de la relancer.",
+    "limitTitle": "La dernière exécution s’est arrêtée à une limite",
+    "limitNote": "Une partie du travail a pu être effectuée. Vérifiez l’exécution avant de la relancer.",
     "failedTitle": "La dernière exécution a échoué",
     "resume": "Reprendre",
     "runNow": "Exécuter maintenant",
     "reviewRun": "Vérifier l’exécution",
-    "runAgain": "Relancer"
+    "runAgain": "Relancer",
+    "openSettings": "Ouvrir les Paramètres"
+  },
+  "scheduleRunNotice": {
+    "untitled": "Tâche planifiée",
+    "failedTitle": "Échec d’une tâche planifiée",
+    "failedBody": "« {title} » n’a pas terminé sa dernière exécution. Cliquez pour vérifier.",
+    "failedToast": "La tâche planifiée « {title} » n’a pas terminé sa dernière exécution.",
+    "succeededTitle": "Tâche planifiée terminée",
+    "succeededBody": "« {title} » a terminé une exécution. Cliquez pour l’ouvrir.",
+    "succeededToast": "La tâche planifiée « {title} » a terminé une exécution.",
+    "openAction": "Ouvrir la tâche"
+  },
+  "scheduleNotifyMenu": {
+    "label": "Notifications",
+    "heading": "Me notifier pour",
+    "failed": "Exécutions en échec",
+    "succeeded": "Exécutions réussies"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -614,6 +649,7 @@
     "atMinute": "à la minute",
     "at": "à",
     "time": "Heure",
+    "timeZone": "Fuseau horaire",
     "nextRuns": "{count, plural, one {Prochaine exécution : {runs}} other {Prochaines exécutions : {runs}}}",
     "timePassed": "Cette heure est déjà passée.",
     "name": "Nom",
@@ -660,7 +696,8 @@
       "running": "En cours",
       "success": "Réussie",
       "failed": "Échec",
-      "cancelled": "Arrêtée"
+      "cancelled": "Arrêtée",
+      "stoppedAtLimit": "Arrêtée à une limite"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "En cours d’exécution",

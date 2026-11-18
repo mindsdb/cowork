@@ -71,7 +71,9 @@
       "thumbnailAlt": "Miniatura do artefato",
       "deletedTitle": "Este artefato foi excluído",
       "liveArtifact": "artefato ao vivo",
-      "deletedBadge": "Excluído"
+      "deletedBadge": "Excluído",
+      "share": "Compartilhar",
+      "shareTooltip": "Escolha quem pode abrir"
     },
     "kinds": {
       "provider": "Provedor",
@@ -108,7 +110,10 @@
       "tryAgain": "Tentar novamente",
       "adminSpendingLimitBody": "O limite de gastos definido pelo administrador foi atingido. Fale com o seu administrador.",
       "budgetUsedUpTitle": "O orçamento da sua organização acabou",
-      "viewBudgets": "Ver orçamentos"
+      "viewBudgets": "Ver orçamentos",
+      "balanceRanOutMobile": "Seu saldo acabou antes de esta tarefa terminar.",
+      "autoTopUpFailedBodyMobile": "Não conseguimos cobrar seu cartão.",
+      "connectProviderBodyMobile": "Conecte seu próprio provedor em Configurações."
     },
     "usageAlert": {
       "freeLow": "Resta {percent} da cota gratuita do Air",
@@ -142,7 +147,8 @@
       "needsCreditsTitle": "{model} precisa de créditos",
       "needsCreditsBody": "Você não tem créditos suficientes para este modelo. Recarregue seu saldo para usá-lo.",
       "disabledBody": "Este modelo está desativado no seu espaço de trabalho. Escolha outro modelo em Configurações.",
-      "topUpBalance": "Recarregar saldo"
+      "topUpBalance": "Recarregar saldo",
+      "needsCreditsBodyMobile": "Você não tem créditos suficientes para este modelo."
     },
     "overloaded": {
       "theModelProvider": "O provedor do modelo",
@@ -222,7 +228,16 @@
         "notRead": "Na fila: a tarefa terminou antes de conseguir ler isto."
       }
     },
-    "reconnecting": "Tentando reconectar"
+    "reconnecting": "Tentando reconectar",
+    "nextSteps": {
+      "groupLabel": "Próximos passos",
+      "ownData": "Fazer isso com meus próprios dados",
+      "anotherFile": "Fazer o mesmo com outro arquivo",
+      "makePage": "Transformar em uma página",
+      "schedule": "Executar isso de forma agendada",
+      "scheduled": "“{title}” agendada",
+      "scheduledDone": "Agendado ✓"
+    }
   },
   "composer": {
     "placeholder": "Olá, chefe. Como posso ajudar hoje?",
@@ -740,6 +755,31 @@
     "couldNotStart": "Não foi possível iniciar a chamada de voz.",
     "endedReason": "A chamada terminou ({reason})."
   },
+  "connectorDraft": {
+    "notSaved": "Modelo de conector · não salvo",
+    "kept": "Você já tem um conector com este id. Salvar de novo o substitui.",
+    "saved": "Salvo. Adicione suas credenciais em Conectar apps e dados.",
+    "savedConnect": "Salvo. Conecte-o para adicionar suas credenciais.",
+    "saveFailed": "Não foi possível salvar o conector.",
+    "button": {
+      "save": "Salvar conector",
+      "saveAgain": "Salvar de novo",
+      "saving": "Salvando…",
+      "done": "Salvo",
+      "connect": "Conectar"
+    },
+    "modal": {
+      "fieldsTitle": "O que você vai informar",
+      "usageTitle": "Como o Anton vai usar",
+      "helpUrl": "Onde encontrar: {url}"
+    },
+    "field": {
+      "secret": "secreto",
+      "required": "obrigatório",
+      "optional": "opcional",
+      "example": "Exemplo: {value}"
+    }
+  },
   "notionPicker": {
     "title": "Adicionar páginas do Notion",
     "subtitle": "Pesquise no seu Notion e escolha páginas para esta mensagem.",
@@ -750,5 +790,10 @@
     "database": "Banco de dados",
     "cancel": "Cancelar",
     "add": "{count, plural, =0 {Adicionar página} one {Adicionar página} other {Adicionar # páginas}}"
+  },
+  "generatedImage": {
+    "fallbackName": "imagem",
+    "alt": "Imagem gerada {name}",
+    "notShown": "Não foi possível mostrar {name}. Talvez tenha sido movido ou excluído."
   }
 }

@@ -71,7 +71,9 @@
       "thumbnailAlt": "Miniature de l’artefact",
       "deletedTitle": "Cet artefact a été supprimé",
       "liveArtifact": "artefact en direct",
-      "deletedBadge": "Supprimé"
+      "deletedBadge": "Supprimé",
+      "share": "Partager",
+      "shareTooltip": "Choisir qui peut l'ouvrir"
     },
     "kinds": {
       "provider": "Fournisseur",
@@ -108,7 +110,10 @@
       "tryAgain": "Réessayer",
       "adminSpendingLimitBody": "La limite de dépenses fixée par votre administrateur a été atteinte. Contactez votre administrateur.",
       "budgetUsedUpTitle": "Le budget de votre organisation est épuisé",
-      "viewBudgets": "Voir les budgets"
+      "viewBudgets": "Voir les budgets",
+      "balanceRanOutMobile": "Votre solde a été épuisé avant la fin de cette tâche.",
+      "autoTopUpFailedBodyMobile": "Nous n’avons pas pu débiter votre carte.",
+      "connectProviderBodyMobile": "Connectez votre propre fournisseur dans les paramètres."
     },
     "usageAlert": {
       "freeLow": "Quota gratuit Air restant : {percent}",
@@ -142,7 +147,8 @@
       "needsCreditsTitle": "{model} nécessite des crédits",
       "needsCreditsBody": "Vous n’avez pas assez de crédits pour ce modèle. Rechargez votre solde pour l’utiliser.",
       "disabledBody": "Ce modèle est désactivé pour votre espace de travail. Choisissez un autre modèle dans les paramètres.",
-      "topUpBalance": "Recharger le solde"
+      "topUpBalance": "Recharger le solde",
+      "needsCreditsBodyMobile": "Vous n’avez pas assez de crédits pour ce modèle."
     },
     "overloaded": {
       "theModelProvider": "Le fournisseur de modèles",
@@ -222,7 +228,16 @@
         "notRead": "En file d’attente : la tâche s’est terminée avant de pouvoir lire ceci."
       }
     },
-    "reconnecting": "Tentative de reconnexion"
+    "reconnecting": "Tentative de reconnexion",
+    "nextSteps": {
+      "groupLabel": "Étapes suivantes",
+      "ownData": "Le faire avec mes propres données",
+      "anotherFile": "Faire de même avec un autre fichier",
+      "makePage": "En faire une page",
+      "schedule": "Exécuter selon un planning",
+      "scheduled": "« {title} » planifiée",
+      "scheduledDone": "Planifié ✓"
+    }
   },
   "composer": {
     "placeholder": "Bonjour chef, comment puis-je vous aider aujourd’hui ?",
@@ -740,6 +755,31 @@
     "couldNotStart": "Impossible de lancer l’appel vocal.",
     "endedReason": "L’appel est terminé ({reason})."
   },
+  "connectorDraft": {
+    "notSaved": "Modèle de connecteur · non enregistré",
+    "kept": "Vous avez déjà un connecteur avec cet id. L’enregistrer à nouveau le remplace.",
+    "saved": "Enregistré. Ajoutez vos identifiants dans Connecter des applications et des données.",
+    "savedConnect": "Enregistré. Connectez-le pour ajouter vos identifiants.",
+    "saveFailed": "Impossible d’enregistrer le connecteur.",
+    "button": {
+      "save": "Enregistrer le connecteur",
+      "saveAgain": "Enregistrer à nouveau",
+      "saving": "Enregistrement…",
+      "done": "Enregistré",
+      "connect": "Connecter"
+    },
+    "modal": {
+      "fieldsTitle": "Ce que vous allez saisir",
+      "usageTitle": "Comment Anton l’utilisera",
+      "helpUrl": "Où les trouver : {url}"
+    },
+    "field": {
+      "secret": "secret",
+      "required": "obligatoire",
+      "optional": "facultatif",
+      "example": "Exemple : {value}"
+    }
+  },
   "notionPicker": {
     "title": "Ajouter des pages depuis Notion",
     "subtitle": "Recherchez dans votre Notion et choisissez des pages pour ce message.",
@@ -750,5 +790,10 @@
     "database": "Base de données",
     "cancel": "Annuler",
     "add": "{count, plural, =0 {Ajouter la page} one {Ajouter la page} other {Ajouter # pages}}"
+  },
+  "generatedImage": {
+    "fallbackName": "image",
+    "alt": "Image générée {name}",
+    "notShown": "Impossible d'afficher {name}. Le fichier a peut-être été déplacé ou supprimé."
   }
 }

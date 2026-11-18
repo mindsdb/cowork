@@ -173,10 +173,13 @@
     "unavailableTitle": "Feature unavailable",
     "cloudBodyNamed": "{feature} isn’t available on Cloud just yet. In the meantime, you can use it in the desktop app.",
     "cloudBody": "This feature isn’t available on Cloud just yet. In the meantime, you can use it in the desktop app.",
+    "cloudBodyCustom": "{feature} isn’t available on Cloud just yet. You can connect it now as a custom connector.",
     "unavailableBodyNamed": "{feature} isn’t available in this deployment.",
     "unavailableBody": "This feature isn’t available in this deployment.",
     "notNow": "Not now",
-    "download": "Download the app"
+    "download": "Download the app",
+    "connectCustom": "Connect your custom {feature}",
+    "buildCustom": "Build a custom connector"
   },
   "loadStatus": {
     "retry": "Retry",
@@ -404,7 +407,8 @@
       "operatorTitle": "Provider setup is required",
       "body": "Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.",
       "operatorBody": "Ask your operator to configure the model provider before starting a task.",
-      "startFree": "Start for free"
+      "startFree": "Start for free",
+      "bodyMobile": "Connect your own provider in Settings."
     },
     "handoffHint": "Edit this prompt, then send when you're ready.",
     "signupWelcome": {

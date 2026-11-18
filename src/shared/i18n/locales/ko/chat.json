@@ -71,7 +71,9 @@
       "thumbnailAlt": "아티팩트 썸네일",
       "deletedTitle": "이 아티팩트는 삭제되었습니다",
       "liveArtifact": "라이브 아티팩트",
-      "deletedBadge": "삭제됨"
+      "deletedBadge": "삭제됨",
+      "share": "공유",
+      "shareTooltip": "열 수 있는 사람 선택"
     },
     "kinds": {
       "provider": "공급자",
@@ -108,7 +110,10 @@
       "tryAgain": "다시 시도",
       "adminSpendingLimitBody": "관리자가 설정한 지출 한도에 도달했습니다. 관리자에게 문의하세요.",
       "budgetUsedUpTitle": "조직의 예산이 모두 소진되었습니다",
-      "viewBudgets": "예산 보기"
+      "viewBudgets": "예산 보기",
+      "balanceRanOutMobile": "이 작업이 끝나기 전에 잔액이 모두 소진되었습니다.",
+      "autoTopUpFailedBodyMobile": "카드 결제를 처리하지 못했습니다.",
+      "connectProviderBodyMobile": "설정에서 직접 공급자를 연결하세요."
     },
     "usageAlert": {
       "freeLow": "Air 무료 제공량 {percent} 남음",
@@ -142,7 +147,8 @@
       "needsCreditsTitle": "{model}을(를) 사용하려면 크레딧이 필요합니다",
       "needsCreditsBody": "이 모델을 사용할 크레딧이 부족합니다. 잔액을 충전한 후 사용하세요.",
       "disabledBody": "워크스페이스에서 이 모델이 꺼져 있습니다. 설정에서 다른 모델을 선택하세요.",
-      "topUpBalance": "잔액 충전"
+      "topUpBalance": "잔액 충전",
+      "needsCreditsBodyMobile": "이 모델을 사용할 크레딧이 부족합니다."
     },
     "overloaded": {
       "theModelProvider": "모델 공급자",
@@ -222,7 +228,16 @@
         "notRead": "대기열에 추가됨: 읽기 전에 작업이 끝났습니다."
       }
     },
-    "reconnecting": "다시 연결하는 중"
+    "reconnecting": "다시 연결하는 중",
+    "nextSteps": {
+      "groupLabel": "다음 단계",
+      "ownData": "내 데이터로 이렇게 하기",
+      "anotherFile": "다른 파일에도 똑같이 하기",
+      "makePage": "페이지로 만들기",
+      "schedule": "일정에 따라 실행하기",
+      "scheduled": "‘{title}’ 예약됨",
+      "scheduledDone": "예약됨 ✓"
+    }
   },
   "composer": {
     "placeholder": "안녕하세요, 오늘은 무엇을 도와드릴까요?",
@@ -740,6 +755,31 @@
     "couldNotStart": "음성 통화를 시작할 수 없습니다.",
     "endedReason": "통화가 종료되었습니다({reason})."
   },
+  "connectorDraft": {
+    "notSaved": "커넥터 템플릿 · 저장되지 않음",
+    "kept": "이 ID의 커넥터가 이미 있습니다. 다시 저장하면 대체됩니다.",
+    "saved": "저장했습니다. ‘앱 및 데이터 연결’에서 자격 증명을 추가하세요.",
+    "savedConnect": "저장했습니다. 연결하여 자격 증명을 추가하세요.",
+    "saveFailed": "커넥터를 저장할 수 없습니다.",
+    "button": {
+      "save": "커넥터 저장",
+      "saveAgain": "다시 저장",
+      "saving": "저장 중…",
+      "done": "저장됨",
+      "connect": "연결"
+    },
+    "modal": {
+      "fieldsTitle": "입력할 항목",
+      "usageTitle": "Anton이 사용하는 방법",
+      "helpUrl": "찾는 곳: {url}"
+    },
+    "field": {
+      "secret": "비밀",
+      "required": "필수",
+      "optional": "선택",
+      "example": "예: {value}"
+    }
+  },
   "notionPicker": {
     "title": "Notion에서 페이지 추가",
     "subtitle": "Notion을 검색하여 이 메시지에 추가할 페이지를 선택하세요.",
@@ -750,5 +790,10 @@
     "database": "데이터베이스",
     "cancel": "취소",
     "add": "{count, plural, =0 {페이지 추가} other {페이지 #개 추가}}"
+  },
+  "generatedImage": {
+    "fallbackName": "이미지",
+    "alt": "생성된 이미지 {name}",
+    "notShown": "{name}을(를) 표시할 수 없습니다. 이동되었거나 삭제되었을 수 있습니다."
   }
 }
