@@ -267,11 +267,13 @@ export function freeServingPausedCopy(resetAt) {
  *  Credits do not lift it, so it never asks for funds; Air is named only while
  *  the hub read shows its free allowance has room. `budgetScope` picks who can
  *  raise it; without one the copy names no role. */
-export function budgetExceededCopy({ usage = null, budgetScope = null } = {}) {
+export function budgetExceededCopy({ usage = null, budgetScope = null, budgetModelLabel = null } = {}) {
   const scope = budgetScopeOf(budgetScope);
+  // A per-model budget names its model and says the others still work.
+  const model = { hasModel: budgetModelLabel ? 'true' : 'other', model: budgetModelLabel || '' };
   return freeAllowanceState(usage).status === 'has_room'
-    ? tr('budgetExceeded.airHasRoom', { scope })
-    : tr('budgetExceeded.raise', { scope });
+    ? tr('budgetExceeded.airHasRoom', { scope, ...model })
+    : tr('budgetExceeded.raise', { scope, ...model });
 }
 
 /** Whether a bar descriptor is something to WARN about, as opposed to the

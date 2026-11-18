@@ -19,3 +19,13 @@ export function budgetScopeOf(value: unknown): BudgetScope {
 export function budgetPeriodOf(value: unknown): BudgetPeriod {
   return typeof value === 'string' && PERIODS.has(value) ? (value as BudgetPeriod) : 'other';
 }
+
+/** A per-model budget's model as the user sees it: its catalog label, else the raw alias (never prettified). */
+export function budgetModelName(
+  id: string,
+  labels?: Readonly<Record<string, string>> | null,
+  fallback?: (id: string) => string | undefined | null,
+): string {
+  const label = labels && Object.hasOwn(labels, id) ? labels[id] : undefined;
+  return label || fallback?.(id) || id;
+}

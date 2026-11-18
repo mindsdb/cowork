@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { budgetPeriodOf, budgetScopeOf } from './budgetScope';
+import { budgetModelName, budgetPeriodOf, budgetScopeOf } from './budgetScope';
 
 describe('budgetScopeOf', () => {
   it.each(['org', 'workspace', 'api_key', 'team'])('keeps the named scope %s', (scope) => {
@@ -22,5 +22,19 @@ describe('budgetPeriodOf', () => {
 
   it.each([undefined, null, '', 'week', 'Day', 7])('reads %s as no period', (value) => {
     expect(budgetPeriodOf(value)).toBe('other');
+  });
+});
+
+describe('budgetModelName', () => {
+  it('prefers the catalog label', () => {
+    expect(budgetModelName('haiku-4-5', { 'haiku-4-5': 'Claude Haiku' }, () => 'Other')).toBe('Claude Haiku');
+  });
+  it('falls back to another catalog source, then the raw alias', () => {
+    expect(budgetModelName('haiku-4-5', {}, () => 'Haiku from picker')).toBe('Haiku from picker');
+    expect(budgetModelName('haiku-4-5', null, () => undefined)).toBe('haiku-4-5');
+    expect(budgetModelName('haiku-4-5')).toBe('haiku-4-5');
+  });
+  it('ignores inherited keys', () => {
+    expect(budgetModelName('constructor', {})).toBe('constructor');
   });
 });

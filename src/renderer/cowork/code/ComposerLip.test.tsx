@@ -178,6 +178,19 @@ describe('ComposerLip', () => {
     expect(screen.getByText(title)).toBeInTheDocument();
   });
 
+  it('names the model a per-model budget stops, by its catalog label or else its alias', () => {
+    const event = failure('budget_exceeded', 'upstream 402');
+    event.data.budget_scope = 'workspace';
+    event.data.budget_model = 'haiku-4-5';
+    const labelled = failureNotice(accountFailure(session(), undefined, event), 'GPT 5.6 Sol', (id) => (id === 'haiku-4-5' ? 'Claude Haiku' : id));
+    expect(labelled!.body).toBe("Claude Haiku can't run until an administrator raises it in Budgets. Choose another model to continue in this task.");
+    const bare = failureNotice(accountFailure(session(), undefined, event), 'GPT 5.6 Sol');
+    expect(bare!.body).toMatch(/^haiku-4-5 can't run until an administrator/);
+    delete event.data.budget_model;
+    const allModels = failureNotice(accountFailure(session(), undefined, event), 'GPT 5.6 Sol');
+    expect(allModels!.body).toBe('An administrator can raise it in Budgets, or choose an available model to continue in this task.');
+  });
+
   it('shows nothing for a limit once new work has started or while the task reopens', () => {
     const credits = failure('insufficient_credits', '402');
     expect(accountFailure(session({ status: 'running', run_status: 'running' }), undefined, credits)).toBeNull();

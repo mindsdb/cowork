@@ -816,12 +816,14 @@ describe('fetchSession error hydration (ENG-1304)', () => {
       { role: 'user', content: 'hi' },
       { role: 'assistant', content: '', events: [
         { type: 'response.created' },
-        { type: 'response.failed', code: 'budget_exceeded', error: 'Budget used up.', budget_scope: 'workspace', budget_period: 'day' },
+        { type: 'response.failed', code: 'budget_exceeded', error: 'Budget used up.', budget_scope: 'workspace', budget_period: 'day', budget_model: 'haiku-4-5' },
       ] },
     ]);
     const { fetchSession } = await import('./api');
     const task = await fetchSession('c1');
-    expect(task.messages.find((m) => m.role === 'error')).toMatchObject({ code: 'budget_exceeded', budgetScope: 'workspace', budgetPeriod: 'day' });
+    expect(task.messages.find((m) => m.role === 'error')).toMatchObject({
+      code: 'budget_exceeded', budgetScope: 'workspace', budgetPeriod: 'day', budgetModel: 'haiku-4-5',
+    });
   });
 });
 

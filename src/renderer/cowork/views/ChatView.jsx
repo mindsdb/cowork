@@ -95,7 +95,7 @@ import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLin
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { budgetPeriodOf, budgetScopeOf } from '../lib/budgetScope';
+import { budgetPeriodOf, budgetScopeOf, budgetModelName } from '../lib/budgetScope';
 import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
@@ -1530,7 +1530,8 @@ export function FreeServingPausedCard({
  * while the hub read shows room, as on the balance card.
  */
 export function BudgetExceededCard({
-  time, agentLabel, usage, onSwitchToAir, budgetScope = null, budgetPeriod = null, deleting = false,
+  time, agentLabel, usage, onSwitchToAir, budgetScope = null, budgetPeriod = null, budgetModelLabel = null,
+  deleting = false,
 }) {
   const { t } = useTranslation('chat');
   const budgetsUrl = useBudgetsUrl();
@@ -1554,7 +1555,7 @@ export function BudgetExceededCard({
       agentLabel={agentLabel}
       kind={t('chatView.kinds.billing')}
       title={t('chatView.cards.budgetUsedUpTitle', { scope: budgetScopeOf(budgetScope), period: budgetPeriodOf(budgetPeriod) })}
-      body={budgetExceededCopy({ usage, budgetScope })}
+      body={budgetExceededCopy({ usage, budgetScope, budgetModelLabel })}
       buttons={[
         ...billingActions([{
           label: t('chatView.cards.viewBudgets'),
@@ -3415,6 +3416,7 @@ export default function ChatView({
                       usage={hubUsage?.usage}
                       budgetScope={m.budgetScope}
                       budgetPeriod={m.budgetPeriod}
+                      budgetModelLabel={m.budgetModel ? budgetModelName(m.budgetModel, modelLabels) : null}
                       onSwitchToAir={
                         onSwitchToAirAndResend && budgetResend && taskModelId !== MINDSHUB_AIR_MODEL_ID
                           ? () => onSwitchToAirAndResend(budgetResend.text, budgetResend.attachments)

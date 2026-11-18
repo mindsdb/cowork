@@ -564,6 +564,23 @@ describe('budget_exceeded card', () => {
     expect(stopCard(title).getByRole('button', { name: 'View budgets' })).toBeEnabled();
   });
 
+  it.each([
+    [{ 'haiku-4-5': 'Claude Haiku' }, 'Claude Haiku'],
+    [{}, 'haiku-4-5'],
+  ])('names the model a per-model budget stops, by its catalog label or else its alias', (modelLabels, shown) => {
+    render(withUsage(
+      hubUsage({ remaining: 0, used: 100 }),
+      <ChatView
+        task={taskWith(failedTurn('budget_exceeded', MSG, { budgetScope: 'workspace', budgetPeriod: 'day', budgetModel: 'haiku-4-5' }))}
+        model={PAID}
+        modelLabels={modelLabels}
+      />,
+    ));
+    expect(stopCard("This workspace's daily budget is used up").getByText(
+      `${shown} can't run until an administrator raises it in Budgets. Other models still work.`,
+    )).toBeInTheDocument();
+  });
+
   it('offers MindsHub Air while its free allowance has room, resending the failed message', async () => {
     const user = userEvent.setup();
     const onSwitchToAirAndResend = vi.fn();

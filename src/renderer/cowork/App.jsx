@@ -2047,6 +2047,7 @@ function AppCore() {
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
             budgetScope: typeof event?.budget_scope === 'string' ? event.budget_scope : null,
             budgetPeriod: typeof event?.budget_period === 'string' ? event.budget_period : null,
+            budgetModel: typeof event?.budget_model === 'string' && event.budget_model ? event.budget_model : null,
             requestId: typeof event?.request_id === 'string' ? event.request_id : null,
             /* Client-only: a lost connection, shown with "Trying to
                reconnect" while recoverDroppedTurn tries to reach the turn,
@@ -7610,6 +7611,7 @@ function AppCore() {
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
               defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
               models={mindsModels}
+              modelLabels={settings.modelLabels}
               modelMeta={modelMeta}
               skillScopeKey={codeSkillScopeKey}
               connections={connectors}

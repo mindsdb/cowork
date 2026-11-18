@@ -66,8 +66,8 @@
         "balanceLowToo": "Seu saldo também está baixo ({usd})."
       },
       "budgetExceeded": {
-        "raise": "{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos.}}",
-        "airHasRoom": "{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita.}}"
+        "raise": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.}}} other {{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos.}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.}}} other {{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita.}}}}"
       }
     },
     "scheduleWhen": {

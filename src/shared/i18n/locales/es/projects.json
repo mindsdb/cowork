@@ -66,8 +66,8 @@
         "balanceLowToo": "Tu saldo también está bajo ({usd})."
       },
       "budgetExceeded": {
-        "raise": "{scope, select, org {Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos.} other {Los modelos de pago no pueden ejecutarse hasta que un administrador lo aumente en Presupuestos.}}",
-        "airHasRoom": "{scope, select, org {Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure su cupo gratuito.} other {Los modelos de pago no pueden ejecutarse hasta que un administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure su cupo gratuito.}}"
+        "raise": "{hasModel, select, true {{scope, select, org {{model} no puede ejecutarse hasta que un propietario o administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.} other {{model} no puede ejecutarse hasta que un administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.}}} other {{scope, select, org {Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos.} other {Los modelos de pago no pueden ejecutarse hasta que un administrador lo aumente en Presupuestos.}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} no puede ejecutarse hasta que un propietario o administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.} other {{model} no puede ejecutarse hasta que un administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.}}} other {{scope, select, org {Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure su cupo gratuito.} other {Los modelos de pago no pueden ejecutarse hasta que un administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure su cupo gratuito.}}}}"
       }
     },
     "scheduleWhen": {

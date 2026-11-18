@@ -781,6 +781,14 @@ describe('budgetExceededCopy', () => {
     expect(budgetExceededCopy({ usage: null, budgetScope: scope })).toBe(expected);
   });
 
+  it.each([
+    ['org', "Claude Haiku can't run until an owner or admin raises it in Budgets. Other models still work."],
+    ['workspace', "Claude Haiku can't run until an administrator raises it in Budgets. Other models still work."],
+  ])('names the model a per-model %s budget stops, with or without Air room', (scope, expected) => {
+    expect(budgetExceededCopy({ usage: null, budgetScope: scope, budgetModelLabel: 'Claude Haiku' })).toBe(expected);
+    expect(budgetExceededCopy({ usage: usage(), budgetScope: scope, budgetModelLabel: 'Claude Haiku' })).toBe(expected);
+  });
+
   it('never asks for credits or funds', () => {
     for (const copy of [budgetExceededCopy({ usage: usage() }), budgetExceededCopy()]) {
       expect(copy).not.toMatch(/credit|fund/i);

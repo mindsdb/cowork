@@ -52837,36 +52837,36 @@
   },
   "code:composerNotices.budgetExceeded.body": {
     "de": {
-      "from": "dc5acc8dd64a",
-      "text": "f9d981309b06"
+      "from": "631c42d50279",
+      "text": "82e285264e71"
     },
     "es": {
-      "from": "dc5acc8dd64a",
-      "text": "3e98fb592cd4"
+      "from": "631c42d50279",
+      "text": "3716491680bb"
     },
     "fr": {
-      "from": "dc5acc8dd64a",
-      "text": "4f4f464e7222"
+      "from": "631c42d50279",
+      "text": "8a0c9f41c79a"
     },
     "it": {
-      "from": "dc5acc8dd64a",
-      "text": "7a21fc159739"
+      "from": "631c42d50279",
+      "text": "f02bb0b745e5"
     },
     "ja": {
-      "from": "dc5acc8dd64a",
-      "text": "edb37cf69a27"
+      "from": "631c42d50279",
+      "text": "b0d5c07d9c8b"
     },
     "ko": {
-      "from": "dc5acc8dd64a",
-      "text": "5890f794562d"
+      "from": "631c42d50279",
+      "text": "0ef7be80e39d"
     },
     "pt-BR": {
-      "from": "dc5acc8dd64a",
-      "text": "54b1f0e7c003"
+      "from": "631c42d50279",
+      "text": "8186f42065e3"
     },
     "zh-CN": {
-      "from": "dc5acc8dd64a",
-      "text": "a9e956247a99"
+      "from": "631c42d50279",
+      "text": "caaa2c8e67ee"
     }
   },
   "code:composerNotices.budgetExceeded.title": {
@@ -121619,70 +121619,70 @@
   },
   "projects:messages.usage.budgetExceeded.airHasRoom": {
     "de": {
-      "from": "ae47d8232824",
-      "text": "f6bb10e44f74"
+      "from": "e08f5cbc8a7c",
+      "text": "8b58cf88aba1"
     },
     "es": {
-      "from": "ae47d8232824",
-      "text": "f8c4fc1a83c1"
+      "from": "e08f5cbc8a7c",
+      "text": "bb0bf94cbc46"
     },
     "fr": {
-      "from": "ae47d8232824",
-      "text": "b5a2f906203d"
+      "from": "e08f5cbc8a7c",
+      "text": "cd6e7ac802b0"
     },
     "it": {
-      "from": "ae47d8232824",
-      "text": "ee1de044cefe"
+      "from": "e08f5cbc8a7c",
+      "text": "4b6319fedc88"
     },
     "ja": {
-      "from": "ae47d8232824",
-      "text": "324ba65d6fb3"
+      "from": "e08f5cbc8a7c",
+      "text": "f591d031e0ca"
     },
     "ko": {
-      "from": "ae47d8232824",
-      "text": "9946668430d9"
+      "from": "e08f5cbc8a7c",
+      "text": "0ebd22c152e4"
     },
     "pt-BR": {
-      "from": "ae47d8232824",
-      "text": "3c2893e898ad"
+      "from": "e08f5cbc8a7c",
+      "text": "2e48a62d0831"
     },
     "zh-CN": {
-      "from": "ae47d8232824",
-      "text": "da39a1b1ee49"
+      "from": "e08f5cbc8a7c",
+      "text": "c185a1c197ac"
     }
   },
   "projects:messages.usage.budgetExceeded.raise": {
     "de": {
-      "from": "b39ec90029c2",
-      "text": "6260dc611098"
+      "from": "e9c360b2b1c9",
+      "text": "f23403d2c32e"
     },
     "es": {
-      "from": "b39ec90029c2",
-      "text": "ec2037db5430"
+      "from": "e9c360b2b1c9",
+      "text": "bfd7b6822c14"
     },
     "fr": {
-      "from": "b39ec90029c2",
-      "text": "f3c1587bfb82"
+      "from": "e9c360b2b1c9",
+      "text": "db387465bd3c"
     },
     "it": {
-      "from": "b39ec90029c2",
-      "text": "a90c527ff823"
+      "from": "e9c360b2b1c9",
+      "text": "55bb407657a6"
     },
     "ja": {
-      "from": "b39ec90029c2",
-      "text": "c6c2daadc70d"
+      "from": "e9c360b2b1c9",
+      "text": "c5f2bad327ec"
     },
     "ko": {
-      "from": "b39ec90029c2",
-      "text": "8d54aa30d34c"
+      "from": "e9c360b2b1c9",
+      "text": "dc91ae0cbd27"
     },
     "pt-BR": {
-      "from": "b39ec90029c2",
-      "text": "df4c355da61e"
+      "from": "e9c360b2b1c9",
+      "text": "3d1ce16a6b8f"
     },
     "zh-CN": {
-      "from": "b39ec90029c2",
-      "text": "53f63fca5f01"
+      "from": "e9c360b2b1c9",
+      "text": "361869f4a3a2"
     }
   },
   "projects:messages.usage.freeLow.balanceLowToo": {
