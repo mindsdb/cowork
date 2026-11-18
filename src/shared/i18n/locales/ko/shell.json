@@ -135,6 +135,27 @@
       "haveCopyTitle": "이미 사본이 있습니다. 앱을 다시 복제하려면 사본을 삭제하세요.",
       "duplicateAriaLabel": "{name} 복제",
       "duplicatedToast": "이 프로젝트에 복제되었습니다."
+    },
+    "workingFolders": {
+      "title": "작업 폴더",
+      "add": "이 채팅에 폴더 추가",
+      "adding": "추가 중…",
+      "emptyHint": "에이전트가 작업할 폴더를 추가하세요.",
+      "loadingFiles": "파일 불러오는 중…",
+      "emptyFolder": "이 폴더에 파일이 없습니다.",
+      "showFiles": "{name}의 파일 표시",
+      "hideFiles": "{name}의 파일 숨기기",
+      "unavailable": "폴더를 사용할 수 없음",
+      "removeTooltip": "이 채팅에서 제거",
+      "removeAriaLabel": "이 채팅에서 {name} 제거",
+      "removeTitle": "이 채팅에서 ‘{name}’을(를) 제거할까요?",
+      "fallbackName": "폴더",
+      "removeMessage": "에이전트가 더 이상 이 폴더에서 작업하지 않습니다. 폴더와 파일은 컴퓨터에 그대로 남습니다.",
+      "loadFailed": "작업 폴더를 불러오지 못했습니다.",
+      "listFailed": "이 폴더의 목록을 가져오지 못했습니다.",
+      "pickerFailed": "폴더 선택기를 열지 못했습니다.",
+      "addFailed": "이 폴더를 추가하지 못했습니다.",
+      "removeFailed": "이 폴더를 제거하지 못했습니다."
     }
   },
   "confirm": {

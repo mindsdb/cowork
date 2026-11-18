@@ -16,6 +16,10 @@ import {
 } from '../../api';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
+import i18n, { useTranslation } from '../../../lib/i18n';
+
+// For fallbacks set inside load callbacks, so `t` stays out of their deps.
+const tShell = (key) => i18n.t(`rail.workingFolders.${key}`, { ns: 'shell' });
 
 /** Files worth showing: no directories and nothing under a hidden segment. */
 function visibleFiles(files) {
@@ -26,15 +30,16 @@ function visibleFiles(files) {
 }
 
 function FolderFiles({ state }) {
+  const { t } = useTranslation('shell');
   if (!state || state.loading) {
-    return <p className="text-[12px] text-ink-4 px-1 pb-0.5">Loading files…</p>;
+    return <p className="text-[12px] text-ink-4 px-1 pb-0.5">{t('rail.workingFolders.loadingFiles')}</p>;
   }
   if (state.error) {
     return <p className="text-xs px-1 pb-0.5 text-danger">{state.error}</p>;
   }
   // A cut listing may hold no visible files at all, so it is never "empty".
   if (state.files.length === 0 && !state.truncated) {
-    return <p className="text-[12px] text-ink-4 px-1 pb-0.5">No files in this folder.</p>;
+    return <p className="text-[12px] text-ink-4 px-1 pb-0.5">{t('rail.workingFolders.emptyFolder')}</p>;
   }
   return (
     <>
@@ -58,22 +63,21 @@ function FolderFiles({ state }) {
       )}
       {/* Outside the scroll box, so it shows without scrolling past every row. */}
       {state.truncated && (
-        <p className="text-[11.5px] text-ink-4 px-1 py-1">
-          This folder holds more files than the list can show, so some are missing here.
-        </p>
+        <p className="text-[11.5px] text-ink-4 px-1 py-1">{t('rail.context.truncated')}</p>
       )}
     </>
   );
 }
 
 function FolderCard({ folder, expanded, onToggle, onRequestRemove, filesState }) {
+  const { t } = useTranslation('shell');
   return (
     <div className="flex flex-col gap-0.5 rounded-card-row">
       <div className="group grid items-center gap-1 px-1 py-1 grid-cols-[14px_14px_minmax(0,1fr)_auto]">
         <button
           type="button"
           aria-expanded={expanded}
-          aria-label={`${expanded ? 'Hide' : 'Show'} files in ${folder.name}`}
+          aria-label={t(expanded ? 'rail.workingFolders.hideFiles' : 'rail.workingFolders.showFiles', { name: folder.name })}
           disabled={!folder.available}
           onClick={onToggle}
           className="inline-flex items-center justify-center bg-transparent border-0 p-0 text-ink-4 cursor-pointer disabled:cursor-default disabled:opacity-40"
@@ -86,13 +90,13 @@ function FolderCard({ folder, expanded, onToggle, onRequestRemove, filesState })
         <span className="min-w-0" title={folder.path}>
           <span className="block truncate text-sm text-ink">{folder.name || folder.path}</span>
           {!folder.available && (
-            <span className="block text-[11px] text-ink-4">Folder not available</span>
+            <span className="block text-[11px] text-ink-4">{t('rail.workingFolders.unavailable')}</span>
           )}
         </span>
-        <Tooltip content="Remove from this chat">
+        <Tooltip content={t('rail.workingFolders.removeTooltip')}>
           <button
             type="button"
-            aria-label={`Remove ${folder.name || folder.path} from this chat`}
+            aria-label={t('rail.workingFolders.removeAriaLabel', { name: folder.name || folder.path })}
             onClick={() => onRequestRemove(folder)}
             className={clsx(
               'inline-flex items-center justify-center rounded bg-transparent border-0 p-0 cursor-pointer',
@@ -113,6 +117,7 @@ function FolderCard({ folder, expanded, onToggle, onRequestRemove, filesState })
 }
 
 export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
+  const { t } = useTranslation('shell');
   const [folders, setFolders] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -138,7 +143,7 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
       .catch((err) => {
         if (ticket !== listTicket.current) return;
         setFolders([]);
-        setLoadError(err?.message || 'Could not load working folders.');
+        setLoadError(err?.message || tShell('loadFailed'));
       });
   }, [conversationId]);
 
@@ -164,7 +169,7 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
         if (fileTickets.current[folderId] !== ticket) return;
         setFilesByFolder((prev) => ({
           ...prev,
-          [folderId]: { loading: false, files: [], error: err?.message || 'Could not list this folder.' },
+          [folderId]: { loading: false, files: [], error: err?.message || tShell('listFailed') },
         }));
       });
   }, [conversationId]);
@@ -191,12 +196,12 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
     try {
       picked = await host.pickCodeFolder();
     } catch (e) {
-      setActionError(e?.message || 'Could not open the folder picker.');
+      setActionError(e?.message || t('rail.workingFolders.pickerFailed'));
       return;
     }
     if (picked?.cancelled) return;
     if (!picked?.ok || !picked.path) {
-      setActionError(picked?.reason || 'Could not open the folder picker.');
+      setActionError(picked?.reason || t('rail.workingFolders.pickerFailed'));
       return;
     }
     setAdding(true);
@@ -204,7 +209,7 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
       await addConversationFolder(conversationId, picked.path);
       await reload();
     } catch (e) {
-      setActionError(e?.message || 'Could not add this folder.');
+      setActionError(e?.message || t('rail.workingFolders.addFailed'));
     } finally {
       setAdding(false);
     }
@@ -214,13 +219,13 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center justify-between px-1 mb-1">
         <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
-          Working folders{folders.length > 1 ? ` · ${folders.length}` : ''}
+          {t('rail.workingFolders.title')}{folders.length > 1 ? ` · ${folders.length}` : ''}
         </span>
-        <Tooltip content="Add a folder to this chat">
+        <Tooltip content={t('rail.workingFolders.add')}>
           <button
             type="button"
-            aria-label="Add a folder to this chat"
-            title={adding ? 'Adding…' : undefined}
+            aria-label={t('rail.workingFolders.add')}
+            title={adding ? t('rail.workingFolders.adding') : undefined}
             disabled={adding}
             onClick={addFolder}
             className={clsx(
@@ -247,7 +252,7 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
           )}
         >
           <span className="text-ink-4 inline-flex flex-none">{Ico.folder(14)}</span>
-          <span>Add a folder for the agent to work in.</span>
+          <span>{t('rail.workingFolders.emptyHint')}</span>
         </button>
       )}
       {folders.map((folder) => (
@@ -262,10 +267,12 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
       ))}
       <ConfirmModal
         open={!!pendingRemove}
-        title={`Remove "${pendingRemove?.name || 'folder'}" from this chat?`}
-        message="The agent will no longer work in this folder. The folder and its files stay on your computer."
-        confirmLabel="Remove"
-        cancelLabel="Keep"
+        title={t('rail.workingFolders.removeTitle', {
+          name: pendingRemove?.name || t('rail.workingFolders.fallbackName'),
+        })}
+        message={t('rail.workingFolders.removeMessage')}
+        confirmLabel={t('common.remove')}
+        cancelLabel={t('common.keep')}
         destructive
         onClose={() => setPendingRemove(null)}
         onConfirm={async () => {
@@ -276,7 +283,7 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
           try {
             await removeConversationFolder(conversationId, target.id);
           } catch (e) {
-            setActionError(e?.message || 'Could not remove this folder.');
+            setActionError(e?.message || t('rail.workingFolders.removeFailed'));
           }
           await reload();
         }}
