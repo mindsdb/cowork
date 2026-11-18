@@ -43,7 +43,6 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('../../lib/analytics', () => ({
   resetDeviceIdentity: spies.resetDeviceIdentity,
 }));
-vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
 import { LOGOUT_BUSY_LOCK_MS } from '../../hooks/useLogout';

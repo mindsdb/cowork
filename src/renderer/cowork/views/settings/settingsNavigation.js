@@ -7,7 +7,6 @@ const NAV_ITEMS = [
   { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App' },
   { id: 'branding', label: 'Branding', icon: 'building', group: 'App' },
   { id: 'desktop', label: 'Desktop', icon: 'computer', group: 'App' },
-  { id: 'channels', label: 'Channels', icon: 'chats', group: 'App' },
   { id: 'updates', label: 'Updates', icon: 'refresh', group: 'System' },
   { id: 'backend', label: 'Backend', icon: 'database', group: 'System' },
   { id: 'usage', label: 'Usage', icon: 'chartColumn', group: 'System' },
@@ -20,7 +19,7 @@ const NAV_ITEMS = [
 // Usage is none of those: it reads the same sidecar route both hosts already
 // call and its every control opens the console in a browser, so a hosted user
 // gets a working surface rather than a misleading one.
-const WEB_NAV_IDS = new Set(['agent', 'appearance', 'branding', 'channels', 'usage']);
+const WEB_NAV_IDS = new Set(['agent', 'appearance', 'branding', 'usage']);
 
 /**
  * `branding` is the org's look: offered only to an org admin (the

@@ -17,7 +17,6 @@ vi.mock('../../../platform/host', () => ({
   isElectron: true, getAccessToken: vi.fn(async () => ''),
 }));
 vi.mock('../../lib/analytics', () => ({ resetDeviceIdentity: vi.fn(), trackBillingOpened: vi.fn() }));
-vi.mock('../ChannelsView', () => ({ default: () => <div>Channels</div> }));
 
 import SettingsView from './SettingsView';
 

@@ -7,8 +7,8 @@ const spies = vi.hoisted(() => ({
   getAccessToken: vi.fn(async () => null),
 }));
 
-// SettingsView reaches for the API, the platform host bridge, analytics, and
-// the Channels sub-view on mount. Stub them so this stays focused on the
+// SettingsView reaches for the API, the platform host bridge and analytics on
+// mount. Stub them so this stays focused on the
 // mobile master-detail shell and its section-driven loading (ENG-990/ENG-991).
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
@@ -31,11 +31,10 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('../../lib/analytics', () => ({
   resetDeviceIdentity: vi.fn(),
 }));
-vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
 
-const NAV_LABELS = ['Agent', 'Appearance', 'Channels', 'Updates', 'Backend', 'Account'];
+const NAV_LABELS = ['Agent', 'Appearance', 'Updates', 'Backend', 'Account'];
 
 // Controlled harness: the open section is owned by the parent (App in prod).
 // Taps call onSectionChange, which re-renders with the new `section` — the
@@ -77,7 +76,7 @@ describe('SettingsView mobile master-detail (ENG-990/ENG-991)', () => {
     expect(screen.getByRole('combobox', { name: 'Language' })).toBeTruthy();
   });
 
-  it('opens on the section list with all six sections', () => {
+  it('opens on the section list with all five sections', () => {
     renderMobile();
     // Header title is "Settings", back control closes the surface.
     expect(screen.getByRole('button', { name: 'Close settings' })).toBeTruthy();

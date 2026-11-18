@@ -69,7 +69,6 @@ const VIEW_ROUTES = [
   'scheduled',
   'artifacts',
   'tasks',
-  'channels',
   'customize',
   'skills',
   'memory',

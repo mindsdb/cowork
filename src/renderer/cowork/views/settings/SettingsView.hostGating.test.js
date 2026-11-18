@@ -39,12 +39,12 @@ const ids = (items) => items.map((i) => i.id);
 describe('navItemsForHost — which Settings sections a host offers (ENG-932)', () => {
   it('gives an opted-in desktop every applicable section', () => {
     expect(ids(navItemsForHost(false, true, true))).toEqual([
-      'agent', 'codingAgent', 'computers', 'appearance', 'desktop', 'channels', 'updates', 'backend', 'usage', 'account',
+      'agent', 'codingAgent', 'computers', 'appearance', 'desktop', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 
-  it('gives web exactly Agent, Appearance, Channels, Usage', () => {
-    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels', 'usage']);
+  it('gives web exactly Agent, Appearance, Usage', () => {
+    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'usage']);
   });
 
   it('keeps Agent on web — it carries the reasoning-effort control', () => {
@@ -79,7 +79,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     // for both hosts beats a web-only exception. Pinned so the next nav
     // change sees it.
     expect(navItemsForHost(true, true, true).map((i) => i.group))
-      .toEqual(['General', 'App', 'App', 'System']);
+      .toEqual(['General', 'App', 'System']);
   });
 
   it('offers Usage on web: it reads a route both hosts call and only links out', () => {
@@ -92,7 +92,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
 
   it('preserves each section\'s label and icon, and the desktop ordering', () => {
     const web = navItemsForHost(true, true, true);
-    expect(web.map((i) => i.label)).toEqual(['Agent', 'Appearance', 'Channels', 'Usage']);
+    expect(web.map((i) => i.label)).toEqual(['Agent', 'Appearance', 'Usage']);
     expect(web.every((i) => typeof i.icon === 'string' && i.icon.length > 0)).toBe(true);
     // Filtered, not reordered — web order must be a subsequence of desktop's.
     const desktop = ids(navItemsForHost(false, true, true));
@@ -102,14 +102,14 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
   it('does not hand out the shared array for callers to mutate', () => {
     const a = navItemsForHost(true, true, true);
     a.pop();
-    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels', 'usage']);
+    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'usage']);
     // Desktop returns a copy too — without the spread it would hand back the
     // module-level NAV_ITEMS itself, and this pop() would corrupt every
     // later call on both platforms.
     const b = navItemsForHost(false, true, true);
     b.pop();
     expect(ids(navItemsForHost(false, true, true))).toEqual([
-      'agent', 'codingAgent', 'computers', 'appearance', 'desktop', 'channels', 'updates', 'backend', 'usage', 'account',
+      'agent', 'codingAgent', 'computers', 'appearance', 'desktop', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 });
@@ -117,7 +117,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
 describe('navItemsForHost — Code Mode availability and opt-in', () => {
   it('offers only the opt-in page while Code is available but disabled', () => {
     expect(ids(navItemsForHost(false, true, false))).toEqual([
-      'agent', 'codingAgent', 'appearance', 'desktop', 'channels', 'updates', 'backend', 'usage', 'account',
+      'agent', 'codingAgent', 'appearance', 'desktop', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 

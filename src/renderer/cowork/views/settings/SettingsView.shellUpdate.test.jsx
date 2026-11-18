@@ -6,7 +6,7 @@ const platformMock = vi.hoisted(() => ({ value: 'darwin' }));
 
 // The desktop Settings "Software updates" section is Electron-only and surfaces
 // the shell (installer) reinstall notice + Download control (ENG-849). Stub the
-// API/host/analytics/Channels deps SettingsView reaches for on mount so this
+// API/host/analytics deps SettingsView reaches for on mount so this
 // stays focused on the shell-download path (regression: PR #453 review — the
 // desktop SettingsView instance wasn't wired with the shell props).
 vi.mock('../../api', () => ({
@@ -33,7 +33,6 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('../../lib/analytics', () => ({
   resetDeviceIdentity: vi.fn(),
 }));
-vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
 

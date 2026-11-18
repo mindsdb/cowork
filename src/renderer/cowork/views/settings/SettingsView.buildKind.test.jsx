@@ -30,7 +30,6 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('../../lib/analytics', () => ({
   resetDeviceIdentity: vi.fn(),
 }));
-vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 const { copyText } = vi.hoisted(() => ({ copyText: vi.fn() }));
 vi.mock('../../lib/clipboard', () => ({ copyText }));

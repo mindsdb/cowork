@@ -30,7 +30,6 @@ const analyticsMock = vi.hoisted(() => ({
   trackBillingOpened: vi.fn(),
 }));
 vi.mock('../../lib/analytics', () => analyticsMock);
-vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
 import { MINDS_BUDGETS_URL } from '../../../lib/mindsUrls';

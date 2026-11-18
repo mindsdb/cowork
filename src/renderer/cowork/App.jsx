@@ -2422,7 +2422,7 @@ function AppCore() {
   // Mobile app (ENG-4023): a tapped push notification opens its route here,
   // including one tapped before the router existed (cold start). No-op elsewhere.
   useEffect(() => setMobilePushNavigator((path) => { routerRef.current?.navigate(path); }), []);
-  const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
+  const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = effectiveWorkspaceMode === 'code' ? 'code' : route;
