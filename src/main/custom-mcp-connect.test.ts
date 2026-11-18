@@ -50,6 +50,8 @@ const server = vi.hoisted(() => ({
   held: new Map<string, Record<string, unknown>>(),
   tools: [] as Array<{ name: string; description: string; read_only: boolean; allowed: boolean }> | 'unreachable',
   allowedToolsStatus: 200,
+  /** Every held hand-over body, in order. */
+  heldPuts: [] as Array<Record<string, unknown>>,
   /** Runs when the server is asked to switch tools, before it answers. */
   onAllowedTools: null as null | (() => Promise<void>),
   /** Runs when the server lists the new connection's tools. */
@@ -88,6 +90,7 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
   }
   if (!server.records.has(id)) return json(404, { detail: { error: 'custom_connection_missing' } });
   if (method === 'PUT' && action === 'held') {
+    server.heldPuts.push(body);
     server.held.set(id, { ...server.held.get(id), ...body });
     return json(200, {});
   }
@@ -178,6 +181,7 @@ beforeEach(() => {
   server.held.clear();
   server.tools = READ_TOOLS;
   server.allowedToolsStatus = 200;
+  server.heldPuts = [];
   server.onTools = null;
   server.onAllowedTools = null;
   server.calls = [];
@@ -379,6 +383,28 @@ describe('connectCustomMcp', () => {
 
       expect(result).toMatchObject({ ok: true, toolsOn: 1 });
       expect(server.held.get(ID)?.allowed_tools).toEqual(['search']);
+    });
+
+    it('sends no older list when it reached the server while the switch was being written', async () => {
+      let armed = false;
+      server.onTools = async () => {
+        // The hand-over read the keychain's empty list before the switch.
+        await startHandOver();
+        armed = true;
+      };
+      keychain.onSet = async (account) => {
+        if (armed && account.includes('|tools#')) {
+          armed = false;
+          releaseRefresh();
+          await handOver;
+        }
+      };
+
+      await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, deps(LOGIN_SERVER).deps);
+
+      const handedOver = server.heldPuts.find((body) => body.access_token === 'AT-9');
+      expect(handedOver).toBeDefined();
+      expect(handedOver).not.toHaveProperty('allowed_tools');
     });
 
     it('does not switch tools back on after the server refused the switch', async () => {

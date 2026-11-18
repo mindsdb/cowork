@@ -239,8 +239,9 @@ export async function connectCustomMcp(raw: unknown, deps: ConnectDeps = default
 }
 
 /** Switches on the tools the server marks read-only, keychain first, then
- *  the server; a refusal puts the keychain back to none, so the next start
- *  never hands over a list the server refuses. A tool whose name the
+ *  the server; a refusal writes the keychain back to none, so the next start
+ *  hands over no list the server refused. If that write fails too, the next
+ *  start hands over the read-only list, which the tool policy allows. A tool whose name the
  *  server's routes cannot take stays off. A server that cannot list its
  *  tools now keeps every tool off. */
 async function switchOnReadOnlyTools(storeRoot: string, id: string): Promise<{ toolsOn: number; toolsUnavailable: boolean }> {

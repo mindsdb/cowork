@@ -159,9 +159,11 @@ describe('handing custom MCP connections over at server start', () => {
 
   it('leaves the tool list to a switch made while the hand-over was refreshing', async () => {
     await seed(ROOT, ID, { refresh: 'RT-1' });
-    tokens.during = () => { void writeToolSwitch(ROOT, ID, ['other']); };
+    let switching: Promise<void> = Promise.resolve();
+    tokens.during = () => { switching = writeToolSwitch(ROOT, ID, ['other']); };
 
     await handOverCustomConnection(ROOT, ID, current, fetchFn);
+    await switching;
 
     expect(server.puts[0].body).not.toHaveProperty('allowed_tools');
     expect(server.puts[0].body).toHaveProperty('access_token', 'AT-2');
