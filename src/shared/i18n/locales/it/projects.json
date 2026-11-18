@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "Entrambi i modelli hanno esaurito i crediti prima di finire, quindi questo turno non può essere valutato.",
         "one": "{name} ha esaurito i crediti prima di finire, quindi questo turno non può essere valutato.",
-        "bothBudget": "{scope, select, org {Entrambi i modelli hanno raggiunto il budget della tua organizzazione} workspace {Entrambi i modelli hanno raggiunto il budget di quest’area di lavoro} api_key {Entrambi i modelli hanno raggiunto il budget di questa chiave API} other {Entrambi i modelli hanno raggiunto un budget}} prima di finire, quindi questo turno non può essere valutato.",
-        "oneBudget": "{scope, select, org {{name} ha raggiunto il budget della tua organizzazione} workspace {{name} ha raggiunto il budget di quest’area di lavoro} api_key {{name} ha raggiunto il budget di questa chiave API} other {{name} ha raggiunto un budget}} prima di finire, quindi questo turno non può essere valutato."
+        "bothBudget": "{scope, select, org {Entrambi i modelli hanno raggiunto il budget della tua organizzazione} workspace {Entrambi i modelli hanno raggiunto il budget di quest’area di lavoro} api_key {Entrambi i modelli hanno raggiunto il budget di questa chiave API} team {Entrambi i modelli hanno raggiunto il budget del tuo team} member {Entrambi i modelli hanno raggiunto il tuo budget} other {Entrambi i modelli hanno raggiunto un budget}} prima di finire, quindi questo turno non può essere valutato.",
+        "oneBudget": "{scope, select, org {{name} ha raggiunto il budget della tua organizzazione} workspace {{name} ha raggiunto il budget di quest’area di lavoro} api_key {{name} ha raggiunto il budget di questa chiave API} team {{name} ha raggiunto il budget del tuo team} member {{name} ha raggiunto il tuo budget} other {{name} ha raggiunto un budget}} prima di finire, quindi questo turno non può essere valutato."
       },
       "verdict": {
         "tie": "Più o meno uguali",

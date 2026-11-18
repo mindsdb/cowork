@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "Les deux modèles ont manqué de crédits avant de terminer : ce tour ne peut donc pas être évalué.",
         "one": "{name} a manqué de crédits avant de terminer : ce tour ne peut donc pas être évalué.",
-        "bothBudget": "{scope, select, org {Les deux modèles ont atteint le budget de votre organisation} workspace {Les deux modèles ont atteint le budget de cet espace de travail} api_key {Les deux modèles ont atteint le budget de cette clé API} other {Les deux modèles ont atteint un budget}} avant de terminer : ce tour ne peut donc pas être évalué.",
-        "oneBudget": "{scope, select, org {{name} a atteint le budget de votre organisation} workspace {{name} a atteint le budget de cet espace de travail} api_key {{name} a atteint le budget de cette clé API} other {{name} a atteint un budget}} avant de terminer : ce tour ne peut donc pas être évalué."
+        "bothBudget": "{scope, select, org {Les deux modèles ont atteint le budget de votre organisation} workspace {Les deux modèles ont atteint le budget de cet espace de travail} api_key {Les deux modèles ont atteint le budget de cette clé API} team {Les deux modèles ont atteint le budget de votre équipe} member {Les deux modèles ont atteint votre budget} other {Les deux modèles ont atteint un budget}} avant de terminer : ce tour ne peut donc pas être évalué.",
+        "oneBudget": "{scope, select, org {{name} a atteint le budget de votre organisation} workspace {{name} a atteint le budget de cet espace de travail} api_key {{name} a atteint le budget de cette clé API} team {{name} a atteint le budget de votre équipe} member {{name} a atteint votre budget} other {{name} a atteint un budget}} avant de terminer : ce tour ne peut donc pas être évalué."
       },
       "verdict": {
         "tie": "À peu près pareil",

@@ -1472,7 +1472,7 @@
       "body": "{reason}, so it still uses disk."
     },
     "budgetExceeded": {
-      "title": "{scope, select, org {Your organization's budget is used up} workspace {This workspace's budget is used up} api_key {This API key's budget is used up} other {A budget is used up}}",
+      "title": "{scope, select, org {{period, select, day {Your organization's daily budget is used up} month {Your organization's monthly budget is used up} year {Your organization's yearly budget is used up} other {Your organization's budget is used up}}} workspace {{period, select, day {This workspace's daily budget is used up} month {This workspace's monthly budget is used up} year {This workspace's yearly budget is used up} other {This workspace's budget is used up}}} api_key {{period, select, day {This API key's daily budget is used up} month {This API key's monthly budget is used up} year {This API key's yearly budget is used up} other {This API key's budget is used up}}} team {{period, select, day {Your team's daily budget is used up} month {Your team's monthly budget is used up} year {Your team's yearly budget is used up} other {Your team's budget is used up}}} member {{period, select, day {Your daily budget is used up} month {Your monthly budget is used up} year {Your yearly budget is used up} other {Your budget is used up}}} other {{period, select, day {A daily budget is used up} month {A monthly budget is used up} year {A yearly budget is used up} other {A budget is used up}}}}",
       "body": "{scope, select, org {An owner or admin can raise it in Budgets, or choose an available model to continue in this task.} other {An administrator can raise it in Budgets, or choose an available model to continue in this task.}}"
     },
     "writesHeld": {

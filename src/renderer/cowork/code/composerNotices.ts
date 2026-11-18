@@ -1,12 +1,12 @@
 import type { CodingEvent, CodingSession } from './api';
 import { isActiveStatus } from './presentation';
 import i18n from '../../lib/i18n';
-import { budgetScopeOf, type BudgetScope } from '../lib/budgetScope';
+import { budgetPeriodOf, budgetScopeOf, type BudgetPeriod, type BudgetScope } from '../lib/budgetScope';
 
 
 export interface FailureRecovery {
   // `budgetScope` is only read by budget_exceeded, which names whose budget is spent and who can raise it.
-  title: (modelName: string, budgetScope: BudgetScope) => string;
+  title: (modelName: string, budgetScope: BudgetScope, budgetPeriod: BudgetPeriod) => string;
   body: (budgetScope: BudgetScope) => string;
   addCredits?: boolean;
   // A spent budget: credits do not lift it, so the action opens Budgets instead.
@@ -58,7 +58,8 @@ export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
   },
   // Credits do not lift it, but MindsHub Air may still run free.
   budget_exceeded: {
-    title: (_modelName, budgetScope) => i18n.t('composerNotices.budgetExceeded.title', { ns: 'code', scope: budgetScope }),
+    title: (_modelName, budgetScope, budgetPeriod) =>
+      i18n.t('composerNotices.budgetExceeded.title', { ns: 'code', scope: budgetScope, period: budgetPeriod }),
     body: (budgetScope) => i18n.t('composerNotices.budgetExceeded.body', { ns: 'code', scope: budgetScope }),
     viewBudgets: true,
   },
@@ -90,6 +91,7 @@ export interface TurnFailure {
   recovery: FailureRecovery;
   detail: string;
   budgetScope: BudgetScope;
+  budgetPeriod: BudgetPeriod;
 }
 
 
@@ -108,7 +110,13 @@ export function accountFailure(
   const code = failure?.data.code;
   const recovery = typeof code === 'string' ? FAILURE_RECOVERY[code] : undefined;
   if (typeof code !== 'string' || !recovery) return null;
-  return { code, recovery, detail: failureDetail(session, failure), budgetScope: budgetScopeOf(failure?.data.budget_scope) };
+  return {
+    code,
+    recovery,
+    detail: failureDetail(session, failure),
+    budgetScope: budgetScopeOf(failure?.data.budget_scope),
+    budgetPeriod: budgetPeriodOf(failure?.data.budget_period),
+  };
 }
 
 
@@ -168,7 +176,7 @@ export function failureNotice(failure: TurnFailure | null, modelName: string): C
     key: `failure:${failure.code}`,
     tone: recovery.temporary ? 'warning' : 'danger',
     icon: recovery.temporary ? 'clock' : 'warning',
-    title: sentenceCase(recovery.title(modelName || i18n.t('composerNotices.thisModel', { ns: 'code' }), failure.budgetScope)),
+    title: sentenceCase(recovery.title(modelName || i18n.t('composerNotices.thisModel', { ns: 'code' }), failure.budgetScope, failure.budgetPeriod)),
     body: recovery.body(failure.budgetScope),
     detail: failure.detail,
     chooseModel: !recovery.hideModelChoice,

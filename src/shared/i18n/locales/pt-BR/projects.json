@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "Os dois modelos ficaram sem créditos antes de terminar, então este turno não pode ser avaliado.",
         "one": "{name} ficou sem créditos antes de terminar, então este turno não pode ser avaliado.",
-        "bothBudget": "{scope, select, org {Os dois modelos atingiram o orçamento da sua organização} workspace {Os dois modelos atingiram o orçamento deste espaço de trabalho} api_key {Os dois modelos atingiram o orçamento desta chave de API} other {Os dois modelos atingiram um orçamento}} antes de terminar, então este turno não pode ser avaliado.",
-        "oneBudget": "{scope, select, org {{name} atingiu o orçamento da sua organização} workspace {{name} atingiu o orçamento deste espaço de trabalho} api_key {{name} atingiu o orçamento desta chave de API} other {{name} atingiu um orçamento}} antes de terminar, então este turno não pode ser avaliado."
+        "bothBudget": "{scope, select, org {Os dois modelos atingiram o orçamento da sua organização} workspace {Os dois modelos atingiram o orçamento deste espaço de trabalho} api_key {Os dois modelos atingiram o orçamento desta chave de API} team {Os dois modelos atingiram o orçamento da sua equipe} member {Os dois modelos atingiram o seu orçamento} other {Os dois modelos atingiram um orçamento}} antes de terminar, então este turno não pode ser avaliado.",
+        "oneBudget": "{scope, select, org {{name} atingiu o orçamento da sua organização} workspace {{name} atingiu o orçamento deste espaço de trabalho} api_key {{name} atingiu o orçamento desta chave de API} team {{name} atingiu o orçamento da sua equipe} member {{name} atingiu o seu orçamento} other {{name} atingiu um orçamento}} antes de terminar, então este turno não pode ser avaliado."
       },
       "verdict": {
         "tie": "Mais ou menos igual",

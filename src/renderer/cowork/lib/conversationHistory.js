@@ -335,6 +335,7 @@ export function failedEventMeta(events) {
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
     // budget_exceeded: whose budget is spent (org, workspace, api_key); absent from an older server.
     budgetScope: typeof ev.budget_scope === 'string' ? ev.budget_scope : null,
+    budgetPeriod: typeof ev.budget_period === 'string' ? ev.budget_period : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads
     // it as local time — the gate would last hours west of UTC and no-op east
@@ -403,6 +404,7 @@ export function hydrateMessagesFromServerEvents(messages) {
           retryAfter: failed?.retryAfter ?? null,
           resetAt: failed?.resetAt ?? null,
           budgetScope: failed?.budgetScope ?? null,
+          budgetPeriod: failed?.budgetPeriod ?? null,
           retryAt: failed?.retryAt ?? null,
           requestId: failed?.requestId ?? null,
         });

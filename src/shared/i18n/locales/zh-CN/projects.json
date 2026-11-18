@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "两个模型都在完成前用完了积分，因此无法评判这一轮。",
         "one": "{name} 在完成前用完了积分，因此无法评判这一轮。",
-        "bothBudget": "{scope, select, org {两个模型都在完成前达到了组织的预算上限} workspace {两个模型都在完成前达到了此工作区的预算上限} api_key {两个模型都在完成前达到了此 API 密钥的预算上限} other {两个模型都在完成前达到了预算上限}}，因此无法评判这一轮。",
-        "oneBudget": "{scope, select, org {{name} 在完成前达到了组织的预算上限} workspace {{name} 在完成前达到了此工作区的预算上限} api_key {{name} 在完成前达到了此 API 密钥的预算上限} other {{name} 在完成前达到了预算上限}}，因此无法评判这一轮。"
+        "bothBudget": "{scope, select, org {两个模型都在完成前达到了组织的预算上限} workspace {两个模型都在完成前达到了此工作区的预算上限} api_key {两个模型都在完成前达到了此 API 密钥的预算上限} team {两个模型都在完成前达到了团队的预算上限} member {两个模型都在完成前达到了你的预算上限} other {两个模型都在完成前达到了预算上限}}，因此无法评判这一轮。",
+        "oneBudget": "{scope, select, org {{name} 在完成前达到了组织的预算上限} workspace {{name} 在完成前达到了此工作区的预算上限} api_key {{name} 在完成前达到了此 API 密钥的预算上限} team {{name} 在完成前达到了团队的预算上限} member {{name} 在完成前达到了你的预算上限} other {{name} 在完成前达到了预算上限}}，因此无法评判这一轮。"
       },
       "verdict": {
         "tie": "不相上下",

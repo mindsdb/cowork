@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "Both models ran out of credits before finishing, so this turn can't be judged.",
         "one": "{name} ran out of credits before finishing, so this turn can't be judged.",
-        "bothBudget": "{scope, select, org {Both models hit your organization's budget} workspace {Both models hit this workspace's budget} api_key {Both models hit this API key's budget} other {Both models hit a budget}} before finishing, so this turn can't be judged.",
-        "oneBudget": "{scope, select, org {{name} hit your organization's budget} workspace {{name} hit this workspace's budget} api_key {{name} hit this API key's budget} other {{name} hit a budget}} before finishing, so this turn can't be judged."
+        "bothBudget": "{scope, select, org {Both models hit your organization's budget} workspace {Both models hit this workspace's budget} api_key {Both models hit this API key's budget} team {Both models hit your team's budget} member {Both models hit your budget} other {Both models hit a budget}} before finishing, so this turn can't be judged.",
+        "oneBudget": "{scope, select, org {{name} hit your organization's budget} workspace {{name} hit this workspace's budget} api_key {{name} hit this API key's budget} team {{name} hit your team's budget} member {{name} hit your budget} other {{name} hit a budget}} before finishing, so this turn can't be judged."
       },
       "verdict": {
         "tie": "About the same",

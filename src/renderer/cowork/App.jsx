@@ -2046,6 +2046,7 @@ function AppCore() {
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
             budgetScope: typeof event?.budget_scope === 'string' ? event.budget_scope : null,
+            budgetPeriod: typeof event?.budget_period === 'string' ? event.budget_period : null,
             requestId: typeof event?.request_id === 'string' ? event.request_id : null,
             /* Client-only: a lost connection, shown with "Trying to
                reconnect" while recoverDroppedTurn tries to reach the turn,

@@ -542,12 +542,26 @@ describe('budget_exceeded card', () => {
     ['org', "Your organization's budget is used up", "Paid models can't run until an owner or admin raises it in Budgets."],
     ['workspace', "This workspace's budget is used up", RAISE],
     ['api_key', "This API key's budget is used up", RAISE],
+    ['team', "Your team's budget is used up", RAISE],
+    ['all_members', 'Your budget is used up', RAISE],
   ])('names the %s budget and who can raise it when the failure says whose it is', (scope, title, body) => {
     render(withUsage(
       hubUsage({ remaining: 0, used: 100 }),
       <ChatView task={taskWith(failedTurn('budget_exceeded', MSG, { budgetScope: scope }))} model={PAID} />,
     ));
     expect(stopCard(title).getByText(body)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['org', 'month', "Your organization's monthly budget is used up"],
+    ['workspace', 'day', "This workspace's daily budget is used up"],
+    ['user', 'year', 'Your yearly budget is used up'],
+  ])('names the %s budget\'s %s period in the card title', (scope, period, title) => {
+    render(withUsage(
+      hubUsage({ remaining: 0, used: 100 }),
+      <ChatView task={taskWith(failedTurn('budget_exceeded', MSG, { budgetScope: scope, budgetPeriod: period }))} model={PAID} />,
+    ));
+    expect(stopCard(title).getByRole('button', { name: 'View budgets' })).toBeEnabled();
   });
 
   it('offers MindsHub Air while its free allowance has room, resending the failed message', async () => {

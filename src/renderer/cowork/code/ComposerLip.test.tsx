@@ -149,7 +149,9 @@ describe('ComposerLip', () => {
     ['org', "Your organization's budget is used up.", 'An owner or admin can raise it'],
     ['workspace', "This workspace's budget is used up.", 'An administrator can raise it'],
     ['api_key', "This API key's budget is used up.", 'An administrator can raise it'],
-    ['team', 'A budget is used up.', 'An administrator can raise it'],
+    ['team', "Your team's budget is used up.", 'An administrator can raise it'],
+    ['user', 'Your budget is used up.', 'An administrator can raise it'],
+    ['guild', 'A budget is used up.', 'An administrator can raise it'],
   ])('names whose budget stopped the turn when the failure says %s', (scope, title, raiser) => {
     const event = failure('budget_exceeded', 'upstream 402');
     event.data.budget_scope = scope;
@@ -157,6 +159,23 @@ describe('ComposerLip', () => {
     render(<ComposerLip notice={notice!} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onViewBudgets={vi.fn()} onReopen={vi.fn()} onDismiss={vi.fn()} />);
     expect(screen.getByText(title)).toBeInTheDocument();
     expect(screen.getByText(`${raiser} in Budgets, or choose an available model to continue in this task.`)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['org', 'month', "Your organization's monthly budget is used up."],
+    ['workspace', 'day', "This workspace's daily budget is used up."],
+    ['api_key', 'year', "This API key's yearly budget is used up."],
+    ['team', 'month', "Your team's monthly budget is used up."],
+    ['all_members', 'day', 'Your daily budget is used up.'],
+    ['guild', 'day', 'A daily budget is used up.'],
+    ['workspace', 'week', "This workspace's budget is used up."],
+  ])('names the %s budget\'s %s period when the failure carries it', (scope, period, title) => {
+    const event = failure('budget_exceeded', 'upstream 402');
+    event.data.budget_scope = scope;
+    event.data.budget_period = period;
+    const notice = failureNotice(accountFailure(session(), undefined, event), 'GPT 5.6 Sol');
+    render(<ComposerLip notice={notice!} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onViewBudgets={vi.fn()} onReopen={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText(title)).toBeInTheDocument();
   });
 
   it('shows nothing for a limit once new work has started or while the task reopens', () => {
