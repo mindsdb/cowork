@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "コメントツールバー",
       "comment": "コメント — 要素をクリック（⌥でコンテナを選択）",
-      "inbox": "コメント受信トレイ",
-      "hideComment": "コメントを非表示",
-      "showComment": "コメントを表示",
-      "close": "コメントを閉じる"
+      "navigate": "操作",
+      "navigateHint": "コメントを表示したまま、通常どおりページを操作",
+      "commentLabel": "コメント"
     },
     "composer": {
       "placeholder": "コメントを追加…",
@@ -147,7 +146,12 @@
       "reopen": "再開",
       "markResolved": "解決済みにする",
       "resolve": "解決",
-      "more": "その他"
+      "more": "その他",
+      "agentQueued": "待機中",
+      "edit": "編集",
+      "editAriaLabel": "コメントを編集",
+      "pinned": "ピン留め",
+      "pinnedTip": "アーティファクトの特定の箇所にピン留めされています。コメントをクリックするとその場所に移動します。"
     },
     "errors": {
       "load": "コメントを読み込めませんでした",
@@ -229,7 +233,16 @@
     "close": "比較を閉じる",
     "reject": "却下して元に戻す",
     "accept": "承認して解決",
-    "restore": "新しいリビジョンとして復元"
+    "restore": "新しいリビジョンとして復元",
+    "changePosition": "{count, plural, other {#件中 {current}件目の変更}}",
+    "previousChange": "前の変更",
+    "nextChange": "次の変更",
+    "changeNavigation": "変更を順に移動",
+    "publishedArtifact": "公開済みのアーティファクト",
+    "reviewBeforePublishing": "公開する前に変更を確認",
+    "keepDraft": "下書きのままにする",
+    "publishChange": "この変更を公開",
+    "publishing": "公開中…"
   },
   "htmlEditor": {
     "blockGone": "選択したテキストブロックは存在しません。",
@@ -238,7 +251,9 @@
     "selected": "{label}を選択中 — 入力して変更できます",
     "preparing": "編集可能なテキストを準備中…",
     "noEditable": "直接編集できるテキストが見つかりませんでした",
-    "clickToEdit": "アーティファクト内のテキストをクリックして編集します",
+    "clickToEdit": "ボタンやリンクを含め、テキストをクリックすると編集できます。",
+    "syncingView": "プレビューで表示していた位置を開いています…",
+    "keepingPlace": "表示していた位置に戻っています…",
     "htmlSource": "HTMLソース",
     "editing": "アーティファクトを編集中",
     "back": "アーティファクトに戻る",
@@ -251,6 +266,15 @@
       "buttonLabel": "ボタンのラベル",
       "caption": "キャプション",
       "text": "テキスト"
+    },
+    "exitLiveEdit": "ライブ編集を終了",
+    "mode": {
+      "ariaLabel": "ライブ編集のモード",
+      "navigate": "操作",
+      "edit": "テキストを編集",
+      "navigateHint": "通常どおりページを操作：スライド、タブ、リンクを移動",
+      "editHint": "テキストをクリックして変更",
+      "navigateGuidance": "操作モードです。通常どおりページを操作し、変更するときは「テキストを編集」に切り替えてください。"
     }
   },
   "workspace": {
@@ -385,7 +409,8 @@
     "artifactActions": "アーティファクトの操作",
     "moreActions": "その他の操作",
     "reloadPreview": "プレビューを再読み込み",
-    "close": "閉じる"
+    "close": "閉じる",
+    "unsharedChangesHint": "共有リンクには以前のバージョンが表示されています。変更を公開するには、［共有］の［更新］を使ってください。"
   },
   "body": {
     "previewWatermark": "プレビュー",
@@ -453,7 +478,8 @@
     "discardFailed": "その提案を破棄できませんでした。",
     "deleteTitle": "アーティファクトを削除しますか？",
     "deleteMessage": "「{title}」は完全に削除されます。この操作は取り消せません。",
-    "changedElsewhere": "このアーティファクトは変更されました。再読み込み"
+    "changedElsewhere": "このアーティファクトは変更されました。再読み込み",
+    "changePublished": "公開しました"
   },
   "artifactsView": {
     "sort": {
@@ -691,6 +717,14 @@
       "discard": "破棄して送信",
       "cancel": "キャンセル",
       "saveFailed": "変更を保存できなかったため、何も送信されませんでした。"
+    },
+    "queued": "待機中",
+    "queueLabel": "実行待ち",
+    "removeQueued": "キューから削除",
+    "comment": {
+      "onArtifact": "アーティファクトへのこのコメントに対応してください：",
+      "onText": "テキスト「{quote}」へのこのコメントに対応してください：",
+      "onElement": "要素 `{selector}` へのこのコメントに対応してください："
     }
   },
   "stats": {
@@ -750,5 +784,20 @@
     "draft": "下書き",
     "copy": "アドレスをコピー",
     "copied": "コピーしました"
+  },
+  "layout": {
+    "maximize": "最大化",
+    "restore": "元のサイズに戻す"
+  },
+  "imageAttachments": {
+    "onlyImages": "添付できるのは PNG、JPEG、GIF、WebP 画像のみです。",
+    "tooLarge": "{name} は 5 MB を超えています。",
+    "tooMany": "1 件のメッセージにつき画像は {count} 枚までです。",
+    "drop": "画像をドロップして添付",
+    "uploadFailed": "画像をアップロードできませんでした。もう一度お試しください。",
+    "unavailable": "画像を表示できません",
+    "enlarge": "画像を拡大",
+    "shrink": "画像を縮小",
+    "image": "画像"
   }
 }

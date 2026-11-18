@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "Kommentar-Symbolleiste",
       "comment": "Kommentieren – auf ein Element klicken (⌥ wählt den Container)",
-      "inbox": "Kommentar-Posteingang",
-      "hideComment": "Kommentar ausblenden",
-      "showComment": "Kommentar einblenden",
-      "close": "Kommentare schließen"
+      "navigate": "Navigieren",
+      "navigateHint": "Die Seite wie gewohnt nutzen, mit den angehefteten Kommentaren",
+      "commentLabel": "Kommentieren"
     },
     "composer": {
       "placeholder": "Kommentar hinzufügen…",
@@ -147,7 +146,12 @@
       "reopen": "Wieder öffnen",
       "markResolved": "Als erledigt markieren",
       "resolve": "Erledigt",
-      "more": "Mehr"
+      "more": "Mehr",
+      "agentQueued": "In Warteschlange",
+      "edit": "Bearbeiten",
+      "editAriaLabel": "Kommentar bearbeiten",
+      "pinned": "angeheftet",
+      "pinnedTip": "An eine bestimmte Stelle des Artefakts angeheftet. Klicke auf den Kommentar, um dorthin zu gelangen."
     },
     "errors": {
       "load": "Kommentare konnten nicht geladen werden",
@@ -229,7 +233,16 @@
     "close": "Vergleich schließen",
     "reject": "Ablehnen & wiederherstellen",
     "accept": "Annehmen & erledigen",
-    "restore": "Als neue Revision wiederherstellen"
+    "restore": "Als neue Revision wiederherstellen",
+    "changePosition": "{current} von {count, plural, one {# Änderung} other {# Änderungen}}",
+    "previousChange": "Vorherige Änderung",
+    "nextChange": "Nächste Änderung",
+    "changeNavigation": "Durch Änderungen blättern",
+    "publishedArtifact": "Veröffentlichtes Artefakt",
+    "reviewBeforePublishing": "Änderung vor dem Veröffentlichen prüfen",
+    "keepDraft": "Als Entwurf behalten",
+    "publishChange": "Diese Änderung veröffentlichen",
+    "publishing": "Wird veröffentlicht…"
   },
   "htmlEditor": {
     "blockGone": "Der ausgewählte Textblock ist nicht mehr verfügbar.",
@@ -238,7 +251,9 @@
     "selected": "{label} ausgewählt – zum Ändern tippen",
     "preparing": "Bearbeitbarer Text wird vorbereitet…",
     "noEditable": "Kein direkt bearbeitbarer Text gefunden",
-    "clickToEdit": "Klicken Sie auf einen beliebigen Text im Artefakt, um ihn zu bearbeiten",
+    "clickToEdit": "Klicke auf einen beliebigen Text, um ihn zu bearbeiten – auch auf Schaltflächen und Links.",
+    "syncingView": "Öffnet die Stelle, an der du in der Vorschau warst…",
+    "keepingPlace": "Zurück zu der Stelle, an der du warst…",
     "htmlSource": "HTML-Quelltext",
     "editing": "Artefakt wird bearbeitet",
     "back": "Zurück zum Artefakt",
@@ -251,6 +266,15 @@
       "buttonLabel": "Schaltflächentext",
       "caption": "Bildunterschrift",
       "text": "Text"
+    },
+    "exitLiveEdit": "Live-Bearbeitung beenden",
+    "mode": {
+      "ariaLabel": "Modus der Live-Bearbeitung",
+      "navigate": "Navigieren",
+      "edit": "Text bearbeiten",
+      "navigateHint": "Die Seite wie gewohnt nutzen: durch Folien, Tabs und Links klicken",
+      "editHint": "Auf einen beliebigen Text klicken, um ihn zu ändern",
+      "navigateGuidance": "Navigation aktiv. Nutze die Seite wie gewohnt und wechsle dann zu „Text bearbeiten“, um etwas zu ändern."
     }
   },
   "workspace": {
@@ -385,7 +409,8 @@
     "artifactActions": "Artefakt-Aktionen",
     "moreActions": "Weitere Aktionen",
     "reloadPreview": "Vorschau neu laden",
-    "close": "Schließen"
+    "close": "Schließen",
+    "unsharedChangesHint": "Der geteilte Link zeigt eine frühere Version. Veröffentliche die Änderungen mit „Aktualisieren“ unter „Teilen“."
   },
   "body": {
     "previewWatermark": "Vorschau",
@@ -453,7 +478,8 @@
     "discardFailed": "Dieser Vorschlag konnte nicht verworfen werden.",
     "deleteTitle": "Artefakt löschen?",
     "deleteMessage": "„{title}“ wird endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
-    "changedElsewhere": "Dieses Artefakt wurde geändert. Neu laden"
+    "changedElsewhere": "Dieses Artefakt wurde geändert. Neu laden",
+    "changePublished": "Veröffentlicht"
   },
   "artifactsView": {
     "sort": {
@@ -691,6 +717,14 @@
       "discard": "Verwerfen und senden",
       "cancel": "Abbrechen",
       "saveFailed": "Deine Änderungen konnten nicht gespeichert werden, daher wurde nichts gesendet."
+    },
+    "queued": "In Warteschlange",
+    "queueLabel": "Wartet auf Ausführung",
+    "removeQueued": "Aus der Warteschlange entfernen",
+    "comment": {
+      "onArtifact": "Bearbeite diesen Kommentar zum Artefakt:",
+      "onText": "Bearbeite diesen Kommentar zum Text „{quote}“:",
+      "onElement": "Bearbeite diesen Kommentar zum Element `{selector}`:"
     }
   },
   "stats": {
@@ -750,5 +784,20 @@
     "draft": "Entwurf",
     "copy": "Adresse kopieren",
     "copied": "Kopiert"
+  },
+  "layout": {
+    "maximize": "Maximieren",
+    "restore": "Größe wiederherstellen"
+  },
+  "imageAttachments": {
+    "onlyImages": "Nur PNG-, JPEG-, GIF- und WebP-Bilder können angehängt werden.",
+    "tooLarge": "{name} ist größer als 5 MB.",
+    "tooMany": "Bis zu {count} Bilder pro Nachricht.",
+    "drop": "Bilder zum Anhängen ablegen",
+    "uploadFailed": "Das Bild konnte nicht hochgeladen werden. Versuche es erneut.",
+    "unavailable": "Bild nicht verfügbar",
+    "enlarge": "Bild vergrößern",
+    "shrink": "Bild verkleinern",
+    "image": "Bild"
   }
 }

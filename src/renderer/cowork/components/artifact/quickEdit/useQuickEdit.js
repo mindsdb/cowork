@@ -22,6 +22,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import i18n from '../../../../lib/i18n';
 import { answerArtifactCheck } from '../../../lib/artifactCheck';
 import { streamQuickEdit, undoQuickEdit } from '../../../lib/artifactWorkspaceApi';
+import { fileToBase64 } from '../../../lib/imageAttachments';
 import { quickEditChatPrompt } from '../../../lib/quickEditPrompt';
 
 export { quickEditChatPrompt };
@@ -81,18 +82,20 @@ function undoErrorMessage(error) {
  * @param {string | null} opts.headRevisionId  The draft revision on screen.
  * @param {() => Promise<string | null>} opts.resolveConversation  The chat the
  *   artifact belongs to, or null; the server notes an applied edit there.
- * @param {(prompt: string) => Promise<boolean>} opts.continueInChat  Send the
- *   prompt (quickEditChatPrompt) to that chat as a normal turn; false when no
- *   turn started.
+ * @param {(prompt: string, images: object[]) => Promise<boolean>} opts.continueInChat
+ *   Send the prompt (quickEditChatPrompt) to that chat as a normal turn, with
+ *   the message's images as pending attachments; false when no turn started.
  * @param {(prompt: string) => number} [opts.countInChat]  How many user
  *   messages in that chat already read `prompt`, so the reply can be found
  *   after it (lib/quickEditPrompt chatReplyFor).
  * @param {() => { model: string | null, reasoningEffort: string | null }} [opts.picks]
  *   The model and effort the bar's picker holds, as the request sends them.
- * @param {(opts?: { previewFresh?: boolean }) => void | Promise<void>} opts.onApplied
+ * @param {(opts?: { previewFresh?: boolean, edit?: { replyId: string, revisionId: string | null, previousRevisionId: string | null } }) => void | Promise<void>} opts.onApplied
  *   A new revision landed (applied or undone): reload the workspace and the
  *   preview. `previewFresh` when the edit's own preview check already
  *   reloaded the preview after its last write, so it needs no second reload.
+ *   `edit` names the applied edit (absent after an undo): its reply and the
+ *   revisions before and after it.
  * @param {() => void} [opts.onStale]  The server refused a stale revision.
  */
 export function useQuickEdit(artifact, {
@@ -108,6 +111,11 @@ export function useQuickEdit(artifact, {
 }) {
   const [messages, setMessages] = useState([]);
   const [running, setRunning] = useState(false);
+  // Messages sent while one runs (the bar's own, or comments sent to the
+  // agent from the inbox) wait here and go one at a time, oldest first, as a
+  // task chat queues them (ENG-4383).
+  const [queue, setQueue] = useState([]);
+  const queueRef = useRef(queue);
   const controllerRef = useRef(null);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
@@ -126,6 +134,8 @@ export function useQuickEdit(artifact, {
     // Same state back when there is nothing to clear: a closed viewer mounted
     // in every chat must not render again for nothing.
     setMessages((prev) => (prev.length ? [] : prev));
+    queueRef.current = [];
+    setQueue((prev) => (prev.length ? [] : prev));
     setRunning(false);
     return () => {
       controllerRef.current?.abort();
@@ -137,7 +147,12 @@ export function useQuickEdit(artifact, {
     setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
   }, []);
 
-  const run = useCallback(async (text, { forceRoute = null, expectedRevisionId = null } = {}) => {
+  // `images`: pending image attachments (lib/imageAttachments). They go to
+  // the editor's model with the request, and to the chat on a hand-off.
+  // `threadId`: the comment this message addresses, for the inbox's state.
+  const run = useCallback(async (text, {
+    forceRoute = null, expectedRevisionId = null, images = [], threadId = null,
+  } = {}) => {
     const message = (text || '').trim();
     if (!message || controllerRef.current) return false;
     // A save just made before sending names its revision: the workspace
@@ -151,8 +166,8 @@ export function useQuickEdit(artifact, {
     const replyId = newId();
     setMessages((prev) => [
       ...prev,
-      { id: userId, role: 'user', text: message },
-      { id: replyId, role: 'assistant', request: message, state: 'running', route: null, stage: null, summary: '' },
+      { id: userId, role: 'user', text: message, images, threadId },
+      { id: replyId, role: 'assistant', request: message, images, threadId, state: 'running', route: null, stage: null, summary: '' },
     ]);
     const controller = new AbortController();
     controllerRef.current = controller;
@@ -172,7 +187,7 @@ export function useQuickEdit(artifact, {
       patchReply(replyId, { state: 'handing-off', summary, chatPrompt, chatBefore });
       let started = false;
       try {
-        started = await depsRef.current.continueInChat?.(chatPrompt);
+        started = await depsRef.current.continueInChat?.(chatPrompt, images);
       } catch {
         started = false;
       }
@@ -190,11 +205,15 @@ export function useQuickEdit(artifact, {
             state: 'applied',
             summary,
             revisionId: done.revisionId || null,
+            previousRevisionId: done.previousRevisionId || null,
             editId: typeof done.editId === 'string' && done.editId ? done.editId : null,
             undoable: done.undoable === true && !!done.editId,
           });
           if (lastCheck) await lastCheck;
-          await depsRef.current.onApplied?.({ previewFresh });
+          await depsRef.current.onApplied?.({
+            previewFresh,
+            edit: { replyId, revisionId: done.revisionId || null, previousRevisionId: done.previousRevisionId || null },
+          });
           break;
         case 'noop':
           patchReply(replyId, { state: 'noop', summary });
@@ -231,9 +250,14 @@ export function useQuickEdit(artifact, {
       } catch {
         conversationId = null;
       }
+      const encoded = await Promise.all(images.map(async (image) => ({
+        name: image.name || null,
+        data: await fileToBase64(image.pendingFile),
+      })));
       if (!live()) return false;
       await streamQuickEdit(artifact, {
         message,
+        ...(encoded.length ? { images: encoded } : {}),
         history,
         expectedRevisionId: headRef.current,
         conversationId,
@@ -296,15 +320,48 @@ export function useQuickEdit(artifact, {
     return true;
   }, [artifact, direct, patchReply]);
 
-  // `options.expectedRevisionId`: the revision a save made just before sending.
-  const send = useCallback((text, options) => run(text, { expectedRevisionId: options?.expectedRevisionId || null }), [run]);
+  // `options.expectedRevisionId`: the revision a save made just before sending;
+  // `options.images`: the bar's pending images.
+  // While a message runs, a new one joins the queue; it starts when the
+  // running one ends. `options.threadId` marks a comment sent to the agent.
+  const send = useCallback((text, options) => {
+    const message = (text || '').trim();
+    if (!message) return Promise.resolve(false);
+    const runOptions = {
+      expectedRevisionId: options?.expectedRevisionId || null,
+      images: options?.images || [],
+      threadId: options?.threadId || null,
+    };
+    if (controllerRef.current || queueRef.current.length) {
+      const entry = { id: newId(), text: message, ...runOptions };
+      queueRef.current = [...queueRef.current, entry];
+      setQueue(queueRef.current);
+      return Promise.resolve(true);
+    }
+    return run(message, runOptions);
+  }, [run]);
+
+  const removeQueued = useCallback((id) => {
+    queueRef.current = queueRef.current.filter((entry) => entry.id !== id);
+    setQueue(queueRef.current);
+  }, []);
+
+  // The next queued message starts once nothing runs. Its revision is the
+  // head the last edit left, not the one it was queued against.
+  useEffect(() => {
+    if (running || controllerRef.current || !queue.length) return;
+    const [next, ...rest] = queue;
+    queueRef.current = rest;
+    setQueue(rest);
+    void run(next.text, { images: next.images, threadId: next.threadId });
+  }, [queue, run, running]);
 
   // "Ask the agent instead" after a failed edit: the same message, routed to
   // the agent by the server so the turn is recorded like any other.
   const askAgent = useCallback((replyId) => {
     const reply = messagesRef.current.find((m) => m.id === replyId);
     if (!reply?.request) return Promise.resolve(false);
-    return run(reply.request, { forceRoute: 'agent' });
+    return run(reply.request, { forceRoute: 'agent', images: reply.images || [] });
   }, [run]);
 
   // Undo puts back every file the edit changed and removes those it created
@@ -341,7 +398,16 @@ export function useQuickEdit(artifact, {
   const newestApplied = [...messages].reverse().find((m) => m.state === 'applied' && !m.undone);
   const undoableId = newestApplied?.undoable ? newestApplied.id : null;
 
-  return { messages, running, direct, send, askAgent, undo, undoableId, cancel };
+  // The comment the running message addresses, and those waiting their turn.
+  const runningThreadId = running
+    ? ([...messages].reverse().find((m) => m.role === 'assistant')?.threadId || null)
+    : null;
+  const queuedThreadIds = queue.map((entry) => entry.threadId).filter(Boolean);
+
+  return {
+    messages, running, direct, send, askAgent, undo, undoableId, cancel,
+    queue, removeQueued, runningThreadId, queuedThreadIds,
+  };
 }
 
 export default useQuickEdit;

@@ -1,6 +1,6 @@
-// `<ScheduleNotifyMenu>` — which scheduled-run endings this device notifies
-// about. Turning one on asks the browser for permission, from the click, if
-// the user has not answered yet.
+// `<ScheduleNotifyMenu>` — which scheduled-run endings the user is notified
+// about, saved to their account. Turning one on asks the browser for
+// permission, from the click, if the user has not answered yet.
 
 import { Bell, Check } from 'lucide-react';
 import { Button } from '../ui';

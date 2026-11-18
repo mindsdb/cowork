@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "삭제된 작업의 일부 파일을 제거하지 못했습니다. 정리를 다시 시도하여 디스크 공간을 확보하세요.",
+    "retry": "정리 다시 시도",
+    "retrying": "정리 재시도 중…",
+    "retryFailed": "정리를 다시 시도하지 못했습니다. 다시 시도하세요."
+  },
   "reviewPanel": {
     "ariaLabel": "변경 사항 검토",
     "closeAriaLabel": "검토 패널 닫기",
@@ -1308,6 +1314,7 @@
     "record": {
       "approvalDenied": "승인 거부됨",
       "approvalResolved": "승인 처리됨",
+      "folderBusy": "다른 작업이 이 폴더에서 진행 중이므로 이 작업은 워크트리에서 진행합니다.",
       "followUpDelivered": "후속 지시 전달됨",
       "requestRejected": "요청 거부됨",
       "taskStatus": "작업 상태"
@@ -1412,7 +1419,8 @@
     "details": "세부 정보",
     "moreOptions": "옵션 더 보기",
     "dismiss": "닫기",
-    "viewBudgets": "예산 보기"
+    "viewBudgets": "예산 보기",
+    "allowWrites": "편집 허용"
   },
   "composerNotices": {
     "thisModel": "이 모델",
@@ -1466,6 +1474,9 @@
     "budgetExceeded": {
       "title": "조직의 예산을 모두 사용했습니다",
       "body": "소유자 또는 관리자가 ‘예산’에서 한도를 늘릴 수 있습니다. 또는 사용 가능한 모델을 선택해 이 작업을 계속하세요."
+    },
+    "writesHeld": {
+      "body": "이 폴더에는 변경 사항을 검토하거나 되돌릴 Git 기록이 없으므로 에이전트가 편집할 때마다 확인합니다."
     }
   },
   "planModeCommand": {
@@ -1624,6 +1635,16 @@
     },
     "initializeGit": "Git 초기화",
     "initializeFailed": "Git을 초기화하지 못했습니다. 다시 시도하세요.",
-    "unavailable": "이 폴더에서 사용할 수 있는 작업 공간 모드가 없습니다."
+    "unavailable": "이 폴더에서 사용할 수 있는 작업 공간 모드가 없습니다.",
+    "reason": {
+      "notARepository": "이 폴더는 Git 저장소가 아닙니다. 워크트리를 사용하려면 Git을 초기화하세요.",
+      "notARepositoryInFolder": "{folder}은(는) Git 저장소가 아닙니다. 워크트리를 사용하려면 Git을 초기화하세요.",
+      "noCommits": "이 저장소에는 아직 커밋이 없습니다. 워크트리를 사용하려면 첫 커밋을 만드세요.",
+      "noCommitsInFolder": "{folder}에는 아직 커밋이 없습니다. 워크트리를 사용하려면 첫 커밋을 만드세요.",
+      "noLocalCheckout": "{folder}에는 이 컴퓨터에서 작업할 체크아웃이 없습니다. 워크트리를 선택하세요.",
+      "inPlaceUnsupportedPlatform": "원래 폴더에서 작업하는 기능은 이 플랫폼에서 아직 사용할 수 없습니다. 워크트리를 선택하세요.",
+      "inPlaceOtherComputer": "다른 컴퓨터의 작업은 격리된 워크트리에서 실행됩니다. 워크트리를 선택하세요.",
+      "sharedRepository": "두 프로젝트 폴더가 같은 저장소에 있어 둘 다 폴더에서 직접 작업할 수 없습니다. 워크트리를 선택하세요."
+    }
   }
 }

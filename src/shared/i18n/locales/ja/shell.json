@@ -173,10 +173,13 @@
     "unavailableTitle": "この機能は利用できません",
     "cloudBodyNamed": "{feature}はまだCloudではご利用いただけません。それまではデスクトップアプリでご利用ください。",
     "cloudBody": "この機能はまだCloudではご利用いただけません。それまではデスクトップアプリでご利用ください。",
+    "cloudBodyCustom": "{feature}はまだCloudではご利用いただけません。今すぐカスタムコネクタとして接続できます。",
     "unavailableBodyNamed": "{feature}はこの環境ではご利用いただけません。",
     "unavailableBody": "この機能はこの環境ではご利用いただけません。",
     "notNow": "後で",
-    "download": "アプリをダウンロード"
+    "download": "アプリをダウンロード",
+    "connectCustom": "カスタム{feature}コネクタを接続",
+    "buildCustom": "カスタムコネクタを作成"
   },
   "loadStatus": {
     "retry": "再試行",
