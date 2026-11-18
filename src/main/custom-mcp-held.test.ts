@@ -25,7 +25,7 @@ vi.mock('keytar', () => ({
   },
 }));
 
-import { handOverCustomConnection, noteToolChange, syncCustomMcpConnections } from './custom-mcp-held';
+import { handOverCustomConnection, syncCustomMcpConnections, writeToolSwitch } from './custom-mcp-held';
 import { listConnectionIds, readPart, writePart } from './custom-mcp-keychain';
 
 const ROOT = '/home/user/.cowork';
@@ -53,6 +53,7 @@ const server = vi.hoisted(() => ({
   /** Runs when the server lists its records. */
   onList: null as null | (() => Promise<void>),
   summaryStatus: 0,
+  summaryDetail: 'busy' as unknown,
   listCalls: 0,
 }));
 
@@ -72,7 +73,7 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
   }
   const summary = url.pathname.match(/^\/api\/v1\/connectors\/connections\/custom_mcp\/([^/]+)\/held-summary$/);
   if (summary) {
-    if (server.summaryStatus) return json(server.summaryStatus, { detail: 'busy' });
+    if (server.summaryStatus) return json(server.summaryStatus, { detail: server.summaryDetail });
     const exists = server.records.includes(summary[1]) || server.unlisted.includes(summary[1]);
     return exists ? json(200, { label: '', server_url: '' }) : json(404, { detail: { error: 'custom_connection_missing' } });
   }
@@ -115,6 +116,7 @@ beforeEach(() => {
   server.unlisted = [];
   server.onList = null;
   server.summaryStatus = 0;
+  server.summaryDetail = 'busy';
   server.listCalls = 0;
   tokens.status = 200;
   tokens.body = { access_token: 'AT-2', refresh_token: 'RT-2', token_type: 'Bearer', expires_in: 3600 };
@@ -157,7 +159,7 @@ describe('handing custom MCP connections over at server start', () => {
 
   it('leaves the tool list to a switch made while the hand-over was refreshing', async () => {
     await seed(ROOT, ID, { refresh: 'RT-1' });
-    tokens.during = () => noteToolChange(ROOT, ID);
+    tokens.during = () => { void writeToolSwitch(ROOT, ID, ['other']); };
 
     await handOverCustomConnection(ROOT, ID, current, fetchFn);
 
@@ -249,10 +251,14 @@ describe('handing custom MCP connections over at server start', () => {
     expect(await listConnectionIds(ROOT)).toEqual([GONE]);
   });
 
-  it('keeps the entries when the server cannot say whether the connection is missing', async () => {
+  it.each([
+    ['an error', 500, 'busy'],
+    ['that the record cannot be read', 503, { error: 'custom_connection_unreadable' }],
+  ])('keeps the entries when the server answers %s', async (_label, status, detail) => {
     await seed(ROOT, GONE);
     server.records = [];
-    server.summaryStatus = 500;
+    server.summaryStatus = status;
+    server.summaryDetail = detail;
 
     await syncCustomMcpConnections(ROOT, current, fetchFn);
 

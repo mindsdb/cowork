@@ -8,7 +8,7 @@
 import { diagnostic } from '../shared/diagnostics';
 import { isCustomMcpAvailable } from './app-secret';
 import type { GuardedFetch } from './guarded-fetch';
-import { deleteConnection as deleteKeychainEntries, listConnectionIds } from './custom-mcp-keychain';
+import { deleteConnection as deleteKeychainEntries, listConnectionIds, writePart } from './custom-mcp-keychain';
 import { CONNECTION_MISSING, CustomMcpRouteError, heldSummary, listRecordIds, putHeld, type HeldSettings } from './custom-mcp-routes';
 import { customMcpFetch, readStoredSettings, readStoredTools, refreshedToken } from './custom-mcp-tokens';
 
@@ -27,8 +27,26 @@ function changeKey(storeRoot: string, id: string): string {
   return `${storeRoot}|${id}`;
 }
 
-export function noteToolChange(storeRoot: string, id: string): void {
+function noteToolChange(storeRoot: string, id: string): void {
   toolChanges.set(changeKey(storeRoot, id), toolChangeCount(storeRoot, id) + 1);
+}
+
+/**
+ * Writes a connection's allowed tools to the keychain as a tool switch. The
+ * change is noted before and after the write, so a hand-over that read the
+ * keychain before the write ends, old list or new, leaves the tool list to
+ * the switch's own request.
+ *
+ * Args: the store root, the connection id and the tool names.
+ * Side effects: the keychain write; throws what the keychain throws.
+ */
+export async function writeToolSwitch(storeRoot: string, id: string, tools: string[]): Promise<void> {
+  noteToolChange(storeRoot, id);
+  try {
+    await writePart(storeRoot, id, 'tools', JSON.stringify(tools));
+  } finally {
+    noteToolChange(storeRoot, id);
+  }
 }
 
 function toolChangeCount(storeRoot: string, id: string): number {

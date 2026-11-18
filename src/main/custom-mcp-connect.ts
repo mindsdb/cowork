@@ -25,7 +25,7 @@ import {
 } from './mcp-oauth';
 import { authorizeInBrowser, CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI, type BrowserAuthorizeOpts, type BrowserAuthorizeResult } from './oauth-service';
 import { checkKeychain, CustomMcpKeychainError, deleteConnection as deleteKeychainEntries, writePart } from './custom-mcp-keychain';
-import { noteToolChange } from './custom-mcp-held';
+import { writeToolSwitch } from './custom-mcp-held';
 import {
   checkServerUrl, createConnection, CustomMcpRouteError, deleteRecord, listTools, putAllowedTools, putHeld,
 } from './custom-mcp-routes';
@@ -249,13 +249,11 @@ async function switchOnReadOnlyTools(storeRoot: string, id: string): Promise<{ t
       // Counted in characters, as the server counts them.
       .filter((tool) => tool.read_only && typeof tool.name === 'string' && tool.name.length > 0 && [...tool.name].length <= MAX_TOOL_NAME)
       .map((tool) => tool.name);
-    // A start-up hand-over that read the keychain before this switch must not send its older list.
-    noteToolChange(storeRoot, id);
-    await writePart(storeRoot, id, 'tools', JSON.stringify(readOnly));
+    await writeToolSwitch(storeRoot, id, readOnly);
     try {
       await putAllowedTools(id, readOnly);
     } catch (err) {
-      await writePart(storeRoot, id, 'tools', '[]');
+      await writeToolSwitch(storeRoot, id, []);
       throw err;
     }
     return { toolsOn: readOnly.length, toolsUnavailable: false };

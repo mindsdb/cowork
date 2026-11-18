@@ -16,12 +16,17 @@ vi.mock('./cowork-home', () => ({ buildKind: () => 'dev' }));
 vi.mock('./keychain-fallback', () => ({ getFallbackPassword: vi.fn(), setFallbackPassword: vi.fn(), deleteFallbackPassword: vi.fn() }));
 
 /** The OS keychain: account -> password, for the one custom MCP service. */
-const keychain = vi.hoisted(() => ({ entries: new Map<string, string>(), failWrites: false, failFind: false, writesBeforeFailure: Infinity }));
+const keychain = vi.hoisted(() => ({
+  entries: new Map<string, string>(), failWrites: false, failFind: false, writesBeforeFailure: Infinity,
+  /** Runs before a write lands; the write waits for it. */
+  onSet: null as null | ((account: string, password: string) => Promise<void>),
+}));
 vi.mock('keytar', () => ({
   default: {
     getPassword: async (_svc: string, account: string) => keychain.entries.get(account) ?? null,
     setPassword: async (_svc: string, account: string, password: string) => {
       if (keychain.failWrites || keychain.writesBeforeFailure-- <= 0) throw new Error('locked');
+      await keychain.onSet?.(account, password);
       keychain.entries.set(account, password);
     },
     deletePassword: async (_svc: string, account: string) => keychain.entries.delete(account),
@@ -45,6 +50,8 @@ const server = vi.hoisted(() => ({
   held: new Map<string, Record<string, unknown>>(),
   tools: [] as Array<{ name: string; description: string; read_only: boolean; allowed: boolean }> | 'unreachable',
   allowedToolsStatus: 200,
+  /** Runs when the server is asked to switch tools, before it answers. */
+  onAllowedTools: null as null | (() => Promise<void>),
   /** Runs when the server lists the new connection's tools. */
   onTools: null as null | (() => Promise<void>),
   calls: [] as string[],
@@ -85,6 +92,7 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
     return json(200, {});
   }
   if (method === 'PUT' && action === 'allowed-tools') {
+    await server.onAllowedTools?.();
     if (server.allowedToolsStatus !== 200) return json(server.allowedToolsStatus, { detail: 'refused' });
     server.held.set(id, { ...server.held.get(id), allowed_tools: body.tools });
     return json(200, { allowed_tools: body.tools });
@@ -164,12 +172,14 @@ beforeEach(() => {
   keychain.entries.clear();
   keychain.failWrites = false;
   keychain.failFind = false;
+  keychain.onSet = null;
   keychain.writesBeforeFailure = Infinity;
   server.records.clear();
   server.held.clear();
   server.tools = READ_TOOLS;
   server.allowedToolsStatus = 200;
   server.onTools = null;
+  server.onAllowedTools = null;
   server.calls = [];
   server.canonical = (url) => url;
   ids = [ID, `cm-${'b'.repeat(32)}`];
@@ -333,6 +343,56 @@ describe('connectCustomMcp', () => {
 
     expect(result).toMatchObject({ ok: true, toolsOn: 1 });
     expect(JSON.parse((await readPart(store.root!, ID, 'tools'))!)).toEqual(['search']);
+  });
+
+  describe('a start-up hand-over running beside the tool switch', () => {
+    let releaseRefresh: () => void;
+    let handOver: Promise<unknown>;
+    const slowRefresh: GuardedFetch = async () => {
+      await new Promise<void>((resolve) => { releaseRefresh = resolve; });
+      return new Response(JSON.stringify({ access_token: 'AT-9', token_type: 'Bearer' }), { status: 200 });
+    };
+    /** Starts a hand-over and lets it read the keychain, up to its refresh. */
+    async function startHandOver() {
+      handOver = handOverCustomConnection(store.root!, ID, () => true, slowRefresh);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    beforeEach(() => {
+      releaseRefresh = () => {};
+      handOver = Promise.resolve();
+    });
+
+    it('leaves the switch alone when it read the keychain while the switch was being written', async () => {
+      let armed = false;
+      server.onTools = async () => { armed = true; };
+      keychain.onSet = async (account) => {
+        if (armed && account.includes('|tools#')) {
+          armed = false;
+          await startHandOver();
+        }
+      };
+
+      const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, deps(LOGIN_SERVER).deps);
+      releaseRefresh();
+      await handOver;
+
+      expect(result).toMatchObject({ ok: true, toolsOn: 1 });
+      expect(server.held.get(ID)?.allowed_tools).toEqual(['search']);
+    });
+
+    it('does not switch tools back on after the server refused the switch', async () => {
+      server.allowedToolsStatus = 500;
+      server.onAllowedTools = startHandOver;
+
+      const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, deps(LOGIN_SERVER).deps);
+      releaseRefresh();
+      await handOver;
+
+      expect(result).toMatchObject({ ok: true, toolsOn: 0, toolsUnavailable: true });
+      expect(await readPart(store.root!, ID, 'tools')).toBe('[]');
+      expect(server.held.get(ID)?.allowed_tools).toEqual([]);
+    });
   });
 
   it('keeps a start-up hand-over that read the keychain earlier from undoing the tool switch', async () => {
