@@ -1,7 +1,7 @@
 // first_visit on the console arrival: whether this browser holds anything of
 // the account's from an earlier Cowork web visit.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { noteAccountVisit, isFirstVisit, __resetAccountVisitForTests } from './accountVisit';
+import { noteAccountVisit, isFirstVisit, firstVisitRecorded, __resetAccountVisitForTests } from './accountVisit';
 import { purgeStaleAccountState } from './accountLocalState';
 
 const b64url = (obj) => btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -60,6 +60,27 @@ describe('account visit', () => {
 
     noteAccountVisit(tokenFor('user-b'));
     expect(isFirstVisit('user-b')).toBe(false);
+  });
+
+  it('is not a first visit again once the first arrival has been recorded, even after a reload', () => {
+    noteAccountVisit(tokenFor('user-a'));
+    firstVisitRecorded('user-a');
+    expect(isFirstVisit('user-a')).toBe(false);
+
+    __resetAccountVisitForTests(); // the next console link, same tab
+    noteAccountVisit(tokenFor('user-a'));
+    expect(isFirstVisit('user-a')).toBe(false);
+  });
+
+  it("leaves another account's kept first visit alone", () => {
+    // Two first visits in one tab: the later account's is the one kept.
+    noteAccountVisit(tokenFor('user-a'));
+    noteAccountVisit(tokenFor('user-b'));
+    firstVisitRecorded('user-a');
+
+    __resetAccountVisitForTests(); // a reload of the tab
+    noteAccountVisit(tokenFor('user-b'));
+    expect(isFirstVisit('user-b')).toBe(true);
   });
 
   it('keeps nothing in the tab for a returning account', () => {

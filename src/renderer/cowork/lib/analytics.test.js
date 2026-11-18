@@ -2482,6 +2482,24 @@ describe('the console arrival and the sign-up landing carry what grading needs',
     expect(event.properties.first_visit).toBe(expected);
   });
 
+  it('composer_ready says first_visit once: a later arrival in the same tab is not a first again', async () => {
+    signedInWeb();
+    let fetchMock = mockFetch();
+    let analytics = await importAnalytics();
+    let visit = await import('./accountVisit');
+    visit.noteAccountVisit(fakeJwt({ sub: 'user-landing', activate_organization: ORG }));
+    analytics.trackComposerReady('console', null, false, 'sign-in');
+    expect((await sentEvent(fetchMock, 'composer_ready')).properties.first_visit).toBe(true);
+
+    // The next console link opens a new page in the same tab.
+    fetchMock = mockFetch();
+    analytics = await importAnalytics();
+    visit = await import('./accountVisit');
+    visit.noteAccountVisit(fakeJwt({ sub: 'user-landing', activate_organization: ORG }));
+    analytics.trackComposerReady('console', 'celestial-merge-2048', true, 'gallery');
+    expect((await sentEvent(fetchMock, 'composer_ready')).properties.first_visit).toBe(false);
+  });
+
   it('composer_ready leaves first_visit off when it was never decided for the account', async () => {
     signedInWeb();
     const fetchMock = mockFetch();

@@ -22,7 +22,7 @@ import { host, onMindsHubCredentialChanged } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
 import { startCreditsFlow } from './creditsFlow';
 import { subscribeOrganizationChanges } from './organizationChanges';
-import { ANALYTICS_MERGED_SUB_KEY, isFirstVisit } from './accountVisit';
+import { ANALYTICS_MERGED_SUB_KEY, isFirstVisit, firstVisitRecorded } from './accountVisit';
 import { posthogKeyForBuildKind } from '../../../shared/analytics-project';
 
 // The single register of product events, so every event and its own properties
@@ -782,6 +782,7 @@ function capture(event, properties = {}, envelope = {}) {
       if (event === EVENTS.COMPOSER_READY && distinctId) {
         const first = isFirstVisit(distinctId);
         if (first !== undefined) eventProps.first_visit = first;
+        if (first) firstVisitRecorded(distinctId);
       }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.

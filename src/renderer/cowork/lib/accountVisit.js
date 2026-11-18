@@ -20,7 +20,8 @@
 // it clears another account's data from this browser, or when the organization
 // changes. By then our mark is written, so a first visit is also kept in this
 // tab for as long as a console link stays waiting, and a reload inside that
-// window reads it back.
+// window reads it back. Once an arrival has been recorded as the first visit,
+// the tab forgets it, so a later arrival in the same tab is not a first again.
 
 import { decodeJwtPayload } from './jwtClaims';
 
@@ -87,6 +88,16 @@ export function noteAccountVisit(accessToken, storage = localStore(), session = 
   }
   decided.set(sub, first);
   try { storage?.setItem(`${VISITED_PREFIX}${encodeURIComponent(sub)}`, '1'); } catch {}
+}
+
+/** The arrival that was the account's first visit has been recorded: anything
+    later, in this document or a reload of this tab, is not a first visit. */
+export function firstVisitRecorded(sub, session = sessionStore()) {
+  if (decided.get(sub) !== true) return;
+  decided.set(sub, false);
+  try {
+    if (JSON.parse(session?.getItem(FIRST_VISIT_KEY) ?? 'null')?.sub === sub) session.removeItem(FIRST_VISIT_KEY);
+  } catch {}
 }
 
 /** true or false once decided for this account in this document, otherwise
