@@ -16,7 +16,7 @@ import type { GuardedFetch } from './guarded-fetch';
 import { McpOAuthError } from './mcp-oauth';
 import { activeStoreRoot } from './server-process';
 import { deleteConnection as deleteKeychainEntries } from './custom-mcp-keychain';
-import { CONNECTION_MISSING, CustomMcpRouteError, putHeld } from './custom-mcp-routes';
+import { CONNECTION_MISSING, CustomMcpRouteError, errorName, putHeld } from './custom-mcp-routes';
 import { customMcpFetch, readStoredSettings, refreshedToken } from './custom-mcp-tokens';
 
 // Refresh this long before the token expires.
@@ -26,12 +26,16 @@ const MIN_DELAY_MS = 30_000;
 const NO_EXPIRY_DELAY_MS = 30 * 60_000;
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000];
 const RETRY_STEADY_MS = 15 * 60_000;
+// Node runs a timer over 2^31-1 ms after 1 ms; a long-lived token waits at most a day.
+const MAX_DELAY_MS = 24 * 60 * 60_000;
 
 interface Loop {
   timer: ReturnType<typeof setTimeout> | null;
   stopped: boolean;
   generation: string | null;
   fetchFn: GuardedFetch;
+  /** The refresh running now, if any. */
+  inFlight: Promise<void> | null;
 }
 
 const loops = new Map<string, Loop>();
@@ -40,14 +44,9 @@ function loopKey(storeRoot: string, id: string): string {
   return `${storeRoot}|${id}`;
 }
 
-/** An error's class name only: messages of fetch errors can carry a URL. */
-function errorName(err: unknown): string {
-  return err instanceof Error ? err.name : typeof err;
-}
-
 function delayUntilRefresh(expiresAt: number | undefined, now: number): number {
   if (expiresAt === undefined) return NO_EXPIRY_DELAY_MS;
-  return Math.max(MIN_DELAY_MS, expiresAt - LEAD_MS - now);
+  return Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, expiresAt - LEAD_MS - now));
 }
 
 /**
@@ -57,7 +56,7 @@ function delayUntilRefresh(expiresAt: number | undefined, now: number): number {
  */
 export function startRefreshLoop(storeRoot: string, id: string, expiresAt: number | undefined, fetchFn: GuardedFetch = customMcpFetch()): void {
   stopRefreshLoop(storeRoot, id);
-  const loop: Loop = { timer: null, stopped: false, generation: appSecretGeneration(), fetchFn };
+  const loop: Loop = { timer: null, stopped: false, generation: appSecretGeneration(), fetchFn, inFlight: null };
   loops.set(loopKey(storeRoot, id), loop);
   schedule(storeRoot, id, loop, delayUntilRefresh(expiresAt, Date.now()), 0);
 }
@@ -72,6 +71,22 @@ export function stopRefreshLoop(storeRoot: string, id: string): void {
   loops.delete(key);
 }
 
+/** Stops the loop of one connection and waits for a refresh already
+ *  running, so the keychain then holds whatever refresh token it saved. */
+export async function stopRefreshLoopAndSettle(storeRoot: string, id: string): Promise<void> {
+  const loop = loops.get(loopKey(storeRoot, id));
+  stopRefreshLoop(storeRoot, id);
+  await loop?.inFlight;
+}
+
+/** Stops every loop, as the app quits. */
+export function stopAllCustomRefreshLoops(): void {
+  for (const key of [...loops.keys()]) {
+    const [storeRoot, id] = [key.slice(0, key.lastIndexOf('|')), key.slice(key.lastIndexOf('|') + 1)];
+    stopRefreshLoop(storeRoot, id);
+  }
+}
+
 export function hasRefreshLoop(storeRoot: string, id: string): boolean {
   return loops.has(loopKey(storeRoot, id));
 }
@@ -79,7 +94,7 @@ export function hasRefreshLoop(storeRoot: string, id: string): boolean {
 function schedule(storeRoot: string, id: string, loop: Loop, delay: number, failures: number): void {
   loop.timer = setTimeout(() => {
     loop.timer = null;
-    void refreshOnce(storeRoot, id, loop, failures);
+    loop.inFlight = refreshOnce(storeRoot, id, loop, failures).finally(() => { loop.inFlight = null; });
   }, delay);
 }
 

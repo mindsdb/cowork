@@ -9,7 +9,7 @@ import { diagnostic } from '../shared/diagnostics';
 import { isCustomMcpAvailable } from './app-secret';
 import type { GuardedFetch } from './guarded-fetch';
 import { deleteConnection as deleteKeychainEntries, listConnectionIds, writePart } from './custom-mcp-keychain';
-import { CONNECTION_MISSING, CustomMcpRouteError, heldSummary, listRecordIds, putHeld, type HeldSettings } from './custom-mcp-routes';
+import { CONNECTION_MISSING, CustomMcpRouteError, errorName, heldSummary, listRecordIds, putHeld, type HeldSettings } from './custom-mcp-routes';
 import { customMcpFetch, readStoredSettings, readStoredTools, refreshedToken } from './custom-mcp-tokens';
 import { startRefreshLoop } from './custom-mcp-refresh';
 
@@ -52,11 +52,6 @@ export async function writeToolSwitch(storeRoot: string, id: string, tools: stri
 
 function toolChangeCount(storeRoot: string, id: string): number {
   return toolChanges.get(changeKey(storeRoot, id)) ?? 0;
-}
-
-/** An error's class name only: messages of fetch errors can carry a URL. */
-function errorName(err: unknown): string {
-  return err instanceof Error ? err.name : typeof err;
 }
 
 export type HandOverOutcome = 'done' | 'retry' | 'unusable' | 'gone';

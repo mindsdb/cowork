@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { GuardedFetch, GuardedRequestInit } from './guarded-fetch';
 
-const run = vi.hoisted(() => ({ root: '/home/user/.cowork' as string | null, customMcp: true }));
+const run = vi.hoisted(() => ({ root: '/home/user/.cowork' as string | null, customMcp: true, generation: 'run-1' }));
 vi.mock('./server-process', () => ({ getServerPort: () => 4000, activeStoreRoot: () => run.root }));
 vi.mock('./server-auth', () => ({ authHeader: () => ({ Authorization: 'Bearer bearer' }) }));
 vi.mock('./app-secret', () => ({
   isCustomMcpAvailable: () => run.customMcp,
-  appSecretGeneration: () => 'run-1',
+  appSecretGeneration: () => run.generation,
   appSecretHeader: () => ({ 'X-Cowork-App-Secret': 'secret' }),
 }));
 vi.mock('electron', () => ({ session: { defaultSession: { resolveProxy: async () => 'DIRECT' } } }));
@@ -118,6 +118,7 @@ async function seed(parts: { tools?: string[]; refresh?: string | null } = {}) {
 beforeEach(() => {
   run.root = ROOT;
   run.customMcp = true;
+  run.generation = 'run-1';
   keychain.entries.clear();
   keychain.failDelete = false;
   server.records.clear();
@@ -149,6 +150,19 @@ describe('every operation', () => {
 });
 
 describe('tools', () => {
+  it('refuses with no running store', async () => {
+    await seed();
+    run.root = null;
+    expect(await listCustomTools({ id: ID })).toMatchObject({ ok: false, code: 'unavailable' });
+  });
+
+  it('reports the server\'s org-mode refusal as unavailable', async () => {
+    await seed();
+    vi.stubGlobal('fetch', vi.fn(async () => json(409, { detail: 'custom_mcp_unavailable' })));
+    expect(await listCustomTools({ id: ID })).toMatchObject({ ok: false, code: 'unavailable' });
+    expect(await setCustomTools({ id: ID, tools: ['search'] })).toMatchObject({ ok: false, code: 'unavailable' });
+  });
+
   it('lists the server tools with their read-only label and switch', async () => {
     await seed();
     expect(await listCustomTools({ id: ID })).toEqual({
@@ -227,6 +241,69 @@ describe('reconnect', () => {
     expect(hasRefreshLoop(ROOT, ID)).toBe(false);
   });
 
+  it('changes nothing when the server restarts during the login', async () => {
+    await seed();
+    const { deps } = loginServer();
+    deps.authorize = async () => {
+      run.generation = 'run-2';
+      return { ok: true as const, code: 'code-2', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' };
+    };
+
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps)).toMatchObject({ code: 'server_changed' });
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
+  });
+
+  it('keeps the new login\'s refresh token when a loop refresh was in flight', async () => {
+    vi.useFakeTimers();
+    try {
+      await seed();
+      let release = () => {};
+      const loopFetch: GuardedFetch = async () => {
+        await new Promise<void>((resolve) => { release = resolve; });
+        return new Response(JSON.stringify({ access_token: 'AT-loop', refresh_token: 'RT-loop', token_type: 'Bearer' }), { status: 200 });
+      };
+      startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, loopFetch);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      const { deps } = loginServer();
+
+      const reconnecting = reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps);
+      // Long enough for a reconnect that does not wait to finish its writes.
+      await vi.advanceTimersByTimeAsync(1_000);
+      release();
+      expect(await reconnecting).toEqual({ ok: true });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-new');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the client secret of a client registered at reconnect', async () => {
+    server.records.add(ID);
+    await writePart(ROOT, ID, 'settings', JSON.stringify({ serverUrl: SERVER_URL, label: 'Docs' }));
+    await writePart(ROOT, ID, 'tools', '[]');
+    const metadata = LOGIN_SERVER['GET https://auth.example.com/.well-known/oauth-authorization-server'].json as Record<string, unknown>;
+    const table: Record<string, Answer> = {
+      ...LOGIN_SERVER,
+      'GET https://auth.example.com/.well-known/oauth-authorization-server': {
+        status: 200, json: { ...metadata, token_endpoint_auth_methods_supported: ['client_secret_basic'] },
+      },
+      [`POST ${AUTH}/register`]: { status: 201, json: { client_id: 'new-client', client_secret: 'new-secret', token_endpoint_auth_method: 'client_secret_basic' } },
+    };
+    const { deps } = loginServer(table);
+
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps)).toEqual({ ok: true });
+
+    expect(await readPart(ROOT, ID, 'secret')).toBe('new-secret');
+    expect(JSON.parse((await readPart(ROOT, ID, 'settings'))!)).toMatchObject({ clientId: 'new-client', authMethod: 'client_secret_basic' });
+  });
+
+  it('refuses more confirmed hosts than a login can have', async () => {
+    await seed();
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['a', 'b', 'c', 'd', 'e'] }, loginServer().deps)).toMatchObject({ code: 'invalid_request' });
+  });
+
   it('changes nothing when the account switches during the login', async () => {
     await seed();
     const { deps } = loginServer();
@@ -272,6 +349,31 @@ describe('reconnect', () => {
 });
 
 describe('disconnect', () => {
+  it('revokes the refresh token a loop refresh in flight saved, and leaves none behind', async () => {
+    vi.useFakeTimers();
+    try {
+      await seed();
+      let release = () => {};
+      const loopFetch: GuardedFetch = async () => {
+        await new Promise<void>((resolve) => { release = resolve; });
+        return new Response(JSON.stringify({ access_token: 'AT-loop', refresh_token: 'RT-loop', token_type: 'Bearer' }), { status: 200 });
+      };
+      startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, loopFetch);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      const { deps, requests } = loginServer();
+
+      const disconnecting = disconnectCustom({ id: ID }, deps);
+      await vi.advanceTimersByTimeAsync(0);
+      release();
+      expect(await disconnecting).toEqual({ ok: true, revoked: true });
+
+      expect(String(requests.find((r) => r.url === `${AUTH}/revoke`)?.init.body)).toContain('token=RT-loop');
+      expect(await listConnectionIds(ROOT)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('stops the loop, revokes the refresh token, deletes the keychain entries and then the record', async () => {
     await seed();
     startRefreshLoop(ROOT, ID, Date.now() + 60 * 60_000);

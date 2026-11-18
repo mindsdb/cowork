@@ -28,7 +28,7 @@ import { checkKeychain, CustomMcpKeychainError, deleteConnection as deleteKeycha
 import { writeToolSwitch } from './custom-mcp-held';
 import { startRefreshLoop } from './custom-mcp-refresh';
 import {
-  checkServerUrl, createConnection, CustomMcpRouteError, deleteRecord, listTools, putAllowedTools, putHeld,
+  checkServerUrl, createConnection, CustomMcpRouteError, deleteRecord, errorName, listTools, putAllowedTools, putHeld,
 } from './custom-mcp-routes';
 
 export interface CustomMcpConnectRequest {
@@ -282,7 +282,3 @@ async function switchOnReadOnlyTools(storeRoot: string, id: string): Promise<{ t
   }
 }
 
-/** An error's class name only: messages of fetch errors can carry a URL. */
-function errorName(err: unknown): string {
-  return err instanceof Error ? err.name : typeof err;
-}

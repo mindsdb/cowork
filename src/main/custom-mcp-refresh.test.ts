@@ -23,7 +23,7 @@ vi.mock('keytar', () => ({
   },
 }));
 
-import { hasRefreshLoop, startRefreshLoop, stopRefreshLoop } from './custom-mcp-refresh';
+import { hasRefreshLoop, startRefreshLoop, stopRefreshLoop, stopRefreshLoopAndSettle } from './custom-mcp-refresh';
 import { listConnectionIds, readPart, writePart } from './custom-mcp-keychain';
 
 const ROOT = '/home/user/.cowork';
@@ -180,6 +180,36 @@ describe('custom MCP refresh loops', () => {
     await vi.advanceTimersByTimeAsync(5 * 60_000);
 
     expect(login.calls).toBe(1);
+    expect(server.puts).toEqual([]);
+  });
+
+  it('waits at most a day for a token that lives longer than a timer can wait', async () => {
+    startRefreshLoop(ROOT, ID, Date.now() + 30 * 24 * HOUR, fetchFn);
+
+    await vi.advanceTimersByTimeAsync(23 * HOUR);
+    expect(login.calls).toBe(0);
+    await vi.advanceTimersByTimeAsync(HOUR);
+
+    expect(login.calls).toBe(1);
+  });
+
+  it('lets a stop wait for the refresh in flight, so its rotated token is saved first', async () => {
+    let release = () => {};
+    const gated: GuardedFetch = async (input, init) => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return fetchFn(input, init);
+    };
+    startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, gated);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+    let settled = false;
+    const stopping = stopRefreshLoopAndSettle(ROOT, ID).then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    release();
+    await stopping;
+
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-2');
     expect(server.puts).toEqual([]);
   });
 

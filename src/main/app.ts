@@ -30,6 +30,7 @@ import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNo
 import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
 import { connectCustomMcp } from './custom-mcp-connect';
 import { disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
+import { stopAllCustomRefreshLoops } from './custom-mcp-refresh';
 import { CUSTOM_MCP_ENGINE } from './custom-mcp-routes';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
@@ -2219,6 +2220,7 @@ async function drainServerForQuit(): Promise<void> {
   // Stop all OAuth refresh loops before the server shuts down so no
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
+  stopAllCustomRefreshLoops();
   // An auto-mode shell update installs itself as the app goes down, outside
   // the update-maintenance gate that the in-app "Restart now" install enters.
   // The download only stages the payload (Windows: the NSIS installer on disk;

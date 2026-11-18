@@ -40,6 +40,11 @@ export interface ServerTool {
   allowed: boolean;
 }
 
+/** An error's class name only, for logs: messages of fetch errors can carry a URL. */
+export function errorName(err: unknown): string {
+  return err instanceof Error ? err.name : typeof err;
+}
+
 function routeUrl(suffix: string): string {
   return `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${CUSTOM_MCP_ENGINE}${suffix}`;
 }

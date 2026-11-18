@@ -9,14 +9,14 @@
  */
 
 import { diagnostic } from '../shared/diagnostics';
-import { isCustomMcpAvailable } from './app-secret';
+import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { activeStoreRoot } from './server-process';
 import { revokeToken, type OAuthClient } from './mcp-oauth';
 import { deleteConnection as deleteKeychainEntries, deletePart, readPart, writePart } from './custom-mcp-keychain';
-import { deleteRecord, listTools, putAllowedTools, putHeld } from './custom-mcp-routes';
+import { deleteRecord, errorName, listTools, putAllowedTools, putHeld } from './custom-mcp-routes';
 import { readStoredSettings, readStoredTools, type StoredSettings } from './custom-mcp-tokens';
 import { writeToolSwitch } from './custom-mcp-held';
-import { startRefreshLoop, stopRefreshLoop } from './custom-mcp-refresh';
+import { startRefreshLoop, stopRefreshLoopAndSettle } from './custom-mcp-refresh';
 import { defaultDeps, failure, isConnectionId, logIn, type ConnectDeps } from './custom-mcp-connect';
 
 const MAX_TOOLS = 500;
@@ -27,11 +27,6 @@ const MAX_HOST = 260;
 type Failure = { ok: false; code: string; reason: string };
 
 const UNAVAILABLE: Failure = { ok: false, code: 'unavailable', reason: 'Custom MCP servers are not available on this server.' };
-
-/** An error's class name only: messages of fetch errors can carry a URL. */
-function errorName(err: unknown): string {
-  return err instanceof Error ? err.name : typeof err;
-}
 
 /** The store root and connection id a request names, or why it is refused. */
 function target(raw: unknown): { storeRoot: string; id: string } | Failure {
@@ -113,6 +108,7 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
   const confirmedLoginHosts = hostsOf((raw as { confirmedLoginHosts?: unknown }).confirmedLoginHosts);
   if (confirmedLoginHosts === null) return { ok: false, code: 'invalid_request', reason: 'The confirmed login hosts are not valid.' };
   const { storeRoot, id } = where;
+  const generation = appSecretGeneration();
   try {
     const settings = await readStoredSettings(storeRoot, id);
     if (!settings) return { ok: false, code: 'unusable', reason: 'This connection has no usable settings; remove it and add it again.' };
@@ -123,10 +119,11 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
     }, deps);
     if (login === null) return { ok: true };
     if ('ok' in login) return login;
-    if (activeStoreRoot() !== storeRoot || !isCustomMcpAvailable()) {
+    if (appSecretGeneration() !== generation || activeStoreRoot() !== storeRoot || !isCustomMcpAvailable()) {
       return { ok: false, code: 'server_changed', reason: 'The app switched accounts or restarted its server during the login.' };
     }
-    stopRefreshLoop(storeRoot, id);
+    // A refresh still running would write the old grant's token over the new one.
+    await stopRefreshLoopAndSettle(storeRoot, id);
     const updated: StoredSettings = {
       ...settings,
       resource: login.resource,
@@ -135,6 +132,8 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
       authMethod: login.client.authMethod,
     };
     await writePart(storeRoot, id, 'settings', JSON.stringify(updated));
+    if (login.client.clientSecret) await writePart(storeRoot, id, 'secret', login.client.clientSecret);
+    else await deletePart(storeRoot, id, 'secret');
     if (login.tokens.refreshToken) await writePart(storeRoot, id, 'refresh', login.tokens.refreshToken);
     else await deletePart(storeRoot, id, 'refresh');
     await putHeld(id, {
@@ -163,7 +162,8 @@ export async function disconnectCustom(raw: unknown, deps: Pick<ConnectDeps, 'fe
   const where = target(raw);
   if (isFailure(where)) return where;
   const { storeRoot, id } = where;
-  stopRefreshLoop(storeRoot, id);
+  // Settled first: a refresh in flight saves a rotated token, which is the one to revoke.
+  await stopRefreshLoopAndSettle(storeRoot, id);
   let revoked = false;
   try {
     const settings = await readStoredSettings(storeRoot, id);
