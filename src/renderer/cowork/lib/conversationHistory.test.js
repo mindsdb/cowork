@@ -120,8 +120,35 @@ describe('reconcileTaskMessages', () => {
     const a = out.find((m) => m.role === 'assistant');
     expect(a.streamStatus).toBe('done');
     expect(a.steps[0].status).toBe('completed');
-    expect(a.steps[0].completedAt).toBeTruthy();
+    // No recorded time to end it at, so it gets none rather than "now".
+    expect(a.steps[0].completedAt).toBeNull();
     expect(a.steps[1].status).toBe('completed');
+  });
+
+  // ENG-4345: a stopped turn saves no terminal event, so its running step is
+  // collapsed here on every visit. Its end must not move with the clock.
+  it('ends a step left running at the turn\'s last recorded time, the same on every visit', () => {
+    const stopped = () => ({
+      role: 'assistant',
+      startedAt: 1_000,
+      steps: [
+        { id: 'a', status: 'completed', startedAt: 1_000, completedAt: 5_000 },
+        { id: 'b', status: 'in_progress', startedAt: 6_000, _isScratchpad: true },
+      ],
+    });
+    const first = reconcileTaskMessages([user('q'), stopped()], false).at(-1);
+    expect(first.steps[1]).toMatchObject({ status: 'completed', completedAt: 6_000 });
+    const later = reconcileTaskMessages([user('q'), stopped()], false).at(-1);
+    expect(later.steps[1].completedAt).toBe(6_000);
+  });
+
+  it('prefers the turn\'s own end when it has one', () => {
+    const out = reconcileTaskMessages([user('q'), {
+      role: 'assistant',
+      endedAt: 9_000,
+      steps: [{ id: 'a', status: 'running', startedAt: 2_000 }],
+    }], false).at(-1);
+    expect(out.steps[0].completedAt).toBe(9_000);
   });
 });
 
