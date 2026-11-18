@@ -414,7 +414,8 @@
       "andMore": "{source} 외 {count}개"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "인식할 수 없는 커넥터"
+      "unrecognizedConnector": "인식할 수 없는 커넥터",
+      "mcpServer": "MCP 서버"
     },
     "datasourceSubmission": {
       "errors": {

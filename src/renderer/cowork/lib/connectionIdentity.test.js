@@ -215,6 +215,24 @@ describe('connectionIdentity — subtitle', () => {
   });
 });
 
+describe('connectionIdentity — custom MCP server', () => {
+  const NAME = 'cm-1efdfbfb888617e136b3273a359b3022';
+
+  it('is titled by the name its user gave it, never the engine or the id', () => {
+    expect(connectionIdentity({ engine: 'custom_mcp', name: NAME, user_label: 'Linear' }))
+      .toEqual({ title: 'Linear', subtitle: 'MCP server · 9b3022' });
+  });
+
+  it('keeps two servers of one name apart by the tail of the id', () => {
+    const other = connectionIdentity({ engine: 'custom_mcp', name: `cm-${'a'.repeat(32)}`, user_label: 'Linear' });
+    expect(other.subtitle).not.toBe(connectionIdentity({ engine: 'custom_mcp', name: NAME, user_label: 'Linear' }).subtitle);
+  });
+
+  it('falls back to "MCP server" when the server holds no name for it', () => {
+    expect(connectionIdentity({ engine: 'custom_mcp', name: NAME }).title).toBe('MCP server');
+  });
+});
+
 describe('humanLabel', () => {
   it('titlecases snake_case', () => {
     expect(humanLabel('google_calendar')).toBe('Google Calendar');

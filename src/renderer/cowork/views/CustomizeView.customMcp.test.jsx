@@ -7,7 +7,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const ID = `cm-${'a'.repeat(32)}`;
-const CONNECTIONS = [{ engine: 'custom_mcp', name: ID, label: 'Tracker', user_label: null, display_name: null }];
+const CONNECTIONS = [{ engine: 'custom_mcp', name: ID, label: null, user_label: 'Tracker', display_name: null }];
 
 const api = vi.hoisted(() => ({
   deleteDatasource: vi.fn(),
@@ -52,7 +52,7 @@ describe('CustomizeView custom MCP connection', () => {
   });
 
   it('removes a record main never drew with the generic delete', async () => {
-    const planted = [{ engine: 'custom_mcp', name: 'foo', label: 'Planted', user_label: null, display_name: null }];
+    const planted = [{ engine: 'custom_mcp', name: 'foo', label: null, user_label: 'Planted', display_name: null }];
     api.fetchDatasources.mockResolvedValue({ connections: planted });
     api.deleteDatasource.mockResolvedValue({});
     render(<CustomizeView connectors={planted} />);

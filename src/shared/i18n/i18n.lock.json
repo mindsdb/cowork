@@ -116483,6 +116483,40 @@
       "text": "9c3503551a18"
     }
   },
+  "projects:messages.connectionIdentity.mcpServer": {
+    "de": {
+      "from": "d938c8168e3a",
+      "text": "7c54bcbcd592"
+    },
+    "es": {
+      "from": "d938c8168e3a",
+      "text": "ec039d8ed464"
+    },
+    "fr": {
+      "from": "d938c8168e3a",
+      "text": "1c781cc571ff"
+    },
+    "it": {
+      "from": "d938c8168e3a",
+      "text": "e080256e26e4"
+    },
+    "ja": {
+      "from": "d938c8168e3a",
+      "text": "9eaa016792db"
+    },
+    "ko": {
+      "from": "d938c8168e3a",
+      "text": "d1a2b7f9f77d"
+    },
+    "pt-BR": {
+      "from": "d938c8168e3a",
+      "text": "ec039d8ed464"
+    },
+    "zh-CN": {
+      "from": "d938c8168e3a",
+      "text": "a203f86cf6a6"
+    }
+  },
   "projects:messages.connectionIdentity.unrecognizedConnector": {
     "de": {
       "from": "cea2001698e7",

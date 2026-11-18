@@ -45,6 +45,13 @@ const stripDisambiguationCounter = (value) => value.replace(/\s+\d+$/, '');
 export function connectionIdentity(connection) {
   const c = connection || {};
   const slug = c.name || c.slug || 'unnamed';
+  // A custom MCP server is known by the name its user gave it; its engine
+  // and random id mean nothing to a reader. The id's tail keeps two servers
+  // of one name apart.
+  if (c.engine === 'custom_mcp') {
+    const named = typeof c.user_label === 'string' && c.user_label ? c.user_label : tr('mcpServer');
+    return { title: named, subtitle: `${tr('mcpServer')} · ${slug.slice(-6)}` };
+  }
   const identity = c.display_name || c.displayName || null;
   const title = c.label
     || (isLegacyEngine(c.engine) ? tr('unrecognizedConnector') : humanLabel(c.engine || 'unknown'));
