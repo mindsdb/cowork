@@ -53,6 +53,7 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import CustomMcpConnectModal from './components/connector/CustomMcpConnectModal';
+import { disconnectCustomMcp, isCustomMcp } from './lib/customMcp';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
 import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
 import { handleArtifactCheckEvent } from './lib/artifactCheck';
@@ -3467,7 +3468,8 @@ function AppCore() {
     setDisconnectError('');
     setDisconnectBusy(true);
     try {
-      await deleteDatasource(engine, name);
+      if (isCustomMcp(engine)) await disconnectCustomMcp(name);
+      else await deleteDatasource(engine, name);
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.App", "WARNING", "connectors_disconnect_failed", '[connectors] disconnect failed', e);

@@ -705,6 +705,18 @@
       "keychain": "The system keychain isn't available, so the connection can't be stored safely.",
       "serverChanged": "The app switched accounts or restarted during the login. Try again.",
       "generic": "Couldn't connect the server: {reason}"
+    },
+    "detail": {
+      "server": "Server",
+      "tools": "Tools",
+      "toolsIntro": "Anton uses only the tools switched on here. Tools the server adds later stay off until you switch them on.",
+      "noTools": "This server lists no tools.",
+      "toolSwitch": "Let Anton use {name}",
+      "reconnect": "Reconnect",
+      "reconnected": "Reconnected. Your tool choices are kept.",
+      "disconnect": "Disconnect",
+      "disconnectTitle": "Disconnect {name}?",
+      "disconnectMessage": "Anton stops using this server, its login is revoked where the server allows it, and its settings are removed from this computer."
     }
   }
 }

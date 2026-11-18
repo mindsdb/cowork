@@ -705,6 +705,18 @@
       "keychain": "Le trousseau du système n'est pas disponible, donc la connexion ne peut pas être enregistrée en sécurité.",
       "serverChanged": "L'application a changé de compte ou redémarré pendant la connexion. Réessayez.",
       "generic": "Impossible de connecter le serveur : {reason}"
+    },
+    "detail": {
+      "server": "Serveur",
+      "tools": "Outils",
+      "toolsIntro": "Anton utilise uniquement les outils activés ici. Les outils que le serveur ajoute plus tard restent désactivés jusqu'à ce que vous les activiez.",
+      "noTools": "Ce serveur ne liste aucun outil.",
+      "toolSwitch": "Autoriser Anton à utiliser {name}",
+      "reconnect": "Reconnecter",
+      "reconnected": "Reconnecté. Vos choix d'outils sont conservés.",
+      "disconnect": "Déconnecter",
+      "disconnectTitle": "Déconnecter {name} ?",
+      "disconnectMessage": "Anton n'utilise plus ce serveur, sa connexion est révoquée quand le serveur le permet, et ses réglages sont supprimés de cet ordinateur."
     }
   }
 }

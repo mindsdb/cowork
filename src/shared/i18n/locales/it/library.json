@@ -705,6 +705,18 @@
       "keychain": "Il portachiavi di sistema non è disponibile, quindi la connessione non può essere salvata in modo sicuro.",
       "serverChanged": "L'app ha cambiato account o si è riavviata durante l'accesso. Riprova.",
       "generic": "Impossibile connettere il server: {reason}"
+    },
+    "detail": {
+      "server": "Server",
+      "tools": "Strumenti",
+      "toolsIntro": "Anton usa solo gli strumenti attivati qui. Gli strumenti che il server aggiunge in seguito restano disattivati finché non li attivi.",
+      "noTools": "Questo server non elenca strumenti.",
+      "toolSwitch": "Consenti ad Anton di usare {name}",
+      "reconnect": "Riconnetti",
+      "reconnected": "Riconnesso. Le tue scelte sugli strumenti restano.",
+      "disconnect": "Disconnetti",
+      "disconnectTitle": "Disconnettere {name}?",
+      "disconnectMessage": "Anton smette di usare questo server, il suo accesso viene revocato dove il server lo consente e le sue impostazioni vengono rimosse da questo computer."
     }
   }
 }

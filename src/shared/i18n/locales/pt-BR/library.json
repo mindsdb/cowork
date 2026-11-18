@@ -705,6 +705,18 @@
       "keychain": "O chaveiro do sistema não está disponível, então a conexão não pode ser guardada com segurança.",
       "serverChanged": "O app trocou de conta ou reiniciou durante o login. Tente de novo.",
       "generic": "Não foi possível conectar o servidor: {reason}"
+    },
+    "detail": {
+      "server": "Servidor",
+      "tools": "Ferramentas",
+      "toolsIntro": "O Anton usa só as ferramentas ativadas aqui. Ferramentas que o servidor adicionar depois ficam desativadas até você ativá-las.",
+      "noTools": "Este servidor não lista ferramentas.",
+      "toolSwitch": "Permitir que o Anton use {name}",
+      "reconnect": "Reconectar",
+      "reconnected": "Reconectado. Suas escolhas de ferramentas foram mantidas.",
+      "disconnect": "Desconectar",
+      "disconnectTitle": "Desconectar {name}?",
+      "disconnectMessage": "O Anton deixa de usar este servidor, o login dele é revogado quando o servidor permite, e as configurações dele são removidas deste computador."
     }
   }
 }

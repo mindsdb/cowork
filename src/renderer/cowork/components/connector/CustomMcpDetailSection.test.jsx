@@ -1,0 +1,104 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const bridge = vi.hoisted(() => ({
+  customMcpSummary: vi.fn(),
+  customMcpTools: vi.fn(),
+  customMcpSetTools: vi.fn(),
+  customMcpReconnect: vi.fn(),
+}));
+vi.mock('../../../platform/host', () => ({ host: bridge }));
+
+import CustomMcpDetailSection from './CustomMcpDetailSection';
+
+const CONNECTION = { engine: 'custom_mcp', name: `cm-${'a'.repeat(32)}` };
+const TOOLS = [
+  { name: 'search', description: 'Find issues', readOnly: true, allowed: true },
+  { name: 'delete_issue', description: '', readOnly: false, allowed: false },
+];
+
+function renderSection(props = {}) {
+  const onDisconnect = vi.fn(async () => true);
+  const confirm = vi.fn(async () => true);
+  render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={onDisconnect} confirm={confirm} {...props} />);
+  return { onDisconnect, confirm };
+}
+
+beforeEach(() => {
+  bridge.customMcpSummary.mockResolvedValue({ ok: true, label: 'Tracker', serverUrl: 'https://mcp.example.com/mcp' });
+  bridge.customMcpTools.mockResolvedValue({ ok: true, tools: TOOLS });
+});
+
+afterEach(() => {
+  for (const fn of Object.values(bridge)) fn.mockReset();
+});
+
+describe('CustomMcpDetailSection', () => {
+  it('shows the held label and URL and every tool with its switch', async () => {
+    renderSection();
+
+    expect(await screen.findByText('Tracker')).toBeTruthy();
+    expect(screen.getByText('https://mcp.example.com/mcp')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Let Anton use search' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
+    expect(bridge.customMcpSummary).toHaveBeenCalledWith(CONNECTION.name);
+  });
+
+  it('switches a tool on by sending the whole new list', async () => {
+    bridge.customMcpSetTools.mockResolvedValue({ ok: true, tools: ['search', 'delete_issue'] });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(bridge.customMcpSetTools).toHaveBeenCalledWith(CONNECTION.name, ['search', 'delete_issue']);
+    expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('puts a switch back and says why when the change is refused', async () => {
+    bridge.customMcpSetTools.mockResolvedValue({ ok: false, code: 'unavailable', reason: 'x' });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use search' }));
+
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use search' }).getAttribute('aria-checked')).toBe('true'));
+    expect(screen.getByText("MCP servers by URL aren't available right now. Restart the app and try again.")).toBeTruthy();
+  });
+
+  it('says so when the server cannot list its tools', async () => {
+    bridge.customMcpTools.mockResolvedValue({ ok: false, code: 'unreachable', reason: 'the server answered 502' });
+    renderSection();
+
+    expect(await screen.findByText("Couldn't connect the server: the server answered 502")).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('shows the login hosts before reconnecting, then reconnects with them', async () => {
+    bridge.customMcpReconnect
+      .mockResolvedValueOnce({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] })
+      .mockResolvedValueOnce({ ok: true });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reconnect' }));
+    const hosts = await screen.findByRole('group', { name: 'Your login and its code will go to:' });
+    expect(hosts.textContent).toContain('auth.example.com');
+    expect(bridge.customMcpReconnect).toHaveBeenCalledWith(CONNECTION.name, undefined);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(bridge.customMcpReconnect).toHaveBeenLastCalledWith(CONNECTION.name, ['auth.example.com']);
+    expect(await screen.findByText('Reconnected. Your tool choices are kept.')).toBeTruthy();
+  });
+
+  it('disconnects only once confirmed', async () => {
+    const { onDisconnect, confirm } = renderSection();
+    confirm.mockResolvedValueOnce(false);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    expect(onDisconnect).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Disconnect Tracker?', destructive: true }));
+    expect(onDisconnect).toHaveBeenCalledWith(CONNECTION);
+  });
+});

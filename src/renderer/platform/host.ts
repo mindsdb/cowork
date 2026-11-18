@@ -1206,7 +1206,6 @@ export type CustomMcpSetToolsResult = { ok: true; tools: string[] } | CustomMcpF
 export type CustomMcpReconnectResult = { ok: true } | CustomMcpHostsToConfirm | CustomMcpFailure;
 export type CustomMcpDisconnectResult = { ok: true; revoked: boolean } | CustomMcpFailure;
 
-export const CUSTOM_MCP_ENGINE = 'custom_mcp';
 const CUSTOM_MCP_UNAVAILABLE: CustomMcpFailure = { ok: false, code: 'unavailable', reason: 'Custom MCP servers need the desktop app.' };
 
 export async function customMcpAvailable(): Promise<boolean> {

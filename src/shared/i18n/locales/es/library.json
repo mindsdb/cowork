@@ -705,6 +705,18 @@
       "keychain": "El llavero del sistema no está disponible, así que la conexión no se puede guardar de forma segura.",
       "serverChanged": "La app cambió de cuenta o se reinició durante el inicio de sesión. Inténtalo de nuevo.",
       "generic": "No se pudo conectar el servidor: {reason}"
+    },
+    "detail": {
+      "server": "Servidor",
+      "tools": "Herramientas",
+      "toolsIntro": "Anton usa solo las herramientas activadas aquí. Las herramientas que el servidor agregue después siguen desactivadas hasta que las actives.",
+      "noTools": "Este servidor no lista herramientas.",
+      "toolSwitch": "Permitir que Anton use {name}",
+      "reconnect": "Reconectar",
+      "reconnected": "Reconectado. Tus herramientas elegidas se mantienen.",
+      "disconnect": "Desconectar",
+      "disconnectTitle": "¿Desconectar {name}?",
+      "disconnectMessage": "Anton deja de usar este servidor, su inicio de sesión se revoca cuando el servidor lo permite y su configuración se elimina de esta computadora."
     }
   }
 }

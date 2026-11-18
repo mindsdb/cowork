@@ -705,6 +705,18 @@
       "keychain": "Der Systemschlüsselbund ist nicht verfügbar, daher kann die Verbindung nicht sicher gespeichert werden.",
       "serverChanged": "Die App hat während der Anmeldung das Konto gewechselt oder neu gestartet. Versuche es erneut.",
       "generic": "Der Server konnte nicht verbunden werden: {reason}"
+    },
+    "detail": {
+      "server": "Server",
+      "tools": "Tools",
+      "toolsIntro": "Anton nutzt nur die hier eingeschalteten Tools. Tools, die der Server später hinzufügt, bleiben aus, bis du sie einschaltest.",
+      "noTools": "Dieser Server listet keine Tools auf.",
+      "toolSwitch": "Anton {name} nutzen lassen",
+      "reconnect": "Neu verbinden",
+      "reconnected": "Neu verbunden. Deine Tool-Auswahl bleibt erhalten.",
+      "disconnect": "Trennen",
+      "disconnectTitle": "{name} trennen?",
+      "disconnectMessage": "Anton nutzt diesen Server nicht mehr, die Anmeldung wird widerrufen, wo der Server das erlaubt, und seine Einstellungen werden von diesem Computer entfernt."
     }
   }
 }

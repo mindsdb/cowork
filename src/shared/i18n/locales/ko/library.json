@@ -705,6 +705,18 @@
       "keychain": "시스템 키체인을 사용할 수 없어 연결을 안전하게 저장할 수 없습니다.",
       "serverChanged": "로그인 중에 앱이 계정을 전환했거나 다시 시작되었습니다. 다시 시도하세요.",
       "generic": "서버에 연결하지 못했습니다: {reason}"
+    },
+    "detail": {
+      "server": "서버",
+      "tools": "도구",
+      "toolsIntro": "Anton은 여기서 켠 도구만 사용합니다. 서버가 나중에 추가한 도구는 직접 켤 때까지 꺼져 있습니다.",
+      "noTools": "이 서버에는 도구가 없습니다.",
+      "toolSwitch": "Anton이 {name}을(를) 사용하도록 허용",
+      "reconnect": "다시 연결",
+      "reconnected": "다시 연결되었습니다. 도구 선택은 유지됩니다.",
+      "disconnect": "연결 해제",
+      "disconnectTitle": "{name} 연결을 해제할까요?",
+      "disconnectMessage": "Anton이 이 서버를 더 이상 사용하지 않으며, 서버가 허용하면 로그인이 취소되고, 설정은 이 컴퓨터에서 삭제됩니다."
     }
   }
 }
