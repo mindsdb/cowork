@@ -413,7 +413,7 @@ export default function DocCanvas({
         />
       )}
 
-      {askFor && <AskAgent target={askFor} onSubmit={askAgent} onCancel={() => setAskFor(null)} />}
+      {askFor && onAskAgent && <AskAgent target={askFor} onSubmit={askAgent} onCancel={() => setAskFor(null)} />}
     </div>
   );
 }
