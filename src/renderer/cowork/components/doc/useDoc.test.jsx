@@ -249,18 +249,83 @@ describe('useDoc while the server is unreachable', () => {
     expect(result.current.writeError).toMatchObject({ code: 'offline' });
 
     // The stream coming back sends at once, the oldest edit first, and one
-    // failure more waits the next, longer, step.
+    // failure more waits the next, longer, step. An edit whose send got no
+    // answer is checked against a fresh read before it goes again.
     act(() => { t.streams[0].onReconnect(); });
+    expect(t.posts).toHaveLength(1);
+    await act(async () => { t.fetches.at(-1).resolve({ doc: doc('a', 1) }); });
     expect(t.posts).toHaveLength(2);
     expect(t.posts[1].body.ops).toEqual(edit('b_1', 'Two'));
     await act(async () => { t.posts[1].reject(new TypeError('Failed to fetch')); });
+    const reads = t.fetches.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(1999); });
-    expect(t.posts).toHaveLength(2);
+    expect(t.fetches).toHaveLength(reads);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await act(async () => { t.fetches.at(-1).resolve({ doc: doc('a', 1) }); });
     expect(t.posts).toHaveLength(3);
     await act(async () => { t.posts[2].resolve({ doc: doc('a', 2, [{ id: 'b_1', type: 'paragraph', text: 'Two' }]) }); });
     expect(t.posts.map((p) => p.body.ops)).toEqual([edit('b_1', 'Two'), edit('b_1', 'Two'), edit('b_1', 'Two'), edit('b_1', 'Three')]);
     expect(result.current.writeError).toBeNull();
+  });
+
+  it('does not send again an edit whose answer was lost but which landed', async () => {
+    // A connection that drops after the server applied the edit looks the
+    // same as one that never reached it: sent blind, an insert lands twice.
+    const t = fakeTransport();
+    const { result } = await opened(t);
+    const insert = [{ op: 'insert', position: 'end', blocks: [{ id: 'b_new00001', type: 'paragraph', text: 'Two' }] }];
+    act(() => { result.current.apply(insert, { tab: 't_1' }); });
+    await act(async () => { t.posts[0].reject(new TypeError('Failed to fetch')); });
+    act(() => { t.streams[0].onReconnect(); });
+    const landed = doc('a', 2, [{ id: 'b_1', type: 'paragraph', text: 'One' }, { id: 'b_new00001', type: 'paragraph', text: 'Two' }]);
+    await act(async () => { t.fetches.at(-1).resolve({ doc: landed }); });
+    expect(t.posts).toHaveLength(1);
+    expect(texts(result.current.doc)).toEqual(['One', 'Two']);
+    expect(result.current.writeError).toBeNull();
+    expect(result.current.saving).toBe(false);
+  });
+
+  it('waits again when the read that checks an unanswered edit fails too', async () => {
+    vi.useFakeTimers();
+    const t = fakeTransport();
+    const { result } = await opened(t);
+    act(() => { result.current.apply(edit('b_1', 'Two'), { tab: 't_1' }); });
+    await act(async () => { t.posts[0].reject(new TypeError('Failed to fetch')); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await act(async () => { t.fetches.at(-1).reject(new TypeError('Failed to fetch')); });
+    expect(t.posts).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await act(async () => { t.fetches.at(-1).resolve({ doc: doc('a', 1) }); });
+    expect(t.posts).toHaveLength(2);
+    expect(texts(result.current.doc)).toEqual(['Two']);
+  });
+
+  it('lets a closed doc\'s unanswered edit go when a read shows it landed', async () => {
+    vi.useFakeTimers();
+    const t = fakeTransport();
+    const { result, unmount } = await opened(t);
+    act(() => { result.current.apply(edit('b_1', 'Two'), { tab: 't_1' }); });
+    await act(async () => { t.posts[0].reject(new TypeError('Failed to fetch')); });
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await act(async () => { t.fetches.at(-1).resolve({ doc: doc('a', 2, [{ id: 'b_1', type: 'paragraph', text: 'Two', by: 'user' }]) }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(t.posts).toHaveLength(1);
+  });
+
+  it('keeps a newer copy from the stream over the read that checks an unanswered edit', async () => {
+    const t = fakeTransport();
+    const { result } = await opened(t);
+    act(() => { result.current.apply(edit('b_1', 'Two'), { tab: 't_1' }); });
+    await act(async () => { t.posts[0].reject(new TypeError('Failed to fetch')); });
+    act(() => { t.streams[0].onReconnect(); });
+    act(() => {
+      t.streams[0].onEvent({ type: 'doc.updated', rev: 3, by: 'agent',
+        doc: doc('a', 3, [{ id: 'b_1', type: 'paragraph', text: 'Two', by: 'user' }, { id: 'b_2', type: 'paragraph', text: 'Agent' }]) });
+    });
+    await act(async () => { t.fetches.at(-1).resolve({ doc: doc('a', 2, [{ id: 'b_1', type: 'paragraph', text: 'Two', by: 'user' }]) }); });
+    expect(t.posts).toHaveLength(1);
+    expect(result.current.doc.rev).toBe(3);
   });
 
   it('sends nothing more when the stream comes back with no retry waiting', async () => {
@@ -497,6 +562,20 @@ describe('useDoc switching docs', () => {
     expect(result.current.doc).toMatchObject({ id: 'b', rev: 4 });
   });
 
+  it('ignores an event the previous doc\'s stream delivers after the next one opened', async () => {
+    const t = fakeTransport();
+    const { result, rerender } = await opened(t, 'a', 1);
+    rerender({ artifactId: 'b' });
+    await act(async () => { t.fetches.at(-1).resolve({ doc: doc('b', 4) }); });
+    act(() => {
+      t.streams[0].onEvent({ type: 'doc.updated', rev: 9, by: 'agent', touched: { t_1: ['b_1'] },
+        doc: doc('a', 9, [{ id: 'b_1', type: 'paragraph', text: 'Late' }]) });
+    });
+    expect(result.current.doc).toMatchObject({ id: 'b', rev: 4 });
+    expect(result.current.agentActive).toBe(false);
+    expect(result.current.flash).toEqual({});
+  });
+
   it('reads nothing when the stream reconnects after the doc closed', async () => {
     const t = fakeTransport();
     const { unmount } = await opened(t, 'a', 1);
@@ -554,6 +633,7 @@ describe('useDoc switching docs', () => {
     await act(async () => { t.posts[0].reject(new TypeError('Failed to fetch')); });
     unmount();
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await act(async () => { t.fetches.at(-1).resolve({ doc: doc('a', 1) }); });
     expect(t.posts).toHaveLength(2);
     expect(t.posts[1]).toMatchObject({ artifactId: 'a', body: { ops: edit('b_1', 'Two') } });
     await act(async () => { t.posts[1].resolve({ doc: doc('a', 2) }); });

@@ -209,6 +209,8 @@ vi.mock('./lib/analytics', () => ({
   trackAddonAdded: vi.fn(),
   trackAddonQueued: vi.fn(),
   trackAddonOverridden: vi.fn(),
+  trackNextStepsShown: vi.fn(),
+  trackNextStepClicked: vi.fn(),
 }));
 
 import App, { unsavedRefusedQuestions } from './App';
@@ -1529,7 +1531,12 @@ describe('the first message of a new task (analytics)', () => {
       return ta;
     });
 
-    await send(user, composer, OWN_WORK_PROMPT);
+    // Paste the long onboarding prompt instead of typing it: typing renders the
+    // whole App once per character, which can push this test past its timeout
+    // on a busy CI runner.
+    await user.click(composer);
+    await user.paste(OWN_WORK_PROMPT);
+    await user.keyboard('{Enter}');
     await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
 
     expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1);
@@ -2226,6 +2233,33 @@ describe('"Edit with agent" on a doc opened from the library', () => {
     expect(await screen.findByText('Connect a provider to start chatting')).toBeInTheDocument();
     expect(spies.streamMessage).not.toHaveBeenCalled();
     await waitFor(() => expect(isOptimisticConversation('conv-a')).toBe(false));
+  });
+
+  it('lets the doc\'s chat read its history again when its queued request is taken out', async () => {
+    // Found in review: queued behind another chat's turn, the request kept the
+    // chat marked as holding a turn in flight; taken out of the queue, no turn
+    // came to clear it.
+    spies.fetchArtifactsStrict.mockResolvedValue([{ ...plan, originConversationId: 'conv-a' }]);
+    spies.fetchSessionResult.mockImplementation(async (id) => (id === 'conv-a'
+      ? { status: 'ok', task: {
+        id: 'conv-a', title: 'Alpha task', status: 'idle', projectName: 'general', messagesStatus: 'loaded',
+        messages: [{ role: 'user', content: 'Draft the hiring plan' }, { role: 'assistant', content: 'The plan is in a doc.' }],
+      } }
+      : { status: 'unavailable', code: 0 }));
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.useActualStreams = true;
+    const turns = serveTurns();
+    await openByTitle(user, 'Beta task');
+    await send(user, composer, 'beta turn');
+    await waitFor(() => expect(turns.bodies).toHaveLength(1));
+
+    await askFromTheLibrary(user);
+    await waitFor(() => expect(isOptimisticConversation('conv-a')).toBe(true));
+    await user.click(await screen.findByLabelText('Remove from queue'));
+    await waitFor(() => expect(isOptimisticConversation('conv-a')).toBe(false));
+    await turns.finish(0);
+    expect(turns.bodies).toHaveLength(1);
   });
 });
 

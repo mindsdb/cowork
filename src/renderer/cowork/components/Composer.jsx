@@ -158,6 +158,8 @@ export default function Composer({
   conversationId = null,
   disabledConnections = [],
   onUpdateConnectorMute,
+  /** Starts a voice call with the agent (prototype); null hides it from the + menu. */
+  onStartVoiceCall = null,
   /**
    * The shared browser for this task or the next one, shown as a Browser
    * switch in the + menu. Null hides it.
@@ -1283,11 +1285,11 @@ export default function Composer({
                 <button
                   type="button"
                   className="ml-1 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-solid border-line bg-accent-bg text-accent-2 text-xs font-medium cursor-pointer"
-                  aria-label="Output: Doc. Remove"
-                  title="The answer will be written as a doc. Click to remove."
+                  aria-label={t('composer.docOutput.remove')}
+                  title={t('composer.docOutput.title')}
                   onClick={() => setDocOutput(false)}
                 >
-                  {Ico.doc(12)} Doc {Ico.close(12)}
+                  {Ico.doc(12)} {t('composer.docOutput.chip')} {Ico.close(12)}
                 </button>
               )}
               {openMenu === 'attach' && (
@@ -1314,7 +1316,7 @@ export default function Composer({
                     onClick={() => { setDocOutput(!docOutput); setOpenMenu(null); }}
                   >
                     {Ico.doc(14)}
-                    <span className="flex-1">Write it as a doc</span>
+                    <span className="flex-1">{t('composer.menu.writeAsDoc')}</span>
                     {docOutput && <span className="inline-flex text-accent">{Ico.check(12)}</span>}
                   </button>
                   {onAddGoogleDriveFiles && (
@@ -1373,6 +1375,17 @@ export default function Composer({
                         <span className="toggle-thumb" />
                       </button>
                     </div>
+                  )}
+                  {onStartVoiceCall && (
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        onStartVoiceCall();
+                      }}
+                    >
+                      {Ico.call(14)} {t('composer.voiceCall')}
+                    </button>
                   )}
                   <button
                     className="menu-item"

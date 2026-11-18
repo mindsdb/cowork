@@ -1,6 +1,9 @@
 // HTTP + SSE client for the docs API (cowork-server /api/v1/docs).
 import { BASE, authFetch } from '../../api';
 import { iterateSSE } from '../../lib/responseStreamAdapter';
+import { sharedTranslator } from '../../../lib/i18n';
+
+const tr = sharedTranslator('docs');
 
 async function call(path, options = {}) {
   const res = await authFetch(BASE + path, {
@@ -11,7 +14,7 @@ async function call(path, options = {}) {
     let detail = null;
     try { detail = (await res.json())?.detail; } catch { /* not JSON */ }
     const err = new Error(
-      (detail && (detail.message || (typeof detail === 'string' ? detail : null))) || `Doc request failed (${res.status})`,
+      (detail && (detail.message || (typeof detail === 'string' ? detail : null))) || tr('notice.requestFailed', { status: res.status }),
     );
     err.status = res.status;
     err.code = detail?.code;
@@ -43,7 +46,7 @@ export async function postDocOps(projectRef, artifactId, { ops, tab, clientId })
     });
   } catch (e) {
     if (!ctrl.signal.aborted) throw e;
-    throw Object.assign(new Error('The server took too long to answer.'), { code: 'timeout' });
+    throw Object.assign(new Error(tr('notice.timeout')), { code: 'timeout' });
   } finally {
     clearTimeout(timer);
   }
@@ -52,7 +55,7 @@ export async function postDocOps(projectRef, artifactId, { ops, tab, clientId })
 /** Download an export through the authenticated fetch, then hand it to the browser. */
 export async function downloadDocExport(projectRef, artifactId, format) {
   const res = await authFetch(`${BASE}${docPath(projectRef, artifactId)}/export?format=${encodeURIComponent(format)}`);
-  if (!res.ok) throw new Error(`Export failed (${res.status})`);
+  if (!res.ok) throw new Error(tr('export.failedStatus', { status: res.status }));
   const blob = await res.blob();
   const disposition = res.headers.get('content-disposition') || '';
   const name = /filename="([^"]+)"/.exec(disposition)?.[1] || `doc.${format}`;
@@ -80,8 +83,8 @@ export async function uploadDocImage(projectRef, artifactId, file) {
   if (!res.ok) {
     let detail = null;
     try { detail = (await res.json())?.detail; } catch { /* not JSON */ }
-    throw new Error(res.status === 413 ? 'That image is too large for a doc (10 MB at most).'
-      : detail?.message || `Couldn’t add that image (${res.status})`);
+    throw new Error(res.status === 413 ? tr('notice.imageTooLarge')
+      : detail?.message || tr('notice.imageFailedStatus', { status: res.status }));
   }
   return (await res.json()).src;
 }
@@ -89,7 +92,7 @@ export async function uploadDocImage(projectRef, artifactId, file) {
 /** The doc's Markdown, for "Copy as Markdown". */
 export async function fetchDocMarkdown(projectRef, artifactId) {
   const res = await authFetch(`${BASE}${docPath(projectRef, artifactId)}/export?format=md`);
-  if (!res.ok) throw new Error(`Export failed (${res.status})`);
+  if (!res.ok) throw new Error(tr('export.failedStatus', { status: res.status }));
   return res.text();
 }
 

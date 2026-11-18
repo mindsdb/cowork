@@ -173,10 +173,13 @@
     "unavailableTitle": "Recurso indisponível",
     "cloudBodyNamed": "{feature} ainda não está disponível no Cloud. Enquanto isso, você pode usá-lo no app para desktop.",
     "cloudBody": "Este recurso ainda não está disponível no Cloud. Enquanto isso, você pode usá-lo no app para desktop.",
+    "cloudBodyCustom": "{feature} ainda não está disponível no Cloud. Você já pode conectá-lo como um conector personalizado.",
     "unavailableBodyNamed": "{feature} não está disponível nesta implantação.",
     "unavailableBody": "Este recurso não está disponível nesta implantação.",
     "notNow": "Agora não",
-    "download": "Baixar o app"
+    "download": "Baixar o app",
+    "connectCustom": "Conectar seu conector personalizado de {feature}",
+    "buildCustom": "Criar um conector personalizado"
   },
   "loadStatus": {
     "retry": "Tentar novamente",
@@ -280,6 +283,8 @@
     "settings": "Configurações",
     "billing": "Faturamento e uso",
     "members": "Membros",
+    "apiKeys": "Chaves de API",
+    "apiDocs": "Documentação da API",
     "help": "Ajuda e feedback",
     "manageOrg": "Gerenciar organização",
     "logout": "Sair",
@@ -362,7 +367,12 @@
     "total": "{count} no total",
     "noTasks": "Ainda não há tarefas.",
     "untitledTask": "Tarefa sem título",
-    "seeAllTasks": "Ver todas as tarefas"
+    "seeAllTasks": "Ver todas as tarefas",
+    "recents": "Recentes",
+    "showFewer": "Mostrar menos",
+    "seeAllCount": "Ver todos ({count})",
+    "signedIn": "Conectado",
+    "logOut": "Sair"
   },
   "dispatch": {
     "qrAriaLabel": "Código de pareamento decorativo",
@@ -397,9 +407,14 @@
       "operatorTitle": "É preciso configurar um provedor",
       "body": "Comece com o MindsHub e ganhe uma franquia gratuita no MindsHub Air; depois, pague conforme o uso. Ou adicione sua própria chave de API (Anthropic, OpenAI ou qualquer endpoint compatível com OpenAI) em Configurações.",
       "operatorBody": "Peça ao seu operador para configurar o provedor de modelos antes de iniciar uma tarefa.",
-      "startFree": "Começar grátis"
+      "startFree": "Começar grátis",
+      "bodyMobile": "Conecte seu próprio provedor em Configurações."
     },
-    "handoffHint": "Edite este prompt e envie quando estiver pronto."
+    "handoffHint": "Edite este prompt e envie quando estiver pronto.",
+    "signupWelcome": {
+      "fromDesktop": "Sua conta está pronta. Você pode começar aqui mesmo ou voltar ao app {product} e entrar.",
+      "dismiss": "Dispensar"
+    }
   },
   "logout": {
     "title": "Sair do {product}?",
@@ -411,5 +426,8 @@
     "confirm": "Sair",
     "failed": "Não foi possível concluir a saída. Tente novamente.",
     "waitNote": "Ainda estamos encerrando sua sessão. Você pode fechar isto: termina sozinho."
+  },
+  "shortcuts": {
+    "showBrowser": "Mostrar navegador"
   }
 }

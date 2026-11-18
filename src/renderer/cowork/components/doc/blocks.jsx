@@ -5,6 +5,7 @@ import { Icon } from '../ui/Icon';
 import EditableText from './EditableText';
 import { useFlushOnUnmount, usePendingEdit } from './useSaveIndicator';
 import { copyText } from '../../lib/clipboard';
+import { useTranslation } from '../../../lib/i18n';
 
 /**
  * How the editor fetches an image kept beside the doc (`images/…`): `(src) =>
@@ -46,6 +47,7 @@ function useImageSrc(src) {
 }
 
 export function MetricsBlock({ block, editable, onOps }) {
+  const { t } = useTranslation('docs');
   const setItem = (i, patch) => {
     const items = block.items.map((it, j) => (j === i ? { ...it, ...patch } : it));
     onOps([{ op: 'update', id: block.id, set: { items } }]);
@@ -58,14 +60,14 @@ export function MetricsBlock({ block, editable, onOps }) {
         return (
           <div className="doc-metric" role="listitem" key={i}>
             <EditableText className="doc-metric__label" value={m.label} plain singleLine editable={editable}
-              onCommit={(label) => setItem(i, { label })} placeholder="Label" />
+              onCommit={(label) => setItem(i, { label })} placeholder={t('metrics.label')} />
             <EditableText className="doc-metric__value" value={m.value} plain singleLine editable={editable}
               onCommit={(value) => setItem(i, { value })} placeholder="0" />
             {(m.delta || editable) && (
               <div className={`doc-metric__delta ${tone === 'good' ? 'doc-metric__delta--good' : tone === 'bad' ? 'doc-metric__delta--bad' : ''}`}>
                 {dir && <Icon of={dir === 'up' ? TrendingUp : TrendingDown} size={12} />}
                 <EditableText value={m.delta || ''} plain singleLine editable={editable}
-                  onCommit={(delta) => setItem(i, { delta })} placeholder={editable ? 'Change' : ''} />
+                  onCommit={(delta) => setItem(i, { delta })} placeholder={editable ? t('metrics.change') : ''} />
               </div>
             )}
           </div>
@@ -76,6 +78,7 @@ export function MetricsBlock({ block, editable, onOps }) {
 }
 
 export function CodeBlock({ block, editable, onOps }) {
+  const { t } = useTranslation('docs');
   const ref = useRef(null);
   const [draft, setDraft] = useState(block.code || '');
   // Typed code is committed on leaving the box, so until then it is an edit
@@ -109,9 +112,9 @@ export function CodeBlock({ block, editable, onOps }) {
         <input
           className="doc-code__lang"
           value={lang ?? block.language ?? ''}
-          placeholder="plain text"
+          placeholder={t('code.plainText')}
           readOnly={!editable}
-          aria-label="Code language"
+          aria-label={t('code.language')}
           onFocus={() => setLang(block.language || '')}
           onChange={(e) => setLang(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
@@ -120,14 +123,14 @@ export function CodeBlock({ block, editable, onOps }) {
             setLang(null);
           }}
         />
-        <button type="button" className="doc-iconbtn" aria-label="Copy code"
+        <button type="button" className="doc-iconbtn" aria-label={t('code.copy')}
           onClick={async () => {
             if (!await copyText(draft)) return;
             setCopied(true);
             clearTimeout(copiedTimer.current);
             copiedTimer.current = setTimeout(() => setCopied(false), 1200);
           }}>
-          {copied ? <span style={{ fontSize: 11 }}>Copied</span> : <Icon of={Copy} size={14} />}
+          {copied ? <span style={{ fontSize: 11 }}>{t('code.copied')}</span> : <Icon of={Copy} size={14} />}
         </button>
       </div>
       <textarea
@@ -136,7 +139,7 @@ export function CodeBlock({ block, editable, onOps }) {
         value={draft}
         readOnly={!editable}
         spellCheck={false}
-        aria-label="Code"
+        aria-label={t('code.label')}
         rows={1}
         onChange={(e) => edit(e.target.value)}
         onBlur={commit}
@@ -155,24 +158,26 @@ export function CodeBlock({ block, editable, onOps }) {
 }
 
 export function ImageBlock({ block, editable, onOps }) {
+  const { t } = useTranslation('docs');
   const src = useImageSrc(block.src);
   return (
     <figure className="doc-figure">
-      {src ? <img src={src} alt={block.alt || ''} loading="lazy" /> : <div className="doc-figure__loading" aria-label={block.alt || 'Image'} />}
+      {src ? <img src={src} alt={block.alt || ''} loading="lazy" /> : <div className="doc-figure__loading" aria-label={block.alt || t('image.label')} />}
       {(block.caption || editable) && (
         <EditableText as="figcaption" value={block.caption || ''} plain singleLine editable={editable}
-          placeholder="Add a caption" onCommit={(caption) => onOps([{ op: 'update', id: block.id, set: { caption } }])} />
+          placeholder={t('image.caption')} onCommit={(caption) => onOps([{ op: 'update', id: block.id, set: { caption } }])} />
       )}
     </figure>
   );
 }
 
 export function PendingBlock({ block, live }) {
+  const { t } = useTranslation('docs');
   return (
     <div className={`doc-pending ${live ? 'doc-pending--live' : ''}`} aria-live="polite">
       <div className="doc-pending__head">
         <Icon of={Sparkles} size={14} />
-        <span>{live ? 'Writing' : 'To be written'}:</span>
+        <span>{t(live ? 'pending.writing' : 'pending.toWrite')}</span>
         <span className="doc-pending__intent">{block.intent}</span>
       </div>
       {live && (

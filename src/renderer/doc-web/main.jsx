@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import SharedDocEditor from './SharedDocEditor';
 import { createCloudTransport } from './cloudTransport';
 import { DOC_SCHEMA } from '../cowork/components/doc/docModel';
+import { sharedTranslator } from '../lib/i18n';
 
 const SCRIPT_SRC = document.currentScript?.src || '';
 // The door's grant lasts ten minutes unless an answer renews it. The stream's
@@ -43,7 +44,7 @@ function showSignIn(href) {
   const a = document.createElement('a');
   a.href = href;
   a.target = '_top';
-  a.textContent = 'Your doc? Sign in to edit';
+  a.textContent = sharedTranslator('docs')('web.signIn');
   a.setAttribute('style', [
     'position:fixed', 'right:16px', 'top:14px', 'z-index:10', 'padding:6px 12px', 'border-radius:999px',
     'font:500 12px/1.4 -apple-system,BlinkMacSystemFont,Inter,sans-serif', 'text-decoration:none',

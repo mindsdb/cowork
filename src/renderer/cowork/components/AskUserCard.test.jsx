@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AskUserCard from './AskUserCard';
+import { resetBrowserPrefsForTests, syncBrowserPrefs } from '../lib/browserPrefs';
 import { MarkdownContent } from './markdown/MarkdownContent';
 
 const submitAnswer = vi.fn(async () => ({ accepted: true }));
@@ -483,5 +484,37 @@ describe('AskUserCard', () => {
       expect(screen.queryByRole('button', { name: /skip/i })).toBeNull();
       expect(screen.getByText(/type your own answer below/i)).toBeInTheDocument();
     });
+  });
+});
+
+describe('AskUserCard position-click card', () => {
+  const POSITION = {
+    question_id: 'browser:approve:t-1:pa-1',
+    prompt: '**Approve clicks by position on this page?**\n\nclick at (500, 400)',
+    options: [{ value: 'approve', label: 'Approve', detail: 'Allow clicks by position on this page' }, { value: 'cancel', label: 'Cancel' }],
+  };
+  afterEach(() => {
+    vi.useRealTimers();
+    resetBrowserPrefsForTests();
+  });
+
+  it('stays hidden while the person approves browser steps, the default: the app approves it', () => {
+    resetBrowserPrefsForTests();
+    const { container } = renderCard(POSITION);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('with approvals off too, stays hidden while the app approves it, and shows if that does not land', () => {
+    syncBrowserPrefs({ browserApproveSteps: false });
+    vi.useFakeTimers();
+    const { container } = renderCard(POSITION);
+    expect(container).toBeEmptyDOMElement();
+    act(() => { vi.advanceTimersByTime(4000); });
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
+  });
+
+  it('never shows once answered', () => {
+    const { container } = renderCard({ ...POSITION, answer: { status: 'answered', values: ['approve'], text: '' } });
+    expect(container).toBeEmptyDOMElement();
   });
 });

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import DocPane from './DocPane';
 import { SHARE_MAX, SHARE_MIN, docShare, docShareAt, docShareForKey } from './docLayout';
+import { useTranslation } from '../../../lib/i18n';
 
 const pct = (share) => Math.round(share * 100);
 
@@ -12,6 +13,7 @@ const pct = (share) => Math.round(share * 100);
  * outlives the column.
  */
 function Resizer({ areaRef, share, resizing, onResizing, onShare }) {
+  const { t } = useTranslation('docs');
   const box = useRef(null); // the chat area, measured when the drag starts
   const end = () => {
     if (!box.current) return;
@@ -25,7 +27,7 @@ function Resizer({ areaRef, share, resizing, onResizing, onShare }) {
       className="doc-resizer"
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize the doc"
+      aria-label={t('column.resize')}
       aria-valuemin={pct(SHARE_MIN)}
       aria-valuemax={pct(SHARE_MAX)}
       aria-valuenow={pct(docShare(share))}

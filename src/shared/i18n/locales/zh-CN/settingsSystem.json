@@ -177,13 +177,17 @@
       "pendingAction": "{rule}正在等待银行确认最近一笔扣款。",
       "badgeOn": "自动充值已开启",
       "badgeFailed": "自动充值失败",
-      "badgePaused": "自动充值已暂停"
+      "badgePaused": "自动充值已暂停",
+      "offMobile": "自动充值已关闭。",
+      "paymentFailedMobile": "自动充值失败：无法从你的卡中扣款。"
     },
     "low": {
       "off": "余额不足。请充值或开启自动充值，以便任务继续运行。",
       "ok": "余额不足。自动充值将为你补足余额。",
       "pending": "余额不足。自动充值正在等待银行确认。",
-      "other": "余额不足。请充值以便任务继续运行。"
+      "other": "余额不足。请充值以便任务继续运行。",
+      "offMobile": "余额不足。",
+      "otherMobile": "余额不足。"
     },
     "balance": {
       "title": "余额",
@@ -192,7 +196,8 @@
       "spentRange": "积分已用（{start} 至 {end}）",
       "spentDate": "积分已用（{date}）",
       "spentThisPeriod": "积分本期已用",
-      "notOwner": "只有组织的账单所有者才能充值或更改自动充值设置。"
+      "notOwner": "只有组织的账单所有者才能充值或更改自动充值设置。",
+      "emptyMobile": "你的余额已用完。付费模型不可用。"
     },
     "signIn": {
       "title": "登录以查看用量",
@@ -203,7 +208,8 @@
     "error": {
       "title": "无法加载用量",
       "body": "MindsHub 没有响应。请重试，或在控制台中查看用量。",
-      "tryAgain": "重试"
+      "tryAgain": "重试",
+      "bodyMobile": "MindsHub 没有响应。"
     },
     "empty": "此账户暂无用量数据。"
   }

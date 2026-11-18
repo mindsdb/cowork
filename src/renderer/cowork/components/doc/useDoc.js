@@ -30,7 +30,8 @@ export const AGENT_ACTIVE_MS = 4000;
 // Retry waits while the doc's server can't be reached (it restarting, say).
 const RETRY_MS = [1000, 2000, 4000, 8000];
 
-/** No answer of any kind (fetch's TypeError): the edit never reached the server. */
+/** No answer of any kind (fetch's TypeError): the server was not reached, or the
+ * connection dropped before its answer, so the edit may or may not have landed. */
 const notSent = (e) => e instanceof TypeError;
 
 // Steps kept to undo; a longer history is the version history's.
@@ -133,6 +134,18 @@ export function useDoc({ projectRef, artifactId, transport }) {
     }, FLASH_MS);
   }, []);
 
+  // Whether an edit whose last send got no answer already landed: true or
+  // false from a fresh read, null when the doc can't be read yet either.
+  const landedAlready = useCallback(async (r, item) => {
+    try {
+      const res = await fetchDoc(r.projectRef, r.artifactId);
+      if (!r.base || res.doc.rev >= r.base.rev) r.base = res.doc;
+      return holdsEdit(res.doc, item.ops, { tab: item.tab });
+    } catch {
+      return null;
+    }
+  }, [fetchDoc]);
+
   const pump = useCallback(async (r) => {
     // A retry waiting means the server could not be reached: an edit typed
     // meanwhile waits with the rest rather than skipping the wait (and
@@ -142,7 +155,32 @@ export function useDoc({ projectRef, artifactId, transport }) {
     r.sending = true;
     if (shown()) setSaving(true);
     const item = r.queue[0];
+    const waitAndRetry = () => {
+      const wait = RETRY_MS[Math.min(r.retry.n, RETRY_MS.length - 1)];
+      r.retry.n += 1;
+      r.retry.timer = setTimeout(() => { r.retry.timer = null; pump(r); }, wait);
+    };
     try {
+      if (item.unsure) {
+        // Its last send got no answer: sent again blind, an insert that did
+        // land would land twice. A fresh read says whether it is there.
+        const landed = await landedAlready(r, item);
+        if (landed === null) {
+          waitAndRetry();
+          return;
+        }
+        if (landed) {
+          r.queue.shift();
+          r.retry.n = 0;
+          if (shown()) {
+            setWriteError(null);
+            rebase();
+          }
+          item.resolve?.(null);
+          return;
+        }
+        item.unsure = false;
+      }
       // baseRev: the newest copy seen as this edit goes out, not the one it
       // was typed on (one queued behind another goes out on that one's
       // answer). A transport may hand it to a stale guard, or ignore it.
@@ -175,14 +213,13 @@ export function useDoc({ projectRef, artifactId, transport }) {
       item.resolve?.(shown() ? res : null);
     } catch (e) {
       if (notSent(e)) {
-        // Nothing reached the doc: keep every queued edit (still shown) and
-        // send them when the server answers again, after a wait or as soon
-        // as the doc's stream reconnects. Dropping them here lost whatever
-        // was typed while the app's server restarted.
+        // No answer: keep every queued edit (still shown) and send them when
+        // the server answers again, after a wait or as soon as the doc's
+        // stream reconnects. Dropping them here lost whatever was typed while
+        // the app's server restarted. This one is checked before it goes again.
+        item.unsure = true;
         if (shown()) setWriteError(Object.assign(new Error('not saved yet'), { code: 'offline' }));
-        const wait = RETRY_MS[Math.min(r.retry.n, RETRY_MS.length - 1)];
-        r.retry.n += 1;
-        r.retry.timer = setTimeout(() => { r.retry.timer = null; pump(r); }, wait);
+        waitAndRetry();
         return;
       }
       // Refused, or failed with its outcome unknown: either way it is not
@@ -206,7 +243,7 @@ export function useDoc({ projectRef, artifactId, transport }) {
       if (r.queue.length && !r.retry.timer) pump(r);
       else if (!r.queue.length) r.idle.splice(0).forEach((done) => done());
     }
-  }, [clientId, rebase, resync, postDocOps]);
+  }, [clientId, rebase, resync, postDocOps, landedAlready]);
 
   // The doc's stream came back: a retry waiting goes now rather than after its wait.
   const retryNow = useCallback((r) => {
@@ -235,6 +272,8 @@ export function useDoc({ projectRef, artifactId, transport }) {
     load();
     const stop = followDoc(projectRef, artifactId, {
       onEvent: (ev) => {
+        // An event the stream delivers after this run ended is the doc open before's.
+        if (r !== run.current) return;
         if (ev.type === 'doc.ready') {
           if (r.base && ev.rev > r.base.rev) load();
           return;

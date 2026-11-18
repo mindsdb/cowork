@@ -299,6 +299,8 @@
       "specificDesc": "指定したユーザーのみ"
     },
     "whoCanAccess": "アプリにアクセスできるユーザー",
+    "whoCanAccessDoc": "ドキュメントにアクセスできるユーザー",
+    "updatesAsYouEdit": "編集するたびに更新されます",
     "addPassword": "パスワードを追加",
     "hide": "非表示",
     "show": "表示",

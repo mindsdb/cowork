@@ -48,6 +48,9 @@ export const SETTINGS_KEY_MAP = {
   // runs on this pick for openai-compatible, which has no default to fall to.
   router_provider: 'routerProvider',
   router_model: 'routerModel',
+  // The model Anton's generate_image tool runs on (ENG-4024). Image models are
+  // served by MindsHub alone, so the role has no provider of its own.
+  image_model: 'imageModel',
   openai_base_url: 'openaiBaseUrl',
   model_mode: 'modelMode',
   model_overrides: 'modelOverrides',
@@ -58,6 +61,8 @@ export const SETTINGS_KEY_MAP = {
   show_dots: 'showDots',
   show_counters: 'showCounters',
   schedule_keep_awake: 'scheduleKeepAwake',
+  schedule_notify_failed: 'scheduleNotifyFailed',
+  schedule_notify_succeeded: 'scheduleNotifySucceeded',
   show_figure_sources: 'showFigureSources',
   nav_title: 'navTitle',
   nav_title_color: 'navTitleColor',
@@ -71,10 +76,25 @@ export const SETTINGS_KEY_MAP = {
   memory_mode: 'memoryMode',
   episodic_memory: 'episodicMemory',
   browser_enabled: 'browserEnabled',
+  // Whether the person approves consequential browser steps on a card (default
+  // on; lib/browserPrefs.js reads anything but false as on).
+  browser_approve_steps: 'browserApproveSteps',
+  // Whether the browser pane opens by itself only when the person is needed,
+  // with a turn's browser steps as one row (default on; lib/browserPrefs.js).
+  browser_only_when_needed: 'browserOnlyWhenNeeded',
+  // When the person last turned approvals off, stamped by the server (epoch
+  // ms, its clock): the app approves only steps held after it
+  // (lib/browserPrefs.js). Read only (WRITE_SKIP).
+  browser_approve_steps_off_at: 'browserApproveStepsOffAt',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
   // Off sends every MindsHub turn to the agent: no Jev routing or checks.
   jev_decisions_enabled: 'jevDecisionsEnabled',
+  // The organization's own decision model (admins set it): with it, or with
+  // Jev on MindsHub, the shared browser has a decisions model to pick its steps.
+  decision_model_url: 'decisionModelUrl',
+  decision_model_api_key: 'decisionModelApiKey',
+  decision_model: 'decisionModel',
   limits_enabled: 'limitsEnabled',
   max_tool_rounds: 'maxToolRounds',
   max_continuations: 'maxContinuations',
@@ -176,7 +196,16 @@ export const STATIC_SETTINGS = {
   recommendedPair: {
     'minds-cloud': ['', '', ''], anthropic: ['', '', ''], openai: ['', '', ''], gemini: ['', '', ''], 'openai-compatible': ['', '', ''],
   },
+  // Image model ids (ENG-4024): MindsHub's `kind: "image"` rows, in catalog
+  // order, kept out of every chat list above (filled at runtime by the
+  // overlay). `imageModelDefault` is the catalog's `default_for: ["image"]`.
+  imageModels: [],
+  imageModelDefault: '',
 };
+
+/** The image role's compiled default (ENG-4024), shown only when neither the
+ *  saved setting nor the catalog names one. Same value as cowork-server's. */
+export const IMAGE_MODEL_FALLBACK = 'gpt-image-2.6-flare';
 
 // ─── Model label derivation ─────────────────────────────────────────
 
@@ -295,14 +324,41 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
   const hasEntries = (live) => !!live && typeof live === 'object' && Object.keys(live).length > 0;
   const overlayMap = (current, live) => (hasEntries(live) ? live : (current || {}));
   const liveReasons = knownModelDisabledReasons(rec.modelDisabledReasons);
+  // Image models (ENG-4024): a non-empty live list replaces ours, and so does an
+  // empty one once MindsHub was read (its chat bucket is filled only then).
+  const liveImageModels = Array.isArray(rec.imageModels)
+    ? rec.imageModels.filter((id) => typeof id === 'string' && id)
+    : [];
+  const mindsHubRead = Array.isArray(rec.recommendedModels?.['minds-cloud'])
+    && rec.recommendedModels['minds-cloud'].length > 0;
+  const imageListLive = liveImageModels.length > 0 || (mindsHubRead && Array.isArray(rec.imageModels));
+  const imageModels = liveImageModels.length
+    ? (keepOrder ? keepListOrder(base.imageModels, liveImageModels) : liveImageModels)
+    : (imageListLive ? [] : (Array.isArray(base.imageModels) ? base.imageModels : []));
+  // No chat picker may offer one: a planning or coding role pinned to an image
+  // model fails every turn. cowork-server already leaves them out of the chat
+  // lists; stripping them here as well covers a bucket that lists them anyway
+  // (an OpenAI-compatible endpoint pointed at MindsHub, say).
+  const withoutImageModels = (buckets) => {
+    if (imageModels.length === 0) return buckets;
+    const image = new Set(imageModels);
+    return Object.fromEntries(Object.entries(buckets).map(([k, ids]) => (
+      [k, Array.isArray(ids) ? ids.filter((id) => !image.has(id)) : ids]
+    )));
+  };
   return {
     // `keepOrder` is for the refresh a picker fires as it opens: the list is on
     // screen by the time the response lands, so a row that moves is a row that
     // jumps under the cursor (ENG-1737). Ids we already hold keep their place,
     // new ids go on the end, ids the server dropped go. The mount-time load
     // takes the server's order as-is; it is the order the next open starts from.
-    recommendedModels: overlayLists(base.recommendedModels, rec.recommendedModels, keepOrder ? keepListOrder : null),
+    recommendedModels: withoutImageModels(
+      overlayLists(base.recommendedModels, rec.recommendedModels, keepOrder ? keepListOrder : null),
+    ),
     recommendedPair: overlayLists(base.recommendedPair, rec.recommendedPair),
+    imageModels,
+    imageModelDefault: (typeof rec.imageModelDefault === 'string' && rec.imageModelDefault)
+      || (imageListLive ? '' : base.imageModelDefault) || '',
     // Merged, not replaced: when the MindsHub fetch fails the server still
     // sends the static direct-provider entries, and taking that partial map
     // as the whole catalog dropped every MindsHub model's levels (ENG-2591).
@@ -428,6 +484,25 @@ export function resolveRoleModel(providerWasRepointed, storedModel, modelList, a
   const list = Array.isArray(modelList) ? modelList : [];
   const modelStaleForProvider = !!storedModel && !allowOther && !list.includes(storedModel);
   return (providerWasRepointed || modelStaleForProvider) ? fallbackModel : storedModel;
+}
+
+/**
+ * The model the Image model picker shows as current (ENG-4024): the saved
+ * `image_model`, else the server's image default (`imageModelDefault`, from
+ * cowork-server's `_image_model_default`), else the compiled default, exactly
+ * as the server resolves it. Only a pick the user makes is ever written, so an
+ * untouched picker leaves the server's default in charge (ENG-1632).
+ *
+ * Never substitutes another listed model: an id missing from `imageModels`
+ * (saved or default) is returned as-is, and the picker shows it as one to
+ * re-pick (resolveModelPickerValue) rather than reading as a different model
+ * than generate_image will ask for.
+ *
+ * @param {string | null | undefined} stored settings.imageModel
+ * @param {{ catalogDefault?: string }} [opts]
+ */
+export function resolveImageModel(stored, { catalogDefault = '' } = {}) {
+  return stored || catalogDefault || IMAGE_MODEL_FALLBACK;
 }
 
 /**
@@ -612,6 +687,9 @@ export function transformSettingsRows(rows) {
       const served = row.default ?? (row.is_set === false ? row.value : null);
       if (served != null) result.budgetDefaults = { ...result.budgetDefaults, [clientKey]: String(served) };
     }
+    // An unset image_model carries the server's start-time default, not a pick:
+    // leave it unset so the picker follows the live `imageModelDefault`.
+    if (clientKey === 'imageModel' && row.is_set === false) continue;
     if (row.is_sensitive) {
       result[clientKey] = row.is_set ? '***' : '';
     } else if (row.value != null) {
@@ -732,8 +810,9 @@ function backfillProviders(result) {
  * map to a server setting.  JSON-encodes object values.
  */
 /** Keys that are read from the server but never written back — they are
- *  transient UI-only state (e.g. provider test results). */
-const WRITE_SKIP = new Set(['providerStatus', 'providerStatusDetails', 'providerStatusReasons']);
+ *  transient UI-only state (e.g. provider test results), or the server's own
+ *  stamp of when approvals went off. */
+const WRITE_SKIP = new Set(['providerStatus', 'providerStatusDetails', 'providerStatusReasons', 'browserApproveStepsOffAt']);
 
 // Accepted values remain usable if the canonical post-write read fails. Only
 // acknowledged keys enter shared state, and credentials keep the read-side mask.
@@ -752,10 +831,21 @@ export function committedSettingsPatch(patch, serverKeys) {
   return confirmed;
 }
 
+/** Writable only once a fetch shows the server knows them; see diffSettingsForWrite. */
+const SERVED_ONLY_FIELDS = new Set(['limitsEnabled', 'scheduleNotifyFailed', 'scheduleNotifySucceeded']);
+
 export function diffSettingsForWrite(patch, lastFetched) {
   const writes = {};
   for (const [clientKey, value] of Object.entries(patch)) {
     if (WRITE_SKIP.has(clientKey)) continue;
+    /* Approve browser steps goes as given whenever a save carries it (the
+       switch in Settings, a held step's card), whatever this tab last read:
+       the server stamps when approvals went off on each write of off, and
+       the app approves only steps held after that (lib/browserPrefs.js). So
+       a card's Skip approvals reaches the server, and moves that time past
+       the card, even where this tab already reads approvals off, and a card
+       turning them back on is never dropped as unchanged. */
+    const asGiven = clientKey === 'browserApproveSteps' && typeof value === 'boolean';
     const serverKey = CLIENT_TO_SERVER[clientKey];
     if (!serverKey) continue;
     if (value === '***') continue;
@@ -769,10 +859,11 @@ export function diffSettingsForWrite(patch, lastFetched) {
     // is {} until the first successful fetch, so as a global rule this would
     // silently drop the first save of a session. For budget keys the trade
     // is worth it — absence really does mean a server that can't take them.
-    // The limits switch rides the same rule: it reached the server later.
-    if ((clientKey in BUDGET_FIELDS || clientKey === 'limitsEnabled') && !(clientKey in lastFetched)) continue;
+    // The limits switch and the scheduled-run notification choices ride the
+    // same rule: they reached the server later.
+    if ((clientKey in BUDGET_FIELDS || SERVED_ONLY_FIELDS.has(clientKey)) && !(clientKey in lastFetched)) continue;
     const prev = lastFetched[clientKey];
-    if (prev === value) continue;
+    if (!asGiven && prev === value) continue;
     if (typeof value === 'object' && JSON.stringify(prev) === JSON.stringify(value)) continue;
     if (JSON_FIELDS.has(clientKey) && typeof value === 'object') {
       writes[serverKey] = JSON.stringify(value);

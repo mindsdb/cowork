@@ -1,0 +1,320 @@
+{
+  "doc": "文档",
+  "pane": {
+    "status": {
+      "agentWriting": "智能体正在撰写",
+      "notSaved": "尚未保存",
+      "saving": "正在保存…"
+    },
+    "showTabs": "显示标签页",
+    "showTabsChanged": "显示标签页（有标签页已更改）",
+    "openSharedPage": "打开分享的页面",
+    "openInBrowser": "在浏览器中打开",
+    "shareToOpen": "分享后即可在浏览器中打开",
+    "showChat": "显示对话",
+    "expand": "展开",
+    "close": "关闭",
+    "closeDoc": "关闭文档",
+    "loading": "正在加载文档",
+    "gone": "此文档已不存在。",
+    "openFailed": "无法打开此文档。{reason}",
+    "offline": "无法连接 Cowork 的本地服务器。你的编辑会保留在这里，服务器恢复后会立即保存。",
+    "dismiss": "关闭",
+    "undo": "撤销"
+  },
+  "export": {
+    "label": "导出",
+    "downloadAs": "下载为",
+    "format": {
+      "docx": "Word (.docx)",
+      "pdf": "PDF",
+      "md": "Markdown",
+      "html": "HTML 页面"
+    },
+    "copyMarkdown": "复制为 Markdown",
+    "exporting": "正在导出 {name}…",
+    "failed": "导出失败",
+    "failedStatus": "导出失败（{status}）",
+    "copied": "已复制为 Markdown",
+    "copyFailed": "复制失败",
+    "copyDocFailed": "无法复制文档"
+  },
+  "notice": {
+    "deletedTab": "已删除标签页“{title}”",
+    "deletedColumn": "已删除列“{name}”",
+    "deletedRows": "{count, plural, other {已删除 # 行}}",
+    "deletedBlocks": "{count, plural, other {已删除 # 个块}}",
+    "cantUndo": "无法撤销：此后内容已更改。",
+    "cantRedo": "无法重做：此后文档已更改。",
+    "editTooBig": "此次编辑过大，无法保存。文档显示的是已保存的内容。",
+    "editFailed": "此次编辑无法保存。文档显示的是已保存的内容。",
+    "imageFailed": "无法添加该图片",
+    "imageFailedStatus": "无法添加该图片（{status}）",
+    "imageTooLarge": "该图片过大，无法添加到文档（最大 10 MB）。",
+    "openPageFailed": "无法打开页面",
+    "openInBrowserFailed": "无法在浏览器中打开此文档",
+    "requestFailed": "文档请求失败（{status}）",
+    "timeout": "服务器响应超时。"
+  },
+  "card": {
+    "open": "打开文档：{title}",
+    "deleted": "已删除的文档：{title}",
+    "kindDeleted": "文档 · 已删除",
+    "kindOpen": "文档 · 已在对话旁打开",
+    "showing": "正在显示",
+    "openButton": "打开"
+  },
+  "chip": {
+    "me": "你"
+  },
+  "column": {
+    "resize": "调整文档大小"
+  },
+  "page": {
+    "untitled": "未命名",
+    "title": "标题",
+    "edited": "{age}编辑",
+    "new": "新建文档",
+    "byAgent": "与智能体共同撰写"
+  },
+  "tabs": {
+    "label": "标签页",
+    "add": "添加标签页",
+    "hide": "隐藏标签页",
+    "changed": "已更改",
+    "showChanged": "显示已更改的标签页",
+    "name": "标签页名称",
+    "menu": "标签页“{title}”",
+    "options": "“{title}”选项",
+    "rename": "重命名",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "delete": "删除标签页"
+  },
+  "block": {
+    "kind": {
+      "paragraph": "段落",
+      "heading": "标题 {level}",
+      "listItem": "列表项",
+      "task": "待办事项",
+      "quote": "引用",
+      "callout": "标注",
+      "table": "表格",
+      "chart": "图表",
+      "metrics": "指标",
+      "code": "代码",
+      "image": "图片",
+      "divider": "分隔线",
+      "pending": "待撰写的部分",
+      "other": "块"
+    },
+    "empty": {
+      "paragraph": "空段落",
+      "heading": "空标题 {level}",
+      "listItem": "空列表项",
+      "task": "空待办事项",
+      "quote": "空引用",
+      "callout": "空标注"
+    },
+    "named": "{kind}“{words}”",
+    "addBelow": "在{block}下方添加块",
+    "options": "{block}的选项",
+    "optionsMenu": "块选项",
+    "startWriting": "开始输入，或输入 / 插入块",
+    "typeSlash": "输入 / 插入块",
+    "markDone": "标记为已完成",
+    "markNotDone": "标记为未完成"
+  },
+  "menu": {
+    "turnInto": "转换为",
+    "calloutColor": "标注颜色",
+    "editWithAgent": "让智能体编辑…",
+    "duplicate": "创建副本",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "delete": "删除"
+  },
+  "insert": {
+    "label": "插入块",
+    "noMatch": "没有与“{query}”匹配的块",
+    "group": {
+      "basic": "基础",
+      "data": "数据",
+      "other": "其他",
+      "agent": "智能体"
+    },
+    "item": {
+      "paragraph": "文本",
+      "heading1": "标题 1",
+      "heading2": "标题 2",
+      "heading3": "标题 3",
+      "bullet": "项目符号列表",
+      "numbered": "编号列表",
+      "task": "待办事项列表",
+      "quote": "引用",
+      "callout": "标注",
+      "table": "表格",
+      "chart": "图表",
+      "metrics": "指标",
+      "code": "代码",
+      "divider": "分隔线",
+      "image": "图片",
+      "ask": "让智能体撰写…"
+    }
+  },
+  "tone": {
+    "info": "信息",
+    "success": "成功",
+    "warning": "警告",
+    "danger": "危险",
+    "note": "备注"
+  },
+  "format": {
+    "label": "格式",
+    "bold": "加粗",
+    "italic": "斜体",
+    "strike": "删除线",
+    "code": "代码",
+    "link": "链接",
+    "addLink": "添加链接",
+    "linkAddress": "链接地址",
+    "linkPlaceholder": "粘贴链接并按 Enter"
+  },
+  "ask": {
+    "label": "让智能体编辑",
+    "request": "给智能体的请求",
+    "placeholderWrite": "智能体应在这里写什么？",
+    "placeholderChange": "需要修改什么？",
+    "send": "发送"
+  },
+  "chart": {
+    "label": "图表",
+    "title": "图表标题",
+    "kind": {
+      "bar": "柱形图",
+      "hbar": "条形图",
+      "stacked": "堆积图",
+      "line": "折线图",
+      "area": "面积图",
+      "donut": "圆环图"
+    },
+    "inUnit": "单位：{unit}",
+    "followsTable": "随源表格更新",
+    "showTable": "显示源表格",
+    "makeTable": "将数据转为表格",
+    "tableGone": "此图表的源表格已不在此标签页中。",
+    "noColumn": "源表格中没有“{column}”列。",
+    "noNumbers": "暂无可绘制的数值。",
+    "drawFrom": "从表格绘制",
+    "useTable": "使用表格…",
+    "tableOption": "表格 {number}：{columns}",
+    "total": "总计",
+    "totalUnit": "总计（{unit}）"
+  },
+  "table": {
+    "kind": {
+      "text": "文本",
+      "number": "数字",
+      "status": "状态",
+      "date": "日期"
+    },
+    "type": "类型",
+    "sortAsc": "升序排列",
+    "sortDesc": "降序排列",
+    "insertLeft": "在左侧插入列",
+    "insertRight": "在右侧插入列",
+    "deleteColumn": "删除列",
+    "columnName": "列名",
+    "columnMenu": "“{column}”列",
+    "columnOptions": "“{column}”列选项",
+    "addColumn": "添加列",
+    "rowOptions": "行选项",
+    "rowOptionsFor": "第 {number} 行选项",
+    "insertAbove": "在上方插入行",
+    "insertBelow": "在下方插入行",
+    "deleteRow": "删除行",
+    "newRow": "新行",
+    "other": "其他…",
+    "clear": "清除",
+    "setValue": "设置“{column}”",
+    "newValue": "新的“{column}”值",
+    "cellValue": "{column}：{value}",
+    "cellEmpty": "{column}：空",
+    "dateValue": "日期：{value}",
+    "dateEmpty": "日期：空",
+    "cell": "{column}，第 {number} 行"
+  },
+  "metrics": {
+    "label": "标签",
+    "change": "变化"
+  },
+  "code": {
+    "label": "代码",
+    "language": "代码语言",
+    "plainText": "纯文本",
+    "copy": "复制代码",
+    "copied": "已复制"
+  },
+  "image": {
+    "label": "图片",
+    "caption": "添加说明"
+  },
+  "pending": {
+    "writing": "正在撰写：",
+    "toWrite": "待撰写："
+  },
+  "versions": {
+    "title": "版本历史",
+    "saved": "已自动保存",
+    "loading": "正在加载版本…",
+    "loadFailed": "无法加载版本。请稍后重试。",
+    "current": "当前版本",
+    "none": "文档发生更改后，较早的版本会显示在这里。",
+    "hint": "选择一个版本，在还原前先查看。",
+    "viewing": "正在查看：{when}",
+    "changedSince": "此版本之后有更改",
+    "older": "较早的版本",
+    "newer": "较新的版本",
+    "back": "返回当前版本",
+    "restoreThis": "还原此版本",
+    "confirmTitle": "还原此版本？",
+    "confirmLead": "文档将还原为 {when} 时的样子。",
+    "agentWriting": "智能体仍在撰写，之后写入的内容会添加到你还原的版本中。",
+    "nothingLost": "不会丢失任何内容。当前版本会保留在版本历史中，你可以随时切换回来。",
+    "sharedUpdates": "分享的页面也会随之更新。",
+    "cancel": "取消",
+    "restore": "还原",
+    "restoring": "正在还原…",
+    "restoredFrom": "已还原 {when} 的版本",
+    "undo": "撤销",
+    "openFailed": "无法打开该版本",
+    "restoreFailed": "无法还原该版本",
+    "undoFailed": "无法撤销还原",
+    "earlier": "更早的更改",
+    "who": {
+      "agent": "智能体",
+      "user": "你"
+    },
+    "today": "今天",
+    "yesterday": "昨天",
+    "whenTitle": "{day} {time}",
+    "whenPhrase": "{day, select, today {今天 {time}} yesterday {昨天 {time}} other {{date} {time}}}",
+    "justNow": "刚刚",
+    "minutesAgo": "{count, plural, other {# 分钟前}}",
+    "hoursAgo": "{count, plural, other {# 小时前}}"
+  },
+  "web": {
+    "signIn": "这是你的文档？登录后编辑",
+    "waiting": "正在等待你的电脑",
+    "canEdit": "你可以编辑",
+    "viewOnly": "仅可查看",
+    "stopped": "所有者已停止共享此文档。此页面将不再更新。",
+    "lapsed": "此页面已打开一段时间。请重新加载以继续编辑。",
+    "lapsedUnsaved": "此页面已打开一段时间。请重新加载以继续编辑。你的最后一次更改尚未保存。",
+    "reload": "重新加载",
+    "openApp": "请在你的电脑上打开 {product} 进行编辑。此文档存放并保存在那里。",
+    "stale": "该块已先在你的电脑上被更改，你的编辑未被应用。",
+    "deferred": "你的编辑正在等待你电脑上的 {product}。应用打开后将会应用这些编辑。",
+    "notSaved": "该编辑未保存：{reason}"
+  }
+}

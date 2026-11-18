@@ -173,10 +173,13 @@
     "unavailableTitle": "功能不可用",
     "cloudBodyNamed": "{feature} 暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
     "cloudBody": "此功能暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
+    "cloudBodyCustom": "{feature} 暂未在 Cloud 上提供。你现在可以将它作为自定义连接器接入。",
     "unavailableBodyNamed": "{feature} 在此部署中不可用。",
     "unavailableBody": "此功能在此部署中不可用。",
     "notNow": "以后再说",
-    "download": "下载应用"
+    "download": "下载应用",
+    "connectCustom": "连接你的自定义 {feature} 连接器",
+    "buildCustom": "构建自定义连接器"
   },
   "loadStatus": {
     "retry": "重试",
@@ -280,6 +283,8 @@
     "settings": "设置",
     "billing": "账单与用量",
     "members": "成员",
+    "apiKeys": "API 密钥",
+    "apiDocs": "API 文档",
     "help": "帮助与反馈",
     "manageOrg": "管理组织",
     "logout": "退出登录",
@@ -362,7 +367,12 @@
     "total": "共 {count} 个",
     "noTasks": "暂无任务。",
     "untitledTask": "未命名任务",
-    "seeAllTasks": "查看所有任务"
+    "seeAllTasks": "查看所有任务",
+    "recents": "最近",
+    "showFewer": "收起",
+    "seeAllCount": "查看全部 {count} 个",
+    "signedIn": "已登录",
+    "logOut": "退出登录"
   },
   "dispatch": {
     "qrAriaLabel": "装饰性配对码",
@@ -397,9 +407,14 @@
       "operatorTitle": "需要设置提供商",
       "body": "从 MindsHub 开始，即可获得 MindsHub Air 的免费额度，之后按用量付费。你也可以在“设置”中添加自己的 API 密钥（Anthropic、OpenAI 或任何兼容 OpenAI 的端点）。",
       "operatorBody": "开始任务前，请让运营方配置模型提供商。",
-      "startFree": "免费开始"
+      "startFree": "免费开始",
+      "bodyMobile": "在“设置”中连接你自己的提供商。"
     },
-    "handoffHint": "编辑此提示词，准备好后再发送。"
+    "handoffHint": "编辑此提示词，准备好后再发送。",
+    "signupWelcome": {
+      "fromDesktop": "你的账户已准备就绪。你可以直接在这里开始，或返回 {product} 应用并登录。",
+      "dismiss": "关闭"
+    }
   },
   "logout": {
     "title": "退出 {product} 登录？",
@@ -411,5 +426,8 @@
     "confirm": "退出登录",
     "failed": "无法完成退出登录。请重试。",
     "waitNote": "仍在退出登录。你可以关闭此窗口，退出会自动完成。"
+  },
+  "shortcuts": {
+    "showBrowser": "显示浏览器"
   }
 }

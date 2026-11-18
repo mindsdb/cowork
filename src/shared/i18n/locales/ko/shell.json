@@ -173,10 +173,13 @@
     "unavailableTitle": "사용할 수 없는 기능",
     "cloudBodyNamed": "{feature}은(는) 아직 Cloud에서 사용할 수 없습니다. 그동안 데스크톱 앱에서 사용할 수 있습니다.",
     "cloudBody": "이 기능은 아직 Cloud에서 사용할 수 없습니다. 그동안 데스크톱 앱에서 사용할 수 있습니다.",
+    "cloudBodyCustom": "{feature}은(는) 아직 Cloud에서 사용할 수 없습니다. 지금 사용자 지정 커넥터로 연결할 수 있습니다.",
     "unavailableBodyNamed": "{feature}은(는) 이 배포에서 사용할 수 없습니다.",
     "unavailableBody": "이 기능은 이 배포에서 사용할 수 없습니다.",
     "notNow": "나중에",
-    "download": "앱 다운로드"
+    "download": "앱 다운로드",
+    "connectCustom": "사용자 지정 {feature} 커넥터 연결",
+    "buildCustom": "사용자 지정 커넥터 만들기"
   },
   "loadStatus": {
     "retry": "다시 시도",
@@ -280,6 +283,8 @@
     "settings": "설정",
     "billing": "결제 및 사용량",
     "members": "멤버",
+    "apiKeys": "API 키",
+    "apiDocs": "API 문서",
     "help": "도움말 및 피드백",
     "manageOrg": "조직 관리",
     "logout": "로그아웃",
@@ -362,7 +367,12 @@
     "total": "총 {count}개",
     "noTasks": "아직 작업이 없습니다.",
     "untitledTask": "제목 없는 작업",
-    "seeAllTasks": "모든 작업 보기"
+    "seeAllTasks": "모든 작업 보기",
+    "recents": "최근",
+    "showFewer": "간단히 보기",
+    "seeAllCount": "모두 보기({count})",
+    "signedIn": "로그인됨",
+    "logOut": "로그아웃"
   },
   "dispatch": {
     "qrAriaLabel": "장식용 페어링 코드",
@@ -397,9 +407,14 @@
       "operatorTitle": "제공업체 설정이 필요합니다",
       "body": "MindsHub로 시작하면 MindsHub Air의 무료 제공량을 받은 뒤 사용한 만큼 결제할 수 있습니다. 또는 설정에서 직접 API 키(Anthropic, OpenAI 또는 OpenAI 호환 엔드포인트)를 추가하세요.",
       "operatorBody": "작업을 시작하기 전에 운영자에게 모델 제공업체 구성을 요청하세요.",
-      "startFree": "무료로 시작"
+      "startFree": "무료로 시작",
+      "bodyMobile": "설정에서 직접 공급자를 연결하세요."
     },
-    "handoffHint": "이 프롬프트를 수정한 다음 준비되면 보내세요."
+    "handoffHint": "이 프롬프트를 수정한 다음 준비되면 보내세요.",
+    "signupWelcome": {
+      "fromDesktop": "계정이 준비되었습니다. 여기서 바로 시작하거나 {product} 앱으로 돌아가 로그인하세요.",
+      "dismiss": "닫기"
+    }
   },
   "logout": {
     "title": "{product}에서 로그아웃할까요?",
@@ -411,5 +426,8 @@
     "confirm": "로그아웃",
     "failed": "로그아웃을 완료하지 못했습니다. 다시 시도하세요.",
     "waitNote": "아직 로그아웃하는 중입니다. 이 창을 닫아도 자동으로 완료됩니다."
+  },
+  "shortcuts": {
+    "showBrowser": "브라우저 표시"
   }
 }

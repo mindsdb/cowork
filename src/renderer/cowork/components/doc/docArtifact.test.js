@@ -30,6 +30,11 @@ describe('docPageTarget', () => {
     });
   });
 
+  it('serves a doc in the browser as its page, from the same folder', () => {
+    const served = { ...doc, serveUrl: '/api/v1/artifacts/serve/general/plan-1a2b/doc.cdoc.json' };
+    expect(docPageTarget(served).serveUrl).toBe('/api/v1/artifacts/serve/general/plan-1a2b/doc.html');
+  });
+
   it('has nothing for a doc with no known page, or for any other artifact', () => {
     expect(docPageTarget({ ...doc, htmlPath: undefined })).toBeNull();
     expect(docPageTarget({ path: '/p/report.html', htmlPath: '/p/report.html' })).toBeNull();

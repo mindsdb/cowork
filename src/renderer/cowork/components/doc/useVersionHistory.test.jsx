@@ -51,6 +51,35 @@ describe('the list', () => {
   });
 });
 
+describe('the list asked for twice', () => {
+  it('keeps the newest ask, whichever answer lands first', async () => {
+    const first = deferred();
+    const second = deferred();
+    api.fetchDocHistory.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { result } = setup();
+    let a;
+    let b;
+    act(() => { a = result.current.load(); b = result.current.load(); });
+    const fresh = { ...LIST, current: { ...LIST.current, rev: 13 } };
+    await act(async () => { second.resolve(fresh); await b; });
+    await act(async () => { first.resolve(LIST); await a; });
+    expect(result.current.list).toEqual(fresh);
+  });
+});
+
+describe('an earlier ask that fails late', () => {
+  it('does not mark the newer list as failed', async () => {
+    const first = deferred();
+    api.fetchDocHistory.mockReturnValueOnce(first.promise).mockResolvedValueOnce(LIST);
+    const { result } = setup();
+    let a;
+    act(() => { a = result.current.load(); });
+    await act(() => result.current.load());
+    await act(async () => { first.reject(new Error('offline')); await a; });
+    expect(result.current.list).toEqual(LIST);
+  });
+});
+
 describe('a version looked at', () => {
   it('opens read-only, steps older and newer, and closes', async () => {
     const { result } = setup();
@@ -187,6 +216,39 @@ describe('restoring', () => {
     expect(result.current.restored).not.toBeNull();
     act(() => vi.advanceTimersByTime(RESTORED_SHOWN_MS));
     expect(result.current.restored).toBeNull();
+  });
+
+  it('keeps Undo while its request is out, however long it takes', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { result } = setup();
+    await previewing(result);
+    await act(() => result.current.restore());
+    const undo = deferred();
+    api.restoreDocVersion.mockReturnValueOnce(undo.promise);
+    act(() => { vi.advanceTimersByTime(RESTORED_SHOWN_MS - 100); });
+    let pending;
+    act(() => { pending = result.current.undo(); });
+    act(() => { vi.advanceTimersByTime(RESTORED_SHOWN_MS); });
+    expect(result.current.restored).not.toBeNull();
+    await act(async () => { undo.reject(new Error('offline')); await pending; });
+    // Failed: Undo stays, for another stretch, to try again.
+    expect(result.current.restored).not.toBeNull();
+    act(() => { vi.advanceTimersByTime(RESTORED_SHOWN_MS); });
+    expect(result.current.restored).toBeNull();
+  });
+
+  it('lets an undo that answers after the pane moved to another doc go', async () => {
+    const { result, rerender, onError } = setup();
+    await previewing(result);
+    await act(() => result.current.restore());
+    const undo = deferred();
+    api.restoreDocVersion.mockReturnValueOnce(undo.promise);
+    let pending;
+    act(() => { pending = result.current.undo(); });
+    rerender({ artifactId: 'a2' });
+    await act(async () => { undo.reject(new Error('offline')); await pending; });
+    expect(result.current.restored).toBeNull();
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it('lets go of Undo when it is dismissed', async () => {

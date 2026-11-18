@@ -1,0 +1,320 @@
+{
+  "doc": "문서",
+  "pane": {
+    "status": {
+      "agentWriting": "에이전트가 작성하는 중",
+      "notSaved": "아직 저장되지 않음",
+      "saving": "저장하는 중…"
+    },
+    "showTabs": "탭 표시",
+    "showTabsChanged": "탭 표시(변경된 탭 있음)",
+    "openSharedPage": "공유된 페이지 열기",
+    "openInBrowser": "브라우저에서 열기",
+    "shareToOpen": "브라우저에서 열려면 먼저 공유하세요",
+    "showChat": "채팅 표시",
+    "expand": "확장",
+    "close": "닫기",
+    "closeDoc": "문서 닫기",
+    "loading": "문서를 불러오는 중",
+    "gone": "이 문서는 더 이상 존재하지 않습니다.",
+    "openFailed": "이 문서를 열 수 없습니다. {reason}",
+    "offline": "Cowork 로컬 서버에 연결할 수 없습니다. 편집한 내용은 여기에 보관되며 서버가 다시 연결되는 즉시 저장됩니다.",
+    "dismiss": "닫기",
+    "undo": "실행 취소"
+  },
+  "export": {
+    "label": "내보내기",
+    "downloadAs": "다운로드 형식",
+    "format": {
+      "docx": "Word (.docx)",
+      "pdf": "PDF",
+      "md": "Markdown",
+      "html": "HTML 페이지"
+    },
+    "copyMarkdown": "Markdown으로 복사",
+    "exporting": "{name}을(를) 내보내는 중…",
+    "failed": "내보내지 못했습니다",
+    "failedStatus": "내보내지 못했습니다({status})",
+    "copied": "Markdown으로 복사됨",
+    "copyFailed": "복사하지 못했습니다",
+    "copyDocFailed": "문서를 복사하지 못했습니다"
+  },
+  "notice": {
+    "deletedTab": "‘{title}’ 탭을 삭제했습니다",
+    "deletedColumn": "‘{name}’ 열을 삭제했습니다",
+    "deletedRows": "{count, plural, other {행 #개를 삭제했습니다}}",
+    "deletedBlocks": "{count, plural, other {블록 #개를 삭제했습니다}}",
+    "cantUndo": "실행 취소할 수 없습니다. 그 후에 내용이 변경되었습니다.",
+    "cantRedo": "다시 실행할 수 없습니다. 그 후에 문서가 변경되었습니다.",
+    "editTooBig": "편집 내용이 너무 커서 저장할 수 없습니다. 문서에는 저장된 내용이 표시됩니다.",
+    "editFailed": "편집 내용을 저장하지 못했습니다. 문서에는 저장된 내용이 표시됩니다.",
+    "imageFailed": "이미지를 추가하지 못했습니다",
+    "imageFailedStatus": "이미지를 추가하지 못했습니다({status})",
+    "imageTooLarge": "이미지가 너무 커서 문서에 추가할 수 없습니다(최대 10MB).",
+    "openPageFailed": "페이지를 열 수 없습니다",
+    "openInBrowserFailed": "이 문서를 브라우저에서 열 수 없습니다",
+    "requestFailed": "문서 요청이 실패했습니다({status})",
+    "timeout": "서버가 응답하는 데 시간이 너무 오래 걸렸습니다."
+  },
+  "card": {
+    "open": "문서 열기: {title}",
+    "deleted": "삭제된 문서: {title}",
+    "kindDeleted": "문서 · 삭제됨",
+    "kindOpen": "문서 · 채팅 옆에 열림",
+    "showing": "표시 중",
+    "openButton": "열기"
+  },
+  "chip": {
+    "me": "나"
+  },
+  "column": {
+    "resize": "문서 크기 조정"
+  },
+  "page": {
+    "untitled": "제목 없음",
+    "title": "제목",
+    "edited": "{age} 편집됨",
+    "new": "새 문서",
+    "byAgent": "에이전트와 함께 작성함"
+  },
+  "tabs": {
+    "label": "탭",
+    "add": "탭 추가",
+    "hide": "탭 숨기기",
+    "changed": "변경됨",
+    "showChanged": "변경된 탭 표시",
+    "name": "탭 이름",
+    "menu": "{title} 탭",
+    "options": "{title} 옵션",
+    "rename": "이름 바꾸기",
+    "moveUp": "위로 이동",
+    "moveDown": "아래로 이동",
+    "delete": "탭 삭제"
+  },
+  "block": {
+    "kind": {
+      "paragraph": "단락",
+      "heading": "제목 {level}",
+      "listItem": "목록 항목",
+      "task": "할 일",
+      "quote": "인용",
+      "callout": "콜아웃",
+      "table": "표",
+      "chart": "차트",
+      "metrics": "지표",
+      "code": "코드",
+      "image": "이미지",
+      "divider": "구분선",
+      "pending": "작성할 섹션",
+      "other": "블록"
+    },
+    "empty": {
+      "paragraph": "빈 단락",
+      "heading": "빈 제목 {level}",
+      "listItem": "빈 목록 항목",
+      "task": "빈 할 일",
+      "quote": "빈 인용",
+      "callout": "빈 콜아웃"
+    },
+    "named": "{kind} ‘{words}’",
+    "addBelow": "{block} 아래에 블록 추가",
+    "options": "{block} 옵션",
+    "optionsMenu": "블록 옵션",
+    "startWriting": "작성을 시작하거나 /를 입력하여 블록을 추가하세요",
+    "typeSlash": "/를 입력하여 블록 추가",
+    "markDone": "완료로 표시",
+    "markNotDone": "미완료로 표시"
+  },
+  "menu": {
+    "turnInto": "다음으로 전환",
+    "calloutColor": "콜아웃 색상",
+    "editWithAgent": "에이전트로 편집…",
+    "duplicate": "복제",
+    "moveUp": "위로 이동",
+    "moveDown": "아래로 이동",
+    "delete": "삭제"
+  },
+  "insert": {
+    "label": "블록 삽입",
+    "noMatch": "‘{query}’과(와) 일치하는 블록이 없습니다",
+    "group": {
+      "basic": "기본",
+      "data": "데이터",
+      "other": "기타",
+      "agent": "에이전트"
+    },
+    "item": {
+      "paragraph": "텍스트",
+      "heading1": "제목 1",
+      "heading2": "제목 2",
+      "heading3": "제목 3",
+      "bullet": "글머리 기호 목록",
+      "numbered": "번호 매기기 목록",
+      "task": "할 일 목록",
+      "quote": "인용",
+      "callout": "콜아웃",
+      "table": "표",
+      "chart": "차트",
+      "metrics": "지표",
+      "code": "코드",
+      "divider": "구분선",
+      "image": "이미지",
+      "ask": "에이전트에게 작성 요청…"
+    }
+  },
+  "tone": {
+    "info": "정보",
+    "success": "성공",
+    "warning": "경고",
+    "danger": "위험",
+    "note": "메모"
+  },
+  "format": {
+    "label": "서식",
+    "bold": "굵게",
+    "italic": "기울임꼴",
+    "strike": "취소선",
+    "code": "코드",
+    "link": "링크",
+    "addLink": "링크 추가",
+    "linkAddress": "링크 주소",
+    "linkPlaceholder": "링크를 붙여넣고 Enter 키를 누르세요"
+  },
+  "ask": {
+    "label": "에이전트로 편집",
+    "request": "에이전트에게 보낼 요청",
+    "placeholderWrite": "에이전트가 여기에 무엇을 작성할까요?",
+    "placeholderChange": "무엇을 변경할까요?",
+    "send": "보내기"
+  },
+  "chart": {
+    "label": "차트",
+    "title": "차트 제목",
+    "kind": {
+      "bar": "세로 막대형",
+      "hbar": "가로 막대형",
+      "stacked": "누적 막대형",
+      "line": "꺾은선형",
+      "area": "영역형",
+      "donut": "도넛형"
+    },
+    "inUnit": "단위: {unit}",
+    "followsTable": "표가 바뀌면 함께 업데이트됨",
+    "showTable": "원본 표 표시",
+    "makeTable": "데이터를 표로 변환",
+    "tableGone": "이 차트의 표가 더 이상 이 탭에 없습니다.",
+    "noColumn": "원본 표에 ‘{column}’ 열이 없습니다.",
+    "noNumbers": "아직 그릴 숫자가 없습니다.",
+    "drawFrom": "표에서 그리기",
+    "useTable": "표 사용…",
+    "tableOption": "표 {number}: {columns}",
+    "total": "합계",
+    "totalUnit": "합계({unit})"
+  },
+  "table": {
+    "kind": {
+      "text": "텍스트",
+      "number": "숫자",
+      "status": "상태",
+      "date": "날짜"
+    },
+    "type": "유형",
+    "sortAsc": "오름차순 정렬",
+    "sortDesc": "내림차순 정렬",
+    "insertLeft": "왼쪽에 열 삽입",
+    "insertRight": "오른쪽에 열 삽입",
+    "deleteColumn": "열 삭제",
+    "columnName": "열 이름",
+    "columnMenu": "{column} 열",
+    "columnOptions": "{column} 열 옵션",
+    "addColumn": "열 추가",
+    "rowOptions": "행 옵션",
+    "rowOptionsFor": "{number}행 옵션",
+    "insertAbove": "위에 행 삽입",
+    "insertBelow": "아래에 행 삽입",
+    "deleteRow": "행 삭제",
+    "newRow": "새 행",
+    "other": "기타…",
+    "clear": "지우기",
+    "setValue": "{column} 설정",
+    "newValue": "새 {column} 값",
+    "cellValue": "{column}: {value}",
+    "cellEmpty": "{column}: 비어 있음",
+    "dateValue": "날짜: {value}",
+    "dateEmpty": "날짜: 비어 있음",
+    "cell": "{column}, {number}행"
+  },
+  "metrics": {
+    "label": "레이블",
+    "change": "변동"
+  },
+  "code": {
+    "label": "코드",
+    "language": "코드 언어",
+    "plainText": "일반 텍스트",
+    "copy": "코드 복사",
+    "copied": "복사됨"
+  },
+  "image": {
+    "label": "이미지",
+    "caption": "캡션 추가"
+  },
+  "pending": {
+    "writing": "작성 중:",
+    "toWrite": "작성 예정:"
+  },
+  "versions": {
+    "title": "버전 기록",
+    "saved": "자동으로 저장됨",
+    "loading": "버전을 불러오는 중…",
+    "loadFailed": "버전을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
+    "current": "현재 버전",
+    "none": "문서가 변경되면 이전 버전이 여기에 표시됩니다.",
+    "hint": "복원하기 전에 확인할 버전을 선택하세요.",
+    "viewing": "{when} 버전 보는 중",
+    "changedSince": "이 버전 이후 변경됨",
+    "older": "이전 버전",
+    "newer": "이후 버전",
+    "back": "현재 버전으로 돌아가기",
+    "restoreThis": "이 버전 복원",
+    "confirmTitle": "이 버전을 복원할까요?",
+    "confirmLead": "문서가 {when}의 상태로 되돌아갑니다.",
+    "agentWriting": "에이전트가 아직 작성하는 중입니다. 에이전트가 이어서 작성하는 내용은 복원한 버전에 추가됩니다.",
+    "nothingLost": "잃는 내용은 없습니다. 현재 버전은 버전 기록에 남아 있으므로 다시 전환할 수 있습니다.",
+    "sharedUpdates": "공유된 페이지도 함께 업데이트됩니다.",
+    "cancel": "취소",
+    "restore": "복원",
+    "restoring": "복원하는 중…",
+    "restoredFrom": "{when}의 버전을 복원했습니다",
+    "undo": "실행 취소",
+    "openFailed": "해당 버전을 열 수 없습니다",
+    "restoreFailed": "해당 버전을 복원할 수 없습니다",
+    "undoFailed": "복원을 실행 취소할 수 없습니다",
+    "earlier": "이전 변경 사항",
+    "who": {
+      "agent": "에이전트",
+      "user": "나"
+    },
+    "today": "오늘",
+    "yesterday": "어제",
+    "whenTitle": "{day} {time}",
+    "whenPhrase": "{day, select, today {오늘 {time}} yesterday {어제 {time}} other {{date} {time}}}",
+    "justNow": "방금",
+    "minutesAgo": "{count, plural, other {#분 전}}",
+    "hoursAgo": "{count, plural, other {#시간 전}}"
+  },
+  "web": {
+    "signIn": "내 문서인가요? 로그인하여 편집하기",
+    "waiting": "컴퓨터를 기다리는 중",
+    "canEdit": "편집할 수 있습니다",
+    "viewOnly": "보기 전용",
+    "stopped": "소유자가 이 문서의 공유를 중지했습니다. 이 페이지는 더 이상 바뀌지 않습니다.",
+    "lapsed": "이 페이지가 한동안 열려 있었습니다. 계속 편집하려면 새로고침하세요.",
+    "lapsedUnsaved": "이 페이지가 한동안 열려 있었습니다. 계속 편집하려면 새로고침하세요. 마지막 변경 사항이 아직 저장되지 않았습니다.",
+    "reload": "새로고침",
+    "openApp": "편집하려면 컴퓨터에서 {product}을(를) 여세요. 이 문서는 그곳에 있고 그곳에 저장됩니다.",
+    "stale": "이 블록이 컴퓨터에서 먼저 변경되어 편집이 적용되지 않았습니다.",
+    "deferred": "편집 내용이 컴퓨터의 {product}을(를) 기다리고 있습니다. 앱이 열리면 적용됩니다.",
+    "notSaved": "편집이 저장되지 않았습니다: {reason}"
+  }
+}
