@@ -4,10 +4,11 @@ import type { GuardedFetch, GuardedRequestInit } from './guarded-fetch';
 const store = vi.hoisted(() => ({ root: '/home/user/.cowork' as string | null }));
 vi.mock('./server-process', () => ({ getServerPort: () => 4000, activeStoreRoot: () => store.root }));
 vi.mock('./server-auth', () => ({ authHeader: () => ({ Authorization: 'Bearer bearer' }) }));
-const trust = vi.hoisted(() => ({ protected: true, customMcp: true }));
+const trust = vi.hoisted(() => ({ protected: true, customMcp: true, generation: 'run-1' }));
 vi.mock('./app-secret', () => ({
   isAppSecretProtected: () => trust.protected,
   isCustomMcpAvailable: () => trust.protected && trust.customMcp,
+  appSecretGeneration: () => (trust.protected ? trust.generation : null),
   appSecretHeader: () => (trust.protected ? { 'X-Cowork-App-Secret': 'secret' } : {}),
 }));
 vi.mock('electron', () => ({ session: { defaultSession: { resolveProxy: async () => 'DIRECT' } } }));
@@ -42,6 +43,7 @@ const server = vi.hoisted(() => ({
   records: new Set<string>(),
   held: new Map<string, Record<string, unknown>>(),
   tools: [] as Array<{ name: string; description: string; read_only: boolean; allowed: boolean }> | 'unreachable',
+  allowedToolsStatus: 200,
   calls: [] as string[],
   canonical: (url: string) => url,
 }));
@@ -80,6 +82,7 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
     return json(200, {});
   }
   if (method === 'PUT' && action === 'allowed-tools') {
+    if (server.allowedToolsStatus !== 200) return json(server.allowedToolsStatus, { detail: 'refused' });
     server.held.set(id, { ...server.held.get(id), allowed_tools: body.tools });
     return json(200, { allowed_tools: body.tools });
   }
@@ -153,6 +156,7 @@ beforeEach(() => {
   store.root = '/home/user/.cowork';
   trust.protected = true;
   trust.customMcp = true;
+  trust.generation = 'run-1';
   keychain.entries.clear();
   keychain.failWrites = false;
   keychain.failFind = false;
@@ -160,6 +164,7 @@ beforeEach(() => {
   server.records.clear();
   server.held.clear();
   server.tools = READ_TOOLS;
+  server.allowedToolsStatus = 200;
   server.calls = [];
   server.canonical = (url) => url;
   ids = [ID, `cm-${'b'.repeat(32)}`];
@@ -278,6 +283,62 @@ describe('connectCustomMcp', () => {
     });
   });
 
+  it('names the revocation host, which receives the refresh token on disconnect', async () => {
+    const table: Record<string, Answer> = {
+      ...LOGIN_SERVER,
+      'GET https://auth.example.com/.well-known/oauth-authorization-server': {
+        status: 200,
+        json: {
+          ...(LOGIN_SERVER['GET https://auth.example.com/.well-known/oauth-authorization-server'].json as object),
+          revocation_endpoint: 'https://revoke.example.org/r',
+        },
+      },
+    };
+    const { deps: d, authorize } = deps(table);
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
+
+    expect(result).toEqual({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com', 'revoke.example.org'] });
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['the account switches', () => { store.root = '/home/user/.cowork/orgs/acme'; }],
+    ['the server restarts', () => { trust.generation = 'run-2'; }],
+  ])('creates nothing when %s during the login', async (_label, change) => {
+    const { deps: d } = deps(LOGIN_SERVER, {
+      authorize: async () => {
+        change();
+        return { ok: true as const, code: 'code-1', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' };
+      },
+    });
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'server_changed' });
+    expect(server.records.size).toBe(0);
+    expect(keychain.entries.size).toBe(0);
+  });
+
+  it('keeps a read-only tool off when its name is longer than the server takes', async () => {
+    server.tools = [...READ_TOOLS, { name: 'x'.repeat(129), description: '', read_only: true, allowed: false }];
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+
+    expect(result).toMatchObject({ ok: true, toolsOn: 1 });
+    expect(JSON.parse((await readPart(store.root!, ID, 'tools'))!)).toEqual(['search']);
+  });
+
+  it('puts the keychain back to no tools when the server refuses the switch', async () => {
+    server.allowedToolsStatus = 500;
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+
+    expect(result).toMatchObject({ ok: true, toolsOn: 0, toolsUnavailable: true });
+    expect(await readPart(store.root!, ID, 'tools')).toBe('[]');
+    expect(server.held.get(ID)?.allowed_tools).toEqual([]);
+  });
+
   it('draws a new ID for every connection', async () => {
     await connectCustomMcp({ label: 'One', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
     await connectCustomMcp({ label: 'Two', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
@@ -367,8 +428,19 @@ describe('parseConnectRequest', () => {
     [{ label: 'T', url: SERVER_URL, clientId: 5 }],
     [{ label: 'T', url: SERVER_URL, clientSecret: 'shh' }],
     [{ label: 'T', url: SERVER_URL, clientId: 'x'.repeat(513) }],
+    [{ label: 'T', url: SERVER_URL, confirmedLoginHosts: 'auth.example.com' }],
+    [{ label: 'T', url: SERVER_URL, confirmedLoginHosts: 'ab' }],
+    [{ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['a', 'b', 'c', 'd', 'e'] }],
+    [{ label: 'T', url: SERVER_URL, confirmedLoginHosts: [''] }],
+    [{ label: 'T', url: SERVER_URL, confirmedLoginHosts: [5] }],
+    [{ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['x'.repeat(261)] }],
   ])('refuses %j', (raw) => {
     expect(typeof parseConnectRequest(raw)).toBe('string');
+  });
+
+  it('takes the longest host name with a port', () => {
+    const host = `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(61)}:65535`;
+    expect(parseConnectRequest({ label: 'T', url: SERVER_URL, confirmedLoginHosts: [host] })).toMatchObject({ confirmedLoginHosts: [host] });
   });
 
   it('trims the label and URL and drops empty optional fields', () => {

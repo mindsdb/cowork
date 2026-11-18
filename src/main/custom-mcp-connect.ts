@@ -16,7 +16,7 @@
 import * as crypto from 'crypto';
 import { diagnostic } from '../shared/diagnostics';
 import { activeStoreRoot } from './server-process';
-import { isCustomMcpAvailable } from './app-secret';
+import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { checkPublicHttpsUrl, GuardedFetchError, type GuardedFetch } from './guarded-fetch';
 import { customMcpFetch, type StoredSettings } from './custom-mcp-tokens';
 import {
@@ -56,7 +56,10 @@ const MAX_URL = 2048;
 const MAX_CLIENT_FIELD = 512;
 const CONNECTION_ID = /^cm-[0-9a-f]{32}$/;
 const MAX_HOSTS = 4;
-const MAX_HOST = 255;
+// A 253-character name plus a port.
+const MAX_HOST = 260;
+// The longest tool name the server's tool routes accept.
+const MAX_TOOL_NAME = 128;
 
 export function isConnectionId(value: unknown): value is string {
   return typeof value === 'string' && CONNECTION_ID.test(value);
@@ -173,6 +176,7 @@ export async function connectCustomMcp(raw: unknown, deps: ConnectDeps = default
   const request = parseConnectRequest(raw);
   if (typeof request === 'string') return { ok: false, code: 'invalid_request', reason: request };
   const storeRoot = activeStoreRoot();
+  const generation = appSecretGeneration();
   if (!isCustomMcpAvailable() || !storeRoot) {
     return { ok: false, code: 'unavailable', reason: 'Custom MCP servers are not available on this server.' };
   }
@@ -184,6 +188,11 @@ export async function connectCustomMcp(raw: unknown, deps: ConnectDeps = default
     }
     const login = await logIn(serverUrl, request, deps);
     if (login && 'ok' in login) return login;
+    // The login can take minutes; an account switch or a server restart in
+    // that time would put the record and the keychain entries in different stores.
+    if (appSecretGeneration() !== generation || activeStoreRoot() !== storeRoot || !isCustomMcpAvailable()) {
+      return { ok: false, code: 'server_changed', reason: 'The app switched accounts or restarted its server during the login.' };
+    }
 
     const id = deps.newId();
     const settings: StoredSettings = {
@@ -229,12 +238,22 @@ export async function connectCustomMcp(raw: unknown, deps: ConnectDeps = default
 }
 
 /** Switches on the tools the server marks read-only, keychain first, then
- *  the server. A server that cannot list its tools now keeps every tool off. */
+ *  the server; a refusal puts the keychain back to none, so the next start
+ *  never hands over a list the server refuses. A tool whose name the
+ *  server's routes cannot take stays off. A server that cannot list its
+ *  tools now keeps every tool off. */
 async function switchOnReadOnlyTools(storeRoot: string, id: string): Promise<{ toolsOn: number; toolsUnavailable: boolean }> {
   try {
-    const readOnly = (await listTools(id)).filter((tool) => tool.read_only).map((tool) => tool.name);
+    const readOnly = (await listTools(id))
+      .filter((tool) => tool.read_only && typeof tool.name === 'string' && tool.name.length > 0 && tool.name.length <= MAX_TOOL_NAME)
+      .map((tool) => tool.name);
     await writePart(storeRoot, id, 'tools', JSON.stringify(readOnly));
-    await putAllowedTools(id, readOnly);
+    try {
+      await putAllowedTools(id, readOnly);
+    } catch (err) {
+      await writePart(storeRoot, id, 'tools', '[]');
+      throw err;
+    }
     return { toolsOn: readOnly.length, toolsUnavailable: false };
   } catch (err) {
     diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_tools_not_switched_on', `[custom-mcp] tools of a new connection stay off: ${errorName(err)}`);

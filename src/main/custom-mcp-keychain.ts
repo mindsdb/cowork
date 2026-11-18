@@ -4,10 +4,10 @@
  * Only the real OS keychain: agent code can write `keychain-fallback.json`,
  * so a keychain that does not work stops custom MCP instead of falling back.
  *
- * Each value is split into pieces under the Windows 2560-byte limit, written
- * under a fresh generation tag, and named by a count entry written last. A
- * missing piece or a piece of another generation reads as unusable, never as
- * a shorter value.
+ * Each value's UTF-8 bytes are split into pieces stored as base64, each
+ * under the Windows 2560-byte limit whatever the text, written under a fresh
+ * generation tag, and named by a count entry written last. A missing piece
+ * or a piece of another generation reads as unusable, never as a shorter value.
  */
 
 import * as crypto from 'crypto';
@@ -15,8 +15,8 @@ import { buildKind } from './cowork-home';
 import { storeScope } from './keychain-service';
 
 const SERVICE_NAME = buildKind() === 'prod' ? 'cowork-custom-mcp' : `cowork-custom-mcp-${buildKind()}`;
-// Windows counts the password in UTF-16 bytes: 1000 characters stay under 2560.
-const PIECE_CHARS = 1000;
+// 1800 bytes are 2400 base64 characters, all ASCII, so 2400 bytes in any encoding.
+const PIECE_BYTES = 1800;
 const COUNT_PATTERN = /^([0-9a-f]{16}):([1-9][0-9]{0,3})$/;
 
 export type CustomMcpPart = 'settings' | 'tools' | 'refresh' | 'secret';
@@ -63,7 +63,10 @@ export async function writePart(storeRoot: string, id: string, part: CustomMcpPa
   const kt = await keytar();
   const previous = await call('be read', () => kt.getPassword(SERVICE_NAME, base));
   const generation = crypto.randomBytes(8).toString('hex');
-  const pieces = value.length === 0 ? [''] : Array.from({ length: Math.ceil(value.length / PIECE_CHARS) }, (_, i) => value.slice(i * PIECE_CHARS, (i + 1) * PIECE_CHARS));
+  const bytes = Buffer.from(value, 'utf8');
+  const pieces = bytes.length === 0
+    ? ['']
+    : Array.from({ length: Math.ceil(bytes.length / PIECE_BYTES) }, (_, i) => bytes.subarray(i * PIECE_BYTES, (i + 1) * PIECE_BYTES).toString('base64'));
   for (const [index, piece] of pieces.entries()) {
     await call('be written', () => kt.setPassword(SERVICE_NAME, pieceAccount(base, generation, index), piece));
   }
@@ -82,13 +85,13 @@ export async function readPart(storeRoot: string, id: string, part: CustomMcpPar
   const kt = await keytar();
   const count = (await call('be read', () => kt.getPassword(SERVICE_NAME, base)))?.match(COUNT_PATTERN);
   if (!count) return null;
-  let value = '';
+  const pieces: Buffer[] = [];
   for (let index = 0; index < Number(count[2]); index += 1) {
     const piece = await call('be read', () => kt.getPassword(SERVICE_NAME, pieceAccount(base, count[1], index)));
     if (piece === null) return null;
-    value += piece;
+    pieces.push(Buffer.from(piece, 'base64'));
   }
-  return value;
+  return Buffer.concat(pieces).toString('utf8');
 }
 
 /** Deletes every entry of a connection. Throws on the first delete that

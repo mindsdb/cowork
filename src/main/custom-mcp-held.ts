@@ -9,13 +9,15 @@ import { diagnostic } from '../shared/diagnostics';
 import { isCustomMcpAvailable } from './app-secret';
 import type { GuardedFetch } from './guarded-fetch';
 import { deleteConnection as deleteKeychainEntries, listConnectionIds } from './custom-mcp-keychain';
-import { CONNECTION_MISSING, CustomMcpRouteError, listRecordIds, putHeld, type HeldSettings } from './custom-mcp-routes';
+import { CONNECTION_MISSING, CustomMcpRouteError, heldSummary, listRecordIds, putHeld, type HeldSettings } from './custom-mcp-routes';
 import { customMcpFetch, readStoredSettings, readStoredTools, refreshedToken } from './custom-mcp-tokens';
 
 const CONNECTION_ID = /^cm-[0-9a-f]{32}$/;
 const RETRY_DELAYS_MS = [5_000, 15_000, 60_000];
 const RETRY_STEADY_MS = 5 * 60_000;
 const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// Connection ids never contain a colon, so this cannot collide with one.
+const LIST_RETRY_KEY = ':list';
 
 // Bumped by every tool switch, per store and connection, so a hand-over that
 // read the keychain earlier leaves the tool list to the switch's own request.
@@ -95,7 +97,8 @@ export async function handOverCustomConnection(
 /**
  * Run on every server start for the store the server serves: hands each
  * custom connection over, and removes keychain entries of connections with
- * no record. Removes nothing unless both lists were read in full.
+ * no record. Removes nothing unless both lists were read in full, and an
+ * entry only once the server says that one connection is missing.
  */
 export async function syncCustomMcpConnections(
   storeRoot: string,
@@ -105,25 +108,52 @@ export async function syncCustomMcpConnections(
   if (!isCustomMcpAvailable()) return;
   for (const timer of retryTimers.values()) clearTimeout(timer);
   retryTimers.clear();
+  await syncAll(storeRoot, stillCurrent, fetchFn, 0);
+}
+
+async function syncAll(storeRoot: string, stillCurrent: () => boolean, fetchFn: GuardedFetch, attempt: number): Promise<void> {
   let records: string[];
   let entries: string[];
   try {
-    records = (await listRecordIds()).filter((id) => CONNECTION_ID.test(id));
+    // Keychain first: a connect that ends between the two reads then has a
+    // record but no entry here, and is never taken for an orphan.
     entries = await listConnectionIds(storeRoot);
+    records = (await listRecordIds()).filter((id) => CONNECTION_ID.test(id));
   } catch (err) {
     diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_list_failed', `[custom-mcp] could not list custom connections: ${errorName(err)}`);
+    if (stillCurrent()) {
+      retryTimers.set(LIST_RETRY_KEY, setTimeout(() => {
+        retryTimers.delete(LIST_RETRY_KEY);
+        if (stillCurrent() && isCustomMcpAvailable()) void syncAll(storeRoot, stillCurrent, fetchFn, attempt + 1);
+      }, RETRY_DELAYS_MS[attempt] ?? RETRY_STEADY_MS));
+    }
     return;
   }
   for (const id of entries.filter((entry) => !records.includes(entry))) {
     if (!stillCurrent()) return;
-    await deleteKeychainEntries(storeRoot, id).catch((err) => {
-      diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_cleanup_failed', `[custom-mcp] could not remove keychain entries of ${id}: ${errorName(err)}`);
-    });
+    await removeIfMissing(storeRoot, id);
   }
   for (const id of records) {
     if (!stillCurrent()) return;
     if (await handOverCustomConnection(storeRoot, id, stillCurrent, fetchFn) === 'retry') scheduleRetry(storeRoot, id, stillCurrent, fetchFn, 0);
   }
+}
+
+/** Removes a connection's keychain entries once the server says its record
+ *  is missing. A list can skip a record it could not read; this asks for the one. */
+async function removeIfMissing(storeRoot: string, id: string): Promise<void> {
+  try {
+    await heldSummary(id);
+    return;
+  } catch (err) {
+    if (!(err instanceof CustomMcpRouteError && err.status === 404 && err.error === CONNECTION_MISSING)) {
+      diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_orphan_check_failed', `[custom-mcp] could not check ${id}: ${errorName(err)}`);
+      return;
+    }
+  }
+  await deleteKeychainEntries(storeRoot, id).catch((err) => {
+    diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_cleanup_failed', `[custom-mcp] could not remove keychain entries of ${id}: ${errorName(err)}`);
+  });
 }
 
 function scheduleRetry(storeRoot: string, id: string, stillCurrent: () => boolean, fetchFn: GuardedFetch, attempt: number): void {

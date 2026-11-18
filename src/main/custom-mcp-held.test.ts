@@ -48,6 +48,10 @@ const server = vi.hoisted(() => ({
   listStatus: 200,
   putStatus: 200 as number,
   putDetail: null as unknown,
+  /** Records the list leaves out, as one it could not read. */
+  unlisted: [] as string[],
+  /** Runs when the server lists its records. */
+  onList: null as null | (() => Promise<void>),
 }));
 
 function json(status: number, body: unknown): Response {
@@ -58,7 +62,15 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
   const url = new URL(String(input));
   if (url.pathname === '/api/v1/connectors/connections/') {
     if (server.listStatus !== 200) return json(server.listStatus, {});
-    return json(200, [{ engine: 'hubspot', name: 'acme' }, ...server.records.map((name) => ({ engine: 'custom_mcp', name }))]);
+    const listed = json(200, [{ engine: 'hubspot', name: 'acme' }, ...server.records.filter((name) => !server.unlisted.includes(name)).map((name) => ({ engine: 'custom_mcp', name }))]);
+    // A connect that ends right after the server took its list.
+    await server.onList?.();
+    return listed;
+  }
+  const summary = url.pathname.match(/^\/api\/v1\/connectors\/connections\/custom_mcp\/([^/]+)\/held-summary$/);
+  if (summary) {
+    const exists = server.records.includes(summary[1]) || server.unlisted.includes(summary[1]);
+    return exists ? json(200, { label: '', server_url: '' }) : json(404, { detail: { error: 'custom_connection_missing' } });
   }
   const held = url.pathname.match(/^\/api\/v1\/connectors\/connections\/custom_mcp\/([^/]+)\/held$/);
   if (init.method === 'PUT' && held) {
@@ -95,6 +107,8 @@ beforeEach(() => {
   server.listStatus = 200;
   server.putStatus = 200;
   server.putDetail = null;
+  server.unlisted = [];
+  server.onList = null;
   tokens.status = 200;
   tokens.body = { access_token: 'AT-2', refresh_token: 'RT-2', token_type: 'Bearer', expires_in: 3600 };
   tokens.during = null;
@@ -103,6 +117,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -158,6 +173,7 @@ describe('handing custom MCP connections over at server start', () => {
     ['missing tools', async () => { await writePart(ROOT, ID, 'settings', JSON.stringify(SETTINGS)); }],
     ['settings that are not JSON', async () => { await seed(ROOT, ID); await writePart(ROOT, ID, 'settings', '{'); }],
     ['settings with a login but no client', async () => { await seed(ROOT, ID, { settings: { ...SETTINGS, clientId: undefined } }); }],
+    ['settings with an unknown client authentication', async () => { await seed(ROOT, ID, { settings: { ...SETTINGS, authMethod: 'private_key_jwt' } }); }],
     ['a tool list that is not a list of names', async () => { await seed(ROOT, ID); await writePart(ROOT, ID, 'tools', '[1]'); }],
     ['a tool list missing a piece', async () => {
       await seed(ROOT, ID, { tools: Array.from({ length: 200 }, (_, i) => `tool_${i}`) });
@@ -202,6 +218,79 @@ describe('handing custom MCP connections over at server start', () => {
     keychain.failFind = false;
 
     expect(await listConnectionIds(ROOT)).toEqual([GONE]);
+  });
+
+  it('keeps the entries of a connection the list left out but the server still has', async () => {
+    await seed(ROOT, GONE);
+    server.records = [];
+    server.unlisted = [GONE];
+
+    await syncCustomMcpConnections(ROOT, current, fetchFn);
+
+    expect(await listConnectionIds(ROOT)).toEqual([GONE]);
+  });
+
+  it('keeps the entries of a connection made while the sync was listing', async () => {
+    server.records = [];
+    server.onList = async () => {
+      await seed(ROOT, GONE);
+      server.records = [GONE];
+    };
+
+    await syncCustomMcpConnections(ROOT, current, fetchFn);
+
+    expect(await listConnectionIds(ROOT)).toEqual([GONE]);
+  });
+
+  it('stops removing entries once the server it started for has gone', async () => {
+    await seed(ROOT, GONE);
+    server.records = [];
+
+    await syncCustomMcpConnections(ROOT, () => false, fetchFn);
+
+    expect(await listConnectionIds(ROOT)).toEqual([GONE]);
+  });
+
+  it('lists again after a failed list, and hands over then', async () => {
+    vi.useFakeTimers();
+    await seed(ROOT, ID);
+    server.listStatus = 503;
+
+    await syncCustomMcpConnections(ROOT, current, fetchFn);
+    expect(server.puts).toEqual([]);
+    server.listStatus = 200;
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(server.puts).toHaveLength(1);
+  });
+
+  it('retries a hand-over whose refresh failed, while the server still reports custom MCP', async () => {
+    vi.useFakeTimers();
+    await seed(ROOT, ID, { refresh: 'RT-1' });
+    tokens.status = 503;
+    tokens.body = {};
+
+    await syncCustomMcpConnections(ROOT, current, fetchFn);
+    expect(server.puts).toHaveLength(1);
+    tokens.status = 200;
+    tokens.body = { access_token: 'AT-3', token_type: 'Bearer' };
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(server.puts).toHaveLength(2);
+    expect(server.puts[1].body).toHaveProperty('access_token', 'AT-3');
+  });
+
+  it('drops a pending retry once the server no longer reports custom MCP', async () => {
+    vi.useFakeTimers();
+    await seed(ROOT, ID, { refresh: 'RT-1' });
+    tokens.status = 503;
+    tokens.body = {};
+
+    await syncCustomMcpConnections(ROOT, current, fetchFn);
+    trust.customMcp = false;
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(server.puts).toHaveLength(1);
   });
 
   it('removes the keychain entries when the server says the connection is missing', async () => {

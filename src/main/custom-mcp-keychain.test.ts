@@ -52,16 +52,24 @@ beforeEach(() => {
 
 describe('custom MCP keychain entries', () => {
   it('reads back a short value and a value longer than one piece', async () => {
-    const long = 'x'.repeat(2500);
+    const long = 'x'.repeat(4000);
     await writePart(ROOT, ID, 'settings', '{"a":1}');
     await writePart(ROOT, ID, 'tools', long);
 
     expect(await readPart(ROOT, ID, 'settings')).toBe('{"a":1}');
     expect(await readPart(ROOT, ID, 'tools')).toBe(long);
-    // Three pieces of at most 1000 characters, under the Windows limit.
-    const pieces = accounts().filter((account) => account.includes('|tools#'));
-    expect(pieces).toHaveLength(3);
-    expect(Math.max(...pieces.map((account) => service(SERVICE).get(account)!.length))).toBe(1000);
+    expect(accounts().filter((account) => account.includes('|tools#'))).toHaveLength(3);
+  });
+
+  it('keeps every piece under the Windows limit in bytes, and multibyte text whole across pieces', async () => {
+    // Three- and four-byte characters, so piece boundaries fall inside them.
+    const text = '中'.repeat(1500) + '😀'.repeat(700);
+    await writePart(ROOT, ID, 'tools', text);
+
+    expect(await readPart(ROOT, ID, 'tools')).toBe(text);
+    const pieces = accounts().filter((account) => account.includes('|tools#')).map((account) => service(SERVICE).get(account)!);
+    expect(pieces.every((piece) => /^[A-Za-z0-9+/=]*$/.test(piece))).toBe(true);
+    expect(Math.max(...pieces.map((piece) => Buffer.byteLength(piece, 'utf8')))).toBeLessThanOrEqual(2560);
   });
 
   it('reads an empty value as empty, not as absent', async () => {
@@ -70,7 +78,7 @@ describe('custom MCP keychain entries', () => {
   });
 
   it('reads a missing piece as unusable, never as a shorter value', async () => {
-    await writePart(ROOT, ID, 'tools', 'y'.repeat(2500));
+    await writePart(ROOT, ID, 'tools', 'y'.repeat(4000));
     service(SERVICE).delete(accounts().find((account) => account.endsWith('#2'))!);
 
     expect(await readPart(ROOT, ID, 'tools')).toBeNull();
@@ -88,7 +96,7 @@ describe('custom MCP keychain entries', () => {
   });
 
   it('removes the previous generation once a rewrite is complete', async () => {
-    await writePart(ROOT, ID, 'tools', 'z'.repeat(2500));
+    await writePart(ROOT, ID, 'tools', 'z'.repeat(4000));
     await writePart(ROOT, ID, 'tools', 'short');
 
     expect(accounts().filter((account) => account.includes('|tools#'))).toHaveLength(1);
@@ -125,6 +133,26 @@ describe('custom MCP keychain entries', () => {
     await expect(run).rejects.toBeInstanceOf(CustomMcpKeychainError);
     expect(fallback.getFallbackPassword).not.toHaveBeenCalled();
     expect(fallback.setFallbackPassword).not.toHaveBeenCalled();
+  });
+
+  it('deletes pieces before count entries, so a delete that stops part-way leaves an unusable set', async () => {
+    await writePart(ROOT, ID, 'settings', 's'.repeat(4000));
+    await writePart(ROOT, ID, 'tools', '[]');
+    const keytar = (await import('keytar')).default;
+    const order: string[] = [];
+    const original = keytar.deletePassword;
+    keytar.deletePassword = async (svc: string, account: string) => {
+      order.push(account);
+      return original(svc, account);
+    };
+    try {
+      await deleteConnection(ROOT, ID);
+    } finally {
+      keytar.deletePassword = original;
+    }
+
+    const firstCount = order.findIndex((account) => !account.includes('#'));
+    expect(firstCount).toBe(order.filter((account) => account.includes('#')).length);
   });
 
   it('reports a delete that fails', async () => {
