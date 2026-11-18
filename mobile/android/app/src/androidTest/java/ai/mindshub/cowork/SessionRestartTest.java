@@ -10,7 +10,7 @@ import static org.junit.Assert.*;
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class SessionRestartTest {
     private SessionStore store() {
-        return new SessionStore(InstrumentationRegistry.getInstrumentation().getTargetContext());
+        return new SessionStore(InstrumentationRegistry.getInstrumentation().getTargetContext(), "test.invalid");
     }
     @Test public void aSave() throws Exception {
         store().clear();

@@ -34,9 +34,8 @@ breaking change for the shell and needs a matching web change.
 
 - **App id / bundle id / Android package:** `ai.mindshub.cowork`. App name: `MindsHub Cowork`.
 - **Remote URL:** production `https://cowork.mindshub.ai`, staging
-  `https://cowork.staging.mindshub.ai`. Only those two hosts stay in the
-  webview (`server.allowNavigation`); any other link opens in the system
-  browser. Cleartext is off.
+  `https://cowork.staging.mindshub.ai`. Each build loads its own deployment in the
+  webview. Links to the other deployment open in the system browser. Cleartext is off.
 - **User agent suffix:** `MindsHubCowork-iOS/<version>` and
   `MindsHubCowork-Android/<version>`, where `<version>` is the marketing
   version from `package.json` (CFBundleShortVersionString / versionName).
@@ -180,6 +179,10 @@ leave that retry screen; retry reloads the page.
 Sign-out clears the saved session before the page reloads. How long someone
 stays signed in is the realm's SSO session limit (refresh tokens are
 session-bound); the app requests no offline token.
+
+Each deployment has its own storage key. The bridge accepts only the configured
+deployment's main frame. Bridge logging is disabled in debug and release builds.
+Android refuses to register Capacitor's legacy all-frame bridge at startup.
 
 Where it lives: **iOS** keeps it in one Keychain item
 (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so it never syncs or

@@ -24,8 +24,7 @@ import javax.crypto.spec.GCMParameterSpec;
 final class SessionStore {
 
     private static final String KEYSTORE = "AndroidKeyStore";
-    private static final String KEY_ALIAS = "cowork_session";
-    private static final String PREFS = "cowork_session";
+    private final String keyAlias;
     private static final String PREF_VALUE = "session";
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
     private static final int TAG_BITS = 128;
@@ -33,8 +32,9 @@ final class SessionStore {
 
     private final SharedPreferences prefs;
 
-    SessionStore(Context context) {
-        prefs = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    SessionStore(Context context, String deploymentHost) {
+        keyAlias = "cowork_session." + deploymentHost;
+        prefs = context.getApplicationContext().getSharedPreferences(keyAlias, Context.MODE_PRIVATE);
     }
 
     /** The saved session, or null when there is none or it can't be decrypted. */
@@ -74,7 +74,7 @@ final class SessionStore {
         // not resurrect this session on the next process start.
         KeyStore keyStore = KeyStore.getInstance(KEYSTORE);
         keyStore.load(null);
-        keyStore.deleteEntry(KEY_ALIAS);
+        keyStore.deleteEntry(keyAlias);
         if (!prefs.edit().remove(PREF_VALUE).commit()) {
             throw new IllegalStateException("could not remove the session");
         }
@@ -83,7 +83,7 @@ final class SessionStore {
     private SecretKey existingKey() throws Exception {
         KeyStore keyStore = KeyStore.getInstance(KEYSTORE);
         keyStore.load(null);
-        return (SecretKey) keyStore.getKey(KEY_ALIAS, null);
+        return (SecretKey) keyStore.getKey(keyAlias, null);
     }
 
     private SecretKey key() throws Exception {
@@ -91,7 +91,7 @@ final class SessionStore {
         if (existing != null) return existing;
         KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE);
         generator.init(
-            new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+            new KeyGenParameterSpec.Builder(keyAlias, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)

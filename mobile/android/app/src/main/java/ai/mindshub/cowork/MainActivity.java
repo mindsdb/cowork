@@ -23,9 +23,6 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MindsHubAuthPlugin.class);
         registerPlugin(MindsHubPushPlugin.class);
         super.onCreate(savedInstanceState);
-        // Only Capacitor's origin-checked, main-frame-only WebMessageListener
-        // may expose credentials. Remove its legacy all-frame fallback.
-        if (getBridge() != null) getBridge().getWebView().removeJavascriptInterface("androidBridge");
         createPushChannel();
     }
 

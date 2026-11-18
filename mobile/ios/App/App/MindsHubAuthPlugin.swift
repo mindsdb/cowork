@@ -77,8 +77,12 @@ public class MindsHubAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
         }
     }
 
+    private var sessionKeychain: SessionKeychain? {
+        bridge?.config.serverURL.host.map { SessionKeychain(account: $0) }
+    }
+
     @objc func loadSession(_ call: CAPPluginCall) {
-        if let session = SessionKeychain.load() {
+        if let session = sessionKeychain?.load() {
             call.resolve(["session": session])
         } else {
             call.resolve()
@@ -90,7 +94,7 @@ public class MindsHubAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
             call.reject("saveSession needs a `session`", "INVALID_ARGUMENT")
             return
         }
-        if SessionKeychain.save(session) {
+        if sessionKeychain?.save(session) == true {
             call.resolve()
         } else {
             call.reject("Could not save the session", "FAILED")
@@ -98,7 +102,7 @@ public class MindsHubAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
     }
 
     @objc func clearSession(_ call: CAPPluginCall) {
-        if SessionKeychain.clear() {
+        if sessionKeychain?.clear() == true {
             call.resolve()
         } else {
             call.reject("Could not clear the session", "FAILED")
@@ -130,20 +134,20 @@ public class MindsHubAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
 /// another phone). Keychain items outlive an uninstall, so the first read
 /// after a fresh install deletes any item left by an earlier install: a
 /// reinstalled app starts signed out.
-enum SessionKeychain {
+struct SessionKeychain {
     private static let service = "ai.mindshub.cowork.session"
-    private static let account = "keycloak"
-    private static let installMarker = "ai.mindshub.cowork.sessionStoreReady"
+    let account: String
+    private var installMarker: String { "ai.mindshub.cowork.sessionStoreReady.\(account)" }
 
-    private static var query: [String: Any] {
+    private var query: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: Self.service,
             kSecAttrAccount as String: account,
         ]
     }
 
-    static func load() -> String? {
+    func load() -> String? {
         guard forgetPreviousInstall() else { return nil }
         var request = query
         request[kSecReturnData as String] = true
@@ -156,7 +160,7 @@ enum SessionKeychain {
         return String(data: data, encoding: .utf8)
     }
 
-    static func save(_ session: String) -> Bool {
+    func save(_ session: String) -> Bool {
         guard forgetPreviousInstall() else { return false }
         let data = Data(session.utf8)
         let attributes: [String: Any] = [
@@ -171,14 +175,14 @@ enum SessionKeychain {
         return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
     }
 
-    static func clear() -> Bool {
+    func clear() -> Bool {
         let status = SecItemDelete(query as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound
     }
 
     /// UserDefaults are removed on uninstall and Keychain items are not, so a
     /// missing marker means this is the first launch of a fresh install.
-    private static func forgetPreviousInstall() -> Bool {
+    private func forgetPreviousInstall() -> Bool {
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: installMarker) { return true }
         guard clear() else { return false }

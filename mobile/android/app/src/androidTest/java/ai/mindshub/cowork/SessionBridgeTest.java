@@ -2,6 +2,9 @@ package ai.mindshub.cowork;
 
 import android.webkit.WebView;
 import androidx.test.core.app.ActivityScenario;
+import com.getcapacitor.CapConfig;
+import com.getcapacitor.Logger;
+import java.util.Collections;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import java.util.concurrent.CountDownLatch;
@@ -30,13 +33,38 @@ public class SessionBridgeTest {
         }
         fail("Bridge condition was not met: " + script);
     }
+    @Test public void legacyRegistrationIsAbsentOnFirstPage() throws Exception {
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            AtomicReference<WebView> reference = new AtomicReference<>();
+            scenario.onActivity(activity -> {
+                CoworkWebView view = new CoworkWebView(activity, null);
+                reference.set(view);
+                view.getSettings().setJavaScriptEnabled(true);
+                view.addJavascriptInterface(new Object(), "androidBridge");
+                view.loadDataWithBaseURL("https://test.invalid", "<title>first</title>", "text/html", "UTF-8", null);
+            });
+            WebView view = reference.get();
+            try {
+                awaitTrue(view, "document.title === 'first' && document.readyState === 'complete'");
+                assertEquals("true", evaluate(view, "typeof window.androidBridge === 'undefined'"));
+            } finally {
+                scenario.onActivity(activity -> view.destroy());
+            }
+        }
+    }
+
     @Test public void mainFrameCanSaveButSameOriginChildCannotClear() throws Exception {
-        SessionStore store = new SessionStore(InstrumentationRegistry.getInstrumentation().getTargetContext());
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        SessionStore store = new SessionStore(context, CapConfig.loadDefault(context).getHostname());
         store.clear();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             AtomicReference<WebView> reference = new AtomicReference<>();
             scenario.onActivity(activity -> {
                 WebView view = activity.getBridge().getWebView();
+                assertTrue(view instanceof CoworkWebView);
+                assertEquals(Collections.singleton(activity.getBridge().getServerUrl()),
+                    activity.getBridge().getAllowedOriginRules());
+                assertFalse(Logger.shouldLog());
                 reference.set(view);
                 view.loadDataWithBaseURL(activity.getBridge().getServerUrl(),
                     "<html><body>Session bridge test</body></html>", "text/html", "UTF-8", null);

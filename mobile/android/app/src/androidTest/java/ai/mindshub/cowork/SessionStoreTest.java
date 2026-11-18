@@ -18,15 +18,15 @@ public class SessionStoreTest {
     private SharedPreferences prefs;
     @Before public void setUp() throws Exception {
         context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        store = new SessionStore(context);
-        prefs = context.getSharedPreferences("cowork_session", Context.MODE_PRIVATE);
+        store = new SessionStore(context, "test.invalid");
+        prefs = context.getSharedPreferences("cowork_session.test.invalid", Context.MODE_PRIVATE);
         store.clear();
     }
     @After public void tearDown() throws Exception { store.clear(); }
     @Test public void survivesStoreRecreationWithoutPlaintext() throws Exception {
         String session = "test-secret";
         store.save(session);
-        assertEquals(session, new SessionStore(context).load());
+        assertEquals(session, new SessionStore(context, "test.invalid").load());
         assertFalse(prefs.getString("session", "").contains("test-secret"));
     }
     @Test public void signOutDestroysKeyAndCannotRestoreOldCiphertext() throws Exception {
@@ -34,9 +34,19 @@ public class SessionStoreTest {
         String encrypted = prefs.getString("session", null);
         store.clear();
         prefs.edit().putString("session", encrypted).commit();
-        assertNull(new SessionStore(context).load());
+        assertNull(new SessionStore(context, "test.invalid").load());
         store.save("new-session");
-        assertEquals("new-session", new SessionStore(context).load());
+        assertEquals("new-session", new SessionStore(context, "test.invalid").load());
+    }
+    @Test public void otherDeploymentCannotReadOrClearSession() throws Exception {
+        store.save("synthetic-session");
+        SessionStore other = new SessionStore(context, "other.invalid");
+        try {
+            assertNull(other.load());
+            other.save("other-session");
+            other.clear();
+            assertEquals("synthetic-session", store.load());
+        } finally { other.clear(); }
     }
     @Test public void corruptedCiphertextStartsSignedOut() throws Exception {
         store.save("session");
@@ -48,7 +58,7 @@ public class SessionStoreTest {
         store.save("session");
         KeyStore keys = KeyStore.getInstance("AndroidKeyStore");
         keys.load(null);
-        keys.deleteEntry("cowork_session");
+        keys.deleteEntry("cowork_session.test.invalid");
         assertNull(store.load());
     }
 }

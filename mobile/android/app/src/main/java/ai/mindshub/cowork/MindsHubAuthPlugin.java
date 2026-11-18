@@ -81,7 +81,7 @@ public class MindsHubAuthPlugin extends Plugin {
     }
 
     private SessionStore sessionStore() {
-        return new SessionStore(getContext());
+        return new SessionStore(getContext(), getBridge().getHost());
     }
 
     @PluginMethod
