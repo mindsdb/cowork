@@ -147,7 +147,7 @@
       "subtitle": "Permanently delete your MindsHub account and the data that's only yours.",
       "button": "Delete account",
       "confirmTitle": "Delete your MindsHub account?",
-      "confirmBody": "We'll permanently delete your account and the data that's only yours within 30 days, and email you when it's done. Organizations you share with other people stay with their other members. This can't be undone.",
+      "confirmBody": "We'll permanently delete your account and the data that's only yours within 30 days. Organizations you share with other people stay with their other members. This can't be undone.",
       "sending": "Sending…",
       "requested": "Deletion requested on {requestedOn}. We'll delete your account by {deleteBy}.",
       "error": "Couldn't send your request. Try again.",
