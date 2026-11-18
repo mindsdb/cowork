@@ -71,7 +71,9 @@
       "thumbnailAlt": "Miniatura do artefato",
       "deletedTitle": "Este artefato foi excluído",
       "liveArtifact": "artefato ao vivo",
-      "deletedBadge": "Excluído"
+      "deletedBadge": "Excluído",
+      "share": "Compartilhar",
+      "shareTooltip": "Escolha quem pode abrir"
     },
     "kinds": {
       "provider": "Provedor",

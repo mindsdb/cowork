@@ -71,7 +71,9 @@
       "thumbnailAlt": "产物缩略图",
       "deletedTitle": "此产物已删除",
       "liveArtifact": "实时产物",
-      "deletedBadge": "已删除"
+      "deletedBadge": "已删除",
+      "share": "分享",
+      "shareTooltip": "选择谁可以打开"
     },
     "kinds": {
       "provider": "提供商",

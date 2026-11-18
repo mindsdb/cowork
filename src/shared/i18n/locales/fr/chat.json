@@ -71,7 +71,9 @@
       "thumbnailAlt": "Miniature de l’artefact",
       "deletedTitle": "Cet artefact a été supprimé",
       "liveArtifact": "artefact en direct",
-      "deletedBadge": "Supprimé"
+      "deletedBadge": "Supprimé",
+      "share": "Partager",
+      "shareTooltip": "Choisir qui peut l'ouvrir"
     },
     "kinds": {
       "provider": "Fournisseur",

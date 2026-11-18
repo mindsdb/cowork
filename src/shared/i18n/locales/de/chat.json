@@ -71,7 +71,9 @@
       "thumbnailAlt": "Artefakt-Miniaturansicht",
       "deletedTitle": "Dieses Artefakt wurde gelöscht",
       "liveArtifact": "Live-Artefakt",
-      "deletedBadge": "Gelöscht"
+      "deletedBadge": "Gelöscht",
+      "share": "Teilen",
+      "shareTooltip": "Festlegen, wer es öffnen kann"
     },
     "kinds": {
       "provider": "Anbieter",

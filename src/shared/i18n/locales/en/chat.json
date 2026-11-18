@@ -71,7 +71,9 @@
       "thumbnailAlt": "Artifact thumbnail",
       "deletedTitle": "This artifact was deleted",
       "liveArtifact": "live artifact",
-      "deletedBadge": "Deleted"
+      "deletedBadge": "Deleted",
+      "share": "Share",
+      "shareTooltip": "Choose who can open it"
     },
     "kinds": {
       "provider": "Provider",
