@@ -29,6 +29,7 @@ import { serverMayReceiveTokens, serverTrust } from './app-secret';
 import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNotionPagesInMain } from './notion-pages';
 import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
 import { connectCustomMcp } from './custom-mcp-connect';
+import { CUSTOM_MCP_ENGINE } from './custom-mcp-routes';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
@@ -1059,6 +1060,7 @@ function setupIPC() {
   ipcMain.handle(IPC.KEYCHAIN_REVOKE, async (_event, opts) => {
     const { engine, name, accountEmail } = opts || {};
     if (!engine || !name || !accountEmail) return { ok: false, reason: 'engine, name, and accountEmail are required.' };
+    if (engine === CUSTOM_MCP_ENGINE) return { ok: false, reason: 'Custom MCP servers are disconnected through their own channel.' };
     const key = `${engine}:${accountEmail}`;
     revokedConnections.add(key);
     stopRefreshLoop(engine, accountEmail);
