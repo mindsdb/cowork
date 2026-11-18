@@ -262,7 +262,8 @@
       "buttonLabel": "Libellé du bouton",
       "caption": "Légende",
       "text": "Texte"
-    }
+    },
+    "exitLiveEdit": "Quitter la modification en direct"
   },
   "workspace": {
     "noWorkspace": "Cet artefact a été créé avant que la modification soit disponible",

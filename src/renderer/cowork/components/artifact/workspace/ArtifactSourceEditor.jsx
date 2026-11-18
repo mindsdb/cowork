@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { MarkdownContent } from '../../markdown/MarkdownContent';
-import { ArtifactHtmlVisualEditor } from './ArtifactHtmlVisualEditor';
+import { ArtifactHtmlVisualEditor, ExitLiveEditButton } from './ArtifactHtmlVisualEditor';
 import { useTranslation } from '../../../../lib/i18n';
 
 function extensionOf(path) {
@@ -18,6 +18,8 @@ export function ArtifactSourceEditor({
   onTextSelection,
   active = true,
   previewView = null,
+  // Leaves Live edit; given when the viewer's toolbar (and its toggle) is hidden.
+  onExit = null,
 }) {
   const { t } = useTranslation('artifacts');
   const editorRef = useRef(null);
@@ -48,6 +50,7 @@ export function ArtifactSourceEditor({
         onTextSelection={onTextSelection}
         active={active}
         previewView={previewView}
+        onExit={onExit}
       />
     );
   }
@@ -70,6 +73,7 @@ export function ArtifactSourceEditor({
         <div className="artifact-pane-label section-label">
           <span>{t('sourceEditor.sourceLabel')}</span>
           <code>{source.path}</code>
+          {onExit && <ExitLiveEditButton onExit={onExit} />}
         </div>
         <textarea
           ref={editorRef}

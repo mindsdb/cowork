@@ -494,8 +494,18 @@ export function ArtifactViewer({
   // sub-state (markers on, no side panel); closing also drops the iframe out of
   // comment-placement mode so no pin cursor lingers on a "plain" preview.
   // Either way Stats closes, since it shares the docked slot.
+  // Comments and Live edit are exclusive (useViewerLayers): Comments on turns
+  // Live edit off, so unsaved editor text is asked about first, and Comments
+  // opens once the user agrees to drop it.
+  const commentsAfterSourceOffRef = useRef(false);
   const toggleComments = () => {
-    setLayer('comments', !(layers.comments && commentsEnabled));
+    const on = !(layers.comments && commentsEnabled);
+    if (on && layers.source && workspace.dirty) {
+      commentsAfterSourceOffRef.current = true;
+      setSourceOffPrompt(true);
+      return;
+    }
+    setLayer('comments', on);
   };
 
   // Stats turns comment mode off, so no markers are drawn beside it and at
@@ -1824,7 +1834,8 @@ export function ArtifactViewer({
       )}
 
       <ArtifactViewerBody
-        layers={{ source: sourceOn }}
+        // With the toolbar hidden, Live edit's own way out is in the editor.
+        layers={{ source: sourceOn, onExitSource: toolbarShown ? null : () => setSourceLayer(false) }}
         workspace={{ ...workspaceView, save: saveWorkspace }}
         preview={previewModel}
         review={bodyReview}
@@ -1870,11 +1881,20 @@ export function ArtifactViewer({
         confirmLabel={t('layers.sourceOffPrompt.confirmLabel')}
         cancelLabel={t('viewer.keepEditing')}
         destructive
-        onClose={() => setSourceOffPrompt(false)}
+        onClose={() => {
+          commentsAfterSourceOffRef.current = false;
+          setSourceOffPrompt(false);
+        }}
         onConfirm={() => {
           setSourceOffPrompt(false);
           workspace.discard();
-          setLayer('source', false);
+          // Asked on the way to Comments: open it, which turns Live edit off.
+          if (commentsAfterSourceOffRef.current) {
+            commentsAfterSourceOffRef.current = false;
+            setLayer('comments', true);
+          } else {
+            setLayer('source', false);
+          }
         }}
       />
 

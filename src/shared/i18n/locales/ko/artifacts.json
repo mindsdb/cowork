@@ -262,7 +262,8 @@
       "buttonLabel": "버튼 레이블",
       "caption": "캡션",
       "text": "텍스트"
-    }
+    },
+    "exitLiveEdit": "실시간 편집 종료"
   },
   "workspace": {
     "noWorkspace": "이 아티팩트는 편집 기능이 제공되기 전에 만들어졌습니다",

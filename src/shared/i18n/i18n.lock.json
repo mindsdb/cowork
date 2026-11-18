@@ -17781,6 +17781,40 @@
       "text": "dd81861811e5"
     }
   },
+  "artifacts:htmlEditor.exitLiveEdit": {
+    "de": {
+      "from": "c9919d629b20",
+      "text": "6c069b5d6719"
+    },
+    "es": {
+      "from": "c9919d629b20",
+      "text": "b36c5c3ee9d7"
+    },
+    "fr": {
+      "from": "c9919d629b20",
+      "text": "fedfcee00e62"
+    },
+    "it": {
+      "from": "c9919d629b20",
+      "text": "24ac02ea72b5"
+    },
+    "ja": {
+      "from": "c9919d629b20",
+      "text": "9ab9b5b0bda3"
+    },
+    "ko": {
+      "from": "c9919d629b20",
+      "text": "2790ce6ef8d8"
+    },
+    "pt-BR": {
+      "from": "c9919d629b20",
+      "text": "0d423f93d6aa"
+    },
+    "zh-CN": {
+      "from": "c9919d629b20",
+      "text": "75d663f30392"
+    }
+  },
   "artifacts:htmlEditor.htmlSource": {
     "de": {
       "from": "8c8329c964bb",

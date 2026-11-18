@@ -262,7 +262,8 @@
       "buttonLabel": "Button label",
       "caption": "Caption",
       "text": "Text"
-    }
+    },
+    "exitLiveEdit": "Exit Live edit"
   },
   "workspace": {
     "noWorkspace": "This artifact was created before editing was available",

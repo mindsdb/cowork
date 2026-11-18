@@ -428,3 +428,13 @@
 .artifact-comment-image.is-large img { width: 100%; height: auto; max-height: 420px; object-fit: contain; }
 .artifact-comment-image-placeholder { width: 72px; height: 72px; border-radius: 6px; background: var(--surface-2); }
 .artifact-comment-image-missing { color: var(--ink-4); font: 12px/1.4 var(--font-body); }
+
+/* Comments warnings fade in, hold, and fade out over the time the hook keeps
+   them (COMMENTS_ERROR_MS, 6s). */
+@keyframes artifact-comments-warning { 0% { opacity: 0; } 5% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; } }
+.artifact-comments-warning { animation: artifact-comments-warning 6s ease forwards; }
+@media (prefers-reduced-motion: reduce) { .artifact-comments-warning { animation: none; } }
+/* Exit Live edit in the plain source editor's header (the HTML editor's sits
+   with its other actions): the same quiet secondary button. */
+.artifact-pane-label .artifact-exit-live-edit { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-3); background: var(--surface); font: 600 12px/1 var(--font-body); cursor: pointer; }
+.artifact-pane-label .artifact-exit-live-edit:hover { color: var(--ink); background: var(--surface-2); }

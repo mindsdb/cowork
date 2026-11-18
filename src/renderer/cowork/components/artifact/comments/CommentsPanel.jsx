@@ -112,8 +112,14 @@ export function CommentsPanel({
           {tr('comments.panel.expired')}
         </div>
       )}
+      {/* A warning, not a state: it fades and clears on its own
+          (useArtifactComments), and loading keeps retrying underneath. */}
       {error && (
-        <div className="shrink-0 rounded-[6px] px-2 py-[6px] text-[12px] leading-[16px] bg-[#FEE2E2] text-[#8F321A]">
+        <div
+          key={error}
+          role="status"
+          className="artifact-comments-warning shrink-0 rounded-[6px] px-2 py-[6px] text-[12px] leading-[16px] bg-[#FEF3C7] text-[#B45309]"
+        >
           {error}
         </div>
       )}

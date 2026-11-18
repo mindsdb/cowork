@@ -952,7 +952,7 @@ describe('ArtifactViewer quick edit bar', () => {
       expect(pressed('Comments')).toBe('false');
     });
 
-    it('combines Comments with Live edit (the code editor), the bar staying', async () => {
+    it('has Comments or Live edit (the code editor) on, never both, the bar staying', async () => {
       workspaceMock.commentsReady = true;
       workspaceMock.source = HTML_SOURCE;
       withBodyWidth(1200);
@@ -961,10 +961,31 @@ describe('ArtifactViewer quick edit bar', () => {
 
       fireEvent.click(toggle('Comments'));
       fireEvent.click(toggle('Live edit'));
-
-      expect(pressed('Comments')).toBe('true');
+      expect(pressed('Comments')).toBe('false');
       expect(pressed('Live edit')).toBe('true');
+
+      fireEvent.click(toggle('Comments'));
+      expect(pressed('Comments')).toBe('true');
+      expect(pressed('Live edit')).toBe('false');
       expect(bar()).not.toBeNull();
+    });
+
+    it('asks before Comments drops unsaved Live edit text, and opens Comments once agreed', async () => {
+      workspaceMock.commentsReady = true;
+      workspaceMock.source = HTML_SOURCE;
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      fireEvent.click(toggle('Live edit'));
+      workspaceMock.dirty = true;
+
+      fireEvent.click(toggle('Comments'));
+      const prompt = await screen.findByRole('alertdialog');
+      expect(pressed('Live edit')).toBe('true');
+
+      fireEvent.click(within(prompt).getAllByRole('button')[0]);
+      await waitFor(() => expect(pressed('Comments')).toBe('true'));
+      expect(pressed('Live edit')).toBe('false');
+      expect(workspaceMock.discard).toHaveBeenCalled();
     });
 
     it('sits on the revision line, not in the header', async () => {
@@ -984,15 +1005,14 @@ describe('ArtifactViewer quick edit bar', () => {
       workspaceMock.source = HTML_SOURCE;
       const view = renderViewer();
       await screen.findByTitle('Launch brief');
-      fireEvent.click(toggle('Live edit'));
       fireEvent.click(toggle('Comments'));
       view.unmount();
 
       expect(JSON.parse(window.localStorage.getItem('cowork.artifactViewer.layers.v1')))
-        .toEqual({ source: true, comments: true });
+        .toEqual({ source: false, comments: true });
       renderViewer();
       await screen.findByTitle('Launch brief');
-      expect(pressed('Live edit')).toBe('true');
+      expect(pressed('Live edit')).toBe('false');
       expect(pressed('Comments')).toBe('true');
     });
 

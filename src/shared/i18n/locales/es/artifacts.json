@@ -262,7 +262,8 @@
       "buttonLabel": "Texto del botón",
       "caption": "Leyenda",
       "text": "Texto"
-    }
+    },
+    "exitLiveEdit": "Salir de la edición en vivo"
   },
   "workspace": {
     "noWorkspace": "Este artefacto se creó antes de que existiera la edición",

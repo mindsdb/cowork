@@ -338,3 +338,25 @@ describe('ArtifactHtmlVisualEditor opening on the preview view', () => {
     expect(viewsSentTo(frame)).toHaveLength(1);
   });
 });
+
+// With the viewer's toolbar hidden, the editor carries its own way out of
+// Live edit, beside Advanced (ENG-4383).
+describe('ArtifactHtmlVisualEditor exit', () => {
+  it('offers Exit Live edit when given a way out, and calls it', async () => {
+    const onExit = vi.fn();
+    render(
+      <ArtifactHtmlVisualEditor source={SOURCE} value={VALUE} onChange={vi.fn()} onSave={vi.fn()} draftUrl={DRAFT_URL} onExit={onExit} />,
+    );
+    await screen.findByTitle('Edit artifact on canvas');
+
+    fireEvent.click(screen.getByRole('button', { name: /Exit Live edit/ }));
+
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no exit while the toolbar shows the Live edit toggle', async () => {
+    await renderReadyEditor();
+
+    expect(screen.queryByRole('button', { name: /Exit Live edit/ })).toBeNull();
+  });
+});

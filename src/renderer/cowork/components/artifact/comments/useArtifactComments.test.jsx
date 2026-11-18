@@ -113,3 +113,56 @@ describe('useArtifactComments on a terminal auth failure', () => {
     expect(openCommentsStream).not.toHaveBeenCalled();
   });
 });
+
+// A dropped connection is a passing warning (ENG-4383): plain words, cleared
+// when loading recovers or after a few seconds; marking read retries quietly.
+describe('useArtifactComments warnings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    openCommentsStream.mockImplementation(() => ({ abort: vi.fn() }));
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('shows a dropped connection as "Failed to load comments" and clears it when loading recovers', async () => {
+    listCommentThreads
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue({ threads: [], viewer: VIEWER, unreadCount: 0 });
+    const { result } = renderHook(() => useArtifactComments('artifact', 'stable-id'));
+
+    await waitFor(() => expect(result.current.error).toBe('Failed to load comments'));
+    await waitFor(() => expect(result.current.error).toBe(''), { timeout: 3000 });
+    expect(listCommentThreads).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears a warning on its own after a few seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    listCommentThreads.mockResolvedValue({ threads: [], viewer: VIEWER, unreadCount: 0 });
+    const { createCommentThread } = await import('../../../api');
+    createCommentThread.mockRejectedValue(new Error('Comment too long'));
+    const { result } = renderHook(() => useArtifactComments('artifact', 'stable-id'));
+    await waitFor(() => expect(listCommentThreads).toHaveBeenCalled());
+
+    await act(async () => { await result.current.create({ text: 'hi' }); });
+    expect(result.current.error).toBe('Comment too long');
+
+    await act(async () => { vi.advanceTimersByTime(6000); });
+    expect(result.current.error).toBe('');
+  });
+
+  it('retries marking read quietly instead of showing an error', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    listCommentThreads.mockResolvedValue({ threads: [], viewer: VIEWER, unreadCount: 2 });
+    const { markCommentsRead } = await import('../../../api');
+    markCommentsRead.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue({});
+    const { result } = renderHook(() => useArtifactComments('artifact', 'stable-id'));
+    await waitFor(() => expect(result.current.unreadCount).toBe(2));
+
+    await act(async () => { await result.current.markRead(); });
+    expect(result.current.error).toBe('');
+    expect(result.current.unreadCount).toBe(2);
+
+    await act(async () => { vi.advanceTimersByTime(4000); });
+    await waitFor(() => expect(result.current.unreadCount).toBe(0));
+    expect(markCommentsRead).toHaveBeenCalledTimes(2);
+  });
+});

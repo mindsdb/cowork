@@ -40,6 +40,8 @@ export function ArtifactHtmlVisualEditor({
   active = true,
   // `{ view, seq }` from usePreviewView: where the user is in the Preview.
   previewView = null,
+  // Leaves Live edit; given when the viewer's toolbar (and its toggle) is hidden.
+  onExit = null,
 }) {
   const { t } = useTranslation('artifacts');
   const iframeRef = useRef(null);
@@ -272,6 +274,7 @@ export function ArtifactHtmlVisualEditor({
             {showSource ? Ico.edit(14) : Ico.code(14)}
             {showSource ? t('htmlEditor.back') : t('comparison.advanced')}
           </button>
+          {onExit && <ExitLiveEditButton onExit={onExit} />}
         </div>
       </div>
 
@@ -317,6 +320,17 @@ export function ArtifactHtmlVisualEditor({
         )}
       </div>
     </div>
+  );
+}
+
+/** Leaves Live edit from inside the editor, for when the viewer's toolbar
+    (and the Live edit toggle on it) is hidden. */
+export function ExitLiveEditButton({ onExit }) {
+  const { t } = useTranslation('artifacts');
+  return (
+    <button type="button" className="is-secondary artifact-exit-live-edit" onClick={onExit}>
+      {Ico.close(14)} {t('htmlEditor.exitLiveEdit')}
+    </button>
   );
 }
 

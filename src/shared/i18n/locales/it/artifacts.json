@@ -262,7 +262,8 @@
       "buttonLabel": "Etichetta del pulsante",
       "caption": "Didascalia",
       "text": "Testo"
-    }
+    },
+    "exitLiveEdit": "Esci dalla modifica dal vivo"
   },
   "workspace": {
     "noWorkspace": "Questo artefatto è stato creato prima che la modifica fosse disponibile",

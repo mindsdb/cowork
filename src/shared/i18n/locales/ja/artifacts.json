@@ -262,7 +262,8 @@
       "buttonLabel": "ボタンのラベル",
       "caption": "キャプション",
       "text": "テキスト"
-    }
+    },
+    "exitLiveEdit": "ライブ編集を終了"
   },
   "workspace": {
     "noWorkspace": "このアーティファクトは編集機能の提供開始前に作成されました",

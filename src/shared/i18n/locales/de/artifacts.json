@@ -262,7 +262,8 @@
       "buttonLabel": "Schaltflächentext",
       "caption": "Bildunterschrift",
       "text": "Text"
-    }
+    },
+    "exitLiveEdit": "Live-Bearbeitung beenden"
   },
   "workspace": {
     "noWorkspace": "Dieses Artefakt wurde erstellt, bevor Bearbeiten verfügbar war",

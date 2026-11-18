@@ -187,6 +187,7 @@ export function ArtifactViewerBody({
       loadImage={loadDraftImage}
       active={showEditor}
       previewView={previewView}
+      onExit={layers?.onExitSource || null}
     />
   ) : null;
 
