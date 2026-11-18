@@ -299,7 +299,7 @@ export const TASK_MODES = [
       },
       {
         label: 'Map a competitor\'s go-to-market',
-        prompt: 'Build a go-to-market brain for Clay from public sources, with these sections: market profile, personas, ICP, message pillars, objections (with how Clay answers each), competitors (with how Clay positions against each), keyword portfolio, voice, and signals that someone is ready to buy. Cite a source for each section and save it as a Word document I can reuse. Then tell me where a newer competitor could win against Clay and where Clay is hard to beat. Afterwards I\'ll describe my company so you can compare us.',
+        prompt: 'Build a one-page competitor snapshot of Clay from public sources: what it sells and to whom, its top three competitors and how it positions against each, and the signals that someone is ready to buy. Cite a source for each part and save it as a Word document. Then tell me where a newer competitor could win against Clay and where Clay is hard to beat. Afterwards I\'ll describe my company so you can compare us.',
       },
       {
         label: 'Make a study guide from course material',
