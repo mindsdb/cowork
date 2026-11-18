@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { streamMessage, streamNewSession } from './api';
+import { setDocsEnabled } from '../lib/docsEnabled';
 
 // Project names are mutable (rename) while ids are not, so the composer
 // sends project_id whenever it has one (ENG-1028). The name stays in the
@@ -81,5 +82,23 @@ describe('a message sent with a doc', () => {
     await send({});
     await new Promise((resolve) => { streamNewSession('hi', { onDone: resolve, onError: resolve }); });
     expect(bodies.map((b) => b.docs)).toEqual([true, true]);
+  });
+
+  describe('on a deployment that gives the agent no doc tools', () => {
+    beforeEach(() => setDocsEnabled(false));
+    afterEach(() => setDocsEnabled(true));
+
+    it('sends no doc field, even with a doc context and output', async () => {
+      await send({ output: 'doc', docContext: { ...view, selection: { blockIds: ['b_2'] }, request: 'Tighten this' } });
+      expect(bodies[0]).not.toHaveProperty('docs');
+      expect(bodies[0]).not.toHaveProperty('doc_context');
+      expect(bodies[0]).not.toHaveProperty('output');
+    });
+
+    it('does not say the app shows docs on a new conversation either', async () => {
+      await new Promise((resolve) => { streamNewSession('hi', { output: 'doc', onDone: resolve, onError: resolve }); });
+      expect(bodies[0]).not.toHaveProperty('docs');
+      expect(bodies[0]).not.toHaveProperty('output');
+    });
   });
 });

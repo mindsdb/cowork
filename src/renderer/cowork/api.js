@@ -28,6 +28,7 @@ import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
+import { getDocsEnabled } from '../lib/docsEnabled';
 import { isTaskBrowserOff } from './lib/taskBrowser';
 import { SHARING_OFF } from './lib/orgSharing';
 import {
@@ -829,6 +830,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // operator-configured role settings, including restored tasks.
   const { sendsPicks, model: sentModel, reasoningEffort: sentEffort } = sendablePicks(model, reasoningEffort);
   const sendsEffort = sentEffort !== null;
+  const docsOn = getDocsEnabled();
   (async () => {
     try {
       bumpIdle();
@@ -866,15 +868,16 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // an older server never sees the key.
           ...(browserOff ? { browser: 'off' } : {}),
           // This app shows docs: the server gives the agent its doc tools
-          // only on a request that says so.
-          docs: true,
+          // only on a request that says so. A deployment without doc tools
+          // (/health's docs_enabled) gets none of the doc fields.
+          ...(docsOn ? { docs: true } : {}),
           // The doc the person had open beside the conversation when they
           // sent this message, with its own "Edit with agent" target, so
           // "this section" means what they were looking at (the caller takes
           // it then: a message that waited its turn keeps its own); and the
           // composer's "Write it as a doc".
-          ...(docContext ? { doc_context: docContext } : {}),
-          ...(output ? { output } : {}),
+          ...(docsOn && docContext ? { doc_context: docContext } : {}),
+          ...(docsOn && output ? { output } : {}),
         }),
         signal: ctrl.signal,
       });
