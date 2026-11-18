@@ -796,5 +796,12 @@
     "fallbackName": "图像",
     "alt": "生成的图像 {name}",
     "notShown": "无法显示 {name}。它可能已被移动或删除。"
+  },
+  "reportContent": {
+    "title": "举报内容",
+    "message": "要将此内容举报为不安全或冒犯性内容吗？其文本或引用信息及您的账号标识信息将发送给 MindsHub 团队审核。",
+    "submit": "提交举报",
+    "sent": "举报已收到。",
+    "failed": "无法提交举报，请重试。"
   }
 }

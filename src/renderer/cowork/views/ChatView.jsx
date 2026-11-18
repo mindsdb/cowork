@@ -103,6 +103,7 @@ import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 import { ChatScroller } from '../components/chat/ChatScroller';
 import { useStickToBottom } from '../components/chat/useStickToBottom';
 import { useDockInset } from '../components/chat/useDockInset';
+import { ReportContentButton } from '../components/chat/ReportContentButton';
 import { TurnActions } from '../components/chat/TurnActions';
 import { NextSteps } from '../components/chat/NextSteps';
 import { nextStepsFor, offersNextSteps, scheduledPromptFor } from '../lib/nextSteps';
@@ -450,7 +451,7 @@ const INCOMPLETE_REASON_KEYS = {
 // No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
 // is the single indicator; once done, a hover-only footer (bottom-right)
 // names the agent that answered and when.
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast, deleting = false }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast, conversationId, messageId, deleting = false }) {
   const { t } = useTranslation('chat');
   return (
     <div
@@ -465,6 +466,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
           {showActions && !deleting && (
             <TurnActions text={copyText || ''} copyLabel={t('chatView.turn.copyResponse')} onDelete={onDelete} isLast={isLast} />
           )}
+          {!deleting && <ReportContentButton conversationId={conversationId} messageId={messageId} />}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
               sends `created_at` and nothing maps it. */}
@@ -3934,6 +3936,8 @@ export default function ChatView({
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
+                  conversationId={task.id}
+                  messageId={m.id}
                   // Anchored on this assistant message's own id; hidden, not
                   // disabled, without one. A partial kept after a transport
                   // failure whose recovery also failed has none until reload.

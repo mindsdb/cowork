@@ -796,5 +796,12 @@
     "fallbackName": "image",
     "alt": "Generated image {name}",
     "notShown": "{name} could not be shown. It may have been moved or deleted."
+  },
+  "reportContent": {
+    "title": "Report content",
+    "message": "Report this content as unsafe or offensive? Its text or reference and your account identifiers will be sent to the MindsHub team for review.",
+    "submit": "Send report",
+    "sent": "Report received.",
+    "failed": "Could not send the report. Please try again."
   }
 }

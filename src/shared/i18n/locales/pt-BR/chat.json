@@ -796,5 +796,12 @@
     "fallbackName": "imagem",
     "alt": "Imagem gerada {name}",
     "notShown": "Não foi possível mostrar {name}. Talvez tenha sido movido ou excluído."
+  },
+  "reportContent": {
+    "title": "Denunciar conteúdo",
+    "message": "Denunciar este conteúdo como perigoso ou ofensivo? O texto ou a referência e os identificadores da sua conta serão enviados à equipe do MindsHub para análise.",
+    "submit": "Enviar denúncia",
+    "sent": "Denúncia recebida.",
+    "failed": "Não foi possível enviar a denúncia. Tente novamente."
   }
 }

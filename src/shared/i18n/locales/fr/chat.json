@@ -796,5 +796,12 @@
     "fallbackName": "image",
     "alt": "Image générée {name}",
     "notShown": "Impossible d'afficher {name}. Le fichier a peut-être été déplacé ou supprimé."
+  },
+  "reportContent": {
+    "title": "Signaler le contenu",
+    "message": "Signaler ce contenu comme dangereux ou offensant ? Son texte ou sa référence et les identifiants de votre compte seront transmis à l’équipe MindsHub pour examen.",
+    "submit": "Envoyer le signalement",
+    "sent": "Signalement reçu.",
+    "failed": "Impossible d’envoyer le signalement. Veuillez réessayer."
   }
 }

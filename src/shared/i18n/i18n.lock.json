@@ -44607,6 +44607,176 @@
       "text": "aaef8169d6fd"
     }
   },
+  "chat:reportContent.failed": {
+    "de": {
+      "from": "755efaaddf29",
+      "text": "5dba801ee082"
+    },
+    "es": {
+      "from": "755efaaddf29",
+      "text": "b8109f6d2031"
+    },
+    "fr": {
+      "from": "755efaaddf29",
+      "text": "521470bbe7b9"
+    },
+    "it": {
+      "from": "755efaaddf29",
+      "text": "5256089c4bc0"
+    },
+    "ja": {
+      "from": "755efaaddf29",
+      "text": "19e8bd16504e"
+    },
+    "ko": {
+      "from": "755efaaddf29",
+      "text": "6023b56a0893"
+    },
+    "pt-BR": {
+      "from": "755efaaddf29",
+      "text": "4a9c0b443018"
+    },
+    "zh-CN": {
+      "from": "755efaaddf29",
+      "text": "65dbb34bbc78"
+    }
+  },
+  "chat:reportContent.message": {
+    "de": {
+      "from": "b0e0e74af029",
+      "text": "3b7dd3b9336d"
+    },
+    "es": {
+      "from": "b0e0e74af029",
+      "text": "f0c2ce9e9a4d"
+    },
+    "fr": {
+      "from": "b0e0e74af029",
+      "text": "16d14e05ab99"
+    },
+    "it": {
+      "from": "b0e0e74af029",
+      "text": "e49f703ab545"
+    },
+    "ja": {
+      "from": "b0e0e74af029",
+      "text": "010f569995ab"
+    },
+    "ko": {
+      "from": "b0e0e74af029",
+      "text": "1eaf92edc254"
+    },
+    "pt-BR": {
+      "from": "b0e0e74af029",
+      "text": "b9384363ff10"
+    },
+    "zh-CN": {
+      "from": "b0e0e74af029",
+      "text": "ada1ad22068a"
+    }
+  },
+  "chat:reportContent.sent": {
+    "de": {
+      "from": "abb3a4ca9190",
+      "text": "2eebfabe288c"
+    },
+    "es": {
+      "from": "abb3a4ca9190",
+      "text": "80a7c900a953"
+    },
+    "fr": {
+      "from": "abb3a4ca9190",
+      "text": "0861c912a637"
+    },
+    "it": {
+      "from": "abb3a4ca9190",
+      "text": "c688e3885b67"
+    },
+    "ja": {
+      "from": "abb3a4ca9190",
+      "text": "c9508baa456c"
+    },
+    "ko": {
+      "from": "abb3a4ca9190",
+      "text": "e681aee68d3b"
+    },
+    "pt-BR": {
+      "from": "abb3a4ca9190",
+      "text": "f9b084848e8c"
+    },
+    "zh-CN": {
+      "from": "abb3a4ca9190",
+      "text": "6a3a9a260424"
+    }
+  },
+  "chat:reportContent.submit": {
+    "de": {
+      "from": "a44d35311325",
+      "text": "c7587c4550cb"
+    },
+    "es": {
+      "from": "a44d35311325",
+      "text": "eaed0e1a48ba"
+    },
+    "fr": {
+      "from": "a44d35311325",
+      "text": "2e7c26a10b08"
+    },
+    "it": {
+      "from": "a44d35311325",
+      "text": "dd91a054ffae"
+    },
+    "ja": {
+      "from": "a44d35311325",
+      "text": "201920dbbf08"
+    },
+    "ko": {
+      "from": "a44d35311325",
+      "text": "9685f1c0f62b"
+    },
+    "pt-BR": {
+      "from": "a44d35311325",
+      "text": "d0fc86a5c3fa"
+    },
+    "zh-CN": {
+      "from": "a44d35311325",
+      "text": "16b0eccf6ef8"
+    }
+  },
+  "chat:reportContent.title": {
+    "de": {
+      "from": "daca1b669bee",
+      "text": "11b94d35d7ca"
+    },
+    "es": {
+      "from": "daca1b669bee",
+      "text": "8df27d1f904d"
+    },
+    "fr": {
+      "from": "daca1b669bee",
+      "text": "66feaf9fb056"
+    },
+    "it": {
+      "from": "daca1b669bee",
+      "text": "38f3d543c86f"
+    },
+    "ja": {
+      "from": "daca1b669bee",
+      "text": "63d800d79f9f"
+    },
+    "ko": {
+      "from": "daca1b669bee",
+      "text": "0046a2bce88e"
+    },
+    "pt-BR": {
+      "from": "daca1b669bee",
+      "text": "32eff2b5ce30"
+    },
+    "zh-CN": {
+      "from": "daca1b669bee",
+      "text": "ab274dab16fa"
+    }
+  },
   "chat:scratchpad.args": {
     "de": {
       "from": "e82e22633f85",

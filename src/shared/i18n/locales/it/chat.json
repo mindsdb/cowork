@@ -796,5 +796,12 @@
     "fallbackName": "immagine",
     "alt": "Immagine generata {name}",
     "notShown": "Impossibile mostrare {name}. Potrebbe essere stato spostato o eliminato."
+  },
+  "reportContent": {
+    "title": "Segnala contenuto",
+    "message": "Segnalare questo contenuto come pericoloso o offensivo? Il testo o il riferimento e gli identificativi del tuo account saranno inviati al team MindsHub per la verifica.",
+    "submit": "Invia segnalazione",
+    "sent": "Segnalazione ricevuta.",
+    "failed": "Impossibile inviare la segnalazione. Riprova."
   }
 }
