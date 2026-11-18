@@ -592,6 +592,22 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     };
   }
 
+  if (type === 'response.cancelled') {
+    // Someone pressed Stop. The live stream ends this way, and the server saves
+    // the same event with the turn, so a reload reads it as stopped too and
+    // ends its time at the Stop (ENG-4345). What it wrote so far is its answer.
+    state = promoteToAnswer(state);
+    return {
+      ...state,
+      steps: closeOpenInspectableSteps(state.steps, eventTs),
+      status: 'done',
+      endedAt: eventTs,
+      currentThought: null,
+      firstTake: CLEARED_TAKE,
+      incompleteReason: 'user_stopped',
+    };
+  }
+
   if (type === 'response.failed') {
     // Key upgrade-intent signal: the turn was blocked on credits. Fire once
     // here, on receipt — not in the render path (ChatView), which re-runs every

@@ -392,8 +392,9 @@ describe('hydrateMessagesFromServerEvents', () => {
   });
 
   /* A stall and a Stop both keep the partial answer. The server saves a stall
-   * with a `stalled` failure event and a Stop with no terminal event, so only
-   * the stall reloads with an error row. */
+   * with a `stalled` failure event and a Stop with `response.cancelled`
+   * (older servers saved no terminal at all), so only the stall reloads with
+   * an error row. */
   it('reloads a saved stall as a stalled error row after the partial answer', () => {
     const out = hydrateMessagesFromServerEvents([
       user('q'),
@@ -426,6 +427,31 @@ describe('hydrateMessagesFromServerEvents', () => {
     ]);
     expect(out.map((m) => m.role)).toEqual(['user', 'assistant']);
     expect(out[1].content).toBe('Partial answer');
+  });
+
+  // ENG-4345: the saved Stop marks the turn stopped and ends its time there.
+  it('reloads a saved Stop as stopped, ended when it was stopped', () => {
+    const out = hydrateMessagesFromServerEvents([
+      user('q'),
+      {
+        role: 'assistant',
+        content: 'Partial answer',
+        events: [
+          { type: 'response.created', response: { id: 'r1' }, at_ms: 1000 },
+          { ...ASK, at_ms: 2000 },
+          { type: 'response.output_text.delta', delta: 'Partial answer', at_ms: 3000 },
+          { type: 'response.cancelled', at_ms: 9000 },
+        ],
+      },
+    ]);
+    expect(out.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(out[1]).toMatchObject({
+      content: 'Partial answer',
+      incompleteReason: 'user_stopped',
+      _turnComplete: true,
+      startedAt: 1000,
+      endedAt: 9000,
+    });
   });
 });
 

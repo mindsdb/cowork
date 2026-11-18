@@ -88,7 +88,7 @@ beforeEach(() => {
   spies.fetchSessionResult.mockReset().mockResolvedValue({ status: 'ok', task: baseTask });
 });
 
-async function finishTurnWith(user, response) {
+async function finishTurnWith(user, response, terminal = { type: 'response.completed', response }) {
   render(<App />);
   await user.click(await screen.findByText('Alpha task'));
   const composer = await waitFor(() => {
@@ -106,7 +106,7 @@ async function finishTurnWith(user, response) {
   });
   await act(async () => {
     stream.opts.onEvent({ type: 'response.output_text.delta', delta: 'Here is how far I got.' });
-    stream.opts.onEvent({ type: 'response.completed', response });
+    stream.opts.onEvent(terminal);
     stream.opts.onDone();
     await Promise.resolve();
   });
@@ -119,6 +119,12 @@ describe('a live answer that stopped early', () => {
       status: 'incomplete', incomplete_details: { reason: 'spend_ceiling' },
     });
     expect(screen.getByTestId('incomplete-reason')).toHaveTextContent('reached its token budget');
+  });
+
+  // ENG-4345: a turn stopped from elsewhere (another tab, a teammate) says so.
+  it('shows a Stop as stopped', async () => {
+    await finishTurnWith(userEvent.setup(), null, { type: 'response.cancelled' });
+    expect(screen.getByTestId('incomplete-reason')).toHaveTextContent('Stopped.');
   });
 
   it('shows nothing for an answer that finished', async () => {

@@ -31,6 +31,7 @@
       "retryExhausted": "已提前停止：任务反复失败。",
       "questionUnanswered": "已提前停止：有问题未得到回答。",
       "contentFilter": "已提前停止：模型的内容过滤器拦截了一条回复。",
+      "userStopped": "已停止。",
       "fallback": "未完成即已停止。"
     },
     "figureFile": {

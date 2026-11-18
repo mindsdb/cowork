@@ -31,6 +31,7 @@
       "retryExhausted": "조기 중단됨: 작업이 계속 실패했습니다.",
       "questionUnanswered": "조기 중단됨: 질문에 대한 답변이 없었습니다.",
       "contentFilter": "조기 중단됨: 모델의 콘텐츠 필터가 응답을 차단했습니다.",
+      "userStopped": "중지되었습니다.",
       "fallback": "완료되기 전에 중단되었습니다."
     },
     "figureFile": {

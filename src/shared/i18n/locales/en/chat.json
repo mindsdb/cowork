@@ -31,6 +31,7 @@
       "retryExhausted": "Stopped early: the task kept failing.",
       "questionUnanswered": "Stopped early: a question went unanswered.",
       "contentFilter": "Stopped early: the model's content filter blocked a reply.",
+      "userStopped": "Stopped.",
       "fallback": "Stopped before it finished."
     },
     "figureFile": {

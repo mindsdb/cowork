@@ -37365,6 +37365,40 @@
       "text": "7b957301d439"
     }
   },
+  "chat:chatView.incomplete.userStopped": {
+    "de": {
+      "from": "f8ec77e7a3a0",
+      "text": "198d45ffa9f2"
+    },
+    "es": {
+      "from": "f8ec77e7a3a0",
+      "text": "5fcff5b306b4"
+    },
+    "fr": {
+      "from": "f8ec77e7a3a0",
+      "text": "f46a6dc52154"
+    },
+    "it": {
+      "from": "f8ec77e7a3a0",
+      "text": "60d13df24a75"
+    },
+    "ja": {
+      "from": "f8ec77e7a3a0",
+      "text": "e00bbb6d81ec"
+    },
+    "ko": {
+      "from": "f8ec77e7a3a0",
+      "text": "4cc8656b4f4d"
+    },
+    "pt-BR": {
+      "from": "f8ec77e7a3a0",
+      "text": "972c30165ad9"
+    },
+    "zh-CN": {
+      "from": "f8ec77e7a3a0",
+      "text": "c3a5947067a2"
+    }
+  },
   "chat:chatView.kinds.agent": {
     "de": {
       "from": "11b39c93777e",

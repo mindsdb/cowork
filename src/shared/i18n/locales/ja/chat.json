@@ -31,6 +31,7 @@
       "retryExhausted": "途中で停止しました：タスクが繰り返し失敗しました。",
       "questionUnanswered": "途中で停止しました：質問への回答がありませんでした。",
       "contentFilter": "途中で停止しました：モデルのコンテンツフィルターにより回答がブロックされました。",
+      "userStopped": "停止しました。",
       "fallback": "完了前に停止しました。"
     },
     "figureFile": {
