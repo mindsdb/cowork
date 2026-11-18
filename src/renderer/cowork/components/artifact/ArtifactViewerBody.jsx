@@ -127,7 +127,6 @@ export function ArtifactViewerBody({
     open: commentsOpen,
     enabled: commentsEnabled,
     inboxOpen,
-    setInboxOpen,
     markersShown,
     setMarkersShown,
     onToggle: toggleComments,
@@ -313,14 +312,12 @@ export function ArtifactViewerBody({
               </>
             ) : showEditor ? sourceEditor : previewContent}
           </div>
-          {/* The compact toolbar is for placing and revealing comments. The
-              inbox replaces it while open so controls never overlap. */}
-          {commentsOpen && commentsEnabled && !inboxOpen && (
+          {/* The compact toolbar is for placing and revealing comments. It
+              shows with the inbox, and closing either turns Comments off. */}
+          {commentsOpen && commentsEnabled && (
             <CommentsToolbar
               mode={layer.mode}
               onToggleMode={layer.toggleMode}
-              inboxOpen={inboxOpen}
-              onToggleInbox={() => setInboxOpen((v) => !v)}
               markersShown={markersShown}
               onToggleMarkers={() => setMarkersShown((v) => !v)}
               onClose={toggleComments}
@@ -358,7 +355,7 @@ export function ArtifactViewerBody({
             onHoverThread={layer.hlOn}
             onLeaveThread={layer.hlOff}
             onFocusThread={layer.focus}
-            onClose={() => setInboxOpen(false)}
+            onClose={toggleComments}
           />
         )}
         {stats?.open && (

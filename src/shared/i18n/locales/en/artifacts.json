@@ -97,8 +97,8 @@
       "ariaLabel": "Comments toolbar",
       "comment": "Comment — click an element (⌥ selects the container)",
       "inbox": "Comments inbox",
-      "hideComment": "Hide comment",
-      "showComment": "Show comment",
+      "hideComment": "Hide comments",
+      "showComment": "Show comments",
       "close": "Close comments"
     },
     "composer": {

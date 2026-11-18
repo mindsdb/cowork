@@ -97,8 +97,8 @@
       "ariaLabel": "Kommentar-Symbolleiste",
       "comment": "Kommentieren – auf ein Element klicken (⌥ wählt den Container)",
       "inbox": "Kommentar-Posteingang",
-      "hideComment": "Kommentar ausblenden",
-      "showComment": "Kommentar einblenden",
+      "hideComment": "Kommentare ausblenden",
+      "showComment": "Kommentare einblenden",
       "close": "Kommentare schließen"
     },
     "composer": {

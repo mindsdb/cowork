@@ -8,14 +8,12 @@ const MODE_LABEL = 'Comment — click an element (⌥ selects the container)';
 function renderToolbar(props = {}) {
   const handlers = {
     onToggleMode: vi.fn(),
-    onToggleInbox: vi.fn(),
     onToggleMarkers: vi.fn(),
     onClose: vi.fn(),
   };
   render(
     <CommentsToolbar
       mode={false}
-      inboxOpen={false}
       markersShown
       {...handlers}
       {...props}
@@ -27,8 +25,7 @@ function renderToolbar(props = {}) {
 describe('CommentsToolbar', () => {
   it.each([
     [MODE_LABEL, 'onToggleMode'],
-    ['Comments inbox', 'onToggleInbox'],
-    ['Hide comment', 'onToggleMarkers'],
+    ['Hide comments', 'onToggleMarkers'],
     ['Close comments', 'onClose'],
   ])('"%s" calls only %s', async (name, handler) => {
     const handlers = renderToolbar();
@@ -40,17 +37,24 @@ describe('CommentsToolbar', () => {
     }
   });
 
-  it('reflects comment mode and inbox state through aria-pressed', () => {
-    renderToolbar({ mode: true, inboxOpen: false });
+  it('reflects comment mode through aria-pressed', () => {
+    renderToolbar({ mode: true });
 
     expect(screen.getByRole('button', { name: MODE_LABEL })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Comments inbox' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  // The Comments toggle opens the inbox with the pill, so the pill offers no
+  // inbox button of its own.
+  it('has no inbox button', () => {
+    renderToolbar();
+
+    expect(screen.queryByRole('button', { name: 'Comments inbox' })).not.toBeInTheDocument();
   });
 
   it('offers to show markers once they are hidden', () => {
     renderToolbar({ markersShown: false });
 
-    expect(screen.getByRole('button', { name: 'Show comment' })).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Hide comment' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show comments' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Hide comments' })).not.toBeInTheDocument();
   });
 });

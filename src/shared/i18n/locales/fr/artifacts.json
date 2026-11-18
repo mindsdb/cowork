@@ -97,8 +97,8 @@
       "ariaLabel": "Barre d’outils des commentaires",
       "comment": "Commenter — cliquez sur un élément (⌥ sélectionne le conteneur)",
       "inbox": "Boîte de réception des commentaires",
-      "hideComment": "Masquer le commentaire",
-      "showComment": "Afficher le commentaire",
+      "hideComment": "Masquer les commentaires",
+      "showComment": "Afficher les commentaires",
       "close": "Fermer les commentaires"
     },
     "composer": {

@@ -8,9 +8,10 @@ const comparison = vi.hoisted(() => ({ props: null }));
 vi.mock('./workspace/ArtifactComparison', () => ({
   ArtifactComparison: (props) => { comparison.props = props; return null; },
 }));
+const commentsChrome = vi.hoisted(() => ({ panel: null, toolbar: null }));
 vi.mock('./comments', () => ({
-  CommentsPanel: () => null,
-  CommentsToolbar: () => null,
+  CommentsPanel: (props) => { commentsChrome.panel = props; return <div data-testid="comments-inbox" />; },
+  CommentsToolbar: (props) => { commentsChrome.toolbar = props; return <div data-testid="comments-toolbar" />; },
 }));
 const statsPanel = vi.hoisted(() => ({ props: null }));
 vi.mock('./stats/StatsPanel', () => ({
@@ -294,5 +295,31 @@ describe('ArtifactViewerBody stats panel', () => {
     rerender(renderBody('review', {}, {}, { ...stats, open: true }, { textSelection: selection, open: true }));
     expect(screen.getByTestId('stats-panel')).toBeInTheDocument();
     expect(screen.queryByTestId('text-selection-comment')).toBeNull();
+  });
+});
+
+// The Comments toggle opens the toolbar pill and the inbox together, and
+// closing either one turns Comments off, the toggle included.
+describe('ArtifactViewerBody comments chrome', () => {
+  const commentsOn = {
+    open: true, enabled: true, inboxOpen: true, userDir: 'u', reportId: 'r',
+  };
+
+  it('shows the toolbar with the inbox', () => {
+    render(renderBody('preview', {}, {}, undefined, commentsOn));
+
+    expect(screen.getByTestId('comments-inbox')).toBeInTheDocument();
+    expect(screen.getByTestId('comments-toolbar')).toBeInTheDocument();
+    expect(commentsChrome.toolbar).not.toHaveProperty('onToggleInbox');
+  });
+
+  it('turns Comments off from the inbox close and from the toolbar close', () => {
+    const onToggle = vi.fn();
+    render(renderBody('preview', {}, {}, undefined, { ...commentsOn, onToggle }));
+
+    act(() => commentsChrome.panel.onClose());
+    act(() => commentsChrome.toolbar.onClose());
+
+    expect(onToggle).toHaveBeenCalledTimes(2);
   });
 });

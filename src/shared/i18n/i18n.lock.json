@@ -9895,35 +9895,35 @@
   },
   "artifacts:comments.toolbar.hideComment": {
     "de": {
-      "from": "cf17a6f7f76f",
-      "text": "9f851222b49c"
+      "from": "7ff1ff02ca92",
+      "text": "dba96d402bc0"
     },
     "es": {
-      "from": "cf17a6f7f76f",
+      "from": "7ff1ff02ca92",
       "text": "d42d3c0a3277"
     },
     "fr": {
-      "from": "cf17a6f7f76f",
-      "text": "6e62918185ab"
+      "from": "7ff1ff02ca92",
+      "text": "30fdb2487c83"
     },
     "it": {
-      "from": "cf17a6f7f76f",
-      "text": "9c291ad14cbe"
+      "from": "7ff1ff02ca92",
+      "text": "b888b7f76632"
     },
     "ja": {
-      "from": "cf17a6f7f76f",
+      "from": "7ff1ff02ca92",
       "text": "2a15d9446b57"
     },
     "ko": {
-      "from": "cf17a6f7f76f",
+      "from": "7ff1ff02ca92",
       "text": "7a12bd63db1f"
     },
     "pt-BR": {
-      "from": "cf17a6f7f76f",
+      "from": "7ff1ff02ca92",
       "text": "6c3bce30488e"
     },
     "zh-CN": {
-      "from": "cf17a6f7f76f",
+      "from": "7ff1ff02ca92",
       "text": "49320b8fc142"
     }
   },
@@ -9963,35 +9963,35 @@
   },
   "artifacts:comments.toolbar.showComment": {
     "de": {
-      "from": "a27a70d3d933",
-      "text": "98427dc84283"
+      "from": "c8488f35c0e1",
+      "text": "8eb2777e70db"
     },
     "es": {
-      "from": "a27a70d3d933",
+      "from": "c8488f35c0e1",
       "text": "9c5cb64304a5"
     },
     "fr": {
-      "from": "a27a70d3d933",
-      "text": "15b0df955f3a"
+      "from": "c8488f35c0e1",
+      "text": "f52ccdf663ba"
     },
     "it": {
-      "from": "a27a70d3d933",
-      "text": "5e009e28bc21"
+      "from": "c8488f35c0e1",
+      "text": "555511876860"
     },
     "ja": {
-      "from": "a27a70d3d933",
+      "from": "c8488f35c0e1",
       "text": "d9ab533d4530"
     },
     "ko": {
-      "from": "a27a70d3d933",
+      "from": "c8488f35c0e1",
       "text": "95d3105cb283"
     },
     "pt-BR": {
-      "from": "a27a70d3d933",
+      "from": "c8488f35c0e1",
       "text": "9e88363d9d16"
     },
     "zh-CN": {
-      "from": "a27a70d3d933",
+      "from": "c8488f35c0e1",
       "text": "a1ad9b6c52bb"
     }
   },

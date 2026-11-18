@@ -2,17 +2,17 @@
 // (Figma 604-1423): a 32px light glass pill floating 34px off the bottom,
 // centered over the artifact.
 //
-//   [ 💬 comment-mode ] [ 🗄 inbox ] │ Hide/Show comment │ [ ✕ ]
+//   [ 💬 comment-mode ] │ Hide/Show comments │ [ ✕ ]
 //
-// The viewer top bar only ACTIVATES this chrome; everything else — entering
-// comment-placement mode, opening the inbox panel, hiding markers, leaving —
-// happens here. Built on Base UI's Toolbar (arrow-key navigation, toolbar
+// The Comments toggle opens this pill and the inbox together, and ✕ closes
+// both, as the toggle does; so the pill has no inbox button of its own.
+// Entering comment-placement mode and hiding markers happen here. Built on Base UI's Toolbar (arrow-key navigation, toolbar
 // semantics) + Tooltip; the skin is the reference's fixed light palette so
 // the pill reads identically over any artifact, in either app theme.
 
 import { Toolbar } from '@base-ui/react/toolbar';
 import { Tooltip } from '../../ui';
-import { CommentIcon, InboxIcon, XIcon } from './icons';
+import { CommentIcon, XIcon } from './icons';
 import { useTranslation } from '../../../../lib/i18n';
 
 // Reference shadows (Figma "NewShadow"): outer stack + glass insets.
@@ -68,8 +68,6 @@ const Divider = () => (
 export function CommentsToolbar({
   mode,            // comment-placement mode active in the iframe (layer echo)
   onToggleMode,
-  inboxOpen,
-  onToggleInbox,
   markersShown,
   onToggleMarkers,
   onClose,         // leaves the comments chrome (reopen from the top bar)
@@ -97,9 +95,6 @@ export function CommentsToolbar({
         onClick={onToggleMode}
       >
         <CommentIcon />
-      </ToolButton>
-      <ToolButton label={t('comments.toolbar.inbox')} on={inboxOpen} onClick={onToggleInbox}>
-        <InboxIcon />
       </ToolButton>
       <Divider />
       <Toolbar.Button
