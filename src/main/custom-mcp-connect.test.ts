@@ -34,6 +34,7 @@ vi.mock('keytar', () => ({
 
 import { connectCustomMcp, parseConnectRequest, type ConnectDeps } from './custom-mcp-connect';
 import { listConnectionIds, readPart } from './custom-mcp-keychain';
+import { handOverCustomConnection } from './custom-mcp-held';
 
 const SERVER_URL = 'https://mcp.example.com/mcp';
 const AUTH = 'https://auth.example.com';
@@ -44,6 +45,8 @@ const server = vi.hoisted(() => ({
   held: new Map<string, Record<string, unknown>>(),
   tools: [] as Array<{ name: string; description: string; read_only: boolean; allowed: boolean }> | 'unreachable',
   allowedToolsStatus: 200,
+  /** Runs when the server lists the new connection's tools. */
+  onTools: null as null | (() => Promise<void>),
   calls: [] as string[],
   canonical: (url: string) => url,
 }));
@@ -87,6 +90,7 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
     return json(200, { allowed_tools: body.tools });
   }
   if (method === 'GET' && action === 'tools') {
+    await server.onTools?.();
     if (server.tools === 'unreachable') return json(502, { detail: { error: 'unreachable' } });
     return json(200, { tools: server.tools });
   }
@@ -165,6 +169,7 @@ beforeEach(() => {
   server.held.clear();
   server.tools = READ_TOOLS;
   server.allowedToolsStatus = 200;
+  server.onTools = null;
   server.calls = [];
   server.canonical = (url) => url;
   ids = [ID, `cm-${'b'.repeat(32)}`];
@@ -305,6 +310,7 @@ describe('connectCustomMcp', () => {
   it.each([
     ['the account switches', () => { store.root = '/home/user/.cowork/orgs/acme'; }],
     ['the server restarts', () => { trust.generation = 'run-2'; }],
+    ['the server stops reporting custom MCP', () => { trust.customMcp = false; }],
   ])('creates nothing when %s during the login', async (_label, change) => {
     const { deps: d } = deps(LOGIN_SERVER, {
       authorize: async () => {
@@ -327,6 +333,38 @@ describe('connectCustomMcp', () => {
 
     expect(result).toMatchObject({ ok: true, toolsOn: 1 });
     expect(JSON.parse((await readPart(store.root!, ID, 'tools'))!)).toEqual(['search']);
+  });
+
+  it('keeps a start-up hand-over that read the keychain earlier from undoing the tool switch', async () => {
+    let releaseRefresh = () => {};
+    const gate = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    const slowRefresh: GuardedFetch = async () => {
+      await gate;
+      return new Response(JSON.stringify({ access_token: 'AT-9', token_type: 'Bearer' }), { status: 200 });
+    };
+    let handOver: Promise<unknown> = Promise.resolve();
+    server.onTools = async () => {
+      // The hand-over reads the keychain's empty list, then waits on its refresh.
+      handOver = handOverCustomConnection(store.root!, ID, () => true, slowRefresh);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, deps(LOGIN_SERVER).deps);
+    releaseRefresh();
+    await handOver;
+
+    expect(result).toMatchObject({ ok: true, toolsOn: 1 });
+    expect(server.held.get(ID)?.allowed_tools).toEqual(['search']);
+    expect(server.held.get(ID)?.access_token).toBe('AT-9');
+  });
+
+  it('counts a tool name in characters, as the server does', async () => {
+    const name = '😀'.repeat(100);
+    server.tools = [{ name, description: '', read_only: true, allowed: false }];
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+
+    expect(result).toMatchObject({ ok: true, toolsOn: 1 });
   });
 
   it('puts the keychain back to no tools when the server refuses the switch', async () => {

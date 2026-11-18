@@ -18,6 +18,7 @@ const SERVICE_NAME = buildKind() === 'prod' ? 'cowork-custom-mcp' : `cowork-cust
 // 1800 bytes are 2400 base64 characters, all ASCII, so 2400 bytes in any encoding.
 const PIECE_BYTES = 1800;
 const COUNT_PATTERN = /^([0-9a-f]{16}):([1-9][0-9]{0,3})$/;
+const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
 
 export type CustomMcpPart = 'settings' | 'tools' | 'refresh' | 'secret';
 
@@ -88,7 +89,7 @@ export async function readPart(storeRoot: string, id: string, part: CustomMcpPar
   const pieces: Buffer[] = [];
   for (let index = 0; index < Number(count[2]); index += 1) {
     const piece = await call('be read', () => kt.getPassword(SERVICE_NAME, pieceAccount(base, count[1], index)));
-    if (piece === null) return null;
+    if (piece === null || !BASE64_PATTERN.test(piece)) return null;
     pieces.push(Buffer.from(piece, 'base64'));
   }
   return Buffer.concat(pieces).toString('utf8');

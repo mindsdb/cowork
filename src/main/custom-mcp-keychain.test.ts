@@ -84,6 +84,13 @@ describe('custom MCP keychain entries', () => {
     expect(await readPart(ROOT, ID, 'tools')).toBeNull();
   });
 
+  it('reads a piece that is not base64 as unusable', async () => {
+    await writePart(ROOT, ID, 'settings', '{"a":1}');
+    service(SERVICE).set(accounts().find((account) => account.includes('|settings#'))!, 'not base64!');
+
+    expect(await readPart(ROOT, ID, 'settings')).toBeNull();
+  });
+
   it('reads pieces of another generation as unusable', async () => {
     await writePart(ROOT, ID, 'tools', 'first');
     const count = accounts().find((account) => account.endsWith('|tools'))!;
