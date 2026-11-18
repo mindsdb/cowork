@@ -1028,7 +1028,7 @@
       "noModels": "Aucun modèle de code n’est disponible.",
       "chooseModel": "Choisissez un modèle pour continuer.",
       "chooseFolder": "Choisissez un dossier pour continuer.",
-      "budgetReached": "Le budget de votre organisation est épuisé. Choisissez un modèle disponible ou demandez à un propriétaire ou à un administrateur de l’augmenter."
+      "budgetReached": "Un budget couvrant ce modèle est épuisé. Choisissez un modèle disponible ou demandez à un administrateur de l’augmenter."
     }
   },
   "executionTarget": {
@@ -1472,8 +1472,8 @@
       "body": "{reason}, il occupe donc toujours de l’espace disque."
     },
     "budgetExceeded": {
-      "title": "Le budget de votre organisation est épuisé",
-      "body": "Un propriétaire ou un administrateur peut l’augmenter dans Budgets, ou vous pouvez choisir un modèle disponible pour continuer dans cette tâche."
+      "title": "{scope, select, org {Le budget de votre organisation est épuisé} workspace {Le budget de cet espace de travail est épuisé} api_key {Le budget de cette clé API est épuisé} other {Un budget est épuisé}}",
+      "body": "{scope, select, org {Un propriétaire ou un administrateur peut l’augmenter dans Budgets, ou vous pouvez choisir un modèle disponible pour continuer dans cette tâche.} other {Un administrateur peut l’augmenter dans Budgets, ou vous pouvez choisir un modèle disponible pour continuer dans cette tâche.}}"
     },
     "writesHeld": {
       "body": "Ce dossier n’a pas d’historique Git pour relire ou annuler les modifications ; l’agent demande donc avant chaque modification."

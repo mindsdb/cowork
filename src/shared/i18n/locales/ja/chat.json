@@ -107,7 +107,7 @@
       "tryAgainIn": "{seconds}秒後に再試行",
       "tryAgain": "再試行",
       "adminSpendingLimitBody": "管理者が設定した支出上限に達しました。管理者にお問い合わせください。",
-      "budgetUsedUpTitle": "組織の予算を使い切りました",
+      "budgetUsedUpTitle": "{scope, select, org {組織の予算を使い切りました} workspace {このワークスペースの予算を使い切りました} api_key {このAPIキーの予算を使い切りました} other {予算を使い切りました}}",
       "viewBudgets": "予算を表示",
       "balanceRanOutMobile": "タスクの完了前に残高がなくなりました。",
       "autoTopUpFailedBodyMobile": "カードに請求できませんでした。",

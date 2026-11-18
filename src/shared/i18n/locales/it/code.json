@@ -1028,7 +1028,7 @@
       "noModels": "Nessun modello di codice disponibile.",
       "chooseModel": "Scegli un modello per continuare.",
       "chooseFolder": "Scegli una cartella per continuare.",
-      "budgetReached": "Il budget della tua organizzazione è esaurito. Scegli un modello disponibile o chiedi a un proprietario o a un amministratore di aumentarlo."
+      "budgetReached": "Un budget che copre questo modello è esaurito. Scegli un modello disponibile o chiedi a un amministratore di aumentarlo."
     }
   },
   "executionTarget": {
@@ -1472,8 +1472,8 @@
       "body": "{reason}, quindi occupa ancora spazio su disco."
     },
     "budgetExceeded": {
-      "title": "Il budget della tua organizzazione è esaurito",
-      "body": "Un proprietario o un amministratore può aumentarlo in «Budget», oppure scegli un modello disponibile per continuare in questa attività."
+      "title": "{scope, select, org {Il budget della tua organizzazione è esaurito} workspace {Il budget di quest’area di lavoro è esaurito} api_key {Il budget di questa chiave API è esaurito} other {Un budget è esaurito}}",
+      "body": "{scope, select, org {Un proprietario o un amministratore può aumentarlo in «Budget», oppure scegli un modello disponibile per continuare in questa attività.} other {Un amministratore può aumentarlo in «Budget», oppure scegli un modello disponibile per continuare in questa attività.}}"
     },
     "writesHeld": {
       "body": "Questa cartella non ha una cronologia Git per rivedere o annullare le modifiche, quindi l’agente chiede prima di ogni modifica."

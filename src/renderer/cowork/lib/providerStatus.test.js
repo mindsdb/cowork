@@ -253,7 +253,7 @@ describe('friendlyProviderError', () => {
   describe('with a probe refusal reason', () => {
     it.each([
       ['free_air_daily_spend_fuse_exceeded', 'Free MindsHub Air is paused right now.'],
-      ['budget_exceeded', "Your organization's budget is used up."],
+      ['budget_exceeded', "A budget is used up."],
       ['included_allowance_exhausted', 'No free MindsHub Air tokens available, and the balance is empty.'],
       ['rate_limited', 'Too many requests too quickly. Wait a moment, then test again.'],
       ['policy_unavailable', 'Billing is temporarily unavailable. Try again in a moment.'],

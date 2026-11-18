@@ -307,6 +307,12 @@ describe('failedEventMeta', () => {
     });
   });
 
+  it("extracts a budget stop's scope, and null when an older server sends none", () => {
+    const meta = failedEventMeta([{ type: 'response.failed', code: 'budget_exceeded', error: 'x', budget_scope: 'api_key' }]);
+    expect(meta.budgetScope).toBe('api_key');
+    expect(failedEventMeta([{ type: 'response.failed', code: 'budget_exceeded', error: 'x' }]).budgetScope).toBeNull();
+  });
+
   it('extracts the request id so a generic failure stays traceable', () => {
     const meta = failedEventMeta([
       { type: 'response.failed', code: 'anton_error', error: 'An unexpected error occurred.', request_id: 'corr-abc' },

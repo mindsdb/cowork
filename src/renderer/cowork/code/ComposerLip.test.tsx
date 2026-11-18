@@ -132,17 +132,31 @@ describe('ComposerLip', () => {
     expect(screen.getByRole('button', { name: 'More options' })).toBeInTheDocument();
   });
 
-  it('names a spent org budget, opens Budgets, offers a model change for MindsHub Air, and never credits', async () => {
+  it('names a spent budget, opens Budgets, offers a model change for MindsHub Air, and never credits', async () => {
     const user = userEvent.setup();
     const { onChooseModel, onViewBudgets } = renderFailure('budget_exceeded', 'upstream 402');
-    expect(screen.getByText("Your organization's budget is used up.")).toBeInTheDocument();
-    expect(screen.getByText('An owner or admin can raise it in Budgets, or choose an available model to continue in this task.')).toBeInTheDocument();
+    expect(screen.getByText("A budget is used up.")).toBeInTheDocument();
+    expect(screen.getByText('An administrator can raise it in Budgets, or choose an available model to continue in this task.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'View budgets' }));
     expect(onViewBudgets).toHaveBeenCalledOnce();
     await user.click(screen.getByRole('button', { name: 'More options' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Choose another model' }));
     expect(onChooseModel).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['org', "Your organization's budget is used up.", 'An owner or admin can raise it'],
+    ['workspace', "This workspace's budget is used up.", 'An administrator can raise it'],
+    ['api_key', "This API key's budget is used up.", 'An administrator can raise it'],
+    ['team', 'A budget is used up.', 'An administrator can raise it'],
+  ])('names whose budget stopped the turn when the failure says %s', (scope, title, raiser) => {
+    const event = failure('budget_exceeded', 'upstream 402');
+    event.data.budget_scope = scope;
+    const notice = failureNotice(accountFailure(session(), undefined, event), 'GPT 5.6 Sol');
+    render(<ComposerLip notice={notice!} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onViewBudgets={vi.fn()} onReopen={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.getByText(`${raiser} in Budgets, or choose an available model to continue in this task.`)).toBeInTheDocument();
   });
 
   it('shows nothing for a limit once new work has started or while the task reopens', () => {

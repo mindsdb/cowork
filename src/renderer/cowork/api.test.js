@@ -810,6 +810,19 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     const err = task.messages.find((m) => m.role === 'error');
     expect(err).toMatchObject({ code: 'free_serving_paused', resetAt: '2099-01-02T00:00:00Z', requestId: 'corr-hosted' });
   });
+
+  it("carries a budget stop's scope onto its error row", async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '', events: [
+        { type: 'response.created' },
+        { type: 'response.failed', code: 'budget_exceeded', error: 'Budget used up.', budget_scope: 'workspace' },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    expect(task.messages.find((m) => m.role === 'error')).toMatchObject({ code: 'budget_exceeded', budgetScope: 'workspace' });
+  });
 });
 
 /* A turn's figure sources come back with its saved events, so a reloaded

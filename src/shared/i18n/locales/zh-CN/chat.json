@@ -107,7 +107,7 @@
       "tryAgainIn": "{seconds} 秒后重试",
       "tryAgain": "重试",
       "adminSpendingLimitBody": "已达到管理员设置的支出上限。请联系管理员。",
-      "budgetUsedUpTitle": "你所在组织的预算已用完",
+      "budgetUsedUpTitle": "{scope, select, org {你所在组织的预算已用完} workspace {此工作区的预算已用完} api_key {此 API 密钥的预算已用完} other {预算已用完}}",
       "viewBudgets": "查看预算",
       "balanceRanOutMobile": "任务完成前你的余额已用完。",
       "autoTopUpFailedBodyMobile": "无法从你的银行卡扣款。",

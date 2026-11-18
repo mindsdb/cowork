@@ -756,7 +756,7 @@ describe('freeServingPausedCopy', () => {
 });
 
 describe('budgetExceededCopy', () => {
-  const RAISE = "Paid models can't run until an owner or admin raises it in Budgets.";
+  const RAISE = "Paid models can't run until an administrator raises it in Budgets.";
 
   it('names Air only while its free allowance has room', () => {
     expect(budgetExceededCopy({ usage: usage() })).toBe(`${RAISE} MindsHub Air still works while its free allowance lasts.`);
@@ -769,6 +769,16 @@ describe('budgetExceededCopy', () => {
     ['no hub usage at all', null],
   ])('says only who raises it with %s', (_label, u) => {
     expect(budgetExceededCopy({ usage: u })).toBe(RAISE);
+  });
+
+  it.each([
+    ['org', "Paid models can't run until an owner or admin raises it in Budgets."],
+    ['workspace', RAISE],
+    ['api_key', RAISE],
+    ['team', RAISE],
+    [null, RAISE],
+  ])('names who can raise a %s budget', (scope, expected) => {
+    expect(budgetExceededCopy({ usage: null, budgetScope: scope })).toBe(expected);
   });
 
   it('never asks for credits or funds', () => {

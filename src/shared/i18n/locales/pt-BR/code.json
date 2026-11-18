@@ -1028,7 +1028,7 @@
       "noModels": "Nenhum modelo de código está disponível.",
       "chooseModel": "Escolha um modelo para continuar.",
       "chooseFolder": "Escolha uma pasta para continuar.",
-      "budgetReached": "O orçamento da sua organização acabou. Escolha um modelo disponível ou peça a um proprietário ou administrador para aumentá-lo."
+      "budgetReached": "Um orçamento que cobre este modelo acabou. Escolha um modelo disponível ou peça a um administrador para aumentá-lo."
     }
   },
   "executionTarget": {
@@ -1472,8 +1472,8 @@
       "body": "{reason}, então ainda usa disco."
     },
     "budgetExceeded": {
-      "title": "O orçamento da sua organização acabou",
-      "body": "Um proprietário ou administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa."
+      "title": "{scope, select, org {O orçamento da sua organização acabou} workspace {O orçamento deste espaço de trabalho acabou} api_key {O orçamento desta chave de API acabou} other {Um orçamento acabou}}",
+      "body": "{scope, select, org {Um proprietário ou administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa.} other {Um administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa.}}"
     },
     "writesHeld": {
       "body": "Esta pasta não tem histórico do Git para revisar ou desfazer alterações, então o agente pergunta antes de cada edição."

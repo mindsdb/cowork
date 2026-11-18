@@ -107,7 +107,7 @@
       "tryAgainIn": "Tentar novamente em {seconds} s",
       "tryAgain": "Tentar novamente",
       "adminSpendingLimitBody": "O limite de gastos definido pelo administrador foi atingido. Fale com o seu administrador.",
-      "budgetUsedUpTitle": "O orçamento da sua organização acabou",
+      "budgetUsedUpTitle": "{scope, select, org {O orçamento da sua organização acabou} workspace {O orçamento deste espaço de trabalho acabou} api_key {O orçamento desta chave de API acabou} other {Um orçamento acabou}}",
       "viewBudgets": "Ver orçamentos",
       "balanceRanOutMobile": "Seu saldo acabou antes de esta tarefa terminar.",
       "autoTopUpFailedBodyMobile": "Não conseguimos cobrar seu cartão.",

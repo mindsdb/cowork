@@ -12,6 +12,7 @@
 import { MINDSHUB_AIR_MODEL_ID, MODEL_ROUTER_ID } from './modelCatalog';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
 import { billingCopyKey } from './billingLinks';
+import { budgetScopeOf } from './budgetScope';
 import i18n, { currentLocale } from '../../lib/i18n';
 
 /* User-facing copy, translated when it is read (never at import). */
@@ -261,14 +262,16 @@ export function freeServingPausedCopy(resetAt) {
   return until ? trBilling('freeServingPaused.until', { until }) : trBilling('freeServingPaused.dailyReset');
 }
 
-/** What a stop on the org's spent budget says (`budget_exceeded`), after a
+/** What a stop on a spent budget says (`budget_exceeded`), after a
  *  lead naming the budget, for the stopped-task card and the Settings notice.
  *  Credits do not lift it, so it never asks for funds; Air is named only while
- *  the hub read shows its free allowance has room. */
-export function budgetExceededCopy({ usage = null } = {}) {
+ *  the hub read shows its free allowance has room. `budgetScope` picks who can
+ *  raise it; without one the copy names no role. */
+export function budgetExceededCopy({ usage = null, budgetScope = null } = {}) {
+  const scope = budgetScopeOf(budgetScope);
   return freeAllowanceState(usage).status === 'has_room'
-    ? tr('budgetExceeded.airHasRoom')
-    : tr('budgetExceeded.raise');
+    ? tr('budgetExceeded.airHasRoom', { scope })
+    : tr('budgetExceeded.raise', { scope });
 }
 
 /** Whether a bar descriptor is something to WARN about, as opposed to the

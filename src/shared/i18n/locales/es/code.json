@@ -1028,7 +1028,7 @@
       "noModels": "No hay modelos de código disponibles.",
       "chooseModel": "Elige un modelo para continuar.",
       "chooseFolder": "Elige una carpeta para continuar.",
-      "budgetReached": "Se agotó el presupuesto de tu organización. Elige un modelo disponible o pide a un propietario o administrador que lo aumente."
+      "budgetReached": "Se agotó un presupuesto que cubre este modelo. Elige un modelo disponible o pide a un administrador que lo aumente."
     }
   },
   "executionTarget": {
@@ -1472,8 +1472,8 @@
       "body": "{reason}, así que todavía usa disco."
     },
     "budgetExceeded": {
-      "title": "Se agotó el presupuesto de tu organización",
-      "body": "Un propietario o administrador puede aumentarlo en Presupuestos, o puedes elegir un modelo disponible para seguir con esta tarea."
+      "title": "{scope, select, org {Se agotó el presupuesto de tu organización} workspace {Se agotó el presupuesto de este espacio de trabajo} api_key {Se agotó el presupuesto de esta clave de API} other {Se agotó un presupuesto}}",
+      "body": "{scope, select, org {Un propietario o administrador puede aumentarlo en Presupuestos, o puedes elegir un modelo disponible para seguir con esta tarea.} other {Un administrador puede aumentarlo en Presupuestos, o puedes elegir un modelo disponible para seguir con esta tarea.}}"
     },
     "writesHeld": {
       "body": "Esta carpeta no tiene historial de Git para revisar o deshacer cambios, así que el agente pregunta antes de cada edición."

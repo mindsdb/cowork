@@ -66,8 +66,8 @@
         "balanceLowToo": "你的余额也不多了（{usd}）。"
       },
       "budgetExceeded": {
-        "raise": "在所有者或管理员于“预算”中提高上限前，付费模型无法运行。",
-        "airHasRoom": "在所有者或管理员于“预算”中提高上限前，付费模型无法运行。免费额度未用完时，MindsHub Air 仍可使用。"
+        "raise": "{scope, select, org {在所有者或管理员于“预算”中提高上限前，付费模型无法运行。} other {在管理员于“预算”中提高上限前，付费模型无法运行。}}",
+        "airHasRoom": "{scope, select, org {在所有者或管理员于“预算”中提高上限前，付费模型无法运行。免费额度未用完时，MindsHub Air 仍可使用。} other {在管理员于“预算”中提高上限前，付费模型无法运行。免费额度未用完时，MindsHub Air 仍可使用。}}"
       }
     },
     "scheduleWhen": {
@@ -106,7 +106,7 @@
         "walletEmpty": "没有可用积分。请充值以使用 MindsHub。",
         "allowanceExhausted": "没有可用的免费 MindsHub Air 令牌，余额也已用完。",
         "freeAirPaused": "免费 MindsHub Air 目前已暂停。",
-        "budgetExceeded": "你所在组织的预算已用完。",
+        "budgetExceeded": "预算已用完。",
         "walletEmptyMobile": "没有可用积分。"
       },
       "missingApiKey": "请在右侧添加 API 密钥。",
@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "两个模型都在完成前用完了积分，因此无法评判这一轮。",
         "one": "{name} 在完成前用完了积分，因此无法评判这一轮。",
-        "bothBudget": "两个模型都在完成前达到了组织的预算上限，因此无法评判这一轮。",
-        "oneBudget": "{name} 在完成前达到了组织的预算上限，因此无法评判这一轮。"
+        "bothBudget": "{scope, select, org {两个模型都在完成前达到了组织的预算上限} workspace {两个模型都在完成前达到了此工作区的预算上限} api_key {两个模型都在完成前达到了此 API 密钥的预算上限} other {两个模型都在完成前达到了预算上限}}，因此无法评判这一轮。",
+        "oneBudget": "{scope, select, org {{name} 在完成前达到了组织的预算上限} workspace {{name} 在完成前达到了此工作区的预算上限} api_key {{name} 在完成前达到了此 API 密钥的预算上限} other {{name} 在完成前达到了预算上限}}，因此无法评判这一轮。"
       },
       "verdict": {
         "tie": "不相上下",
@@ -475,7 +475,7 @@
       "needsCredits": "需要积分",
       "budgetReached": {
         "tag": "已达预算上限",
-        "title": "你所在组织的预算已用完。所有者或管理员可以在“预算”中提高上限。"
+        "title": "适用于此模型的预算已用完。管理员可以在“预算”中提高上限。"
       }
     },
     "settingsTransform": {

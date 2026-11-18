@@ -107,7 +107,7 @@
       "tryAgainIn": "Riprova tra {seconds} s",
       "tryAgain": "Riprova",
       "adminSpendingLimitBody": "È stato raggiunto il limite di spesa impostato dall’amministratore. Contatta l’amministratore.",
-      "budgetUsedUpTitle": "Il budget della tua organizzazione è esaurito",
+      "budgetUsedUpTitle": "{scope, select, org {Il budget della tua organizzazione è esaurito} workspace {Il budget di quest’area di lavoro è esaurito} api_key {Il budget di questa chiave API è esaurito} other {Un budget è esaurito}}",
       "viewBudgets": "Visualizza budget",
       "balanceRanOutMobile": "Il saldo si è esaurito prima del completamento dell’attività.",
       "autoTopUpFailedBodyMobile": "Non è stato possibile addebitare la tua carta.",

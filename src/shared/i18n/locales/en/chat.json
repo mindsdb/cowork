@@ -107,7 +107,7 @@
       "tryAgainIn": "Try again in {seconds}s",
       "tryAgain": "Try again",
       "adminSpendingLimitBody": "Your administrator's spending limit was reached. Contact your administrator.",
-      "budgetUsedUpTitle": "Your organization's budget is used up",
+      "budgetUsedUpTitle": "{scope, select, org {Your organization's budget is used up} workspace {This workspace's budget is used up} api_key {This API key's budget is used up} other {A budget is used up}}",
       "viewBudgets": "View budgets",
       "balanceRanOutMobile": "Your balance ran out before this task finished.",
       "autoTopUpFailedBodyMobile": "We couldn't charge your card.",

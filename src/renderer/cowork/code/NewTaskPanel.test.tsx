@@ -508,7 +508,7 @@ describe('NewTaskPanel', () => {
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });
 
-  it('says the org budget stops a project default model, and never mentions credits', async () => {
+  it('says a spent budget stops a project default model, and never mentions credits', async () => {
     const user = userEvent.setup();
     const budgetProject = { ...project, default_model: 'fable' };
     render(
@@ -529,7 +529,7 @@ describe('NewTaskPanel', () => {
 
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build it');
 
-    expect(await screen.findByText("Your organization's budget is used up. Choose an available model or ask an owner or admin to raise it.")).toBeInTheDocument();
+    expect(await screen.findByText("A budget covering this model is used up. Choose an available model or ask an administrator to raise it.")).toBeInTheDocument();
     expect(screen.queryByText('Add credits or choose an available model.')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });

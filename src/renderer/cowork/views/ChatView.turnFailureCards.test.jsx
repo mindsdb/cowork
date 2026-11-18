@@ -518,8 +518,8 @@ describe('free_serving_paused card', () => {
 describe('budget_exceeded card', () => {
   const PAID = { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' };
   const MSG = "Your organization's spending budget is used up. An owner or admin can raise it in Budgets.";
-  const TITLE = "Your organization's budget is used up";
-  const RAISE = "Paid models can't run until an owner or admin raises it in Budgets.";
+  const TITLE = "A budget is used up";
+  const RAISE = "Paid models can't run until an administrator raises it in Budgets.";
   const renderStop = (usage, props = {}) => render(withUsage(
     usage,
     <ChatView
@@ -536,6 +536,18 @@ describe('budget_exceeded card', () => {
     expect(stopCard(TITLE).getByRole('button', { name: 'View budgets' })).toBeEnabled();
     expect(stopCard(TITLE).queryByRole('button', { name: /Add funds|auto top up/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).toBeNull();
+  });
+
+  it.each([
+    ['org', "Your organization's budget is used up", "Paid models can't run until an owner or admin raises it in Budgets."],
+    ['workspace', "This workspace's budget is used up", RAISE],
+    ['api_key', "This API key's budget is used up", RAISE],
+  ])('names the %s budget and who can raise it when the failure says whose it is', (scope, title, body) => {
+    render(withUsage(
+      hubUsage({ remaining: 0, used: 100 }),
+      <ChatView task={taskWith(failedTurn('budget_exceeded', MSG, { budgetScope: scope }))} model={PAID} />,
+    ));
+    expect(stopCard(title).getByText(body)).toBeInTheDocument();
   });
 
   it('offers MindsHub Air while its free allowance has room, resending the failed message', async () => {
@@ -1243,7 +1255,7 @@ const WIRE_CODES = [
   'free_serving_paused',
   // An org admin's model rule refused the model; credits do not unlock it.
   'model_restricted',
-  // The org's spending budget is used up; an owner or admin raises it in Budgets.
+  // A spending budget is used up; an administrator raises it in Budgets.
   'budget_exceeded',
   // cowork-server found no free database connection in time; the user waits, then retries.
   'server_busy',

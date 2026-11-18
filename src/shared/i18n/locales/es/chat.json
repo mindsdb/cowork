@@ -107,7 +107,7 @@
       "tryAgainIn": "Reintentar en {seconds} s",
       "tryAgain": "Reintentar",
       "adminSpendingLimitBody": "Se alcanzó el límite de gasto que fijó tu administrador. Comunícate con tu administrador.",
-      "budgetUsedUpTitle": "Se agotó el presupuesto de tu organización",
+      "budgetUsedUpTitle": "{scope, select, org {Se agotó el presupuesto de tu organización} workspace {Se agotó el presupuesto de este espacio de trabajo} api_key {Se agotó el presupuesto de esta clave de API} other {Se agotó un presupuesto}}",
       "viewBudgets": "Ver presupuestos",
       "balanceRanOutMobile": "Tu saldo se agotó antes de que terminara esta tarea.",
       "autoTopUpFailedBodyMobile": "No pudimos cobrar a tu tarjeta.",

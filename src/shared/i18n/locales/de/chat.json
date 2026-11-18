@@ -107,7 +107,7 @@
       "tryAgainIn": "In {seconds} s erneut versuchen",
       "tryAgain": "Erneut versuchen",
       "adminSpendingLimitBody": "Das Ausgabenlimit Ihres Administrators wurde erreicht. Wenden Sie sich an Ihren Administrator.",
-      "budgetUsedUpTitle": "Das Budget Ihrer Organisation ist aufgebraucht",
+      "budgetUsedUpTitle": "{scope, select, org {Das Budget Ihrer Organisation ist aufgebraucht} workspace {Das Budget dieses Arbeitsbereichs ist aufgebraucht} api_key {Das Budget dieses API-Schlüssels ist aufgebraucht} other {Ein Budget ist aufgebraucht}}",
       "viewBudgets": "Budgets anzeigen",
       "balanceRanOutMobile": "Ihr Guthaben war aufgebraucht, bevor diese Aufgabe abgeschlossen war.",
       "autoTopUpFailedBodyMobile": "Ihre Karte konnte nicht belastet werden.",

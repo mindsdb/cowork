@@ -1022,7 +1022,7 @@ export function trackTurnFailed(conversationId, event) {
 //   free_serving_paused       free MindsHub Air is paused for everyone by the
 //                             daily spend fuse; NOT paired with token_cap_hit,
 //                             because it is not this user's cap
-//   budget_exceeded           the org's spending budget is used up; "View
+//   budget_exceeded           a spending budget is used up; "View
 //                             budgets" opens the Budgets tab. NOT paired with
 //                             token_cap_hit: credits do not lift a budget
 //   model_access_denied       legacy per-model credit denial (pre-wallet gateways)

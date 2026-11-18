@@ -1028,7 +1028,7 @@
       "noModels": "Keine Code-Modelle verfügbar.",
       "chooseModel": "Wählen Sie ein Modell, um fortzufahren.",
       "chooseFolder": "Wählen Sie einen Ordner, um fortzufahren.",
-      "budgetReached": "Das Budget Ihrer Organisation ist aufgebraucht. Wählen Sie ein verfügbares Modell oder bitten Sie einen Inhaber oder Administrator, es zu erhöhen."
+      "budgetReached": "Ein Budget für dieses Modell ist aufgebraucht. Wählen Sie ein verfügbares Modell oder bitten Sie einen Administrator, es zu erhöhen."
     }
   },
   "executionTarget": {
@@ -1472,8 +1472,8 @@
       "body": "{reason}, daher wird weiterhin Speicherplatz belegt."
     },
     "budgetExceeded": {
-      "title": "Das Budget Ihrer Organisation ist aufgebraucht",
-      "body": "Ein Inhaber oder Administrator kann es unter „Budgets“ erhöhen, oder Sie wählen ein verfügbares Modell, um in dieser Aufgabe fortzufahren."
+      "title": "{scope, select, org {Das Budget Ihrer Organisation ist aufgebraucht} workspace {Das Budget dieses Arbeitsbereichs ist aufgebraucht} api_key {Das Budget dieses API-Schlüssels ist aufgebraucht} other {Ein Budget ist aufgebraucht}}",
+      "body": "{scope, select, org {Ein Inhaber oder Administrator kann es unter „Budgets“ erhöhen, oder Sie wählen ein verfügbares Modell, um in dieser Aufgabe fortzufahren.} other {Ein Administrator kann es unter „Budgets“ erhöhen, oder Sie wählen ein verfügbares Modell, um in dieser Aufgabe fortzufahren.}}"
     },
     "writesHeld": {
       "body": "Dieser Ordner hat keinen Git-Verlauf, mit dem sich Änderungen prüfen oder rückgängig machen lassen. Der Agent fragt daher vor jeder Bearbeitung."

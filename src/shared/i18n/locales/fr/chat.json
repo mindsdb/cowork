@@ -107,7 +107,7 @@
       "tryAgainIn": "Réessayer dans {seconds} s",
       "tryAgain": "Réessayer",
       "adminSpendingLimitBody": "La limite de dépenses fixée par votre administrateur a été atteinte. Contactez votre administrateur.",
-      "budgetUsedUpTitle": "Le budget de votre organisation est épuisé",
+      "budgetUsedUpTitle": "{scope, select, org {Le budget de votre organisation est épuisé} workspace {Le budget de cet espace de travail est épuisé} api_key {Le budget de cette clé API est épuisé} other {Un budget est épuisé}}",
       "viewBudgets": "Voir les budgets",
       "balanceRanOutMobile": "Votre solde a été épuisé avant la fin de cette tâche.",
       "autoTopUpFailedBodyMobile": "Nous n’avons pas pu débiter votre carte.",

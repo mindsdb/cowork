@@ -95,6 +95,7 @@ import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLin
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
+import { budgetScopeOf } from '../lib/budgetScope';
 import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
@@ -1522,14 +1523,14 @@ export function FreeServingPausedCard({
 }
 
 /*
- * The org's spending budget is used up (`budget_exceeded`): the gateway's 402
+ * A spending budget is used up (`budget_exceeded`): the gateway's 402
  * on a hard-capped budget, with no reset time. Credits do not lift it, so the
- * card never asks for funds; it links to Budgets, where an owner or admin
+ * card never asks for funds; it links to Budgets, where an administrator
  * raises it. Air may still run on its free allowance, so the switch is offered
  * while the hub read shows room, as on the balance card.
  */
 export function BudgetExceededCard({
-  time, agentLabel, usage, onSwitchToAir, deleting = false,
+  time, agentLabel, usage, onSwitchToAir, budgetScope = null, deleting = false,
 }) {
   const { t } = useTranslation('chat');
   const budgetsUrl = useBudgetsUrl();
@@ -1552,8 +1553,8 @@ export function BudgetExceededCard({
       time={time}
       agentLabel={agentLabel}
       kind={t('chatView.kinds.billing')}
-      title={t('chatView.cards.budgetUsedUpTitle')}
-      body={budgetExceededCopy({ usage })}
+      title={t('chatView.cards.budgetUsedUpTitle', { scope: budgetScopeOf(budgetScope) })}
+      body={budgetExceededCopy({ usage, budgetScope })}
       buttons={[
         ...billingActions([{
           label: t('chatView.cards.viewBudgets'),
@@ -3401,7 +3402,7 @@ export default function ChatView({
                     />
                   );
                 }
-                /* The org's spending budget is used up: Budgets, not funds,
+                /* A spending budget is used up: Budgets, not funds,
                    and Air while its free allowance has room. */
                 if (m.code === 'budget_exceeded') {
                   const budgetResend = lastUserMessageBefore(visibleMessages, i);
@@ -3412,6 +3413,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       usage={hubUsage?.usage}
+                      budgetScope={m.budgetScope}
                       onSwitchToAir={
                         onSwitchToAirAndResend && budgetResend && taskModelId !== MINDSHUB_AIR_MODEL_ID
                           ? () => onSwitchToAirAndResend(budgetResend.text, budgetResend.attachments)

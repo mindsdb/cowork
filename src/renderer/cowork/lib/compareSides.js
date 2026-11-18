@@ -4,6 +4,7 @@
 
 import { offeredModels } from './modelPickerOptions';
 import { billingCopyKey } from './billingLinks';
+import { budgetScopeOf } from './budgetScope';
 import i18n from '../../lib/i18n';
 
 /* User-facing copy, translated when it is read (never at import). */
@@ -27,7 +28,7 @@ const FAILED_ROLES = new Set(['error', 'provider_required']);
 
 /** Failures that mean the account could not pay for the turn, not that the
  *  model did badly: the paid balance ran out, the free Air allowance did, or
- *  the organization's budget stopped paid models. */
+ *  a spending budget stopped paid models. */
 export const CREDIT_FAILURE_CODES = new Set(['token_limit', 'included_allowance_exhausted', 'budget_exceeded']);
 
 export function isCreditFailure(turn) {
@@ -52,6 +53,7 @@ export function turnsOf(messages = []) {
         reply: 'none',
         replyAt: null,
         failureCode: null,
+        budgetScope: null,
       });
       continue;
     }
@@ -66,6 +68,7 @@ export function turnsOf(messages = []) {
       turn.reply = 'failed';
       turn.replyAt = message.created_at || turn.replyAt;
       turn.failureCode = message.code || null;
+      turn.budgetScope = message.budgetScope || null;
     }
   }
   return turns;
@@ -126,8 +129,11 @@ export function unjudgeableReason(aTurns = [], bTurns = [], names = { a: 'A', b:
   if (out.length === 0) return null;
   // Credits do not lift a budget, so a budget stop is never called running out of credits.
   const budget = out.every((l) => sides[l].failureCode === 'budget_exceeded');
-  if (out.length === 2) return budget ? tr('unjudgeable.bothBudget') : tr('unjudgeable.both');
-  return budget ? tr('unjudgeable.oneBudget', { name: names[out[0]] }) : tr('unjudgeable.one', { name: names[out[0]] });
+  // Both sides name one budget only when they agree on whose it is.
+  const scopes = new Set(out.map((l) => budgetScopeOf(sides[l].budgetScope)));
+  const scope = scopes.size === 1 ? [...scopes][0] : 'other';
+  if (out.length === 2) return budget ? tr('unjudgeable.bothBudget', { scope }) : tr('unjudgeable.both');
+  return budget ? tr('unjudgeable.oneBudget', { name: names[out[0]], scope }) : tr('unjudgeable.one', { name: names[out[0]] });
 }
 
 /** How long a finished turn took, in ms, or null when either end is unknown. */
