@@ -3,58 +3,37 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { CommentsToolbar } from './CommentsToolbar';
 
-const MODE_LABEL = 'Comment — click an element (⌥ selects the container)';
-
-function renderToolbar(props = {}) {
-  const handlers = {
-    onToggleMode: vi.fn(),
-    onToggleMarkers: vi.fn(),
-    onClose: vi.fn(),
-  };
-  render(
-    <CommentsToolbar
-      mode={false}
-      markersShown
-      {...handlers}
-      {...props}
-    />,
-  );
-  return handlers;
-}
-
+// Comments' Navigate / Comment switch (ENG-4383), Live edit's twin.
 describe('CommentsToolbar', () => {
-  it.each([
-    [MODE_LABEL, 'onToggleMode'],
-    ['Hide comments', 'onToggleMarkers'],
-    ['Close comments', 'onClose'],
-  ])('"%s" calls only %s', async (name, handler) => {
-    const handlers = renderToolbar();
+  it('shows Navigate pressed outside placement mode, and Comment inside it', () => {
+    const { rerender } = render(<CommentsToolbar mode={false} onChangeMode={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Navigate' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Comment' })).toHaveAttribute('aria-pressed', 'false');
 
-    await userEvent.click(screen.getByRole('button', { name }));
-
-    for (const [key, fn] of Object.entries(handlers)) {
-      expect(fn).toHaveBeenCalledTimes(key === handler ? 1 : 0);
-    }
+    rerender(<CommentsToolbar mode onChangeMode={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Comment' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('reflects comment mode through aria-pressed', () => {
-    renderToolbar({ mode: true });
+  it('switches to Comment and back to Navigate', async () => {
+    const onChangeMode = vi.fn();
+    const { rerender } = render(<CommentsToolbar mode={false} onChangeMode={onChangeMode} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    expect(onChangeMode).toHaveBeenLastCalledWith(true);
 
-    expect(screen.getByRole('button', { name: MODE_LABEL })).toHaveAttribute('aria-pressed', 'true');
+    rerender(<CommentsToolbar mode onChangeMode={onChangeMode} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Navigate' }));
+    expect(onChangeMode).toHaveBeenLastCalledWith(false);
   });
 
-  // The Comments toggle opens the inbox with the pill, so the pill offers no
-  // inbox button of its own.
-  it('has no inbox button', () => {
-    renderToolbar();
-
-    expect(screen.queryByRole('button', { name: 'Comments inbox' })).not.toBeInTheDocument();
+  it('does nothing when the pressed mode is clicked again', async () => {
+    const onChangeMode = vi.fn();
+    render(<CommentsToolbar mode={false} onChangeMode={onChangeMode} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Navigate' }));
+    expect(onChangeMode).not.toHaveBeenCalled();
   });
 
-  it('offers to show markers once they are hidden', () => {
-    renderToolbar({ markersShown: false });
-
-    expect(screen.getByRole('button', { name: 'Show comments' })).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Hide comments' })).not.toBeInTheDocument();
+  it('has no hide, show, close or inbox controls', () => {
+    render(<CommentsToolbar mode={false} onChangeMode={vi.fn()} />);
+    expect(screen.getAllByRole('button')).toHaveLength(2);
   });
 });

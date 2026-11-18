@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "댓글 도구 모음",
       "comment": "댓글 — 요소를 클릭하세요(⌥를 누르면 컨테이너 선택)",
-      "inbox": "댓글 받은 편지함",
-      "hideComment": "댓글 숨기기",
-      "showComment": "댓글 표시",
-      "close": "댓글 닫기"
+      "navigate": "탐색",
+      "navigateHint": "댓글을 고정해 둔 채 평소처럼 페이지 사용",
+      "commentLabel": "댓글"
     },
     "composer": {
       "placeholder": "댓글 추가…",

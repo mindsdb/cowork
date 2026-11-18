@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "Comments toolbar",
       "comment": "Comment — click an element (⌥ selects the container)",
-      "inbox": "Comments inbox",
-      "hideComment": "Hide comments",
-      "showComment": "Show comments",
-      "close": "Close comments"
+      "navigate": "Navigate",
+      "navigateHint": "Use the page as usual, with the comments pinned on it",
+      "commentLabel": "Comment"
     },
     "composer": {
       "placeholder": "Add a comment…",

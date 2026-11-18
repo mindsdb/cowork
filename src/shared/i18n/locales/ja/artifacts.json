@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "コメントツールバー",
       "comment": "コメント — 要素をクリック（⌥でコンテナを選択）",
-      "inbox": "コメント受信トレイ",
-      "hideComment": "コメントを非表示",
-      "showComment": "コメントを表示",
-      "close": "コメントを閉じる"
+      "navigate": "操作",
+      "navigateHint": "コメントを表示したまま、通常どおりページを操作",
+      "commentLabel": "コメント"
     },
     "composer": {
       "placeholder": "コメントを追加…",

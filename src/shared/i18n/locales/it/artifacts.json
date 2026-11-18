@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "Barra dei commenti",
       "comment": "Commenta: fai clic su un elemento (⌥ seleziona il contenitore)",
-      "inbox": "Commenti ricevuti",
-      "hideComment": "Nascondi commenti",
-      "showComment": "Mostra commenti",
-      "close": "Chiudi commenti"
+      "navigate": "Naviga",
+      "navigateHint": "Usa la pagina come sempre, con i commenti appuntati",
+      "commentLabel": "Commenta"
     },
     "composer": {
       "placeholder": "Aggiungi un commento…",

@@ -326,10 +326,7 @@ export function ArtifactViewerBody({
           {commentsOpen && commentsEnabled && (
             <CommentsToolbar
               mode={layer.mode}
-              onToggleMode={layer.toggleMode}
-              markersShown={markersShown}
-              onToggleMarkers={() => setMarkersShown((v) => !v)}
-              onClose={toggleComments}
+              onChangeMode={(on) => (layer.setPlacing ? layer.setPlacing(on) : layer.toggleMode())}
             />
           )}
           {/* Stats replaces the comments chrome, so no composer opens beside it. */}

@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "Barra de comentários",
       "comment": "Comentar: clique em um elemento (⌥ seleciona o contêiner)",
-      "inbox": "Caixa de comentários",
-      "hideComment": "Ocultar comentários",
-      "showComment": "Mostrar comentários",
-      "close": "Fechar comentários"
+      "navigate": "Navegar",
+      "navigateHint": "Use a página normalmente, com os comentários fixados",
+      "commentLabel": "Comentar"
     },
     "composer": {
       "placeholder": "Adicione um comentário…",

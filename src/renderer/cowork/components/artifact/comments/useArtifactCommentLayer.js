@@ -163,12 +163,13 @@ export function useArtifactCommentLayer(
   const onIframeLoad = useCallback(() => { if (enabled) sendList(); }, [enabled, sendList]);
 
   const exitMode = useCallback(() => postToLayer({ type: 'exit-mode' }), [postToLayer]);
+  const setPlacing = useCallback((on) => postToLayer({ type: on ? 'enter-mode' : 'exit-mode' }), [postToLayer]);
   const toggleMode = useCallback(() => postToLayer({ type: mode ? 'exit-mode' : 'enter-mode' }), [postToLayer, mode]);
   const focus = useCallback((id) => postToLayer({ type: 'focus', commentId: id }), [postToLayer]);
   const hlOn = useCallback((id) => postToLayer({ type: 'hl-on', commentId: id }), [postToLayer]);
   const hlOff = useCallback((id) => postToLayer({ type: 'hl-off', commentId: id }), [postToLayer]);
 
-  return { mode, anchorStates, onIframeLoad, exitMode, toggleMode, focus, hlOn, hlOff };
+  return { mode, anchorStates, onIframeLoad, exitMode, toggleMode, setPlacing, focus, hlOn, hlOff };
 }
 
 export default useArtifactCommentLayer;

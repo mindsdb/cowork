@@ -313,14 +313,25 @@ describe('ArtifactViewerBody comments chrome', () => {
     expect(commentsChrome.toolbar).not.toHaveProperty('onToggleInbox');
   });
 
-  it('turns Comments off from the inbox close and from the toolbar close', () => {
+  it('turns Comments off from the inbox close', () => {
     const onToggle = vi.fn();
     render(renderBody('preview', {}, {}, undefined, { ...commentsOn, onToggle }));
 
     act(() => commentsChrome.panel.onClose());
-    act(() => commentsChrome.toolbar.onClose());
 
-    expect(onToggle).toHaveBeenCalledTimes(2);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('switches comment placement from the Navigate / Comment pill', () => {
+    const setPlacing = vi.fn();
+    render(renderBody('preview', {}, {}, undefined, {
+      ...commentsOn,
+      layer: { onIframeLoad: vi.fn(), anchorStates: {}, hlOn: vi.fn(), hlOff: vi.fn(), focus: vi.fn(), setPlacing, mode: false },
+    }));
+
+    act(() => commentsChrome.toolbar.onChangeMode(true));
+
+    expect(setPlacing).toHaveBeenCalledWith(true);
   });
 });
 

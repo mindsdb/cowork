@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "评论工具栏",
       "comment": "评论 — 点击某个元素（⌥ 选择其容器）",
-      "inbox": "评论收件箱",
-      "hideComment": "隐藏评论",
-      "showComment": "显示评论",
-      "close": "关闭评论"
+      "navigate": "浏览",
+      "navigateHint": "保留评论标记，像平常一样使用页面",
+      "commentLabel": "评论"
     },
     "composer": {
       "placeholder": "添加评论…",

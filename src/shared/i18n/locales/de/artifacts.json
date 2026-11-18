@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "Kommentar-Symbolleiste",
       "comment": "Kommentieren – auf ein Element klicken (⌥ wählt den Container)",
-      "inbox": "Kommentar-Posteingang",
-      "hideComment": "Kommentare ausblenden",
-      "showComment": "Kommentare einblenden",
-      "close": "Kommentare schließen"
+      "navigate": "Navigieren",
+      "navigateHint": "Die Seite wie gewohnt nutzen, mit den angehefteten Kommentaren",
+      "commentLabel": "Kommentieren"
     },
     "composer": {
       "placeholder": "Kommentar hinzufügen…",
