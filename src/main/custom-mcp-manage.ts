@@ -127,6 +127,8 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
       }
       // The login can outlast a disconnect: write nothing for a connection
       // the server no longer has, and revoke the grant the login just made.
+      // Any failure of the check revokes it, not only a missing record: the
+      // new token is never stored, so nothing else could revoke it later.
       try {
         await heldSummary(id);
       } catch (err) {
