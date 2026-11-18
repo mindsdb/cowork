@@ -124,13 +124,14 @@ body, body[data-theme="light"] {
   --surface-3:    #ECECEA;
   --line:         #E4E4E1;
   --line-2:       #D4D4D0;
-  /* Selected segment in a ToggleGroup / segmented control. The surface ramp
-     inverts between themes (light: --surface is the *lightest*; dark:
-     --surface-3 is), so the token that lifts the pill above the --surface-2
-     track differs per theme. Light = --surface + the shared elevation shadow;
-     the old --surface-3 (darker than the track here) sank into it. */
+  /* ToggleGroup / segmented control: a faint ink-tinted track with no
+     visible edge, and a selected segment lifted by colour and a hairline
+     alone, no shadow. The border stays (transparent) so sizes don't move.
+     Light: --surface is the lightest step, so it lifts the pill. */
+  --toggle-track-bg:        color-mix(in srgb, var(--ink) 5%, transparent);
+  --toggle-track-border:    1px solid transparent;
   --toggle-selected-bg:     var(--surface);
-  --toggle-selected-shadow: var(--sh-1), inset 0 0 0 1px var(--line);
+  --toggle-selected-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
   /* Transcript cards (user message, turn changes): white just above the page. */
   --surface-raised:         var(--surface);
   /* Sidebar surface — a light --surface-2 rail (not the muddier
@@ -305,10 +306,11 @@ body[data-theme="dark"] {
   --surface-3:    #1A2640;
   --line:         #1E2A44;
   --line-2:       #2A3957;
-  /* Dark keeps the raised-surface approach: --surface-3 already sits
-     *lighter* than the --surface-2 track, so the active pill lifts. */
-  --toggle-selected-bg:     var(--surface-3);
-  --toggle-selected-shadow: inset 0 0 0 1px var(--line-2);
+  /* Dark: a lighter ink tint over the track lifts the pill. */
+  --toggle-track-bg:        color-mix(in srgb, var(--ink) 5%, transparent);
+  --toggle-track-border:    1px solid transparent;
+  --toggle-selected-bg:     color-mix(in srgb, var(--ink) 9%, transparent);
+  --toggle-selected-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
   /* --surface sits almost on the dark page, so transcript cards step up one. */
   --surface-raised:         var(--surface-2);
   /* Sidebar base — a hint of cyan over the surface navy, sized
@@ -647,6 +649,14 @@ a[href],
   0%   { opacity: 0.25; }
   20%  { opacity: 1; }
   100% { opacity: 0.25; }
+}
+/* "Trying to reconnect…" beside a lost connection's error. */
+.chat-reconnecting { margin-left: 10px; color: var(--text-muted); white-space: nowrap; }
+.chat-reconnecting__dots span { animation: typing 1.2s infinite both; }
+.chat-reconnecting__dots span:nth-child(2) { animation-delay: 0.2s; }
+.chat-reconnecting__dots span:nth-child(3) { animation-delay: 0.4s; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-reconnecting__dots span { animation: none; }
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
@@ -1760,6 +1770,14 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   flex-shrink: 0;
 }
 
+/* The org's logo is a wordmark: keep the row's height, let the
+   width follow the image up to a cap so a long one can't push the title out. */
+.anton-sidebar__logo--wide {
+  width: auto;
+  max-width: 112px;
+  object-position: left center;
+}
+
 .anton-sidebar__wordmark {
   font-family: var(--font-display);
   font-weight: 500;
@@ -2021,6 +2039,20 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
 }
+/* A task title runs to the row's end and fades out there instead of
+   ellipsizing. While the row's menu button floats over its end, the fade
+   finishes --title-clip earlier, clear of the button. A mask, so the fade
+   holds over the row's hover and selected fills in either theme. */
+.recent-row__title,
+.code-sidebar-session__title {
+  --title-clip: 0px;
+  overflow: hidden;
+  white-space: nowrap;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--title-clip) - 28px), transparent calc(100% - var(--title-clip)));
+          mask-image: linear-gradient(to right, #000 calc(100% - var(--title-clip) - 28px), transparent calc(100% - var(--title-clip)));
+}
+.recent-row__title.is-clipped { --title-clip: 20px; }
+
 /* Currently-open task — same quiet neutral fill as the active nav item,
    so "which conversation am I in" reads without shouting. */
 .app-sidebar .recent-item.is-selected,
@@ -2662,6 +2694,32 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   transition: background-color var(--dur-hover) ease;
 }
 .mshell__theme-toggle:active { background: var(--surface-2); }
+/* The voice call button beside it: accent while a call runs. */
+.mshell__call.is-live { color: var(--accent); }
+.mshell__call[aria-disabled="true"] { opacity: 0.45; }
+
+/* The drawer's newest chats, under its Chat row: a Recents line with See
+   all at its end, then the chats as subitems on a guide line. */
+.mshell-recents { margin: 6px 0 10px 24px; }
+.mshell-recents__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 4px 6px 14px; }
+.mshell-recents__label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); }
+.mshell-recents__more {
+  border: 0; background: transparent; padding: 2px 4px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 500;
+  color: var(--accent); -webkit-tap-highlight-color: transparent;
+}
+.mshell-recent-chats { padding-left: 4px; border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+.mshell-recent-chat {
+  display: block; width: 100%; padding: 7px 12px 7px 10px; border: 0; border-radius: var(--r-sm, 6px);
+  background: transparent; cursor: pointer; text-align: left; font: inherit; font-size: 13.5px; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-tap-highlight-color: transparent;
+}
+/* Alternating, barely there backgrounds, so each recent reads as its own row. */
+.mshell-recent-chats { display: grid; gap: 2px; }
+.mshell-recent-chat:nth-child(odd) { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
+.mshell-recent-chat:nth-child(even) { background: color-mix(in srgb, var(--ink) 1%, transparent); }
+body[data-skin="8bit"] .mshell-recent-chat { border-radius: 0; }
+.mshell-recent-chat:active, .mshell-recent-chat.is-active { background: var(--surface-2); color: var(--ink); }
+body[data-skin="8bit"] .mshell-recent-chats { border-left-width: 2px; }
 
 /* Hamburger button — three bars that animate into an X when open. */
 .mshell__hamburger {
@@ -2750,6 +2808,19 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 .mshell__drawer.is-open { transform: translateX(0); }
+/* The drawer's footer: who is signed in, and Log out. */
+.mshell__drawer-foot {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line);
+}
+.mshell__drawer-account { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
+.mshell__logout {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px;
+  border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--ink-2);
+  font: inherit; font-size: 13px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.mshell__logout:active { background: var(--danger-bg); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+body[data-skin="8bit"] .mshell__logout { border-radius: 0; border-width: 2px; }
 
 .mshell__drawer-head {
   flex: 0 0 auto;
@@ -2769,6 +2840,11 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   height: 22px;
   object-fit: contain;
   flex-shrink: 0;
+}
+.mshell__drawer-logo--wide {
+  width: auto;
+  max-width: 128px;
+  object-position: left center;
 }
 .mshell__drawer-title {
   font-family: var(--font-display);
@@ -3262,6 +3338,8 @@ body[data-theme="dark"] .mshell__drawer-title {
      fullscreen form panel. The mobile shell's hamburger drawer
      covers the same surfaces that the expand button used to. */
   .chat-rail-toggle { display: none !important; }
+  /* The browser and call icons beside it take its place. */
+  .chat-top-shortcuts { right: 14px !important; }
 
   /* Make the rail overlay truly fullscreen on mobile so the data-
      vault form fills the viewport instead of being a 320px-wide
@@ -3959,6 +4037,32 @@ body[data-theme="light"] .anton-inline-code {
   pointer-events: none;
   background: linear-gradient(to right, transparent, var(--surface-2));
 }
+/* A note in the steps list (MarkdownContent size="steps", ENG-4195): code
+   stays the small mono style with little padding, so a note holding a code
+   block or a code span keeps the step rows' rhythm. */
+.markdown-steps .anton-inline-code {
+  font-size: 0.92em;
+}
+/* Bold keeps the row's ink: the dark theme's brightest-ink emphasis (see
+   `body[data-theme="dark"] strong`) would make a note's bold outshine the
+   step rows around it. */
+body[data-theme] .markdown-steps :is(strong, b) {
+  color: inherit;
+}
+.markdown-steps .anton-code-block {
+  margin: 2px 0;
+  border-radius: var(--r);
+}
+.markdown-steps .anton-code-block-header {
+  padding: 2px 6px 0;
+}
+.markdown-steps .anton-code-block-pre {
+  padding: 2px 8px 6px;
+}
+.markdown-steps .anton-code-block-pre code.hljs {
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
 .anton-code-block-overflow-note {
   padding: 0 14px 10px;
   font-family: var(--font-body);
@@ -4051,46 +4155,46 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 }
 
 /* ── Channels (ChannelsView) ─────────────────────────────────────────── */
-.channels-view { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); }
-.channels-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,.08)); font-family: var(--font-display, inherit); font-size: var(--text-md); font-weight: 600; }
+.channels-view { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
+.channels-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-display, inherit); font-size: var(--text-md); font-weight: 600; }
 .channels-lede { padding: 16px 20px 0; }
 .channels-pad { padding: 16px 20px; }
 /* Master–detail split. flex:1 + min-height:0 give the two panes a bounded
    height inside the flex column; without them the content grows past the
    window and the inner scroll never engages (most visible in the
    fixed-height Electron shell). */
-.channels-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
-.channels-list { flex: 0 0 250px; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
-.channels-list-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: var(--card-radius-row); border: 1px solid transparent; background: transparent; color: var(--fg); font: inherit; cursor: pointer; text-align: left; }
-.channels-list-item:hover:not(.is-active) { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-.channels-list-item.is-active { background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: var(--border-02, rgba(0,0,0,.1)); }
+.channels-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border-subtle); }
+.channels-list { flex: 0 0 250px; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--border-subtle); }
+.channels-list-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: var(--card-radius-row); border: 1px solid transparent; background: transparent; color: var(--ink); font: inherit; cursor: pointer; text-align: left; }
+.channels-list-item:hover:not(.is-active) { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.channels-list-item.is-active { background: color-mix(in srgb, var(--ink) 7%, transparent); border-color: var(--border-02); }
 .channels-list-name { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; min-width: 0; }
 /* Brand-logo chip: a white tile keeps dark brand marks (e.g. Slack's plum)
    legible on dark themes. */
-.channels-logo { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-8); background: #fff; border: 1px solid var(--border-02, rgba(0,0,0,.1)); color: var(--ink-4, #8a8a86); }
+.channels-logo { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-8); background: var(--surface); border: 1px solid var(--border-02); color: var(--ink-4); }
 .channels-card-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .channels-detail { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 20px; }
 .channels-detail .channels-card { max-width: 640px; }
-.channels-intro { color: var(--ink-3, #6b6a66); margin: 0 0 16px; font-size: 13px; }
-.channels-muted { color: var(--ink-4, #8a8a86); font-size: 13px; }
-.channels-card { border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: 16px; background: var(--bg-a, transparent); }
+.channels-intro { color: var(--ink-3); margin: 0 0 16px; font-size: 13px; }
+.channels-muted { color: var(--ink-4); font-size: 13px; }
+.channels-card { border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: 16px; background: var(--card-surface); }
 .channels-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .channels-card-head h2 { font-size: var(--text-base); font-weight: 600; margin: 0; }
-.channels-type { font-family: var(--font-mono, monospace); font-size: var(--text-xs); color: var(--ink-4, #8a8a86); }
+.channels-type { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-4); }
 .channels-agent { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
-.channels-agent-label { font-size: 12px; font-weight: 600; color: var(--fg); }
+.channels-agent-label { font-size: 12px; font-weight: 600; color: var(--ink); }
 /* Segmented tab control for picking the channel agent. */
-.channels-agent-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-lg); background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid var(--border-subtle, rgba(0,0,0,.1)); }
+.channels-agent-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-lg); background: color-mix(in srgb, var(--ink) 6%, transparent); border: 1px solid var(--border-subtle); }
 .channels-agent-tab {
   appearance: none; border: 0; background: transparent; cursor: pointer;
-  color: var(--ink-3, #6b6b6b); font: inherit; font-size: 12px; font-weight: 500;
+  color: var(--ink-3); font: inherit; font-size: 12px; font-weight: 500;
   text-transform: capitalize; padding: 4px 14px; border-radius: var(--r-8);
   transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
-.channels-agent-tab:hover:not(.is-active):not(:disabled) { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
-.channels-agent-tab.is-active { background: var(--accent, #1a1916); color: var(--accent-fg, #fff); }
+.channels-agent-tab:hover:not(.is-active):not(:disabled) { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.channels-agent-tab.is-active { background: var(--accent-solid); color: var(--accent-solid-ink); }
 .channels-agent-tab:disabled { cursor: default; opacity: .65; }
-.channels-agent-hint { font-size: var(--text-xs); color: var(--ink-4, #8a8a86); }
+.channels-agent-hint { font-size: var(--text-xs); color: var(--ink-4); }
 
 .channels-fields { display: flex; flex-direction: column; gap: 10px; }
 
@@ -4099,22 +4203,22 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-input:hover { border-color: var(--line-2); }
 .channels-input:focus { border-color: var(--accent); box-shadow: var(--ring); }
 .channels-input:focus-visible { outline: 0; box-shadow: 0 0 0 1px var(--accent); }
-.channels-hook { font-size: 12px; color: var(--ink-3, #6b6a66); margin: 12px 0 0; }
-.channels-hook code { font-family: var(--font-mono, monospace); font-size: var(--text-xs); word-break: break-all; }
-.channels-note { font-size: 12px; color: var(--ink-4, #8a8a86); margin: 8px 0 0; }
-.channels-error { font-size: 12px; color: var(--danger, #c0392b); margin: 10px 0 0; }
-.channels-notice { font-size: 12px; color: var(--accent-strong, #1f8a4c); margin: 10px 0 0; }
-.channels-warn { font-size: 12px; color: var(--warning, #B45309); margin: 10px 0 0; }
+.channels-hook { font-size: 12px; color: var(--ink-3); margin: 12px 0 0; }
+.channels-hook code { font-family: var(--font-mono); font-size: var(--text-xs); word-break: break-all; }
+.channels-note { font-size: 12px; color: var(--ink-4); margin: 8px 0 0; }
+.channels-error { font-size: 12px; color: var(--danger); margin: 10px 0 0; }
+.channels-notice { font-size: 12px; color: var(--accent-strong); margin: 10px 0 0; }
+.channels-warn { font-size: 12px; color: var(--warning); margin: 10px 0 0; }
 .channels-actions { display: flex; gap: 8px; margin-top: 14px; }
 
 /* Channel routes (bindings) */
-.channels-routes { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
+.channels-routes { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-subtle); }
 .channels-routes-title { font-size: var(--text-base); font-weight: 600; margin: 0 0 4px; }
 .channels-route-add { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
 .channels-route-add .channels-input { flex: 1 1 140px; min-width: 120px; }
 .channels-route-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.channels-route-table th { text-align: left; font-weight: 500; color: var(--ink-4, #8a8a86); font-size: var(--text-xs); padding: 4px 8px; }
-.channels-route-table td { padding: 6px 8px; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.06)); vertical-align: top; }
+.channels-route-table th { text-align: left; font-weight: 500; color: var(--ink-4); font-size: var(--text-xs); padding: 4px 8px; }
+.channels-route-table td { padding: 6px 8px; border-top: 1px solid var(--border-subtle); vertical-align: top; }
 .channels-input-sm { padding: 5px 8px; font-size: 12px; width: 100%; }
 .channels-route-actions { display: flex; gap: 6px; white-space: nowrap; }
 
@@ -4169,4 +4273,180 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   transition:
     grid-template-rows calc(var(--dur-layout) * 1.6) var(--ease-out),
     opacity calc(var(--dur-layout) * 0.9) var(--ease-out);
+}
+
+/* Compare models: the two contenders on the start screen. A slow, faint glow
+   on each side, offset in time, so the head-to-head reads as live without
+   drawing the eye away from the prompt. Off when the user asks for less
+   motion. */
+.compare-vs-orb {
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  animation: compare-vs-glow 3.2s ease-in-out infinite;
+}
+.compare-vs-orb--right { animation-delay: 1.6s; }
+@keyframes compare-vs-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50%      { box-shadow: 0 0 22px 2px color-mix(in srgb, var(--accent) 28%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .compare-vs-orb { animation: none; }
+}
+
+/* A phone's task: the voice call's card and the docked browser above the
+   chat (ChatView phoneDock). */
+.chat-phone-dock { display: flex; flex-direction: column; min-width: 0; }
+.chat-phone-dock > .voice-call.voice-call--docked {
+  position: relative; inset: auto; top: auto; left: auto; right: auto; bottom: auto;
+  margin: 8px 10px; border-radius: var(--r-lg, 12px);
+}
+.chat-phone-dock > .voice-call .voice-waves { height: 30px; }
+.chat-phone-dock > .voice-call .voice-call__x { top: -6px; right: -6px; }
+
+/* Phone, browser expanded: the page under it doesn't scroll or move, and the
+   strip under the browser says what Anton needs from the person. */
+html.phone-browser-open, html.phone-browser-open body { overflow: hidden; overscroll-behavior: none; }
+.phone-browser-strip {
+  position: fixed; z-index: 71; left: 0; right: 0; top: var(--phone-browser-h, 76dvh); bottom: 0;
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 14px 0;
+  background: var(--bg); border-top: 1px solid var(--line);
+}
+.phone-browser-strip.is-asking { background: var(--surface); }
+.phone-browser-strip__text { flex: 1; min-width: 0; min-height: 40px; display: flex; align-items: center; gap: 10px; }
+.phone-browser-strip__text p {
+  flex: 1; min-width: 0; margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.phone-browser-strip.is-asking .phone-browser-strip__text p { color: var(--ink); }
+.phone-browser-strip .voice-orb { width: 40px; height: 40px; flex: none; }
+/* Starts a voice call from under the browser. */
+.phone-browser-strip__talk {
+  flex: none; display: inline-grid; place-items: center; width: 40px; height: 40px; padding: 0;
+  border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink);
+  cursor: pointer; transition: transform 160ms ease, background 160ms ease;
+}
+.phone-browser-strip__talk:active { transform: scale(.94); background: var(--surface-2); }
+body[data-skin="8bit"] .phone-browser-strip__talk { border: 2px solid var(--ink); border-radius: 0; }
+/* The composer stays, at the foot of the strip (above the keyboard while
+   typing), compact so the line above it still fits. */
+html.phone-browser-open .chat-floating-composer {
+  position: fixed; z-index: 72; left: 10px; right: 10px;
+  bottom: calc(var(--phone-keyboard, 0px) + max(8px, env(safe-area-inset-bottom, 0px)));
+}
+html.phone-browser-open .chat-floating-composer .composer-wrap { padding: 8px 10px 6px; }
+html.phone-browser-open .chat-floating-composer .composer-toolbar { padding-top: 2px; }
+/* Japanese (ENG-4149). Inter and JetBrains Mono have no kana or kanji, so
+   name Japanese faces right after them: Latin text keeps the brand faces,
+   Japanese text gets a Japanese face instead of whatever the OS falls back to
+   (on Windows that can be a Chinese one, which draws some kanji differently).
+   `lang` is set on <html> by the i18n runtime. */
+:root:lang(ja) {
+  --font-sans: 'Inter', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo UI',
+    'Noto Sans JP', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans JP', monospace;
+}
+/* Japanese has no spaces between words: break between characters, but never
+   before small kana or closing punctuation (kinsoku). */
+:lang(ja) {
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
+/* Korean (ENG-4149): Hangul faces after the brand faces, as for Japanese.
+   Korean puts spaces between words, so break only there (keep-all), never
+   inside a word. */
+:root:lang(ko) {
+  --font-sans: 'Inter', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', ui-sans-serif,
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', monospace;
+}
+:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* Simplified Chinese (ENG-4149): Simplified Han faces after the brand faces.
+   Naming them matters: left to the fallback, macOS can pick a Japanese face
+   and draw some characters with Japanese glyph shapes. No spaces between
+   words, so break between characters, but never before closing punctuation. */
+:root:lang(zh) {
+  --font-sans: 'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', monospace;
+}
+:lang(zh) {
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
+/* The artifact a bar message was about (ENG-4227), under the user's text in
+   the transcript: an attachment-style chip, compact. */
+.artifact-ref-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: 500 var(--text-sm)/1 var(--font-body);
+  transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease, color var(--dur-hover) ease;
+}
+button.artifact-ref-pill { cursor: pointer; }
+button.artifact-ref-pill:hover { background: var(--ghost-hover); border-color: color-mix(in srgb, var(--ink) 18%, var(--line)); color: var(--ink); }
+button.artifact-ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+.artifact-ref-pill-icon { display: inline-flex; flex-shrink: 0; }
+.artifact-ref-pill-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Quick edits from the artifact viewer's bar, grouped in the chat (ENG-4227):
+   one quiet card, no turn toolbar. */
+.quick-edit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 560px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-12);
+  background: var(--surface);
+  font-family: var(--font-body);
+}
+.quick-edit-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.quick-edit-card-title { color: var(--ink-2); font-size: var(--text-sm); font-weight: 500; }
+.quick-edit-card-count { color: var(--ink-4); font-size: var(--text-xs); }
+.quick-edit-card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.quick-edit-card-row { display: flex; align-items: flex-start; gap: 12px; padding: 6px 0; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.quick-edit-card-row:first-child { border-top: 0; padding-top: 2px; }
+.quick-edit-card-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.quick-edit-card-request { color: var(--ink-4); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-edit-card-summary { display: flex; align-items: baseline; gap: 6px; color: var(--ink); font-size: var(--text-sm); line-height: 1.45; }
+.quick-edit-card-summary-text { min-width: 0; }
+.quick-edit-card-time { flex-shrink: 0; color: var(--ink-4); font-size: var(--text-xs); line-height: 1.6; font-variant-numeric: tabular-nums; }
+.quick-edit-card-row.is-undone .quick-edit-card-summary-text { color: var(--ink-4); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-4) 70%, transparent); }
+.quick-edit-card-tag { flex-shrink: 0; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--ink-3); font-size: var(--text-2xs); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.quick-edit-card-more { align-self: flex-start; margin-left: -6px; height: 22px; padding: 0 6px; border: 0; border-radius: var(--r-8); background: transparent; color: var(--ink-3); font: 500 var(--text-xs)/1 var(--font-body); cursor: pointer; transition: background var(--dur-hover) ease, color var(--dur-hover) ease; }
+.quick-edit-card-more:hover { background: var(--ghost-hover); color: var(--text-strong); }
+/* Inside the user bubble, under the message (ENG-4227): a small chip on the
+   bubble's own fill. The bubble sizes to the wider of the text and the chip,
+   so a short message widens to fit it rather than jumping. */
+.user-turn-artifact-ref { display: flex; justify-content: flex-start; margin-top: 8px; min-width: 0; }
+.user-turn-bubble .artifact-ref-pill {
+  height: 24px;
+  padding: 0 9px 0 7px;
+  gap: 5px;
+  border-color: color-mix(in srgb, var(--ink) 10%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface-raised));
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+}
+.user-turn-bubble button.artifact-ref-pill:hover {
+  background: color-mix(in srgb, var(--ink) 8%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--ink) 18%, transparent);
+  color: var(--ink);
 }

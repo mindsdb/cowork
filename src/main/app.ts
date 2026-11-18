@@ -4,25 +4,31 @@ import { diagnostic } from '../shared/diagnostics';
 // then starts the crash reporter so a native crash while the rest loads leaves
 // a minidump.
 import './app-identity';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
+import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as https from 'https';
 import * as http from 'http';
+import { installHideOnClose, shouldQuitWhenAllWindowsClosed } from './window-close';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, activeAccountDataRoot, runningServerPort, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
 import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
+import { registerKeepAwakeHandlers } from './keep-awake';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
 import { installQuitSignalHandlers } from './quit-signals';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { filterExtraFields } from './oauth-extra-fields';
+import { hasRequiredTokens } from './oauth-connect-result';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
+import { serverMayReceiveTokens, serverTrust } from './app-secret';
+import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNotionPagesInMain } from './notion-pages';
+import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
@@ -69,7 +75,9 @@ import {
   sweepStaleQuarantineRoots,
 } from './account-data';
 import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import { usageEventsOn, writeUsageEventsPref } from './analytics-env';
 import { checkChannelConsistency } from './channels';
+import { loadDesktopBrandImages, loadOrgIconDataUris } from './org-branding';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
@@ -77,6 +85,7 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
+import { folderPickerDefaultPath } from './folder-picker';
 import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 import { registerRendererPermissions } from './renderer-permissions';
 import { guardDocumentPreviewFrames } from './document-preview-guard';
@@ -93,20 +102,52 @@ import {
   removeCodingTask,
 } from './coding-terminal';
 import { installMainErrorDialog } from './main-error-dialog';
+import { InAppBrowserHost } from './browser-host';
+import { composeStartedHook } from './browser-register';
+import { markDownloaded } from './download-quarantine';
 
 installMainErrorDialog();
 
-/* Re-hand the MindsHub credential to every sidecar that comes up.
+/* The in-app browser (browser-host.ts): Electron's own Chromium in the app's
+ * window, which the agent drives through a loopback bridge. It starts
+ * listening when the app is ready and registers with the sidecar only once
+ * the UI says it shows the browser. */
+const inAppBrowser = new InAppBrowserHost({
+  serverPort: getServerPort,
+  runningServerPort,
+  authHeader,
+  accountRoot: accountDataRoot,
+  sidecarAccountRoot: activeAccountDataRoot,
+  storesRoot: activeStoreRoot,
+  downloadsDir: () => app.getPath('downloads'),
+  markDownloaded,
+  profileSession: (dir) => session.fromPath(dir),
+  memorySession: (partition) => session.fromPartition(partition),
+  fetch: (input, init) => fetch(input, init),
+  electronVersion: () => process.versions.electron,
+  userDataDir: () => app.getPath('userData'),
+});
+
+/* Re-hand the MindsHub credential, then the in-app browser's address, to every
+ * sidecar that comes up.
  *
- * The sidecar holds it in memory only, so a process that just started holds
+ * The sidecar holds both in memory only, so a process that just started holds
  * nothing: an auto-update, the sidebar's stop/start, and the installer's first
  * start all leave a signed-in user with `config_ready: false` until something
  * pushes again. Registered at module scope so the hook is in place before the
- * first start, whichever path gets there first.
+ * first start, whichever path gets there first. The hook slot holds one
+ * function, so both steps run from one composed hook, each even when the other
+ * fails.
  *
- * It settles the resume barrier too: a sidecar restarting mid-handoff is
- * exactly when a turn is parked waiting for one. */
-setServerStartedHook(handOffMindsCredentialToStartedSidecar);
+ * The credential step settles the resume barrier too: a sidecar restarting
+ * mid-handoff is exactly when a turn is parked waiting for one. The browser
+ * step also notices an account or organization switch (the sidecar restarts
+ * on other stores) and changes the bridge's key. */
+setServerStartedHook(composeStartedHook(
+  handOffMindsCredentialToStartedSidecar,
+  () => inAppBrowser.serverStarted(),
+  async () => { void syncAppHeldMcpConnections(); },
+));
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -336,6 +377,10 @@ function getIconPath(): string {
 }
 
 let mainWindow: BrowserWindow | null = null;
+// Set once the app has started to quit, so closing the window on macOS stops
+// meaning "hide it" (see window-close.ts).
+let appQuitting = false;
+let reopenMainWindow: (() => boolean) | null = null;
 let activeInstall: { cancelled: boolean } | null = null;
 
 // Pulls the desktop app back to the foreground after a browser-based
@@ -422,6 +467,8 @@ function createWindow() {
     show: false,
     webPreferences: mainWindowWebPreferences(getServerPort()),
   });
+  // The in-app browser's tabs are children of this window; they close with it.
+  inAppBrowser.attachWindow(mainWindow);
 
   // Marks the document preview frame, cancels navigations it starts, and
   // holds srcdoc subframes in place. Registered before the window loads
@@ -570,6 +617,7 @@ function createWindow() {
     mainWindow = null;
     killAllCodingTerminals();
   });
+  reopenMainWindow = installHideOnClose(mainWindow, process.platform, () => appQuitting).reopen;
 }
 
 // How long boot routing waits for the sidecar to be handed its credential.
@@ -852,7 +900,7 @@ function setupIPC() {
         redirectHost: oauthBlock.redirect_host,
         tokenAuthStyle: oauthBlock.token_auth_style,
       });
-      if (!pkceResult.ok || !pkceResult.access_token || (supportsRefresh && !pkceResult.refresh_token)) {
+      if (!hasRequiredTokens(pkceResult, oauthBlock) || !pkceResult.access_token) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
       }
       focusMainWindow();
@@ -864,7 +912,7 @@ function setupIPC() {
       let accountIdentity: Awaited<ReturnType<typeof fetchAccountIdentity>> = { email: '' };
       for (let attempt = 0; attempt < 2 && !accountIdentity.email; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
-        accountIdentity = await fetchAccountIdentity(engine, pkceResult.access_token);
+        accountIdentity = await fetchAccountIdentity(engine, pkceResult.access_token, pkceResult.extra);
       }
       const accountEmail = accountIdentity.email;
       if (!accountEmail) return { ok: false, reason: accountIdentity.reason || 'Could not retrieve account email.' };
@@ -873,10 +921,25 @@ function setupIPC() {
       // Absent entirely for a supports_refresh: false connector.
       if (pkceResult.refresh_token) {
         await setRefreshToken(engine, accountEmail, pkceResult.refresh_token);
+      } else {
+        // A reconnect that issued none would otherwise leave the previous
+        // grant's token here, and the refresh loop would post that one.
+        try { await deleteRefreshToken(engine, accountEmail); } catch {}
       }
 
       const expiresAt = new Date(Date.now() + (pkceResult.expires_in ?? 3600) * 1000).toISOString();
       const tokenUrl: string = oauthBlock.token_url;
+
+      // A server that has not proved the app secret gets no token.
+      if (!serverMayReceiveTokens()) {
+        try { await deleteRefreshToken(engine, accountEmail); } catch {}
+        return {
+          ok: false,
+          reason: serverTrust() === 'untrusted'
+            ? 'The backend could not be verified. Restart Cowork and try again.'
+            : 'The backend is not running.',
+        };
+      }
 
       // Persist to vault — refresh_token intentionally excluded.
       const saveRes = await fetch(
@@ -919,7 +982,19 @@ function setupIPC() {
       const saved = await saveRes.json() as { ok: boolean; name?: string };
       const vaultSlug = saved.name || labelName;
 
-      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style);
+      // Same rule as startOrphanRefreshLoops: a connector that never
+      // refreshes (GitHub) gets no loop, which would otherwise mark it
+      // needs_reconnect once its nominal expiry passes.
+      if (supportsRefresh) {
+        startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style, oauthBlock.refresh_token_optional === true);
+      }
+      if (oauthMethodId === 'mcp') {
+        try {
+          await handOverAfterConnect(engine, vaultSlug, pkceResult.access_token, expiresAt);
+        } catch (err) {
+          diagnostic("main.app", "WARNING", "oauth_mcp_app_held_hand_over_failed", `[oauth] could not hand over ${engine}/${vaultSlug} to the server:`, err);
+        }
+      }
       return { ok: true, name: vaultSlug, account_email: accountEmail };
     }
 
@@ -1039,6 +1114,7 @@ function setupIPC() {
       }
     } catch {}
     try { await deleteRefreshToken(engine, accountEmail); } catch {}
+    try { await forgetAccessMode(engine, name); } catch {}
     try {
       await fetch(
         `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}`,
@@ -1047,6 +1123,25 @@ function setupIPC() {
     } catch {}
     return { ok: true };
   });
+
+  // Desktop only: the renderer cannot hold the app secret this route needs.
+  ipcMain.handle(IPC.CONNECTIONS_SET_ACCESS_MODE, async (_event, opts) => {
+    const { engine, name, accessMode } = opts || {};
+    if (typeof engine !== 'string' || !engine || typeof name !== 'string' || !name) {
+      return { ok: false, reason: 'engine and name are required.' };
+    }
+    if (!isAccessMode(accessMode)) return { ok: false, reason: 'accessMode must be read, write or none.' };
+    try {
+      return await setConnectionAccessMode(engine, name, accessMode);
+    } catch (err) {
+      diagnostic("main.app", "WARNING", "connections_set_access_mode_failed", `[connections] access-mode change failed for ${engine}/${name}:`, err);
+      return { ok: false, reason: 'Could not change tool access.' };
+    }
+  });
+
+  // Desktop only, for the same reason: these read pages with the app-held token.
+  ipcMain.handle(IPC.NOTION_SEARCH_PAGES, (_event, opts) => searchNotionPagesInMain(opts?.name, opts?.query));
+  ipcMain.handle(IPC.NOTION_FETCH_PAGE, (_event, opts) => fetchNotionPageInMain(opts?.name, opts?.page));
 
   // ── MindsHub onboarding ──────────────────────────────────────
   // Logging in via Keycloak doesn't yet decide the user's LLM —
@@ -1206,6 +1301,21 @@ function setupIPC() {
 
   // Move this install to another organization: switch the session, mint and
   // commit a key there, remember the pick, and retire the key left behind.
+  // The org's logo and icon: the renderer sends the URLs it got
+  // from org-branding; the renderer's CSP loads no remote images, so main
+  // downloads them (auth host only, cached on disk) and returns data: URIs,
+  // setting the app icon on the way. null puts the stock icon back.
+  ipcMain.handle(IPC.MINDSHUB_BRAND_IMAGES, (_e, urls: unknown) => loadDesktopBrandImages(
+    urls && typeof urls === 'object' ? urls as Record<string, unknown> : null,
+    { stockIconPath: getIconPath(), cacheRoot: path.join(coworkHome(), 'org-branding') },
+  ));
+
+  // Each org's switcher icon, the same way: URLs in, data: URIs out.
+  ipcMain.handle(IPC.MINDSHUB_ORG_ICON_URIS, (_e, urls: unknown) => loadOrgIconDataUris(
+    urls,
+    { cacheRoot: path.join(coworkHome(), 'org-branding') },
+  ));
+
   ipcMain.handle(IPC.MINDSHUB_SWITCH_ORG, (_e, organizationId: string) =>
     switchMindsOrg(String(organizationId || '')));
 
@@ -1408,6 +1518,24 @@ function setupIPC() {
     return true;
   });
 
+  // The agent's anonymous usage events, the shared browser's included:
+  // COWORK_USAGE_EVENTS in the account's dotenv, written only when off.
+  // server-process.ts passes ANTON_ANALYTICS_ENABLED=false to the sidecar it
+  // starts next, so a change applies from the next server start.
+  ipcMain.handle(IPC.USAGE_EVENTS_GET, () => ({ enabled: usageEventsOn(readEnvFile()) }));
+
+  ipcMain.handle(IPC.USAGE_EVENTS_SET, async (_event, enabled: unknown) => {
+    if (typeof enabled !== 'boolean') return { ok: false };
+    try {
+      ensureAccountDataRoot();
+      writeUsageEventsPref(coworkEnvPath(), enabled);
+      return { ok: true };
+    } catch (error) {
+      diagnostic("main.app", "ERROR", "usage_events_failed_to_set_preference", '[usage-events] failed to set preference', error);
+      return { ok: false };
+    }
+  });
+
   // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.
   // When enabled the refresh token lives in the macOS keychain; otherwise
   // it sits in a plaintext file under ~/.cowork. Flipping the flag migrates
@@ -1502,17 +1630,20 @@ function setupIPC() {
   // Native directory selection for the first-class Code workspace. The
   // renderer receives only the user-selected path; filesystem access and Git
   // orchestration remain in the local sidecar.
+  let lastPickedFolder: string | null = null;
   ipcMain.handle(IPC.CODE_PICK_FOLDER, async () => {
     if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, reason: 'window unavailable' };
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose a folder',
+      defaultPath: folderPickerDefaultPath(lastPickedFolder, app.getPath('home')),
       // `createDirectory` exposes New Folder in the macOS panel;
       // `promptToCreate` provides the equivalent typed-path flow on Windows.
       // The native default confirmation label (Open) matches both platforms.
       properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
     });
     if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
-    return { ok: true, path: path.resolve(result.filePaths[0]) };
+    lastPickedFolder = path.resolve(result.filePaths[0]);
+    return { ok: true, path: lastPickedFolder };
   });
 
   ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {
@@ -1565,6 +1696,7 @@ function setupIPC() {
   // boot/periodic polling is started separately by initUpdater().
   registerUpdateHandlers(() => mainWindow);
   registerUpdateJournalHandlers();
+  registerKeepAwakeHandlers();
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds
@@ -1665,6 +1797,10 @@ app.whenReady().then(async () => {
   if (isMac) {
     const dockIcon = nativeImage.createFromPath(getIconPath());
     app.dock?.setIcon(dockIcon);
+    // Squirrel.Mac closes every window before it quits to install an update,
+    // and emits this first. Without it the hidden-on-close window would refuse
+    // to close and the install would stall.
+    autoUpdater.on('before-quit-for-update', () => { appQuitting = true; });
   }
 
   /* Wording matches each platform's file manager so the label isn't a
@@ -1728,7 +1864,9 @@ app.whenReady().then(async () => {
             { type: 'separator' },
             { role: 'quit' },
           ],
-        } as Electron.MenuItemConstructorOptions]
+        } as Electron.MenuItemConstructorOptions,
+        // On macOS the File menu is just Close Window, which binds Cmd+W.
+        { role: 'fileMenu' } as Electron.MenuItemConstructorOptions]
       : [{ role: 'fileMenu' } as Electron.MenuItemConstructorOptions]),
     { role: 'editMenu', id: EDIT_MENU_ID },
     {
@@ -1780,6 +1918,13 @@ app.whenReady().then(async () => {
 
   ensureDefaultProject();
   setupIPC();
+  inAppBrowser.registerIpc(ipcMain);
+  try {
+    await inAppBrowser.start();
+  } catch (err) {
+    // The app works without its browser; the agent just doesn't get the tool.
+    diagnostic("main.app", "WARNING", "browser_host_did_not_start", err);
+  }
   // ENG-439: decide the (per-OS-user) server port before the window exists so
   // the renderer can be handed the resolved port via additionalArguments,
   // instead of hardcoding 26866. Best-effort + bounded — never blocks boot.
@@ -2004,8 +2149,12 @@ app.whenReady().then(async () => {
     bootUpdateDone();     // ...or the loading gate awaiting a boot that never ran
   });
 
+  // Clicking the Dock icon brings back the window that closing hid, or
+  // creates one if it is gone.
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      reopenMainWindow?.();
+    } else {
       createWindow();
     }
   });
@@ -2052,8 +2201,10 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const tokenUrl = oauthBlock?.token_url;
         if (!tokenUrl) continue;
         const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
-        if (!refreshToken) continue;
-        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style);
+        // Without a refresh token the loop only marks the connection
+        // needs_reconnect at expiry, which matters for refresh_token_optional.
+        if (!refreshToken && oauthBlock?.refresh_token_optional !== true) continue;
+        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style, oauthBlock?.refresh_token_optional === true);
         diagnostic("main.app", "INFO", "token_refresh_resumed_loop_for", `[token-refresh] resumed loop for ${engine}:${accountEmail}`);
       } catch (err) {
         diagnostic("main.app", "WARNING", "token_refresh_could_not_resume_loop_for", `[token-refresh] could not resume loop for ${engine}/${name}:`, err);
@@ -2117,6 +2268,9 @@ async function drainServerForQuit(): Promise<void> {
 }
 
 app.on('window-all-closed', async () => {
+  // On macOS the app stays in the Dock with its sidecar running; quitting
+  // goes through before-quit, which drains it.
+  if (!shouldQuitWhenAllWindowsClosed(process.platform)) return;
   await drainServerForQuit();
   app.quit();
 });
@@ -2134,6 +2288,7 @@ app.on('window-all-closed', async () => {
 // after the drain finishes. Guarded by `_quitDrained` so the second
 // invocation skips the deferral and the app exits cleanly.
 app.on('before-quit', (event) => {
+  appQuitting = true;
   if (_quitDrained) return;
   event.preventDefault();
   drainServerForQuit().finally(() => {

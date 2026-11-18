@@ -19,7 +19,10 @@
  */
 
 import { isBackendArtifact } from './artifactKinds';
-import { OTHER_ACTOR_LABEL } from './sharedResourceAccess';
+import { otherActorLabel } from './sharedResourceAccess';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.liveAppSharing.${key}`, { ns: 'projects', ...vars });
 
 /**
  * One app another person shared with the caller, as
@@ -59,12 +62,16 @@ import { OTHER_ACTOR_LABEL } from './sharedResourceAccess';
  */
 
 export const SHARE_LIVE_APP_LABEL = 'Let others duplicate…';
+export const shareLiveAppLabel = () => tr('shareLabel');
 export const SHARE_WITH_ONE = 'one';
 export const SHARE_WITH_EVERYONE = 'everyone';
 export const SHARE_WITH_EVERYONE_LABEL = 'Everyone on this stack';
+export const shareWithEveryoneLabel = () => tr('everyoneLabel');
 export const SHARED_WITH_YOU_LABEL = 'Apps you can duplicate';
+export const sharedWithYouLabel = () => tr('sharedWithYouLabel');
 // Live Artifacts spans every project, so a copy made there goes to General.
 export const COPY_GOES_TO_GENERAL = 'Your copy goes to your General project.';
+export const copyGoesToGeneral = () => tr('copyGoesToGeneral');
 
 /**
  * Whether the card offers "Share with…": a full-stack app the viewer owns,
@@ -100,7 +107,7 @@ export function isLiveAppCard(artifact, liveApps) {
  * @param {unknown} email
  */
 export function ownerLabel(email) {
-  return typeof email === 'string' && email.trim() ? email.trim() : OTHER_ACTOR_LABEL;
+  return typeof email === 'string' && email.trim() ? email.trim() : otherActorLabel();
 }
 
 /**
@@ -109,8 +116,8 @@ export function ownerLabel(email) {
  * @param {SharedLiveApp | null | undefined} app
  */
 export function sharedByLine(app) {
-  const from = `From ${ownerLabel(app?.ownerEmail)}`;
-  return app?.everyone === true ? `${from} · for everyone` : from;
+  const owner = ownerLabel(app?.ownerEmail);
+  return app?.everyone === true ? tr('fromForEveryone', { owner }) : tr('from', { owner });
 }
 
 /**
@@ -121,7 +128,7 @@ export function sharedByLine(app) {
 export function receivedFromLine(artifact) {
   const from = artifact?.receivedFrom;
   if (!from || typeof from !== 'object') return null;
-  return `Duplicated from ${ownerLabel(from.email)}`;
+  return tr('duplicatedFrom', { owner: ownerLabel(from.email) });
 }
 
 /**
@@ -130,12 +137,12 @@ export function receivedFromLine(artifact) {
  * @param {LiveAppShare} share
  */
 export function shareAudienceLabel(share) {
-  return share?.everyone === true ? SHARE_WITH_EVERYONE_LABEL : String(share?.email ?? '');
+  return share?.everyone === true ? shareWithEveryoneLabel() : String(share?.email ?? '');
 }
 
 /** @param {SharedLiveApp | null | undefined} app */
 export function duplicateDisclaimerTitle(app) {
-  return `Duplicate "${app?.name || app?.slug || 'this app'}"?`;
+  return tr('duplicateTitle', { name: app?.name || app?.slug || tr('thisApp') });
 }
 
 /**
@@ -146,8 +153,7 @@ export function duplicateDisclaimerTitle(app) {
  * @param {SharedLiveApp | null | undefined} app
  */
 export function duplicateDisclaimer(app) {
-  return `${ownerLabel(app?.ownerEmail)} lets you duplicate this app. Your copy runs with your own connections `
-    + 'and can use whatever they can use. Review it before you launch it.';
+  return tr('duplicateDisclaimer', { owner: ownerLabel(app?.ownerEmail) });
 }
 
 /**

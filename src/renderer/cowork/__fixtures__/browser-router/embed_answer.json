@@ -1,0 +1,16 @@
+{
+  "description": "The router's POST {router}/_embed answer for the caller's own credential. The link opens the viewer page and its event stream once each, and only before ticket_expires_at; the viewer it opens closes at lease_expires_at. Both are Unix seconds.",
+  "examples": {
+    "a viewer link": {
+      "where": "POST /_embed",
+      "kind": "response",
+      "status": 200,
+      "body": {
+        "session_id": "t-0123456789abcdef01234567",
+        "view_url": "https://app.example.test/browser/sessions/t-0123456789abcdef01234567/view?et=ticket-example",
+        "ticket_expires_at": 1999999120,
+        "lease_expires_at": 1999999900
+      }
+    }
+  }
+}

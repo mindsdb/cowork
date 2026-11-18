@@ -18,20 +18,51 @@ import { diagnostic } from '../../../shared/diagnostics';
 //
 // Every product event this module emits is registered in EVENTS below.
 
-import { host } from '../../platform/host';
+import { host, onMindsHubCredentialChanged } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
+import { startCreditsFlow } from './creditsFlow';
+import { subscribeOrganizationChanges } from './organizationChanges';
+import { posthogKeyForBuildKind } from '../../../shared/analytics-project';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
-// device_id, aid (desktop, once health resolves), and (once identity resolves)
+// device_id, build_kind and aid (desktop, once known), and (once identity resolves)
 // is_internal + a `$set` person update on all of them. `$identify` is a PostHog protocol event, not a product event,
 // so it lives inline in the merge rather than here.
 const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
-  ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
+  ARTIFACT_BUILT:           'artifact_built',           // { artifact_type, artifact_id (cowork artifact uuid; absent from builds before it was added) }
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
-  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — only on the first task within 30 min of a console handoff
-  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
+  ARTIFACT_STATS_OPENED:    'artifact_stats_opened',    // { artifact_id (cowork artifact uuid, bare hex; not the id artifact_published sends, which prefers report_id), access_mode: 'public'|'password'|'restricted'|null, has_views }
+  // The sharing events below all carry { artifact_id (cowork artifact uuid,
+  // as artifact_stats_opened), artifact_type, entry, report_id,
+  // sso_organization_id, acting_organization_id }. report_id is the published
+  // page's id: the save's answer when there is one, else the card's
+  // (cowork-server's `reportId`); '' when the artifact has no live page, or its
+  // server predates the card field. acting_organization_id is the organization
+  // the action ran under (actingOrganizationId); sso_organization_id is the
+  // signed-in session's, which on Desktop can differ.
+  // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'chat_card'|'rail'|'rail_delete'|'other'.
+  // 'chat_card' is the Share panel opened by Share on the chat's artifact card,
+  // and every save, copy and pull-back made in that panel; 'chat' is the card's
+  // own Download.
+  // Deleting a shared artifact reports a pull-back on both surfaces: on Desktop
+  // after the client's own unpublish, on Web after the delete succeeds, since
+  // the server's delete takes the page down or fails.
+  // Audiences are categories and counts only, never an email, name or password.
+  ARTIFACT_SHARE_OPENED:    'artifact_share_opened',    // { is_shared: true|false|null (null while Web still reads who has access) } — the Share panel or dialog opened
+  // Every successful save that changes who can open the artifact, while it
+  // reached someone besides its owner before or after: a first share
+  // (was_shared false → is_shared true), a change (true → true) or a pull-back
+  // (true → false, Stop sharing included). Saving the same access again, or a
+  // save that leaves it reaching only its owner, sends nothing. was_shared is
+  // null when the panel didn't know the audience before the save.
+  ARTIFACT_ACCESS_CHANGED:  'artifact_access_changed',  // { was_shared, is_shared, was_audience, audience: 'unpublished'|'public'|'password'|'only_me'|'organization'|'specific'|'unknown', org_wide, team_count, people_count, notified }
+  ARTIFACT_ACCESS_CHANGE_FAILED: 'artifact_access_change_failed', // { reason: 'share_org_not_allowed'|'owned_by_other'|'left_live'|'error' } — never counted as a share; 'left_live' is a Stop sharing or delete whose page the server could not take down, so nobody lost access
+  ARTIFACT_LINK_COPIED:     'artifact_link_copied',     // {} — only when the copy succeeded
+  ARTIFACT_DOWNLOADED:      'artifact_downloaded',      // { kind: 'file'|'export', format? ('pdf'|'docx'|'html', exports only) } — only when the file was saved
+  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id?, entry_placement? } — only on the first task within 30 min of a console handoff
+  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, entry_placement? } — Home composer interactive after a console handoff
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
   EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
@@ -105,7 +136,7 @@ const EVENTS = {
   // prefix exists to stop the unprefixed name reading as authoritative, and
   // ENG-2206 remains open for a subject carried on the gateway denial itself.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
-  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent. 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version, ui_version, server_version } desktop, per launch (ENG-921). One row per layer's running version, so adoption per layer needs no join
@@ -134,7 +165,39 @@ const EVENTS = {
   CODE_VIEW_OPENED:         'code_view_opened',         // {}  first switch into the Code workspace per launch
   CODE_TASK_STARTED:        'code_task_started',        // { task_id, origin: 'new'|'fork', engine_id, model, reasoning_effort?, permission_mode, task_mode, workspace_kind, in_project, computer_is_local, attachment_count, source_context_count }
   CODE_TASK_START_FAILED:   'code_task_start_failed',   // { origin, engine_id?, model?, in_project?, code, status? }
+  // Compare Models. Model ids, counts and costs only: never a prompt or title.
+  COMPARE_VIEW_OPENED:      'compare_view_opened',      // {}  first open of Compare Models per launch
+  COMPARISON_STARTED:       'comparison_started',       // { comparison_id, model_a, model_b, effort_a?, effort_b?, from_project, file_count, example_id? }
+  COMPARISON_FOLLOW_UP_SENT:'comparison_follow_up_sent',// { comparison_id, target: 'both'|'a'|'b', turn_index }
+  COMPARISON_VERDICT_RECORDED:'comparison_verdict_recorded', // { comparison_id, turn_index, winner, winner_model?, other_model?, changed, ...cost }
+  COMPARISON_CONTINUED:     'comparison_continued',     // { comparison_id, side, model, other_model, turns, carried_all, chose_winner?, ...cost }
+  // ...cost: cost_a_usd?, cost_b_usd?, cost_total_usd?, cost_partial, cost_stale?, tokens_a?, tokens_b?, cheaper_side?: 'a'|'b'|'same' (complete figures only)
+  // A message sent while a turn runs (ENG-4194). Never carries its text.
+  ADDON_ADDED:              'addon_added',              // { decided_by: 'jev'|'user', via: 'send'|'queue' } — joined the running task
+  ADDON_QUEUED:             'addon_queued',             // { reason } — queued as the next task: the server's reason, or 'attachments'|'no_conversation'|'no_live_stream'|'turn_ending'|'not_found'|'unsupported'|'timeout'|'error'|'unknown'
+  ADDON_OVERRIDDEN:         'addon_overridden',         // { direction: 'to_queue'|'to_task', outcome, decided_by? } — the person moved a message against where it landed; decided_by 'jev' on to_queue is the accuracy signal
+  // Next steps under a finished answer (lib/nextSteps). Step and result kinds
+  // only, never message text. `steps` lists what was offered, in order;
+  // `position` is the clicked step's 0-based place in that list. An
+  // artifact's card holds Preview and Share and is not part of this row: its
+  // Share is counted by artifact_share_opened with entry 'chat_card'.
+  NEXT_STEPS_SHOWN:         'next_steps_shown',         // { result_kind: 'example'|'file'|'artifact'|'table'|'research'|'other', steps: ('own_data'|'another_file'|'make_page'|'schedule')[] } — once per answer per app run
+  NEXT_STEP_CLICKED:        'next_step_clicked',        // { step, result_kind, position }
+  // The account menu's developer links (ENG-4288). Sign-in lands in Cowork now,
+  // so these are how a developer who came for the API still reaches it; the
+  // count is the measure of whether that path is being found.
+  MENU_API_KEYS_CLICKED:    'menu_api_keys_clicked',    // {}  user menu -> console API keys page
+  MENU_API_DOCS_CLICKED:    'menu_api_docs_clicked',    // {}  user menu -> docs.mindshub.ai
+  SIGNUP_LANDED:            'signup_landed',            // { from: 'desktop'|'web' }  a new account reached Cowork web Home from a sign-up link
 };
+
+const ORG_STAMPED_EVENTS = new Set([
+  EVENTS.ARTIFACT_SHARE_OPENED,
+  EVENTS.ARTIFACT_ACCESS_CHANGED,
+  EVENTS.ARTIFACT_ACCESS_CHANGE_FAILED,
+  EVENTS.ARTIFACT_LINK_COPIED,
+  EVENTS.ARTIFACT_DOWNLOADED,
+]);
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
 const POSTHOG_KEY =
@@ -168,6 +231,40 @@ const IS_PROD_BUILD =
 // it; for "current version" use the latest event's app_version instead.
 const APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : undefined;
+
+// The desktop shell's build kind, which decides the project an event goes to:
+// installers bake the production token whatever their kind, so a staging or
+// preview install has to re-route itself (posthogKeyForBuildKind). The shell's
+// answer is cached, including "no kind" from a shell too old to report one.
+// A failed read is not an answer: the events waiting on it are held while the
+// shell is asked again, so a staging install's event isn't sent to production
+// on one bad read. Only when every retry fails does an event fall back to
+// production, so a production install never loses one; the next event asks
+// again.
+const BUILD_KIND_RETRY_DELAYS_MS = [250, 1000, 3000];
+let cachedBuildKind; // undefined until the shell has answered
+let buildKindLookup = null; // the read in progress, shared by every waiting event
+function shellBuildKind() {
+  if (SURFACE !== 'desktop') return Promise.resolve(null);
+  if (cachedBuildKind !== undefined) return Promise.resolve(cachedBuildKind);
+  if (!buildKindLookup) {
+    buildKindLookup = (async () => {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          const info = await host.getVersionInfo();
+          cachedBuildKind = info?.buildKind || null;
+          return cachedBuildKind;
+        } catch {
+          if (attempt >= BUILD_KIND_RETRY_DELAYS_MS.length) return null;
+          await new Promise((resolve) => setTimeout(resolve, BUILD_KIND_RETRY_DELAYS_MS[attempt]));
+        }
+      }
+    })().finally(() => {
+      buildKindLookup = null;
+    });
+  }
+  return buildKindLookup;
+}
 
 // ── Session flags ──────────────────────────────────────────────────
 // CI-hygiene and debug-logging each resolve to a boolean once (from a build-time
@@ -228,8 +325,69 @@ const identity = {
   distinctId: null,
   cacheExpiry: 0,
 };
-// Synchronous guard against the merge firing twice when two events resolve
-// identity in the same tick, before the async localStorage marker is written.
+// An in-place organization switch (a desktop shell that switches without
+// reloading the document) re-reads the token on the next event, so the
+// organization the events name is the one switched to.
+subscribeOrganizationChanges(() => { identity.cacheExpiry = 0; });
+
+// The organization a Desktop's MindsHub work runs under, read from the sidecar.
+// A key the person pasted wins over their sign-in, and it can belong to another
+// organization than the one they are signed in to, so the session's
+// organization is not always the one that acted. Only answers the sidecar named
+// are kept; anything else is asked again at the next event.
+const credentialOrg = { id: undefined, expiry: 0, generation: 0 };
+function forgetCredentialOrganization() {
+  credentialOrg.id = undefined;
+  credentialOrg.expiry = 0;
+  credentialOrg.generation += 1;
+}
+subscribeOrganizationChanges(forgetCredentialOrganization);
+// A pasted or removed key reaches the renderer only as this signal. Attached on
+// first use rather than at import, so a module that never sends a sharing event
+// never subscribes.
+let credentialListenerAttached = false;
+function listenForCredentialChanges() {
+  if (credentialListenerAttached) return;
+  credentialListenerAttached = true;
+  try {
+    onMindsHubCredentialChanged(forgetCredentialOrganization);
+  } catch { /* no bridge: nothing changes the credential under us */ }
+}
+
+const CREDENTIAL_ORG_TIMEOUT_MS = 3000;
+
+async function credentialOrganizationId() {
+  listenForCredentialChanges();
+  if (Date.now() < credentialOrg.expiry) return credentialOrg.id;
+  const generation = credentialOrg.generation;
+  try {
+    const res = await fetch(`${host.getApiOrigin()}/api/v1/runtime-credential/minds/organization`, {
+      signal: AbortSignal.timeout(CREDENTIAL_ORG_TIMEOUT_MS),
+    });
+    if (!res.ok) return undefined;
+    const body = await res.json();
+    const id = typeof body?.organizationId === 'string' && body.organizationId ? body.organizationId : undefined;
+    if (id && generation === credentialOrg.generation) {
+      credentialOrg.id = id;
+      credentialOrg.expiry = Date.now() + 5 * 60 * 1000;
+    }
+    return id;
+  } catch {
+    return undefined;
+  }
+}
+
+// The organization the person acted in. On Web that is the session's: every
+// request carries the session token. On Desktop it is the held credential's,
+// and absent when the sidecar cannot say (an older sidecar, MindsHub
+// unreachable, or no MindsHub credential at all).
+function actingOrganizationId() {
+  if (host.isElectron) return credentialOrganizationId();
+  return Promise.resolve(identity.personProps.organization_id);
+}
+// Guard against the merge firing twice before the async localStorage marker is
+// written, keyed by project and account: a merge sent to production while the
+// shell was unreachable must not stop the one its events' project needs.
 // Entries are cleared on failure so a later event can still retry.
 const mergeInFlight = new Set();
 
@@ -430,10 +588,10 @@ async function getDistinctId() {
 // event, and buckets by `timestamp`, so a late send lands on the day the
 // thing happened.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function postCapture(event, distinctId, properties, envelope = {}) {
+function postCapture(event, distinctId, properties, envelope = {}, apiKey = POSTHOG_KEY) {
   const at = envelope.timestamp ? new Date(envelope.timestamp) : null;
   const body = JSON.stringify({
-    api_key: POSTHOG_KEY,
+    api_key: apiKey,
     event,
     distinct_id: distinctId,
     properties: { ...properties, $lib: LIB },
@@ -462,36 +620,48 @@ function postCapture(event, distinctId, properties, envelope = {}) {
 // `$identify` event carrying `$anon_distinct_id`. Idempotent via a localStorage
 // marker so it fires once per account, not on every event.
 const IDENTITY_MERGED_KEY = 'cowork_identity_merged_sub';
+// The merge happens in the project the events go to, so its marker is kept per
+// project: an install that merged into production before it was routed
+// elsewhere still merges once where its events now land. Production keeps the
+// original key, so no production install merges again.
+function identityMergedKey(apiKey) {
+  return apiKey === POSTHOG_KEY ? IDENTITY_MERGED_KEY : `${IDENTITY_MERGED_KEY}:${apiKey}`;
+}
 function mergeAnonIntoAccount(sub) {
   if (!POSTHOG_KEY || isCi() || !sub) return;
-  if (mergeInFlight.has(sub)) return;
-  try {
-    if (window.localStorage.getItem(IDENTITY_MERGED_KEY) === sub) return;
-  } catch {
-    // localStorage unavailable: fall through and attempt the merge anyway.
-  }
   const deviceId = getDeviceId();
   // Nothing to merge if there's no distinct device id to alias from.
   if (!deviceId || deviceId === sub) return;
-  mergeInFlight.add(sub);
-  dlog('$identify merge', { distinct_id: sub, $anon_distinct_id: deviceId });
-  postCapture('$identify', sub, {
-    $anon_distinct_id: deviceId,
-    // Carry device_id onto the person too (via personSet), so the deterministic
-    // join key survives even if PostHog declines the person-merge.
-    $set: personSet(),
-    surface: SURFACE,
-    is_internal: identity.isInternal,
-  }).then((ok) => {
-    if (ok) {
-      try {
-        window.localStorage.setItem(IDENTITY_MERGED_KEY, sub);
-      } catch {
-        /* best effort: a re-merge next session is harmless */
-      }
-    } else {
-      mergeInFlight.delete(sub); // non-ok or network error: let a later event retry
+  shellBuildKind().then((buildKind) => {
+    const apiKey = posthogKeyForBuildKind(buildKind, POSTHOG_KEY);
+    const flight = `${apiKey}:${sub}`;
+    if (mergeInFlight.has(flight)) return;
+    const markerKey = identityMergedKey(apiKey);
+    try {
+      if (window.localStorage.getItem(markerKey) === sub) return;
+    } catch {
+      // localStorage unavailable: fall through and attempt the merge anyway.
     }
+    mergeInFlight.add(flight);
+    dlog('$identify merge', { distinct_id: sub, $anon_distinct_id: deviceId });
+    postCapture('$identify', sub, {
+      $anon_distinct_id: deviceId,
+      // Carry device_id onto the person too (via personSet), so the deterministic
+      // join key survives even if PostHog declines the person-merge.
+      $set: personSet(),
+      surface: SURFACE,
+      is_internal: identity.isInternal,
+    }, {}, apiKey).then((ok) => {
+      if (ok) {
+        try {
+          window.localStorage.setItem(markerKey, sub);
+        } catch {
+          /* best effort: a re-merge next session is harmless */
+        }
+      } else {
+        mergeInFlight.delete(flight); // non-ok or network error: let a later event retry
+      }
+    });
   });
 }
 
@@ -520,7 +690,7 @@ function capture(event, properties = {}, envelope = {}) {
     return Promise.resolve(false);
   }
   return getDistinctId()
-    .then((distinctId) => {
+    .then(async (distinctId) => {
       // Before sign-in, fall back to the anonymous device id so pre-login events
       // are captured instead of dropped; they merge into the account on first
       // sign-in (see mergeAnonIntoAccount).
@@ -530,7 +700,12 @@ function capture(event, properties = {}, envelope = {}) {
         dlog('skip', event, '— no identity and no device id');
         return false;
       }
+      const buildKind = await shellBuildKind();
       const eventProps = {
+        // Omitted while unknown. An event that reports its own build_kind
+        // keeps it, null included: update_phase journals the kind it ran
+        // under, and boot_screen_resolved sends null when the shell has none.
+        ...(buildKind ? { build_kind: buildKind } : {}),
         ...properties,
         surface: SURFACE,
         app_version: APP_VERSION,
@@ -576,9 +751,9 @@ function capture(event, properties = {}, envelope = {}) {
       // than absent: a filter on the property counts the row and the column looks
       // populated. `app_version` and `is_internal` follow the same rule.
       //
-      // Still stale for up to five minutes after an in-place org switch, because
-      // getDistinctId returns early on its own cache and never re-resolves inside
-      // the window. forgetIdentity fixes the post-expiry case only.
+      // An in-place org switch expires the identity cache (the
+      // subscribeOrganizationChanges call above), and a switch that reloads the
+      // document starts a fresh one, so neither replays the previous org.
       if (event === EVENTS.TOKEN_CAP_HIT) {
         if (identity.personProps.organization_id) {
           eventProps.sso_organization_id = identity.personProps.organization_id;
@@ -587,11 +762,23 @@ function capture(event, properties = {}, envelope = {}) {
           eventProps.sso_plan_tier = identity.personProps.plan_tier;
         }
       }
+      // The sharing events carry the session's organisation too, because a
+      // person who switches organisations would otherwise be read against the
+      // last one their profile names. The same session caveats apply, so they
+      // also carry `acting_organization_id`, the organization the action ran
+      // under (actingOrganizationId).
+      if (ORG_STAMPED_EVENTS.has(event) && identity.personProps.organization_id) {
+        eventProps.sso_organization_id = identity.personProps.organization_id;
+      }
+      if (ORG_STAMPED_EVENTS.has(event)) {
+        const acting = await actingOrganizationId();
+        if (acting) eventProps.acting_organization_id = acting;
+      }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.
       if (distinctId) eventProps.$set = personSet();
       dlog('POST', event, { distinct_id: captureId, identified: Boolean(distinctId) });
-      return postCapture(event, captureId, eventProps, envelope);
+      return postCapture(event, captureId, eventProps, envelope, posthogKeyForBuildKind(buildKind, POSTHOG_KEY));
     })
     .catch((err) => {
       dlog('capture failed for', event, err);
@@ -605,8 +792,10 @@ export function trackDataSourceConnected(sourceType) {
   capture(EVENTS.DATA_SOURCE_CONNECTED, { source_type: sourceType || 'unknown' });
 }
 
-export function trackArtifactBuilt(artifactType) {
-  capture(EVENTS.ARTIFACT_BUILT, { artifact_type: artifactType || 'unknown' });
+export function trackArtifactBuilt(artifactType, artifactId) {
+  const props = { artifact_type: artifactType || 'unknown' };
+  if (artifactId) props.artifact_id = artifactId;
+  capture(EVENTS.ARTIFACT_BUILT, props);
 }
 
 export function trackArtifactPublished(artifactId, visibility) {
@@ -614,6 +803,63 @@ export function trackArtifactPublished(artifactId, visibility) {
     artifact_id: artifactId || '',
     visibility: visibility || 'public',
   });
+}
+
+// Fires after the first successful load of each Stats panel open. access_mode
+// is null until the viewer knows the real mode, because usePublish reports
+// 'public' as its default before that.
+export function trackArtifactStatsOpened({ artifactId, accessMode = null, hasViews = false } = {}) {
+  capture(EVENTS.ARTIFACT_STATS_OPENED, {
+    artifact_id: artifactId || '',
+    access_mode: accessMode || null,
+    has_views: !!hasViews,
+  });
+}
+
+// The sharing events. Callers go through lib/artifactShareAnalytics, which
+// reads the artifact and its audience; these only shape the wire properties.
+function artifactProps({ artifactId, artifactType, entry, reportId }) {
+  return {
+    artifact_id: artifactId || '',
+    artifact_type: artifactType || 'unknown',
+    entry: entry || 'other',
+    report_id: reportId || '',
+  };
+}
+
+export function trackArtifactShareOpened({ isShared = null, ...ref } = {}) {
+  capture(EVENTS.ARTIFACT_SHARE_OPENED, {
+    ...artifactProps(ref),
+    is_shared: typeof isShared === 'boolean' ? isShared : null,
+  });
+}
+
+export function trackArtifactAccessChanged({ before, after, notified = false, ...ref } = {}) {
+  capture(EVENTS.ARTIFACT_ACCESS_CHANGED, {
+    ...artifactProps(ref),
+    was_shared: typeof before?.shared === 'boolean' ? before.shared : null,
+    is_shared: typeof after?.shared === 'boolean' ? after.shared : null,
+    was_audience: before?.audience || 'unknown',
+    audience: after?.audience || 'unknown',
+    org_wide: after?.orgWide ?? null,
+    team_count: after?.teamCount ?? null,
+    people_count: after?.peopleCount ?? null,
+    notified: !!notified,
+  });
+}
+
+export function trackArtifactAccessChangeFailed({ reason = 'error', ...ref } = {}) {
+  capture(EVENTS.ARTIFACT_ACCESS_CHANGE_FAILED, { ...artifactProps(ref), reason });
+}
+
+export function trackArtifactLinkCopied(ref = {}) {
+  capture(EVENTS.ARTIFACT_LINK_COPIED, artifactProps(ref));
+}
+
+export function trackArtifactDownloaded({ kind = 'file', format = '', ...ref } = {}) {
+  const props = { ...artifactProps(ref), kind };
+  if (kind === 'export' && format) props.format = format;
+  capture(EVENTS.ARTIFACT_DOWNLOADED, props);
 }
 
 // Where the next task came from, when Home was opened by a console link. Held
@@ -625,11 +871,21 @@ export function trackArtifactPublished(artifactId, visibility) {
 const ENTRY_ATTRIBUTION_TTL_MS = 30 * 60 * 1000;
 let pendingEntryAttribution = null;
 
-export function setEntryAttribution(entrySource, exampleId) {
+export function setEntryAttribution(entrySource, exampleId, placement) {
   pendingEntryAttribution = entrySource
-    ? { entry_source: entrySource, example_id: exampleId || null, at: Date.now() }
+    ? {
+      entry_source: entrySource,
+      example_id: exampleId || null,
+      entry_placement: placement || null,
+      at: Date.now(),
+    }
     : null;
 }
+
+// The console surface a handoff came from, as an event property, only when the
+// link named one; absent rather than null so a missing placement reads as
+// "not recorded", the same as before the console sent it.
+const placementProps = (placement) => (placement ? { entry_placement: placement } : {});
 
 export function trackAgentSessionStarted() {
   const pending = pendingEntryAttribution;
@@ -637,7 +893,13 @@ export function trackAgentSessionStarted() {
   const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
   capture(
     EVENTS.AGENT_SESSION_STARTED,
-    fresh ? { entry_source: pending.entry_source, example_id: pending.example_id } : {}
+    fresh
+      ? {
+        entry_source: pending.entry_source,
+        example_id: pending.example_id,
+        ...placementProps(pending.entry_placement),
+      }
+      : {}
   );
 }
 
@@ -703,17 +965,19 @@ export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
   };
   if (start?.example_id) props.example_id = start.example_id;
   if (start?.added_chars != null) props.added_chars = start.added_chars;
+  Object.assign(props, placementProps(entry?.entry_placement));
   capture(EVENTS.NEW_TASK_MESSAGE_SENT, props);
 }
 
 // The console handoff's arrival: the Home composer is on screen and usable,
 // with the sample in it (`prefilled`) or empty. Separate from the console's
 // click, which only says the user asked to come here.
-export function trackComposerReady(entrySource, exampleId, prefilled) {
+export function trackComposerReady(entrySource, exampleId, prefilled, placement) {
   capture(EVENTS.COMPOSER_READY, {
     entry_source: entrySource,
     example_id: exampleId || null,
     prefilled: Boolean(prefilled),
+    ...placementProps(placement),
   });
 }
 
@@ -768,6 +1032,9 @@ export function trackTurnFailed(conversationId, event) {
 //   free_serving_paused       free MindsHub Air is paused for everyone by the
 //                             daily spend fuse; NOT paired with token_cap_hit,
 //                             because it is not this user's cap
+//   budget_exceeded           the org's spending budget is used up; "View
+//                             budgets" opens the Budgets tab. NOT paired with
+//                             token_cap_hit: credits do not lift a budget
 //   model_access_denied       legacy per-model credit denial (pre-wallet gateways)
 //   model_disabled            legacy admin-disabled model; credits do not unlock it
 //   key_provisioning_refused  MindsHub would not mint an LLM key on reconnect
@@ -782,6 +1049,9 @@ export function trackTurnFailed(conversationId, event) {
 //                             back included_allowance_exhausted
 //   free_air_paused_notice    Settings, after a minds-cloud provider test hit
 //                             the daily free-Air spend fuse; not this user's cap
+//   budget_notice             Settings, after a minds-cloud provider test came
+//                             back budget_exceeded, or the hint under a current
+//                             model the spent budget stops
 //   locked_model_hint         Settings, the "<model> needs credits" hint under a
 //                             model the wallet cannot pay for
 //   nav                       the Billing & Usage item in the user menu
@@ -801,11 +1071,31 @@ export function trackTurnFailed(conversationId, event) {
 // `kind` names which in-chat usage notice was clicked ('free_low', 'free_used',
 // 'auto_top_up_failed'), so `usage_alert` can be split by notice.
 export function trackBillingOpened(trigger, workspaceMode, kind) {
+  // Every billing link passes here, so it is where the post-payment availability follow-up arms.
+  startCreditsFlow();
   capture(EVENTS.BILLING_OPENED, {
     trigger: trigger || 'unknown',
     workspace_mode: workspaceMode || undefined,
     kind: kind || undefined,
   });
+}
+
+// The user menu's API keys and API docs links (ENG-4288). One event each
+// rather than a shared one with a destination property, so each is a single
+// filter in PostHog. Every click counts: these measure use, not reach.
+export function trackMenuApiKeysClicked() {
+  capture(EVENTS.MENU_API_KEYS_CLICKED);
+}
+
+export function trackMenuApiDocsClicked() {
+  capture(EVENTS.MENU_API_DOCS_CLICKED);
+}
+
+// A new account reached Cowork web from a sign-up link (ENG-4288). `from` is
+// where the sign-up started: 'desktop' for the desktop app, 'web' for Cowork
+// web. Once per landing, since the landing marker is taken exactly once.
+export function trackSignupLanded(from) {
+  capture(EVENTS.SIGNUP_LANDED, { from: from === 'desktop' ? 'desktop' : 'web' });
 }
 
 // First switch into the Code workspace per launch, from any entry point. The
@@ -837,6 +1127,8 @@ export function trackCodeTaskStarted(session, { origin = 'new', attachmentCount 
     permission_mode: session.permission_mode || undefined,
     task_mode: session.task_mode || 'build',
     workspace_kind: session.workspace_kind || 'unknown',
+    // Absent before the server recorded modes; those tasks were all isolated.
+    workspace_mode: session.workspace_mode || 'worktree',
     in_project: Boolean(session.project_id),
     computer_is_local: session.computer_is_local !== false,
     attachment_count: typeof attachmentCount === 'number' ? attachmentCount : undefined,
@@ -855,6 +1147,100 @@ export function trackCodeTaskStartFailed(origin, input, reason) {
     in_project: input ? Boolean(input.projectId) : undefined,
     code: (reason && typeof reason.code === 'string' && reason.code) || 'unknown',
     status: reason && typeof reason.status === 'number' ? reason.status : undefined,
+  });
+}
+
+// Compare Models, from first open to Continue: who finds it, which model pairs
+// people try, whether the cheaper side wins or ties, and whether a comparison
+// turns into a real task. Model ids, counts and costs only, never a prompt or
+// a title. `cost` is comparisonCostProps(usage) from lib/compareSides.
+let compareViewOpenedThisLaunch = false;
+export function trackCompareViewOpened() {
+  if (compareViewOpenedThisLaunch) return;
+  compareViewOpenedThisLaunch = true;
+  capture(EVENTS.COMPARE_VIEW_OPENED);
+}
+
+export function trackComparisonStarted(comparison, { fileCount = 0, exampleId = null } = {}) {
+  if (!comparison?.id) return;
+  const [a, b] = comparison.sides || [];
+  capture(EVENTS.COMPARISON_STARTED, {
+    comparison_id: comparison.id,
+    model_a: a?.model || 'unknown',
+    model_b: b?.model || 'unknown',
+    effort_a: a?.reasoningEffort || undefined,
+    effort_b: b?.reasoningEffort || undefined,
+    from_project: Boolean(comparison.sourceProjectId),
+    file_count: fileCount,
+    example_id: exampleId || undefined,
+  });
+}
+
+// Mid-task messages (ENG-4194). Ids and reasons only, never the text.
+export function trackAddonAdded(decidedBy, via) {
+  capture(EVENTS.ADDON_ADDED, { decided_by: decidedBy === 'user' ? 'user' : 'jev', via: via === 'queue' ? 'queue' : 'send' });
+}
+
+// Reasons are reported from a fixed list: the server's own reason strings are
+// not ours to forward as-is, and anything new reads as 'unknown'.
+const ADDON_QUEUED_REASONS = new Set([
+  // The app's own.
+  'empty', 'attachments', 'no_conversation', 'no_live_stream', 'turn_ending',
+  'not_found', 'unsupported', 'timeout', 'error', 'returned',
+  // The server's `queued` reasons.
+  'jev', 'next_task', 'low_confidence', 'new_request', 'jev_off', 'jev_error', 'jev_timeout',
+  'too_many', 'too_large', 'rate_limited', 'busy', 'internal', 'redis_error', 'pod_timeout',
+]);
+const ADDON_OVERRIDE_OUTCOMES = new Set([
+  'added', 'withdrawn', 'already_read', ...ADDON_QUEUED_REASONS,
+]);
+
+const allowed = (value, list) => (list.has(value) ? value : 'unknown');
+
+export function trackAddonQueued(reason) {
+  capture(EVENTS.ADDON_QUEUED, { reason: allowed(reason, ADDON_QUEUED_REASONS) });
+}
+
+export function trackAddonOverridden(direction, outcome, decidedBy) {
+  capture(EVENTS.ADDON_OVERRIDDEN, {
+    direction: direction === 'to_task' ? 'to_task' : 'to_queue',
+    outcome: allowed(outcome, ADDON_OVERRIDE_OUTCOMES),
+    ...(decidedBy ? { decided_by: decidedBy === 'user' ? 'user' : 'jev' } : {}),
+  });
+}
+
+export function trackComparisonFollowUpSent(comparisonId, target, turnIndex) {
+  if (!comparisonId) return;
+  capture(EVENTS.COMPARISON_FOLLOW_UP_SENT, { comparison_id: comparisonId, target, turn_index: turnIndex });
+}
+
+export function trackComparisonVerdictRecorded(comparisonId, { turnIndex, winner, models = {}, changed = false, cost = {} }) {
+  if (!comparisonId) return;
+  const picked = winner === 'a' || winner === 'b';
+  capture(EVENTS.COMPARISON_VERDICT_RECORDED, {
+    comparison_id: comparisonId,
+    turn_index: turnIndex,
+    winner,
+    winner_model: picked ? models[winner] : undefined,
+    other_model: picked ? models[winner === 'a' ? 'b' : 'a'] : undefined,
+    changed,
+    ...cost,
+    cheaper_won: picked && cost.cheaper_side && cost.cheaper_side !== 'same' ? cost.cheaper_side === winner : undefined,
+  });
+}
+
+export function trackComparisonContinued(comparisonId, { side, models = {}, turns, carriedAll, verdict = null, cost = {} }) {
+  if (!comparisonId) return;
+  capture(EVENTS.COMPARISON_CONTINUED, {
+    comparison_id: comparisonId,
+    side,
+    model: models[side],
+    other_model: models[side === 'a' ? 'b' : 'a'],
+    turns,
+    carried_all: carriedAll,
+    chose_winner: verdict === 'a' || verdict === 'b' ? verdict === side : undefined,
+    ...cost,
+    chose_cheaper: cost.cheaper_side && cost.cheaper_side !== 'same' ? cost.cheaper_side === side : undefined,
   });
 }
 
@@ -1141,10 +1527,29 @@ export function resetDeviceIdentity() {
   mergeInFlight.clear();
   // The next account's first Code visit is its own.
   codeViewOpenedThisLaunch = false;
+  compareViewOpenedThisLaunch = false;
   try {
     window.localStorage.removeItem(DEVICE_ID_KEY);
     window.localStorage.removeItem(IDENTITY_MERGED_KEY);
   } catch {
     /* localStorage unavailable: the in-memory reset above still applies */
   }
+}
+
+// Once per answer per app run: a re-render or a remount of the same answer
+// does not count as showing it again.
+const nextStepsShownFor = new Set();
+
+export function trackNextStepsShown(answerKey, { resultKind, steps } = {}) {
+  if (!answerKey || nextStepsShownFor.has(answerKey) || !steps?.length) return;
+  nextStepsShownFor.add(answerKey);
+  capture(EVENTS.NEXT_STEPS_SHOWN, { result_kind: resultKind || 'other', steps: [...steps] });
+}
+
+export function trackNextStepClicked({ step, resultKind, position } = {}) {
+  capture(EVENTS.NEXT_STEP_CLICKED, {
+    step: step || 'unknown',
+    result_kind: resultKind || 'other',
+    position: Number.isInteger(position) ? position : null,
+  });
 }

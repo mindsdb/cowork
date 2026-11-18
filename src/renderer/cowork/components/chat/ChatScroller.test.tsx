@@ -219,6 +219,23 @@ describe('a sent message held at the top', () => {
     expect(stick.isStuck()).toBe(false);
   });
 
+  it('keeps the anchor through a wheel nudge down near the end', () => {
+    send();
+    // The answer has just filled the view: the end is a few pixels below.
+    base = 1100;
+    act(() => stick.updateReserve());
+    act(() => { fireEvent.wheel(box(), { deltaY: 8 }); });
+    act(() => fake.scrollReaderTo(box(), base - 600));
+    expect(stick.isStuck()).toBe(false);
+  });
+
+  it('hands control back on a wheel scroll up', () => {
+    send();
+    act(() => { fireEvent.wheel(box(), { deltaY: -40 }); });
+    act(() => fake.scrollReaderTo(box(), base + reserved() - 600));
+    expect(stick.isStuck()).toBe(true);
+  });
+
   it('reaches the send position when the reserved room grows after the scroll', () => {
     send();
     expect(box().scrollTop).toBe(476);

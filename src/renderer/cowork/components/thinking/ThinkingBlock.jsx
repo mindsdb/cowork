@@ -27,20 +27,22 @@ import { ThinkingStep } from './ThinkingStep';
 import { WorkingIndicator } from './WorkingIndicator';
 import { truncateLabel } from '../../lib/responseStreamAdapter';
 import { useFold } from '../../hooks/useFold';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 function formatDuration(ms) {
   if (ms == null || ms < 0) return null;
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) return i18n.t('duration.seconds', { ns: 'chat', seconds: s });
   const m = Math.floor(s / 60);
   const r = s % 60;
-  if (m < 60) return `${m}m ${r}s`;
+  if (m < 60) return i18n.t('duration.minutesSeconds', { ns: 'chat', minutes: m, seconds: r });
   const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
+  return i18n.t('duration.hoursMinutes', { ns: 'chat', hours: h, minutes: m % 60 });
 }
 
 // Live "Working for 6s" text — ticks once a second while the turn runs.
 function WorkingLabel({ startedAt }) {
+  const { t } = useTranslation('chat');
   const [elapsed, setElapsed] = useState(() =>
     startedAt ? Math.max(0, Date.now() - startedAt) : 0
   );
@@ -51,13 +53,15 @@ function WorkingLabel({ startedAt }) {
     }, 1000);
     return () => clearInterval(id);
   }, [startedAt]);
-  return <span className="tabular-nums">Working for {formatDuration(elapsed)}</span>;
+  return <span className="tabular-nums">{t('thinking.workingFor', { duration: formatDuration(elapsed) })}</span>;
 }
 
 export function ThinkingBlock({
   steps = [],
   isActive = false,
   startedAt = null,
+  // When the turn ended; without it the block ends at its last step.
+  endedAt = null,
   currentLabel = null,
   currentThought = null,
   slotId = null,
@@ -67,6 +71,7 @@ export function ThinkingBlock({
   // in one frame when the live turn is swapped for the finished message.
   collapseOnMount = false,
 }) {
+  const { t } = useTranslation('chat');
   const hasSteps = steps.length > 0;
   // ToolProgress rows count: the block that appears below an answered
   // question may hold nothing but a tool's step lines (ENG-2981).
@@ -111,11 +116,11 @@ export function ThinkingBlock({
 
   const finalDuration = useMemo(() => {
     if (!isActive && startedAt && steps.length > 0) {
-      const last = steps[steps.length - 1];
-      if (last.completedAt) return formatDuration(last.completedAt - startedAt);
+      const end = endedAt ?? steps[steps.length - 1].completedAt;
+      if (end) return formatDuration(end - startedAt);
     }
     return null;
-  }, [isActive, startedAt, steps]);
+  }, [isActive, startedAt, endedAt, steps]);
 
   // Glanceable kill signal: how many cells timed out / were killed. Surfaced
   // in the (collapsed) header so a retry-on-timeout loop is visible without
@@ -133,13 +138,15 @@ export function ThinkingBlock({
 
   return (
     <div className="w-full">
-      <Tooltip content={isExpanded ? 'Hide thought process' : 'Show thought process'}>
+      <Tooltip content={isExpanded ? t('thinking.hide') : t('thinking.show')}>
         <button
           type="button"
           onClick={toggleExpanded}
           aria-expanded={isExpanded}
           className={clsx(
-            'group flex w-full cursor-pointer items-center gap-1 rounded-md py-1 text-left',
+            // Only as wide as its label, so hovering empty space beside it does
+            // nothing.
+            'group flex w-fit max-w-full cursor-pointer items-center gap-1 rounded-md py-1 text-left',
             'border-0 bg-transparent'
           )}
         >
@@ -151,7 +158,7 @@ export function ThinkingBlock({
                   ? <WorkingLabel startedAt={startedAt} />
                   : (
                     <>
-                      {currentLabel || 'Thinking…'}
+                      {currentLabel || t('thinking.thinking')}
                       {modelWaitText && <span className="text-ink-4"> · {modelWaitText}</span>}
                     </>
                   )
@@ -161,12 +168,12 @@ export function ThinkingBlock({
             <>
               {/* Same size as the answer body (14.5px) — the header reads
                   as part of the message, not as fine print. */}
-              <span className="flex-none text-[14.5px] text-ink-3">
-                {finalDuration ? `Worked for ${finalDuration}` : 'Thought process'}
+              <span className="flex-none text-[14.5px] text-ink-3 group-hover:text-ink">
+                {finalDuration ? t('thinking.workedFor', { duration: finalDuration }) : t('thinking.thoughtProcess')}
               </span>
               <span
                 className={clsx(
-                  'inline-flex flex-none items-center self-center text-ink-4',
+                  'inline-flex flex-none items-center self-center text-ink-4 group-hover:text-ink',
                   'transition-transform duration-layout',
                   isExpanded && 'rotate-180'
                 )}
@@ -179,9 +186,9 @@ export function ThinkingBlock({
           {timedOutCount > 0 && (
             <span
               className="ml-2 flex-none rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-danger"
-              title={`${timedOutCount} cell${timedOutCount > 1 ? 's' : ''} timed out — the agent retried with smaller steps. Expand to see which.`}
+              title={t('thinking.timedOutTitle', { count: timedOutCount })}
             >
-              {timedOutCount} timed out
+              {t('thinking.timedOutBadge', { count: timedOutCount })}
             </span>
           )}
         </button>

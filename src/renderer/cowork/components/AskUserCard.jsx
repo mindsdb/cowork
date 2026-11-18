@@ -1,10 +1,28 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { submitAnswer } from '../api';
+import {
+  BROWSER_APPROVE_VALUE,
+  unreadableApproval,
+  browserApprovalIds,
+  declineBrowserApproval,
+  isBrowserApprovalCard,
+  isBrowserStepCard,
+  isAutoApprovedCard,
+  isPositionClickCard,
+  POSITION_AUTO_APPROVE_MS,
+  recordBrowserApproval,
+} from '../lib/browserApproval';
+import { host } from '../../platform/host';
+import { saveApproveSteps, useBrowserPrefs } from '../lib/browserPrefs';
+import { parseBrowserStepPrompt, typedTextHasMarks, typedTextShown } from '../lib/browserStepPrompt';
+import BrowserStepPills from './BrowserStepPills';
+import { Switch } from './ui/Switch';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 import ChatCardShell from './ChatCardShell';
 import { cn } from '../lib/cn';
 import Ico from './Icons';
 import Kbd from './ui/Kbd';
+import { useTranslation } from '../../lib/i18n';
 
 // An option button. Hover is `enabled:` only and the cursor resets when
 // disabled: `hover:` also matches a disabled button, and globals.css gives
@@ -27,15 +45,46 @@ const OPTION_SELECTED = 'bg-accent-bg text-ink font-medium';
  * broker waits on it, so a pick goes out as a normal message instead.
  */
 export default function AskUserCard({ step, conversationId, onAnswered, onAnswerAsMessage, expired = false, reopened = false, lateAnswer = null }) {
+  const { t } = useTranslation('chat');
   const q = step?.data || {};
   const answer = lateAnswer || q.answer || null;
   const isMany = q.select === 'many';
   const [picked, setPicked] = useState([]);
   const [gone, setGone] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Why the browser refused the person's approval of a held step, if it did.
+  const [refusal, setRefusal] = useState('');
+  /* The held step whose approval the browser has recorded for this card, so
+     an Approve after a card answer that failed doesn't record it again. */
+  const recordedApproval = useRef(null);
   const promptId = useId();
 
   const settled = !reopened && (Boolean(answer) || expired || gone);
+
+  /* A position card always, and a held browser step with Approve browser
+     steps off, is approved by the app (lib/browserApproval.js
+     approveCardsForPerson): it stays hidden, and shows only if that approval
+     hasn't landed in time. */
+  const browserPrefs = useBrowserPrefs();
+  const positionCard = !reopened && isAutoApprovedCard(q, browserPrefs);
+  const [positionLate, setPositionLate] = useState(false);
+  useEffect(() => {
+    if (!positionCard || settled) return undefined;
+    const timer = setTimeout(() => setPositionLate(true), POSITION_AUTO_APPROVE_MS);
+    return () => clearTimeout(timer);
+  }, [positionCard, settled]);
+
+  /* A held browser step's card offers Skip approvals: it turns Approve
+     browser steps off (the person's setting, as in Settings) for steps held
+     later. This card, and every other that was waiting then, still needs its
+     own answer (lib/browserPrefs.js). */
+  const offersSkip = !reopened && !settled && isBrowserStepCard(q) && !isPositionClickCard(q);
+  const [skipSaving, setSkipSaving] = useState(false);
+  const setSkipApprovals = async (skip) => {
+    setSkipSaving(true);
+    await saveApproveSteps(!skip);
+    setSkipSaving(false);
+  };
 
   // Only a multi-line prompt is markdown: the ask_user tool asks for one
   // plain-text line, and markdown would lose text in it ("<div>" vanishes,
@@ -45,9 +94,44 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
   // person approves what the brief shows.
   // Memoised: ChatView re-renders on every streamed delta, and each card
   // would otherwise re-parse its brief every time.
+  // A held browser step's card says its site and action as pills, under one
+  // short line, in place of anton's fenced address and step
+  // (lib/browserStepPrompt.js); any other prompt shows as written. The pills
+  // wrap rather than cut, so a long address keeps its owning domain on a
+  // phone. A typing step's text shows whole under them, line breaks kept,
+  // with no height cap: nothing is typed before Approve, so this is the only
+  // place the person reads what a send or a payment types, and a line out of
+  // sight behind a scroll would be approved unread. Each line break and tab
+  // is marked where it falls (⏎, ⇥), and each invisible character is named
+  // by its code point (⟦U+202E⟧), and the caption says what the marks mean,
+  // since each host can type a line break as the Enter key, which can send
+  // the text. Only while it waits: an answered card, like the turn's steps,
+  // leaves the text out.
   const prompt = q.prompt || '';
+  const stepPills = useMemo(() => (isBrowserStepCard(q) ? parseBrowserStepPrompt(prompt) : null), [q, prompt]);
   const promptBody = useMemo(
-    () => (prompt.trim().includes('\n') ? (
+    () => (stepPills ? (
+      <div className="flex flex-col gap-1.5">
+        <MarkdownPlainText>
+          <strong className="font-semibold text-ink">{t('askUser.browserStep.title')}</strong>
+          {' '}<span className="text-ink-3">{t('askUser.browserStep.intro')}</span>
+        </MarkdownPlainText>
+        <BrowserStepPills pills={stepPills} wrap />
+        {stepPills.typed && !settled ? (
+          <figure className="m-0 flex flex-col gap-1">
+            <figcaption className="text-xs text-ink-3">
+              {t(typedTextHasMarks(stepPills.typed) ? 'askUser.browserStep.typedTextKeys' : 'askUser.browserStep.typedText')}
+            </figcaption>
+            <blockquote
+              data-testid="browser-step-typed"
+              className="m-0 whitespace-pre-wrap rounded-md border-l-2 border-line bg-surface-2 px-3 py-2 font-body text-sm text-ink [overflow-wrap:anywhere]"
+            >
+              {typedTextShown(stepPills.typed)}
+            </blockquote>
+          </figure>
+        ) : null}
+      </div>
+    ) : prompt.trim().includes('\n') ? (
       <MarkdownContent
         text={prompt}
         softBreaks
@@ -59,7 +143,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
     ) : (
       <MarkdownPlainText>{prompt.trim()}</MarkdownPlainText>
     )),
-    [prompt],
+    [prompt, stepPills, settled, t],
   );
 
   // This is the only interactive control in an otherwise static stream, it
@@ -71,8 +155,8 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
   // the options group's aria-labelledby instead.
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => {
-    setAnnouncement(settled ? '' : 'The agent is asking a question');
-  }, [settled]);
+    setAnnouncement(settled ? '' : t('askUser.announcement'));
+  }, [settled, t]);
 
   const send = async (payload) => {
     if (settled || busy) return;
@@ -83,6 +167,33 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       onAnswerAsMessage?.(payload.values.map(labelOf).join(', '));
       return;
     }
+    /* The commit hold on the web: on Approve the browser records the approval
+       first, and the card is answered only once it has. Any other answer
+       declines the held step first, which also drops an approval recorded
+       before, and the card is answered whatever the decline answers. */
+    if (host.isWeb && isBrowserApprovalCard(q.question_id)) {
+      const held = browserApprovalIds(q.question_id);
+      const approving = payload.values?.length === 1 && payload.values[0] === BROWSER_APPROVE_VALUE;
+      if (approving && !held) {
+        setRefusal(unreadableApproval());
+        setBusy(false);
+        return;
+      }
+      if (approving && recordedApproval.current !== held.pendingId) {
+        const recorded = await recordBrowserApproval(held);
+        if (!recorded.ok) {
+          setRefusal(recorded.message);
+          setBusy(false);
+          return;
+        }
+        recordedApproval.current = held.pendingId;
+      }
+      if (!approving && held) {
+        recordedApproval.current = null;
+        await declineBrowserApproval(held);
+      }
+    }
+    setRefusal('');
     const result = await submitAnswer(conversationId, q.question_id, payload);
     // `busy` is cleared ONLY for a failure the user can retry. On success the
     // card stays disabled until `settled` flips, which needs the
@@ -130,15 +241,17 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
     leading: (
       <span className="font-body text-xs leading-snug text-ink-4">
         {q.allow_custom || reopened
-          ? '…or type your own answer below.'
-          : 'Pick an option above — a typed reply won\'t be accepted. Skip to type something else.'}
+          ? t('askUser.hintCustom')
+          : t('askUser.hintSelectOnly')}
       </span>
     ),
-    secondary: reopened ? null : { label: 'Skip', onClick: () => send({ skipped: true }), disabled: busy },
+    secondary: reopened ? null : { label: t('askUser.skip'), onClick: () => send({ skipped: true }), disabled: busy },
     primary: isMany
-      ? { label: 'Send', onClick: () => send({ values: picked }), disabled: picked.length === 0 || busy }
+      ? { label: t('askUser.send'), onClick: () => send({ values: picked }), disabled: picked.length === 0 || busy }
       : null,
   };
+
+  if (positionCard && (answer || !positionLate)) return null;
 
   return (
     // No kind row: the turn's "Question for you" step already names the card.
@@ -148,18 +261,18 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       actions={actions}
       footer={settled ? (
         <>
-          {answer?.status === 'cancelled' ? <div className="text-xs text-ink-4">Skipped.</div> : null}
-          {answer?.status === 'timeout' ? <div className="text-xs text-ink-4">No answer — timed out.</div> : null}
+          {answer?.status === 'cancelled' ? <div className="text-xs text-ink-4">{t('askUser.skipped')}</div> : null}
+          {answer?.status === 'timeout' ? <div className="text-xs text-ink-4">{t('askUser.timedOut')}</div> : null}
           {/* Body text, not a status caption: a composer-typed answer is not
               echoed as a user message anywhere else. The bold prefix (styled
               like markdown bold) sets it apart from the prompt, which uses the
               same prose style. */}
           {answerText ? (
             <MarkdownPlainText>
-              <strong className="font-semibold text-ink">Answered:</strong> {answerText}
+              <strong className="font-semibold text-ink">{t('askUser.answered')}</strong> {answerText}
             </MarkdownPlainText>
           ) : null}
-          {expired || gone ? <div className="text-xs text-ink-4">This question is no longer active.</div> : null}
+          {expired || gone ? <div className="text-xs text-ink-4">{t('askUser.noLongerActive')}</div> : null}
         </>
       ) : null}
     >
@@ -236,6 +349,20 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
         })}
       </div>
 
+      {refusal && !settled ? <div role="alert" className="mt-2 text-xs text-danger">{refusal}</div> : null}
+
+      {offersSkip ? (
+        <div className="mt-2 flex items-center justify-end gap-2 px-3">
+          <span aria-hidden className="text-xs text-ink-4">{t('askUser.skipApprovals')}</span>
+          <Switch
+            size="sm"
+            checked={browserPrefs.askToApprove === false}
+            disabled={skipSaving}
+            onCheckedChange={(skip) => void setSkipApprovals(skip)}
+            aria-label={t('askUser.skipApprovals')}
+          />
+        </div>
+      ) : null}
     </ChatCardShell>
   );
 }

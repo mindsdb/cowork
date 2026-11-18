@@ -8,8 +8,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import { Button, Checkbox, Input } from './ui';
+import { useTranslation } from '../../lib/i18n';
 
 export default function MoveToProjectModal({ open, task, projects = [], onClose, onConfirm }) {
+  const { t } = useTranslation('projects');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(null);   // existing project name
   const [moveEverything, setMoveEverything] = useState(true);
@@ -24,8 +26,8 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
       setMoveEverything(true);
       setBusy(false);
       // focus the search after the modal paints
-      const t = setTimeout(() => inputRef.current?.focus(), 30);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => inputRef.current?.focus(), 30);
+      return () => clearTimeout(timer);
     }
   }, [open, task?.id]);
 
@@ -71,8 +73,8 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
     <Modal open={open} onClose={onClose} size="sm" labelledBy="move-modal-title" dismissible={!busy}>
       <ModalHeader
         id="move-modal-title"
-        title="Move to project"
-        subtitle={task?.title ? `Move “${task.title}” and its work` : 'Move this task and its work'}
+        title={t('moveToProjectModal.title')}
+        subtitle={task?.title ? t('moveToProjectModal.subtitleNamed', { title: task.title }) : t('moveToProjectModal.subtitle')}
         onClose={onClose}
       />
       <ModalBody>
@@ -81,7 +83,7 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
           value={query}
           onChange={(v) => { setQuery(v); setSelected(null); }}
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-          placeholder="Search projects or type a new name…"
+          placeholder={t('moveToProjectModal.searchPlaceholder')}
           style={{
             width: '100%', padding: '10px 12px', borderRadius: 10, fontSize: 13,
             border: '1px solid var(--line, rgba(128,128,128,0.3))',
@@ -113,14 +115,14 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
             >
               <span aria-hidden className="opacity-80">＋</span>
               <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                Create “{q}”
+                {t('moveToProjectModal.createNew', { name: q })}
               </span>
             </button>
           )}
 
           {!candidates.length && !canCreateNew && (
             <div className="py-[10px] px-1 text-sm opacity-60">
-              {currentName ? `This task is already in “${currentName}”.` : 'No other projects yet — type a name to create one.'}
+              {currentName ? t('moveToProjectModal.alreadyIn', { name: currentName }) : t('moveToProjectModal.noOtherProjects')}
             </div>
           )}
         </div>
@@ -129,14 +131,14 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
           <Checkbox
             checked={moveEverything}
             onCheckedChange={setMoveEverything}
-            aria-label="Move everything — the files and artifacts this task created"
+            aria-label={t('moveToProjectModal.moveEverythingAriaLabel')}
           />
-          <span>Move everything — the files &amp; artifacts this task created</span>
+          <span>{t('moveToProjectModal.moveEverything')}</span>
         </label>
       </ModalBody>
-      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>}>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>{t('moveToProjectModal.cancel')}</Button>}>
         <Button variant="primary" onClick={submit} disabled={!canConfirm}>
-          {busy ? 'Moving…' : destName ? `Move to ${destName}` : 'Move'}
+          {busy ? t('moveToProjectModal.moving') : destName ? t('moveToProjectModal.moveTo', { name: destName }) : t('moveToProjectModal.move')}
         </Button>
       </ModalFooter>
     </Modal>

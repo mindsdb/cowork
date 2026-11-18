@@ -34,6 +34,8 @@
 import { createContext, useContext, useEffect, useRef } from 'react';
 import { Dialog } from '@base-ui/react/dialog';
 import Ico from '../Icons';
+import { useNativeOverlay } from '../../lib/nativeOverlay';
+import { useTranslation } from '../../../lib/i18n';
 
 // Opacity-only fade for the backdrop/popup on open/close (styled with
 // Tailwind's `data-[]:` variants, matching ui/Menu.jsx / Select.jsx — no
@@ -125,6 +127,8 @@ export function Modal({
   const backdropCloses = dismissible && closeOnBackdrop;
   const escCloses = dismissible && closeOnEsc;
   const z  = LAYERS[layer] ?? LAYERS.default;
+  // The desktop browser pane's native view would draw over this modal.
+  useNativeOverlay(open);
 
   // Base UI calls this on every open/close. We only act on close, and honour
   // closeOnEsc by ignoring keyboard-driven closes (Esc goes through either the
@@ -239,6 +243,7 @@ export function Modal({
 // title block.
 
 export function ModalHeader({ id, title, subtitle, onClose, right, leading }) {
+  const { t } = useTranslation('shell');
   const { dismissible } = useContext(ModalContext);
   const showClose = Boolean(onClose) && dismissible;
   return (
@@ -273,8 +278,8 @@ export function ModalHeader({ id, title, subtitle, onClose, right, leading }) {
         <button
           type="button"
           onClick={onClose}
-          title="Close"
-          aria-label="Close"
+          title={t('ui.modal.close')}
+          aria-label={t('ui.modal.close')}
           style={{
             cursor: 'pointer',
             background: 'transparent', border: 0,

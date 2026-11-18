@@ -11,6 +11,9 @@
 
 import { isBackendArtifact } from './artifactKinds';
 import { canShareLiveApp, isLiveAppCard, receivedFromLine } from './liveAppSharing';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.liveAppState.${key}`, { ns: 'projects', ...vars });
 
 /**
  * One app of the caller's, as `GET /live-apps/mine` lists it.
@@ -105,12 +108,12 @@ export function liveAppStateLine(state, { now = new Date() } = {}) {
   if (!state) return null;
   if (state.state === 'running') {
     const host = hostOf(state.address);
-    return host ? `Live at ${host}` : 'Live';
+    return host ? tr('liveAt', { host }) : tr('live');
   }
   const when = stopTime(state.stoppedAt, now);
   const reason = state.stopReasonText.trim();
-  const stopped = ['Stopped', when].filter(Boolean).join(' ');
-  return `${reason ? `${stopped}, ${reason}` : stopped}. Ask your agent to relaunch it.`;
+  const stopped = when ? tr('stoppedAt', { when }) : tr('stopped');
+  return reason ? tr('stoppedLineReason', { stopped, reason }) : tr('stoppedLine', { stopped });
 }
 
 /** The address when it is an http(s) URL, else ''. It is opened in a new tab. */
@@ -139,21 +142,22 @@ function httpAddress(address) {
  */
 export function liveAppViewerNotice(read, { now = new Date() } = {}) {
   if (read.status === 'failed') {
-    return { address: '', text: "Couldn't check whether this app is running. Reload to try again.", canLaunch: false };
+    return { address: '', text: tr('checkFailed'), canLaunch: false };
   }
   if (read.status !== 'ready') return null;
   const { state } = read;
   if (state?.state === 'running') {
     const address = httpAddress(state.address);
     return address
-      ? { address, text: 'This live app runs at its own address.', canLaunch: false }
-      : { address: '', text: 'This live app is running. Ask your agent for its address.', canLaunch: false };
+      ? { address, text: tr('runsAtOwnAddress'), canLaunch: false }
+      : { address: '', text: tr('runningAskAddress'), canLaunch: false };
   }
   if (state?.state === 'stopped') return { address: '', text: liveAppStateLine(state, { now }), canLaunch: true };
-  return { address: '', text: "This live app isn't running. Ask your agent to launch it.", canLaunch: true };
+  return { address: '', text: tr('notRunning'), canLaunch: true };
 }
 
 export const LAUNCH_LIVE_APP_LABEL = 'Launch';
+export const launchLiveAppLabel = () => tr('launch');
 
 /**
  * What Launch asks the agent, in a chat of the app's project: the agent

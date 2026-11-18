@@ -5,6 +5,10 @@
 // copy it carries, whether it can launch in one click, and which
 // methods fall under "See other options".
 
+import i18n from '../../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(key, { ns: 'library', ...vars });
+
 const OAUTH_BUILTIN_ID = 'browser_oauth_builtin';
 // HubSpot's MCP Auth App (ENG-487) drives the identical one-click,
 // zero-field OAuth flow as browser_oauth_builtin — just a different
@@ -47,7 +51,7 @@ function prettifyEngine(engine) {
  *  title/id fallbacks matter — without them the success message reads
  *  "Provider connected" instead of "GitHub connected" (ENG-1534). */
 export function providerNameFromSpec(spec) {
-  if (!spec) return 'the provider';
+  if (!spec) return tr('dataVault.theProvider');
   if (spec.label) return spec.label;
   if (spec.title) {
     const stripped = String(spec.title).replace(/^connect\s+/i, '').trim();
@@ -55,7 +59,7 @@ export function providerNameFromSpec(spec) {
   }
   const engine = spec.engine || spec._connector_id;
   if (engine) return KNOWN_PROVIDER_NAMES[engine] || prettifyEngine(engine);
-  return 'the provider';
+  return tr('dataVault.theProvider');
 }
 
 /** Methods with recommended ones floated to the front (stable). */
@@ -90,9 +94,9 @@ export function computeHeroView(methods, spec) {
   // required field (e.g. Google Ads' developer token) reveals its fields
   // on click instead, so we never skip required input.
   const heroOneClick = heroIsOAuth && !fields.some((f) => f && f.required);
-  const heroLabel = heroIsOAuth ? `Authorize with ${providerName}` : (hero.label || hero.id);
+  const heroLabel = heroIsOAuth ? tr('dataVault.hero.authorize', { provider: providerName }) : (hero.label || hero.id);
   const heroHelper = heroIsOAuth
-    ? `Opens ${providerName} authorization in your browser — one click to wire.`
+    ? tr('dataVault.hero.helper', { provider: providerName })
     : (hero.description || '');
 
   return { hero, rest, heroIsOAuth, heroOneClick, providerName, heroLabel, heroHelper };

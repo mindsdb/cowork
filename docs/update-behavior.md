@@ -355,6 +355,30 @@ Not covered here, by design: a shell too old to load OTA bundles at all (before
 minimum-shell field in the manifest that the shell itself enforces would reach
 only shells built after it ships and is a follow-up once the window has settled.
 
+**macOS below the newest shell's minimum (`os-capped`).** The newest shell
+needs macOS 13 or later; the update feed (`minimumSystemVersion` as a Darwin
+version), the app bundle (`LSMinimumSystemVersion`) and the `.pkg`
+(`allowed-os-versions`) all refuse older macOS. A prod shell on macOS 12 that is
+not the newest therefore gets `os-capped` instead of `too-old`: a notice with no
+action, shown once (`behind`), or every launch when the shell is also below
+`MIN_SUPPORTED_SHELL` (`below-floor`, which names the multi-account data risk).
+The renderer reads the macOS version from `navigator.userAgentData`, because
+shells in the field cannot gain a bridge member. On macOS below the minimum
+the renderer's host layer (`src/renderer/platform/host.ts`) hides every shell
+update offer: the manual notice, the Settings → Updates check result and the
+auto-update card. It does so on every channel, keyed on the macOS version
+alone, so it also holds before the verdict resolves and when the manifest
+cannot be read; the installer would refuse this macOS anyway. UI and server
+updates are unaffected. There is no support commitment for these shells beyond
+`MIN_SUPPORTED_SHELL`.
+
+**Who moves the macOS minimum.** The engineer who raises `minimumSystemVersion`
+in `electron-builder.yml` also raises `MAC_MINIMUM_MACOS` in
+`scripts/release-mac-pkg-notarized.sh`, `MAC_MINIMUM_DARWIN_VERSION` in
+`scripts/update-metadata.mjs` and `MIN_MACOS_FOR_LATEST_SHELL` in
+`src/shared/shell-support.ts` (the major version only). The test in
+`src/main/macos-minimum.invariant.test.ts` fails until all four agree.
+
 ## Build kinds
 
 Each packaged build carries a build kind, baked into `build-config.json` in

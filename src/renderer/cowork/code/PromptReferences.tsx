@@ -2,6 +2,7 @@ import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { host } from '../../platform/host';
 import type { InputReference } from './api';
+import i18n, { useTranslation } from '../../lib/i18n';
 
 
 export function referencesFromFiles(files: FileList | File[]): { items: InputReference[]; error: string } {
@@ -9,7 +10,7 @@ export function referencesFromFiles(files: FileList | File[]): { items: InputRef
   for (const file of Array.from(files)) {
     const path = host.getPathForFile(file);
     if (!path) {
-      return { items: [], error: 'Local file attachments are available in the desktop app.' };
+      return { items: [], error: i18n.t('promptReferences.desktopOnly', { ns: 'code' }) };
     }
     items.push({
       name: file.name,
@@ -39,9 +40,10 @@ export function PromptReferenceChips({
   busy: boolean;
   onRemove: (path: string) => void;
 }) {
+  const { t } = useTranslation('code');
   if (!items.length) return null;
   return (
-    <div className="code-reference-chips" aria-label="Attached context">
+    <div className="code-reference-chips" aria-label={t('promptReferences.ariaLabel')}>
       {items.map((item) => (
         <span className="code-reference-chip" key={item.path} title={item.path}>
           <i aria-hidden="true">{item.kind === 'local_image' ? Ico.image(12) : Ico.attach(12)}</i>
@@ -51,7 +53,7 @@ export function PromptReferenceChips({
             variant="subtle"
             size="sm"
             disabled={busy}
-            aria-label={`Remove ${item.name}`}
+            aria-label={t('promptReferences.removeAriaLabel', { name: item.name })}
             onClick={() => onRemove(item.path)}
           >
             {Ico.close(12)}

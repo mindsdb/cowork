@@ -1,4 +1,7 @@
 import { TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
+import i18n from '../../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`previewUtils.${key}`, { ns: 'artifacts', ...vars });
 
 export { TEXT_PREVIEW_EXTS };
 
@@ -12,8 +15,7 @@ const ABSOLUTE_PREVIEW_URL_RE = /^(?:https?:|blob:|data:|\/\/)/i;
  * a cause a reader can act on, and none of them are ours.
  */
 const TRANSPORT_FAILURE_RE = /^(?:failed to fetch|load failed|networkerror)/i;
-const TRANSPORT_FAILURE_MESSAGE =
-  'Could not reach the server to load this preview. Check the connection, then reload.';
+const TRANSPORT_FAILURE_MESSAGE = () => tr('transportFailure');
 
 /*
  * One place decides what a failed preview fetch says to the reader, because
@@ -26,10 +28,10 @@ const TRANSPORT_FAILURE_MESSAGE =
  * shown. Anything else is one of our own messages and passes through, since
  * those already read as sentences ("Preview returned no content").
  */
-export function draftPreviewErrorMessage(error, fallback = 'Could not load preview') {
+export function draftPreviewErrorMessage(error, fallback = tr('loadFailed')) {
   const status = error?.status;
-  if (status === 401) return 'Your session expired — reload the page and try again.';
-  if (status === 403) return 'You do not have access to this draft.';
+  if (status === 401) return tr('sessionExpired');
+  if (status === 403) return tr('noAccess');
   const message = String(error?.message || '');
   if (typeof status === 'number') {
     /*
@@ -39,7 +41,7 @@ export function draftPreviewErrorMessage(error, fallback = 'Could not load previ
      * say it twice.
      */
     if (message.includes(`(${status})`)) return message;
-    return message ? `${message} (HTTP ${status})` : `Could not load this preview (HTTP ${status}).`;
+    return message ? `${message} (HTTP ${status})` : tr('loadFailedStatus', { status });
   }
   /*
    * A transport failure arrives as a TypeError from `fetch` itself. The
@@ -48,7 +50,7 @@ export function draftPreviewErrorMessage(error, fallback = 'Could not load previ
    * even if a future runtime rejects with something other than a TypeError.
    */
   if (error instanceof TypeError || TRANSPORT_FAILURE_RE.test(message)) {
-    return TRANSPORT_FAILURE_MESSAGE;
+    return TRANSPORT_FAILURE_MESSAGE();
   }
   return message || fallback;
 }
@@ -317,9 +319,10 @@ function stripBom(text) {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
-// Cheap full-file row count — we only need it to decide whether the
-// "showing N of M" notice should appear and what M is. Counting bytes
-// is fine since `previewArtifact` already capped the content at 200KB.
+// Record count, header included, for the "showing N of M" notice. On a cut
+// preview it would count only the cut text, so the sources count the full
+// text instead: the draft loader through `countRows`, and cowork-server's
+// `count_csv_rows`, which must return the same number for the same text.
 export function countCsvRows(text) {
   if (!text) return 0;
   let n = 0;
@@ -385,4 +388,37 @@ export function csvRowsToGfmTable(rows) {
   ];
 
   return lines.join('\n');
+}
+
+// Table and notice numbers for a CSV preview. A cut text (`truncated`) cannot
+// count its own rows, so its total comes from the source, which counted the
+// full file; `totalRows: null` means the total is unknown.
+export function summarizeCsvPreview(text, { truncated = false, totalRows = null } = {}) {
+  // The cut can fall inside a row: keep the text up to the last line break, so
+  // the table never shows a half row. A text with no line break at all is kept
+  // as it is, so a cut header still renders.
+  const lastBreak = Math.max(text.lastIndexOf('\n'), text.lastIndexOf('\r'));
+  const source = truncated && lastBreak >= 0 ? text.slice(0, lastBreak + 1) : text;
+  const rows = parseCsv(source, CSV_PREVIEW_ROW_LIMIT);
+  if (rows.length === 0) return null;
+  const shownRows = rows.length - 1;
+  // On a cut text, "N of N" would claim the whole file is shown.
+  const total = truncated
+    ? (totalRows > shownRows ? totalRows : null)
+    : Math.max(0, countCsvRows(text) - 1);
+  return {
+    markdown: csvRowsToGfmTable(rows),
+    shownRows,
+    totalRows: total,
+    truncated: truncated || shownRows < total,
+  };
+}
+
+// The notice under a cut preview. A CSV table that shows at least one data row
+// says how many; anything else gets the generic text.
+export function csvPreviewNotice(csvPreview) {
+  if (!csvPreview?.truncated || csvPreview.shownRows === 0) return tr('truncated');
+  const { shownRows, totalRows } = csvPreview;
+  if (totalRows === null) return tr('csvShownUnknownTotal', { count: shownRows });
+  return tr('csvShownOfTotal', { count: shownRows, total: totalRows });
 }

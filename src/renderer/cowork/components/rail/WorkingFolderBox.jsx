@@ -10,15 +10,16 @@ import { RailCard } from './RailCard';
 import { WorkingFolderLive } from './WorkingFolderLive';
 import { SharedLiveApps } from './SharedLiveApps';
 import { useLiveApps } from '../../../lib/liveApps';
+import { useTranslation } from '../../../lib/i18n';
 
 export function WorkingFolderBox({
   project,
   isStreaming = false,
   defaultOpen = true,
-  maxBodyHeight = 320,
   conversationId = null,
   onAddressWithAgent,
 }) {
+  const { t } = useTranslation('shell');
   const liveApps = useLiveApps();
   /*
    * "Shared with you" is a card of its own under Artifacts, and a copy lands
@@ -32,7 +33,7 @@ export function WorkingFolderBox({
   const [receivedCopy, setReceivedCopy] = useState(null);
   return (
     <>
-      <RailCard title="Artifacts" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
+      <RailCard title={t('rail.artifacts.title')} defaultOpen={defaultOpen}>
         <WorkingFolderLive
           project={project}
           isStreaming={isStreaming}

@@ -8,17 +8,18 @@
 //             divider so the header reads as one continuous line above
 //             the body (used for Context per spec).
 //
-// Body always has maxBodyHeight + overflow-y: auto so a long card
-// scrolls inside itself rather than pushing the rail off-screen.
+// Sections never scroll inside themselves: the rail scrolls as a whole, and
+// a long list shortens itself with RailShowMore. A nested scroller put its
+// scrollbar over the rows' trailing menus, where it took their clicks.
 
 import { useState } from 'react';
 import Ico from '../Icons';
+import { useTranslation } from '../../../lib/i18n';
 
 export function RailCard({
   title,
   defaultOpen = false,
   slim = false,
-  maxBodyHeight = 320,
   // When true, the header is a plain (non-clickable) label and the
   // chevron disclosure widget is dropped. The body is always shown
   // (defaultOpen is implicitly true). Used by the data-vault Connect
@@ -27,6 +28,7 @@ export function RailCard({
   noChevron = false,
   children,
 }) {
+  const { t } = useTranslation('shell');
   const [open, setOpen] = useState(!!defaultOpen || noChevron);
   return (
     <div className="bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0">
@@ -47,7 +49,7 @@ export function RailCard({
           </span>
           <span
             className="text-ink-4 inline-flex shrink-0"
-            title={open ? 'Collapse' : 'Expand'}
+            title={open ? t('rail.card.collapse') : t('rail.card.expand')}
           >
             {open ? Ico.chevDown(12) : Ico.chevRight(12)}
           </span>
@@ -55,12 +57,11 @@ export function RailCard({
       )}
       {open && (
         <div
-          className="pt-1 px-[14px] pb-[14px] overflow-y-auto"
+          className="pt-1 px-[14px] pb-[14px]"
           style={{
             // slim drops the divider so the header reads as one
             // continuous line above the body (Context per spec).
             borderTop: slim ? 'none' : '1px solid var(--line)',
-            maxHeight: maxBodyHeight,
           }}
         >
           {children}

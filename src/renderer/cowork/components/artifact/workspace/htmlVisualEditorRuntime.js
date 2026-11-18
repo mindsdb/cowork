@@ -156,7 +156,7 @@ export function createHtmlVisualEditorRuntime(token) {
         if (event.key === 'Escape') {
           event.preventDefault();
           active.innerHTML = originalHtml;
-          reportChange();
+          send('cancel', { elementId: active.getAttribute(ATTRIBUTE) });
           finish();
           return;
         }

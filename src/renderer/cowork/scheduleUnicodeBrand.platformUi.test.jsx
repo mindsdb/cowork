@@ -23,8 +23,8 @@ describe.each([
       const displayedName = valid ? name : 'Anton';
       expect(screen.getByPlaceholderText(`Ask ${displayedName} to…`)).toBeInTheDocument();
       expect(screen.getByText(task
-        ? `Update the cadence or prompt. ${displayedName} picks up changes on the next run.`
-        : `${displayedName} runs this prompt on the cadence you set.`)).toBeInTheDocument();
+        ? `What should ${displayedName} do?`
+        : `${displayedName} runs this on its own, even with this tab closed.`)).toBeInTheDocument();
     },
   );
 });

@@ -6,6 +6,8 @@ export const SettingsLayoutContext: {
 
 export function SettingsGroup(props: {
   title?: ReactNode;
+  /** A short line under the heading saying what the group is for. */
+  description?: ReactNode;
   children?: ReactNode;
   collapsible?: boolean;
   defaultCollapsed?: boolean;

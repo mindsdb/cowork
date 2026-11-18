@@ -4,7 +4,7 @@
 // on that path — re-running discovery instead of submitting once a
 // project is picked — shipped with a green CI. See PR #657 review.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DataVaultFormPanel } from './DataVaultFormPanel';
 import { clearForm, setForm } from './formStore';
@@ -67,9 +67,9 @@ describe('DataVaultFormPanel — PostHog project discovery', () => {
     await user.click(screen.getByRole('button', { name: /submit/i }));
 
     expect(discoverPostHogProjects).toHaveBeenCalledTimes(1);
-    expect(onSubmit).toHaveBeenCalledWith(
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ values: expect.objectContaining({ project_id: '123' }) })
-    );
+    ));
   });
 
   it('keeps the manual Project ID field visible and usable after discovery runs', async () => {

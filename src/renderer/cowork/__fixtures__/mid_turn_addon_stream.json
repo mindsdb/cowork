@@ -1,0 +1,919 @@
+{
+ "_about": "Captured with a real anton ChatSession (scripted model) and cowork-server's format_responses_stream, ENG-4194. 'mid_turn_hosted': the pod path (anton.cloud_turn stream_turn lines -> step_stream_events -> formatter), the added message read at the step boundary after the first tool. 'mid_turn_in_process': the same turn through the in-process harness. 'after_final_answer_hosted': the message arrives while the first final answer streams, so anton takes an extra round (continuation -> answer_reset).",
+ "mid_turn_hosted": [
+  {
+   "type": "response.created",
+   "sequence_number": 1,
+   "response": {
+    "id": "resp-eng4194",
+    "object": "response",
+    "created_at": 1794438486,
+    "status": "created",
+    "error": null,
+    "incomplete_details": null,
+    "model": "m",
+    "output": []
+   },
+   "at_ms": 1000
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 2,
+   "item_id": "msg-eng4194",
+   "delta": "Assuming “past week” means the last five",
+   "at_ms": 1100
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 3,
+   "item_id": "msg-eng4194",
+   "delta": " completed trading sessions; I’ll pull N",
+   "at_ms": 1200
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 4,
+   "item_id": "msg-eng4194",
+   "delta": "VIDIA’s daily prices and build a compact",
+   "at_ms": 1300
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 5,
+   "item_id": "msg-eng4194",
+   "delta": " dashboard with the price trend and key ",
+   "at_ms": 1400
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 6,
+   "item_id": "msg-eng4194",
+   "delta": "weekly metrics.",
+   "at_ms": 1500
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 7,
+   "thought_role": "thought.scratchpad.start",
+   "content": "scratchpad",
+   "tool_use_id": "tc_1",
+   "at_ms": 1600
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 8,
+   "thought_role": "thought.scratchpad.end",
+   "content": "{\"action\": \"exec\", \"name\": \"main\", \"code\": \"print(1)\", \"one_line_description\": \"Fetch prices\"}",
+   "tool_use_id": "tc_1",
+   "at_ms": 1700
+  },
+  {
+   "type": "response.addon",
+   "addon_id": "a1",
+   "state": "added",
+   "text": "actually past 6 months",
+   "decided_by": "jev",
+   "sequence_number": 9,
+   "at_ms": 1800
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 10,
+   "thought_role": "thought.progress",
+   "content": "Running code: Fetch prices",
+   "phase": "scratchpad_start",
+   "message": "Fetch prices",
+   "eta_seconds": 0,
+   "tool_use_id": "tc_1",
+   "at_ms": 1900
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 11,
+   "thought_role": "thought.progress",
+   "content": "Code complete: Fetch prices",
+   "phase": "scratchpad_done",
+   "message": "Fetch prices",
+   "eta_seconds": 0.07062233285978436,
+   "tool_use_id": "tc_1",
+   "at_ms": 2000
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 12,
+   "thought_role": "thought.scratchpad.result",
+   "content": "{\"code\": \"print(1)\", \"stdout\": \"\", \"stderr\": \"\", \"error\": \"Process exited unexpectedly.\", \"stopped_at\": 1, \"ended_process\": true, \"description\": \"Fetch prices\", \"estimated_time\": \"\", \"logs\": \"\"}",
+   "tool_name": "scratchpad",
+   "tool_action": "exec",
+   "tool_use_id": "tc_1",
+   "cell_status": "error",
+   "at_ms": 2100
+  },
+  {
+   "type": "response.addon",
+   "addon_id": "a1",
+   "state": "read",
+   "text": "actually past 6 months",
+   "decided_by": "jev",
+   "sequence_number": 13,
+   "at_ms": 2200
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 14,
+   "thought_role": "thought.progress",
+   "content": "reasoning_start: Thinking...",
+   "phase": "reasoning_start",
+   "message": "Thinking...",
+   "eta_seconds": null,
+   "tool_use_id": "",
+   "at_ms": 2300
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 15,
+   "item_id": "msg-eng4194",
+   "delta": "\n\nGot it—using the last six calendar month",
+   "at_ms": 2400
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 16,
+   "item_id": "msg-eng4194",
+   "delta": "s instead. I’ll rebuild the dashboard ar",
+   "at_ms": 2500
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 17,
+   "item_id": "msg-eng4194",
+   "delta": "ound daily prices from May 11 through No",
+   "at_ms": 2600
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 18,
+   "item_id": "msg-eng4194",
+   "delta": "vember 11, 2026, and include a longer-te",
+   "at_ms": 2700
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 19,
+   "item_id": "msg-eng4194",
+   "delta": "rm trend plus summary metrics.",
+   "at_ms": 2800
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 20,
+   "thought_role": "thought.scratchpad.start",
+   "content": "scratchpad",
+   "tool_use_id": "tc_2",
+   "at_ms": 2900
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 21,
+   "thought_role": "thought.scratchpad.end",
+   "content": "{\"action\": \"exec\", \"name\": \"main\", \"code\": \"print(1)\", \"one_line_description\": \"Fetch prices\"}",
+   "tool_use_id": "tc_2",
+   "at_ms": 3000
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 22,
+   "thought_role": "thought.progress",
+   "content": "Running code: Fetch prices",
+   "phase": "scratchpad_start",
+   "message": "Fetch prices",
+   "eta_seconds": 0,
+   "tool_use_id": "tc_2",
+   "at_ms": 3100
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 23,
+   "thought_role": "thought.progress",
+   "content": "Code complete: Fetch prices",
+   "phase": "scratchpad_done",
+   "message": "Fetch prices",
+   "eta_seconds": 0.09339299984276295,
+   "tool_use_id": "tc_2",
+   "at_ms": 3200
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 24,
+   "thought_role": "thought.scratchpad.result",
+   "content": "{\"code\": \"print(1)\", \"stdout\": \"\", \"stderr\": \"\", \"error\": \"Process exited unexpectedly.\", \"stopped_at\": 1, \"ended_process\": true, \"description\": \"Fetch prices\", \"estimated_time\": \"\", \"logs\": \"\"}",
+   "tool_name": "scratchpad",
+   "tool_action": "exec",
+   "tool_use_id": "tc_2",
+   "cell_status": "error",
+   "at_ms": 3300
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 25,
+   "item_id": "msg-eng4194",
+   "delta": "\n\nUpdated the dashboard to cover the past ",
+   "at_ms": 3400
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 26,
+   "item_id": "msg-eng4194",
+   "delta": "six months.\n\n| Metric | Value |\n|---|---",
+   "at_ms": 3500
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 27,
+   "item_id": "msg-eng4194",
+   "delta": "|\n| Start | $120.10 |\n| End | $141.30 |\n",
+   "at_ms": 3600
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 28,
+   "item_id": "msg-eng4194",
+   "delta": "| Change | +17.7% |",
+   "at_ms": 3700
+  },
+  {
+   "type": "response.figure_sources",
+   "sequence_number": 29,
+   "item_id": "msg-eng4194",
+   "project_id": null,
+   "steps": [],
+   "figures": [
+    {
+     "start": 461,
+     "end": 468,
+     "text": "$120.10",
+     "origin": "none",
+     "sources": []
+    },
+    {
+     "start": 479,
+     "end": 486,
+     "text": "$141.30",
+     "origin": "none",
+     "sources": []
+    },
+    {
+     "start": 501,
+     "end": 506,
+     "text": "17.7%",
+     "origin": "none",
+     "sources": []
+    }
+   ],
+   "at_ms": 3800
+  },
+  {
+   "type": "response.completed",
+   "sequence_number": 30,
+   "response": {
+    "id": "resp-eng4194",
+    "object": "response",
+    "created_at": 1794438486,
+    "status": "completed",
+    "error": null,
+    "incomplete_details": null,
+    "model": "m",
+    "output": [
+     {
+      "type": "message",
+      "id": "msg-eng4194",
+      "status": "completed",
+      "role": "assistant",
+      "content": [
+       {
+        "type": "output_text",
+        "text": "Assuming “past week” means the last five completed trading sessions; I’ll pull NVIDIA’s daily prices and build a compact dashboard with the price trend and key weekly metrics.\n\nGot it—using the last six calendar months instead. I’ll rebuild the dashboard around daily prices from May 11 through November 11, 2026, and include a longer-term trend plus summary metrics.\n\nUpdated the dashboard to cover the past six months.\n\n| Metric | Value |\n|---|---|\n| Start | $120.10 |\n| End | $141.30 |\n| Change | +17.7% |"
+       }
+      ]
+     }
+    ]
+   },
+   "at_ms": 3900
+  }
+ ],
+ "mid_turn_in_process": [
+  {
+   "type": "response.created",
+   "sequence_number": 1,
+   "response": {
+    "id": "resp-eng4194",
+    "object": "response",
+    "created_at": 1794438480,
+    "status": "created",
+    "error": null,
+    "incomplete_details": null,
+    "model": "m",
+    "output": []
+   },
+   "at_ms": 1000
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 2,
+   "item_id": "msg-eng4194",
+   "delta": "Assuming “past week” means the last five",
+   "at_ms": 1100
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 3,
+   "item_id": "msg-eng4194",
+   "delta": " completed trading sessions; I’ll pull N",
+   "at_ms": 1200
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 4,
+   "item_id": "msg-eng4194",
+   "delta": "VIDIA’s daily prices and build a compact",
+   "at_ms": 1300
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 5,
+   "item_id": "msg-eng4194",
+   "delta": " dashboard with the price trend and key ",
+   "at_ms": 1400
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 6,
+   "item_id": "msg-eng4194",
+   "delta": "weekly metrics.",
+   "at_ms": 1500
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 7,
+   "thought_role": "thought.scratchpad.start",
+   "content": "scratchpad",
+   "tool_use_id": "tc_1",
+   "at_ms": 1600
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 8,
+   "thought_role": "thought.scratchpad.end",
+   "content": "{\"action\": \"exec\", \"name\": \"main\", \"code\": \"print(1)\", \"one_line_description\": \"Fetch prices\"}",
+   "tool_use_id": "tc_1",
+   "at_ms": 1700
+  },
+  {
+   "type": "response.addon",
+   "addon_id": "a1",
+   "state": "added",
+   "text": "actually past 6 months",
+   "decided_by": "jev",
+   "sequence_number": 9,
+   "at_ms": 1800
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 10,
+   "thought_role": "thought.progress",
+   "content": "Running code: Fetch prices",
+   "phase": "scratchpad_start",
+   "message": "Fetch prices",
+   "eta_seconds": 0,
+   "tool_use_id": "tc_1",
+   "at_ms": 1900
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 11,
+   "thought_role": "thought.progress",
+   "content": "Code complete: Fetch prices",
+   "phase": "scratchpad_done",
+   "message": "Fetch prices",
+   "eta_seconds": 0.06597629189491272,
+   "tool_use_id": "tc_1",
+   "at_ms": 2000
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 12,
+   "thought_role": "thought.scratchpad.result",
+   "content": "{\"code\": \"print(1)\", \"stdout\": \"\", \"stderr\": \"\", \"error\": \"Process exited unexpectedly.\", \"stopped_at\": 1, \"ended_process\": true, \"description\": \"Fetch prices\", \"estimated_time\": \"\", \"logs\": \"\"}",
+   "tool_name": "scratchpad",
+   "tool_action": "exec",
+   "tool_use_id": "tc_1",
+   "cell_status": "error",
+   "at_ms": 2100
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 13,
+   "thought_role": "thought.progress",
+   "content": "reasoning_start: Thinking...",
+   "phase": "reasoning_start",
+   "message": "Thinking...",
+   "eta_seconds": null,
+   "tool_use_id": "",
+   "at_ms": 2200
+  },
+  {
+   "type": "response.addon",
+   "addon_id": "a1",
+   "state": "read",
+   "text": "actually past 6 months",
+   "decided_by": "jev",
+   "sequence_number": 14,
+   "at_ms": 2300
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 15,
+   "item_id": "msg-eng4194",
+   "delta": "\n\nGot it—using the last six calendar month",
+   "at_ms": 2400
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 16,
+   "item_id": "msg-eng4194",
+   "delta": "s instead. I’ll rebuild the dashboard ar",
+   "at_ms": 2500
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 17,
+   "item_id": "msg-eng4194",
+   "delta": "ound daily prices from May 11 through No",
+   "at_ms": 2600
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 18,
+   "item_id": "msg-eng4194",
+   "delta": "vember 11, 2026, and include a longer-te",
+   "at_ms": 2700
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 19,
+   "item_id": "msg-eng4194",
+   "delta": "rm trend plus summary metrics.",
+   "at_ms": 2800
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 20,
+   "thought_role": "thought.scratchpad.start",
+   "content": "scratchpad",
+   "tool_use_id": "tc_2",
+   "at_ms": 2900
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 21,
+   "thought_role": "thought.scratchpad.end",
+   "content": "{\"action\": \"exec\", \"name\": \"main\", \"code\": \"print(1)\", \"one_line_description\": \"Fetch prices\"}",
+   "tool_use_id": "tc_2",
+   "at_ms": 3000
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 22,
+   "thought_role": "thought.progress",
+   "content": "Running code: Fetch prices",
+   "phase": "scratchpad_start",
+   "message": "Fetch prices",
+   "eta_seconds": 0,
+   "tool_use_id": "tc_2",
+   "at_ms": 3100
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 23,
+   "thought_role": "thought.progress",
+   "content": "Code complete: Fetch prices",
+   "phase": "scratchpad_done",
+   "message": "Fetch prices",
+   "eta_seconds": 0.10523270908743143,
+   "tool_use_id": "tc_2",
+   "at_ms": 3200
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 24,
+   "thought_role": "thought.scratchpad.result",
+   "content": "{\"code\": \"print(1)\", \"stdout\": \"\", \"stderr\": \"\", \"error\": \"Process exited unexpectedly.\", \"stopped_at\": 1, \"ended_process\": true, \"description\": \"Fetch prices\", \"estimated_time\": \"\", \"logs\": \"\"}",
+   "tool_name": "scratchpad",
+   "tool_action": "exec",
+   "tool_use_id": "tc_2",
+   "cell_status": "error",
+   "at_ms": 3300
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 25,
+   "item_id": "msg-eng4194",
+   "delta": "\n\nUpdated the dashboard to cover the past ",
+   "at_ms": 3400
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 26,
+   "item_id": "msg-eng4194",
+   "delta": "six months.\n\n| Metric | Value |\n|---|---",
+   "at_ms": 3500
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 27,
+   "item_id": "msg-eng4194",
+   "delta": "|\n| Start | $120.10 |\n| End | $141.30 |\n",
+   "at_ms": 3600
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 28,
+   "item_id": "msg-eng4194",
+   "delta": "| Change | +17.7% |",
+   "at_ms": 3700
+  },
+  {
+   "type": "response.figure_sources",
+   "sequence_number": 29,
+   "item_id": "msg-eng4194",
+   "project_id": null,
+   "steps": [],
+   "figures": [
+    {
+     "start": 461,
+     "end": 468,
+     "text": "$120.10",
+     "origin": "none",
+     "sources": []
+    },
+    {
+     "start": 479,
+     "end": 486,
+     "text": "$141.30",
+     "origin": "none",
+     "sources": []
+    },
+    {
+     "start": 501,
+     "end": 506,
+     "text": "17.7%",
+     "origin": "none",
+     "sources": []
+    }
+   ],
+   "at_ms": 3800
+  },
+  {
+   "type": "response.completed",
+   "sequence_number": 30,
+   "response": {
+    "id": "resp-eng4194",
+    "object": "response",
+    "created_at": 1794438480,
+    "status": "completed",
+    "error": null,
+    "incomplete_details": null,
+    "model": "m",
+    "output": [
+     {
+      "type": "message",
+      "id": "msg-eng4194",
+      "status": "completed",
+      "role": "assistant",
+      "content": [
+       {
+        "type": "output_text",
+        "text": "Assuming “past week” means the last five completed trading sessions; I’ll pull NVIDIA’s daily prices and build a compact dashboard with the price trend and key weekly metrics.\n\nGot it—using the last six calendar months instead. I’ll rebuild the dashboard around daily prices from May 11 through November 11, 2026, and include a longer-term trend plus summary metrics.\n\nUpdated the dashboard to cover the past six months.\n\n| Metric | Value |\n|---|---|\n| Start | $120.10 |\n| End | $141.30 |\n| Change | +17.7% |"
+       }
+      ]
+     }
+    ]
+   },
+   "at_ms": 3900
+  }
+ ],
+ "after_final_answer_hosted": [
+  {
+   "type": "response.created",
+   "sequence_number": 1,
+   "response": {
+    "id": "resp-eng4194",
+    "object": "response",
+    "created_at": 1794438494,
+    "status": "created",
+    "error": null,
+    "incomplete_details": null,
+    "model": "m",
+    "output": []
+   },
+   "at_ms": 1000
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 2,
+   "item_id": "msg-eng4194",
+   "delta": "Assuming “past week” means the last five",
+   "at_ms": 1100
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 3,
+   "item_id": "msg-eng4194",
+   "delta": " completed trading sessions; I’ll pull N",
+   "at_ms": 1200
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 4,
+   "item_id": "msg-eng4194",
+   "delta": "VIDIA’s daily prices and build a compact",
+   "at_ms": 1300
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 5,
+   "item_id": "msg-eng4194",
+   "delta": " dashboard with the price trend and key ",
+   "at_ms": 1400
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 6,
+   "item_id": "msg-eng4194",
+   "delta": "weekly metrics.",
+   "at_ms": 1500
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 7,
+   "thought_role": "thought.scratchpad.start",
+   "content": "scratchpad",
+   "tool_use_id": "tc_1",
+   "at_ms": 1600
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 8,
+   "thought_role": "thought.scratchpad.end",
+   "content": "{\"action\": \"exec\", \"name\": \"main\", \"code\": \"print(1)\", \"one_line_description\": \"Fetch prices\"}",
+   "tool_use_id": "tc_1",
+   "at_ms": 1700
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 9,
+   "thought_role": "thought.progress",
+   "content": "Running code: Fetch prices",
+   "phase": "scratchpad_start",
+   "message": "Fetch prices",
+   "eta_seconds": 0,
+   "tool_use_id": "tc_1",
+   "at_ms": 1800
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 10,
+   "thought_role": "thought.progress",
+   "content": "Code complete: Fetch prices",
+   "phase": "scratchpad_done",
+   "message": "Fetch prices",
+   "eta_seconds": 0.06238441588357091,
+   "tool_use_id": "tc_1",
+   "at_ms": 1900
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 11,
+   "thought_role": "thought.scratchpad.result",
+   "content": "{\"code\": \"print(1)\", \"stdout\": \"\", \"stderr\": \"\", \"error\": \"Process exited unexpectedly.\", \"stopped_at\": 1, \"ended_process\": true, \"description\": \"Fetch prices\", \"estimated_time\": \"\", \"logs\": \"\"}",
+   "tool_name": "scratchpad",
+   "tool_action": "exec",
+   "tool_use_id": "tc_1",
+   "cell_status": "error",
+   "at_ms": 2000
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 12,
+   "thought_role": "thought.progress",
+   "content": "reasoning_start: Thinking...",
+   "phase": "reasoning_start",
+   "message": "Thinking...",
+   "eta_seconds": null,
+   "tool_use_id": "",
+   "at_ms": 2100
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 13,
+   "item_id": "msg-eng4194",
+   "delta": "\n\nHere is the past week dashboard. Done.",
+   "at_ms": 2200
+  },
+  {
+   "type": "response.addon",
+   "addon_id": "a1",
+   "state": "added",
+   "text": "actually past 6 months",
+   "decided_by": "jev",
+   "sequence_number": 14,
+   "at_ms": 2300
+  },
+  {
+   "type": "response.addon",
+   "addon_id": "a1",
+   "state": "read",
+   "text": "actually past 6 months",
+   "decided_by": "jev",
+   "sequence_number": 15,
+   "at_ms": 2400
+  },
+  {
+   "type": "response.answer_reset",
+   "sequence_number": 16,
+   "item_id": "msg-eng4194",
+   "at_ms": 2500
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 17,
+   "item_id": "msg-eng4194",
+   "delta": "Got it—using the last six calendar month",
+   "at_ms": 2600
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 18,
+   "item_id": "msg-eng4194",
+   "delta": "s instead. I’ll rebuild the dashboard ar",
+   "at_ms": 2700
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 19,
+   "item_id": "msg-eng4194",
+   "delta": "ound daily prices from May 11 through No",
+   "at_ms": 2800
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 20,
+   "item_id": "msg-eng4194",
+   "delta": "vember 11, 2026, and include a longer-te",
+   "at_ms": 2900
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 21,
+   "item_id": "msg-eng4194",
+   "delta": "rm trend plus summary metrics.",
+   "at_ms": 3000
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 22,
+   "thought_role": "thought.scratchpad.start",
+   "content": "scratchpad",
+   "tool_use_id": "tc_2",
+   "at_ms": 3100
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 23,
+   "thought_role": "thought.scratchpad.end",
+   "content": "{\"action\": \"exec\", \"name\": \"main\", \"code\": \"print(1)\", \"one_line_description\": \"Fetch prices\"}",
+   "tool_use_id": "tc_2",
+   "at_ms": 3200
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 24,
+   "thought_role": "thought.progress",
+   "content": "Running code: Fetch prices",
+   "phase": "scratchpad_start",
+   "message": "Fetch prices",
+   "eta_seconds": 0,
+   "tool_use_id": "tc_2",
+   "at_ms": 3300
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 25,
+   "thought_role": "thought.progress",
+   "content": "Code complete: Fetch prices",
+   "phase": "scratchpad_done",
+   "message": "Fetch prices",
+   "eta_seconds": 0.08557550003752112,
+   "tool_use_id": "tc_2",
+   "at_ms": 3400
+  },
+  {
+   "type": "response.in_progress",
+   "sequence_number": 26,
+   "thought_role": "thought.scratchpad.result",
+   "content": "{\"code\": \"print(1)\", \"stdout\": \"\", \"stderr\": \"\", \"error\": \"Process exited unexpectedly.\", \"stopped_at\": 1, \"ended_process\": true, \"description\": \"Fetch prices\", \"estimated_time\": \"\", \"logs\": \"\"}",
+   "tool_name": "scratchpad",
+   "tool_action": "exec",
+   "tool_use_id": "tc_2",
+   "cell_status": "error",
+   "at_ms": 3500
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 27,
+   "item_id": "msg-eng4194",
+   "delta": "\n\nUpdated the dashboard to cover the past ",
+   "at_ms": 3600
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 28,
+   "item_id": "msg-eng4194",
+   "delta": "six months.\n\n| Metric | Value |\n|---|---",
+   "at_ms": 3700
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 29,
+   "item_id": "msg-eng4194",
+   "delta": "|\n| Start | $120.10 |\n| End | $141.30 |\n",
+   "at_ms": 3800
+  },
+  {
+   "type": "response.output_text.delta",
+   "sequence_number": 30,
+   "item_id": "msg-eng4194",
+   "delta": "| Change | +17.7% |",
+   "at_ms": 3900
+  },
+  {
+   "type": "response.figure_sources",
+   "sequence_number": 31,
+   "item_id": "msg-eng4194",
+   "project_id": null,
+   "steps": [],
+   "figures": [
+    {
+     "start": 284,
+     "end": 291,
+     "text": "$120.10",
+     "origin": "none",
+     "sources": []
+    },
+    {
+     "start": 302,
+     "end": 309,
+     "text": "$141.30",
+     "origin": "none",
+     "sources": []
+    },
+    {
+     "start": 324,
+     "end": 329,
+     "text": "17.7%",
+     "origin": "none",
+     "sources": []
+    }
+   ],
+   "at_ms": 4000
+  },
+  {
+   "type": "response.completed",
+   "sequence_number": 32,
+   "response": {
+    "id": "resp-eng4194",
+    "object": "response",
+    "created_at": 1794438494,
+    "status": "completed",
+    "error": null,
+    "incomplete_details": null,
+    "model": "m",
+    "output": [
+     {
+      "type": "message",
+      "id": "msg-eng4194",
+      "status": "completed",
+      "role": "assistant",
+      "content": [
+       {
+        "type": "output_text",
+        "text": "Got it—using the last six calendar months instead. I’ll rebuild the dashboard around daily prices from May 11 through November 11, 2026, and include a longer-term trend plus summary metrics.\n\nUpdated the dashboard to cover the past six months.\n\n| Metric | Value |\n|---|---|\n| Start | $120.10 |\n| End | $141.30 |\n| Change | +17.7% |"
+       }
+      ]
+     }
+    ]
+   },
+   "at_ms": 4100
+  }
+ ]
+}

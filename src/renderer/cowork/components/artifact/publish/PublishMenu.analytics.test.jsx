@@ -1,0 +1,116 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { StrictMode } from 'react';
+import { act, render, screen, fireEvent } from '@testing-library/react';
+
+vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
+const report = vi.hoisted(() => ({ reportShareOpened: vi.fn(), reportLinkCopied: vi.fn() }));
+vi.mock('../../../lib/artifactShareAnalytics', () => report);
+const clipboard = vi.hoisted(() => ({ copyText: vi.fn() }));
+vi.mock('../../../lib/clipboard', () => clipboard);
+
+import { PublishMenu } from './PublishMenu';
+
+const ARTIFACT = { id: 'a1', type: 'html' };
+
+function makeController(overrides = {}) {
+  return {
+    artifact: ARTIFACT,
+    publishedUrl: '', phase: 'idle', busy: false, error: '', notice: '', linkOwnerRecorded: null,
+    accessMode: 'public', accessPassword: '', accessEmails: [], orgAllowed: false, ownerOnly: false,
+    accessLoaded: true, versions: [], modified: false,
+    setError: vi.fn(), loadVersions: vi.fn(), publish: vi.fn(), unpublish: vi.fn(), activate: vi.fn(), update: vi.fn(),
+    ...overrides,
+  };
+}
+
+beforeEach(() => vi.clearAllMocks());
+
+describe('PublishMenu analytics', () => {
+  it('records each opening of the panel, with whether the artifact is shared', () => {
+    render(<PublishMenu controller={makeController({ publishedUrl: 'https://view.example/r/a' })} />);
+
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(report.reportShareOpened).toHaveBeenCalledTimes(1);
+    expect(report.reportShareOpened).toHaveBeenCalledWith(ARTIFACT, { entry: 'viewer', isShared: true });
+  });
+
+  it('says it does not know yet while the access of a published artifact is unread', () => {
+    render(<PublishMenu controller={makeController({ publishedUrl: 'https://view.example/r/a', accessLoaded: false })} />);
+
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(report.reportShareOpened).toHaveBeenCalledWith(ARTIFACT, { entry: 'viewer', isShared: null });
+  });
+
+  it('says an artifact without a link is not shared', () => {
+    render(<PublishMenu controller={makeController()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /share/i }));
+
+    expect(report.reportShareOpened).toHaveBeenCalledWith(ARTIFACT, { entry: 'viewer', isShared: false });
+  });
+
+  it('records a copied link only when the copy worked', async () => {
+    render(<PublishMenu controller={makeController({ publishedUrl: 'https://view.example/r/a' })} />);
+    fireEvent.click(screen.getByText('Shared'));
+    const copy = screen.getByRole('button', { name: /copy/i });
+
+    clipboard.copyText.mockResolvedValueOnce(false);
+    await act(async () => { fireEvent.click(copy); });
+    expect(report.reportLinkCopied).not.toHaveBeenCalled();
+
+    clipboard.copyText.mockResolvedValueOnce(true);
+    await act(async () => { fireEvent.click(copy); });
+    expect(report.reportLinkCopied).toHaveBeenCalledTimes(1);
+    expect(report.reportLinkCopied).toHaveBeenCalledWith(ARTIFACT, { entry: 'viewer' });
+  });
+
+  it('opens with the viewer when asked, and records that open once, from where it was asked', () => {
+    render(<PublishMenu openRequest={{}} controller={makeController({ entry: 'chat_card' })} />);
+
+    expect(screen.getByText('Share to the Web')).toBeInTheDocument();
+    expect(report.reportShareOpened).toHaveBeenCalledTimes(1);
+    expect(report.reportShareOpened).toHaveBeenCalledWith(ARTIFACT, { entry: 'chat_card', isShared: false });
+  });
+
+  it('records the open once under StrictMode, which mounts the menu twice in development', () => {
+    render(<StrictMode><PublishMenu openRequest={{}} controller={makeController({ entry: 'chat_card' })} /></StrictMode>);
+
+    expect(screen.getByText('Share to the Web')).toBeInTheDocument();
+    expect(report.reportShareOpened).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens and records a request once, however often the menu mounts with it', () => {
+    const request = {};
+    const first = render(<PublishMenu openRequest={request} controller={makeController({ entry: 'chat_card' })} />);
+    first.unmount();
+    render(<PublishMenu openRequest={request} controller={makeController({ entry: 'chat_card' })} />);
+
+    expect(screen.queryByText('Share to the Web')).toBeNull();
+    expect(report.reportShareOpened).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays closed and records nothing until clicked when not asked to open', () => {
+    render(<PublishMenu controller={makeController({ entry: 'chat_card' })} />);
+
+    expect(screen.queryByText('Share to the Web')).toBeNull();
+    expect(report.reportShareOpened).not.toHaveBeenCalled();
+  });
+
+  it('does not open a disabled panel, and records nothing', () => {
+    render(<PublishMenu openRequest={{}} disabled controller={makeController({ entry: 'chat_card' })} />);
+
+    expect(screen.queryByText('Share to the Web')).toBeNull();
+    expect(report.reportShareOpened).not.toHaveBeenCalled();
+  });
+
+  it('names the card as where a link was copied from', async () => {
+    render(<PublishMenu openRequest={{}} controller={makeController({ entry: 'chat_card', publishedUrl: 'https://view.example/r/a' })} />);
+    clipboard.copyText.mockResolvedValueOnce(true);
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /copy/i })); });
+
+    expect(report.reportLinkCopied).toHaveBeenCalledWith(ARTIFACT, { entry: 'chat_card' });
+  });
+});

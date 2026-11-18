@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CodingEvent, CodingSession } from './api';
 import { ComposerLip } from './ComposerLip';
-import { accountFailure, failureNotice, messageNotice, pickNotice, recoveryNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, pickNotice, recoveryNotice, writesNotice } from './composerNotices';
 
 
 function session(overrides: Partial<CodingSession> = {}): CodingSession {
@@ -48,10 +48,11 @@ function failure(code: string, detail: string, type: CodingEvent['type'] = 'erro
 function renderFailure(code: string, detail: string, task = session()) {
   const onChooseModel = vi.fn();
   const onAddCredits = vi.fn();
+  const onViewBudgets = vi.fn();
   const notice = failureNotice(accountFailure(task, undefined, failure(code, detail)), 'GPT 5.6 Sol');
   if (!notice) throw new Error(`no notice for ${code}`);
-  const view = render(<ComposerLip notice={notice} onChooseModel={onChooseModel} onAddCredits={onAddCredits} onReopen={vi.fn()} onDismiss={vi.fn()} />);
-  return { ...view, onChooseModel, onAddCredits };
+  const view = render(<ComposerLip notice={notice} onChooseModel={onChooseModel} onAddCredits={onAddCredits} onViewBudgets={onViewBudgets} onReopen={vi.fn()} onDismiss={vi.fn()} />);
+  return { ...view, onChooseModel, onAddCredits, onViewBudgets };
 }
 
 
@@ -129,6 +130,19 @@ describe('ComposerLip', () => {
     // not as a drained wallet.
     expect(onAddCredits).toHaveBeenCalledWith(billingTrigger);
     expect(screen.getByRole('button', { name: 'More options' })).toBeInTheDocument();
+  });
+
+  it('names a spent org budget, opens Budgets, offers a model change for MindsHub Air, and never credits', async () => {
+    const user = userEvent.setup();
+    const { onChooseModel, onViewBudgets } = renderFailure('budget_exceeded', 'upstream 402');
+    expect(screen.getByText("Your organization's budget is used up.")).toBeInTheDocument();
+    expect(screen.getByText('An owner or admin can raise it in Budgets, or choose an available model to continue in this task.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'View budgets' }));
+    expect(onViewBudgets).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Choose another model' }));
+    expect(onChooseModel).toHaveBeenCalledOnce();
   });
 
   it('shows nothing for a limit once new work has started or while the task reopens', () => {
@@ -219,5 +233,30 @@ describe('ComposerLip', () => {
   it('leaves an account limit to its own notice rather than a paused-task one', () => {
     expect(recoveryNotice(session(), undefined, failure('insufficient_credits', '402'))).toBeNull();
     expect(recoveryNotice(session({ status: 'running', run_status: 'running' }), undefined, undefined)).toBeNull();
+  });
+
+  it('offers to allow edits on a task held to a read-only sandbox', async () => {
+    const onAllowWrites = vi.fn();
+    const notice = writesNotice(session({ status: 'completed', run_status: 'ready', workspace_kind: 'direct_folder', writes_allowed: false }));
+    if (!notice) throw new Error('no writes notice');
+    render(<ComposerLip notice={notice} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onReopen={vi.fn()} onAllowWrites={onAllowWrites} onDismiss={vi.fn()} />);
+
+    expect(screen.getByText(/no Git history/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Allow edits' }));
+    expect(onAllowWrites).toHaveBeenCalledOnce();
+  });
+
+  it('holds Allow edits while a turn runs', () => {
+    const notice = writesNotice(session({ status: 'running', run_status: 'running', writes_allowed: false }));
+    if (!notice) throw new Error('no writes notice');
+    render(<ComposerLip notice={notice} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onReopen={vi.fn()} onDismiss={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Allow edits' })).toBeDisabled();
+  });
+
+  it('says nothing about edits once they are allowed, under Full access, or to an older server', () => {
+    expect(writesNotice(session({ writes_allowed: true }))).toBeNull();
+    expect(writesNotice(session({ writes_allowed: false, permission_mode: 'full_access' }))).toBeNull();
+    expect(writesNotice(session())).toBeNull();
   });
 });

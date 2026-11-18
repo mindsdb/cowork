@@ -22,6 +22,7 @@ describe('buildModelPickerOptions', () => {
         disabled: true,
         locked: true,
         tag: 'Needs credits',
+        note: 'latest',
         provider: 'anthropic',
       },
       {
@@ -58,6 +59,41 @@ describe('buildModelPickerOptions', () => {
     });
     expect(byValue.fable).toEqual({ value: 'fable', label: 'Claude Fable 5', disabled: true, locked: true, tag: 'Needs credits' });
     expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'Claude Sonnet 5', disabled: true, locked: true, tag: 'Needs credits' });
+    expect(byValue.mindshub_air).toEqual({ value: 'mindshub_air', label: 'MindsHub Air' });
+  });
+
+  it('tags a row the org budget stops as Budget reached, with no credits route', () => {
+    const options = buildModelPickerOptions([
+      { id: 'mindshub_air', name: 'MindsHub Air' },
+      { id: 'opus', name: 'Claude Opus 5' },
+    ], {
+      modelEnabled: { mindshub_air: true, opus: false },
+      modelDisabledReasons: { opus: 'budget_exceeded' },
+    });
+    expect(options.find((o) => o.value === 'opus')).toEqual({
+      value: 'opus',
+      label: 'Claude Opus 5',
+      disabled: true,
+      budgetReached: true,
+      tag: 'Budget reached',
+      title: "Your organization's budget is used up. An owner or admin can raise it in Budgets.",
+    });
+  });
+
+  it('notes "latest" on a moving alias beside its pinned version, leaving every label bare', () => {
+    // The moving alias is named by its line only, so next to its pinned twin it
+    // reads as a duplicate unless it says it moves. The note stays out of `label`,
+    // which the closed trigger shows and the search matches.
+    const options = buildModelPickerOptions([
+      { id: 'mindshub_air', name: 'MindsHub Air' },
+      { id: 'sonnet', name: 'Claude Sonnet' },
+      { id: 'sonnet-5-5', name: 'Claude Sonnet 5.5' },
+    ], {
+      modelFamilies: { mindshub_air: 'mindshub_air', sonnet: 'sonnet', 'sonnet-5-5': 'sonnet' },
+    });
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'Claude Sonnet', note: 'latest' });
+    expect(byValue['sonnet-5-5']).toEqual({ value: 'sonnet-5-5', label: 'Claude Sonnet 5.5' });
     expect(byValue.mindshub_air).toEqual({ value: 'mindshub_air', label: 'MindsHub Air' });
   });
 

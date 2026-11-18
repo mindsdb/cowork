@@ -150,6 +150,30 @@ describe('ask_user card expiry is per question, not per conversation', () => {
       expect(onSend).toHaveBeenCalledWith('pg-ask:old', []);
     });
 
+    // A comparison pane gets onSend only while its side would take a message
+    // (not continued, not working, not held back): without one, a pick would
+    // send nothing and leave the card stuck, so the question stays closed.
+    it.each([
+      ['a pane that can send', true],
+      ['a pane whose side takes no message', false],
+    ])('in %s, is answerable: %s', (_case, canSend) => {
+      const onSend = vi.fn();
+      render(
+        <ChatView
+          pane
+          task={taskWith([{ role: 'user', content: 'hi' }, timedOutTurn('ask:old')])}
+          onSend={canSend ? onSend : undefined}
+          inFlightSet={new Set()}
+        />,
+      );
+      if (canSend) {
+        fireEvent.click(option('ask:old'));
+        expect(onSend).toHaveBeenCalledWith('pg-ask:old', []);
+      } else {
+        expect(option('ask:old')).toBeDisabled();
+      }
+    });
+
     it('closes while a run is in flight or once a newer exchange exists', () => {
       const { unmount } = render(
         <ChatView

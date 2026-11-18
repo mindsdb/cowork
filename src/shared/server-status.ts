@@ -9,6 +9,13 @@
 // Pure — no fs, no electron, no network. Tested directly.
 
 import { STOCK_PRODUCT_NAME } from './product-name';
+import { sourceTranslator, type Translate } from './i18n/translate';
+import appSource from './i18n/locales/en/app.json';
+
+/* The copy lives in the `app` catalog under `serverStatus`. The renderer
+   passes its `app` translator; without one the copy is English. */
+const english: Translate = sourceTranslator(appSource);
+const product = { product: STOCK_PRODUCT_NAME };
 
 /** Why a start attempt failed, as classified by the main process.
  *
@@ -61,22 +68,22 @@ export function exitCodeLabel(input: {
   kind: ServerStartErrorKind | null;
   exitCode: number | null;
   stopIntentional?: boolean | null;
-}): string {
+}, t: Translate = english): string {
   // A timed-out start is reaped by us, so any exit code on it is our own
   // taskkill/SIGKILL rather than anything the backend chose. Reporting that
   // number as "the exit code" would be the same lie in a new costume.
-  if (input.kind === 'timeout') return 'still starting';
+  if (input.kind === 'timeout') return t('serverStatus.exitCode.stillStarting');
   // An incompatible backend booted and answered /health normally; the only
   // exit code it can carry is from our own reap of it.
-  if (input.kind === 'incompatible') return 'not applicable';
+  if (input.kind === 'incompatible') return t('serverStatus.exitCode.notApplicable');
   if (typeof input.exitCode === 'number') return String(input.exitCode);
-  if (input.stopIntentional === true) return 'stopped';
-  if (input.stopIntentional === false) return 'unknown';
+  if (input.stopIntentional === true) return t('serverStatus.exitCode.stopped');
+  if (input.stopIntentional === false) return t('serverStatus.exitCode.unknown');
   switch (input.kind) {
-    case 'exited': return 'unknown';
+    case 'exited': return t('serverStatus.exitCode.unknown');
     case 'spawn-error':
-    case 'not-installed': return 'never started';
-    default: return 'never started';
+    case 'not-installed': return t('serverStatus.exitCode.neverStarted');
+    default: return t('serverStatus.exitCode.neverStarted');
   }
 }
 
@@ -100,60 +107,60 @@ export function backendFailureCopy(input: {
   hasLog: boolean;
   port: number | null;
   portHolderPid: number | null;
-}): BackendFailureCopy {
+}, t: Translate = english): BackendFailureCopy {
   const port = input.port ?? 26866;
   const hints: string[] = [];
 
   let headline: string;
   switch (input.kind) {
     case 'timeout':
-      headline = 'The backend was still starting when the app stopped waiting.';
+      headline = t('serverStatus.timeout.headline');
       hints.push(
-        'This is usually the first launch after an install: the whole Python environment is being scanned as it runs for the first time, which is much slower than every launch after it.',
-        'Quit the app completely and reopen it. The backend gets a fresh start and normally comes up on the second try.',
+        t('serverStatus.timeout.firstLaunch'),
+        t('serverStatus.timeout.reopen'),
       );
       break;
     case 'exited':
-      headline = 'The backend started and then exited before it finished booting.';
+      headline = t('serverStatus.exited.headline');
       break;
     case 'spawn-error':
-      headline = "The backend program couldn't be launched at all.";
+      headline = t('serverStatus.spawnError.headline');
       hints.push(
-        `Antivirus or endpoint protection blocking the executable is the usual cause; allow the ${STOCK_PRODUCT_NAME} backend and try again.`,
-        'If that is not it, re-run the installer to reinstall the backend.',
+        t('serverStatus.spawnError.antivirus', product),
+        t('serverStatus.spawnError.reinstall'),
       );
       break;
     case 'not-installed':
-      headline = "The backend isn't installed yet.";
-      hints.push('Re-run the installer to set it up.');
+      headline = t('serverStatus.notInstalled.headline');
+      hints.push(t('serverStatus.notInstalled.rerun'));
       break;
     case 'credential-clear':
-      headline = "The backend couldn't remove the API keys from your last sign-out, so it stopped instead of using them.";
+      headline = t('serverStatus.credentialClear.headline');
       hints.push(
-        `Quit ${STOCK_PRODUCT_NAME} completely and reopen it. The backend tries again on every start.`,
-        'If it keeps failing, another program may be holding files in the Cowork data folder open; close it, or restart the machine.',
+        t('serverStatus.credentialClear.reopen', product),
+        t('serverStatus.credentialClear.filesHeld'),
       );
       break;
     case 'incompatible':
-      headline = `The backend needs to be updated for this version of ${STOCK_PRODUCT_NAME}.`;
+      headline = t('serverStatus.incompatible.headline', product);
       hints.push(
-        `Quit ${STOCK_PRODUCT_NAME} completely and reopen it so the matching backend can be installed and started.`,
-        'If the update does not complete, re-run the latest installer.',
+        t('serverStatus.incompatible.reopen', product),
+        t('serverStatus.incompatible.rerun'),
       );
       break;
     default:
-      headline = 'The backend is not running.';
-      hints.push('Start it below.');
+      headline = t('serverStatus.notRunning.headline');
+      hints.push(t('serverStatus.notRunning.startBelow'));
       break;
   }
 
   if (input.portHolderPid !== null) {
     hints.push(
-      `Process ${input.portHolderPid} is holding port ${port}. Close it (or restart the machine) and start the backend again.`,
+      t('serverStatus.portHeld', { pid: String(input.portHolderPid), port: String(port) }),
     );
   }
 
-  hints.push(input.hasLog ? 'If it keeps failing, copy the log below and send it to support.' : noLogHint(input.kind));
+  hints.push(input.hasLog ? t('serverStatus.copyLog') : noLogHint(input.kind, t));
 
   return { headline, hints };
 }
@@ -163,21 +170,21 @@ export function backendFailureCopy(input: {
  *  A single "it died before printing anything" sentence contradicted three of
  *  the four kinds: a timed-out backend is alive and still importing, and
  *  nothing ran at all in the not-installed and spawn-error cases. */
-function noLogHint(kind: ServerStartErrorKind | null): string {
+function noLogHint(kind: ServerStartErrorKind | null, t: Translate): string {
   switch (kind) {
     case 'timeout':
-      return 'The backend had not printed anything yet when the app stopped waiting, so there is no log to send.';
+      return t('serverStatus.noLog.timeout');
     case 'exited':
-      return 'Nothing was captured in the log because the backend died before it printed anything, so there is no log to send.';
+      return t('serverStatus.noLog.exited');
     case 'spawn-error':
-      return 'The program never ran, so the launch error above is the only evidence there is; there is no log to send.';
+      return t('serverStatus.noLog.spawnError');
     case 'not-installed':
-      return 'Nothing has run yet, so there is no log to send.';
+      return t('serverStatus.noLog.notInstalled');
     case 'incompatible':
-      return 'The backend responded normally, but it is an older incompatible version; there may be no error log.';
+      return t('serverStatus.noLog.incompatible');
     case 'credential-clear':
-      return 'The backend stopped before it printed its reason, so there is no log to send.';
+      return t('serverStatus.noLog.credentialClear');
     default:
-      return 'No log has been captured yet, so there is nothing to send.';
+      return t('serverStatus.noLog.default');
   }
 }

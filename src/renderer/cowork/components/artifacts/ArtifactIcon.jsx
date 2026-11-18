@@ -11,6 +11,7 @@
 // extension lettered in the middle (`GenericFileIcon`).
 
 import { useId } from 'react';
+import i18n from '../../../lib/i18n';
 
 // File-type icons are authored on a 16×14 canvas; the web-app globe on 16×16.
 // `width=height=size` + the natural viewBox scales uniformly (preserveAspectRatio
@@ -137,8 +138,8 @@ export function fileNameOf(a) {
 
 export function displayTitle(a) {
   const fname = fileNameOf(a);
-  if (isWebAppArtifact(a)) return a?.title || fname || 'Untitled';
-  return a?.title || fname || 'file';
+  if (isWebAppArtifact(a)) return a?.title || fname || i18n.t('icon.untitled', { ns: 'artifacts' });
+  return a?.title || fname || i18n.t('icon.file', { ns: 'artifacts' });
 }
 
 function splitFileName(fname) {

@@ -29,7 +29,18 @@ import {
   loadArtifactAccess,
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
-import { publishRefusalMessage } from './publishErrors';
+import { publishFailureReason, publishRefusalMessage } from './publishErrors';
+import {
+  UNKNOWN_SHARE_SNAPSHOT,
+  publishedPageId,
+  reportAccessChangeFailed,
+  reportAccessChanged,
+  reportWithdrawal,
+  shareSnapshot,
+} from '../../../lib/artifactShareAnalytics';
+import i18n from '../../../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`publish.errors.${key}`, { ns: 'artifacts', ...vars });
 import { republishNotice, stopSharingNotice } from './linkLeftLive';
 import { useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../../../hooks/useOrgSharing';
 import { isOrgSharingOn, isOwnerOnlyAccess } from '../../../lib/orgSharing';
@@ -42,8 +53,8 @@ function friendlyPublishError(e) {
   const refusal = publishRefusalMessage(e);
   if (refusal) return refusal;
   const msg = e?.message || String(e);
-  if (/minds[_ ]?api[_ ]?key/i.test(msg)) return 'Set your Minds API key in Settings to share.';
-  return `Sharing failed: ${msg}`;
+  if (/minds[_ ]?api[_ ]?key/i.test(msg)) return tr('mindsApiKey');
+  return tr('sharingFailed', { message: msg });
 }
 
 function modeFromArtifact(a) {
@@ -57,6 +68,14 @@ function modeFromArtifact(a) {
 // records may carry only the `accessProtected` flag. Used to seed/reset
 // `accessLoaded` from the prop's own knowledge (ENG-931). Kept in one place so
 // the seed and the open-effect reset can't drift apart.
+/* The live page's id an access or status answer names, for the sharing
+   analytics. A card built from a chat message has none until this read; an
+   older server sends no field, and then the card keeps what it had. */
+function answeredReportId(answer, artifact) {
+  if (typeof answer?.reportId === 'string') return answer.reportId;
+  return artifact?.reportId || '';
+}
+
 function hasServerAccess(a) {
   return a?.accessMode != null || a?.accessProtected != null;
 }
@@ -74,7 +93,8 @@ function seededAudience(a) {
   return { ...audience, ownerOnly: audience.ownerOnly === true };
 }
 
-export function usePublish(artifact, { onChange, enabled = false } = {}) {
+// `entry` is where the person opened sharing from, for the sharing events.
+export function usePublish(artifact, { onChange, enabled = false, entry = 'viewer' } = {}) {
   const orgMode = useOrgMode();
   const [publishedUrl, setPublishedUrl] = useState(artifact?.publishedUrl || '');
   const [accessMode, setAccessMode] = useState(modeFromArtifact(artifact));
@@ -153,6 +173,14 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setOwnerOnly(audience.ownerOnly);
       setTeamIds(audience.teamIds);
       setUserIds(audience.userIds);
+    } else if (!publishedUrl && artifact?.publishedUrl) {
+      // Published from outside this hook (autopublish): the audience read while
+      // it was a draft is the route's default, not who it reaches now.
+      setAccessLoaded(false);
+      if (enabled) {
+        openReadPendingRef.current = true;
+        setReadAgain((n) => n + 1);
+      }
     }
     // A refresh learns the key from the server, but its report back to the
     // parent doesn't carry it, so an access change in that report would reset
@@ -192,6 +220,17 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const teams = useMindsHubTeams(sharingOn);
   const orgName = useSharingOrgName(sharingOn);
   const orgSharing = { ...sharing, teams, orgName };
+  /* Who the artifact reaches as this render knows it, for the sharing
+     analytics: what a save started from. Unknown until its access is read. */
+  const teamListRef = useRef([]);
+  teamListRef.current = teams?.teams || [];
+  const beforeSaveRef = useRef(UNKNOWN_SHARE_SNAPSHOT);
+  beforeSaveRef.current = publishedUrl && !accessLoaded
+    ? UNKNOWN_SHARE_SNAPSHOT
+    : shareSnapshot({
+      publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, ownerOnly,
+      allowedTeamIds: teamIds, allowedUserIds: userIds,
+    }, { teams: teamListRef.current });
   const refreshRequestRef = useRef(0);
   const busy = phase !== 'idle';
   /* Whether the open-time access read still has to run: set when the
@@ -211,6 +250,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
        so it must not land after the save's answer and undo it. */
     ++refreshRequestRef.current;
     const wasPublished = !!publishedUrl;
+    const before = beforeSaveRef.current;
     /* The answer is applied only if the artifact it saved is still on screen.
        Without this, A's answer landing after the viewer moved to B writes A's
        audience into B's state and marks B's access as loaded before B's own
@@ -227,7 +267,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       const r = orgMode
         ? await setArtifactAccess(artifact, access)
         : await publishArtifact(targetPath, access);
-      if (!r?.url) throw new Error('Sharing returned no URL.');
+      if (!r?.url) throw new Error(tr('noUrl'));
       // Server is authoritative (it degrades an empty restricted/password
       // selection back to public); fall back to the requested access.
       const m = r.accessMode || access?.mode || 'public';
@@ -235,8 +275,6 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
          on every in-place access change. The save happened even when the
          viewer has since moved on, so it counts either way. */
       if (!wasPublished) trackArtifactPublished(r.report_id || r.reportId || artifact?.id || '', m);
-      // False, so the panel now on screen does not act on another artifact's save.
-      if (!isCurrent()) return false;
       // What the answer says about the audience; a field it leaves out is
       // taken from the request that was sent.
       const restricted = m === 'restricted';
@@ -253,8 +291,20 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         allowedUserIds: restricted ? (said.userIds ?? asked.userIds) : [],
         ownerOnly: restricted ? (said.ownerOnly ?? asked.ownerOnly) : false,
         artifactKey: r.artifactKey || artifact?.artifactKey || '',
+        // The page just published, so later events name it before the list
+        // reloads.
+        reportId: publishedPageId(r) || artifact?.reportId || '',
         modified: false,
       };
+      reportAccessChanged(artifact, {
+        entry,
+        before,
+        after: shareSnapshot(next, { teams: teamListRef.current }),
+        reportId: publishedPageId(r),
+        access,
+      });
+      // False, so the panel now on screen does not act on another artifact's save.
+      if (!isCurrent()) return false;
       setPublishedUrl(next.publishedUrl);
       setAccessMode(next.accessMode);
       setAccessPassword(next.accessPassword);
@@ -273,6 +323,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       onChange?.({ ...artifact, ...next });
       return true;
     } catch (e) {
+      reportAccessChangeFailed(artifact, { entry, reason: publishFailureReason(e) });
       if (isCurrent()) {
         setError(friendlyPublishError(e));
         // The save dropped the open-time read above; with the access still
@@ -287,7 +338,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setPhase('idle');
     }
-  }, [phase, canAct, orgMode, targetPath, identityKey, publishedUrl, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, identityKey, publishedUrl, artifact, onChange, entry]);
 
   const update = useCallback(async () => {
     if (phase !== 'idle' || orgMode || !targetPath) return false;
@@ -304,7 +355,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       onChange?.({ ...artifact, modified: false, publishedUrl: url });
       return true;
     } catch (e) {
-      setError(publishRefusalMessage(e) ?? `Update failed: ${e?.message || e}`);
+      setError(publishRefusalMessage(e) ?? tr('updateFailed', { message: String(e?.message || e) }));
       return false;
     } finally {
       setPhase('idle');
@@ -320,21 +371,23 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setPhase('unpublishing');
     setError('');
     setNotice('');
+    const before = beforeSaveRef.current;
     try {
       const r = await unpublishArtifact(targetPath);
       const left = stopSharingNotice(r);
+      reportWithdrawal(artifact, { entry, before, leftLive: !!left });
       setNotice(left);
       setLinkOwnerRecorded(null);
       setPublishedUrl('');
-      onChange?.({ ...artifact, publishedUrl: '' });
+      onChange?.({ ...artifact, publishedUrl: '', reportId: '' });
       return { ok: true, notice: left };
     } catch (e) {
-      setError(`Couldn't stop sharing: ${e?.message || e}`);
+      setError(tr('stopFailed', { message: String(e?.message || e) }));
       return { ok: false, notice: '' };
     } finally {
       setPhase('idle');
     }
-  }, [phase, orgMode, targetPath, artifact, onChange]);
+  }, [phase, orgMode, targetPath, artifact, onChange, entry]);
 
   // Cheap re-check of the server's published/modified status — lights up
   // "Update" when the artifact changes underneath an open preview, without a
@@ -379,6 +432,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setOwnerOnly(nextOwnerOnly);
       setAccessPassword(a.accessPassword || '');
       if (a.artifactKey) setArtifactKey(a.artifactKey);
+      const nextReportId = answeredReportId(a, artifact);
       setAccessLoaded(true);
       // The parent keeps its own copy of the artifact, so the loaded audience
       // goes back to it. Once the prop already carries it, a repeat report only
@@ -389,10 +443,12 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         && Array.isArray(artifact?.accessEmails)
         && artifact.accessEmails.join(',') === nextEmails.join(',')
         && (artifact?.allowedTeamIds || []).join(',') === nextTeams.join(',')
-        && (artifact?.allowedUserIds || []).join(',') === nextUsers.join(',');
+        && (artifact?.allowedUserIds || []).join(',') === nextUsers.join(',')
+        && (artifact?.reportId || '') === nextReportId;
       if (propSame) return;
       onChange?.({
         ...artifact,
+        reportId: nextReportId,
         accessMode: nextMode,
         accessEmails: nextEmails,
         orgAllowed: nextOrg,
@@ -422,6 +478,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
        restricted artifact is owner-only. */
     const nextOwnerOnly = nextMode === 'restricted' && isOwnerOnlyAccess(s) === true;
     if (s.artifactKey) setArtifactKey(s.artifactKey);
+    const nextReportId = answeredReportId(s, artifact);
     /* The unknown audience (UNKNOWN_AUDIENCE: every field null) matches no
        answer, so the refresh replaces it with the server's. */
     const accessSame = nextMode === accessMode
@@ -444,7 +501,8 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setAccessLoaded(true);
     // Nothing the parent cares about changed → skip the parent onChange (and
     // the modified/url setters) to avoid a needless grid/rail re-render.
-    if (nextModified === modified && nextUrl === publishedUrl && accessSame) return;
+    if (nextModified === modified && nextUrl === publishedUrl && accessSame
+      && nextReportId === (artifact?.reportId || '')) return;
     setModified(nextModified);
     setPublishedUrl(nextUrl);
     // ⚠️ LOAD-BEARING: onChange MUST carry the access fields back into the
@@ -456,6 +514,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       ...artifact,
       modified: nextModified,
       publishedUrl: nextUrl,
+      reportId: nextReportId,
       accessMode: nextMode,
       accessEmails: nextEmails,
       orgAllowed: nextOrg,
@@ -492,7 +551,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       await activateArtifactVersion(targetPath, md5);
       return true;
     } catch (e) {
-      setError(`Roll back failed: ${e?.message || e}`);
+      setError(tr('rollBackFailed', { message: String(e?.message || e) }));
       return false;
     } finally {
       setPhase('idle');
@@ -562,6 +621,9 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     phase, busy, error, setError, notice, linkOwnerRecorded,
     versions, versionsLoading,
     orgMode,
+    // The artifact this controller acts on, and where sharing was opened
+    // from, for the Share panel's analytics.
+    artifact, entry,
     publish, update, unpublish, refresh, loadVersions, activate,
   };
 }

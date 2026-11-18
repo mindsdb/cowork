@@ -37,6 +37,8 @@ vi.mock('../../lib/authenticatedResource', async (importOriginal) => ({
 }));
 
 vi.mock('../../api', () => ({
+  fetchPublishStats: vi.fn(),
+  setPublishTracking: vi.fn(),
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   mountArtifactPreview: vi.fn(),
   previewArtifact: vi.fn(),
@@ -48,6 +50,8 @@ vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async
 // The real artifactRef: a card without a full identity must stay on srcdoc.
 vi.mock('../../lib/artifactWorkspaceApi', async (importOriginal) => ({
   artifactRef: (await importOriginal()).artifactRef,
+  loadArtifactStats: vi.fn(),
+  setArtifactTracking: vi.fn(),
   loadArtifactDraftText,
   loadArtifactDraftDocument,
   createDraftLink,
@@ -105,7 +109,11 @@ vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 import { ArtifactViewer } from './ArtifactViewer';
-import { ARTIFACT_FRAME_POLICY } from './artifactPreviewUtils';
+import { ARTIFACT_FRAME_POLICY, countCsvRows } from './artifactPreviewUtils';
+import { previewArtifact } from '../../api';
+import { artifactsOnScreen } from '../../lib/voice/screenArtifacts';
+
+const manyRows = (n) => `id,name\n${Array.from({ length: n }, (_, i) => `${i},row${i}\n`).join('')}`;
 
 const artifact = {
   id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
@@ -293,6 +301,7 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
   });
 
   it('renders a cross-origin absolute draft URL via src, without fetching (no credential leak)', async () => {
+    loadArtifactDraftText.mockClear();
     const crossOriginArtifact = {
       ...artifact,
       draftUrl: 'https://evil.example/index.html',
@@ -305,6 +314,9 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
     expect(frame.getAttribute('src')).toContain('https://evil.example/index.html');
     expect(frame).not.toHaveAttribute('srcdoc');
     expect(loadArtifactDraftDocument).not.toHaveBeenCalled();
+    // Nor is it read for a voice call when the operator asks: no request goes to another origin.
+    expect(artifactsOnScreen()[0]).toMatchObject({ text: '', reading: false });
+    expect(loadArtifactDraftText).not.toHaveBeenCalled();
   });
 });
 
@@ -392,7 +404,7 @@ describe('ArtifactViewer draft text preview', () => {
     await screen.findByRole('table');
     expect(loadArtifactDraftText).toHaveBeenCalledWith(
       csvArtifact.draftUrl,
-      { withCredentials: true },
+      { withCredentials: true, countRows: countCsvRows },
     );
   });
 
@@ -410,7 +422,46 @@ describe('ArtifactViewer draft text preview', () => {
     render(<ArtifactViewer open artifact={{ ...csvArtifact, draftUrl }} onClose={vi.fn()} />);
 
     await screen.findByRole('table');
-    expect(loadArtifactDraftText).toHaveBeenCalledWith(draftUrl, { withCredentials: false });
+    expect(loadArtifactDraftText).toHaveBeenCalledWith(draftUrl, { withCredentials: false, countRows: countCsvRows });
+  });
+
+  it('reports the total the loader counted over the full body', async () => {
+    loadArtifactDraftText.mockResolvedValue({
+      content: manyRows(150), truncated: true, mime: 'text/csv', total_rows: 20_000,
+    });
+
+    render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Showing first 100 of 20,000 rows.')).toBeInTheDocument();
+  });
+});
+
+describe('ArtifactViewer local CSV preview', () => {
+  const localCsv = {
+    id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
+    title: 'Signups',
+    type: 'document',
+    ext: '.csv',
+    path: '/artifacts/launch/signups.csv',
+    canonicalPath: '/artifacts/launch/signups.csv',
+    capabilities: { role: 'owner', canEdit: true },
+  };
+
+  beforeEach(() => {
+    previewArtifact.mockReset();
+    loadArtifactDraftText.mockReset();
+  });
+
+  it('reports the total the server counted', async () => {
+    previewArtifact.mockResolvedValue({
+      content: manyRows(150), truncated: true, mime: 'text/csv', total_rows: 20_000,
+    });
+
+    render(<ArtifactViewer open artifact={localCsv} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Showing first 100 of 20,000 rows.')).toBeInTheDocument();
+    expect(previewArtifact).toHaveBeenCalledWith(localCsv.canonicalPath);
+    expect(loadArtifactDraftText).not.toHaveBeenCalled();
   });
 });
 
@@ -498,6 +549,32 @@ describe('ArtifactViewer draft preview through a signed link', () => {
       expect(screen.getByTitle('Launch brief').getAttribute('src')).toContain('/_t/v1.second.sig/');
     });
     expect(createDraftLink).toHaveBeenCalledTimes(2);
+  });
+
+  /* The linked frame is the draft host's origin, so a voice call reads the
+     page from the draft's HTML, read as a text preview is, once the call's
+     operator first asks: a page opened outside a call downloads once, for
+     its frame. */
+  it("gives a voice call the draft's text, read through the drafts route once the call asks", async () => {
+    createDraftLink.mockResolvedValue({ url: LINK, expiresAt: 1_900_000_000 });
+    loadArtifactDraftText.mockReset();
+    loadArtifactDraftText.mockResolvedValue({
+      content: '<html><head><style>h1{}</style></head><body><h1>Q3 launch</h1><p>Revenue up 12%.</p><script>steal()</script></body></html>',
+      truncated: false,
+      mime: 'text/html',
+    });
+
+    const { unmount } = render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    expect(loadArtifactDraftText).not.toHaveBeenCalled();
+
+    expect(artifactsOnScreen()[0]).toMatchObject({ text: '', reading: true });
+    await waitFor(() => expect(artifactsOnScreen()[0]?.text).toMatch(/Q3 launch\s+Revenue up 12%\./));
+    expect(artifactsOnScreen()[0].text).not.toMatch(/steal|h1\{/);
+    expect(loadArtifactDraftText).toHaveBeenCalledTimes(1);
+    expect(loadArtifactDraftText).toHaveBeenCalledWith(linked.draftUrl);
+    expect(loadArtifactDraftDocument).not.toHaveBeenCalled();
+    unmount();
   });
 
   // The comment layer is in the first link already: the artifact's identity,

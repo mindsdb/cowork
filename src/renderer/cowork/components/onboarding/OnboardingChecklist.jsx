@@ -6,6 +6,7 @@ import Ico from '../Icons';
 import { useToastManager } from '../ui/Toast';
 import { trackOnboardingRowClicked, sendWithStartVia } from '../../lib/analytics';
 import { completeStepTracked } from './track';
+import { useTranslation } from '../../../lib/i18n';
 
 // "Get to know Cowork" checklist — docked in the sidebar above the
 // footer, on every screen. Each row seeds a new chat with that step's
@@ -22,6 +23,7 @@ const STEPS_ID = 'onboarding-sidebar-steps';
 export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
   const { steps, isComplete, completedCount, total, allDone, dismissed, dismiss } = useOnboarding();
   const toastManager = useToastManager();
+  const { t } = useTranslation('setup');
   const startingSteps = useRef(new Set());
 
   const [collapsed, setCollapsed] = useState(() => {
@@ -54,7 +56,7 @@ export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
         completeStepTracked(step.id, 'checklist');
       }
     } catch {
-      toastManager.add({ type: 'danger', title: 'Could not start chat. Please try again.' });
+      toastManager.add({ type: 'danger', title: t('checklist.startFailed') });
     } finally {
       startingSteps.current.delete(step.id);
     }
@@ -69,7 +71,7 @@ export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
       aria-controls={STEPS_ID}
     >
       <span className="flex-1 text-[13px] font-[650] text-strong">
-        Get to know Cowork
+        {t('checklist.title')}
       </span>
       <span className="text-[11.5px] font-medium text-[var(--frost-600)] tabular-nums">
         {completedCount}/{total}
@@ -90,8 +92,8 @@ export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
     <button
       type="button"
       className="onboarding-collapse-toggle inline-flex shrink-0 self-center border-0 cursor-pointer rounded-[var(--r-sm)] p-1 text-[var(--frost-600)]"
-      aria-label="Close checklist"
-      title="Close"
+      aria-label={t('checklist.closeAriaLabel')}
+      title={t('checklist.close')}
       onClick={dismiss}
     >
       {Ico.close(14)}
