@@ -250,13 +250,26 @@ describe('createMobileShellAdapter', () => {
 
     await adapter.logout({ redirectUri: PAGE });
 
-    expect(order).toEqual(['clearToken', 'forget', 'navigate']);
+    expect(order).toEqual(['forget', 'clearToken', 'navigate']);
   });
 
-  it('still leaves when forgetting the session fails', async () => {
-    const { adapter, navigate } = setup({ forgetSession: async () => { throw new Error('locked'); } });
-    await adapter.logout({ redirectUri: PAGE });
-    expect(navigate).toHaveBeenCalledWith(PAGE);
+  it('does not claim sign-out when forgetting the session fails', async () => {
+    const { adapter, keycloak, navigate } = setup({ forgetSession: async () => { throw new Error('locked'); } });
+    await expect(adapter.logout({ redirectUri: PAGE })).rejects.toThrow('locked');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(keycloak.clearToken).not.toHaveBeenCalled();
+  });
+
+  it('offers a retry when native session removal stalls', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, keycloak, navigate } = setup({ forgetSession: () => new Promise<void>(() => {}), beforeLogoutTimeoutMs: 100 });
+      const rejected = expect(adapter.logout({ redirectUri: PAGE })).rejects.toThrow('Session storage timed out');
+      await vi.advanceTimersByTimeAsync(100);
+      await rejected;
+      expect(keycloak.clearToken).not.toHaveBeenCalled();
+      expect(navigate).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
   });
 
   it('signs out even when beforeLogout fails', async () => {

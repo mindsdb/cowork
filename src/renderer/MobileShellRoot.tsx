@@ -184,7 +184,7 @@ export function MobileShellRoot({ shell, authClient, initOptions, onTokens, sess
         if (event === 'onReady') setInitialized(true);
         if (event === 'onInitError') setInitFailed(true);
         // Signed out, or Keycloak ended the session: nothing to restore.
-        if (event === 'onAuthLogout') void session?.forget();
+        if (event === 'onAuthLogout') void session?.forget().catch(() => setInitFailed(true));
       }}
     >
       <SignedInGate>{children}</SignedInGate>

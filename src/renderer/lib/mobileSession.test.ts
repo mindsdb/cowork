@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  serializedMobileSessionStore,
   clearMobileSession,
   getMobileSessionStore,
   restoreMobileSession,
@@ -147,12 +148,50 @@ describe('saveMobileSession / clearMobileSession', () => {
     expect(current()).toEqual({ token: 'at', refreshToken: 'rt' });
   });
 
-  it('never rejects', async () => {
+  it('keeps save best-effort but propagates a failed clear', async () => {
     const { store } = memoryStore();
     store.saveSession.mockRejectedValueOnce(new Error('full'));
     store.clearSession.mockRejectedValueOnce(new Error('locked'));
     await expect(saveMobileSession(store, SAVED)).resolves.toBeUndefined();
-    await expect(clearMobileSession(store)).resolves.toBeUndefined();
+    await expect(clearMobileSession(store)).rejects.toThrow('locked');
     await expect(clearMobileSession(null)).resolves.toBeUndefined();
+  });
+});
+
+describe('serializedMobileSessionStore', () => {
+  it('finishes an in-flight save before clearing, including reads after logout', async () => {
+    const memory = memoryStore(null);
+    let release!: () => void;
+    const stalled = new Promise<void>((resolve) => { release = resolve; });
+    const originalSave = memory.store.saveSession;
+    const store = serializedMobileSessionStore({
+      ...memory.store,
+      saveSession: async (options) => { await stalled; return originalSave(options); },
+    });
+    const save = store.saveSession({ session: JSON.stringify(SAVED) });
+    const clear = store.clearSession();
+    const read = store.loadSession();
+    expect(memory.store.clearSession).not.toHaveBeenCalled();
+    release();
+    await Promise.all([save, clear]);
+    expect(await read).toEqual({});
+  });
+
+  it('ignores a token refresh delivered after sign-out has begun', async () => {
+    const memory = memoryStore();
+    const store = serializedMobileSessionStore(memory.store);
+    const clearing = store.clearSession();
+    await store.saveSession({ session: JSON.stringify(SAVED) });
+    await clearing;
+    expect(memory.current()).toBeNull();
+    expect(memory.store.saveSession).not.toHaveBeenCalled();
+  });
+
+  it('still clears after a rejected save', async () => {
+    const memory = memoryStore();
+    const store = serializedMobileSessionStore({ ...memory.store, saveSession: async () => { throw new Error('disk'); } });
+    await expect(store.saveSession({ session: 'unused' })).rejects.toThrow('disk');
+    await store.clearSession();
+    expect(memory.current()).toBeNull();
   });
 });

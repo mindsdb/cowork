@@ -145,16 +145,19 @@ export interface MobileAdapterDeps {
   forgetSession?: () => Promise<void>;
 }
 
-/** Wait for `task`, at most `ms`; never rejects. */
-async function settleWithin(task: () => Promise<void>, ms: number): Promise<void> {
+/** Bound cleanup; required persistence removal must reject on failure or timeout. */
+async function settleWithin(task: () => Promise<void>, ms: number, required = false): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
       Promise.resolve().then(task),
-      new Promise<void>((resolve) => { timer = globalThis.setTimeout(resolve, ms); }),
+      new Promise<void>((resolve, reject) => {
+        timer = globalThis.setTimeout(() => required ? reject(new Error('Session storage timed out')) : resolve(), ms);
+      }),
     ]);
-  } catch {
-    // Signing out anyway.
+  } catch (error) {
+    if (required) throw error;
+    // Best-effort cleanup must not prevent signing out.
   } finally {
     globalThis.clearTimeout(timer);
   }
@@ -243,8 +246,10 @@ export function createMobileShellAdapter(deps: MobileAdapterDeps): KeycloakAdapt
           globalThis.clearTimeout(timeout);
         }
       }
+      // Do not claim local sign-out until persistence is cleared. A locked or
+      // stalled store must remain retryable instead of resurrecting a session.
+      if (forgetSession) await settleWithin(forgetSession, beforeLogoutTimeoutMs, true);
       keycloak.clearToken();
-      if (forgetSession) await settleWithin(forgetSession, beforeLogoutTimeoutMs);
       navigate(options?.redirectUri ?? appRoot());
     },
     accountManagement: async () => {

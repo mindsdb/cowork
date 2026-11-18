@@ -51,7 +51,7 @@ final class SessionStore {
             byte[] plain = cipher.doFinal(blob, IV_BYTES, blob.length - IV_BYTES);
             return new String(plain, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            clear();
+            try { clear(); } catch (Exception ignored) { /* Unreadable remains signed out. */ }
             return null;
         }
     }
@@ -69,8 +69,15 @@ final class SessionStore {
         }
     }
 
-    void clear() {
-        prefs.edit().remove(PREF_VALUE).commit();
+    void clear() throws Exception {
+        // Destroy the decryption key first. Even a failed preferences write must
+        // not resurrect this session on the next process start.
+        KeyStore keyStore = KeyStore.getInstance(KEYSTORE);
+        keyStore.load(null);
+        keyStore.deleteEntry(KEY_ALIAS);
+        if (!prefs.edit().remove(PREF_VALUE).commit()) {
+            throw new IllegalStateException("could not remove the session");
+        }
     }
 
     private SecretKey existingKey() throws Exception {

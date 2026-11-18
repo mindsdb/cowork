@@ -72,8 +72,12 @@ public class MindsHubAuthPlugin extends Plugin {
 
     @PluginMethod
     public void clearSession(PluginCall call) {
-        sessionStore().clear();
-        call.resolve();
+        try {
+            sessionStore().clear();
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Could not clear the session", "FAILED", e);
+        }
     }
 
     private SessionStore sessionStore() {

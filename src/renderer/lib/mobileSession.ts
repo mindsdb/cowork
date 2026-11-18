@@ -41,7 +41,7 @@ function parseSession(raw: string | null | undefined): StoredSession | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as Partial<StoredSession>;
-    if (typeof value.token !== 'string' || typeof value.refreshToken !== 'string') return null;
+    if (typeof value.token !== 'string' || !value.token || typeof value.refreshToken !== 'string' || !value.refreshToken) return null;
     return {
       token: value.token,
       refreshToken: value.refreshToken,
@@ -67,14 +67,9 @@ export async function saveMobileSession(
   }
 }
 
-/** Forget the saved session. Never rejects. */
+/** Forget the saved session. Failure must remain visible to the sign-out caller. */
 export async function clearMobileSession(store: MobileSessionStore | null): Promise<void> {
-  if (!store) return;
-  try {
-    await store.clearSession();
-  } catch {
-    // Nothing more to do: a session that can't be cleared can't be read either.
-  }
+  if (store) await store.clearSession();
 }
 
 export type RestoreResult =
@@ -159,4 +154,22 @@ export async function restoreMobileSession(deps: RestoreDeps): Promise<RestoreRe
   };
   await saveMobileSession(store, session);
   return { kind: 'restored', session };
+}
+
+/** Serialize native writes so a slow token save cannot finish after sign-out. */
+export function serializedMobileSessionStore(store: MobileSessionStore): MobileSessionStore {
+  let pending: Promise<unknown> = Promise.resolve();
+  let signedOut = false;
+  const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = pending.then(operation, operation);
+    pending = result.catch(() => undefined);
+    return result;
+  };
+  return {
+    loadSession: () => enqueue(() => store.loadSession()),
+    // A refresh already in flight may deliver tokens after logout began.
+    // A new native sign-in reloads the page and creates a fresh store wrapper.
+    saveSession: (options) => signedOut ? Promise.resolve() : enqueue(() => store.saveSession(options)),
+    clearSession: () => { signedOut = true; return enqueue(() => store.clearSession()); },
+  };
 }

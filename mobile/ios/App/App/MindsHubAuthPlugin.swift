@@ -98,8 +98,11 @@ public class MindsHubAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
     }
 
     @objc func clearSession(_ call: CAPPluginCall) {
-        SessionKeychain.clear()
-        call.resolve()
+        if SessionKeychain.clear() {
+            call.resolve()
+        } else {
+            call.reject("Could not clear the session", "FAILED")
+        }
     }
 
     /// Only MindsHub's own sign-in pages, over https. The page asks for this
@@ -141,7 +144,7 @@ enum SessionKeychain {
     }
 
     static func load() -> String? {
-        forgetPreviousInstall()
+        guard forgetPreviousInstall() else { return nil }
         var request = query
         request[kSecReturnData as String] = true
         request[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -154,7 +157,7 @@ enum SessionKeychain {
     }
 
     static func save(_ session: String) -> Bool {
-        forgetPreviousInstall()
+        guard forgetPreviousInstall() else { return false }
         let data = Data(session.utf8)
         let attributes: [String: Any] = [
             kSecValueData as String: data,
@@ -168,16 +171,18 @@ enum SessionKeychain {
         return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
     }
 
-    static func clear() {
-        SecItemDelete(query as CFDictionary)
+    static func clear() -> Bool {
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 
     /// UserDefaults are removed on uninstall and Keychain items are not, so a
     /// missing marker means this is the first launch of a fresh install.
-    private static func forgetPreviousInstall() {
+    private static func forgetPreviousInstall() -> Bool {
         let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: installMarker) else { return }
-        clear()
+        if defaults.bool(forKey: installMarker) { return true }
+        guard clear() else { return false }
         defaults.set(true, forKey: installMarker)
+        return true
     }
 }
