@@ -250,6 +250,21 @@ describe('custom MCP refresh loops', () => {
     expect(login.calls).toBe(0);
   });
 
+  it('ends the old loop when a new one starts for the same connection, as after a reconnect', async () => {
+    let oldCalls = 0;
+    const oldGrant: GuardedFetch = async (input, init) => {
+      oldCalls += 1;
+      return fetchFn(input, init);
+    };
+    startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, oldGrant);
+    startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, fetchFn);
+
+    await vi.advanceTimersByTimeAsync(6 * HOUR);
+
+    expect(oldCalls).toBe(0);
+    expect(login.calls).toBeGreaterThan(1);
+  });
+
   it('runs no refresh after the loop is stopped', async () => {
     startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, fetchFn);
     stopRefreshLoop(ROOT, ID);
