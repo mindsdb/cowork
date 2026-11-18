@@ -23,6 +23,11 @@ import { loadFixtures, openPreview, previewFrame, strayRequests, type PreviewFix
 
 const LIMITS = previewLimits({ touch: false });
 
+/* A failure trace keeps its screenshots and actions but no DOM snapshots.
+   Each snapshot of a grid at the caps copies its 400,000 cells, which made a
+   fixture past the caps take most of the test timeout on a CI runner. */
+test.use({ trace: { mode: 'retain-on-failure', snapshots: false } });
+
 /* One request, and whether the harness page made it rather than the preview
    frame or a frame inside it. */
 interface RecordedRequest { url: string; fromHarnessPage: boolean }

@@ -629,6 +629,10 @@ a[href],
   0%   { opacity: 0; transform: translateX(16px); }
   100% { opacity: 1; transform: none; }
 }
+@keyframes cw-comments-panel-out {
+  0%   { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateX(16px); }
+}
 @keyframes cw-act-bar-in {
   0%   { opacity: 0; transform: translate(-50%, 12px); }
   100% { opacity: 1; transform: translate(-50%, 0); }

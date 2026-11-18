@@ -176,7 +176,7 @@ describe('ArtifactViewer with unsaved Edit text', () => {
       render(<Host />);
       await typeUnsavedText();
       await user.click(screen.getByRole('button', { name: /Save/ }));
-      await screen.findByText('Saved');
+      await screen.findAllByText('Saved');
 
       await close();
 
@@ -193,7 +193,7 @@ describe('ArtifactViewer with unsaved Edit text', () => {
       render(<Host />);
       await typeUnsavedText();
       await user.click(screen.getByRole('button', { name: /Save/ }));
-      await screen.findByText('Saving…');
+      await screen.findAllByText('Saving…');
 
       await close();
 

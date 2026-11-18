@@ -173,10 +173,13 @@
     "unavailableTitle": "功能不可用",
     "cloudBodyNamed": "{feature} 暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
     "cloudBody": "此功能暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
+    "cloudBodyCustom": "{feature} 暂未在 Cloud 上提供。你现在可以将它作为自定义连接器接入。",
     "unavailableBodyNamed": "{feature} 在此部署中不可用。",
     "unavailableBody": "此功能在此部署中不可用。",
     "notNow": "以后再说",
-    "download": "下载应用"
+    "download": "下载应用",
+    "connectCustom": "连接你的自定义 {feature} 连接器",
+    "buildCustom": "构建自定义连接器"
   },
   "loadStatus": {
     "retry": "重试",

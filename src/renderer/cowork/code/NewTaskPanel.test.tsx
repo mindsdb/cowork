@@ -197,7 +197,8 @@ describe('NewTaskPanel', () => {
     vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: ['in_place'], default: 'in_place',
       worktree_unavailable_reason: 'Initialize Git to use a Worktree', can_initialize_git: true });
     vi.mocked(codingApi.initializeGit).mockResolvedValue({ supported: ['in_place'], default: 'in_place',
-      worktree_unavailable_reason: 'Make a first commit to use a Worktree', can_initialize_git: false });
+      worktree_unavailable_reason: 'Make a first commit to use a Worktree', worktree_unavailable_code: 'no_commits',
+      can_initialize_git: false });
     const onCreate = vi.fn(async () => {});
     render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
       models={models} modelMeta={modelMeta} {...projectProps} selectedProjectId={null} onCreate={onCreate} />);
@@ -208,7 +209,8 @@ describe('NewTaskPanel', () => {
     expect(codingApi.initializeGit).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Initialize Git' }));
     expect(codingApi.initializeGit).toHaveBeenCalledWith('C:\\Users\\Ian & Team\\plain folder');
-    expect(await screen.findByText('Make a first commit to use a Worktree')).toBeInTheDocument();
+    // The coded reason is worded by the UI, so it follows the app's language.
+    expect(await screen.findByText('This repository has no commits yet. Make a first commit to use a Worktree.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Initialize Git' })).not.toBeInTheDocument();
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Fix it');
     await user.click(screen.getByRole('button', { name: /start task/i }));

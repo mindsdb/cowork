@@ -228,6 +228,18 @@ describe('EventTimeline', () => {
     expect(screen.queryByText('Completed')).toBeNull();
   });
 
+  it('says why a task moved into a worktree when its folder was busy', () => {
+    const notice = {
+      ...event(2, 'session', 'Server text'),
+      title: 'Working in a worktree',
+      data: { reason: 'folder_busy' },
+    };
+
+    render(<EventTimeline {...timelineProps([event(1, 'user_message', 'Go'), notice])} session={session('running')} />);
+
+    expect(screen.getByText('Another task is working in this folder, so this one works in a worktree.')).toBeInTheDocument();
+  });
+
   it('shows the answer to /status where the command was sent', () => {
     const status = {
       ...event(2, 'session', 'Status: ready\nModel: gpt\nPermissions: supervised'),

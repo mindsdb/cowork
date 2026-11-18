@@ -15,6 +15,11 @@
 // not fit (a weekly update is not a slide deck), and the person is expected to
 // add to it, so it is sent as written even then.
 //
+// `ownData: true` marks a mode whose examples work on sample data or a
+// document, so the finished example offers "Do this with my own data". A
+// sample can set its own `ownData` to differ from its mode. Games, websites
+// and apps make something new and have nothing of the person's to swap in.
+//
 // `icon` is an Icons.jsx key (resolved dynamically — keep keys in sync with
 // that file). `samplesVariant` mirrors Manus: slides + visualization render
 // sample cards under a heading, the rest render plain rows. `chipNoun`
@@ -28,6 +33,7 @@ import i18n from '../../../lib/i18n';
 export const TASK_MODES = [
   {
     id: 'slides',
+    ownData: true,
     pillLabel: 'Create slides',
     chipLabel: 'Slides',
     icon: 'presentation',
@@ -148,6 +154,7 @@ export const TASK_MODES = [
   },
   {
     id: 'spreadsheet',
+    ownData: true,
     pillLabel: 'Spreadsheet',
     chipLabel: 'Spreadsheet',
     icon: 'table',
@@ -188,6 +195,7 @@ export const TASK_MODES = [
   },
   {
     id: 'visualization',
+    ownData: true,
     pillLabel: 'Visualization',
     chipLabel: 'Visualization',
     icon: 'chartColumn',
@@ -223,6 +231,7 @@ export const TASK_MODES = [
   },
   {
     id: 'wide-research',
+    ownData: true,
     pillLabel: 'Wide Research',
     chipLabel: 'Wide Research',
     icon: 'telescope',
@@ -394,6 +403,26 @@ export function sampleLabel(sample) {
     if (index >= 0) return i18n.t(`taskModes.${mode.id}.samples.${index}`, { ns: 'chat', defaultValue: sample.label });
   }
   return sample?.label;
+}
+
+/** Whether a finished example invites the person's own data in place of
+    the sample it made up. The cross-mode Examples list holds the same sample
+    objects, so each of its entries answers by the mode it comes from. */
+export function exampleTakesOwnData(sample) {
+  const mode = TASK_MODES.find((m) => m.samples.includes(sample));
+  return Boolean(sample?.ownData ?? mode?.ownData);
+}
+
+/** The example a sent message starts from, or null. The message may carry
+    the person's additions or the mode's instruction after the prompt. */
+export function exampleForMessage(text) {
+  const sent = typeof text === 'string' ? text.trim() : '';
+  if (!sent) return null;
+  for (const mode of TASK_MODES) {
+    const sample = mode.samples.find((s) => sent.startsWith(s.prompt));
+    if (sample) return sample;
+  }
+  return null;
 }
 
 /** The mode and sample whose prompt is exactly `prompt`, or null. */

@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Certains fichiers de tâches supprimées n’ont pas pu être effacés. Relancez le nettoyage pour libérer de l’espace disque.",
+    "retry": "Relancer le nettoyage",
+    "retrying": "Nettoyage en cours…",
+    "retryFailed": "Impossible de relancer le nettoyage. Réessayez."
+  },
   "reviewPanel": {
     "ariaLabel": "Revoir les modifications",
     "closeAriaLabel": "Fermer le panneau de revue",
@@ -1308,6 +1314,7 @@
     "record": {
       "approvalDenied": "Approbation refusée",
       "approvalResolved": "Approbation traitée",
+      "folderBusy": "Une autre tâche travaille dans ce dossier, donc celle-ci travaille dans un worktree.",
       "followUpDelivered": "Message de suivi transmis",
       "requestRejected": "Demande rejetée",
       "taskStatus": "État de la tâche"
@@ -1412,7 +1419,8 @@
     "details": "Détails",
     "moreOptions": "Plus d’options",
     "dismiss": "Ignorer",
-    "viewBudgets": "Voir les budgets"
+    "viewBudgets": "Voir les budgets",
+    "allowWrites": "Autoriser les modifications"
   },
   "composerNotices": {
     "thisModel": "Ce modèle",
@@ -1466,6 +1474,9 @@
     "budgetExceeded": {
       "title": "Le budget de votre organisation est épuisé",
       "body": "Un propriétaire ou un administrateur peut l’augmenter dans Budgets, ou vous pouvez choisir un modèle disponible pour continuer dans cette tâche."
+    },
+    "writesHeld": {
+      "body": "Ce dossier n’a pas d’historique Git pour relire ou annuler les modifications ; l’agent demande donc avant chaque modification."
     }
   },
   "planModeCommand": {
@@ -1624,6 +1635,16 @@
     },
     "initializeGit": "Initialiser Git",
     "initializeFailed": "Impossible d’initialiser Git. Réessayez.",
-    "unavailable": "Aucun mode d’espace de travail n’est disponible pour ce dossier."
+    "unavailable": "Aucun mode d’espace de travail n’est disponible pour ce dossier.",
+    "reason": {
+      "notARepository": "Ce dossier n’est pas un dépôt Git. Initialisez Git pour utiliser un Worktree.",
+      "notARepositoryInFolder": "{folder} n’est pas un dépôt Git. Initialisez Git pour utiliser un Worktree.",
+      "noCommits": "Ce dépôt n’a pas encore de commit. Faites un premier commit pour utiliser un Worktree.",
+      "noCommitsInFolder": "{folder} n’a pas encore de commit. Faites un premier commit pour utiliser un Worktree.",
+      "noLocalCheckout": "{folder} n’a pas de copie locale sur cet ordinateur où travailler. Choisissez Worktree.",
+      "inPlaceUnsupportedPlatform": "Le travail dans le dossier d’origine n’est pas encore disponible sur cette plateforme. Choisissez Worktree.",
+      "inPlaceOtherComputer": "Les tâches sur un autre ordinateur s’exécutent dans un worktree isolé. Choisissez Worktree.",
+      "sharedRepository": "Deux dossiers du projet sont dans le même dépôt, ils ne peuvent donc pas tous les deux travailler directement dans le dossier. Choisissez Worktree."
+    }
   }
 }

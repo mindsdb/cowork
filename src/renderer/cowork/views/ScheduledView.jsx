@@ -54,7 +54,8 @@ export default function ScheduledView({
   // (useAutoPauseNotifications). Shown here until each is reviewed, so a
   // pause is not missed when its desktop notification was not.
   unseenAutoPauses = [],
-  // Which run endings this device notifies about, and (patch) to change them.
+  // Which run endings the user is notified about, and (patch) to change them.
+  // Absent while the server cannot save them.
   notifyPrefs,
   onNotifyPrefsChange,
   agentLabel,

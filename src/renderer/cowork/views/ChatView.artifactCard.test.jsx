@@ -36,6 +36,9 @@ let hostIsWeb = false;
 // card against a controllable answer, because what shipped broken was the CARD:
 // it offered Open / Export / Show in Finder for an artifact that was gone.
 const deleted = vi.fn(() => false);
+/* The artifacts list's card for a slug: where a chat card, which carries no
+   capabilities, learns whether the person may edit the artifact. */
+const listedCard = vi.fn(() => null);
 const revalidate = vi.fn(() => Promise.resolve());
 /* The shared document gate, stubbed per test: whether the build has the
    type's renderer and the shell supports the frame is not the card's business. */
@@ -47,6 +50,7 @@ vi.mock('../preview/kinds', () => ({
 
 vi.mock('../lib/artifactsStore', () => ({
   useArtifactLiveness: (card, opts) => deleted(card, opts),
+  useArtifactCardBySlug: (slug) => (slug ? listedCard(slug) : null),
   setArtifactsScope: vi.fn(),
   revalidate: (...a) => revalidate(...a),
 }));
@@ -69,8 +73,8 @@ vi.mock('../../platform/host', () => ({
 // The viewer's workspace/network behaviour is covered by its own tests. Here
 // we only need to prove the inline card hands the complete artifact to it.
 vi.mock('../components/artifact', () => ({
-  ArtifactViewer: ({ open, artifact }) => open
-    ? <div data-testid="artifact-viewer">{artifact?.id}</div>
+  ArtifactViewer: ({ open, artifact, shareRequest, shareEntry }) => open
+    ? <div data-testid="artifact-viewer" data-open-share={String(!!shareRequest)} data-share-entry={shareEntry}>{artifact?.id}</div>
     : null,
 }));
 
@@ -89,6 +93,7 @@ vi.mock('../lib/artifactDownload', () => ({
 
 import ChatView, { artifactStepToCard } from './ChatView';
 import { setOrgMode } from '../../lib/orgMode';
+import { setLiveApps } from '../../lib/liveApps';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../lib/artifactActions';
 
 const PUBLISHED_URL = 'https://view.staging.mindshub.ai/view/97901f016/845b3777';
@@ -111,7 +116,8 @@ const artifactStep = (overrides = {}) => ({
     slug: 'clock',
     artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
     draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/index.html`,
-    capabilities: { role: 'owner', canEdit: true, canComment: true },
+    // No capabilities: cowork-server's chat cards don't carry them; only the
+    // artifacts list does.
     publishedUrl: PUBLISHED_URL,
     projectId: 'proj-1',
     projectName: 'general',
@@ -121,7 +127,8 @@ const artifactStep = (overrides = {}) => ({
 
 describe('inline artifact workspace payload', () => {
   it('reaches the viewer card without dropping identity or permissions', () => {
-    expect(artifactStepToCard(artifactStep(), '/proj')).toMatchObject({
+    const step = artifactStep({ capabilities: { role: 'owner', canEdit: true, canComment: true } });
+    expect(artifactStepToCard(step, '/proj')).toMatchObject({
       id: ARTIFACT_ID,
       artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
       draftUrl: expect.stringContaining('/artifacts/drafts/'),
@@ -159,11 +166,13 @@ beforeEach(() => {
   hostIsWeb = false;
   deleted.mockReset();
   deleted.mockReturnValue(false);
+  listedCard.mockReset();
+  listedCard.mockReturnValue(null);
   revalidate.mockClear();
   canPreviewDocument.mockReset();
   canPreviewDocument.mockReturnValue(false);
 });
-afterEach(() => setOrgMode(false));
+afterEach(() => { setOrgMode(false); setLiveApps(false); });
 
 describe('inline artifact banner in org mode', () => {
   it('previews in the app instead of opening a browser tab', async () => {
@@ -1088,5 +1097,137 @@ describe('a live-turn .xlsx card on local web', () => {
     expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
       selector: '.chat-artifact-card__status',
     })).toBeInTheDocument();
+  });
+});
+
+describe('Share on the inline artifact card', () => {
+  const share = () => screen.queryByRole('button', { name: 'Share' });
+
+  it.each([
+    ['desktop', false],
+    ['org web', true],
+  ])('offers Share on a page the person owns (%s)', (_, org) => {
+    setOrgMode(org);
+    hostIsWeb = org;
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+    expect(share()).not.toBeNull();
+  });
+
+  it('offers Share on a markdown document', () => {
+    const md = '/proj/.anton/artifacts/notes/notes.md';
+    render(<ChatView task={taskWithArtifact(artifactStep({ ext: '.md', file_path: md, path: md, action: 'document' }))} />);
+    expect(share()).not.toBeNull();
+  });
+
+  it.each(['.csv', '.png', '.xlsx'])('offers no Share on a %s file, which has no link to share', (ext) => {
+    const path = `/proj/.anton/artifacts/data/file${ext}`;
+    setOrgMode(true);
+    hostIsWeb = true;
+    render(<ChatView task={taskWithArtifact(artifactStep({ ext, file_path: path, path }))} />);
+    expect(share()).toBeNull();
+  });
+
+  it('offers no Share on a live app without a page, which shares through "Share with…"', () => {
+    setOrgMode(true);
+    setLiveApps(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({ type: 'fullstack-stateless-app', publishedUrl: '' }))} />);
+    expect(share()).toBeNull();
+  });
+
+  describe('on Cloud Web, where the chat card carries no capabilities', () => {
+    beforeEach(() => { setOrgMode(true); hostIsWeb = true; });
+
+    it('offers Share when the artifacts list says the person can edit it', () => {
+      listedCard.mockReturnValue({ slug: 'clock', capabilities: { role: 'owner', canEdit: true } });
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+      expect(listedCard).toHaveBeenCalledWith('clock');
+      expect(share()).not.toBeNull();
+    });
+
+    it('offers no Share when the artifacts list says the person cannot edit it', () => {
+      listedCard.mockReturnValue({ slug: 'clock', capabilities: { role: 'reviewer', canEdit: false } });
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+      expect(share()).toBeNull();
+    });
+
+    it('offers Share for an artifact the list has not loaded yet, and leaves the viewer to decide', () => {
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+      expect(share()).not.toBeNull();
+    });
+  });
+
+  it('offers no Share to someone who cannot edit the artifact', () => {
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({ capabilities: { role: 'reviewer', canEdit: false, canComment: true } }))} />);
+    expect(share()).toBeNull();
+  });
+
+  it.each([
+    ['desktop', false],
+    ['org web', true],
+  ])('offers no Share on a deleted artifact (%s)', (_, org) => {
+    setOrgMode(org);
+    hostIsWeb = org;
+    deleted.mockReturnValue(true);
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+    expect(share()).toBeNull();
+  });
+
+  // A path outside the project leaves the card no local file to act on.
+  const outside = '../elsewhere/index.html';
+
+  it('offers no Share on desktop without a usable local path, where the panel could not act', () => {
+    const { container } = render(<ChatView task={taskWithArtifact(artifactStep({ file_path: outside, path: outside }))} />);
+    expect(container.querySelector('.chat-artifact-card')).not.toBeNull();
+    expect(share()).toBeNull();
+  });
+
+  it('offers Share on org web without a local path, where the panel works from the draft', () => {
+    setOrgMode(true);
+    hostIsWeb = true;
+    render(<ChatView task={taskWithArtifact(artifactStep({ file_path: outside, path: outside }))} />);
+    expect(share()).not.toBeNull();
+  });
+
+  it('keeps Preview filled and puts an outlined Share after it', () => {
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    const preview = screen.getByRole('button', { name: 'Preview' });
+    expect(preview).toHaveClass('btn', 'primary');
+    expect(share()).toHaveClass('btn', 'default');
+    expect(share()).not.toHaveClass('primary');
+    expect(preview.compareDocumentPosition(share()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('keeps Preview as the filled action where there is no Share', () => {
+    const path = '/proj/.anton/artifacts/data/file.csv';
+    render(<ChatView task={taskWithArtifact(artifactStep({ ext: '.csv', file_path: path, path }))} />);
+
+    expect(screen.getByRole('button', { name: 'Preview' })).toHaveClass('btn', 'primary');
+  });
+
+  it('opens the viewer with the Share panel, named as opened from the chat card', async () => {
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    await user.click(share());
+
+    const viewer = screen.getByTestId('artifact-viewer');
+    expect(viewer).toHaveTextContent(ARTIFACT_ID);
+    expect(viewer).toHaveAttribute('data-open-share', 'true');
+    expect(viewer).toHaveAttribute('data-share-entry', 'chat_card');
+  });
+
+  it('opens Preview without the Share panel, as the viewer', async () => {
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    await user.click(share());
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+
+    const viewer = screen.getByTestId('artifact-viewer');
+    expect(viewer).toHaveAttribute('data-open-share', 'false');
+    expect(viewer).toHaveAttribute('data-share-entry', 'viewer');
   });
 });

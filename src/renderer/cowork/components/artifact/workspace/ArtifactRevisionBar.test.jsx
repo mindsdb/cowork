@@ -86,3 +86,31 @@ describe('ArtifactRevisionBar layer controls', () => {
     expect(bar.lastElementChild).toContainElement(history);
   });
 });
+
+describe('ArtifactRevisionBar save and discard', () => {
+  const bar = (saveInEditor) => (
+    <ArtifactRevisionBar
+      revision={{ id: 'revision-4', number: 4 }}
+      revisions={[]}
+      status="ready"
+      dirty
+      canEdit
+      saveInEditor={saveInEditor}
+      onSave={vi.fn()}
+      onDiscard={vi.fn()}
+      onCompare={vi.fn()}
+    />
+  );
+
+  it('offers Save and Discard for unsaved work', () => {
+    render(bar(false));
+    expect(screen.getByRole('button', { name: /Save/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
+  });
+
+  it("leaves them to Live edit's own toolbar while it is on", () => {
+    render(bar(true));
+    expect(screen.queryByRole('button', { name: /Save/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull();
+  });
+});
