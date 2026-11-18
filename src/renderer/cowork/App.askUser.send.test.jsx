@@ -749,6 +749,30 @@ describe('interrupted stream recovery', () => {
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
   });
 
+  it('stops retrying history when a failed read returns after unmount', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+    let resolveHistory;
+    spies.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
+    spies.fetchSession.mockImplementationOnce(() => new Promise((resolve) => { resolveHistory = resolve; }));
+    await waitFor(() => expect(resolveHistory).toBeTypeOf('function'), { timeout: 4000 });
+
+    cleanup();
+    spies.fetchSession.mockClear();
+    resolveHistory(null);
+    // Give the 50 ms retry time to issue its request.
+    await new Promise((resolve) => { setTimeout(resolve, 250); });
+    expect(spies.fetchSession.mock.calls.filter(([cid]) => cid === 'conv-a')).toEqual([]);
+  });
+
   it('does not reattach when the reconnect probe answers after unmount', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
@@ -3469,6 +3493,18 @@ describe('"Run now" before the server has started the run', () => {
     await user.click(await screen.findByRole('button', { name: /^Run$/ }));
     await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-run'));
   }
+
+  it('skips the list refresh when the run ends after unmount', async () => {
+    await runNow(userEvent.setup());
+    let resolveStatus;
+    spies.fetchInFlightStatus.mockImplementationOnce(() => new Promise((resolve) => { resolveStatus = resolve; }));
+    await waitFor(() => expect(resolveStatus).toBeTypeOf('function'), { timeout: 4000 });
+
+    cleanup();
+    fetchInFlightList.mockClear();
+    await act(async () => { resolveStatus({ in_flight: false, has_buffer: true }); });
+    expect(fetchInFlightList).not.toHaveBeenCalled();
+  });
 
   it('loads the answer of a run that started and ended between asks', async () => {
     const user = userEvent.setup();

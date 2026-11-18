@@ -576,13 +576,15 @@ function openStreamedForm(conversationId, finalContent) {
 
 async function loadSessionMessagesWithRetry(
   cid,
-  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs } = {},
+  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs, unmountedRef } = {},
 ) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => { setTimeout(resolve, 50 * attempt); });
     }
+    if (unmountedRef?.current) return null;
     const fresh = await fetchSession(cid, { timeoutMs });
+    if (unmountedRef?.current) return null;
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
       // Only the most recent page — the caller merges this
@@ -3034,10 +3036,10 @@ function AppCore() {
         }
         let loaded = null;
         try {
-          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, unmountedRef });
         } catch { continue; }
-        if (!loaded) continue;
         if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        if (!loaded) continue;
         const knownIds = knownIdsOf(cid);
         settle((t) => {
           if (!historyEndsTurn(loaded.messages, droppedError(t)?._userMessageId)) return t;
@@ -6782,7 +6784,9 @@ function AppCore() {
     for (const delay of RUN_START_PROBE_DELAYS_MS) {
       await new Promise((resolve) => { setTimeout(resolve, delay); });
       if (unmountedRef.current || !inFlightSetRef.current.has(cid)) return;
-      const outcome = runStartProbeOutcome(await fetchInFlightStatus(cid));
+      const status = await fetchInFlightStatus(cid);
+      if (unmountedRef.current) return;
+      const outcome = runStartProbeOutcome(status);
       if (outcome === 'ended') {
         runsAwaitingStartRef.current.delete(cid);
         refreshInFlightSet();
