@@ -11,6 +11,7 @@ import type { GuardedFetch } from './guarded-fetch';
 import { deleteConnection as deleteKeychainEntries, listConnectionIds, writePart } from './custom-mcp-keychain';
 import { CONNECTION_MISSING, CustomMcpRouteError, heldSummary, listRecordIds, putHeld, type HeldSettings } from './custom-mcp-routes';
 import { customMcpFetch, readStoredSettings, readStoredTools, refreshedToken } from './custom-mcp-tokens';
+import { startRefreshLoop } from './custom-mcp-refresh';
 
 const CONNECTION_ID = /^cm-[0-9a-f]{32}$/;
 const RETRY_DELAYS_MS = [5_000, 15_000, 60_000];
@@ -99,6 +100,7 @@ export async function handOverCustomConnection(
       ...(token ? { access_token: token.accessToken, ...(token.expiresAt ? { expires_at: new Date(token.expiresAt).toISOString() } : {}) } : {}),
     };
     await putHeld(id, body);
+    if (token) startRefreshLoop(storeRoot, id, token.expiresAt, fetchFn);
     return tokenFailed ? 'retry' : 'done';
   } catch (err) {
     if (err instanceof CustomMcpRouteError && err.status === 404 && err.error === CONNECTION_MISSING) {

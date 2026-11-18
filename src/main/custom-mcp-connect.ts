@@ -26,6 +26,7 @@ import {
 import { authorizeInBrowser, CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI, type BrowserAuthorizeOpts, type BrowserAuthorizeResult } from './oauth-service';
 import { checkKeychain, CustomMcpKeychainError, deleteConnection as deleteKeychainEntries, writePart } from './custom-mcp-keychain';
 import { writeToolSwitch } from './custom-mcp-held';
+import { startRefreshLoop } from './custom-mcp-refresh';
 import {
   checkServerUrl, createConnection, CustomMcpRouteError, deleteRecord, listTools, putAllowedTools, putHeld,
 } from './custom-mcp-routes';
@@ -101,11 +102,11 @@ export function parseConnectRequest(raw: unknown): CustomMcpConnectRequest | str
   };
 }
 
-function defaultDeps(): ConnectDeps {
+export function defaultDeps(): ConnectDeps {
   return { fetchFn: customMcpFetch(), authorize: authorizeInBrowser, newId: newConnectionId, checkAuthorizeUrl: (url) => checkPublicHttpsUrl(url) };
 }
 
-function failure(err: unknown): { ok: false; code: string; reason: string } {
+export function failure(err: unknown): { ok: false; code: string; reason: string } {
   if (err instanceof GuardedFetchError || err instanceof McpOAuthError) return { ok: false, code: err.code, reason: err.message };
   if (err instanceof CustomMcpKeychainError) return { ok: false, code: 'keychain_unavailable', reason: err.message };
   if (err instanceof CustomMcpRouteError) {
@@ -114,7 +115,7 @@ function failure(err: unknown): { ok: false; code: string; reason: string } {
   return { ok: false, code: 'failed', reason: 'Could not connect the server.' };
 }
 
-type Login = { tokens: TokenSet; client: OAuthClient; resource: string; authorizationServer: AuthorizationServer };
+export type Login = { tokens: TokenSet; client: OAuthClient; resource: string; authorizationServer: AuthorizationServer };
 
 /** The hosts that receive login credentials, the authorize host first: the
  *  token endpoint gets the code and any client secret, registration and
@@ -128,21 +129,31 @@ function allConfirmed(confirmed: string[] | undefined, hosts: string[]): boolean
   return !!confirmed && hosts.every((host) => confirmed.includes(host));
 }
 
-/** Logs in when the server asks for it. Null for a server with no login. */
-async function logIn(
+/** Who logs in: a client the app already holds, a client ID the user
+ *  typed, or neither, which registers one. */
+export interface LoginClient {
+  client?: OAuthClient;
+  clientId?: string;
+  clientSecret?: string;
+}
+
+/** Logs in when the server asks for it. Null for a server with no login.
+ *  Shared by connect and reconnect. */
+export async function logIn(
   serverUrl: string,
-  request: CustomMcpConnectRequest,
+  request: LoginClient & { confirmedLoginHosts?: string[] },
   deps: ConnectDeps,
 ): Promise<Login | null | { ok: false; code: 'confirm_login_hosts'; loginHosts: string[] } | { ok: false; code: string; reason: string }> {
   const discovery = await discoverMcpAuth(serverUrl, deps.fetchFn);
   if (!discovery.needsLogin) return null;
   const { authorizationServer, resource } = discovery;
   const authorizeUrl = await deps.checkAuthorizeUrl(authorizationServer.authorizationEndpoint);
-  const loginHosts = credentialHosts(authorizeUrl, authorizationServer, !request.clientId);
+  const loginHosts = credentialHosts(authorizeUrl, authorizationServer, !request.client && !request.clientId);
   if (!allConfirmed(request.confirmedLoginHosts, loginHosts)) return { ok: false, code: 'confirm_login_hosts', loginHosts };
-  const client = request.clientId
-    ? givenClient(request.clientId, request.clientSecret, authorizationServer)
-    : await registerClient(authorizationServer, CUSTOM_MCP_REDIRECT_URI, deps.fetchFn);
+  const client = request.client
+    ?? (request.clientId
+      ? givenClient(request.clientId, request.clientSecret, authorizationServer)
+      : await registerClient(authorizationServer, CUSTOM_MCP_REDIRECT_URI, deps.fetchFn));
   const browser = await deps.authorize({
     authUrl: authorizationServer.authorizationEndpoint,
     clientId: client.clientId,
@@ -227,6 +238,7 @@ export async function connectCustomMcp(raw: unknown, deps: ConnectDeps = default
           access_token: login.tokens.accessToken,
           ...(login.tokens.expiresAt ? { expires_at: new Date(login.tokens.expiresAt).toISOString() } : {}),
         });
+        if (login.tokens.refreshToken) startRefreshLoop(storeRoot, id, login.tokens.expiresAt, deps.fetchFn);
       }
     } catch (err) {
       await undo(storeRoot, id);

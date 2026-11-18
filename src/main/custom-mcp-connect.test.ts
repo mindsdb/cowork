@@ -40,6 +40,7 @@ vi.mock('keytar', () => ({
 import { connectCustomMcp, parseConnectRequest, type ConnectDeps } from './custom-mcp-connect';
 import { listConnectionIds, readPart } from './custom-mcp-keychain';
 import { handOverCustomConnection } from './custom-mcp-held';
+import { hasRefreshLoop, stopRefreshLoop } from './custom-mcp-refresh';
 
 const SERVER_URL = 'https://mcp.example.com/mcp';
 const AUTH = 'https://auth.example.com';
@@ -226,6 +227,8 @@ describe('connectCustomMcp', () => {
     expect(JSON.parse((await readPart(root, ID, 'tools'))!)).toEqual(['search']);
     expect(JSON.parse((await readPart(root, ID, 'settings'))!)).toMatchObject({ serverUrl: SERVER_URL, clientId: 'registered-client', authMethod: 'none' });
     expect(await readPart(root, ID, 'secret')).toBeNull();
+    expect(hasRefreshLoop(root, ID)).toBe(true);
+    stopRefreshLoop(root, ID);
   });
 
   it('connects a server with no login without opening the browser or holding a token', async () => {
@@ -237,6 +240,7 @@ describe('connectCustomMcp', () => {
     expect(authorize).not.toHaveBeenCalled();
     expect(server.held.get(ID)).not.toHaveProperty('access_token');
     expect(await readPart(store.root!, ID, 'refresh')).toBeNull();
+    expect(hasRefreshLoop(store.root!, ID)).toBe(false);
   });
 
   it('uses a given client ID and keeps its secret in the keychain only', async () => {

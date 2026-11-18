@@ -95,6 +95,19 @@ export async function readPart(storeRoot: string, id: string, part: CustomMcpPar
   return Buffer.concat(pieces).toString('utf8');
 }
 
+/** Deletes `part` of a connection, count entry first, so it reads as absent
+ *  at once; any piece a failed delete leaves goes with the connection. */
+export async function deletePart(storeRoot: string, id: string, part: CustomMcpPart): Promise<void> {
+  const base = partAccount(storeRoot, id, part);
+  const kt = await keytar();
+  const count = (await call('be read', () => kt.getPassword(SERVICE_NAME, base)))?.match(COUNT_PATTERN);
+  if (!count) return;
+  await call('delete an entry', () => kt.deletePassword(SERVICE_NAME, base));
+  for (let index = 0; index < Number(count[2]); index += 1) {
+    await call('delete an entry', () => kt.deletePassword(SERVICE_NAME, pieceAccount(base, count[1], index)));
+  }
+}
+
 /** Deletes every entry of a connection. Throws on the first delete that
  *  fails, so a caller never reports a removal that did not happen. */
 export async function deleteConnection(storeRoot: string, id: string): Promise<void> {

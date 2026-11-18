@@ -84,6 +84,10 @@ export const IPC = {
   // Custom MCP servers added by URL (desktop, protected mode): main logs in,
   // holds the keychain entries and calls the server with the app secret.
   CONNECTIONS_CUSTOM_MCP_CONNECT: 'connections:custom-mcp-connect',
+  CONNECTIONS_CUSTOM_MCP_TOOLS: 'connections:custom-mcp-tools',
+  CONNECTIONS_CUSTOM_MCP_SET_TOOLS: 'connections:custom-mcp-set-tools',
+  CONNECTIONS_CUSTOM_MCP_RECONNECT: 'connections:custom-mcp-reconnect',
+  CONNECTIONS_CUSTOM_MCP_DISCONNECT: 'connections:custom-mcp-disconnect',
   // The chat's Notion page picker: main calls the server with the app secret.
   NOTION_SEARCH_PAGES: 'notion:search-pages',
   NOTION_FETCH_PAGE: 'notion:fetch-page',

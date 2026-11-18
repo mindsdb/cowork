@@ -6,6 +6,7 @@ vi.mock('./server-auth', () => ({ authHeader: () => ({ Authorization: 'Bearer be
 const trust = vi.hoisted(() => ({ customMcp: true }));
 vi.mock('./app-secret', () => ({
   isCustomMcpAvailable: () => trust.customMcp,
+  appSecretGeneration: () => 'run-1',
   appSecretHeader: () => ({ 'X-Cowork-App-Secret': 'secret' }),
 }));
 vi.mock('electron', () => ({ session: { defaultSession: { resolveProxy: async () => 'DIRECT' } } }));
@@ -27,6 +28,7 @@ vi.mock('keytar', () => ({
 
 import { handOverCustomConnection, syncCustomMcpConnections, writeToolSwitch } from './custom-mcp-held';
 import { listConnectionIds, readPart, writePart } from './custom-mcp-keychain';
+import { hasRefreshLoop, stopRefreshLoop } from './custom-mcp-refresh';
 
 const ROOT = '/home/user/.cowork';
 const OTHER_ROOT = '/home/user/.cowork/orgs/acme';
@@ -146,6 +148,8 @@ describe('handing custom MCP connections over at server start', () => {
       }),
     });
     expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-2');
+    expect(hasRefreshLoop(ROOT, ID)).toBe(true);
+    stopRefreshLoop(ROOT, ID);
   });
 
   it('hands a connection with no login its settings and tools, without a token', async () => {

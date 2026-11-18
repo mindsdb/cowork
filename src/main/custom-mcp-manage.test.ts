@@ -1,0 +1,291 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { GuardedFetch, GuardedRequestInit } from './guarded-fetch';
+
+const run = vi.hoisted(() => ({ root: '/home/user/.cowork' as string | null, customMcp: true }));
+vi.mock('./server-process', () => ({ getServerPort: () => 4000, activeStoreRoot: () => run.root }));
+vi.mock('./server-auth', () => ({ authHeader: () => ({ Authorization: 'Bearer bearer' }) }));
+vi.mock('./app-secret', () => ({
+  isCustomMcpAvailable: () => run.customMcp,
+  appSecretGeneration: () => 'run-1',
+  appSecretHeader: () => ({ 'X-Cowork-App-Secret': 'secret' }),
+}));
+vi.mock('electron', () => ({ session: { defaultSession: { resolveProxy: async () => 'DIRECT' } } }));
+vi.mock('./cowork-home', () => ({ buildKind: () => 'dev' }));
+vi.mock('./keychain-fallback', () => ({ getFallbackPassword: vi.fn(), setFallbackPassword: vi.fn(), deleteFallbackPassword: vi.fn() }));
+
+const keychain = vi.hoisted(() => ({ entries: new Map<string, string>(), failDelete: false }));
+vi.mock('keytar', () => ({
+  default: {
+    getPassword: async (_svc: string, account: string) => keychain.entries.get(account) ?? null,
+    setPassword: async (_svc: string, account: string, password: string) => { keychain.entries.set(account, password); },
+    deletePassword: async (_svc: string, account: string) => {
+      if (keychain.failDelete) throw new Error('locked');
+      return keychain.entries.delete(account);
+    },
+    findCredentials: async () => [...keychain.entries].map(([account, password]) => ({ account, password })),
+  },
+}));
+
+import { disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
+import { listConnectionIds, readPart, writePart } from './custom-mcp-keychain';
+import { hasRefreshLoop, startRefreshLoop, stopRefreshLoop } from './custom-mcp-refresh';
+import type { ConnectDeps } from './custom-mcp-connect';
+
+const ROOT = '/home/user/.cowork';
+const ID = `cm-${'a'.repeat(32)}`;
+const SERVER_URL = 'https://mcp.example.com/mcp';
+const AUTH = 'https://auth.example.com';
+const AS = {
+  issuer: AUTH, authorizationEndpoint: `${AUTH}/authorize`, tokenEndpoint: `${AUTH}/token`, revocationEndpoint: `${AUTH}/revoke`,
+};
+const SETTINGS = { serverUrl: SERVER_URL, label: 'Tracker', resource: SERVER_URL, authorizationServer: AS, clientId: 'client-1', authMethod: 'none' };
+
+/** cowork-server's custom MCP routes and the generic DELETE. */
+const server = vi.hoisted(() => ({
+  records: new Set<string>(),
+  held: new Map<string, Record<string, unknown>>(),
+  allowedStatus: 200,
+  deletes: 0,
+}));
+
+function json(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status });
+}
+
+async function serverFetch(input: string | URL | Request, init: RequestInit = {}): Promise<Response> {
+  const url = new URL(String(input));
+  const method = init.method ?? 'GET';
+  const [, , , , , , id, action] = url.pathname.split('/');
+  if (method === 'DELETE') {
+    server.deletes += 1;
+    server.records.delete(id);
+    server.held.delete(id);
+    return json(200, {});
+  }
+  if (!server.records.has(id)) return json(404, { detail: { error: 'custom_connection_missing' } });
+  const body = init.body ? JSON.parse(String(init.body)) : undefined;
+  if (method === 'GET' && action === 'tools') {
+    const allowed = (server.held.get(id)?.allowed_tools as string[]) ?? [];
+    return json(200, { tools: ['search', 'delete'].map((name) => ({ name, description: '', read_only: name === 'search', allowed: allowed.includes(name) })) });
+  }
+  if (method === 'PUT' && action === 'allowed-tools') {
+    if (server.allowedStatus !== 200) return json(server.allowedStatus, { detail: 'refused' });
+    server.held.set(id, { ...server.held.get(id), allowed_tools: body.tools });
+    return json(200, { allowed_tools: body.tools });
+  }
+  if (method === 'PUT' && action === 'held') {
+    server.held.set(id, { ...server.held.get(id), ...body });
+    return json(200, {});
+  }
+  return json(404, { detail: 'no route' });
+}
+
+type Answer = { status: number; headers?: Record<string, string>; json?: unknown };
+const LOGIN_SERVER: Record<string, Answer> = {
+  [`POST ${SERVER_URL}`]: { status: 401, headers: { 'www-authenticate': 'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"' } },
+  'GET https://mcp.example.com/.well-known/oauth-protected-resource/mcp': { status: 200, json: { resource: SERVER_URL, authorization_servers: [AUTH] } },
+  'GET https://auth.example.com/.well-known/oauth-authorization-server': {
+    status: 200,
+    json: {
+      issuer: AUTH, authorization_endpoint: `${AUTH}/authorize`, token_endpoint: `${AUTH}/token`, registration_endpoint: `${AUTH}/register`,
+      revocation_endpoint: `${AUTH}/revoke`, code_challenge_methods_supported: ['S256'], token_endpoint_auth_methods_supported: ['none'],
+    },
+  },
+  [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-new', refresh_token: 'RT-new', token_type: 'Bearer', expires_in: 3600 } },
+  [`POST ${AUTH}/revoke`]: { status: 200 },
+};
+
+function loginServer(table: Record<string, Answer> = LOGIN_SERVER) {
+  const requests: Array<{ url: string; init: GuardedRequestInit }> = [];
+  const fetchFn: GuardedFetch = async (input, init = {}) => {
+    requests.push({ url: String(input), init });
+    const answer = table[`${init.method ?? 'GET'} ${String(input)}`] ?? { status: 404 };
+    return new Response(answer.json === undefined ? '' : JSON.stringify(answer.json), { status: answer.status, headers: answer.headers });
+  };
+  const authorize = vi.fn(async () => ({ ok: true as const, code: 'code-2', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' }));
+  const deps: ConnectDeps = { fetchFn, authorize, newId: () => ID, checkAuthorizeUrl: async (url) => new URL(url) };
+  return { requests, authorize, deps };
+}
+
+async function seed(parts: { tools?: string[]; refresh?: string | null } = {}) {
+  server.records.add(ID);
+  server.held.set(ID, { allowed_tools: parts.tools ?? ['search'] });
+  await writePart(ROOT, ID, 'settings', JSON.stringify(SETTINGS));
+  await writePart(ROOT, ID, 'tools', JSON.stringify(parts.tools ?? ['search']));
+  if (parts.refresh !== null) await writePart(ROOT, ID, 'refresh', parts.refresh ?? 'RT-old');
+}
+
+beforeEach(() => {
+  run.root = ROOT;
+  run.customMcp = true;
+  keychain.entries.clear();
+  keychain.failDelete = false;
+  server.records.clear();
+  server.held.clear();
+  server.allowedStatus = 200;
+  server.deletes = 0;
+  vi.stubGlobal('fetch', vi.fn(serverFetch));
+});
+
+afterEach(() => {
+  stopRefreshLoop(ROOT, ID);
+  vi.unstubAllGlobals();
+});
+
+describe('every operation', () => {
+  it.each([
+    ['tools', (raw: unknown) => listCustomTools(raw)],
+    ['set-tools', (raw: unknown) => setCustomTools({ ...(raw as object), tools: [] })],
+    ['reconnect', (raw: unknown) => reconnectCustom(raw, loginServer().deps)],
+    ['disconnect', (raw: unknown) => disconnectCustom(raw, loginServer().deps)],
+  ])('%s refuses a bad id and a server without custom MCP', async (_name, operation) => {
+    await seed();
+    expect(await operation({ id: 'hubspot' })).toMatchObject({ ok: false, code: 'invalid_request' });
+    expect(await operation(null)).toMatchObject({ ok: false, code: 'invalid_request' });
+    run.customMcp = false;
+    expect(await operation({ id: ID })).toMatchObject({ ok: false, code: 'unavailable' });
+    expect(await listConnectionIds(ROOT)).toEqual([ID]);
+  });
+});
+
+describe('tools', () => {
+  it('lists the server tools with their read-only label and switch', async () => {
+    await seed();
+    expect(await listCustomTools({ id: ID })).toEqual({
+      ok: true,
+      tools: [
+        { name: 'search', description: '', readOnly: true, allowed: true },
+        { name: 'delete', description: '', readOnly: false, allowed: false },
+      ],
+    });
+  });
+
+  it('switches tools keychain first, then on the server', async () => {
+    await seed();
+    expect(await setCustomTools({ id: ID, tools: ['search', 'delete', 'search'] })).toEqual({ ok: true, tools: ['search', 'delete'] });
+    expect(JSON.parse((await readPart(ROOT, ID, 'tools'))!)).toEqual(['search', 'delete']);
+    expect(server.held.get(ID)?.allowed_tools).toEqual(['search', 'delete']);
+  });
+
+  it('puts the keychain back to the earlier list when the server refuses', async () => {
+    await seed();
+    server.allowedStatus = 500;
+    expect(await setCustomTools({ id: ID, tools: ['delete'] })).toMatchObject({ ok: false });
+    expect(JSON.parse((await readPart(ROOT, ID, 'tools'))!)).toEqual(['search']);
+  });
+
+  it.each([
+    [{ tools: 'search' }],
+    [{ tools: [''] }],
+    [{ tools: ['x'.repeat(129)] }],
+    [{ tools: Array.from({ length: 501 }, (_, i) => `t${i}`) }],
+    [{ tools: [5] }],
+  ])('refuses the tool list %#', async (body) => {
+    await seed();
+    expect(await setCustomTools({ id: ID, ...body })).toMatchObject({ ok: false, code: 'invalid_request' });
+    expect(server.held.get(ID)?.allowed_tools).toEqual(['search']);
+  });
+
+  it('refuses to switch tools on a connection without a usable keychain list', async () => {
+    await seed();
+    keychain.entries.delete([...keychain.entries.keys()].find((account) => account.endsWith('|tools'))!);
+    expect(await setCustomTools({ id: ID, tools: ['delete'] })).toMatchObject({ ok: false, code: 'unusable' });
+    expect(server.held.get(ID)?.allowed_tools).toEqual(['search']);
+  });
+});
+
+describe('reconnect', () => {
+  it('names the login hosts first and opens nothing', async () => {
+    await seed();
+    const { deps, authorize } = loginServer();
+    expect(await reconnectCustom({ id: ID }, deps)).toEqual({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] });
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it('logs in with the connection\'s own client, keeps the tool switches and replaces the refresh token', async () => {
+    await seed({ tools: ['search', 'delete'] });
+    const { deps, requests, authorize } = loginServer();
+
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps)).toEqual({ ok: true });
+
+    expect(authorize).toHaveBeenCalledWith(expect.objectContaining({ clientId: 'client-1' }));
+    expect(requests.some((r) => r.url === `${AUTH}/register`)).toBe(false);
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-new');
+    expect(JSON.parse((await readPart(ROOT, ID, 'tools'))!)).toEqual(['search', 'delete']);
+    expect(server.held.get(ID)).toMatchObject({ access_token: 'AT-new', allowed_tools: ['search', 'delete'] });
+    expect(hasRefreshLoop(ROOT, ID)).toBe(true);
+  });
+
+  it('drops the old refresh token when the new login brings none', async () => {
+    await seed();
+    const table = { ...LOGIN_SERVER, [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-new', token_type: 'Bearer' } } };
+    const { deps } = loginServer(table);
+
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps)).toEqual({ ok: true });
+
+    expect(await readPart(ROOT, ID, 'refresh')).toBeNull();
+    expect(hasRefreshLoop(ROOT, ID)).toBe(false);
+  });
+
+  it('changes nothing when the account switches during the login', async () => {
+    await seed();
+    const { deps } = loginServer();
+    deps.authorize = async () => {
+      run.root = '/home/user/.cowork/orgs/acme';
+      return { ok: true as const, code: 'code-2', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' };
+    };
+
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps)).toMatchObject({ code: 'server_changed' });
+    run.root = ROOT;
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
+  });
+
+  it('refuses a connection with no usable settings', async () => {
+    server.records.add(ID);
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, loginServer().deps)).toMatchObject({ code: 'unusable' });
+  });
+});
+
+describe('disconnect', () => {
+  it('stops the loop, revokes the refresh token, deletes the keychain entries and then the record', async () => {
+    await seed();
+    startRefreshLoop(ROOT, ID, Date.now() + 60 * 60_000);
+    const { deps, requests } = loginServer();
+
+    expect(await disconnectCustom({ id: ID }, deps)).toEqual({ ok: true, revoked: true });
+
+    expect(hasRefreshLoop(ROOT, ID)).toBe(false);
+    const revoke = requests.find((r) => r.url === `${AUTH}/revoke`);
+    expect(String(revoke?.init.body)).toContain('token=RT-old');
+    expect(await listConnectionIds(ROOT)).toEqual([]);
+    expect(server.records.has(ID)).toBe(false);
+  });
+
+  it('removes a connection whose login server offers no revocation', async () => {
+    server.records.add(ID);
+    await writePart(ROOT, ID, 'settings', JSON.stringify({ ...SETTINGS, authorizationServer: { ...AS, revocationEndpoint: undefined } }));
+    await writePart(ROOT, ID, 'refresh', 'RT-old');
+    const { deps, requests } = loginServer();
+
+    expect(await disconnectCustom({ id: ID }, deps)).toEqual({ ok: true, revoked: false });
+    expect(requests).toEqual([]);
+    expect(server.records.has(ID)).toBe(false);
+  });
+
+  it('removes a connection whose revocation fails', async () => {
+    await seed();
+    const { deps } = loginServer({ ...LOGIN_SERVER, [`POST ${AUTH}/revoke`]: { status: 503 } });
+
+    expect(await disconnectCustom({ id: ID }, deps)).toEqual({ ok: true, revoked: false });
+    expect(server.records.has(ID)).toBe(false);
+  });
+
+  it('keeps the record when a keychain delete fails, so it can be removed again', async () => {
+    await seed();
+    keychain.failDelete = true;
+
+    expect(await disconnectCustom({ id: ID }, loginServer().deps)).toMatchObject({ ok: false, code: 'keychain_unavailable' });
+    expect(server.records.has(ID)).toBe(true);
+    expect(server.deletes).toBe(0);
+  });
+});

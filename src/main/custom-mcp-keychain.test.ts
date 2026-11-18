@@ -31,7 +31,7 @@ const fallback = vi.hoisted(() => ({ getFallbackPassword: vi.fn(), setFallbackPa
 vi.mock('./keychain-fallback', () => fallback);
 
 import {
-  checkKeychain, CustomMcpKeychainError, deleteConnection, listConnectionIds, readPart, writePart,
+  checkKeychain, CustomMcpKeychainError, deleteConnection, deletePart, listConnectionIds, readPart, writePart,
 } from './custom-mcp-keychain';
 
 const SERVICE = 'cowork-custom-mcp-dev';
@@ -160,6 +160,16 @@ describe('custom MCP keychain entries', () => {
 
     const firstCount = order.findIndex((account) => !account.includes('#'));
     expect(firstCount).toBe(order.filter((account) => account.includes('#')).length);
+  });
+
+  it('removes one part entirely and leaves the others', async () => {
+    await writePart(ROOT, ID, 'refresh', 'r'.repeat(4000));
+    await writePart(ROOT, ID, 'settings', 's');
+
+    await deletePart(ROOT, ID, 'refresh');
+
+    expect(accounts().filter((account) => account.includes('|refresh'))).toEqual([]);
+    expect(await readPart(ROOT, ID, 'settings')).toBe('s');
   });
 
   it('reports a delete that fails', async () => {
