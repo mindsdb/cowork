@@ -7,6 +7,7 @@ import { render, screen, fireEvent, within, act, cleanup, waitFor } from '@testi
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { setDocsEnabled } from '../../lib/docsEnabled';
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
@@ -907,5 +908,31 @@ describe('Composer — "Write it as a doc"', () => {
     // Nor does it come back with the chat it was chosen in.
     rerender(<Composer {...props} conversationId="doc-pick-a" />);
     expect(screen.queryByRole('button', { name: 'Output: Doc. Remove' })).toBeNull();
+  });
+});
+
+describe('Composer — "Write it as a doc" on a deployment without doc tools', () => {
+  afterEach(() => { act(() => setDocsEnabled(true)); });
+
+  it('is not offered', async () => {
+    setDocsEnabled(false);
+    const user = userEvent.setup();
+    renderComposer({ draftKey: 'doc-output-off' });
+    await user.click(screen.getByRole('button', { name: 'Add context' }));
+    expect(await screen.findByRole('button', { name: /Attach files/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitemcheckbox', { name: 'Write it as a doc' })).toBeNull();
+  });
+
+  it('drops a pick made before docs went off', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({ draftKey: 'doc-output-went-off' });
+    await user.click(screen.getByRole('button', { name: 'Add context' }));
+    await user.click(await screen.findByRole('menuitemcheckbox', { name: 'Write it as a doc' }));
+    expect(screen.getByRole('button', { name: 'Output: Doc. Remove' })).toBeInTheDocument();
+    act(() => setDocsEnabled(false));
+    expect(screen.queryByRole('button', { name: 'Output: Doc. Remove' })).toBeNull();
+    await user.type(screen.getByRole('textbox'), 'Write up the plan');
+    await user.keyboard('{Enter}');
+    expect(props.onSend).toHaveBeenLastCalledWith('Write up the plan');
   });
 });

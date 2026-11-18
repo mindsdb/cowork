@@ -36,6 +36,7 @@ import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
 import { connectionMuteKey } from '../lib/connectionMutes';
 import { useTranslation } from '../../lib/i18n';
+import { useDocsEnabled } from '../../lib/docsEnabled';
 
 // Marks where an inline element (a link) sits inside a translated sentence.
 const INLINE_SLOT = '\u2063';
@@ -252,7 +253,10 @@ export default function Composer({
   // chats, so a pick made in one chat went out with the next chat's message.
   const [docPick, setDocPick] = useState(null);
   if (docPick && docPick !== surface) setDocPick(null);
-  const docOutput = docPick === surface;
+  // A deployment without doc tools offers no doc output, and a pick made
+  // before /health said so is not sent.
+  const docsEnabled = useDocsEnabled();
+  const docOutput = docsEnabled && docPick === surface;
   const setDocOutput = (on) => setDocPick(on ? surface : null);
   const [codingHarness, setCodingHarness] = useState('anton');
   // Detected but not gating: shown as a non-blocking hint on the Claude Code
@@ -1309,16 +1313,18 @@ export default function Composer({
                   <button className="menu-item" onClick={() => fileRef.current?.click()}>
                     {Ico.attach(14)} {t('composer.menu.attachFiles')}
                   </button>
-                  <button
-                    className="menu-item"
-                    role="menuitemcheckbox"
-                    aria-checked={docOutput}
-                    onClick={() => { setDocOutput(!docOutput); setOpenMenu(null); }}
-                  >
-                    {Ico.doc(14)}
-                    <span className="flex-1">{t('composer.menu.writeAsDoc')}</span>
-                    {docOutput && <span className="inline-flex text-accent">{Ico.check(12)}</span>}
-                  </button>
+                  {docsEnabled && (
+                    <button
+                      className="menu-item"
+                      role="menuitemcheckbox"
+                      aria-checked={docOutput}
+                      onClick={() => { setDocOutput(!docOutput); setOpenMenu(null); }}
+                    >
+                      {Ico.doc(14)}
+                      <span className="flex-1">{t('composer.menu.writeAsDoc')}</span>
+                      {docOutput && <span className="inline-flex text-accent">{Ico.check(12)}</span>}
+                    </button>
+                  )}
                   {onAddGoogleDriveFiles && (
                     <button
                       className="menu-item"
