@@ -1,0 +1,139 @@
+// The Share panel's viewer-analytics settings (ENG-4455): "Collect viewer
+// analytics", and "Ask for email before viewing" on public and password links
+// while analytics is on. A refusal for want of credits links to adding them.
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, within } from '@testing-library/react';
+
+vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
+vi.mock('../../../lib/artifactShareAnalytics', () => ({ reportShareOpened: vi.fn(), reportLinkCopied: vi.fn() }));
+const host = vi.hoisted(() => ({ openExternal: vi.fn() }));
+vi.mock('../../../../platform/host', () => ({
+  host: { ...host, isWeb: true, isElectron: false, getApiOrigin: () => 'http://localhost' },
+}));
+const stats = vi.hoisted(() => ({ value: null, calls: [] }));
+vi.mock('../stats/useArtifactStats', () => ({
+  useArtifactStats: (artifact, options) => {
+    stats.calls.push({ artifact, ...options });
+    return stats.value;
+  },
+}));
+
+import { PublishMenu } from './PublishMenu';
+
+const ARTIFACT = { id: 'a1', type: 'html' };
+
+function makeController(overrides = {}) {
+  return {
+    artifact: ARTIFACT,
+    publishedUrl: 'https://view.example/r/a', phase: 'idle', busy: false, error: '', notice: '', linkOwnerRecorded: null,
+    accessMode: 'public', accessPassword: '', accessEmails: [], orgAllowed: false, ownerOnly: false,
+    accessLoaded: true, versions: [], modified: false,
+    setError: vi.fn(), loadVersions: vi.fn(), publish: vi.fn(), unpublish: vi.fn(), activate: vi.fn(), update: vi.fn(),
+    ...overrides,
+  };
+}
+
+function makeStats(overrides = {}) {
+  return {
+    data: { tracking: false, require_email: false },
+    loading: false,
+    error: null,
+    trackingBusy: false,
+    reload: vi.fn(),
+    setTracking: vi.fn(),
+    setRequireEmail: vi.fn(),
+    ...overrides,
+  };
+}
+
+function openMenu(controller = makeController()) {
+  render(<PublishMenu controller={controller} />);
+  fireEvent.click(screen.getByRole('button', { name: /Share/ }));
+  return screen.getByTestId('viewer-analytics-settings');
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  stats.calls = [];
+  stats.value = makeStats();
+});
+
+describe('PublishMenu viewer analytics', () => {
+  it('reads the settings only while the panel is open on a published artifact', () => {
+    render(<PublishMenu controller={makeController()} />);
+    expect(stats.calls.at(-1)).toMatchObject({ artifact: ARTIFACT, enabled: false });
+
+    fireEvent.click(screen.getByRole('button', { name: /Share/ }));
+
+    expect(stats.calls.at(-1)).toMatchObject({ artifact: ARTIFACT, enabled: true });
+  });
+
+  it('turns analytics on, says what it collects, and hides the email gate while off', () => {
+    const settings = openMenu();
+
+    const collect = within(settings).getByRole('switch', { name: 'Collect viewer analytics' });
+    expect(collect).not.toBeChecked();
+    expect(settings).toHaveTextContent('See who opens this page, how long they stay and which parts they read.');
+    expect(within(settings).queryByRole('switch', { name: 'Ask for email before viewing' })).toBeNull();
+
+    fireEvent.click(collect);
+
+    expect(stats.value.setTracking).toHaveBeenCalledWith(true);
+  });
+
+  it.each(['public', 'password'])('offers the email gate on a %s link while analytics is on', (accessMode) => {
+    stats.value = makeStats({ data: { tracking: true, require_email: false } });
+    const settings = openMenu(makeController({ accessMode, accessPassword: accessMode === 'password' ? 'pw' : '' }));
+
+    const gate = within(settings).getByRole('switch', { name: 'Ask for email before viewing' });
+    fireEvent.click(gate);
+
+    expect(stats.value.setRequireEmail).toHaveBeenCalledWith(true);
+  });
+
+  it('offers no email gate on a restricted link', () => {
+    stats.value = makeStats({ data: { tracking: true, require_email: false } });
+    const settings = openMenu(makeController({ accessMode: 'restricted', accessEmails: ['a@example.com'] }));
+
+    expect(within(settings).getByRole('switch', { name: 'Collect viewer analytics' })).toBeChecked();
+    expect(within(settings).queryByRole('switch', { name: 'Ask for email before viewing' })).toBeNull();
+  });
+
+  it('holds the switches while a change saves', () => {
+    stats.value = makeStats({ data: { tracking: true, require_email: true }, trackingBusy: true });
+    const settings = openMenu();
+
+    expect(within(settings).getByRole('switch', { name: 'Collect viewer analytics' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('asks for credits with a link to add them when turning on is refused', () => {
+    stats.value = makeStats({
+      error: { status: 402, code: 'credits_required', message: 'Add credits to collect viewer analytics.' },
+    });
+    const settings = openMenu();
+
+    expect(within(settings).getByRole('alert')).toHaveTextContent('Add credits to collect viewer analytics.');
+    fireEvent.click(within(settings).getByRole('button', { name: 'Add credits' }));
+
+    expect(host.openExternal).toHaveBeenCalledTimes(1);
+    expect(host.openExternal.mock.calls[0][0]).toMatch(/^https:\/\//);
+  });
+
+  it('says to turn analytics on first when the email gate is refused for it', () => {
+    stats.value = makeStats({ error: { status: 422, code: 'tracking_off', message: 'tracking_off' } });
+    const settings = openMenu();
+
+    expect(within(settings).getByRole('alert')).toHaveTextContent('Turn on viewer analytics first.');
+    expect(within(settings).queryByRole('button', { name: 'Add credits' })).toBeNull();
+  });
+
+  it('offers Retry when the settings could not be read', () => {
+    stats.value = makeStats({ data: null, error: { status: 502, code: null, message: 'down' } });
+    const settings = openMenu();
+
+    expect(settings).toHaveTextContent('Could not load analytics settings.');
+    fireEvent.click(within(settings).getByRole('button', { name: 'Retry' }));
+
+    expect(stats.value.reload).toHaveBeenCalledTimes(1);
+  });
+});

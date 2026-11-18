@@ -1,8 +1,9 @@
-// The comments inbox and Stats share one docked slot, and comment mode is off
-// while Stats is open, so at most one header switch is on at a time.
+// The comments inbox and Stats share one docked slot. Stats is the third
+// viewer layer (ENG-4455): Live edit, Comments and Stats are exclusive, and
+// comment mode is off while Stats is open.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 const publishMock = vi.hoisted(() => ({ url: '', accessMode: 'restricted', accessLoaded: true }));
 const workspaceMock = vi.hoisted(() => ({ mode: 'preview' }));
@@ -71,12 +72,11 @@ vi.mock('./stats/useArtifactStats', () => ({
 }));
 vi.mock('./ArtifactViewerHeader', () => ({
   // Comments is a layer toggle on the revision line (ENG-4227), not here.
-  ArtifactViewerHeader: ({ stats, workspace }) => (
+  ArtifactViewerHeader: ({ workspace }) => (
     <>
       {/* The mode calls older callers still make (repair flows, notices). */}
       <button type="button" onClick={() => workspace.setMode('review')}>Review mode</button>
       <button type="button" onClick={() => workspace.setMode('edit')}>Edit mode</button>
-      {stats && <button type="button" aria-pressed={!!stats.open} onClick={stats.onToggle}>Stats</button>}
     </>
   ),
 }));
@@ -93,6 +93,7 @@ vi.mock('./ArtifactViewerBody', () => ({
       {/* The same calls CommentsToolbar and CommentsPanel make. */}
       <button type="button" onClick={() => review.setInboxOpen((v) => !v)}>Toggle inbox</button>
       <button type="button" onClick={() => review.setInboxOpen(false)}>Close inbox</button>
+      <button type="button" onClick={() => stats.onClose()}>Close stats</button>
     </>
   ),
 }));
@@ -103,7 +104,6 @@ vi.mock('../ui/Modal', () => ({
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 import { ArtifactViewer } from './ArtifactViewer';
-import { setStatsUiEnabled } from './stats/statsUiAccess';
 
 const CARD = {
   // Dashed on purpose: the event carries the normalized bare-hex identity.
@@ -139,27 +139,55 @@ beforeEach(() => {
   };
   layerMock.exitMode.mockClear();
   analyticsMock.trackArtifactStatsOpened.mockClear();
-  setStatsUiEnabled(true);
+  window.localStorage.clear();
 });
 
 afterEach(() => {
-  setStatsUiEnabled(false);
+  window.localStorage.clear();
 });
 
 describe('ArtifactViewer side panel', () => {
-  it('hides Stats until the hidden UI is turned on', async () => {
-    setStatsUiEnabled(false);
+  it('offers Stats as a layer toggle beside Comments, pressed while open', async () => {
     renderViewer();
     await settle();
 
-    expect(screen.queryByRole('button', { name: 'Stats' })).toBeNull();
+    const toggles = screen.getByRole('group', { name: 'Viewer layers' });
+    const stats = within(toggles).getByRole('button', { name: 'Stats' });
+    expect(within(toggles).getByRole('button', { name: 'Comments' })).toBeInTheDocument();
+    expect(stats).toHaveAttribute('aria-pressed', 'false');
     expect(panels().stats).toBe('false');
     expect(statsMock.enabled.every((enabled) => enabled === false)).toBe(true);
 
-    act(() => setStatsUiEnabled(true));
     click('Stats');
 
     expect(panels().stats).toBe('true');
+    expect(screen.getByRole('button', { name: 'Stats' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('turns the Stats toggle off from the panel close button', async () => {
+    renderViewer();
+    await settle();
+    click('Stats');
+
+    click('Close stats');
+
+    expect(panels().stats).toBe('false');
+    expect(screen.getByRole('button', { name: 'Stats' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('does not remember Stats across a viewer close', async () => {
+    const props = { onClose: vi.fn(), onChange: vi.fn(), artifact: CARD };
+    const view = render(<ArtifactViewer {...props} open />);
+    await settle();
+    click('Stats');
+
+    view.rerender(<ArtifactViewer {...props} open={false} />);
+    await settle();
+    view.rerender(<ArtifactViewer {...props} open />);
+    await settle();
+
+    expect(panels().stats).toBe('false');
+    expect(screen.getByRole('button', { name: 'Stats' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('turns comment mode and the inbox off when Stats opens', async () => {
@@ -229,14 +257,12 @@ describe('ArtifactViewer side panel', () => {
     expect(statsMock.enabled.at(-1)).toBe(false);
   });
 
-  it('does not open Stats for an unpublished artifact', async () => {
+  it('does not offer Stats for an unpublished artifact', async () => {
     publishMock.url = '';
     renderViewer();
     await settle();
 
-    click('Stats');
-    await settle();
-
+    expect(screen.queryByRole('button', { name: 'Stats' })).toBeNull();
     expect(statsMock.enabled.at(-1)).toBe(false);
     expect(panels().stats).toBe('false');
   });

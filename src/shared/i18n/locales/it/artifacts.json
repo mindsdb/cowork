@@ -728,28 +728,27 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "Statistiche",
-      "hide": "Nascondi statistiche"
-    },
     "title": "Statistiche",
     "close": "Chiudi il pannello delle statistiche",
     "loading": "Caricamento delle statistiche",
     "retry": "Riprova",
-    "trackViews": "Conta le visualizzazioni",
-    "trackingOff": "Il conteggio è disattivato. Attivalo per iniziare a contare le visualizzazioni.",
     "metrics": {
-      "viewsInPeriod": "Visualizzazioni (30 giorni)",
-      "uniqueViewers": "Visitatori unici (30 giorni)",
-      "totalViews": "Visualizzazioni totali",
-      "lastViewed": "Ultima visualizzazione"
+      "views": "Visualizzazioni",
+      "viewers": "Visitatori unici",
+      "avgTime": "Tempo medio",
+      "completion": "Completamento",
+      "lastViewedHint": "Ultima visualizzazione {time}"
     },
     "daysInUtc": "Giorni in UTC",
     "chartLabel": "Visualizzazioni al giorno",
     "viewers": {
       "email": "Email",
       "lastSeen": "Ultima visita",
-      "restrictedOnly": "I nomi dei visitatori vengono registrati solo quando la condivisione è limitata."
+      "restrictedOnly": "I nomi dei visitatori vengono registrati solo quando la condivisione è limitata.",
+      "title": "Visitatori",
+      "anonymous": "Visitatore anonimo",
+      "summary": "{count, plural, one {# visita} other {# visite}} · {time}",
+      "none": "Nessun visitatore registrato finora."
     },
     "noViews": "Ancora nessuna visualizzazione",
     "errors": {
@@ -758,6 +757,48 @@
       "reconnect": "Riconnetti MindsHub per vedere le statistiche.",
       "temporarilyUnavailable": "Le statistiche sono temporaneamente non disponibili.",
       "loadFailed": "Impossibile caricare le statistiche."
+    },
+    "chartTitle": "Visualizzazioni, ultimi 30 giorni",
+    "noViewsHint": "Le visualizzazioni compaiono qui quando qualcuno apre il link.",
+    "off": {
+      "title": "L’analisi dei visitatori è disattivata",
+      "body": "Attivala per vedere chi apre questa pagina, quanto tempo resta e quali parti legge.",
+      "turnOn": "Attiva"
+    },
+    "sections": {
+      "title": "Tempo per sezione",
+      "avgTime": "Tempo medio",
+      "reached": "Raggiunta",
+      "untitled": "Sezione {number}",
+      "row": "{name}: {time}",
+      "rowWithReach": "{name}: {time} in media, raggiunta dal {reach} delle visite"
+    },
+    "viewer": {
+      "back": "Tutti i visitatori",
+      "loading": "Caricamento delle visite",
+      "summary": "{count, plural, one {# visita} other {# visite}} · {time} in totale · visto {lastSeen}",
+      "noVisits": "Nessuna visita registrata.",
+      "visits": "Visite",
+      "visitSections": "Tempo per sezione, visita del {started}"
+    },
+    "devices": {
+      "desktop": "Computer",
+      "mobile": "Cellulare",
+      "tablet": "Tablet",
+      "unknown": "Dispositivo sconosciuto"
+    },
+    "delete": {
+      "action": "Elimina analisi",
+      "title": "Eliminare l’analisi dei visitatori?",
+      "message": "Verranno rimosse tutte le visualizzazioni, le visite e i visitatori registrati per questa pagina. L’operazione non si può annullare.",
+      "confirm": "Elimina"
+    },
+    "duration": {
+      "seconds": "{s} s",
+      "minutes": "{m} min",
+      "minutesSeconds": "{m} min {s} s",
+      "hours": "{h} h",
+      "hoursMinutes": "{h} h {m} min"
     }
   },
   "refPill": {
@@ -778,7 +819,8 @@
       "title": "Disattivare Modifica dal vivo?",
       "message": "Le modifiche non salvate in Modifica dal vivo andranno perse.",
       "confirmLabel": "Scarta modifiche"
-    }
+    },
+    "stats": "Statistiche"
   },
   "address": {
     "draft": "Bozza",
@@ -799,5 +841,20 @@
     "enlarge": "Ingrandisci immagine",
     "shrink": "Riduci immagine",
     "image": "Immagine"
+  },
+  "analytics": {
+    "title": "Analisi dei visitatori",
+    "collect": "Raccogli l’analisi dei visitatori",
+    "collectHint": "Scopri chi apre questa pagina, quanto tempo resta e quali parti legge.",
+    "requireEmail": "Chiedi l’email prima della visualizzazione",
+    "requireEmailHint": "I visitatori inseriscono la loro email per aprire la pagina.",
+    "loading": "Caricamento delle impostazioni di analisi",
+    "loadFailed": "Impossibile caricare le impostazioni di analisi.",
+    "addCredits": "Aggiungi crediti",
+    "errors": {
+      "creditsRequired": "Aggiungi crediti per raccogliere l’analisi dei visitatori.",
+      "trackingOff": "Attiva prima l’analisi dei visitatori.",
+      "saveFailed": "Impossibile salvare l’impostazione."
+    }
   }
 }

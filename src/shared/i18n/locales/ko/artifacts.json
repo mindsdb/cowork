@@ -728,28 +728,27 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "통계",
-      "hide": "통계 숨기기"
-    },
     "title": "통계",
     "close": "통계 패널 닫기",
     "loading": "통계 불러오는 중",
     "retry": "다시 시도",
-    "trackViews": "조회수 집계",
-    "trackingOff": "집계가 꺼져 있습니다. 켜면 조회수 집계가 시작됩니다.",
     "metrics": {
-      "viewsInPeriod": "조회수(30일)",
-      "uniqueViewers": "순 방문자(30일)",
-      "totalViews": "총 조회수",
-      "lastViewed": "마지막 조회"
+      "views": "조회수",
+      "viewers": "순 방문자",
+      "avgTime": "평균 시간",
+      "completion": "완독률",
+      "lastViewedHint": "최근 조회 {time}"
     },
     "daysInUtc": "날짜는 UTC 기준",
     "chartLabel": "일별 조회수",
     "viewers": {
       "email": "이메일",
       "lastSeen": "마지막 방문",
-      "restrictedOnly": "방문자 이름은 공유가 제한된 경우에만 기록됩니다."
+      "restrictedOnly": "방문자 이름은 공유가 제한된 경우에만 기록됩니다.",
+      "title": "방문자",
+      "anonymous": "익명 방문자",
+      "summary": "{count, plural, other {방문 #회}} · {time}",
+      "none": "아직 기록된 방문자가 없습니다."
     },
     "noViews": "아직 조회수가 없습니다",
     "errors": {
@@ -758,6 +757,48 @@
       "reconnect": "통계를 보려면 MindsHub를 다시 연결하세요.",
       "temporarilyUnavailable": "통계를 일시적으로 사용할 수 없습니다.",
       "loadFailed": "통계를 불러올 수 없습니다."
+    },
+    "chartTitle": "조회수, 최근 30일",
+    "noViewsHint": "누군가 링크를 열면 여기에 조회가 표시됩니다.",
+    "off": {
+      "title": "방문자 분석이 꺼져 있습니다",
+      "body": "켜면 이 페이지를 누가 열었는지, 얼마나 머물렀는지, 어느 부분을 읽었는지 볼 수 있습니다.",
+      "turnOn": "켜기"
+    },
+    "sections": {
+      "title": "섹션별 시간",
+      "avgTime": "평균 시간",
+      "reached": "도달률",
+      "untitled": "섹션 {number}",
+      "row": "{name}: {time}",
+      "rowWithReach": "{name}: 평균 {time}, 방문의 {reach}가 도달"
+    },
+    "viewer": {
+      "back": "모든 방문자",
+      "loading": "방문 기록 불러오는 중",
+      "summary": "{count, plural, other {방문 #회}} · 총 {time} · 최근 {lastSeen}",
+      "noVisits": "기록된 방문이 없습니다.",
+      "visits": "방문",
+      "visitSections": "섹션별 시간, {started} 방문"
+    },
+    "devices": {
+      "desktop": "데스크톱",
+      "mobile": "모바일",
+      "tablet": "태블릿",
+      "unknown": "알 수 없는 기기"
+    },
+    "delete": {
+      "action": "분석 데이터 삭제",
+      "title": "방문자 분석을 삭제할까요?",
+      "message": "이 페이지에 기록된 모든 조회, 방문, 방문자가 삭제됩니다. 되돌릴 수 없습니다.",
+      "confirm": "삭제"
+    },
+    "duration": {
+      "seconds": "{s}초",
+      "minutes": "{m}분",
+      "minutesSeconds": "{m}분 {s}초",
+      "hours": "{h}시간",
+      "hoursMinutes": "{h}시간 {m}분"
     }
   },
   "refPill": {
@@ -778,7 +819,8 @@
       "title": "실시간 편집을 끌까요?",
       "message": "실시간 편집에서 저장하지 않은 변경 사항이 삭제됩니다.",
       "confirmLabel": "변경 사항 삭제"
-    }
+    },
+    "stats": "통계"
   },
   "address": {
     "draft": "초안",
@@ -799,5 +841,20 @@
     "enlarge": "이미지 확대",
     "shrink": "이미지 축소",
     "image": "이미지"
+  },
+  "analytics": {
+    "title": "방문자 분석",
+    "collect": "방문자 분석 수집",
+    "collectHint": "이 페이지를 누가 열었는지, 얼마나 머물렀는지, 어느 부분을 읽었는지 확인하세요.",
+    "requireEmail": "보기 전에 이메일 요청",
+    "requireEmailHint": "방문자는 이메일을 입력해야 페이지를 열 수 있습니다.",
+    "loading": "분석 설정 불러오는 중",
+    "loadFailed": "분석 설정을 불러오지 못했습니다.",
+    "addCredits": "크레딧 추가",
+    "errors": {
+      "creditsRequired": "방문자 분석을 수집하려면 크레딧을 추가하세요.",
+      "trackingOff": "먼저 방문자 분석을 켜세요.",
+      "saveFailed": "설정을 저장하지 못했습니다."
+    }
   }
 }

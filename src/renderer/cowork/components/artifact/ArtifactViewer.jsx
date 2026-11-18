@@ -5,7 +5,7 @@ import { downloadUnavailableMessage } from '../../lib/browserDownload';
 //
 //   left   — artifact title (truncated)
 //   middle — Preview / Source / Review modes
-//   right  — comments · stats · Publish control · ⋯ menu · close
+//   right  — Publish control · ⋯ menu · close
 //
 // With quick edits on (capabilities.canQuickEdit, ENG-4227), Preview carries a
 // chat bar at the bottom: the user asks for a change and the server makes it
@@ -89,7 +89,6 @@ import { useModelPickerContext } from '../../lib/modelPickerContext';
 import { ModelEffortPicker, pickedEffort } from '../ModelEffortPicker';
 import { MODEL_ROUTER } from '../../lib/modelCatalog';
 import { useArtifactStats } from './stats/useArtifactStats';
-import { useStatsUiEnabled } from './stats/statsUiAccess';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import { useTranslation } from '../../../lib/i18n';
@@ -246,9 +245,14 @@ export function ArtifactViewer({
   const inboxOpen = sidePanel === 'comments';
   // The inbox controls keep their boolean interface. Opening the inbox
   // replaces Stats; closing it leaves Stats alone.
+  const sidePanelRef = useRef(sidePanel);
+  sidePanelRef.current = sidePanel;
+  const setLayerRef = useRef(null);
   const setInboxOpen = useCallback((next) => {
+    const value = typeof next === 'function' ? next(sidePanelRef.current === 'comments') : next;
+    // The inbox takes the slot from Stats, so the Stats layer goes off too.
+    if (value) setLayerRef.current?.('stats', false);
     setSidePanel((current) => {
-      const value = typeof next === 'function' ? next(current === 'comments') : next;
       if (value) return 'comments';
       return current === 'comments' ? null : current;
     });
@@ -305,6 +309,7 @@ export function ArtifactViewer({
   // quick-edit bar), Source (the code editor) and Comments, each a header
   // toggle, remembered on this device.
   const { layers, setLayer } = useViewerLayers();
+  setLayerRef.current = setLayer;
   const { layout, toggle: toggleLayout } = useViewerLayout();
   // Cmd/Ctrl+Shift+Enter maximizes and restores. Keys typed inside the
   // artifact's own frame never reach this window, so the page keeps its keys.
@@ -501,27 +506,28 @@ export function ArtifactViewer({
   // Comments and Live edit are exclusive (useViewerLayers): Comments on turns
   // Live edit off, so unsaved editor text is asked about first, and Comments
   // opens once the user agrees to drop it.
-  const commentsAfterSourceOffRef = useRef(false);
+  // The layer to turn on once the user agrees to drop unsaved Live edit text.
+  const layerAfterSourceOffRef = useRef(null);
   const toggleComments = () => {
     const on = !(layers.comments && commentsEnabled);
     if (on && layers.source && workspace.dirty) {
-      commentsAfterSourceOffRef.current = true;
+      layerAfterSourceOffRef.current = 'comments';
       setSourceOffPrompt(true);
       return;
     }
     setLayer('comments', on);
   };
 
-  // Stats turns comment mode off, so no markers are drawn beside it and at
-  // most one header switch is on.
-  const toggleStats = () => {
-    if (sidePanel === 'stats') {
-      setSidePanel(null);
+  // Stats is the third layer (ENG-4455): on, it turns Live edit and Comments
+  // off (comment mode included, so no markers are drawn beside it), asking
+  // first about unsaved Live edit text, as Comments does.
+  const toggleStats = (on) => {
+    if (on && layers.source && workspace.dirty) {
+      layerAfterSourceOffRef.current = 'stats';
+      setSourceOffPrompt(true);
       return;
     }
-    layer.exitMode();
-    setLayer('comments', false);
-    setSidePanel('stats');
+    setLayer('stats', on);
   };
 
   // The Comments layer drives the comments chrome. Turned on (or restored on
@@ -731,18 +737,22 @@ export function ArtifactViewer({
     (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
   );
 
-  // Stats are for the owner of a published artifact only, and only where the
-  // hidden Stats UI is turned on. The header applies the same rule to its button.
-  const statsUiEnabled = useStatsUiEnabled();
-  const statsAvailable = statsUiEnabled && !!pub.publishedUrl && canManage;
+  // Stats are for the owner of a published artifact only.
+  const statsAvailable = !!pub.publishedUrl && canManage;
   const statsOpen = open && statsAvailable && sidePanel === 'stats';
   const stats = useArtifactStats(artifact, { enabled: statsOpen });
-  // Stats closes when it stops being available and with the viewer, so the
-  // next artifact does not open and report it unasked. The comments inbox
-  // keeps its state across closes.
+  // The Stats layer drives the docked slot. It turns off when Stats stops
+  // being available and with the viewer, so the next artifact does not open
+  // and report it unasked. The comments inbox keeps its state across closes.
   useEffect(() => {
-    if (sidePanel === 'stats' && (!open || !statsAvailable)) setSidePanel(null);
-  }, [open, sidePanel, statsAvailable]);
+    if (open && layers.stats && statsAvailable) {
+      layer.exitMode();
+      setSidePanel('stats');
+      return;
+    }
+    setSidePanel((current) => (current === 'stats' ? null : current));
+    if (layers.stats) setLayer('stats', false);
+  }, [open, layers.stats, statsAvailable, layer.exitMode, setLayer]);
   // One event per open and artifact, after its first successful load. The
   // viewer outlives an artifact switch, so the ref holds which artifact was
   // reported rather than a flag. The hook returns no data for an artifact it
@@ -1579,7 +1589,7 @@ export function ArtifactViewer({
 
   // The layer toggles on the revision line, before History: Live edit (the
   // code editor; `source` inside) and Comments, each only where allowed.
-  const layerControls = canSource || commentsEnabled ? (
+  const layerControls = canSource || commentsEnabled || statsAvailable ? (
     <ViewerLayerToggles label={t('layers.ariaLabel')}>
       {canSource && (
         <ViewerLayerToggle
@@ -1599,6 +1609,14 @@ export function ArtifactViewer({
           badgeLabel={t('header.commentsUnread', { count: comments.unreadCount })}
         />
       )}
+      {statsAvailable && (
+        <ViewerLayerToggle
+          icon={Ico.chartColumn(14)}
+          label={t('layers.stats')}
+          pressed={statsOpen}
+          onToggle={(on) => toggleStats(on)}
+        />
+      )}
     </ViewerLayerToggles>
   ) : null;
   // The address pill: where this artifact can be opened. A published page or
@@ -1616,13 +1634,12 @@ export function ArtifactViewer({
     controller: comments,
     onToggle: toggleComments,
   };
-  const headerStats = statsUiEnabled ? { open: sidePanel === 'stats', onToggle: toggleStats } : null;
   const bodyStats = {
     open: statsOpen,
     controller: stats,
     accessMode: pub.accessMode,
     accessLoaded: !!pub.accessLoaded,
-    onClose: () => setSidePanel(null),
+    onClose: () => setLayer('stats', false),
   };
   const publication = {
     canManage,
@@ -1752,7 +1769,6 @@ export function ArtifactViewer({
         authorship={authorship}
         workspace={workspaceView}
         review={headerReview}
-        stats={headerStats}
         publication={publication}
         actions={artifactActions}
         diagnostics={diagnostics}
@@ -1954,16 +1970,18 @@ export function ArtifactViewer({
         cancelLabel={t('viewer.keepEditing')}
         destructive
         onClose={() => {
-          commentsAfterSourceOffRef.current = false;
+          layerAfterSourceOffRef.current = null;
           setSourceOffPrompt(false);
         }}
         onConfirm={() => {
           setSourceOffPrompt(false);
           workspace.discard();
-          // Asked on the way to Comments: open it, which turns Live edit off.
-          if (commentsAfterSourceOffRef.current) {
-            commentsAfterSourceOffRef.current = false;
-            setLayer('comments', true);
+          // Asked on the way to Comments or Stats: open it, which turns Live
+          // edit off.
+          const next = layerAfterSourceOffRef.current;
+          if (next) {
+            layerAfterSourceOffRef.current = null;
+            setLayer(next, true);
           } else {
             setLayer('source', false);
           }

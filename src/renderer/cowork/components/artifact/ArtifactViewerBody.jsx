@@ -372,9 +372,14 @@ export function ArtifactViewerBody({
             loading={!!stats.controller?.loading}
             error={stats.controller?.error ?? null}
             trackingBusy={!!stats.controller?.trackingBusy}
+            deleting={!!stats.controller?.deleting}
+            viewer={stats.controller?.viewer ?? null}
             accessMode={stats.accessMode}
             accessLoaded={!!stats.accessLoaded}
             onToggleTracking={stats.controller?.setTracking}
+            onOpenViewer={stats.controller?.openViewer}
+            onCloseViewer={stats.controller?.closeViewer}
+            onDeleteAnalytics={stats.controller?.deleteAnalytics}
             onRetry={stats.controller?.reload}
             onClose={stats.onClose}
           />

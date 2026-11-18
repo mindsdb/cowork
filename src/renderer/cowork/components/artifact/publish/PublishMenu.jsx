@@ -40,6 +40,8 @@ import { LoadStatus, RetryAlert } from '../../LoadStatus';
 import { useArtifactShareState } from './useArtifactShareState';
 import { shareStateIcon } from '../../ShareStateLabel';
 import { UpToDateTag } from '../../UpToDateTag';
+import { useArtifactStats } from '../stats/useArtifactStats';
+import { ViewerAnalyticsSettings } from './ViewerAnalyticsSettings';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -309,6 +311,9 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
   };
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
+  // Viewer analytics settings (ENG-4455), read with the stats while the panel
+  // is open on a published artifact.
+  const analytics = useArtifactStats(pub.artifact, { enabled: open && isPublished && !!pub.artifact });
   // Which reads the panel waits on, and whether it may claim "Shared"
   // (useArtifactShareState).
   const {
@@ -581,7 +586,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                       <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry })} />
                     </div>
 
-                    <div className="py-3 px-4">
+                    <div className={`py-3 px-4${view === 'summary' && pub.artifact ? ' border-b border-t-0 border-x-0 border-solid border-line' : ''}`}>
                       {view === 'summary' && (
                         <>
                           <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.change')}</LinkButton>}>
@@ -656,6 +661,17 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                         </>
                       )}
                     </div>
+
+                    {view === 'summary' && pub.artifact && (
+                      <div className="py-3 px-4">
+                        <SectionLabel>{t('analytics.title')}</SectionLabel>
+                        <ViewerAnalyticsSettings
+                          controller={analytics}
+                          accessMode={pub.accessMode}
+                          accessLoaded={!!pub.accessLoaded}
+                        />
+                      </div>
+                    )}
                   </div>
   
                   <NoticeRow message={pub.notice || (pub.linkOwnerRecorded === false ? unrecordedLinkWarning() : '')} />

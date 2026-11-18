@@ -728,28 +728,27 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "統計",
-      "hide": "統計を非表示"
-    },
     "title": "統計",
     "close": "統計パネルを閉じる",
     "loading": "統計を読み込み中",
     "retry": "再試行",
-    "trackViews": "閲覧数をカウント",
-    "trackingOff": "カウントはオフです。オンにすると閲覧数のカウントが始まります。",
     "metrics": {
-      "viewsInPeriod": "閲覧数（30日間）",
-      "uniqueViewers": "ユニーク閲覧者（30日間）",
-      "totalViews": "総閲覧数",
-      "lastViewed": "最終閲覧"
+      "views": "閲覧数",
+      "viewers": "ユニーク閲覧者",
+      "avgTime": "平均時間",
+      "completion": "読了率",
+      "lastViewedHint": "最終閲覧 {time}"
     },
     "daysInUtc": "日付は UTC",
     "chartLabel": "1日あたりの閲覧数",
     "viewers": {
       "email": "メール",
       "lastSeen": "最終閲覧",
-      "restrictedOnly": "閲覧者の名前は、共有が制限されている場合にのみ記録されます。"
+      "restrictedOnly": "閲覧者の名前は、共有が制限されている場合にのみ記録されます。",
+      "title": "閲覧者",
+      "anonymous": "匿名の閲覧者",
+      "summary": "{count, plural, other {#回の訪問}} · {time}",
+      "none": "まだ閲覧者は記録されていません。"
     },
     "noViews": "まだ閲覧はありません",
     "errors": {
@@ -758,6 +757,48 @@
       "reconnect": "統計を表示するには MindsHub に再接続してください。",
       "temporarilyUnavailable": "統計は一時的に利用できません。",
       "loadFailed": "統計を読み込めませんでした。"
+    },
+    "chartTitle": "閲覧数（過去30日間）",
+    "noViewsHint": "誰かがリンクを開くと、ここに閲覧が表示されます。",
+    "off": {
+      "title": "閲覧者分析はオフです",
+      "body": "オンにすると、このページを誰が開き、どれくらい滞在し、どの部分を読んだかがわかります。",
+      "turnOn": "オンにする"
+    },
+    "sections": {
+      "title": "セクションごとの時間",
+      "avgTime": "平均時間",
+      "reached": "到達率",
+      "untitled": "セクション {number}",
+      "row": "{name}：{time}",
+      "rowWithReach": "{name}：平均{time}、訪問の{reach}が到達"
+    },
+    "viewer": {
+      "back": "すべての閲覧者",
+      "loading": "訪問を読み込み中",
+      "summary": "{count, plural, other {#回の訪問}} · 合計{time} · 最終閲覧 {lastSeen}",
+      "noVisits": "記録された訪問はありません。",
+      "visits": "訪問",
+      "visitSections": "セクションごとの時間（{started}の訪問）"
+    },
+    "devices": {
+      "desktop": "デスクトップ",
+      "mobile": "モバイル",
+      "tablet": "タブレット",
+      "unknown": "不明なデバイス"
+    },
+    "delete": {
+      "action": "分析データを削除",
+      "title": "閲覧者分析を削除しますか？",
+      "message": "このページで記録されたすべての閲覧、訪問、閲覧者が削除されます。元に戻すことはできません。",
+      "confirm": "削除"
+    },
+    "duration": {
+      "seconds": "{s}秒",
+      "minutes": "{m}分",
+      "minutesSeconds": "{m}分{s}秒",
+      "hours": "{h}時間",
+      "hoursMinutes": "{h}時間{m}分"
     }
   },
   "refPill": {
@@ -778,7 +819,8 @@
       "title": "ライブ編集をオフにしますか？",
       "message": "ライブ編集の未保存の変更は破棄されます。",
       "confirmLabel": "変更を破棄"
-    }
+    },
+    "stats": "統計"
   },
   "address": {
     "draft": "下書き",
@@ -799,5 +841,20 @@
     "enlarge": "画像を拡大",
     "shrink": "画像を縮小",
     "image": "画像"
+  },
+  "analytics": {
+    "title": "閲覧者分析",
+    "collect": "閲覧者分析を収集",
+    "collectHint": "このページを誰が開き、どれくらい滞在し、どの部分を読んだかがわかります。",
+    "requireEmail": "閲覧前にメールアドレスを求める",
+    "requireEmailHint": "閲覧者はメールアドレスを入力してページを開きます。",
+    "loading": "分析設定を読み込み中",
+    "loadFailed": "分析設定を読み込めませんでした。",
+    "addCredits": "クレジットを追加",
+    "errors": {
+      "creditsRequired": "閲覧者分析を収集するにはクレジットを追加してください。",
+      "trackingOff": "先に閲覧者分析をオンにしてください。",
+      "saveFailed": "設定を保存できませんでした。"
+    }
   }
 }

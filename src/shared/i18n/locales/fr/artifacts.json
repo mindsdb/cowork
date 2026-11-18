@@ -728,28 +728,27 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "Statistiques",
-      "hide": "Masquer les statistiques"
-    },
     "title": "Statistiques",
     "close": "Fermer le panneau des statistiques",
     "loading": "Chargement des statistiques",
     "retry": "Réessayer",
-    "trackViews": "Compter les vues",
-    "trackingOff": "Le suivi est désactivé. Activez-le pour commencer à compter les vues.",
     "metrics": {
-      "viewsInPeriod": "Vues (30 jours)",
-      "uniqueViewers": "Visiteurs uniques (30 jours)",
-      "totalViews": "Vues au total",
-      "lastViewed": "Dernière vue"
+      "views": "Vues",
+      "viewers": "Visiteurs uniques",
+      "avgTime": "Durée moy.",
+      "completion": "Lecture complète",
+      "lastViewedHint": "Dernière vue {time}"
     },
     "daysInUtc": "Jours en UTC",
     "chartLabel": "Vues par jour",
     "viewers": {
       "email": "E-mail",
       "lastSeen": "Dernière visite",
-      "restrictedOnly": "Les noms des visiteurs ne sont enregistrés que lorsque le partage est restreint."
+      "restrictedOnly": "Les noms des visiteurs ne sont enregistrés que lorsque le partage est restreint.",
+      "title": "Visiteurs",
+      "anonymous": "Visiteur anonyme",
+      "summary": "{count, plural, one {# visite} other {# visites}} · {time}",
+      "none": "Aucun visiteur enregistré pour l’instant."
     },
     "noViews": "Aucune vue pour l’instant",
     "errors": {
@@ -758,6 +757,48 @@
       "reconnect": "Reconnectez MindsHub pour voir les statistiques.",
       "temporarilyUnavailable": "Les statistiques sont temporairement indisponibles.",
       "loadFailed": "Impossible de charger les statistiques."
+    },
+    "chartTitle": "Vues, 30 derniers jours",
+    "noViewsHint": "Les vues s’affichent ici dès que quelqu’un ouvre le lien.",
+    "off": {
+      "title": "L’analyse des visiteurs est désactivée",
+      "body": "Activez-la pour voir qui ouvre cette page, combien de temps et quelles parties sont lues.",
+      "turnOn": "Activer"
+    },
+    "sections": {
+      "title": "Temps par section",
+      "avgTime": "Durée moy.",
+      "reached": "Atteinte",
+      "untitled": "Section {number}",
+      "row": "{name} : {time}",
+      "rowWithReach": "{name} : {time} en moyenne, atteinte par {reach} des visites"
+    },
+    "viewer": {
+      "back": "Tous les visiteurs",
+      "loading": "Chargement des visites",
+      "summary": "{count, plural, one {# visite} other {# visites}} · {time} au total · vu {lastSeen}",
+      "noVisits": "Aucune visite enregistrée.",
+      "visits": "Visites",
+      "visitSections": "Temps par section, visite du {started}"
+    },
+    "devices": {
+      "desktop": "Ordinateur",
+      "mobile": "Mobile",
+      "tablet": "Tablette",
+      "unknown": "Appareil inconnu"
+    },
+    "delete": {
+      "action": "Supprimer l’analyse",
+      "title": "Supprimer l’analyse des visiteurs ?",
+      "message": "Toutes les vues, visites et visiteurs enregistrés pour cette page seront supprimés. Cette action est irréversible.",
+      "confirm": "Supprimer"
+    },
+    "duration": {
+      "seconds": "{s} s",
+      "minutes": "{m} min",
+      "minutesSeconds": "{m} min {s} s",
+      "hours": "{h} h",
+      "hoursMinutes": "{h} h {m} min"
     }
   },
   "refPill": {
@@ -778,7 +819,8 @@
       "title": "Désactiver Modification en direct ?",
       "message": "Vos modifications non enregistrées dans Modification en direct seront abandonnées.",
       "confirmLabel": "Abandonner les modifications"
-    }
+    },
+    "stats": "Statistiques"
   },
   "address": {
     "draft": "Brouillon",
@@ -799,5 +841,20 @@
     "enlarge": "Agrandir l'image",
     "shrink": "Réduire l'image",
     "image": "Image"
+  },
+  "analytics": {
+    "title": "Analyse des visiteurs",
+    "collect": "Collecter l’analyse des visiteurs",
+    "collectHint": "Voyez qui ouvre cette page, combien de temps et quelles parties sont lues.",
+    "requireEmail": "Demander l’e-mail avant l’affichage",
+    "requireEmailHint": "Les visiteurs saisissent leur e-mail pour ouvrir la page.",
+    "loading": "Chargement des réglages d’analyse",
+    "loadFailed": "Impossible de charger les réglages d’analyse.",
+    "addCredits": "Ajouter des crédits",
+    "errors": {
+      "creditsRequired": "Ajoutez des crédits pour collecter l’analyse des visiteurs.",
+      "trackingOff": "Activez d’abord l’analyse des visiteurs.",
+      "saveFailed": "Impossible d’enregistrer le réglage."
+    }
   }
 }

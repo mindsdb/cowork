@@ -728,28 +728,27 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "统计",
-      "hide": "隐藏统计"
-    },
     "title": "统计",
     "close": "关闭统计面板",
     "loading": "正在加载统计",
     "retry": "重试",
-    "trackViews": "统计浏览量",
-    "trackingOff": "浏览统计已关闭。开启后开始统计浏览量。",
     "metrics": {
-      "viewsInPeriod": "浏览量（30 天）",
-      "uniqueViewers": "独立访客（30 天）",
-      "totalViews": "总浏览量",
-      "lastViewed": "最近浏览"
+      "views": "浏览量",
+      "viewers": "独立访客",
+      "avgTime": "平均时长",
+      "completion": "完读率",
+      "lastViewedHint": "最近浏览 {time}"
     },
     "daysInUtc": "日期按 UTC",
     "chartLabel": "每日浏览量",
     "viewers": {
       "email": "邮箱",
       "lastSeen": "最近访问",
-      "restrictedOnly": "仅在共享受限时记录访客名称。"
+      "restrictedOnly": "仅在共享受限时记录访客名称。",
+      "title": "访客",
+      "anonymous": "匿名访客",
+      "summary": "{count, plural, other {# 次访问}} · {time}",
+      "none": "尚未记录访客。"
     },
     "noViews": "暂无浏览",
     "errors": {
@@ -758,6 +757,48 @@
       "reconnect": "重新连接 MindsHub 以查看统计。",
       "temporarilyUnavailable": "统计暂时不可用。",
       "loadFailed": "无法加载统计。"
+    },
+    "chartTitle": "浏览量（近 30 天）",
+    "noViewsHint": "有人打开链接后，浏览记录会显示在这里。",
+    "off": {
+      "title": "访客分析已关闭",
+      "body": "开启后可以看到谁打开了此页面、停留了多久以及阅读了哪些部分。",
+      "turnOn": "开启"
+    },
+    "sections": {
+      "title": "各部分停留时长",
+      "avgTime": "平均时长",
+      "reached": "到达率",
+      "untitled": "第 {number} 部分",
+      "row": "{name}：{time}",
+      "rowWithReach": "{name}：平均 {time}，{reach} 的访问到达此处"
+    },
+    "viewer": {
+      "back": "所有访客",
+      "loading": "正在加载访问记录",
+      "summary": "{count, plural, other {# 次访问}} · 共 {time} · 最近 {lastSeen}",
+      "noVisits": "没有访问记录。",
+      "visits": "访问",
+      "visitSections": "各部分停留时长，{started} 的访问"
+    },
+    "devices": {
+      "desktop": "桌面设备",
+      "mobile": "手机",
+      "tablet": "平板",
+      "unknown": "未知设备"
+    },
+    "delete": {
+      "action": "删除分析数据",
+      "title": "删除访客分析？",
+      "message": "将删除此页面记录的所有浏览、访问和访客。此操作无法撤销。",
+      "confirm": "删除"
+    },
+    "duration": {
+      "seconds": "{s} 秒",
+      "minutes": "{m} 分",
+      "minutesSeconds": "{m} 分 {s} 秒",
+      "hours": "{h} 小时",
+      "hoursMinutes": "{h} 小时 {m} 分"
     }
   },
   "refPill": {
@@ -778,7 +819,8 @@
       "title": "关闭实时编辑？",
       "message": "实时编辑中未保存的更改将被放弃。",
       "confirmLabel": "放弃更改"
-    }
+    },
+    "stats": "统计"
   },
   "address": {
     "draft": "草稿",
@@ -799,5 +841,20 @@
     "enlarge": "放大图片",
     "shrink": "缩小图片",
     "image": "图片"
+  },
+  "analytics": {
+    "title": "访客分析",
+    "collect": "收集访客分析",
+    "collectHint": "了解谁打开了此页面、停留了多久以及阅读了哪些部分。",
+    "requireEmail": "查看前要求填写邮箱",
+    "requireEmailHint": "访客需输入邮箱才能打开页面。",
+    "loading": "正在加载分析设置",
+    "loadFailed": "无法加载分析设置。",
+    "addCredits": "添加额度",
+    "errors": {
+      "creditsRequired": "添加额度后才能收集访客分析。",
+      "trackingOff": "请先开启访客分析。",
+      "saveFailed": "无法保存设置。"
+    }
   }
 }

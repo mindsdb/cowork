@@ -728,28 +728,27 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "Statistiken",
-      "hide": "Statistiken ausblenden"
-    },
     "title": "Statistiken",
     "close": "Statistikbereich schließen",
     "loading": "Statistiken werden geladen",
     "retry": "Erneut versuchen",
-    "trackViews": "Aufrufe zählen",
-    "trackingOff": "Die Zählung ist deaktiviert. Aktivieren Sie sie, um Aufrufe zu zählen.",
     "metrics": {
-      "viewsInPeriod": "Aufrufe (30 Tage)",
-      "uniqueViewers": "Eindeutige Besucher (30 Tage)",
-      "totalViews": "Aufrufe gesamt",
-      "lastViewed": "Zuletzt aufgerufen"
+      "views": "Aufrufe",
+      "viewers": "Eindeutige Besucher",
+      "avgTime": "Ø Zeit",
+      "completion": "Abschluss",
+      "lastViewedHint": "Zuletzt aufgerufen {time}"
     },
     "daysInUtc": "Tage in UTC",
     "chartLabel": "Aufrufe pro Tag",
     "viewers": {
       "email": "E-Mail",
       "lastSeen": "Zuletzt gesehen",
-      "restrictedOnly": "Namen von Besuchern werden nur bei eingeschränkter Freigabe erfasst."
+      "restrictedOnly": "Namen von Besuchern werden nur bei eingeschränkter Freigabe erfasst.",
+      "title": "Besucher",
+      "anonymous": "Anonymer Besucher",
+      "summary": "{count, plural, one {# Besuch} other {# Besuche}} · {time}",
+      "none": "Noch keine Besucher erfasst."
     },
     "noViews": "Noch keine Aufrufe",
     "errors": {
@@ -758,6 +757,48 @@
       "reconnect": "Verbinden Sie MindsHub erneut, um Statistiken zu sehen.",
       "temporarilyUnavailable": "Statistiken sind vorübergehend nicht verfügbar.",
       "loadFailed": "Statistiken konnten nicht geladen werden."
+    },
+    "chartTitle": "Aufrufe, letzte 30 Tage",
+    "noViewsHint": "Aufrufe erscheinen hier, sobald jemand den Link öffnet.",
+    "off": {
+      "title": "Besucheranalyse ist aus",
+      "body": "Schalte sie ein, um zu sehen, wer diese Seite öffnet, wie lange und welche Teile gelesen werden.",
+      "turnOn": "Einschalten"
+    },
+    "sections": {
+      "title": "Zeit pro Abschnitt",
+      "avgTime": "Ø Zeit",
+      "reached": "Erreicht",
+      "untitled": "Abschnitt {number}",
+      "row": "{name}: {time}",
+      "rowWithReach": "{name}: im Schnitt {time}, von {reach} der Besuche erreicht"
+    },
+    "viewer": {
+      "back": "Alle Besucher",
+      "loading": "Besuche werden geladen",
+      "summary": "{count, plural, one {# Besuch} other {# Besuche}} · {time} gesamt · zuletzt {lastSeen}",
+      "noVisits": "Keine Besuche erfasst.",
+      "visits": "Besuche",
+      "visitSections": "Zeit pro Abschnitt, Besuch vom {started}"
+    },
+    "devices": {
+      "desktop": "Desktop",
+      "mobile": "Mobilgerät",
+      "tablet": "Tablet",
+      "unknown": "Unbekanntes Gerät"
+    },
+    "delete": {
+      "action": "Analyse löschen",
+      "title": "Besucheranalyse löschen?",
+      "message": "Alle für diese Seite erfassten Aufrufe, Besuche und Besucher werden entfernt. Das lässt sich nicht rückgängig machen.",
+      "confirm": "Löschen"
+    },
+    "duration": {
+      "seconds": "{s} s",
+      "minutes": "{m} min",
+      "minutesSeconds": "{m} min {s} s",
+      "hours": "{h} h",
+      "hoursMinutes": "{h} h {m} min"
     }
   },
   "refPill": {
@@ -778,7 +819,8 @@
       "title": "Live-Bearbeitung ausschalten?",
       "message": "Deine nicht gespeicherten Änderungen in „Live-Bearbeitung“ werden verworfen.",
       "confirmLabel": "Änderungen verwerfen"
-    }
+    },
+    "stats": "Statistik"
   },
   "address": {
     "draft": "Entwurf",
@@ -799,5 +841,20 @@
     "enlarge": "Bild vergrößern",
     "shrink": "Bild verkleinern",
     "image": "Bild"
+  },
+  "analytics": {
+    "title": "Besucheranalyse",
+    "collect": "Besucheranalyse erfassen",
+    "collectHint": "Sieh, wer diese Seite öffnet, wie lange und welche Teile gelesen werden.",
+    "requireEmail": "Vor dem Ansehen nach E-Mail fragen",
+    "requireEmailHint": "Besucher geben ihre E-Mail ein, um die Seite zu öffnen.",
+    "loading": "Analyse-Einstellungen werden geladen",
+    "loadFailed": "Analyse-Einstellungen konnten nicht geladen werden.",
+    "addCredits": "Guthaben aufladen",
+    "errors": {
+      "creditsRequired": "Lade Guthaben auf, um Besucheranalyse zu erfassen.",
+      "trackingOff": "Schalte zuerst die Besucheranalyse ein.",
+      "saveFailed": "Die Einstellung konnte nicht gespeichert werden."
+    }
   }
 }
