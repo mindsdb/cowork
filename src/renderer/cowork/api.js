@@ -1941,7 +1941,8 @@ export async function updateOrgAppearance(payload) {
  */
 export async function getDeletionRequest() {
   try {
-    return await req('/hub/deletion-request/', { headers: await hubHeaders() });
+    // Bounded: the Delete account button stays disabled until this settles.
+    return await req('/hub/deletion-request/', { headers: await hubHeaders(), timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
   } catch (err) {
     if (err?.status === 404) return null;
     throw err;
