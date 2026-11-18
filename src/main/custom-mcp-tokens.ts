@@ -7,7 +7,7 @@
 
 import { session } from 'electron';
 import { createGuardedFetch, type GuardedFetch } from './guarded-fetch';
-import { refreshTokens, type AuthorizationServer, type OAuthClient, type TokenSet } from './mcp-oauth';
+import { refreshTokens, revokeToken, type AuthorizationServer, type OAuthClient, type TokenSet } from './mcp-oauth';
 import { readPart, writePart } from './custom-mcp-keychain';
 
 /** What main keeps in the keychain to refresh and revoke a connection's tokens. */
@@ -63,6 +63,25 @@ export async function readStoredTools(storeRoot: string, id: string): Promise<st
   } catch {
     return null;
   }
+}
+
+/** The client a connection logged in with, from the keychain. */
+export async function storedClient(storeRoot: string, id: string, settings: StoredSettings): Promise<OAuthClient | undefined> {
+  if (!settings.clientId || !settings.authMethod) return undefined;
+  const secret = await readPart(storeRoot, id, 'secret');
+  return { clientId: settings.clientId, authMethod: settings.authMethod, ...(secret ? { clientSecret: secret } : {}) };
+}
+
+/** Revokes the keychain's refresh token where the login server offers
+ *  revocation; true when it did. Throws what the keychain or the request
+ *  throws. Called before a connection's keychain entries are removed. */
+export async function revokeStoredGrant(storeRoot: string, id: string, fetchFn: GuardedFetch): Promise<boolean> {
+  const settings = await readStoredSettings(storeRoot, id);
+  if (!settings?.authorizationServer) return false;
+  const refreshToken = await readPart(storeRoot, id, 'refresh');
+  const client = await storedClient(storeRoot, id, settings);
+  if (!refreshToken || !client) return false;
+  return revokeToken(settings.authorizationServer, client, { token: refreshToken, hint: 'refresh_token' }, fetchFn);
 }
 
 /** A fresh access token from the keychain's refresh token, the rotated

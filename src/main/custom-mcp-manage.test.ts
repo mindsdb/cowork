@@ -253,6 +253,31 @@ describe('reconnect', () => {
     expect(hasRefreshLoop(ROOT, ID)).toBe(true);
   });
 
+  it('revokes the old refresh token once the new one is stored', async () => {
+    await seed();
+    const { deps, requests } = loginServer();
+
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps)).toEqual({ ok: true });
+
+    const revokes = requests.filter((r) => r.url === `${AUTH}/revoke`);
+    expect(revokes).toHaveLength(1);
+    expect(String(revokes[0].init.body)).toContain('token=RT-old');
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-new');
+  });
+
+  it('revokes the new login when the server restarts during it', async () => {
+    await seed();
+    const { deps, requests } = loginServer();
+    deps.authorize = async () => {
+      run.generation = 'run-2';
+      return { ok: true as const, code: 'code-2', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' };
+    };
+
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps)).toMatchObject({ code: 'server_changed' });
+    const revokes = requests.filter((r) => r.url === `${AUTH}/revoke`);
+    expect(revokes.map((r) => String(r.init.body).includes('token=RT-new'))).toEqual([true]);
+  });
+
   it('drops the old refresh token when the new login brings none', async () => {
     await seed();
     const table = { ...LOGIN_SERVER, [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-new', token_type: 'Bearer' } } };

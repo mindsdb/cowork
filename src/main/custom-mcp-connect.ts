@@ -20,7 +20,7 @@ import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { checkPublicHttpsUrl, GuardedFetchError, type GuardedFetch } from './guarded-fetch';
 import { customMcpFetch, type StoredSettings } from './custom-mcp-tokens';
 import {
-  discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, registerClient,
+  discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, registerClient, revokeToken,
   type AuthorizationServer, type OAuthClient, type TokenSet,
 } from './mcp-oauth';
 import { authorizeInBrowser, CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI, type BrowserAuthorizeOpts, type BrowserAuthorizeResult } from './oauth-service';
@@ -143,7 +143,7 @@ export interface LoginClient {
  *  Shared by connect and reconnect. */
 export async function logIn(
   serverUrl: string,
-  request: LoginClient & { confirmedLoginHosts?: string[] },
+  request: LoginClient & { confirmedLoginHosts?: string[]; cancelled?: () => boolean },
   deps: ConnectDeps,
 ): Promise<Login | null | { ok: false; code: 'confirm_login_hosts'; loginHosts: string[] } | { ok: false; code: string; reason: string }> {
   const discovery = await discoverMcpAuth(serverUrl, deps.fetchFn);
@@ -160,6 +160,7 @@ export async function logIn(
     ?? (request.clientId
       ? givenClient(request.clientId, request.clientSecret, authorizationServer)
       : await registerClient(authorizationServer, CUSTOM_MCP_REDIRECT_URI, deps.fetchFn));
+  if (request.cancelled?.()) return CANCELLED;
   const browser = await deps.authorize({
     authUrl: authorizationServer.authorizationEndpoint,
     clientId: client.clientId,
@@ -173,6 +174,28 @@ export async function logIn(
     code: browser.code, codeVerifier: browser.codeVerifier, redirectUri: browser.redirectUri, resource,
   }, deps.fetchFn);
   return { tokens, client, resource, authorizationServer };
+}
+
+const CANCELLED = { ok: false as const, code: 'login_failed', reason: 'The connection was cancelled.' };
+
+let connectAttempts = 0;
+let cancelledThrough = 0;
+
+/** Cancels every connect running now: one still finding the server or its
+ *  login stops before the browser opens, and none saves a connection. */
+export function cancelCustomMcpConnects(): void {
+  cancelledThrough = connectAttempts;
+}
+
+/** Revokes the grant a login made when it will never be stored, so it does
+ *  not stay live at the provider. Logs a failure; never throws. */
+export async function revokeUnstored(login: Login, fetchFn: GuardedFetch): Promise<void> {
+  const token = login.tokens.refreshToken
+    ? { token: login.tokens.refreshToken, hint: 'refresh_token' as const }
+    : { token: login.tokens.accessToken, hint: 'access_token' as const };
+  await revokeToken(login.authorizationServer, login.client, token, fetchFn).catch((err) => {
+    diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_revoke_failed', `[custom-mcp] could not revoke a login that was not kept: ${errorName(err)}`);
+  });
 }
 
 /** Removes what a connect that failed part-way wrote. */
@@ -198,17 +221,28 @@ export async function connectCustomMcp(raw: unknown, deps: ConnectDeps = default
   if (!isCustomMcpAvailable() || !storeRoot) {
     return { ok: false, code: 'unavailable', reason: 'Custom MCP servers are not available on this server.' };
   }
+  const attempt = ++connectAttempts;
+  const cancelled = () => cancelledThrough >= attempt;
+  let login: Login | null = null;
+  let stored = false;
   try {
     await checkKeychain();
     const serverUrl = await checkServerUrl(request.url);
     if (new URL(request.url).href !== serverUrl) {
       return { ok: false, code: 'invalid_url', reason: 'The server URL is not in a form that can be used.' };
     }
-    const login = await logIn(serverUrl, request, deps);
-    if (login && 'ok' in login) return login;
+    if (cancelled()) return CANCELLED;
+    const loggedIn = await logIn(serverUrl, { ...request, cancelled }, deps);
+    if (loggedIn && 'ok' in loggedIn) return loggedIn;
+    login = loggedIn;
+    if (cancelled()) {
+      if (login) await revokeUnstored(login, deps.fetchFn);
+      return CANCELLED;
+    }
     // The login can take minutes; an account switch or a server restart in
     // that time would put the record and the keychain entries in different stores.
     if (appSecretGeneration() !== generation || activeStoreRoot() !== storeRoot || !isCustomMcpAvailable()) {
+      if (login) await revokeUnstored(login, deps.fetchFn);
       return { ok: false, code: 'server_changed', reason: 'The app switched accounts or restarted its server during the login.' };
     }
 
@@ -250,8 +284,10 @@ export async function connectCustomMcp(raw: unknown, deps: ConnectDeps = default
       await undo(storeRoot, id);
       throw err;
     }
+    stored = true;
     return { ok: true, id, label: request.label, serverUrl, ...await switchOnReadOnlyTools(storeRoot, id) };
   } catch (err) {
+    if (login && !stored) await revokeUnstored(login, deps.fetchFn);
     return failure(err);
   }
 }

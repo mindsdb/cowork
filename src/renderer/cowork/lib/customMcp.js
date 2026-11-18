@@ -23,7 +23,9 @@ const CONNECTION_ID = /^cm-[0-9a-f]{32}$/;
  * deletes its keychain entries. A record whose name main never drew (agent
  * code can write one) and every record while main offers no custom MCP go
  * through `genericDelete`: main holds nothing for the first, and the next
- * start's sweep clears the keychain entries of the second.
+ * start's sweep revokes and clears the keychain entries of the second. On a
+ * server that holds the app secret, the server refuses a generic delete of
+ * a real connection id.
  *
  * @param {string} name the connection's name
  * @param {() => Promise<unknown>} genericDelete the generic record delete

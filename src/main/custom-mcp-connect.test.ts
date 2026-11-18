@@ -37,7 +37,7 @@ vi.mock('keytar', () => ({
   },
 }));
 
-import { connectCustomMcp, parseConnectRequest, type ConnectDeps } from './custom-mcp-connect';
+import { cancelCustomMcpConnects, connectCustomMcp, parseConnectRequest, type ConnectDeps } from './custom-mcp-connect';
 import { listConnectionIds, readPart } from './custom-mcp-keychain';
 import { handOverCustomConnection } from './custom-mcp-held';
 import { hasRefreshLoop, stopRefreshLoop } from './custom-mcp-refresh';
@@ -541,6 +541,72 @@ describe('connectCustomMcp', () => {
     const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
 
     expect(result).toEqual({ ok: false, code: 'login_failed', reason: 'cancelled' });
+    expect(server.records.size).toBe(0);
+  });
+
+  it('creates nothing when cancelled while the server is still being found', async () => {
+    const mcp = mcpServer(NO_LOGIN_SERVER);
+    let answer!: () => void;
+    const gate = new Promise<void>((resolve) => { answer = resolve; });
+    const { deps: d } = deps(NO_LOGIN_SERVER, { fetchFn: async (input, init) => { await gate; return mcp.fetchFn(input, init); } });
+
+    const pending = connectCustomMcp({ label: 'T', url: SERVER_URL }, d);
+    await vi.waitFor(() => expect(server.calls).toContain('POST /api/v1/connectors/connections/custom_mcp/check-url'));
+    cancelCustomMcpConnects();
+    answer();
+
+    expect(await pending).toEqual({ ok: false, code: 'login_failed', reason: 'The connection was cancelled.' });
+    expect(server.records.size).toBe(0);
+    expect(keychain.entries.size).toBe(0);
+  });
+
+  it('opens no browser when cancelled before the login', async () => {
+    const mcp = mcpServer(LOGIN_SERVER);
+    const { deps: d, authorize } = deps(LOGIN_SERVER, {
+      fetchFn: async (input, init) => {
+        if (String(input) === `${AUTH}/register`) cancelCustomMcpConnects();
+        return mcp.fetchFn(input, init);
+      },
+    });
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'login_failed' });
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it('a cancel does not stop a connect started after it', async () => {
+    cancelCustomMcpConnects();
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+
+    expect(result).toMatchObject({ ok: true, id: ID });
+  });
+
+  it('revokes the new login when saving the connection fails', async () => {
+    keychain.writesBeforeFailure = 3;
+    const { deps: d, mcp } = deps(LOGIN_SERVER);
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'keychain_unavailable' });
+    const revokes = mcp.requests.filter((request) => request.url === `${AUTH}/revoke`);
+    expect(revokes).toHaveLength(1);
+    expect(String(revokes[0].init.body)).toContain('token=RT-1');
+  });
+
+  it('revokes the new login when the app switched accounts during it', async () => {
+    const { deps: d, mcp } = deps(LOGIN_SERVER, {
+      authorize: async () => {
+        trust.generation = 'run-2';
+        return { ok: true as const, code: 'code-1', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' };
+      },
+    });
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'server_changed' });
+    expect(mcp.requests.filter((request) => request.url === `${AUTH}/revoke`)).toHaveLength(1);
     expect(server.records.size).toBe(0);
   });
 });

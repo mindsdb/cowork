@@ -29,7 +29,7 @@ import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefresh
 import { serverMayReceiveTokens, serverTrust } from './app-secret';
 import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNotionPagesInMain } from './notion-pages';
 import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
-import { connectCustomMcp } from './custom-mcp-connect';
+import { cancelCustomMcpConnects, connectCustomMcp } from './custom-mcp-connect';
 import { customMcpAvailable, customSummary, disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
 import { stopAllCustomRefreshLoops } from './custom-mcp-refresh';
 import { CUSTOM_MCP_ENGINE } from './custom-mcp-routes';
@@ -807,6 +807,8 @@ function setupIPC() {
   // env file only gets touched once the user picks an LLM path.
   ipcMain.handle(IPC.OAUTH_CANCEL, () => {
     cancelCurrentOAuth();
+    // The add-server form's Cancel sends this too, before the browser opens.
+    cancelCustomMcpConnects();
     return true;
   });
 

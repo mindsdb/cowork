@@ -10,7 +10,7 @@ import { isCustomMcpAvailable } from './app-secret';
 import type { GuardedFetch } from './guarded-fetch';
 import { deleteConnection as deleteKeychainEntries, listConnectionIds, writePart } from './custom-mcp-keychain';
 import { CONNECTION_MISSING, CustomMcpRouteError, errorName, heldSummary, listRecordIds, putHeld, type HeldSettings } from './custom-mcp-routes';
-import { customMcpFetch, readStoredSettings, readStoredTools, refreshedToken } from './custom-mcp-tokens';
+import { customMcpFetch, readStoredSettings, readStoredTools, refreshedToken, revokeStoredGrant } from './custom-mcp-tokens';
 import { notifyRefused, startRefreshLoop, withConnectionLock } from './custom-mcp-refresh';
 import { McpOAuthError } from './mcp-oauth';
 
@@ -94,6 +94,9 @@ async function handOverLocked(
       return null;
     });
     if (!stillCurrent()) return 'done';
+    // A login whose server gave no refresh token cannot be restored after a
+    // restart; say so rather than leave the connection silently without one.
+    if (!token && !tokenFailed && settings.authorizationServer) refused = true;
     const body: HeldSettings = {
       server_url: settings.serverUrl,
       label: settings.label,
@@ -114,9 +117,7 @@ async function handOverLocked(
     return tokenFailed ? 'retry' : 'done';
   } catch (err) {
     if (err instanceof CustomMcpRouteError && err.status === 404 && err.error === CONNECTION_MISSING) {
-      await deleteKeychainEntries(storeRoot, id).catch((deleteErr) => {
-        diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_cleanup_failed', `[custom-mcp] could not remove keychain entries of ${id}: ${errorName(deleteErr)}`);
-      });
+      await removeGoneConnection(storeRoot, id, fetchFn);
       return 'gone';
     }
     diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_hand_over_failed', `[custom-mcp] could not hand over ${id}: ${errorName(err)}`);
@@ -161,7 +162,7 @@ async function syncAll(storeRoot: string, stillCurrent: () => boolean, fetchFn: 
   }
   for (const id of entries.filter((entry) => !records.includes(entry))) {
     if (!stillCurrent()) return;
-    await removeIfMissing(storeRoot, id);
+    await removeIfMissing(storeRoot, id, fetchFn);
   }
   for (const id of records) {
     if (!stillCurrent()) return;
@@ -171,7 +172,7 @@ async function syncAll(storeRoot: string, stillCurrent: () => boolean, fetchFn: 
 
 /** Removes a connection's keychain entries once the server says its record
  *  is missing. A list can skip a record it could not read; this asks for the one. */
-async function removeIfMissing(storeRoot: string, id: string): Promise<void> {
+async function removeIfMissing(storeRoot: string, id: string, fetchFn: GuardedFetch): Promise<void> {
   try {
     await heldSummary(id);
     return;
@@ -181,6 +182,16 @@ async function removeIfMissing(storeRoot: string, id: string): Promise<void> {
       return;
     }
   }
+  await removeGoneConnection(storeRoot, id, fetchFn);
+}
+
+/** Removes the keychain entries of a connection whose record is gone,
+ *  revoking its login first. The record can go without the app (agent code
+ *  can delete the vault file), so nothing else revoked that login. */
+async function removeGoneConnection(storeRoot: string, id: string, fetchFn: GuardedFetch): Promise<void> {
+  await revokeStoredGrant(storeRoot, id, fetchFn).catch((err) => {
+    diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_revoke_failed', `[custom-mcp] could not revoke the token of ${id}: ${errorName(err)}`);
+  });
   await deleteKeychainEntries(storeRoot, id).catch((err) => {
     diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_cleanup_failed', `[custom-mcp] could not remove keychain entries of ${id}: ${errorName(err)}`);
   });

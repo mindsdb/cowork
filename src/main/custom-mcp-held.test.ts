@@ -167,6 +167,15 @@ describe('handing custom MCP connections over at server start', () => {
     expect(tokens.calls).toBe(0);
   });
 
+  it('warns the user when a login connection has no refresh token to restore it with', async () => {
+    await seed(ROOT, ID);
+
+    expect(await handOverCustomConnection(ROOT, ID, current, fetchFn)).toBe('done');
+    expect(server.puts[0].body).not.toHaveProperty('access_token');
+    expect(tokens.calls).toBe(0);
+    expect(sent).toEqual([{ channel: 'oauth:refresh-error', payload: { engine: 'Tracker', name: ID, accountEmail: '', permanent: true } }]);
+  });
+
   it('leaves the tool list to a switch made while the hand-over was refreshing', async () => {
     await seed(ROOT, ID, { refresh: 'RT-1' });
     let switching: Promise<void> = Promise.resolve();
@@ -372,6 +381,44 @@ describe('handing custom MCP connections over at server start', () => {
     server.putDetail = { error: 'custom_connection_missing' };
 
     expect(await handOverCustomConnection(ROOT, ID, current, fetchFn)).toBe('gone');
+    expect(await listConnectionIds(ROOT)).toEqual([]);
+  });
+
+  it('revokes the login of a connection whose record is gone before removing its entries', async () => {
+    await seed(ROOT, ID, { refresh: 'RT-1' });
+    server.putStatus = 404;
+    server.putDetail = { error: 'custom_connection_missing' };
+    const revoked: string[] = [];
+    const recording: GuardedFetch = async (input, init = {}) => {
+      if (String(input) === `${AUTH}/revoke`) {
+        // Still readable when the revocation goes out.
+        expect(await listConnectionIds(ROOT)).toEqual([ID]);
+        revoked.push(String(init.body));
+        return new Response('', { status: 200 });
+      }
+      return fetchFn(input, init);
+    };
+
+    expect(await handOverCustomConnection(ROOT, ID, current, recording)).toBe('gone');
+    expect(revoked).toHaveLength(1);
+    expect(revoked[0]).toContain(`token=${tokens.body.refresh_token}`);
+    expect(await listConnectionIds(ROOT)).toEqual([]);
+  });
+
+  it('revokes the login of a keychain entry the sweep finds without a record', async () => {
+    await seed(ROOT, GONE, { refresh: 'RT-gone' });
+    const revoked: string[] = [];
+    const recording: GuardedFetch = async (input, init = {}) => {
+      if (String(input) === `${AUTH}/revoke`) {
+        revoked.push(String(init.body));
+        return new Response('', { status: 200 });
+      }
+      return fetchFn(input, init);
+    };
+
+    await syncCustomMcpConnections(ROOT, current, recording);
+
+    expect(revoked.some((body) => body.includes('token=RT-gone'))).toBe(true);
     expect(await listConnectionIds(ROOT)).toEqual([]);
   });
 

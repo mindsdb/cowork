@@ -107,7 +107,7 @@ export async function heldSummary(id: string): Promise<{ label: string; server_u
 export async function deleteRecord(id: string): Promise<void> {
   const res = await fetch(
     `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${CUSTOM_MCP_ENGINE}/${encodeURIComponent(id)}`,
-    { method: 'DELETE', headers: authHeader(), signal: AbortSignal.timeout(LOOPBACK_TIMEOUT_MS) },
+    { method: 'DELETE', headers: { ...authHeader(), ...appSecretHeader() }, signal: AbortSignal.timeout(LOOPBACK_TIMEOUT_MS) },
   );
   if (!res.ok && res.status !== 404) throw new CustomMcpRouteError(res.status, null, `the server answered ${res.status}`);
 }

@@ -41,3 +41,17 @@ describe('calls to the local server', () => {
     await expect(pending).rejects.toThrow();
   });
 });
+
+describe('the record delete', () => {
+  it('sends the app secret, which the server needs before it drops the held settings', async () => {
+    const fetchFn = vi.fn(async (_input: unknown, _init?: RequestInit) => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchFn);
+
+    await deleteRecord(ID);
+
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe(`http://127.0.0.1:4000/api/v1/connectors/connections/custom_mcp/${ID}`);
+    expect(init?.method).toBe('DELETE');
+    expect(init?.headers).toEqual({ Authorization: 'Bearer bearer', 'X-Cowork-App-Secret': 'secret' });
+  });
+});

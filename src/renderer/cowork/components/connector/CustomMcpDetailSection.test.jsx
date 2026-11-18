@@ -106,6 +106,57 @@ describe('CustomMcpDetailSection', () => {
     expect(await screen.findByText('Reconnected. Your tool choices are kept.')).toBeTruthy();
   });
 
+  it('keeps a switch made while the tools reload after a reconnect, then reloads', async () => {
+    const both = [{ ...TOOLS[0] }, { ...TOOLS[1], allowed: true }];
+    const added = [...TOOLS, { name: 'new_tool', description: 'Added later', readOnly: true, allowed: false }];
+    let finishReload;
+    bridge.customMcpTools
+      .mockResolvedValueOnce({ ok: true, tools: both })
+      .mockImplementationOnce(() => new Promise((resolve) => { finishReload = resolve; }))
+      .mockResolvedValueOnce({ ok: true, tools: added });
+    bridge.customMcpReconnect.mockResolvedValue({ ok: true });
+    bridge.customMcpSetTools.mockResolvedValue({ ok: true });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reconnect' }));
+    await screen.findByText('Reconnected. Your tool choices are kept.');
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search']);
+    // The reload read the switches before the user's change.
+    finishReload({ ok: true, tools: both });
+
+    // The dropped reload runs again once the switch is saved.
+    expect(await screen.findByRole('switch', { name: 'Let Anton use new_tool' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use search' }));
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, []);
+  });
+
+  it('holds a reload that starts while a switch is saving until it is saved', async () => {
+    let finishSave;
+    let finishReconnect;
+    const saved = [{ ...TOOLS[0] }, { ...TOOLS[1], allowed: true }];
+    bridge.customMcpTools
+      .mockResolvedValueOnce({ ok: true, tools: TOOLS })
+      .mockResolvedValue({ ok: true, tools: saved });
+    bridge.customMcpReconnect.mockImplementation(() => new Promise((resolve) => { finishReconnect = resolve; }));
+    bridge.customMcpSetTools.mockImplementationOnce(() => new Promise((resolve) => { finishSave = resolve; })).mockResolvedValue({ ok: true });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reconnect' }));
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
+    finishReconnect({ ok: true });
+    await screen.findByText('Reconnected. Your tool choices are kept.');
+    // No reload reads the switches while the switch is still on its way.
+    expect(bridge.customMcpTools).toHaveBeenCalledTimes(1);
+    finishSave({ ok: true });
+
+    await waitFor(() => expect(bridge.customMcpTools).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true'));
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use search' }));
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['delete_issue']);
+  });
+
   it('disconnects only once confirmed', async () => {
     const { onDisconnect, confirm } = renderSection();
     confirm.mockResolvedValueOnce(false);

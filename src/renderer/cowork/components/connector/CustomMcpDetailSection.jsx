@@ -29,15 +29,26 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
   const [reconnect, setReconnect] = useState({ status: 'idle' });
   // Results of a connection the panel has since left are dropped.
   const loadRef = useRef(0);
+  const loadingRef = useRef(false);
+  // A reload can read the switches before a switch lands and answer after,
+  // showing the old switch. While one saves, reloads wait and run once it's saved.
+  const savingRef = useRef(false);
+  const reloadDueRef = useRef(false);
 
   async function load() {
+    if (savingRef.current) {
+      reloadDueRef.current = true;
+      return;
+    }
     const attempt = ++loadRef.current;
+    loadingRef.current = true;
     setToolsError(null);
     const [summaryResult, toolsResult] = await Promise.all([
       host.customMcpSummary(connection.name),
       host.customMcpTools(connection.name),
     ]);
     if (attempt !== loadRef.current) return;
+    loadingRef.current = false;
     if (summaryResult.ok) setSummary(summaryResult);
     if (toolsResult.ok) setTools(toolsResult.tools);
     else {
@@ -52,22 +63,36 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     setSwitchError(null);
     setLoginHosts(null);
     setReconnect({ status: 'idle' });
+    savingRef.current = false;
+    reloadDueRef.current = false;
     void load();
     return () => { loadRef.current += 1; };
   }, [connection.name]);
 
   async function toggle(name, on) {
     if (!tools || saving) return;
+    savingRef.current = true;
+    if (loadingRef.current) {
+      // Its answer was read before this switch: drop it and reload once saved.
+      loadRef.current += 1;
+      loadingRef.current = false;
+      reloadDueRef.current = true;
+    }
     const previous = tools;
     const next = tools.map((tool) => (tool.name === name ? { ...tool, allowed: on } : tool));
     setTools(next);
     setSaving(true);
     setSwitchError(null);
     const result = await host.customMcpSetTools(connection.name, next.filter((tool) => tool.allowed).map((tool) => tool.name));
+    savingRef.current = false;
     setSaving(false);
     if (!result.ok) {
       setTools(previous);
       setSwitchError(connectErrorMessage(t, result));
+    }
+    if (reloadDueRef.current) {
+      reloadDueRef.current = false;
+      void load();
     }
   }
 
