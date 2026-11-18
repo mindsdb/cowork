@@ -323,3 +323,21 @@ describe('ArtifactViewerBody comments chrome', () => {
     expect(onToggle).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('ArtifactViewerBody inbox exit', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('slides the inbox out before it goes when Comments turns off', () => {
+    vi.useFakeTimers();
+    const on = { open: true, enabled: true, inboxOpen: true, userDir: 'u', reportId: 'r' };
+    const view = render(renderBody('preview', {}, {}, undefined, on));
+    expect(commentsChrome.panel.leaving).toBe(false);
+
+    view.rerender(renderBody('preview', {}, {}, undefined, { ...on, open: false, inboxOpen: false }));
+    expect(screen.getByTestId('comments-inbox')).toBeInTheDocument();
+    expect(commentsChrome.panel.leaving).toBe(true);
+
+    act(() => { vi.advanceTimersByTime(160); });
+    expect(screen.queryByTestId('comments-inbox')).toBeNull();
+  });
+});

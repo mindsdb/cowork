@@ -12,7 +12,7 @@ import {
 import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
 import { normalizePreviewView } from '../usePreviewView';
 import { EditModeSwitch } from './EditModeSwitch';
-import { Tooltip } from '../../ui';
+import { Spinner, Tooltip } from '../../ui';
 import { useTranslation } from '../../../../lib/i18n';
 
 /* The frame runtime names a selected element in English (or by the page's own
@@ -373,18 +373,53 @@ export function ArtifactHtmlVisualEditor({
   );
 }
 
-/** Save and Discard for Live edit's unsaved text; nothing while there is none. */
+// How long "Saved" stays on the button once a save lands.
+export const SAVED_FLASH_MS = 2000;
+
+/** Save and Discard for Live edit's unsaved text. The Save button shows its
+    own progress: "Saving…" with a spinner, then "Saved" with a check for a
+    moment once it lands, then the pair goes, as there is nothing to save. */
 export function SaveDiscardButtons({ actions }) {
   const { t } = useTranslation('artifacts');
-  if (!actions?.canEdit || !actions.dirty) return null;
+  const saving = !!actions?.saving;
+  const dirty = !!actions?.dirty;
+  const [justSaved, setJustSaved] = useState(false);
+  const wasSavingRef = useRef(saving);
+
+  useEffect(() => {
+    const landed = wasSavingRef.current && !saving && !dirty;
+    wasSavingRef.current = saving;
+    if (!landed) return undefined;
+    setJustSaved(true);
+    const timer = setTimeout(() => setJustSaved(false), SAVED_FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [saving, dirty]);
+  useEffect(() => { if (dirty) setJustSaved(false); }, [dirty]);
+
+  if (!actions?.canEdit) return null;
+  if (!dirty && !saving) {
+    if (!justSaved) return null;
+    return (
+      <button type="button" className="artifact-save-edit is-saved" disabled aria-live="polite">
+        {Ico.check(14)} {t('revisionBar.saved')}
+      </button>
+    );
+  }
   return (
     <>
-      <button type="button" className="is-secondary artifact-discard-edit" onClick={actions.onDiscard}>
+      <button type="button" className="is-secondary artifact-discard-edit" disabled={saving} onClick={actions.onDiscard}>
         {t('revisionBar.discard')}
       </button>
       <Tooltip content={t('revisionBar.saveTooltip')}>
-        <button type="button" className="artifact-save-edit" disabled={actions.saving} onClick={actions.onSave}>
-          {Ico.save(14)} {t('revisionBar.save')}
+        <button
+          type="button"
+          className="artifact-save-edit"
+          disabled={saving}
+          aria-busy={saving}
+          aria-live="polite"
+          onClick={actions.onSave}
+        >
+          {saving ? <Spinner /> : Ico.save(14)} {saving ? t('revisionBar.saving') : t('revisionBar.save')}
         </button>
       </Tooltip>
     </>

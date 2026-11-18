@@ -445,3 +445,21 @@
 .artifact-pane-label .artifact-save-edit { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-3); background: var(--surface); font: 600 12px/1 var(--font-body); cursor: pointer; }
 .artifact-pane-label .artifact-save-edit { border-color: color-mix(in srgb, var(--accent) 25%, var(--line)); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 .artifact-pane-label .artifact-save-edit:disabled { opacity: .6; cursor: default; }
+/* Save's own progress: held while saving, then a moment of "Saved". */
+.artifact-html-edit-actions button:disabled { cursor: default; }
+.artifact-html-edit-actions button.artifact-save-edit[aria-busy="true"] { opacity: .8; }
+.artifact-save-edit.is-saved,
+.artifact-html-edit-actions button.artifact-save-edit.is-saved { opacity: 1; }
+/* Switching between Preview, Live edit and Comments (ENG-4383): the surface
+   coming in fades up and Live edit's toolbar drops in, subtly. Both replay
+   whenever their surface stops being hidden. */
+@keyframes artifact-surface-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes artifact-edit-toolbar-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.artifact-mode-surface:not([hidden]) { animation: artifact-surface-in 180ms var(--ease-out, ease-out); }
+.artifact-mode-surface.is-source-side:not([hidden]) .artifact-html-edit-toolbar,
+.artifact-mode-surface.is-source-side:not([hidden]) .artifact-pane-label { animation: artifact-edit-toolbar-in 200ms var(--ease-out, ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .artifact-mode-surface:not([hidden]),
+  .artifact-mode-surface.is-source-side:not([hidden]) .artifact-html-edit-toolbar,
+  .artifact-mode-surface.is-source-side:not([hidden]) .artifact-pane-label { animation: none; }
+}

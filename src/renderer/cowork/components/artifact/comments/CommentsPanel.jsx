@@ -52,6 +52,8 @@ export function CommentsPanel({
   onLeaveThread,
   onFocusThread,
   loadImage = null,
+  // Playing its way out (usePresence): the same slide, reversed.
+  leaving = false,
 }) {
   const { t: tr } = useTranslation('artifacts');
   const [tab, setTab] = useState('open');
@@ -87,7 +89,12 @@ export function CommentsPanel({
     <div
       className="artifact-comments-panel flex flex-col gap-[10px] bg-surface px-3 py-2
         font-[family-name:var(--font-body)] motion-reduce:!animate-none"
-      style={{ animation: 'cw-comments-panel-in var(--dur-layout) var(--ease-out)' }}
+      style={{
+        animation: leaving
+          ? 'cw-comments-panel-out 160ms var(--ease-out) forwards'
+          : 'cw-comments-panel-in var(--dur-layout) var(--ease-out)',
+        pointerEvents: leaving ? 'none' : undefined,
+      }}
     >
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">

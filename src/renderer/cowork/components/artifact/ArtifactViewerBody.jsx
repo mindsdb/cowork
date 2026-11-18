@@ -15,6 +15,7 @@ import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
 import { launchLiveAppLabel } from '../../lib/liveAppState';
 import { DocumentPreview } from '../../preview/DocumentPreview';
 import { csvPreviewNotice } from './artifactPreviewUtils';
+import { usePresence } from './usePresence';
 import { useTranslation } from '../../../lib/i18n';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
@@ -149,6 +150,10 @@ export function ArtifactViewerBody({
   const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
   const showEditor = (layers ? layers.source : workspace.mode === 'edit') && !!workspace.source;
   const [retainedEditorKey, setRetainedEditorKey] = useState('');
+  // The inbox slides out rather than vanishing when Comments turns off.
+  const inboxPresence = usePresence(
+    !!(commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId),
+  );
   // Rejecting restores the pre-agent content over head. Once the artifact has
   // moved on, that also discards the work written since, so the server refuses
   // until the user has been told exactly that and said yes.
@@ -297,7 +302,7 @@ export function ArtifactViewerBody({
   return (
     <>
       {/* Text renders inline; other artifacts use a sandboxed iframe. */}
-      <div className={`artifact-viewer-body${commentsOpen && inboxOpen ? ' has-comments-inbox' : ''}`}>
+      <div className={`artifact-viewer-body${inboxPresence.mounted ? ' has-comments-inbox' : ''}`}>
         <div className="artifact-review-stage">
           <div className="artifact-viewer-canvas" style={{ overflow: isText ? 'auto' : 'hidden' }}>
             {/* A framed preview sits in its surface from the first render. The
@@ -337,8 +342,9 @@ export function ArtifactViewerBody({
           )}
         </div>
         {/* Review is a docked workspace on desktop and a full panel on compact screens. */}
-        {commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId && (
+        {inboxPresence.mounted && (
           <CommentsPanel
+            leaving={inboxPresence.leaving}
             threads={comments.threads}
             anchorStates={layer.anchorStates}
             error={comments.error}

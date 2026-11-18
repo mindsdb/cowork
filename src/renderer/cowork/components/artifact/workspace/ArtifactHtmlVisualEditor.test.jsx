@@ -553,6 +553,49 @@ describe('ArtifactHtmlVisualEditor save and discard', () => {
 
   it('holds Save while saving', async () => {
     await renderWith({ dirty: true, saving: true, canEdit: true, onSave: vi.fn(), onDiscard: vi.fn() });
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Saving…/ })).toBeDisabled();
+  });
+});
+
+// Save shows its own progress (ENG-4383): Saving… while it saves, then Saved
+// for a moment once it lands, then nothing, as there is nothing to save.
+describe('ArtifactHtmlVisualEditor save progress', () => {
+  const actions = (over) => ({ dirty: true, saving: false, canEdit: true, onSave: vi.fn(), onDiscard: vi.fn(), ...over });
+  const editor = (editActions) => (
+    <ArtifactHtmlVisualEditor
+      source={SOURCE} value={VALUE} onChange={vi.fn()} onSave={vi.fn()} draftUrl={DRAFT_URL}
+      editActions={editActions}
+    />
+  );
+
+  it('reads Saving… while saving, then Saved, then goes', async () => {
+    const view = render(editor(actions()));
+    await screen.findByTitle('Edit artifact on canvas');
+
+    view.rerender(editor(actions({ saving: true })));
+    expect(screen.getByRole('button', { name: /Saving…/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeDisabled();
+
+    vi.useFakeTimers();
+    try {
+      view.rerender(editor(actions({ saving: false, dirty: false })));
+      expect(screen.getByRole('button', { name: /Saved/ })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull();
+
+      act(() => { vi.advanceTimersByTime(2000); });
+      expect(screen.queryByRole('button', { name: /Saved/ })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('goes back to Save, with no Saved, when a save fails and the text stays unsaved', async () => {
+    const view = render(editor(actions({ saving: true })));
+    await screen.findByTitle('Edit artifact on canvas');
+
+    view.rerender(editor(actions({ saving: false, dirty: true })));
+
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /Saved/ })).toBeNull();
   });
 });
