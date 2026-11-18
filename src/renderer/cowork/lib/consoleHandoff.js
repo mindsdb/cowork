@@ -6,6 +6,7 @@
 //   /?from=console&start=own-work                    the own-work mode (the first onboarding step)
 //   /?from=console&mode=games&sample=…&placement=gallery
 //                                                    …and where in the console it came from
+//   /?from=console&placement=sign-in                 the console's landing after a fresh sign-in
 //
 // The URL names a sample, or a start the app owns, by id and never carries
 // prompt text. It has to be captured before the Keycloak redirect, because
@@ -28,8 +29,11 @@ export const OWN_WORK_START = 'own-work';
 const STARTS = [OWN_WORK_START];
 
 // Where in the console the link was clicked, so a task can be credited to the
-// surface that led to it. Only these are kept; anything else reads as unknown.
-export const PLACEMENTS = ['gallery'];
+// surface that led to it. `sign-in` is not a click: the console sends a fresh
+// web sign-in here on its own. Only these are kept; anything else reads as
+// unknown.
+export const SIGN_IN_PLACEMENT = 'sign-in';
+export const PLACEMENTS = ['gallery', SIGN_IN_PLACEMENT];
 
 // Sample ids are derived from their labels so the catalog needs no second key.
 // Renaming a label the console links to changes its id; the console's links are
@@ -95,13 +99,9 @@ export function captureConsoleHandoff(loc = window.location, storage = sessionSt
   } catch {}
 }
 
-/** Return the pending handoff and forget it, so it applies exactly once. */
-export function takeConsoleHandoff(storage = sessionStore(), now = Date.now()) {
+function readHandoff(storage, now) {
   let raw = null;
-  try {
-    raw = storage?.getItem(STORAGE_KEY) ?? null;
-    storage?.removeItem(STORAGE_KEY);
-  } catch { return null; }
+  try { raw = storage?.getItem(STORAGE_KEY) ?? null; } catch { return null; }
   if (!raw) return null;
   let handoff;
   try { handoff = JSON.parse(raw); } catch { return null; }
@@ -111,5 +111,35 @@ export function takeConsoleHandoff(storage = sessionStore(), now = Date.now()) {
   // A sample wins over a start: the link asked for a specific example.
   const start = !match && STARTS.includes(handoff.start) ? handoff.start : null;
   const placement = PLACEMENTS.includes(handoff.placement) ? handoff.placement : null;
-  return { entrySource: handoff.entrySource, mode: match?.mode ?? null, sample: match?.sample ?? null, start, placement };
+  return {
+    entrySource: handoff.entrySource,
+    mode: match?.mode ?? null,
+    sample: match?.sample ?? null,
+    start,
+    placement,
+    recorded: handoff.recorded === true,
+  };
+}
+
+/** The pending handoff, left in place. Home reads it to record an arrival it
+    cannot apply yet, because the composer is not usable. */
+export function peekConsoleHandoff(storage = sessionStore(), now = Date.now()) {
+  return readHandoff(storage, now);
+}
+
+/** Note that the pending handoff's arrival has been recorded, so taking it
+    later does not record it a second time. */
+export function markConsoleHandoffRecorded(storage = sessionStore()) {
+  try {
+    const raw = storage?.getItem(STORAGE_KEY);
+    if (!raw) return;
+    storage.setItem(STORAGE_KEY, JSON.stringify({ ...JSON.parse(raw), recorded: true }));
+  } catch {}
+}
+
+/** Return the pending handoff and forget it, so it applies exactly once. */
+export function takeConsoleHandoff(storage = sessionStore(), now = Date.now()) {
+  const handoff = readHandoff(storage, now);
+  try { storage?.removeItem(STORAGE_KEY); } catch { return null; }
+  return handoff;
 }
