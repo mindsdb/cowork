@@ -732,7 +732,7 @@
     "loading": "통계 불러오는 중",
     "retry": "다시 시도",
     "metrics": {
-      "visits": "방문",
+      "views": "조회수",
       "viewers": "순 방문자",
       "avgTime": "평균 시간",
       "completion": "완독률",

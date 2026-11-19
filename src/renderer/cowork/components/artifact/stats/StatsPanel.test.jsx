@@ -130,10 +130,10 @@ describe('StatsPanel overview', () => {
     expect(screen.getByRole('status', { name: 'Loading stats' })).toBeInTheDocument();
   });
 
-  it('shows visits, unique viewers, average time and completion', () => {
+  it('shows views, unique viewers, average time and completion', () => {
     renderPanel();
 
-    expect(within(metric('Visits')).getByText('152')).toBeInTheDocument();
+    expect(within(metric('Views')).getByText('152')).toBeInTheDocument();
     expect(within(metric('Unique viewers')).getByText('2')).toBeInTheDocument();
     expect(within(metric('Avg. time')).getByText('1m 25s')).toBeInTheDocument();
     expect(within(metric('Completion')).getByText('42%')).toBeInTheDocument();
@@ -173,11 +173,13 @@ describe('StatsPanel overview', () => {
     expect(within(chart).getAllByRole('button')[2]).toHaveAttribute('aria-describedby', tip.id);
   });
 
-  it('leaves the time-per-page chart out when the page has no sections', () => {
+  it('leaves the time-per-page chart and an unknown completion out, keeping the average time', () => {
     renderPanel({ data: { ...DATA, analytics: { ...ANALYTICS, sections: [], completion: null } } });
 
     expect(screen.queryByRole('group', { name: 'Average time per page, all viewers' })).toBeNull();
-    expect(within(metric('Completion')).getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('Completion')).toBeNull();
+    expect(within(metric('Avg. time')).getByText('1m 25s')).toBeInTheDocument();
+    expect(screen.queryByText('—')).toBeNull();
   });
 
   it('lists every viewer with visits, last seen, total time and how much they saw', () => {
@@ -235,7 +237,10 @@ describe('StatsPanel overview', () => {
 
     const table = screen.getByRole('table');
     expect(within(table).getByText('a@example.com')).toBeInTheDocument();
-    expect(within(metric('Avg. time')).getByText('—')).toBeInTheDocument();
+    // No timing without analytics: no empty tiles.
+    expect(screen.queryByText('Avg. time')).toBeNull();
+    expect(screen.queryByText('Completion')).toBeNull();
+    expect(within(metric('Unique viewers')).getByText('1')).toBeInTheDocument();
   });
 
   it('explains viewer names on a public link with analytics off', () => {
@@ -255,7 +260,7 @@ describe('StatsPanel overview', () => {
     await user.click(screen.getByRole('button', { name: 'Turn on' }));
 
     expect(onToggleTracking).toHaveBeenCalledWith(true);
-    expect(within(metric('Visits')).getByText('152')).toBeInTheDocument();
+    expect(within(metric('Views')).getByText('152')).toBeInTheDocument();
   });
 
   it('says No views yet when nobody opened the artifact', () => {
@@ -273,6 +278,85 @@ describe('StatsPanel overview', () => {
     await user.click(screen.getByRole('button', { name: 'Close stats panel' }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The panel shows what the data holds (ENG-4455): views, viewers, the chart
+// and the visitor list always; time, completion and time per page only with
+// timing data, never as empty tiles.
+describe('StatsPanel without timing data', () => {
+  // Views and viewers recorded, but no visit timed and no page read.
+  const UNTIMED = {
+    ...DATA,
+    analytics: {
+      visits: 0,
+      avg_seconds: 0,
+      completion: null,
+      sections: [],
+      viewers: [
+        { id: 'v_1', kind: 'email', email: 'a@example.com', visits: 2, total_seconds: 0, last_seen: hoursAgo(3), completion: 0 },
+        { id: 'v_2', kind: 'anonymous', email: null, visits: 1, total_seconds: 0, last_seen: hoursAgo(5) },
+      ],
+    },
+  };
+
+  it('shows views, unique viewers, the chart and the visitor list, and no timing tiles or charts', () => {
+    renderPanel({ data: UNTIMED });
+
+    expect(within(metric('Views')).getByText('152')).toBeInTheDocument();
+    expect(within(metric('Unique viewers')).getByText('2')).toBeInTheDocument();
+    expect(screen.queryByText('Avg. time')).toBeNull();
+    expect(screen.queryByText('Completion')).toBeNull();
+    expect(screen.queryByText('Time per page')).toBeNull();
+    expect(screen.queryByText('—')).toBeNull();
+    expect(screen.getByTestId('stats-chart')).toBeInTheDocument();
+    const rows = within(screen.getByRole('list', { name: 'All visits' })).getAllByRole('button');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining('a@example.com'),
+      expect.stringContaining('Anonymous viewer'),
+    ]);
+  });
+
+  it('gives a viewer row no time or completion ring', () => {
+    renderPanel({ data: UNTIMED });
+
+    const row = screen.getByRole('button', { name: /a@example\.com/ });
+    expect(row).not.toHaveTextContent('00:00');
+    expect(row).not.toHaveAccessibleName(/Total time/);
+    expect(screen.queryByRole('img', { name: /^Viewed:/ })).toBeNull();
+  });
+
+  it('opens a viewer on their device and place, with no page bars', () => {
+    renderPanel({ data: UNTIMED, ...opened('v_1', DETAIL) });
+
+    const region = screen.getByRole('region', { name: 'a@example.com' });
+    expect(within(region).getByText('Desktop')).toBeInTheDocument();
+    expect(within(region).queryByRole('group', { name: /^Time per page/ })).toBeNull();
+  });
+
+  it('keeps timing out when visits were counted but none was timed', () => {
+    renderPanel({ data: { ...UNTIMED, analytics: { ...UNTIMED.analytics, visits: 4 } } });
+
+    expect(screen.queryByText('Avg. time')).toBeNull();
+    expect(screen.queryByText('Time per page')).toBeNull();
+  });
+
+  it('lists only the viewers the analytics recorded: no anonymous row it did not send', () => {
+    renderPanel({ data: { ...UNTIMED, analytics: { ...UNTIMED.analytics, viewers: UNTIMED.analytics.viewers.slice(0, 1) } } });
+
+    expect(screen.queryByText('Anonymous viewer')).toBeNull();
+  });
+});
+
+describe('StatsPanel unique viewers', () => {
+  it('counts the analytics viewers when they are more than the recorded emails', () => {
+    renderPanel({ data: { ...DATA, unique_viewers: 1 } });
+    expect(within(metric('Unique viewers')).getByText('2')).toBeInTheDocument();
+  });
+
+  it('counts the recorded emails when they are more than the analytics viewers', () => {
+    renderPanel({ data: { ...DATA, unique_viewers: 5 } });
+    expect(within(metric('Unique viewers')).getByText('5')).toBeInTheDocument();
   });
 });
 
@@ -448,7 +532,7 @@ describe('StatsPanel errors', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('Publishing is busy right now.');
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-    expect(within(metric('Visits')).getByText('152')).toBeInTheDocument();
+    expect(within(metric('Views')).getByText('152')).toBeInTheDocument();
   });
 
   it('asks for credits, with a link to add them, when turning analytics on is refused', async () => {

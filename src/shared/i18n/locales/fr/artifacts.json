@@ -732,7 +732,7 @@
     "loading": "Chargement des statistiques",
     "retry": "Réessayer",
     "metrics": {
-      "visits": "Visites",
+      "views": "Vues",
       "viewers": "Visiteurs uniques",
       "avgTime": "Durée moy.",
       "completion": "Lecture complète",

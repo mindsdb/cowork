@@ -1,11 +1,13 @@
 // Stats panel: owner-only viewer analytics for a published artifact
-// (ENG-4455). It docks beside the stage like the comments inbox (same width,
-// entrance and compact-screen takeover) and renders from props only.
+// (ENG-4455). It sits in the viewer's shared side panel (ViewerSidePanel)
+// with Live edit and the comments inbox, and renders from props only.
 //
-//   overview  — visits, unique viewers, average time, completion; time per
-//               page for everyone; all visits, one row per viewer, which
-//               unfolds in place into that viewer's device, location and
-//               time per page (ActivityList); views per day
+//   overview  — views and unique viewers; all visits, one row per viewer,
+//               which unfolds in place into that viewer's device and
+//               location (ActivityList); views per day. With timing data
+//               (a visit timed, or pages read) also average time,
+//               completion and time per page, for everyone and per viewer;
+//               without it those are left out rather than shown empty.
 //
 // The analytics settings live in the Share panel; when analytics is off this
 // panel says so and can turn it on.
@@ -136,8 +138,20 @@ function Overview({
   const daily = Array.isArray(data.daily) ? data.daily : NO_DAYS;
   const tracking = data.tracking === true;
   const restricted = accessMode === 'restricted';
-  const hasViews = (data.total_views || 0) > 0 || (data.views_in_period || 0) > 0 || (analytics?.visits || 0) > 0;
-  const uniqueViewers = analytics ? analyticsViewers.length : (data.unique_viewers ?? legacyViewers.length);
+  const visits = Number(analytics?.visits) || 0;
+  const hasViews = (data.total_views || 0) > 0 || (data.views_in_period || 0) > 0 || visits > 0;
+  // Timing comes from the analytics script; views recorded before it (or a
+  // page it never timed) have none, so its tiles and charts stay out.
+  const showAvgTime = visits > 0 && (Number(analytics?.avg_seconds) || 0) > 0;
+  const showCompletion = showAvgTime && typeof analytics?.completion === 'number';
+  const showPages = visits > 0 && sections.length > 0;
+  const timing = showAvgTime || showPages;
+  // Either source may know more viewers: the analytics viewers, or the
+  // emails recorded before analytics.
+  const uniqueViewers = Math.max(
+    analyticsViewers.length,
+    Number(data.unique_viewers ?? legacyViewers.length) || 0,
+  );
   return (
     <>
       {!tracking && <TrackingOff busy={trackingBusy} onTurnOn={onToggleTracking} />}
@@ -145,15 +159,15 @@ function Overview({
         <>
           <div className="grid shrink-0 grid-cols-2 gap-2">
             <Metric
-              label={t('stats.metrics.visits')}
+              label={t('stats.metrics.views')}
               value={data.total_views ?? analytics?.visits ?? 0}
               hint={data.last_viewed ? t('stats.metrics.lastViewedHint', { time: relativeAge(data.last_viewed) || exactTime(data.last_viewed) }) : ''}
             />
-            <Metric label={t('stats.metrics.viewers')} value={uniqueViewers || 0} />
-            <Metric label={t('stats.metrics.avgTime')} value={analytics ? formatDuration(analytics.avg_seconds || 0) : '—'} />
-            <Metric label={t('stats.metrics.completion')} value={formatPercent(analytics?.completion)} />
+            <Metric label={t('stats.metrics.viewers')} value={uniqueViewers} />
+            {showAvgTime && <Metric label={t('stats.metrics.avgTime')} value={formatDuration(analytics.avg_seconds)} />}
+            {showCompletion && <Metric label={t('stats.metrics.completion')} value={formatPercent(analytics.completion)} />}
           </div>
-          {sections.length > 0 && (
+          {showPages && (
             <Section title={t('stats.pages.title')}>
               <PageBars bars={audienceBars(sections)} mode="avg" label={t('stats.pages.audienceChart')} />
             </Section>
@@ -166,6 +180,7 @@ function Overview({
               <ActivityList
                 viewers={analyticsViewers}
                 outline={sections}
+                timing={timing}
                 openViewer={viewer}
                 onOpenViewer={onOpenViewer}
                 onCloseViewer={onCloseViewer}

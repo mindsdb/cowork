@@ -26927,38 +26927,38 @@
       "text": "716b5763b017"
     }
   },
-  "artifacts:stats.metrics.visits": {
+  "artifacts:stats.metrics.views": {
     "de": {
-      "from": "f514c310bd9e",
-      "text": "b336c9eb2630"
+      "from": "69c404591e99",
+      "text": "f646557fa73f"
     },
     "es": {
-      "from": "f514c310bd9e",
-      "text": "c6e253ffde95"
+      "from": "69c404591e99",
+      "text": "34ffd63c4872"
     },
     "fr": {
-      "from": "f514c310bd9e",
-      "text": "ab611215d69c"
+      "from": "69c404591e99",
+      "text": "2470a94a9406"
     },
     "it": {
-      "from": "f514c310bd9e",
-      "text": "621a2812216f"
+      "from": "69c404591e99",
+      "text": "71a95fc72818"
     },
     "ja": {
-      "from": "f514c310bd9e",
-      "text": "15935facd6e3"
+      "from": "69c404591e99",
+      "text": "67a94db0c9e7"
     },
     "ko": {
-      "from": "f514c310bd9e",
-      "text": "c7fb6968a656"
+      "from": "69c404591e99",
+      "text": "ea2432a442fb"
     },
     "pt-BR": {
-      "from": "f514c310bd9e",
-      "text": "c6e253ffde95"
+      "from": "69c404591e99",
+      "text": "6e1d44603f86"
     },
     "zh-CN": {
-      "from": "f514c310bd9e",
-      "text": "0339c61fb3dc"
+      "from": "69c404591e99",
+      "text": "cdf0bd9bccd4"
     }
   },
   "artifacts:stats.noViews": {

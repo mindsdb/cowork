@@ -732,7 +732,7 @@
     "loading": "Cargando estadísticas",
     "retry": "Reintentar",
     "metrics": {
-      "visits": "Visitas",
+      "views": "Vistas",
       "viewers": "Visitantes únicos",
       "avgTime": "Tiempo medio",
       "completion": "Finalización",

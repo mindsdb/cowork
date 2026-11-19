@@ -732,7 +732,7 @@
     "loading": "正在加载统计",
     "retry": "重试",
     "metrics": {
-      "visits": "访问次数",
+      "views": "浏览量",
       "viewers": "独立访客",
       "avgTime": "平均时长",
       "completion": "完读率",

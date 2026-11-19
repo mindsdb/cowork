@@ -2,6 +2,8 @@
 // with their total time and how much of the page they saw. A row unfolds in
 // place (one at a time) into the viewer's device, OS and location and their
 // time per page, summed over every visit or for one visit picked from a list.
+// Without timing data (`timing` false) a row has no time, ring or page bars,
+// only who, how often and when.
 //
 // The open row is the hook's `viewer` (`{ id, data, loading, error }`):
 // opening a row loads that viewer's visits, closing it drops them.
@@ -123,7 +125,7 @@ function Whereabouts({ device, os, location }) {
   );
 }
 
-function ViewerDetail({ viewer, summary, outline, onRetry }) {
+function ViewerDetail({ viewer, summary, outline, timing, onRetry }) {
   const { t } = useTranslation('artifacts');
   const [picked, setPicked] = useState('all');
   if (viewer.loading) return <StatsSkeleton compact label={t('stats.activity.loading')} />;
@@ -143,7 +145,7 @@ function ViewerDetail({ viewer, summary, outline, onRetry }) {
       os: person.last_os ?? latest?.os,
       location: person.last_location ?? latest?.location,
     };
-  const bars = sumSections(outline, (visit ? [visit] : visits).map((row) => row.sections));
+  const bars = timing ? sumSections(outline, (visit ? [visit] : visits).map((row) => row.sections)) : NO_ROWS;
   const name = viewerName(person, t);
   return (
     <div className="flex flex-col gap-3">
@@ -192,10 +194,10 @@ function ViewerDetail({ viewer, summary, outline, onRetry }) {
   );
 }
 
-function ViewerRow({ viewer, open, detail, outline, onToggle, onRetry }) {
+function ViewerRow({ viewer, open, detail, outline, timing, onToggle, onRetry }) {
   const { t } = useTranslation('artifacts');
   const panelId = `stats-viewer-${String(viewer.id).replace(/[^A-Za-z0-9_-]/g, '')}`;
-  const hasCompletion = typeof viewer.completion === 'number';
+  const hasCompletion = timing && typeof viewer.completion === 'number';
   return (
     <li className="flex flex-col">
       <button
@@ -220,11 +222,13 @@ function ViewerRow({ viewer, open, detail, outline, onToggle, onRetry }) {
             })}
           </span>
         </span>
-        <span className="shrink-0 text-[12px] font-medium leading-[16px] tabular-nums text-ink-2">
-          <span className="sr-only">{t('stats.activity.totalTime', { time: formatDuration(viewer.total_seconds || 0) })}</span>
-          <span aria-hidden="true">{formatClock(viewer.total_seconds || 0)}</span>
-        </span>
-        {hasCompletion ? <CompletionRing value={viewer.completion} /> : <span className="w-[18px] shrink-0" aria-hidden="true" />}
+        {timing && (
+          <span className="shrink-0 text-[12px] font-medium leading-[16px] tabular-nums text-ink-2">
+            <span className="sr-only">{t('stats.activity.totalTime', { time: formatDuration(viewer.total_seconds || 0) })}</span>
+            <span aria-hidden="true">{formatClock(viewer.total_seconds || 0)}</span>
+          </span>
+        )}
+        {hasCompletion ? <CompletionRing value={viewer.completion} /> : timing && <span className="w-[18px] shrink-0" aria-hidden="true" />}
         <span
           aria-hidden="true"
           className={`inline-flex shrink-0 text-ink-4 transition-transform duration-200 motion-reduce:transition-none
@@ -240,6 +244,7 @@ function ViewerRow({ viewer, open, detail, outline, onToggle, onRetry }) {
             viewer={detail}
             summary={viewer}
             outline={outline}
+            timing={timing}
             onRetry={onRetry}
           />
         </div>
@@ -248,7 +253,7 @@ function ViewerRow({ viewer, open, detail, outline, onToggle, onRetry }) {
   );
 }
 
-export function ActivityList({ viewers, outline = NO_ROWS, openViewer, onOpenViewer, onCloseViewer }) {
+export function ActivityList({ viewers, outline = NO_ROWS, timing = true, openViewer, onOpenViewer, onCloseViewer }) {
   const { t } = useTranslation('artifacts');
   return (
     <ul aria-label={t('stats.activity.title')} className="m-0 flex list-none flex-col gap-[2px] p-0">
@@ -261,6 +266,7 @@ export function ActivityList({ viewers, outline = NO_ROWS, openViewer, onOpenVie
             open={open}
             detail={open ? openViewer : null}
             outline={outline}
+            timing={timing}
             onToggle={() => (open ? onCloseViewer?.() : onOpenViewer?.(viewer.id))}
             onRetry={() => onOpenViewer?.(viewer.id)}
           />

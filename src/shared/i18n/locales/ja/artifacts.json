@@ -732,7 +732,7 @@
     "loading": "統計を読み込み中",
     "retry": "再試行",
     "metrics": {
-      "visits": "訪問数",
+      "views": "閲覧数",
       "viewers": "ユニーク閲覧者",
       "avgTime": "平均時間",
       "completion": "読了率",
