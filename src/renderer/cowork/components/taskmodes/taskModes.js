@@ -7,11 +7,12 @@
 // Manus (it shows a category flow instead), so those prompts are authored in
 // the same style from Manus's website categories.
 // The samples that start from the person's own file, notes or inbox, the
-// habit tracker, and the work samples that write their own realistic sample
-// to work on (a contract, a call transcript, a project plan) are ours, not
-// Manus's. Those lead with the sample on purpose: asked for a file first, the
-// free-tier model stops and waits, and a first click must still produce
-// something. A sample with `plain: true` sits in a mode its instruction does
+// habit tracker, the prospect, competitor and lead-list research, and the
+// work samples that write their own realistic sample to work on (a contract,
+// a call transcript, a project plan, a report, a bank statement, lecture
+// notes) are ours, not Manus's. The work samples lead with the sample on
+// purpose: asked for a file first, the free-tier model stops and waits, and a
+// first click must still produce something. A sample with `plain: true` sits in a mode its instruction does
 // not fit (a weekly update is not a slide deck), and the person is expected to
 // add to it, so it is sent as written even then.
 //
@@ -61,6 +62,10 @@ export const TASK_MODES = [
         label: "Draft this week's update from last week's",
         prompt: "I'm going to paste last week's update and my rough notes for this week. Draft this week's update in the same format, highlight what changed, and ask me if anything is unclear.",
         plain: true,
+      },
+      {
+        label: 'Turn a report into a presentation',
+        prompt: 'Write a realistic sample four-page project report, then turn it into a 10-slide presentation for a 10-minute talk, with a consistent color theme, speaker notes, and a time per slide. Afterwards I\'ll attach my own document.',
       },
     ],
   },
@@ -191,6 +196,10 @@ export const TASK_MODES = [
         prompt: 'Write a realistic sample vendor services contract, then extract its key terms into a table: parties, start and end dates, renewal and notice period, payment terms, liability cap, termination rights. Flag anything unusual or one-sided. Afterwards I\'ll attach my own contract for the same treatment.',
         plain: true,
       },
+      {
+        label: 'Turn a bank statement into a spreadsheet',
+        prompt: 'Create a realistic sample one-month bank statement, then convert it into an Excel workbook with one transaction per row (date, description, money in, money out, running balance). Check that the totals match the statement and list anything that doesn\'t reconcile. Afterwards I\'ll attach my real statement.',
+      },
     ],
   },
   {
@@ -287,6 +296,19 @@ export const TASK_MODES = [
         label: 'Turn meeting notes into action items',
         prompt: "I'm going to paste a meeting transcript or rough notes (if I don't, use a realistic sample). Pull out decisions, action items with owners and due dates, and open questions, then draft a short recap email I can send to attendees.",
         plain: true,
+      },
+      {
+        label: 'Map a competitor\'s go-to-market',
+        prompt: 'Build a one-page competitor snapshot of Clay from public sources: what it sells and to whom, its top three competitors and how it positions against each, and the signals that someone is ready to buy. Cite a source for each part and save it as a Word document. Then tell me where a newer competitor could win against Clay and where Clay is hard to beat. Afterwards I\'ll describe my company so you can compare us.',
+      },
+      {
+        label: 'Make a study guide from course material',
+        prompt: 'Write a realistic sample set of lecture notes on the basics of contract law, then turn them into a study guide: key concepts, definitions in the exact wording from the notes, a glossary, and a 10-question practice quiz with answers. Save it as a document. Afterwards I\'ll attach my own slides.',
+        plain: true,
+      },
+      {
+        label: 'Build a ranked lead list',
+        prompt: 'Find 15 mid-sized companies in Germany that make industrial machinery and could need 3D-printed prototypes. Return a ranked spreadsheet with company, what they make, size, a fit score from 0 to 100, why they fit, and a source link. Don\'t invent contact details.',
       },
     ],
   },

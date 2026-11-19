@@ -497,7 +497,8 @@
         "1": "Analyser le paysage concurrentiel et le positionnement",
         "2": "Automatiser le rapport d’avancement hebdomadaire de l’équipe",
         "3": "Étudier l’opportunité de marché pour un lancement de produit",
-        "4": "Rédiger le point de cette semaine à partir de celui de la semaine dernière"
+        "4": "Rédiger le point de cette semaine à partir de celui de la semaine dernière",
+        "5": "Transformer un rapport en présentation"
       }
     },
     "website": {
@@ -542,7 +543,8 @@
         "3": "Comparer les meilleurs modèles VLM avec les données Hugging Face",
         "4": "Calculer le TRI de flux de trésorerie d’investissement",
         "5": "Nettoyer ma feuille de calcul et en faire un graphique",
-        "6": "Extraire les clauses clés d’un contrat"
+        "6": "Extraire les clauses clés d’un contrat",
+        "7": "Transformer un relevé bancaire en feuille de calcul"
       }
     },
     "visualization": {
@@ -573,7 +575,10 @@
         "7": "Faire le point sur ce qui m’attend cette semaine",
         "8": "Se renseigner sur un prospect et rédiger une prise de contact",
         "9": "Me conseiller sur une affaire à partir de la transcription d’un appel",
-        "10": "Transformer des notes de réunion en actions à mener"
+        "10": "Transformer des notes de réunion en actions à mener",
+        "11": "Cartographier la stratégie commerciale d'un concurrent",
+        "12": "Créer un guide d'étude à partir du support de cours",
+        "13": "Dresser une liste de prospects classée"
       }
     },
     "games": {

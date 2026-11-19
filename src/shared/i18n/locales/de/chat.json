@@ -497,7 +497,8 @@
         "1": "Wettbewerbsumfeld und Positionierung analysieren",
         "2": "Wöchentliche Team-Statusberichte automatisieren",
         "3": "Marktchancen für eine Produkteinführung recherchieren",
-        "4": "Update dieser Woche auf Basis der letzten Woche entwerfen"
+        "4": "Update dieser Woche auf Basis der letzten Woche entwerfen",
+        "5": "Einen Bericht in eine Präsentation umwandeln"
       }
     },
     "website": {
@@ -542,7 +543,8 @@
         "3": "Führende VLM-Modelle anhand von Hugging-Face-Daten vergleichen",
         "4": "IRR für Investitions-Cashflows berechnen",
         "5": "Meine Tabelle bereinigen und als Diagramm darstellen",
-        "6": "Wichtige Vertragsbedingungen herausziehen"
+        "6": "Wichtige Vertragsbedingungen herausziehen",
+        "7": "Einen Kontoauszug in eine Tabelle umwandeln"
       }
     },
     "visualization": {
@@ -573,7 +575,10 @@
         "7": "Überblick, was diese Woche bei mir ansteht",
         "8": "Einen Interessenten recherchieren und die Erstansprache entwerfen",
         "9": "Mich anhand eines Gesprächstranskripts zu einem Deal beraten",
-        "10": "Besprechungsnotizen in Aufgaben umwandeln"
+        "10": "Besprechungsnotizen in Aufgaben umwandeln",
+        "11": "Die Go-to-Market-Strategie eines Wettbewerbers erfassen",
+        "12": "Einen Lernleitfaden aus Kursmaterial erstellen",
+        "13": "Eine priorisierte Lead-Liste erstellen"
       }
     },
     "games": {
