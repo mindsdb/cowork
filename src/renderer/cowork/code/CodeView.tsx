@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { budgetModelName } from '../lib/budgetScope';
 import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
@@ -7,6 +8,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { QuestionCard } from './QuestionCard';
 import { PlanDecision } from './PlanDecision';
 import { TaskAttentionBar } from './TaskAttentionBar';
+import { WorkspaceCleanupNotice } from './WorkspaceCleanupNotice';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
 import { CodeProjectsView } from './CodeProjectsView';
@@ -68,6 +70,7 @@ export default function CodeView({
   defaultEngineId,
   defaultModel,
   models,
+  modelLabels,
   modelMeta,
   account = null,
   skillScopeKey = 'signed-out',
@@ -96,6 +99,8 @@ export default function CodeView({
   defaultEngineId: string;
   defaultModel: string;
   models: ModelPickerSource[];
+  /** The catalog's display labels by model id, from settings. */
+  modelLabels?: Record<string, string>;
   modelMeta: ModelPickerMeta;
   /** The signed-in account, used to prefill a Git identity when a commit needs one. */
   account?: { name?: string | null; email?: string | null; orgId?: string | null; sub?: string | null } | null;
@@ -287,6 +292,7 @@ export default function CodeView({
     failureNotice(
       accountFailure(session, latestSessionEvent, latestErrorEvent, taskRecovering),
       models.find((model) => model.id === session.model)?.name || session.model,
+      (id) => budgetModelName(id, modelLabels, (alias) => models.find((model) => model.id === alias)?.name),
     ),
     recoveryNotice(session, latestSessionEvent, latestErrorEvent, taskRecovering),
     releaseNotice(session),
@@ -351,6 +357,7 @@ export default function CodeView({
   return (
     <SkillScopeContext.Provider value={skillScopeKey}>
       <div className="code-page">
+        <WorkspaceCleanupNotice key={skillScopeKey} active={active} taskCount={sessions.length} />
         <TaskAttentionBar sessions={sessions} selectedId={newTask ? null : selectedId} active={active} scopeKey={skillScopeKey} onSelect={id => onAttentionSelect ? onAttentionSelect(id) : onSelectionChange(id, false)} />
         <DeliveryAutomationMonitor
           sessions={sessions}

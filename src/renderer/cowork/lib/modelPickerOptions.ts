@@ -33,7 +33,7 @@ export interface ModelPickerOption {
   restricted?: boolean;
   /** Zero data retention is what closes this row. */
   zdr?: boolean;
-  /** The org's spending budget is used up; no credits action applies. */
+  /** A spending budget is used up; no credits action applies. */
   budgetReached?: boolean;
   /** Row tooltip. */
   title?: string;

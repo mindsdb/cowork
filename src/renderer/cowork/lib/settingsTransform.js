@@ -569,7 +569,7 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  *   tag comes from `unavailableModelFields`: "Needs credits" and `locked` (so
  *   the picker puts an "Add credits" button on the row), or "Restricted" and
  *   `restricted` when `meta.modelDisabledReasons` names an admin's model rule,
- *   or "Budget reached" and `budgetReached` when it names the org's spent budget.
+ *   or "Budget reached" and `budgetReached` when it names a spent budget.
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A

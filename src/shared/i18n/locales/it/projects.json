@@ -66,8 +66,8 @@
         "balanceLowToo": "Anche il tuo saldo è basso ({usd})."
       },
       "budgetExceeded": {
-        "raise": "I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget».",
-        "airHasRoom": "I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita."
+        "raise": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget».} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget».}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita.} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita.}}}}"
       }
     },
     "scheduleWhen": {
@@ -106,7 +106,7 @@
         "walletEmpty": "Nessun credito disponibile. Aggiungi fondi per usare MindsHub.",
         "allowanceExhausted": "Nessun token gratuito di MindsHub Air disponibile e il saldo è a zero.",
         "freeAirPaused": "MindsHub Air gratuito è sospeso al momento.",
-        "budgetExceeded": "Il budget della tua organizzazione è esaurito.",
+        "budgetExceeded": "Un budget è esaurito.",
         "walletEmptyMobile": "Nessun credito disponibile."
       },
       "missingApiKey": "Aggiungi una chiave API a destra.",
@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "Entrambi i modelli hanno esaurito i crediti prima di finire, quindi questo turno non può essere valutato.",
         "one": "{name} ha esaurito i crediti prima di finire, quindi questo turno non può essere valutato.",
-        "bothBudget": "Entrambi i modelli hanno raggiunto il budget della tua organizzazione prima di finire, quindi questo turno non può essere valutato.",
-        "oneBudget": "{name} ha raggiunto il budget della tua organizzazione prima di finire, quindi questo turno non può essere valutato."
+        "bothBudget": "{scope, select, org {Entrambi i modelli hanno raggiunto il budget della tua organizzazione} workspace {Entrambi i modelli hanno raggiunto il budget di quest’area di lavoro} api_key {Entrambi i modelli hanno raggiunto il budget di questa chiave API} team {Entrambi i modelli hanno raggiunto il budget del tuo team} member {Entrambi i modelli hanno raggiunto il tuo budget} other {Entrambi i modelli hanno raggiunto un budget}} prima di finire, quindi questo turno non può essere valutato.",
+        "oneBudget": "{scope, select, org {{name} ha raggiunto il budget della tua organizzazione} workspace {{name} ha raggiunto il budget di quest’area di lavoro} api_key {{name} ha raggiunto il budget di questa chiave API} team {{name} ha raggiunto il budget del tuo team} member {{name} ha raggiunto il tuo budget} other {{name} ha raggiunto un budget}} prima di finire, quindi questo turno non può essere valutato."
       },
       "verdict": {
         "tie": "Più o meno uguali",
@@ -479,7 +479,7 @@
       "needsCredits": "Servono crediti",
       "budgetReached": {
         "tag": "Budget raggiunto",
-        "title": "Il budget della tua organizzazione è esaurito. Un proprietario o un amministratore può aumentarlo in «Budget»."
+        "title": "Un budget che copre questo modello è esaurito. Un amministratore può aumentarlo in «Budget»."
       }
     },
     "settingsTransform": {
@@ -653,6 +653,7 @@
     "atMinute": "al minuto",
     "at": "alle",
     "time": "Ora",
+    "timeZone": "Fuso orario",
     "nextRuns": "{count, plural, one {Prossima esecuzione: {runs}} other {Prossime esecuzioni: {runs}}}",
     "timePassed": "Questo orario è già passato.",
     "name": "Nome",

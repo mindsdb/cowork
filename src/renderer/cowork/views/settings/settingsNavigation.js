@@ -23,13 +23,18 @@ const NAV_ITEMS = [
 const WEB_NAV_IDS = new Set(['agent', 'appearance', 'branding', 'channels', 'usage']);
 
 /**
+ * `mobileShell` adds Account inside the mobile app, which is a web build: the
+ * app stores require that deleting an account can start inside the app. The
+ * website does not offer it. A build without the MindsHub platform has no
+ * MindsHub account to show or delete.
+ *
  * `branding` is the org's look: offered only to an org admin (the
  * org-branding read said `canEdit`), on web or on desktop signed in to the
  * org. Members never see it; their own look is under Appearance.
  */
-export function navItemsForHost(isWeb, codeModeAvailable, codeModeEnabled = false, { branding = false } = {}) {
+export function navItemsForHost(isWeb, codeModeAvailable, codeModeEnabled = false, { branding = false, mobileShell = false } = {}) {
   if (isWeb) {
-    return NAV_ITEMS.filter((item) => WEB_NAV_IDS.has(item.id)
+    return NAV_ITEMS.filter((item) => (WEB_NAV_IDS.has(item.id) || (item.id === 'account' && mobileShell && PLATFORM_UI))
       && (PLATFORM_UI || item.id !== 'usage')
       && (branding || item.id !== 'branding'));
   }

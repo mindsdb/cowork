@@ -284,20 +284,20 @@ export function zdrRestrictedModelTitle() {
   return tr('zdrRestricted.title');
 }
 
-/* The `disabled_reason` for a paid row while the org's spending budget is used
-   up. Credits do not lift it; an owner or admin raises the budget. */
+/* The `disabled_reason` for a paid row while a spending budget is used
+   up. Credits do not lift it; an administrator raises the budget. */
 export const BUDGET_EXCEEDED_REASON = 'budget_exceeded';
 
-/* The row tooltip for a model the org's budget stops. English, for tests and
+/* The row tooltip for a model a spent budget stops. English, for tests and
    callers that import it; budgetReachedModelTitle() is the viewer's language. */
-export const BUDGET_REACHED_MODEL_TITLE = "Your organization's budget is used up. An owner or admin can raise it in Budgets.";
+export const BUDGET_REACHED_MODEL_TITLE = "A budget covering this model is used up. An administrator can raise it in Budgets.";
 
 export function budgetReachedModelTitle() {
   return tr('budgetReached.title');
 }
 
 /* Every `disabled_reason` the renderer recognizes on a MindsHub model row: an
-   admin's model rule, zero data retention, the spent org budget, the empty
+   admin's model rule, zero data retention, a spent budget, the empty
    wallet, and the spent allowance. */
 const KNOWN_MODEL_DISABLED_REASONS = new Set([
   MODEL_RESTRICTED_REASON,
@@ -347,7 +347,7 @@ export function isModelZdrRestricted(modelEnabled, modelDisabledReasons, id) {
     && (modelDisabledReasons || {})[id] === ZDR_RESTRICTED_REASON;
 }
 
-/** True when `id` is unavailable because the org's spending budget is used up. */
+/** True when `id` is unavailable because a spending budget is used up. */
 export function isModelBudgetReached(modelEnabled, modelDisabledReasons, id) {
   return isModelLocked(modelEnabled, id)
     && (modelDisabledReasons || {})[id] === BUDGET_EXCEEDED_REASON;
@@ -375,7 +375,7 @@ export function isModelBudgetReached(modelEnabled, modelDisabledReasons, id) {
  *   button: money cannot unlock an admin rule.
  * - Blocked by zero data retention: the same, plus `zdr`, tagged "ZDR restricted"
  *   with the ZDR tooltip.
- * - Stopped by the org's spent budget: disabled and `budgetReached`, tagged
+ * - Stopped by a spent budget: disabled and `budgetReached`, tagged
  *   "Budget reached". Never `locked`, since credits do not raise a budget.
  * - Anything else unavailable (the wallet, the spent allowance, or a server too
  *   old to send a reason): disabled and `locked`, tagged "Needs credits".

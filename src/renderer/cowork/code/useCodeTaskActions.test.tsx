@@ -142,6 +142,10 @@ describe('useCodeTaskActions', () => {
 
     await act(async () => { await result.current.create(task); });
     expect(createSession).toHaveBeenLastCalledWith(expect.not.objectContaining({ workspace_mode: expect.anything() }));
+
+    // A default lets the server isolate a task whose folder is busy.
+    await act(async () => { await result.current.create({ ...task, workspaceMode: 'in_place', workspaceModeIsDefault: true }); });
+    expect(createSession).toHaveBeenLastCalledWith(expect.objectContaining({ workspace_mode: 'in_place', workspace_mode_is_default: true }));
   });
 
   it('caches a created task before opening it so the view does not show a restoring state', async () => {

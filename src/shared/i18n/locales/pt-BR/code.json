@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Não foi possível remover alguns arquivos de tarefas excluídas. Tente a limpeza novamente para liberar espaço em disco.",
+    "retry": "Tentar limpeza novamente",
+    "retrying": "Tentando limpar novamente…",
+    "retryFailed": "Não foi possível tentar a limpeza novamente. Tente de novo."
+  },
   "reviewPanel": {
     "ariaLabel": "Revisar alterações",
     "closeAriaLabel": "Fechar painel de revisão",
@@ -1023,7 +1029,7 @@
       "noModels": "Nenhum modelo de código está disponível.",
       "chooseModel": "Escolha um modelo para continuar.",
       "chooseFolder": "Escolha uma pasta para continuar.",
-      "budgetReached": "O orçamento da sua organização acabou. Escolha um modelo disponível ou peça a um proprietário ou administrador para aumentá-lo."
+      "budgetReached": "Um orçamento que cobre este modelo acabou. Escolha um modelo disponível ou peça a um administrador para aumentá-lo."
     }
   },
   "executionTarget": {
@@ -1309,6 +1315,7 @@
     "record": {
       "approvalDenied": "Aprovação negada",
       "approvalResolved": "Aprovação resolvida",
+      "folderBusy": "Outra tarefa está trabalhando nesta pasta, então esta trabalha em uma worktree.",
       "followUpDelivered": "Mensagem de acompanhamento entregue",
       "requestRejected": "Solicitação rejeitada",
       "taskStatus": "Status da tarefa"
@@ -1466,8 +1473,8 @@
       "body": "{reason}, então ainda usa disco."
     },
     "budgetExceeded": {
-      "title": "O orçamento da sua organização acabou",
-      "body": "Um proprietário ou administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa."
+      "title": "{scope, select, org {{period, select, day {O orçamento diário da sua organização acabou} month {O orçamento mensal da sua organização acabou} year {O orçamento anual da sua organização acabou} other {O orçamento da sua organização acabou}}} workspace {{period, select, day {O orçamento diário deste espaço de trabalho acabou} month {O orçamento mensal deste espaço de trabalho acabou} year {O orçamento anual deste espaço de trabalho acabou} other {O orçamento deste espaço de trabalho acabou}}} api_key {{period, select, day {O orçamento diário desta chave de API acabou} month {O orçamento mensal desta chave de API acabou} year {O orçamento anual desta chave de API acabou} other {O orçamento desta chave de API acabou}}} team {{period, select, day {O orçamento diário da sua equipe acabou} month {O orçamento mensal da sua equipe acabou} year {O orçamento anual da sua equipe acabou} other {O orçamento da sua equipe acabou}}} member {{period, select, day {Seu orçamento diário acabou} month {Seu orçamento mensal acabou} year {Seu orçamento anual acabou} other {Seu orçamento acabou}}} other {{period, select, day {Um orçamento diário acabou} month {Um orçamento mensal acabou} year {Um orçamento anual acabou} other {Um orçamento acabou}}}}",
+      "body": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Escolha outro modelo para continuar nesta tarefa.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Escolha outro modelo para continuar nesta tarefa.}}} other {{scope, select, org {Um proprietário ou administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa.} other {Um administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa.}}}}"
     },
     "writesHeld": {
       "body": "Esta pasta não tem histórico do Git para revisar ou desfazer alterações, então o agente pergunta antes de cada edição."
@@ -1629,6 +1636,16 @@
     },
     "initializeGit": "Inicializar Git",
     "initializeFailed": "Não foi possível inicializar o Git. Tente novamente.",
-    "unavailable": "Nenhum modo de espaço de trabalho está disponível para esta pasta."
+    "unavailable": "Nenhum modo de espaço de trabalho está disponível para esta pasta.",
+    "reason": {
+      "notARepository": "Esta pasta não é um repositório Git. Inicialize o Git para usar uma Worktree.",
+      "notARepositoryInFolder": "{folder} não é um repositório Git. Inicialize o Git para usar uma Worktree.",
+      "noCommits": "Este repositório ainda não tem commits. Faça um primeiro commit para usar uma Worktree.",
+      "noCommitsInFolder": "{folder} ainda não tem commits. Faça um primeiro commit para usar uma Worktree.",
+      "noLocalCheckout": "{folder} não tem uma cópia local neste computador para trabalhar. Escolha Worktree.",
+      "inPlaceUnsupportedPlatform": "Trabalhar na pasta original ainda não está disponível nesta plataforma. Escolha Worktree.",
+      "inPlaceOtherComputer": "Tarefas em outro computador são executadas em uma worktree isolada. Escolha Worktree.",
+      "sharedRepository": "Duas pastas do projeto estão no mesmo repositório, então não podem trabalhar as duas diretamente na pasta. Escolha Worktree."
+    }
   }
 }

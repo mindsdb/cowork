@@ -258,7 +258,7 @@
     "topUp": "Guthaben aufladen →",
     "addFunds": "Guthaben aufladen →",
     "slowDown": "{sentence} Das liegt nicht am Guthaben.",
-    "budgetReached": "Das Budget Ihrer Organisation ist aufgebraucht. {detail}",
+    "budgetReached": "Ein Budget ist aufgebraucht. {detail}",
     "viewBudgetsArrow": "Budgets anzeigen →"
   },
   "providers": {
@@ -336,7 +336,7 @@
     "modelNeedsCredits": "{model} benötigt Guthaben. {link}, um es zu nutzen.",
     "modelNeedsCreditsNoLink": "{model} benötigt Guthaben.",
     "topUpBalance": "Laden Sie Ihr Guthaben auf",
-    "modelBudgetReached": "{model} kann nicht ausgeführt werden, weil das Budget Ihrer Organisation aufgebraucht ist.",
+    "modelBudgetReached": "{model} kann nicht ausgeführt werden, weil ein Budget dafür aufgebraucht ist.",
     "viewBudgets": "Budgets anzeigen",
     "imageModelNeedsMindsHub": "Die Bildgenerierung läuft über MindsHub. Füge MindsHub unter LLM-Anbieter hinzu, um ein Bildmodell auszuwählen.",
     "imageModelHint": "Wähle das Modell, mit dem Bilder erzeugt werden."

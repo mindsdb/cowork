@@ -31,6 +31,7 @@
       "retryExhausted": "Arrêt anticipé : la tâche échouait à chaque tentative.",
       "questionUnanswered": "Arrêt anticipé : une question est restée sans réponse.",
       "contentFilter": "Arrêt anticipé : le filtre de contenu du modèle a bloqué une réponse.",
+      "userStopped": "Arrêté.",
       "fallback": "Arrêté avant la fin."
     },
     "figureFile": {
@@ -71,7 +72,9 @@
       "thumbnailAlt": "Miniature de l’artefact",
       "deletedTitle": "Cet artefact a été supprimé",
       "liveArtifact": "artefact en direct",
-      "deletedBadge": "Supprimé"
+      "deletedBadge": "Supprimé",
+      "share": "Partager",
+      "shareTooltip": "Choisir qui peut l'ouvrir"
     },
     "kinds": {
       "provider": "Fournisseur",
@@ -107,7 +110,7 @@
       "tryAgainIn": "Réessayer dans {seconds} s",
       "tryAgain": "Réessayer",
       "adminSpendingLimitBody": "La limite de dépenses fixée par votre administrateur a été atteinte. Contactez votre administrateur.",
-      "budgetUsedUpTitle": "Le budget de votre organisation est épuisé",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {Le budget quotidien de votre organisation est épuisé} month {Le budget mensuel de votre organisation est épuisé} year {Le budget annuel de votre organisation est épuisé} other {Le budget de votre organisation est épuisé}}} workspace {{period, select, day {Le budget quotidien de cet espace de travail est épuisé} month {Le budget mensuel de cet espace de travail est épuisé} year {Le budget annuel de cet espace de travail est épuisé} other {Le budget de cet espace de travail est épuisé}}} api_key {{period, select, day {Le budget quotidien de cette clé API est épuisé} month {Le budget mensuel de cette clé API est épuisé} year {Le budget annuel de cette clé API est épuisé} other {Le budget de cette clé API est épuisé}}} team {{period, select, day {Le budget quotidien de votre équipe est épuisé} month {Le budget mensuel de votre équipe est épuisé} year {Le budget annuel de votre équipe est épuisé} other {Le budget de votre équipe est épuisé}}} member {{period, select, day {Votre budget quotidien est épuisé} month {Votre budget mensuel est épuisé} year {Votre budget annuel est épuisé} other {Votre budget est épuisé}}} other {{period, select, day {Un budget quotidien est épuisé} month {Un budget mensuel est épuisé} year {Un budget annuel est épuisé} other {Un budget est épuisé}}}}",
       "viewBudgets": "Voir les budgets",
       "balanceRanOutMobile": "Votre solde a été épuisé avant la fin de cette tâche.",
       "autoTopUpFailedBodyMobile": "Nous n’avons pas pu débiter votre carte.",
@@ -226,7 +229,16 @@
         "notRead": "En file d’attente : la tâche s’est terminée avant de pouvoir lire ceci."
       }
     },
-    "reconnecting": "Tentative de reconnexion"
+    "reconnecting": "Tentative de reconnexion",
+    "nextSteps": {
+      "groupLabel": "Étapes suivantes",
+      "ownData": "Le faire avec mes propres données",
+      "anotherFile": "Faire de même avec un autre fichier",
+      "makePage": "En faire une page",
+      "schedule": "Exécuter selon un planning",
+      "scheduled": "« {title} » planifiée",
+      "scheduledDone": "Planifié ✓"
+    }
   },
   "composer": {
     "placeholder": "Bonjour chef, comment puis-je vous aider aujourd’hui ?",

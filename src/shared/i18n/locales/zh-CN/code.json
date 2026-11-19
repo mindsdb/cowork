@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "无法移除已删除任务的部分文件。请重试清理以释放磁盘空间。",
+    "retry": "重试清理",
+    "retrying": "正在重试清理…",
+    "retryFailed": "无法重试清理。请再试一次。"
+  },
   "reviewPanel": {
     "ariaLabel": "审查更改",
     "closeAriaLabel": "关闭审查面板",
@@ -1023,7 +1029,7 @@
       "noModels": "没有可用的编程模型。",
       "chooseModel": "选择模型以继续。",
       "chooseFolder": "选择文件夹以继续。",
-      "budgetReached": "你的组织预算已用完。请选择可用的模型，或请所有者或管理员提高预算。"
+      "budgetReached": "适用于此模型的预算已用完。请选择可用的模型，或请管理员提高预算。"
     }
   },
   "executionTarget": {
@@ -1309,6 +1315,7 @@
     "record": {
       "approvalDenied": "已拒绝批准",
       "approvalResolved": "已处理批准请求",
+      "folderBusy": "另一个任务正在此文件夹中工作，因此此任务在工作树中工作。",
       "followUpDelivered": "已送达追加指令",
       "requestRejected": "请求被拒绝",
       "taskStatus": "任务状态"
@@ -1466,8 +1473,8 @@
       "body": "{reason}，因此它仍占用磁盘空间。"
     },
     "budgetExceeded": {
-      "title": "你的组织预算已用完",
-      "body": "所有者或管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。"
+      "title": "{scope, select, org {{period, select, day {你的组织每日预算已用完} month {你的组织每月预算已用完} year {你的组织每年预算已用完} other {你的组织预算已用完}}} workspace {{period, select, day {此工作区的每日预算已用完} month {此工作区的每月预算已用完} year {此工作区的每年预算已用完} other {此工作区的预算已用完}}} api_key {{period, select, day {此 API 密钥的每日预算已用完} month {此 API 密钥的每月预算已用完} year {此 API 密钥的每年预算已用完} other {此 API 密钥的预算已用完}}} team {{period, select, day {你所在团队的每日预算已用完} month {你所在团队的每月预算已用完} year {你所在团队的每年预算已用完} other {你所在团队的预算已用完}}} member {{period, select, day {你的每日预算已用完} month {你的每月预算已用完} year {你的每年预算已用完} other {你的预算已用完}}} other {{period, select, day {每日预算已用完} month {每月预算已用完} year {每年预算已用完} other {预算已用完}}}}",
+      "body": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。请选择其他模型，在此任务中继续。} other {在管理员于“预算”中提高上限前，{model} 无法运行。请选择其他模型，在此任务中继续。}}} other {{scope, select, org {所有者或管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。} other {管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。}}}}"
     },
     "writesHeld": {
       "body": "此文件夹没有可用于审阅或撤销更改的 Git 历史记录，因此智能体每次编辑前都会先询问。"
@@ -1629,6 +1636,16 @@
     },
     "initializeGit": "初始化 Git",
     "initializeFailed": "无法初始化 Git。请重试。",
-    "unavailable": "此文件夹没有可用的工作区模式。"
+    "unavailable": "此文件夹没有可用的工作区模式。",
+    "reason": {
+      "notARepository": "此文件夹不是 Git 仓库。要使用工作树，请初始化 Git。",
+      "notARepositoryInFolder": "{folder} 不是 Git 仓库。要使用工作树，请初始化 Git。",
+      "noCommits": "此仓库还没有提交。要使用工作树，请先进行首次提交。",
+      "noCommitsInFolder": "{folder} 还没有提交。要使用工作树，请先进行首次提交。",
+      "noLocalCheckout": "{folder} 在此计算机上没有可用于工作的检出副本。请选择工作树。",
+      "inPlaceUnsupportedPlatform": "此平台暂不支持在原始文件夹中工作。请选择工作树。",
+      "inPlaceOtherComputer": "其他计算机上的任务在隔离的工作树中运行。请选择工作树。",
+      "sharedRepository": "两个项目文件夹位于同一个仓库中，因此不能都直接在文件夹中工作。请选择工作树。"
+    }
   }
 }

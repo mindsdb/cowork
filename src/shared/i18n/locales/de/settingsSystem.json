@@ -142,6 +142,16 @@
     "cancel": "Abbrechen",
     "signingOut": "Wird abgemeldet…",
     "signOut": "Abmelden",
+    "delete": {
+      "title": "Konto löschen",
+      "subtitle": "Beantrage die dauerhafte Löschung deines MindsHub-Kontos.",
+      "button": "Konto löschen",
+      "confirmTitle": "Dein MindsHub-Konto löschen?",
+      "confirmBody": "Der Support prüft deinen Antrag und veranlasst innerhalb von 30 Tagen die Löschung deines Kontos und deiner persönlichen Daten. Einige Konto-, Abrechnungs- und Supportunterlagen können erhalten bleiben. Gehört dir eine Organisation mit weiteren Mitgliedern, hilft dir der Support zunächst, die Inhaberschaft zu übertragen. Die Organisation und ihre gemeinsamen Daten bleiben den übrigen Mitgliedern erhalten. Die Löschung lässt sich nicht rückgängig machen.",
+      "sending": "Wird gesendet…",
+      "requested": "Beantragt am {requestedOn}. Vorgesehener Löschtermin: {deleteBy}.",
+      "error": "Wir konnten deinen Antrag nicht bestätigen. Du kannst ihn bedenkenlos erneut senden."
+    },
     "web": {
       "title": "Über MindsHub verwaltet",
       "body": "In der Webversion wird das Konto über MindsHub verwaltet."

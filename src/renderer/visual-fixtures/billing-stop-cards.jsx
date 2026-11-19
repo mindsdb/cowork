@@ -120,7 +120,7 @@ const CASES = [
   },
   {
     id: 'budget-exceeded-air-room',
-    label: "The org's spending budget is used up and Air's free allowance has room: View budgets, and Switch to MindsHub Air.",
+    label: "A spending budget is used up and Air's free allowance has room: View budgets, and Switch to MindsHub Air.",
     render: () => <BudgetExceededCard {...COMMON} usage={ROOM} onSwitchToAir={noop} />,
   },
   {

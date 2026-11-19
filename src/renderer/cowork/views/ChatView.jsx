@@ -51,7 +51,8 @@ import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provis
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
+import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { useLiveApps } from '../../lib/liveApps';
 import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
@@ -81,7 +82,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget, noPreviewDownloadedNote } from '../lib/artifactActions';
-import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
+import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactCardBySlug, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { displayModelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
@@ -95,6 +96,7 @@ import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLin
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
+import { budgetPeriodOf, budgetScopeOf, budgetModelName } from '../lib/budgetScope';
 import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
@@ -102,6 +104,8 @@ import { ChatScroller } from '../components/chat/ChatScroller';
 import { useStickToBottom } from '../components/chat/useStickToBottom';
 import { useDockInset } from '../components/chat/useDockInset';
 import { TurnActions } from '../components/chat/TurnActions';
+import { NextSteps } from '../components/chat/NextSteps';
+import { nextStepsFor, offersNextSteps, scheduledPromptFor } from '../lib/nextSteps';
 import { UserTurn } from '../components/chat/UserTurn';
 import i18n, { currentLocale, useTranslation } from '../../lib/i18n';
 import { productName } from '../../lib/deploymentBrand';
@@ -427,7 +431,8 @@ const CHAT_ORB_SIZE = 22;
 // reading column of at least 640px, its 40px gutters, and the 320px rail.
 const RAIL_DOCK_MIN_PX = 640 + 40 * 2 + 320;
 
-// Why an answer stopped early, keyed by response.completed's incomplete_details.reason.
+// Why an answer stopped early, keyed by response.completed's incomplete_details.reason,
+// or user_stopped when the turn ended on response.cancelled (someone pressed Stop).
 // Values are chat-namespace keys, translated at render.
 const INCOMPLETE_REASON_KEYS = {
   spend_ceiling: 'chatView.incomplete.spendCeiling',
@@ -438,6 +443,7 @@ const INCOMPLETE_REASON_KEYS = {
   retry_exhausted: 'chatView.incomplete.retryExhausted',
   question_unanswered: 'chatView.incomplete.questionUnanswered',
   content_filter: 'chatView.incomplete.contentFilter',
+  user_stopped: 'chatView.incomplete.userStopped',
 };
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
@@ -635,7 +641,7 @@ export function artifactStepToCard(step, projectPath) {
 // down to the card because an artifact the agent created THIS turn cannot be in
 // an artifacts index that was loaded before it existed, and judging it against
 // one would mark a brand-new artifact "Deleted".
-function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
+function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
@@ -645,6 +651,7 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
           key={s.id}
           artifact={artifactStepToCard(s, projectPath)}
           onOpen={onOpen}
+          onShare={onShare}
           live={live}
         />
       ))}
@@ -864,17 +871,22 @@ function StepConnectorDrafts({ steps, onConnect }) {
   );
 }
 
-export function ArtifactCard({ artifact, onOpen, live = false }) {
+export function ArtifactCard({ artifact, onOpen, onShare = null, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
   // panel had already stopped offering them for the very same artifact.
   const { t } = useTranslation('chat');
   const orgMode = useOrgMode();
+  const liveApps = useLiveApps();
   // Same question the artifacts panel answers by simply not listing the row:
   // is this artifact still there? The card outlives the artifact because it is
   // rendered from the turn's persisted stream events, which no delete rewrites.
   const deleted = useArtifactLiveness(artifact, { live });
+  // A chat card carries no capabilities (only the artifacts list adds them),
+  // so the listed card for the same artifact says whether the person may edit it.
+  const listedCard = useArtifactCardBySlug(artifact.capabilities ? '' : artifact.slug);
+  const capabilities = artifact.capabilities || listedCard?.capabilities || null;
   const [status, setStatus] = useState(null);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
@@ -1129,8 +1141,27 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     ? { label: t('chatView.artifactCard.open'), onClick: openInDefaultApp, tooltip: t('chatView.artifactCard.openInDefaultApp') }
     : null;
   const secondaryAction = sharedLinkAction || downloadAction || openInAppAction;
+  /*
+   * Share offers the viewer's own Share panel, so it follows the viewer's rule
+   * for showing it: a page or document the person may edit, and not a full-stack
+   * live app without a page (those share through "Share with…"). Where nothing
+   * says whether they may edit it yet (an artifact the list hasn't loaded), the
+   * card offers Share and the viewer decides: it opens without the panel for
+   * someone who can't manage it. On Desktop the panel needs the local file,
+   * which the viewer would show disabled without.
+   */
+  const shareAction = onShare && !deleted
+    && isPublishableArtifact(artifact)
+    && !(liveApps && BACKEND_ARTIFACT_TYPES.has(artifact.type) && !published)
+    && capabilities?.canEdit !== false
+    && (orgMode || canAct)
+    ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(artifact), tooltip: t('chatView.artifactCard.shareTooltip') }
+    : null;
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
+  const openAction = !deleted && primaryAction
+    ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+    : null;
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -1202,14 +1233,25 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
       >
-        <ActionBar
-          size="sm"
-          align="start"
-          className="flex-wrap"
-          primary={!deleted && primaryAction
-            ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
-            : null}
-        />
+        {shareAction ? (
+          /* Preview stays the filled action, with Share a full outlined
+             button after it: ActionBar would put its secondary before the
+             primary, in the quiet style. */
+          <div className="flex min-w-0 flex-wrap items-center justify-start gap-1.5">
+            {openAction && (
+              <Tooltip content={openAction.tooltip} side="top">
+                <Button size="sm" variant="primary" disabled={openAction.disabled} onClick={openAction.onClick}>
+                  {openAction.label}
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip content={shareAction.tooltip} side="top">
+              <Button size="sm" variant="default" onClick={shareAction.onClick}>{shareAction.label}</Button>
+            </Tooltip>
+          </div>
+        ) : (
+          <ActionBar size="sm" align="start" className="flex-wrap" primary={openAction} />
+        )}
       </div>
       {/* The footer is the artifact's location bar: the path at rest, and the
           result of an action for the moment it is on screen. One or the
@@ -1522,14 +1564,15 @@ export function FreeServingPausedCard({
 }
 
 /*
- * The org's spending budget is used up (`budget_exceeded`): the gateway's 402
+ * A spending budget is used up (`budget_exceeded`): the gateway's 402
  * on a hard-capped budget, with no reset time. Credits do not lift it, so the
- * card never asks for funds; it links to Budgets, where an owner or admin
+ * card never asks for funds; it links to Budgets, where an administrator
  * raises it. Air may still run on its free allowance, so the switch is offered
  * while the hub read shows room, as on the balance card.
  */
 export function BudgetExceededCard({
-  time, agentLabel, usage, onSwitchToAir, deleting = false,
+  time, agentLabel, usage, onSwitchToAir, budgetScope = null, budgetPeriod = null, budgetModelLabel = null,
+  deleting = false,
 }) {
   const { t } = useTranslation('chat');
   const budgetsUrl = useBudgetsUrl();
@@ -1552,8 +1595,8 @@ export function BudgetExceededCard({
       time={time}
       agentLabel={agentLabel}
       kind={t('chatView.kinds.billing')}
-      title={t('chatView.cards.budgetUsedUpTitle')}
-      body={budgetExceededCopy({ usage })}
+      title={t('chatView.cards.budgetUsedUpTitle', { scope: budgetScopeOf(budgetScope), period: budgetPeriodOf(budgetPeriod) })}
+      body={budgetExceededCopy({ usage, budgetScope, budgetModelLabel })}
       buttons={[
         ...billingActions([{
           label: t('chatView.cards.viewBudgets'),
@@ -2144,6 +2187,10 @@ export default function ChatView({
   // resurrects unanswered questions from persisted history, and a
   // click on one with no live run behind it would 404.
   inFlightSet,
+  // ({ prompt, projectId, answerKey }) — opens the new-schedule form filled
+  // in with the message a finished answer replied to; a save marks that
+  // answer scheduled (lib/scheduledAnswers). Without it, no schedule step.
+  onScheduleFromChat = null,
   // Pending composer redirects from App.jsx, keyed by conversation id:
   // {[taskId]: {text, attachments, bump}}. A question appeared while messages
   // were queued for that task, so their text and files are handed back to its
@@ -2232,9 +2279,16 @@ export default function ChatView({
   // Anything else still routes through the Electron OS handler via
   // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
+  // A new object per Share click, so the viewer opens its panel once per click.
+  const [previewShare, setPreviewShare] = useState(null);
   const handleArtifactOpen = (artifact) => {
     // The card already filters: it only calls onOpen for previewable
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
+    setPreviewShare(null);
+    setPreviewArt(artifact);
+  };
+  const handleArtifactShare = (artifact) => {
+    setPreviewShare({});
     setPreviewArt(artifact);
   };
   // Task settings menu (kebab in header).
@@ -3401,7 +3455,7 @@ export default function ChatView({
                     />
                   );
                 }
-                /* The org's spending budget is used up: Budgets, not funds,
+                /* A spending budget is used up: Budgets, not funds,
                    and Air while its free allowance has room. */
                 if (m.code === 'budget_exceeded') {
                   const budgetResend = lastUserMessageBefore(visibleMessages, i);
@@ -3412,6 +3466,9 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       usage={hubUsage?.usage}
+                      budgetScope={m.budgetScope}
+                      budgetPeriod={m.budgetPeriod}
+                      budgetModelLabel={m.budgetModel ? budgetModelName(m.budgetModel, modelLabels) : null}
                       onSwitchToAir={
                         onSwitchToAirAndResend && budgetResend && taskModelId !== MINDSHUB_AIR_MODEL_ID
                           ? () => onSwitchToAirAndResend(budgetResend.text, budgetResend.attachments)
@@ -3936,14 +3993,57 @@ export default function ChatView({
                     <ArtifactCard
                       artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
                       onOpen={handleArtifactOpen}
+                      onShare={handleArtifactShare}
                     />
                   )}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
+                  {(() => {
+                    if (!onSend || !offersNextSteps({
+                      isLatest: i === lastTurnIdx,
+                      inFlight: isStreaming || !!inFlightSet?.has(task.id),
+                      answer: m,
+                      followedByFailure: visibleMessages.slice(i + 1)
+                        .some((row) => row.role === 'error' || row.role === 'provider_required'),
+                    })) return null;
+                    let u = i - 1;
+                    while (u >= 0 && visibleMessages[u].role !== 'user') u -= 1;
+                    const userMessage = u >= 0 ? visibleMessages[u] : null;
+                    const firstUserIdx = visibleMessages.findIndex((row) => row.role === 'user');
+                    const { resultKind, steps } = nextStepsFor({
+                      firstUserText: firstUserIdx >= 0 ? visibleMessages[firstUserIdx].content : '',
+                      userMessage,
+                      // Only when the history is loaded from its start can
+                      // the first loaded message be the conversation's first.
+                      isFirstTurn: !task.hasMoreMessages && u >= 0 && u === firstUserIdx,
+                      answer: m,
+                    }, { canSchedule: !!onScheduleFromChat && !!scheduledPromptFor(userMessage) });
+                    const answerKey = `${task.id}:${messageKey(m, i)}`;
+                    return (
+                      <NextSteps
+                        answerKey={answerKey}
+                        resultKind={resultKind}
+                        steps={steps}
+                        onSend={onSend}
+                        onSchedule={() => onScheduleFromChat?.({
+                          prompt: scheduledPromptFor(userMessage),
+                          projectId: task.projectId ?? null,
+                          answerKey,
+                        })}
+                      />
+                    );
+                  })()}
                   {m.incompleteReason && (
                     // role="note": a saved answer's notice must not be announced again on every reload.
-                    <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
+                    // A Stop is the person's own choice, so it reads as a plain note, not a warning.
+                    <Alert
+                      variant={m.incompleteReason === 'user_stopped' ? 'info' : 'warning'}
+                      role="note"
+                      icon={m.incompleteReason === 'user_stopped' ? undefined : Ico.warning(16)}
+                      className="mt-2"
+                      data-testid="incomplete-reason"
+                    >
                       {t(INCOMPLETE_REASON_KEYS[m.incompleteReason] || 'chatView.incomplete.fallback')}
                     </Alert>
                   )}
@@ -4006,7 +4106,7 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} live />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
                 <StepConnectorDrafts steps={streamingMsg.steps} onConnect={onConnectCustomConnector} />
               </AnswerTurn>
@@ -4306,7 +4406,9 @@ export default function ChatView({
       <ArtifactViewer
         open={!!previewArt}
         artifact={previewArt}
-        onClose={() => setPreviewArt(null)}
+        shareRequest={previewShare}
+        shareEntry={previewShare ? 'chat_card' : 'viewer'}
+        onClose={() => { setPreviewArt(null); setPreviewShare(null); }}
         onChange={(updated) => setPreviewArt(updated)}
         conversationId={task?.id || null}
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}

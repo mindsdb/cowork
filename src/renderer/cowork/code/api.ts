@@ -2,6 +2,7 @@ import i18n from '../../lib/i18n';
 import { getApiOrigin, isElectron, serverStart } from '../../platform/host';
 import { getCodeFixtureApi } from './fixtures';
 import type { RepositoryStatus, TaskRepositorySetup } from './repositorySetupModels';
+import { workspaceReasonText } from './workspaceMode';
 import type {
   CodeComputer,
   ComputerStatus,
@@ -52,6 +53,11 @@ export interface PendingQuestion {
   }>;
 }
 
+export interface WorkspaceCleanupStatus {
+  failed: number;
+  running: boolean;
+}
+
 /**
  * Approximate storage Cowork manages for each task: workspaces, baselines and
  * recovery data in its own folders. The user's checkout and the repository
@@ -77,6 +83,11 @@ export interface WorkspaceModeOptions {
   /** Why working in the folder itself is not offered; older servers omit it. */
   in_place_unavailable_reason?: string | null;
   worktree_unavailable_reason?: string | null;
+  /** The reasons as codes the UI words itself, with the project folder each names. */
+  in_place_unavailable_code?: string | null;
+  in_place_unavailable_folder?: string | null;
+  worktree_unavailable_code?: string | null;
+  worktree_unavailable_folder?: string | null;
   can_initialize_git?: boolean;
 }
 
@@ -91,6 +102,8 @@ export interface SessionCreateBody {
   allow_direct_folder?: boolean;
   /** Omit to let the server choose for the project and computer. */
   workspace_mode?: WorkspaceMode;
+  /** The mode is a default, not chosen for this task, so the server may isolate a busy folder. */
+  workspace_mode_is_default?: boolean;
   engine_id?: string;
   model?: string;
   permission_mode?: PermissionMode;
@@ -119,6 +132,8 @@ interface CreateCodeTaskBase {
   computerId?: string;
   /** Set only when the composer offered a choice. */
   workspaceMode?: WorkspaceMode;
+  /** True when ``workspaceMode`` came from a default rather than a choice for this task. */
+  workspaceModeIsDefault?: boolean;
 }
 
 export type CreateCodeTaskInput = CreateCodeTaskBase & (
@@ -811,16 +826,28 @@ export async function requestJson<T>(path: string, init?: RequestInit, policy: R
     if (response.status === 404 && detail === 'Not Found') {
       detail = i18n.t('api.outdatedBackend', { ns: 'code' });
     }
-    const error = new Error(detail) as CodingRequestError;
-    error.status = response.status;
     // The server names actionable failures in a header so the UI can offer a
-    // fix (a missing Git identity, a sign-in that no longer matches).
+    // fix (a missing Git identity, a sign-in that no longer matches), and
+    // names a refused workspace mode so its reason reads in the UI's language.
     const code = response.headers?.get?.('X-MindsHub-Error-Code');
+    const error = new Error(workspaceReasonText(code, errorFolder(response), detail)) as CodingRequestError;
+    error.status = response.status;
     if (code) error.code = code;
     throw error;
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+// The folder is percent-encoded because a header carries only Latin-1.
+function errorFolder(response: Response): string | null {
+  const encoded = response.headers?.get?.('X-MindsHub-Error-Folder');
+  if (!encoded) return null;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return null;
+  }
 }
 
 async function ensureCodeService(): Promise<void> {
@@ -853,6 +880,8 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  workspaceCleanup: () => requestJson<WorkspaceCleanupStatus>('/workspace-cleanup'),
+  retryWorkspaceCleanup: () => requestJson<WorkspaceCleanupStatus>('/workspace-cleanup/retry', { method: 'POST' }),
   workspaceUsage: (sessionId?: string) => requestJson<WorkspaceUsagePage>(
     `/workspace-usage${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
   ),

@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Non è stato possibile rimuovere alcuni file delle attività eliminate. Riprova la pulizia per liberare spazio su disco.",
+    "retry": "Riprova la pulizia",
+    "retrying": "Pulizia in corso…",
+    "retryFailed": "Impossibile riprovare la pulizia. Riprova."
+  },
   "reviewPanel": {
     "ariaLabel": "Rivedi le modifiche",
     "closeAriaLabel": "Chiudi il pannello di revisione",
@@ -1023,7 +1029,7 @@
       "noModels": "Nessun modello di codice disponibile.",
       "chooseModel": "Scegli un modello per continuare.",
       "chooseFolder": "Scegli una cartella per continuare.",
-      "budgetReached": "Il budget della tua organizzazione è esaurito. Scegli un modello disponibile o chiedi a un proprietario o a un amministratore di aumentarlo."
+      "budgetReached": "Un budget che copre questo modello è esaurito. Scegli un modello disponibile o chiedi a un amministratore di aumentarlo."
     }
   },
   "executionTarget": {
@@ -1309,6 +1315,7 @@
     "record": {
       "approvalDenied": "Approvazione negata",
       "approvalResolved": "Approvazione gestita",
+      "folderBusy": "Un’altra attività sta lavorando in questa cartella, quindi questa lavora in un worktree.",
       "followUpDelivered": "Istruzione aggiuntiva consegnata",
       "requestRejected": "Richiesta rifiutata",
       "taskStatus": "Stato dell’attività"
@@ -1466,8 +1473,8 @@
       "body": "{reason}, quindi occupa ancora spazio su disco."
     },
     "budgetExceeded": {
-      "title": "Il budget della tua organizzazione è esaurito",
-      "body": "Un proprietario o un amministratore può aumentarlo in «Budget», oppure scegli un modello disponibile per continuare in questa attività."
+      "title": "{scope, select, org {{period, select, day {Il budget giornaliero della tua organizzazione è esaurito} month {Il budget mensile della tua organizzazione è esaurito} year {Il budget annuale della tua organizzazione è esaurito} other {Il budget della tua organizzazione è esaurito}}} workspace {{period, select, day {Il budget giornaliero di quest’area di lavoro è esaurito} month {Il budget mensile di quest’area di lavoro è esaurito} year {Il budget annuale di quest’area di lavoro è esaurito} other {Il budget di quest’area di lavoro è esaurito}}} api_key {{period, select, day {Il budget giornaliero di questa chiave API è esaurito} month {Il budget mensile di questa chiave API è esaurito} year {Il budget annuale di questa chiave API è esaurito} other {Il budget di questa chiave API è esaurito}}} team {{period, select, day {Il budget giornaliero del tuo team è esaurito} month {Il budget mensile del tuo team è esaurito} year {Il budget annuale del tuo team è esaurito} other {Il budget del tuo team è esaurito}}} member {{period, select, day {Il tuo budget giornaliero è esaurito} month {Il tuo budget mensile è esaurito} year {Il tuo budget annuale è esaurito} other {Il tuo budget è esaurito}}} other {{period, select, day {Un budget giornaliero è esaurito} month {Un budget mensile è esaurito} year {Un budget annuale è esaurito} other {Un budget è esaurito}}}}",
+      "body": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Scegli un altro modello per continuare in questa attività.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Scegli un altro modello per continuare in questa attività.}}} other {{scope, select, org {Un proprietario o un amministratore può aumentarlo in «Budget», oppure scegli un modello disponibile per continuare in questa attività.} other {Un amministratore può aumentarlo in «Budget», oppure scegli un modello disponibile per continuare in questa attività.}}}}"
     },
     "writesHeld": {
       "body": "Questa cartella non ha una cronologia Git per rivedere o annullare le modifiche, quindi l’agente chiede prima di ogni modifica."
@@ -1629,6 +1636,16 @@
     },
     "initializeGit": "Inizializza Git",
     "initializeFailed": "Impossibile inizializzare Git. Riprova.",
-    "unavailable": "Nessuna modalità di lavoro è disponibile per questa cartella."
+    "unavailable": "Nessuna modalità di lavoro è disponibile per questa cartella.",
+    "reason": {
+      "notARepository": "Questa cartella non è un repository Git. Inizializza Git per usare un Worktree.",
+      "notARepositoryInFolder": "{folder} non è un repository Git. Inizializza Git per usare un Worktree.",
+      "noCommits": "Questo repository non ha ancora commit. Esegui un primo commit per usare un Worktree.",
+      "noCommitsInFolder": "{folder} non ha ancora commit. Esegui un primo commit per usare un Worktree.",
+      "noLocalCheckout": "{folder} non ha una copia locale su questo computer in cui lavorare. Scegli Worktree.",
+      "inPlaceUnsupportedPlatform": "Lavorare nella cartella originale non è ancora disponibile su questa piattaforma. Scegli Worktree.",
+      "inPlaceOtherComputer": "Le attività su un altro computer vengono eseguite in un worktree isolato. Scegli Worktree.",
+      "sharedRepository": "Due cartelle del progetto sono nello stesso repository, quindi non possono lavorare entrambe direttamente nella cartella. Scegli Worktree."
+    }
   }
 }
