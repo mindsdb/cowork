@@ -8,9 +8,15 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const spies = vi.hoisted(() => ({
+  trackFirstResponse: vi.fn(),
   fetchSessions: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessionResult: vi.fn(),
+}));
+
+vi.mock('./lib/analytics', async (importOriginal) => ({
+  ...(await importOriginal()),
+  trackFirstResponse: spies.trackFirstResponse,
 }));
 
 const streams = [];
@@ -81,6 +87,7 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/');
   __resetDraftsForTests();
   streams.length = 0;
+  spies.trackFirstResponse.mockClear();
   spies.fetchSessions.mockReset().mockResolvedValue([
     { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
   ]);
@@ -88,7 +95,9 @@ beforeEach(() => {
   spies.fetchSessionResult.mockReset().mockResolvedValue({ status: 'ok', task: baseTask });
 });
 
-async function finishTurnWith(user, response, terminal = { type: 'response.completed', response }) {
+const partialAnswer = { type: 'response.output_text.delta', delta: 'Here is how far I got.' };
+
+async function finishTurnWith(user, response, terminal = { type: 'response.completed', response }, event = partialAnswer) {
   render(<App />);
   await user.click(await screen.findByText('Alpha task'));
   const composer = await waitFor(() => {
@@ -105,12 +114,12 @@ async function finishTurnWith(user, response, terminal = { type: 'response.compl
     return streams[streams.length - 1];
   });
   await act(async () => {
-    stream.opts.onEvent({ type: 'response.output_text.delta', delta: 'Here is how far I got.' });
+    stream.opts.onEvent(event);
     stream.opts.onEvent(terminal);
     stream.opts.onDone();
     await Promise.resolve();
   });
-  await screen.findByText('Here is how far I got.');
+  if (event === partialAnswer) await screen.findByText(partialAnswer.delta);
 }
 
 describe('a live answer that stopped early', () => {
@@ -127,8 +136,18 @@ describe('a live answer that stopped early', () => {
     expect(screen.getByTestId('incomplete-reason')).toHaveTextContent('Stopped.');
   });
 
+  it('keeps a stopped tool-only turn visible without counting it as a successful first response', async () => {
+    await finishTurnWith(userEvent.setup(), null, { type: 'response.cancelled' }, {
+      type: 'response.in_progress', thought_role: 'thought.tool_call.progress',
+      tool_use_id: 'shell-1', tool_name: 'shell', content: 'Running command',
+    });
+    expect(await screen.findByTestId('incomplete-reason')).toHaveTextContent('Stopped.');
+    expect(spies.trackFirstResponse).not.toHaveBeenCalled();
+  });
+
   it('shows nothing for an answer that finished', async () => {
     await finishTurnWith(userEvent.setup(), { status: 'completed', incomplete_details: null });
     expect(screen.queryByTestId('incomplete-reason')).toBeNull();
+    expect(spies.trackFirstResponse).toHaveBeenCalledWith('success', undefined);
   });
 });

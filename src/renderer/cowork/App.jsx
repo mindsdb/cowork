@@ -2921,7 +2921,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -2933,7 +2933,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -4490,7 +4490,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -4502,7 +4502,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -5016,7 +5016,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -5028,7 +5028,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -5804,7 +5804,7 @@ function AppCore() {
           // finished message instead of vanishing with the live row (ENG-3554).
           const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
