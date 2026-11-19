@@ -1,10 +1,13 @@
 // Opening a doc in the browser: the shared link when it is published (behind
 // its access choice), else the rendered page from disk on desktop.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const state = vi.hoisted(() => ({ publishedUrl: '', isElectron: true, publishTarget: null, menuProps: null }));
+const state = vi.hoisted(() => ({
+  publishedUrl: '', isElectron: true, publishTarget: null, menuProps: null, orgMode: false,
+  publishOptions: null, refresh: null,
+}));
 const openExternal = vi.fn(async () => {});
 const openPath = vi.fn(async () => ({ ok: true }));
 
@@ -22,8 +25,14 @@ vi.mock('../../../platform/host', () => ({
   isWeb: false,
 }));
 
+vi.mock('../../../lib/orgMode', () => ({ useOrgMode: () => state.orgMode }));
+
 vi.mock('../artifact/publish/usePublish', () => ({
-  usePublish: (target) => { state.publishTarget = target; return { publishedUrl: state.publishedUrl, refresh: vi.fn() }; },
+  usePublish: (target, options) => {
+    state.publishTarget = target;
+    state.publishOptions = options;
+    return { publishedUrl: state.publishedUrl, refresh: state.refresh };
+  },
 }));
 vi.mock('../artifact/publish/PublishMenu', () => ({
   PublishMenu: (props) => { state.menuProps = props; return <button type="button">Share</button>; },
@@ -41,9 +50,13 @@ beforeEach(() => {
   });
   state.publishedUrl = '';
   state.isElectron = true;
+  state.orgMode = false;
+  state.refresh = vi.fn();
   openExternal.mockClear();
   openPath.mockClear();
 });
+
+afterEach(() => { vi.useRealTimers(); });
 
 describe('DocPane sharing', () => {
   it('shares the rendered page, not the doc file', async () => {
@@ -53,6 +66,32 @@ describe('DocPane sharing', () => {
     expect(state.publishTarget.folder).toBeUndefined();
     // The server republishes the page after each save: no Update step.
     expect(state.menuProps).toMatchObject({ noun: 'doc', followsEdits: true });
+  });
+
+  it('offers Share in org mode too', async () => {
+    state.orgMode = true;
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    expect(await screen.findByRole('button', { name: 'Share' })).toBeInTheDocument();
+    expect(state.publishOptions).toMatchObject({ enabled: true });
+  });
+
+  it('in org mode an edit does not reread who the doc is shared with', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    state.orgMode = true;
+    state.publishedUrl = 'https://view.mindshub.ai/view/abc/123';
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    await screen.findByRole('button', { name: 'Share' });
+    act(() => { vi.advanceTimersByTime(1300); });
+    expect(state.refresh).not.toHaveBeenCalled();
+  });
+
+  it('on desktop a published doc rereads its publish state after an edit', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    state.publishedUrl = 'https://view.mindshub.ai/view/abc/123';
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    await screen.findByRole('button', { name: 'Share' });
+    act(() => { vi.advanceTimersByTime(1300); });
+    expect(state.refresh).toHaveBeenCalled();
   });
 
   it('opens the shared link once published', async () => {
