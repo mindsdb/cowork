@@ -2415,9 +2415,20 @@ export default function ChatView({
   // Bumped by closing the pane and by a task change, so a browser still
   // opening doesn't show after it, or in another task.
   const openSeqRef = useRef(0);
+  /* The debt a waiting approval card books in overlay mode: a pane this
+     change closed, to bring back once that card is answered. The ref marks
+     a card decided the first time it's seen, whatever the pane was doing
+     then, so a later render of the same card is never read as a fresh
+     closing opportunity. Both reset on a task change, same as the debt is
+     dropped unpaid on leaving overlay mode below: a dropped debt is never
+     paid. */
+  const closedForCardRef = useRef(new Set());
+  const [pendingRestore, setPendingRestore] = useState(null);
   useEffect(() => {
     openSeqRef.current += 1;
     setShownBrowserId(null);
+    closedForCardRef.current = new Set();
+    setPendingRestore(null);
     /* A task change takes the pane off this browser, so a hand-back still
        waiting for its viewer ends, whoever asked for it (the hand-over card,
        or a voice call's browser_done), and a later hand-over never gets it
@@ -2466,6 +2477,7 @@ export default function ChatView({
     if (browserRequest?.taskId !== task.id || !browserRequest.sessionId) return;
     if (appliedBrowserRequestRef.current === browserRequest.at) return;
     appliedBrowserRequestRef.current = browserRequest.at;
+    setPendingRestore(null);
     setShownBrowserId(browserRequest.sessionId);
     setBrowserRetry((n) => n + 1);
   }, [browserRequest, task.id]);
@@ -2485,6 +2497,55 @@ export default function ChatView({
   useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
   const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
   const browserPaneOpen = browserOpen || blankBrowserOpen || openingBrowserOpen;
+  // Leaving overlay mode drops the debt unpaid: the gate above and this
+  // close only apply there, so a card from that mode has nothing to settle
+  // once the chat and the pane go back to sitting side by side.
+  useEffect(() => {
+    if (!overlayMode) {
+      closedForCardRef.current = new Set();
+      setPendingRestore(null);
+    }
+  }, [overlayMode]);
+  /* Step aside for a waiting approval card the gate above didn't reach: the
+     person opened the pane by hand, or "always show the browser" opened it,
+     before the card arrived. Decided once per card id, whatever the pane is
+     doing at that moment - closing only if the real browser was showing,
+     since that's the only state worth bringing back. The start page and the
+     opening state are closed too (the person sees the same panel over the
+     card either way) but never booked: there's nothing on them to restore,
+     and restoring the opening state would leave a panel starting forever. */
+  useEffect(() => {
+    if (!waitingApprovalCard || !personsTurnId) return;
+    if (closedForCardRef.current.has(personsTurnId)) return;
+    closedForCardRef.current.add(personsTurnId);
+    if (browserOpen) {
+      const sessionId = shownBrowserId;
+      dropHandBack(sessionId);
+      openSeqRef.current += 1;
+      setShownBrowserId(null);
+      setPendingRestore({ questionId: personsTurnId, sessionId });
+    } else if (blankBrowserOpen) {
+      openSeqRef.current += 1;
+      setBlankBrowser(false);
+    } else if (openingBrowserOpen) {
+      openSeqRef.current += 1;
+      setOpeningBrowser(false);
+    }
+  }, [waitingApprovalCard, personsTurnId, browserOpen, blankBrowserOpen, openingBrowserOpen, shownBrowserId]);
+  /* Pay the debt back once the card it was closed for is answered - read
+     from the transcript, not from the turn ending, so a stopped or abandoned
+     turn never puts the pane back over a card still waiting. A message typed
+     instead of answering leaves this card's `data.answer` unset forever, so
+     it never restores either; the existing open rules bring the pane back
+     when the agent's next browser step arrives. */
+  useEffect(() => {
+    if (!pendingRestore) return;
+    const card = (streamingMsg?.steps || []).find((s) => s.data?.question_id === pendingRestore.questionId);
+    if (!card?.data?.answer) return;
+    const { sessionId } = pendingRestore;
+    setPendingRestore(null);
+    if (viewable(sessionId)) setShownBrowserId(sessionId);
+  }, [pendingRestore, streamingMsg]);
   /* On a phone the pane docks at the top of the chat (no taller than half
      the screen) and minimizes to its header instead of closing. It expands
      when Anton starts using the browser, and minimizes when the turn ends so
@@ -2619,6 +2680,8 @@ export default function ChatView({
     />
   ) : null;
   const openBrowserFromShortcut = () => {
+    // The person's own open: any debt a waiting card still holds is dropped unpaid.
+    setPendingRestore(null);
     setBrowserMinimized(false);
     if (viewable(latestBrowserId)) {
       setShownBrowserId(latestBrowserId);
@@ -2654,6 +2717,8 @@ export default function ChatView({
             openSeqRef.current += 1;
             setOpeningBrowser(false);
             setShownBrowserId(null);
+            // The person's own close: any debt a waiting card still holds is dropped unpaid.
+            setPendingRestore(null);
           }}
           extraActions={projectBrowsers}
           dock={browserDock}
@@ -2744,6 +2809,8 @@ export default function ChatView({
     if (step?.badge === BROWSER_BADGE || step?.badge === BROWSER_ACTION_BADGE || step?.badge === BROWSER_APPROVAL_BADGE || step?.badge === BROWSER_HANDOVER_BADGE) {
       const sessionId = step.data?.sessionId || latestBrowserId;
       if (viewable(sessionId)) {
+        // The person's own open: any debt a waiting card still holds is dropped unpaid.
+        setPendingRestore(null);
         setShownBrowserId(sessionId);
         setBrowserMinimized(false);
       }
@@ -2968,6 +3035,8 @@ export default function ChatView({
     openBrowser: () => {
       setBrowserMinimized(false);
       if (viewable(handOverBrowserId)) {
+        // The person's own open: any debt a waiting card still holds is dropped unpaid.
+        setPendingRestore(null);
         setShownBrowserId(handOverBrowserId);
         // A pane that already gave up on its viewer asks again, so the hand-back gets one or ends.
         setBrowserRetry((n) => n + 1);
