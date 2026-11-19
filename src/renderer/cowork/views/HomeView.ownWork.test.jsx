@@ -1,7 +1,8 @@
 // The checklist's "Start with your own work" row opens Home in the own-work
 // mode. Nothing goes out until the person gives Cowork something of theirs (a
-// file, pasted text or a link); a job is optional; what is sent asks Cowork to
-// start on stated assumptions rather than open with a question.
+// file, pasted text or a link, or a job they edited into their own request); a
+// job is optional; what is sent asks Cowork to start on stated assumptions
+// rather than open with a question.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useEffect, useState } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -491,7 +492,8 @@ describe('HomeView own-work mode', () => {
     });
 
     it('keeps text pasted over the job whole, and lets it go out', async () => {
-      render(<Home onSend={vi.fn()} />);
+      const onSend = vi.fn(async () => true);
+      render(<Home onSend={onSend} />);
       const user = userEvent.setup();
       await pickJob(user);
       const box = screen.getByRole('textbox');
@@ -503,6 +505,21 @@ describe('HomeView own-work mode', () => {
       await user.click(screen.getByText(OTHER));
       await waitFor(() => expect(screen.getByRole('textbox'))
         .toHaveValue(`${OTHER} Summarize this contract and list the risks`));
+      await user.click(sendButton());
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(onSend.mock.calls[0][0]).toBe(composeOwnWorkMessage(`${OTHER} Summarize this contract and list the risks`));
+    });
+
+    it('keeps what the person typed after a job when the mode is left, even a lone ":"', async () => {
+      render(<Home onSend={vi.fn()} />);
+      const user = userEvent.setup();
+      await pickJob(user);
+      await pasteAtEnd(user, ':');
+      expect(sendButton()).toBeDisabled();
+
+      await user.click(screen.getByRole('button', { name: 'Remove Your work mode' }));
+      await new Promise((r) => setTimeout(r, 30));
+      expect(screen.getByRole('textbox')).toHaveValue(`${JOB} :`);
     });
 
     it('clears a job left as placed when Home closes, and keeps an edited one', async () => {

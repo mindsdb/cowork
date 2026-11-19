@@ -7,7 +7,8 @@ import { OWN_WORK_JOB_GROUPS } from './taskModes';
 
 // Under the composer in the own-work mode: the ways to hand Cowork something,
 // then optional jobs grouped by kind of work. Nothing here sends; a job only
-// starts the draft, and the composer sends once there is something to work on.
+// starts the draft, and the composer sends once there is something to work on
+// (a job the person edited counts as their own request).
 export default function OwnWorkPanel({ onPickJob, onAttachFiles, waitingForMaterial = false }) {
   const { t } = useTranslation('chat');
   const fileRef = useRef(null);

@@ -27,7 +27,7 @@ vi.mock('../api', async (importOriginal) => {
 const snake = findSample('games', 'classic-snake-game').sample;
 
 // Holds the prefill the way App does, so the sample actually reaches the composer.
-function Home({ onSend, configReady = true }) {
+function Home({ onSend, configReady = true, ownWorkRequest = 0 }) {
   const [prefill, setPrefill] = useState(null);
   return (
     <HomeView
@@ -46,6 +46,7 @@ function Home({ onSend, configReady = true }) {
       prefill={prefill}
       onPrefill={(text, select) => setPrefill({ text, bump: Date.now(), select })}
       onPrefillConsumed={() => setPrefill(null)}
+      ownWorkRequest={ownWorkRequest}
     />
   );
 }
@@ -435,6 +436,22 @@ describe('HomeView console handoff', () => {
     await user.keyboard('{Enter}');
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     expect(onSend.mock.calls[0][1]).toMatchObject({ entryExampleId: 'own-work' });
+  });
+
+  it('does not credit the own-work link once the person left the mode, even if they open it again', async () => {
+    arriveFromConsole('?from=console&start=own-work');
+    const onSend = vi.fn(async () => true);
+    const { rerender } = render(<Home onSend={onSend} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Remove Your work mode' }));
+    rerender(<Home onSend={onSend} ownWorkRequest={1} />);
+    await screen.findByText('What should Cowork work on?');
+
+    await user.type(screen.getByRole('textbox'), 'Weekly ops notes');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toBe(composeOwnWorkMessage('Weekly ops notes'));
+    expect(onSend.mock.calls[0][1]?.entryExampleId).toBeUndefined();
   });
 
   it('does not credit the own-work link for a task sent after the person left the mode', async () => {

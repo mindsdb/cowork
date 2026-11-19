@@ -338,15 +338,24 @@ export default function HomeView({
   // through untouched.
   //
   // The own-work mode sends only once the person has given it something (see
-  // hasOwnMaterial), and composes the message the pre-release test used. Its
+  // hasOwnMaterial: a file, text after an untouched job, or an edited job,
+  // which is their own request), and composes the message the pre-release
+  // test used. Its
   // send is credited to the checklist when the row opened it.
   const ownWork = taskMode === OWN_WORK_MODE;
   const [ownWorkVia, setOwnWorkVia] = useState(null);
   // A job is the app's text only while it is exactly as placed; text after it
   // is the person's material. Once they edit the job, the whole text is their
   // own request, as when they type one without a job: no guessing which words
-  // are the job's. A job with nothing after it is "bare".
-  const isBareJob = (draft) => Boolean(ownWorkJobIn(draft)) && !hasOwnMaterial(draft);
+  // are the job's. A job with nothing at all after it is "bare", the app's
+  // text alone, and is cleared when the mode is left; anything typed after it
+  // stays, even when it is not yet enough to send (a ":").
+  const isBareJob = (draft) => {
+    const job = ownWorkJobIn(draft);
+    return Boolean(job) && !draft.trim().slice(job.prompt.length).trim();
+  };
+  // Whether the composer holds an untouched job still waiting for material.
+  const awaitsMaterial = (draft) => Boolean(ownWorkJobIn(draft)) && !hasOwnMaterial(draft);
   // Whether the composer holds a bare job, for the "Now add…" hint. Set from
   // the composer's text as it changes (React skips the re-render when the
   // answer is unchanged).
@@ -390,7 +399,7 @@ export default function HomeView({
     // Written to the draft store as well, so this render already reads it,
     // before the composer applies the prefill.
     setDraft('new', next);
-    setBareJobShown(isBareJob(next));
+    setBareJobShown(awaitsMaterial(next));
     onPrefill?.(next);
   };
   const sendTracked = async (text, meta) => {
@@ -810,7 +819,7 @@ export default function HomeView({
               harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
               sendsMeta
               canSend={ownWork ? (value) => hasOwnMaterial(value, attachments?.length || 0) : null}
-              onValueChange={ownWork ? (value) => setBareJobShown(isBareJob(value)) : undefined}
+              onValueChange={ownWork ? (value) => setBareJobShown(awaitsMaterial(value)) : undefined}
             />
           )}
           {/* Everything below the composer lives in a zero-height wrapper:
