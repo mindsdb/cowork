@@ -887,7 +887,10 @@ export function setEntryAttribution(entrySource, exampleId, placement) {
 // "not recorded", the same as before the console sent it.
 const placementProps = (placement) => (placement ? { entry_placement: placement } : {});
 
-export function trackAgentSessionStarted() {
+// `exampleId` rides with a send whose start is only known when it goes out
+// (the own-work mode a console link opened): set on arrival, it would also
+// credit an unrelated task sent after the person left the mode.
+export function trackAgentSessionStarted({ exampleId } = {}) {
   const pending = pendingEntryAttribution;
   pendingEntryAttribution = null;
   const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
@@ -896,7 +899,7 @@ export function trackAgentSessionStarted() {
     fresh
       ? {
         entry_source: pending.entry_source,
-        example_id: pending.example_id,
+        example_id: exampleId || pending.example_id,
         ...placementProps(pending.entry_placement),
       }
       : {}

@@ -483,53 +483,18 @@ export function ownWorkJobIn(text) {
   return OWN_WORK_MODE.samples.find((j) => sent.startsWith(j.prompt)) ?? null;
 }
 
-/** The job a prompt belongs to, or null. */
-export const findOwnWorkJob = (prompt) => OWN_WORK_MODE.samples.find((j) => j.prompt === prompt) ?? null;
-
-const words = (text) => text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
-// Fewer new words than this, beside an edited job, read as a reworded job.
-const MIN_ADDED_WORDS = 3;
+// Material has to say something: punctuation left over from an edit (the
+// ":" that replaced a job's full stop) is not something to work on.
+const saysSomething = (text) => /[\p{L}\p{N}]/u.test(text);
 
 /** Whether a draft in the own-work mode carries something of the person's:
-    an attachment, or text beyond the job it starts with. When a job was picked
-    and then edited, so the draft no longer starts with it, a draft that keeps
-    most of the job's words is still that job unless it adds a link or a few
-    words the job does not have: shortening or rewording a job gives Cowork
-    nothing to work on. A draft that dropped the job is the person's own. */
-export function hasOwnMaterial(text, attachmentCount = 0, pickedJob = null) {
+    an attachment, text after a job left exactly as placed, or, with no such
+    job, any text: an edited job is the person's own request. */
+export function hasOwnMaterial(text, attachmentCount = 0) {
   if (attachmentCount > 0) return true;
   const sent = String(text || '').trim();
   const job = ownWorkJobIn(sent);
-  if (job) return sent.slice(job.prompt.length).trim().length > 0;
-  if (!pickedJob) return sent.length > 0;
-  const known = new Set(words(pickedJob.prompt));
-  const drafted = words(sent);
-  const kept = [...known].filter((w) => drafted.includes(w)).length;
-  if (kept * 2 < known.size) return sent.length > 0;
-  if (/(?:https?:\/\/|www\.)\S/i.test(sent)) return true;
-  return drafted.filter((w) => !known.has(w)).length >= MIN_ADDED_WORDS;
-}
-
-/** Where an edited copy of *job* at the start of *text* ends, or -1 when the
-    text does not open with it. The end is the prefix that best matches the
-    job's words (each job word counts for, each other word against), and it
-    has to keep at least half of them. */
-export function editedJobEnd(text, job) {
-  const sent = String(text || '');
-  if (!job) return -1;
-  const known = new Set(words(job.prompt));
-  let score = 0;
-  let best = 0;
-  let end = -1;
-  const seen = new Set();
-  for (const m of sent.matchAll(/[\p{L}\p{N}]+/gu)) {
-    const w = m[0].toLowerCase();
-    if (known.has(w)) { score += 1; seen.add(w); } else score -= 1;
-    if (score > best && seen.size * 2 >= known.size) { best = score; end = m.index + m[0].length; }
-  }
-  if (end < 0) return -1;
-  const tail = sent.slice(end).match(/^[.!?…]*/);
-  return end + (tail ? tail[0].length : 0);
+  return saysSomething(job ? sent.slice(job.prompt.length) : sent);
 }
 
 /** The message the own-work mode sends: the job, or a generic first step when

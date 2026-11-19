@@ -1,7 +1,7 @@
 // A console link opens Home with an existing sample in the composer. It must
 // land editable, never send on its own, and never overwrite the user's draft.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useState } from 'react';
+import { useState, StrictMode } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import HomeView from './HomeView';
@@ -406,7 +406,8 @@ describe('HomeView console handoff', () => {
     expect(screen.getByText('What should Cowork work on?')).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toHaveValue('');
     expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', true, null);
-    expect(setEntryAttribution).toHaveBeenCalledWith('console', 'own-work', null);
+    // The own-work credit rides with the send from the mode, not the arrival.
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', null, null);
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('textbox'));
@@ -419,7 +420,35 @@ describe('HomeView console handoff', () => {
     await user.keyboard('{Enter}');
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     expect(onSend.mock.calls[0][0]).toBe(composeOwnWorkMessage('Weekly ops notes'));
+    expect(onSend.mock.calls[0][1]).toMatchObject({ entryExampleId: 'own-work' });
     await waitFor(() => expect(getSnapshot().completed.has('bring-your-work')).toBe(true));
+  });
+
+  it('credits the own-work link under StrictMode too, which runs mount effects twice', async () => {
+    arriveFromConsole('?from=console&start=own-work');
+    const onSend = vi.fn(async () => true);
+    render(<StrictMode><Home onSend={onSend} /></StrictMode>);
+    const user = userEvent.setup();
+    await screen.findByText('What should Cowork work on?');
+
+    await user.type(screen.getByRole('textbox'), 'Weekly ops notes');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][1]).toMatchObject({ entryExampleId: 'own-work' });
+  });
+
+  it('does not credit the own-work link for a task sent after the person left the mode', async () => {
+    arriveFromConsole('?from=console&start=own-work');
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Remove Your work mode' }));
+
+    await user.type(screen.getByRole('textbox'), 'Plan my week');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toBe('Plan my week');
+    expect(onSend.mock.calls[0][1]?.entryExampleId).toBeUndefined();
   });
 
   it('keeps an unsent draft as the material when it opens the own-work mode', async () => {
@@ -430,7 +459,8 @@ describe('HomeView console handoff', () => {
     expect(await screen.findByDisplayValue('my half-written idea')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove Your work mode' })).toBeInTheDocument();
     expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', true, null);
-    expect(setEntryAttribution).toHaveBeenCalledWith('console', 'own-work', null);
+    // The own-work credit rides with the send from the mode, not the arrival.
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', null, null);
   });
 
   it('replaces a job left unsent from an earlier visit', async () => {

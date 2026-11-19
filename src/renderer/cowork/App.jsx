@@ -4431,7 +4431,7 @@ function AppCore() {
     };
     // Before the session-start event, which clears the console attribution this reads.
     trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text), taskMode: meta?.taskMode, startVia: meta?.startVia });
-    trackAgentSessionStarted();
+    trackAgentSessionStarted({ exampleId: meta?.entryExampleId });
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
       conversationId: suppliedConversationId || (hasPendingFiles || carried ? taskId : undefined),

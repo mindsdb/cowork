@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import TaskModePills from '../components/taskmodes/TaskModePills';
 import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
-import { modeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE, OWN_WORK_MODE, composeOwnWorkMessage, hasOwnMaterial, ownWorkJobIn, findOwnWorkJob, editedJobEnd } from '../components/taskmodes/taskModes';
+import { modeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE, OWN_WORK_MODE, composeOwnWorkMessage, hasOwnMaterial, ownWorkJobIn } from '../components/taskmodes/taskModes';
 import OwnWorkPanel from '../components/taskmodes/OwnWorkPanel';
 import { completeStepTracked } from '../components/onboarding/track';
 import { stepsCompletedBySend } from '../components/onboarding/completion';
@@ -342,42 +342,55 @@ export default function HomeView({
   // send is credited to the checklist when the row opened it.
   const ownWork = taskMode === OWN_WORK_MODE;
   const [ownWorkVia, setOwnWorkVia] = useState(null);
-  // The job last picked, so an edited job is still read as the job, not as
-  // the person's material (see hasOwnMaterial).
-  const [pickedJob, setPickedJob] = useState(null);
-  // Whether the composer's Send is on, so the "Now add…" hint agrees with it.
-  const [ownWorkSendable, setOwnWorkSendable] = useState(false);
-  // A job with nothing added is the app's text. Outside the mode it would go
-  // out bare ("Clean up this customer list.") with no list, so leaving the
-  // mode by any route (the chip, the examples row, Coding Mode) clears it.
-  const isBareJob = (draft, job = null) =>
-    Boolean(draft.trim()) && !hasOwnMaterial(draft, 0, job) && Boolean(ownWorkJobIn(draft) || job);
+  // A job is the app's text only while it is exactly as placed; text after it
+  // is the person's material. Once they edit the job, the whole text is their
+  // own request, as when they type one without a job: no guessing which words
+  // are the job's. A job with nothing after it is "bare".
+  const isBareJob = (draft) => Boolean(ownWorkJobIn(draft)) && !hasOwnMaterial(draft);
+  // Whether the composer holds a bare job, for the "Now add…" hint. Set from
+  // the composer's text as it changes (React skips the re-render when the
+  // answer is unchanged).
+  const [bareJobShown, setBareJobShown] = useState(false);
+  // Leaving the mode by any route (the chip, the examples row, Coding Mode)
+  // clears a bare job: outside the mode it would go out as "Clean up this
+  // customer list." with no list.
   const wasOwnWorkRef = useRef(false);
+  // Whether a console link opened this mode: its task is credited to the link
+  // when it is sent from the mode, not when the mode opens.
+  const ownWorkFromConsoleRef = useRef(false);
   useEffect(() => {
     if (ownWork) { wasOwnWorkRef.current = true; return; }
-    if (wasOwnWorkRef.current && isBareJob(getDraft('new'), pickedJob)) onPrefill?.('');
+    // Only a real exit from the mode: StrictMode runs this again on mount,
+    // after the console handoff may have marked the mode as the link's.
+    if (!wasOwnWorkRef.current) return;
     wasOwnWorkRef.current = false;
+    if (isBareJob(getDraft('new'))) onPrefill?.('');
+    ownWorkFromConsoleRef.current = false;
     setOwnWorkVia(null);
-    setPickedJob(null);
+    setBareJobShown(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownWork]);
-  // Picking a job keeps what the person already pasted, after the job, and
-  // swaps a job picked earlier, edited or not: the message is read as job,
-  // then material.
+  // Closing Home (opening a task, Settings) leaves the mode behind too.
+  const ownWorkRef = useRef(false);
+  ownWorkRef.current = ownWork;
+  useEffect(() => () => {
+    if (ownWorkRef.current && isBareJob(getDraft('new'))) setDraft('new', '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Picking a job keeps what the person wrote: after an untouched job, what
+  // follows it; otherwise all of it, an edited job included, since that is
+  // their own text now. It replaces only a job still as placed.
   const placeOwnWorkJob = (prompt) => {
     const draft = getDraft('new').trim();
     const earlier = ownWorkJobIn(draft);
-    const editedEnd = earlier ? -1 : editedJobEnd(draft, pickedJob);
     const rest = earlier
       ? draft.slice(earlier.prompt.length).trim()
-      : editedEnd >= 0
-        ? draft.slice(editedEnd).trim()
-        : (isUntouchedSample(draft) || isBareJob(draft, pickedJob) ? '' : draft);
+      : (isUntouchedSample(draft) ? '' : draft);
     const next = rest ? `${prompt} ${rest}` : `${prompt} `;
-    setPickedJob(findOwnWorkJob(prompt));
-    // Written to the draft store as well, so this render already reads it
-    // (the hint below), before the composer applies the prefill.
+    // Written to the draft store as well, so this render already reads it,
+    // before the composer applies the prefill.
     setDraft('new', next);
+    setBareJobShown(isBareJob(next));
     onPrefill?.(next);
   };
   const sendTracked = async (text, meta) => {
@@ -390,6 +403,7 @@ export default function HomeView({
       ...meta,
       ...(modeLine ? { taskMode: { task_mode: taskMode.id, mode_line: modeLine, example_placed: Boolean(pickedSample) } } : {}),
       ...(ownWork && ownWorkVia ? { startVia: ownWorkVia } : {}),
+      ...(ownWork && ownWorkFromConsoleRef.current ? { entryExampleId: OWN_WORK_START } : {}),
     };
     const result = await onSend(message, sendMeta);
     if (result) {
@@ -547,7 +561,10 @@ export default function HomeView({
     const { sample } = handoff;
     // The own-work start opens the own-work mode and places nothing.
     const ownWorkOpened = !sample && handoff.start === OWN_WORK_START && Boolean(onPrefill) && !codingModeEnabled;
-    if (ownWorkOpened) setTaskMode(OWN_WORK_MODE);
+    if (ownWorkOpened) {
+      setTaskMode(OWN_WORK_MODE);
+      ownWorkFromConsoleRef.current = true;
+    }
     // A checklist row clicked before the composer was ready asked for the
     // own-work mode; an example placed now would be taken as material there.
     const placed = sample && !ownWorkRequest ? sample.prompt : null;
@@ -569,9 +586,10 @@ export default function HomeView({
     const exampleId = sample ? sampleId(sample.label) : (ownWorkOpened ? OWN_WORK_START : null);
     // The task is credited to the example only if the example was placed (or
     // the own-work mode opened); a kept draft of the user's own is not the
-    // example's doing.
+    // example's doing. The own-work credit is added by the send from the mode
+    // (entryExampleId), so a task sent after leaving it is not credited.
     const credited = sample ? prefilled : ownWorkOpened;
-    setEntryAttribution(handoff.entrySource, credited ? exampleId : null, handoff.placement);
+    setEntryAttribution(handoff.entrySource, sample && prefilled ? exampleId : null, handoff.placement);
     trackComposerReady(handoff.entrySource, exampleId, credited, handoff.placement);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerUsable]);
@@ -791,8 +809,8 @@ export default function HomeView({
               codingModelDefault={codingModelDefault}
               harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
               sendsMeta
-              canSend={ownWork ? (value) => hasOwnMaterial(value, attachments?.length || 0, pickedJob) : null}
-              onSendableChange={setOwnWorkSendable}
+              canSend={ownWork ? (value) => hasOwnMaterial(value, attachments?.length || 0) : null}
+              onValueChange={ownWork ? (value) => setBareJobShown(isBareJob(value)) : undefined}
             />
           )}
           {/* Everything below the composer lives in a zero-height wrapper:
@@ -817,7 +835,7 @@ export default function HomeView({
               ownWork
                 ? (onPrefill && (
                   <OwnWorkPanel
-                    waitingForMaterial={Boolean(pickedJob) && !ownWorkSendable}
+                    waitingForMaterial={bareJobShown && !attachments?.length}
                     onPickJob={placeOwnWorkJob}
                     onAttachFiles={onAttachFiles}
                   />

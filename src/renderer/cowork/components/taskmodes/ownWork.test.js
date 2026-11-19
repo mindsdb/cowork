@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   OWN_WORK_MODE, OWN_WORK_JOB_GROUPS, OWN_WORK_LEAD, OWN_WORK_START_NOW, TASK_MODES,
-  composeOwnWorkMessage, hasOwnMaterial, ownWorkJobIn, editedJobEnd,
+  composeOwnWorkMessage, hasOwnMaterial, ownWorkJobIn,
 } from './taskModes';
 import enChat from '../../../../shared/i18n/locales/en/chat.json';
 
@@ -51,24 +51,14 @@ describe('hasOwnMaterial', () => {
     expect(hasOwnMaterial('https://example.com')).toBe(true);
   });
 
-  describe('after a job was picked and then edited', () => {
-    const picked = OWN_WORK_MODE.samples.find((j) => j.prompt === JOB);
+  it('needs a letter or a number: punctuation alone is not material', () => {
+    expect(hasOwnMaterial('…')).toBe(false);
+    expect(hasOwnMaterial(`${JOB} :`)).toBe(false);
+  });
 
-    it('reads a shortened or reworded job as the job, with nothing to work on', () => {
-      expect(hasOwnMaterial('Clean up this customer list and flag duplicates', 0, picked)).toBe(false);
-      expect(hasOwnMaterial('Clean up this customer list.', 0, picked)).toBe(false);
-      expect(hasOwnMaterial('Clean up this client list and flag duplicates.', 0, picked)).toBe(false);
-    });
-
-    it('counts a link or a few words of the person\'s own added to it', () => {
-      expect(hasOwnMaterial('Clean up this customer list https://example.com/c.csv', 0, picked)).toBe(true);
-      expect(hasOwnMaterial('Clean up this customer list: Ada, Bob, Cy', 0, picked)).toBe(true);
-      expect(hasOwnMaterial('Clean up this customer list.', 1, picked)).toBe(true);
-    });
-
-    it('counts text that dropped the job as the person\'s own', () => {
-      expect(hasOwnMaterial('Q3 numbers', 0, picked)).toBe(true);
-    });
+  it('reads an edited job as the person\'s own request', () => {
+    expect(hasOwnMaterial('Flag duplicates.')).toBe(true);
+    expect(hasOwnMaterial('Clean up this customer list.')).toBe(true);
   });
 });
 
@@ -99,21 +89,5 @@ describe('ownWorkJobIn', () => {
     expect(ownWorkJobIn(`${JOB} more`)?.prompt).toBe(JOB);
     expect(ownWorkJobIn(`please ${JOB}`)).toBeNull();
     expect(ownWorkJobIn('')).toBeNull();
-  });
-});
-
-describe('editedJobEnd', () => {
-  const picked = OWN_WORK_MODE.samples.find((j) => j.prompt === JOB);
-
-  it('finds where an edited job ends, past its full stop', () => {
-    const text = 'Clean up this client list and flag duplicates. name,email';
-    expect(text.slice(editedJobEnd(text, picked)).trim()).toBe('name,email');
-    const shortened = 'Clean up this customer list. Ada, Bob';
-    expect(shortened.slice(editedJobEnd(shortened, picked)).trim()).toBe('Ada, Bob');
-  });
-
-  it('is -1 when the text does not open with the job, or no job was picked', () => {
-    expect(editedJobEnd('Q3 numbers for the board', picked)).toBe(-1);
-    expect(editedJobEnd(JOB, null)).toBe(-1);
   });
 });

@@ -69,6 +69,30 @@ function Home({ onSend, attachments = [], onAttachFiles = vi.fn(), request = 1, 
 
 const sendButton = () => screen.getByRole('button', { name: 'Send' });
 
+const OTHER = 'Compare these two price lists and show what changed.';
+
+// Edits the composer the way a person does in place: select a stretch and
+// type over it (or delete it), then optionally paste at the end.
+async function editComposer(user, start, end, typed) {
+  const box = screen.getByRole('textbox');
+  box.focus();
+  box.setSelectionRange(start, end);
+  await user.keyboard(typed || '{Backspace}');
+}
+async function pasteAtEnd(user, text) {
+  const box = screen.getByRole('textbox');
+  box.focus();
+  box.setSelectionRange(box.value.length, box.value.length);
+  await user.paste(text);
+}
+async function pickJob(user) {
+  await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
+  await user.click(screen.getByText(JOB));
+  await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(`${JOB} `));
+}
+// "Clean up this customer list| and flag duplicates.|"
+const LIST_END = 'Clean up this customer list'.length;
+
 beforeEach(() => {
   window.localStorage.clear();
   __resetDraftsForTests();
@@ -289,37 +313,6 @@ describe('HomeView own-work mode', () => {
     expect(sendButton()).toBeDisabled();
   });
 
-  it('keeps Send off when a picked job is shortened or reworded with nothing added', async () => {
-    const onSend = vi.fn(async () => true);
-    render(<Home onSend={onSend} />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
-    await user.click(screen.getByText(JOB));
-    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(`${JOB} `));
-
-    await user.clear(screen.getByRole('textbox'));
-    await user.type(screen.getByRole('textbox'), 'Clean up this customer list.');
-    await new Promise((r) => setTimeout(r, 30));
-    expect(sendButton()).toBeDisabled();
-    expect(screen.getByText(/Now add what it should work on/)).toBeInTheDocument();
-    await user.keyboard('{Enter}');
-    expect(onSend).not.toHaveBeenCalled();
-  });
-
-  it('sends an edited job once the person adds a link or some words of their own', async () => {
-    const onSend = vi.fn(async () => true);
-    render(<Home onSend={onSend} />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
-    await user.click(screen.getByText(JOB));
-    await user.clear(screen.getByRole('textbox'));
-    await user.type(screen.getByRole('textbox'), 'Clean up this customer list ');
-    await user.paste('https://example.com/customers.csv');
-
-    await waitFor(() => expect(sendButton()).toBeEnabled());
-    expect(screen.queryByText(/Now add what it should work on/)).not.toBeInTheDocument();
-  });
-
   it('sends the person\'s own short request once they replace the job entirely', async () => {
     const onSend = vi.fn(async () => true);
     render(<Home onSend={onSend} />);
@@ -333,19 +326,6 @@ describe('HomeView own-work mode', () => {
     await user.keyboard('{Enter}');
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     expect(onSend.mock.calls[0][0]).toBe(composeOwnWorkMessage('Q3 numbers'));
-  });
-
-  it('swaps an edited job for the next one picked instead of joining them', async () => {
-    render(<Home onSend={vi.fn()} />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
-    await user.click(screen.getByText(JOB));
-    await user.clear(screen.getByRole('textbox'));
-    await user.type(screen.getByRole('textbox'), 'Clean up this customer list');
-
-    const other = 'Compare these two price lists and show what changed.';
-    await user.click(screen.getByText(other));
-    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(`${other} `));
   });
 
   it('clears a job with nothing added when the mode is removed, so it cannot go out bare', async () => {
@@ -464,24 +444,79 @@ describe('HomeView own-work mode', () => {
     expect(onSend.mock.calls[2][0]).toBe(composeOwnWorkMessage('notes from the call'));
   });
 
-  it('swaps an edited job that has material after it, keeping only the material', async () => {
-    render(<Home onSend={vi.fn()} />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
-    await user.click(screen.getByText(JOB));
-    await user.clear(screen.getByRole('textbox'));
-    await user.type(screen.getByRole('textbox'), 'Clean up this client list and flag duplicates. ');
-    await user.paste('name,email\nAda,ada@example.com');
-
-    const other = 'Compare these two price lists and show what changed.';
-    await user.click(screen.getByText(other));
-    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(`${other} name,email\nAda,ada@example.com`));
-  });
-
   it('clears the retired own-work prompt saved as a draft when Home opens', async () => {
     setDraft('new', RETIRED_OWN_WORK_PROMPT);
     render(<Home onSend={vi.fn()} request={0} />);
 
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
+  });
+
+  describe('when the person edits the picked job', () => {
+    it('reads an edited job as their own request: Send turns on and it goes out as written', async () => {
+      const onSend = vi.fn(async () => true);
+      render(<Home onSend={onSend} />);
+      const user = userEvent.setup();
+      await pickJob(user);
+      expect(sendButton()).toBeDisabled();
+      await editComposer(user, LIST_END, JOB.length, '.');
+
+      await waitFor(() => expect(sendButton()).toBeEnabled());
+      expect(screen.queryByText(/Now add what it should work on/)).not.toBeInTheDocument();
+      await user.click(sendButton());
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(onSend.mock.calls[0][0]).toBe(composeOwnWorkMessage('Clean up this customer list.'));
+    });
+
+    it('keeps all of their text, the edited job included, when another job is picked', async () => {
+      render(<Home onSend={vi.fn()} />);
+      const user = userEvent.setup();
+      await pickJob(user);
+      await editComposer(user, LIST_END, JOB.length, '.');
+      await pasteAtEnd(user, '\nCustomer list for November\nAda,ada@example.com');
+
+      await user.click(screen.getByText(OTHER));
+      await waitFor(() => expect(screen.getByRole('textbox'))
+        .toHaveValue(`${OTHER} Clean up this customer list. \nCustomer list for November\nAda,ada@example.com`));
+    });
+
+    it('replaces a job still as placed and keeps the whole paste after it, even one repeating its words', async () => {
+      render(<Home onSend={vi.fn()} />);
+      const user = userEvent.setup();
+      await pickJob(user);
+      await pasteAtEnd(user, 'Customer list for November\nAda,ada@example.com');
+
+      await user.click(screen.getByText(OTHER));
+      await waitFor(() => expect(screen.getByRole('textbox'))
+        .toHaveValue(`${OTHER} Customer list for November\nAda,ada@example.com`));
+    });
+
+    it('keeps text pasted over the job whole, and lets it go out', async () => {
+      render(<Home onSend={vi.fn()} />);
+      const user = userEvent.setup();
+      await pickJob(user);
+      const box = screen.getByRole('textbox');
+      box.focus();
+      box.setSelectionRange(0, box.value.length);
+      await user.paste('Summarize this contract and list the risks');
+
+      await waitFor(() => expect(sendButton()).toBeEnabled());
+      await user.click(screen.getByText(OTHER));
+      await waitFor(() => expect(screen.getByRole('textbox'))
+        .toHaveValue(`${OTHER} Summarize this contract and list the risks`));
+    });
+
+    it('clears a job left as placed when Home closes, and keeps an edited one', async () => {
+      const first = render(<Home onSend={vi.fn()} />);
+      const user = userEvent.setup();
+      await pickJob(user);
+      first.unmount();
+      expect(getDraft('new')).toBe('');
+
+      const second = render(<Home onSend={vi.fn()} />);
+      await pickJob(user);
+      await editComposer(user, LIST_END, JOB.length, '.');
+      second.unmount();
+      expect(getDraft('new')).toBe('Clean up this customer list. ');
+    });
   });
 });
