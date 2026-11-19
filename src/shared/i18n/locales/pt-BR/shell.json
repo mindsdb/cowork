@@ -415,7 +415,7 @@
       "fromDesktop": "Sua conta está pronta. Você pode começar aqui mesmo ou voltar ao app {product} e entrar.",
       "dismiss": "Dispensar"
     },
-    "ownWorkHeading": "No que o Cowork deve trabalhar?"
+    "ownWorkHeading": "No que o {product} deve trabalhar?"
   },
   "logout": {
     "title": "Sair do {product}?",

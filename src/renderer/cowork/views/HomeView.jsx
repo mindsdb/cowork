@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import TaskModePills from '../components/taskmodes/TaskModePills';
 import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
-import { modeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE, OWN_WORK_MODE, composeOwnWorkMessage, hasOwnMaterial } from '../components/taskmodes/taskModes';
+import { modeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE, OWN_WORK_MODE, composeOwnWorkMessage, hasOwnMaterial, ownWorkJobIn } from '../components/taskmodes/taskModes';
 import OwnWorkPanel from '../components/taskmodes/OwnWorkPanel';
 import { completeStepTracked } from '../components/onboarding/track';
 import { stepsCompletedBySend } from '../components/onboarding/completion';
@@ -16,7 +16,7 @@ import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamp
 import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
 import { takeSignupWelcome, SIGNUP_FROM_DESKTOP } from '../lib/signupWelcome';
 import { productName } from '../../lib/deploymentBrand';
-import { getDraft } from '../lib/draftStore';
+import { getDraft, setDraft } from '../lib/draftStore';
 import i18n, { useTranslation } from '../../lib/i18n';
 
 // ── Boot choreography ───────────────────────────────────────────────────
@@ -340,13 +340,22 @@ export default function HomeView({
   // hasOwnMaterial), and composes the message the pre-release test used. Its
   // send is credited to the checklist when the row opened it.
   const ownWork = taskMode === OWN_WORK_MODE;
-  const [pickedJob, setPickedJob] = useState(false);
   const [ownWorkVia, setOwnWorkVia] = useState(null);
   useEffect(() => {
-    if (ownWork) return;
-    setPickedJob(false);
-    setOwnWorkVia(null);
+    if (!ownWork) setOwnWorkVia(null);
   }, [ownWork]);
+  // Picking a job keeps what the person already pasted, after the job, and
+  // swaps a job picked earlier: the message is read as job, then material.
+  const placeOwnWorkJob = (prompt) => {
+    const draft = getDraft('new').trim();
+    const earlier = ownWorkJobIn(draft);
+    const rest = earlier ? draft.slice(earlier.prompt.length).trim() : (isUntouchedSample(draft) ? '' : draft);
+    const next = rest ? `${prompt} ${rest}` : `${prompt} `;
+    // Written to the draft store as well, so this render already reads it
+    // (the hint below), before the composer applies the prefill.
+    setDraft('new', next);
+    onPrefill?.(next);
+  };
   const sendTracked = async (text, meta) => {
     const { text: message, modeLine } = ownWork
       ? { text: composeOwnWorkMessage(text), modeLine: null }
@@ -359,7 +368,7 @@ export default function HomeView({
     if (result) {
       const done = stepsCompletedBySend(message);
       // An example the person picked and then edited still counts as tried.
-      if (pickedSample && resemblesSample(pickedSample, text)) done.push('see-it-work');
+      if (!ownWork && pickedSample && resemblesSample(pickedSample, text)) done.push('see-it-work');
       done.forEach((id) => completeStepTracked(id, ownWork && ownWorkVia ? ownWorkVia : 'composer'));
     }
     setTaskMode(null);
@@ -456,7 +465,7 @@ export default function HomeView({
   const showText = phase === 'typing' || phase === 'settling' || phase === 'idle';
   const typedText = (phase === 'typing')
     ? greetingText.slice(0, typedCount)
-    : (taskMode === OWN_WORK_MODE ? t('home.ownWorkHeading') : greetingText);
+    : (taskMode === OWN_WORK_MODE ? t('home.ownWorkHeading', { product: productName('Cowork') }) : greetingText);
 
   // Composer fades in during 'settling' and stays for 'idle'.
   const showInteractiveSurface = phase === 'settling' || phase === 'idle';
@@ -519,6 +528,11 @@ export default function HomeView({
 
   useEffect(() => {
     if (!ownWorkRequest || !composerUsable || codingModeEnabled) return;
+    // An example or job left in the composer is the app's text, not the
+    // person's material, so the mode starts without it.
+    const draft = getDraft('new');
+    if (draft && isUntouchedSample(draft)) onPrefill?.('');
+    setPickedSample(null);
     setTaskMode(OWN_WORK_MODE);
     setOwnWorkVia('checklist');
     onOwnWorkRequestConsumed?.();
@@ -751,8 +765,8 @@ export default function HomeView({
               ownWork
                 ? (onPrefill && (
                   <OwnWorkPanel
-                    waitingForMaterial={pickedJob && !(attachments?.length)}
-                    onPickJob={(prompt) => { setPickedJob(true); onPrefill(`${prompt} `); }}
+                    waitingForMaterial={Boolean(ownWorkJobIn(getDraft('new'))) && !hasOwnMaterial(getDraft('new'), attachments?.length || 0)}
+                    onPickJob={placeOwnWorkJob}
                     onAttachFiles={onAttachFiles}
                   />
                 ))

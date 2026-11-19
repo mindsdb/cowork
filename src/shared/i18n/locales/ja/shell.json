@@ -415,7 +415,7 @@
       "fromDesktop": "アカウントの準備ができました。ここからすぐに始めるか、{product} アプリに戻ってサインインしてください。",
       "dismiss": "閉じる"
     },
-    "ownWorkHeading": "Coworkに何をしてもらいますか？"
+    "ownWorkHeading": "{product}に何をしてもらいますか？"
   },
   "logout": {
     "title": "{product}からサインアウトしますか？",

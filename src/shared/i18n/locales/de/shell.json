@@ -415,7 +415,7 @@
       "fromDesktop": "Ihr Konto ist bereit. Sie können direkt hier loslegen oder zur {product}-App zurückkehren und sich anmelden.",
       "dismiss": "Schließen"
     },
-    "ownWorkHeading": "Woran soll Cowork arbeiten?"
+    "ownWorkHeading": "Woran soll {product} arbeiten?"
   },
   "logout": {
     "title": "Von {product} abmelden?",
