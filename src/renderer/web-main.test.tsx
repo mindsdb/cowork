@@ -21,7 +21,7 @@ import { act } from 'react';
 const rendered = {
   provider: false,
   providerInitOptions: null as unknown,
-  shellRoot: null as null | { shell: unknown; initOptions: unknown },
+  shellRoot: null as null | { shell: unknown; initOptions: unknown; session: unknown },
   handoffAtProvider: null as string | null,
   settingsAtAuth: null as string | null,
   app: false,
@@ -70,8 +70,8 @@ vi.mock('./App', () => ({
 
 // The app's root (ENG-4023) has its own tests; here only which root renders.
 vi.mock('./MobileShellRoot', () => ({
-  MobileShellRoot: ({ children, shell, initOptions }: { children?: unknown; shell: unknown; initOptions: unknown }) => {
-    rendered.shellRoot = { shell, initOptions };
+  MobileShellRoot: ({ children, shell, initOptions, session }: { children?: unknown; shell: unknown; initOptions: unknown; session: unknown }) => {
+    rendered.shellRoot = { shell, initOptions, session };
     rendered.settingsAtAuth = window.sessionStorage.getItem('anton.settingsDeepLink');
     return children ?? null;
   },
@@ -94,10 +94,14 @@ vi.mock('./cowork/lib/organizationTransition', () => ({
 // client. Same for the skin loader (localStorage) and the CSS side-effect
 // imports, which Vite handles in a real build but not here.
 // keycloak.ts builds the app's adapter only inside the app; null in a browser.
-const adapterState = vi.hoisted(() => ({ adapter: null as null | { login: () => void } }));
+const adapterState = vi.hoisted(() => ({
+  adapter: null as null | { login: () => void },
+  session: null as null | { restore: () => unknown; save: () => unknown; forget: () => unknown },
+}));
 vi.mock('./lib/keycloak', () => ({
   keycloak: { onAuthError: null },
   get mobileShellAdapter() { return adapterState.adapter; },
+  get mobileSession() { return adapterState.session; },
 }));
 vi.mock('./lib/skins', () => ({
   loadSkin: () => skinState.skin,
@@ -397,15 +401,20 @@ describe('web-main inside the mobile app (ENG-4023)', () => {
 
   it('renders the app root, marks the page, and covers the viewport', async () => {
     setUserAgent(`${realUserAgent} MindsHubCowork-iOS/1.0.0`);
+    const session = { restore: () => null, save: () => {}, forget: () => {} };
     adapterState.adapter = { login: () => {} };
+    adapterState.session = session;
     const r = await renderOnHost('cowork.mindshub.ai');
     adapterState.adapter = null;
+    adapterState.session = null;
 
     expect(r.app).toBe(true);
     expect(r.provider).toBe(false);
     expect(r.shellRoot?.shell).toEqual({ platform: 'ios', version: '1.0.0' });
     // No login on load: the app's sign-in screen opens the sheet on a tap.
     expect(r.shellRoot?.initOptions).toStrictEqual({ onLoad: undefined, pkceMethod: 'S256', checkLoginIframe: false, adapter: expect.anything() });
+    // The saved session is handed to the shell root so it can restore it at launch.
+    expect(r.shellRoot?.session).toBe(session);
     expect(r.identityRequired).toBe(true);
     expect(document.documentElement.dataset.shell).toBe('ios');
     expect(document.querySelector('meta[name="viewport"]')?.getAttribute('content'))

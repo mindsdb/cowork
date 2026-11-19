@@ -4,11 +4,15 @@ import {
   applyHtmlVisualEditAtRanges,
   createHtmlVisualEditorDocument,
 } from './htmlVisualEditorDocument';
+import { createFrameToken } from './frameToken';
 import {
   HTML_VISUAL_EDITOR_PARENT_SOURCE,
   HTML_VISUAL_EDITOR_SOURCE,
 } from './htmlVisualEditorRuntime';
 import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
+import { normalizePreviewView } from '../usePreviewView';
+import { EditModeSwitch } from './EditModeSwitch';
+import { Spinner, Tooltip } from '../../ui';
 import { useTranslation } from '../../../../lib/i18n';
 
 /* The frame runtime names a selected element in English (or by the page's own
@@ -22,21 +26,8 @@ const ELEMENT_LABEL_KEYS = {
   Text: 'text',
 };
 
-// The token is a trust boundary: the parent accepts an editing postMessage only
-// when it matches, so the artifact's own scripts must not be able to guess it.
-// Same ladder as `allocateConversationId` in api.js — randomUUID is gated to
-// secure contexts, getRandomValues is not, and Math.random is the last resort
-// for an environment with no crypto at all (not a real Electron/browser case).
-function createToken() {
-  const uuid = globalThis.crypto?.randomUUID?.();
-  if (uuid) return uuid;
-  const bytes = globalThis.crypto?.getRandomValues?.(new Uint8Array(16));
-  if (bytes) return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
 function buildFrame(content, baseUrl) {
-  const token = createToken();
+  const token = createFrameToken();
   const document = createHtmlVisualEditorDocument(content, { baseUrl, token });
   return { key: token, token, ...document };
 }
@@ -48,6 +39,18 @@ export function ArtifactHtmlVisualEditor({
   onSave,
   draftUrl,
   onTextSelection,
+  // Whether the editor is on screen (Edit), not hidden behind Preview.
+  active = true,
+  // `{ view, seq }` from usePreviewView: where the user is in the Preview.
+  previewView = null,
+  // Hears where the user is in the canvas (a normalized view, as the
+  // Preview's), so a save made here keeps the Preview on the same slide.
+  onViewChange = null,
+  // Leaves Live edit; given when the viewer's toolbar (and its toggle) is hidden.
+  onExit = null,
+  // `{ dirty, saving, canEdit, onSave, onDiscard }`: Save and Discard, right
+  // of Advanced, while there is unsaved text.
+  editActions = null,
 }) {
   const { t } = useTranslation('artifacts');
   const iframeRef = useRef(null);
@@ -58,6 +61,10 @@ export function ArtifactHtmlVisualEditor({
   const sourceKeyRef = useRef(sourceKey);
   const [showSource, setShowSource] = useState(false);
   const [frame, setFrame] = useState(() => buildFrame(value, documentUrl));
+  // The source the canvas reflects: the one it was built from plus every edit
+  // made in it. Equal to the draft means the canvas is current and can stay
+  // on whatever slide or page the user moved it to.
+  const frameValueRef = useRef(value);
   // Built from the source first, then inlined: element ranges are offsets
   // into the source, and parse5 never parses the inlined document.
   const inlined = useInlinedFrameDocument(frame.content, documentUrl);
@@ -65,17 +72,69 @@ export function ArtifactHtmlVisualEditor({
   const cancelSnapshotRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [editableCount, setEditableCount] = useState(frame.editableCount);
+  // Navigate / Edit (EditModeSwitch); kept across canvas rebuilds, which
+  // hear it again on their 'ready'.
+  const [editMode, setEditMode] = useState('edit');
+  const editModeRef = useRef(editMode);
+  editModeRef.current = editMode;
   const [selection, setSelection] = useState(null);
   const [error, setError] = useState('');
+  // Opening on the Preview's view. `seenViewSeqRef` is the last preview view
+  // considered, so a view is applied once and the editor otherwise keeps
+  // whatever slide the user moved it to. A replay needs the page as it loaded,
+  // so a canvas that may have moved (it was on screen, or already replayed a
+  // view) is rebuilt first. `pendingViewRef` waits for the frame to be ready.
+  const seenViewSeqRef = useRef(0);
+  const pendingViewRef = useRef(null);
+  const frameMovedRef = useRef(false);
+  const [viewRequest, setViewRequest] = useState(0);
+  // false, or what is being replayed: 'preview' (opening on the Preview's
+  // view) or 'own' (going back to the canvas's own place after a rebuild).
+  const [syncingView, setSyncingView] = useState(false);
+  const pendingKindRef = useRef('preview');
+  const syncTimerRef = useRef(0);
+  // Keeping the place across a rebuild (ENG-4383). The runtime reports where
+  // the user is in the canvas (htmlVisualEditorRuntime.js view recorder); a
+  // rebuild because the content changed replays it into the new canvas, as
+  // the Preview's view is replayed when Edit opens. The report comes from
+  // inside the artifact: it is checked like the Preview's.
+  const ownViewRef = useRef(null);
+  const onViewChangeRef = useRef(onViewChange);
+  onViewChangeRef.current = onViewChange;
 
-  const rebuildFrame = useCallback((content) => {
+  const postMode = useCallback((mode) => {
+    iframeRef.current?.contentWindow?.postMessage({
+      source: HTML_VISUAL_EDITOR_PARENT_SOURCE,
+      type: 'mode',
+      mode,
+    }, '*');
+  }, []);
+  const changeEditMode = useCallback((mode) => {
+    setEditMode(mode);
+    postMode(mode);
+  }, [postMode]);
+
+  // keepPlace: the content changed under the user, who stays where they
+  // were. Otherwise the canvas starts over (a replay that missed, another
+  // file) and its own place is forgotten.
+  const rebuildFrame = useCallback((content, { keepPlace = false } = {}) => {
+    if (keepPlace && ownViewRef.current && !pendingViewRef.current) {
+      pendingViewRef.current = ownViewRef.current;
+      pendingKindRef.current = 'own';
+    } else if (!keepPlace) {
+      ownViewRef.current = null;
+      onViewChangeRef.current?.(null);
+    }
+    frameMovedRef.current = false;
     visualValueRef.current = content;
+    frameValueRef.current = content;
     const nextFrame = buildFrame(content, documentUrl);
     elementRangesRef.current = nextFrame.elements;
     cancelSnapshotRef.current = null;
     setFrame(nextFrame);
     setEditableCount(nextFrame.editableCount);
     setReady(false);
+    setSyncingView(false);
     setSelection(null);
     setError('');
   }, [documentUrl]);
@@ -84,7 +143,7 @@ export function ArtifactHtmlVisualEditor({
     const sourceChanged = sourceKeyRef.current !== sourceKey;
     if (sourceChanged) sourceKeyRef.current = sourceKey;
     if (sourceChanged || (!showSource && value !== visualValueRef.current)) {
-      rebuildFrame(value);
+      rebuildFrame(value, { keepPlace: !sourceChanged });
     } else if (showSource && value !== visualValueRef.current) {
       // A discard or external refresh can still replace the draft while the
       // advanced source view is open. Keep the next canvas mount in sync.
@@ -107,6 +166,7 @@ export function ArtifactHtmlVisualEditor({
       if (message.type === 'ready') {
         setReady(true);
         setEditableCount(message.editableCount || 0);
+        postMode(editModeRef.current);
       } else if (message.type === 'selection') {
         setSelection(message.elementId ? { id: message.elementId, label: message.label } : null);
         if (message.elementId) {
@@ -126,6 +186,7 @@ export function ArtifactHtmlVisualEditor({
         setError('');
         if (snapshot.content !== visualValueRef.current) {
           visualValueRef.current = snapshot.content;
+          frameValueRef.current = snapshot.content;
           onChange(snapshot.content);
         }
       } else if (message.type === 'change' && message.elementId) {
@@ -137,6 +198,7 @@ export function ArtifactHtmlVisualEditor({
             message.html,
           );
           visualValueRef.current = next.content;
+          frameValueRef.current = next.content;
           elementRangesRef.current = next.elements;
           setError('');
           onChange(next.content);
@@ -145,11 +207,54 @@ export function ArtifactHtmlVisualEditor({
         }
       } else if (message.type === 'save') {
         onSave?.(visualValueRef.current);
+      } else if (message.type === 'view') {
+        const raw = message.view;
+        const view = raw && typeof raw === 'object' ? normalizePreviewView({ ...raw, type: 'view' }) : null;
+        if (!view) return;
+        ownViewRef.current = view;
+        onViewChangeRef.current?.(view);
+      } else if (message.type === 'view-applied') {
+        setSyncingView(false);
+        // The replay did not land on the Preview's slide. Start over from the
+        // page as it loads, which is where the editor opened before.
+        if (message.status === 'mismatch') rebuildFrame(visualValueRef.current);
       }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [frame.token, onChange, onSave]);
+  }, [frame.token, onChange, onSave, postMode, rebuildFrame]);
+
+  useEffect(() => {
+    if (!active || showSource || !previewView || previewView.seq === seenViewSeqRef.current) return;
+    seenViewSeqRef.current = previewView.seq;
+    // null: the Preview reloaded and the user has not moved it since.
+    if (!previewView.view) return;
+    pendingViewRef.current = previewView.view;
+    pendingKindRef.current = 'preview';
+    if (frameMovedRef.current) rebuildFrame(visualValueRef.current);
+    else setViewRequest((count) => count + 1);
+  }, [active, previewView, rebuildFrame, showSource]);
+
+  useEffect(() => {
+    // After the effect above: a canvas the user can see may be moved by them.
+    if (active && ready) frameMovedRef.current = true;
+  }, [active, ready]);
+
+  useEffect(() => {
+    const view = pendingViewRef.current;
+    const target = iframeRef.current?.contentWindow;
+    if (!view || !ready || !target) return;
+    pendingViewRef.current = null;
+    frameMovedRef.current = true;
+    setSyncingView(pendingKindRef.current);
+    target.postMessage({ source: HTML_VISUAL_EDITOR_PARENT_SOURCE, type: 'view', view }, '*');
+    // The frame answers within its own replay budget; never leave the status
+    // line on "opening" for a frame that stopped answering.
+    window.clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = window.setTimeout(() => setSyncingView(false), 12000);
+  }, [frame.token, ready, viewRequest]);
+
+  useEffect(() => () => window.clearTimeout(syncTimerRef.current), []);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -172,7 +277,7 @@ export function ArtifactHtmlVisualEditor({
 
   const toggleSource = () => {
     if (!showSource) finishEditing();
-    else rebuildFrame(visualValueRef.current);
+    else if (visualValueRef.current !== frameValueRef.current) rebuildFrame(visualValueRef.current, { keepPlace: true });
     setShowSource((current) => !current);
   };
 
@@ -191,6 +296,8 @@ export function ArtifactHtmlVisualEditor({
   const guidance = useMemo(() => {
     if (showSource) return t('htmlEditor.advancedMode');
     if (error) return error;
+    if (syncingView === 'own') return t('htmlEditor.keepingPlace');
+    if (syncingView) return t('htmlEditor.syncingView');
     if (selection) {
       const raw = selection.label || 'Text';
       const label = Object.hasOwn(ELEMENT_LABEL_KEYS, raw) ? t(`htmlEditor.elements.${ELEMENT_LABEL_KEYS[raw]}`) : raw;
@@ -198,8 +305,9 @@ export function ArtifactHtmlVisualEditor({
     }
     if (!ready) return t('htmlEditor.preparing');
     if (editableCount === 0) return t('htmlEditor.noEditable');
+    if (editMode === 'navigate') return t('htmlEditor.mode.navigateGuidance');
     return t('htmlEditor.clickToEdit');
-  }, [editableCount, error, ready, selection, showSource, t]);
+  }, [editMode, editableCount, error, ready, selection, showSource, syncingView, t]);
 
   return (
     <div className="artifact-html-visual-editor">
@@ -210,19 +318,16 @@ export function ArtifactHtmlVisualEditor({
           <span className={error ? 'is-error' : ''}>{guidance}</span>
         </div>
         <div className="artifact-html-edit-actions">
-          {selection && !showSource && (
-            <button type="button" onClick={finishEditing}>
-              {Ico.check(14)} {t('common.done')}
-            </button>
-          )}
           <button type="button" className="is-secondary" onClick={toggleSource}>
             {showSource ? Ico.edit(14) : Ico.code(14)}
             {showSource ? t('htmlEditor.back') : t('comparison.advanced')}
           </button>
+          <SaveDiscardButtons actions={editActions} />
+          {onExit && <ExitLiveEditButton onExit={onExit} />}
         </div>
       </div>
 
-      {showSource ? (
+      {showSource && (
         <section className="artifact-source-pane artifact-html-source-pane" aria-label={t('htmlEditor.sourceAriaLabel')}>
           <div className="artifact-pane-label section-label">
             <span>{t('htmlEditor.htmlSource')}</span>
@@ -241,28 +346,94 @@ export function ArtifactHtmlVisualEditor({
             onSelect={reportSourceSelection}
           />
         </section>
-      ) : (
-        <div className="artifact-html-edit-canvas">
-          {!inlined.pending && (
-            <iframe
-              key={frame.key}
-              ref={iframeRef}
-              title={t('htmlEditor.canvasTitle')}
-              srcDoc={inlined.content}
-              sandbox="allow-scripts"
-              className="artifact-html-edit-iframe"
-              onLoad={(event) => {
-                setReady(true);
-                event.currentTarget.contentWindow?.postMessage({
-                  source: HTML_VISUAL_EDITOR_PARENT_SOURCE,
-                  type: 'status',
-                }, '*');
-              }}
-            />
-          )}
-        </div>
       )}
+      {/* Hidden, not unmounted, behind the source view: the page keeps the
+          slide or section the user had moved it to. */}
+      <div className="artifact-html-edit-canvas" hidden={showSource}>
+        {ready && editableCount > 0 && <EditModeSwitch mode={editMode} onChange={changeEditMode} />}
+        {!inlined.pending && (
+          <iframe
+            key={frame.key}
+            ref={iframeRef}
+            title={t('htmlEditor.canvasTitle')}
+            srcDoc={inlined.content}
+            sandbox="allow-scripts"
+            className="artifact-html-edit-iframe"
+            onLoad={(event) => {
+              setReady(true);
+              event.currentTarget.contentWindow?.postMessage({
+                source: HTML_VISUAL_EDITOR_PARENT_SOURCE,
+                type: 'status',
+              }, '*');
+            }}
+          />
+        )}
+      </div>
     </div>
+  );
+}
+
+// How long "Saved" stays on the button once a save lands.
+export const SAVED_FLASH_MS = 2000;
+
+/** Save and Discard for Live edit's unsaved text. The Save button shows its
+    own progress: "Saving…" with a spinner, then "Saved" with a check for a
+    moment once it lands, then the pair goes, as there is nothing to save. */
+export function SaveDiscardButtons({ actions }) {
+  const { t } = useTranslation('artifacts');
+  const saving = !!actions?.saving;
+  const dirty = !!actions?.dirty;
+  const [justSaved, setJustSaved] = useState(false);
+  const wasSavingRef = useRef(saving);
+
+  useEffect(() => {
+    const landed = wasSavingRef.current && !saving && !dirty;
+    wasSavingRef.current = saving;
+    if (!landed) return undefined;
+    setJustSaved(true);
+    const timer = setTimeout(() => setJustSaved(false), SAVED_FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [saving, dirty]);
+  useEffect(() => { if (dirty) setJustSaved(false); }, [dirty]);
+
+  if (!actions?.canEdit) return null;
+  if (!dirty && !saving) {
+    if (!justSaved) return null;
+    return (
+      <button type="button" className="artifact-save-edit is-saved" disabled aria-live="polite">
+        {Ico.check(14)} {t('revisionBar.saved')}
+      </button>
+    );
+  }
+  return (
+    <>
+      <button type="button" className="is-secondary artifact-discard-edit" disabled={saving} onClick={actions.onDiscard}>
+        {t('revisionBar.discard')}
+      </button>
+      <Tooltip content={t('revisionBar.saveTooltip')}>
+        <button
+          type="button"
+          className="artifact-save-edit"
+          disabled={saving}
+          aria-busy={saving}
+          aria-live="polite"
+          onClick={actions.onSave}
+        >
+          {saving ? <Spinner /> : Ico.save(14)} {saving ? t('revisionBar.saving') : t('revisionBar.save')}
+        </button>
+      </Tooltip>
+    </>
+  );
+}
+
+/** Leaves Live edit from inside the editor, for when the viewer's toolbar
+    (and the Live edit toggle on it) is hidden. */
+export function ExitLiveEditButton({ onExit }) {
+  const { t } = useTranslation('artifacts');
+  return (
+    <button type="button" className="is-secondary artifact-exit-live-edit" onClick={onExit}>
+      {Ico.close(14)} {t('htmlEditor.exitLiveEdit')}
+    </button>
   );
 }
 

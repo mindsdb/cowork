@@ -898,7 +898,7 @@ export default function SettingsView({
     host.isWeb,
     codeModeAccess.available,
     codeModeAccess.enabled,
-    { branding: canEditBranding },
+    { branding: canEditBranding, mobileShell: host.isMobileShell },
   );
   // Branding is for org admins; anyone else sent there (a deep link, a
   // stale section) lands on Appearance, where their own look is.

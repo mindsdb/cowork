@@ -1028,7 +1028,7 @@
       "noModels": "没有可用的编程模型。",
       "chooseModel": "选择模型以继续。",
       "chooseFolder": "选择文件夹以继续。",
-      "budgetReached": "你的组织预算已用完。请选择可用的模型，或请所有者或管理员提高预算。"
+      "budgetReached": "适用于此模型的预算已用完。请选择可用的模型，或请管理员提高预算。"
     }
   },
   "executionTarget": {
@@ -1472,8 +1472,8 @@
       "body": "{reason}，因此它仍占用磁盘空间。"
     },
     "budgetExceeded": {
-      "title": "你的组织预算已用完",
-      "body": "所有者或管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。"
+      "title": "{scope, select, org {{period, select, day {你的组织每日预算已用完} month {你的组织每月预算已用完} year {你的组织每年预算已用完} other {你的组织预算已用完}}} workspace {{period, select, day {此工作区的每日预算已用完} month {此工作区的每月预算已用完} year {此工作区的每年预算已用完} other {此工作区的预算已用完}}} api_key {{period, select, day {此 API 密钥的每日预算已用完} month {此 API 密钥的每月预算已用完} year {此 API 密钥的每年预算已用完} other {此 API 密钥的预算已用完}}} team {{period, select, day {你所在团队的每日预算已用完} month {你所在团队的每月预算已用完} year {你所在团队的每年预算已用完} other {你所在团队的预算已用完}}} member {{period, select, day {你的每日预算已用完} month {你的每月预算已用完} year {你的每年预算已用完} other {你的预算已用完}}} other {{period, select, day {每日预算已用完} month {每月预算已用完} year {每年预算已用完} other {预算已用完}}}}",
+      "body": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。请选择其他模型，在此任务中继续。} other {在管理员于“预算”中提高上限前，{model} 无法运行。请选择其他模型，在此任务中继续。}}} other {{scope, select, org {所有者或管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。} other {管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。}}}}"
     },
     "writesHeld": {
       "body": "此文件夹没有可用于审阅或撤销更改的 Git 历史记录，因此智能体每次编辑前都会先询问。"

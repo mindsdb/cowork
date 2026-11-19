@@ -258,7 +258,7 @@
     "topUp": "Ricarica il saldo →",
     "addFunds": "Aggiungi fondi →",
     "slowDown": "{sentence} Non è un problema di crediti.",
-    "budgetReached": "Il budget della tua organizzazione è esaurito. {detail}",
+    "budgetReached": "Un budget è esaurito. {detail}",
     "viewBudgetsArrow": "Visualizza i budget →"
   },
   "providers": {
@@ -335,7 +335,7 @@
     "modelNeedsCredits": "{model} richiede crediti. {link} per usarlo.",
     "modelNeedsCreditsNoLink": "{model} richiede crediti.",
     "topUpBalance": "Ricarica il saldo",
-    "modelBudgetReached": "Impossibile eseguire {model}: il budget della tua organizzazione è esaurito.",
+    "modelBudgetReached": "Impossibile eseguire {model}: un budget che lo copre è esaurito.",
     "viewBudgets": "Visualizza i budget",
     "imageModelNeedsMindsHub": "La generazione di immagini funziona con MindsHub. Aggiungilo in Provider LLM per scegliere un modello per le immagini.",
     "imageModelHint": "Scegli il modello usato per generare immagini."

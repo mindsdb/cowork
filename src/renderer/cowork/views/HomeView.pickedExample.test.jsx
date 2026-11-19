@@ -63,25 +63,38 @@ describe('an example picked and then edited', () => {
     await waitFor(() => expect(getSnapshot().completed.has('see-it-work')).toBe(true));
   });
 
-  it('still adds the mode instruction to an edited ordinary example', async () => {
+  it('still adds the mode instruction to an ordinary example the person added to', async () => {
     const onSend = vi.fn(async () => true);
     renderHome(onSend);
-    const edited = ordinary.prompt.replace(/\b\w{4,}\b/, 'changed');
+    const added = `${ordinary.prompt} Keep it to one page.`;
+
+    await pickThenSend(userEvent.setup(), ordinary, added);
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(onSend.mock.calls[0][0]).toBe(`${added}\n\n${mode.instruction}`);
+  });
+
+  it('sends an ordinary example edited inside it as the person\'s own request, without the instruction', async () => {
+    const onSend = vi.fn(async () => true);
+    renderHome(onSend);
+    const words = ordinary.prompt.split(' ');
+    words[words.length - 2] = 'changed';
+    const edited = words.join(' ');
 
     await pickThenSend(userEvent.setup(), ordinary, edited);
 
     await waitFor(() => expect(onSend).toHaveBeenCalled());
-    expect(onSend.mock.calls[0][0]).toBe(`${edited}\n\n${mode.instruction}`);
+    expect(onSend.mock.calls[0][0]).toBe(edited);
   });
 
-  it('treats text that replaces the example as an ordinary message: instruction added, nothing ticked', async () => {
+  it('sends text that replaces the example as the person\'s own request: no instruction, nothing ticked', async () => {
     const onSend = vi.fn(async () => true);
     renderHome(onSend);
 
     await pickThenSend(userEvent.setup(), plain, 'AI in 2026');
 
     await waitFor(() => expect(onSend).toHaveBeenCalled());
-    expect(onSend.mock.calls[0][0]).toBe(`AI in 2026\n\n${mode.instruction}`);
+    expect(onSend.mock.calls[0][0]).toBe('AI in 2026');
     expect(getSnapshot().completed.has('see-it-work')).toBe(false);
   });
 

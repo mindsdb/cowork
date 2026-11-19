@@ -20,12 +20,14 @@ const config: CapacitorConfig = {
   appId: 'ai.mindshub.cowork',
   appName: 'MindsHub Cowork',
   webDir: 'www',
+  // Bridge diagnostics include plugin arguments, including session tokens.
+  loggingBehavior: 'none',
   server: {
     url: remoteUrl,
     cleartext: false,
-    // Only our own hosts stay inside the webview; everything else opens in
-    // the system browser.
-    allowNavigation: [new URL(COWORK_URLS.prod).host, new URL(COWORK_URLS.staging).host],
+    // Android also grants the bridge to its local HTTPS origin. Use the
+    // build's deployment host for both, with no additional allowed hosts.
+    hostname: new URL(remoteUrl).hostname,
     // Bundled page shown when the remote app fails to load.
     errorPath: 'offline.html',
   },

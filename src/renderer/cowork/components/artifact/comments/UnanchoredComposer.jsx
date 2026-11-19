@@ -9,6 +9,9 @@
 import { useCallback, useRef, useState } from 'react';
 import { ArrowUpIcon } from './icons';
 import { Tooltip } from '../../ui';
+import { AttachmentStrip } from '../../AttachmentChip';
+import { useImageAttachments } from '../../../lib/imageAttachments';
+import { FileDropOverlay } from '../../../lib/useFileDrop';
 import { useTranslation } from '../../../../lib/i18n';
 
 const MAX_HEIGHT = 120; // px — ~5 lines before the textarea scrolls
@@ -24,6 +27,8 @@ export function UnanchoredComposer({
   const [text, setText] = useState('');
   const [pending, setPending] = useState(false);
   const taRef = useRef(null);
+  // Pasted or dropped images, stored with the comment (ENG-4410).
+  const attachments = useImageAttachments({ disabled: pending });
 
   const grow = useCallback(() => {
     const ta = taRef.current;
@@ -34,25 +39,34 @@ export function UnanchoredComposer({
     ta.style.overflowY = ta.scrollHeight > MAX_HEIGHT ? 'auto' : 'hidden';
   }, []);
 
-  const canSend = !pending && !!text.trim();
+  const hasContent = !!text.trim() || attachments.images.length > 0;
+  const canSend = !pending && hasContent;
 
   const send = useCallback(async () => {
-    if (pending || !text.trim()) return;
+    if (pending || !hasContent) return;
     setPending(true);
-    const ok = await onCreate?.({ selector: null, text, kind });
+    const images = attachments.images.map((image) => image.pendingFile);
+    const ok = await onCreate?.({ selector: null, text, kind, images });
     setPending(false);
     if (ok) {
       setText('');
+      attachments.clear();
       requestAnimationFrame(grow);
       onPosted?.();
       taRef.current?.focus();
     }
-  }, [pending, text, kind, onCreate, onPosted, grow]);
+  }, [pending, hasContent, attachments, text, kind, onCreate, onPosted, grow]);
 
   return (
-    <div className="shrink-0 flex items-end gap-[2px] bg-surface rounded-[16px]
-      border-[0.5px] border-[rgba(39,39,42,0.15)] py-[8px] pl-[8px] pr-[4px]
-      focus-within:border-[rgba(39,39,42,0.3)] transition-colors">
+    <div
+      className="relative shrink-0 flex flex-col bg-surface rounded-[16px]
+        border-[0.5px] border-[rgba(39,39,42,0.15)]
+        focus-within:border-[rgba(39,39,42,0.3)] transition-colors"
+      {...attachments.dropHandlers}
+    >
+      <AttachmentStrip attachments={attachments.images} onRemove={attachments.remove} className="artifact-image-strip" />
+      {attachments.error && <div className="artifact-image-error" role="alert">{attachments.error}</div>}
+      <div className="flex items-end gap-[2px] py-[8px] pl-[8px] pr-[4px]">
       <textarea
         ref={taRef}
         rows={1}
@@ -64,6 +78,7 @@ export function UnanchoredComposer({
           text-[14px] leading-[24px] text-ink placeholder:text-ink-4 px-[4px]"
         style={{ fontFamily: 'inherit', height: 24, overflowY: 'hidden' }}
         onChange={(e) => { setText(e.target.value); requestAnimationFrame(grow); }}
+        onPaste={attachments.onPaste}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
         }}
@@ -85,6 +100,8 @@ export function UnanchoredComposer({
           <ArrowUpIcon />
         </button>
       </Tooltip>
+      </div>
+      <FileDropOverlay active={attachments.isDragging} label={t('imageAttachments.drop')} />
     </div>
   );
 }
