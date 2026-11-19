@@ -310,6 +310,7 @@ export default function Sidebar({
   onStartChat = null,
   // Takes the "Try an example" row to Home, where the examples are.
   onOpenExamples = null,
+  onOpenOwnWork = null,
   // First-artifact tip — App arms it (0 → 1 artifacts transition) and
   // owns the persistent dismissal; the sidebar anchors it to the Live
   // Artifacts nav row and adds the "clicking the row dismisses" path.
@@ -899,7 +900,7 @@ export default function Sidebar({
         {/* A running voice call, docked where the onboarding steps sit. */}
         {callCard}
 
-        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} onOpenExamples={onOpenExamples} />}
+        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} onOpenExamples={onOpenExamples} onOpenOwnWork={onOpenOwnWork} />}
 
         {/* One banner for all three update mechanisms, chosen by
             deriveUpdateBanner (shell-first). Exactly one banner or none. */}

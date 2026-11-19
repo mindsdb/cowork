@@ -599,7 +599,11 @@
       "placeholder": "Escolha um exemplo ou descreva sua própria tarefa"
     },
     "samplePrompts": "Exemplos de prompts",
-    "pillsAriaLabel": "Tipos de tarefa"
+    "pillsAriaLabel": "Tipos de tarefa",
+    "own-work": {
+      "chipLabel": "Seu trabalho",
+      "placeholder": "Cole um texto ou link, ou anexe um arquivo"
+    }
   },
   "taskRows": {
     "openProject": "Abrir {project}",
@@ -801,5 +805,41 @@
     "fallbackName": "imagem",
     "alt": "Imagem gerada {name}",
     "notShown": "Não foi possível mostrar {name}. Talvez tenha sido movido ou excluído."
+  },
+  "ownWork": {
+    "needsMaterial": "Agora adicione com o que ele deve trabalhar: anexe um arquivo ou cole um texto ou link depois da tarefa.",
+    "waysLabel": "Formas de trazer seu trabalho",
+    "attach": "Anexar um arquivo",
+    "orPaste": "ou cole um texto ou link na caixa acima",
+    "jobsHeading": "Escolha uma tarefa, se quiser",
+    "kindsLabel": "Tipo de trabalho",
+    "groups": {
+      "finance": "Finanças e administração",
+      "sales": "Vendas e marketing",
+      "operations": "Operações",
+      "legal": "Contratos e pesquisa"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Transformar estes extratos bancários ou faturas em uma única planilha.",
+        "1": "Montar o próximo relatório mensal com estes números.",
+        "2": "Verificar estes extratos em busca de erros ou itens incomuns."
+      },
+      "sales": {
+        "0": "Limpar esta lista de clientes e marcar os duplicados.",
+        "1": "Comparar estas duas listas de preços e mostrar o que mudou.",
+        "2": "Escrever e-mails de acompanhamento a partir destas notas de ligações."
+      },
+      "operations": {
+        "0": "Transformar estas notas de reunião em decisões e próximos passos.",
+        "1": "Transformar estas notas em um resumo de uma página.",
+        "2": "Transformar este documento de processo em um checklist passo a passo."
+      },
+      "legal": {
+        "0": "Resumir os termos principais e os riscos deste contrato.",
+        "1": "Resumir este relatório e destacar os números que importam.",
+        "2": "Ler esta página e explicar o que importa para nós."
+      }
+    }
   }
 }

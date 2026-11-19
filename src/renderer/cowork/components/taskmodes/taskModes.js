@@ -419,6 +419,95 @@ export const FEATURED_EXAMPLES_MODE = {
   samples: FEATURED_LABELS.map((label) => ALL_SAMPLES.find((s) => s.label === label)).filter(Boolean),
 };
 
+// What the checklist's "Start with your own work" row opens on Home. Nothing
+// is sent until the person gives Cowork something of theirs: a file, pasted
+// text or a link. A job is optional. Whatever is sent asks Cowork to start on
+// stated assumptions, because a reply that opens with a question is where
+// people left.
+export const OWN_WORK_START_NOW =
+  "Start right away with sensible assumptions and tell me what you assumed. Don't ask me questions first.";
+export const OWN_WORK_LEAD =
+  "Here's something from my work. Take a useful first step with it and tell me what you did, then suggest two or three things you could do next.";
+
+// A job's label is its message text and, through sampleId, its analytics id;
+// what a person reads comes from the chat catalog (ownWork.jobs.<group>.<n>).
+const job = (label) => ({ label, prompt: label });
+export const OWN_WORK_JOB_GROUPS = [
+  {
+    id: 'finance',
+    jobs: [
+      job('Turn these bank statements or invoices into one spreadsheet.'),
+      job('Build the next monthly report from these numbers.'),
+      job('Check these statements for errors or unusual items.'),
+    ],
+  },
+  {
+    id: 'sales',
+    jobs: [
+      job('Clean up this customer list and flag duplicates.'),
+      job('Compare these two price lists and show what changed.'),
+      job('Draft follow-up emails from these call notes.'),
+    ],
+  },
+  {
+    id: 'operations',
+    jobs: [
+      job('Turn these meeting notes into decisions and action items.'),
+      job('Turn these notes into a one-page brief.'),
+      job('Turn this process document into a step-by-step checklist.'),
+    ],
+  },
+  {
+    id: 'legal',
+    jobs: [
+      job('Summarize the key terms and risks in this contract.'),
+      job('Summarize this report and pull out the numbers that matter.'),
+      job('Read this page and tell me what matters for us.'),
+    ],
+  },
+];
+
+export const OWN_WORK_MODE = {
+  id: 'own-work',
+  chipLabel: 'Your work',
+  icon: 'attach',
+  placeholder: 'Paste text or a link, or attach a file',
+  instruction: OWN_WORK_START_NOW,
+  samplesVariant: 'own-work',
+  samples: OWN_WORK_JOB_GROUPS.flatMap((g) => g.jobs),
+};
+
+/** The job a draft starts with, or null. */
+export function ownWorkJobIn(text) {
+  const sent = String(text || '').trim();
+  return OWN_WORK_MODE.samples.find((j) => sent.startsWith(j.prompt)) ?? null;
+}
+
+// Material has to say something: a letter, a number or a symbol such as an
+// emoji (survey answers can be "👍 👎 👍"). Punctuation alone, like a ":" left
+// after a job, is not something to work on.
+const saysSomething = (text) => /[\p{L}\p{N}\p{S}]/u.test(text);
+
+/** Whether a draft in the own-work mode carries something of the person's:
+    an attachment, text after a job left exactly as placed, or, with no such
+    job, any text: an edited job is the person's own request. */
+export function hasOwnMaterial(text, attachmentCount = 0) {
+  if (attachmentCount > 0) return true;
+  const sent = String(text || '').trim();
+  const job = ownWorkJobIn(sent);
+  return saysSomething(job ? sent.slice(job.prompt.length) : sent);
+}
+
+/** The message the own-work mode sends: the job, or a generic first step when
+    there is none, the start-now instruction, then the person's material. */
+export function composeOwnWorkMessage(text) {
+  const sent = String(text || '').trim();
+  const picked = ownWorkJobIn(sent);
+  const lead = picked ? picked.prompt : OWN_WORK_LEAD;
+  const material = (picked ? sent.slice(picked.prompt.length) : sent).trim();
+  return `${lead} ${OWN_WORK_START_NOW}${material ? `\n\n${material}` : ''}`;
+}
+
 /* What a person reads is translated when it is read; the English above stays
    the data. A mode's pill, chip and placeholder text are getters onto the
    chat catalog (taskModes.<mode id>.<field>), so every surface that shows
@@ -427,7 +516,7 @@ export const FEATURED_EXAMPLES_MODE = {
    and `sampleLabel` translates it for display. `instruction` and `prompt` are
    message text the agent reads, and are never translated. */
 const DISPLAY_FIELDS = ['pillLabel', 'chipLabel', 'chipNoun', 'placeholder'];
-for (const mode of [...TASK_MODES, FEATURED_EXAMPLES_MODE]) {
+for (const mode of [...TASK_MODES, FEATURED_EXAMPLES_MODE, OWN_WORK_MODE]) {
   for (const field of DISPLAY_FIELDS) {
     if (!(field in mode)) continue;
     const english = mode[field];

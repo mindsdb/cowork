@@ -1011,6 +1011,7 @@ function AppCore() {
   const [composerPrefill, setComposerPrefill] = useState(null);
   // Set by the checklist's "Try an example" row; Home answers it and clears it.
   const [examplesRequest, setExamplesRequest] = useState(0);
+  const [ownWorkRequest, setOwnWorkRequest] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // null = no section selected: the mobile master-detail shows its section
@@ -4429,8 +4430,8 @@ function AppCore() {
       markInFlight(taskId);
     };
     // Before the session-start event, which clears the console attribution this reads.
-    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text), taskMode: meta?.taskMode });
-    trackAgentSessionStarted();
+    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text), taskMode: meta?.taskMode, startVia: meta?.startVia });
+    trackAgentSessionStarted({ exampleId: meta?.entryExampleId });
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
       conversationId: suppliedConversationId || (hasPendingFiles || carried ? taskId : undefined),
@@ -7151,6 +7152,14 @@ function AppCore() {
             newTask();
             setExamplesRequest(Date.now());
           }}
+          // A file already attached on Home is the material that mode asks
+          // for, so it stays; newTask would drop it.
+          onOpenOwnWork={() => {
+            const keep = route === 'home' && !activeTaskId ? composerAttachments : [];
+            newTask();
+            if (keep.length) setComposerAttachments(keep);
+            setOwnWorkRequest(Date.now());
+          }}
           // Hold the tip while the popout drawer is shut: Sidebar sees
           // collapsed={false} there, but the whole wrapper is translated
           // off-screen, so its anchor is invisible. The armed state
@@ -7254,6 +7263,8 @@ function AppCore() {
             onPrefillConsumed={() => setComposerPrefill(null)}
             examplesRequest={examplesRequest}
             onExamplesRequestConsumed={() => setExamplesRequest(0)}
+            ownWorkRequest={ownWorkRequest}
+            onOwnWorkRequestConsumed={() => setOwnWorkRequest(0)}
             codingModeEnabled={false}
           />
         )}

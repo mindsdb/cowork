@@ -599,7 +599,11 @@
       "placeholder": "Wählen Sie ein Beispiel oder beschreiben Sie Ihre eigene Aufgabe"
     },
     "samplePrompts": "Beispiel-Prompts",
-    "pillsAriaLabel": "Aufgabentypen"
+    "pillsAriaLabel": "Aufgabentypen",
+    "own-work": {
+      "chipLabel": "Ihre Arbeit",
+      "placeholder": "Fügen Sie Text oder einen Link ein oder hängen Sie eine Datei an"
+    }
   },
   "taskRows": {
     "openProject": "{project} öffnen",
@@ -801,5 +805,41 @@
     "fallbackName": "Bild",
     "alt": "Erzeugtes Bild {name}",
     "notShown": "{name} kann nicht angezeigt werden. Die Datei wurde möglicherweise verschoben oder gelöscht."
+  },
+  "ownWork": {
+    "needsMaterial": "Fügen Sie jetzt hinzu, woran es arbeiten soll: Hängen Sie eine Datei an oder fügen Sie nach der Aufgabe Text oder einen Link ein.",
+    "waysLabel": "Möglichkeiten, Ihre Arbeit einzubringen",
+    "attach": "Datei anhängen",
+    "orPaste": "oder fügen Sie oben Text oder einen Link ein",
+    "jobsHeading": "Wählen Sie bei Bedarf eine Aufgabe",
+    "kindsLabel": "Art der Arbeit",
+    "groups": {
+      "finance": "Finanzen und Verwaltung",
+      "sales": "Vertrieb und Marketing",
+      "operations": "Betrieb",
+      "legal": "Verträge und Recherche"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Diese Kontoauszüge oder Rechnungen in einer Tabelle zusammenfassen.",
+        "1": "Aus diesen Zahlen den nächsten Monatsbericht erstellen.",
+        "2": "Diese Auszüge auf Fehler oder ungewöhnliche Posten prüfen."
+      },
+      "sales": {
+        "0": "Diese Kundenliste bereinigen und Duplikate markieren.",
+        "1": "Diese zwei Preislisten vergleichen und Änderungen zeigen.",
+        "2": "Aus diesen Gesprächsnotizen Follow-up-E-Mails entwerfen."
+      },
+      "operations": {
+        "0": "Aus diesen Besprechungsnotizen Entscheidungen und To-dos machen.",
+        "1": "Aus diesen Notizen eine einseitige Zusammenfassung machen.",
+        "2": "Aus diesem Prozessdokument eine Schritt-für-Schritt-Checkliste machen."
+      },
+      "legal": {
+        "0": "Die wichtigsten Bedingungen und Risiken dieses Vertrags zusammenfassen.",
+        "1": "Diesen Bericht zusammenfassen und die wichtigen Zahlen hervorheben.",
+        "2": "Diese Seite lesen und erklären, was für uns wichtig ist."
+      }
+    }
   }
 }

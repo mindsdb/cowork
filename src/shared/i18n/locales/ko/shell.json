@@ -414,7 +414,8 @@
     "signupWelcome": {
       "fromDesktop": "계정이 준비되었습니다. 여기서 바로 시작하거나 {product} 앱으로 돌아가 로그인하세요.",
       "dismiss": "닫기"
-    }
+    },
+    "ownWorkHeading": "{product}가 무엇을 작업할까요?"
   },
   "logout": {
     "title": "{product}에서 로그아웃할까요?",

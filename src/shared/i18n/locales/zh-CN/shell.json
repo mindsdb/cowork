@@ -414,7 +414,8 @@
     "signupWelcome": {
       "fromDesktop": "你的账户已准备就绪。你可以直接在这里开始，或返回 {product} 应用并登录。",
       "dismiss": "关闭"
-    }
+    },
+    "ownWorkHeading": "{product} 应该处理什么？"
   },
   "logout": {
     "title": "退出 {product} 登录？",

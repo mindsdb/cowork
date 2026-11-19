@@ -414,7 +414,8 @@
     "signupWelcome": {
       "fromDesktop": "Votre compte est prêt. Vous pouvez commencer ici, ou revenir dans l’app {product} et vous connecter.",
       "dismiss": "Fermer"
-    }
+    },
+    "ownWorkHeading": "Sur quoi {product} doit-il travailler ?"
   },
   "logout": {
     "title": "Se déconnecter de {product} ?",
