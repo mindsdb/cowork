@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { inlineHtmlFromApi } from '../../../lib/inlineHtmlAssets';
@@ -22,7 +22,7 @@ function inlineImage(html) {
 function renderEditor() {
   const onChange = vi.fn();
   render(
-    <ArtifactHtmlVisualEditor
+    <ArtifactHtmlVisualEditor controlsTarget={panel}
       source={SOURCE}
       value={VALUE}
       onChange={onChange}
@@ -53,9 +53,18 @@ function sendFromFrame(message) {
   }));
 }
 
+// The Live edit panel's slot, where the editor renders its controls.
+let panel;
+
 beforeEach(() => {
+  panel = document.createElement('div');
+  document.body.appendChild(panel);
   inlineHtmlFromApi.mockReset();
   inlineHtmlFromApi.mockImplementation(async (html) => inlineImage(html));
+});
+
+afterEach(() => {
+  panel.remove();
 });
 
 describe('ArtifactHtmlVisualEditor folder files', () => {
@@ -150,7 +159,7 @@ describe('ArtifactHtmlVisualEditor multi-view pages', () => {
   function ControlledEditor() {
     const [value, setValue] = useState(VALUE);
     return (
-      <ArtifactHtmlVisualEditor
+      <ArtifactHtmlVisualEditor controlsTarget={panel}
         source={SOURCE}
         value={value}
         onChange={setValue}
@@ -278,7 +287,7 @@ describe('ArtifactHtmlVisualEditor opening on the preview view', () => {
   function Harness({ active, previewView }) {
     const [value, setValue] = useState(VALUE);
     return (
-      <ArtifactHtmlVisualEditor
+      <ArtifactHtmlVisualEditor controlsTarget={panel}
         source={SOURCE}
         value={value}
         onChange={setValue}
@@ -377,7 +386,7 @@ describe('ArtifactHtmlVisualEditor opening on the preview view', () => {
   // agent change, a save or a discard replaces the content under the canvas.
   function Controlled({ value, onViewChange = vi.fn() }) {
     return (
-      <ArtifactHtmlVisualEditor
+      <ArtifactHtmlVisualEditor controlsTarget={panel}
         source={SOURCE}
         value={value}
         onChange={vi.fn()}
@@ -446,7 +455,7 @@ describe('ArtifactHtmlVisualEditor opening on the preview view', () => {
       return (
         <>
           <button type="button" onClick={() => setValue(VALUE)}>Discard</button>
-          <ArtifactHtmlVisualEditor
+          <ArtifactHtmlVisualEditor controlsTarget={panel}
             source={SOURCE}
             value={value}
             onChange={setValue}
@@ -494,34 +503,48 @@ describe('ArtifactHtmlVisualEditor opening on the preview view', () => {
   });
 });
 
-// With the viewer's toolbar hidden, the editor carries its own way out of
-// Live edit, beside Advanced (ENG-4383).
-describe('ArtifactHtmlVisualEditor exit', () => {
-  it('offers Exit Live edit when given a way out, and calls it', async () => {
-    const onExit = vi.fn();
-    render(
-      <ArtifactHtmlVisualEditor source={SOURCE} value={VALUE} onChange={vi.fn()} onSave={vi.fn()} draftUrl={DRAFT_URL} onExit={onExit} />,
-    );
-    await screen.findByTitle('Edit artifact on canvas');
+// The editor's controls live in the Live edit panel (ENG-4455), not over the
+// canvas: its status, the Navigate / Edit switch, Advanced and Save / Discard.
+describe('ArtifactHtmlVisualEditor controls in the Live edit panel', () => {
+  it('renders its status, mode switch and Advanced into the panel, none over the canvas', async () => {
+    await renderReadyEditor();
+    sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 2 });
 
-    fireEvent.click(screen.getByRole('button', { name: /Exit Live edit/ }));
-
-    expect(onExit).toHaveBeenCalledTimes(1);
+    const controls = within(panel);
+    expect(controls.getByRole('status')).toHaveTextContent('Editing artifact');
+    expect(controls.getByRole('toolbar', { name: 'Live edit mode' })).toBeInTheDocument();
+    expect(controls.getByRole('button', { name: 'Advanced' })).toBeInTheDocument();
+    const editor = document.querySelector('.artifact-html-visual-editor');
+    expect(within(editor).queryByRole('toolbar')).toBeNull();
+    expect(within(editor).queryByRole('button')).toBeNull();
   });
 
-  it('has no exit while the toolbar shows the Live edit toggle', async () => {
+  it('renders nothing while hidden behind the Preview, or before the panel is there', async () => {
+    const view = render(
+      <ArtifactHtmlVisualEditor controlsTarget={panel} source={SOURCE} value={VALUE} onChange={vi.fn()} onSave={vi.fn()} draftUrl={DRAFT_URL} active={false} />,
+    );
+    await screen.findByTitle('Edit artifact on canvas');
+    expect(panel).toBeEmptyDOMElement();
+
+    view.rerender(
+      <ArtifactHtmlVisualEditor controlsTarget={null} source={SOURCE} value={VALUE} onChange={vi.fn()} onSave={vi.fn()} draftUrl={DRAFT_URL} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Advanced' })).toBeNull();
+  });
+
+  it('offers no Exit Live edit: the rail and the panel close are the way out', async () => {
     await renderReadyEditor();
 
     expect(screen.queryByRole('button', { name: /Exit Live edit/ })).toBeNull();
   });
 });
 
-// Live edit's Save and Discard sit right of Advanced and before Exit, only
-// while there is unsaved text; there is no Done button (ENG-4383).
+// Live edit's Save and Discard sit at the foot of its panel, after Advanced,
+// only while there is unsaved text; there is no Done button (ENG-4383).
 describe('ArtifactHtmlVisualEditor save and discard', () => {
   function renderWith(editActions, extra = {}) {
     render(
-      <ArtifactHtmlVisualEditor
+      <ArtifactHtmlVisualEditor controlsTarget={panel}
         source={SOURCE} value={VALUE} onChange={vi.fn()} onSave={vi.fn()} draftUrl={DRAFT_URL}
         editActions={editActions} {...extra}
       />,
@@ -529,13 +552,13 @@ describe('ArtifactHtmlVisualEditor save and discard', () => {
     return screen.findByTitle('Edit artifact on canvas');
   }
 
-  it('shows Discard and Save in order after Advanced and before Exit, and runs them', async () => {
+  it('shows Discard and Save in order after Advanced, in the panel, and runs them', async () => {
     const onSave = vi.fn();
     const onDiscard = vi.fn();
-    await renderWith({ dirty: true, saving: false, canEdit: true, onSave, onDiscard }, { onExit: vi.fn() });
+    await renderWith({ dirty: true, saving: false, canEdit: true, onSave, onDiscard });
 
-    const labels = [...document.querySelectorAll('.artifact-html-edit-actions button')].map((b) => b.textContent.trim());
-    expect(labels).toEqual(['Advanced', 'Discard', 'Save', 'Exit Live edit']);
+    const labels = [...panel.querySelectorAll('button')].map((b) => b.textContent.trim());
+    expect(labels).toEqual(['Navigate', 'Edit text', 'Advanced', 'Discard', 'Save']);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -562,7 +585,7 @@ describe('ArtifactHtmlVisualEditor save and discard', () => {
 describe('ArtifactHtmlVisualEditor save progress', () => {
   const actions = (over) => ({ dirty: true, saving: false, canEdit: true, onSave: vi.fn(), onDiscard: vi.fn(), ...over });
   const editor = (editActions) => (
-    <ArtifactHtmlVisualEditor
+    <ArtifactHtmlVisualEditor controlsTarget={panel}
       source={SOURCE} value={VALUE} onChange={vi.fn()} onSave={vi.fn()} draftUrl={DRAFT_URL}
       editActions={editActions}
     />

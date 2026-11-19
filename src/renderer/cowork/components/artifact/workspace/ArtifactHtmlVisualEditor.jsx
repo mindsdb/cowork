@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Ico from '../../Icons';
 import {
   applyHtmlVisualEditAtRanges,
   createHtmlVisualEditorDocument,
@@ -12,7 +11,7 @@ import {
 import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
 import { normalizePreviewView } from '../usePreviewView';
 import { EditModeSwitch } from './EditModeSwitch';
-import { Spinner, Tooltip } from '../../ui';
+import { LiveEditControls } from './LiveEditPanel';
 import { useTranslation } from '../../../../lib/i18n';
 
 /* The frame runtime names a selected element in English (or by the page's own
@@ -46,11 +45,12 @@ export function ArtifactHtmlVisualEditor({
   // Hears where the user is in the canvas (a normalized view, as the
   // Preview's), so a save made here keeps the Preview on the same slide.
   onViewChange = null,
-  // Leaves Live edit; given when the viewer's toolbar (and its toggle) is hidden.
-  onExit = null,
-  // `{ dirty, saving, canEdit, onSave, onDiscard }`: Save and Discard, right
-  // of Advanced, while there is unsaved text.
+  // `{ dirty, saving, canEdit, onSave, onDiscard }`: Save and Discard, in
+  // the Live edit panel while there is unsaved text.
   editActions = null,
+  // The Live edit panel's slot (LiveEditPanel): the editor's status, mode
+  // switch, Advanced and Save / Discard render there, not over the canvas.
+  controlsTarget = null,
 }) {
   const { t } = useTranslation('artifacts');
   const iframeRef = useRef(null);
@@ -311,22 +311,22 @@ export function ArtifactHtmlVisualEditor({
 
   return (
     <div className="artifact-html-visual-editor">
-      <div className="artifact-html-edit-toolbar">
-        <div className="artifact-html-edit-guidance" role="status">
-          <span className={`artifact-html-edit-indicator${selection ? ' is-active' : ''}`} aria-hidden="true" />
-          <strong>{showSource ? t('htmlEditor.htmlSource') : t('htmlEditor.editing')}</strong>
-          <span className={error ? 'is-error' : ''}>{guidance}</span>
-        </div>
-        <div className="artifact-html-edit-actions">
-          <button type="button" className="is-secondary" onClick={toggleSource}>
-            {showSource ? Ico.edit(14) : Ico.code(14)}
-            {showSource ? t('htmlEditor.back') : t('comparison.advanced')}
-          </button>
-          <SaveDiscardButtons actions={editActions} />
-          {onExit && <ExitLiveEditButton onExit={onExit} />}
-        </div>
-      </div>
-
+      {/* Only while on screen: hidden behind the Preview, the editor stays
+          mounted but its controls leave the panel to whatever is open. */}
+      {active && (
+        <LiveEditControls
+          target={controlsTarget}
+          heading={showSource ? t('htmlEditor.htmlSource') : t('htmlEditor.editing')}
+          guidance={guidance}
+          isError={!!error && !showSource}
+          active={!!selection}
+          modeSwitch={!showSource && ready && editableCount > 0
+            ? <EditModeSwitch mode={editMode} onChange={changeEditMode} />
+            : null}
+          advanced={{ on: showSource, onToggle: toggleSource }}
+          editActions={editActions}
+        />
+      )}
       {showSource && (
         <section className="artifact-source-pane artifact-html-source-pane" aria-label={t('htmlEditor.sourceAriaLabel')}>
           <div className="artifact-pane-label section-label">
@@ -350,7 +350,6 @@ export function ArtifactHtmlVisualEditor({
       {/* Hidden, not unmounted, behind the source view: the page keeps the
           slide or section the user had moved it to. */}
       <div className="artifact-html-edit-canvas" hidden={showSource}>
-        {ready && editableCount > 0 && <EditModeSwitch mode={editMode} onChange={changeEditMode} />}
         {!inlined.pending && (
           <iframe
             key={frame.key}
@@ -370,70 +369,6 @@ export function ArtifactHtmlVisualEditor({
         )}
       </div>
     </div>
-  );
-}
-
-// How long "Saved" stays on the button once a save lands.
-export const SAVED_FLASH_MS = 2000;
-
-/** Save and Discard for Live edit's unsaved text. The Save button shows its
-    own progress: "Saving…" with a spinner, then "Saved" with a check for a
-    moment once it lands, then the pair goes, as there is nothing to save. */
-export function SaveDiscardButtons({ actions }) {
-  const { t } = useTranslation('artifacts');
-  const saving = !!actions?.saving;
-  const dirty = !!actions?.dirty;
-  const [justSaved, setJustSaved] = useState(false);
-  const wasSavingRef = useRef(saving);
-
-  useEffect(() => {
-    const landed = wasSavingRef.current && !saving && !dirty;
-    wasSavingRef.current = saving;
-    if (!landed) return undefined;
-    setJustSaved(true);
-    const timer = setTimeout(() => setJustSaved(false), SAVED_FLASH_MS);
-    return () => clearTimeout(timer);
-  }, [saving, dirty]);
-  useEffect(() => { if (dirty) setJustSaved(false); }, [dirty]);
-
-  if (!actions?.canEdit) return null;
-  if (!dirty && !saving) {
-    if (!justSaved) return null;
-    return (
-      <button type="button" className="artifact-save-edit is-saved" disabled aria-live="polite">
-        {Ico.check(14)} {t('revisionBar.saved')}
-      </button>
-    );
-  }
-  return (
-    <>
-      <button type="button" className="is-secondary artifact-discard-edit" disabled={saving} onClick={actions.onDiscard}>
-        {t('revisionBar.discard')}
-      </button>
-      <Tooltip content={t('revisionBar.saveTooltip')}>
-        <button
-          type="button"
-          className="artifact-save-edit"
-          disabled={saving}
-          aria-busy={saving}
-          aria-live="polite"
-          onClick={actions.onSave}
-        >
-          {saving ? <Spinner /> : Ico.save(14)} {saving ? t('revisionBar.saving') : t('revisionBar.save')}
-        </button>
-      </Tooltip>
-    </>
-  );
-}
-
-/** Leaves Live edit from inside the editor, for when the viewer's toolbar
-    (and the Live edit toggle on it) is hidden. */
-export function ExitLiveEditButton({ onExit }) {
-  const { t } = useTranslation('artifacts');
-  return (
-    <button type="button" className="is-secondary artifact-exit-live-edit" onClick={onExit}>
-      {Ico.close(14)} {t('htmlEditor.exitLiveEdit')}
-    </button>
   );
 }
 

@@ -267,7 +267,6 @@
       "caption": "캡션",
       "text": "텍스트"
     },
-    "exitLiveEdit": "실시간 편집 종료",
     "mode": {
       "ariaLabel": "실시간 편집 모드",
       "navigate": "탐색",
@@ -821,7 +820,6 @@
     "showFewer": "간단히 보기"
   },
   "layers": {
-    "ariaLabel": "뷰어 레이어",
     "source": "실시간 편집",
     "comments": "댓글",
     "sourceOffPrompt": {
@@ -865,5 +863,14 @@
       "trackingOff": "먼저 방문자 분석을 켜세요.",
       "saveFailed": "설정을 저장하지 못했습니다."
     }
+  },
+  "rail": {
+    "ariaLabel": "뷰어 패널",
+    "sourceHint": "페이지의 텍스트와 레이아웃 변경",
+    "commentsHint": "피드백 남기기 및 검토",
+    "statsHint": "누가 얼마나 오래 봤는지"
+  },
+  "liveEditPanel": {
+    "close": "실시간 편집 패널 닫기"
   }
 }

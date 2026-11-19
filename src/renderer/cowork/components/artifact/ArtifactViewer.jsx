@@ -15,7 +15,7 @@ import { downloadUnavailableMessage } from '../../lib/browserDownload';
 // popover, backed by the usePublish state machine — so this component is
 // just chrome + preview.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   allocateConversationId,
   mountArtifactPreview,
@@ -79,7 +79,7 @@ import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
 import { useViewerLayout } from './useViewerLayout';
-import { ViewerLayerToggle, ViewerLayerToggles } from './ViewerLayerToggle';
+import { ViewerModeRail } from './ViewerModeRail';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
 import { countUserPrompts } from '../../lib/quickEditPrompt';
@@ -306,10 +306,11 @@ export function ArtifactViewer({
     previewOnly: !!documentType,
   });
   // The viewer's layers over its one preview (ENG-4227): Live edit (the
-  // quick-edit bar), Source (the code editor) and Comments, each a header
-  // toggle, remembered on this device.
+  // editor), Comments and Stats, each a tab on the panel rail with its own
+  // side panel; Live edit and Comments are remembered on this device.
   const { layers, setLayer } = useViewerLayers();
   setLayerRef.current = setLayer;
+  const sidePanelId = useId();
   const { layout, toggle: toggleLayout } = useViewerLayout();
   // Cmd/Ctrl+Shift+Enter maximizes and restores. Keys typed inside the
   // artifact's own frame never reach this window, so the page keeps its keys.
@@ -1587,38 +1588,37 @@ export function ArtifactViewer({
     onClose?.();
   };
 
-  // The layer toggles on the revision line, before History: Live edit (the
-  // code editor; `source` inside) and Comments, each only where allowed.
-  const layerControls = canSource || commentsEnabled || statsAvailable ? (
-    <ViewerLayerToggles label={t('layers.ariaLabel')}>
-      {canSource && (
-        <ViewerLayerToggle
-          icon={Ico.edit(14)}
-          label={t('layers.source')}
-          pressed={sourceOn}
-          onToggle={(on) => setSourceLayer(on)}
-        />
-      )}
-      {commentsEnabled && (
-        <ViewerLayerToggle
-          icon={Ico.chats(14)}
-          label={t('layers.comments')}
-          pressed={!!commentsOpen}
-          onToggle={() => toggleComments()}
-          badge={comments.unreadCount}
-          badgeLabel={t('header.commentsUnread', { count: comments.unreadCount })}
-        />
-      )}
-      {statsAvailable && (
-        <ViewerLayerToggle
-          icon={Ico.chartColumn(14)}
-          label={t('layers.stats')}
-          pressed={statsOpen}
-          onToggle={(on) => toggleStats(on)}
-        />
-      )}
-    </ViewerLayerToggles>
-  ) : null;
+  // The panel rail on the viewer's right edge (ViewerModeRail, ENG-4455): one
+  // tab per layer this person may use, each opening its side panel. Clicking
+  // the open one closes it; the unsaved Live edit prompt guards both ways out.
+  const railTabs = [
+    canSource && {
+      id: 'source',
+      icon: Ico.edit(16),
+      label: t('layers.source'),
+      description: t('rail.sourceHint'),
+      pressed: sourceOn,
+      onSelect: () => setSourceLayer(!sourceOn),
+    },
+    commentsEnabled && {
+      id: 'comments',
+      icon: Ico.chats(16),
+      label: t('layers.comments'),
+      description: t('rail.commentsHint'),
+      pressed: !!commentsOpen,
+      onSelect: () => toggleComments(),
+      badge: comments.unreadCount,
+      badgeLabel: t('header.commentsUnread', { count: comments.unreadCount }),
+    },
+    statsAvailable && {
+      id: 'stats',
+      icon: Ico.chartColumn(16),
+      label: t('layers.stats'),
+      description: t('rail.statsHint'),
+      pressed: statsOpen,
+      onSelect: () => toggleStats(!statsOpen),
+    },
+  ].filter(Boolean);
   // The address pill: where this artifact can be opened. A published page or
   // a running live app has its own address; a draft has the address the
   // browser-tab action opens, or none until a signed link is minted.
@@ -1746,9 +1746,6 @@ export function ArtifactViewer({
     setTextSelection,
   };
 
-  // The toolbar always shows where there is one; without one (no revision
-  // and no layer toggles), Live edit carries its own way out.
-  const toolbarShown = !!workspace.currentRevision || !!layerControls;
   const headerLayout = {
     ...layout,
     onToggle: toggleLayout,
@@ -1777,9 +1774,8 @@ export function ArtifactViewer({
         onClose={requestClose}
       />
 
-      {toolbarShown && workspace.currentRevision && (
+      {workspace.currentRevision && (
         <ArtifactRevisionBar
-          layerControls={layerControls}
           revision={workspace.currentRevision}
           revisions={workspace.revisions}
           status={workspace.status}
@@ -1790,15 +1786,6 @@ export function ArtifactViewer({
           onCompare={workspace.compareRevision}
           saveInEditor={sourceOn}
         />
-      )}
-      {/* No revision line to sit on (a published page someone reviews, say):
-          the toggles get a line of their own. */}
-      {toolbarShown && !workspace.currentRevision && layerControls && (
-        <div className="artifact-revision-bar is-centered is-layers-only">
-          <span />
-          <div className="artifact-revision-center">{layerControls}</div>
-          <span />
-        </div>
       )}
       {(workspace.error || workspace.conflict) && (
         <div className="artifact-workspace-notice" role="alert">
@@ -1910,27 +1897,32 @@ export function ArtifactViewer({
         </div>
       )}
 
-      <ArtifactViewerBody
-        // With the toolbar hidden, Live edit's own way out is in the editor.
-        layers={{
-          source: sourceOn,
-          onExitSource: toolbarShown ? null : () => setSourceLayer(false),
-          // Save and Discard, in Live edit's own toolbar.
-          editActions: {
-            dirty: !!workspace.dirty,
-            saving: workspace.status === 'saving',
-            canEdit: workspace.capabilities?.canEdit !== false,
-            onSave: () => saveWorkspace(),
-            onDiscard: workspace.discard,
-          },
-        }}
-        workspace={{ ...workspaceView, save: saveWorkspace }}
-        preview={previewModel}
-        review={bodyReview}
-        stats={bodyStats}
-        agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
-        publishReview={publishReview}
-      />
+      {/* The body and, on its right edge, the panel rail. */}
+      <div className="artifact-viewer-workarea">
+        <ArtifactViewerBody
+          layers={{
+            source: sourceOn,
+            // The Live edit panel's close: the same way out as its rail tab.
+            onExitSource: () => setSourceLayer(false),
+            // Save and Discard, in the Live edit panel.
+            editActions: {
+              dirty: !!workspace.dirty,
+              saving: workspace.status === 'saving',
+              canEdit: workspace.capabilities?.canEdit !== false,
+              onSave: () => saveWorkspace(),
+              onDiscard: workspace.discard,
+            },
+          }}
+          workspace={{ ...workspaceView, save: saveWorkspace }}
+          preview={previewModel}
+          review={bodyReview}
+          stats={bodyStats}
+          agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
+          publishReview={publishReview}
+          sidePanelId={sidePanelId}
+        />
+        <ViewerModeRail label={t('rail.ariaLabel')} tabs={railTabs} panelId={sidePanelId} />
+      </div>
 
       {canQuickEdit && (
         <QuickEditBar

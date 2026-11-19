@@ -44,7 +44,7 @@ describe('the centred header', () => {
   });
 
   it('centres with 1fr auto 1fr, the middle shrinking before the sides overlap it', () => {
-    expect(css).toMatch(/\.artifact-viewer-topbar\.is-centered,\s*\.artifact-revision-bar\.is-centered\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, auto\) minmax\(max-content, 1fr\)/);
+    expect(css).toMatch(/\.artifact-viewer-topbar\.is-centered\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, auto\) minmax\(max-content, 1fr\)/);
     // The title keeps a minimum, so the pill gives way before it.
     expect(css).toMatch(/\.artifact-viewer-topbar\.is-centered \{ grid-template-columns: minmax\(min\(11rem, 28%\), 1fr\) minmax\(0, auto\) minmax\(max-content, 1fr\); \}/);
     // A long address stops at a readable width and shrinks first, so the
@@ -55,8 +55,10 @@ describe('the centred header', () => {
   it('keeps a narrow viewer centred: title and actions on one row, the address centred under them', () => {
     const narrow = css.slice(css.indexOf('@media (max-width: 820px)'));
     expect(narrow).toMatch(/\.artifact-viewer-topbar\.is-centered \{[^}]*grid-template-areas: "title actions" "address address"/);
+    // The revision line (ENG-4455) has no centre any more: on a phone it
+    // wraps, History under the revision when it must.
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
-    expect(phone).toMatch(/\.artifact-revision-bar\.is-centered \{[^}]*grid-template-areas: "identity actions" "center center"/);
+    expect(phone).toMatch(/\.artifact-revision-bar \{ flex-wrap: wrap;/);
   });
 });
 

@@ -224,8 +224,7 @@ export function StatsPanel({
   return (
     <div
       className="artifact-stats-panel flex flex-col gap-[14px] overflow-y-auto bg-surface px-3 py-2
-        font-[family-name:var(--font-body)] motion-reduce:!animate-none"
-      style={{ animation: 'cw-comments-panel-in var(--dur-layout) var(--ease-out)' }}
+        font-[family-name:var(--font-body)]"
     >
       <div className="flex shrink-0 items-center justify-between">
         <span className="text-[18px] font-semibold leading-[28px] text-ink">{t('stats.title')}</span>

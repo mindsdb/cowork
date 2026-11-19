@@ -15,11 +15,9 @@ export function ArtifactRevisionBar({
   canEdit,
   onSave,
   onDiscard,
-  // Live edit carries its own Save and Discard (ArtifactHtmlVisualEditor).
+  // Live edit carries its own Save and Discard (its side panel).
   saveInEditor = false,
   onCompare,
-  // The viewer's layer toggles (ENG-4227), in the centre of the line.
-  layerControls = null,
 }) {
   const { t } = useTranslation('artifacts');
   const statusCopy = status === 'saving'
@@ -34,16 +32,14 @@ export function ArtifactRevisionBar({
   const visibleStatus = canEdit ? statusCopy : t('revisionBar.viewOnly');
 
   return (
-    // Centred like the top line (1fr auto 1fr): the revision on the left, the
-    // layer toggles in the centre, History and saving on the right.
-    <div className="artifact-revision-bar is-centered">
+    // The revision, its status and History on the left; Save and Discard on
+    // the right while there is unsaved text outside Live edit. The panels
+    // (Live edit, Comments, Stats) are on the rail at the viewer's edge.
+    <div className="artifact-revision-bar">
       <div className="artifact-revision-identity">
         <span className="artifact-draft-dot" aria-hidden="true" />
         <strong>{revisionLabel(revision)}</strong>
         <span className={`artifact-save-state is-${status}`}>{visibleStatus}</span>
-      </div>
-      <div className="artifact-revision-center">{layerControls}</div>
-      <div className="artifact-revision-actions">
         {revisions.length > 1 && (
           <label className="artifact-history-picker">
             <span className="sr-only">{t('revisionBar.compare')}</span>
@@ -68,17 +64,17 @@ export function ArtifactRevisionBar({
             </select>
           </label>
         )}
-        {canEdit && dirty && !saveInEditor && (
-          <>
-            <Button variant="subtle" onClick={onDiscard}>{t('revisionBar.discard')}</Button>
-            <Tooltip content={t('revisionBar.saveTooltip')}>
-              <Button onClick={onSave} disabled={status === 'saving'}>
-                {Ico.save(14)} {t('revisionBar.save')}
-              </Button>
-            </Tooltip>
-          </>
-        )}
       </div>
+      {canEdit && dirty && !saveInEditor && (
+        <div className="artifact-revision-actions">
+          <Button variant="subtle" onClick={onDiscard}>{t('revisionBar.discard')}</Button>
+          <Tooltip content={t('revisionBar.saveTooltip')}>
+            <Button onClick={onSave} disabled={status === 'saving'}>
+              {Ico.save(14)} {t('revisionBar.save')}
+            </Button>
+          </Tooltip>
+        </div>
+      )}
     </div>
   );
 }

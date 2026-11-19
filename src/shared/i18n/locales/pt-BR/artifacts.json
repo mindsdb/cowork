@@ -267,7 +267,6 @@
       "caption": "Legenda",
       "text": "Texto"
     },
-    "exitLiveEdit": "Sair da edição ao vivo",
     "mode": {
       "ariaLabel": "Modo da edição ao vivo",
       "navigate": "Navegar",
@@ -821,7 +820,6 @@
     "showFewer": "Mostrar menos"
   },
   "layers": {
-    "ariaLabel": "Camadas do visualizador",
     "source": "Edição ao vivo",
     "comments": "Comentários",
     "sourceOffPrompt": {
@@ -865,5 +863,14 @@
       "trackingOff": "Ative a análise de visitantes primeiro.",
       "saveFailed": "Não foi possível salvar a configuração."
     }
+  },
+  "rail": {
+    "ariaLabel": "Painéis do visualizador",
+    "sourceHint": "Altere o texto e o layout da página",
+    "commentsHint": "Deixe e revise feedback",
+    "statsHint": "Quem viu e por quanto tempo"
+  },
+  "liveEditPanel": {
+    "close": "Fechar o painel de edição ao vivo"
   }
 }

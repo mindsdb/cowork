@@ -267,7 +267,6 @@
       "caption": "Bildunterschrift",
       "text": "Text"
     },
-    "exitLiveEdit": "Live-Bearbeitung beenden",
     "mode": {
       "ariaLabel": "Modus der Live-Bearbeitung",
       "navigate": "Navigieren",
@@ -821,7 +820,6 @@
     "showFewer": "Weniger anzeigen"
   },
   "layers": {
-    "ariaLabel": "Viewer-Ebenen",
     "source": "Live-Bearbeitung",
     "comments": "Kommentare",
     "sourceOffPrompt": {
@@ -865,5 +863,14 @@
       "trackingOff": "Schalte zuerst die Besucheranalyse ein.",
       "saveFailed": "Die Einstellung konnte nicht gespeichert werden."
     }
+  },
+  "rail": {
+    "ariaLabel": "Ansichtsbereiche",
+    "sourceHint": "Text und Layout auf der Seite ändern",
+    "commentsHint": "Feedback geben und prüfen",
+    "statsHint": "Wer es angesehen hat und wie lange"
+  },
+  "liveEditPanel": {
+    "close": "Live-Bearbeitungsbereich schließen"
   }
 }

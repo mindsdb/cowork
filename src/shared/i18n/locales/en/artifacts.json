@@ -267,7 +267,6 @@
       "caption": "Caption",
       "text": "Text"
     },
-    "exitLiveEdit": "Exit Live edit",
     "mode": {
       "ariaLabel": "Live edit mode",
       "navigate": "Navigate",
@@ -821,7 +820,6 @@
     "showFewer": "Show fewer"
   },
   "layers": {
-    "ariaLabel": "Viewer layers",
     "source": "Live edit",
     "comments": "Comments",
     "sourceOffPrompt": {
@@ -865,5 +863,14 @@
       "trackingOff": "Turn on viewer analytics first.",
       "saveFailed": "Could not save the setting."
     }
+  },
+  "rail": {
+    "ariaLabel": "Viewer panels",
+    "sourceHint": "Change text and layout on the page",
+    "commentsHint": "Leave and review feedback",
+    "statsHint": "Who viewed and for how long"
+  },
+  "liveEditPanel": {
+    "close": "Close Live edit panel"
   }
 }

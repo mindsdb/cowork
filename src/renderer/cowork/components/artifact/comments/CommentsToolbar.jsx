@@ -1,8 +1,10 @@
 // Comments' Navigate / Comment switch (ENG-4383), Live edit's twin: a pill
 // floating at the bottom centre of the artifact. Navigate leaves the page
 // working, with the pins on it; Comment turns a click on the page into a
-// new comment there (⌥ picks the container). Comments are left with the
-// Comments toggle or the inbox's close, so the pill has nothing else.
+// new comment there (⌥ picks the container). It stays on the artifact, not
+// in the inbox (ENG-4455): it is about the page, and the inbox covers the page
+// on narrow screens. Comments are left with the Comments tab on the panel rail
+// or the inbox's close, so the pill has nothing else.
 
 import Ico from '../../Icons';
 import { ModeSwitch } from '../ModeSwitch';

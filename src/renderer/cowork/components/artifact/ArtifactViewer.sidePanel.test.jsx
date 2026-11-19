@@ -1,6 +1,6 @@
-// The comments inbox and Stats share one docked slot. Stats is the third
-// viewer layer (ENG-4455): Live edit, Comments and Stats are exclusive, and
-// comment mode is off while Stats is open.
+// The comments inbox and Stats share one side panel. Stats is the third
+// viewer layer (ENG-4455): Live edit, Comments and Stats are exclusive tabs on
+// the panel rail, and comment mode is off while Stats is open.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
@@ -71,7 +71,7 @@ vi.mock('./stats/useArtifactStats', () => ({
   },
 }));
 vi.mock('./ArtifactViewerHeader', () => ({
-  // Comments is a layer toggle on the revision line (ENG-4227), not here.
+  // Comments is a tab on the panel rail (ENG-4455), not here.
   ArtifactViewerHeader: ({ workspace }) => (
     <>
       {/* The mode calls older callers still make (repair flows, notices). */}
@@ -147,14 +147,15 @@ afterEach(() => {
 });
 
 describe('ArtifactViewer side panel', () => {
-  it('offers Stats as a layer toggle beside Comments, pressed while open', async () => {
+  it('offers Stats as a tab on the panel rail beside Comments, pressed while open', async () => {
     renderViewer();
     await settle();
 
-    const toggles = screen.getByRole('group', { name: 'Viewer layers' });
-    const stats = within(toggles).getByRole('button', { name: 'Stats' });
-    expect(within(toggles).getByRole('button', { name: 'Comments' })).toBeInTheDocument();
+    const rail = screen.getByRole('toolbar', { name: 'Viewer panels' });
+    const stats = within(rail).getByRole('button', { name: 'Stats' });
+    expect(within(rail).getByRole('button', { name: 'Comments' })).toBeInTheDocument();
     expect(stats).toHaveAttribute('aria-pressed', 'false');
+    expect(stats).toHaveAccessibleDescription('Who viewed and for how long');
     expect(panels().stats).toBe('false');
     expect(statsMock.enabled.every((enabled) => enabled === false)).toBe(true);
 

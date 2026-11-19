@@ -267,7 +267,6 @@
       "caption": "Légende",
       "text": "Texte"
     },
-    "exitLiveEdit": "Quitter la modification en direct",
     "mode": {
       "ariaLabel": "Mode de modification en direct",
       "navigate": "Naviguer",
@@ -821,7 +820,6 @@
     "showFewer": "Afficher moins"
   },
   "layers": {
-    "ariaLabel": "Calques de la visionneuse",
     "source": "Modification en direct",
     "comments": "Commentaires",
     "sourceOffPrompt": {
@@ -865,5 +863,14 @@
       "trackingOff": "Activez d’abord l’analyse des visiteurs.",
       "saveFailed": "Impossible d’enregistrer le réglage."
     }
+  },
+  "rail": {
+    "ariaLabel": "Panneaux de la visionneuse",
+    "sourceHint": "Modifier le texte et la mise en page",
+    "commentsHint": "Laisser et consulter des retours",
+    "statsHint": "Qui l’a consulté et combien de temps"
+  },
+  "liveEditPanel": {
+    "close": "Fermer le panneau de modification en direct"
   }
 }

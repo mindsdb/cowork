@@ -116,14 +116,14 @@ describe('ArtifactViewer comment layer', () => {
     rerender();
     await settle();
 
-    fireEvent.click(screen.getByText('Comments'));
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
     await settle();
 
     expect(bodyMock.urls).toHaveLength(2);
     expect(bodyMock.urls[1]).toContain('__antonComments=1');
 
-    fireEvent.click(screen.getByText('Comments'));
-    fireEvent.click(screen.getByText('Comments'));
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
     await settle();
     expect(bodyMock.urls).toHaveLength(2);
   });

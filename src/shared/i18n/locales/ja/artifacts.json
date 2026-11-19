@@ -267,7 +267,6 @@
       "caption": "キャプション",
       "text": "テキスト"
     },
-    "exitLiveEdit": "ライブ編集を終了",
     "mode": {
       "ariaLabel": "ライブ編集のモード",
       "navigate": "操作",
@@ -821,7 +820,6 @@
     "showFewer": "表示を減らす"
   },
   "layers": {
-    "ariaLabel": "ビューアーのレイヤー",
     "source": "ライブ編集",
     "comments": "コメント",
     "sourceOffPrompt": {
@@ -865,5 +863,14 @@
       "trackingOff": "先に閲覧者分析をオンにしてください。",
       "saveFailed": "設定を保存できませんでした。"
     }
+  },
+  "rail": {
+    "ariaLabel": "ビューアーのパネル",
+    "sourceHint": "ページのテキストとレイアウトを変更",
+    "commentsHint": "フィードバックを残して確認",
+    "statsHint": "誰がどれだけ閲覧したか"
+  },
+  "liveEditPanel": {
+    "close": "ライブ編集パネルを閉じる"
   }
 }

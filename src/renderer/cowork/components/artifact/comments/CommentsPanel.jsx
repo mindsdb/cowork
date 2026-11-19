@@ -23,11 +23,8 @@ import { XIcon } from './icons';
 import { Tooltip } from '../../ui';
 import { useTranslation } from '../../../../lib/i18n';
 
-// Slide-in entrance (mirrors the reference #act-panel: translateX(16px)→0 +
-// fade, same easing as the toolbar) — the `cw-comments-panel-in` keyframe
-// lives in globals.css alongside every other keyframe in the app.
-// `motion-reduce:!animate-none` (Tailwind's built-in variant) honors
-// reduced-motion; the `!` is required to beat the inline `animation` style.
+// It sits in the viewer's shared side panel (ViewerSidePanel), which plays
+// the slide in and out, so the inbox has no entrance of its own.
 
 const isClosed = (t) => t.status === 'resolved' || t.status === 'dismissed';
 
@@ -55,8 +52,6 @@ export function CommentsPanel({
   onLeaveThread,
   onFocusThread,
   loadImage = null,
-  // Playing its way out (usePresence): the same slide, reversed.
-  leaving = false,
 }) {
   const { t: tr } = useTranslation('artifacts');
   const [tab, setTab] = useState('open');
@@ -91,13 +86,7 @@ export function CommentsPanel({
   return (
     <div
       className="artifact-comments-panel flex flex-col gap-[10px] bg-surface px-3 py-2
-        font-[family-name:var(--font-body)] motion-reduce:!animate-none"
-      style={{
-        animation: leaving
-          ? 'cw-comments-panel-out 160ms var(--ease-out) forwards'
-          : 'cw-comments-panel-in var(--dur-layout) var(--ease-out)',
-        pointerEvents: leaving ? 'none' : undefined,
-      }}
+        font-[family-name:var(--font-body)]"
     >
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">

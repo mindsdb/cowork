@@ -267,7 +267,6 @@
       "caption": "Didascalia",
       "text": "Testo"
     },
-    "exitLiveEdit": "Esci dalla modifica dal vivo",
     "mode": {
       "ariaLabel": "Modalità della modifica dal vivo",
       "navigate": "Naviga",
@@ -821,7 +820,6 @@
     "showFewer": "Mostra meno"
   },
   "layers": {
-    "ariaLabel": "Livelli del visualizzatore",
     "source": "Modifica dal vivo",
     "comments": "Commenti",
     "sourceOffPrompt": {
@@ -865,5 +863,14 @@
       "trackingOff": "Attiva prima l’analisi dei visitatori.",
       "saveFailed": "Impossibile salvare l’impostazione."
     }
+  },
+  "rail": {
+    "ariaLabel": "Pannelli del visualizzatore",
+    "sourceHint": "Cambia testo e layout della pagina",
+    "commentsHint": "Lascia e rivedi i feedback",
+    "statsHint": "Chi l’ha visto e per quanto tempo"
+  },
+  "liveEditPanel": {
+    "close": "Chiudi il pannello di modifica dal vivo"
   }
 }

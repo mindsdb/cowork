@@ -267,7 +267,6 @@
       "caption": "说明文字",
       "text": "文本"
     },
-    "exitLiveEdit": "退出实时编辑",
     "mode": {
       "ariaLabel": "实时编辑模式",
       "navigate": "浏览",
@@ -821,7 +820,6 @@
     "showFewer": "收起"
   },
   "layers": {
-    "ariaLabel": "查看器图层",
     "source": "实时编辑",
     "comments": "评论",
     "sourceOffPrompt": {
@@ -865,5 +863,14 @@
       "trackingOff": "请先开启访客分析。",
       "saveFailed": "无法保存设置。"
     }
+  },
+  "rail": {
+    "ariaLabel": "查看器面板",
+    "sourceHint": "修改页面上的文字和布局",
+    "commentsHint": "留下并查看反馈",
+    "statsHint": "谁看过以及看了多久"
+  },
+  "liveEditPanel": {
+    "close": "关闭实时编辑面板"
   }
 }

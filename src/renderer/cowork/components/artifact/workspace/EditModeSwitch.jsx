@@ -1,7 +1,8 @@
-// Live edit's Navigate / Edit switch (ENG-4383). Navigate leaves the page
-// working (click through slides, open tabs, follow buttons) without leaving
-// Live edit or saving; Edit holds the page still and makes any text,
-// buttons' and links' included, editable on click.
+// Live edit's Navigate / Edit switch (ENG-4383), a segmented control in the
+// Live edit panel. Navigate leaves the page working (click through slides,
+// open tabs, follow buttons) without leaving Live edit or saving; Edit holds
+// the page still and makes any text, buttons' and links' included, editable
+// on click.
 
 import Ico from '../../Icons';
 import { ModeSwitch } from '../ModeSwitch';
@@ -14,6 +15,7 @@ export function EditModeSwitch({ mode, onChange }) {
     <ModeSwitch
       ariaLabel={t('htmlEditor.mode.ariaLabel')}
       className="artifact-edit-mode-switch"
+      floating={false}
       value={mode}
       onChange={onChange}
       options={[

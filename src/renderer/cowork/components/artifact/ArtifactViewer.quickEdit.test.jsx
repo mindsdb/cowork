@@ -115,9 +115,8 @@ vi.mock('./workspace/ArtifactSourceEditor', () => ({
 }));
 vi.mock('./workspace/ArtifactComparison', () => ({ ArtifactComparison: () => null }));
 vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () => null }));
-// The revision line, holding the layer toggles the viewer hands it.
 vi.mock('./workspace/ArtifactRevisionBar', () => ({
-  ArtifactRevisionBar: ({ layerControls }) => <div className="artifact-revision-bar">{layerControls}</div>,
+  ArtifactRevisionBar: () => <div className="artifact-revision-bar" />,
 }));
 vi.mock('../ui/Modal', () => ({
   Modal: ({ children, fullBleed }) => <div data-testid="modal" data-full-bleed={fullBleed ? 'true' : 'false'}>{children}</div>,
@@ -1109,16 +1108,84 @@ describe('ArtifactViewer quick edit bar', () => {
       expect(workspaceMock.discard).toHaveBeenCalled();
     });
 
-    it('sits on the revision line, not in the header', async () => {
+    it('sits on the panel rail at the viewer\'s edge, not in the header or the revision line', async () => {
       workspaceMock.commentsReady = true;
       workspaceMock.source = HTML_SOURCE;
       renderViewer();
       await screen.findByTitle('Launch brief');
 
-      const group = screen.getByRole('group', { name: 'Viewer layers' });
-      expect(group.closest('.artifact-revision-bar')).not.toBeNull();
-      expect(group.closest('.artifact-viewer-topbar')).toBeNull();
-      expect(within(group).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Live edit', 'Comments']);
+      const rail = screen.getByRole('toolbar', { name: 'Viewer panels' });
+      expect(rail).toHaveAttribute('aria-orientation', 'vertical');
+      expect(rail.closest('.artifact-viewer-workarea')).not.toBeNull();
+      expect(rail.closest('.artifact-revision-bar')).toBeNull();
+      expect(rail.closest('.artifact-viewer-topbar')).toBeNull();
+      expect(within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Live edit', 'Comments']);
+      expect(toggle('Live edit')).toHaveAccessibleDescription('Change text and layout on the page');
+      expect(toggle('Comments')).toHaveAccessibleDescription('Leave and review feedback');
+    });
+
+    it('offers Stats on the rail only for a published artifact', async () => {
+      workspaceMock.commentsReady = true;
+      workspaceMock.source = HTML_SOURCE;
+      publishMock.url = 'https://pages.example/launch-brief';
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+
+      const rail = screen.getByRole('toolbar', { name: 'Viewer panels' });
+      expect(within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Live edit', 'Comments', 'Stats']);
+    });
+
+    it('switches panels from the rail and closes the open one on a second click', async () => {
+      workspaceMock.commentsReady = true;
+      workspaceMock.source = HTML_SOURCE;
+      publishMock.url = 'https://pages.example/launch-brief';
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+
+      fireEvent.click(toggle('Live edit'));
+      expect(screen.getByRole('button', { name: 'Close Live edit panel' })).toBeInTheDocument();
+      expect(toggle('Live edit')).toHaveAttribute('aria-controls', document.querySelector('.artifact-side-panel').id);
+
+      fireEvent.click(toggle('Stats'));
+      expect(pressed('Live edit')).toBe('false');
+      expect(pressed('Stats')).toBe('true');
+      expect(screen.getByTestId('preview-surface')).not.toHaveAttribute('hidden');
+
+      fireEvent.click(toggle('Stats'));
+      expect(pressed('Stats')).toBe('false');
+      expect(pressed('Live edit')).toBe('false');
+      expect(pressed('Comments')).toBe('false');
+    });
+
+    it('closes Live edit from its panel, asking first over unsaved text', async () => {
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.discard.mockClear();
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      fireEvent.click(toggle('Live edit'));
+      workspaceMock.dirty = true;
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close Live edit panel' }));
+      const prompt = screen.getByRole('alertdialog', { name: 'Turn off Live edit?' });
+      expect(pressed('Live edit')).toBe('true');
+
+      fireEvent.click(within(prompt).getByRole('button', { name: 'Discard changes' }));
+      expect(workspaceMock.discard).toHaveBeenCalledTimes(1);
+      expect(pressed('Live edit')).toBe('false');
+    });
+
+    it('hands the editor the Live edit panel and its Save / Discard', async () => {
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.dirty = true;
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      fireEvent.click(toggle('Live edit'));
+
+      const panel = document.querySelector('.artifact-side-panel');
+      expect(panel).toHaveAttribute('data-mode', 'source');
+      expect(sourceEditorProps.current.controlsTarget).toBe(within(panel).getByTestId('live-edit-slot'));
+      expect(sourceEditorProps.current.editActions).toMatchObject({ dirty: true, canEdit: true });
+      expect(sourceEditorProps.current).not.toHaveProperty('onExit');
     });
 
     it('remembers each layer on this device', async () => {

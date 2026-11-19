@@ -267,7 +267,6 @@
       "caption": "Leyenda",
       "text": "Texto"
     },
-    "exitLiveEdit": "Salir de la edición en vivo",
     "mode": {
       "ariaLabel": "Modo de edición en vivo",
       "navigate": "Navegar",
@@ -821,7 +820,6 @@
     "showFewer": "Mostrar menos"
   },
   "layers": {
-    "ariaLabel": "Capas del visor",
     "source": "Edición en vivo",
     "comments": "Comentarios",
     "sourceOffPrompt": {
@@ -865,5 +863,14 @@
       "trackingOff": "Activa primero el análisis de visitantes.",
       "saveFailed": "No se pudo guardar el ajuste."
     }
+  },
+  "rail": {
+    "ariaLabel": "Paneles del visor",
+    "sourceHint": "Cambia el texto y el diseño de la página",
+    "commentsHint": "Deja comentarios y revísalos",
+    "statsHint": "Quién lo vio y durante cuánto tiempo"
+  },
+  "liveEditPanel": {
+    "close": "Cerrar el panel de edición en vivo"
   }
 }
