@@ -8,7 +8,8 @@ const bridge = vi.hoisted(() => ({
   customMcpSetTools: vi.fn(),
   customMcpReconnect: vi.fn(),
 }));
-vi.mock('../../../platform/host', () => ({ host: bridge }));
+const shell = vi.hoisted(() => ({ isWeb: false }));
+vi.mock('../../../platform/host', () => ({ host: { ...bridge, get isWeb() { return shell.isWeb; } } }));
 
 import CustomMcpDetailSection from './CustomMcpDetailSection';
 
@@ -32,6 +33,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const fn of Object.values(bridge)) fn.mockReset();
+  shell.isWeb = false;
 });
 
 describe('CustomMcpDetailSection', () => {
@@ -131,6 +133,15 @@ describe('CustomMcpDetailSection', () => {
     renderSection({ connection: { ...CONNECTION, user_label: 'Tracker on the web' } });
 
     expect(await screen.findByText('Tracker on the web')).toBeTruthy();
+  });
+
+  it('shows the connection\'s server URL when the host holds no summary', async () => {
+    shell.isWeb = true;
+    bridge.customMcpSummary.mockResolvedValue({ ok: false, code: 'unavailable', reason: 'x' });
+    renderSection({ connection: { ...CONNECTION, user_label: 'Tracker on the web', server_url: 'https://mcp.example.com/web' } });
+
+    expect(await screen.findByText('Tracker on the web')).toBeTruthy();
+    expect(screen.getByText('https://mcp.example.com/web')).toBeTruthy();
   });
 
   it('shows the login hosts before reconnecting, then reconnects with them', async () => {
@@ -293,6 +304,17 @@ describe('CustomMcpDetailSection', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
     expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Disconnect Tracker?', destructive: true }));
+    expect(confirm.mock.lastCall[0].message).toContain('removed from this computer');
     expect(onDisconnect).toHaveBeenCalledWith(CONNECTION);
+  });
+
+  it('does not say the web disconnect removes anything from this computer', async () => {
+    shell.isWeb = true;
+    const { confirm } = renderSection();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({
+      message: 'Anton stops using this server, its login is revoked where the server allows it, and its settings are deleted.',
+    }));
   });
 });

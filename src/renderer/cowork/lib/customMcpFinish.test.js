@@ -35,12 +35,26 @@ describe('captureCustomMcpCompletion', () => {
     expect(takeCustomMcpCompletion()).toBe(ID);
   });
 
-  it('strips a fragment that is not an id without stashing it', () => {
+  it.each([
+    ['a Keycloak return', '#state=st-1&session_state=s&code=code-1'],
+    ['a Keycloak error', '#error=login_required&state=st-1'],
+    ['an id followed by more', `#${ID}&state=st-1&code=code-1`],
+    ['too short an id', `#${ID.slice(1)}`],
+  ])('leaves %s in the address and stashes nothing', (_name, hash) => {
     const replace = vi.spyOn(window.history, 'replaceState');
-    captureCustomMcpCompletion(loc('#not-an-id'));
+    captureCustomMcpCompletion(loc(hash));
 
-    expect(replace).toHaveBeenCalledWith(window.history.state, '', CUSTOM_MCP_FINISH_PATH);
+    expect(replace).not.toHaveBeenCalled();
     expect(sessionStorage.length).toBe(0);
+  });
+
+  it('takes the id on the finish path with a trailing slash', () => {
+    const replace = vi.spyOn(window.history, 'replaceState');
+    captureCustomMcpCompletion(loc(`#${ID}`, `${CUSTOM_MCP_FINISH_PATH}/`));
+
+    expect(replace).toHaveBeenCalledWith(window.history.state, '', `${CUSTOM_MCP_FINISH_PATH}/`);
+    expect(takeCustomMcpCompletion()).toBe(ID);
+    expect(isCustomMcpFinishPage(loc('', `${CUSTOM_MCP_FINISH_PATH}/`))).toBe(true);
   });
 
   it('leaves every other page alone', () => {

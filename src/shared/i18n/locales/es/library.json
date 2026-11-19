@@ -730,6 +730,7 @@
       "disconnect": "Desconectar",
       "disconnectTitle": "¿Desconectar {name}?",
       "disconnectMessage": "Anton deja de usar este servidor, su inicio de sesión se revoca cuando el servidor lo permite y su configuración se elimina de esta computadora.",
+      "disconnectMessageWeb": "Anton deja de usar este servidor, su inicio de sesión se revoca cuando el servidor lo permite y su configuración se elimina.",
       "stale": "No se pudo actualizar la lista de herramientas. Estas son las últimas herramientas listadas y sus interruptores siguen funcionando.",
       "reasonReadOnlyRemoved": "Desactivada: el servidor ya no marca esta herramienta como de solo lectura.",
       "reasonSizeCeiling": "Desactivada: las herramientas que tienes activadas alcanzaron su límite de tamaño.",

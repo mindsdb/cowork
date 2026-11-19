@@ -7,10 +7,14 @@ export const CUSTOM_MCP_FINISH_PATH: string;
 export function isCustomMcpFinishPage(loc?: Pick<Location, 'pathname'>): boolean;
 
 /**
- * Stash the completion id from the fragment in sessionStorage and strip the
- * fragment from the address bar, before the Keycloak redirect drops it. Never throws.
+ * Stash a fragment that is a completion id in sessionStorage and strip it from
+ * the address bar, before the Keycloak redirect drops it. Any other fragment,
+ * Keycloak's own return among them, stays. Never throws.
  */
 export function captureCustomMcpCompletion(
   loc?: Pick<Location, 'pathname' | 'search' | 'hash'>,
   storage?: Storage | null,
 ): void;
+
+/** The stashed completion id, forgotten as it is read; null when there is none or it is too old. */
+export function takeCustomMcpCompletion(storage?: Storage | null, now?: number): string | null;

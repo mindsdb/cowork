@@ -3,6 +3,8 @@
 // web app signs in with Keycloak first, which redirects away and drops the
 // fragment, so the id is captured before Keycloak starts, removed from the
 // address bar at once, and taken once after sign-in to post `finish`.
+// Keycloak's return lands on this page too, with its code in the fragment;
+// that fragment is left for keycloak-js.
 
 export const CUSTOM_MCP_FINISH_PATH = '/custom-mcp/finish';
 
@@ -17,17 +19,16 @@ const sessionStore = () => {
 
 /** Whether this page load is the sign-in completion page. */
 export function isCustomMcpFinishPage(loc = window.location) {
-  return loc.pathname === CUSTOM_MCP_FINISH_PATH;
+  return loc.pathname === CUSTOM_MCP_FINISH_PATH || loc.pathname === `${CUSTOM_MCP_FINISH_PATH}/`;
 }
 
-/** On the completion page, stash the id from the fragment and strip the
-    fragment from the address bar and history. Never throws. */
+/** On the completion page, stash a fragment that is a completion id and strip
+    it from the address bar and history; any other fragment stays. Never throws. */
 export function captureCustomMcpCompletion(loc = window.location, storage = sessionStore()) {
   if (!isCustomMcpFinishPage(loc) || !loc.hash) return;
   const id = loc.hash.slice(1);
-  if (COMPLETION_ID.test(id)) {
-    try { storage?.setItem(STORAGE_KEY, JSON.stringify({ id, at: Date.now() })); } catch {}
-  }
+  if (!COMPLETION_ID.test(id)) return;
+  try { storage?.setItem(STORAGE_KEY, JSON.stringify({ id, at: Date.now() })); } catch {}
   try {
     window.history.replaceState(window.history.state, '', `${loc.pathname}${loc.search || ''}`);
   } catch {}

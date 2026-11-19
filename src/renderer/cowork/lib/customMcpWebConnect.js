@@ -8,14 +8,15 @@ export const CUSTOM_MCP_LISTING_TIMEOUT_MS = 60_000;
 // The same bound as api.js's SHORT_REQUEST_TIMEOUT_MS; host.ts cannot import
 // api.js, which imports host.ts.
 export const CUSTOM_MCP_REQUEST_TIMEOUT_MS = 10_000;
-// cowork-server relays finish to auth within 10 seconds.
-export const CUSTOM_MCP_FINISH_TIMEOUT_MS = 12_000;
+// cowork-server relays finish and reconnect to auth within 10 seconds.
+export const CUSTOM_MCP_RELAY_TIMEOUT_MS = 12_000;
 export const CUSTOM_MCP_POLL_MS = 3000;
 // Inside auth's 20 minute pending sign-in, long enough for a slow login page.
 export const CUSTOM_MCP_SIGN_IN_MS = 10 * 60 * 1000;
 
 const CANCELLED = Object.freeze({ ok: false, code: 'login_failed', reason: 'The connection was cancelled.' });
-const TRANSIENT = new Set(['timeout', 'unreachable']);
+// Reading the status does not consume it, so a gateway or throttling answer is retried too.
+const TRANSIENT = new Set(['timeout', 'unreachable', 'http_429', 'http_502', 'http_503', 'http_504']);
 
 /** @type {object | null} */
 let active = null;
@@ -123,8 +124,8 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Polls the sign-in's status until it ends. Each request is sent only after
- * the previous one answered. A timed-out or unanswered poll is retried, since
- * reading the status does not consume it.
+ * the previous one answered. A timed-out, unanswered or transiently refused
+ * poll is retried until the overall deadline.
  *
  * @param {{cancelled: boolean, whenCancelled: Promise<typeof CANCELLED>}} signIn
  * @param {() => Promise<{ok: true, data: any} | {ok: false, code: string, reason: string}>} readStatus never rejects
@@ -196,7 +197,8 @@ export function connectedFrom(data, name) {
  * @param {any} data `{tools_revision, tools, stale?, code?}`
  */
 export function toolsFrom(data) {
-  const tools = (Array.isArray(data?.tools) ? data.tools : []).map((tool) => ({
+  const entries = Array.isArray(data?.tools) ? data.tools : [];
+  const tools = entries.filter((tool) => tool && typeof tool === 'object').map((tool) => ({
     name: String(tool.name),
     description: typeof tool.description === 'string' ? tool.description : '',
     readOnly: tool.read_only === true,

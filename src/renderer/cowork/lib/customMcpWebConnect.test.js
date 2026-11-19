@@ -98,6 +98,36 @@ describe('the status poll', () => {
     expect(readStatus).toHaveBeenCalledTimes(2);
   });
 
+  it.each(['http_429', 'http_502', 'http_503', 'http_504'])('keeps polling after %s', async (code) => {
+    const signIn = beginCustomMcpSignIn({ open: () => null });
+    const readStatus = vi.fn()
+      .mockResolvedValueOnce({ ok: false, code, reason: 'auth service unreachable' })
+      .mockResolvedValueOnce({ ok: true, data: { status: 'success', name: 'cm-1' } });
+
+    expect(await pollCustomMcpSignIn(signIn, readStatus, { sleep: sleepNow })).toEqual({ ok: true, data: { status: 'success', name: 'cm-1' } });
+    expect(readStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops on a refusal that is not transient', async () => {
+    const signIn = beginCustomMcpSignIn({ open: () => null });
+    const readStatus = vi.fn().mockResolvedValue({ ok: false, code: 'http_404', reason: 'Not found.' });
+
+    expect(await pollCustomMcpSignIn(signIn, readStatus, { sleep: sleepNow })).toEqual({ ok: false, code: 'http_404', reason: 'Not found.' });
+    expect(readStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up on a status that stays transient at the overall deadline', async () => {
+    const signIn = beginCustomMcpSignIn({ open: () => null });
+    let clock = 0;
+    const readStatus = vi.fn(async () => {
+      clock += 60_000;
+      return { ok: false, code: 'http_502', reason: '' };
+    });
+
+    expect(await pollCustomMcpSignIn(signIn, readStatus, { sleep: sleepNow, now: () => clock })).toEqual({ ok: false, code: 'timeout', reason: '' });
+    expect(readStatus).toHaveBeenCalledTimes(10);
+  });
+
   it('ignores the answer of a request that was in flight at Cancel', async () => {
     const { win, popup } = fakeWindow();
     const signIn = beginCustomMcpSignIn(win);
@@ -123,6 +153,14 @@ describe('reading cowork-server answers', () => {
     [null, { code: 'http_502', reason: '' }],
   ])('reads the refusal %j', (body, expected) => {
     expect(customMcpFailure(502, body)).toEqual({ ok: false, ...expected });
+  });
+
+  it('skips a tool entry that is not an object', () => {
+    expect(toolsFrom({ tools_revision: 3, tools: [null, 'search', { name: 'find', allowed: true }] })).toEqual({
+      ok: true,
+      tools: [{ name: 'find', description: '', readOnly: false, allowed: true, usable: true, reason: null }],
+      revision: 3,
+    });
   });
 
   it('keeps a stored list marked stale with its failure code', () => {

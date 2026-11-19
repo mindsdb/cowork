@@ -34,7 +34,7 @@ import {
   beginCustomMcpSignIn,
   cancelCustomMcpSignIn,
   connectedFrom,
-  CUSTOM_MCP_FINISH_TIMEOUT_MS,
+  CUSTOM_MCP_RELAY_TIMEOUT_MS,
   CUSTOM_MCP_LISTING_TIMEOUT_MS,
   CUSTOM_MCP_REQUEST_TIMEOUT_MS,
   customMcpFailure,
@@ -1365,7 +1365,7 @@ export async function customMcpReconnect(id: string, confirmedLoginHosts?: strin
   }
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
   const signIn = confirmedLoginHosts ? beginCustomMcpSignIn() : null;
-  const started = await unlessCancelled(signIn, customMcpRequest('POST', `${connectionPath(id)}/reconnect`, CUSTOM_MCP_REQUEST_TIMEOUT_MS,
+  const started = await unlessCancelled(signIn, customMcpRequest('POST', `${connectionPath(id)}/reconnect`, CUSTOM_MCP_RELAY_TIMEOUT_MS,
     confirmedLoginHosts ? { confirmed_login_hosts: confirmedLoginHosts } : {}));
   if (!started.ok || started.data?.status !== 'pending' || !signIn) endCustomMcpSignIn(signIn);
   if (!started.ok) return started;
@@ -1393,7 +1393,7 @@ export async function customMcpDisconnect(id: string): Promise<CustomMcpDisconne
 /** Web only: finishes a sign-in on the completion page, for the member signed in here. */
 export async function customMcpFinish(completion: string): Promise<CustomMcpFinishResult> {
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
-  const answer = await customMcpRequest('POST', '/finish', CUSTOM_MCP_FINISH_TIMEOUT_MS, { completion });
+  const answer = await customMcpRequest('POST', '/finish', CUSTOM_MCP_RELAY_TIMEOUT_MS, { completion });
   if (!answer.ok) return answer;
   return { ok: true, name: typeof answer.data?.name === 'string' ? answer.data.name : '' };
 }

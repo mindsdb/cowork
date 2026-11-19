@@ -730,6 +730,7 @@
       "disconnect": "Déconnecter",
       "disconnectTitle": "Déconnecter {name} ?",
       "disconnectMessage": "Anton n'utilise plus ce serveur, sa connexion est révoquée quand le serveur le permet, et ses réglages sont supprimés de cet ordinateur.",
+      "disconnectMessageWeb": "Anton n'utilise plus ce serveur, sa connexion est révoquée quand le serveur le permet, et ses réglages sont supprimés.",
       "stale": "La liste d'outils n'a pas pu être actualisée. Voici les derniers outils listés, et leurs interrupteurs fonctionnent toujours.",
       "reasonReadOnlyRemoved": "Désactivé : le serveur ne marque plus cet outil comme en lecture seule.",
       "reasonSizeCeiling": "Désactivé : les outils que vous avez activés ont atteint leur limite de taille.",

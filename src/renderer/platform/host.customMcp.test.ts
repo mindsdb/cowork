@@ -209,6 +209,18 @@ describe('custom MCP on web', () => {
     expect(await host.customMcpFinish('c'.repeat(43))).toMatchObject({ ok: false, code: 'login_not_yours' });
   });
 
+  it('gives a reconnect the same 12 second bound as finish', async () => {
+    vi.useFakeTimers();
+    answer = () => 'hang';
+    const reconnecting = host.customMcpReconnect(NAME);
+    await untilSent(1);
+    expect(calls[0]).toMatchObject({ method: 'POST', path: `/connections/${NAME}/reconnect` });
+    await vi.advanceTimersByTimeAsync(11_999);
+    expect(calls[0].signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await reconnecting).toMatchObject({ ok: false, code: 'timeout' });
+  });
+
   it('removes a server and has no summary route', async () => {
     answer = () => ({ status: 204 });
     expect(await host.customMcpDisconnect(NAME)).toEqual({ ok: true, revoked: false });

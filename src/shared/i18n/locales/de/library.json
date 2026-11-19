@@ -730,6 +730,7 @@
       "disconnect": "Trennen",
       "disconnectTitle": "{name} trennen?",
       "disconnectMessage": "Anton nutzt diesen Server nicht mehr, die Anmeldung wird widerrufen, wo der Server das erlaubt, und seine Einstellungen werden von diesem Computer entfernt.",
+      "disconnectMessageWeb": "Anton nutzt diesen Server nicht mehr, die Anmeldung wird widerrufen, wo der Server das erlaubt, und seine Einstellungen werden gelöscht.",
       "stale": "Die Tool-Liste konnte nicht aktualisiert werden. Das sind die zuletzt aufgelisteten Tools, und ihre Schalter funktionieren weiterhin.",
       "reasonReadOnlyRemoved": "Ausgeschaltet: Der Server kennzeichnet dieses Tool nicht mehr als schreibgeschützt.",
       "reasonSizeCeiling": "Ausgeschaltet: Deine eingeschalteten Tools haben ihre Größengrenze erreicht.",

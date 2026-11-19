@@ -730,6 +730,7 @@
       "disconnect": "Desconectar",
       "disconnectTitle": "Desconectar {name}?",
       "disconnectMessage": "O Anton deixa de usar este servidor, o login dele é revogado quando o servidor permite, e as configurações dele são removidas deste computador.",
+      "disconnectMessageWeb": "O Anton deixa de usar este servidor, o login dele é revogado quando o servidor permite, e as configurações dele são excluídas.",
       "stale": "Não foi possível atualizar a lista de ferramentas. Estas são as últimas ferramentas listadas, e seus interruptores continuam funcionando.",
       "reasonReadOnlyRemoved": "Desativada: o servidor não marca mais esta ferramenta como somente leitura.",
       "reasonSizeCeiling": "Desativada: as ferramentas que você ativou atingiram o limite de tamanho.",

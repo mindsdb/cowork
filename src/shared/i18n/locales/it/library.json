@@ -730,6 +730,7 @@
       "disconnect": "Disconnetti",
       "disconnectTitle": "Disconnettere {name}?",
       "disconnectMessage": "Anton smette di usare questo server, il suo accesso viene revocato dove il server lo consente e le sue impostazioni vengono rimosse da questo computer.",
+      "disconnectMessageWeb": "Anton smette di usare questo server, il suo accesso viene revocato dove il server lo consente e le sue impostazioni vengono eliminate.",
       "stale": "Non è stato possibile aggiornare l'elenco degli strumenti. Questi sono gli ultimi strumenti elencati e i loro interruttori funzionano ancora.",
       "reasonReadOnlyRemoved": "Disattivato: il server non contrassegna più questo strumento come di sola lettura.",
       "reasonSizeCeiling": "Disattivato: gli strumenti che hai attivato hanno raggiunto il limite di dimensione.",

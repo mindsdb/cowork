@@ -730,6 +730,7 @@
       "disconnect": "Disconnect",
       "disconnectTitle": "Disconnect {name}?",
       "disconnectMessage": "Anton stops using this server, its login is revoked where the server allows it, and its settings are removed from this computer.",
+      "disconnectMessageWeb": "Anton stops using this server, its login is revoked where the server allows it, and its settings are deleted.",
       "stale": "The tool list couldn't be refreshed. These are the tools last listed, and their switches still work.",
       "reasonReadOnlyRemoved": "Switched off: the server no longer marks this tool as read-only.",
       "reasonSizeCeiling": "Switched off: the tools you have on reached their size limit.",

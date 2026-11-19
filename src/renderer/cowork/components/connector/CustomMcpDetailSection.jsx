@@ -145,19 +145,21 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
   async function disconnect() {
     if (!(await confirm({
       title: t('customMcp.detail.disconnectTitle', { name: summary?.label || connection.name }),
-      message: t('customMcp.detail.disconnectMessage'),
+      message: t(host.isWeb ? 'customMcp.detail.disconnectMessageWeb' : 'customMcp.detail.disconnectMessage'),
       confirmLabel: t('customMcp.detail.disconnect'),
       destructive: true,
     }))) return;
     await onDisconnect(connection);
   }
 
+  const serverUrl = summary?.serverUrl || connection.server_url;
+
   return (
     <>
       <div className="section-label mb-2">{t('customMcp.detail.server')}</div>
       <div className="mb-5 flex flex-col gap-1 rounded-lg border border-solid border-line py-3 px-[14px]">
         <div className="text-sm font-medium text-ink">{summary?.label || connection.user_label || connection.name}</div>
-        {summary?.serverUrl && <div className="break-all text-[12px] text-ink-3">{summary.serverUrl}</div>}
+        {serverUrl && <div className="break-all text-[12px] text-ink-3">{serverUrl}</div>}
       </div>
 
       <div className="section-label mb-2">{t('customMcp.detail.tools')}</div>

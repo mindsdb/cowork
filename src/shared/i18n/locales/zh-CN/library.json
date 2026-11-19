@@ -730,6 +730,7 @@
       "disconnect": "断开连接",
       "disconnectTitle": "断开 {name} 的连接？",
       "disconnectMessage": "Anton 将停止使用此服务器，在服务器允许时撤销其登录，并从这台电脑上删除其设置。",
+      "disconnectMessageWeb": "Anton 将停止使用此服务器，在服务器允许时撤销其登录，并删除其设置。",
       "stale": "无法刷新工具列表。这些是上次列出的工具，它们的开关仍然可用。",
       "reasonReadOnlyRemoved": "已关闭：服务器不再将此工具标记为只读。",
       "reasonSizeCeiling": "已关闭：你开启的工具已达到大小上限。",

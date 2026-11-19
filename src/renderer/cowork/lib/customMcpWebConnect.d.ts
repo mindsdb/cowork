@@ -12,7 +12,7 @@ export interface CustomMcpSignIn {
 
 export const CUSTOM_MCP_LISTING_TIMEOUT_MS: number;
 export const CUSTOM_MCP_REQUEST_TIMEOUT_MS: number;
-export const CUSTOM_MCP_FINISH_TIMEOUT_MS: number;
+export const CUSTOM_MCP_RELAY_TIMEOUT_MS: number;
 
 export function beginCustomMcpSignIn(win?: Window): CustomMcpSignIn;
 export function cancelCustomMcpSignIn(): void;

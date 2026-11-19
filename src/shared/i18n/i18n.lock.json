@@ -97171,6 +97171,40 @@
       "text": "46dc3c0a9c36"
     }
   },
+  "library:customMcp.detail.disconnectMessageWeb": {
+    "de": {
+      "from": "b433757f519c",
+      "text": "f31554e69e6e"
+    },
+    "es": {
+      "from": "b433757f519c",
+      "text": "c6dbdea2f426"
+    },
+    "fr": {
+      "from": "b433757f519c",
+      "text": "59519bacb0c1"
+    },
+    "it": {
+      "from": "b433757f519c",
+      "text": "da49d1176d95"
+    },
+    "ja": {
+      "from": "b433757f519c",
+      "text": "e99294a6cea9"
+    },
+    "ko": {
+      "from": "b433757f519c",
+      "text": "129b71f8810e"
+    },
+    "pt-BR": {
+      "from": "b433757f519c",
+      "text": "1bf22b197e8c"
+    },
+    "zh-CN": {
+      "from": "b433757f519c",
+      "text": "959a1c634f88"
+    }
+  },
   "library:customMcp.detail.disconnectTitle": {
     "de": {
       "from": "1fa7a806237b",
