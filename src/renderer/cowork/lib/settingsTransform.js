@@ -90,6 +90,8 @@ export const SETTINGS_KEY_MAP = {
   act_first: 'actFirst',
   // Off sends every MindsHub turn to the agent: no Jev routing or checks.
   jev_decisions_enabled: 'jevDecisionsEnabled',
+  // Off takes the scratchpad's classify() and classify_yes_no() from the agent.
+  jev_classify_enabled: 'jevClassifyEnabled',
   // The organization's own decision model (admins set it): with it, or with
   // Jev on MindsHub, the shared browser has a decisions model to pick its steps.
   decision_model_url: 'decisionModelUrl',
@@ -413,6 +415,19 @@ export function showRouterRoleRow(routing, gate) {
 export function showJevSwitch(routing, codingProviderType) {
   if (!routing || typeof routing !== 'object') return false;
   return routing.mode === 'jev' || routing.mode === 'off' || codingProviderType === 'minds-cloud';
+}
+
+/**
+ * The "Use Jev for classification" switch. Shown when the server has the
+ * setting (a server always sends every setting it knows). The agent's
+ * classify() runs on Jev, which only MindsHub serves, so the switch is usable,
+ * and on unless turned off, only while the coding model runs on MindsHub;
+ * elsewhere it shows off and locked.
+ */
+export function jevClassifySwitch(settings, codingProviderType) {
+  const shown = typeof settings?.jevClassifyEnabled === 'boolean';
+  const available = codingProviderType === 'minds-cloud';
+  return { shown, available, checked: available && settings?.jevClassifyEnabled !== false };
 }
 
 // ─── Role row copy ──────────────────────────────────────────────────
