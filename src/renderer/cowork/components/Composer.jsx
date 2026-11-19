@@ -143,10 +143,6 @@ export default function Composer({
   // and `false` after a short idle window. The home view uses this
   // to wake up the OrbitMorph from idle while the user is typing.
   onTypingChange,
-  // Optional — invoked with the text after each edit the person types (the
-  // textarea's own change event), never for text set from outside, such as a
-  // prefill. Home uses it to tell an edited example from a cleared one.
-  onTextChange,
   // Optional `{ text, bump }`. When `bump` changes, the composer's
   // value resets to `text` and the textarea focuses. Used by Edit-
   // and-resend on prior user messages; bump-based so repeated edits
@@ -1046,7 +1042,7 @@ export default function Composer({
             placeholder={placeholder}
             disabled={disabled}
             value={value}
-            onChange={(e) => { setValue(e.target.value); bumpTyping(); refreshSlash(e.target.value, e.target.selectionStart); onTextChange?.(e.target.value); }}
+            onChange={(e) => { setValue(e.target.value); bumpTyping(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onPaste={handlePaste}
             onFocus={() => { setFocused(true); clearTimeout(closeSlashTimerRef.current); }}
             onBlur={() => { setFocused(false); closeSlashSoon(); }}

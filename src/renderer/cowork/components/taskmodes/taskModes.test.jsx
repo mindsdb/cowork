@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Ico from '../Icons';
-import { TASK_MODES, FEATURED_EXAMPLES_MODE, composeModeMessage, modeMessage, resemblesSample, wipesSample } from './taskModes';
+import { TASK_MODES, FEATURED_EXAMPLES_MODE, composeModeMessage, modeMessage, resemblesSample } from './taskModes';
 import { sampleId } from '../../lib/consoleHandoff';
 import { HABIT_TRACKER_PROMPT } from '../onboarding/steps';
 import enChat from '../../../../shared/i18n/locales/en/chat.json';
@@ -113,35 +113,29 @@ describe('TASK_MODES data', () => {
     }
   });
 
-  it('adds no instruction when a different request keeps most of the example\'s words', () => {
+  it('adds the instruction to a placed example only while the example is all still there', () => {
     const viz = TASK_MODES.find((m) => m.id === 'visualization');
     const heatmap = viz.samples.find((s) => s.label === 'Show weekly sales activity via heatmap');
-    const email = 'Write an email about weekly sales activity across regions and product categories, '
-      + 'and highlight the peaks and the weak spots. Do not create a chart.';
-    // Most of the example's words are still there; the request is not the example.
-    expect(resemblesSample(heatmap, email)).toBe(true);
-    expect(modeMessage(viz, email, heatmap)).toEqual({ text: email, modeLine: 'replaced_example' });
-    // Selecting the example and typing over its start replaces it too.
-    const typedOver = heatmap.prompt.replace(/^Create a heatmap/, 'Write a summary');
-    expect(modeMessage(viz, typedOver, heatmap)).toEqual({ text: typedOver, modeLine: 'replaced_example' });
-    // An edit that keeps the opening is still the example.
-    const narrowed = heatmap.prompt.replace('regions', 'the EMEA regions');
-    expect(modeMessage(viz, narrowed, heatmap)).toEqual({ text: `${narrowed}\n\n${viz.instruction}`, modeLine: 'appended' });
-  });
-
-  it('adds no instruction once the example was wiped, whatever the new text shares with it', () => {
     const slides = TASK_MODES.find((m) => m.id === 'slides');
     const weekly = slides.samples.find((s) => s.label === 'Automate weekly team status reporting');
-    const email = 'Create a weekly email for my team covering milestones, completed tasks, blockers, '
-      + 'and upcoming priorities. Keep it short. No slides.';
-    // Without knowing the box was cleared, the text alone reads as an edit.
-    expect(modeMessage(slides, email, weekly).modeLine).toBe('appended');
-    expect(modeMessage(slides, email, weekly, { exampleWiped: true })).toEqual({ text: email, modeLine: 'replaced_example' });
-    // Clearing the box, or typing over it, wipes the example; editing it does not.
-    expect(wipesSample(weekly, '')).toBe(true);
-    expect(wipesSample(weekly, 'C')).toBe(true);
-    expect(wipesSample(weekly, `${weekly.prompt} Ten slides.`)).toBe(false);
-    expect(wipesSample(weekly, weekly.prompt.slice(0, Math.floor(weekly.prompt.length / 2)))).toBe(false);
+    const replaced = (mode, sample, text) => expect(modeMessage(mode, text, sample))
+      .toEqual({ text, modeLine: 'replaced_example' });
+
+    // Different requests that keep most of the example's words, even its opening.
+    replaced(viz, heatmap, 'Write an email about weekly sales activity across regions and product categories, '
+      + 'and highlight the peaks and the weak spots. Do not create a chart.');
+    replaced(slides, weekly, 'Create a weekly email for my team covering milestones, completed tasks, blockers, '
+      + 'and upcoming priorities. Keep it short. No slides.');
+    // Any edit inside the example sends it as the person's own request, without the line.
+    replaced(slides, weekly, weekly.prompt.replace('presentation template with slides', 'email'));
+    replaced(viz, heatmap, heatmap.prompt.replace('regions', 'the EMEA regions'));
+    replaced(slides, weekly, '');
+
+    // Text added before or after the example keeps the line.
+    const after = `${weekly.prompt} Ten slides.`;
+    expect(modeMessage(slides, after, weekly)).toEqual({ text: `${after}\n\n${slides.instruction}`, modeLine: 'appended' });
+    const before = `For the EMEA team: ${weekly.prompt}`;
+    expect(modeMessage(slides, before, weekly)).toEqual({ text: `${before}\n\n${slides.instruction}`, modeLine: 'appended' });
   });
 
   it('still adds the instruction to an edited ordinary example, and says what it did', () => {

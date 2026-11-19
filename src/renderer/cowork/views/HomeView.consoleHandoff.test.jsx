@@ -181,6 +181,47 @@ describe('HomeView console handoff', () => {
     expect(onSend.mock.calls[0][0]).toBe(email);
   });
 
+  it('sends no mode line after the linked example is selected and a different request pasted over it', async () => {
+    const slides = TASK_MODES.find((m) => m.id === 'slides');
+    const weekly = slides.samples.find((s) => s.label === 'Automate weekly team status reporting');
+    arriveFromConsole(`?from=console&mode=slides&sample=${sampleId(weekly.label)}`);
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    const box = await screen.findByDisplayValue(weekly.prompt);
+
+    const email = 'Create a weekly email for my team covering milestones, completed tasks, blockers, '
+      + 'and upcoming priorities. Keep it short. No slides.';
+    const user = userEvent.setup();
+    await user.tripleClick(box);
+    await user.paste(email);
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toBe(email);
+  });
+
+  it('sends no mode line when an edit inside the linked example changes what it asks for', async () => {
+    const slides = TASK_MODES.find((m) => m.id === 'slides');
+    const weekly = slides.samples.find((s) => s.label === 'Automate weekly team status reporting');
+    arriveFromConsole(`?from=console&mode=slides&sample=${sampleId(weekly.label)}`);
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    const box = await screen.findByDisplayValue(weekly.prompt);
+
+    // Select "presentation template with slides" inside the example and type "email".
+    const target = 'presentation template with slides';
+    const start = weekly.prompt.indexOf(target);
+    const user = userEvent.setup();
+    await user.click(box);
+    box.setSelectionRange(start, start + target.length);
+    await user.keyboard('email');
+    await user.keyboard('{Enter}');
+
+    const edited = weekly.prompt.replace(target, 'email');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toBe(edited);
+  });
+
   it('still adds the mode line to a linked example edited in place, without clearing it', async () => {
     const slides = TASK_MODES.find((m) => m.id === 'slides');
     const weekly = slides.samples.find((s) => s.label === 'Automate weekly team status reporting');

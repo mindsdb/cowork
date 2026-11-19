@@ -63,10 +63,20 @@ describe('an example picked and then edited', () => {
     await waitFor(() => expect(getSnapshot().completed.has('see-it-work')).toBe(true));
   });
 
-  it('still adds the mode instruction to an edited ordinary example', async () => {
+  it('still adds the mode instruction to an ordinary example the person added to', async () => {
     const onSend = vi.fn(async () => true);
     renderHome(onSend);
-    // An edit past the opening: rewording the opening counts as a different request.
+    const added = `${ordinary.prompt} Keep it to one page.`;
+
+    await pickThenSend(userEvent.setup(), ordinary, added);
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(onSend.mock.calls[0][0]).toBe(`${added}\n\n${mode.instruction}`);
+  });
+
+  it('sends an ordinary example edited inside it as the person\'s own request, without the instruction', async () => {
+    const onSend = vi.fn(async () => true);
+    renderHome(onSend);
     const words = ordinary.prompt.split(' ');
     words[words.length - 2] = 'changed';
     const edited = words.join(' ');
@@ -74,7 +84,7 @@ describe('an example picked and then edited', () => {
     await pickThenSend(userEvent.setup(), ordinary, edited);
 
     await waitFor(() => expect(onSend).toHaveBeenCalled());
-    expect(onSend.mock.calls[0][0]).toBe(`${edited}\n\n${mode.instruction}`);
+    expect(onSend.mock.calls[0][0]).toBe(edited);
   });
 
   it('sends text that replaces the example as the person\'s own request: no instruction, nothing ticked', async () => {
