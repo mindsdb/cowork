@@ -187,6 +187,8 @@
     "loading": "Caricamento: {what}…"
   },
   "upToDate": "Aggiornato",
+  "upToDateSaving": "Salvataggio…",
+  "upToDateSaved": "Salvato",
   "usageBar": {
     "hideAllowance": "Nascondi quota",
     "hide": "Nascondi"

@@ -1,8 +1,8 @@
 // The Share panel's viewer-analytics settings (ENG-4455): "Collect viewer
 // analytics", and "Ask for email before viewing" on public and password links
 // while analytics is on. A refusal for want of credits links to adding them.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 
 vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
 vi.mock('../../../lib/artifactShareAnalytics', () => ({ reportShareOpened: vi.fn(), reportLinkCopied: vi.fn() }));
@@ -150,5 +150,43 @@ describe('PublishMenu viewer analytics', () => {
 
     expect(settings).toHaveTextContent('Stats are not available for this account.');
     expect(within(settings).queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+});
+
+// The footer says the switches saved: Saving… while one saves, Saved for a
+// moment, then Up to date again.
+describe('PublishMenu analytics save status', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('goes Up to date → Saving… → Saved → Up to date', () => {
+    stats.value = makeStats({ data: { tracking: false, require_email: false } });
+    const controller = makeController();
+    const view = render(<PublishMenu controller={controller} />);
+    fireEvent.click(screen.getByRole('button', { name: /Share/ }));
+    expect(screen.getByText('Up to date')).toBeInTheDocument();
+
+    stats.value = makeStats({ data: { tracking: false, require_email: false }, trackingBusy: true });
+    view.rerender(<PublishMenu controller={controller} />);
+    expect(screen.getByText('Saving…')).toBeInTheDocument();
+
+    vi.useFakeTimers();
+    stats.value = makeStats({ data: { tracking: true, require_email: false } });
+    view.rerender(<PublishMenu controller={controller} />);
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(1800); });
+    expect(screen.getByText('Up to date')).toBeInTheDocument();
+  });
+
+  it('does not say Saved when the save failed', () => {
+    stats.value = makeStats({ trackingBusy: true });
+    const controller = makeController();
+    const view = render(<PublishMenu controller={controller} />);
+    fireEvent.click(screen.getByRole('button', { name: /Share/ }));
+
+    stats.value = makeStats({ error: { status: 402, code: 'credits_required', message: 'x' } });
+    view.rerender(<PublishMenu controller={controller} />);
+
+    expect(screen.queryByText('Saved')).toBeNull();
   });
 });

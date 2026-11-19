@@ -187,6 +187,8 @@
     "loading": "Carregando {what}…"
   },
   "upToDate": "Atualizado",
+  "upToDateSaving": "Salvando…",
+  "upToDateSaved": "Salvo",
   "usageBar": {
     "hideAllowance": "Ocultar franquia",
     "hide": "Ocultar"

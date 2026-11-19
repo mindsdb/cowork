@@ -187,6 +187,8 @@
     "loading": "Loading {what}…"
   },
   "upToDate": "Up to date",
+  "upToDateSaving": "Saving…",
+  "upToDateSaved": "Saved",
   "usageBar": {
     "hideAllowance": "Hide allowance",
     "hide": "Hide"

@@ -39,7 +39,7 @@ import { LOAD_STATUS } from '../../../lib/sharingContract';
 import { LoadStatus, RetryAlert } from '../../LoadStatus';
 import { useArtifactShareState } from './useArtifactShareState';
 import { shareStateIcon } from '../../ShareStateLabel';
-import { UpToDateTag } from '../../UpToDateTag';
+import { UpToDateTag, useSaveStatus } from '../../UpToDateTag';
 import { useArtifactStats } from '../stats/useArtifactStats';
 import { ViewerAnalyticsSettings } from './ViewerAnalyticsSettings';
 
@@ -314,6 +314,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
   // Viewer analytics settings (ENG-4455), read with the stats while the panel
   // is open on a published artifact.
   const analytics = useArtifactStats(pub.artifact, { enabled: open && isPublished && !!pub.artifact });
+  // The analytics switches save as they flip; the footer says so.
+  const analyticsSave = useSaveStatus(!!analytics.trackingBusy, !!analytics.error);
   // Which reads the panel waits on, and whether it may claim "Shared"
   // (useArtifactShareState).
   const {
@@ -722,7 +724,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                         {t('publish.update')}
                       </FooterButton>
                     ) : (
-                      <UpToDateTag />
+                      <UpToDateTag state={analyticsSave} />
                     )}
                     </>)}
                   </div>

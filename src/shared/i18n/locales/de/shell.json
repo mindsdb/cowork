@@ -187,6 +187,8 @@
     "loading": "Wird geladen: {what}…"
   },
   "upToDate": "Auf dem neuesten Stand",
+  "upToDateSaving": "Wird gespeichert…",
+  "upToDateSaved": "Gespeichert",
   "usageBar": {
     "hideAllowance": "Kontingent ausblenden",
     "hide": "Ausblenden"
