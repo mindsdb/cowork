@@ -22,9 +22,11 @@
    pill) shrinks before anything overlaps. */
 .artifact-viewer-topbar.is-centered,
 .artifact-revision-bar.is-centered { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(max-content, 1fr); align-items: center; column-gap: 10px; }
-/* The title keeps a readable minimum, so on a tight line the pill gives way
-   first rather than the title collapsing to a letter. */
-.artifact-viewer-topbar.is-centered { grid-template-columns: minmax(min(11rem, 28%), 1fr) minmax(0, auto) minmax(min-content, 1fr); }
+/* The title keeps a readable minimum, and the pill is capped at a share of
+   the bar, so a long address is cut in its middle before the actions wrap or
+   the title collapses to a letter. An uncapped pill takes all the spare room
+   and leaves the actions one button wide, each on its own line. */
+.artifact-viewer-topbar.is-centered { grid-template-columns: minmax(min(11rem, 28%), 1fr) fit-content(36%) minmax(min-content, 1fr); }
 /* The actions wrap onto a second line before anything is pushed out of the
    modal; the window controls (maximize, hide toolbars, close) stay one group
    at the end, so close is always on screen. */
