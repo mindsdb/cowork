@@ -599,7 +599,11 @@
       "placeholder": "Elige un ejemplo o describe tu propia tarea"
     },
     "samplePrompts": "Ejemplos de instrucciones",
-    "pillsAriaLabel": "Tipos de tarea"
+    "pillsAriaLabel": "Tipos de tarea",
+    "own-work": {
+      "chipLabel": "Tu trabajo",
+      "placeholder": "Pega texto o un enlace, o adjunta un archivo"
+    }
   },
   "taskRows": {
     "openProject": "Abrir {project}",
@@ -801,5 +805,41 @@
     "fallbackName": "imagen",
     "alt": "Imagen generada {name}",
     "notShown": "No se puede mostrar {name}. Es posible que se haya movido o eliminado."
+  },
+  "ownWork": {
+    "needsMaterial": "Ahora agrega con qué debe trabajar: adjunta un archivo, o pega texto o un enlace después de la tarea.",
+    "waysLabel": "Formas de traer tu trabajo",
+    "attach": "Adjuntar un archivo",
+    "orPaste": "o pega texto o un enlace en el cuadro de arriba",
+    "jobsHeading": "Elige una tarea si quieres",
+    "kindsLabel": "Tipo de trabajo",
+    "groups": {
+      "finance": "Finanzas y administración",
+      "sales": "Ventas y marketing",
+      "operations": "Operaciones",
+      "legal": "Contratos e investigación"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Convertir estos extractos bancarios o facturas en una sola hoja de cálculo.",
+        "1": "Preparar el próximo informe mensual con estas cifras.",
+        "2": "Revisar estos extractos en busca de errores o partidas inusuales."
+      },
+      "sales": {
+        "0": "Limpiar esta lista de clientes y marcar los duplicados.",
+        "1": "Comparar estas dos listas de precios y mostrar qué cambió.",
+        "2": "Redactar correos de seguimiento a partir de estas notas de llamadas."
+      },
+      "operations": {
+        "0": "Convertir estas notas de reunión en decisiones y pendientes.",
+        "1": "Convertir estas notas en un resumen de una página.",
+        "2": "Convertir este documento de proceso en una lista de verificación paso a paso."
+      },
+      "legal": {
+        "0": "Resumir los términos clave y los riesgos de este contrato.",
+        "1": "Resumir este informe y destacar las cifras importantes.",
+        "2": "Leer esta página y explicar qué nos importa."
+      }
+    }
   }
 }

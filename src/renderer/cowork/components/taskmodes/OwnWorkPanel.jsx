@@ -13,21 +13,20 @@ export default function OwnWorkPanel({ onPickJob, onAttachFiles, waitingForMater
   const [groupId, setGroupId] = useState(OWN_WORK_JOB_GROUPS[0].id);
   const group = OWN_WORK_JOB_GROUPS.find((g) => g.id === groupId) ?? OWN_WORK_JOB_GROUPS[0];
 
-
   return (
     <div className="mt-4 w-full max-w-[var(--composer-max-width,640px)] [animation:fadein-up_var(--dur-layout)_var(--ease-out)_both]">
       {waitingForMaterial && (
         <p role="status" className="m-0 mb-3 text-sm text-[var(--frost-700)]">
-          {t('ownWork.needsMaterial', { defaultValue: 'Now add what it should work on: attach a file, or paste text or a link after the job.' })}
+          {t('ownWork.needsMaterial')}
         </p>
       )}
-      <div className="flex flex-col items-center gap-2" role="group" aria-label={t('ownWork.waysLabel', { defaultValue: 'Ways to bring your work' })}>
+      <div className="flex flex-col items-center gap-2" role="group" aria-label={t('ownWork.waysLabel')}>
         <Button variant="primary" size="lg" onClick={() => fileRef.current?.click()}>
           <span aria-hidden className="inline-flex">{Ico.attach(16)}</span>
-          {t('ownWork.attach', { defaultValue: 'Attach a file' })}
+          {t('ownWork.attach')}
         </Button>
         <span className="text-[13px] text-[var(--frost-600)]">
-          {t('ownWork.orPaste', { defaultValue: 'or paste text or a link in the box above' })}
+          {t('ownWork.orPaste')}
         </span>
         <input
           ref={fileRef}
@@ -42,9 +41,9 @@ export default function OwnWorkPanel({ onPickJob, onAttachFiles, waitingForMater
       </div>
 
       <div className="mt-8 mx-[2px] mb-2 text-[13px] font-medium text-[var(--frost-600)]">
-        {t('ownWork.jobsHeading', { defaultValue: 'Pick a job if you like' })}
+        {t('ownWork.jobsHeading')}
       </div>
-      <div className="flex flex-wrap gap-[6px] mb-1" role="tablist" aria-label={t('ownWork.kindsLabel', { defaultValue: 'Kind of work' })}>
+      <div className="flex flex-wrap gap-[6px] mb-1" role="tablist" aria-label={t('ownWork.kindsLabel')}>
         {OWN_WORK_JOB_GROUPS.map((g) => (
           <button
             key={g.id}
@@ -56,7 +55,7 @@ export default function OwnWorkPanel({ onPickJob, onAttachFiles, waitingForMater
               ? 'cursor-pointer rounded-full border border-solid border-[var(--text-strong)] bg-[var(--text-strong)] px-3 py-[5px] [font-family:inherit] text-[12.5px] font-medium text-[var(--surface-0)]'
               : 'cursor-pointer rounded-full border border-solid border-line-2 bg-transparent px-3 py-[5px] [font-family:inherit] text-[12.5px] font-medium text-[var(--frost-700)] [@media(hover:hover)_and_(pointer:fine)]:hover:text-[var(--text-strong)]'}
           >
-            {t(`ownWork.groups.${g.id}`, { defaultValue: g.label })}
+            {t(`ownWork.groups.${g.id}`)}
           </button>
         ))}
       </div>
@@ -68,7 +67,7 @@ export default function OwnWorkPanel({ onPickJob, onAttachFiles, waitingForMater
             className="group flex w-full cursor-pointer items-center gap-3 border-0 border-b border-solid border-line bg-transparent px-1 py-[13px] text-left [font-family:inherit] text-[13.5px] text-[var(--frost-700)] last:border-b-0 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:hover:text-[var(--text-strong)]"
             onClick={() => onPickJob?.(j.prompt)}
           >
-            <span className="min-w-0 flex-1">{t(`ownWork.jobs.${group.id}.${i}`, { defaultValue: j.label })}</span>
+            <span className="min-w-0 flex-1">{t(`ownWork.jobs.${group.id}.${i}`)}</span>
             <span aria-hidden className="inline-flex shrink-0 text-[var(--frost-500)] opacity-70">{Ico.arrowUpLeft(14)}</span>
           </button>
         ))}

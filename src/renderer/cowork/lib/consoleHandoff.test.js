@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   captureConsoleHandoff, takeConsoleHandoff, findSample, sampleId, isUntouchedSample,
 } from './consoleHandoff';
-import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
+import { OWN_WORK_MODE } from '../components/taskmodes/taskModes';
 
 const at = (search, pathname = '/') => ({ search, pathname, hash: '' });
 
@@ -159,8 +159,9 @@ describe('console handoff', () => {
     expect(takeConsoleHandoff(window.sessionStorage, Date.now() + 11 * 60 * 1000)).toBeNull();
   });
 
-  it('treats the own-work prompt as text the app placed, not the person\'s own', () => {
-    expect(isUntouchedSample(OWN_WORK_PROMPT)).toBe(true);
-    expect(isUntouchedSample(`${OWN_WORK_PROMPT} Also my notes.`)).toBe(false);
+  it('treats a job the own-work mode placed as the app\'s text, and anything added as the person\'s', () => {
+    const job = OWN_WORK_MODE.samples[0].prompt;
+    expect(isUntouchedSample(job)).toBe(true);
+    expect(isUntouchedSample(`${job} Also my notes.`)).toBe(false);
   });
 });

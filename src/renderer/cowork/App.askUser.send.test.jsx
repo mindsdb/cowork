@@ -155,7 +155,9 @@ vi.mock('./lib/analytics', () => ({
 
 import App, { unsavedRefusedQuestions } from './App';
 import { trackTurnFailed, classifyFirstResponse, trackNewTaskMessageSent, trackAgentSessionStarted } from './lib/analytics';
-import { OWN_WORK_PROMPT } from './components/onboarding/steps';
+import { composeOwnWorkMessage } from './components/taskmodes/taskModes';
+
+const OWN_WORK_SEND = composeOwnWorkMessage('Weekly ops notes');
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
@@ -1569,19 +1571,19 @@ describe('the first message of a new task (analytics)', () => {
       return ta;
     });
 
-    // Paste the long onboarding prompt instead of typing it: typing renders the
+    // Paste the long own-work message instead of typing it: typing renders the
     // whole App once per character, which can push this test past its timeout
     // on a busy CI runner.
     await user.click(composer);
-    await user.paste(OWN_WORK_PROMPT);
+    await user.paste(OWN_WORK_SEND);
     await user.keyboard('{Enter}');
     await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
 
     expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1);
     expect(trackNewTaskMessageSent).toHaveBeenCalledWith({
-      text: OWN_WORK_PROMPT,
+      text: OWN_WORK_SEND,
       attachments: 0,
-      start: { start_kind: 'own_work', added_chars: 0 },
+      start: { start_kind: 'own_work', added_chars: 16 },
     });
     // It reads the console attribution that the session event clears, so it goes first.
     expect(trackNewTaskMessageSent.mock.invocationCallOrder[0])

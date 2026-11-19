@@ -456,7 +456,7 @@ export default function HomeView({
   const showText = phase === 'typing' || phase === 'settling' || phase === 'idle';
   const typedText = (phase === 'typing')
     ? greetingText.slice(0, typedCount)
-    : (taskMode === OWN_WORK_MODE ? t('home.ownWorkHeading', { defaultValue: 'What should Cowork work on?' }) : greetingText);
+    : (taskMode === OWN_WORK_MODE ? t('home.ownWorkHeading') : greetingText);
 
   // Composer fades in during 'settling' and stays for 'idle'.
   const showInteractiveSurface = phase === 'settling' || phase === 'idle';

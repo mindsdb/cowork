@@ -54,7 +54,6 @@ const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...optio
 
 import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
-import { OWN_WORK_PROMPT } from './onboarding/steps';
 import { reset as resetOnboarding } from './onboarding/onboardingStore';
 
 const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
@@ -634,18 +633,19 @@ describe('Sidebar — onboarding checklist rows', () => {
     hostMock.isWeb = true;
   });
 
-  it('starts a chat from the first step and opens Home from the example row', async () => {
+  it('opens Home from both rows without starting a chat', async () => {
     const onStartChat = vi.fn().mockResolvedValue(true);
     const onOpenExamples = vi.fn();
+    const onOpenOwnWork = vi.fn();
     const user = userEvent.setup();
-    render(<Sidebar {...baseProps} onStartChat={onStartChat} onOpenExamples={onOpenExamples} />);
+    render(<Sidebar {...baseProps} onStartChat={onStartChat} onOpenExamples={onOpenExamples} onOpenOwnWork={onOpenOwnWork} />);
 
     await user.click(screen.getByText('Try an example'));
     expect(onOpenExamples).toHaveBeenCalledTimes(1);
-    expect(onStartChat).not.toHaveBeenCalled();
 
     await user.click(screen.getByText('Start with your own work'));
-    expect(onStartChat).toHaveBeenCalledWith(OWN_WORK_PROMPT);
+    expect(onOpenOwnWork).toHaveBeenCalledTimes(1);
+    expect(onStartChat).not.toHaveBeenCalled();
   });
 });
 

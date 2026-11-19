@@ -429,11 +429,12 @@ export const OWN_WORK_START_NOW =
 export const OWN_WORK_LEAD =
   "Here's something from my work. Take a useful first step with it and tell me what you did, then suggest two or three things you could do next.";
 
+// A job's label is its message text and, through sampleId, its analytics id;
+// what a person reads comes from the chat catalog (ownWork.jobs.<group>.<n>).
 const job = (label) => ({ label, prompt: label });
 export const OWN_WORK_JOB_GROUPS = [
   {
     id: 'finance',
-    label: 'Finance and admin',
     jobs: [
       job('Turn these bank statements or invoices into one spreadsheet.'),
       job('Build the next monthly report from these numbers.'),
@@ -442,7 +443,6 @@ export const OWN_WORK_JOB_GROUPS = [
   },
   {
     id: 'sales',
-    label: 'Sales and marketing',
     jobs: [
       job('Clean up this customer list and flag duplicates.'),
       job('Compare these two price lists and show what changed.'),
@@ -451,7 +451,6 @@ export const OWN_WORK_JOB_GROUPS = [
   },
   {
     id: 'operations',
-    label: 'Operations',
     jobs: [
       job('Turn these meeting notes into decisions and action items.'),
       job('Turn these notes into a one-page brief.'),
@@ -460,7 +459,6 @@ export const OWN_WORK_JOB_GROUPS = [
   },
   {
     id: 'legal',
-    label: 'Contracts and research',
     jobs: [
       job('Summarize the key terms and risks in this contract.'),
       job('Summarize this report and pull out the numbers that matter.'),

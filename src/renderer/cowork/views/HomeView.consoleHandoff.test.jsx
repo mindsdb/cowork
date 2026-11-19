@@ -6,9 +6,8 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import HomeView from './HomeView';
 import { captureConsoleHandoff, findSample, sampleId } from '../lib/consoleHandoff';
-import { TASK_MODES } from '../components/taskmodes/taskModes';
+import { TASK_MODES, OWN_WORK_MODE, composeOwnWorkMessage } from '../components/taskmodes/taskModes';
 import { __resetDraftsForTests, setDraft } from '../lib/draftStore';
-import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
 import { getSnapshot, reset as resetOnboarding } from '../components/onboarding/onboardingStore';
 
 const { trackComposerReady, setEntryAttribution } = vi.hoisted(() => ({
@@ -398,41 +397,44 @@ describe('HomeView console handoff', () => {
     expect(screen.getByRole('textbox')).toHaveValue('');
   });
 
-  it('opens with the own-work prompt in the composer and does not send it', async () => {
+  it('opens the own-work mode with nothing placed, and sends only once the person gives it something', async () => {
     arriveFromConsole('?from=console&start=own-work');
     const onSend = vi.fn(async () => true);
     render(<Home onSend={onSend} />);
 
-    await screen.findByDisplayValue(OWN_WORK_PROMPT);
+    expect(await screen.findByRole('button', { name: 'Remove Your work mode' })).toBeInTheDocument();
+    expect(screen.getByText('What should Cowork work on?')).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('');
     expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', true, null);
     expect(setEntryAttribution).toHaveBeenCalledWith('console', 'own-work', null);
-    // It is the first onboarding step, not an example from a mode.
-    expect(screen.queryByRole('button', { name: /^Remove .* mode$/ })).not.toBeInTheDocument();
-    expect(screen.queryByText("Edit this prompt, then send when you're ready.")).not.toBeInTheDocument();
 
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('textbox'));
+    await user.keyboard('{Enter}');
     await new Promise((r) => setTimeout(r, 50));
     expect(onSend).not.toHaveBeenCalled();
     expect(getSnapshot().completed.has('bring-your-work')).toBe(false);
 
-    await userEvent.setup().keyboard('{Enter}');
+    await user.type(screen.getByRole('textbox'), 'Weekly ops notes');
+    await user.keyboard('{Enter}');
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
-    expect(onSend.mock.calls[0][0]).toBe(OWN_WORK_PROMPT);
+    expect(onSend.mock.calls[0][0]).toBe(composeOwnWorkMessage('Weekly ops notes'));
     await waitFor(() => expect(getSnapshot().completed.has('bring-your-work')).toBe(true));
   });
 
-  it('keeps an unsent draft instead of replacing it with the own-work prompt', async () => {
+  it('keeps an unsent draft as the material when it opens the own-work mode', async () => {
     setDraft('new', 'my half-written idea');
     arriveFromConsole('?from=console&start=own-work');
     render(<Home onSend={vi.fn()} />);
 
     expect(await screen.findByDisplayValue('my half-written idea')).toBeInTheDocument();
-    expect(screen.queryByDisplayValue(OWN_WORK_PROMPT)).not.toBeInTheDocument();
-    expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', false, null);
-    expect(setEntryAttribution).toHaveBeenCalledWith('console', null, null);
+    expect(screen.getByRole('button', { name: 'Remove Your work mode' })).toBeInTheDocument();
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', true, null);
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', 'own-work', null);
   });
 
-  it('replaces an own-work prompt left unsent from an earlier visit', async () => {
-    setDraft('new', OWN_WORK_PROMPT);
+  it('replaces a job left unsent from an earlier visit', async () => {
+    setDraft('new', OWN_WORK_MODE.samples[0].prompt);
     arriveFromConsole('?from=console');
     render(<Home onSend={vi.fn()} />);
 

@@ -414,7 +414,8 @@
     "signupWelcome": {
       "fromDesktop": "Your account is ready. You can start right here, or go back to the {product} app and sign in.",
       "dismiss": "Dismiss"
-    }
+    },
+    "ownWorkHeading": "What should Cowork work on?"
   },
   "logout": {
     "title": "Sign out of {product}?",

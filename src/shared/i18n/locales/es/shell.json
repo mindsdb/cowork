@@ -414,7 +414,8 @@
     "signupWelcome": {
       "fromDesktop": "Tu cuenta está lista. Puedes empezar aquí mismo o volver a la app de {product} e iniciar sesión.",
       "dismiss": "Descartar"
-    }
+    },
+    "ownWorkHeading": "¿En qué debería trabajar Cowork?"
   },
   "logout": {
     "title": "¿Cerrar sesión en {product}?",

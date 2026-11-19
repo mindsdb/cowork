@@ -44029,6 +44029,754 @@
       "text": "d52946292734"
     }
   },
+  "chat:ownWork.attach": {
+    "de": {
+      "from": "21298c62c8e5",
+      "text": "5a1d16ebaffe"
+    },
+    "es": {
+      "from": "21298c62c8e5",
+      "text": "02efd387fd82"
+    },
+    "fr": {
+      "from": "21298c62c8e5",
+      "text": "d5e4e4c3d7ed"
+    },
+    "it": {
+      "from": "21298c62c8e5",
+      "text": "444c528ff720"
+    },
+    "ja": {
+      "from": "21298c62c8e5",
+      "text": "c03fe41d5060"
+    },
+    "ko": {
+      "from": "21298c62c8e5",
+      "text": "1fe3755cde8c"
+    },
+    "pt-BR": {
+      "from": "21298c62c8e5",
+      "text": "36c63178b345"
+    },
+    "zh-CN": {
+      "from": "21298c62c8e5",
+      "text": "e3bc92c2189a"
+    }
+  },
+  "chat:ownWork.groups.finance": {
+    "de": {
+      "from": "f50f81b1a820",
+      "text": "a2641df751fd"
+    },
+    "es": {
+      "from": "f50f81b1a820",
+      "text": "6699f30d006a"
+    },
+    "fr": {
+      "from": "f50f81b1a820",
+      "text": "bd5f6769e76d"
+    },
+    "it": {
+      "from": "f50f81b1a820",
+      "text": "38eb2fd933e3"
+    },
+    "ja": {
+      "from": "f50f81b1a820",
+      "text": "5d64a3dbb7d5"
+    },
+    "ko": {
+      "from": "f50f81b1a820",
+      "text": "cdab64cd8416"
+    },
+    "pt-BR": {
+      "from": "f50f81b1a820",
+      "text": "5f5224b497da"
+    },
+    "zh-CN": {
+      "from": "f50f81b1a820",
+      "text": "3fd5372faed9"
+    }
+  },
+  "chat:ownWork.groups.legal": {
+    "de": {
+      "from": "7ee26e4d4693",
+      "text": "e502b6ea01d9"
+    },
+    "es": {
+      "from": "7ee26e4d4693",
+      "text": "5dadea7cbb2f"
+    },
+    "fr": {
+      "from": "7ee26e4d4693",
+      "text": "c0ee24d6121f"
+    },
+    "it": {
+      "from": "7ee26e4d4693",
+      "text": "040b5d8ad5fb"
+    },
+    "ja": {
+      "from": "7ee26e4d4693",
+      "text": "ae1fb67f1b57"
+    },
+    "ko": {
+      "from": "7ee26e4d4693",
+      "text": "f444bea98bfe"
+    },
+    "pt-BR": {
+      "from": "7ee26e4d4693",
+      "text": "b69d6f93bf38"
+    },
+    "zh-CN": {
+      "from": "7ee26e4d4693",
+      "text": "fad5bd6c3138"
+    }
+  },
+  "chat:ownWork.groups.operations": {
+    "de": {
+      "from": "358cc201f87d",
+      "text": "2145893cd732"
+    },
+    "es": {
+      "from": "358cc201f87d",
+      "text": "f3359ace1f17"
+    },
+    "fr": {
+      "from": "358cc201f87d",
+      "text": "fa4f3f51d8aa"
+    },
+    "it": {
+      "from": "358cc201f87d",
+      "text": "389997fd4839"
+    },
+    "ja": {
+      "from": "358cc201f87d",
+      "text": "04c970c1c0f1"
+    },
+    "ko": {
+      "from": "358cc201f87d",
+      "text": "0928a1b8512f"
+    },
+    "pt-BR": {
+      "from": "358cc201f87d",
+      "text": "727ddbc785ad"
+    },
+    "zh-CN": {
+      "from": "358cc201f87d",
+      "text": "1433b0e66934"
+    }
+  },
+  "chat:ownWork.groups.sales": {
+    "de": {
+      "from": "0ef2e635ce57",
+      "text": "0355e30168f1"
+    },
+    "es": {
+      "from": "0ef2e635ce57",
+      "text": "e3613c07b300"
+    },
+    "fr": {
+      "from": "0ef2e635ce57",
+      "text": "d29fa0e2eb86"
+    },
+    "it": {
+      "from": "0ef2e635ce57",
+      "text": "910a994f7916"
+    },
+    "ja": {
+      "from": "0ef2e635ce57",
+      "text": "58f424ec4ac1"
+    },
+    "ko": {
+      "from": "0ef2e635ce57",
+      "text": "015aa3335290"
+    },
+    "pt-BR": {
+      "from": "0ef2e635ce57",
+      "text": "7ea972686edd"
+    },
+    "zh-CN": {
+      "from": "0ef2e635ce57",
+      "text": "aca3e013dd1f"
+    }
+  },
+  "chat:ownWork.jobs.finance.0": {
+    "de": {
+      "from": "22a7a27546be",
+      "text": "b4638f59e6ed"
+    },
+    "es": {
+      "from": "22a7a27546be",
+      "text": "55e1379b7e70"
+    },
+    "fr": {
+      "from": "22a7a27546be",
+      "text": "0cf21f0c964a"
+    },
+    "it": {
+      "from": "22a7a27546be",
+      "text": "f746218ea979"
+    },
+    "ja": {
+      "from": "22a7a27546be",
+      "text": "10879045a372"
+    },
+    "ko": {
+      "from": "22a7a27546be",
+      "text": "7fd11d454a44"
+    },
+    "pt-BR": {
+      "from": "22a7a27546be",
+      "text": "2604a3d3d983"
+    },
+    "zh-CN": {
+      "from": "22a7a27546be",
+      "text": "b012acd93922"
+    }
+  },
+  "chat:ownWork.jobs.finance.1": {
+    "de": {
+      "from": "282986a3161e",
+      "text": "2d915ca5a50d"
+    },
+    "es": {
+      "from": "282986a3161e",
+      "text": "ee5f68bb5217"
+    },
+    "fr": {
+      "from": "282986a3161e",
+      "text": "07fc97124af7"
+    },
+    "it": {
+      "from": "282986a3161e",
+      "text": "838d7072716a"
+    },
+    "ja": {
+      "from": "282986a3161e",
+      "text": "0101272cef94"
+    },
+    "ko": {
+      "from": "282986a3161e",
+      "text": "aefc0efd0ece"
+    },
+    "pt-BR": {
+      "from": "282986a3161e",
+      "text": "467ab1d74137"
+    },
+    "zh-CN": {
+      "from": "282986a3161e",
+      "text": "8a4f2a4c3423"
+    }
+  },
+  "chat:ownWork.jobs.finance.2": {
+    "de": {
+      "from": "add04bca8e35",
+      "text": "dfb6766e1784"
+    },
+    "es": {
+      "from": "add04bca8e35",
+      "text": "e2e38d6f1b59"
+    },
+    "fr": {
+      "from": "add04bca8e35",
+      "text": "cc941516c2d6"
+    },
+    "it": {
+      "from": "add04bca8e35",
+      "text": "780a8470e4b7"
+    },
+    "ja": {
+      "from": "add04bca8e35",
+      "text": "3a48f1fad48b"
+    },
+    "ko": {
+      "from": "add04bca8e35",
+      "text": "bc650c267e0c"
+    },
+    "pt-BR": {
+      "from": "add04bca8e35",
+      "text": "d6175a3ecf6c"
+    },
+    "zh-CN": {
+      "from": "add04bca8e35",
+      "text": "51dde08a94e4"
+    }
+  },
+  "chat:ownWork.jobs.legal.0": {
+    "de": {
+      "from": "bd48bc89a366",
+      "text": "8d9dd13d8603"
+    },
+    "es": {
+      "from": "bd48bc89a366",
+      "text": "7da94722427e"
+    },
+    "fr": {
+      "from": "bd48bc89a366",
+      "text": "c3d176a66451"
+    },
+    "it": {
+      "from": "bd48bc89a366",
+      "text": "98f036947122"
+    },
+    "ja": {
+      "from": "bd48bc89a366",
+      "text": "46e1a7cadfcd"
+    },
+    "ko": {
+      "from": "bd48bc89a366",
+      "text": "e1f64e490763"
+    },
+    "pt-BR": {
+      "from": "bd48bc89a366",
+      "text": "5098198d8bf5"
+    },
+    "zh-CN": {
+      "from": "bd48bc89a366",
+      "text": "829431e77aed"
+    }
+  },
+  "chat:ownWork.jobs.legal.1": {
+    "de": {
+      "from": "96f16b9b7290",
+      "text": "ec5117a3b30e"
+    },
+    "es": {
+      "from": "96f16b9b7290",
+      "text": "9b23851541c5"
+    },
+    "fr": {
+      "from": "96f16b9b7290",
+      "text": "fe95cdb80ce4"
+    },
+    "it": {
+      "from": "96f16b9b7290",
+      "text": "f381f742bd94"
+    },
+    "ja": {
+      "from": "96f16b9b7290",
+      "text": "0929762f6dfa"
+    },
+    "ko": {
+      "from": "96f16b9b7290",
+      "text": "03786a42e57b"
+    },
+    "pt-BR": {
+      "from": "96f16b9b7290",
+      "text": "2b41b21c37c9"
+    },
+    "zh-CN": {
+      "from": "96f16b9b7290",
+      "text": "044a34cd025a"
+    }
+  },
+  "chat:ownWork.jobs.legal.2": {
+    "de": {
+      "from": "a46bd56dcf64",
+      "text": "6c711bcf6b06"
+    },
+    "es": {
+      "from": "a46bd56dcf64",
+      "text": "e66372f93a54"
+    },
+    "fr": {
+      "from": "a46bd56dcf64",
+      "text": "7acdf7967cfc"
+    },
+    "it": {
+      "from": "a46bd56dcf64",
+      "text": "55ac6e4ce70c"
+    },
+    "ja": {
+      "from": "a46bd56dcf64",
+      "text": "8bfc87d67203"
+    },
+    "ko": {
+      "from": "a46bd56dcf64",
+      "text": "96c38374941f"
+    },
+    "pt-BR": {
+      "from": "a46bd56dcf64",
+      "text": "e9db20c6ea99"
+    },
+    "zh-CN": {
+      "from": "a46bd56dcf64",
+      "text": "544d0dabbb8f"
+    }
+  },
+  "chat:ownWork.jobs.operations.0": {
+    "de": {
+      "from": "7d410e7a4ca7",
+      "text": "8dcaf0bb6da1"
+    },
+    "es": {
+      "from": "7d410e7a4ca7",
+      "text": "a9dcfe732656"
+    },
+    "fr": {
+      "from": "7d410e7a4ca7",
+      "text": "14632c28ec83"
+    },
+    "it": {
+      "from": "7d410e7a4ca7",
+      "text": "798908355c7d"
+    },
+    "ja": {
+      "from": "7d410e7a4ca7",
+      "text": "b0002d942497"
+    },
+    "ko": {
+      "from": "7d410e7a4ca7",
+      "text": "4de1e1758332"
+    },
+    "pt-BR": {
+      "from": "7d410e7a4ca7",
+      "text": "1c3ff98dc748"
+    },
+    "zh-CN": {
+      "from": "7d410e7a4ca7",
+      "text": "464c887dfc0a"
+    }
+  },
+  "chat:ownWork.jobs.operations.1": {
+    "de": {
+      "from": "be311fa65ec4",
+      "text": "b71615943363"
+    },
+    "es": {
+      "from": "be311fa65ec4",
+      "text": "cf7149a629a1"
+    },
+    "fr": {
+      "from": "be311fa65ec4",
+      "text": "b2594f073334"
+    },
+    "it": {
+      "from": "be311fa65ec4",
+      "text": "4b96ea1a8170"
+    },
+    "ja": {
+      "from": "be311fa65ec4",
+      "text": "658d57d18d03"
+    },
+    "ko": {
+      "from": "be311fa65ec4",
+      "text": "cd5e1f724f4e"
+    },
+    "pt-BR": {
+      "from": "be311fa65ec4",
+      "text": "a6ff7f27a7c6"
+    },
+    "zh-CN": {
+      "from": "be311fa65ec4",
+      "text": "7eaf7ccf78b5"
+    }
+  },
+  "chat:ownWork.jobs.operations.2": {
+    "de": {
+      "from": "76c49e9afea1",
+      "text": "5821cba4752f"
+    },
+    "es": {
+      "from": "76c49e9afea1",
+      "text": "c3b3ed93bf77"
+    },
+    "fr": {
+      "from": "76c49e9afea1",
+      "text": "a9d628c9aaac"
+    },
+    "it": {
+      "from": "76c49e9afea1",
+      "text": "50d5b1204a28"
+    },
+    "ja": {
+      "from": "76c49e9afea1",
+      "text": "fefdd7f7ddc9"
+    },
+    "ko": {
+      "from": "76c49e9afea1",
+      "text": "43c4036bd8ac"
+    },
+    "pt-BR": {
+      "from": "76c49e9afea1",
+      "text": "8de950638c67"
+    },
+    "zh-CN": {
+      "from": "76c49e9afea1",
+      "text": "0233ef789265"
+    }
+  },
+  "chat:ownWork.jobs.sales.0": {
+    "de": {
+      "from": "a2cbd13a29a0",
+      "text": "e123cd90c8af"
+    },
+    "es": {
+      "from": "a2cbd13a29a0",
+      "text": "129d74c365c0"
+    },
+    "fr": {
+      "from": "a2cbd13a29a0",
+      "text": "839b9dc104aa"
+    },
+    "it": {
+      "from": "a2cbd13a29a0",
+      "text": "3ca0eaf517a3"
+    },
+    "ja": {
+      "from": "a2cbd13a29a0",
+      "text": "8433affbe5bf"
+    },
+    "ko": {
+      "from": "a2cbd13a29a0",
+      "text": "423c32418b12"
+    },
+    "pt-BR": {
+      "from": "a2cbd13a29a0",
+      "text": "42c9f67f5c87"
+    },
+    "zh-CN": {
+      "from": "a2cbd13a29a0",
+      "text": "cebb13f9b6ef"
+    }
+  },
+  "chat:ownWork.jobs.sales.1": {
+    "de": {
+      "from": "9f195c9b818d",
+      "text": "f14d06060892"
+    },
+    "es": {
+      "from": "9f195c9b818d",
+      "text": "00502822d876"
+    },
+    "fr": {
+      "from": "9f195c9b818d",
+      "text": "c085e694c2c8"
+    },
+    "it": {
+      "from": "9f195c9b818d",
+      "text": "3d21b6675b18"
+    },
+    "ja": {
+      "from": "9f195c9b818d",
+      "text": "153d8be745f8"
+    },
+    "ko": {
+      "from": "9f195c9b818d",
+      "text": "7faf7de6a5d1"
+    },
+    "pt-BR": {
+      "from": "9f195c9b818d",
+      "text": "cd0d7bdbca6e"
+    },
+    "zh-CN": {
+      "from": "9f195c9b818d",
+      "text": "09dc1f78cf73"
+    }
+  },
+  "chat:ownWork.jobs.sales.2": {
+    "de": {
+      "from": "f87c4effaf43",
+      "text": "0dbe8d34a221"
+    },
+    "es": {
+      "from": "f87c4effaf43",
+      "text": "1e216316e656"
+    },
+    "fr": {
+      "from": "f87c4effaf43",
+      "text": "bedb2ab2b092"
+    },
+    "it": {
+      "from": "f87c4effaf43",
+      "text": "56951d4f14d0"
+    },
+    "ja": {
+      "from": "f87c4effaf43",
+      "text": "779241215bb3"
+    },
+    "ko": {
+      "from": "f87c4effaf43",
+      "text": "f2e1a5dfa594"
+    },
+    "pt-BR": {
+      "from": "f87c4effaf43",
+      "text": "46728f9edb95"
+    },
+    "zh-CN": {
+      "from": "f87c4effaf43",
+      "text": "4dfb541bc1d4"
+    }
+  },
+  "chat:ownWork.jobsHeading": {
+    "de": {
+      "from": "b183f4ccf4a8",
+      "text": "fa9f07e5f6da"
+    },
+    "es": {
+      "from": "b183f4ccf4a8",
+      "text": "e516a882420f"
+    },
+    "fr": {
+      "from": "b183f4ccf4a8",
+      "text": "b9722c22643f"
+    },
+    "it": {
+      "from": "b183f4ccf4a8",
+      "text": "7b826c9aae5d"
+    },
+    "ja": {
+      "from": "b183f4ccf4a8",
+      "text": "8b0d182541e9"
+    },
+    "ko": {
+      "from": "b183f4ccf4a8",
+      "text": "f2f3c406412a"
+    },
+    "pt-BR": {
+      "from": "b183f4ccf4a8",
+      "text": "f066b38ffdfe"
+    },
+    "zh-CN": {
+      "from": "b183f4ccf4a8",
+      "text": "9e0292d6ee9d"
+    }
+  },
+  "chat:ownWork.kindsLabel": {
+    "de": {
+      "from": "9bc2133911cb",
+      "text": "7ad875191eca"
+    },
+    "es": {
+      "from": "9bc2133911cb",
+      "text": "6bfb3d32d5dd"
+    },
+    "fr": {
+      "from": "9bc2133911cb",
+      "text": "9f77c40390a9"
+    },
+    "it": {
+      "from": "9bc2133911cb",
+      "text": "7cef2c27a740"
+    },
+    "ja": {
+      "from": "9bc2133911cb",
+      "text": "10e0bd65c43f"
+    },
+    "ko": {
+      "from": "9bc2133911cb",
+      "text": "b2a62873d77e"
+    },
+    "pt-BR": {
+      "from": "9bc2133911cb",
+      "text": "b1c784986a24"
+    },
+    "zh-CN": {
+      "from": "9bc2133911cb",
+      "text": "c9d1c3dbbeaf"
+    }
+  },
+  "chat:ownWork.needsMaterial": {
+    "de": {
+      "from": "564c02163065",
+      "text": "977efe0ce09a"
+    },
+    "es": {
+      "from": "564c02163065",
+      "text": "5f679d134314"
+    },
+    "fr": {
+      "from": "564c02163065",
+      "text": "464a8adac415"
+    },
+    "it": {
+      "from": "564c02163065",
+      "text": "942b09b44720"
+    },
+    "ja": {
+      "from": "564c02163065",
+      "text": "2275ef3858db"
+    },
+    "ko": {
+      "from": "564c02163065",
+      "text": "60215fd09e93"
+    },
+    "pt-BR": {
+      "from": "564c02163065",
+      "text": "1969ae8fdbf8"
+    },
+    "zh-CN": {
+      "from": "564c02163065",
+      "text": "33a35655f3ce"
+    }
+  },
+  "chat:ownWork.orPaste": {
+    "de": {
+      "from": "8dd17a21a550",
+      "text": "3678f2bade47"
+    },
+    "es": {
+      "from": "8dd17a21a550",
+      "text": "c37e05fb08dd"
+    },
+    "fr": {
+      "from": "8dd17a21a550",
+      "text": "26d1347c8225"
+    },
+    "it": {
+      "from": "8dd17a21a550",
+      "text": "057c473a4cfa"
+    },
+    "ja": {
+      "from": "8dd17a21a550",
+      "text": "bf73855cb07c"
+    },
+    "ko": {
+      "from": "8dd17a21a550",
+      "text": "242c2eb08185"
+    },
+    "pt-BR": {
+      "from": "8dd17a21a550",
+      "text": "d41e233e642a"
+    },
+    "zh-CN": {
+      "from": "8dd17a21a550",
+      "text": "4730bb870ac5"
+    }
+  },
+  "chat:ownWork.waysLabel": {
+    "de": {
+      "from": "53f485aecb60",
+      "text": "6d4ffa0f8767"
+    },
+    "es": {
+      "from": "53f485aecb60",
+      "text": "939cdff051e6"
+    },
+    "fr": {
+      "from": "53f485aecb60",
+      "text": "e7a5325a4f85"
+    },
+    "it": {
+      "from": "53f485aecb60",
+      "text": "dfe8971bf1b8"
+    },
+    "ja": {
+      "from": "53f485aecb60",
+      "text": "ce7065899036"
+    },
+    "ko": {
+      "from": "53f485aecb60",
+      "text": "b2700825b764"
+    },
+    "pt-BR": {
+      "from": "53f485aecb60",
+      "text": "bf0e95c98ba8"
+    },
+    "zh-CN": {
+      "from": "53f485aecb60",
+      "text": "4a8cfd5fc0ac"
+    }
+  },
   "chat:phaseProgress.artifact": {
     "de": {
       "from": "4c0ed69f7217",
@@ -46135,6 +46883,74 @@
     "zh-CN": {
       "from": "2ad8e2f9fee6",
       "text": "a21b7262fc1e"
+    }
+  },
+  "chat:taskModes.own-work.chipLabel": {
+    "de": {
+      "from": "ef14cf0d34ed",
+      "text": "4c7375bc460b"
+    },
+    "es": {
+      "from": "ef14cf0d34ed",
+      "text": "d47575877016"
+    },
+    "fr": {
+      "from": "ef14cf0d34ed",
+      "text": "21b71afe48ca"
+    },
+    "it": {
+      "from": "ef14cf0d34ed",
+      "text": "40f8334a0983"
+    },
+    "ja": {
+      "from": "ef14cf0d34ed",
+      "text": "9b686f2d1751"
+    },
+    "ko": {
+      "from": "ef14cf0d34ed",
+      "text": "43a321c026ef"
+    },
+    "pt-BR": {
+      "from": "ef14cf0d34ed",
+      "text": "8cf8791bf9f4"
+    },
+    "zh-CN": {
+      "from": "ef14cf0d34ed",
+      "text": "72c803a29291"
+    }
+  },
+  "chat:taskModes.own-work.placeholder": {
+    "de": {
+      "from": "03da9eae4620",
+      "text": "df350dd87459"
+    },
+    "es": {
+      "from": "03da9eae4620",
+      "text": "85e0e5c5bcde"
+    },
+    "fr": {
+      "from": "03da9eae4620",
+      "text": "a2cd015de96e"
+    },
+    "it": {
+      "from": "03da9eae4620",
+      "text": "0f3467776584"
+    },
+    "ja": {
+      "from": "03da9eae4620",
+      "text": "772d636535a8"
+    },
+    "ko": {
+      "from": "03da9eae4620",
+      "text": "f4bb858f454b"
+    },
+    "pt-BR": {
+      "from": "03da9eae4620",
+      "text": "45ae3a788d25"
+    },
+    "zh-CN": {
+      "from": "03da9eae4620",
+      "text": "ebbbc7de8a03"
     }
   },
   "chat:taskModes.pillsAriaLabel": {
@@ -160549,36 +161365,36 @@
   },
   "setup:checklist.steps.bring-your-work.description": {
     "de": {
-      "from": "03a072df3126",
-      "text": "1cf4839a17f6"
+      "from": "d889140dd7c0",
+      "text": "49ac4ec606c9"
     },
     "es": {
-      "from": "03a072df3126",
-      "text": "85a5f9867261"
+      "from": "d889140dd7c0",
+      "text": "ffed1f211017"
     },
     "fr": {
-      "from": "03a072df3126",
-      "text": "ca89b99ded80"
+      "from": "d889140dd7c0",
+      "text": "4294f0ebcd3f"
     },
     "it": {
-      "from": "03a072df3126",
-      "text": "91a68053b585"
+      "from": "d889140dd7c0",
+      "text": "e43e5734530a"
     },
     "ja": {
-      "from": "03a072df3126",
-      "text": "ccc52eba8f34"
+      "from": "d889140dd7c0",
+      "text": "f9037f225e0d"
     },
     "ko": {
-      "from": "03a072df3126",
-      "text": "4f97337b79d8"
+      "from": "d889140dd7c0",
+      "text": "749b531b3587"
     },
     "pt-BR": {
-      "from": "03a072df3126",
-      "text": "fbcad9c49029"
+      "from": "d889140dd7c0",
+      "text": "4eaa079e0f4e"
     },
     "zh-CN": {
-      "from": "03a072df3126",
-      "text": "3b1f16fd18d2"
+      "from": "d889140dd7c0",
+      "text": "f04168b0cbaf"
     }
   },
   "setup:checklist.steps.bring-your-work.title": {
@@ -160681,74 +161497,6 @@
     "zh-CN": {
       "from": "bf6c07f87075",
       "text": "b1bea2878095"
-    }
-  },
-  "setup:checklist.steps.customize-role.description": {
-    "de": {
-      "from": "25ffa3f15e0f",
-      "text": "e561abef06ff"
-    },
-    "es": {
-      "from": "25ffa3f15e0f",
-      "text": "ef9d8475765a"
-    },
-    "fr": {
-      "from": "25ffa3f15e0f",
-      "text": "b3c64cfb8c2c"
-    },
-    "it": {
-      "from": "25ffa3f15e0f",
-      "text": "0d4a4803457c"
-    },
-    "ja": {
-      "from": "25ffa3f15e0f",
-      "text": "b11bbd9b327c"
-    },
-    "ko": {
-      "from": "25ffa3f15e0f",
-      "text": "b2bc6d27b921"
-    },
-    "pt-BR": {
-      "from": "25ffa3f15e0f",
-      "text": "3b981dab9c1a"
-    },
-    "zh-CN": {
-      "from": "25ffa3f15e0f",
-      "text": "2d7c3eafd015"
-    }
-  },
-  "setup:checklist.steps.customize-role.title": {
-    "de": {
-      "from": "71643ecad222",
-      "text": "a0bcd572ff43"
-    },
-    "es": {
-      "from": "71643ecad222",
-      "text": "9f7538d4eed1"
-    },
-    "fr": {
-      "from": "71643ecad222",
-      "text": "b5bbe878208f"
-    },
-    "it": {
-      "from": "71643ecad222",
-      "text": "d243833ab100"
-    },
-    "ja": {
-      "from": "71643ecad222",
-      "text": "82e288f518d8"
-    },
-    "ko": {
-      "from": "71643ecad222",
-      "text": "a948543d81f4"
-    },
-    "pt-BR": {
-      "from": "71643ecad222",
-      "text": "9d4e7237e98a"
-    },
-    "zh-CN": {
-      "from": "71643ecad222",
-      "text": "13e551475ae6"
     }
   },
   "setup:checklist.steps.see-it-work.description": {
@@ -167073,6 +167821,40 @@
     "zh-CN": {
       "from": "acdb3d5327af",
       "text": "740a99844578"
+    }
+  },
+  "shell:home.ownWorkHeading": {
+    "de": {
+      "from": "f1460843cca2",
+      "text": "96fed49df100"
+    },
+    "es": {
+      "from": "f1460843cca2",
+      "text": "5a804be7303e"
+    },
+    "fr": {
+      "from": "f1460843cca2",
+      "text": "dba28a69b264"
+    },
+    "it": {
+      "from": "f1460843cca2",
+      "text": "f13efe0c81fb"
+    },
+    "ja": {
+      "from": "f1460843cca2",
+      "text": "b56d0bf0d9f8"
+    },
+    "ko": {
+      "from": "f1460843cca2",
+      "text": "fc1c35f7d85c"
+    },
+    "pt-BR": {
+      "from": "f1460843cca2",
+      "text": "327de766192b"
+    },
+    "zh-CN": {
+      "from": "f1460843cca2",
+      "text": "321cbfa69a57"
     }
   },
   "shell:home.signupWelcome.dismiss": {

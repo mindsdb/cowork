@@ -599,7 +599,11 @@
       "placeholder": "Pick an example, or describe your own task"
     },
     "samplePrompts": "Sample prompts",
-    "pillsAriaLabel": "Task types"
+    "pillsAriaLabel": "Task types",
+    "own-work": {
+      "chipLabel": "Your work",
+      "placeholder": "Paste text or a link, or attach a file"
+    }
   },
   "taskRows": {
     "openProject": "Open {project}",
@@ -801,5 +805,41 @@
     "fallbackName": "image",
     "alt": "Generated image {name}",
     "notShown": "{name} could not be shown. It may have been moved or deleted."
+  },
+  "ownWork": {
+    "needsMaterial": "Now add what it should work on: attach a file, or paste text or a link after the job.",
+    "waysLabel": "Ways to bring your work",
+    "attach": "Attach a file",
+    "orPaste": "or paste text or a link in the box above",
+    "jobsHeading": "Pick a job if you like",
+    "kindsLabel": "Kind of work",
+    "groups": {
+      "finance": "Finance and admin",
+      "sales": "Sales and marketing",
+      "operations": "Operations",
+      "legal": "Contracts and research"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Turn these bank statements or invoices into one spreadsheet.",
+        "1": "Build the next monthly report from these numbers.",
+        "2": "Check these statements for errors or unusual items."
+      },
+      "sales": {
+        "0": "Clean up this customer list and flag duplicates.",
+        "1": "Compare these two price lists and show what changed.",
+        "2": "Draft follow-up emails from these call notes."
+      },
+      "operations": {
+        "0": "Turn these meeting notes into decisions and action items.",
+        "1": "Turn these notes into a one-page brief.",
+        "2": "Turn this process document into a step-by-step checklist."
+      },
+      "legal": {
+        "0": "Summarize the key terms and risks in this contract.",
+        "1": "Summarize this report and pull out the numbers that matter.",
+        "2": "Read this page and tell me what matters for us."
+      }
+    }
   }
 }
