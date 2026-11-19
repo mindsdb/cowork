@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import TaskModePills from '../components/taskmodes/TaskModePills';
 import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
-import { modeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE, OWN_WORK_MODE, composeOwnWorkMessage, hasOwnMaterial, ownWorkJobIn } from '../components/taskmodes/taskModes';
+import { modeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE, OWN_WORK_MODE, composeOwnWorkMessage, hasOwnMaterial, ownWorkJobIn, findOwnWorkJob } from '../components/taskmodes/taskModes';
 import OwnWorkPanel from '../components/taskmodes/OwnWorkPanel';
 import { completeStepTracked } from '../components/onboarding/track';
 import { stepsCompletedBySend } from '../components/onboarding/completion';
@@ -12,7 +12,7 @@ import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingCopyKey, offersBilling } from '../lib/billingLinks';
-import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded, sendWithStartVia } from '../lib/analytics';
+import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded } from '../lib/analytics';
 import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
 import { takeSignupWelcome, SIGNUP_FROM_DESKTOP } from '../lib/signupWelcome';
 import { productName } from '../../lib/deploymentBrand';
@@ -332,25 +332,45 @@ export default function HomeView({
   // the sidebar checklist, or the user typing it by hand) — but only once the
   // send has gone out: onSend answers false when the provider preflight
   // fails (ENG-2307). A selected task mode appends its instruction line after
-  // the user text (titles and search derive from the message head) and
-  // clears itself after a successful send. `meta` (harness/model,
-  // ENG-1656) passes through untouched.
+  // the user text (titles and search derive from the message head), unless the
+  // person replaced a placed example with a request of their own, and clears
+  // itself once a send is attempted. `meta` (harness/model, ENG-1656) passes
+  // through untouched.
   //
   // The own-work mode sends only once the person has given it something (see
   // hasOwnMaterial), and composes the message the pre-release test used. Its
   // send is credited to the checklist when the row opened it.
   const ownWork = taskMode === OWN_WORK_MODE;
   const [ownWorkVia, setOwnWorkVia] = useState(null);
+  // The job last picked, so an edited job is still read as the job, not as
+  // the person's material (see hasOwnMaterial).
+  const [pickedJob, setPickedJob] = useState(null);
+  // Whether the composer's Send is on, so the "Now add…" hint agrees with it.
+  const [ownWorkSendable, setOwnWorkSendable] = useState(false);
   useEffect(() => {
-    if (!ownWork) setOwnWorkVia(null);
+    if (ownWork) return;
+    setOwnWorkVia(null);
+    setPickedJob(null);
   }, [ownWork]);
+  // A job with nothing added is the app's text. Outside the mode it would go
+  // out bare ("Clean up this customer list.") with no list, so it is cleared.
+  const isBareJob = (draft, job = null) =>
+    Boolean(draft.trim()) && !hasOwnMaterial(draft, 0, job) && Boolean(ownWorkJobIn(draft) || job);
+  const leaveOwnWork = () => {
+    if (isBareJob(getDraft('new'), pickedJob)) onPrefill?.('');
+    setTaskMode(null);
+  };
   // Picking a job keeps what the person already pasted, after the job, and
-  // swaps a job picked earlier: the message is read as job, then material.
+  // swaps a job picked earlier, edited or not: the message is read as job,
+  // then material.
   const placeOwnWorkJob = (prompt) => {
     const draft = getDraft('new').trim();
     const earlier = ownWorkJobIn(draft);
-    const rest = earlier ? draft.slice(earlier.prompt.length).trim() : (isUntouchedSample(draft) ? '' : draft);
+    const rest = earlier
+      ? draft.slice(earlier.prompt.length).trim()
+      : (isUntouchedSample(draft) || isBareJob(draft, pickedJob) ? '' : draft);
     const next = rest ? `${prompt} ${rest}` : `${prompt} `;
+    setPickedJob(findOwnWorkJob(prompt));
     // Written to the draft store as well, so this render already reads it
     // (the hint below), before the composer applies the prefill.
     setDraft('new', next);
@@ -360,11 +380,14 @@ export default function HomeView({
     const { text: message, modeLine } = ownWork
       ? { text: composeOwnWorkMessage(text), modeLine: null }
       : modeMessage(taskMode, text, pickedSample);
-    const sendMeta = modeLine
-      ? { ...meta, taskMode: { task_mode: taskMode.id, mode_line: modeLine, example_placed: Boolean(pickedSample) } }
-      : meta;
-    const send = () => onSend(message, sendMeta);
-    const result = await (ownWork && ownWorkVia ? sendWithStartVia(ownWorkVia, send) : send());
+    // Notes for analytics travel with this send, so a second Enter the app
+    // refuses mid-send cannot clear or relabel them.
+    const sendMeta = {
+      ...meta,
+      ...(modeLine ? { taskMode: { task_mode: taskMode.id, mode_line: modeLine, example_placed: Boolean(pickedSample) } } : {}),
+      ...(ownWork && ownWorkVia ? { startVia: ownWorkVia } : {}),
+    };
+    const result = await onSend(message, sendMeta);
     if (result) {
       const done = stepsCompletedBySend(message);
       // An example the person picked and then edited still counts as tried.
@@ -490,6 +513,17 @@ export default function HomeView({
     [] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // A job left bare in the composer from an earlier visit to the mode would
+  // go out without the mode. Runs before the console handoff, which may place
+  // an example in its place.
+  const bareJobCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!composerUsable || bareJobCheckedRef.current) return;
+    bareJobCheckedRef.current = true;
+    if (!ownWorkRequest && isBareJob(getDraft('new'))) onPrefill?.('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composerUsable]);
+
   const handoffTakenRef = useRef(false);
   useEffect(() => {
     if (!composerUsable || handoffTakenRef.current) return;
@@ -500,7 +534,9 @@ export default function HomeView({
     // The own-work start opens the own-work mode and places nothing.
     const ownWorkOpened = !sample && handoff.start === OWN_WORK_START && Boolean(onPrefill) && !codingModeEnabled;
     if (ownWorkOpened) setTaskMode(OWN_WORK_MODE);
-    const placed = sample ? sample.prompt : null;
+    // A checklist row clicked before the composer was ready asked for the
+    // own-work mode; an example placed now would be taken as material there.
+    const placed = sample && !ownWorkRequest ? sample.prompt : null;
     const draft = getDraft('new');
     const draftIsUsers = Boolean(draft) && !isUntouchedSample(draft);
     const prefilled = Boolean(placed && onPrefill && !codingModeEnabled && !draftIsUsers);
@@ -533,6 +569,7 @@ export default function HomeView({
     const draft = getDraft('new');
     if (draft && isUntouchedSample(draft)) onPrefill?.('');
     setPickedSample(null);
+    setHandoffHint(false);
     setTaskMode(OWN_WORK_MODE);
     setOwnWorkVia('checklist');
     onOwnWorkRequestConsumed?.();
@@ -711,7 +748,7 @@ export default function HomeView({
               onSend={sendTracked}
               placeholder={taskMode ? taskMode.placeholder : undefined}
               taskMode={taskMode}
-              onClearTaskMode={() => setTaskMode(null)}
+              onClearTaskMode={ownWork ? leaveOwnWork : () => setTaskMode(null)}
               prefill={prefill}
               project={project}
               onProjectChange={onProjectChange}
@@ -740,7 +777,8 @@ export default function HomeView({
               codingModelDefault={codingModelDefault}
               harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
               sendsMeta
-              canSend={ownWork ? (value) => hasOwnMaterial(value, attachments?.length || 0) : null}
+              canSend={ownWork ? (value) => hasOwnMaterial(value, attachments?.length || 0, pickedJob) : null}
+              onSendableChange={setOwnWorkSendable}
             />
           )}
           {/* Everything below the composer lives in a zero-height wrapper:
@@ -765,7 +803,7 @@ export default function HomeView({
               ownWork
                 ? (onPrefill && (
                   <OwnWorkPanel
-                    waitingForMaterial={Boolean(ownWorkJobIn(getDraft('new'))) && !hasOwnMaterial(getDraft('new'), attachments?.length || 0)}
+                    waitingForMaterial={Boolean(pickedJob) && !ownWorkSendable}
                     onPickJob={placeOwnWorkJob}
                     onAttachFiles={onAttachFiles}
                   />

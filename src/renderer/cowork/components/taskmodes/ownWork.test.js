@@ -50,6 +50,26 @@ describe('hasOwnMaterial', () => {
     expect(hasOwnMaterial(`${JOB} name,email`)).toBe(true);
     expect(hasOwnMaterial('https://example.com')).toBe(true);
   });
+
+  describe('after a job was picked and then edited', () => {
+    const picked = OWN_WORK_MODE.samples.find((j) => j.prompt === JOB);
+
+    it('reads a shortened or reworded job as the job, with nothing to work on', () => {
+      expect(hasOwnMaterial('Clean up this customer list and flag duplicates', 0, picked)).toBe(false);
+      expect(hasOwnMaterial('Clean up this customer list.', 0, picked)).toBe(false);
+      expect(hasOwnMaterial('Clean up this client list and flag duplicates.', 0, picked)).toBe(false);
+    });
+
+    it('counts a link or a few words of the person\'s own added to it', () => {
+      expect(hasOwnMaterial('Clean up this customer list https://example.com/c.csv', 0, picked)).toBe(true);
+      expect(hasOwnMaterial('Clean up this customer list: Ada, Bob, Cy', 0, picked)).toBe(true);
+      expect(hasOwnMaterial('Clean up this customer list.', 1, picked)).toBe(true);
+    });
+
+    it('counts text that dropped the job as the person\'s own', () => {
+      expect(hasOwnMaterial('Q3 numbers', 0, picked)).toBe(true);
+    });
+  });
 });
 
 describe('composeOwnWorkMessage', () => {

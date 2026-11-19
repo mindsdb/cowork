@@ -10,16 +10,14 @@ import HomeView from './HomeView';
 import { composeOwnWorkMessage, OWN_WORK_START_NOW } from '../components/taskmodes/taskModes';
 import { getSnapshot, reset } from '../components/onboarding/onboardingStore';
 import { __resetDraftsForTests, getDraft, setDraft } from '../lib/draftStore';
-import { findSample } from '../lib/consoleHandoff';
+import { captureConsoleHandoff, findSample } from '../lib/consoleHandoff';
 
-const { trackOnboardingStepCompleted, sendWithStartVia } = vi.hoisted(() => ({
+const { trackOnboardingStepCompleted } = vi.hoisted(() => ({
   trackOnboardingStepCompleted: vi.fn(),
-  sendWithStartVia: vi.fn((via, send) => send()),
 }));
 vi.mock('../lib/analytics', async (importOriginal) => ({
   ...(await importOriginal()),
   trackOnboardingStepCompleted,
-  sendWithStartVia,
 }));
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
@@ -27,6 +25,8 @@ vi.mock('../api', async (importOriginal) => {
 });
 
 const JOB = 'Clean up this customer list and flag duplicates.';
+// What a console own-work link placed in the composer before this mode.
+const RETIRED_OWN_WORK_PROMPT = 'I\'d like to start with something real from my work. Ask me one question about what I\'m working on, and give me two or three small examples to jump-start it, like a report to update, a spreadsheet to clean, or a thread to answer. Tell me I can attach a file, paste notes or a link, or connect Gmail, and say you\'ll take the first step once I answer.';
 const FILE = { id: 'f1', name: 'customers.csv', size: 1024 };
 
 // Holds the prefill and the request the way App does.
@@ -72,7 +72,6 @@ beforeEach(() => {
   __resetDraftsForTests();
   reset();
   trackOnboardingStepCompleted.mockClear();
-  sendWithStartVia.mockClear();
 });
 
 describe('HomeView own-work mode', () => {
@@ -127,7 +126,7 @@ describe('HomeView own-work mode', () => {
 
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     expect(onSend.mock.calls[0][0]).toBe(`${JOB} ${OWN_WORK_START_NOW}`);
-    expect(sendWithStartVia).toHaveBeenCalledWith('checklist', expect.any(Function));
+    expect(onSend.mock.calls[0][1]).toMatchObject({ startVia: 'checklist' });
     await waitFor(() => expect(getSnapshot().completed.has('bring-your-work')).toBe(true));
     expect(trackOnboardingStepCompleted).toHaveBeenCalledWith('bring-your-work', 'checklist');
     expect(getSnapshot().completed.has('see-it-work')).toBe(false);
@@ -267,5 +266,149 @@ describe('HomeView own-work mode', () => {
 
     await waitFor(() => expect(screen.queryByText(/Now add what it should work on/)).not.toBeInTheDocument());
     expect(getDraft('new')).toBe(`${JOB} Ada`);
+  });
+
+  it('drops the retired own-work prompt left in the composer when the row opens the mode', async () => {
+    setDraft('new', RETIRED_OWN_WORK_PROMPT);
+    render(<Home onSend={vi.fn()} />);
+    await screen.findByText('What should Cowork work on?');
+
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
+    expect(sendButton()).toBeDisabled();
+  });
+
+  it('drops the retired own-work prompt when a console link opens the mode', async () => {
+    setDraft('new', RETIRED_OWN_WORK_PROMPT);
+    captureConsoleHandoff({ search: '?from=console&start=own-work', pathname: '/', hash: '' });
+    render(<Home onSend={vi.fn()} request={0} />);
+    await screen.findByText('What should Cowork work on?');
+
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
+    expect(sendButton()).toBeDisabled();
+  });
+
+  it('keeps Send off when a picked job is shortened or reworded with nothing added', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
+    await user.click(screen.getByText(JOB));
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(`${JOB} `));
+
+    await user.clear(screen.getByRole('textbox'));
+    await user.type(screen.getByRole('textbox'), 'Clean up this customer list.');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(sendButton()).toBeDisabled();
+    expect(screen.getByText(/Now add what it should work on/)).toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('sends an edited job once the person adds a link or some words of their own', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
+    await user.click(screen.getByText(JOB));
+    await user.clear(screen.getByRole('textbox'));
+    await user.type(screen.getByRole('textbox'), 'Clean up this customer list ');
+    await user.paste('https://example.com/customers.csv');
+
+    await waitFor(() => expect(sendButton()).toBeEnabled());
+    expect(screen.queryByText(/Now add what it should work on/)).not.toBeInTheDocument();
+  });
+
+  it('sends the person\'s own short request once they replace the job entirely', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
+    await user.click(screen.getByText(JOB));
+    await user.clear(screen.getByRole('textbox'));
+    await user.type(screen.getByRole('textbox'), 'Q3 numbers');
+
+    await waitFor(() => expect(sendButton()).toBeEnabled());
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toBe(composeOwnWorkMessage('Q3 numbers'));
+  });
+
+  it('swaps an edited job for the next one picked instead of joining them', async () => {
+    render(<Home onSend={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
+    await user.click(screen.getByText(JOB));
+    await user.clear(screen.getByRole('textbox'));
+    await user.type(screen.getByRole('textbox'), 'Clean up this customer list');
+
+    const other = 'Compare these two price lists and show what changed.';
+    await user.click(screen.getByText(other));
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(`${other} `));
+  });
+
+  it('clears a job with nothing added when the mode is removed, so it cannot go out bare', async () => {
+    render(<Home onSend={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
+    await user.click(screen.getByText(JOB));
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(`${JOB} `));
+
+    await user.click(screen.getByRole('button', { name: 'Remove Your work mode' }));
+
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
+    expect(sendButton()).toBeDisabled();
+  });
+
+  it('keeps a job with material when the mode is removed', async () => {
+    render(<Home onSend={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
+    await user.click(screen.getByText(JOB));
+    await user.click(screen.getByRole('textbox'));
+    await user.keyboard('{End}Ada, Bob, Ada');
+
+    await user.click(screen.getByRole('button', { name: 'Remove Your work mode' }));
+
+    expect(screen.getByRole('textbox')).toHaveValue(`${JOB} Ada, Bob, Ada`);
+  });
+
+  it('clears a job left bare from an earlier visit when Home opens without the mode', async () => {
+    setDraft('new', `${JOB} `);
+    render(<Home onSend={vi.fn()} request={0} />);
+
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
+  });
+
+  it('opens the mode without a console example when the row was clicked before the composer was ready', async () => {
+    captureConsoleHandoff({ search: '?from=console&mode=games&sample=classic-snake-game', pathname: '/', hash: '' });
+    render(<Home onSend={vi.fn()} request={1} />);
+    await screen.findByText('What should Cowork work on?');
+
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    expect(screen.queryByText(/Edit this prompt/)).not.toBeInTheDocument();
+  });
+
+  it('retires the console example hint when the row opens the mode', async () => {
+    captureConsoleHandoff({ search: '?from=console&mode=games&sample=classic-snake-game', pathname: '/', hash: '' });
+    const { rerender } = render(<Home onSend={vi.fn()} request={0} />);
+    expect(await screen.findByText(/Edit this prompt/)).toBeInTheDocument();
+
+    rerender(<Home onSend={vi.fn()} request={2} />);
+
+    await screen.findByText('What should Cowork work on?');
+    expect(screen.queryByText(/Edit this prompt/)).not.toBeInTheDocument();
+  });
+
+  it('moves between kinds of work with the arrow keys', async () => {
+    render(<Home onSend={vi.fn()} />);
+    const user = userEvent.setup();
+    const first = await screen.findByRole('tab', { name: 'Finance and admin' });
+    first.focus();
+    await user.keyboard('{ArrowRight}');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Sales and marketing' })).toHaveAttribute('aria-selected', 'true'));
+    expect(screen.getByText(JOB)).toBeInTheDocument();
   });
 });

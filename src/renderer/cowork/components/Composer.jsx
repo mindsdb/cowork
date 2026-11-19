@@ -132,6 +132,9 @@ export default function Composer({
       sends an attachment alone, or needs more than its own starter text,
       passes its own rule. */
   canSend = null,
+  /** Told whether Send is on whenever that changes, for a caller whose
+      guidance depends on it. */
+  onSendableChange,
   metaReadOnly = false,
   // Whether the model pill is a fixed label rather than a picker. Defaults
   // to metaReadOnly (ChatView's prior behavior: "model is fixed once a task
@@ -888,6 +891,10 @@ export default function Composer({
   }
 
   const sendable = canSend ? canSend(value) : Boolean(value.trim());
+  useEffect(() => {
+    onSendableChange?.(sendable);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendable]);
   const handleSend = async () => {
     if (disabled || !sendable) return;
     setBusy(true);

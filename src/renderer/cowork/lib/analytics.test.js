@@ -2245,6 +2245,21 @@ describe('onboarding and start events', () => {
     expect(vias).toEqual(['composer', 'composer']);
   });
 
+  it('keeps a start label that rides with the send, even after a refused second send cleared the pending one', async () => {
+    const fetchMock = mockFetch();
+    const { sendWithStartVia, setStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    // A second Enter mid-send is refused, which clears the pending label.
+    await sendWithStartVia('checklist', async () => false);
+    trackNewTaskMessageSent({ text: 'own work', start: { start_kind: 'own_work' }, startVia: 'checklist' });
+    setStartVia('app');
+    trackNewTaskMessageSent({ text: 'from the row', start: undefined, startVia: 'checklist' });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
+    expect(vias).toEqual(['checklist', 'checklist']);
+  });
+
   it('uses a checklist start once, so the next message is from the composer', async () => {
     const fetchMock = mockFetch();
     const { setStartVia, trackNewTaskMessageSent } = await importAnalytics();

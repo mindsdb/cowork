@@ -43,6 +43,14 @@ export function findSample(modeId, id) {
   return mode && sample ? { mode, sample } : null;
 }
 
+// Text earlier builds placed in the composer and no longer offer. Drafts are
+// kept in localStorage with no expiry, so a placed but unsent one can outlive
+// the build that placed it. This is the own-work prompt a console link placed
+// until the own-work mode replaced it; it asks Cowork to open with a question.
+const RETIRED_PROMPTS = [
+  'I\'d like to start with something real from my work. Ask me one question about what I\'m working on, and give me two or three small examples to jump-start it, like a report to update, a spreadsheet to clean, or a thread to answer. Tell me I can attach a file, paste notes or a link, or connect Gmail, and say you\'ll take the first step once I answer.',
+];
+
 /** Whether *text* is a sample prompt exactly as placed, never edited. Such a
     draft is text a sample put in the composer, not the user's own, so a later
     handoff may replace it. */
@@ -50,7 +58,8 @@ export const isUntouchedSample = (text) => {
   const trimmed = (text || '').trim();
   return (
     Boolean(trimmed) &&
-    [...TASK_MODES, OWN_WORK_MODE].some((m) => m.samples.some((s) => s.prompt === trimmed))
+    (RETIRED_PROMPTS.includes(trimmed) ||
+      [...TASK_MODES, OWN_WORK_MODE].some((m) => m.samples.some((s) => s.prompt === trimmed)))
   );
 };
 

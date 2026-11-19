@@ -4430,7 +4430,7 @@ function AppCore() {
       markInFlight(taskId);
     };
     // Before the session-start event, which clears the console attribution this reads.
-    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text), taskMode: meta?.taskMode });
+    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text), taskMode: meta?.taskMode, startVia: meta?.startVia });
     trackAgentSessionStarted();
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
@@ -7152,8 +7152,12 @@ function AppCore() {
             newTask();
             setExamplesRequest(Date.now());
           }}
+          // A file already attached on Home is the material that mode asks
+          // for, so it stays; newTask would drop it.
           onOpenOwnWork={() => {
+            const keep = route === 'home' && !activeTaskId ? composerAttachments : [];
             newTask();
+            if (keep.length) setComposerAttachments(keep);
             setOwnWorkRequest(Date.now());
           }}
           // Hold the tip while the popout drawer is shut: Sidebar sees

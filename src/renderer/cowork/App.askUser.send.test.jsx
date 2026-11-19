@@ -151,10 +151,13 @@ vi.mock('./lib/analytics', () => ({
   trackAddonOverridden: vi.fn(),
   trackNextStepsShown: vi.fn(),
   trackNextStepClicked: vi.fn(),
+  trackOnboardingRowClicked: vi.fn(),
+  trackOnboardingStepCompleted: vi.fn(),
 }));
 
 import App, { unsavedRefusedQuestions } from './App';
 import { trackTurnFailed, classifyFirstResponse, trackNewTaskMessageSent, trackAgentSessionStarted } from './lib/analytics';
+import { completeStep, dismiss as dismissOnboarding, reset as resetOnboarding } from './components/onboarding/onboardingStore';
 import { composeOwnWorkMessage } from './components/taskmodes/taskModes';
 
 const OWN_WORK_SEND = composeOwnWorkMessage('Weekly ops notes');
@@ -1607,6 +1610,61 @@ describe('the first message of a new task (analytics)', () => {
     await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
 
     expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({ attachments: 1 }));
+  });
+});
+
+describe('the checklist\'s own-work row', () => {
+  // App dismisses an untouched checklist once the account has tasks, as this
+  // harness's does; someone who has started the steps keeps it.
+  beforeEach(() => { resetOnboarding(); completeStep('see-it-work'); });
+  afterEach(() => {
+    dismissOnboarding();
+    // The next tests count upload calls on this shared mock.
+    uploadAttachments.mockClear();
+  });
+
+  it('opens Home in the own-work mode and sends what the mode composes, labelled as the checklist\'s', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /Start with your own work/ }));
+    await screen.findByText('What should Cowork work on?');
+    const composer = document.querySelector('textarea');
+
+    await user.click(composer);
+    await user.paste('Weekly ops notes');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
+
+    expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1);
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({
+      text: OWN_WORK_SEND,
+      start: { start_kind: 'own_work', added_chars: 16 },
+      startVia: 'checklist',
+    }));
+  });
+
+  it('keeps a file already attached on Home, which is what the mode asks for', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    await waitFor(() => {
+      if (!document.querySelector('textarea')) throw new Error('composer not mounted');
+    });
+    await attach(user, 'customers.csv');
+
+    await user.click(screen.getByRole('button', { name: /Start with your own work/ }));
+    await screen.findByText('What should Cowork work on?');
+
+    expect(screen.getByText('customers.csv')).toBeInTheDocument();
+    uploadAttachments.mockResolvedValueOnce([{ id: 'att-1', name: 'customers.csv' }]);
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({
+      attachments: 1,
+      start: expect.objectContaining({ start_kind: 'own_work' }),
+    }));
   });
 });
 

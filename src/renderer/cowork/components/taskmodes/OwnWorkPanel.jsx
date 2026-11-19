@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import Ico from '../Icons';
 import Button from '../ui/Button';
+import { Tabs, TabList, Tab, TabPanel } from '../ui/Tabs';
 import { useTranslation } from '../../../lib/i18n';
 import { OWN_WORK_JOB_GROUPS } from './taskModes';
 
@@ -43,35 +44,34 @@ export default function OwnWorkPanel({ onPickJob, onAttachFiles, waitingForMater
       <div className="mt-8 mx-[2px] mb-2 text-[13px] font-medium text-[var(--frost-600)]">
         {t('ownWork.jobsHeading')}
       </div>
-      <div className="flex flex-wrap gap-[6px] mb-1" role="tablist" aria-label={t('ownWork.kindsLabel')}>
+      <Tabs value={group.id} onValueChange={(v) => setGroupId(v)}>
+        <TabList className="mb-1 flex-wrap gap-[6px] border-b-0" aria-label={t('ownWork.kindsLabel')}>
+          {OWN_WORK_JOB_GROUPS.map((g) => (
+            <Tab
+              key={g.id}
+              value={g.id}
+              className="mb-0 rounded-full border border-solid border-line-2 px-3 py-[5px] [font-family:inherit] text-[12.5px] font-medium text-[var(--frost-700)] hover:text-[var(--text-strong)] aria-[selected=true]:border-[var(--text-strong)] aria-[selected=true]:bg-[var(--text-strong)] aria-[selected=true]:text-[var(--surface-0)]"
+            >
+              {t(`ownWork.groups.${g.id}`)}
+            </Tab>
+          ))}
+        </TabList>
         {OWN_WORK_JOB_GROUPS.map((g) => (
-          <button
-            key={g.id}
-            type="button"
-            role="tab"
-            aria-selected={g.id === group.id}
-            onClick={() => setGroupId(g.id)}
-            className={g.id === group.id
-              ? 'cursor-pointer rounded-full border border-solid border-[var(--text-strong)] bg-[var(--text-strong)] px-3 py-[5px] [font-family:inherit] text-[12.5px] font-medium text-[var(--surface-0)]'
-              : 'cursor-pointer rounded-full border border-solid border-line-2 bg-transparent px-3 py-[5px] [font-family:inherit] text-[12.5px] font-medium text-[var(--frost-700)] [@media(hover:hover)_and_(pointer:fine)]:hover:text-[var(--text-strong)]'}
-          >
-            {t(`ownWork.groups.${g.id}`)}
-          </button>
+          <TabPanel key={g.id} value={g.id} className="flex flex-col pt-0">
+            {g.jobs.map((j, i) => (
+              <button
+                key={j.label}
+                type="button"
+                className="group flex w-full cursor-pointer items-center gap-3 border-0 border-b border-solid border-line bg-transparent px-1 py-[13px] text-left [font-family:inherit] text-[13.5px] text-[var(--frost-700)] last:border-b-0 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:hover:text-[var(--text-strong)]"
+                onClick={() => onPickJob?.(j.prompt)}
+              >
+                <span className="min-w-0 flex-1">{t(`ownWork.jobs.${g.id}.${i}`)}</span>
+                <span aria-hidden className="inline-flex shrink-0 text-[var(--frost-500)] opacity-70">{Ico.arrowUpLeft(14)}</span>
+              </button>
+            ))}
+          </TabPanel>
         ))}
-      </div>
-      <div className="flex flex-col" role="tabpanel">
-        {group.jobs.map((j, i) => (
-          <button
-            key={j.label}
-            type="button"
-            className="group flex w-full cursor-pointer items-center gap-3 border-0 border-b border-solid border-line bg-transparent px-1 py-[13px] text-left [font-family:inherit] text-[13.5px] text-[var(--frost-700)] last:border-b-0 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:hover:text-[var(--text-strong)]"
-            onClick={() => onPickJob?.(j.prompt)}
-          >
-            <span className="min-w-0 flex-1">{t(`ownWork.jobs.${group.id}.${i}`)}</span>
-            <span aria-hidden className="inline-flex shrink-0 text-[var(--frost-500)] opacity-70">{Ico.arrowUpLeft(14)}</span>
-          </button>
-        ))}
-      </div>
+      </Tabs>
     </div>
   );
 }

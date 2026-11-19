@@ -483,13 +483,31 @@ export function ownWorkJobIn(text) {
   return OWN_WORK_MODE.samples.find((j) => sent.startsWith(j.prompt)) ?? null;
 }
 
+/** The job a prompt belongs to, or null. */
+export const findOwnWorkJob = (prompt) => OWN_WORK_MODE.samples.find((j) => j.prompt === prompt) ?? null;
+
+const words = (text) => text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+// Fewer new words than this, beside an edited job, read as a reworded job.
+const MIN_ADDED_WORDS = 3;
+
 /** Whether a draft in the own-work mode carries something of the person's:
-    an attachment, or text beyond the job it starts with. */
-export function hasOwnMaterial(text, attachmentCount = 0) {
+    an attachment, or text beyond the job it starts with. When a job was picked
+    and then edited, so the draft no longer starts with it, a draft that keeps
+    most of the job's words is still that job unless it adds a link or a few
+    words the job does not have: shortening or rewording a job gives Cowork
+    nothing to work on. A draft that dropped the job is the person's own. */
+export function hasOwnMaterial(text, attachmentCount = 0, pickedJob = null) {
   if (attachmentCount > 0) return true;
   const sent = String(text || '').trim();
-  const picked = ownWorkJobIn(sent);
-  return (picked ? sent.slice(picked.prompt.length) : sent).trim().length > 0;
+  const job = ownWorkJobIn(sent);
+  if (job) return sent.slice(job.prompt.length).trim().length > 0;
+  if (!pickedJob) return sent.length > 0;
+  const known = new Set(words(pickedJob.prompt));
+  const drafted = words(sent);
+  const kept = [...known].filter((w) => drafted.includes(w)).length;
+  if (kept * 2 < known.size) return sent.length > 0;
+  if (/(?:https?:\/\/|www\.)\S/i.test(sent)) return true;
+  return drafted.filter((w) => !known.has(w)).length >= MIN_ADDED_WORDS;
 }
 
 /** The message the own-work mode sends: the job, or a generic first step when
