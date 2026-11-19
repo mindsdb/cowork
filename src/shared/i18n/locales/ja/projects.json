@@ -414,7 +414,8 @@
       "andMore": "{source}ほか{count}件"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "不明なコネクタ"
+      "unrecognizedConnector": "不明なコネクタ",
+      "mcpServer": "MCP サーバー"
     },
     "datasourceSubmission": {
       "errors": {

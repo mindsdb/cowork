@@ -56,6 +56,8 @@ import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
+import CustomMcpConnectModal from './components/connector/CustomMcpConnectModal';
+import { disconnectCustomMcp, isCustomMcp } from './lib/customMcp';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
 import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
 import { handleArtifactCheckEvent } from './lib/artifactCheck';
@@ -1016,6 +1018,7 @@ function AppCore() {
   const [settingsSection, setSettingsSection] = useState(null);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [sharePointSetupOpen, setSharePointSetupOpen] = useState(false);
+  const [customMcpOpen, setCustomMcpOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
@@ -3490,7 +3493,8 @@ function AppCore() {
     setDisconnectError('');
     setDisconnectBusy(true);
     try {
-      await deleteDatasource(engine, name);
+      if (isCustomMcp(engine)) await disconnectCustomMcp(name, () => deleteDatasource(engine, name));
+      else await deleteDatasource(engine, name);
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.App", "WARNING", "connectors_disconnect_failed", '[connectors] disconnect failed', e);
@@ -7829,6 +7833,16 @@ function AppCore() {
         }}
       />
 
+      <CustomMcpConnectModal
+        open={customMcpOpen}
+        onClose={() => setCustomMcpOpen(false)}
+        onConnected={() => {
+          fetchDatasources()
+            .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+            .catch(() => setConnectors([]));
+        }}
+      />
+
       <ConnectorPicker
         open={connectorPickerOpen}
         onClose={() => setConnectorPickerOpen(false)}
@@ -7845,6 +7859,10 @@ function AppCore() {
             build: (name) => sendFromApp(buildCustomConnectorRequest(name)),
           }));
           setComingSoonFeature(label);
+        }}
+        onAddMcpUrl={() => {
+          setConnectorPickerOpen(false);
+          setCustomMcpOpen(true);
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);

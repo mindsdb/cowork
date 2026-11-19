@@ -9,7 +9,10 @@ import userEvent from '@testing-library/user-event';
 const spies = vi.hoisted(() => ({
   deleteDatasource: vi.fn(),
   fetchSessions: vi.fn(),
+  customMcpDisconnect: vi.fn(),
 }));
+// The connection the stub chat asks to disconnect.
+const target = vi.hoisted(() => ({ engine: 'postgres', name: 'prod-db' }));
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -42,7 +45,7 @@ vi.mock('./views/ChatView', () => ({
   default: ({ task, onDisconnectModify }) => (
     <div>
       <div>Chat task: {task?.title || 'none'}</div>
-      <button type="button" onClick={() => onDisconnectModify(task.id, 'postgres', 'prod-db')}>
+      <button type="button" onClick={() => onDisconnectModify(task.id, target.engine, target.name)}>
         Disconnect from task
       </button>
     </div>
@@ -68,6 +71,7 @@ vi.mock('../platform/host', async (importOriginal) => {
       serverDiagnostics: vi.fn(async () => ({})),
       getShellUpdate: vi.fn(async () => null),
       removeCodingTask: vi.fn(async () => ({})),
+      customMcpDisconnect: (...args) => spies.customMcpDisconnect(...args),
     },
     getAccessToken: vi.fn(async () => null),
     getVersionInfo: vi.fn(async () => ({ app: '', ui: null, source: 'web' })),
@@ -82,13 +86,16 @@ const task = { id: 'conv-connect', title: 'Connect task', messages: [], status: 
 beforeEach(() => {
   window.history.replaceState(null, '', `/c/${task.id}`);
   spies.deleteDatasource.mockReset().mockResolvedValue({});
+  spies.customMcpDisconnect.mockReset().mockResolvedValue({ ok: true, revoked: true });
+  target.engine = 'postgres';
+  target.name = 'prod-db';
   spies.fetchSessions.mockReset().mockResolvedValue([{ ...task }]);
 });
 
 const askToDisconnect = async (user) => {
   await screen.findByText(`Chat task: ${task.title}`);
   await user.click(screen.getByRole('button', { name: 'Disconnect from task' }));
-  return screen.findByRole('dialog', { name: 'Disconnect prod-db?' });
+  return screen.findByRole('dialog', { name: `Disconnect ${target.name}?` });
 };
 
 describe('disconnecting from a connect task', () => {
@@ -103,6 +110,32 @@ describe('disconnecting from a connect task', () => {
 
     await waitFor(() => expect(spies.deleteDatasource).toHaveBeenCalledWith('postgres', 'prod-db'));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Disconnect prod-db?' })).not.toBeInTheDocument());
+  });
+
+  it('removes a custom MCP server through main, never the generic delete', async () => {
+    target.engine = 'custom_mcp';
+    target.name = `cm-${'a'.repeat(32)}`;
+    const user = userEvent.setup();
+    render(<App />);
+
+    const dialog = await askToDisconnect(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
+
+    await waitFor(() => expect(spies.customMcpDisconnect).toHaveBeenCalledWith(target.name));
+    expect(spies.deleteDatasource).not.toHaveBeenCalled();
+  });
+
+  it('keeps the dialog open with main\'s reason when a custom MCP server cannot be removed', async () => {
+    target.engine = 'custom_mcp';
+    target.name = `cm-${'a'.repeat(32)}`;
+    spies.customMcpDisconnect.mockResolvedValue({ ok: false, code: 'keychain_unavailable', reason: 'the keychain could not delete an entry' });
+    const user = userEvent.setup();
+    render(<App />);
+
+    const dialog = await askToDisconnect(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
+
+    expect(await within(dialog).findByText(/the keychain could not delete an entry/)).toBeInTheDocument();
   });
 
   it('keeps the dialog open with the reason when the delete fails', async () => {
