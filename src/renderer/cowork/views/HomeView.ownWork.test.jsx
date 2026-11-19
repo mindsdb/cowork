@@ -4,7 +4,7 @@
 // start on stated assumptions rather than open with a question.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useEffect, useState } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import HomeView from './HomeView';
 import { composeOwnWorkMessage, OWN_WORK_START_NOW } from '../components/taskmodes/taskModes';
@@ -30,11 +30,12 @@ const RETIRED_OWN_WORK_PROMPT = 'I\'d like to start with something real from my 
 const FILE = { id: 'f1', name: 'customers.csv', size: 1024 };
 
 // Holds the prefill and the request the way App does.
-function Home({ onSend, attachments = [], onAttachFiles = vi.fn(), request = 1, examples = 0, onConsumed = vi.fn() }) {
+function Home({ onSend, attachments = [], onAttachFiles = vi.fn(), request = 1, examples = 0, onConsumed = vi.fn(), codingModeEnabled = false }) {
   const [prefill, setPrefill] = useState(null);
   const [ownWorkRequest, setOwnWorkRequest] = useState(request);
   const [examplesRequest, setExamplesRequest] = useState(examples);
   useEffect(() => { if (request) setOwnWorkRequest(request); }, [request]);
+  useEffect(() => { if (examples) setExamplesRequest(examples); }, [examples]);
   return (
     <HomeView
       onSend={onSend}
@@ -61,6 +62,7 @@ function Home({ onSend, attachments = [], onAttachFiles = vi.fn(), request = 1, 
       examplesRequest={examplesRequest}
       onExamplesRequestConsumed={() => setExamplesRequest(0)}
       onOwnWorkRequestConsumed={() => { onConsumed(); setOwnWorkRequest(0); }}
+      codingModeEnabled={codingModeEnabled}
     />
   );
 }
@@ -410,5 +412,76 @@ describe('HomeView own-work mode', () => {
 
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Sales and marketing' })).toHaveAttribute('aria-selected', 'true'));
     expect(screen.getByText(JOB)).toBeInTheDocument();
+  });
+
+  it('clears a job with nothing added when the examples row replaces the mode', async () => {
+    const { rerender } = render(<Home onSend={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
+    await user.click(screen.getByText(JOB));
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(`${JOB} `));
+
+    rerender(<Home onSend={vi.fn()} request={0} examples={2} />);
+
+    await waitFor(() => expect(screen.queryByText('What should Cowork work on?')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
+    expect(sendButton()).toBeDisabled();
+  });
+
+  it('clears a job with nothing added when Coding Mode turns the mode off', async () => {
+    const { rerender } = render(<Home onSend={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
+    await user.click(screen.getByText(JOB));
+    await waitFor(() => expect(getDraft('new')).toBe(`${JOB} `));
+
+    rerender(<Home onSend={vi.fn()} request={0} codingModeEnabled />);
+
+    await waitFor(() => expect(getDraft('new')).toBe(''));
+  });
+
+  it('keeps the mode and the text when the app refuses a send, so a retry still asks Cowork to start', async () => {
+    let finishFirst;
+    const onSend = vi.fn()
+      .mockImplementationOnce(() => new Promise((r) => { finishFirst = r; }))
+      .mockImplementationOnce(async () => false)
+      .mockImplementation(async () => true);
+    render(<Home onSend={onSend} />);
+    const user = userEvent.setup();
+    await screen.findByText('What should Cowork work on?');
+    await user.click(screen.getByRole('textbox'));
+    await user.paste('notes from the call');
+
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
+    await act(async () => { finishFirst(false); });
+
+    expect(screen.getByText('What should Cowork work on?')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('notes from the call'));
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(3));
+    expect(onSend.mock.calls[2][0]).toBe(composeOwnWorkMessage('notes from the call'));
+  });
+
+  it('swaps an edited job that has material after it, keeping only the material', async () => {
+    render(<Home onSend={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Sales and marketing' }));
+    await user.click(screen.getByText(JOB));
+    await user.clear(screen.getByRole('textbox'));
+    await user.type(screen.getByRole('textbox'), 'Clean up this client list and flag duplicates. ');
+    await user.paste('name,email\nAda,ada@example.com');
+
+    const other = 'Compare these two price lists and show what changed.';
+    await user.click(screen.getByText(other));
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(`${other} name,email\nAda,ada@example.com`));
+  });
+
+  it('clears the retired own-work prompt saved as a draft when Home opens', async () => {
+    setDraft('new', RETIRED_OWN_WORK_PROMPT);
+    render(<Home onSend={vi.fn()} request={0} />);
+
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
   });
 });

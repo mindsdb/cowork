@@ -47,7 +47,7 @@ export function findSample(modeId, id) {
 // kept in localStorage with no expiry, so a placed but unsent one can outlive
 // the build that placed it. This is the own-work prompt a console link placed
 // until the own-work mode replaced it; it asks Cowork to open with a question.
-const RETIRED_PROMPTS = [
+export const RETIRED_PROMPTS = [
   'I\'d like to start with something real from my work. Ask me one question about what I\'m working on, and give me two or three small examples to jump-start it, like a report to update, a spreadsheet to clean, or a thread to answer. Tell me I can attach a file, paste notes or a link, or connect Gmail, and say you\'ll take the first step once I answer.',
 ];
 

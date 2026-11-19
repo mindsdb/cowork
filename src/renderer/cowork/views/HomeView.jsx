@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import TaskModePills from '../components/taskmodes/TaskModePills';
 import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
-import { modeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE, OWN_WORK_MODE, composeOwnWorkMessage, hasOwnMaterial, ownWorkJobIn, findOwnWorkJob } from '../components/taskmodes/taskModes';
+import { modeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE, OWN_WORK_MODE, composeOwnWorkMessage, hasOwnMaterial, ownWorkJobIn, findOwnWorkJob, editedJobEnd } from '../components/taskmodes/taskModes';
 import OwnWorkPanel from '../components/taskmodes/OwnWorkPanel';
 import { completeStepTracked } from '../components/onboarding/track';
 import { stepsCompletedBySend } from '../components/onboarding/completion';
@@ -13,7 +13,7 @@ import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded } from '../lib/analytics';
-import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
+import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START, RETIRED_PROMPTS } from '../lib/consoleHandoff';
 import { takeSignupWelcome, SIGNUP_FROM_DESKTOP } from '../lib/signupWelcome';
 import { productName } from '../../lib/deploymentBrand';
 import { getDraft, setDraft } from '../lib/draftStore';
@@ -347,28 +347,32 @@ export default function HomeView({
   const [pickedJob, setPickedJob] = useState(null);
   // Whether the composer's Send is on, so the "Now add…" hint agrees with it.
   const [ownWorkSendable, setOwnWorkSendable] = useState(false);
-  useEffect(() => {
-    if (ownWork) return;
-    setOwnWorkVia(null);
-    setPickedJob(null);
-  }, [ownWork]);
   // A job with nothing added is the app's text. Outside the mode it would go
-  // out bare ("Clean up this customer list.") with no list, so it is cleared.
+  // out bare ("Clean up this customer list.") with no list, so leaving the
+  // mode by any route (the chip, the examples row, Coding Mode) clears it.
   const isBareJob = (draft, job = null) =>
     Boolean(draft.trim()) && !hasOwnMaterial(draft, 0, job) && Boolean(ownWorkJobIn(draft) || job);
-  const leaveOwnWork = () => {
-    if (isBareJob(getDraft('new'), pickedJob)) onPrefill?.('');
-    setTaskMode(null);
-  };
+  const wasOwnWorkRef = useRef(false);
+  useEffect(() => {
+    if (ownWork) { wasOwnWorkRef.current = true; return; }
+    if (wasOwnWorkRef.current && isBareJob(getDraft('new'), pickedJob)) onPrefill?.('');
+    wasOwnWorkRef.current = false;
+    setOwnWorkVia(null);
+    setPickedJob(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownWork]);
   // Picking a job keeps what the person already pasted, after the job, and
   // swaps a job picked earlier, edited or not: the message is read as job,
   // then material.
   const placeOwnWorkJob = (prompt) => {
     const draft = getDraft('new').trim();
     const earlier = ownWorkJobIn(draft);
+    const editedEnd = earlier ? -1 : editedJobEnd(draft, pickedJob);
     const rest = earlier
       ? draft.slice(earlier.prompt.length).trim()
-      : (isUntouchedSample(draft) || isBareJob(draft, pickedJob) ? '' : draft);
+      : editedEnd >= 0
+        ? draft.slice(editedEnd).trim()
+        : (isUntouchedSample(draft) || isBareJob(draft, pickedJob) ? '' : draft);
     const next = rest ? `${prompt} ${rest}` : `${prompt} `;
     setPickedJob(findOwnWorkJob(prompt));
     // Written to the draft store as well, so this render already reads it
@@ -393,6 +397,13 @@ export default function HomeView({
       // An example the person picked and then edited still counts as tried.
       if (!ownWork && pickedSample && resemblesSample(pickedSample, text)) done.push('see-it-work');
       done.forEach((id) => completeStepTracked(id, ownWork && ownWorkVia ? ownWorkVia : 'composer'));
+    } else if (ownWork) {
+      // A refused send (a second Enter while the first is still going out, or
+      // a failed preflight) keeps the mode, and puts the text back, which the
+      // composer clears once any send resolves: a retry still carries the
+      // start-now line.
+      onPrefill?.(text);
+      return result;
     }
     setTaskMode(null);
     setPickedSample(null);
@@ -520,7 +531,10 @@ export default function HomeView({
   useEffect(() => {
     if (!composerUsable || bareJobCheckedRef.current) return;
     bareJobCheckedRef.current = true;
-    if (!ownWorkRequest && isBareJob(getDraft('new'))) onPrefill?.('');
+    const draft = getDraft('new');
+    // The own-work prompt an earlier build placed goes too: sent without the
+    // mode it asks Cowork to open with a question.
+    if (!ownWorkRequest && (isBareJob(draft) || RETIRED_PROMPTS.includes(draft.trim()))) onPrefill?.('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerUsable]);
 
@@ -748,7 +762,7 @@ export default function HomeView({
               onSend={sendTracked}
               placeholder={taskMode ? taskMode.placeholder : undefined}
               taskMode={taskMode}
-              onClearTaskMode={ownWork ? leaveOwnWork : () => setTaskMode(null)}
+              onClearTaskMode={() => setTaskMode(null)}
               prefill={prefill}
               project={project}
               onProjectChange={onProjectChange}

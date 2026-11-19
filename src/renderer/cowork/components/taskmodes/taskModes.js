@@ -510,6 +510,28 @@ export function hasOwnMaterial(text, attachmentCount = 0, pickedJob = null) {
   return drafted.filter((w) => !known.has(w)).length >= MIN_ADDED_WORDS;
 }
 
+/** Where an edited copy of *job* at the start of *text* ends, or -1 when the
+    text does not open with it. The end is the prefix that best matches the
+    job's words (each job word counts for, each other word against), and it
+    has to keep at least half of them. */
+export function editedJobEnd(text, job) {
+  const sent = String(text || '');
+  if (!job) return -1;
+  const known = new Set(words(job.prompt));
+  let score = 0;
+  let best = 0;
+  let end = -1;
+  const seen = new Set();
+  for (const m of sent.matchAll(/[\p{L}\p{N}]+/gu)) {
+    const w = m[0].toLowerCase();
+    if (known.has(w)) { score += 1; seen.add(w); } else score -= 1;
+    if (score > best && seen.size * 2 >= known.size) { best = score; end = m.index + m[0].length; }
+  }
+  if (end < 0) return -1;
+  const tail = sent.slice(end).match(/^[.!?…]*/);
+  return end + (tail ? tail[0].length : 0);
+}
+
 /** The message the own-work mode sends: the job, or a generic first step when
     there is none, the start-now instruction, then the person's material. */
 export function composeOwnWorkMessage(text) {
