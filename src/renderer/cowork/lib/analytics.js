@@ -135,8 +135,14 @@ const EVENTS = {
   // Segment on them; do not count organisations-per-limit with them. The `sso_`
   // prefix exists to stop the unprefixed name reading as authoritative, and
   // ENG-2206 remains open for a subject carried on the gateway denial itself.
-  TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
-  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
+  // ENG-4186 adds two more reasons, both from paid plans and both labelled
+  // from their first event, so nothing here is unlabelled: a plan window used
+  // up with an empty wallet (`window_allowance_exhausted`) and a model outside
+  // the plan with an empty wallet (`model_not_in_tier`). The series steps up
+  // again where a build carrying them meets an org on a plan.
+  TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'window_allowance_exhausted'|'model_not_in_tier' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537 + ENG-4186)
+  UPGRADE_CLICKED:          'upgrade_clicked',          // { surface: 'allowance_card'|'window_card'|'model_card'|'model_picker'|'usage_bar'|'usage_alert'|'usage_settings'|'compare', tier: 'plus'|'pro', from_tier: 'free'|'plus' } a plan upgrade was clicked (ENG-4186). Opens the console billing page but is NOT also a billing_opened: the two series stay disjoint, so the funnels add up
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'window_allowance_exhausted'|'model_not_in_tier'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version, ui_version, server_version } desktop, per launch (ENG-921). One row per layer's running version, so adoption per layer needs no join
@@ -1036,6 +1042,11 @@ export function trackTurnFailed(conversationId, event) {
 //   token_limit               out of credits mid-turn; pairs with token_cap_hit
 //   included_allowance_exhausted  the free allowance is spent, not the
 //                             wallet; also pairs with token_cap_hit (ENG-1537)
+//   window_allowance_exhausted  "Add funds" on a Plus or Pro plan whose window
+//                             is used up (ENG-4186); pairs with token_cap_hit
+//   model_not_in_tier         "Add funds" on a model the plan does not cover
+//                             (ENG-4186); pairs with token_cap_hit. The
+//                             upgrade on both cards is upgrade_clicked instead
 //   free_serving_paused       free MindsHub Air is paused for everyone by the
 //                             daily spend fuse; NOT paired with token_cap_hit,
 //                             because it is not this user's cap
@@ -1084,6 +1095,21 @@ export function trackBillingOpened(trigger, workspaceMode, kind) {
     trigger: trigger || 'unknown',
     workspace_mode: workspaceMode || undefined,
     kind: kind || undefined,
+  });
+}
+
+// A plan upgrade was clicked (ENG-4186): "Get Plus", "Upgrade to Pro" or
+// "Upgrade". `surface` is where, so conversion can be graded per surface;
+// `tier` is the plan offered and `from_tier` the plan the org is on. It opens
+// the console's checkout deep link, so it arms the same post-payment
+// availability follow-up as a billing link: a new plan unlocks models just as
+// funds do.
+export function trackUpgradeClicked(surface, tier, fromTier) {
+  startCreditsFlow();
+  capture(EVENTS.UPGRADE_CLICKED, {
+    surface: surface || 'unknown',
+    tier: tier || undefined,
+    from_tier: fromTier || undefined,
   });
 }
 

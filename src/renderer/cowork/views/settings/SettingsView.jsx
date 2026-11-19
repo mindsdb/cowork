@@ -1929,6 +1929,7 @@ export default function SettingsView({
                                 modelProviders: settings.modelProviders,
                                 modelFamilies: settings.modelFamilies,
                                 modelDisabledReasons: settings.modelDisabledReasons,
+                                modelCoveredByTier: settings.modelCoveredByTier,
                               },
                             );
                             return (
@@ -2053,6 +2054,7 @@ export default function SettingsView({
                       modelProviders: settings.modelProviders,
                       modelFamilies: settings.modelFamilies,
                       modelDisabledReasons: settings.modelDisabledReasons,
+                      modelCoveredByTier: settings.modelCoveredByTier,
                     },
                   );
                   return (

@@ -221,6 +221,22 @@
       "tryAgain": "Erneut versuchen",
       "bodyMobile": "MindsHub hat nicht geantwortet."
     },
-    "empty": "Für dieses Konto gibt es noch keine Nutzungsdaten."
+    "empty": "Für dieses Konto gibt es noch keine Nutzungsdaten.",
+    "plan": {
+      "title": "{tier, select, plus {Plus-Plan} pro {Pro-Plan} other {Plan}}",
+      "renewsOn": "Verlängert sich am {date}",
+      "endsOn": "Endet am {date}",
+      "ending": "Läuft aus",
+      "pastDue": "Zahlung fehlgeschlagen",
+      "pastDueBody": "Ihr Plan konnte nicht verlängert werden. Aktualisieren Sie Ihre Karte unter „Verwalten“, um ihn zu behalten.",
+      "windowName": "{window, select, 7d {Wochenkontingent} other {5-Stunden-Kontingent}}",
+      "windowUsed": "{percent} verbraucht",
+      "windowUsedResets": "{percent} verbraucht · wird um {time} zurückgesetzt",
+      "windowMeterLabel": "{window, select, 7d {Wochenkontingent verbraucht} other {5-Stunden-Kontingent verbraucht}}",
+      "afterCap": "Ist eines der Kontingente aufgebraucht, nutzen Aufgaben Ihr Guthaben zu API-Preisen oder pausieren bis zum Zurücksetzen.",
+      "afterCapMobile": "Ist eines der Kontingente aufgebraucht, pausieren Aufgaben bis zum Zurücksetzen, sofern Ihr Guthaben sie nicht abdeckt.",
+      "upgrade": "{tier, select, plus {Plus holen} pro {Auf Pro upgraden} other {Upgraden}}",
+      "manage": "Verwalten"
+    }
   }
 }

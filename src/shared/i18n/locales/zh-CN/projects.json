@@ -6,7 +6,8 @@
         "addFunds": "充值",
         "setUpAutoTopUp": "设置自动充值",
         "manageAutoTopUp": "管理自动充值",
-        "updatePaymentMethod": "更新付款方式"
+        "updatePaymentMethod": "更新付款方式",
+        "upgrade": "{tier, select, plus {开通 Plus} pro {升级到 Pro} other {升级}}"
       },
       "noFreeGrant": "此账户不含免费的 MindsHub Air 令牌。MindsHub Air 和其他模型一样，会使用你的余额。",
       "allowanceStop": {
@@ -68,6 +69,20 @@
       "budgetExceeded": {
         "raise": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。} other {在管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。}}} other {{scope, select, org {在所有者或管理员于“预算”中提高上限前，付费模型无法运行。} other {在管理员于“预算”中提高上限前，付费模型无法运行。}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。} other {在管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。}}} other {{scope, select, org {在所有者或管理员于“预算”中提高上限前，付费模型无法运行。免费额度未用完时，MindsHub Air 仍可使用。} other {在管理员于“预算”中提高上限前，付费模型无法运行。免费额度未用完时，MindsHub Air 仍可使用。}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {每周额度已用完} other {5 小时额度已用完}}",
+        "onWallet": "在重置前将按 API 价格使用你的余额继续。",
+        "onWalletWithTime": "在 {time} 重置前将按 API 价格使用你的余额继续。",
+        "paused": "你套餐内的任务已暂停，直到额度重置。充值即可继续。",
+        "pausedWithTime": "你套餐内的任务已暂停至 {time}。充值即可继续。",
+        "pausedMobile": "你套餐内的任务已暂停，直到额度重置。",
+        "pausedWithTimeMobile": "你套餐内的任务已暂停至 {time}。",
+        "lowTitle": "已使用 {percent} 的{window, select, 7d {每周} other {5 小时}}额度",
+        "lowThenWallet": "之后，任务将按 API 价格使用你的余额，直到额度重置。",
+        "lowThenWalletWithTime": "之后，任务将按 API 价格使用你的余额，直到 {time} 重置。",
+        "lowThenPause": "之后，任务将暂停，直到额度重置。",
+        "lowThenPauseWithTime": "之后，任务将暂停至 {time}。"
       }
     },
     "scheduleWhen": {
@@ -476,6 +491,10 @@
       "budgetReached": {
         "tag": "已达预算上限",
         "title": "适用于此模型的预算已用完。管理员可以在“预算”中提高上限。"
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {需要 Plus} pro {需要 Pro} other {需要升级}}",
+        "title": "你套餐的额度不包含此模型。升级，或充值积分后按 API 价格使用。"
       }
     },
     "settingsTransform": {

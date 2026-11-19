@@ -114,13 +114,23 @@
       "viewBudgets": "予算を表示",
       "balanceRanOutMobile": "タスクの完了前に残高がなくなりました。",
       "autoTopUpFailedBodyMobile": "カードに請求できませんでした。",
-      "connectProviderBodyMobile": "設定で自分のプロバイダーを接続してください。"
+      "connectProviderBodyMobile": "設定で自分のプロバイダーを接続してください。",
+      "windowUsedUpTitle": "プランの利用枠を使い切りました",
+      "windowPausedUntil": "{window, select, 7d {週間} 5h {5時間} other {プラン}}の利用枠を使い切り、残高もありません。{time}まで一時停止します。続けるには残高を追加してください。",
+      "windowPaused": "{window, select, 7d {週間} 5h {5時間} other {プラン}}の利用枠を使い切り、残高もありません。リセットされるまで一時停止します。続けるには残高を追加してください。",
+      "windowPausedUntilMobile": "{window, select, 7d {週間} 5h {5時間} other {プラン}}の利用枠を使い切り、残高もありません。{time}まで一時停止します。",
+      "windowPausedMobile": "{window, select, 7d {週間} 5h {5時間} other {プラン}}の利用枠を使い切り、残高もありません。リセットされるまで一時停止します。"
     },
     "usageAlert": {
       "freeLow": "Airの無料枠：残り{percent}",
       "freeLowRefills": "Airの無料枠：残り{percent} · {time}にリセット",
       "freeUsed": "Airの無料枠を使い切りました · 現在は残高から支払っています",
-      "freeUsedUntil": "Airの無料枠を使い切りました · {time}まで残高から支払います"
+      "freeUsedUntil": "Airの無料枠を使い切りました · {time}まで残高から支払います",
+      "windowLow": "{window, select, 7d {週間} other {5時間}}の利用枠の{percent}を使用済み",
+      "windowLowResets": "{window, select, 7d {週間} other {5時間}}の利用枠の{percent}を使用済み · {time}にリセット",
+      "windowUsed": "{window, select, 7d {週間の利用枠を使い切りました} other {5時間の利用枠を使い切りました}}",
+      "windowUsedUntil": "{window, select, 7d {週間の利用枠を使い切りました} other {5時間の利用枠を使い切りました}} · {time}まで一時停止",
+      "windowOnWallet": "{window, select, 7d {週間の利用枠を使い切りました} other {5時間の利用枠を使い切りました}} · 残高からAPI料金で支払い中"
     },
     "reconnect": {
       "couldNotReconnect": "再接続できませんでした。サインアウトしてから、もう一度サインインしてください。",
@@ -149,7 +159,10 @@
       "needsCreditsBody": "このモデルを使うにはクレジットが足りません。残高をチャージしてください。",
       "disabledBody": "このモデルはワークスペースで無効になっています。設定で別のモデルを選択してください。",
       "topUpBalance": "残高をチャージ",
-      "needsCreditsBodyMobile": "このモデルを使うにはクレジットが足りません。"
+      "needsCreditsBodyMobile": "このモデルを使うにはクレジットが足りません。",
+      "notInTierTitle": "{model}はプランに含まれていません",
+      "notInTierBody": "{tier, select, plus {{model}はPlusに含まれます。} pro {{model}はProに含まれます。} other {ご利用のプランには{model}が含まれていません。}}アップグレードするか、残高を追加するとAPI料金で使用できます。",
+      "notInTierBodyMobile": "{tier, select, plus {{model}はPlusに含まれます。} pro {{model}はProに含まれます。} other {ご利用のプランには{model}が含まれていません。}}残高がありません。"
     },
     "overloaded": {
       "theModelProvider": "モデルプロバイダー",

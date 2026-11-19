@@ -6,7 +6,8 @@
         "addFunds": "残高を追加",
         "setUpAutoTopUp": "自動チャージを設定",
         "manageAutoTopUp": "自動チャージを管理",
-        "updatePaymentMethod": "支払い方法を更新"
+        "updatePaymentMethod": "支払い方法を更新",
+        "upgrade": "{tier, select, plus {Plusにする} pro {Proにアップグレード} other {アップグレード}}"
       },
       "noFreeGrant": "このアカウントにはMindsHub Airの無料トークンが含まれていません。MindsHub Airも他のモデルと同様に残高を使用します。",
       "allowanceStop": {
@@ -68,6 +69,20 @@
       "budgetExceeded": {
         "raise": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {週間の利用枠を使い切りました} other {5時間の利用枠を使い切りました}}",
+        "onWallet": "リセットされるまで、残高からAPI料金で支払います。",
+        "onWalletWithTime": "{time}にリセットされるまで、残高からAPI料金で支払います。",
+        "paused": "リセットされるまで、プランでのタスクは一時停止します。続けるには残高を追加してください。",
+        "pausedWithTime": "{time}まで、プランでのタスクは一時停止します。続けるには残高を追加してください。",
+        "pausedMobile": "リセットされるまで、プランでのタスクは一時停止します。",
+        "pausedWithTimeMobile": "{time}まで、プランでのタスクは一時停止します。",
+        "lowTitle": "{window, select, 7d {週間} other {5時間}}の利用枠の{percent}を使用済み",
+        "lowThenWallet": "その後は、リセットされるまで残高からAPI料金で支払います。",
+        "lowThenWalletWithTime": "その後は、{time}にリセットされるまで残高からAPI料金で支払います。",
+        "lowThenPause": "その後は、リセットされるまでタスクが一時停止します。",
+        "lowThenPauseWithTime": "その後は、{time}までタスクが一時停止します。"
       }
     },
     "scheduleWhen": {
@@ -476,6 +491,10 @@
       "budgetReached": {
         "tag": "予算上限に到達",
         "title": "このモデルを対象とする予算を使い切りました。管理者が「予算」で上限を引き上げられます。"
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Plusが必要} pro {Proが必要} other {アップグレードが必要}}",
+        "title": "このモデルはプランの利用枠の対象外です。アップグレードするか、クレジットを追加するとAPI料金で使用できます。"
       }
     },
     "settingsTransform": {

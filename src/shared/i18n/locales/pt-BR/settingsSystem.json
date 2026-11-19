@@ -221,6 +221,22 @@
       "tryAgain": "Tentar novamente",
       "bodyMobile": "O MindsHub não respondeu."
     },
-    "empty": "Ainda não há uso para mostrar nesta conta."
+    "empty": "Ainda não há uso para mostrar nesta conta.",
+    "plan": {
+      "title": "{tier, select, plus {Plano Plus} pro {Plano Pro} other {Plano}}",
+      "renewsOn": "Renova em {date}",
+      "endsOn": "Termina em {date}",
+      "ending": "Terminando",
+      "pastDue": "Falha no pagamento",
+      "pastDueBody": "Não foi possível renovar seu plano. Atualize seu cartão em Gerenciar para mantê-lo.",
+      "windowName": "{window, select, 7d {Cota semanal} other {Cota de 5 horas}}",
+      "windowUsed": "{percent} usados",
+      "windowUsedResets": "{percent} usados · renova às {time}",
+      "windowMeterLabel": "{window, select, 7d {Cota semanal usada} other {Cota de 5 horas usada}}",
+      "afterCap": "Ao esgotar qualquer uma das cotas, as tarefas usam seu saldo a preços de API ou ficam pausadas até a renovação.",
+      "afterCapMobile": "Ao esgotar qualquer uma das cotas, as tarefas ficam pausadas até a renovação, a menos que seu saldo as cubra.",
+      "upgrade": "{tier, select, plus {Assinar Plus} pro {Mudar para Pro} other {Fazer upgrade}}",
+      "manage": "Gerenciar"
+    }
   }
 }

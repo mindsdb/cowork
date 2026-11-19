@@ -114,13 +114,23 @@
       "viewBudgets": "View budgets",
       "balanceRanOutMobile": "Your balance ran out before this task finished.",
       "autoTopUpFailedBodyMobile": "We couldn't charge your card.",
-      "connectProviderBodyMobile": "Connect your own provider in Settings."
+      "connectProviderBodyMobile": "Connect your own provider in Settings.",
+      "windowUsedUpTitle": "Plan allowance used up",
+      "windowPausedUntil": "You've used your {window, select, 7d {weekly} 5h {5-hour} other {plan}} allowance and your balance is empty. Paused until {time}. Add funds to keep going.",
+      "windowPaused": "You've used your {window, select, 7d {weekly} 5h {5-hour} other {plan}} allowance and your balance is empty. Paused until it resets. Add funds to keep going.",
+      "windowPausedUntilMobile": "You've used your {window, select, 7d {weekly} 5h {5-hour} other {plan}} allowance and your balance is empty. Paused until {time}.",
+      "windowPausedMobile": "You've used your {window, select, 7d {weekly} 5h {5-hour} other {plan}} allowance and your balance is empty. Paused until it resets."
     },
     "usageAlert": {
       "freeLow": "Free Air allowance {percent} left",
       "freeLowRefills": "Free Air allowance {percent} left · refills at {time}",
       "freeUsed": "Free Air allowance used up · now using your balance",
-      "freeUsedUntil": "Free Air allowance used up · now using your balance until {time}"
+      "freeUsedUntil": "Free Air allowance used up · now using your balance until {time}",
+      "windowLow": "{percent} of your {window, select, 7d {weekly} other {5-hour}} allowance used",
+      "windowLowResets": "{percent} of your {window, select, 7d {weekly} other {5-hour}} allowance used · resets at {time}",
+      "windowUsed": "{window, select, 7d {Weekly} other {5-hour}} allowance used up",
+      "windowUsedUntil": "{window, select, 7d {Weekly} other {5-hour}} allowance used up · paused until {time}",
+      "windowOnWallet": "{window, select, 7d {Weekly} other {5-hour}} allowance used up · now using your wallet at API rates"
     },
     "reconnect": {
       "couldNotReconnect": "Could not reconnect. Try signing out and back in.",
@@ -149,7 +159,10 @@
       "needsCreditsBody": "You don't have enough credits for this model. Top up your balance to use it.",
       "disabledBody": "This model is turned off for your workspace. Choose another model in Settings.",
       "topUpBalance": "Top up balance",
-      "needsCreditsBodyMobile": "You don't have enough credits for this model."
+      "needsCreditsBodyMobile": "You don't have enough credits for this model.",
+      "notInTierTitle": "{model} isn't in your plan",
+      "notInTierBody": "{tier, select, plus {{model} is included with Plus.} pro {{model} is included with Pro.} other {Your plan doesn't include {model}.}} Upgrade, or add funds to use it at API rates.",
+      "notInTierBodyMobile": "{tier, select, plus {{model} is included with Plus.} pro {{model} is included with Pro.} other {Your plan doesn't include {model}.}} Your balance is empty."
     },
     "overloaded": {
       "theModelProvider": "The model provider",

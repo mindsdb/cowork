@@ -221,6 +221,22 @@
       "tryAgain": "Try again",
       "bodyMobile": "MindsHub didn't answer."
     },
-    "empty": "No usage to show for this account yet."
+    "empty": "No usage to show for this account yet.",
+    "plan": {
+      "title": "{tier, select, plus {Plus plan} pro {Pro plan} other {Plan}}",
+      "renewsOn": "Renews on {date}",
+      "endsOn": "Ends on {date}",
+      "ending": "Ending",
+      "pastDue": "Payment failed",
+      "pastDueBody": "We couldn't renew your plan. Update your card under Manage to keep it.",
+      "windowName": "{window, select, 7d {Weekly allowance} other {5-hour allowance}}",
+      "windowUsed": "{percent} used",
+      "windowUsedResets": "{percent} used · resets at {time}",
+      "windowMeterLabel": "{window, select, 7d {Weekly allowance used} other {5-hour allowance used}}",
+      "afterCap": "Past either allowance, tasks continue from your wallet at API rates, or pause until it resets.",
+      "afterCapMobile": "Past either allowance, tasks pause until it resets unless your balance covers them.",
+      "upgrade": "{tier, select, plus {Get Plus} pro {Upgrade to Pro} other {Upgrade}}",
+      "manage": "Manage"
+    }
   }
 }

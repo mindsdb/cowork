@@ -114,13 +114,23 @@
       "viewBudgets": "Ver presupuestos",
       "balanceRanOutMobile": "Tu saldo se agotó antes de que terminara esta tarea.",
       "autoTopUpFailedBodyMobile": "No pudimos cobrar a tu tarjeta.",
-      "connectProviderBodyMobile": "Conecta tu propio proveedor en Configuración."
+      "connectProviderBodyMobile": "Conecta tu propio proveedor en Configuración.",
+      "windowUsedUpTitle": "Cupo del plan agotado",
+      "windowPausedUntil": "Usaste tu cupo {window, select, 7d {semanal} 5h {de 5 horas} other {del plan}} y tu saldo está vacío. En pausa hasta las {time}. Agrega fondos para seguir.",
+      "windowPaused": "Usaste tu cupo {window, select, 7d {semanal} 5h {de 5 horas} other {del plan}} y tu saldo está vacío. En pausa hasta que se renueve. Agrega fondos para seguir.",
+      "windowPausedUntilMobile": "Usaste tu cupo {window, select, 7d {semanal} 5h {de 5 horas} other {del plan}} y tu saldo está vacío. En pausa hasta las {time}.",
+      "windowPausedMobile": "Usaste tu cupo {window, select, 7d {semanal} 5h {de 5 horas} other {del plan}} y tu saldo está vacío. En pausa hasta que se renueve."
     },
     "usageAlert": {
       "freeLow": "Queda {percent} de la asignación gratuita de Air",
       "freeLowRefills": "Queda {percent} de la asignación gratuita de Air · se renueva a las {time}",
       "freeUsed": "Asignación gratuita de Air agotada · ahora se usa tu saldo",
-      "freeUsedUntil": "Asignación gratuita de Air agotada · se usa tu saldo hasta las {time}"
+      "freeUsedUntil": "Asignación gratuita de Air agotada · se usa tu saldo hasta las {time}",
+      "windowLow": "{percent} de tu cupo {window, select, 7d {semanal} other {de 5 horas}} usado",
+      "windowLowResets": "{percent} de tu cupo {window, select, 7d {semanal} other {de 5 horas}} usado · se renueva a las {time}",
+      "windowUsed": "{window, select, 7d {Cupo semanal agotado} other {Cupo de 5 horas agotado}}",
+      "windowUsedUntil": "{window, select, 7d {Cupo semanal agotado} other {Cupo de 5 horas agotado}} · en pausa hasta las {time}",
+      "windowOnWallet": "{window, select, 7d {Cupo semanal agotado} other {Cupo de 5 horas agotado}} · ahora se usa tu saldo a tarifas de API"
     },
     "reconnect": {
       "couldNotReconnect": "No se pudo reconectar. Prueba cerrar sesión y volver a iniciarla.",
@@ -149,7 +159,10 @@
       "needsCreditsBody": "No tienes suficientes créditos para este modelo. Recarga tu saldo para usarlo.",
       "disabledBody": "Este modelo está desactivado en tu espacio de trabajo. Elige otro modelo en Configuración.",
       "topUpBalance": "Recargar saldo",
-      "needsCreditsBodyMobile": "No tienes suficientes créditos para este modelo."
+      "needsCreditsBodyMobile": "No tienes suficientes créditos para este modelo.",
+      "notInTierTitle": "{model} no está en tu plan",
+      "notInTierBody": "{tier, select, plus {{model} está incluido en Plus.} pro {{model} está incluido en Pro.} other {Tu plan no incluye {model}.}} Mejora tu plan o agrega fondos para usarlo a tarifas de API.",
+      "notInTierBodyMobile": "{tier, select, plus {{model} está incluido en Plus.} pro {{model} está incluido en Pro.} other {Tu plan no incluye {model}.}} Tu saldo está vacío."
     },
     "overloaded": {
       "theModelProvider": "El proveedor del modelo",

@@ -1,4 +1,5 @@
 import { diagnostic } from '../../shared/diagnostics';
+import { planFailureFields } from './lib/subscriptionPlan';
 import { PLATFORM_UI } from '../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../lib/modelPicker';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
@@ -349,6 +350,9 @@ function _failedEventMeta(events) {
        render time: the server deliberately doesn't parse it, since only the
        client knows the viewer's timezone (ENG-1537). */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // window_allowance_exhausted / model_not_in_tier (ENG-4186): which plan
+    // window filled, and which tier covers the model.
+    ...planFailureFields(ev),
     // budget_exceeded: whose budget is spent (org, workspace, api_key); absent from an older server.
     budgetScope: typeof ev.budget_scope === 'string' ? ev.budget_scope : null,
     budgetPeriod: typeof ev.budget_period === 'string' ? ev.budget_period : null,

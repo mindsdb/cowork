@@ -10,7 +10,8 @@
 // one of the outputs.
 
 import { MINDSHUB_AIR_MODEL_ID, MODEL_ROUTER_ID } from './modelCatalog';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL, mindsUpgradeUrl } from '../../lib/mindsUrls';
+import { planOf, isPaidPlan, nextUpgradeTier, tierCovers, windowState, windowWarnStep } from './subscriptionPlan';
 import { billingCopyKey } from './billingLinks';
 import { budgetScopeOf } from './budgetScope';
 import i18n, { currentLocale } from '../../lib/i18n';
@@ -45,12 +46,25 @@ export const USAGE_ACTIONS = Object.freeze({
   setUpAutoTopUp: { key: 'setUpAutoTopUp', get label() { return tr('actions.setUpAutoTopUp'); } },
   manageAutoTopUp: { key: 'manageAutoTopUp', get label() { return tr('actions.manageAutoTopUp'); } },
   updatePaymentMethod: { key: 'updatePaymentMethod', get label() { return tr('actions.updatePaymentMethod'); } },
+  // A plan upgrade (ENG-4186). Generic: `upgradeAction(tier)` names the tier.
+  upgrade: { key: 'upgrade', tier: null, get label() { return tr('actions.upgrade', { tier: 'other' }); } },
 });
+
+/** The upgrade action for `tier` ('plus' | 'pro'): "Get Plus", "Upgrade to Pro". */
+export function upgradeAction(tier) {
+  return { key: 'upgrade', tier, get label() { return tr('actions.upgrade', { tier: tier || 'other' }); } };
+}
 
 /** Where an action opens in the console. Every wallet control the console
  *  offers is owner-only, so only an owner is deep-linked into a dialog; anyone
- *  else goes to the billing page itself and sees what they are allowed to. */
-export function usageActionUrl(action, { isBillingOwner = false } = {}) {
+ *  else goes to the billing page itself and sees what they are allowed to.
+ *
+ *  An upgrade always opens the checkout deep link for the organization this
+ *  session runs in (`organizationId`, `subject`): the console checks who may
+ *  buy before it leaves for Checkout, and callers only offer an upgrade where
+ *  one can be bought (see hooks/useUpgradeOffer). */
+export function usageActionUrl(action, { isBillingOwner = false, organizationId = null, subject = null } = {}) {
+  if (action?.key === 'upgrade') return mindsUpgradeUrl(action.tier, { organizationId, subject });
   if (!isBillingOwner) return MINDS_BILLING_URL;
   if (action?.key === 'addFunds') return MINDS_ADD_FUNDS_URL;
   if (action?.key === 'setUpAutoTopUp' || action?.key === 'manageAutoTopUp') return MINDS_AUTO_TOP_UP_URL;
@@ -230,7 +244,14 @@ export function isBalanceEmpty(balance) {
 export function modelAccessSignature(usage) {
   if (!usage?.reachable) return null;
   const walletEmpty = typeof usage.walletCanConsume === 'boolean' ? !usage.walletCanConsume : isBalanceEmpty(usage.balance);
-  return `${walletEmpty}|${freeAllowanceState(usage).status}`;
+  const base = `${walletEmpty}|${freeAllowanceState(usage).status}`;
+  // A plan change moves model locks too (ENG-4186): an upgrade unlocks rows,
+  // and a window filling or freeing up locks or unlocks the ones it covers.
+  // Only with a plan, so the signature without one reads as before.
+  const plan = planOf(usage);
+  if (!plan) return base;
+  const { exhausted } = windowState(plan);
+  return `${base}|${plan.tier}|${exhausted ? exhausted.window : ''}`;
 }
 
 /** What a stop on `included_allowance_exhausted` says, for the stopped-task
@@ -338,7 +359,9 @@ function restingFigure(free, f, { balanceEmpty = false } = {}) {
  * @param opts.model         the model the composer will send with: an id, or
  *                           a catalog option ({ id }) as HomeView/ChatView pass it
  */
-export function deriveComposerWarning(usage, { providerType = 'minds-cloud', model: modelIn = null } = {}) {
+export function deriveComposerWarning(usage, {
+  providerType = 'minds-cloud', model: modelIn = null, coveredByTier = null,
+} = {}) {
   if (!usage || !usage.reachable) return null;
   if (providerType && providerType !== 'minds-cloud') return null;
   const model = pickedModelId(modelIn);
@@ -380,6 +403,16 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
       body: trBilling('autoTopUpFailed.body'),
       actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.updatePaymentMethod],
     };
+  }
+
+  // Plus and Pro (ENG-4186): the plan's two windows decide what the next task
+  // spends, so they speak first. A pick the tier does not cover runs on the
+  // wallet like any paid model, and the wallet branches below say what there
+  // is to say about it. A null or Free plan never enters here, so every
+  // surface reads exactly as before plans existed.
+  const plan = planOf(usage);
+  if (isPaidPlan(plan) && tierCovers(plan.tier, coveredByTier)) {
+    return planWindowWarning(plan, { balanceUsable });
   }
 
   if (balanceEmptyStopsNextTask) {
@@ -504,6 +537,56 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
   return null;
 }
 
+/* Which window, in words: "5-hour" or "weekly". */
+const windowName = (w) => (w === '7d' ? '7d' : '5h');
+
+/* The bar for a paid plan: a used-up window first (work on the plan has
+   stopped), then a window at 80% or more. Nothing at rest: the meters live
+   in Settings → Usage. No dollar or token figure, ever: only the share of
+   the window and when it frees up. */
+function planWindowWarning(plan, { balanceUsable }) {
+  const { exhausted, warning } = windowState(plan);
+  const upgradeTier = nextUpgradeTier(plan.tier);
+  const upgrade = upgradeTier ? [upgradeAction(upgradeTier)] : [];
+  if (exhausted) {
+    const time = formatResetTime(exhausted.resetsAt);
+    const vars = { window: windowName(exhausted.window), time: time || '' };
+    if (balanceUsable) {
+      return {
+        kind: 'window_on_wallet',
+        tone: 'info',
+        dismissKey: `window_on_wallet:${exhausted.window}`,
+        title: tr('window.usedUpTitle', vars),
+        body: time ? tr('window.onWalletWithTime', vars) : tr('window.onWallet', vars),
+        actions: [USAGE_ACTIONS.viewUsage, ...upgrade],
+      };
+    }
+    return {
+      kind: 'window_exhausted',
+      tone: 'danger',
+      title: tr('window.usedUpTitle', vars),
+      body: time ? trBilling('window.pausedWithTime', vars) : trBilling('window.paused', vars),
+      actions: [USAGE_ACTIONS.addFunds, ...upgrade],
+    };
+  }
+  if (warning) {
+    const time = formatResetTime(warning.resetsAt);
+    const vars = { window: windowName(warning.window), percent: `${Math.round(warning.percentUsed)}%`, time: time || '' };
+    return {
+      kind: 'window_low',
+      tone: 'warning',
+      // Stepped like the free allowance: closing it at 80% asks again at 90%.
+      dismissKey: `window_low:${warning.window}:${windowWarnStep(warning.percentUsed)}`,
+      title: tr('window.lowTitle', vars),
+      body: balanceUsable
+        ? (time ? tr('window.lowThenWalletWithTime', vars) : tr('window.lowThenWallet', vars))
+        : (time ? tr('window.lowThenPauseWithTime', vars) : tr('window.lowThenPause', vars)),
+      actions: [USAGE_ACTIONS.viewUsage, ...upgrade],
+    };
+  }
+  return null;
+}
+
 /**
  * What changed between two usage reads that a running task should hear about.
  * Returns alert descriptors for ChatView's `usage_notice` messages.
@@ -550,6 +633,29 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
       fractionLeft: after.fractionLeft,
       resetsAt: next.freeTokens?.resetsAt || null,
     });
+  }
+  // Plus and Pro (ENG-4186): a window crossing a warning step, or filling up,
+  // during this task. Both reads must carry the paid plan, or a plan arriving
+  // mid-task would read as a window filling.
+  const planBefore = planOf(prev);
+  const planAfter = planOf(next);
+  if (isPaidPlan(planBefore) && isPaidPlan(planAfter)) {
+    const prior = new Map(planBefore.windows.map((w) => [w.window, w]));
+    for (const w of planAfter.windows) {
+      const was = prior.get(w.window);
+      if (!was) continue;
+      if (was.percentUsed < 100 && w.percentUsed >= 100) {
+        const balance = next.balance || null;
+        out.push({
+          kind: 'window_exhausted',
+          window: w.window,
+          resetsAt: w.resetsAt,
+          onWallet: !!balance && !isBalanceEmpty(balance) && Number(balance.usd) > 0,
+        });
+      } else if (w.percentUsed < 100 && windowWarnStep(w.percentUsed) > windowWarnStep(was.percentUsed)) {
+        out.push({ kind: 'window_low', window: w.window, percentUsed: w.percentUsed, resetsAt: w.resetsAt });
+      }
+    }
   }
   if (prev.autoTopUp?.status !== 'payment_failed' && next.autoTopUp?.status === 'payment_failed') {
     out.push({ kind: 'auto_top_up_failed' });

@@ -1,5 +1,5 @@
 import { MODEL_ROUTER_ID, isModelLocked, latestAliasIds, orderByFamily, unavailableModelFields } from './modelCatalog';
-import type { ModelDisabledReason } from './modelCatalog';
+import type { CoveringTier, ModelDisabledReason } from './modelCatalog';
 
 
 export interface ModelPickerSource {
@@ -14,6 +14,9 @@ export interface ModelPickerMeta {
   /** Why MindsHub lists a model as unavailable, id → reason. Only rows with
    * `modelEnabled[id] === false` carry one; absent on older servers. */
   modelDisabledReasons?: Record<string, ModelDisabledReason>;
+  /** The cheapest plan whose allowance covers each model (ENG-4186); absent on
+   * older servers and while the plans gate is off. */
+  modelCoveredByTier?: Record<string, CoveringTier>;
   /** Per-model reasoning effort levels the gateway advertises: id → { efforts, default }. */
   modelEfforts?: Record<string, { efforts: string[]; default?: string }>;
   onRefresh?: () => Promise<unknown> | unknown;
@@ -33,6 +36,12 @@ export interface ModelPickerOption {
   restricted?: boolean;
   /** A spending budget is used up; no credits action applies. */
   budgetReached?: boolean;
+  /** The plan does not cover this model; ModelSelect adds "Upgrade". */
+  tierLocked?: boolean;
+  /** The paid tier that covers a tier-locked model, when known. */
+  requiredTier?: 'plus' | 'pro';
+  /** The cheapest plan covering this model, when known. */
+  coveredByTier?: CoveringTier;
   /** Row tooltip. */
   title?: string;
 }
@@ -64,6 +73,7 @@ export function buildModelPickerOptions(
 ): ModelPickerOption[] {
   const {
     modelProviders = {}, modelFamilies = {}, modelEnabled = {}, modelDisabledReasons = {},
+    modelCoveredByTier = {},
   } = modelMeta || {};
   const list = (models || []).filter(Boolean);
   const ids = list.map((model) => model.id);
@@ -82,7 +92,8 @@ export function buildModelPickerOptions(
          "Budget reached" for the org's spent budget, from
          the helper the Settings builder shares. Version state is a muted note,
          not a pill: pills on most rows pushed long names into an ellipsis. */
-      ...unavailableModelFields(modelEnabled, modelDisabledReasons, model.id),
+      ...unavailableModelFields(modelEnabled, modelDisabledReasons, model.id, modelCoveredByTier),
+      ...(modelCoveredByTier?.[model.id] ? { coveredByTier: modelCoveredByTier[model.id] } : {}),
       ...(latest.has(model.id) ? { note: 'latest' } : {}),
       ...(modelProviders[model.id] ? { provider: modelProviders[model.id] } : {}),
     };

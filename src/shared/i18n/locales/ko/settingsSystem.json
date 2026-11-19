@@ -221,6 +221,22 @@
       "tryAgain": "다시 시도",
       "bodyMobile": "MindsHub가 응답하지 않았습니다."
     },
-    "empty": "이 계정에는 아직 표시할 사용량이 없습니다."
+    "empty": "이 계정에는 아직 표시할 사용량이 없습니다.",
+    "plan": {
+      "title": "{tier, select, plus {Plus 플랜} pro {Pro 플랜} other {플랜}}",
+      "renewsOn": "{date}에 갱신",
+      "endsOn": "{date}에 종료",
+      "ending": "종료 예정",
+      "pastDue": "결제 실패",
+      "pastDueBody": "플랜을 갱신하지 못했습니다. 플랜을 유지하려면 관리에서 카드를 업데이트하세요.",
+      "windowName": "{window, select, 7d {주간 제공량} other {5시간 제공량}}",
+      "windowUsed": "{percent} 사용함",
+      "windowUsedResets": "{percent} 사용함 · {time}에 초기화",
+      "windowMeterLabel": "{window, select, 7d {주간 제공량 사용량} other {5시간 제공량 사용량}}",
+      "afterCap": "두 제공량 중 하나라도 초과하면 작업은 잔액에서 API 요금으로 차감되거나 초기화될 때까지 일시 중지됩니다.",
+      "afterCapMobile": "두 제공량 중 하나라도 초과하면 잔액으로 충당되지 않는 한 초기화될 때까지 작업이 일시 중지됩니다.",
+      "upgrade": "{tier, select, plus {Plus 시작} pro {Pro로 업그레이드} other {업그레이드}}",
+      "manage": "관리"
+    }
   }
 }

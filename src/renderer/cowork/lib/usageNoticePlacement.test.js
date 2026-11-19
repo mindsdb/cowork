@@ -159,3 +159,15 @@ describe('withUsageNotices', () => {
     expect(notices).toEqual([topUp('u1'), used('u2'), topUp('u2')]);
   });
 });
+
+describe('withUsageNotices: plan windows (ENG-4186)', () => {
+  it('keeps one notice per window, beside the free allowance and each other', () => {
+    let notices = withUsageNotices(undefined, [{ kind: 'window_low', window: '5h', percentUsed: 82 }]);
+    notices = withUsageNotices(notices, [{ kind: 'window_low', window: '7d', percentUsed: 81 }]);
+    notices = withUsageNotices(notices, [{ kind: 'window_exhausted', window: '5h' }]);
+    notices = withUsageNotices(notices, [{ kind: 'auto_top_up_failed' }]);
+    expect(notices.map((n) => `${n.kind}:${n.window ?? ''}`)).toEqual([
+      'window_low:7d', 'window_exhausted:5h', 'auto_top_up_failed:',
+    ]);
+  });
+});

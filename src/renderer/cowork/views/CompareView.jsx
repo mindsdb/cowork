@@ -86,6 +86,7 @@ import {
   verdictLabel,
 } from '../lib/compareSides';
 import i18n, { useTranslation } from '../../lib/i18n';
+import { useUsageActions } from '../hooks/useUpgradeOffer';
 
 const tr = (key, vars) => i18n.t(`compare.${key}`, { ns: 'artifacts', ...vars });
 
@@ -148,11 +149,12 @@ const NOTICE_VARIANT = { danger: 'danger', warning: 'warning', info: 'info' };
 function CreditNotice({ notice, isBillingOwner, trigger }) {
   const { t } = useTranslation('artifacts');
   const [dismissed, dismiss] = useUsageBarDismiss();
+  const usageActions = useUsageActions();
   if (!notice) return null;
   const key = notice.dismissKey ?? notice.kind;
   const closable = !notice.blocks;
   if (closable && dismissed.includes(key)) return null;
-  const actions = billingActions(notice.actions);
+  const actions = usageActions.visible(billingActions(notice.actions));
   return (
     <Alert variant={NOTICE_VARIANT[notice.tone] || 'info'} title={notice.title} className="relative w-full pr-10">
       {closable && (
@@ -171,7 +173,9 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
         {actions.length > 0 && (
           <span className="flex flex-wrap gap-2">
             {actions.map((action) => (
-              <Button key={action.key} size="sm" variant={action.key === 'addFunds' ? 'primary' : 'subtle'} onClick={() => openBilling(action, isBillingOwner, trigger)}>
+              <Button key={action.key} size="sm" variant={action.key === 'addFunds' ? 'primary' : 'subtle'} onClick={() => (usageActions.isUpgrade(action)
+                ? usageActions.openUpgrade(action, 'compare')
+                : openBilling(action, isBillingOwner, trigger))}>
                 {action.label}
               </Button>
             ))}

@@ -114,13 +114,23 @@
       "viewBudgets": "Voir les budgets",
       "balanceRanOutMobile": "Votre solde a été épuisé avant la fin de cette tâche.",
       "autoTopUpFailedBodyMobile": "Nous n’avons pas pu débiter votre carte.",
-      "connectProviderBodyMobile": "Connectez votre propre fournisseur dans les paramètres."
+      "connectProviderBodyMobile": "Connectez votre propre fournisseur dans les paramètres.",
+      "windowUsedUpTitle": "Quota du forfait épuisé",
+      "windowPausedUntil": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}} et votre solde est épuisé. En pause jusqu’à {time}. Ajoutez des fonds pour continuer.",
+      "windowPaused": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}} et votre solde est épuisé. En pause jusqu’à la réinitialisation. Ajoutez des fonds pour continuer.",
+      "windowPausedUntilMobile": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}} et votre solde est épuisé. En pause jusqu’à {time}.",
+      "windowPausedMobile": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}} et votre solde est épuisé. En pause jusqu’à la réinitialisation."
     },
     "usageAlert": {
       "freeLow": "Quota gratuit Air restant : {percent}",
       "freeLowRefills": "Quota gratuit Air restant : {percent} · renouvelé à {time}",
       "freeUsed": "Quota gratuit Air épuisé · votre solde est désormais utilisé",
-      "freeUsedUntil": "Quota gratuit Air épuisé · votre solde est utilisé jusqu’à {time}"
+      "freeUsedUntil": "Quota gratuit Air épuisé · votre solde est utilisé jusqu’à {time}",
+      "windowLow": "{percent} de votre quota {window, select, 7d {hebdomadaire} other {de 5 heures}} utilisé",
+      "windowLowResets": "{percent} de votre quota {window, select, 7d {hebdomadaire} other {de 5 heures}} utilisé · réinitialisation à {time}",
+      "windowUsed": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}}",
+      "windowUsedUntil": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}} · en pause jusqu’à {time}",
+      "windowOnWallet": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}} · votre solde est utilisé aux tarifs API"
     },
     "reconnect": {
       "couldNotReconnect": "Impossible de se reconnecter. Essayez de vous déconnecter, puis de vous reconnecter.",
@@ -149,7 +159,10 @@
       "needsCreditsBody": "Vous n’avez pas assez de crédits pour ce modèle. Rechargez votre solde pour l’utiliser.",
       "disabledBody": "Ce modèle est désactivé pour votre espace de travail. Choisissez un autre modèle dans les paramètres.",
       "topUpBalance": "Recharger le solde",
-      "needsCreditsBodyMobile": "Vous n’avez pas assez de crédits pour ce modèle."
+      "needsCreditsBodyMobile": "Vous n’avez pas assez de crédits pour ce modèle.",
+      "notInTierTitle": "{model} n’est pas inclus dans votre forfait",
+      "notInTierBody": "{tier, select, plus {{model} est inclus dans Plus.} pro {{model} est inclus dans Pro.} other {Votre forfait n’inclut pas {model}.}} Changez de forfait ou ajoutez des fonds pour l’utiliser aux tarifs API.",
+      "notInTierBodyMobile": "{tier, select, plus {{model} est inclus dans Plus.} pro {{model} est inclus dans Pro.} other {Votre forfait n’inclut pas {model}.}} Votre solde est épuisé."
     },
     "overloaded": {
       "theModelProvider": "Le fournisseur de modèles",

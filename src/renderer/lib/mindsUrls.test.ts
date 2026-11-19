@@ -270,3 +270,21 @@ describe('consoleUrlFor (ENG-3274)', () => {
     expect(consoleUrlFor(MINDS_ADD_FUNDS_URL, {})).toBe(MINDS_ADD_FUNDS_URL);
   });
 });
+
+describe('mindsUpgradeUrl (ENG-4186)', () => {
+  it('opens the billing page straight into checkout for the named plan and organization', async () => {
+    const { MINDS_BILLING_URL, MINDS_UPGRADE_URL, mindsUpgradeUrl } = await importUrls();
+    expect(MINDS_UPGRADE_URL.plus).toBe(`${MINDS_BILLING_URL}?upgrade=plus`);
+    const url = new URL(mindsUpgradeUrl('pro', { organizationId: 'org-1', subject: 'user-1' }));
+    expect(`${url.origin}${url.pathname}`).toBe(MINDS_BILLING_URL);
+    expect(url.searchParams.get('upgrade')).toBe('pro');
+    expect(url.searchParams.get('organization')).toBe('org-1');
+    expect(url.searchParams.get('subject')).toBe('user-1');
+  });
+
+  it('offers Plus for anything that is not Pro', async () => {
+    const { MINDS_UPGRADE_URL, mindsUpgradeUrl } = await importUrls();
+    expect(mindsUpgradeUrl('plus')).toBe(MINDS_UPGRADE_URL.plus);
+    expect(mindsUpgradeUrl(null)).toBe(MINDS_UPGRADE_URL.plus);
+  });
+});

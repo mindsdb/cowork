@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 
 const hostMock = vi.hoisted(() => ({ host: { isElectron: true, isWeb: false, openExternal: vi.fn() } }));
 vi.mock('../../../platform/host', () => hostMock);
-vi.mock('../../lib/analytics', () => ({ trackBillingOpened: vi.fn() }));
+vi.mock('../../lib/analytics', () => ({ trackBillingOpened: vi.fn(), trackUpgradeClicked: vi.fn() }));
 const accountMock = vi.hoisted(() => ({ user: { sub: 'u1', name: 'Hazem' } }));
 vi.mock('../../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 
@@ -177,5 +177,70 @@ describe('mobile usage details', () => {
     } finally {
       hostMock.host.isMobileShell = false;
     }
+  });
+});
+
+// ── ENG-4186: plans ─────────────────────────────────────────────────────────
+describe('UsageSection plan card', () => {
+  const IN_2H = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
+  const plan = (tier, over = {}) => ({
+    tier,
+    status: 'active',
+    renewsAt: '2099-12-19T00:00:00Z',
+    cancelAtPeriodEnd: false,
+    windows: tier === 'free' ? [] : [
+      { window: '5h', percentUsed: 42, resetsAt: IN_2H },
+      { window: '7d', percentUsed: 10, resetsAt: null },
+    ],
+    ...over,
+  });
+  const personal = () => { accountMock.user = { sub: 'u1', name: 'Hazem', orgId: 'org-1', orgIsPersonal: true }; };
+
+  it('shows no plan card and no Get Plus with no plan on the read', () => {
+    personal();
+    renderWith(usage());
+    expect(screen.queryByText(/plan$/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Get Plus/ })).toBeNull();
+  });
+
+  it('on Free, keeps the allowance as it was and adds Get Plus to it', async () => {
+    personal();
+    renderWith(usage({ plan: plan('free') }));
+    expect(screen.getByText('Free Air allowance')).toBeInTheDocument();
+    expect(screen.queryByText('Plus plan')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /Get Plus/ }));
+    const url = new URL(hostMock.host.openExternal.mock.calls.at(-1)[0]);
+    expect(url.searchParams.get('upgrade')).toBe('plus');
+    expect(url.searchParams.get('organization')).toBe('org-1');
+  });
+
+  it('on Plus, shows the plan, its renewal, both windows as percentages, and Upgrade and Manage', async () => {
+    personal();
+    renderWith(usage({ plan: plan('plus') }));
+    expect(screen.getByText('Plus plan')).toBeInTheDocument();
+    expect(screen.getByText(/^Renews on /)).toBeInTheDocument();
+    expect(screen.getByText('5-hour allowance')).toBeInTheDocument();
+    expect(screen.getByText(/^42% used · resets at /)).toBeInTheDocument();
+    expect(screen.getByText('Weekly allowance')).toBeInTheDocument();
+    expect(screen.getByText('10% used')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Upgrade to Pro/ })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: /Manage/ }));
+    expect(new URL(hostMock.host.openExternal.mock.calls.at(-1)[0]).pathname).toBe('/settings/organization/billing');
+  });
+
+  it('on Pro set to cancel, says when it ends and offers no upgrade', () => {
+    personal();
+    renderWith(usage({ plan: plan('pro', { cancelAtPeriodEnd: true }) }));
+    expect(screen.getByText('Pro plan')).toBeInTheDocument();
+    expect(screen.getByText(/^Ends on /)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Upgrade/ })).toBeNull();
+  });
+
+  it('shows the meters but no buy or manage buttons outside a personal organization', () => {
+    accountMock.user = { sub: 'u1', name: 'Hazem', orgId: 'org-2', orgIsPersonal: false };
+    renderWith(usage({ plan: plan('plus') }));
+    expect(screen.getByText('5-hour allowance')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Upgrade to Pro/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Manage/ })).toBeNull();
   });
 });
