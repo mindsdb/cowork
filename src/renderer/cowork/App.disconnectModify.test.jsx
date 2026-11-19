@@ -96,11 +96,15 @@ beforeEach(() => {
   spies.fetchSessions.mockReset().mockResolvedValue([{ ...task }]);
 });
 
+// The whole app mounts and loads its task list before these appear. On a
+// loaded CI runner that can outlast the default one-second wait.
+const SLOW = { timeout: 5000 };
+
 const askToDisconnect = async (user) => {
-  await user.click(await screen.findByRole('button', { name: 'Projects' }));
-  await user.click(await screen.findByRole('button', { name: `Open task ${task.title}` }));
-  await user.click(await screen.findByRole('button', { name: 'Disconnect from task' }));
-  return screen.findByRole('dialog', { name: 'Disconnect prod-db?' });
+  await user.click(await screen.findByRole('button', { name: 'Projects' }, SLOW));
+  await user.click(await screen.findByRole('button', { name: `Open task ${task.title}` }, SLOW));
+  await user.click(await screen.findByRole('button', { name: 'Disconnect from task' }, SLOW));
+  return screen.findByRole('dialog', { name: 'Disconnect prod-db?' }, SLOW);
 };
 
 describe('disconnecting from a connect task', () => {
