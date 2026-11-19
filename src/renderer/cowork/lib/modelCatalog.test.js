@@ -300,7 +300,7 @@ describe('isModelBudgetReached / unavailableModelFields', () => {
       disabled: true,
       budgetReached: true,
       tag: 'Budget reached',
-      title: "Your organization's budget is used up. An owner or admin can raise it in Budgets.",
+      title: "A budget covering this model is used up. An administrator can raise it in Budgets.",
     });
   });
 

@@ -258,7 +258,7 @@
     "topUp": "残高をチャージ →",
     "addFunds": "残高を追加 →",
     "slowDown": "{sentence}これはクレジットの問題ではありません。",
-    "budgetReached": "組織の予算を使い切りました。{detail}",
+    "budgetReached": "予算を使い切りました。{detail}",
     "viewBudgetsArrow": "予算を表示 →"
   },
   "providers": {
@@ -335,7 +335,7 @@
     "modelNeedsCredits": "{model}にはクレジットが必要です。使用するには{link}。",
     "modelNeedsCreditsNoLink": "{model}にはクレジットが必要です。",
     "topUpBalance": "残高をチャージしてください",
-    "modelBudgetReached": "組織の予算を使い切ったため、{model}を実行できません。",
+    "modelBudgetReached": "対象の予算を使い切ったため、{model}を実行できません。",
     "viewBudgets": "予算を表示",
     "imageModelNeedsMindsHub": "画像生成は MindsHub で実行されます。画像モデルを選ぶには、LLMプロバイダ で MindsHub を追加してください。",
     "imageModelHint": "画像の生成に使用するモデルを選択します。"

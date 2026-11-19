@@ -82,7 +82,7 @@
 //   - `restricted`: an org admin's model rule blocks this model. Disabled,
 //     tagged "Restricted" with an explanatory `title`, and never `locked`, so
 //     no "Add credits" button attaches: credits cannot lift an admin rule.
-//   - `budgetReached`: the org's spending budget is used up. Disabled, tagged
+//   - `budgetReached`: a spending budget is used up. Disabled, tagged
 //     "Budget reached", never `locked`: credits do not raise a budget.
 //   - `pin: 'top' | 'bottom'`: render outside the maker groups, unheaded,
 //     at the top/bottom of the list (stale-pin and "Other…" entries).

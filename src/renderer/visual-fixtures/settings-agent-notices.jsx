@@ -105,7 +105,7 @@ const PROBE_CASES = [
   },
   {
     id: 'probe-budget-air-room',
-    label: "budget_exceeded (402): the org's spending budget is used up and Air still has free allowance. View budgets, no funds.",
+    label: "budget_exceeded (402): a spending budget is used up and Air still has free allowance. View budgets, no funds.",
     detail: 'HTTP 402',
     reason: reason('budget_exceeded'),
     usage: ROOM,
@@ -137,14 +137,14 @@ const ROW_CASES = [
   { id: 'row-legacy-429', label: 'Providers row, no reason: every 429 reads "Rate limited".', detail: 'HTTP 429', reason: null },
   { id: 'row-allowance', label: 'Providers row, free allowance refused (spent, or no grant at all).', detail: 'HTTP 429', reason: reason('included_allowance_exhausted', REFILL) },
   { id: 'row-paused', label: 'Providers row, daily fuse.', detail: 'HTTP 429', reason: reason('free_air_daily_spend_fuse_exceeded', FUSE_LIFTS) },
-  { id: 'row-budget', label: "Providers row, org's spending budget used up.", detail: 'HTTP 402', reason: reason('budget_exceeded') },
+  { id: 'row-budget', label: "Providers row, a spending budget used up.", detail: 'HTTP 402', reason: reason('budget_exceeded') },
   { id: 'row-rate-limited', label: 'Providers row, velocity limit.', detail: 'HTTP 429', reason: reason('rate_limited') },
   { id: 'row-wallet-empty', label: 'Providers row, empty wallet.', detail: 'HTTP 402', reason: reason('wallet_empty') },
   { id: 'row-policy-unavailable', label: 'Providers row, billing outage.', detail: 'HTTP 503', reason: reason('policy_unavailable') },
 ];
 
 /* The picker catalog: one model an admin restricted, one the wallet closes,
-   one the org budget stops, and one that runs. */
+   one a spent budget stops, and one that runs. */
 const MODEL_LIST = ['mindshub_air', 'claude-opus-4-8', 'gpt-5.6-sol', 'claude-sonnet-5'];
 const MODEL_LABELS = { mindshub_air: 'MindsHub Air', 'claude-opus-4-8': 'Claude Opus 4.8', 'gpt-5.6-sol': 'GPT-5.6 Sol', 'claude-sonnet-5': 'Claude Sonnet 5' };
 const MODEL_ENABLED = { mindshub_air: true, 'claude-opus-4-8': false, 'gpt-5.6-sol': false, 'claude-sonnet-5': false };
@@ -223,7 +223,7 @@ createRoot(document.getElementById('root')).render(
       <Case id="hint-restricted" label="The current model is one an admin restricted: no billing link.">
         <UnavailableModelHint label="Claude Opus 4.8" restricted />
       </Case>
-      <Case id="hint-budget-reached" label="The current model is one the org budget stops: a View budgets link, no credits.">
+      <Case id="hint-budget-reached" label="The current model is one a spent budget stops: a View budgets link, no credits.">
         <UnavailableModelHint label="Claude Sonnet 5" budgetReached />
       </Case>
       <Case id="hint-needs-credits" label="The current model is one the wallet closes: unchanged.">

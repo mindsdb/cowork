@@ -636,7 +636,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // counting it would inflate the signal with users who already pay.
     // `free_serving_paused`: a fleet-wide pause of free Air, not this user's cap.
     // `model_restricted`: an org admin's model rule, which credits do not lift.
-    // `budget_exceeded`: the org's spent budget, which credits do not lift either.
+    // `budget_exceeded`: a spent budget, which credits do not lift either.
     //
     // One event carrying `reason` rather than three events, so the impression
     // stays a single series and keeps this once-per-receipt guarantee.

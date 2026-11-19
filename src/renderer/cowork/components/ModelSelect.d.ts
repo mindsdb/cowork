@@ -8,7 +8,7 @@ export interface ModelSelectOption {
   locked?: boolean;
   /** An org admin's model rule closes the row; no credits action attaches. */
   restricted?: boolean;
-  /** The org's spending budget closes the row; no credits action attaches. */
+  /** A spent budget closes the row; no credits action attaches. */
   budgetReached?: boolean;
   title?: string;
   tag?: string;

@@ -110,7 +110,7 @@
       "tryAgainIn": "{seconds} 秒后重试",
       "tryAgain": "重试",
       "adminSpendingLimitBody": "已达到管理员设置的支出上限。请联系管理员。",
-      "budgetUsedUpTitle": "你所在组织的预算已用完",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {你所在组织的每日预算已用完} month {你所在组织的每月预算已用完} year {你所在组织的每年预算已用完} other {你所在组织的预算已用完}}} workspace {{period, select, day {此工作区的每日预算已用完} month {此工作区的每月预算已用完} year {此工作区的每年预算已用完} other {此工作区的预算已用完}}} api_key {{period, select, day {此 API 密钥的每日预算已用完} month {此 API 密钥的每月预算已用完} year {此 API 密钥的每年预算已用完} other {此 API 密钥的预算已用完}}} team {{period, select, day {你所在团队的每日预算已用完} month {你所在团队的每月预算已用完} year {你所在团队的每年预算已用完} other {你所在团队的预算已用完}}} member {{period, select, day {你的每日预算已用完} month {你的每月预算已用完} year {你的每年预算已用完} other {你的预算已用完}}} other {{period, select, day {每日预算已用完} month {每月预算已用完} year {每年预算已用完} other {预算已用完}}}}",
       "viewBudgets": "查看预算",
       "balanceRanOutMobile": "任务完成前你的余额已用完。",
       "autoTopUpFailedBodyMobile": "无法从你的银行卡扣款。",
