@@ -802,6 +802,8 @@
     "message": "¿Denunciar este contenido como peligroso u ofensivo? Se enviará su texto o referencia y los identificadores de tu cuenta al equipo de MindsHub para su revisión.",
     "submit": "Enviar denuncia",
     "sent": "Denuncia recibida.",
-    "failed": "No se pudo enviar la denuncia. Inténtalo de nuevo."
+    "failed": "No se pudo enviar la denuncia. Inténtalo de nuevo.",
+    "rateLimited": "Has alcanzado el límite diario de denuncias. Inténtalo más tarde.",
+    "retryAt": "Has alcanzado el límite diario de denuncias. Inténtalo el {when, date, short} a las {when, time, short}."
   }
 }

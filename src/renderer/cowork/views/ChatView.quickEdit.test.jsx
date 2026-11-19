@@ -1,7 +1,7 @@
 // Quick edits in the chat transcript (ENG-4227): a message sent from the
 // artifact viewer's bar shows the user's words with the artifact as a pill,
 // and the server's quick-edit group message shows as one card.
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -31,12 +31,19 @@ vi.mock('../components/artifact/ArtifactViewer', () => ({
   ArtifactViewer: ({ open, artifact }) => (open ? <div role="dialog" aria-label={`Viewer for ${artifact?.title}`} /> : null),
 }));
 
+import { setOrgMode } from '../../lib/orgMode';
+import * as api from '../api';
 import ChatView from './ChatView';
 
 const PROMPT = 'hi\n\n(About the artifact `mindshub-explainer-a8c2272e`.)';
 const taskWith = (messages) => ({ id: 'conv-qe', title: 'Chat', status: 'idle', messages });
 
 describe('ChatView quick edits', () => {
+  afterEach(() => {
+    setOrgMode(false);
+    vi.restoreAllMocks();
+  });
+
   it("shows the bar's message without its suffix, with the artifact as a pill that opens it", async () => {
     const user = userEvent.setup();
     render(<ChatView task={taskWith([
@@ -153,6 +160,32 @@ describe('ChatView quick edits', () => {
     expect(cards).toHaveLength(1);
     expect(within(cards[0]).getByText('2 changes')).toBeInTheDocument();
     expect(within(cards[0]).getByRole('button', { name: 'Open MindsHub explainer' })).toBeInTheDocument();
+  });
+
+  it('reports each saved assistant reply once from a merged quick-edit card', async () => {
+    setOrgMode(true);
+    const report = vi.spyOn(api, 'reportContent').mockResolvedValue({ id: 'receipt', status: 'received' });
+    const user = userEvent.setup();
+    render(<ChatView task={taskWith([
+      { id: 'legacy-note', role: 'assistant', content: 'I edited this artifact directly from its viewer (quick edit): Legacy change.' },
+      {
+        id: 'group-reply', role: 'assistant', content: 'model-facing',
+        quickEditGroup: {
+          type: 'response.quick_edit_group', kind: 'quick_edit_group', artifactSlug: CARD.slug,
+          edits: [{ editId: 'one', summary: 'First change.' }, { editId: 'two', summary: 'Second change.' }],
+        },
+      },
+    ])} />);
+
+    const card = screen.getByRole('region', { name: 'Edited in the viewer' });
+    expect(within(card).getAllByRole('button', { name: 'Report content' })).toHaveLength(2);
+    for (const [summary, messageId] of [['Legacy change.', 'legacy-note'], ['Second change.', 'group-reply']]) {
+      const row = screen.getByText(summary).closest('li');
+      await user.click(within(row).getByRole('button', { name: 'Report content' }));
+      await user.click(await screen.findByRole('button', { name: 'Send report' }));
+      expect(report).toHaveBeenLastCalledWith('conv-qe', messageId);
+      expect(await within(row).findByText('Report received.')).toBeInTheDocument();
+    }
   });
 
   it('puts the pill inside the request bubble, under the text', () => {

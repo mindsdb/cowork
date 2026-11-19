@@ -3917,7 +3917,11 @@ export default function ChatView({
               if (quickEditGroup) {
                 return (
                   <div key={messageKey(m, i)} className={deletingThisTurn ? 'opacity-60' : undefined}>
-                    <QuickEditGroupCard group={quickEditGroup} onOpenArtifact={handleArtifactOpen} />
+                    <QuickEditGroupCard
+                      group={quickEditGroup}
+                      onOpenArtifact={handleArtifactOpen}
+                      conversationId={deletingThisTurn ? undefined : task.id}
+                    />
                   </div>
                 );
               }

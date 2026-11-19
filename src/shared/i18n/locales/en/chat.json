@@ -802,6 +802,8 @@
     "message": "Report this content as unsafe or offensive? Its text or reference and your account identifiers will be sent to the MindsHub team for review.",
     "submit": "Send report",
     "sent": "Report received.",
-    "failed": "Could not send the report. Please try again."
+    "failed": "Could not send the report. Please try again.",
+    "rateLimited": "Daily report limit reached. Please try again later.",
+    "retryAt": "Daily report limit reached. Try again on {when, date, short} at {when, time, short}."
   }
 }

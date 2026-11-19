@@ -48,10 +48,11 @@ export function withQuickEditGroup(message) {
 
 const str = (v) => (typeof v === 'string' ? v : '');
 
-function normalizeEdit(edit, index) {
+function normalizeEdit(edit, index, messageId) {
   if (!edit || typeof edit !== 'object') return null;
   return {
     editId: str(edit.editId) || `edit-${index}`,
+    messageId,
     request: str(edit.request),
     summary: str(edit.summary),
     changed: Array.isArray(edit.changed) ? edit.changed.filter((p) => typeof p === 'string') : [],
@@ -67,7 +68,9 @@ export function quickEditGroupOf(message) {
   if (message?.role !== 'assistant') return null;
   const meta = groupEventOf(message);
   if (!meta) return null;
-  const edits = (Array.isArray(meta.edits) ? meta.edits : []).map(normalizeEdit).filter(Boolean);
+  const edits = (Array.isArray(meta.edits) ? meta.edits : [])
+    .map((edit, index) => normalizeEdit(edit, index, message.id))
+    .filter(Boolean);
   if (edits.length === 0) return null;
   return {
     artifactId: str(meta.artifactId) || null,
@@ -114,6 +117,7 @@ export function legacyQuickEditGroup(message, previous) {
     legacy: true,
     edits: [{
       editId: message?.id ? String(message.id) : 'legacy',
+      messageId: message.id,
       request,
       summary: note.summary,
       changed: note.changed,

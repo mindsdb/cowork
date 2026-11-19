@@ -143,7 +143,7 @@ export function ArtifactViewerHeader({
       {/* Right — preview errors, comments, stats, publishing, more actions, and close. */}
       <div className="artifact-viewer-action-zone" style={{ minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {artifact?.projectId && artifactIdentity(artifact) && (
-          <ReportContentButton key={`${artifact.projectId}:${artifactIdentity(artifact)}`}
+          <ReportContentButton key={`${artifact.projectId}:${artifactIdentity(artifact)}:${workspace?.currentRevision?.id ?? ''}:${artifact.mtime ?? ''}`}
             artifactTarget={{ projectId: String(artifact.projectId), artifactId: artifactIdentity(artifact) }} />
         )}
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
