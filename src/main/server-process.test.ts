@@ -1220,6 +1220,32 @@ describe('the sidecar organization stores', () => {
   });
 });
 
+describe('the Slack connector switch', () => {
+  afterEach(async () => {
+    envState.kind = 'prod';
+    if (isServerRunning()) await stopServer();
+  });
+
+  async function spawnedEnvFor(kind: string): Promise<Record<string, string>> {
+    envState.kind = kind;
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    return (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as { env: Record<string, string> }).env;
+  }
+
+  it.each(['stable', 'preview'])('is on for a %s (staging) build', async (kind) => {
+    expect((await spawnedEnvFor(kind)).SLACK_CONNECTOR_ENABLED).toBe('true');
+  });
+
+  it.each(['prod', 'dev'])('is left unset for a %s build', async (kind) => {
+    expect(await spawnedEnvFor(kind)).not.toHaveProperty('SLACK_CONNECTOR_ENABLED');
+  });
+});
+
 describe('the sidecar analytics destination', () => {
   afterEach(async () => {
     envState.kind = 'prod';
