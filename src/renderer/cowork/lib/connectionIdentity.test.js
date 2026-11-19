@@ -215,6 +215,36 @@ describe('connectionIdentity — subtitle', () => {
   });
 });
 
+describe('connectionIdentity — custom MCP server', () => {
+  const NAME = 'cm-1efdfbfb888617e136b3273a359b3022';
+
+  it('is titled by the name its user gave it, never the engine or the id', () => {
+    expect(connectionIdentity({ engine: 'custom_mcp', name: NAME, user_label: 'Linear' }))
+      .toEqual({ title: 'Linear', subtitle: 'MCP server · linear-9b3022' });
+  });
+
+  it('keeps two servers of one name apart by the tail of the id', () => {
+    const other = connectionIdentity({ engine: 'custom_mcp', name: `cm-${'a'.repeat(32)}`, user_label: 'Linear' });
+    expect(other.subtitle).not.toBe(connectionIdentity({ engine: 'custom_mcp', name: NAME, user_label: 'Linear' }).subtitle);
+  });
+
+  it('falls back to "MCP server" when the server holds no name for it', () => {
+    expect(connectionIdentity({ engine: 'custom_mcp', name: NAME }))
+      .toEqual({ title: 'MCP server', subtitle: 'MCP server · mcp-9b3022' });
+  });
+
+  it.each([
+    ['Cloudflare API', 'cloudflare-api-9b3022'],
+    ['  Acme  Tracker!!  ', 'acme-tracker-9b3022'],
+    ['Ünïcode só', 'ünïcode-só-9b3022'],
+    ['会議ツール', '会議ツール-9b3022'],
+    ['***', 'mcp-9b3022'],
+    ['A very long server name that keeps going', 'a-very-long-server-name-9b3022'],
+  ])('reads %j as a slug of the name and the id tail', (label, tail) => {
+    expect(connectionIdentity({ engine: 'custom_mcp', name: NAME, user_label: label }).subtitle).toBe(`MCP server · ${tail}`);
+  });
+});
+
 describe('humanLabel', () => {
   it('titlecases snake_case', () => {
     expect(humanLabel('google_calendar')).toBe('Google Calendar');

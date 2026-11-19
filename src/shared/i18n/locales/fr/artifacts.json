@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "Barre d’outils des commentaires",
       "comment": "Commenter — cliquez sur un élément (⌥ sélectionne le conteneur)",
-      "inbox": "Boîte de réception des commentaires",
-      "hideComment": "Masquer le commentaire",
-      "showComment": "Afficher le commentaire",
-      "close": "Fermer les commentaires"
+      "navigate": "Naviguer",
+      "navigateHint": "Utilisez la page normalement, avec les commentaires épinglés",
+      "commentLabel": "Commenter"
     },
     "composer": {
       "placeholder": "Ajouter un commentaire…",
@@ -147,7 +146,12 @@
       "reopen": "Rouvrir",
       "markResolved": "Marquer comme résolu",
       "resolve": "Résoudre",
-      "more": "Plus"
+      "more": "Plus",
+      "agentQueued": "En file d'attente",
+      "edit": "Modifier",
+      "editAriaLabel": "Modifier le commentaire",
+      "pinned": "épinglé",
+      "pinnedTip": "Épinglé à une partie précise de l'artefact. Cliquez sur le commentaire pour y aller."
     },
     "errors": {
       "load": "Impossible de charger les commentaires",
@@ -229,7 +233,16 @@
     "close": "Fermer la comparaison",
     "reject": "Rejeter et restaurer",
     "accept": "Accepter et résoudre",
-    "restore": "Restaurer comme nouvelle révision"
+    "restore": "Restaurer comme nouvelle révision",
+    "changePosition": "{current} sur {count, plural, one {# modification} other {# modifications}}",
+    "previousChange": "Modification précédente",
+    "nextChange": "Modification suivante",
+    "changeNavigation": "Parcourir les modifications",
+    "publishedArtifact": "Artefact publié",
+    "reviewBeforePublishing": "Vérifiez la modification avant de la publier",
+    "keepDraft": "Garder en brouillon",
+    "publishChange": "Publier cette modification",
+    "publishing": "Publication…"
   },
   "htmlEditor": {
     "blockGone": "Le bloc de texte sélectionné n’est plus disponible.",
@@ -238,7 +251,9 @@
     "selected": "Sélection : {label} — tapez pour modifier",
     "preparing": "Préparation du texte modifiable…",
     "noEditable": "Aucun texte directement modifiable trouvé",
-    "clickToEdit": "Cliquez sur n’importe quel texte de l’artefact pour le modifier",
+    "clickToEdit": "Cliquez sur n'importe quel texte pour le modifier, y compris les boutons et les liens.",
+    "syncingView": "Ouverture à l'endroit où vous étiez dans l'aperçu…",
+    "keepingPlace": "Retour à l'endroit où vous étiez…",
     "htmlSource": "Source HTML",
     "editing": "Modification de l’artefact",
     "back": "Retour à l’artefact",
@@ -251,6 +266,15 @@
       "buttonLabel": "Libellé du bouton",
       "caption": "Légende",
       "text": "Texte"
+    },
+    "exitLiveEdit": "Quitter la modification en direct",
+    "mode": {
+      "ariaLabel": "Mode de modification en direct",
+      "navigate": "Naviguer",
+      "edit": "Modifier le texte",
+      "navigateHint": "Utilisez la page normalement : diapositives, onglets et liens",
+      "editHint": "Cliquez sur un texte pour le modifier",
+      "navigateGuidance": "Navigation. Utilisez la page normalement, puis passez à « Modifier le texte » pour changer quelque chose."
     }
   },
   "workspace": {
@@ -387,7 +411,8 @@
     "artifactActions": "Actions de l’artefact",
     "moreActions": "Plus d’actions",
     "reloadPreview": "Recharger l’aperçu",
-    "close": "Fermer"
+    "close": "Fermer",
+    "unsharedChangesHint": "Le lien partagé affiche une version antérieure. Utilisez Mettre à jour dans Partager pour publier les modifications."
   },
   "body": {
     "previewWatermark": "Aperçu",
@@ -455,7 +480,8 @@
     "discardFailed": "Impossible d’abandonner cette suggestion.",
     "deleteTitle": "Supprimer l’artefact ?",
     "deleteMessage": "« {title} » sera définitivement supprimé. Cette action est irréversible.",
-    "changedElsewhere": "Cet artefact a changé. Recharger"
+    "changedElsewhere": "Cet artefact a changé. Recharger",
+    "changePublished": "Publié"
   },
   "artifactsView": {
     "sort": {
@@ -693,6 +719,14 @@
       "discard": "Abandonner et envoyer",
       "cancel": "Annuler",
       "saveFailed": "Vos modifications n'ont pas pu être enregistrées ; rien n'a été envoyé."
+    },
+    "queued": "En file d'attente",
+    "queueLabel": "En attente",
+    "removeQueued": "Retirer de la file d'attente",
+    "comment": {
+      "onArtifact": "Traite ce commentaire sur l'artefact :",
+      "onText": "Traite ce commentaire sur le texte « {quote} » :",
+      "onElement": "Traite ce commentaire sur l'élément `{selector}` :"
     }
   },
   "stats": {
@@ -752,5 +786,20 @@
     "draft": "Brouillon",
     "copy": "Copier l'adresse",
     "copied": "Copié"
+  },
+  "layout": {
+    "maximize": "Agrandir",
+    "restore": "Restaurer la taille"
+  },
+  "imageAttachments": {
+    "onlyImages": "Seules les images PNG, JPEG, GIF et WebP peuvent être jointes.",
+    "tooLarge": "{name} dépasse 5 Mo.",
+    "tooMany": "Jusqu'à {count} images par message.",
+    "drop": "Déposez des images pour les joindre",
+    "uploadFailed": "L'image n'a pas pu être envoyée. Réessayez.",
+    "unavailable": "Image indisponible",
+    "enlarge": "Agrandir l'image",
+    "shrink": "Réduire l'image",
+    "image": "Image"
   }
 }

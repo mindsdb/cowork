@@ -284,7 +284,30 @@ describe('credit failures', () => {
     const b = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded' }]);
     expect(judgeableTurn(a, b)).toBeNull();
     expect(unjudgeableReason(a, b, { a: 'Air', b: 'Sonnet' }))
-      .toBe("Sonnet hit your organization's budget before finishing, so this turn can't be judged.");
+      .toBe("Sonnet hit a budget before finishing, so this turn can't be judged.");
+  });
+
+  it('name whose budget stopped a side, and stay neutral when the two sides disagree', () => {
+    const ws = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded', budgetScope: 'workspace' }]);
+    const key = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded', budgetScope: 'api_key' }]);
+    const ok = turnsOf([user('p'), reply()]);
+    expect(unjudgeableReason(ok, ws, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Sonnet hit this workspace's budget before finishing, so this turn can't be judged.");
+    expect(unjudgeableReason(ws, ws, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Both models hit this workspace's budget before finishing, so this turn can't be judged.");
+    expect(unjudgeableReason(ws, key, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Both models hit a budget before finishing, so this turn can't be judged.");
+  });
+
+  it('name a team or member budget, reading user and all_members as one', () => {
+    const team = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded', budgetScope: 'team' }]);
+    const mine = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded', budgetScope: 'user' }]);
+    const all = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded', budgetScope: 'all_members' }]);
+    const ok = turnsOf([user('p'), reply()]);
+    expect(unjudgeableReason(ok, team, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Sonnet hit your team's budget before finishing, so this turn can't be judged.");
+    expect(unjudgeableReason(mine, all, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Both models hit your budget before finishing, so this turn can't be judged.");
   });
 
   it('do not hide an earlier turn behind a later judgeable one', () => {

@@ -825,3 +825,42 @@ describe('useArtifactWorkspace previewOnly', () => {
     expect(PREVIEW_ONLY).toBe("Preview only: Cowork can't edit this file type.");
   });
 });
+
+// A change to a published artifact is reviewed before it goes live (ENG-4409).
+describe('useArtifactWorkspace publish review', () => {
+  it('compares the two revisions it names, not the source it last loaded', async () => {
+    api.loadArtifactRevision.mockImplementation(async (_artifact, id) => ({
+      id, number: id === 'rev-1' ? 1 : 2, path: 'index.html', content: `<h1>${id}</h1>`,
+    }));
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    let opened;
+    await act(async () => { opened = await result.current.reviewPublish('rev-1', 'rev-2', { replyId: 'qe-1' }); });
+
+    expect(opened).toBe(true);
+    expect(api.loadArtifactRevision).toHaveBeenCalledWith(artifact, 'rev-1');
+    expect(api.loadArtifactRevision).toHaveBeenCalledWith(artifact, 'rev-2');
+    expect(result.current.comparison).toMatchObject({
+      kind: 'publish',
+      before: { id: 'rev-1' },
+      after: { id: 'rev-2' },
+      afterContent: '<h1>rev-2</h1>',
+      review: { replyId: 'qe-1' },
+    });
+  });
+
+  it('opens nothing for the same revision on both sides, and says so when a read fails', async () => {
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => { await result.current.reviewPublish('rev-1', 'rev-1'); });
+    expect(api.loadArtifactRevision).not.toHaveBeenCalled();
+    expect(result.current.comparison).toBeNull();
+
+    api.loadArtifactRevision.mockRejectedValue(new Error('Revision not found'));
+    await act(async () => { await result.current.reviewPublish('rev-1', 'rev-2'); });
+    expect(result.current.comparison).toBeNull();
+    expect(result.current.error).toBe('Revision not found');
+  });
+});

@@ -62,7 +62,7 @@ describe('buildModelPickerOptions', () => {
     expect(byValue.mindshub_air).toEqual({ value: 'mindshub_air', label: 'MindsHub Air' });
   });
 
-  it('tags a row the org budget stops as Budget reached, with no credits route', () => {
+  it('tags a row a spent budget stops as Budget reached, with no credits route', () => {
     const options = buildModelPickerOptions([
       { id: 'mindshub_air', name: 'MindsHub Air' },
       { id: 'opus', name: 'Claude Opus 5' },
@@ -76,7 +76,7 @@ describe('buildModelPickerOptions', () => {
       disabled: true,
       budgetReached: true,
       tag: 'Budget reached',
-      title: "Your organization's budget is used up. An owner or admin can raise it in Budgets.",
+      title: "A budget covering this model is used up. An administrator can raise it in Budgets.",
     });
   });
 

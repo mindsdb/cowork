@@ -592,6 +592,22 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     };
   }
 
+  if (type === 'response.cancelled') {
+    // Someone pressed Stop. The live stream ends this way, and the server saves
+    // the same event with the turn, so a reload reads it as stopped too and
+    // ends its time at the Stop (ENG-4345). What it wrote so far is its answer.
+    state = promoteToAnswer(state);
+    return {
+      ...state,
+      steps: closeOpenInspectableSteps(state.steps, eventTs),
+      status: 'done',
+      endedAt: eventTs,
+      currentThought: null,
+      firstTake: CLEARED_TAKE,
+      incompleteReason: 'user_stopped',
+    };
+  }
+
   if (type === 'response.failed') {
     // Key upgrade-intent signal: the turn was blocked on credits. Fire once
     // here, on receipt — not in the render path (ChatView), which re-runs every
@@ -620,7 +636,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // counting it would inflate the signal with users who already pay.
     // `free_serving_paused`: a fleet-wide pause of free Air, not this user's cap.
     // `model_restricted`: an org admin's model rule, which credits do not lift.
-    // `budget_exceeded`: the org's spent budget, which credits do not lift either.
+    // `budget_exceeded`: a spent budget, which credits do not lift either.
     //
     // One event carrying `reason` rather than three events, so the impression
     // stays a single series and keeps this once-per-receipt guarantee.
