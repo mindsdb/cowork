@@ -1206,6 +1206,16 @@ describe('incompleteReason', () => {
     expect(state.bodyText).toBe('part');
   });
 
+  // ENG-4345: a Stop ends the turn as stopped, live and on replay.
+  it('marks a stopped turn, keeps what it wrote, and ends it at the Stop', () => {
+    const state = [
+      { type: 'response.created', response: { id: 'r1' }, at_ms: 1000 },
+      { type: 'response.output_text.delta', delta: 'part', at_ms: 2000 },
+      { type: 'response.cancelled', at_ms: 5000 },
+    ].reduce((s, e) => reduceStream(s, e, () => 99999, { replay: true }), initialStreamState());
+    expect(state).toMatchObject({ status: 'done', incompleteReason: 'user_stopped', endedAt: 5000, bodyText: 'part' });
+  });
+
   it('stays null for a finished answer, and for a server that sends no status', () => {
     expect(reduceAll([
       { type: 'response.completed', response: { status: 'completed', incomplete_details: null } },

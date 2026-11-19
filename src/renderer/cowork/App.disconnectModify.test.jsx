@@ -52,18 +52,6 @@ vi.mock('./views/ChatView', () => ({
   ),
 }));
 
-vi.mock('./views/ProjectsView', () => ({
-  default: ({ tasks, onSelectTask }) => (
-    <div>
-      {(tasks || []).map((t) => (
-        <button key={t.id} type="button" onClick={() => onSelectTask(t.id)}>
-          {`Open task ${t.title}`}
-        </button>
-      ))}
-    </div>
-  ),
-}));
-
 vi.mock('../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -96,6 +84,7 @@ import App from './App';
 const task = { id: 'conv-connect', title: 'Connect task', messages: [], status: 'idle' };
 
 beforeEach(() => {
+  window.history.replaceState(null, '', `/c/${task.id}`);
   spies.deleteDatasource.mockReset().mockResolvedValue({});
   spies.customMcpDisconnect.mockReset().mockResolvedValue({ ok: true, revoked: true });
   target.engine = 'postgres';
@@ -104,9 +93,8 @@ beforeEach(() => {
 });
 
 const askToDisconnect = async (user) => {
-  await user.click(await screen.findByRole('button', { name: 'Projects' }));
-  await user.click(await screen.findByRole('button', { name: `Open task ${task.title}` }));
-  await user.click(await screen.findByRole('button', { name: 'Disconnect from task' }));
+  await screen.findByText(`Chat task: ${task.title}`);
+  await user.click(screen.getByRole('button', { name: 'Disconnect from task' }));
   return screen.findByRole('dialog', { name: `Disconnect ${target.name}?` });
 };
 

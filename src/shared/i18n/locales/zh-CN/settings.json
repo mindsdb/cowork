@@ -258,7 +258,7 @@
     "topUp": "充值余额 →",
     "addFunds": "充值 →",
     "slowDown": "{sentence}这不是积分问题。",
-    "budgetReached": "你所在组织的预算已用完。{detail}",
+    "budgetReached": "预算已用完。{detail}",
     "viewBudgetsArrow": "查看预算 →"
   },
   "providers": {
@@ -335,7 +335,7 @@
     "modelNeedsCredits": "{model} 需要积分。{link}后即可使用。",
     "modelNeedsCreditsNoLink": "{model} 需要积分。",
     "topUpBalance": "充值余额",
-    "modelBudgetReached": "你所在组织的预算已用完，无法运行 {model}。",
+    "modelBudgetReached": "适用的预算已用完，无法运行 {model}。",
     "viewBudgets": "查看预算",
     "imageModelNeedsMindsHub": "图像生成在 MindsHub 上运行。请在 LLM 服务商中添加 MindsHub 以选择图像模型。",
     "imageModelHint": "选择用于生成图像的模型。"

@@ -8,23 +8,29 @@ const providerState = vi.hoisted(() => ({
   phase: 'ready' as 'loading' | 'ready' | 'error',
   authenticated: false,
   initOptions: null as unknown,
+  events: [] as string[],
+  tokens: null as null | { token?: string; refreshToken?: string; idToken?: string },
 }));
 
 vi.mock('@react-keycloak/web', async () => {
   const React = await import('react');
   const Ctx = React.createContext<{ keycloak: unknown } | null>(null);
   return {
-    ReactKeycloakProvider: ({ children, authClient, initOptions, LoadingComponent, onEvent }: {
+    ReactKeycloakProvider: ({ children, authClient, initOptions, LoadingComponent, onEvent, onTokens }: {
       children: React.ReactNode;
       authClient: unknown;
       initOptions: unknown;
       LoadingComponent: React.ReactNode;
       onEvent?: (event: string) => void;
+      onTokens?: (tokens: { token?: string; refreshToken?: string; idToken?: string }) => void;
     }) => {
       providerState.initOptions = initOptions;
       React.useEffect(() => {
         if (providerState.phase === 'error') onEvent?.('onInitError');
-      }, [onEvent]);
+        for (const event of providerState.events) onEvent?.(event);
+        if (providerState.tokens) onTokens?.(providerState.tokens);
+        // Once, as keycloak-js would on init.
+      }, []);
       if (providerState.phase !== 'ready') return LoadingComponent;
       return React.createElement(Ctx.Provider, { value: { keycloak: authClient } }, children);
     },
@@ -41,7 +47,8 @@ vi.mock('./lib/mobilePush', () => ({
   mobilePushSignedIn: pushMock.signedIn,
 }));
 
-import { MobileShellRoot, ShellSignIn, ShellUpdateRequired } from './MobileShellRoot';
+import { MobileShellRoot, ShellSignIn, ShellUpdateRequired, type MobileShellSession } from './MobileShellRoot';
+import type { RestoreResult } from './lib/mobileSession';
 
 function client(overrides: Partial<{ login: () => Promise<void>; register: () => Promise<void> }> = {}) {
   return {
@@ -53,12 +60,21 @@ function client(overrides: Partial<{ login: () => Promise<void>; register: () =>
   };
 }
 
-function renderRoot(auth = client(), version = '1.0.0') {
+function sessionWith(result: RestoreResult) {
+  return {
+    restore: vi.fn(async () => result),
+    save: vi.fn(async () => {}),
+    forget: vi.fn(async () => {}),
+  } satisfies MobileShellSession;
+}
+
+function renderRoot(auth = client(), version = '1.0.0', session: MobileShellSession | null = null) {
   return render(
     <MobileShellRoot
       shell={{ platform: 'ios', version }}
       authClient={auth as unknown as Keycloak}
       initOptions={{ pkceMethod: 'S256' }}
+      session={session}
     >
       <div data-testid="app">app</div>
     </MobileShellRoot>,
@@ -70,6 +86,8 @@ afterEach(() => {
   providerState.phase = 'ready';
   providerState.authenticated = false;
   providerState.initOptions = null;
+  providerState.events = [];
+  providerState.tokens = null;
   pushMock.signedIn.mockClear();
 });
 
@@ -117,6 +135,58 @@ describe('MobileShellRoot', () => {
     expect(screen.getByTestId('shell-update-required')).toBeTruthy();
     expect(screen.queryByTestId('app')).toBeNull();
     expect(providerState.initOptions).toBeNull();
+  });
+});
+
+describe('MobileShellRoot saved session', () => {
+  const restored = { token: 'at', refreshToken: 'rt', idToken: 'id' };
+
+  it('starts Keycloak with the restored tokens', async () => {
+    providerState.authenticated = true;
+    await act(async () => { renderRoot(client(), '1.0.0', sessionWith({ kind: 'restored', session: restored })); });
+    expect(providerState.initOptions).toEqual({ pkceMethod: 'S256', ...restored });
+    expect(screen.getByTestId('app')).toBeTruthy();
+  });
+
+  it('starts signed out with nothing to restore', async () => {
+    await act(async () => { renderRoot(client(), '1.0.0', sessionWith({ kind: 'none' })); });
+    expect(providerState.initOptions).toEqual({ pkceMethod: 'S256' });
+    expect(screen.getByTestId('shell-sign-in')).toBeTruthy();
+  });
+
+  it('holds the welcome view, without starting Keycloak, until the restore settles', async () => {
+    let settle: (result: RestoreResult) => void = () => {};
+    const session = sessionWith({ kind: 'none' });
+    session.restore.mockImplementation(() => new Promise((resolve) => { settle = resolve; }));
+    renderRoot(client(), '1.0.0', session);
+    expect(document.body.textContent).toContain('Welcome to');
+    expect(providerState.initOptions).toBeNull();
+    await act(async () => { settle({ kind: 'none' }); });
+    expect(screen.getByTestId('shell-sign-in')).toBeTruthy();
+  });
+
+  it('offers a retry, without signing out, when Keycloak cannot be reached', async () => {
+    const session = sessionWith({ kind: 'unavailable' });
+    await act(async () => { renderRoot(client(), '1.0.0', session); });
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(providerState.initOptions).toBeNull();
+    expect(session.forget).not.toHaveBeenCalled();
+  });
+
+  it('saves new tokens and forgets the session on sign-out', async () => {
+    const session = sessionWith({ kind: 'none' });
+    providerState.tokens = restored;
+    providerState.events = ['onAuthLogout'];
+    await act(async () => { renderRoot(client(), '1.0.0', session); });
+    expect(session.save).toHaveBeenCalledWith(restored);
+    expect(session.forget).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not restore for a shell that must update', async () => {
+    const session = sessionWith({ kind: 'restored', session: restored });
+    await act(async () => { renderRoot(client(), '0.9.0', session); });
+    expect(session.restore).not.toHaveBeenCalled();
+    expect(screen.getByTestId('shell-update-required')).toBeTruthy();
   });
 });
 

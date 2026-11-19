@@ -581,13 +581,15 @@ function openStreamedForm(conversationId, finalContent) {
 
 async function loadSessionMessagesWithRetry(
   cid,
-  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs } = {},
+  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs, unmountedRef } = {},
 ) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => { setTimeout(resolve, 50 * attempt); });
     }
+    if (unmountedRef?.current) return null;
     const fresh = await fetchSession(cid, { timeoutMs });
+    if (unmountedRef?.current) return null;
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
       // Only the most recent page — the caller merges this
@@ -1196,6 +1198,15 @@ function AppCore() {
   const recoverDroppedTurnRef = useRef(null);
   // Conversations with a dropped-turn recovery out, so a second drop waits on it.
   const droppedRecoveryRef = useRef(new Set());
+  // The dropped-turn reconnects and run-start probes wait minutes between
+  // tries; they read this to stop once the App is gone instead of polling and
+  // reattaching for it.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    // Reset on mount too: StrictMode unmounts and remounts the same instance.
+    unmountedRef.current = false;
+    return () => { unmountedRef.current = true; };
+  }, []);
 
   // Running tally for the stranded-reservation self-heal (reservationReleaseDecision):
   // a stream that dies with no terminal pins the slot forever, so the in-flight
@@ -2051,6 +2062,9 @@ function AppCore() {
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
+            budgetScope: typeof event?.budget_scope === 'string' ? event.budget_scope : null,
+            budgetPeriod: typeof event?.budget_period === 'string' ? event.budget_period : null,
+            budgetModel: typeof event?.budget_model === 'string' && event.budget_model ? event.budget_model : null,
             requestId: typeof event?.request_id === 'string' ? event.request_id : null,
             /* Client-only: a lost connection, shown with "Trying to
                reconnect" while recoverDroppedTurn tries to reach the turn,
@@ -2831,7 +2845,7 @@ function AppCore() {
   // buildStreamHandlers() refactor is a fine follow-up once both
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
-    if (!taskId) return false;
+    if (!taskId || unmountedRef.current) return false;
     // A tail or send registered here, or a send holding the slot while it
     // uploads. A second stream would abort it, whoever holds the shared slot.
     const alreadyStreamingHere = () => (
@@ -2844,7 +2858,9 @@ function AppCore() {
     } catch {
       return false;
     }
-    if (!status || !status.in_flight) return false;
+    // Unmount may happen while the probe is pending. Do not open a stream
+    // for an App that is gone, even when the server still has a live turn.
+    if (unmountedRef.current || !status || !status.in_flight) return false;
     // A send or queued drain may have started here while the probe was out.
     if (alreadyStreamingHere()) return true;
 
@@ -2924,7 +2940,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -2936,7 +2952,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -3006,7 +3022,8 @@ function AppCore() {
   const recoverDroppedTurn = useCallback(async (cid) => {
     if (!cid || droppedRecoveryRef.current.has(cid)) return;
     droppedRecoveryRef.current.add(cid);
-    const current = () => tasksRef.current.find((t) => t.id === cid);
+    // Gone once the App unmounts, which ends the loop at its next check.
+    const current = () => (unmountedRef.current ? undefined : tasksRef.current.find((t) => t.id === cid));
     const settle = (update) => setTasks((prev) => prev.map((t) => (
       t.id === cid && droppedError(t) ? update(t) : t
     )));
@@ -3028,10 +3045,10 @@ function AppCore() {
         }
         let loaded = null;
         try {
-          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, unmountedRef });
         } catch { continue; }
-        if (!loaded) continue;
         if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        if (!loaded) continue;
         const knownIds = knownIdsOf(cid);
         settle((t) => {
           if (!historyEndsTurn(loaded.messages, droppedError(t)?._userMessageId)) return t;
@@ -4412,7 +4429,7 @@ function AppCore() {
       markInFlight(taskId);
     };
     // Before the session-start event, which clears the console attribution this reads.
-    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text) });
+    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text), taskMode: meta?.taskMode });
     trackAgentSessionStarted();
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
@@ -4494,7 +4511,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -4506,7 +4523,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -5020,7 +5037,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -5032,7 +5049,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -5808,7 +5825,7 @@ function AppCore() {
           // finished message instead of vanishing with the live row (ENG-3554).
           const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -6799,8 +6816,10 @@ function AppCore() {
   const attachWhenRunStarts = async (cid) => {
     for (const delay of RUN_START_PROBE_DELAYS_MS) {
       await new Promise((resolve) => { setTimeout(resolve, delay); });
-      if (!inFlightSetRef.current.has(cid)) return;
-      const outcome = runStartProbeOutcome(await fetchInFlightStatus(cid));
+      if (unmountedRef.current || !inFlightSetRef.current.has(cid)) return;
+      const status = await fetchInFlightStatus(cid);
+      if (unmountedRef.current) return;
+      const outcome = runStartProbeOutcome(status);
       if (outcome === 'ended') {
         runsAwaitingStartRef.current.delete(cid);
         refreshInFlightSet();
@@ -7652,6 +7671,7 @@ function AppCore() {
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
               defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
               models={mindsModels}
+              modelLabels={settings.modelLabels}
               modelMeta={modelMeta}
               skillScopeKey={codeSkillScopeKey}
               connections={connectors}

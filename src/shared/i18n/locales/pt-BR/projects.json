@@ -66,8 +66,8 @@
         "balanceLowToo": "Seu saldo também está baixo ({usd})."
       },
       "budgetExceeded": {
-        "raise": "Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos.",
-        "airHasRoom": "Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita."
+        "raise": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.}}} other {{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos.}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.}}} other {{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita.}}}}"
       }
     },
     "scheduleWhen": {
@@ -106,7 +106,7 @@
         "walletEmpty": "Nenhum crédito disponível. Adicione fundos para usar o MindsHub.",
         "allowanceExhausted": "Nenhum token gratuito do MindsHub Air disponível, e o saldo está vazio.",
         "freeAirPaused": "O MindsHub Air gratuito está pausado no momento.",
-        "budgetExceeded": "O orçamento da sua organização acabou.",
+        "budgetExceeded": "Um orçamento acabou.",
         "walletEmptyMobile": "Nenhum crédito disponível."
       },
       "missingApiKey": "Adicione uma chave de API à direita.",
@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "Os dois modelos ficaram sem créditos antes de terminar, então este turno não pode ser avaliado.",
         "one": "{name} ficou sem créditos antes de terminar, então este turno não pode ser avaliado.",
-        "bothBudget": "Os dois modelos atingiram o orçamento da sua organização antes de terminar, então este turno não pode ser avaliado.",
-        "oneBudget": "{name} atingiu o orçamento da sua organização antes de terminar, então este turno não pode ser avaliado."
+        "bothBudget": "{scope, select, org {Os dois modelos atingiram o orçamento da sua organização} workspace {Os dois modelos atingiram o orçamento deste espaço de trabalho} api_key {Os dois modelos atingiram o orçamento desta chave de API} team {Os dois modelos atingiram o orçamento da sua equipe} member {Os dois modelos atingiram o seu orçamento} other {Os dois modelos atingiram um orçamento}} antes de terminar, então este turno não pode ser avaliado.",
+        "oneBudget": "{scope, select, org {{name} atingiu o orçamento da sua organização} workspace {{name} atingiu o orçamento deste espaço de trabalho} api_key {{name} atingiu o orçamento desta chave de API} team {{name} atingiu o orçamento da sua equipe} member {{name} atingiu o seu orçamento} other {{name} atingiu um orçamento}} antes de terminar, então este turno não pode ser avaliado."
       },
       "verdict": {
         "tie": "Mais ou menos igual",
@@ -476,7 +476,7 @@
       "needsCredits": "Requer créditos",
       "budgetReached": {
         "tag": "Orçamento esgotado",
-        "title": "O orçamento da sua organização acabou. Um proprietário ou administrador pode aumentá-lo em Orçamentos."
+        "title": "Um orçamento que cobre este modelo acabou. Um administrador pode aumentá-lo em Orçamentos."
       }
     },
     "settingsTransform": {
