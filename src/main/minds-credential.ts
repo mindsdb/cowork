@@ -104,6 +104,8 @@ let _catalogInvalidationPending = false;
 export interface MindsCredentialSyncOptions {
   /** Account/key/organization changes and sidecar starts, never token rotation. */
   invalidateCatalog?: boolean;
+  /** Sign-out only: a live token the sidecar revokes its turn keys with; the one it holds may have expired. */
+  revokeToken?: string | null;
 }
 
 function enqueueCredentialPush<T>(operation: () => Promise<T>): Promise<T> {
@@ -139,7 +141,7 @@ export function isMindsCredentialSidecarReachable(): boolean {
 
 async function pushMindsCredentialNow(
   value: string | null,
-  { invalidateCatalog = false }: MindsCredentialSyncOptions = {},
+  { invalidateCatalog = false, revokeToken = null }: MindsCredentialSyncOptions = {},
 ): Promise<boolean> {
   // Keep a real change pending across a refused/offline handoff. The next
   // successful retry must notify, even when it arrives on a refresh tick.
@@ -162,7 +164,11 @@ async function pushMindsCredentialNow(
       headers: { 'Content-Type': 'application/json', ...authHeader() },
       // The sidecar mints a turn key for this organization, so its turns keep
       // billing it whatever organization Keycloak has active.
-      body: JSON.stringify({ value: value ?? '', ...(organizationId ? { organization_id: organizationId } : {}) }),
+      body: JSON.stringify({
+        value: value ?? '',
+        ...(organizationId ? { organization_id: organizationId } : {}),
+        ...(!value && revokeToken ? { revoke_token: revokeToken } : {}),
+      }),
       signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),
     });
     if (!res.ok) {
@@ -318,7 +324,7 @@ async function forgetStoredKey(): Promise<void> {
  * until something else pushed. So a failing delete must not skip the push, which
  * is what `forgetStoredKey` is for.
  */
-export async function forgetMindsCredential(): Promise<void> {
+export async function forgetMindsCredential(revokeToken: string | null = null): Promise<void> {
   await forgetStoredKey();
-  await pushMindsCredential(null, { invalidateCatalog: true });
+  await pushMindsCredential(null, { invalidateCatalog: true, revokeToken });
 }

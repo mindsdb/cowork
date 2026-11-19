@@ -225,6 +225,15 @@ describe('pushMindsCredential', () => {
     warn.mockRestore();
   });
 
+  it('hands sign-out a live token to revoke turn keys with, and only on sign-out', async () => {
+    const calls = installFetch();
+    await pushMindsCredential(null, { revokeToken: 'live-token' });
+    await pushMindsCredential('a-token', { revokeToken: 'live-token' });
+
+    expect(JSON.parse(calls[0].body as string)).toEqual({ value: '', revoke_token: 'live-token' });
+    expect(JSON.parse(calls[1].body as string)).toEqual({ value: 'a-token' });
+  });
+
   it('sends the organization the sidecar was started on, so its turns stay billed there', async () => {
     vi.mocked(getRunningSidecarOrgId).mockReturnValueOnce('org-a');
     const calls = installFetch();

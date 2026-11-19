@@ -1031,9 +1031,10 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     child.on('exit', (code, signal) => {
       childExited = true;
       childExitCode = code;
+      // A reaped child can exit after its replacement spawned; it must not clear the new one's org.
+      if (serverProcess === child || (serverProcess === null && !_adoptedExternal)) _runningOrgId = null;
       serverStarted = false;
       serverProcess = null;
-      _runningOrgId = null;
       lastExitCode = code;
       // Attribute the death: if `_stopRequested` is set, this exit
       // was caused by stopServer() (user clicked Stop, or the app is

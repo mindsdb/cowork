@@ -39,7 +39,7 @@ export interface SignOutDeps {
   // The MindsHub credential and the gate that holds turns while it moves.
   settleMindsResumeCredentialGate: (ready: boolean) => void;
   resetMindsResumeCredentialGate: () => void;
-  forgetMindsCredential: () => Promise<void>;
+  forgetMindsCredential: (revokeToken: string | null) => Promise<void>;
   // The sidecar's own credential rows.
   isServerRunning: () => boolean;
   isServerStarting: () => boolean;
@@ -132,7 +132,6 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
   // (see its NOTE), and reading earlier would hand end-session a
   // superseded token.
   const logoutRefreshToken = deps.getRefreshToken();
-  void deps.revokeDeviceKeyAndEndSession(revokeAccessToken, logoutRefreshToken);
   // Fence again after the bounded lookup. If its Keycloak request outlives the
   // timeout, this new cancellation epoch prevents the late response from
   // writing tokens after the local session is cleared below.
@@ -141,19 +140,23 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
   // until a new selected credential is explicitly handed over.
   deps.settleMindsResumeCredentialGate(false);
   // Take every MindsHub credential away first and await it, unlike the
-  // detached revoke above. This is the step that actually stops this
+  // detached revoke below. This is the step that actually stops this
   // install's turns, and the renderer treats the IPC resolving as "signed
   // out" — so a fire-and-forget push could lose the race and leave the
-  // sidecar running on a live token after the UI said otherwise.
+  // sidecar running on a live token after the UI said otherwise. It also
+  // runs before that chain ends the session: the sidecar revokes its turn
+  // keys with this token, which auth refuses once the session is gone.
   // Best-effort like every other step below it. keychain-fallback's write is
   // unguarded, so on a machine with no OS secure store this can throw — and an
   // unguarded throw here would skip the token clear, the DB clear, the .env
   // scrub and the renderer reload, wedging the confirm modal on "Signing out…".
   try {
-    await deps.forgetMindsCredential();
+    await deps.forgetMindsCredential(revokeAccessToken);
   } catch (err) {
     diagnostic("main.sign-out", "WARNING", "logout_could_not_clear_the_mindshub_credential", '[logout] could not clear the MindsHub credential:', err);
   }
+  // ENG-498: the detached chain from above, started once the sidecar has let go.
+  void deps.revokeDeviceKeyAndEndSession(revokeAccessToken, logoutRefreshToken);
   // Tear down any sign-in still waiting on its browser tab. Without
   // this, the loopback server stays armed for up to 3 minutes and
   // completing that stale tab silently signs the user back in after
