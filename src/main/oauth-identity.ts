@@ -286,6 +286,7 @@ async function fetchSlackIdentity(accessToken: string): Promise<OAuthIdentity> {
   try {
     who = await slackApi('auth.test', accessToken);
     userId = String(who.user_id || '').trim();
+    if (!userId) return { email: '', reason: 'Slack returned no user for this token.' };
     user = await slackApi('users.info', accessToken, `?${new URLSearchParams({ user: userId })}`);
   } catch (err) {
     return { email: '', reason: err instanceof Error ? err.message : 'Slack identity lookup failed.' };
@@ -293,7 +294,6 @@ async function fetchSlackIdentity(accessToken: string): Promise<OAuthIdentity> {
   const teamId = String(who.team_id || '').trim();
   const teamName = String(who.team || '').trim();
   const person = String(user.user?.profile?.email || '').trim() || userId;
-  if (!person) return { email: '', reason: 'Slack returned no user for this token.' };
   return { email: teamId ? `${person}:${teamId}` : person, name: teamName || person };
 }
 

@@ -404,6 +404,15 @@ describe('fetchAccountIdentity — Slack', () => {
     expect(await fetchAccountIdentity('slack', 'xoxp-1')).toEqual({ email: 'ann@acme.com', name: 'ann@acme.com' });
   });
 
+  it('stops with a clear reason when Slack names no user, without calling users.info', async () => {
+    const calls = stubSlack({ ok: true, team_id: 'T1', team: 'Acme' }, { ok: true, user: { profile: {} } });
+
+    const identity = await fetchAccountIdentity('slack', 'xoxp-1');
+    expect(identity.email).toBe('');
+    expect(identity.reason).toBe('Slack returned no user for this token.');
+    expect(calls.map((c) => c.url)).toEqual(['https://slack.com/api/auth.test']);
+  });
+
   it('fails with Slack\'s error when a call answers 200 with ok: false', async () => {
     stubSlack({ ok: false, error: 'invalid_auth' }, {});
 
