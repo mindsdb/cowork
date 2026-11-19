@@ -510,6 +510,19 @@ describe('HomeView own-work mode', () => {
       expect(onSend.mock.calls[0][0]).toBe(composeOwnWorkMessage(`${OTHER} Summarize this contract and list the risks`));
     });
 
+    it('sends survey answers made only of emoji, after a job', async () => {
+      const onSend = vi.fn(async () => true);
+      render(<Home onSend={onSend} />);
+      const user = userEvent.setup();
+      await pickJob(user);
+      await pasteAtEnd(user, '👍 👎 👍');
+
+      await waitFor(() => expect(sendButton()).toBeEnabled());
+      await user.click(sendButton());
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(onSend.mock.calls[0][0]).toBe(composeOwnWorkMessage(`${JOB} 👍 👎 👍`));
+    });
+
     it('keeps what the person typed after a job when the mode is left, even a lone ":"', async () => {
       render(<Home onSend={vi.fn()} />);
       const user = userEvent.setup();

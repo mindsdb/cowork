@@ -483,9 +483,10 @@ export function ownWorkJobIn(text) {
   return OWN_WORK_MODE.samples.find((j) => sent.startsWith(j.prompt)) ?? null;
 }
 
-// Material has to say something: punctuation left over from an edit (the
-// ":" that replaced a job's full stop) is not something to work on.
-const saysSomething = (text) => /[\p{L}\p{N}]/u.test(text);
+// Material has to say something: a letter, a number or a symbol such as an
+// emoji (survey answers can be "👍 👎 👍"). Punctuation alone, like a ":" left
+// after a job, is not something to work on.
+const saysSomething = (text) => /[\p{L}\p{N}\p{S}]/u.test(text);
 
 /** Whether a draft in the own-work mode carries something of the person's:
     an attachment, text after a job left exactly as placed, or, with no such

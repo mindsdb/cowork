@@ -51,9 +51,11 @@ describe('hasOwnMaterial', () => {
     expect(hasOwnMaterial('https://example.com')).toBe(true);
   });
 
-  it('needs a letter or a number: punctuation alone is not material', () => {
+  it('needs a letter, a number or a symbol: punctuation alone is not material', () => {
     expect(hasOwnMaterial('…')).toBe(false);
     expect(hasOwnMaterial(`${JOB} :`)).toBe(false);
+    expect(hasOwnMaterial('👍 👎 👍')).toBe(true);
+    expect(hasOwnMaterial(`${JOB} 👍 👎 👍`)).toBe(true);
   });
 
   it('reads an edited job as the person\'s own request', () => {
