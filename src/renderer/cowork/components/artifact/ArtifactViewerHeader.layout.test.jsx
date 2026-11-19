@@ -45,9 +45,11 @@ describe('the centred header', () => {
 
   it('centres with 1fr auto 1fr, the middle shrinking before the sides overlap it', () => {
     expect(css).toMatch(/\.artifact-viewer-topbar\.is-centered,\s*\.artifact-revision-bar\.is-centered\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, auto\) minmax\(max-content, 1fr\)/);
-    // The title keeps a minimum, so the pill gives way before it. The actions
-    // wrap instead of pushing close out of the modal (ENG-4387).
-    expect(css).toMatch(/\.artifact-viewer-topbar\.is-centered \{ grid-template-columns: minmax\(min\(11rem, 28%\), 1fr\) minmax\(0, auto\) minmax\(min-content, 1fr\); \}/);
+    // The title keeps a minimum, so the pill gives way before it.
+    expect(css).toMatch(/\.artifact-viewer-topbar\.is-centered \{ grid-template-columns: minmax\(min\(11rem, 28%\), 1fr\) minmax\(0, auto\) minmax\(max-content, 1fr\); \}/);
+    // A long address stops at a readable width and shrinks first, so the
+    // actions keep to one line (the header used to wrap them into a stack).
+    expect(css).toMatch(/\.artifact-viewer-topbar \.artifact-address-pill \{ max-width: min\(520px, 100%\); \}/);
   });
 
   it('keeps a narrow viewer centred: title and actions on one row, the address centred under them', () => {
@@ -55,5 +57,13 @@ describe('the centred header', () => {
     expect(narrow).toMatch(/\.artifact-viewer-topbar\.is-centered \{[^}]*grid-template-areas: "title actions" "address address"/);
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
     expect(phone).toMatch(/\.artifact-revision-bar\.is-centered \{[^}]*grid-template-areas: "identity actions" "center center"/);
+  });
+});
+
+describe('the action line', () => {
+  it('keeps the actions on one line', () => {
+    render(<ArtifactViewerHeader {...props()} />);
+    const actions = document.querySelector('.artifact-viewer-action-zone');
+    expect(actions.style.flexWrap).toBe('nowrap');
   });
 });

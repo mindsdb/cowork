@@ -137,7 +137,7 @@ export function ArtifactViewerHeader({
 
       {/* Right — preview errors, publishing, more actions, and close. Stats is
           a layer toggle on the revision line (ENG-4455). */}
-      <div className="artifact-viewer-action-zone" style={{ minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+      <div className="artifact-viewer-action-zone" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
         {/* Sharing is owner-side chrome on BOTH deployments now. It used to be
             desktop-only, on the grounds that org mode's window is a review

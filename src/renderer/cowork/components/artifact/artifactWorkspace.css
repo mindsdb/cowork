@@ -24,10 +24,14 @@
 .artifact-revision-bar.is-centered { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(max-content, 1fr); align-items: center; column-gap: 10px; }
 /* The title keeps a readable minimum, so on a tight line the pill gives way
    first rather than the title collapsing to a letter. */
-.artifact-viewer-topbar.is-centered { grid-template-columns: minmax(min(11rem, 28%), 1fr) minmax(0, auto) minmax(min-content, 1fr); }
-/* The actions wrap onto a second line before anything is pushed out of the
-   modal; the window controls (maximize, hide toolbars, close) stay one group
-   at the end, so close is always on screen. */
+.artifact-viewer-topbar.is-centered { grid-template-columns: minmax(min(11rem, 28%), 1fr) minmax(0, auto) minmax(max-content, 1fr); }
+/* A long address never crowds the line: the pill stops at a readable width
+   and shrinks first (its URL keeps the middle ellipsis), so the actions stay
+   on one line and the title keeps its share. */
+.artifact-viewer-topbar .artifact-address-pill { max-width: min(520px, 100%); }
+/* The window controls (maximize, close) stay one group at the end of the
+   actions, which keep to one line; the title and the address give way
+   first, so close is always on screen. */
 .artifact-viewer-window-controls { display: inline-flex; align-items: center; gap: 2px; flex: none; padding-left: 6px; border-left: 1px solid var(--line); }
 .artifact-revision-bar.is-centered .artifact-revision-actions { justify-content: flex-end; }
 .artifact-revision-center { display: flex; justify-content: center; min-width: 0; }
@@ -244,7 +248,7 @@
 @media (max-width: 820px) {
   /* Narrow: the title and actions share the first row, the pill takes the
      second, centred. */
-  .artifact-viewer-topbar.is-centered { grid-template-columns: minmax(0, 1fr) minmax(min-content, max-content); grid-template-areas: "title actions" "address address"; row-gap: 8px; }
+  .artifact-viewer-topbar.is-centered { grid-template-columns: minmax(0, 1fr) max-content; grid-template-areas: "title actions" "address address"; row-gap: 8px; }
   .artifact-viewer-topbar.is-centered .artifact-viewer-title-zone { grid-area: title; }
   .artifact-viewer-topbar.is-centered .artifact-viewer-mode-zone { grid-area: address; }
   .artifact-viewer-topbar.is-centered .artifact-viewer-action-zone { grid-area: actions; }
