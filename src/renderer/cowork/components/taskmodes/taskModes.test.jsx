@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Ico from '../Icons';
-import { TASK_MODES, FEATURED_EXAMPLES_MODE, composeModeMessage, resemblesSample } from './taskModes';
+import { TASK_MODES, FEATURED_EXAMPLES_MODE, composeModeMessage, modeMessage, resemblesSample } from './taskModes';
 import { sampleId } from '../../lib/consoleHandoff';
 import { HABIT_TRACKER_PROMPT } from '../onboarding/steps';
 import enChat from '../../../../shared/i18n/locales/en/chat.json';
@@ -90,10 +90,8 @@ describe('TASK_MODES data', () => {
     const middle = sample.prompt.replace(/\b\w{4,}\b/, 'changed');
     expect(middle).not.toBe(sample.prompt);
     expect(composeModeMessage(mode, middle, sample)).toBe(middle);
-    // Without the pick, or for another mode's example, the instruction is still added.
+    // Without the pick, the instruction is still added.
     expect(composeModeMessage(mode, middle)).toBe(`${middle}\n\n${mode.instruction}`);
-    const other = TASK_MODES.find((m) => m !== mode && m.samples.some((x) => x.plain)).samples.find((x) => x.plain);
-    expect(composeModeMessage(mode, middle, other)).toBe(`${middle}\n\n${mode.instruction}`);
   });
 
   it('stops treating a picked plain example as one once the text is something else', () => {
@@ -102,7 +100,53 @@ describe('TASK_MODES data', () => {
     expect(resemblesSample(sample, sample.prompt.replace(/\b\w{4,}\b/, 'changed'))).toBe(true);
     expect(resemblesSample(sample, 'AI in 2026')).toBe(false);
     expect(resemblesSample(sample, '')).toBe(false);
-    expect(composeModeMessage(mode, 'AI in 2026', sample)).toBe(`AI in 2026\n\n${mode.instruction}`);
+  });
+
+  it('adds no instruction when a placed example is replaced by the person\'s own request', () => {
+    // Every example of every mode, plain or not: what was sent is the person's
+    // request, not the example's, so the mode's line would describe a request
+    // they did not make.
+    for (const mode of TASK_MODES.filter((m) => m.instruction)) {
+      for (const sample of mode.samples) {
+        expect(modeMessage(mode, 'plan a birthday party', sample)).toEqual({ text: 'plan a birthday party', modeLine: 'replaced_example' });
+      }
+    }
+  });
+
+  it('adds the instruction to a placed example only while the example is all still there', () => {
+    const viz = TASK_MODES.find((m) => m.id === 'visualization');
+    const heatmap = viz.samples.find((s) => s.label === 'Show weekly sales activity via heatmap');
+    const slides = TASK_MODES.find((m) => m.id === 'slides');
+    const weekly = slides.samples.find((s) => s.label === 'Automate weekly team status reporting');
+    const replaced = (mode, sample, text) => expect(modeMessage(mode, text, sample))
+      .toEqual({ text, modeLine: 'replaced_example' });
+
+    // Different requests that keep most of the example's words, even its opening.
+    replaced(viz, heatmap, 'Write an email about weekly sales activity across regions and product categories, '
+      + 'and highlight the peaks and the weak spots. Do not create a chart.');
+    replaced(slides, weekly, 'Create a weekly email for my team covering milestones, completed tasks, blockers, '
+      + 'and upcoming priorities. Keep it short. No slides.');
+    // Any edit inside the example sends it as the person's own request, without the line.
+    replaced(slides, weekly, weekly.prompt.replace('presentation template with slides', 'email'));
+    replaced(viz, heatmap, heatmap.prompt.replace('regions', 'the EMEA regions'));
+    replaced(slides, weekly, '');
+
+    // Text added before or after the example keeps the line.
+    const after = `${weekly.prompt} Ten slides.`;
+    expect(modeMessage(slides, after, weekly)).toEqual({ text: `${after}\n\n${slides.instruction}`, modeLine: 'appended' });
+    const before = `For the EMEA team: ${weekly.prompt}`;
+    expect(modeMessage(slides, before, weekly)).toEqual({ text: `${before}\n\n${slides.instruction}`, modeLine: 'appended' });
+  });
+
+  it('still adds the instruction to an edited ordinary example, and says what it did', () => {
+    const slides = TASK_MODES.find((m) => m.id === 'slides');
+    const ordinary = slides.samples.find((s) => !s.plain);
+    const edited = `${ordinary.prompt} Ten slides.`;
+    expect(modeMessage(slides, edited, ordinary)).toEqual({ text: `${edited}\n\n${slides.instruction}`, modeLine: 'appended' });
+    expect(modeMessage(slides, ordinary.prompt, ordinary)).toEqual({ text: ordinary.prompt, modeLine: 'example' });
+    expect(modeMessage(slides, 'my own deck')).toEqual({ text: `my own deck\n\n${slides.instruction}`, modeLine: 'appended' });
+    expect(modeMessage(null, 'hello')).toEqual({ text: 'hello', modeLine: null });
+    expect(modeMessage(FEATURED_EXAMPLES_MODE, 'hello')).toEqual({ text: 'hello', modeLine: null });
   });
 
   it('composeModeMessage APPENDS the instruction (titles derive from the message head)', () => {

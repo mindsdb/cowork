@@ -66,8 +66,8 @@
         "balanceLowToo": "Tu saldo también está bajo ({usd})."
       },
       "budgetExceeded": {
-        "raise": "Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos.",
-        "airHasRoom": "Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure su cupo gratuito."
+        "raise": "{hasModel, select, true {{scope, select, org {{model} no puede ejecutarse hasta que un propietario o administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.} other {{model} no puede ejecutarse hasta que un administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.}}} other {{scope, select, org {Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos.} other {Los modelos de pago no pueden ejecutarse hasta que un administrador lo aumente en Presupuestos.}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} no puede ejecutarse hasta que un propietario o administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.} other {{model} no puede ejecutarse hasta que un administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.}}} other {{scope, select, org {Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure su cupo gratuito.} other {Los modelos de pago no pueden ejecutarse hasta que un administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure su cupo gratuito.}}}}"
       }
     },
     "scheduleWhen": {
@@ -106,7 +106,7 @@
         "walletEmpty": "No hay créditos disponibles. Agrega fondos para usar MindsHub.",
         "allowanceExhausted": "No hay tokens gratuitos de MindsHub Air disponibles y el saldo está vacío.",
         "freeAirPaused": "MindsHub Air gratuito está en pausa en este momento.",
-        "budgetExceeded": "Se agotó el presupuesto de tu organización.",
+        "budgetExceeded": "Se agotó un presupuesto.",
         "walletEmptyMobile": "No hay créditos disponibles."
       },
       "missingApiKey": "Agrega una clave de API a la derecha.",
@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "Ambos modelos se quedaron sin créditos antes de terminar, así que este turno no se puede evaluar.",
         "one": "{name} se quedó sin créditos antes de terminar, así que este turno no se puede evaluar.",
-        "bothBudget": "Ambos modelos alcanzaron el presupuesto de tu organización antes de terminar, así que este turno no se puede evaluar.",
-        "oneBudget": "{name} alcanzó el presupuesto de tu organización antes de terminar, así que este turno no se puede evaluar."
+        "bothBudget": "{scope, select, org {Ambos modelos alcanzaron el presupuesto de tu organización} workspace {Ambos modelos alcanzaron el presupuesto de este espacio de trabajo} api_key {Ambos modelos alcanzaron el presupuesto de esta clave de API} team {Ambos modelos alcanzaron el presupuesto de tu equipo} member {Ambos modelos alcanzaron tu presupuesto} other {Ambos modelos alcanzaron un presupuesto}} antes de terminar, así que este turno no se puede evaluar.",
+        "oneBudget": "{scope, select, org {{name} alcanzó el presupuesto de tu organización} workspace {{name} alcanzó el presupuesto de este espacio de trabajo} api_key {{name} alcanzó el presupuesto de esta clave de API} team {{name} alcanzó el presupuesto de tu equipo} member {{name} alcanzó tu presupuesto} other {{name} alcanzó un presupuesto}} antes de terminar, así que este turno no se puede evaluar."
       },
       "verdict": {
         "tie": "Más o menos igual",
@@ -414,7 +414,8 @@
       "andMore": "{source} y {count} más"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "Conector no reconocido"
+      "unrecognizedConnector": "Conector no reconocido",
+      "mcpServer": "Servidor MCP"
     },
     "datasourceSubmission": {
       "errors": {
@@ -475,7 +476,7 @@
       "needsCredits": "Requiere créditos",
       "budgetReached": {
         "tag": "Presupuesto agotado",
-        "title": "Se agotó el presupuesto de tu organización. Un propietario o administrador puede aumentarlo en Presupuestos."
+        "title": "Se agotó un presupuesto que cubre este modelo. Un administrador puede aumentarlo en Presupuestos."
       }
     },
     "settingsTransform": {

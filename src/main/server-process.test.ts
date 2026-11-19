@@ -105,7 +105,7 @@ import {
 } from './server-process';
 import { NON_PROD_POSTHOG_KEY } from './analytics-env';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
-import { APP_SECRET_HEADER, appSecretHeader, isAppSecretProtected, serverMayReceiveTokens } from './app-secret';
+import { APP_SECRET_HEADER, appSecretHeader, isAppSecretProtected, isCustomMcpAvailable, serverMayReceiveTokens } from './app-secret';
 import * as crypto from 'crypto';
 
 const PORT = 27903;
@@ -1664,6 +1664,29 @@ describe('app secret handoff', () => {
     await stopServer();
 
     expect(appSecretHeader()).toEqual({});
+  });
+
+  it.each([
+    ['a protected server that reports it', { app_secret_protocol: 1, custom_mcp: 1 }, true],
+    ['a protected server that does not', { app_secret_protocol: 1 }, false],
+    ['a protected server that reports another value', { app_secret_protocol: 1, custom_mcp: '1' }, false],
+    ['a legacy server that claims it', { custom_mcp: 1 }, false],
+  ])('makes custom MCP available only for %s', async (_label, extra, available) => {
+    spawnAnswering(extra);
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(isCustomMcpAvailable()).toBe(available);
+  });
+
+  it('drops custom MCP when the server stops', async () => {
+    spawnAnswering({ app_secret_protocol: 1, custom_mcp: 1 });
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    expect(isCustomMcpAvailable()).toBe(true);
+
+    await stopServer();
+
+    expect(isCustomMcpAvailable()).toBe(false);
   });
 
   it('replaces a running server of its own that holds a secret from an earlier process', async () => {

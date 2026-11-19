@@ -55,7 +55,8 @@ function loopKey(engine: string, accountEmail: string): string {
   return `${engine}:${accountEmail}`;
 }
 
-function notifyRenderer(payload: { engine: string; name: string; accountEmail: string; permanent: boolean }): void {
+/** Tells the window a connection's refresh failed; `engine` is the name its toast shows. */
+export function notifyRenderer(payload: { engine: string; name: string; accountEmail: string; permanent: boolean }): void {
   BrowserWindow.getAllWindows()[0]?.webContents.send(IPC.OAUTH_REFRESH_ERROR, payload);
 }
 

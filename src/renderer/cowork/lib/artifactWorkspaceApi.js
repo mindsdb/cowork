@@ -253,7 +253,8 @@ export function loadArtifactRevision(artifact, revisionId) {
  * throws before any event, in the same error shape as every request here.
  * Resolves when the stream ends; aborting `signal` ends it early.
  *
- * body: { message, history, expectedRevisionId, conversationId, forceRoute }
+ * body: { message, history, expectedRevisionId, conversationId, forceRoute,
+ *         images?: [{ name, data (base64) }] }
  */
 export async function streamQuickEdit(artifact, body, { signal, onEvent } = {}) {
   const ref = artifactRef(artifact);
@@ -286,6 +287,37 @@ export function undoQuickEdit(artifact, editId, { expectedRevisionId = null } = 
     method: 'POST',
     body: JSON.stringify({ expectedRevisionId }),
   });
+}
+
+/*
+ * Images in comments (ENG-4410): one image stored with the artifact, answered
+ * as `{ id, mediaType, size }`; its id goes in the comment's text
+ * (lib/commentImages). Whoever may review the artifact may add one.
+ */
+export async function uploadCommentImage(artifact, file) {
+  const ref = artifactRef(artifact);
+  if (!ref) throw new Error('Artifact has no full identity');
+  const form = new FormData();
+  form.append('file', file);
+  const response = await authFetch(`${BASE}${ref.base}/comment-images`, { method: 'POST', body: form });
+  if (!response.ok) throw await failure(response);
+  return response.json();
+}
+
+/** Where a comment's image is read, or null. Fetch it with authentication. */
+export function commentImageUrl(artifact, imageId) {
+  const ref = artifactRef(artifact);
+  if (!ref || !imageId) return null;
+  return `${BASE}${ref.base}/comment-images/${encodeURIComponent(imageId)}`;
+}
+
+/** A comment's image as a Blob, read with the viewer's credential. */
+export async function loadCommentImage(artifact, imageId, { signal } = {}) {
+  const url = commentImageUrl(artifact, imageId);
+  if (!url) throw new Error('Artifact has no full identity');
+  const response = await authFetch(url, { signal });
+  if (!response.ok) throw await failure(response);
+  return response.blob();
 }
 
 export function restoreArtifactRevision(artifact, revisionId, expectedRevisionId) {

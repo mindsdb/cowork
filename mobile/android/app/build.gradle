@@ -46,6 +46,10 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Isolated device tests preserve the installed Play app.
+            if (project.hasProperty('coworkTestApplicationId')) applicationIdSuffix ".sessiontest"
+        }
         release {
             if (coworkKeystorePath) {
                 signingConfig signingConfigs.release

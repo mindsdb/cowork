@@ -563,6 +563,8 @@ type HealthProbe = {
   /** `app_secret_protocol` and `app_secret_proof` as /health sent them. */
   appSecretProtocol?: unknown;
   appSecretProof?: unknown;
+  /** `custom_mcp` as /health sent it, beside the proof. */
+  customMcp?: unknown;
 };
 
 function probeHealthOnce(port: number, timeoutMs: number, challenge?: string): Promise<HealthProbe> {
@@ -582,16 +584,18 @@ function probeHealthOnce(port: number, timeoutMs: number, challenge?: string): P
           let clearsPendingCredentials = false;
           let appSecretProtocol: unknown;
           let appSecretProof: unknown;
+          let customMcp: unknown;
           try {
-            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown; app_secret_protocol?: unknown; app_secret_proof?: unknown } | null;
+            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown; app_secret_protocol?: unknown; app_secret_proof?: unknown; custom_mcp?: unknown } | null;
             owner = payload?.owner ?? null;
             supportsCoding = Array.isArray(payload?.capabilities) && payload.capabilities.includes('coding');
             clearsPendingCredentials = Array.isArray(payload?.capabilities)
               && payload.capabilities.includes(PENDING_CLEAR_CAPABILITY);
             appSecretProtocol = payload?.app_secret_protocol;
             appSecretProof = payload?.app_secret_proof;
+            customMcp = payload?.custom_mcp;
           } catch { /* non-JSON */ }
-          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials, appSecretProtocol, appSecretProof });
+          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials, appSecretProtocol, appSecretProof, customMcp });
         });
       },
     );
@@ -1120,7 +1124,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     let untrusted = false;
     if (step.action !== 'fail' && lastProbe) {
       const verdict = judgeServer(lastProbe, lastChallenge, await accessModesMigrated(orgStoreRootAtSpawn));
-      setServerTrust(verdict);
+      setServerTrust(verdict, lastProbe);
       untrusted = verdict === 'untrusted';
     }
 

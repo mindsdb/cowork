@@ -31,6 +31,7 @@
       "retryExhausted": "途中で停止しました：タスクが繰り返し失敗しました。",
       "questionUnanswered": "途中で停止しました：質問への回答がありませんでした。",
       "contentFilter": "途中で停止しました：モデルのコンテンツフィルターにより回答がブロックされました。",
+      "userStopped": "停止しました。",
       "fallback": "完了前に停止しました。"
     },
     "figureFile": {
@@ -109,7 +110,7 @@
       "tryAgainIn": "{seconds}秒後に再試行",
       "tryAgain": "再試行",
       "adminSpendingLimitBody": "管理者が設定した支出上限に達しました。管理者にお問い合わせください。",
-      "budgetUsedUpTitle": "組織の予算を使い切りました",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {組織の日次予算を使い切りました} month {組織の月次予算を使い切りました} year {組織の年次予算を使い切りました} other {組織の予算を使い切りました}}} workspace {{period, select, day {このワークスペースの日次予算を使い切りました} month {このワークスペースの月次予算を使い切りました} year {このワークスペースの年次予算を使い切りました} other {このワークスペースの予算を使い切りました}}} api_key {{period, select, day {このAPIキーの日次予算を使い切りました} month {このAPIキーの月次予算を使い切りました} year {このAPIキーの年次予算を使い切りました} other {このAPIキーの予算を使い切りました}}} team {{period, select, day {チームの日次予算を使い切りました} month {チームの月次予算を使い切りました} year {チームの年次予算を使い切りました} other {チームの予算を使い切りました}}} member {{period, select, day {あなたの日次予算を使い切りました} month {あなたの月次予算を使い切りました} year {あなたの年次予算を使い切りました} other {あなたの予算を使い切りました}}} other {{period, select, day {日次予算を使い切りました} month {月次予算を使い切りました} year {年次予算を使い切りました} other {予算を使い切りました}}}}",
       "viewBudgets": "予算を表示",
       "balanceRanOutMobile": "タスクの完了前に残高がなくなりました。",
       "autoTopUpFailedBodyMobile": "カードに請求できませんでした。",

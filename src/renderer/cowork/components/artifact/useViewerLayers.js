@@ -1,7 +1,7 @@
 // The artifact viewer's layers (ENG-4227). There is one preview; Live edit
 // (the code editor, `source` here) and Comments (pins and the inbox) are
-// layers on it, switched on and off independently and remembered on this
-// device. The quick-edit bar is no layer: it shows whenever it may. Storage
+// layers on it, at most one on at a time (switching one on switches the
+// other off), and remembered on this device. The quick-edit bar is no layer: it shows whenever it may. Storage
 // can be unavailable (private mode, blocked site data), so every read and
 // write is guarded and the defaults apply then: both off.
 
@@ -20,9 +20,12 @@ export function readLayers(userKey) {
     const raw = window.localStorage.getItem(storageKey(userKey));
     const saved = raw ? JSON.parse(raw) : null;
     if (!saved || typeof saved !== 'object') return { ...DEFAULT_LAYERS };
-    return Object.fromEntries(NAMES.map((name) => [
+    const layers = Object.fromEntries(NAMES.map((name) => [
       name, typeof saved[name] === 'boolean' ? saved[name] : DEFAULT_LAYERS[name],
     ]));
+    // Saved before the two became exclusive: Live edit wins.
+    if (layers.source && layers.comments) layers.comments = false;
+    return layers;
   } catch {
     return { ...DEFAULT_LAYERS };
   }
@@ -44,7 +47,9 @@ export function useViewerLayers(userKey = '') {
     if (!NAMES.includes(name)) return;
     setLayers((prev) => {
       if (prev[name] === !!on) return prev;
-      const next = { ...prev, [name]: !!on };
+      const next = on
+        ? Object.fromEntries(NAMES.map((other) => [other, other === name]))
+        : { ...prev, [name]: false };
       writeLayers(userKey, next);
       return next;
     });

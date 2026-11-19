@@ -33,15 +33,20 @@ export function prefersReducedMotion() {
  * @param {object} opts
  * @param {boolean} opts.enabled  A framed preview is on screen (its load is observable).
  * @param {boolean} opts.iframeReady  The frame's load state; a reload sets it false first.
+ * @param {() => Promise<void>} [opts.hold]  After the load, what else the cover waits
+ *   for (still within MAX_WAIT_MS): the preview going back to the user's place
+ *   (usePreviewView whenRestored), so the slides don't flick by in view.
  * @returns {{ phase: 'idle' | 'covering' | 'waiting' | 'revealing', reload: (trigger: () => void) => Promise<void> }}
  */
-export function usePreviewReloadTransition({ enabled, iframeReady }) {
+export function usePreviewReloadTransition({ enabled, iframeReady, hold = null }) {
   const [phase, setPhase] = useState('idle');
   const waitersRef = useRef(new Set());
   const runningRef = useRef(null);
   const mountedRef = useRef(true);
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
+  const holdRef = useRef(hold);
+  holdRef.current = hold;
 
   // Set on mount, not only cleared on unmount: StrictMode mounts twice.
   useEffect(() => {
@@ -74,7 +79,11 @@ export function usePreviewReloadTransition({ enabled, iframeReady }) {
         const loaded = new Promise((resolve) => { onLoad = resolve; waitersRef.current.add(resolve); });
         set('waiting');
         trigger();
-        await Promise.race([loaded.then(() => sleep(SETTLE_MS)), sleep(MAX_WAIT_MS)]);
+        const settled = loaded.then(() => Promise.all([
+          sleep(SETTLE_MS),
+          holdRef.current ? holdRef.current() : null,
+        ]));
+        await Promise.race([settled, sleep(MAX_WAIT_MS)]);
         waitersRef.current.delete(onLoad);
         set('revealing');
         await sleep(REVEAL_MS);

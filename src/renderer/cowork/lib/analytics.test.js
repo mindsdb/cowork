@@ -2201,6 +2201,24 @@ describe('onboarding and start events', () => {
     expect(links).toEqual([true, false, false]);
   });
 
+  it('says which task mode the message went under and what became of its instruction', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent } = await importAnalytics();
+
+    trackNewTaskMessageSent({
+      text: 'plan a birthday party',
+      start: { start_kind: 'free_text' },
+      taskMode: { task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true },
+    });
+    trackNewTaskMessageSent({ text: 'next task', start: { start_kind: 'free_text' } });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const [first, second] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties);
+    expect(first).toMatchObject({ task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true });
+    expect(second).not.toHaveProperty('task_mode');
+    expect(second).not.toHaveProperty('mode_line');
+  });
+
   it('labels a send that goes out, and says so for one the app starts itself', async () => {
     const fetchMock = mockFetch();
     const { sendWithStartVia, trackNewTaskMessageSent } = await importAnalytics();
