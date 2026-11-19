@@ -9893,6 +9893,74 @@
       "text": "3778e42a0d7b"
     }
   },
+  "artifacts:comments.guide.body": {
+    "de": {
+      "from": "ac418c7f7c8e",
+      "text": "5d2a45b2f136"
+    },
+    "es": {
+      "from": "ac418c7f7c8e",
+      "text": "cb8d8455f66d"
+    },
+    "fr": {
+      "from": "ac418c7f7c8e",
+      "text": "a26969e0e476"
+    },
+    "it": {
+      "from": "ac418c7f7c8e",
+      "text": "e69003baae1b"
+    },
+    "ja": {
+      "from": "ac418c7f7c8e",
+      "text": "6d3737f2da14"
+    },
+    "ko": {
+      "from": "ac418c7f7c8e",
+      "text": "f8ab513849da"
+    },
+    "pt-BR": {
+      "from": "ac418c7f7c8e",
+      "text": "111f68a87cf7"
+    },
+    "zh-CN": {
+      "from": "ac418c7f7c8e",
+      "text": "1584bd36a3d0"
+    }
+  },
+  "artifacts:comments.guide.title": {
+    "de": {
+      "from": "355f79f29d7d",
+      "text": "e0bf243de9a1"
+    },
+    "es": {
+      "from": "355f79f29d7d",
+      "text": "b144e59660fc"
+    },
+    "fr": {
+      "from": "355f79f29d7d",
+      "text": "f79d7a8b3783"
+    },
+    "it": {
+      "from": "355f79f29d7d",
+      "text": "b8f128c97fcd"
+    },
+    "ja": {
+      "from": "355f79f29d7d",
+      "text": "6b9190f59aa3"
+    },
+    "ko": {
+      "from": "355f79f29d7d",
+      "text": "c9fff683ae2d"
+    },
+    "pt-BR": {
+      "from": "355f79f29d7d",
+      "text": "485067ce7d94"
+    },
+    "zh-CN": {
+      "from": "355f79f29d7d",
+      "text": "6849b8254d20"
+    }
+  },
   "artifacts:comments.panel.close": {
     "de": {
       "from": "43ef09530c84",
@@ -26213,6 +26281,40 @@
       "text": "9298d07aebec"
     }
   },
+  "artifacts:stats.advanced": {
+    "de": {
+      "from": "9f088dbebd6c",
+      "text": "25e56ee28c61"
+    },
+    "es": {
+      "from": "9f088dbebd6c",
+      "text": "782990b011bc"
+    },
+    "fr": {
+      "from": "9f088dbebd6c",
+      "text": "2c36f81b43d0"
+    },
+    "it": {
+      "from": "9f088dbebd6c",
+      "text": "f844bb5e6916"
+    },
+    "ja": {
+      "from": "9f088dbebd6c",
+      "text": "7b89b24f2697"
+    },
+    "ko": {
+      "from": "9f088dbebd6c",
+      "text": "ca1138e57a26"
+    },
+    "pt-BR": {
+      "from": "9f088dbebd6c",
+      "text": "27964de71ae4"
+    },
+    "zh-CN": {
+      "from": "9f088dbebd6c",
+      "text": "d6e61888b078"
+    }
+  },
   "artifacts:stats.chartLabel": {
     "de": {
       "from": "ea3543a6a09f",
@@ -26415,6 +26517,40 @@
     "zh-CN": {
       "from": "e2d0a54968ea",
       "text": "2f9daa828907"
+    }
+  },
+  "artifacts:stats.delete.hint": {
+    "de": {
+      "from": "5015f7a64632",
+      "text": "41d7edf7f8dc"
+    },
+    "es": {
+      "from": "5015f7a64632",
+      "text": "fa6b85b7b122"
+    },
+    "fr": {
+      "from": "5015f7a64632",
+      "text": "a69cb2ed6ede"
+    },
+    "it": {
+      "from": "5015f7a64632",
+      "text": "9fded1dd152b"
+    },
+    "ja": {
+      "from": "5015f7a64632",
+      "text": "71801bb650b8"
+    },
+    "ko": {
+      "from": "5015f7a64632",
+      "text": "8c5aa43ccd55"
+    },
+    "pt-BR": {
+      "from": "5015f7a64632",
+      "text": "5d003803f69a"
+    },
+    "zh-CN": {
+      "from": "5015f7a64632",
+      "text": "1bc968485063"
     }
   },
   "artifacts:stats.delete.message": {
@@ -26959,6 +27095,74 @@
     "zh-CN": {
       "from": "246d3cba0e4f",
       "text": "c2c8e681a770"
+    }
+  },
+  "artifacts:stats.guide.body": {
+    "de": {
+      "from": "63676d24ea10",
+      "text": "b1038a6920af"
+    },
+    "es": {
+      "from": "63676d24ea10",
+      "text": "1621333dade7"
+    },
+    "fr": {
+      "from": "63676d24ea10",
+      "text": "eaf1d7062638"
+    },
+    "it": {
+      "from": "63676d24ea10",
+      "text": "79ec5711df4d"
+    },
+    "ja": {
+      "from": "63676d24ea10",
+      "text": "bc154f30ce00"
+    },
+    "ko": {
+      "from": "63676d24ea10",
+      "text": "4e02073e0609"
+    },
+    "pt-BR": {
+      "from": "63676d24ea10",
+      "text": "b97c555e68d1"
+    },
+    "zh-CN": {
+      "from": "63676d24ea10",
+      "text": "ae84e2c39559"
+    }
+  },
+  "artifacts:stats.guide.title": {
+    "de": {
+      "from": "b4a7365740ef",
+      "text": "c0c20fa65564"
+    },
+    "es": {
+      "from": "b4a7365740ef",
+      "text": "bb847bb458b2"
+    },
+    "fr": {
+      "from": "b4a7365740ef",
+      "text": "de2151f9fcb9"
+    },
+    "it": {
+      "from": "b4a7365740ef",
+      "text": "29b83f6291ae"
+    },
+    "ja": {
+      "from": "b4a7365740ef",
+      "text": "beb8f56ae090"
+    },
+    "ko": {
+      "from": "b4a7365740ef",
+      "text": "a3352d329619"
+    },
+    "pt-BR": {
+      "from": "b4a7365740ef",
+      "text": "0038516d938d"
+    },
+    "zh-CN": {
+      "from": "b4a7365740ef",
+      "text": "89abe8c6ac13"
     }
   },
   "artifacts:stats.loading": {

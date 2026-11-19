@@ -548,3 +548,34 @@ describe('StatsPanel errors', () => {
     expect(host.openExternal.mock.calls[0][0]).toMatch(/^https:\/\//);
   });
 });
+
+// The guide card and Advanced (ENG-4455): the guide sits in the middle with
+// no views and at the bottom with them; Delete analytics is folded under
+// Advanced so its red button is not on show.
+describe('StatsPanel guide and Advanced', () => {
+  const slot = (title) => screen.getByText(title, { selector: '.artifact-panel-guide-title' }).closest('.artifact-panel-guide-slot');
+
+  it('puts the guide at the bottom with views, and Delete analytics under a closed Advanced', async () => {
+    const { user, onDeleteAnalytics } = renderPanel();
+    expect(slot('Stats')).toHaveAttribute('data-placement', 'bottom');
+
+    const advanced = screen.getByText('Advanced').closest('details');
+    expect(advanced).not.toHaveAttribute('open');
+    expect(within(advanced).getByRole('button', { name: 'Delete analytics' })).toBeInTheDocument();
+
+    await user.click(screen.getByText('Advanced'));
+    expect(advanced).toHaveAttribute('open');
+    await user.click(within(advanced).getByRole('button', { name: 'Delete analytics' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Delete/ }));
+    expect(onDeleteAnalytics).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts the guide in the middle with no views, turning analytics on from it when off', async () => {
+    const { user, onToggleTracking } = renderPanel({ data: { ...EMPTY, tracking: false } });
+    expect(slot('Viewer analytics is off')).toHaveAttribute('data-placement', 'center');
+    expect(screen.queryByText('Advanced')).toBeNull();
+
+    await user.click(within(slot('Viewer analytics is off')).getByRole('button', { name: 'Turn on' }));
+    expect(onToggleTracking).toHaveBeenCalledWith(true);
+  });
+});

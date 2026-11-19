@@ -161,6 +161,10 @@
       "edit": "Bearbeiten fehlgeschlagen",
       "delete": "Löschen fehlgeschlagen",
       "markRead": "Feedback konnte nicht als gelesen markiert werden"
+    },
+    "guide": {
+      "title": "Kommentare",
+      "body": "Wechsle unter der Seite zu Kommentieren und klicke dann auf eine beliebige Stelle, um eine Notiz zu hinterlassen. Klicke hier auf einen Kommentar, um zu sehen, wo er ist."
     }
   },
   "export": {
@@ -800,7 +804,8 @@
       "action": "Analyse löschen",
       "title": "Besucheranalyse löschen?",
       "message": "Alle für diese Seite erfassten Aufrufe, Besuche und Besucher werden entfernt. Das lässt sich nicht rückgängig machen.",
-      "confirm": "Löschen"
+      "confirm": "Löschen",
+      "hint": "Entfernt alle für dieses Artefakt erfassten Aufrufe und Besuche. Das kann nicht rückgängig gemacht werden."
     },
     "duration": {
       "seconds": "{s} s",
@@ -808,7 +813,12 @@
       "minutesSeconds": "{m} min {s} s",
       "hours": "{h} h",
       "hoursMinutes": "{h} h {m} min"
-    }
+    },
+    "guide": {
+      "title": "Statistiken",
+      "body": "Wer deinen geteilten Link geöffnet hat, wann und wie lange. Unter Teilen legst du fest, was erfasst wird."
+    },
+    "advanced": "Erweitert"
   },
   "refPill": {
     "open": "{title} öffnen"

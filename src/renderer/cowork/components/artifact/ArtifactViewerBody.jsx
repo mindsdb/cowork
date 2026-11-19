@@ -309,7 +309,9 @@ export function ArtifactViewerBody({
     <>
       {/* Text renders inline; other artifacts use a sandboxed iframe. */}
       <div className="artifact-viewer-body">
-        <div className="artifact-review-stage">
+        {/* With Comments' pill the page ends above a margin, and the pill
+            sits on the edge between them, as Live edit's does. */}
+        <div className={`artifact-review-stage${commentsOpen && commentsEnabled ? ' has-mode-pill' : ''}`}>
           <div className="artifact-viewer-canvas" style={{ overflow: isText ? 'auto' : 'hidden' }}>
             {/* A framed preview sits in its surface from the first render. The
                 workspace source loads separately and, on a slow connection,

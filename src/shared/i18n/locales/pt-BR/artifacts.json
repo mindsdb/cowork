@@ -161,6 +161,10 @@
       "edit": "Falha ao editar",
       "delete": "Falha ao excluir",
       "markRead": "Falha ao marcar os comentários como lidos"
+    },
+    "guide": {
+      "title": "Comentários",
+      "body": "Mude para Comentar abaixo da página e clique em qualquer lugar para deixar uma nota. Clique em um comentário aqui para ver onde ele está."
     }
   },
   "export": {
@@ -800,7 +804,8 @@
       "action": "Excluir análise",
       "title": "Excluir a análise de visitantes?",
       "message": "Todas as visualizações, visitas e visitantes registrados para esta página serão removidos. Não é possível desfazer.",
-      "confirm": "Excluir"
+      "confirm": "Excluir",
+      "hint": "Remove todas as visualizações e visitas registradas para este artefato. Não é possível desfazer."
     },
     "duration": {
       "seconds": "{s}s",
@@ -808,7 +813,12 @@
       "minutesSeconds": "{m}min {s}s",
       "hours": "{h}h",
       "hoursMinutes": "{h}h {m}min"
-    }
+    },
+    "guide": {
+      "title": "Estatísticas",
+      "body": "Quem abriu seu link compartilhado, quando e por quanto tempo. Escolha o que é coletado em Compartilhar."
+    },
+    "advanced": "Avançado"
   },
   "refPill": {
     "open": "Abrir {title}"

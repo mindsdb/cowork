@@ -43,6 +43,9 @@ describe('ViewerModeRail', () => {
     await user.hover(live);
     const tip = await screen.findByText('Change text and layout on the page', { selector: '.artifact-mode-rail-tip span' });
     expect(tip.closest('.artifact-mode-rail-tip')).toHaveTextContent('Live edit');
+    // Not a <strong>: the dark theme paints every strong in the ink colour,
+    // which is the tooltip's background there.
+    expect(tip.closest('.artifact-mode-rail-tip').querySelector('strong')).toBeNull();
   });
 
   it('shows the tooltip on keyboard focus too', async () => {

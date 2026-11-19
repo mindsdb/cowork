@@ -161,6 +161,10 @@
       "edit": "No se pudo editar",
       "delete": "No se pudo eliminar",
       "markRead": "No se pudieron marcar los comentarios como leídos"
+    },
+    "guide": {
+      "title": "Comentarios",
+      "body": "Cambia a Comentar debajo de la página y haz clic en cualquier parte para dejar una nota. Haz clic en un comentario aquí para ver dónde está."
     }
   },
   "export": {
@@ -800,7 +804,8 @@
       "action": "Eliminar análisis",
       "title": "¿Eliminar el análisis de visitantes?",
       "message": "Se eliminarán todas las vistas, visitas y visitantes registrados para esta página. No se puede deshacer.",
-      "confirm": "Eliminar"
+      "confirm": "Eliminar",
+      "hint": "Elimina todas las vistas y visitas registradas para este artefacto. No se puede deshacer."
     },
     "duration": {
       "seconds": "{s} s",
@@ -808,7 +813,12 @@
       "minutesSeconds": "{m} min {s} s",
       "hours": "{h} h",
       "hoursMinutes": "{h} h {m} min"
-    }
+    },
+    "guide": {
+      "title": "Estadísticas",
+      "body": "Quién abrió tu enlace compartido, cuándo y durante cuánto tiempo. Elige qué se recopila en Compartir."
+    },
+    "advanced": "Avanzado"
   },
   "refPill": {
     "open": "Abrir {title}"

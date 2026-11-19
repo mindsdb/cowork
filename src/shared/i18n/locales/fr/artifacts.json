@@ -161,6 +161,10 @@
       "edit": "Échec de la modification",
       "delete": "Échec de la suppression",
       "markRead": "Impossible de marquer le retour comme lu"
+    },
+    "guide": {
+      "title": "Commentaires",
+      "body": "Passez en mode Commenter sous la page, puis cliquez n'importe où pour laisser une note. Cliquez sur un commentaire ici pour voir où il se trouve."
     }
   },
   "export": {
@@ -800,7 +804,8 @@
       "action": "Supprimer l’analyse",
       "title": "Supprimer l’analyse des visiteurs ?",
       "message": "Toutes les vues, visites et visiteurs enregistrés pour cette page seront supprimés. Cette action est irréversible.",
-      "confirm": "Supprimer"
+      "confirm": "Supprimer",
+      "hint": "Supprime toutes les vues et visites enregistrées pour cet artefact. Cette action est irréversible."
     },
     "duration": {
       "seconds": "{s} s",
@@ -808,7 +813,12 @@
       "minutesSeconds": "{m} min {s} s",
       "hours": "{h} h",
       "hoursMinutes": "{h} h {m} min"
-    }
+    },
+    "guide": {
+      "title": "Statistiques",
+      "body": "Qui a ouvert votre lien partagé, quand et pendant combien de temps. Choisissez ce qui est collecté dans Partager."
+    },
+    "advanced": "Avancé"
   },
   "refPill": {
     "open": "Ouvrir {title}"

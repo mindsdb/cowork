@@ -68,3 +68,20 @@ describe('CommentsPanel', () => {
     expect(onDeleteThread).toHaveBeenCalledWith('t-open');
   });
 });
+
+// The guide card says what Comments is for: in the middle of an empty tab,
+// under the list once there are comments (ENG-4455).
+describe('CommentsPanel guide', () => {
+  const slot = (title) => screen.getByText(title, { selector: '.artifact-panel-guide-title' }).closest('.artifact-panel-guide-slot');
+
+  it('sits in the middle of an empty tab, naming what is empty', () => {
+    open({ threads: [] });
+    expect(slot('No open comments')).toHaveAttribute('data-placement', 'center');
+    expect(slot('No open comments')).toHaveTextContent(/click anything on it to leave a note/);
+  });
+
+  it('moves under the list once there are comments', () => {
+    open();
+    expect(slot('Comments')).toHaveAttribute('data-placement', 'bottom');
+  });
+});

@@ -161,6 +161,10 @@
       "edit": "Impossibile modificare",
       "delete": "Impossibile eliminare",
       "markRead": "Impossibile segnare il feedback come letto"
+    },
+    "guide": {
+      "title": "Commenti",
+      "body": "Passa a Commenta sotto la pagina, poi fai clic su qualsiasi punto per lasciare una nota. Fai clic su un commento qui per vedere dove si trova."
     }
   },
   "export": {
@@ -800,7 +804,8 @@
       "action": "Elimina analisi",
       "title": "Eliminare l’analisi dei visitatori?",
       "message": "Verranno rimosse tutte le visualizzazioni, le visite e i visitatori registrati per questa pagina. L’operazione non si può annullare.",
-      "confirm": "Elimina"
+      "confirm": "Elimina",
+      "hint": "Rimuove tutte le visualizzazioni e le visite registrate per questo artefatto. L'operazione non può essere annullata."
     },
     "duration": {
       "seconds": "{s} s",
@@ -808,7 +813,12 @@
       "minutesSeconds": "{m} min {s} s",
       "hours": "{h} h",
       "hoursMinutes": "{h} h {m} min"
-    }
+    },
+    "guide": {
+      "title": "Statistiche",
+      "body": "Chi ha aperto il tuo link condiviso, quando e per quanto tempo. Scegli cosa raccogliere in Condividi."
+    },
+    "advanced": "Avanzate"
   },
   "refPill": {
     "open": "Apri {title}"

@@ -52,7 +52,7 @@ export function ViewerModeRail({ label, tabs, panelId }) {
             side="left"
             content={(
               <span className="artifact-mode-rail-tip">
-                <strong>{tab.label}</strong>
+                <span className="artifact-mode-rail-tip-title">{tab.label}</span>
                 <span>{tab.description}</span>
               </span>
             )}

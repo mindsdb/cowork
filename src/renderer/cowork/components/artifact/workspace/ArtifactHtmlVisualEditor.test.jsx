@@ -668,6 +668,16 @@ describe('ArtifactHtmlVisualEditor unsaved changes', () => {
     expect(rows[1]).toHaveTextContent('Was: Body text');
   });
 
+  it('keeps the status card in the middle until there is an edit, then at the bottom', async () => {
+    render(<Controlled />);
+    await screen.findByTitle('Edit artifact on canvas');
+    const card = () => within(panel).getByRole('status').closest('.artifact-panel-guide-slot');
+    expect(card()).toHaveAttribute('data-placement', 'center');
+
+    await edit('cowork-edit-0', 'Heading', 'New title');
+    expect(card()).toHaveAttribute('data-placement', 'bottom');
+  });
+
   it('undoes one change with its ×, keeping the others', async () => {
     const onChange = vi.fn();
     render(<Controlled onChange={onChange} />);

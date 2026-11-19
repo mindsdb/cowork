@@ -20,6 +20,7 @@ import { XIcon } from '../comments/icons';
 import { StatsChart } from './StatsChart';
 import { PageBars } from './PageBars';
 import { ActivityList } from './ActivityList';
+import { PanelGuide } from '../PanelGuide';
 import { StatsFailure, StatsSkeleton, describeStatsError } from './StatsStates';
 import { CREDITS_REQUIRED_CODE, TRACKING_OFF_CODE, TrackingRefusal } from './TrackingRefusal';
 import { exactTime, formatDuration, formatPercent } from './formatStats';
@@ -112,6 +113,23 @@ function LegacyViewers({ viewers }) {
   );
 }
 
+// Delete analytics, folded under Advanced so the red button is not the first
+// thing an owner sees.
+function AdvancedActions({ deleting, onDelete }) {
+  const { t } = useTranslation('artifacts');
+  return (
+    <details className="artifact-panel-advanced shrink-0">
+      <summary>{t('stats.advanced')}</summary>
+      <div className="flex flex-col items-start gap-2 pt-2">
+        <span className={MUTED}>{t('stats.delete.hint')}</span>
+        <Button size="sm" variant="danger" disabled={deleting} onClick={onDelete}>
+          {t('stats.delete.action')}
+        </Button>
+      </div>
+    </details>
+  );
+}
+
 function TrackingOff({ busy, onTurnOn }) {
   const { t } = useTranslation('artifacts');
   return (
@@ -154,7 +172,7 @@ function Overview({
   );
   return (
     <>
-      {!tracking && <TrackingOff busy={trackingBusy} onTurnOn={onToggleTracking} />}
+      {!tracking && hasViews && <TrackingOff busy={trackingBusy} onTurnOn={onToggleTracking} />}
       {hasViews ? (
         <>
           <div className="grid shrink-0 grid-cols-2 gap-2">
@@ -197,19 +215,22 @@ function Overview({
             <StatsChart daily={daily} />
             <span className="text-[11px] leading-[14px] text-ink-4">{t('stats.daysInUtc')}</span>
           </Section>
-          {onDelete && (
-            <div className="flex shrink-0 justify-start pt-1">
-              <Button size="sm" variant="danger" disabled={deleting} onClick={onDelete}>
-                {t('stats.delete.action')}
-              </Button>
-            </div>
-          )}
+          <PanelGuide placement="bottom" title={t('stats.guide.title')} text={t('stats.guide.body')} />
+          {onDelete && <AdvancedActions deleting={deleting} onDelete={onDelete} />}
         </>
       ) : (
-        <div className="flex flex-col items-center gap-1 py-6 text-center">
-          <span className="text-[13px] font-medium leading-[18px] text-ink-2">{t('stats.noViews')}</span>
-          {tracking && <span className="text-[12px] leading-[16px] text-ink-4">{t('stats.noViewsHint')}</span>}
-        </div>
+        // No views yet: the guide in the middle, turning analytics on from
+        // here when it is off.
+        <PanelGuide
+          title={tracking ? t('stats.noViews') : t('stats.off.title')}
+          text={tracking ? t('stats.noViewsHint') : t('stats.off.body')}
+        >
+          {!tracking && onToggleTracking && (
+            <Button size="sm" variant="primary" disabled={trackingBusy} onClick={() => onToggleTracking(true)}>
+              {t('stats.off.turnOn')}
+            </Button>
+          )}
+        </PanelGuide>
       )}
     </>
   );

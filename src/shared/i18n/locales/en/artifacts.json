@@ -161,6 +161,10 @@
       "edit": "Failed to edit",
       "delete": "Failed to delete",
       "markRead": "Failed to mark feedback as read"
+    },
+    "guide": {
+      "title": "Comments",
+      "body": "Switch to Comment under the page, then click anything on it to leave a note. Click a comment here to see where it is."
     }
   },
   "export": {
@@ -800,7 +804,8 @@
       "action": "Delete analytics",
       "title": "Delete viewer analytics?",
       "message": "This removes every view, visit and viewer recorded for this page. It can't be undone.",
-      "confirm": "Delete"
+      "confirm": "Delete",
+      "hint": "Removes every view and visit recorded for this artifact. This can't be undone."
     },
     "duration": {
       "seconds": "{s}s",
@@ -808,7 +813,12 @@
       "minutesSeconds": "{m}m {s}s",
       "hours": "{h}h",
       "hoursMinutes": "{h}h {m}m"
-    }
+    },
+    "guide": {
+      "title": "Stats",
+      "body": "Who opened your shared link, when, and for how long. Choose what's collected in Share."
+    },
+    "advanced": "Advanced"
   },
   "refPill": {
     "open": "Open {title}"

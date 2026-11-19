@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import Ico from '../../Icons';
 import { Spinner, Tooltip } from '../../ui';
 import { XIcon } from '../comments/icons';
+import { PanelGuide } from '../PanelGuide';
 import { useTranslation } from '../../../../lib/i18n';
 
 /** The panel's frame: the header with its close, and the slot the editor
@@ -74,22 +75,26 @@ export function LiveEditControls({
 }) {
   const { t } = useTranslation('artifacts');
   if (!target) return null;
+  const edited = changes?.length > 0;
   return createPortal(
     <div className="artifact-live-edit-controls">
-      <div className="artifact-live-edit-status" role="status">
-        <span className={`artifact-html-edit-indicator${active ? ' is-active' : ''}`} aria-hidden="true" />
-        <div className="artifact-live-edit-status-text">
-          <strong>{heading}</strong>
-          {guidance && <span className={isError ? 'is-error' : ''}>{guidance}</span>}
-        </div>
-      </div>
-      {advanced && (
-        <button type="button" className="artifact-live-edit-advanced" onClick={advanced.onToggle}>
-          {advanced.on ? Ico.edit(14) : Ico.code(14)}
-          {advanced.on ? t('htmlEditor.back') : t('htmlEditor.sourceCode')}
-        </button>
-      )}
+      {/* The edits fill the panel from the top; the status card waits in the
+          middle until there are some, then moves to the bottom. */}
       <UnsavedChanges changes={changes} onUndo={onUndoChange} />
+      <PanelGuide
+        status
+        title={heading}
+        text={guidance}
+        isError={isError}
+        active={active}
+        placement={edited ? 'bottom' : 'center'}
+        after={advanced && (
+          <button type="button" className="artifact-live-edit-advanced" onClick={advanced.onToggle}>
+            {advanced.on ? Ico.edit(14) : Ico.code(14)}
+            {advanced.on ? t('htmlEditor.back') : t('htmlEditor.sourceCode')}
+          </button>
+        )}
+      />
       <div className="artifact-live-edit-actions">
         <SaveDiscardButtons actions={editActions} />
       </div>

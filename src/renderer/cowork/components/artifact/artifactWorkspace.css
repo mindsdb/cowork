@@ -58,6 +58,10 @@
 .artifact-review-stage { flex: 1 1 auto; min-width: 0; min-height: 0; position: relative; }
 .artifact-viewer-canvas { width: 100%; height: 100%; min-width: 0; min-height: 0; position: relative; background: var(--surface-2); }
 .artifact-mode-surface { position: absolute; inset: 0; min-width: 0; min-height: 0; }
+/* Comments' Navigate / Comment pill sits on the page's bottom edge, half in
+   the margin under it, as Live edit's pill does. */
+.artifact-review-stage.has-mode-pill { background: var(--surface-2); }
+.artifact-review-stage.has-mode-pill > .artifact-viewer-canvas { height: calc(100% - 28px); box-shadow: 0 1px 0 var(--line); }
 .artifact-mode-surface[hidden] { display: none; }
 /* The one side panel (ViewerSidePanel, ENG-4455): Live edit, the comments
    inbox or Stats, docked beside the stage. It slides in with the first and
@@ -97,18 +101,30 @@
 /* The tooltip is ink on the surface colour; a `strong` coloured by an outer
    rule came out ink on ink, an empty line above the hint. The name takes the
    tooltip's own colour, the hint a softer tone under it. */
-.artifact-mode-rail-tip strong { font-weight: 600; color: inherit; }
-.artifact-mode-rail-tip span { color: inherit; opacity: .78; font-weight: 400; }
+.artifact-mode-rail-tip > span { color: inherit; opacity: .78; font-weight: 400; }
+.artifact-mode-rail-tip > .artifact-mode-rail-tip-title { opacity: 1; font-weight: 600; }
 /* Live edit's panel (LiveEditPanel): what the editor is doing, its mode,
    Advanced, and Save / Discard at the foot. */
 .artifact-live-edit-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .artifact-live-edit-controls { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.artifact-live-edit-status { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
-.artifact-live-edit-status .artifact-html-edit-indicator { margin-top: 4px; }
-.artifact-live-edit-status-text { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.artifact-live-edit-status-text strong { color: var(--ink); font: 600 12px/16px var(--font-body); }
-.artifact-live-edit-status-text span { color: var(--ink-3); font: 12px/16px var(--font-body); overflow-wrap: anywhere; }
-.artifact-live-edit-status-text span.is-error { color: var(--danger); }
+/* PanelGuide: the card saying what a side panel is for. In the middle of an
+   empty panel, at the bottom once the panel has something to show. */
+.artifact-panel-guide-slot { flex: none; display: flex; flex-direction: column; gap: 10px; animation: artifact-guide-settle var(--dur-layout, 220ms) var(--ease-out, ease-out); }
+.artifact-panel-guide-slot[data-placement="center"] { margin-block: auto; }
+.artifact-panel-guide-slot[data-placement="bottom"] { margin-top: auto; }
+.artifact-panel-guide { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.artifact-panel-guide .artifact-html-edit-indicator { margin-top: 4px; }
+.artifact-panel-guide-text { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.artifact-panel-guide-title { color: var(--ink); font: 600 12px/16px var(--font-body); }
+.artifact-panel-guide-text > span:not(.artifact-panel-guide-title) { color: var(--ink-3); font: 12px/16px var(--font-body); overflow-wrap: anywhere; }
+.artifact-panel-guide-text > span.is-error { color: var(--danger); }
+.artifact-panel-guide-actions { display: flex; gap: 6px; padding-top: 5px; }
+@keyframes artifact-guide-settle { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .artifact-panel-guide-slot { animation: none; } }
+/* Stats' Advanced: the destructive actions, folded away. */
+.artifact-panel-advanced summary { width: fit-content; color: var(--ink-3); font: 500 12px/16px var(--font-body); cursor: pointer; }
+.artifact-panel-advanced summary:hover { color: var(--ink); }
+.artifact-panel-advanced summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .artifact-live-edit-advanced,
 .artifact-live-edit-actions button { height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-3); background: var(--surface); font: 600 12px/1 var(--font-body); cursor: pointer; transition: background var(--dur-hover) ease, color var(--dur-hover) ease; }
 .artifact-live-edit-advanced:hover,
@@ -133,7 +149,7 @@
 .artifact-live-edit-change-undo:hover { color: var(--ink); background: var(--surface-2); }
 .artifact-live-edit-change-undo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .artifact-live-edit-changes li { animation: none; } }
-.artifact-live-edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
+.artifact-live-edit-actions { display: flex; justify-content: flex-end; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
 .artifact-live-edit-actions:empty { display: none; }
 .artifact-live-edit-actions button:disabled { cursor: default; }
 .artifact-live-edit-actions .artifact-discard-edit:disabled { opacity: .6; }
@@ -210,6 +226,9 @@
 }
 .artifact-html-edit-canvas { position: relative; flex: 1; min-height: 0; padding: 10px; }
 .artifact-html-edit-canvas[hidden] { display: none; }
+/* Room under the page for the Navigate / Edit text pill, which sits on the
+   page's bottom edge: half on the page, half in this margin. */
+.artifact-html-edit-canvas:has(> .artifact-mode-switch) { padding-bottom: 28px; }
 .artifact-html-edit-iframe {
   width: 100%;
   height: 100%;

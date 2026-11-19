@@ -21,6 +21,7 @@ import { InboxCard } from './InboxCard';
 import { UnanchoredComposer } from './UnanchoredComposer';
 import { XIcon } from './icons';
 import { Tooltip } from '../../ui';
+import { PanelGuide } from '../PanelGuide';
 import { useTranslation } from '../../../../lib/i18n';
 
 // It sits in the viewer's shared side panel (ViewerSidePanel), which plays
@@ -162,10 +163,9 @@ export function CommentsPanel({
       {/* Card list — scrollbar hugs the panel edge instead of stealing card width. */}
       <div ref={listRef}
         className="flex-1 overflow-y-auto flex flex-col gap-[10px] -mr-[10px] pr-1 overscroll-contain">
+        {/* Nothing in this tab: the guide, in the middle of the list. */}
         {visible.length === 0 && (
-          <div className="text-center text-[12px] leading-[16px] text-ink-4 py-6">
-            {tr(`comments.panel.empty.${tab}`)}
-          </div>
+          <PanelGuide title={tr(`comments.panel.empty.${tab}`)} text={tr('comments.guide.body')} />
         )}
         {visible.map((t) => (
           <InboxCard
@@ -189,6 +189,11 @@ export function CommentsPanel({
           />
         ))}
       </div>
+
+      {/* With comments to show, the guide waits under them. */}
+      {visible.length > 0 && (
+        <PanelGuide placement="bottom" title={tr('comments.guide.title')} text={tr('comments.guide.body')} />
+      )}
 
       {/* Pinned composer — general (unanchored) comments, selector: null.
           New threads are open and sort newest-first, so scroll to top. */}
