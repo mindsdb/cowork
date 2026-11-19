@@ -186,6 +186,20 @@ describe('performSignOutCleanup', () => {
     expect(order).toEqual(['revoke-token', 'refresh-token']);
   });
 
+  it('has the sidecar revoke its turn keys with the live token before the session ends', async () => {
+    const order: string[] = [];
+    const deps = makeDeps({
+      getRevokeToken: vi.fn(async () => 'access-token'),
+      forgetMindsCredential: vi.fn(async () => { order.push('forget'); }),
+      revokeDeviceKeyAndEndSession: vi.fn(async () => { order.push('end-session'); }),
+    });
+
+    await performSignOutCleanup(deps);
+
+    expect(deps.forgetMindsCredential).toHaveBeenCalledWith('access-token');
+    expect(order).toEqual(['forget', 'end-session']);
+  });
+
   it('does not wait on the detached Keycloak revoke', async () => {
     const revoke = deferred<void>();
     const deps = makeDeps({ revokeDeviceKeyAndEndSession: vi.fn(() => revoke.promise) });

@@ -29,6 +29,7 @@ vi.mock('./keychain-service', () => ({
   deleteMindsApiKey: async (_scope: string | null) => { state.apiKey = null; },
 }));
 vi.mock('./server-process', () => ({
+  getRunningSidecarOrgId: () => null,
   getServerPort: () => 8765,
   isServerRunning: () => state.running,
   isServerStarting: () => false,
