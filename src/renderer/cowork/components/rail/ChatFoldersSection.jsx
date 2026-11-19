@@ -34,15 +34,15 @@ function FolderFiles({ state }) {
   if (!state || state.loading) {
     return <p className="text-[12px] text-ink-4 px-1 pb-0.5">{t('rail.workingFolders.loadingFiles')}</p>;
   }
-  if (state.error) {
-    return <p className="text-xs px-1 pb-0.5 text-danger">{state.error}</p>;
-  }
+  const errorLine = state.error ? <p className="text-xs px-1 pb-0.5 text-danger">{state.error}</p> : null;
+  if (state.error && state.files.length === 0) return errorLine;
   // A cut listing may hold no visible files at all, so it is never "empty".
   if (state.files.length === 0 && !state.truncated) {
     return <p className="text-[12px] text-ink-4 px-1 pb-0.5">{t('rail.workingFolders.emptyFolder')}</p>;
   }
   return (
     <>
+      {errorLine}
       {state.files.length > 0 && (
         <div
           className={clsx('flex flex-col gap-0.5', state.files.length > 10 && 'overflow-y-auto pr-1 scroll-clean')}
@@ -176,9 +176,15 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
       })
       .catch((err) => {
         if (fileTickets.current[folderId] !== ticket) return;
+        // A quiet refresh keeps the rows already shown, as the folder list does.
         setFilesByFolder((prev) => ({
           ...prev,
-          [folderId]: { loading: false, files: [], error: err?.message || tShell('listFailed') },
+          [folderId]: {
+            ...(quiet ? prev[folderId] : {}),
+            loading: false,
+            files: quiet ? prev[folderId]?.files || [] : [],
+            error: err?.message || tShell('listFailed'),
+          },
         }));
       });
   }, [conversationId]);

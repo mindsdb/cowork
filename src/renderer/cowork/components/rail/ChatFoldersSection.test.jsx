@@ -227,6 +227,25 @@ describe('ChatFoldersSection', () => {
     expect(screen.getByText('reports')).toBeTruthy();
   });
 
+  it('keeps an open card\'s files when a turn-driven refresh of them fails', async () => {
+    let view;
+    await act(async () => {
+      view = render(<ChatFoldersSection conversationId="chat-1" refreshKey="idle:0:0" />);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show files in reports' }));
+    });
+    await screen.findAllByTestId('folder-file-row');
+    api.listConversationFolderFiles.mockRejectedValue(Object.assign(new Error('Server busy'), { status: 503 }));
+
+    await act(async () => {
+      view.rerender(<ChatFoldersSection conversationId="chat-1" refreshKey="streaming:1:2" />);
+    });
+
+    expect(await screen.findByText('Server busy')).toBeTruthy();
+    expect(screen.getAllByTestId('folder-file-row').map((r) => r.textContent)).toEqual(['q3/summary.csv']);
+  });
+
   it('shows nothing when the server has no folder routes', async () => {
     api.listConversationFolders.mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
     let view;
