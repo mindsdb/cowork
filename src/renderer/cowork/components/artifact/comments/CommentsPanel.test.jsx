@@ -77,7 +77,7 @@ describe('CommentsPanel guide', () => {
   it('sits in the middle of an empty tab, naming what is empty', () => {
     open({ threads: [] });
     expect(slot('No open comments')).toHaveAttribute('data-placement', 'center');
-    expect(slot('No open comments')).toHaveTextContent(/click anything on it to leave a note/);
+    expect(slot('No open comments')).toHaveTextContent(/anyone you share it with can comment too/);
   });
 
   it('moves under the list once there are comments', () => {
