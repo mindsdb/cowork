@@ -167,6 +167,40 @@ describe('handing custom MCP connections over at server start', () => {
     expect(tokens.calls).toBe(0);
   });
 
+  it('hands over the kept access token of a login that brought no refresh token, without a warning', async () => {
+    await seed(ROOT, ID);
+    const expiresAt = Date.now() + 3_600_000;
+    await writePart(ROOT, ID, 'access', JSON.stringify({ accessToken: 'AT-kept', expiresAt }));
+
+    expect(await handOverCustomConnection(ROOT, ID, current, fetchFn)).toBe('done');
+
+    expect(server.puts[0].body).toMatchObject({ access_token: 'AT-kept', expires_at: new Date(expiresAt).toISOString() });
+    expect(tokens.calls).toBe(0);
+    expect(sent).toEqual([]);
+    expect(hasRefreshLoop(ROOT, ID)).toBe(false);
+  });
+
+  it('hands over a kept access token that never expires', async () => {
+    await seed(ROOT, ID);
+    await writePart(ROOT, ID, 'access', JSON.stringify({ accessToken: 'AT-forever', expiresAt: null }));
+
+    expect(await handOverCustomConnection(ROOT, ID, current, fetchFn)).toBe('done');
+
+    expect(server.puts[0].body).toMatchObject({ access_token: 'AT-forever' });
+    expect(server.puts[0].body).not.toHaveProperty('expires_at');
+    expect(sent).toEqual([]);
+  });
+
+  it('warns the user when the kept access token has expired', async () => {
+    await seed(ROOT, ID);
+    await writePart(ROOT, ID, 'access', JSON.stringify({ accessToken: 'AT-old', expiresAt: Date.now() - 1000 }));
+
+    expect(await handOverCustomConnection(ROOT, ID, current, fetchFn)).toBe('done');
+
+    expect(server.puts[0].body).not.toHaveProperty('access_token');
+    expect(sent).toEqual([{ channel: 'oauth:refresh-error', payload: { engine: 'Tracker', name: ID, accountEmail: '', permanent: true } }]);
+  });
+
   it('warns the user when a login connection has no refresh token to restore it with', async () => {
     await seed(ROOT, ID);
 

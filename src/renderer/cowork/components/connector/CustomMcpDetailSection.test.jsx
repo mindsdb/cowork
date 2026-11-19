@@ -157,24 +157,40 @@ describe('CustomMcpDetailSection', () => {
     expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['delete_issue']);
   });
 
-  it('ignores a switch answer that arrives after the panel moved to another connection', async () => {
-    const other = { engine: 'custom_mcp', name: `cm-${'b'.repeat(32)}` };
-    const otherTools = [{ name: 'list_pages', description: '', readOnly: true, allowed: true }];
+  it('starts nothing when a reconnect answers after the panel closed', async () => {
+    let finishReconnect;
+    bridge.customMcpReconnect.mockImplementation(() => new Promise((resolve) => { finishReconnect = resolve; }));
+    const { unmount } = render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={vi.fn()} confirm={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Reconnect' }));
+
+    unmount();
+    finishReconnect({ ok: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(bridge.customMcpTools).toHaveBeenCalledTimes(1);
+    expect(bridge.customMcpSummary).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts nothing when a switch answers after the panel closed', async () => {
     let finishSave;
-    bridge.customMcpTools.mockImplementation(async (name) => ({ ok: true, tools: name === other.name ? otherTools : TOOLS }));
-    bridge.customMcpSetTools.mockImplementationOnce(() => new Promise((resolve) => { finishSave = resolve; })).mockResolvedValue({ ok: true });
-    const props = { onDisconnect: vi.fn(async () => true), confirm: vi.fn(async () => true) };
-    const { rerender } = render(<CustomMcpDetailSection connection={CONNECTION} {...props} />);
+    let finishReload;
+    bridge.customMcpTools
+      .mockResolvedValueOnce({ ok: true, tools: TOOLS })
+      .mockImplementationOnce(() => new Promise((resolve) => { finishReload = resolve; }));
+    bridge.customMcpReconnect.mockResolvedValue({ ok: true });
+    bridge.customMcpSetTools.mockImplementation(() => new Promise((resolve) => { finishSave = resolve; }));
+    const { unmount } = render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={vi.fn()} confirm={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Reconnect' }));
+    await screen.findByText('Reconnected. Your tool choices are kept.');
+    // The switch drops the reload in flight and owes one once saved.
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
 
-    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
-    rerender(<CustomMcpDetailSection connection={other} {...props} />);
-    await screen.findByRole('switch', { name: 'Let Anton use list_pages' });
-    finishSave({ ok: false, code: 'unavailable', reason: 'x' });
+    unmount();
+    finishReload({ ok: true, tools: TOOLS });
+    finishSave({ ok: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use list_pages' }).hasAttribute('disabled')).toBe(false));
-    expect(screen.queryByRole('switch', { name: 'Let Anton use delete_issue' })).toBeNull();
-    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use list_pages' }));
-    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(other.name, []);
+    expect(bridge.customMcpTools).toHaveBeenCalledTimes(2);
   });
 
   it('disconnects only once confirmed', async () => {

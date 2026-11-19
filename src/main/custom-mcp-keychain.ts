@@ -20,7 +20,7 @@ const PIECE_BYTES = 1800;
 const COUNT_PATTERN = /^([0-9a-f]{16}):([1-9][0-9]{0,3})$/;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
 
-export type CustomMcpPart = 'settings' | 'tools' | 'refresh' | 'secret';
+export type CustomMcpPart = 'settings' | 'tools' | 'refresh' | 'secret' | 'access';
 
 export class CustomMcpKeychainError extends Error {
   constructor(message: string, readonly cause?: unknown) {

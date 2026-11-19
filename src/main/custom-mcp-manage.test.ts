@@ -276,7 +276,7 @@ describe('reconnect', () => {
     expect(revokes.map((r) => String(r.init.body).includes('token=RT-new'))).toEqual([true]);
   });
 
-  it('drops the old refresh token when the new login brings none', async () => {
+  it('drops the old refresh token and keeps the access token when the new login brings no refresh token', async () => {
     await seed();
     const table = { ...LOGIN_SERVER, [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-new', token_type: 'Bearer' } } };
     const { deps } = loginServer(table);
@@ -284,7 +284,19 @@ describe('reconnect', () => {
     expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps)).toEqual({ ok: true });
 
     expect(await readPart(ROOT, ID, 'refresh')).toBeNull();
+    expect(JSON.parse((await readPart(ROOT, ID, 'access'))!)).toEqual({ accessToken: 'AT-new', expiresAt: null });
     expect(hasRefreshLoop(ROOT, ID)).toBe(false);
+  });
+
+  it('drops a kept access token once a reconnect brings a refresh token', async () => {
+    await seed({ refresh: null });
+    await writePart(ROOT, ID, 'access', JSON.stringify({ accessToken: 'AT-old', expiresAt: null }));
+    const { deps } = loginServer();
+
+    expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps)).toEqual({ ok: true });
+
+    expect(await readPart(ROOT, ID, 'access')).toBeNull();
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-new');
   });
 
   it('changes nothing when the server restarts during the login', async () => {

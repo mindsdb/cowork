@@ -18,7 +18,7 @@ import { diagnostic } from '../shared/diagnostics';
 import { activeStoreRoot } from './server-process';
 import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { checkPublicHttpsUrl, GuardedFetchError, type GuardedFetch } from './guarded-fetch';
-import { customMcpFetch, type StoredSettings } from './custom-mcp-tokens';
+import { customMcpFetch, keepAccessWithoutRefresh, type StoredSettings } from './custom-mcp-tokens';
 import {
   discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, registerClient, revokeToken,
   type AuthorizationServer, type OAuthClient, type TokenSet,
@@ -273,6 +273,7 @@ export async function connectCustomMcp(raw: unknown, deps: ConnectDeps = default
       await writePart(storeRoot, id, 'tools', '[]');
       if (login?.client.clientSecret) await writePart(storeRoot, id, 'secret', login.client.clientSecret);
       if (login?.tokens.refreshToken) await writePart(storeRoot, id, 'refresh', login.tokens.refreshToken);
+      if (login) await keepAccessWithoutRefresh(storeRoot, id, login.tokens);
       if (login) {
         await putHeld(id, {
           access_token: login.tokens.accessToken,

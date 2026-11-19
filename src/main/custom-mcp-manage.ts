@@ -13,7 +13,7 @@ import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { activeStoreRoot } from './server-process';
 import { deleteConnection as deleteKeychainEntries, deletePart, writePart } from './custom-mcp-keychain';
 import { deleteRecord, errorName, heldSummary, listTools, putAllowedTools, putHeld } from './custom-mcp-routes';
-import { readStoredSettings, readStoredTools, revokeStoredGrant, storedClient, type StoredSettings } from './custom-mcp-tokens';
+import { keepAccessWithoutRefresh, readStoredSettings, readStoredTools, revokeStoredGrant, storedClient, type StoredSettings } from './custom-mcp-tokens';
 import { writeToolSwitch } from './custom-mcp-held';
 import { startRefreshLoop, stopRefreshLoop, withConnectionLock } from './custom-mcp-refresh';
 import { defaultDeps, failure, isConnectionId, logIn, revokeUnstored, type ConnectDeps } from './custom-mcp-connect';
@@ -159,6 +159,7 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
       else await deletePart(storeRoot, id, 'secret');
       if (login.tokens.refreshToken) await writePart(storeRoot, id, 'refresh', login.tokens.refreshToken);
       else await deletePart(storeRoot, id, 'refresh');
+      await keepAccessWithoutRefresh(storeRoot, id, login.tokens);
       await putHeld(id, {
         resource: login.resource,
         authorization_endpoint: login.authorizationServer.authorizationEndpoint,

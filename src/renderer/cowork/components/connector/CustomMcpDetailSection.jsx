@@ -27,14 +27,16 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
   const [switchError, setSwitchError] = useState(null);
   const [loginHosts, setLoginHosts] = useState(null);
   const [reconnect, setReconnect] = useState({ status: 'idle' });
-  // Results of a connection the panel has since left are dropped.
+  // The caller keys this panel by connection, so it only ever shows one; an
+  // answer that arrives after it closed starts nothing and sets nothing.
+  const liveRef = useRef(false);
+  // A reload whose answer a switch made stale is dropped.
   const loadRef = useRef(0);
   const loadingRef = useRef(false);
   // A reload can read the switches before a switch lands and answer after,
   // showing the old switch. While one saves, reloads wait and run once it's saved.
   const savingRef = useRef(false);
   const reloadDueRef = useRef(false);
-  const shownRef = useRef(connection.name);
 
   async function load() {
     if (savingRef.current) {
@@ -48,7 +50,7 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
       host.customMcpSummary(connection.name),
       host.customMcpTools(connection.name),
     ]);
-    if (attempt !== loadRef.current) return;
+    if (!liveRef.current || attempt !== loadRef.current) return;
     loadingRef.current = false;
     if (summaryResult.ok) setSummary(summaryResult);
     if (toolsResult.ok) setTools(toolsResult.tools);
@@ -59,16 +61,9 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
   }
 
   useEffect(() => {
-    setSummary(null);
-    setTools(null);
-    setSwitchError(null);
-    setLoginHosts(null);
-    setReconnect({ status: 'idle' });
-    shownRef.current = connection.name;
-    savingRef.current = false;
-    reloadDueRef.current = false;
+    liveRef.current = true;
     void load();
-    return () => { loadRef.current += 1; };
+    return () => { liveRef.current = false; };
   }, [connection.name]);
 
   async function toggle(name, on) {
@@ -85,12 +80,10 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     setTools(next);
     setSaving(true);
     setSwitchError(null);
-    const switched = connection.name;
-    const result = await host.customMcpSetTools(switched, next.filter((tool) => tool.allowed).map((tool) => tool.name));
-    setSaving(false);
-    // The panel moved to another connection meanwhile: this answer is not its.
-    if (shownRef.current !== switched) return;
+    const result = await host.customMcpSetTools(connection.name, next.filter((tool) => tool.allowed).map((tool) => tool.name));
+    if (!liveRef.current) return;
     savingRef.current = false;
+    setSaving(false);
     if (!result.ok) {
       setTools(previous);
       setSwitchError(connectErrorMessage(t, result));
@@ -104,6 +97,7 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
   async function runReconnect(confirmedLoginHosts) {
     setReconnect({ status: 'working' });
     const result = await host.customMcpReconnect(connection.name, confirmedLoginHosts);
+    if (!liveRef.current) return;
     if (result.ok) {
       setLoginHosts(null);
       setReconnect({ status: 'done' });

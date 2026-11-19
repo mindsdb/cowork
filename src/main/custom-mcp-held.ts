@@ -10,7 +10,7 @@ import { isCustomMcpAvailable } from './app-secret';
 import type { GuardedFetch } from './guarded-fetch';
 import { deleteConnection as deleteKeychainEntries, listConnectionIds, writePart } from './custom-mcp-keychain';
 import { CONNECTION_MISSING, CustomMcpRouteError, errorName, heldSummary, listRecordIds, putHeld, type HeldSettings } from './custom-mcp-routes';
-import { customMcpFetch, readStoredSettings, readStoredTools, refreshedToken, revokeStoredGrant } from './custom-mcp-tokens';
+import { customMcpFetch, keptAccessToken, readStoredSettings, readStoredTools, refreshedToken, revokeStoredGrant } from './custom-mcp-tokens';
 import { notifyRefused, startRefreshLoop, withConnectionLock } from './custom-mcp-refresh';
 import { McpOAuthError } from './mcp-oauth';
 
@@ -86,16 +86,21 @@ async function handOverLocked(
     if (!settings || !tools) return 'unusable';
     let tokenFailed = false;
     let refused = false;
-    const token = await refreshedToken(storeRoot, id, settings, fetchFn).catch((err) => {
+    const refreshed = await refreshedToken(storeRoot, id, settings, fetchFn).catch((err) => {
       diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_refresh_failed', `[custom-mcp] refresh failed for ${id}: ${errorName(err)}`);
       // A refused grant needs a reconnect; asking again every few minutes would not help.
       if (err instanceof McpOAuthError && err.code === 'grant_refused') refused = true;
       else tokenFailed = true;
       return null;
     });
+    // A login whose server gave no refresh token keeps its access token.
+    const kept = !refreshed && !tokenFailed && !refused && settings.authorizationServer
+      ? await keptAccessToken(storeRoot, id)
+      : null;
+    const token = refreshed ?? kept;
     if (!stillCurrent()) return 'done';
-    // A login whose server gave no refresh token cannot be restored after a
-    // restart; say so rather than leave the connection silently without one.
+    // Nothing to restore the login with: say so rather than leave the
+    // connection silently without a token.
     if (!token && !tokenFailed && settings.authorizationServer) refused = true;
     const body: HeldSettings = {
       server_url: settings.serverUrl,
@@ -112,7 +117,7 @@ async function handOverLocked(
       ...(token ? { access_token: token.accessToken, ...(token.expiresAt ? { expires_at: new Date(token.expiresAt).toISOString() } : {}) } : {}),
     };
     await putHeld(id, body);
-    if (token) startRefreshLoop(storeRoot, id, token.expiresAt, fetchFn);
+    if (refreshed) startRefreshLoop(storeRoot, id, refreshed.expiresAt, fetchFn);
     if (refused) notifyRefused(id, settings.label);
     return tokenFailed ? 'retry' : 'done';
   } catch (err) {

@@ -8,7 +8,7 @@
 import { session } from 'electron';
 import { createGuardedFetch, type GuardedFetch } from './guarded-fetch';
 import { refreshTokens, revokeToken, type AuthorizationServer, type OAuthClient, type TokenSet } from './mcp-oauth';
-import { readPart, writePart } from './custom-mcp-keychain';
+import { deletePart, readPart, writePart } from './custom-mcp-keychain';
 
 /** What main keeps in the keychain to refresh and revoke a connection's tokens. */
 export interface StoredSettings {
@@ -63,6 +63,35 @@ export async function readStoredTools(storeRoot: string, id: string): Promise<st
   } catch {
     return null;
   }
+}
+
+/** Keeps a login's access token in the keychain when it brought no refresh
+ *  token, so the next start can hand it over while it is valid; drops any
+ *  kept one otherwise. */
+export async function keepAccessWithoutRefresh(storeRoot: string, id: string, tokens: TokenSet): Promise<void> {
+  if (tokens.refreshToken) {
+    await deletePart(storeRoot, id, 'access');
+    return;
+  }
+  await writePart(storeRoot, id, 'access', JSON.stringify({ accessToken: tokens.accessToken, expiresAt: tokens.expiresAt ?? null }));
+}
+
+/** The access token `keepAccessWithoutRefresh` kept, or null when there is
+ *  none, it is not usable, or it has expired. */
+export async function keptAccessToken(storeRoot: string, id: string, now: () => number = Date.now): Promise<TokenSet | null> {
+  const raw = await readPart(storeRoot, id, 'access');
+  if (raw === null) return null;
+  let value: { accessToken?: unknown; expiresAt?: unknown };
+  try {
+    value = JSON.parse(raw) as typeof value;
+  } catch {
+    return null;
+  }
+  if (typeof value?.accessToken !== 'string' || !value.accessToken) return null;
+  if (typeof value.expiresAt === 'number') {
+    return value.expiresAt > now() ? { accessToken: value.accessToken, expiresAt: value.expiresAt } : null;
+  }
+  return { accessToken: value.accessToken };
 }
 
 /** The client a connection logged in with, from the keychain. */

@@ -446,6 +446,8 @@ function ConnectionDetailPanel({ connection, onClose, onReconnect, onEditSharePo
                   its own section replaces the access mode. */}
               {isCustomMcp(connection.engine) && !managed && (
                 <CustomMcpDetailSection
+                  // A new panel per connection: answers meant for the last one land nowhere.
+                  key={connection.name}
                   connection={connection}
                   confirm={confirm}
                   onDisconnect={async (conn) => {

@@ -544,6 +544,20 @@ describe('connectCustomMcp', () => {
     expect(server.records.size).toBe(0);
   });
 
+  it('keeps the access token in the keychain only when the login brought no refresh token', async () => {
+    const noRefresh = { ...LOGIN_SERVER, [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-only', token_type: 'Bearer', expires_in: 3600 } } };
+
+    const kept = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, deps(noRefresh).deps);
+    expect(kept).toMatchObject({ ok: true, id: ID });
+    expect(JSON.parse((await readPart(store.root!, ID, 'access'))!)).toMatchObject({ accessToken: 'AT-only' });
+    expect(await readPart(store.root!, ID, 'refresh')).toBeNull();
+
+    const other = `cm-${'b'.repeat(32)}`;
+    expect(await connectCustomMcp({ label: 'U', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, deps(LOGIN_SERVER).deps)).toMatchObject({ ok: true, id: other });
+    expect(await readPart(store.root!, other, 'access')).toBeNull();
+    expect(await readPart(store.root!, other, 'refresh')).toBe('RT-1');
+  });
+
   it('creates nothing when cancelled while the server is still being found', async () => {
     const mcp = mcpServer(NO_LOGIN_SERVER);
     let answer!: () => void;
