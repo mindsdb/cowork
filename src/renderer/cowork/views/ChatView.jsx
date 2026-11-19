@@ -2452,11 +2452,11 @@ export default function ChatView({
     if (browserOn && liveBrowserId && !onlyWhenNeeded) setShownBrowserId(liveBrowserId);
   }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded]);
   useEffect(() => {
-    if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId) return;
+    if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId || waitingApprovalCard) return;
     // A phone push notification is the natural follow-up here once the iPhone app lands.
     setShownBrowserId(personsTurnBrowserId);
     setBrowserMinimized(false);
-  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, task.id]);
+  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, waitingApprovalCard, task.id]);
   const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
   // A request (a voice call's show_browser or browser_done) applies once:
   // coming back to the task later doesn't open the pane again. Like the
