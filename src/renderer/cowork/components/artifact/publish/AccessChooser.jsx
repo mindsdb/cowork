@@ -361,6 +361,28 @@ export function AccessChooser({
   };
 
   const specificPeople = ACCESS_LABELS.specificPeople;
+  // The password unfolds under its own card, as the recipients do under
+  // "Specific …", rather than after the last option.
+  const passwordField = (
+    <div className={INPUT_SHELL}>
+      <input
+        type={draft._reveal ? 'text' : 'password'}
+        value={draft.password}
+        onChange={(e) => set({ password: e.target.value })}
+        onKeyDown={(e) => { if (e.key === 'Enter' && isAccessDraftValid(draft)) onSubmit?.(); }}
+        autoFocus
+        placeholder={t('publish.addPassword')}
+        className={BARE_INPUT}
+      />
+      <Tooltip content={draft._reveal ? t('publish.hide') : t('publish.show')}>
+        <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
+          aria-label={draft._reveal ? t('publish.hidePassword') : t('publish.showPassword')}
+          className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
+          {draft._reveal ? Ico.eyeOff(16) : Ico.eye(16)}
+        </button>
+      </Tooltip>
+    </div>
+  );
   // "Only me" is its own option rather than an empty "Specific people", so
   // the choice a person made is the choice they see selected.
   const options = [
@@ -370,7 +392,10 @@ export function AccessChooser({
     modes.includes(AUDIENCE_CHOICE.SPECIFIC) && (orgSharing
       ? specificOption(SHARED_KIND.ARTIFACT)
       : { value: AUDIENCE_CHOICE.SPECIFIC, icon: specificPeople.icon(16), title: specificPeople.title, desc: specificPeople.desc }),
-    modes.includes(AUDIENCE_CHOICE.PASSWORD) && { value: AUDIENCE_CHOICE.PASSWORD, icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc },
+    modes.includes(AUDIENCE_CHOICE.PASSWORD) && {
+      value: AUDIENCE_CHOICE.PASSWORD, icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc,
+      editor: draft.mode === AUDIENCE_CHOICE.PASSWORD ? passwordField : null, editorTestId: 'password-field',
+    },
     modes.includes(AUDIENCE_CHOICE.PUBLIC) && { value: AUDIENCE_CHOICE.PUBLIC, icon: Ico.globe(16), title: ACCESS_LABELS.public.title, desc: ACCESS_LABELS.public.desc },
   ].filter(Boolean);
 
@@ -382,28 +407,7 @@ export function AccessChooser({
       options={options}
       specificValue={AUDIENCE_CHOICE.SPECIFIC}
       recipients={recipients}
-    >
-      {draft.mode === AUDIENCE_CHOICE.PASSWORD && (
-        <div className={INPUT_SHELL}>
-          <input
-            type={draft._reveal ? 'text' : 'password'}
-            value={draft.password}
-            onChange={(e) => set({ password: e.target.value })}
-            onKeyDown={(e) => { if (e.key === 'Enter' && isAccessDraftValid(draft)) onSubmit?.(); }}
-            autoFocus
-            placeholder={t('publish.addPassword')}
-            className={BARE_INPUT}
-          />
-          <Tooltip content={draft._reveal ? t('publish.hide') : t('publish.show')}>
-            <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
-              aria-label={draft._reveal ? t('publish.hidePassword') : t('publish.showPassword')}
-              className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
-              {draft._reveal ? Ico.eyeOff(16) : Ico.eye(16)}
-            </button>
-          </Tooltip>
-        </div>
-      )}
-    </AudiencePanel>
+    />
   );
 }
 

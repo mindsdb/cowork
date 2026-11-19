@@ -136,4 +136,19 @@ describe('PublishMenu viewer analytics', () => {
 
     expect(stats.value.reload).toHaveBeenCalledTimes(1);
   });
+
+  it('says why the settings could not be read', () => {
+    stats.value = makeStats({ data: null, error: { status: 502, code: null, message: 'Publishing is unavailable right now.' } });
+    const settings = openMenu();
+
+    expect(settings).toHaveTextContent('Publishing is unavailable right now.');
+  });
+
+  it('offers no Retry when trying again cannot help', () => {
+    stats.value = makeStats({ data: null, error: { status: 403, code: 'stats_owned_by_other_account', message: 'nope' } });
+    const settings = openMenu();
+
+    expect(settings).toHaveTextContent('Stats are not available for this account.');
+    expect(within(settings).queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
 });

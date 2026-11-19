@@ -12,6 +12,7 @@
 import { Switch } from '../../ui/Switch';
 import { useTranslation } from '../../../../lib/i18n';
 import { TrackingRefusal } from '../stats/TrackingRefusal';
+import { describeStatsError } from '../stats/StatsPanel';
 
 const EMAIL_GATE_MODES = new Set(['public', 'password']);
 
@@ -34,6 +35,7 @@ export function ViewerAnalyticsSettings({ controller, accessMode, accessLoaded =
   const busy = !!controller?.trackingBusy;
   const tracking = data?.tracking === true;
   const emailGate = tracking && accessLoaded && EMAIL_GATE_MODES.has(accessMode);
+  const loadFailure = !data && error ? describeStatsError(error) : null;
   return (
     <div className="flex flex-col gap-3" data-testid="viewer-analytics-settings">
       <SettingRow
@@ -56,15 +58,22 @@ export function ViewerAnalyticsSettings({ controller, accessMode, accessLoaded =
         <span role="status" className="font-body text-xs text-ink-3">{t('analytics.loading')}</span>
       )}
       {!data && !controller?.loading && error && (
-        <div className="flex items-baseline gap-2 font-body text-xs text-ink-3">
+        // Says why, as the Stats panel does (describeStatsError), and offers
+        // Retry only where trying again can help.
+        <div className="flex flex-wrap items-baseline gap-x-2 font-body text-xs text-ink-3">
           <span>{t('analytics.loadFailed')}</span>
-          <button
-            type="button"
-            onClick={() => controller?.reload()}
-            className="cursor-pointer border-0 bg-transparent p-0 font-body text-xs font-medium text-accent"
-          >
-            {t('stats.retry')}
-          </button>
+          {loadFailure && loadFailure.message !== t('stats.errors.loadFailed') && (
+            <span className="basis-full text-ink-4">{loadFailure.message}</span>
+          )}
+          {loadFailure?.retry !== false && (
+            <button
+              type="button"
+              onClick={() => controller?.reload()}
+              className="cursor-pointer border-0 bg-transparent p-0 font-body text-xs font-medium text-accent"
+            >
+              {t('stats.retry')}
+            </button>
+          )}
         </div>
       )}
       {data && <TrackingRefusal error={error} />}
