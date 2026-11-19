@@ -210,5 +210,44 @@ describe('ChatFoldersSection', () => {
         .toEqual(['q3/summary.csv', 'q3/notes.md']);
     });
   });
+
+  it('keeps the cards when a refresh fails, and says the refresh failed', async () => {
+    let view;
+    await act(async () => {
+      view = render(<ChatFoldersSection conversationId="chat-1" refreshKey="idle:0:0" />);
+    });
+    api.listConversationFolders.mockRejectedValue(Object.assign(new Error('Server busy'), { status: 503 }));
+
+    await act(async () => {
+      view.rerender(<ChatFoldersSection conversationId="chat-1" refreshKey="streaming:1:2" />);
+    });
+
+    expect(await screen.findByText('Server busy')).toBeTruthy();
+    expect(screen.getByText('docs')).toBeTruthy();
+    expect(screen.getByText('reports')).toBeTruthy();
+  });
+
+  it('shows nothing when the server has no folder routes', async () => {
+    api.listConversationFolders.mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
+    let view;
+    await act(async () => {
+      view = render(<ChatFoldersSection conversationId="chat-1" />);
+    });
+
+    expect(view.container.innerHTML).toBe('');
+    expect(screen.queryByText('Not Found')).toBeNull();
+  });
+
+  it('does not show the empty hint before the first list answers', async () => {
+    let answer;
+    api.listConversationFolders.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    await renderSection();
+
+    expect(screen.queryByText('Add a folder for the agent to work in.')).toBeNull();
+
+    await act(async () => { answer({ folders: [] }); });
+
+    expect(screen.getByText('Add a folder for the agent to work in.')).toBeTruthy();
+  });
 });
 

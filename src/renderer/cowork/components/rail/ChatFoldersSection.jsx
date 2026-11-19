@@ -119,6 +119,8 @@ function FolderCard({ folder, expanded, onToggle, onRequestRemove, filesState })
 export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
   const { t } = useTranslation('shell');
   const [folders, setFolders] = useState([]);
+  // 'loading' until the first list answers; 'missing' when the server has no folder routes.
+  const [listState, setListState] = useState('loading');
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [adding, setAdding] = useState(false);
@@ -139,11 +141,18 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
         if (ticket !== listTicket.current) return;
         setFolders(Array.isArray(data?.folders) ? data.folders : []);
         setLoadError('');
+        setListState('ready');
       })
       .catch((err) => {
         if (ticket !== listTicket.current) return;
-        setFolders([]);
+        // An older server, or a chat that is gone: say nothing rather than "Not Found".
+        if (err?.status === 404) {
+          setListState('missing');
+          return;
+        }
+        // Keep the cards: the folders are still attached, only this refresh failed.
         setLoadError(err?.message || tShell('loadFailed'));
+        setListState('ready');
       });
   }, [conversationId]);
 
@@ -215,6 +224,8 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
     }
   };
 
+  if (listState === 'missing') return null;
+
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center justify-between px-1 mb-1">
@@ -241,7 +252,7 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
       </div>
       {actionError && <p className="text-xs px-1 pb-0.5 text-danger">{actionError}</p>}
       {loadError && <p className="text-xs px-1 pb-0.5 text-danger">{loadError}</p>}
-      {!loadError && folders.length === 0 && !adding && (
+      {listState === 'ready' && !loadError && folders.length === 0 && !adding && (
         <button
           type="button"
           onClick={addFolder}
