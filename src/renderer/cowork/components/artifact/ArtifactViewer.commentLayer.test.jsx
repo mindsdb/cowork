@@ -41,7 +41,7 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('./publish/usePublish', () => ({
   usePublish: () => ({ publishedUrl: '', accessMode: 'public', artifactKey: publishMock.key, busy: false }),
 }));
-const commentsMock = vi.hoisted(() => ({ threads: [] }));
+const commentsMock = vi.hoisted(() => ({ threads: [], enterMode: null }));
 vi.mock('./comments', () => ({
   useArtifactComments: () => ({
     threads: commentsMock.threads, viewer: null, unreadCount: 0,
@@ -49,7 +49,7 @@ vi.mock('./comments', () => ({
     editThread: vi.fn(), deleteThread: vi.fn(), editReply: vi.fn(),
     deleteReply: vi.fn(), markRead: vi.fn(),
   }),
-  useArtifactCommentLayer: () => ({ exitMode: vi.fn() }),
+  useArtifactCommentLayer: () => ({ exitMode: vi.fn(), enterModeWhenReady: commentsMock.enterMode }),
 }));
 vi.mock('./workspace/useArtifactWorkspace', () => ({
   useArtifactWorkspace: () => ({
@@ -94,6 +94,7 @@ describe('ArtifactViewer comment layer', () => {
   beforeEach(() => {
     publishMock.key = '';
     commentsMock.threads = [];
+    commentsMock.enterMode = vi.fn();
     bodyMock.urls = [];
     mountArtifactPreview.mockClear();
   });
@@ -154,5 +155,21 @@ describe('ArtifactViewer comment layer', () => {
 
     expect(screen.getByRole('button', { name: 'Comments' })).toBeInTheDocument();
     expect(document.querySelector('.artifact-feedback-badge')).toBeNull();
+  });
+
+  it('opens Comments from its tab in Comment mode, not Navigate', async () => {
+    publishMock.key = KEY;
+    renderViewer();
+    await settle();
+    expect(commentsMock.enterMode).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    await settle();
+    expect(commentsMock.enterMode).toHaveBeenCalledTimes(1);
+
+    // Closing it asks for nothing more.
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    await settle();
+    expect(commentsMock.enterMode).toHaveBeenCalledTimes(1);
   });
 });

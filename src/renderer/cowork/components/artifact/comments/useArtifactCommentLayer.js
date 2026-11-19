@@ -49,6 +49,9 @@ export function useArtifactCommentLayer(
   } = {},
 ) {
   const [mode, setMode] = useState(false); // comment-placement active in the iframe
+  // Comment mode asked for before the layer could hear it: opening Comments
+  // reloads the page with the layer, so the request waits for its 'ready'.
+  const wantModeRef = useRef(false);
   // Per-thread anchor state reported by the layer: id -> 'hidden' | 'orphan'.
   // Drives the inbox chips ("hidden" / "unanchored").
   const [anchorStates, setAnchorStates] = useState({});
@@ -130,7 +133,10 @@ export function useArtifactCommentLayer(
         // just (re)pushes the current set, and threads-change also pushes — so
         // ordering between 'ready' and load can't strand the layer with a stale
         // or empty list.
-        case 'ready': sendList(); break;
+        case 'ready':
+          sendList();
+          if (wantModeRef.current) postToLayer({ type: 'enter-mode' });
+          break;
         case 'create': h.onCreate && h.onCreate({ selector: d.selector || null, text: d.text, images: layerImages(d.images) }); break;
         case 'reply': h.onReply && h.onReply(d.id, d.text, layerImages(d.images)); break;
         case 'status': h.onStatus && h.onStatus(d.id, d.status); break;
@@ -138,7 +144,10 @@ export function useArtifactCommentLayer(
         case 'delete': h.onDeleteThread && h.onDeleteThread(d.id); break;
         case 'edit-reply': h.onEditReply && h.onEditReply(d.id, d.replyId, d.text); break;
         case 'delete-reply': h.onDeleteReply && h.onDeleteReply(d.id, d.replyId); break;
-        case 'mode': setMode(!!d.active); break;
+        case 'mode':
+          setMode(!!d.active);
+          if (d.active) wantModeRef.current = false;
+          break;
         // Freeze while pins are hidden: "Hide comment" pushes an EMPTY list to
         // the layer, which then reports an empty state map. Applying it would
         // flicker the chips away (and re-enable hover) in an open inbox. Keep
@@ -149,7 +158,7 @@ export function useArtifactCommentLayer(
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [enabled, iframeRef, sendList]);
+  }, [enabled, iframeRef, postToLayer, sendList]);
 
   // Re-push the list whenever comments OR marker visibility change. Best-effort:
   // if the layer isn't live yet the message is dropped, but its 'ready'
@@ -160,16 +169,31 @@ export function useArtifactCommentLayer(
 
   // A navigation inside the iframe re-injects the layer (which re-announces
   // 'ready'); re-push best-effort too, in case that message is missed.
-  const onIframeLoad = useCallback(() => { if (enabled) sendList(); }, [enabled, sendList]);
+  const onIframeLoad = useCallback(() => {
+    if (!enabled) return;
+    sendList();
+    if (wantModeRef.current) postToLayer({ type: 'enter-mode' });
+  }, [enabled, postToLayer, sendList]);
 
-  const exitMode = useCallback(() => postToLayer({ type: 'exit-mode' }), [postToLayer]);
-  const setPlacing = useCallback((on) => postToLayer({ type: on ? 'enter-mode' : 'exit-mode' }), [postToLayer]);
+  const exitMode = useCallback(() => {
+    wantModeRef.current = false;
+    postToLayer({ type: 'exit-mode' });
+  }, [postToLayer]);
+  const setPlacing = useCallback((on) => {
+    wantModeRef.current = false;
+    postToLayer({ type: on ? 'enter-mode' : 'exit-mode' });
+  }, [postToLayer]);
+  // Comment mode now, or as soon as the layer is there (opening Comments).
+  const enterModeWhenReady = useCallback(() => {
+    wantModeRef.current = true;
+    postToLayer({ type: 'enter-mode' });
+  }, [postToLayer]);
   const toggleMode = useCallback(() => postToLayer({ type: mode ? 'exit-mode' : 'enter-mode' }), [postToLayer, mode]);
   const focus = useCallback((id) => postToLayer({ type: 'focus', commentId: id }), [postToLayer]);
   const hlOn = useCallback((id) => postToLayer({ type: 'hl-on', commentId: id }), [postToLayer]);
   const hlOff = useCallback((id) => postToLayer({ type: 'hl-off', commentId: id }), [postToLayer]);
 
-  return { mode, anchorStates, onIframeLoad, exitMode, toggleMode, setPlacing, focus, hlOn, hlOff };
+  return { mode, anchorStates, onIframeLoad, exitMode, toggleMode, setPlacing, enterModeWhenReady, focus, hlOn, hlOff };
 }
 
 export default useArtifactCommentLayer;

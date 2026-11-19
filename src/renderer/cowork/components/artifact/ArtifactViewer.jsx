@@ -509,6 +509,9 @@ export function ArtifactViewer({
   // opens once the user agrees to drop it.
   // The layer to turn on once the user agrees to drop unsaved Live edit text.
   const layerAfterSourceOffRef = useRef(null);
+  // Comments opened from its tab starts in Comment mode, ready to place one,
+  // not Navigate. Restored on open, it starts in Navigate as before.
+  const commentModeOnOpenRef = useRef(false);
   const toggleComments = () => {
     const on = !(layers.comments && commentsEnabled);
     if (on && layers.source && workspace.dirty) {
@@ -516,6 +519,7 @@ export function ArtifactViewer({
       setSourceOffPrompt(true);
       return;
     }
+    commentModeOnOpenRef.current = on;
     setLayer('comments', on);
   };
 
@@ -540,13 +544,18 @@ export function ArtifactViewer({
       setMarkersShown(true);
       setCommentsOpen(true);
       setSidePanel('comments');
+      if (commentModeOnOpenRef.current) {
+        commentModeOnOpenRef.current = false;
+        layer.enterModeWhenReady?.();
+      }
       return;
     }
+    commentModeOnOpenRef.current = false;
     layer.exitMode();
     setCommentsOpen(false);
     setSidePanel((current) => (current === 'comments' ? null : current));
     setTextSelection(null);
-  }, [open, layers.comments, commentsEnabled, layer.exitMode]);
+  }, [open, layers.comments, commentsEnabled, layer.exitMode, layer.enterModeWhenReady]);
 
   useEffect(() => {
     if (!open || workspace.repair?.status !== 'queued') return undefined;
@@ -1977,6 +1986,7 @@ export function ArtifactViewer({
           const next = layerAfterSourceOffRef.current;
           if (next) {
             layerAfterSourceOffRef.current = null;
+            if (next === 'comments') commentModeOnOpenRef.current = true;
             setLayer(next, true);
           } else {
             setLayer('source', false);
