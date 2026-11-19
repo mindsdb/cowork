@@ -524,6 +524,31 @@ describe('disconnect', () => {
     expect(server.records.has(ID)).toBe(false);
   });
 
+  it('revokes the kept access token of a login that brought no refresh token', async () => {
+    await seed({ refresh: null });
+    await writePart(ROOT, ID, 'access', JSON.stringify({ accessToken: 'AT-kept', expiresAt: null }));
+    const { deps, requests } = loginServer();
+
+    expect(await disconnectCustom({ id: ID }, deps)).toEqual({ ok: true, revoked: true });
+
+    const revokes = requests.filter((r) => r.url === `${AUTH}/revoke`).map((r) => String(r.init.body));
+    expect(revokes).toHaveLength(1);
+    expect(revokes[0]).toContain('token=AT-kept');
+    expect(revokes[0]).toContain('token_type_hint=access_token');
+    expect(await listConnectionIds(ROOT)).toEqual([]);
+  });
+
+  it('revokes a kept access token whose stored expiry is not usable', async () => {
+    await seed({ refresh: null });
+    await writePart(ROOT, ID, 'access', JSON.stringify({ accessToken: 'AT-odd', expiresAt: '1' }));
+    const { deps, requests } = loginServer();
+
+    expect(await disconnectCustom({ id: ID }, deps)).toEqual({ ok: true, revoked: true });
+    expect(requests.filter((r) => r.url === `${AUTH}/revoke`).map((r) => String(r.init.body))).toEqual([
+      expect.stringContaining('token=AT-odd'),
+    ]);
+  });
+
   it('removes a connection whose login server offers no revocation', async () => {
     server.records.add(ID);
     await writePart(ROOT, ID, 'settings', JSON.stringify({ ...SETTINGS, authorizationServer: { ...AS, revocationEndpoint: undefined } }));

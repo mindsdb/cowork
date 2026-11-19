@@ -76,9 +76,12 @@ export async function keepAccessWithoutRefresh(storeRoot: string, id: string, to
   await writePart(storeRoot, id, 'access', JSON.stringify({ accessToken: tokens.accessToken, expiresAt: tokens.expiresAt ?? null }));
 }
 
-/** The access token `keepAccessWithoutRefresh` kept, or null when there is
- *  none, it is not usable, or it has expired. */
-export async function keptAccessToken(storeRoot: string, id: string, now: () => number = Date.now): Promise<TokenSet | null> {
+// The latest time a JavaScript Date can hold, in milliseconds.
+const MAX_DATE_MS = 8.64e15;
+
+/** The kept access token and its expiry as stored, or null when there is
+ *  none or no token can be read from it. */
+async function readKeptAccess(storeRoot: string, id: string): Promise<{ accessToken: string; expiresAt: unknown } | null> {
   const raw = await readPart(storeRoot, id, 'access');
   if (raw === null) return null;
   let value: { accessToken?: unknown; expiresAt?: unknown };
@@ -88,10 +91,18 @@ export async function keptAccessToken(storeRoot: string, id: string, now: () => 
     return null;
   }
   if (typeof value?.accessToken !== 'string' || !value.accessToken) return null;
-  if (typeof value.expiresAt === 'number') {
-    return value.expiresAt > now() ? { accessToken: value.accessToken, expiresAt: value.expiresAt } : null;
-  }
-  return { accessToken: value.accessToken };
+  return { accessToken: value.accessToken, expiresAt: value.expiresAt };
+}
+
+/** The access token `keepAccessWithoutRefresh` kept, or null when there is
+ *  none, its expiry is not a usable time, or it has expired. */
+export async function keptAccessToken(storeRoot: string, id: string, now: () => number = Date.now): Promise<TokenSet | null> {
+  const kept = await readKeptAccess(storeRoot, id);
+  if (!kept) return null;
+  const { accessToken, expiresAt } = kept;
+  if (expiresAt === null) return { accessToken };
+  if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt) || expiresAt <= 0 || expiresAt > MAX_DATE_MS) return null;
+  return expiresAt > now() ? { accessToken, expiresAt } : null;
 }
 
 /** The client a connection logged in with, from the keychain. */
@@ -101,16 +112,23 @@ export async function storedClient(storeRoot: string, id: string, settings: Stor
   return { clientId: settings.clientId, authMethod: settings.authMethod, ...(secret ? { clientSecret: secret } : {}) };
 }
 
-/** Revokes the keychain's refresh token where the login server offers
- *  revocation; true when it did. Throws what the keychain or the request
- *  throws. Called before a connection's keychain entries are removed. */
+/** Revokes the keychain's refresh token, or the kept access token of a login
+ *  that brought none, where the login server offers revocation; true when it
+ *  did. Throws what the keychain or the request throws. Called before a
+ *  connection's keychain entries are removed. */
 export async function revokeStoredGrant(storeRoot: string, id: string, fetchFn: GuardedFetch): Promise<boolean> {
   const settings = await readStoredSettings(storeRoot, id);
   if (!settings?.authorizationServer) return false;
-  const refreshToken = await readPart(storeRoot, id, 'refresh');
   const client = await storedClient(storeRoot, id, settings);
-  if (!refreshToken || !client) return false;
-  return revokeToken(settings.authorizationServer, client, { token: refreshToken, hint: 'refresh_token' }, fetchFn);
+  if (!client) return false;
+  const refreshToken = await readPart(storeRoot, id, 'refresh');
+  if (refreshToken) {
+    return revokeToken(settings.authorizationServer, client, { token: refreshToken, hint: 'refresh_token' }, fetchFn);
+  }
+  // Revoked whatever its stored expiry says: only using it needs a valid one.
+  const kept = await readKeptAccess(storeRoot, id);
+  if (!kept) return false;
+  return revokeToken(settings.authorizationServer, client, { token: kept.accessToken, hint: 'access_token' }, fetchFn);
 }
 
 /** A fresh access token from the keychain's refresh token, the rotated

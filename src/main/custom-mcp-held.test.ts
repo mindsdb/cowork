@@ -439,6 +439,38 @@ describe('handing custom MCP connections over at server start', () => {
     expect(await listConnectionIds(ROOT)).toEqual([]);
   });
 
+  it('revokes the kept access token of a connection whose record is gone', async () => {
+    await seed(ROOT, GONE);
+    await writePart(ROOT, GONE, 'access', JSON.stringify({ accessToken: 'AT-kept', expiresAt: null }));
+    const revoked: string[] = [];
+    const recording: GuardedFetch = async (input, init = {}) => {
+      if (String(input) === `${AUTH}/revoke`) {
+        revoked.push(String(init.body));
+        return new Response('', { status: 200 });
+      }
+      return fetchFn(input, init);
+    };
+
+    await syncCustomMcpConnections(ROOT, current, recording);
+
+    expect(revoked).toHaveLength(1);
+    expect(revoked[0]).toContain('token=AT-kept');
+    expect(await listConnectionIds(ROOT)).toEqual([]);
+  });
+
+  it.each([
+    ['an expiry that is not a number', '1'],
+    ['an expiry past what a date can hold', 9e15],
+  ])('treats a kept access token with %s as unusable and warns', async (_label, expiresAt) => {
+    await seed(ROOT, ID);
+    await writePart(ROOT, ID, 'access', JSON.stringify({ accessToken: 'AT-odd', expiresAt }));
+
+    expect(await handOverCustomConnection(ROOT, ID, current, fetchFn)).toBe('done');
+
+    expect(server.puts[0].body).not.toHaveProperty('access_token');
+    expect(sent).toEqual([{ channel: 'oauth:refresh-error', payload: { engine: 'Tracker', name: ID, accountEmail: '', permanent: true } }]);
+  });
+
   it('revokes the login of a keychain entry the sweep finds without a record', async () => {
     await seed(ROOT, GONE, { refresh: 'RT-gone' });
     const revoked: string[] = [];

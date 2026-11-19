@@ -1,6 +1,7 @@
 /*
  * Keychain entries of custom MCP connections: settings, allowed tools,
- * refresh token and client secret, keyed by store root and connection ID.
+ * refresh token, client secret, and the access token of a login that brought
+ * no refresh token, keyed by store root and connection ID.
  * Only the real OS keychain: agent code can write `keychain-fallback.json`,
  * so a keychain that does not work stops custom MCP instead of falling back.
  *

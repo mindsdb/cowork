@@ -157,6 +157,53 @@ describe('CustomMcpDetailSection', () => {
     expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['delete_issue']);
   });
 
+  it('a panel opened again while a switch still saves reads after the switch lands', async () => {
+    let serverAllowed = ['search'];
+    let finishSave;
+    bridge.customMcpTools.mockImplementation(async () => ({
+      ok: true, tools: TOOLS.map((tool) => ({ ...tool, allowed: serverAllowed.includes(tool.name) })),
+    }));
+    bridge.customMcpSetTools.mockImplementationOnce((_name, tools) => new Promise((resolve) => {
+      finishSave = () => { serverAllowed = tools; resolve({ ok: true }); };
+    }));
+    const first = render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={vi.fn()} confirm={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+    first.unmount();
+
+    render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={vi.fn()} confirm={vi.fn()} />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(bridge.customMcpTools).toHaveBeenCalledTimes(1);
+    finishSave();
+
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true'));
+    expect(bridge.customMcpTools).toHaveBeenCalledTimes(2);
+  });
+
+  it('a panel opened again shows its tools when the old panel\'s save fails outright', async () => {
+    let failSave;
+    bridge.customMcpSetTools.mockImplementationOnce(() => new Promise((_resolve, reject) => { failSave = reject; }));
+    const first = render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={vi.fn()} confirm={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+    first.unmount();
+
+    render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={vi.fn()} confirm={vi.fn()} />);
+    // The label does not wait for the switch.
+    expect(await screen.findByText('Tracker')).toBeTruthy();
+    failSave(new Error('ipc failed'));
+
+    expect(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' })).toBeTruthy();
+  });
+
+  it('puts a switch back when its save fails outright', async () => {
+    bridge.customMcpSetTools.mockRejectedValueOnce(new Error('ipc failed'));
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false'));
+    expect(screen.getByText("Couldn't connect the server: the app did not answer")).toBeTruthy();
+  });
+
   it('starts nothing when a reconnect answers after the panel closed', async () => {
     let finishReconnect;
     bridge.customMcpReconnect.mockImplementation(() => new Promise((resolve) => { finishReconnect = resolve; }));

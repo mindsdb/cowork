@@ -12,6 +12,10 @@ import { host } from '../../../platform/host';
 import { useTranslation } from '../../../lib/i18n';
 import { connectErrorMessage } from './CustomMcpConnectModal';
 
+// Tool switches still saving, by connection. They outlive a panel that
+// closed, so a panel opened again for the same connection reads after them.
+const pendingSaves = new Map();
+
 /**
  * @param {object} props
  * @param {{engine: string, name: string}} props.connection
@@ -46,13 +50,16 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     const attempt = ++loadRef.current;
     loadingRef.current = true;
     setToolsError(null);
-    const [summaryResult, toolsResult] = await Promise.all([
-      host.customMcpSummary(connection.name),
-      host.customMcpTools(connection.name),
-    ]);
-    if (!liveRef.current || attempt !== loadRef.current) return;
+    const current = () => liveRef.current && attempt === loadRef.current;
+    // The label and URL don't depend on a switch; only the tools wait for one.
+    const summaryShown = host.customMcpSummary(connection.name).then((summaryResult) => {
+      if (current() && summaryResult.ok) setSummary(summaryResult);
+    });
+    await pendingSaves.get(connection.name);
+    const toolsResult = current() ? await host.customMcpTools(connection.name) : null;
+    await summaryShown;
+    if (!toolsResult || !current()) return;
     loadingRef.current = false;
-    if (summaryResult.ok) setSummary(summaryResult);
     if (toolsResult.ok) setTools(toolsResult.tools);
     else {
       setTools([]);
@@ -80,7 +87,12 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     setTools(next);
     setSaving(true);
     setSwitchError(null);
-    const result = await host.customMcpSetTools(connection.name, next.filter((tool) => tool.allowed).map((tool) => tool.name));
+    // A save that throws is a refused switch; nothing waiting on it throws either.
+    const saved = host.customMcpSetTools(connection.name, next.filter((tool) => tool.allowed).map((tool) => tool.name))
+      .catch(() => ({ ok: false, code: 'failed', reason: 'the app did not answer' }));
+    pendingSaves.set(connection.name, saved);
+    const result = await saved;
+    if (pendingSaves.get(connection.name) === saved) pendingSaves.delete(connection.name);
     if (!liveRef.current) return;
     savingRef.current = false;
     setSaving(false);
