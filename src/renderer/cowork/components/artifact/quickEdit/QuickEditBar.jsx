@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../../Icons';
 import { ArrowUpIcon } from '../comments/icons';
-import { Spinner, Tooltip } from '../../ui';
+import { Button, Spinner, Tooltip } from '../../ui';
 import { MarkdownContent } from '../../markdown/MarkdownContent';
 import { chatReplyFor } from '../../../lib/quickEditPrompt';
 import { useImageAttachments } from '../../../lib/imageAttachments';
@@ -405,17 +405,18 @@ export function QuickEditBar({
           aria-label={t('quickEdit.unsavedConfirm.title')}
           onKeyDown={(e) => { if (e.key === 'Escape' && confirm !== 'saving') { e.stopPropagation(); cancelConfirm(); } }}
         >
+          <span className="artifact-html-edit-indicator is-active" aria-hidden="true" />
           <span className="artifact-quick-edit-confirm-text">{t('quickEdit.unsavedConfirm.title')}</span>
           <span className="artifact-quick-edit-confirm-actions">
-            <button type="button" className="artifact-quick-edit-confirm-button" onClick={cancelConfirm} disabled={confirm === 'saving'}>
+            <Button size="sm" variant="subtle" onClick={cancelConfirm} disabled={confirm === 'saving'}>
               {t('quickEdit.unsavedConfirm.cancel')}
-            </button>
-            <button type="button" className="artifact-quick-edit-confirm-button" onClick={discardAndSend} disabled={confirm === 'saving'}>
+            </Button>
+            <Button size="sm" onClick={discardAndSend} disabled={confirm === 'saving'}>
               {t('quickEdit.unsavedConfirm.discard')}
-            </button>
-            <button
-              type="button"
-              className="artifact-quick-edit-confirm-button is-primary"
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
               onClick={saveAndSend}
               disabled={confirm === 'saving'}
               aria-busy={confirm === 'saving' || undefined}
@@ -423,7 +424,7 @@ export function QuickEditBar({
             >
               {confirm === 'saving' ? <Spinner /> : null}
               {t('quickEdit.unsavedConfirm.save')}
-            </button>
+            </Button>
           </span>
         </div>
       )}

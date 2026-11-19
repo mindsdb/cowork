@@ -846,8 +846,8 @@
     "copied": "Copied"
   },
   "layout": {
-    "maximize": "Maximize",
-    "restore": "Restore size"
+    "maximize": "Full screen",
+    "restore": "Exit full screen"
   },
   "imageAttachments": {
     "onlyImages": "Only PNG, JPEG, GIF and WebP images can be attached.",

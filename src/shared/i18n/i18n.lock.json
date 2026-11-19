@@ -19415,70 +19415,70 @@
   },
   "artifacts:layout.maximize": {
     "de": {
-      "from": "fba6c2c5d946",
-      "text": "c8e1c18da7db"
+      "from": "674fe2acd0d5",
+      "text": "8dc5f1f92eb5"
     },
     "es": {
-      "from": "fba6c2c5d946",
-      "text": "092b9ccfbf63"
+      "from": "674fe2acd0d5",
+      "text": "93f2f9113746"
     },
     "fr": {
-      "from": "fba6c2c5d946",
-      "text": "88c7e3b5554f"
+      "from": "674fe2acd0d5",
+      "text": "dee312b0129c"
     },
     "it": {
-      "from": "fba6c2c5d946",
-      "text": "258aa45c2d3a"
+      "from": "674fe2acd0d5",
+      "text": "dfd986c06545"
     },
     "ja": {
-      "from": "fba6c2c5d946",
-      "text": "82c4aa13b7ca"
+      "from": "674fe2acd0d5",
+      "text": "27a6c3d42592"
     },
     "ko": {
-      "from": "fba6c2c5d946",
-      "text": "b7b1c1530346"
+      "from": "674fe2acd0d5",
+      "text": "21bf97b035e0"
     },
     "pt-BR": {
-      "from": "fba6c2c5d946",
-      "text": "092b9ccfbf63"
+      "from": "674fe2acd0d5",
+      "text": "cdd35dea1ee3"
     },
     "zh-CN": {
-      "from": "fba6c2c5d946",
-      "text": "82c4aa13b7ca"
+      "from": "674fe2acd0d5",
+      "text": "22ea3f47fee8"
     }
   },
   "artifacts:layout.restore": {
     "de": {
-      "from": "b0a8b5c8dfe8",
-      "text": "00a770ca973d"
+      "from": "897e0cf78b80",
+      "text": "18df21867378"
     },
     "es": {
-      "from": "b0a8b5c8dfe8",
-      "text": "9c217b4c9e09"
+      "from": "897e0cf78b80",
+      "text": "2de6e8b7c90f"
     },
     "fr": {
-      "from": "b0a8b5c8dfe8",
-      "text": "58ddad6377ae"
+      "from": "897e0cf78b80",
+      "text": "3645da627202"
     },
     "it": {
-      "from": "b0a8b5c8dfe8",
-      "text": "5def7dc7aa8c"
+      "from": "897e0cf78b80",
+      "text": "7dce9a8674a1"
     },
     "ja": {
-      "from": "b0a8b5c8dfe8",
-      "text": "8d335e37af1b"
+      "from": "897e0cf78b80",
+      "text": "e14077bbd283"
     },
     "ko": {
-      "from": "b0a8b5c8dfe8",
-      "text": "5d04f426f80b"
+      "from": "897e0cf78b80",
+      "text": "4bf9decf87ae"
     },
     "pt-BR": {
-      "from": "b0a8b5c8dfe8",
-      "text": "596064f52905"
+      "from": "897e0cf78b80",
+      "text": "cbe5019d4a64"
     },
     "zh-CN": {
-      "from": "b0a8b5c8dfe8",
-      "text": "a14787df8d4d"
+      "from": "897e0cf78b80",
+      "text": "0f1505b6ad3f"
     }
   },
   "artifacts:liveAppPreview.connecting": {

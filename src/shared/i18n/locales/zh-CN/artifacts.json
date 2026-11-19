@@ -846,8 +846,8 @@
     "copied": "已复制"
   },
   "layout": {
-    "maximize": "最大化",
-    "restore": "恢复大小"
+    "maximize": "全屏",
+    "restore": "退出全屏"
   },
   "imageAttachments": {
     "onlyImages": "只能附加 PNG、JPEG、GIF 和 WebP 图片。",

@@ -846,8 +846,8 @@
     "copied": "コピーしました"
   },
   "layout": {
-    "maximize": "最大化",
-    "restore": "元のサイズに戻す"
+    "maximize": "全画面表示",
+    "restore": "全画面表示を終了"
   },
   "imageAttachments": {
     "onlyImages": "添付できるのは PNG、JPEG、GIF、WebP 画像のみです。",

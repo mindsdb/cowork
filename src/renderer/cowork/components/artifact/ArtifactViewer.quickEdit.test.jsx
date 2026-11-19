@@ -1465,17 +1465,18 @@ describe('ArtifactViewer layout controls', () => {
   const revisionBar = () => document.querySelector('.artifact-revision-bar');
   const modal = () => screen.getByTestId('modal');
 
-  it('maximizes to the window and back, from the button and from Ctrl+Shift+Enter', async () => {
+  it('opens full screen, and leaves and goes back to it from the button and from Ctrl+Shift+Enter', async () => {
     renderViewer();
     await screen.findByTitle('Launch brief');
-    expect(modal()).toHaveAttribute('data-full-bleed', 'false');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
     expect(modal()).toHaveAttribute('data-full-bleed', 'true');
 
-    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true, shiftKey: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Exit full screen' }));
     expect(modal()).toHaveAttribute('data-full-bleed', 'false');
-    expect(screen.getByRole('button', { name: 'Maximize' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Full screen' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true, shiftKey: true });
+    expect(modal()).toHaveAttribute('data-full-bleed', 'true');
+    expect(screen.getByRole('button', { name: 'Exit full screen' })).toBeInTheDocument();
   });
 
   it('offers no way to hide the toolbar or the quick edit bar, and ignores an old choice to', async () => {
@@ -1489,25 +1490,24 @@ describe('ArtifactViewer layout controls', () => {
     expect(bar()).not.toBeNull();
   });
 
-  it('opens the next artifact maximized when the last one was left so', async () => {
+  it('opens the next artifact at its size when the last one left full screen', async () => {
     const first = renderViewer();
     await screen.findByTitle('Launch brief');
-    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Exit full screen' }));
     first.unmount();
 
     renderViewer();
     await screen.findByTitle('Launch brief');
-    expect(modal()).toHaveAttribute('data-full-bleed', 'true');
+    expect(modal()).toHaveAttribute('data-full-bleed', 'false');
   });
 
-  it('keeps close at the end of the line, after maximize', async () => {
+  it('keeps close at the end of the line, after full screen', async () => {
     renderViewer();
     await screen.findByTitle('Launch brief');
-    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
 
     const controls = document.querySelector('.artifact-viewer-window-controls');
     const buttons = within(controls).getAllByRole('button');
-    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Restore size', 'Close']);
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Exit full screen', 'Close']);
   });
 
 });
