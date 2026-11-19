@@ -579,13 +579,15 @@ function openStreamedForm(conversationId, finalContent) {
 
 async function loadSessionMessagesWithRetry(
   cid,
-  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs } = {},
+  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs, unmountedRef } = {},
 ) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => { setTimeout(resolve, 50 * attempt); });
     }
+    if (unmountedRef?.current) return null;
     const fresh = await fetchSession(cid, { timeoutMs });
+    if (unmountedRef?.current) return null;
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
       // Only the most recent page — the caller merges this
@@ -1193,6 +1195,15 @@ function AppCore() {
   const recoverDroppedTurnRef = useRef(null);
   // Conversations with a dropped-turn recovery out, so a second drop waits on it.
   const droppedRecoveryRef = useRef(new Set());
+  // The dropped-turn reconnects and run-start probes wait minutes between
+  // tries; they read this to stop once the App is gone instead of polling and
+  // reattaching for it.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    // Reset on mount too: StrictMode unmounts and remounts the same instance.
+    unmountedRef.current = false;
+    return () => { unmountedRef.current = true; };
+  }, []);
 
   // Running tally for the stranded-reservation self-heal (reservationReleaseDecision):
   // a stream that dies with no terminal pins the slot forever, so the in-flight
@@ -2828,7 +2839,7 @@ function AppCore() {
   // buildStreamHandlers() refactor is a fine follow-up once both
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
-    if (!taskId) return false;
+    if (!taskId || unmountedRef.current) return false;
     // A tail or send registered here, or a send holding the slot while it
     // uploads. A second stream would abort it, whoever holds the shared slot.
     const alreadyStreamingHere = () => (
@@ -2841,7 +2852,9 @@ function AppCore() {
     } catch {
       return false;
     }
-    if (!status || !status.in_flight) return false;
+    // Unmount may happen while the probe is pending. Do not open a stream
+    // for an App that is gone, even when the server still has a live turn.
+    if (unmountedRef.current || !status || !status.in_flight) return false;
     // A send or queued drain may have started here while the probe was out.
     if (alreadyStreamingHere()) return true;
 
@@ -3003,7 +3016,8 @@ function AppCore() {
   const recoverDroppedTurn = useCallback(async (cid) => {
     if (!cid || droppedRecoveryRef.current.has(cid)) return;
     droppedRecoveryRef.current.add(cid);
-    const current = () => tasksRef.current.find((t) => t.id === cid);
+    // Gone once the App unmounts, which ends the loop at its next check.
+    const current = () => (unmountedRef.current ? undefined : tasksRef.current.find((t) => t.id === cid));
     const settle = (update) => setTasks((prev) => prev.map((t) => (
       t.id === cid && droppedError(t) ? update(t) : t
     )));
@@ -3025,10 +3039,10 @@ function AppCore() {
         }
         let loaded = null;
         try {
-          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, unmountedRef });
         } catch { continue; }
-        if (!loaded) continue;
         if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        if (!loaded) continue;
         const knownIds = knownIdsOf(cid);
         settle((t) => {
           if (!historyEndsTurn(loaded.messages, droppedError(t)?._userMessageId)) return t;
@@ -6795,8 +6809,10 @@ function AppCore() {
   const attachWhenRunStarts = async (cid) => {
     for (const delay of RUN_START_PROBE_DELAYS_MS) {
       await new Promise((resolve) => { setTimeout(resolve, delay); });
-      if (!inFlightSetRef.current.has(cid)) return;
-      const outcome = runStartProbeOutcome(await fetchInFlightStatus(cid));
+      if (unmountedRef.current || !inFlightSetRef.current.has(cid)) return;
+      const status = await fetchInFlightStatus(cid);
+      if (unmountedRef.current) return;
+      const outcome = runStartProbeOutcome(status);
       if (outcome === 'ended') {
         runsAwaitingStartRef.current.delete(cid);
         refreshInFlightSet();

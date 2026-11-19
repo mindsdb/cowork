@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Spies asserted on must be reachable inside the hoisted vi.mock factories.
@@ -267,6 +267,9 @@ beforeEach(() => {
   spies.cancelResponse.mockImplementation(async () => ({}));
   trackTurnFailed.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
+  // mockReset, not just a new implementation: a waitFor on its calls would
+  // otherwise pass at once on the previous test's calls.
+  spies.fetchInFlightStatus.mockReset();
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
   spies.fetchSessionResult.mockReset();
   spies.fetchSessionResult.mockImplementation(async () => ({ status: 'unavailable', code: 0 }));
@@ -749,6 +752,85 @@ describe('interrupted stream recovery', () => {
     });
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
+  });
+
+  it('stops retrying history when a failed read returns after unmount', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+    let resolveHistory;
+    spies.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
+    spies.fetchSession.mockImplementationOnce(() => new Promise((resolve) => { resolveHistory = resolve; }));
+    await waitFor(() => expect(resolveHistory).toBeTypeOf('function'), { timeout: 4000 });
+
+    cleanup();
+    spies.fetchSession.mockClear();
+    resolveHistory(null);
+    // Give the 50 ms retry time to issue its request.
+    await new Promise((resolve) => { setTimeout(resolve, 250); });
+    expect(spies.fetchSession.mock.calls.filter(([cid]) => cid === 'conv-a')).toEqual([]);
+  });
+
+  it('does not reattach when the reconnect probe answers after unmount', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+    let resolveProbe;
+    let recoverySeen = false;
+    spies.fetchInFlightStatus.mockImplementation((cid, opts) => {
+      if (opts?.strict) {
+        recoverySeen = true;
+        return Promise.resolve({ in_flight: true });
+      }
+      if (recoverySeen) return new Promise((resolve) => { resolveProbe = resolve; });
+      return Promise.resolve({ in_flight: false });
+    });
+    await waitFor(() => expect(resolveProbe).toBeTypeOf('function'), { timeout: 4000 });
+    // The recovery probe has handed off to reconnectInFlight, whose own
+    // status request is still pending when the app goes away.
+    const tails = streams.filter((s) => s.kind === 'tail').length;
+    cleanup();
+    await act(async () => { resolveProbe({ in_flight: true }); });
+    expect(streams.filter((s) => s.kind === 'tail')).toHaveLength(tails);
+  });
+
+  it('stops trying to reach a dropped turn once the app unmounts', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+
+    // The first reconnect try is due a second after the drop. Its requests
+    // would land in whichever test runs next and answer that test's mocks.
+    cleanup();
+    spies.fetchSession.mockClear();
+    spies.fetchInFlightStatus.mockClear();
+    await new Promise((r) => { setTimeout(r, 1200); });
+    // Only this conversation's: under a shuffled order, another test's
+    // leftover work can still land here.
+    const forThisTurn = (fn) => fn.mock.calls.filter(([cid]) => cid === 'conv-a');
+    expect(forThisTurn(spies.fetchInFlightStatus)).toEqual([]);
+    expect(forThisTurn(spies.fetchSession)).toEqual([]);
   });
 
   it('ends the live turn when the reload shows the dropped stream actually completed', async () => {
@@ -3417,10 +3499,22 @@ describe('"Run now" before the server has started the run', () => {
     await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-run'));
   }
 
+  it('skips the list refresh when the run ends after unmount', async () => {
+    await runNow(userEvent.setup());
+    let resolveStatus;
+    spies.fetchInFlightStatus.mockImplementationOnce(() => new Promise((resolve) => { resolveStatus = resolve; }));
+    await waitFor(() => expect(resolveStatus).toBeTypeOf('function'), { timeout: 4000 });
+
+    cleanup();
+    fetchInFlightList.mockClear();
+    await act(async () => { resolveStatus({ in_flight: false, has_buffer: true }); });
+    expect(fetchInFlightList).not.toHaveBeenCalled();
+  });
+
   it('loads the answer of a run that started and ended between asks', async () => {
     const user = userEvent.setup();
     await runNow(user);
-    expect(screen.getByText(/Running task/)).toBeInTheDocument();
+    expect(await screen.findByText(/Running task/)).toBeInTheDocument();
 
     // The next ask finds the run already over: no producer, but its buffer.
     spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false, has_buffer: true }));
