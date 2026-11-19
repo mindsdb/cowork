@@ -1,0 +1,133 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  beginCustomMcpSignIn,
+  cancelCustomMcpSignIn,
+  customMcpFailure,
+  openLoginPage,
+  pollCustomMcpSignIn,
+  toolsFrom,
+} from './customMcpWebConnect';
+
+function fakeWindow() {
+  const popup = { opener: 'the Cowork tab', location: { href: '' }, close: vi.fn() };
+  // The address is set through location.href; record what the opener was then.
+  let openerWhenAddressed;
+  Object.defineProperty(popup.location, 'href', {
+    get: () => popup.address || '',
+    set: (value) => { openerWhenAddressed = popup.opener; popup.address = value; },
+  });
+  return { win: { open: vi.fn(() => popup) }, popup, openerWhenAddressed: () => openerWhenAddressed };
+}
+
+afterEach(() => {
+  cancelCustomMcpSignIn();
+});
+
+describe('the sign-in pop-up', () => {
+  it('opens at once and has no opener before its address is set', async () => {
+    const { win, popup, openerWhenAddressed } = fakeWindow();
+    const openExternal = vi.fn();
+
+    const signIn = beginCustomMcpSignIn(win);
+    expect(win.open).toHaveBeenCalledWith('', '_blank');
+    expect(await openLoginPage(signIn, 'https://auth.example.com/authorize?state=s', openExternal)).toBe(true);
+
+    expect(popup.location.href).toBe('https://auth.example.com/authorize?state=s');
+    expect(openerWhenAddressed()).toBeNull();
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it.each(['http://auth.example.com/authorize', 'javascript:alert(1)', 'not a url', 42])(
+    'closes the pop-up and opens nothing for %s',
+    async (authUrl) => {
+      const { win, popup } = fakeWindow();
+      const openExternal = vi.fn();
+
+      const signIn = beginCustomMcpSignIn(win);
+      expect(await openLoginPage(signIn, authUrl, openExternal)).toBe(false);
+
+      expect(popup.close).toHaveBeenCalled();
+      expect(popup.location.href).toBe('');
+      expect(openExternal).not.toHaveBeenCalled();
+    },
+  );
+
+  it('opens an https login page outside the app when the pop-up was blocked', async () => {
+    const openExternal = vi.fn(async () => {});
+    const signIn = beginCustomMcpSignIn({ open: () => null });
+
+    expect(await openLoginPage(signIn, 'https://auth.example.com/a', openExternal)).toBe(true);
+    expect(openExternal).toHaveBeenCalledWith('https://auth.example.com/a');
+  });
+});
+
+describe('the status poll', () => {
+  const sleepNow = () => Promise.resolve();
+
+  it('sends no request while one is in flight', async () => {
+    vi.useFakeTimers();
+    try {
+      const signIn = beginCustomMcpSignIn({ open: () => null });
+      let answerFirst;
+      const readStatus = vi.fn()
+        .mockImplementationOnce(() => new Promise((resolve) => { answerFirst = resolve; }))
+        .mockResolvedValueOnce({ ok: true, data: { status: 'success', name: 'cm-1' } });
+
+      const polling = pollCustomMcpSignIn(signIn, readStatus);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(readStatus).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(readStatus).toHaveBeenCalledTimes(1);
+
+      answerFirst({ ok: true, data: { status: 'pending' } });
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(readStatus).toHaveBeenCalledTimes(2);
+      expect(await polling).toEqual({ ok: true, data: { status: 'success', name: 'cm-1' } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a poll that timed out and stops on refused', async () => {
+    const signIn = beginCustomMcpSignIn({ open: () => null });
+    const readStatus = vi.fn()
+      .mockResolvedValueOnce({ ok: false, code: 'timeout', reason: '' })
+      .mockResolvedValueOnce({ ok: true, data: { status: 'refused' } });
+
+    expect(await pollCustomMcpSignIn(signIn, readStatus, { sleep: sleepNow })).toEqual({ ok: false, code: 'refused', reason: '' });
+    expect(readStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores the answer of a request that was in flight at Cancel', async () => {
+    const { win, popup } = fakeWindow();
+    const signIn = beginCustomMcpSignIn(win);
+    let answer;
+    const readStatus = vi.fn(() => new Promise((resolve) => { answer = resolve; }));
+
+    const polling = pollCustomMcpSignIn(signIn, readStatus, { sleep: sleepNow });
+    await vi.waitFor(() => expect(readStatus).toHaveBeenCalledTimes(1));
+    cancelCustomMcpSignIn();
+
+    expect(await polling).toMatchObject({ ok: false, code: 'login_failed' });
+    expect(popup.close).toHaveBeenCalled();
+    answer({ ok: true, data: { status: 'success' } });
+    expect(readStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('reading cowork-server answers', () => {
+  it.each([
+    [{ error: 'port', detail: 'The URL names a port.' }, { code: 'port', reason: 'The URL names a port.' }],
+    [{ detail: { error: 'listing_too_large' } }, { code: 'listing_too_large', reason: '' }],
+    [{ detail: 'custom_mcp_unavailable' }, { code: 'custom_mcp_unavailable', reason: '' }],
+    [null, { code: 'http_502', reason: '' }],
+  ])('reads the refusal %j', (body, expected) => {
+    expect(customMcpFailure(502, body)).toEqual({ ok: false, ...expected });
+  });
+
+  it('keeps a stored list marked stale with its failure code', () => {
+    expect(toolsFrom({ tools_revision: 2, stale: true, code: 'upstream_unavailable', tools: [] })).toEqual({
+      ok: true, tools: [], revision: 2, stale: true, staleCode: 'upstream_unavailable',
+    });
+  });
+});

@@ -710,7 +710,14 @@
       "unreachable": "Não foi possível acessar o servidor. Tente de novo mais tarde.",
       "notHandedOver": "O app ainda não passou as configurações para este servidor. Reinicie o app e tente de novo.",
       "missing": "Esta conexão não existe mais.",
-      "unreadable": "O registro desta conexão não pode ser lido agora. Tente de novo mais tarde."
+      "unreadable": "O registro desta conexão não pode ser lido agora. Tente de novo mais tarde.",
+      "port": "A nuvem do Anton só se conecta pela porta https padrão. Remova a porta da URL.",
+      "listingTooLarge": "A lista de ferramentas deste servidor é grande demais para ser lida.",
+      "insecureLoginUrl": "A página de login do servidor não é um endereço https, então não foi aberta.",
+      "refused": "Este login foi concluído na conta de outra pessoa, então não foi usado. Adicione o servidor de novo.",
+      "loginNotYours": "Este link de login foi iniciado por outra pessoa, então não foi usado. Conclua apenas logins que você mesmo iniciou.",
+      "wrongOrganization": "Este login foi iniciado em outra organização. Volte para a organização em que você adicionou o servidor e adicione-o de novo.",
+      "expired": "Este login expirou ou já foi usado. Adicione o servidor de novo."
     },
     "detail": {
       "server": "Servidor",
@@ -722,7 +729,17 @@
       "reconnected": "Reconectado. Suas escolhas de ferramentas foram mantidas.",
       "disconnect": "Desconectar",
       "disconnectTitle": "Desconectar {name}?",
-      "disconnectMessage": "O Anton deixa de usar este servidor, o login dele é revogado quando o servidor permite, e as configurações dele são removidas deste computador."
+      "disconnectMessage": "O Anton deixa de usar este servidor, o login dele é revogado quando o servidor permite, e as configurações dele são removidas deste computador.",
+      "stale": "Não foi possível atualizar a lista de ferramentas. Estas são as últimas ferramentas listadas, e seus interruptores continuam funcionando.",
+      "reasonReadOnlyRemoved": "Desativada: o servidor não marca mais esta ferramenta como somente leitura.",
+      "reasonSizeCeiling": "Desativada: as ferramentas que você ativou atingiram o limite de tamanho.",
+      "reasonUnusable": "O Anton não pode usar esta ferramenta."
+    },
+    "finish": {
+      "title": "Login do servidor MCP",
+      "working": "Concluindo o login…",
+      "done": "Login feito. Você pode fechar esta janela.",
+      "close": "Fechar janela"
     }
   }
 }

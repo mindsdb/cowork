@@ -1,8 +1,8 @@
 // The detail panel's section for a custom MCP server: the server it reaches,
 // every tool with its switch, Reconnect and Disconnect. Everything goes
-// through the app's main process, which holds the keychain entries and the
-// app secret the server's routes need. Tools the server adds later stay off
-// until switched on here.
+// through the host: on desktop the app's main process, which holds the
+// keychain entries and the app secret; on the web, cowork-server's routes.
+// Tools the server adds later stay off until switched on here.
 
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Badge, Button } from '../ui';
@@ -17,6 +17,20 @@ import { connectErrorMessage } from './CustomMcpConnectModal';
 const pendingSaves = new Map();
 
 /**
+ * Why a tool is off and cannot simply be read as the member's choice, or null.
+ *
+ * @param {(key: string) => string} t the `library` translator
+ * @param {{usable?: boolean, reason?: string | null}} tool
+ * @returns {string | null}
+ */
+function toolNote(t, tool) {
+  if (tool.usable === false) return t('customMcp.detail.reasonUnusable');
+  if (tool.reason === 'read_only_removed') return t('customMcp.detail.reasonReadOnlyRemoved');
+  if (tool.reason === 'size_ceiling') return t('customMcp.detail.reasonSizeCeiling');
+  return null;
+}
+
+/**
  * @param {object} props
  * @param {{engine: string, name: string}} props.connection
  * @param {(connection: object) => Promise<boolean>} props.onDisconnect removes the connection; true when it did
@@ -27,6 +41,8 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
   const [summary, setSummary] = useState(null);
   const [tools, setTools] = useState(null);
   const [toolsError, setToolsError] = useState(null);
+  // The stored list shown because the live one could not be read, by its failure code.
+  const [staleCode, setStaleCode] = useState(null);
   const [saving, setSaving] = useState(false);
   const [switchError, setSwitchError] = useState(null);
   const [loginHosts, setLoginHosts] = useState(null);
@@ -50,6 +66,7 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     const attempt = ++loadRef.current;
     loadingRef.current = true;
     setToolsError(null);
+    setStaleCode(null);
     const current = () => liveRef.current && attempt === loadRef.current;
     // The label and URL don't depend on a switch; only the tools wait for one.
     const summaryShown = host.customMcpSummary(connection.name).then((summaryResult) => {
@@ -60,8 +77,10 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     await summaryShown;
     if (!toolsResult || !current()) return;
     loadingRef.current = false;
-    if (toolsResult.ok) setTools(toolsResult.tools);
-    else {
+    if (toolsResult.ok) {
+      setTools(toolsResult.tools);
+      if (toolsResult.stale) setStaleCode(toolsResult.staleCode || 'failed');
+    } else {
       setTools([]);
       setToolsError(connectErrorMessage(t, toolsResult));
     }
@@ -137,7 +156,7 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     <>
       <div className="section-label mb-2">{t('customMcp.detail.server')}</div>
       <div className="mb-5 flex flex-col gap-1 rounded-lg border border-solid border-line py-3 px-[14px]">
-        <div className="text-sm font-medium text-ink">{summary?.label || connection.name}</div>
+        <div className="text-sm font-medium text-ink">{summary?.label || connection.user_label || connection.name}</div>
         {summary?.serverUrl && <div className="break-all text-[12px] text-ink-3">{summary.serverUrl}</div>}
       </div>
 
@@ -146,6 +165,12 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
         <div className="text-[12px] leading-normal text-ink-3">{t('customMcp.detail.toolsIntro')}</div>
         {tools === null && <Spinner className="text-ink-3" />}
         {toolsError && <Alert variant="warning">{toolsError}</Alert>}
+        {staleCode && (
+          <Alert variant="warning">
+            <div>{t('customMcp.detail.stale')}</div>
+            {staleCode === 'listing_too_large' && <div>{t('customMcp.error.listingTooLarge')}</div>}
+          </Alert>
+        )}
         {tools?.length === 0 && !toolsError && (
           <div className="text-[12px] italic text-ink-4">{t('customMcp.detail.noTools')}</div>
         )}
@@ -157,12 +182,13 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
                 {tool.readOnly && <Badge>{t('skillCard.readOnly')}</Badge>}
               </div>
               {tool.description && <div className="text-[12px] text-ink-3">{tool.description}</div>}
+              {toolNote(t, tool) && <div className="text-[12px] text-ink-2">{toolNote(t, tool)}</div>}
             </div>
             <Switch
               size="sm"
               checked={tool.allowed}
               onCheckedChange={(on) => void toggle(tool.name, on)}
-              disabled={saving}
+              disabled={saving || tool.usable === false}
               aria-label={t('customMcp.detail.toolSwitch', { name: tool.name })}
             />
           </div>

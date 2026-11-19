@@ -710,7 +710,14 @@
       "unreachable": "Der Server war nicht erreichbar. Versuche es später erneut.",
       "notHandedOver": "Die App hat diesem Server seine Einstellungen noch nicht übergeben. Starte die App neu und versuche es erneut.",
       "missing": "Diese Verbindung gibt es nicht mehr.",
-      "unreadable": "Der Eintrag dieser Verbindung kann gerade nicht gelesen werden. Versuche es später erneut."
+      "unreadable": "Der Eintrag dieser Verbindung kann gerade nicht gelesen werden. Versuche es später erneut.",
+      "port": "Die Cloud von Anton verbindet sich nur über den Standard-https-Port. Entferne den Port aus der URL.",
+      "listingTooLarge": "Die Tool-Liste dieses Servers ist zu groß zum Lesen.",
+      "insecureLoginUrl": "Die Anmeldeseite des Servers ist keine https-Adresse und wurde daher nicht geöffnet.",
+      "refused": "Diese Anmeldung wurde im Konto einer anderen Person abgeschlossen und daher nicht verwendet. Füge den Server erneut hinzu.",
+      "loginNotYours": "Dieser Anmeldelink wurde von einer anderen Person gestartet und daher nicht verwendet. Schließe nur Anmeldungen ab, die du selbst gestartet hast.",
+      "wrongOrganization": "Diese Anmeldung wurde in einer anderen Organisation gestartet. Wechsle zurück zu der Organisation, in der du den Server hinzugefügt hast, und füge ihn erneut hinzu.",
+      "expired": "Diese Anmeldung ist abgelaufen oder wurde bereits verwendet. Füge den Server erneut hinzu."
     },
     "detail": {
       "server": "Server",
@@ -722,7 +729,17 @@
       "reconnected": "Neu verbunden. Deine Tool-Auswahl bleibt erhalten.",
       "disconnect": "Trennen",
       "disconnectTitle": "{name} trennen?",
-      "disconnectMessage": "Anton nutzt diesen Server nicht mehr, die Anmeldung wird widerrufen, wo der Server das erlaubt, und seine Einstellungen werden von diesem Computer entfernt."
+      "disconnectMessage": "Anton nutzt diesen Server nicht mehr, die Anmeldung wird widerrufen, wo der Server das erlaubt, und seine Einstellungen werden von diesem Computer entfernt.",
+      "stale": "Die Tool-Liste konnte nicht aktualisiert werden. Das sind die zuletzt aufgelisteten Tools, und ihre Schalter funktionieren weiterhin.",
+      "reasonReadOnlyRemoved": "Ausgeschaltet: Der Server kennzeichnet dieses Tool nicht mehr als schreibgeschützt.",
+      "reasonSizeCeiling": "Ausgeschaltet: Deine eingeschalteten Tools haben ihre Größengrenze erreicht.",
+      "reasonUnusable": "Anton kann dieses Tool nicht verwenden."
+    },
+    "finish": {
+      "title": "Anmeldung beim MCP-Server",
+      "working": "Anmeldung wird abgeschlossen…",
+      "done": "Angemeldet. Du kannst dieses Fenster schließen.",
+      "close": "Fenster schließen"
     }
   }
 }

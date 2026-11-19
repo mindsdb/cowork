@@ -89,6 +89,50 @@ describe('CustomMcpDetailSection', () => {
     expect(screen.queryByRole('switch')).toBeNull();
   });
 
+  it('shows the stored tools when the list could not be refreshed, and their switches still work', async () => {
+    bridge.customMcpTools.mockResolvedValue({ ok: true, tools: TOOLS, stale: true, staleCode: 'upstream_unavailable' });
+    bridge.customMcpSetTools.mockResolvedValue({ ok: true, tools: ['search', 'delete_issue'] });
+    renderSection();
+
+    expect(await screen.findByText("The tool list couldn't be refreshed. These are the tools last listed, and their switches still work.")).toBeTruthy();
+    expect(screen.queryByText("This server's tool list is too large to read.")).toBeNull();
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(bridge.customMcpSetTools).toHaveBeenCalledWith(CONNECTION.name, ['search', 'delete_issue']);
+  });
+
+  it('says the tool list is too large to read', async () => {
+    bridge.customMcpTools.mockResolvedValue({ ok: true, tools: TOOLS, stale: true, staleCode: 'listing_too_large' });
+    renderSection();
+
+    expect(await screen.findByText("This server's tool list is too large to read.")).toBeTruthy();
+  });
+
+  it('says why a tool was switched off, and keeps a tool Anton cannot use off', async () => {
+    bridge.customMcpTools.mockResolvedValue({
+      ok: true,
+      tools: [
+        { name: 'edit', description: '', readOnly: false, allowed: false, usable: true, reason: 'read_only_removed' },
+        { name: 'big', description: '', readOnly: true, allowed: false, usable: true, reason: 'size_ceiling' },
+        { name: 'odd', description: '', readOnly: true, allowed: false, usable: false, reason: 'schema' },
+      ],
+    });
+    renderSection();
+
+    expect(await screen.findByText('Switched off: the server no longer marks this tool as read-only.')).toBeTruthy();
+    expect(screen.getByText('Switched off: the tools you have on reached their size limit.')).toBeTruthy();
+    expect(screen.getByText("Anton can't use this tool.")).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Let Anton use odd' }).getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('switch', { name: 'Let Anton use edit' }).getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('names the server by its label when the host holds no summary', async () => {
+    bridge.customMcpSummary.mockResolvedValue({ ok: false, code: 'unavailable', reason: 'x' });
+    renderSection({ connection: { ...CONNECTION, user_label: 'Tracker on the web' } });
+
+    expect(await screen.findByText('Tracker on the web')).toBeTruthy();
+  });
+
   it('shows the login hosts before reconnecting, then reconnects with them', async () => {
     bridge.customMcpReconnect
       .mockResolvedValueOnce({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] })

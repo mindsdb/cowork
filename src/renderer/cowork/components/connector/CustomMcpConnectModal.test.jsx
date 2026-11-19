@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const customMcpConnect = vi.hoisted(() => vi.fn());
 const oauthCancel = vi.hoisted(() => vi.fn());
-vi.mock('../../../platform/host', () => ({ host: { customMcpConnect, oauthCancel } }));
+const customMcpRedirectUri = vi.hoisted(() => vi.fn());
+const shell = vi.hoisted(() => ({ isWeb: false }));
+vi.mock('../../../platform/host', () => ({
+  host: { customMcpConnect, oauthCancel, customMcpRedirectUri, get isWeb() { return shell.isWeb; } },
+}));
 
 import CustomMcpConnectModal, { CUSTOM_MCP_REDIRECT_URI } from './CustomMcpConnectModal';
 
@@ -24,6 +28,8 @@ async function fill(user, { label = 'Tracker', url = URL } = {}) {
 
 afterEach(() => {
   customMcpConnect.mockReset();
+  customMcpRedirectUri.mockReset();
+  shell.isWeb = false;
 });
 
 describe('CustomMcpConnectModal', () => {
@@ -111,6 +117,8 @@ describe('CustomMcpConnectModal', () => {
     [{ code: 'grant_refused', reason: 'the token endpoint answered 400: invalid_grant' }, "The login didn't finish: the token endpoint answered 400: invalid_grant"],
     [{ code: 'keychain_unavailable', reason: 'x' }, "The system keychain isn't available, so the connection can't be stored safely."],
     [{ code: 'something_else', reason: 'it broke' }, "Couldn't connect the server: it broke"],
+    [{ code: 'port', reason: 'x' }, "Anton's cloud connects only on the standard https port. Remove the port from the URL."],
+    [{ code: 'listing_too_large', reason: 'x' }, "This server's tool list is too large to read."],
   ])('shows its own message for %j', async (refusal, message) => {
     const user = userEvent.setup();
     customMcpConnect.mockResolvedValue({ ok: false, ...refusal });
@@ -149,6 +157,18 @@ describe('CustomMcpConnectModal', () => {
     await user.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByText(/the server's tools could not be listed/)).toBeTruthy();
+  });
+
+  it('shows the redirect address the web app reads from the server', async () => {
+    const user = userEvent.setup();
+    shell.isWeb = true;
+    customMcpRedirectUri.mockResolvedValue('https://auth.example.com/v1/oauth/custom-mcp/callback');
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: /Advanced/ }));
+
+    expect(await screen.findByText('https://auth.example.com/v1/oauth/custom-mcp/callback')).toBeTruthy();
+    expect(screen.queryByText(CUSTOM_MCP_REDIRECT_URI)).toBeNull();
   });
 
   it('drops a typed secret once closed and opened again', async () => {

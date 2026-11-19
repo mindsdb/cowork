@@ -347,12 +347,13 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
     };
   }, [open, offersBuild]);
 
-  // Main says whether this desktop server keeps custom MCP settings; asked on
-  // each open and hidden until it answers. Never in org mode.
-  const offersMcpUrl = Boolean(onAddMcpUrl);
+  // The host says whether custom MCP servers can be added here: on desktop main,
+  // on the web cowork-server's config. Asked on each open, hidden until it answers.
+  // Desktop keeps them out of org mode, where its server refuses them.
+  const offersMcpUrl = Boolean(onAddMcpUrl) && (host.isWeb || !orgMode);
   const [mcpUrlAllowed, setMcpUrlAllowed] = useState(false);
   useEffect(() => {
-    if (!open || orgMode || !offersMcpUrl || typeof host.customMcpAvailable !== 'function') return undefined;
+    if (!open || !offersMcpUrl || typeof host.customMcpAvailable !== 'function') return undefined;
     let live = true;
     host.customMcpAvailable().then((available) => {
       if (live) setMcpUrlAllowed(available === true);
@@ -363,7 +364,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
       live = false;
       setMcpUrlAllowed(false);
     };
-  }, [open, orgMode, offersMcpUrl]);
+  }, [open, offersMcpUrl]);
 
   // Auto-focus the search input when the picker opens.
   useEffect(() => {
@@ -412,7 +413,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
   }, [filtered]);
 
   const canBuildCustom = offersBuild && buildAllowed;
-  const canAddMcpUrl = offersMcpUrl && !orgMode && mcpUrlAllowed;
+  const canAddMcpUrl = offersMcpUrl && mcpUrlAllowed;
   const trimmedQuery = query.trim();
   const offerBuildForQuery = canBuildCustom && Boolean(trimmedQuery) && !queryMatchesAny;
 

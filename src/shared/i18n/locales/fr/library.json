@@ -710,7 +710,14 @@
       "unreachable": "Le serveur est injoignable. Réessayez plus tard.",
       "notHandedOver": "L'application n'a pas encore transmis ses réglages à ce serveur. Redémarrez l'application et réessayez.",
       "missing": "Cette connexion n'existe plus.",
-      "unreadable": "L'enregistrement de cette connexion est illisible pour le moment. Réessayez plus tard."
+      "unreadable": "L'enregistrement de cette connexion est illisible pour le moment. Réessayez plus tard.",
+      "port": "Le cloud d'Anton se connecte uniquement sur le port https standard. Retirez le port de l'URL.",
+      "listingTooLarge": "La liste d'outils de ce serveur est trop volumineuse pour être lue.",
+      "insecureLoginUrl": "La page de connexion du serveur n'est pas une adresse https, elle n'a donc pas été ouverte.",
+      "refused": "Cette connexion a été finalisée dans le compte de quelqu'un d'autre, elle n'a donc pas été utilisée. Ajoutez à nouveau le serveur.",
+      "loginNotYours": "Ce lien de connexion a été lancé par quelqu'un d'autre, il n'a donc pas été utilisé. Ne finalisez que les connexions que vous avez lancées vous-même.",
+      "wrongOrganization": "Cette connexion a été lancée dans une autre organisation. Revenez à l'organisation dans laquelle vous avez ajouté le serveur, puis ajoutez-le à nouveau.",
+      "expired": "Cette connexion a expiré ou a déjà été utilisée. Ajoutez à nouveau le serveur."
     },
     "detail": {
       "server": "Serveur",
@@ -722,7 +729,17 @@
       "reconnected": "Reconnecté. Vos choix d'outils sont conservés.",
       "disconnect": "Déconnecter",
       "disconnectTitle": "Déconnecter {name} ?",
-      "disconnectMessage": "Anton n'utilise plus ce serveur, sa connexion est révoquée quand le serveur le permet, et ses réglages sont supprimés de cet ordinateur."
+      "disconnectMessage": "Anton n'utilise plus ce serveur, sa connexion est révoquée quand le serveur le permet, et ses réglages sont supprimés de cet ordinateur.",
+      "stale": "La liste d'outils n'a pas pu être actualisée. Voici les derniers outils listés, et leurs interrupteurs fonctionnent toujours.",
+      "reasonReadOnlyRemoved": "Désactivé : le serveur ne marque plus cet outil comme en lecture seule.",
+      "reasonSizeCeiling": "Désactivé : les outils que vous avez activés ont atteint leur limite de taille.",
+      "reasonUnusable": "Anton ne peut pas utiliser cet outil."
+    },
+    "finish": {
+      "title": "Connexion au serveur MCP",
+      "working": "Finalisation de la connexion…",
+      "done": "Connecté. Vous pouvez fermer cette fenêtre.",
+      "close": "Fermer la fenêtre"
     }
   }
 }

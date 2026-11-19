@@ -710,7 +710,14 @@
       "unreachable": "无法访问服务器。请稍后重试。",
       "notHandedOver": "应用尚未将设置交给此服务器。请重启应用后重试。",
       "missing": "此连接已不存在。",
-      "unreadable": "暂时无法读取此连接的记录。请稍后重试。"
+      "unreadable": "暂时无法读取此连接的记录。请稍后重试。",
+      "port": "Anton 云端只通过标准 https 端口连接。请从 URL 中删除端口。",
+      "listingTooLarge": "此服务器的工具列表太大，无法读取。",
+      "insecureLoginUrl": "服务器的登录页面不是 https 地址，因此未打开。",
+      "refused": "此登录是在其他人的账户中完成的，因此未被使用。请重新添加服务器。",
+      "loginNotYours": "此登录链接由其他人发起，因此未被使用。只完成你自己发起的登录。",
+      "wrongOrganization": "此登录是在另一个组织中发起的。请切换回你添加服务器时所在的组织，然后重新添加。",
+      "expired": "此登录已过期或已被使用。请重新添加服务器。"
     },
     "detail": {
       "server": "服务器",
@@ -722,7 +729,17 @@
       "reconnected": "已重新连接。你的工具选择已保留。",
       "disconnect": "断开连接",
       "disconnectTitle": "断开 {name} 的连接？",
-      "disconnectMessage": "Anton 将停止使用此服务器，在服务器允许时撤销其登录，并从这台电脑上删除其设置。"
+      "disconnectMessage": "Anton 将停止使用此服务器，在服务器允许时撤销其登录，并从这台电脑上删除其设置。",
+      "stale": "无法刷新工具列表。这些是上次列出的工具，它们的开关仍然可用。",
+      "reasonReadOnlyRemoved": "已关闭：服务器不再将此工具标记为只读。",
+      "reasonSizeCeiling": "已关闭：你开启的工具已达到大小上限。",
+      "reasonUnusable": "Anton 无法使用此工具。"
+    },
+    "finish": {
+      "title": "MCP 服务器登录",
+      "working": "正在完成登录…",
+      "done": "已登录。你可以关闭此窗口。",
+      "close": "关闭窗口"
     }
   }
 }
