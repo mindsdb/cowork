@@ -1011,6 +1011,7 @@ function AppCore() {
   const [composerPrefill, setComposerPrefill] = useState(null);
   // Set by the checklist's "Try an example" row; Home answers it and clears it.
   const [examplesRequest, setExamplesRequest] = useState(0);
+  const [ownWorkRequest, setOwnWorkRequest] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // null = no section selected: the mobile master-detail shows its section
@@ -7151,6 +7152,10 @@ function AppCore() {
             newTask();
             setExamplesRequest(Date.now());
           }}
+          onOpenOwnWork={() => {
+            newTask();
+            setOwnWorkRequest(Date.now());
+          }}
           // Hold the tip while the popout drawer is shut: Sidebar sees
           // collapsed={false} there, but the whole wrapper is translated
           // off-screen, so its anchor is invisible. The armed state
@@ -7254,6 +7259,8 @@ function AppCore() {
             onPrefillConsumed={() => setComposerPrefill(null)}
             examplesRequest={examplesRequest}
             onExamplesRequestConsumed={() => setExamplesRequest(0)}
+            ownWorkRequest={ownWorkRequest}
+            onOwnWorkRequestConsumed={() => setOwnWorkRequest(0)}
             codingModeEnabled={false}
           />
         )}

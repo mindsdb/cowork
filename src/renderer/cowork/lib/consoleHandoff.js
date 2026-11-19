@@ -3,7 +3,7 @@
 //
 //   /?from=console                                   empty composer
 //   /?from=console&mode=games&sample=classic-snake-game
-//   /?from=console&start=own-work                    the first onboarding step
+//   /?from=console&start=own-work                    the own-work mode (the first onboarding step)
 //   /?from=console&mode=games&sample=…&placement=gallery
 //                                                    …and where in the console it came from
 //
@@ -11,10 +11,9 @@
 // prompt text. It has to be captured before the Keycloak redirect, because
 // web-main.tsx's redirectUri is the bare pathname and the query string does
 // not survive login. It is then consumed once by HomeView. Nothing here sends
-// a message: the sample or start is only placed in the composer, and the user
-// still presses Send.
-import { TASK_MODES } from '../components/taskmodes/taskModes';
-import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
+// a message: a sample is only placed in the composer, the own-work start only
+// opens the own-work mode, and the user still presses Send.
+import { TASK_MODES, OWN_WORK_MODE } from '../components/taskmodes/taskModes';
 
 const STORAGE_KEY = 'anton.consoleHandoff';
 export const CONSOLE_ENTRY_SOURCE = 'console';
@@ -51,7 +50,7 @@ export const isUntouchedSample = (text) => {
   const trimmed = (text || '').trim();
   return (
     Boolean(trimmed) &&
-    (trimmed === OWN_WORK_PROMPT || TASK_MODES.some((m) => m.samples.some((s) => s.prompt === trimmed)))
+    [...TASK_MODES, OWN_WORK_MODE].some((m) => m.samples.some((s) => s.prompt === trimmed))
   );
 };
 
