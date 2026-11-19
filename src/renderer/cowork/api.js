@@ -1932,6 +1932,33 @@ export async function updateOrgAppearance(payload) {
   });
 }
 
+/**
+ * The signed-in account's open deletion request, `{ requestedAt, deleteBy }`,
+ * or null. The server answers 404 both when there is no open request and when
+ * there is no MindsHub account behind it (a desktop on its local server), so
+ * callers only ask where a MindsHub account is certain: the mobile app. Anything
+ * else rejects, so a failed read is never mistaken for "no request".
+ */
+export async function getDeletionRequest() {
+  try {
+    // Bounded: the Delete account button stays disabled until this settles.
+    return await req('/hub/deletion-request/', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+  } catch (err) {
+    if (err?.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Ask MindsHub to delete the signed-in account. Idempotent: a second call
+ * answers the open request rather than opening another. Resolves to the same
+ * shape as getDeletionRequest; rejects with `err.status` on failure (404 when
+ * there is no MindsHub account behind the server).
+ */
+export async function requestAccountDeletion() {
+  return req('/hub/deletion-request/', { method: 'POST', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
 // The lock-owning wrappers decide how to handle failure. A save must never
 // publish offline/mock defaults as if they were the canonical persisted values.
 async function readSettings({ validate = true } = {}) {

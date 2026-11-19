@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles, voiceOperate, readBrowserApproveSteps } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, getDeletionRequest, requestAccountDeletion, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles, voiceOperate, readBrowserApproveSteps } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -1678,6 +1678,85 @@ describe('req() timeout scoping', () => {
  * A definite answer is answered; a transient one is thrown for the caller to
  * ask again.
  */
+describe('account deletion requests', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  let calls;
+  const respond = (res) => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return res;
+    }));
+  };
+  const OPEN = { requestedAt: '2026-11-17T18:30:00Z', deleteBy: '2026-12-17T18:30:00Z' };
+
+  it('reads the open request from the hub route', async () => {
+    respond(jsonRes(OPEN));
+
+    await expect(getDeletionRequest()).resolves.toEqual(OPEN);
+    expect(calls[0].url).toMatch(/\/hub\/deletion-request\/$/);
+    expect(calls[0].options?.method ?? 'GET').toBe('GET');
+  });
+
+  it('reads a 404 as no open request', async () => {
+    respond(jsonRes({ detail: 'Not Found' }, false, 404));
+
+    await expect(getDeletionRequest()).resolves.toBeNull();
+  });
+
+  it('rejects on any other failure, so it is never mistaken for no request', async () => {
+    respond(jsonRes({ detail: 'boom' }, false, 502));
+
+    await expect(getDeletionRequest()).rejects.toMatchObject({ status: 502 });
+  });
+
+  describe.each([
+    ['GET', getDeletionRequest],
+    ['POST', requestAccountDeletion],
+  ])('%s deadline', (_method, send) => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('covers the wait for the access token', async () => {
+      hostMock.getAccessToken.mockImplementationOnce(() => new Promise(() => {}));
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const onError = vi.fn();
+      send().catch(onError);
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'AbortError' }));
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('aborts a stalled network request', async () => {
+      const fetchMock = _abortAwareFetch(2 * SHORT_REQUEST_TIMEOUT_MS, OPEN);
+      vi.stubGlobal('fetch', fetchMock);
+
+      const onError = vi.fn();
+      send().catch(onError);
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'AbortError' }));
+    });
+  });
+
+  it('posts the request and rejects with the status on failure', async () => {
+    respond(jsonRes(OPEN));
+    await expect(requestAccountDeletion()).resolves.toEqual(OPEN);
+    expect(calls[0].url).toMatch(/\/hub\/deletion-request\/$/);
+    expect(calls[0].options.method).toBe('POST');
+
+    respond(jsonRes({ detail: 'slow down' }, false, 429));
+    await expect(requestAccountDeletion()).rejects.toMatchObject({ status: 429 });
+  });
+});
+
 describe('fetchHubWorkspaces', () => {
   const DARK = { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
 
