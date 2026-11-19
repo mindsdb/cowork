@@ -879,7 +879,8 @@
     "ariaLabel": "Ansichtsbereiche",
     "sourceHint": "Text und Layout auf der Seite ändern",
     "commentsHint": "Feedback geben und prüfen",
-    "statsHint": "Wer es angesehen hat und wie lange"
+    "statsHint": "Wer es angesehen hat und wie lange",
+    "commentsOpen": "Kommentare, {count} offen"
   },
   "liveEditPanel": {
     "close": "Live-Bearbeitungsbereich schließen",

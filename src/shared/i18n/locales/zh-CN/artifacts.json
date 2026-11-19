@@ -879,7 +879,8 @@
     "ariaLabel": "查看器面板",
     "sourceHint": "修改页面上的文字和布局",
     "commentsHint": "留下并查看反馈",
-    "statsHint": "谁看过以及看了多久"
+    "statsHint": "谁看过以及看了多久",
+    "commentsOpen": "评论，{count} 条待处理"
   },
   "liveEditPanel": {
     "close": "关闭实时编辑面板",

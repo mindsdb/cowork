@@ -879,7 +879,8 @@
     "ariaLabel": "Painéis do visualizador",
     "sourceHint": "Altere o texto e o layout da página",
     "commentsHint": "Deixe e revise feedback",
-    "statsHint": "Quem viu e por quanto tempo"
+    "statsHint": "Quem viu e por quanto tempo",
+    "commentsOpen": "Comentários, {count} abertos"
   },
   "liveEditPanel": {
     "close": "Fechar o painel de edição ao vivo",

@@ -24955,6 +24955,40 @@
       "text": "46ad1f34b7af"
     }
   },
+  "artifacts:rail.commentsOpen": {
+    "de": {
+      "from": "8f60e2dbfb35",
+      "text": "b974ac19f48e"
+    },
+    "es": {
+      "from": "8f60e2dbfb35",
+      "text": "2a49fd84efc6"
+    },
+    "fr": {
+      "from": "8f60e2dbfb35",
+      "text": "b4b61df2e4a7"
+    },
+    "it": {
+      "from": "8f60e2dbfb35",
+      "text": "2e2aa6fbd0b8"
+    },
+    "ja": {
+      "from": "8f60e2dbfb35",
+      "text": "01cc85a80be3"
+    },
+    "ko": {
+      "from": "8f60e2dbfb35",
+      "text": "58d0d9bf55f6"
+    },
+    "pt-BR": {
+      "from": "8f60e2dbfb35",
+      "text": "357aeba5f72f"
+    },
+    "zh-CN": {
+      "from": "8f60e2dbfb35",
+      "text": "f11f4b9b4d65"
+    }
+  },
   "artifacts:rail.sourceHint": {
     "de": {
       "from": "bbf207e98c9f",

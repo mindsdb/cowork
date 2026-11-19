@@ -1591,6 +1591,10 @@ export function ArtifactViewer({
   // The panel rail on the viewer's right edge (ViewerModeRail, ENG-4455): one
   // tab per layer this person may use, each opening its side panel. Clicking
   // the open one closes it; the unsaved Live edit prompt guards both ways out.
+  // Comments still to review: open ones, as an inbox counts what is in it.
+  // Resolved and dismissed ones are done with.
+  const openCommentCount = (comments.threads || [])
+    .filter((thread) => thread.status !== 'resolved' && thread.status !== 'dismissed').length;
   const railTabs = [
     canSource && {
       id: 'source',
@@ -1607,8 +1611,8 @@ export function ArtifactViewer({
       description: t('rail.commentsHint'),
       pressed: !!commentsOpen,
       onSelect: () => toggleComments(),
-      badge: comments.unreadCount,
-      badgeLabel: t('header.commentsUnread', { count: comments.unreadCount }),
+      badge: openCommentCount,
+      badgeLabel: t('rail.commentsOpen', { count: openCommentCount }),
     },
     statsAvailable && {
       id: 'stats',

@@ -879,7 +879,8 @@
     "ariaLabel": "Panneaux de la visionneuse",
     "sourceHint": "Modifier le texte et la mise en page",
     "commentsHint": "Laisser et consulter des retours",
-    "statsHint": "Qui l’a consulté et combien de temps"
+    "statsHint": "Qui l’a consulté et combien de temps",
+    "commentsOpen": "Commentaires, {count} ouverts"
   },
   "liveEditPanel": {
     "close": "Fermer le panneau de modification en direct",

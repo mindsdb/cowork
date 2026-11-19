@@ -879,7 +879,8 @@
     "ariaLabel": "Viewer panels",
     "sourceHint": "Change text and layout on the page",
     "commentsHint": "Leave and review feedback",
-    "statsHint": "Who viewed and for how long"
+    "statsHint": "Who viewed and for how long",
+    "commentsOpen": "Comments, {count} open"
   },
   "liveEditPanel": {
     "close": "Close Live edit panel",

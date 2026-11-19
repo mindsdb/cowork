@@ -879,7 +879,8 @@
     "ariaLabel": "Paneles del visor",
     "sourceHint": "Cambia el texto y el diseño de la página",
     "commentsHint": "Deja comentarios y revísalos",
-    "statsHint": "Quién lo vio y durante cuánto tiempo"
+    "statsHint": "Quién lo vio y durante cuánto tiempo",
+    "commentsOpen": "Comentarios, {count} abiertos"
   },
   "liveEditPanel": {
     "close": "Cerrar el panel de edición en vivo",

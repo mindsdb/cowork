@@ -879,7 +879,8 @@
     "ariaLabel": "뷰어 패널",
     "sourceHint": "페이지의 텍스트와 레이아웃 변경",
     "commentsHint": "피드백 남기기 및 검토",
-    "statsHint": "누가 얼마나 오래 봤는지"
+    "statsHint": "누가 얼마나 오래 봤는지",
+    "commentsOpen": "댓글, 열린 댓글 {count}개"
   },
   "liveEditPanel": {
     "close": "실시간 편집 패널 닫기",
