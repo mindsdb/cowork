@@ -2,8 +2,9 @@
 // editor's top toolbar, now in the viewer's shared side panel beside the
 // Comments inbox and Stats. The canvas stays the editing surface; the panel
 // holds what the editor is doing (its status line), the unsaved changes (each
-// with its own undo), Source code (the HTML) and Save / Discard. The Navigate
-// / Edit text switch floats over the page, as Comments' does.
+// with its own undo) and Save / Discard; Source code (the HTML) sits in its
+// header beside the close. The Navigate / Edit text switch floats over the
+// page, as Comments' does.
 //
 // The editor owns that state (what is selected, the mode it posts to its
 // frame, whether the source is open), so it renders its controls itself,
@@ -26,20 +27,24 @@ export function LiveEditPanel({ slotRef, onClose }) {
     <div className="artifact-live-edit-panel flex flex-col gap-[12px] bg-surface px-3 py-2 font-[family-name:var(--font-body)]">
       <div className="flex shrink-0 items-center justify-between">
         <span className="text-[18px] font-semibold leading-[28px] text-ink">{t('layers.source')}</span>
-        {onClose && (
-          <Tooltip content={t('liveEditPanel.close')}>
-            <button
-              type="button"
-              aria-label={t('liveEditPanel.close')}
-              className="w-[24px] h-[24px] flex items-center justify-center bg-transparent border-0
-                rounded-[6px] p-0 cursor-pointer text-ink-3 transition-colors
-                hover:text-ink hover:bg-surface-2"
-              onClick={onClose}
-            >
-              <XIcon />
-            </button>
-          </Tooltip>
-        )}
+        <div className="flex items-center gap-[6px]">
+          {/* The editor's header actions (Source code) render here. */}
+          <div className="artifact-live-edit-header-slot" data-live-edit-header-slot="" />
+          {onClose && (
+            <Tooltip content={t('liveEditPanel.close')}>
+              <button
+                type="button"
+                aria-label={t('liveEditPanel.close')}
+                className="w-[24px] h-[24px] flex items-center justify-center bg-transparent border-0
+                  rounded-[6px] p-0 cursor-pointer text-ink-3 transition-colors
+                  hover:text-ink hover:bg-surface-2"
+                onClick={onClose}
+              >
+                <XIcon />
+              </button>
+            </Tooltip>
+          )}
+        </div>
       </div>
       <div ref={slotRef} className="artifact-live-edit-slot" data-testid="live-edit-slot" />
     </div>
@@ -76,6 +81,19 @@ export function LiveEditControls({
   const { t } = useTranslation('artifacts');
   if (!target) return null;
   const edited = changes?.length > 0;
+  // Source code goes in the panel's header, beside the close; without that
+  // header (a bare slot) it stays with the status card.
+  const headerTarget = target.closest?.('.artifact-live-edit-panel')?.querySelector('[data-live-edit-header-slot]') || null;
+  const sourceButton = advanced && (
+    <button
+      type="button"
+      className={`artifact-live-edit-advanced${headerTarget ? ' is-header' : ''}`}
+      onClick={advanced.onToggle}
+    >
+      {advanced.on ? Ico.edit(14) : Ico.code(14)}
+      {advanced.on ? t('htmlEditor.back') : t('htmlEditor.sourceCode')}
+    </button>
+  );
   return createPortal(
     <div className="artifact-live-edit-controls">
       {/* The edits fill the panel from the top; the status card waits in the
@@ -88,13 +106,9 @@ export function LiveEditControls({
         isError={isError}
         active={active}
         placement={edited ? 'bottom' : 'center'}
-        after={advanced && (
-          <button type="button" className="artifact-live-edit-advanced" onClick={advanced.onToggle}>
-            {advanced.on ? Ico.edit(14) : Ico.code(14)}
-            {advanced.on ? t('htmlEditor.back') : t('htmlEditor.sourceCode')}
-          </button>
-        )}
+        after={headerTarget ? null : sourceButton}
       />
+      {headerTarget && sourceButton && createPortal(sourceButton, headerTarget)}
       <div className="artifact-live-edit-actions">
         <SaveDiscardButtons actions={editActions} />
       </div>

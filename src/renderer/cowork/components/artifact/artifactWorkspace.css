@@ -132,6 +132,9 @@
 .artifact-live-edit-advanced:focus-visible,
 .artifact-live-edit-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .artifact-live-edit-advanced { align-self: flex-start; }
+.artifact-live-edit-header-slot { display: flex; }
+.artifact-live-edit-header-slot:empty { display: none; }
+.artifact-live-edit-advanced.is-header { height: 26px; padding: 0 8px; font-size: 11.5px; }
 /* The unsaved changes: one row per edited element, the list scrolling on
    its own so Save / Discard stay at the bottom of the panel. */
 .artifact-live-edit-changes { min-height: 0; display: flex; flex-direction: column; gap: 6px; }
