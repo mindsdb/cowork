@@ -11,6 +11,16 @@ const state = vi.hoisted(() => ({
 const openExternal = vi.fn(async () => {});
 const openPath = vi.fn(async () => ({ ok: true }));
 
+// The agent saves the doc: a newer rev arrives through the doc stream.
+function deliverAgentEdit() {
+  act(() => {
+    stream.handlers.onEvent({
+      type: 'doc.updated', by: 'agent', rev: 3,
+      doc: { schema: 'cowork.doc/1', id: 'a1', title: 'Plan', rev: 3, tabs: [{ id: 't_1', title: 'Plan', blocks: [] }] },
+    });
+  });
+}
+
 vi.mock('./docApi');
 
 vi.mock('../../../platform/host', () => ({
@@ -39,7 +49,7 @@ vi.mock('../artifact/publish/PublishMenu', () => ({
 }));
 
 import DocPane from './DocPane';
-import { fetchDoc, resetDocApi } from './docApi';
+import { fetchDoc, resetDocApi, stream } from './docApi';
 
 beforeEach(() => {
   resetDocApi();
@@ -81,6 +91,9 @@ describe('DocPane sharing', () => {
     state.publishedUrl = 'https://view.mindshub.ai/view/abc/123';
     render(<DocPane projectRef="p1" artifactId="a1" />);
     await screen.findByRole('button', { name: 'Share' });
+    act(() => { vi.advanceTimersByTime(1200); });
+    state.refresh.mockClear();
+    deliverAgentEdit();
     act(() => { vi.advanceTimersByTime(1300); });
     expect(state.refresh).not.toHaveBeenCalled();
   });
@@ -90,8 +103,11 @@ describe('DocPane sharing', () => {
     state.publishedUrl = 'https://view.mindshub.ai/view/abc/123';
     render(<DocPane projectRef="p1" artifactId="a1" />);
     await screen.findByRole('button', { name: 'Share' });
+    act(() => { vi.advanceTimersByTime(1200); });
+    state.refresh.mockClear();
+    deliverAgentEdit();
     act(() => { vi.advanceTimersByTime(1300); });
-    expect(state.refresh).toHaveBeenCalled();
+    expect(state.refresh).toHaveBeenCalledTimes(1);
   });
 
   it('opens the shared link once published', async () => {
