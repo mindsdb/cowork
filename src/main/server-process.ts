@@ -982,7 +982,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       ...(MINDS_ENV_SLUG && !process.env.ENV ? { ENV: MINDS_ENV_SLUG } : {}),
       // Slack's In-Browser Connect uses a Slack app that works only in our
       // own workspace for now, so only staging builds offer it. A local dev
-      // run leaves it to cowork-server's .env; prod builds don't set it.
+      // run leaves it to cowork-server's .env. Prod builds leave it unset on
+      // purpose, so prod is switched on by changing cowork-server's default,
+      // without a shell release; never set it to 'false' here.
       ...(SLACK_CONNECTOR_BUILD_KINDS.has(kind) ? { SLACK_CONNECTOR_ENABLED: 'true' } : {}),
       // A staging, preview or dev build's turns are ours, not users'.
       // The person's switch for the agent's usage events (Settings), read from
