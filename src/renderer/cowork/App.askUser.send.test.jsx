@@ -1540,6 +1540,22 @@ describe('the first message of a new task (analytics)', () => {
     uploadAttachments.mockResolvedValue([]);
   });
 
+  it('carries what Home did with a task mode\'s instruction line into the event', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    await user.click(await screen.findByRole('button', { name: 'Create slides' }));
+    const composer = document.querySelector('textarea');
+    await user.click(composer);
+    await user.paste('Make a deck');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({
+      taskMode: { task_mode: 'slides', mode_line: 'appended', example_placed: false },
+    }));
+  });
+
   it('is described to analytics once, before the session event, as the kind of start it was', async () => {
     // This file does not clear its mocks between tests, so count from here.
     trackNewTaskMessageSent.mockClear();
