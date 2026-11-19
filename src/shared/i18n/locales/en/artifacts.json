@@ -247,7 +247,7 @@
   "htmlEditor": {
     "blockGone": "The selected text block is no longer available.",
     "updateFailed": "This text could not be updated.",
-    "advancedMode": "Advanced mode — changes still save as a revision",
+    "advancedMode": "Source code — changes still save as a revision",
     "selected": "{label} selected — type to change it",
     "preparing": "Preparing editable text…",
     "noEditable": "No directly editable text was found",
@@ -274,7 +274,8 @@
       "navigateHint": "Use the page as usual: click through slides, tabs and links",
       "editHint": "Click any text to change it",
       "navigateGuidance": "Navigating. Use the page as usual, then switch to Edit text to change something."
-    }
+    },
+    "sourceCode": "Source code"
   },
   "workspace": {
     "noWorkspace": "This artifact was created before editing was available",
@@ -871,6 +872,13 @@
     "statsHint": "Who viewed and for how long"
   },
   "liveEditPanel": {
-    "close": "Close Live edit panel"
+    "close": "Close Live edit panel",
+    "changes": {
+      "title": "Unsaved changes",
+      "undo": "Undo this change",
+      "undoNamed": "Undo the change to {label}: {text}",
+      "was": "Was: {text}",
+      "emptyText": "(empty)"
+    }
   }
 }

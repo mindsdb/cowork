@@ -247,7 +247,7 @@
   "htmlEditor": {
     "blockGone": "Der ausgewählte Textblock ist nicht mehr verfügbar.",
     "updateFailed": "Dieser Text konnte nicht aktualisiert werden.",
-    "advancedMode": "Erweiterter Modus – Änderungen werden weiterhin als Revision gespeichert",
+    "advancedMode": "Quellcode – Änderungen werden weiterhin als Revision gespeichert",
     "selected": "{label} ausgewählt – zum Ändern tippen",
     "preparing": "Bearbeitbarer Text wird vorbereitet…",
     "noEditable": "Kein direkt bearbeitbarer Text gefunden",
@@ -274,7 +274,8 @@
       "navigateHint": "Die Seite wie gewohnt nutzen: durch Folien, Tabs und Links klicken",
       "editHint": "Auf einen beliebigen Text klicken, um ihn zu ändern",
       "navigateGuidance": "Navigation aktiv. Nutze die Seite wie gewohnt und wechsle dann zu „Text bearbeiten“, um etwas zu ändern."
-    }
+    },
+    "sourceCode": "Quellcode"
   },
   "workspace": {
     "noWorkspace": "Dieses Artefakt wurde erstellt, bevor Bearbeiten verfügbar war",
@@ -871,6 +872,13 @@
     "statsHint": "Wer es angesehen hat und wie lange"
   },
   "liveEditPanel": {
-    "close": "Live-Bearbeitungsbereich schließen"
+    "close": "Live-Bearbeitungsbereich schließen",
+    "changes": {
+      "title": "Ungespeicherte Änderungen",
+      "undo": "Diese Änderung rückgängig machen",
+      "undoNamed": "Änderung an {label} rückgängig machen: {text}",
+      "was": "Vorher: {text}",
+      "emptyText": "(leer)"
+    }
   }
 }

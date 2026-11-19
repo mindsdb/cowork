@@ -247,7 +247,7 @@
   "htmlEditor": {
     "blockGone": "O bloco de texto selecionado não está mais disponível.",
     "updateFailed": "Não foi possível atualizar este texto.",
-    "advancedMode": "Modo avançado: as alterações continuam sendo salvas como revisão",
+    "advancedMode": "Código-fonte — as alterações ainda são salvas como revisão",
     "selected": "{label} selecionado: digite para alterar",
     "preparing": "Preparando o texto editável…",
     "noEditable": "Nenhum texto diretamente editável foi encontrado",
@@ -274,7 +274,8 @@
       "navigateHint": "Use a página normalmente: passe slides, abas e links",
       "editHint": "Clique em qualquer texto para alterá-lo",
       "navigateGuidance": "Navegando. Use a página normalmente e depois mude para Editar texto para alterar algo."
-    }
+    },
+    "sourceCode": "Código-fonte"
   },
   "workspace": {
     "noWorkspace": "Este artefato foi criado antes de a edição existir",
@@ -871,6 +872,13 @@
     "statsHint": "Quem viu e por quanto tempo"
   },
   "liveEditPanel": {
-    "close": "Fechar o painel de edição ao vivo"
+    "close": "Fechar o painel de edição ao vivo",
+    "changes": {
+      "title": "Alterações não salvas",
+      "undo": "Desfazer esta alteração",
+      "undoNamed": "Desfazer a alteração em {label}: {text}",
+      "was": "Antes: {text}",
+      "emptyText": "(vazio)"
+    }
   }
 }

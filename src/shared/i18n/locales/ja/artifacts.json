@@ -247,7 +247,7 @@
   "htmlEditor": {
     "blockGone": "選択したテキストブロックは存在しません。",
     "updateFailed": "このテキストを更新できませんでした。",
-    "advancedMode": "詳細モード — 変更は引き続きリビジョンとして保存されます",
+    "advancedMode": "ソースコード — 変更は引き続きリビジョンとして保存されます",
     "selected": "{label}を選択中 — 入力して変更できます",
     "preparing": "編集可能なテキストを準備中…",
     "noEditable": "直接編集できるテキストが見つかりませんでした",
@@ -274,7 +274,8 @@
       "navigateHint": "通常どおりページを操作：スライド、タブ、リンクを移動",
       "editHint": "テキストをクリックして変更",
       "navigateGuidance": "操作モードです。通常どおりページを操作し、変更するときは「テキストを編集」に切り替えてください。"
-    }
+    },
+    "sourceCode": "ソースコード"
   },
   "workspace": {
     "noWorkspace": "このアーティファクトは編集機能の提供開始前に作成されました",
@@ -871,6 +872,13 @@
     "statsHint": "誰がどれだけ閲覧したか"
   },
   "liveEditPanel": {
-    "close": "ライブ編集パネルを閉じる"
+    "close": "ライブ編集パネルを閉じる",
+    "changes": {
+      "title": "未保存の変更",
+      "undo": "この変更を元に戻す",
+      "undoNamed": "{label}の変更を元に戻す: {text}",
+      "was": "変更前: {text}",
+      "emptyText": "（空）"
+    }
   }
 }

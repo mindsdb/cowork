@@ -247,7 +247,7 @@
   "htmlEditor": {
     "blockGone": "Le bloc de texte sélectionné n’est plus disponible.",
     "updateFailed": "Impossible de mettre à jour ce texte.",
-    "advancedMode": "Mode avancé — les modifications sont toujours enregistrées comme révision",
+    "advancedMode": "Code source — les modifications sont toujours enregistrées comme révision",
     "selected": "Sélection : {label} — tapez pour modifier",
     "preparing": "Préparation du texte modifiable…",
     "noEditable": "Aucun texte directement modifiable trouvé",
@@ -274,7 +274,8 @@
       "navigateHint": "Utilisez la page normalement : diapositives, onglets et liens",
       "editHint": "Cliquez sur un texte pour le modifier",
       "navigateGuidance": "Navigation. Utilisez la page normalement, puis passez à « Modifier le texte » pour changer quelque chose."
-    }
+    },
+    "sourceCode": "Code source"
   },
   "workspace": {
     "noWorkspace": "Cet artefact a été créé avant que la modification soit disponible",
@@ -871,6 +872,13 @@
     "statsHint": "Qui l’a consulté et combien de temps"
   },
   "liveEditPanel": {
-    "close": "Fermer le panneau de modification en direct"
+    "close": "Fermer le panneau de modification en direct",
+    "changes": {
+      "title": "Modifications non enregistrées",
+      "undo": "Annuler cette modification",
+      "undoNamed": "Annuler la modification de {label} : {text}",
+      "was": "Avant : {text}",
+      "emptyText": "(vide)"
+    }
   }
 }

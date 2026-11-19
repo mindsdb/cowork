@@ -13,7 +13,7 @@ const SOURCE = {
 describe('ArtifactSourceEditor HTML mode', () => {
   it('opens on the artifact canvas and keeps source editing behind an advanced action', async () => {
     const user = userEvent.setup();
-    // The Live edit panel's slot, where Advanced and the status render.
+    // The Live edit panel's slot, where Source code and the status render.
     const panel = document.body.appendChild(document.createElement('div'));
     render(
       <ArtifactSourceEditor
@@ -30,7 +30,7 @@ describe('ArtifactSourceEditor HTML mode', () => {
     expect(screen.queryByRole('textbox', { name: 'Edit deck.html' })).not.toBeInTheDocument();
     expect(screen.getByText('Preparing editable text…')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Advanced' }));
+    await user.click(screen.getByRole('button', { name: 'Source code' }));
     expect(screen.getByRole('textbox', { name: 'Edit deck.html' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Back to artifact' }));

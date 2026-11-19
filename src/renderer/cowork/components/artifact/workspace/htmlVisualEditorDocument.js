@@ -304,33 +304,45 @@ export function sanitizeHtmlVisualEdit(html) {
   return serialize(fragment);
 }
 
-export function applyHtmlVisualEditAtRanges(content, elements, elementId, html) {
+/** The HTML inside an editable element, as the source has it now; null when
+    the element's range is gone. */
+export function htmlVisualElementHtml(content, elements, elementId) {
   const range = elements?.find((element) => element.id === elementId);
-  const start = range?.start;
-  const end = range?.end;
-  if (
-    !range
-    || !Number.isInteger(start)
-    || !Number.isInteger(end)
-    || start < 0
-    || start > end
-    || end > content.length
-  ) {
+  if (!range || !Number.isInteger(range.start) || !Number.isInteger(range.end)) return null;
+  if (range.start < 0 || range.start > range.end || range.end > content.length) return null;
+  return content.slice(range.start, range.end);
+}
+
+/* Puts `html` inside the element as is, and moves the ranges after it. */
+function replaceElementHtml(content, elements, elementId, html) {
+  if (htmlVisualElementHtml(content, elements, elementId) == null) {
     throw new Error(i18n.t('htmlEditor.blockGone', { ns: 'artifacts' }));
   }
-
-  const nextHtml = sanitizeHtmlVisualEdit(html);
-  const delta = nextHtml.length - (end - start);
+  const { start, end } = elements.find((element) => element.id === elementId);
+  const delta = html.length - (end - start);
   return {
-    content: `${content.slice(0, start)}${nextHtml}${content.slice(end)}`,
+    content: `${content.slice(0, start)}${html}${content.slice(end)}`,
     elements: elements.map((element) => {
-      if (element.id === elementId) return { ...element, end: start + nextHtml.length };
+      if (element.id === elementId) return { ...element, end: start + html.length };
       if (element.start >= end) {
         return { ...element, start: element.start + delta, end: element.end + delta };
       }
       return element;
     }),
   };
+}
+
+export function applyHtmlVisualEditAtRanges(content, elements, elementId, html) {
+  if (htmlVisualElementHtml(content, elements, elementId) == null) {
+    throw new Error(i18n.t('htmlEditor.blockGone', { ns: 'artifacts' }));
+  }
+  return replaceElementHtml(content, elements, elementId, sanitizeHtmlVisualEdit(html));
+}
+
+/** Undoes one element's edit: puts back the HTML it had in the source. Not
+    sanitized, as that HTML came from the artifact itself, not the canvas. */
+export function restoreHtmlVisualElementAtRanges(content, elements, elementId, html) {
+  return replaceElementHtml(content, elements, elementId, String(html ?? ''));
 }
 
 export function applyHtmlVisualEdit(content, elementId, html) {

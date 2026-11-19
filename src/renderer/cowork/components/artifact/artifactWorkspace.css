@@ -94,7 +94,11 @@
 .artifact-mode-rail-tab:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
 .artifact-mode-rail .artifact-feedback-badge { top: -3px; right: -3px; }
 .artifact-mode-rail-tip { display: flex; flex-direction: column; gap: 2px; max-width: 220px; }
-.artifact-mode-rail-tip strong { font-weight: 600; }
+/* The tooltip is ink on the surface colour; a `strong` coloured by an outer
+   rule came out ink on ink, an empty line above the hint. The name takes the
+   tooltip's own colour, the hint a softer tone under it. */
+.artifact-mode-rail-tip strong { font-weight: 600; color: inherit; }
+.artifact-mode-rail-tip span { color: inherit; opacity: .78; font-weight: 400; }
 /* Live edit's panel (LiveEditPanel): what the editor is doing, its mode,
    Advanced, and Save / Discard at the foot. */
 .artifact-live-edit-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -112,6 +116,23 @@
 .artifact-live-edit-advanced:focus-visible,
 .artifact-live-edit-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .artifact-live-edit-advanced { align-self: flex-start; }
+/* The unsaved changes: one row per edited element, the list scrolling on
+   its own so Save / Discard stay at the bottom of the panel. */
+.artifact-live-edit-changes { min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.artifact-live-edit-changes-title { display: flex; align-items: center; gap: 6px; color: var(--ink-3); font: 600 11px/16px var(--font-body); text-transform: uppercase; letter-spacing: .04em; }
+.artifact-live-edit-changes-title span { min-width: 16px; height: 16px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--ink-2); background: var(--surface-2); font-size: 10.5px; letter-spacing: 0; }
+.artifact-live-edit-changes ul { min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.artifact-live-edit-changes li { display: flex; align-items: flex-start; gap: 6px; padding: 7px 6px 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); animation: artifact-side-panel-swap var(--dur-hover) ease-out; }
+.artifact-live-edit-change-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.artifact-live-edit-change-label { color: var(--ink-3); font: 500 10.5px/14px var(--font-body); }
+.artifact-live-edit-change-now,
+.artifact-live-edit-change-was { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/16px var(--font-body); }
+.artifact-live-edit-change-now { color: var(--ink); }
+.artifact-live-edit-change-was { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 60%, transparent); }
+.artifact-live-edit-change-undo { flex: none; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; color: var(--ink-3); background: transparent; cursor: pointer; transition: background var(--dur-hover) ease, color var(--dur-hover) ease; }
+.artifact-live-edit-change-undo:hover { color: var(--ink); background: var(--surface-2); }
+.artifact-live-edit-change-undo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .artifact-live-edit-changes li { animation: none; } }
 .artifact-live-edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
 .artifact-live-edit-actions:empty { display: none; }
 .artifact-live-edit-actions button:disabled { cursor: default; }

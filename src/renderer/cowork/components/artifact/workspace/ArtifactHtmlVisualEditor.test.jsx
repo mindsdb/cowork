@@ -228,7 +228,7 @@ describe('ArtifactHtmlVisualEditor multi-view pages', () => {
   it('keeps the canvas, and the slide it is on, across a look at the source', async () => {
     const frame = await renderControlled();
 
-    fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Source code/ }));
     expect(frame).not.toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: /Back/ }));
 
@@ -238,7 +238,7 @@ describe('ArtifactHtmlVisualEditor multi-view pages', () => {
   it('rebuilds the canvas when the source was changed by hand', async () => {
     const frame = await renderControlled();
 
-    fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Source code/ }));
     fireEvent.change(screen.getByRole('textbox'), { target: { value: VALUE.replace('Title', 'Typed') } });
     fireEvent.click(screen.getByRole('button', { name: /Back/ }));
 
@@ -251,7 +251,7 @@ describe('ArtifactHtmlVisualEditor multi-view pages', () => {
     const frame = await renderControlled();
 
     sendFromFrame({ token: frameToken(), type: 'change', elementId: 'cowork-edit-0', html: 'Edited' });
-    fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Source code/ }));
     fireEvent.click(screen.getByRole('button', { name: /Back/ }));
 
     expect(screen.getByTitle('Edit artifact on canvas')).toBe(frame);
@@ -503,20 +503,20 @@ describe('ArtifactHtmlVisualEditor opening on the preview view', () => {
   });
 });
 
-// The editor's controls live in the Live edit panel (ENG-4455), not over the
-// canvas: its status, the Navigate / Edit switch, Advanced and Save / Discard.
+// The editor's controls live in the Live edit panel (ENG-4455): its status,
+// the unsaved changes, Source code and Save / Discard. The Navigate / Edit
+// switch stays over the page, as Comments' Navigate / Comment does.
 describe('ArtifactHtmlVisualEditor controls in the Live edit panel', () => {
-  it('renders its status, mode switch and Advanced into the panel, none over the canvas', async () => {
+  it('renders its status and Source code into the panel, the mode switch over the canvas', async () => {
     await renderReadyEditor();
     sendFromFrame({ token: frameToken(), type: 'ready', editableCount: 2 });
 
     const controls = within(panel);
     expect(controls.getByRole('status')).toHaveTextContent('Editing artifact');
-    expect(controls.getByRole('toolbar', { name: 'Live edit mode' })).toBeInTheDocument();
-    expect(controls.getByRole('button', { name: 'Advanced' })).toBeInTheDocument();
-    const editor = document.querySelector('.artifact-html-visual-editor');
-    expect(within(editor).queryByRole('toolbar')).toBeNull();
-    expect(within(editor).queryByRole('button')).toBeNull();
+    expect(controls.getByRole('button', { name: 'Source code' })).toBeInTheDocument();
+    expect(controls.queryByRole('toolbar')).toBeNull();
+    const canvas = document.querySelector('.artifact-html-edit-canvas');
+    expect(within(canvas).getByRole('toolbar', { name: 'Live edit mode' })).toBeInTheDocument();
   });
 
   it('renders nothing while hidden behind the Preview, or before the panel is there', async () => {
@@ -529,7 +529,7 @@ describe('ArtifactHtmlVisualEditor controls in the Live edit panel', () => {
     view.rerender(
       <ArtifactHtmlVisualEditor controlsTarget={null} source={SOURCE} value={VALUE} onChange={vi.fn()} onSave={vi.fn()} draftUrl={DRAFT_URL} />,
     );
-    expect(screen.queryByRole('button', { name: 'Advanced' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Source code' })).toBeNull();
   });
 
   it('offers no Exit Live edit: the rail and the panel close are the way out', async () => {
@@ -539,7 +539,7 @@ describe('ArtifactHtmlVisualEditor controls in the Live edit panel', () => {
   });
 });
 
-// Live edit's Save and Discard sit at the foot of its panel, after Advanced,
+// Live edit's Save and Discard sit at the foot of its panel, after Source code,
 // only while there is unsaved text; there is no Done button (ENG-4383).
 describe('ArtifactHtmlVisualEditor save and discard', () => {
   function renderWith(editActions, extra = {}) {
@@ -552,13 +552,13 @@ describe('ArtifactHtmlVisualEditor save and discard', () => {
     return screen.findByTitle('Edit artifact on canvas');
   }
 
-  it('shows Discard and Save in order after Advanced, in the panel, and runs them', async () => {
+  it('shows Discard and Save in order after Source code, in the panel, and runs them', async () => {
     const onSave = vi.fn();
     const onDiscard = vi.fn();
     await renderWith({ dirty: true, saving: false, canEdit: true, onSave, onDiscard });
 
     const labels = [...panel.querySelectorAll('button')].map((b) => b.textContent.trim());
-    expect(labels).toEqual(['Navigate', 'Edit text', 'Advanced', 'Discard', 'Save']);
+    expect(labels).toEqual(['Source code', 'Discard', 'Save']);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -620,5 +620,89 @@ describe('ArtifactHtmlVisualEditor save progress', () => {
 
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: /Saved/ })).toBeNull();
+  });
+});
+
+// The Live edit panel lists the edits not saved yet, one per element, each
+// with an × that puts that element back as it was.
+describe('ArtifactHtmlVisualEditor unsaved changes', () => {
+  const TWO = '<html><head></head><body><h1>Title</h1><p>Body text</p></body></html>';
+
+  function Controlled({ initial = TWO, onChange, editActions = null }) {
+    const [value, setValue] = useState(initial);
+    return (
+      <ArtifactHtmlVisualEditor controlsTarget={panel}
+        source={SOURCE} value={value} onSave={vi.fn()} draftUrl={DRAFT_URL}
+        onChange={(next) => { setValue(next); onChange?.(next); }}
+        editActions={editActions}
+      />
+    );
+  }
+
+  async function edit(id, label, html) {
+    const token = frameToken();
+    sendFromFrame({ token, type: 'selection', elementId: id, label });
+    sendFromFrame({ token, type: 'change', elementId: id, html });
+  }
+
+  function list() {
+    return within(panel).queryByRole('region', { name: 'Unsaved changes' });
+  }
+
+  it('lists each edited element with what it says now and what it said before', async () => {
+    render(<Controlled />);
+    await screen.findByTitle('Edit artifact on canvas');
+    expect(list()).toBeNull();
+
+    await edit('cowork-edit-0', 'Heading', 'New title');
+    await edit('cowork-edit-1', 'Paragraph', 'New <b>body</b>');
+    await edit('cowork-edit-0', 'Heading', 'Newer title');
+
+    const rows = within(list()).getAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('Heading');
+    expect(rows[0]).toHaveTextContent('Newer title');
+    expect(rows[0]).toHaveTextContent('Was: Title');
+    expect(rows[1]).toHaveTextContent('Paragraph');
+    expect(rows[1]).toHaveTextContent('New body');
+    expect(rows[1]).toHaveTextContent('Was: Body text');
+  });
+
+  it('undoes one change with its ×, keeping the others', async () => {
+    const onChange = vi.fn();
+    render(<Controlled onChange={onChange} />);
+    await screen.findByTitle('Edit artifact on canvas');
+    await edit('cowork-edit-0', 'Heading', 'New title');
+    await edit('cowork-edit-1', 'Paragraph', 'New body');
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Undo the change to Heading: New title' }));
+
+    expect(onChange).toHaveBeenLastCalledWith('<html><head></head><body><h1>Title</h1><p>New body</p></body></html>');
+    const rows = within(list()).getAllByRole('listitem');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('New body');
+    // The canvas is rebuilt on the restored text.
+    expect((await screen.findByTitle('Edit artifact on canvas')).getAttribute('srcdoc')).toContain('>Title</h1>');
+  });
+
+  it('drops an element typed back to what it was', async () => {
+    render(<Controlled />);
+    await screen.findByTitle('Edit artifact on canvas');
+    await edit('cowork-edit-0', 'Heading', 'New title');
+    expect(list()).not.toBeNull();
+
+    await edit('cowork-edit-0', 'Heading', 'Title');
+    expect(list()).toBeNull();
+  });
+
+  it('empties once the edits are saved or discarded', async () => {
+    const actions = (dirty) => ({ dirty, saving: false, canEdit: true, onSave: vi.fn(), onDiscard: vi.fn() });
+    const view = render(<Controlled editActions={actions(true)} />);
+    await screen.findByTitle('Edit artifact on canvas');
+    await edit('cowork-edit-0', 'Heading', 'New title');
+    expect(list()).not.toBeNull();
+
+    view.rerender(<Controlled editActions={actions(false)} />);
+    expect(list()).toBeNull();
   });
 });

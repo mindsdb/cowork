@@ -247,7 +247,7 @@
   "htmlEditor": {
     "blockGone": "El bloque de texto seleccionado ya no está disponible.",
     "updateFailed": "No se pudo actualizar este texto.",
-    "advancedMode": "Modo avanzado: los cambios se siguen guardando como revisión",
+    "advancedMode": "Código fuente: los cambios se siguen guardando como revisión",
     "selected": "{label} seleccionado: escribe para cambiarlo",
     "preparing": "Preparando el texto editable…",
     "noEditable": "No se encontró texto editable directamente",
@@ -274,7 +274,8 @@
       "navigateHint": "Usa la página como siempre: pasa diapositivas, pestañas y enlaces",
       "editHint": "Haz clic en cualquier texto para cambiarlo",
       "navigateGuidance": "Navegando. Usa la página como siempre y luego cambia a Editar texto para modificar algo."
-    }
+    },
+    "sourceCode": "Código fuente"
   },
   "workspace": {
     "noWorkspace": "Este artefacto se creó antes de que existiera la edición",
@@ -871,6 +872,13 @@
     "statsHint": "Quién lo vio y durante cuánto tiempo"
   },
   "liveEditPanel": {
-    "close": "Cerrar el panel de edición en vivo"
+    "close": "Cerrar el panel de edición en vivo",
+    "changes": {
+      "title": "Cambios sin guardar",
+      "undo": "Deshacer este cambio",
+      "undoNamed": "Deshacer el cambio en {label}: {text}",
+      "was": "Antes: {text}",
+      "emptyText": "(vacío)"
+    }
   }
 }

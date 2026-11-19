@@ -247,7 +247,7 @@
   "htmlEditor": {
     "blockGone": "선택한 텍스트 블록을 더 이상 사용할 수 없습니다.",
     "updateFailed": "이 텍스트를 업데이트하지 못했습니다.",
-    "advancedMode": "고급 모드 — 변경 사항은 계속 리비전으로 저장됩니다",
+    "advancedMode": "소스 코드 — 변경 사항은 계속 수정본으로 저장됩니다",
     "selected": "{label} 선택됨 — 입력하여 변경하세요",
     "preparing": "편집할 수 있는 텍스트를 준비하는 중…",
     "noEditable": "직접 편집할 수 있는 텍스트가 없습니다",
@@ -274,7 +274,8 @@
       "navigateHint": "평소처럼 페이지 사용: 슬라이드, 탭, 링크 이동",
       "editHint": "텍스트를 클릭해 변경",
       "navigateGuidance": "탐색 중입니다. 평소처럼 페이지를 사용한 뒤 무언가 바꾸려면 텍스트 편집으로 전환하세요."
-    }
+    },
+    "sourceCode": "소스 코드"
   },
   "workspace": {
     "noWorkspace": "이 아티팩트는 편집 기능이 제공되기 전에 만들어졌습니다",
@@ -871,6 +872,13 @@
     "statsHint": "누가 얼마나 오래 봤는지"
   },
   "liveEditPanel": {
-    "close": "실시간 편집 패널 닫기"
+    "close": "실시간 편집 패널 닫기",
+    "changes": {
+      "title": "저장되지 않은 변경 사항",
+      "undo": "이 변경 취소",
+      "undoNamed": "{label} 변경 취소: {text}",
+      "was": "이전: {text}",
+      "emptyText": "(비어 있음)"
+    }
   }
 }

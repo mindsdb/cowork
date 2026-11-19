@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyHtmlVisualEditAtRanges,
   createHtmlVisualEditorDocument,
+  htmlVisualElementHtml,
+  restoreHtmlVisualElementAtRanges,
 } from './htmlVisualEditorDocument';
 import { createFrameToken } from './frameToken';
 import {
@@ -24,6 +26,29 @@ const ELEMENT_LABEL_KEYS = {
   Caption: 'caption',
   Text: 'text',
 };
+
+/** An element's name for the unsaved changes list, in the user's language. */
+function elementLabel(raw, t) {
+  const label = raw || 'Text';
+  return Object.hasOwn(ELEMENT_LABEL_KEYS, label) ? t(`htmlEditor.elements.${ELEMENT_LABEL_KEYS[label]}`) : label;
+}
+
+/** What a reader sees of some HTML: its text, on one line. */
+export function htmlText(html) {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(String(html), 'text/html');
+  return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+/* Brings the unsaved changes list in line with the source: each change reads
+   its element's HTML now, and one back to what it was is no change at all. */
+function syncChanges(changes, content, elements) {
+  return changes.flatMap((change) => {
+    const after = htmlVisualElementHtml(content, elements, change.id);
+    if (after == null || after === change.before) return [];
+    return [after === change.after ? change : { ...change, after }];
+  });
+}
 
 function buildFrame(content, baseUrl) {
   const token = createFrameToken();
@@ -48,8 +73,9 @@ export function ArtifactHtmlVisualEditor({
   // `{ dirty, saving, canEdit, onSave, onDiscard }`: Save and Discard, in
   // the Live edit panel while there is unsaved text.
   editActions = null,
-  // The Live edit panel's slot (LiveEditPanel): the editor's status, mode
-  // switch, Advanced and Save / Discard render there, not over the canvas.
+  // The Live edit panel's slot (LiveEditPanel): the editor's status, the
+  // unsaved changes, Source code and Save / Discard render there. The
+  // Navigate / Edit text switch stays over the canvas.
   controlsTarget = null,
 }) {
   const { t } = useTranslation('artifacts');
@@ -78,7 +104,19 @@ export function ArtifactHtmlVisualEditor({
   const editModeRef = useRef(editMode);
   editModeRef.current = editMode;
   const [selection, setSelection] = useState(null);
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
   const [error, setError] = useState('');
+  // The unsaved changes, one per element edited since the last save:
+  // `{ id, label, before, after }`, `before` the element's HTML in the source
+  // and `after` its HTML now. Each can be undone on its own from the Live
+  // edit panel; a save or a discard empties the list.
+  const [changes, setChangesState] = useState([]);
+  const changesRef = useRef(changes);
+  const setChanges = useCallback((next) => {
+    changesRef.current = typeof next === 'function' ? next(changesRef.current) : next;
+    setChangesState(changesRef.current);
+  }, []);
   // Opening on the Preview's view. `seenViewSeqRef` is the last preview view
   // considered, so a view is applied once and the editor otherwise keeps
   // whatever slide the user moved it to. A replay needs the page as it loaded,
@@ -129,6 +167,10 @@ export function ArtifactHtmlVisualEditor({
     visualValueRef.current = content;
     frameValueRef.current = content;
     const nextFrame = buildFrame(content, documentUrl);
+    // The same text gives the same elements, so the changes carry over to
+    // the new canvas; ones the new source took back drop out.
+    if (nextFrame.editableCount !== elementRangesRef.current.length) setChanges([]);
+    else setChanges((list) => syncChanges(list, content, nextFrame.elements));
     elementRangesRef.current = nextFrame.elements;
     cancelSnapshotRef.current = null;
     setFrame(nextFrame);
@@ -137,11 +179,14 @@ export function ArtifactHtmlVisualEditor({
     setSyncingView(false);
     setSelection(null);
     setError('');
-  }, [documentUrl]);
+  }, [documentUrl, setChanges]);
 
   useEffect(() => {
     const sourceChanged = sourceKeyRef.current !== sourceKey;
-    if (sourceChanged) sourceKeyRef.current = sourceKey;
+    if (sourceChanged) {
+      sourceKeyRef.current = sourceKey;
+      setChanges([]);
+    }
     if (sourceChanged || (!showSource && value !== visualValueRef.current)) {
       rebuildFrame(value, { keepPlace: !sourceChanged });
     } else if (showSource && value !== visualValueRef.current) {
@@ -149,7 +194,51 @@ export function ArtifactHtmlVisualEditor({
       // advanced source view is open. Keep the next canvas mount in sync.
       visualValueRef.current = value;
     }
-  }, [rebuildFrame, showSource, sourceKey, value]);
+  }, [rebuildFrame, setChanges, showSource, sourceKey, value]);
+
+  // Saved or discarded: nothing is unsaved any more.
+  const dirty = editActions ? !!(editActions.dirty || editActions.saving) : null;
+  useEffect(() => {
+    if (dirty === false) setChanges([]);
+  }, [dirty, setChanges]);
+
+  // Records an element's edit in the unsaved changes list. `previous` is the
+  // source before this edit, which holds the element's original HTML the
+  // first time it changes.
+  const recordChange = useCallback((id, content, elements, previous = null) => {
+    setChanges((list) => {
+      const after = htmlVisualElementHtml(content, elements, id);
+      const existing = list.find((change) => change.id === id);
+      if (!existing) {
+        const before = previous && htmlVisualElementHtml(previous.content, previous.elements, id);
+        if (before == null || after == null || after === before) return list;
+        const label = selectionRef.current?.id === id ? selectionRef.current.label : '';
+        return [...list, { id, label, before, after }];
+      }
+      if (after == null || after === existing.before) return list.filter((change) => change.id !== id);
+      return list.map((change) => (change.id === id ? { ...change, after } : change));
+    });
+  }, [setChanges]);
+
+  // Undoes one change: the element gets its original HTML back and the
+  // canvas is rebuilt on it, in the same place.
+  const undoChange = useCallback((id) => {
+    const change = changesRef.current.find((item) => item.id === id);
+    if (!change) return;
+    setChanges((list) => list.filter((item) => item.id !== id));
+    try {
+      const next = restoreHtmlVisualElementAtRanges(
+        visualValueRef.current,
+        elementRangesRef.current,
+        id,
+        change.before,
+      );
+      rebuildFrame(next.content, { keepPlace: true });
+      onChange(next.content);
+    } catch (undoError) {
+      setError(undoError.message || t('htmlEditor.updateFailed'));
+    }
+  }, [onChange, rebuildFrame, setChanges, t]);
 
   useEffect(() => {
     const onMessage = (event) => {
@@ -187,16 +276,19 @@ export function ArtifactHtmlVisualEditor({
         if (snapshot.content !== visualValueRef.current) {
           visualValueRef.current = snapshot.content;
           frameValueRef.current = snapshot.content;
+          recordChange(snapshot.id, snapshot.content, snapshot.elements);
           onChange(snapshot.content);
         }
       } else if (message.type === 'change' && message.elementId) {
         try {
+          const previous = { content: visualValueRef.current, elements: elementRangesRef.current };
           const next = applyHtmlVisualEditAtRanges(
-            visualValueRef.current,
-            elementRangesRef.current,
+            previous.content,
+            previous.elements,
             message.elementId,
             message.html,
           );
+          recordChange(message.elementId, next.content, next.elements, previous);
           visualValueRef.current = next.content;
           frameValueRef.current = next.content;
           elementRangesRef.current = next.elements;
@@ -222,7 +314,7 @@ export function ArtifactHtmlVisualEditor({
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [frame.token, onChange, onSave, postMode, rebuildFrame]);
+  }, [frame.token, onChange, onSave, postMode, rebuildFrame, recordChange]);
 
   useEffect(() => {
     if (!active || showSource || !previewView || previewView.seq === seenViewSeqRef.current) return;
@@ -298,11 +390,7 @@ export function ArtifactHtmlVisualEditor({
     if (error) return error;
     if (syncingView === 'own') return t('htmlEditor.keepingPlace');
     if (syncingView) return t('htmlEditor.syncingView');
-    if (selection) {
-      const raw = selection.label || 'Text';
-      const label = Object.hasOwn(ELEMENT_LABEL_KEYS, raw) ? t(`htmlEditor.elements.${ELEMENT_LABEL_KEYS[raw]}`) : raw;
-      return t('htmlEditor.selected', { label });
-    }
+    if (selection) return t('htmlEditor.selected', { label: elementLabel(selection.label, t) });
     if (!ready) return t('htmlEditor.preparing');
     if (editableCount === 0) return t('htmlEditor.noEditable');
     if (editMode === 'navigate') return t('htmlEditor.mode.navigateGuidance');
@@ -320,9 +408,13 @@ export function ArtifactHtmlVisualEditor({
           guidance={guidance}
           isError={!!error && !showSource}
           active={!!selection}
-          modeSwitch={!showSource && ready && editableCount > 0
-            ? <EditModeSwitch mode={editMode} onChange={changeEditMode} />
-            : null}
+          changes={changes.map((change) => ({
+            id: change.id,
+            label: elementLabel(change.label, t),
+            text: htmlText(change.after),
+            was: htmlText(change.before),
+          }))}
+          onUndoChange={undoChange}
           advanced={{ on: showSource, onToggle: toggleSource }}
           editActions={editActions}
         />
@@ -350,6 +442,8 @@ export function ArtifactHtmlVisualEditor({
       {/* Hidden, not unmounted, behind the source view: the page keeps the
           slide or section the user had moved it to. */}
       <div className="artifact-html-edit-canvas" hidden={showSource}>
+        {/* Over the page, where Comments has its Navigate / Comment. */}
+        {ready && editableCount > 0 && <EditModeSwitch mode={editMode} onChange={changeEditMode} />}
         {!inlined.pending && (
           <iframe
             key={frame.key}

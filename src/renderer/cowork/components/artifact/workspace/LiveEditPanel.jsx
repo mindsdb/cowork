@@ -1,8 +1,9 @@
 // Live edit's side panel (ENG-4455): the controls that used to sit in the
 // editor's top toolbar, now in the viewer's shared side panel beside the
 // Comments inbox and Stats. The canvas stays the editing surface; the panel
-// holds what the editor is doing (its status line), the Navigate / Edit text
-// switch, Advanced (the HTML source) and Save / Discard.
+// holds what the editor is doing (its status line), the unsaved changes (each
+// with its own undo), Source code (the HTML) and Save / Discard. The Navigate
+// / Edit text switch floats over the page, as Comments' does.
 //
 // The editor owns that state (what is selected, the mode it posts to its
 // frame, whether the source is open), so it renders its controls itself,
@@ -54,7 +55,8 @@ export function LiveEditPanel({ slotRef, onClose }) {
  *   guidance?: string,
  *   isError?: boolean,
  *   active?: boolean,
- *   modeSwitch?: import('react').ReactNode,
+ *   changes?: { id: string, label: string, text: string, was: string }[],
+ *   onUndoChange?: (id: string) => void,
  *   advanced?: { on: boolean, onToggle: () => void } | null,
  *   editActions?: { dirty: boolean, saving: boolean, canEdit: boolean, onSave: () => void, onDiscard: () => void } | null,
  * }} props
@@ -65,7 +67,8 @@ export function LiveEditControls({
   guidance = '',
   isError = false,
   active = false,
-  modeSwitch = null,
+  changes = [],
+  onUndoChange = null,
   advanced = null,
   editActions = null,
 }) {
@@ -80,18 +83,58 @@ export function LiveEditControls({
           {guidance && <span className={isError ? 'is-error' : ''}>{guidance}</span>}
         </div>
       </div>
-      {modeSwitch}
       {advanced && (
         <button type="button" className="artifact-live-edit-advanced" onClick={advanced.onToggle}>
           {advanced.on ? Ico.edit(14) : Ico.code(14)}
-          {advanced.on ? t('htmlEditor.back') : t('comparison.advanced')}
+          {advanced.on ? t('htmlEditor.back') : t('htmlEditor.sourceCode')}
         </button>
       )}
+      <UnsavedChanges changes={changes} onUndo={onUndoChange} />
       <div className="artifact-live-edit-actions">
         <SaveDiscardButtons actions={editActions} />
       </div>
     </div>,
     target,
+  );
+}
+
+/** The edits not saved yet, newest last: what each element says now, what it
+    said before, and an × that puts that one back. */
+export function UnsavedChanges({ changes, onUndo }) {
+  const { t } = useTranslation('artifacts');
+  if (!changes?.length) return null;
+  return (
+    <section className="artifact-live-edit-changes" aria-label={t('liveEditPanel.changes.title')}>
+      <div className="artifact-live-edit-changes-title">
+        {t('liveEditPanel.changes.title')}
+        <span>{changes.length}</span>
+      </div>
+      <ul>
+        {changes.map((change) => (
+          <li key={change.id}>
+            <div className="artifact-live-edit-change-text">
+              <span className="artifact-live-edit-change-label">{change.label}</span>
+              <span className="artifact-live-edit-change-now">{change.text || t('liveEditPanel.changes.emptyText')}</span>
+              {change.was && (
+                <span className="artifact-live-edit-change-was">{t('liveEditPanel.changes.was', { text: change.was })}</span>
+              )}
+            </div>
+            {onUndo && (
+              <Tooltip content={t('liveEditPanel.changes.undo')}>
+                <button
+                  type="button"
+                  className="artifact-live-edit-change-undo"
+                  aria-label={t('liveEditPanel.changes.undoNamed', { label: change.label, text: change.text })}
+                  onClick={() => onUndo(change.id)}
+                >
+                  <XIcon />
+                </button>
+              </Tooltip>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

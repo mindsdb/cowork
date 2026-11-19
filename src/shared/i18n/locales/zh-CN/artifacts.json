@@ -247,7 +247,7 @@
   "htmlEditor": {
     "blockGone": "所选文本块已不存在。",
     "updateFailed": "无法更新此文本。",
-    "advancedMode": "高级模式 — 更改仍会保存为修订版本",
+    "advancedMode": "源代码 — 更改仍会保存为修订版本",
     "selected": "已选择 {label} — 输入即可修改",
     "preparing": "正在准备可编辑文本…",
     "noEditable": "未找到可直接编辑的文本",
@@ -274,7 +274,8 @@
       "navigateHint": "像平常一样使用页面：切换幻灯片、标签页和链接",
       "editHint": "点击任意文本进行修改",
       "navigateGuidance": "正在浏览。像平常一样使用页面，需要修改时切换到“编辑文本”。"
-    }
+    },
+    "sourceCode": "源代码"
   },
   "workspace": {
     "noWorkspace": "此产物创建于编辑功能推出之前",
@@ -871,6 +872,13 @@
     "statsHint": "谁看过以及看了多久"
   },
   "liveEditPanel": {
-    "close": "关闭实时编辑面板"
+    "close": "关闭实时编辑面板",
+    "changes": {
+      "title": "未保存的更改",
+      "undo": "撤销此更改",
+      "undoNamed": "撤销对{label}的更改：{text}",
+      "was": "原为：{text}",
+      "emptyText": "（空）"
+    }
   }
 }
