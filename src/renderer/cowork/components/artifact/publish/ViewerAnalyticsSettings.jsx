@@ -2,9 +2,9 @@
 //
 //   Collect viewer analytics      — who opens the page, for how long, and
 //                                   which parts they read
-//   Ask for email before viewing  — public and password links only, and only
-//                                   while analytics is on (a restricted link
-//                                   already knows who the viewer is)
+//
+// "Ask for email before viewing" is out of the first version: it is offered
+// only on a page that already has it on, so it can be turned off there.
 //
 // `controller` is a useArtifactStats for the artifact: the settings come with
 // its stats, and a change saved here reaches an open Stats panel too.
@@ -13,8 +13,6 @@ import { Switch } from '../../ui/Switch';
 import { useTranslation } from '../../../../lib/i18n';
 import { TrackingRefusal } from '../stats/TrackingRefusal';
 import { describeStatsError } from '../stats/StatsPanel';
-
-const EMAIL_GATE_MODES = new Set(['public', 'password']);
 
 function SettingRow({ label, hint, checked, disabled, onChange }) {
   return (
@@ -28,13 +26,14 @@ function SettingRow({ label, hint, checked, disabled, onChange }) {
   );
 }
 
-export function ViewerAnalyticsSettings({ controller, accessMode, accessLoaded = false }) {
+export function ViewerAnalyticsSettings({ controller }) {
   const { t } = useTranslation('artifacts');
   const data = controller?.data || null;
   const error = controller?.error || null;
   const busy = !!controller?.trackingBusy;
   const tracking = data?.tracking === true;
-  const emailGate = tracking && accessLoaded && EMAIL_GATE_MODES.has(accessMode);
+  // Only to turn off an email gate set before it left the menu.
+  const emailGate = data?.require_email === true;
   const loadFailure = !data && error ? describeStatsError(error) : null;
   return (
     <div className="flex flex-col gap-3" data-testid="viewer-analytics-settings">

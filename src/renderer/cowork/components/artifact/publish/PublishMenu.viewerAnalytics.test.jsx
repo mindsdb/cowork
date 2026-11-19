@@ -1,6 +1,7 @@
 // The Share panel's viewer-analytics settings (ENG-4455): "Collect viewer
-// analytics", and "Ask for email before viewing" on public and password links
-// while analytics is on. A refusal for want of credits links to adding them.
+// analytics". "Ask for email before viewing" is out of the first version and
+// shows only to turn off a gate already on. A refusal for want of credits
+// links to adding them.
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent, within } from '@testing-library/react';
 
@@ -81,22 +82,23 @@ describe('PublishMenu viewer analytics', () => {
     expect(stats.value.setTracking).toHaveBeenCalledWith(true);
   });
 
-  it.each(['public', 'password'])('offers the email gate on a %s link while analytics is on', (accessMode) => {
+  it.each(['public', 'password', 'restricted'])('offers no email gate on a %s link', (accessMode) => {
     stats.value = makeStats({ data: { tracking: true, require_email: false } });
     const settings = openMenu(makeController({ accessMode, accessPassword: accessMode === 'password' ? 'pw' : '' }));
 
-    const gate = within(settings).getByRole('switch', { name: 'Ask for email before viewing' });
-    fireEvent.click(gate);
-
-    expect(stats.value.setRequireEmail).toHaveBeenCalledWith(true);
-  });
-
-  it('offers no email gate on a restricted link', () => {
-    stats.value = makeStats({ data: { tracking: true, require_email: false } });
-    const settings = openMenu(makeController({ accessMode: 'restricted', accessEmails: ['a@example.com'] }));
-
     expect(within(settings).getByRole('switch', { name: 'Collect viewer analytics' })).toBeChecked();
     expect(within(settings).queryByRole('switch', { name: 'Ask for email before viewing' })).toBeNull();
+  });
+
+  it('shows the email gate only where it is already on, to turn it off', () => {
+    stats.value = makeStats({ data: { tracking: true, require_email: true } });
+    const settings = openMenu();
+
+    const gate = within(settings).getByRole('switch', { name: 'Ask for email before viewing' });
+    expect(gate).toBeChecked();
+    fireEvent.click(gate);
+
+    expect(stats.value.setRequireEmail).toHaveBeenCalledWith(false);
   });
 
   it('holds the switches while a change saves', () => {

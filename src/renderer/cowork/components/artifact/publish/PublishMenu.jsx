@@ -667,11 +667,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                     {view === 'summary' && pub.artifact && (
                       <div className="py-3 px-4">
                         <SectionLabel>{t('analytics.title')}</SectionLabel>
-                        <ViewerAnalyticsSettings
-                          controller={analytics}
-                          accessMode={pub.accessMode}
-                          accessLoaded={!!pub.accessLoaded}
-                        />
+                        <ViewerAnalyticsSettings controller={analytics} />
                       </div>
                     )}
                   </div>
