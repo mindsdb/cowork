@@ -31,6 +31,7 @@
       "retryExhausted": "Se detuvo antes: la tarea siguió fallando.",
       "questionUnanswered": "Se detuvo antes: una pregunta quedó sin respuesta.",
       "contentFilter": "Se detuvo antes: el filtro de contenido del modelo bloqueó una respuesta.",
+      "userStopped": "Se detuvo.",
       "fallback": "Se detuvo antes de terminar."
     },
     "figureFile": {

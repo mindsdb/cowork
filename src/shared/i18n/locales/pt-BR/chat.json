@@ -31,6 +31,7 @@
       "retryExhausted": "Parou antes: a tarefa continuou falhando.",
       "questionUnanswered": "Parou antes: uma pergunta ficou sem resposta.",
       "contentFilter": "Parou antes: o filtro de conteúdo do modelo bloqueou uma resposta.",
+      "userStopped": "Interrompida.",
       "fallback": "Parou antes de terminar."
     },
     "figureFile": {

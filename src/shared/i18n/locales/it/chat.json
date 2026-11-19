@@ -31,6 +31,7 @@
       "retryExhausted": "Interrotta in anticipo: l’attività continuava a non riuscire.",
       "questionUnanswered": "Interrotta in anticipo: una domanda è rimasta senza risposta.",
       "contentFilter": "Interrotta in anticipo: il filtro dei contenuti del modello ha bloccato una risposta.",
+      "userStopped": "Interrotta.",
       "fallback": "Interrotta prima del completamento."
     },
     "figureFile": {

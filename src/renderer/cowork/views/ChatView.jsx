@@ -430,7 +430,8 @@ const CHAT_ORB_SIZE = 22;
 // reading column of at least 640px, its 40px gutters, and the 320px rail.
 const RAIL_DOCK_MIN_PX = 640 + 40 * 2 + 320;
 
-// Why an answer stopped early, keyed by response.completed's incomplete_details.reason.
+// Why an answer stopped early, keyed by response.completed's incomplete_details.reason,
+// or user_stopped when the turn ended on response.cancelled (someone pressed Stop).
 // Values are chat-namespace keys, translated at render.
 const INCOMPLETE_REASON_KEYS = {
   spend_ceiling: 'chatView.incomplete.spendCeiling',
@@ -441,6 +442,7 @@ const INCOMPLETE_REASON_KEYS = {
   retry_exhausted: 'chatView.incomplete.retryExhausted',
   question_unanswered: 'chatView.incomplete.questionUnanswered',
   content_filter: 'chatView.incomplete.contentFilter',
+  user_stopped: 'chatView.incomplete.userStopped',
 };
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
@@ -4029,7 +4031,14 @@ export default function ChatView({
                   })()}
                   {m.incompleteReason && (
                     // role="note": a saved answer's notice must not be announced again on every reload.
-                    <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
+                    // A Stop is the person's own choice, so it reads as a plain note, not a warning.
+                    <Alert
+                      variant={m.incompleteReason === 'user_stopped' ? 'info' : 'warning'}
+                      role="note"
+                      icon={m.incompleteReason === 'user_stopped' ? undefined : Ico.warning(16)}
+                      className="mt-2"
+                      data-testid="incomplete-reason"
+                    >
                       {t(INCOMPLETE_REASON_KEYS[m.incompleteReason] || 'chatView.incomplete.fallback')}
                     </Alert>
                   )}

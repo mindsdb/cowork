@@ -31,6 +31,7 @@
       "retryExhausted": "Arrêt anticipé : la tâche échouait à chaque tentative.",
       "questionUnanswered": "Arrêt anticipé : une question est restée sans réponse.",
       "contentFilter": "Arrêt anticipé : le filtre de contenu du modèle a bloqué une réponse.",
+      "userStopped": "Arrêté.",
       "fallback": "Arrêté avant la fin."
     },
     "figureFile": {
