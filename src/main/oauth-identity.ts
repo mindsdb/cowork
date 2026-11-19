@@ -98,6 +98,18 @@ async function fetchGithubIdentity(accessToken: string): Promise<OAuthIdentity> 
   return { email: data.email || data.login || '' };
 }
 
+// A Figma token covers every team and organization the user can see, so the
+// identity is the user alone, like GitHub's. Matches the server-side
+// _fetch_userinfo_figma.
+async function fetchFigmaIdentity(accessToken: string): Promise<OAuthIdentity> {
+  const res = await fetch('https://api.figma.com/v1/me', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return { email: '' };
+  const data = await res.json() as { email?: string; handle?: string };
+  return { email: data.email || data.handle || '' };
+}
+
 // PostHog's OAuth authorize/token endpoints are region-agnostic
 // (oauth.posthog.com), but the resource API is split by region
 // (us.posthog.com / eu.posthog.com) and a token issued for one region isn't
@@ -280,6 +292,7 @@ const FETCHERS: Record<string, (accessToken: string, extra?: OAuthExtra) => Prom
   supabase: fetchSupabaseIdentity,
   hubspot: fetchHubspotIdentity,
   notion: fetchNotionIdentity,
+  figma: fetchFigmaIdentity,
 };
 
 export async function fetchAccountIdentity(
