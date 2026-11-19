@@ -157,6 +157,26 @@ describe('CustomMcpDetailSection', () => {
     expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['delete_issue']);
   });
 
+  it('ignores a switch answer that arrives after the panel moved to another connection', async () => {
+    const other = { engine: 'custom_mcp', name: `cm-${'b'.repeat(32)}` };
+    const otherTools = [{ name: 'list_pages', description: '', readOnly: true, allowed: true }];
+    let finishSave;
+    bridge.customMcpTools.mockImplementation(async (name) => ({ ok: true, tools: name === other.name ? otherTools : TOOLS }));
+    bridge.customMcpSetTools.mockImplementationOnce(() => new Promise((resolve) => { finishSave = resolve; })).mockResolvedValue({ ok: true });
+    const props = { onDisconnect: vi.fn(async () => true), confirm: vi.fn(async () => true) };
+    const { rerender } = render(<CustomMcpDetailSection connection={CONNECTION} {...props} />);
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+    rerender(<CustomMcpDetailSection connection={other} {...props} />);
+    await screen.findByRole('switch', { name: 'Let Anton use list_pages' });
+    finishSave({ ok: false, code: 'unavailable', reason: 'x' });
+
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use list_pages' }).hasAttribute('disabled')).toBe(false));
+    expect(screen.queryByRole('switch', { name: 'Let Anton use delete_issue' })).toBeNull();
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use list_pages' }));
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(other.name, []);
+  });
+
   it('disconnects only once confirmed', async () => {
     const { onDisconnect, confirm } = renderSection();
     confirm.mockResolvedValueOnce(false);

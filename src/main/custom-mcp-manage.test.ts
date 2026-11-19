@@ -253,15 +253,13 @@ describe('reconnect', () => {
     expect(hasRefreshLoop(ROOT, ID)).toBe(true);
   });
 
-  it('revokes the old refresh token once the new one is stored', async () => {
+  it('leaves the old refresh token unrevoked, since a server may revoke the new login with it', async () => {
     await seed();
     const { deps, requests } = loginServer();
 
     expect(await reconnectCustom({ id: ID, confirmedLoginHosts: ['auth.example.com'] }, deps)).toEqual({ ok: true });
 
-    const revokes = requests.filter((r) => r.url === `${AUTH}/revoke`);
-    expect(revokes).toHaveLength(1);
-    expect(String(revokes[0].init.body)).toContain('token=RT-old');
+    expect(requests.filter((r) => r.url === `${AUTH}/revoke`)).toEqual([]);
     expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-new');
   });
 

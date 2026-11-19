@@ -34,6 +34,7 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
   // showing the old switch. While one saves, reloads wait and run once it's saved.
   const savingRef = useRef(false);
   const reloadDueRef = useRef(false);
+  const shownRef = useRef(connection.name);
 
   async function load() {
     if (savingRef.current) {
@@ -63,6 +64,7 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     setSwitchError(null);
     setLoginHosts(null);
     setReconnect({ status: 'idle' });
+    shownRef.current = connection.name;
     savingRef.current = false;
     reloadDueRef.current = false;
     void load();
@@ -83,9 +85,12 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     setTools(next);
     setSaving(true);
     setSwitchError(null);
-    const result = await host.customMcpSetTools(connection.name, next.filter((tool) => tool.allowed).map((tool) => tool.name));
-    savingRef.current = false;
+    const switched = connection.name;
+    const result = await host.customMcpSetTools(switched, next.filter((tool) => tool.allowed).map((tool) => tool.name));
     setSaving(false);
+    // The panel moved to another connection meanwhile: this answer is not its.
+    if (shownRef.current !== switched) return;
+    savingRef.current = false;
     if (!result.ok) {
       setTools(previous);
       setSwitchError(connectErrorMessage(t, result));

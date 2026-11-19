@@ -11,8 +11,7 @@
 import { diagnostic } from '../shared/diagnostics';
 import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { activeStoreRoot } from './server-process';
-import { revokeToken } from './mcp-oauth';
-import { deleteConnection as deleteKeychainEntries, deletePart, readPart, writePart } from './custom-mcp-keychain';
+import { deleteConnection as deleteKeychainEntries, deletePart, writePart } from './custom-mcp-keychain';
 import { deleteRecord, errorName, heldSummary, listTools, putAllowedTools, putHeld } from './custom-mcp-routes';
 import { readStoredSettings, readStoredTools, revokeStoredGrant, storedClient, type StoredSettings } from './custom-mcp-tokens';
 import { writeToolSwitch } from './custom-mcp-held';
@@ -109,8 +108,9 @@ function hostsOf(value: unknown): string[] | undefined | null {
 
 /**
  * Logs in again with the client the connection already has, keeping its tool
- * switches. The new refresh token replaces the old one, which is then
- * revoked, and a login that brings none drops it. Like connect, a first call answers
+ * switches. The new refresh token replaces the old one, and a login that
+ * brings none drops it. The old one is not revoked: a server may revoke the
+ * whole consent, the new login's tokens with it. Like connect, a first call answers
  * `confirm_login_hosts`, and only a call confirming each host opens the browser.
  */
 export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultDeps()): Promise<{ ok: true } | { ok: false; code: 'confirm_login_hosts'; loginHosts: string[] } | Failure> {
@@ -123,9 +123,8 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
   try {
     const settings = await readStoredSettings(storeRoot, id);
     if (!settings) return { ok: false, code: 'unusable', reason: 'This connection has no usable settings; remove it and add it again.' };
-    const oldClient = await storedClient(storeRoot, id, settings);
     const login = await logIn(settings.serverUrl, {
-      client: oldClient,
+      client: await storedClient(storeRoot, id, settings),
       ...(settings.authorizationServer ? { expectedIssuer: settings.authorizationServer.issuer } : {}),
       ...(confirmedLoginHosts ? { confirmedLoginHosts } : {}),
     }, deps);
@@ -148,8 +147,6 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
         await revokeUnstored(login, deps.fetchFn);
         throw err;
       }
-      // Read under the lock, after any refresh in flight saved its rotation.
-      const oldRefreshToken = await readPart(storeRoot, id, 'refresh');
       const updated: StoredSettings = {
         ...settings,
         resource: login.resource,
@@ -172,12 +169,6 @@ export async function reconnectCustom(raw: unknown, deps: ConnectDeps = defaultD
         ...(login.tokens.expiresAt ? { expires_at: new Date(login.tokens.expiresAt).toISOString() } : {}),
       });
       if (login.tokens.refreshToken) startRefreshLoop(storeRoot, id, login.tokens.expiresAt, deps.fetchFn);
-      if (oldRefreshToken && oldRefreshToken !== login.tokens.refreshToken && settings.authorizationServer && oldClient) {
-        await revokeToken(settings.authorizationServer, oldClient, { token: oldRefreshToken, hint: 'refresh_token' }, deps.fetchFn)
-          .catch((err) => {
-            diagnostic('main.custom-mcp', 'WARNING', 'custom_mcp_revoke_failed', `[custom-mcp] could not revoke the previous token of ${id}: ${errorName(err)}`);
-          });
-      }
       return { ok: true as const };
     });
   } catch (err) {
