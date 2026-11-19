@@ -31,7 +31,7 @@ import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNo
 import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
-import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
+import { fetchAccountIdentity, buildRevokeRequest, SCOPE_SEPARATORS } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
@@ -895,6 +895,7 @@ function setupIPC() {
         clientId,
         clientSecret,
         scopes: oauthBlock.scopes,
+        scopeSeparator: SCOPE_SEPARATORS[engine],
         extraAuthParams: oauthBlock.extra_auth_params,
         redirectPort: oauthBlock.redirect_port,
         redirectHost: oauthBlock.redirect_host,

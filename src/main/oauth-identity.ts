@@ -264,6 +264,39 @@ async function fetchNotionIdentity(accessToken: string, extra?: OAuthExtra): Pro
   return { email: data.account_email || '', name: data.account_name || undefined };
 }
 
+// Slack answers failures with HTTP 200 and {"ok": false, "error": ...}.
+async function slackApi(method: string, accessToken: string, query = ''): Promise<Record<string, any>> {
+  const res = await fetch(`https://slack.com/api/${method}${query}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json().catch(() => ({})) as Record<string, any>;
+  if (!res.ok || data.ok !== true) {
+    throw new Error(`Slack ${method} failed: ${data.error || res.status}`);
+  }
+  return data;
+}
+
+// One person can be in several workspaces, so the identity is
+// `<email>:<team_id>` (one connection per workspace) and the tile shows the
+// workspace name. Same shape as cowork-server's _fetch_userinfo_slack.
+async function fetchSlackIdentity(accessToken: string): Promise<OAuthIdentity> {
+  let who: Record<string, any>;
+  let user: Record<string, any>;
+  let userId = '';
+  try {
+    who = await slackApi('auth.test', accessToken);
+    userId = String(who.user_id || '').trim();
+    user = await slackApi('users.info', accessToken, `?${new URLSearchParams({ user: userId })}`);
+  } catch (err) {
+    return { email: '', reason: err instanceof Error ? err.message : 'Slack identity lookup failed.' };
+  }
+  const teamId = String(who.team_id || '').trim();
+  const teamName = String(who.team || '').trim();
+  const person = String(user.user?.profile?.email || '').trim() || userId;
+  if (!person) return { email: '', reason: 'Slack returned no user for this token.' };
+  return { email: teamId ? `${person}:${teamId}` : person, name: teamName || person };
+}
+
 /** Non-token fields of a provider's code-exchange response (e.g. Notion's
  * workspace_id), for fetchers that need them. */
 export type OAuthExtra = Record<string, unknown>;
@@ -280,6 +313,13 @@ const FETCHERS: Record<string, (accessToken: string, extra?: OAuthExtra) => Prom
   supabase: fetchSupabaseIdentity,
   hubspot: fetchHubspotIdentity,
   notion: fetchNotionIdentity,
+  slack: fetchSlackIdentity,
+};
+
+/** Authorize-URL scope separators for providers that don't take RFC 6749's
+ * space; Slack's v2 flow documents a comma. */
+export const SCOPE_SEPARATORS: Record<string, string> = {
+  slack: ',',
 };
 
 export async function fetchAccountIdentity(

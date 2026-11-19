@@ -48,4 +48,8 @@ export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
   notion: {
     clientIdVar: 'NOTION_CLIENT_ID',
   },
+  slack: {
+    clientIdVar: 'SLACK_CLIENT_ID',
+    clientSecretVar: 'SLACK_CLIENT_SECRET',
+  },
 };
