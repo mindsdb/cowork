@@ -64,7 +64,7 @@ import ProjectBrowsers from '../components/browser/ProjectBrowsers';
 import { browserInsteadRequest } from '../lib/connectorWebsites';
 import TopShortcuts from '../components/TopShortcuts';
 import VoiceOrb from '../components/VoiceOrb';
-import { isPersonsBrowserTurn, isPositionClickCard } from '../lib/browserApproval';
+import { isBrowserStepCard, isPersonsBrowserTurn, isPositionClickCard } from '../lib/browserApproval';
 import { BROWSER_ACTION_BADGE, groupBrowserSteps } from '../lib/browserSteps';
 import { BROWSER_APPROVAL_BADGE, answeredBrowserStep } from '../lib/browserStepPrompt';
 import { BROWSER_HANDOVER_BADGE, finishedHandOverStep, isHandOverCard } from '../lib/browserHandOverPrompt';
@@ -2432,7 +2432,19 @@ export default function ChatView({
      sign-in, a CAPTCHA or another hand-over), keyed by that card so each
      new one opens it again. The browser button opens it at any time. */
   const { onlyWhenNeeded } = useBrowserPrefs();
-  const personsTurnId = (streamingMsg?.steps || []).find(isPersonsBrowserTurn)?.data?.question_id || null;
+  // Below the inline layout, the pane floats over the chat as a full-screen
+  // modal; on a phone it docks to the top instead, so it isn't this mode.
+  const overlayMode = paneFloats && !isMobile;
+  const personsTurnStep = (streamingMsg?.steps || []).find(isPersonsBrowserTurn) || null;
+  const personsTurnId = personsTurnStep?.data?.question_id || null;
+  /* In overlay mode, a held step the person answers on its own card owns the
+     screen: the pane must not open over it. A hand-over still needs the
+     pane, since the person has to act inside the browser itself, so a held
+     step sitting beside a live hand-over doesn't count as a card the chat
+     alone can answer. */
+  const waitingApprovalCard = overlayMode
+    && isBrowserStepCard(personsTurnStep?.data)
+    && !(streamingMsg?.steps || []).some((s) => s.badge === 'AskUser' && !s.data?.answer && isHandOverCard(s.data));
   const personsTurnBrowserId = personsTurnId
     ? (liveBrowserId || latestBrowserSessionIdIn(visibleMessages, streamingMsg))
     : null;
