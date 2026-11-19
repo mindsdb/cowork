@@ -316,12 +316,6 @@ const FETCHERS: Record<string, (accessToken: string, extra?: OAuthExtra) => Prom
   slack: fetchSlackIdentity,
 };
 
-/** Authorize-URL scope separators for providers that don't take RFC 6749's
- * space; Slack's v2 flow documents a comma. */
-export const SCOPE_SEPARATORS: Record<string, string> = {
-  slack: ',',
-};
-
 export async function fetchAccountIdentity(
   engine: string, accessToken: string, extra?: OAuthExtra,
 ): Promise<OAuthIdentity> {

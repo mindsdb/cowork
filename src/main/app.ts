@@ -33,9 +33,9 @@ import { cancelCustomMcpConnects, connectCustomMcp } from './custom-mcp-connect'
 import { customMcpAvailable, customSummary, disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
 import { stopAllCustomRefreshLoops } from './custom-mcp-refresh';
 import { CUSTOM_MCP_ENGINE } from './custom-mcp-routes';
-import { OAUTH_CREDENTIALS } from './credentials';
+import { OAUTH_CREDENTIALS, SCOPE_SEPARATORS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
-import { fetchAccountIdentity, buildRevokeRequest, SCOPE_SEPARATORS } from './oauth-identity';
+import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
