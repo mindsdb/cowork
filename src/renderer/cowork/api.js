@@ -246,6 +246,9 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
  * @property {string|null} [retry_at] When that wait ends, as an offset-bearing
  *   ISO 8601 instant.
  * @property {string} [reset_at] When a spent allowance refills.
+ * @property {string} [budget_scope] Whose budget a budget_exceeded stop spent.
+ * @property {string} [budget_period] That budget's period: day, month or year.
+ * @property {string} [budget_model] The model a per-model budget caps (its alias).
  * @property {string} [request_id] The server's id for the failed request.
  * @property {boolean} [reconnectable] The credential is MindsHub's, so
  *   signing in again fixes it.
@@ -347,6 +350,10 @@ function _failedEventMeta(events) {
        render time: the server deliberately doesn't parse it, since only the
        client knows the viewer's timezone (ENG-1537). */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // budget_exceeded: whose budget is spent (org, workspace, api_key); absent from an older server.
+    budgetScope: typeof ev.budget_scope === 'string' ? ev.budget_scope : null,
+    budgetPeriod: typeof ev.budget_period === 'string' ? ev.budget_period : null,
+    budgetModel: typeof ev.budget_model === 'string' && ev.budget_model ? ev.budget_model : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads
     // it as local time — the gate would last hours west of UTC and no-op east
@@ -415,6 +422,9 @@ function _hydrateAssistantEvents(messages) {
           providerLabel: failed?.providerLabel ?? null,
           retryAfter: failed?.retryAfter ?? null,
           resetAt: failed?.resetAt ?? null,
+          budgetScope: failed?.budgetScope ?? null,
+          budgetPeriod: failed?.budgetPeriod ?? null,
+          budgetModel: failed?.budgetModel ?? null,
           retryAt: failed?.retryAt ?? null,
           failedModel: failed?.failedModel ?? null,
           requestId: failed?.requestId ?? null,
@@ -1931,6 +1941,33 @@ export async function updateOrgAppearance(payload) {
     headers: await hubHeaders(),
     body: JSON.stringify(payload),
   });
+}
+
+/**
+ * The signed-in account's open deletion request, `{ requestedAt, deleteBy }`,
+ * or null. The server answers 404 both when there is no open request and when
+ * there is no MindsHub account behind it (a desktop on its local server), so
+ * callers only ask where a MindsHub account is certain: the mobile app. Anything
+ * else rejects, so a failed read is never mistaken for "no request".
+ */
+export async function getDeletionRequest() {
+  try {
+    // Bounded: the Delete account button stays disabled until this settles.
+    return await req('/hub/deletion-request/', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+  } catch (err) {
+    if (err?.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Ask MindsHub to delete the signed-in account. Idempotent: a second call
+ * answers the open request rather than opening another. Resolves to the same
+ * shape as getDeletionRequest; rejects with `err.status` on failure (404 when
+ * there is no MindsHub account behind the server).
+ */
+export async function requestAccountDeletion() {
+  return req('/hub/deletion-request/', { method: 'POST', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
 }
 
 // The lock-owning wrappers decide how to handle failure. A save must never

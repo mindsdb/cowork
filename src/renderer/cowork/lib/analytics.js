@@ -66,7 +66,7 @@ const EVENTS = {
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
   EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
-  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app', attachments, has_link, chars, added_chars? } — the first message of a new task; never carries its text
+  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app', attachments, has_link, chars, added_chars?, task_mode?, mode_line?: 'appended'|'replaced_example'|'example', example_placed? } — the first message of a new task; never carries its text
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
@@ -887,7 +887,10 @@ export function setEntryAttribution(entrySource, exampleId, placement) {
 // "not recorded", the same as before the console sent it.
 const placementProps = (placement) => (placement ? { entry_placement: placement } : {});
 
-export function trackAgentSessionStarted() {
+// `exampleId` rides with a send whose start is only known when it goes out
+// (the own-work mode a console link opened): set on arrival, it would also
+// credit an unrelated task sent after the person left the mode.
+export function trackAgentSessionStarted({ exampleId } = {}) {
   const pending = pendingEntryAttribution;
   pendingEntryAttribution = null;
   const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
@@ -896,7 +899,7 @@ export function trackAgentSessionStarted() {
     fresh
       ? {
         entry_source: pending.entry_source,
-        example_id: pending.example_id,
+        example_id: exampleId || pending.example_id,
         ...placementProps(pending.entry_placement),
       }
       : {}
@@ -946,15 +949,19 @@ export function trackExamplePicked(exampleId, list) {
  * holds a link, and how long it is. `added_chars` is what the person added to a
  * start or example, a paste or details. Joined to the account's later turns
  * and visits, this is how a start is judged. Read before the session-start
- * event, which clears the console attribution this one uses.
+ * event, which clears the console attribution this one uses. `taskMode` is
+ * Home's note on a selected task mode and its instruction line (`modeMessage`):
+ * only Home knows whether an example was placed, so it rides with the send.
+ * `startVia` is a start label that rode with the send the same way, and wins
+ * over one set with setStartVia.
  */
-export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
+export function trackNewTaskMessageSent({ text, attachments = 0, start, taskMode, startVia }) {
   const entry = pendingEntryAttribution && Date.now() - pendingEntryAttribution.at <= ENTRY_ATTRIBUTION_TTL_MS
     ? pendingEntryAttribution : null;
   const pending = pendingStartVia;
   pendingStartVia = null;
   const fresh = pending && Date.now() - pending.at <= START_VIA_TTL_MS;
-  const via = fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer');
+  const via = startVia || (fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer'));
   const body = typeof text === 'string' ? text : '';
   const props = {
     start_kind: start?.start_kind || 'free_text',
@@ -965,6 +972,11 @@ export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
   };
   if (start?.example_id) props.example_id = start.example_id;
   if (start?.added_chars != null) props.added_chars = start.added_chars;
+  if (taskMode) {
+    props.task_mode = taskMode.task_mode;
+    props.mode_line = taskMode.mode_line;
+    props.example_placed = taskMode.example_placed;
+  }
   Object.assign(props, placementProps(entry?.entry_placement));
   capture(EVENTS.NEW_TASK_MESSAGE_SENT, props);
 }
@@ -1032,7 +1044,7 @@ export function trackTurnFailed(conversationId, event) {
 //   free_serving_paused       free MindsHub Air is paused for everyone by the
 //                             daily spend fuse; NOT paired with token_cap_hit,
 //                             because it is not this user's cap
-//   budget_exceeded           the org's spending budget is used up; "View
+//   budget_exceeded           a spending budget is used up; "View
 //                             budgets" opens the Budgets tab. NOT paired with
 //                             token_cap_hit: credits do not lift a budget
 //   model_access_denied       legacy per-model credit denial (pre-wallet gateways)

@@ -1764,8 +1764,10 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   justify-content: space-between;
   padding: 14px 14px 8px;
 }
-.anton-sidebar__chrome-left { display: flex; align-items: center; gap: 14px; }
-.anton-sidebar__chrome-buttons { display: flex; gap: 2px; }
+/* min-width: 0 lets the cluster shrink inside a narrow sidebar, so a long
+   title truncates instead of running past the sidebar's edge (ENG-4415). */
+.anton-sidebar__chrome-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.anton-sidebar__chrome-buttons { display: flex; gap: 2px; flex-shrink: 0; }
 
 .anton-sidebar__logo {
   width: 18px;
@@ -1791,6 +1793,12 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   color: var(--nav-title-color, var(--ink));
   padding-right: 4px;
   white-space: nowrap;
+  /* Truncate a title too long for the sidebar (ENG-4415). `clip` with a
+     margin, not `hidden`, so the dark theme's glow isn't cut into a box. */
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 14px;
+  text-overflow: ellipsis;
 }
 body[data-theme="dark"] .anton-sidebar__wordmark {
   text-shadow: 0 0 14px var(--accent-glow);

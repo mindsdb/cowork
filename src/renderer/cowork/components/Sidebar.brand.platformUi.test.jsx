@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render as rtlRender, screen } from '@testing-library/react';
 import { ToastProvider } from './ui/Toast';
 
@@ -67,5 +67,37 @@ describe('Sidebar — deployment brand', () => {
     render(<Sidebar {...baseProps} tasksStatus="ready" navTitle="Team space" navLogo="data:image/png;base64,aWNvbg==" />);
     expect(document.querySelector('.anton-sidebar__wordmark')?.textContent).toBe('Team space');
     expect(document.querySelector('.anton-sidebar__logo')?.getAttribute('src')).toBe('data:image/png;base64,aWNvbg==');
+  });
+});
+
+// Only the macOS desktop app draws traffic lights over the sidebar's corner.
+// Windows keeps a native title bar, so the brand row there must not reserve
+// their space, or a long brand runs off the sidebar's edge (ENG-4415).
+describe('Sidebar — brand row inset per platform', () => {
+  const chrome = () => document.querySelector('.anton-sidebar__chrome');
+  const setHost = (isWeb, mac) => {
+    hostMock.isWeb = isWeb;
+    hostMock.isMac = () => mac;
+  };
+  afterEach(() => setHost(true, false));
+
+  it('clears the traffic lights on the macOS desktop app', () => {
+    setHost(false, true);
+    render(<Sidebar {...baseProps} tasksStatus="ready" />);
+    expect(chrome().style.paddingLeft).toBe('88px');
+    expect(document.querySelector('.anton-sidebar__chrome-left').classList.contains('ml-auto')).toBe(true);
+  });
+
+  it('starts the brand row at the left edge on the Windows desktop app', () => {
+    setHost(false, false);
+    render(<Sidebar {...baseProps} tasksStatus="ready" />);
+    expect(chrome().style.paddingLeft).toBe('14px');
+    expect(document.querySelector('.anton-sidebar__chrome-left').classList.contains('ml-auto')).toBe(false);
+  });
+
+  it('keeps the web layout', () => {
+    render(<Sidebar {...baseProps} tasksStatus="ready" />);
+    expect(chrome().style.paddingLeft).toBe('14px');
+    expect(document.querySelector('.anton-sidebar__chrome-left').classList.contains('ml-auto')).toBe(true);
   });
 });

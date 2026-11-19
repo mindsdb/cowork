@@ -191,11 +191,7 @@
     "steps": {
       "bring-your-work": {
         "title": "Comece com seu próprio trabalho",
-        "description": "Conte ao Cowork no que você está trabalhando e passe um arquivo ou suas notas."
-      },
-      "customize-role": {
-        "title": "Adapte o Cowork à sua função",
-        "description": "Adicione ferramentas e fluxos de trabalho prontos."
+        "description": "Entregue ao Cowork um arquivo, notas ou um link, e ele começa."
       },
       "connect-app": {
         "title": "Conecte um app",

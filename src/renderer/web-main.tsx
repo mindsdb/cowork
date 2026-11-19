@@ -50,7 +50,7 @@ import { prepareForOrganizationReload } from './cowork/lib/organizationTransitio
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
 import { captureSignupWelcome } from './cowork/lib/signupWelcome';
-import { keycloak, mobileShellAdapter } from './lib/keycloak';
+import { keycloak, mobileSession, mobileShellAdapter } from './lib/keycloak';
 import { keycloakInitOptions } from './lib/mobileAuth';
 import { applyMobileShellDocument, mobileShell } from './lib/mobileShell';
 import { startMobilePush } from './lib/mobilePush';
@@ -127,6 +127,7 @@ void whenI18nReady().then(() => {
           authClient={keycloak}
           initOptions={initOptions}
           onTokens={bindOrganizationCacheTokens}
+          session={mobileSession}
         >
           <App />
         </MobileShellRoot>
