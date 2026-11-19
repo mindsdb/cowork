@@ -267,3 +267,29 @@ describe('PublishMenu — fits a short window', () => {
     }
   });
 });
+
+// The password field unfolds under its own option now; it must still be the
+// one the share is saved with.
+describe('PublishMenu — password share', () => {
+  it('publishes a new share with the typed password', async () => {
+    const ctrl = makeController({ publish: vi.fn(async () => true) });
+    render(<PublishMenu controller={ctrl} />);
+    fireEvent.click(screen.getByText('Share'));
+    fireEvent.click(screen.getByText('Password protected'));
+    await userEvent.type(screen.getByPlaceholderText('Add a password'), 'hunter2');
+    const buttons = screen.getAllByRole('button').filter((b) => /publish|share|save/i.test(b.textContent) && !b.disabled);
+    fireEvent.click(buttons.at(-1));
+    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }));
+  });
+
+  it('changes a public share to a password one', async () => {
+    const ctrl = makeController({ publishedUrl: 'https://share/abc', accessMode: 'public', publish: vi.fn(async () => true) });
+    render(<PublishMenu controller={ctrl} />);
+    fireEvent.click(screen.getByText('Shared'));
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.click(screen.getByText('Password protected'));
+    await userEvent.type(screen.getByPlaceholderText('Add a password'), 'hunter2');
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }));
+  });
+});
