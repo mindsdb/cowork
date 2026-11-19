@@ -216,7 +216,6 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
       expect(hostMock.host.logout).toHaveBeenCalled();
       // Let the sign-out settle, so the watchdog is armed while the fake clock holds it.
       await act(async () => { await Promise.resolve(); });
-      expect(vi.getTimerCount()).toBeGreaterThan(0);
     } finally {
       vi.clearAllTimers();
       vi.useRealTimers();

@@ -49,18 +49,6 @@ vi.mock('./views/ChatView', () => ({
   ),
 }));
 
-vi.mock('./views/ProjectsView', () => ({
-  default: ({ tasks, onSelectTask }) => (
-    <div>
-      {(tasks || []).map((t) => (
-        <button key={t.id} type="button" onClick={() => onSelectTask(t.id)}>
-          {`Open task ${t.title}`}
-        </button>
-      ))}
-    </div>
-  ),
-}));
-
 vi.mock('../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -92,19 +80,15 @@ import App from './App';
 const task = { id: 'conv-connect', title: 'Connect task', messages: [], status: 'idle' };
 
 beforeEach(() => {
+  window.history.replaceState(null, '', `/c/${task.id}`);
   spies.deleteDatasource.mockReset().mockResolvedValue({});
   spies.fetchSessions.mockReset().mockResolvedValue([{ ...task }]);
 });
 
-// The whole app mounts and loads its task list before these appear. On a
-// loaded CI runner that can outlast the default one-second wait.
-const SLOW = { timeout: 5000 };
-
 const askToDisconnect = async (user) => {
-  await user.click(await screen.findByRole('button', { name: 'Projects' }, SLOW));
-  await user.click(await screen.findByRole('button', { name: `Open task ${task.title}` }, SLOW));
-  await user.click(await screen.findByRole('button', { name: 'Disconnect from task' }, SLOW));
-  return screen.findByRole('dialog', { name: 'Disconnect prod-db?' }, SLOW);
+  await screen.findByText(`Chat task: ${task.title}`);
+  await user.click(screen.getByRole('button', { name: 'Disconnect from task' }));
+  return screen.findByRole('dialog', { name: 'Disconnect prod-db?' });
 };
 
 describe('disconnecting from a connect task', () => {
