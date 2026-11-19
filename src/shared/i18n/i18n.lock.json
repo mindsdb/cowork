@@ -93159,6 +93159,40 @@
       "text": "31252562c699"
     }
   },
+  "library:connectionCard.settingsLabel": {
+    "de": {
+      "from": "63eebe24273b",
+      "text": "6f7af8b08fc4"
+    },
+    "es": {
+      "from": "63eebe24273b",
+      "text": "f0cefcff8780"
+    },
+    "fr": {
+      "from": "63eebe24273b",
+      "text": "45ba9842db05"
+    },
+    "it": {
+      "from": "63eebe24273b",
+      "text": "f9a239a24c6e"
+    },
+    "ja": {
+      "from": "63eebe24273b",
+      "text": "a62c4a2b0035"
+    },
+    "ko": {
+      "from": "63eebe24273b",
+      "text": "d7ef3947ef05"
+    },
+    "pt-BR": {
+      "from": "63eebe24273b",
+      "text": "d6cf728e55e7"
+    },
+    "zh-CN": {
+      "from": "63eebe24273b",
+      "text": "19bff982851a"
+    }
+  },
   "library:connections.close": {
     "de": {
       "from": "7d9eb7acb13e",

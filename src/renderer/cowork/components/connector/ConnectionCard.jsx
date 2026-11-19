@@ -8,7 +8,14 @@ import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, connectorInitials, humanLabel, isLegacyEngine } from '../../lib/connectionIdentity';
 import { isDatasourceRow } from '../../lib/datasourceConnectionRows';
 import { useConfirm } from '../ConfirmModal';
+import Ico from '../Icons';
 import i18n, { useTranslation } from '../../../lib/i18n';
+
+const ACCESS_LABEL_KEYS = {
+  read: 'skillCard.readOnly',
+  write: 'connections.toolAccess.write',
+  none: 'connections.toolAccess.none',
+};
 
 function ConnectionLogo({ engine, label, custom, logoColor }) {
   const [failed, setFailed] = useState(null);
@@ -71,6 +78,11 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const managed = connection.managed === true;
   const shared = connection.shared === true;
   const badge = shared ? t('share.shared') : managed ? t('connectionCard.managed') : null;
+  // Only MCP connections have a tool-access setting; a missing mode runs as read.
+  const accessLabel = connection.method === 'mcp'
+    ? t(ACCESS_LABEL_KEYS[connection.access_mode] || ACCESS_LABEL_KEYS.read)
+    : null;
+  const openDetails = typeof onModify === 'function' ? () => onModify(connection) : undefined;
 
   const handleRemove = async () => {
     const prompt = disconnectPrompt({ engine, name, shared });
@@ -89,17 +101,32 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   return {
     leading: <ConnectionLogo engine={engine} label={title} custom={connection.custom} logoColor={connection.logo_color} />,
     title,
-    badges: connection.custom || badge ? (
+    badges: connection.custom || badge || accessLabel ? (
       <>
         {connection.custom && <Badge variant="accent" size="xs">{t('connectionCard.custom')}</Badge>}
         {badge && <Badge variant="muted" size="sm">{badge}</Badge>}
+        {accessLabel && (
+          <Badge variant="muted" size="sm">{accessLabel}</Badge>
+        )}
       </>
     ) : undefined,
     description: subtitle,
     children: legacy
       ? <span className="text-xs text-ink-4">{t('connectionCard.legacy')}</span>
       : undefined,
-    onActivate: typeof onModify === 'function' ? () => onModify(connection) : undefined,
+    onActivate: openDetails,
+    actions: openDetails ? (
+      <Button
+        icon
+        size="sm"
+        variant="subtle"
+        aria-label={t('connectionCard.settingsLabel', { title: describedTitle, subtitle })}
+        onClick={openDetails}
+        disabled={busy}
+      >
+        {Ico.settings(14)}
+      </Button>
+    ) : undefined,
     /* The details of a managed connection open read-only, with no Reconnect,
        so its name says View. */
     activateLabel: t('connectionCard.activateLabel', {
