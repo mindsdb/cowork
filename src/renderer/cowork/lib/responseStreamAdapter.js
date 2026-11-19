@@ -592,6 +592,22 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     };
   }
 
+  if (type === 'response.cancelled') {
+    // Someone pressed Stop. The live stream ends this way, and the server saves
+    // the same event with the turn, so a reload reads it as stopped too and
+    // ends its time at the Stop (ENG-4345). What it wrote so far is its answer.
+    state = promoteToAnswer(state);
+    return {
+      ...state,
+      steps: closeOpenInspectableSteps(state.steps, eventTs),
+      status: 'done',
+      endedAt: eventTs,
+      currentThought: null,
+      firstTake: CLEARED_TAKE,
+      incompleteReason: 'user_stopped',
+    };
+  }
+
   if (type === 'response.failed') {
     // Key upgrade-intent signal: the turn was blocked on credits. Fire once
     // here, on receipt — not in the render path (ChatView), which re-runs every
@@ -620,7 +636,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // counting it would inflate the signal with users who already pay.
     // `free_serving_paused`: a fleet-wide pause of free Air, not this user's cap.
     // `model_restricted`: an org admin's model rule, which credits do not lift.
-    // `budget_exceeded`: the org's spent budget, which credits do not lift either.
+    // `budget_exceeded`: a spent budget, which credits do not lift either.
     //
     // One event carrying `reason` rather than three events, so the impression
     // stays a single series and keeps this once-per-receipt guarantee.
@@ -827,6 +843,35 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       output: null,
       result: null,
       _skillKey: key,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
+  // Inline connector template card. A cloud turn built the template for an API
+  // connector; the server checked it again and stored nothing. The member saves
+  // it from the card. Deduped by connector id within a turn so a replay can't
+  // double a card.
+  if (type === 'response.connector_drafted') {
+    const c = (event.connector && typeof event.connector === 'object') ? event.connector : null;
+    const key = typeof c?.connector_id === 'string' ? c.connector_id : '';
+    if (!key) return state;
+    if (state.steps.some((s) => s.badge === 'Connector' && s._connectorKey === key)) {
+      return state;
+    }
+    const step = {
+      id: `connector-${key}`,
+      label: typeof c.label === 'string' ? c.label : key,
+      badge: 'Connector',
+      icon: 'link',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: c,
+      output: null,
+      result: null,
+      _connectorKey: key,
       _isScratchpad: false,
       _scratchpadTabId: null,
     };

@@ -46,6 +46,13 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels', 'usage']);
   });
 
+  it('adds Account inside the mobile app, where the app stores require account deletion', () => {
+    expect(ids(navItemsForHost(true, true, true, { mobileShell: true })))
+      .toEqual(['agent', 'appearance', 'channels', 'usage', 'account']);
+    // The website stays as it was.
+    expect(ids(navItemsForHost(true, true, true, { mobileShell: false }))).not.toContain('account');
+  });
+
   it('keeps Agent on web — it carries the reasoning-effort control', () => {
     // The whole point of the ticket: reasoning effort is the only user-side
     // workaround for a turn that spends its entire output budget on internal

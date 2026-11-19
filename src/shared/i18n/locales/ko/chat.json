@@ -31,6 +31,7 @@
       "retryExhausted": "조기 중단됨: 작업이 계속 실패했습니다.",
       "questionUnanswered": "조기 중단됨: 질문에 대한 답변이 없었습니다.",
       "contentFilter": "조기 중단됨: 모델의 콘텐츠 필터가 응답을 차단했습니다.",
+      "userStopped": "중지되었습니다.",
       "fallback": "완료되기 전에 중단되었습니다."
     },
     "figureFile": {
@@ -71,7 +72,9 @@
       "thumbnailAlt": "아티팩트 썸네일",
       "deletedTitle": "이 아티팩트는 삭제되었습니다",
       "liveArtifact": "라이브 아티팩트",
-      "deletedBadge": "삭제됨"
+      "deletedBadge": "삭제됨",
+      "share": "공유",
+      "shareTooltip": "열 수 있는 사람 선택"
     },
     "kinds": {
       "provider": "공급자",
@@ -107,7 +110,7 @@
       "tryAgainIn": "{seconds}초 후 다시 시도",
       "tryAgain": "다시 시도",
       "adminSpendingLimitBody": "관리자가 설정한 지출 한도에 도달했습니다. 관리자에게 문의하세요.",
-      "budgetUsedUpTitle": "조직의 예산이 모두 소진되었습니다",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {조직의 일일 예산이 모두 소진되었습니다} month {조직의 월간 예산이 모두 소진되었습니다} year {조직의 연간 예산이 모두 소진되었습니다} other {조직의 예산이 모두 소진되었습니다}}} workspace {{period, select, day {이 워크스페이스의 일일 예산이 모두 소진되었습니다} month {이 워크스페이스의 월간 예산이 모두 소진되었습니다} year {이 워크스페이스의 연간 예산이 모두 소진되었습니다} other {이 워크스페이스의 예산이 모두 소진되었습니다}}} api_key {{period, select, day {이 API 키의 일일 예산이 모두 소진되었습니다} month {이 API 키의 월간 예산이 모두 소진되었습니다} year {이 API 키의 연간 예산이 모두 소진되었습니다} other {이 API 키의 예산이 모두 소진되었습니다}}} team {{period, select, day {팀의 일일 예산이 모두 소진되었습니다} month {팀의 월간 예산이 모두 소진되었습니다} year {팀의 연간 예산이 모두 소진되었습니다} other {팀의 예산이 모두 소진되었습니다}}} member {{period, select, day {내 일일 예산이 모두 소진되었습니다} month {내 월간 예산이 모두 소진되었습니다} year {내 연간 예산이 모두 소진되었습니다} other {내 예산이 모두 소진되었습니다}}} other {{period, select, day {일일 예산이 모두 소진되었습니다} month {월간 예산이 모두 소진되었습니다} year {연간 예산이 모두 소진되었습니다} other {예산이 모두 소진되었습니다}}}}",
       "viewBudgets": "예산 보기",
       "balanceRanOutMobile": "이 작업이 끝나기 전에 잔액이 모두 소진되었습니다.",
       "autoTopUpFailedBodyMobile": "카드 결제를 처리하지 못했습니다.",
@@ -226,7 +229,16 @@
         "notRead": "대기열에 추가됨: 읽기 전에 작업이 끝났습니다."
       }
     },
-    "reconnecting": "다시 연결하는 중"
+    "reconnecting": "다시 연결하는 중",
+    "nextSteps": {
+      "groupLabel": "다음 단계",
+      "ownData": "내 데이터로 이렇게 하기",
+      "anotherFile": "다른 파일에도 똑같이 하기",
+      "makePage": "페이지로 만들기",
+      "schedule": "일정에 따라 실행하기",
+      "scheduled": "‘{title}’ 예약됨",
+      "scheduledDone": "예약됨 ✓"
+    }
   },
   "composer": {
     "placeholder": "안녕하세요, 오늘은 무엇을 도와드릴까요?",
@@ -743,6 +755,31 @@
     "noMicrophone": "마이크를 찾을 수 없습니다.",
     "couldNotStart": "음성 통화를 시작할 수 없습니다.",
     "endedReason": "통화가 종료되었습니다({reason})."
+  },
+  "connectorDraft": {
+    "notSaved": "커넥터 템플릿 · 저장되지 않음",
+    "kept": "이 ID의 커넥터가 이미 있습니다. 다시 저장하면 대체됩니다.",
+    "saved": "저장했습니다. ‘앱 및 데이터 연결’에서 자격 증명을 추가하세요.",
+    "savedConnect": "저장했습니다. 연결하여 자격 증명을 추가하세요.",
+    "saveFailed": "커넥터를 저장할 수 없습니다.",
+    "button": {
+      "save": "커넥터 저장",
+      "saveAgain": "다시 저장",
+      "saving": "저장 중…",
+      "done": "저장됨",
+      "connect": "연결"
+    },
+    "modal": {
+      "fieldsTitle": "입력할 항목",
+      "usageTitle": "Anton이 사용하는 방법",
+      "helpUrl": "찾는 곳: {url}"
+    },
+    "field": {
+      "secret": "비밀",
+      "required": "필수",
+      "optional": "선택",
+      "example": "예: {value}"
+    }
   },
   "notionPicker": {
     "title": "Notion에서 페이지 추가",

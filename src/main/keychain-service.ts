@@ -91,7 +91,7 @@ export async function deleteRefreshToken(engine: string, accountEmail: string): 
 const ACCESS_MODE_SERVICE = buildKind() === 'prod' ? 'cowork-mcp-access-mode' : `cowork-mcp-access-mode-${buildKind()}`;
 
 // A hash, so the account name is short and holds no path characters.
-function storeScope(storeRoot: string): string {
+export function storeScope(storeRoot: string): string {
   return crypto.createHash('sha256').update(storeRoot).digest('hex').slice(0, 32);
 }
 

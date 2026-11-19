@@ -206,7 +206,7 @@ describe('ArtifactViewer side panel', () => {
     expect(panels()).toMatchObject({ comments: 'true', inbox: 'true', stats: 'false' });
   });
 
-  it("keeps Comments on beside Source: setMode('edit') turns Source on and leaves Comments alone", async () => {
+  it("turns Comments off for Source: setMode('edit') turns Source on and closes Comments", async () => {
     renderViewer();
     await settle();
     click('Comments');
@@ -214,7 +214,7 @@ describe('ArtifactViewer side panel', () => {
     click('Edit mode');
     await settle();
 
-    expect(panels()).toMatchObject({ comments: 'true', inbox: 'true', stats: 'false' });
+    expect(panels()).toMatchObject({ comments: 'false', inbox: 'false', stats: 'false' });
   });
 
   it('loads stats only while the panel is open', async () => {

@@ -66,8 +66,8 @@
         "balanceLowToo": "Your balance is low too ({usd})."
       },
       "budgetExceeded": {
-        "raise": "Paid models can't run until an owner or admin raises it in Budgets.",
-        "airHasRoom": "Paid models can't run until an owner or admin raises it in Budgets. MindsHub Air still works while its free allowance lasts."
+        "raise": "{hasModel, select, true {{scope, select, org {{model} can't run until an owner or admin raises it in Budgets. Other models still work.} other {{model} can't run until an administrator raises it in Budgets. Other models still work.}}} other {{scope, select, org {Paid models can't run until an owner or admin raises it in Budgets.} other {Paid models can't run until an administrator raises it in Budgets.}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} can't run until an owner or admin raises it in Budgets. Other models still work.} other {{model} can't run until an administrator raises it in Budgets. Other models still work.}}} other {{scope, select, org {Paid models can't run until an owner or admin raises it in Budgets. MindsHub Air still works while its free allowance lasts.} other {Paid models can't run until an administrator raises it in Budgets. MindsHub Air still works while its free allowance lasts.}}}}"
       }
     },
     "scheduleWhen": {
@@ -106,7 +106,7 @@
         "walletEmpty": "No credits available. Add funds to use MindsHub.",
         "allowanceExhausted": "No free MindsHub Air tokens available, and the balance is empty.",
         "freeAirPaused": "Free MindsHub Air is paused right now.",
-        "budgetExceeded": "Your organization's budget is used up.",
+        "budgetExceeded": "A budget is used up.",
         "walletEmptyMobile": "No credits available."
       },
       "missingApiKey": "Add an API key on the right.",
@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "Both models ran out of credits before finishing, so this turn can't be judged.",
         "one": "{name} ran out of credits before finishing, so this turn can't be judged.",
-        "bothBudget": "Both models hit your organization's budget before finishing, so this turn can't be judged.",
-        "oneBudget": "{name} hit your organization's budget before finishing, so this turn can't be judged."
+        "bothBudget": "{scope, select, org {Both models hit your organization's budget} workspace {Both models hit this workspace's budget} api_key {Both models hit this API key's budget} team {Both models hit your team's budget} member {Both models hit your budget} other {Both models hit a budget}} before finishing, so this turn can't be judged.",
+        "oneBudget": "{scope, select, org {{name} hit your organization's budget} workspace {{name} hit this workspace's budget} api_key {{name} hit this API key's budget} team {{name} hit your team's budget} member {{name} hit your budget} other {{name} hit a budget}} before finishing, so this turn can't be judged."
       },
       "verdict": {
         "tie": "About the same",
@@ -414,7 +414,8 @@
       "andMore": "{source} and {count} more"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "Unrecognized connector"
+      "unrecognizedConnector": "Unrecognized connector",
+      "mcpServer": "MCP server"
     },
     "datasourceSubmission": {
       "errors": {
@@ -475,7 +476,7 @@
       "needsCredits": "Needs credits",
       "budgetReached": {
         "tag": "Budget reached",
-        "title": "Your organization's budget is used up. An owner or admin can raise it in Budgets."
+        "title": "A budget covering this model is used up. An administrator can raise it in Budgets."
       }
     },
     "settingsTransform": {
@@ -649,6 +650,7 @@
     "atMinute": "at minute",
     "at": "at",
     "time": "Time",
+    "timeZone": "Time zone",
     "nextRuns": "{count, plural, one {Next run: {runs}} other {Next runs: {runs}}}",
     "timePassed": "That time has passed.",
     "name": "Name",

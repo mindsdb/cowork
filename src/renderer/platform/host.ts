@@ -1184,6 +1184,67 @@ export async function setConnectionAccessMode(
   return null;
 }
 
+// Custom MCP servers added by URL: desktop only, main logs in and holds the
+// keychain entries. Every call answers a refusal object on web or an older shell.
+export type CustomMcpFailure = { ok: false; code: string; reason: string };
+export type CustomMcpHostsToConfirm = { ok: false; code: 'confirm_login_hosts'; loginHosts: string[] };
+export interface CustomMcpConnectOpts {
+  label: string;
+  url: string;
+  clientId?: string;
+  clientSecret?: string;
+  confirmedLoginHosts?: string[];
+}
+export type CustomMcpConnectResult =
+  | { ok: true; id: string; label: string; serverUrl: string; toolsOn: number; toolsUnavailable: boolean }
+  | CustomMcpHostsToConfirm
+  | CustomMcpFailure;
+export interface CustomMcpTool { name: string; description: string; readOnly: boolean; allowed: boolean }
+export type CustomMcpSummaryResult = { ok: true; label: string; serverUrl: string } | CustomMcpFailure;
+export type CustomMcpToolsResult = { ok: true; tools: CustomMcpTool[] } | CustomMcpFailure;
+export type CustomMcpSetToolsResult = { ok: true; tools: string[] } | CustomMcpFailure;
+export type CustomMcpReconnectResult = { ok: true } | CustomMcpHostsToConfirm | CustomMcpFailure;
+export type CustomMcpDisconnectResult = { ok: true; revoked: boolean } | CustomMcpFailure;
+
+const CUSTOM_MCP_UNAVAILABLE: CustomMcpFailure = { ok: false, code: 'unavailable', reason: 'Custom MCP servers need the desktop app.' };
+
+export async function customMcpAvailable(): Promise<boolean> {
+  if (isElectron && typeof bridge.customMcpAvailable === 'function') return (await bridge.customMcpAvailable()) === true;
+  return false;
+}
+
+export async function customMcpConnect(opts: CustomMcpConnectOpts): Promise<CustomMcpConnectResult> {
+  if (isElectron && typeof bridge.customMcpConnect === 'function') return bridge.customMcpConnect(opts);
+  return CUSTOM_MCP_UNAVAILABLE;
+}
+
+export async function customMcpSummary(id: string): Promise<CustomMcpSummaryResult> {
+  if (isElectron && typeof bridge.customMcpSummary === 'function') return bridge.customMcpSummary({ id });
+  return CUSTOM_MCP_UNAVAILABLE;
+}
+
+export async function customMcpTools(id: string): Promise<CustomMcpToolsResult> {
+  if (isElectron && typeof bridge.customMcpTools === 'function') return bridge.customMcpTools({ id });
+  return CUSTOM_MCP_UNAVAILABLE;
+}
+
+export async function customMcpSetTools(id: string, tools: string[]): Promise<CustomMcpSetToolsResult> {
+  if (isElectron && typeof bridge.customMcpSetTools === 'function') return bridge.customMcpSetTools({ id, tools });
+  return CUSTOM_MCP_UNAVAILABLE;
+}
+
+export async function customMcpReconnect(id: string, confirmedLoginHosts?: string[]): Promise<CustomMcpReconnectResult> {
+  if (isElectron && typeof bridge.customMcpReconnect === 'function') {
+    return bridge.customMcpReconnect({ id, ...(confirmedLoginHosts ? { confirmedLoginHosts } : {}) });
+  }
+  return CUSTOM_MCP_UNAVAILABLE;
+}
+
+export async function customMcpDisconnect(id: string): Promise<CustomMcpDisconnectResult> {
+  if (isElectron && typeof bridge.customMcpDisconnect === 'function') return bridge.customMcpDisconnect({ id });
+  return CUSTOM_MCP_UNAVAILABLE;
+}
+
 // What main returns for a Notion page search or fetch: the server's JSON, the
 // server's refusal as it sent it, or main's own refusal.
 export type NotionPagesBridgeResult =
@@ -2032,6 +2093,13 @@ export const host = {
   logout,
   keychainRevoke,
   setConnectionAccessMode,
+  customMcpAvailable,
+  customMcpConnect,
+  customMcpSummary,
+  customMcpTools,
+  customMcpSetTools,
+  customMcpReconnect,
+  customMcpDisconnect,
   notionSearchPages,
   notionFetchPage,
   onOAuthRefreshError,

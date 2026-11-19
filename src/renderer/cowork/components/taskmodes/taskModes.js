@@ -15,6 +15,11 @@
 // not fit (a weekly update is not a slide deck), and the person is expected to
 // add to it, so it is sent as written even then.
 //
+// `ownData: true` marks a mode whose examples work on sample data or a
+// document, so the finished example offers "Do this with my own data". A
+// sample can set its own `ownData` to differ from its mode. Games, websites
+// and apps make something new and have nothing of the person's to swap in.
+//
 // `icon` is an Icons.jsx key (resolved dynamically — keep keys in sync with
 // that file). `samplesVariant` mirrors Manus: slides + visualization render
 // sample cards under a heading, the rest render plain rows. `chipNoun`
@@ -28,6 +33,7 @@ import i18n from '../../../lib/i18n';
 export const TASK_MODES = [
   {
     id: 'slides',
+    ownData: true,
     pillLabel: 'Create slides',
     chipLabel: 'Slides',
     icon: 'presentation',
@@ -148,6 +154,7 @@ export const TASK_MODES = [
   },
   {
     id: 'spreadsheet',
+    ownData: true,
     pillLabel: 'Spreadsheet',
     chipLabel: 'Spreadsheet',
     icon: 'table',
@@ -188,6 +195,7 @@ export const TASK_MODES = [
   },
   {
     id: 'visualization',
+    ownData: true,
     pillLabel: 'Visualization',
     chipLabel: 'Visualization',
     icon: 'chartColumn',
@@ -223,6 +231,7 @@ export const TASK_MODES = [
   },
   {
     id: 'wide-research',
+    ownData: true,
     pillLabel: 'Wide Research',
     chipLabel: 'Wide Research',
     icon: 'telescope',
@@ -330,17 +339,38 @@ export function resemblesSample(sample, text) {
   return want.length > 0 && want.filter((w) => have.has(w)).length / want.length >= 0.5;
 }
 
-export function composeModeMessage(mode, text, pickedSample) {
-  if (!mode || !mode.instruction) return text;
+/** The outgoing message for a selected mode, and what happened to the mode's
+    instruction line: `appended`, `replaced_example` (an example was placed and
+    the person sent something else instead, so the line would describe a
+    request they did not make), or `example` (the text is an example, which
+    already says what it wants). `modeLine` is null when no mode applies. */
+export function modeMessage(mode, text, pickedSample) {
+  if (!mode || !mode.instruction) return { text, modeLine: null };
+  // A placed example takes the line only while it is all still there: the
+  // person added text before or after it, nothing else. An edit inside it, a
+  // paste over it or clearing it makes the text their own request, which can
+  // share most of the example's words and still ask for something else. When
+  // in doubt it counts as replaced: a request left without the line still
+  // says what it wants, while a line under a different request contradicts it.
+  if (pickedSample && !pickedSample.plain && !text.includes(pickedSample.prompt)) {
+    return { text, modeLine: 'replaced_example' };
+  }
+  if (pickedSample?.plain && !resemblesSample(pickedSample, text)) {
+    return { text, modeLine: 'replaced_example' };
+  }
   // A plain example the person picked keeps its own wording however they edit it.
-  if (pickedSample?.plain && mode.samples.includes(pickedSample) && resemblesSample(pickedSample, text)) return text;
+  if (pickedSample?.plain && mode.samples.includes(pickedSample)) return { text, modeLine: 'example' };
   const sent = text.trim();
   // A picked sample is already a full prompt — appending the instruction
   // would send a doubled signal ("…zen garden.\n\nCreate a playable game.").
-  if (mode.samples.some((s) => s.prompt === sent)) return text;
+  if (mode.samples.some((s) => s.prompt === sent)) return { text, modeLine: 'example' };
   // A plain sample keeps its own wording once the person adds to it.
-  if (mode.samples.some((s) => s.plain && sent.startsWith(s.prompt))) return text;
-  return `${text}\n\n${mode.instruction}`;
+  if (mode.samples.some((s) => s.plain && sent.startsWith(s.prompt))) return { text, modeLine: 'example' };
+  return { text: `${text}\n\n${mode.instruction}`, modeLine: 'appended' };
+}
+
+export function composeModeMessage(mode, text, pickedSample) {
+  return modeMessage(mode, text, pickedSample).text;
 }
 
 // What the checklist's "Try an example" row opens on Home: one short list that
@@ -394,6 +424,26 @@ export function sampleLabel(sample) {
     if (index >= 0) return i18n.t(`taskModes.${mode.id}.samples.${index}`, { ns: 'chat', defaultValue: sample.label });
   }
   return sample?.label;
+}
+
+/** Whether a finished example invites the person's own data in place of
+    the sample it made up. The cross-mode Examples list holds the same sample
+    objects, so each of its entries answers by the mode it comes from. */
+export function exampleTakesOwnData(sample) {
+  const mode = TASK_MODES.find((m) => m.samples.includes(sample));
+  return Boolean(sample?.ownData ?? mode?.ownData);
+}
+
+/** The example a sent message starts from, or null. The message may carry
+    the person's additions or the mode's instruction after the prompt. */
+export function exampleForMessage(text) {
+  const sent = typeof text === 'string' ? text.trim() : '';
+  if (!sent) return null;
+  for (const mode of TASK_MODES) {
+    const sample = mode.samples.find((s) => sent.startsWith(s.prompt));
+    if (sample) return sample;
+  }
+  return null;
 }
 
 /** The mode and sample whose prompt is exactly `prompt`, or null. */

@@ -31,6 +31,7 @@
       "retryExhausted": "Vorzeitig beendet: Die Aufgabe ist wiederholt fehlgeschlagen.",
       "questionUnanswered": "Vorzeitig beendet: Eine Frage wurde nicht beantwortet.",
       "contentFilter": "Vorzeitig beendet: Der Inhaltsfilter des Modells hat eine Antwort blockiert.",
+      "userStopped": "Gestoppt.",
       "fallback": "Vor dem Abschluss beendet."
     },
     "figureFile": {
@@ -71,7 +72,9 @@
       "thumbnailAlt": "Artefakt-Miniaturansicht",
       "deletedTitle": "Dieses Artefakt wurde gelöscht",
       "liveArtifact": "Live-Artefakt",
-      "deletedBadge": "Gelöscht"
+      "deletedBadge": "Gelöscht",
+      "share": "Teilen",
+      "shareTooltip": "Festlegen, wer es öffnen kann"
     },
     "kinds": {
       "provider": "Anbieter",
@@ -107,7 +110,7 @@
       "tryAgainIn": "In {seconds} s erneut versuchen",
       "tryAgain": "Erneut versuchen",
       "adminSpendingLimitBody": "Das Ausgabenlimit Ihres Administrators wurde erreicht. Wenden Sie sich an Ihren Administrator.",
-      "budgetUsedUpTitle": "Das Budget Ihrer Organisation ist aufgebraucht",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {Das tägliche Budget Ihrer Organisation ist aufgebraucht} month {Das monatliche Budget Ihrer Organisation ist aufgebraucht} year {Das jährliche Budget Ihrer Organisation ist aufgebraucht} other {Das Budget Ihrer Organisation ist aufgebraucht}}} workspace {{period, select, day {Das tägliche Budget dieses Arbeitsbereichs ist aufgebraucht} month {Das monatliche Budget dieses Arbeitsbereichs ist aufgebraucht} year {Das jährliche Budget dieses Arbeitsbereichs ist aufgebraucht} other {Das Budget dieses Arbeitsbereichs ist aufgebraucht}}} api_key {{period, select, day {Das tägliche Budget dieses API-Schlüssels ist aufgebraucht} month {Das monatliche Budget dieses API-Schlüssels ist aufgebraucht} year {Das jährliche Budget dieses API-Schlüssels ist aufgebraucht} other {Das Budget dieses API-Schlüssels ist aufgebraucht}}} team {{period, select, day {Das tägliche Budget Ihres Teams ist aufgebraucht} month {Das monatliche Budget Ihres Teams ist aufgebraucht} year {Das jährliche Budget Ihres Teams ist aufgebraucht} other {Das Budget Ihres Teams ist aufgebraucht}}} member {{period, select, day {Ihr tägliches Budget ist aufgebraucht} month {Ihr monatliches Budget ist aufgebraucht} year {Ihr jährliches Budget ist aufgebraucht} other {Ihr Budget ist aufgebraucht}}} other {{period, select, day {Ein tägliches Budget ist aufgebraucht} month {Ein monatliches Budget ist aufgebraucht} year {Ein jährliches Budget ist aufgebraucht} other {Ein Budget ist aufgebraucht}}}}",
       "viewBudgets": "Budgets anzeigen",
       "balanceRanOutMobile": "Ihr Guthaben war aufgebraucht, bevor diese Aufgabe abgeschlossen war.",
       "autoTopUpFailedBodyMobile": "Ihre Karte konnte nicht belastet werden.",
@@ -226,7 +229,16 @@
         "notRead": "In der Warteschlange: Die Aufgabe war fertig, bevor sie das lesen konnte."
       }
     },
-    "reconnecting": "Verbindung wird wiederhergestellt"
+    "reconnecting": "Verbindung wird wiederhergestellt",
+    "nextSteps": {
+      "groupLabel": "Nächste Schritte",
+      "ownData": "Mit meinen eigenen Daten machen",
+      "anotherFile": "Dasselbe mit einer anderen Datei",
+      "makePage": "Eine Seite daraus machen",
+      "schedule": "Regelmäßig ausführen",
+      "scheduled": "„{title}“ geplant",
+      "scheduledDone": "Geplant ✓"
+    }
   },
   "composer": {
     "placeholder": "Hallo Boss, wie kann ich Ihnen heute helfen?",
@@ -743,6 +755,31 @@
     "noMicrophone": "Kein Mikrofon gefunden.",
     "couldNotStart": "Der Sprachanruf konnte nicht gestartet werden.",
     "endedReason": "Der Anruf wurde beendet ({reason})."
+  },
+  "connectorDraft": {
+    "notSaved": "Connector-Vorlage · nicht gespeichert",
+    "kept": "Sie haben bereits einen Connector mit dieser ID. Erneutes Speichern ersetzt ihn.",
+    "saved": "Gespeichert. Fügen Sie Ihre Zugangsdaten unter „Apps und Daten verbinden“ hinzu.",
+    "savedConnect": "Gespeichert. Verbinden Sie ihn, um Ihre Zugangsdaten hinzuzufügen.",
+    "saveFailed": "Der Connector konnte nicht gespeichert werden.",
+    "button": {
+      "save": "Connector speichern",
+      "saveAgain": "Erneut speichern",
+      "saving": "Wird gespeichert…",
+      "done": "Gespeichert",
+      "connect": "Verbinden"
+    },
+    "modal": {
+      "fieldsTitle": "Was Sie eingeben",
+      "usageTitle": "Wie Anton ihn nutzt",
+      "helpUrl": "Wo Sie sie finden: {url}"
+    },
+    "field": {
+      "secret": "geheim",
+      "required": "erforderlich",
+      "optional": "optional",
+      "example": "Beispiel: {value}"
+    }
   },
   "notionPicker": {
     "title": "Seiten aus Notion hinzufügen",

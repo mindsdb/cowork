@@ -45,12 +45,18 @@ export function CommentsPanel({
   onAddressWithAgent,
   agentBusy = false,
   agentWorkingThreadId = null,
+  agentQueuedThreadIds = [],
   onDeleteThread,
+  // Saves an edit of your own comment made right in its card.
+  onEditThread,
   onCreate,
   onClose,
   onHoverThread,
   onLeaveThread,
   onFocusThread,
+  loadImage = null,
+  // Playing its way out (usePresence): the same slide, reversed.
+  leaving = false,
 }) {
   const { t: tr } = useTranslation('artifacts');
   const [tab, setTab] = useState('open');
@@ -86,7 +92,12 @@ export function CommentsPanel({
     <div
       className="artifact-comments-panel flex flex-col gap-[10px] bg-surface px-3 py-2
         font-[family-name:var(--font-body)] motion-reduce:!animate-none"
-      style={{ animation: 'cw-comments-panel-in var(--dur-layout) var(--ease-out)' }}
+      style={{
+        animation: leaving
+          ? 'cw-comments-panel-out 160ms var(--ease-out) forwards'
+          : 'cw-comments-panel-in var(--dur-layout) var(--ease-out)',
+        pointerEvents: leaving ? 'none' : undefined,
+      }}
     >
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
@@ -111,8 +122,14 @@ export function CommentsPanel({
           {tr('comments.panel.expired')}
         </div>
       )}
+      {/* A warning, not a state: it fades and clears on its own
+          (useArtifactComments), and loading keeps retrying underneath. */}
       {error && (
-        <div className="shrink-0 rounded-[6px] px-2 py-[6px] text-[12px] leading-[16px] bg-[#FEE2E2] text-[#8F321A]">
+        <div
+          key={error}
+          role="status"
+          className="artifact-comments-warning shrink-0 rounded-[6px] px-2 py-[6px] text-[12px] leading-[16px] bg-[#FEF3C7] text-[#B45309]"
+        >
           {error}
         </div>
       )}
@@ -171,8 +188,11 @@ export function CommentsPanel({
             canAddressWithAgent={capabilities?.canAddressWithAgent === true}
             agentBusy={agentBusy}
             agentWorking={agentWorkingThreadId === t.id}
+            agentQueued={(agentQueuedThreadIds || []).includes(t.id)}
             onStatus={onStatus}
             onAddressWithAgent={onAddressWithAgent}
+            loadImage={loadImage}
+            onEditThread={onEditThread}
             onRequestDelete={setPendingDelete}
             onHover={onHoverThread}
             onLeave={onLeaveThread}

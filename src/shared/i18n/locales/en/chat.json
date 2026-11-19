@@ -31,6 +31,7 @@
       "retryExhausted": "Stopped early: the task kept failing.",
       "questionUnanswered": "Stopped early: a question went unanswered.",
       "contentFilter": "Stopped early: the model's content filter blocked a reply.",
+      "userStopped": "Stopped.",
       "fallback": "Stopped before it finished."
     },
     "figureFile": {
@@ -71,7 +72,9 @@
       "thumbnailAlt": "Artifact thumbnail",
       "deletedTitle": "This artifact was deleted",
       "liveArtifact": "live artifact",
-      "deletedBadge": "Deleted"
+      "deletedBadge": "Deleted",
+      "share": "Share",
+      "shareTooltip": "Choose who can open it"
     },
     "kinds": {
       "provider": "Provider",
@@ -107,7 +110,7 @@
       "tryAgainIn": "Try again in {seconds}s",
       "tryAgain": "Try again",
       "adminSpendingLimitBody": "Your administrator's spending limit was reached. Contact your administrator.",
-      "budgetUsedUpTitle": "Your organization's budget is used up",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {Your organization's daily budget is used up} month {Your organization's monthly budget is used up} year {Your organization's yearly budget is used up} other {Your organization's budget is used up}}} workspace {{period, select, day {This workspace's daily budget is used up} month {This workspace's monthly budget is used up} year {This workspace's yearly budget is used up} other {This workspace's budget is used up}}} api_key {{period, select, day {This API key's daily budget is used up} month {This API key's monthly budget is used up} year {This API key's yearly budget is used up} other {This API key's budget is used up}}} team {{period, select, day {Your team's daily budget is used up} month {Your team's monthly budget is used up} year {Your team's yearly budget is used up} other {Your team's budget is used up}}} member {{period, select, day {Your daily budget is used up} month {Your monthly budget is used up} year {Your yearly budget is used up} other {Your budget is used up}}} other {{period, select, day {A daily budget is used up} month {A monthly budget is used up} year {A yearly budget is used up} other {A budget is used up}}}}",
       "viewBudgets": "View budgets",
       "balanceRanOutMobile": "Your balance ran out before this task finished.",
       "autoTopUpFailedBodyMobile": "We couldn't charge your card.",
@@ -226,7 +229,16 @@
         "notRead": "Queued: the task finished before it could read this."
       }
     },
-    "reconnecting": "Trying to reconnect"
+    "reconnecting": "Trying to reconnect",
+    "nextSteps": {
+      "groupLabel": "Next steps",
+      "ownData": "Do this with my own data",
+      "anotherFile": "Do the same to another file",
+      "makePage": "Turn it into a page",
+      "schedule": "Run this on a schedule",
+      "scheduled": "Scheduled “{title}”",
+      "scheduledDone": "Scheduled ✓"
+    }
   },
   "composer": {
     "placeholder": "Hi Boss, how can I help you today?",
@@ -743,6 +755,31 @@
     "noMicrophone": "No microphone found.",
     "couldNotStart": "Couldn't start the voice call.",
     "endedReason": "The call ended ({reason})."
+  },
+  "connectorDraft": {
+    "notSaved": "Connector template · not saved",
+    "kept": "You already keep a connector with this id. Saving again replaces it.",
+    "saved": "Saved. Add your credentials in Connect Apps and Data.",
+    "savedConnect": "Saved. Connect it to add your credentials.",
+    "saveFailed": "Could not save the connector.",
+    "button": {
+      "save": "Save connector",
+      "saveAgain": "Save again",
+      "saving": "Saving…",
+      "done": "Saved",
+      "connect": "Connect"
+    },
+    "modal": {
+      "fieldsTitle": "What you will enter",
+      "usageTitle": "How Anton will use it",
+      "helpUrl": "Where to find them: {url}"
+    },
+    "field": {
+      "secret": "secret",
+      "required": "required",
+      "optional": "optional",
+      "example": "Example: {value}"
+    }
   },
   "notionPicker": {
     "title": "Add pages from Notion",

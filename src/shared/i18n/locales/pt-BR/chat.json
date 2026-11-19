@@ -31,6 +31,7 @@
       "retryExhausted": "Parou antes: a tarefa continuou falhando.",
       "questionUnanswered": "Parou antes: uma pergunta ficou sem resposta.",
       "contentFilter": "Parou antes: o filtro de conteúdo do modelo bloqueou uma resposta.",
+      "userStopped": "Interrompida.",
       "fallback": "Parou antes de terminar."
     },
     "figureFile": {
@@ -71,7 +72,9 @@
       "thumbnailAlt": "Miniatura do artefato",
       "deletedTitle": "Este artefato foi excluído",
       "liveArtifact": "artefato ao vivo",
-      "deletedBadge": "Excluído"
+      "deletedBadge": "Excluído",
+      "share": "Compartilhar",
+      "shareTooltip": "Escolha quem pode abrir"
     },
     "kinds": {
       "provider": "Provedor",
@@ -107,7 +110,7 @@
       "tryAgainIn": "Tentar novamente em {seconds} s",
       "tryAgain": "Tentar novamente",
       "adminSpendingLimitBody": "O limite de gastos definido pelo administrador foi atingido. Fale com o seu administrador.",
-      "budgetUsedUpTitle": "O orçamento da sua organização acabou",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {O orçamento diário da sua organização acabou} month {O orçamento mensal da sua organização acabou} year {O orçamento anual da sua organização acabou} other {O orçamento da sua organização acabou}}} workspace {{period, select, day {O orçamento diário deste espaço de trabalho acabou} month {O orçamento mensal deste espaço de trabalho acabou} year {O orçamento anual deste espaço de trabalho acabou} other {O orçamento deste espaço de trabalho acabou}}} api_key {{period, select, day {O orçamento diário desta chave de API acabou} month {O orçamento mensal desta chave de API acabou} year {O orçamento anual desta chave de API acabou} other {O orçamento desta chave de API acabou}}} team {{period, select, day {O orçamento diário da sua equipe acabou} month {O orçamento mensal da sua equipe acabou} year {O orçamento anual da sua equipe acabou} other {O orçamento da sua equipe acabou}}} member {{period, select, day {Seu orçamento diário acabou} month {Seu orçamento mensal acabou} year {Seu orçamento anual acabou} other {Seu orçamento acabou}}} other {{period, select, day {Um orçamento diário acabou} month {Um orçamento mensal acabou} year {Um orçamento anual acabou} other {Um orçamento acabou}}}}",
       "viewBudgets": "Ver orçamentos",
       "balanceRanOutMobile": "Seu saldo acabou antes de esta tarefa terminar.",
       "autoTopUpFailedBodyMobile": "Não conseguimos cobrar seu cartão.",
@@ -226,7 +229,16 @@
         "notRead": "Na fila: a tarefa terminou antes de conseguir ler isto."
       }
     },
-    "reconnecting": "Tentando reconectar"
+    "reconnecting": "Tentando reconectar",
+    "nextSteps": {
+      "groupLabel": "Próximos passos",
+      "ownData": "Fazer isso com meus próprios dados",
+      "anotherFile": "Fazer o mesmo com outro arquivo",
+      "makePage": "Transformar em uma página",
+      "schedule": "Executar isso de forma agendada",
+      "scheduled": "“{title}” agendada",
+      "scheduledDone": "Agendado ✓"
+    }
   },
   "composer": {
     "placeholder": "Olá, chefe. Como posso ajudar hoje?",
@@ -743,6 +755,31 @@
     "noMicrophone": "Nenhum microfone encontrado.",
     "couldNotStart": "Não foi possível iniciar a chamada de voz.",
     "endedReason": "A chamada terminou ({reason})."
+  },
+  "connectorDraft": {
+    "notSaved": "Modelo de conector · não salvo",
+    "kept": "Você já tem um conector com este id. Salvar de novo o substitui.",
+    "saved": "Salvo. Adicione suas credenciais em Conectar apps e dados.",
+    "savedConnect": "Salvo. Conecte-o para adicionar suas credenciais.",
+    "saveFailed": "Não foi possível salvar o conector.",
+    "button": {
+      "save": "Salvar conector",
+      "saveAgain": "Salvar de novo",
+      "saving": "Salvando…",
+      "done": "Salvo",
+      "connect": "Conectar"
+    },
+    "modal": {
+      "fieldsTitle": "O que você vai informar",
+      "usageTitle": "Como o Anton vai usar",
+      "helpUrl": "Onde encontrar: {url}"
+    },
+    "field": {
+      "secret": "secreto",
+      "required": "obrigatório",
+      "optional": "opcional",
+      "example": "Exemplo: {value}"
+    }
   },
   "notionPicker": {
     "title": "Adicionar páginas do Notion",

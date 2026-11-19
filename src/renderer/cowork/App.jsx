@@ -4,7 +4,8 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
-import { toCloudSpec } from './lib/cloudConnectorSpec';
+import { connectSpecFor, desktopOnlyOffer, mayConnectThroughChat, toCustomConnectionRows } from './lib/customConnect';
+import { composerConnectorList } from './lib/composerConnectors';
 import { toDatasourceRows } from './lib/datasourceConnectionRows';
 import { buildCustomConnectorRequest } from './lib/customConnectorRequest';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
@@ -31,6 +32,9 @@ import HomeView from './views/HomeView';
 import ChatView, { warmBrowser } from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
+import ScheduleTaskModal from './components/schedule/ScheduleTaskModal';
+import { localFileAttachments } from './lib/localFileAttachments';
+import { useScheduleFromAnswer } from './hooks/useScheduleFromAnswer';
 import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
@@ -52,6 +56,8 @@ import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
+import CustomMcpConnectModal from './components/connector/CustomMcpConnectModal';
+import { disconnectCustomMcp, isCustomMcp } from './lib/customMcp';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
 import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
 import { handleArtifactCheckEvent } from './lib/artifactCheck';
@@ -118,7 +124,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
-         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchVoiceStatus, readBrowserApproveSteps} from './api';
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, listCustomConnections, fetchVoiceStatus, readBrowserApproveSteps} from './api';
 import { describeNotionReferencePages, loadNotionPageTexts } from './lib/notionReferencePages';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
@@ -575,13 +581,15 @@ function openStreamedForm(conversationId, finalContent) {
 
 async function loadSessionMessagesWithRetry(
   cid,
-  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs } = {},
+  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs, unmountedRef } = {},
 ) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => { setTimeout(resolve, 50 * attempt); });
     }
+    if (unmountedRef?.current) return null;
     const fresh = await fetchSession(cid, { timeoutMs });
+    if (unmountedRef?.current) return null;
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
       // Only the most recent page — the caller merges this
@@ -1010,6 +1018,7 @@ function AppCore() {
   const [settingsSection, setSettingsSection] = useState(null);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [sharePointSetupOpen, setSharePointSetupOpen] = useState(false);
+  const [customMcpOpen, setCustomMcpOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
@@ -1189,6 +1198,15 @@ function AppCore() {
   const recoverDroppedTurnRef = useRef(null);
   // Conversations with a dropped-turn recovery out, so a second drop waits on it.
   const droppedRecoveryRef = useRef(new Set());
+  // The dropped-turn reconnects and run-start probes wait minutes between
+  // tries; they read this to stop once the App is gone instead of polling and
+  // reattaching for it.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    // Reset on mount too: StrictMode unmounts and remounts the same instance.
+    unmountedRef.current = false;
+    return () => { unmountedRef.current = true; };
+  }, []);
 
   // Running tally for the stranded-reservation self-heal (reservationReleaseDecision):
   // a stream that dies with no terminal pins the slot forever, so the in-flight
@@ -2044,6 +2062,9 @@ function AppCore() {
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
+            budgetScope: typeof event?.budget_scope === 'string' ? event.budget_scope : null,
+            budgetPeriod: typeof event?.budget_period === 'string' ? event.budget_period : null,
+            budgetModel: typeof event?.budget_model === 'string' && event.budget_model ? event.budget_model : null,
             requestId: typeof event?.request_id === 'string' ? event.request_id : null,
             /* Client-only: a lost connection, shown with "Trying to
                reconnect" while recoverDroppedTurn tries to reach the turn,
@@ -2202,21 +2223,24 @@ function AppCore() {
   }, [look]);
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
-  // One list for the composer's per-conversation toggles: the OAuth
-  // connections and the cloud database ones, each keyed by (engine, name),
-  // which is the pair the server filters a turn's grants on.
+  // The custom route the "Coming soon" dialog offers for a connector cloud doesn't run.
+  const [comingSoonOffer, setComingSoonOffer] = useState(null);
+  const [customConnectors, setCustomConnectors] = useState([]);
   const composerConnectors = useMemo(
-    // Only a verified database is offered here: the producer grants exactly
-    // those, so listing a pending or failed one with its toggle on would say a
-    // chat can use something it cannot.
-    () => [...connectors, ...datasourceConnectors.filter((c) => c.status === 'connected')],
-    [connectors, datasourceConnectors],
+    () => composerConnectorList(connectors, datasourceConnectors, customConnectors),
+    [connectors, datasourceConnectors, customConnectors],
   );
   const refreshDatasourceConnectors = useCallback(() => {
     if (!orgMode) return Promise.resolve();
     return listDatasourceConnections()
       .then((rows) => setDatasourceConnectors(toDatasourceRows(rows)))
       .catch(() => setDatasourceConnectors([]));
+  }, [orgMode]);
+  const refreshCustomConnectors = useCallback(() => {
+    if (!orgMode) return Promise.resolve();
+    return listCustomConnections()
+      .then((rows) => setCustomConnectors(toCustomConnectionRows(rows)))
+      .catch(() => setCustomConnectors([]));
   }, [orgMode]);
   // Connecting or removing a database happens in two other places — the
   // connect form's panel and the connections page — and both already announce
@@ -2225,10 +2249,10 @@ function AppCore() {
   // the rest of the session: a connection made now would never appear, and a
   // removed one would never leave.
   useEffect(() => {
-    const onChanged = () => { refreshDatasourceConnectors(); };
+    const onChanged = () => { refreshDatasourceConnectors(); refreshCustomConnectors(); };
     window.addEventListener('anton:connections-changed', onChanged);
     return () => window.removeEventListener('anton:connections-changed', onChanged);
-  }, [refreshDatasourceConnectors]);
+  }, [refreshDatasourceConnectors, refreshCustomConnectors]);
   // That one refresh lands while a fresh connection can still be pending, and
   // the composer offers verified connections only, so without this a database
   // that passes its check a moment later stays absent until a reload.
@@ -2624,6 +2648,7 @@ function AppCore() {
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
     refreshDatasourceConnectors();
+    refreshCustomConnectors();
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
@@ -2820,7 +2845,7 @@ function AppCore() {
   // buildStreamHandlers() refactor is a fine follow-up once both
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
-    if (!taskId) return false;
+    if (!taskId || unmountedRef.current) return false;
     // A tail or send registered here, or a send holding the slot while it
     // uploads. A second stream would abort it, whoever holds the shared slot.
     const alreadyStreamingHere = () => (
@@ -2833,7 +2858,9 @@ function AppCore() {
     } catch {
       return false;
     }
-    if (!status || !status.in_flight) return false;
+    // Unmount may happen while the probe is pending. Do not open a stream
+    // for an App that is gone, even when the server still has a live turn.
+    if (unmountedRef.current || !status || !status.in_flight) return false;
     // A send or queued drain may have started here while the probe was out.
     if (alreadyStreamingHere()) return true;
 
@@ -2913,7 +2940,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -2925,7 +2952,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -2995,7 +3022,8 @@ function AppCore() {
   const recoverDroppedTurn = useCallback(async (cid) => {
     if (!cid || droppedRecoveryRef.current.has(cid)) return;
     droppedRecoveryRef.current.add(cid);
-    const current = () => tasksRef.current.find((t) => t.id === cid);
+    // Gone once the App unmounts, which ends the loop at its next check.
+    const current = () => (unmountedRef.current ? undefined : tasksRef.current.find((t) => t.id === cid));
     const settle = (update) => setTasks((prev) => prev.map((t) => (
       t.id === cid && droppedError(t) ? update(t) : t
     )));
@@ -3017,10 +3045,10 @@ function AppCore() {
         }
         let loaded = null;
         try {
-          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, unmountedRef });
         } catch { continue; }
-        if (!loaded) continue;
         if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        if (!loaded) continue;
         const knownIds = knownIdsOf(cid);
         settle((t) => {
           if (!historyEndsTurn(loaded.messages, droppedError(t)?._userMessageId)) return t;
@@ -3465,7 +3493,8 @@ function AppCore() {
     setDisconnectError('');
     setDisconnectBusy(true);
     try {
-      await deleteDatasource(engine, name);
+      if (isCustomMcp(engine)) await disconnectCustomMcp(name, () => deleteDatasource(engine, name));
+      else await deleteDatasource(engine, name);
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.App", "WARNING", "connectors_disconnect_failed", '[connectors] disconnect failed', e);
@@ -3539,7 +3568,10 @@ function AppCore() {
     // Microsoft first, so it opens its own form instead of a connect chat.
     if (connector.id === SHAREPOINT_ENGINE) {
       // The SharePoint routes are refused in org mode; offer the desktop app.
-      if (orgMode) setComingSoonFeature(connector.label || 'SharePoint');
+      if (orgMode) {
+        setComingSoonOffer(null);
+        setComingSoonFeature(connector.label || 'SharePoint');
+      }
       else setSharePointSetupOpen(true);
       return;
     }
@@ -3558,13 +3590,22 @@ function AppCore() {
     const label = full?.label || connector.label || connector.id;
     const tempId = 'tmp-connect-' + Date.now();
     const hasLiteralForm = !!(full && full.form);
+    const chatBlocked = !hasLiteralForm && !mayConnectThroughChat({ orgMode, connector });
 
     setTasks((prev) => [{
       id: tempId,
       title: tApp('connect.taskTitle', { name: label }),
       subtitle: tApp('common.justNow'),
-      status: hasLiteralForm ? 'idle' : 'active',
-      messages: hasLiteralForm
+      status: hasLiteralForm || chatBlocked ? 'idle' : 'active',
+      messages: chatBlocked
+        ? [
+            {
+              role: 'assistant',
+              content: `Could not open ${label}. Try again from Connect Apps and Data.`,
+              _client_only: true,
+            },
+          ]
+        : hasLiteralForm
         ? [
             {
               role: 'assistant',
@@ -3633,7 +3674,7 @@ function AppCore() {
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
       };
-      const connectSpec = orgMode ? toCloudSpec(baseSpec, editingConnection) : baseSpec;
+      const connectSpec = connectSpecFor({ full, baseSpec, label, orgMode, editingConnection });
       setDataVaultForm(tempId, connectSpec);
       // Remember where to return if the user closes the connect modal
       // before actually connecting — the connect task above is throwaway
@@ -3648,7 +3689,7 @@ function AppCore() {
           m && m._kind === 'connect_intro' ? { ...m, _form_spec: connectSpec } : m
         ),
       }));
-    } else {
+    } else if (!chatBlocked) {
       // No registry entry — fall back to the chat-agent flow. This IS a real
       // connect attempt (anton drives it), so there's no throwaway task to
       // return from.
@@ -3964,14 +4005,7 @@ function AppCore() {
   const attachmentSessionId = route === 'task' && currentTask && !String(currentTask.id).startsWith('tmp-') ? currentTask.id : null;
 
   const handleAttachFiles = (files) => {
-    const list = Array.from(files || []).map((file) => ({
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-      source: 'file',
-      pendingFile: file,
-      name: file.name,
-      mime: file.type || undefined,
-      size: file.size,
-    }));
+    const list = localFileAttachments(files);
     setComposerAttachments((prev) => [...prev, ...list]);
   };
 
@@ -4395,7 +4429,7 @@ function AppCore() {
       markInFlight(taskId);
     };
     // Before the session-start event, which clears the console attribution this reads.
-    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text) });
+    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text), taskMode: meta?.taskMode });
     trackAgentSessionStarted();
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
@@ -4477,7 +4511,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -4489,7 +4523,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -5003,7 +5037,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -5015,7 +5049,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -5543,7 +5577,9 @@ function AppCore() {
     return target.id;
   }, []);
 
-  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId }) => {
+  // `attachments`: pending image attachments (lib/imageAttachments) that ride
+  // with the prompt, uploaded on send as the composer's are (ENG-4410).
+  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId, attachments = [] }) => {
     const project = projects.find((item) =>
       String(item.id || '') === String(artifact?.projectId || ''))
       || projects.find((item) => item.name === artifact?.projectName)
@@ -5554,7 +5590,7 @@ function AppCore() {
     // (no origin, unreachable chat, a stale resolution) starts a new one.
     if (!target || !conversationId || target.id !== String(conversationId)) {
       // A new chat owes nothing to the composer of the chat that was open last.
-      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
+      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments });
     }
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
     // Every refusal is settled while the viewer is still open to report it:
@@ -5590,7 +5626,7 @@ function AppCore() {
     try {
       // Queued when the chat is busy, including a turn waiting on the agent's
       // question: the repair prompt is not the user's answer to it.
-      started = await handleSendInTask(prompt, [], { targetTask, skipPendingAnswer: true });
+      started = await handleSendInTask(prompt, attachments, { targetTask, skipPendingAnswer: true });
     } finally {
       if (!started) clearOptimisticConversation(target.id);
     }
@@ -5789,7 +5825,7 @@ function AppCore() {
           // finished message instead of vanishing with the live row (ENG-3554).
           const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -6691,7 +6727,14 @@ function AppCore() {
   // The same for a run that fails, or succeeds if the user asked to hear
   // about those: a notification where the OS allows one, a toast otherwise.
   // Clicking opens the task's page, which says why and offers the run.
-  const { prefs: scheduleNotifyPrefs, setPrefs: setScheduleNotifyPrefs } = useScheduleRunNotifications(scheduled, {
+  const {
+    prefs: scheduleNotifyPrefs,
+    setPrefs: setScheduleNotifyPrefs,
+    canEdit: canEditScheduleNotifyPrefs,
+  } = useScheduleRunNotifications(scheduled, {
+    settings,
+    settingsLoaded,
+    saveSettings,
     onOpen: (schedule) => {
       setWorkspaceMode('cowork');
       setSelectedScheduleId(schedule.id);
@@ -6720,6 +6763,34 @@ function AppCore() {
     host.setScheduleKeepAwake(keepAwake);
   }, [keepAwake, scheduled]);
   useEffect(() => () => { host.setScheduleKeepAwake(false); }, []);
+  // The new-schedule form opened from a finished answer's next steps, over
+  // the chat: { prompt, projectPath }, or null when closed.
+  const [scheduleDraft, setScheduleDraft] = useState(null);
+  const openScheduleFromChat = ({ prompt, projectId, answerKey }) => {
+    const project = projectId ? runnableProjects.find((p) => p.id === projectId) : null;
+    setScheduleDraft({ prompt, projectPath: project?.path || '', answerKey });
+  };
+  const scheduleFromAnswer = useScheduleFromAnswer({
+    create: handleCreateSchedule,
+    runNow: (id) => handleRunScheduleNow(id, { trial: true }),
+    onSaved: (payload) => {
+      toastManager.add({ type: 'success', title: i18n.t('chatView.nextSteps.scheduled', { ns: 'chat', title: payload.title }) });
+    },
+    onRunFailed: (payload, err) => {
+      toastManager.add({
+        type: 'danger',
+        title: i18n.t('scheduledView.trialRunFailed', {
+          ns: 'projects',
+          title: payload.title,
+          reason: err?.message || i18n.t('scheduledView.trialRunFallback', { ns: 'projects' }),
+        }),
+      });
+    },
+  });
+  const handleScheduleFromChat = (payload, _id, options) => (
+    scheduleFromAnswer.submit(payload, scheduleDraft?.answerKey, options)
+  );
+
   const handleRunScheduleNow = async (id, options) => {
     const result = await runScheduleNow(id, options);
     // The server creates the conversation eagerly and returns its id.
@@ -6745,8 +6816,10 @@ function AppCore() {
   const attachWhenRunStarts = async (cid) => {
     for (const delay of RUN_START_PROBE_DELAYS_MS) {
       await new Promise((resolve) => { setTimeout(resolve, delay); });
-      if (!inFlightSetRef.current.has(cid)) return;
-      const outcome = runStartProbeOutcome(await fetchInFlightStatus(cid));
+      if (unmountedRef.current || !inFlightSetRef.current.has(cid)) return;
+      const status = await fetchInFlightStatus(cid);
+      if (unmountedRef.current) return;
+      const outcome = runStartProbeOutcome(status);
       if (outcome === 'ended') {
         runsAwaitingStartRef.current.delete(cid);
         refreshInFlightSet();
@@ -7195,6 +7268,7 @@ function AppCore() {
             health={health}
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
+            onScheduleFromChat={openScheduleFromChat}
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
@@ -7267,6 +7341,7 @@ function AppCore() {
             onStop={() => handleStopStream({ taskId: currentTask?.id })}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
+            onConnectCustomConnector={(connector) => { void handleConnectorPicked(connector); }}
             onDismissConnectForm={handleConnectFormDismiss}
             onCancelModify={handleCancelModify}
             onDisconnectModify={handleDisconnectFromModify}
@@ -7426,11 +7501,24 @@ function AppCore() {
               setRoute('projects');
             }}
             unseenAutoPauses={unseenAutoPauses}
-            notifyPrefs={scheduleNotifyPrefs}
+            notifyPrefs={canEditScheduleNotifyPrefs ? scheduleNotifyPrefs : undefined}
             onNotifyPrefsChange={setScheduleNotifyPrefs}
             agentLabel={agentLabel}
           />
         )}
+
+        <ScheduleTaskModal
+          open={!!scheduleDraft}
+          onClose={() => setScheduleDraft(null)}
+          onSubmit={handleScheduleFromChat}
+          busy={scheduleFromAnswer.busy}
+          initial={scheduleDraft}
+          projects={runnableProjects}
+          models={modelOptions}
+          modelMeta={modelMeta}
+          defaultProjectPath={scheduleDraft?.projectPath || ''}
+          agentLabel={agentLabel}
+        />
 
         {route === 'schedule-detail' && (
           <ScheduleDetailView
@@ -7583,6 +7671,7 @@ function AppCore() {
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
               defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
               models={mindsModels}
+              modelLabels={settings.modelLabels}
               modelMeta={modelMeta}
               skillScopeKey={codeSkillScopeKey}
               connections={connectors}
@@ -7744,6 +7833,16 @@ function AppCore() {
         }}
       />
 
+      <CustomMcpConnectModal
+        open={customMcpOpen}
+        onClose={() => setCustomMcpOpen(false)}
+        onConnected={() => {
+          fetchDatasources()
+            .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+            .catch(() => setConnectors([]));
+        }}
+      />
+
       <ConnectorPicker
         open={connectorPickerOpen}
         onClose={() => setConnectorPickerOpen(false)}
@@ -7751,9 +7850,19 @@ function AppCore() {
         // Cloud: the directory also lists connectors only the desktop app can
         // run. Picking one closes the directory and offers the download rather
         // than opening a connect form that couldn't work here.
-        onDesktopOnly={(c) => {
+        onDesktopOnly={(c, { customMatch = null, canBuild = false } = {}) => {
           setConnectorPickerOpen(false);
-          setComingSoonFeature(c?.label || tApp('connect.thisConnector'));
+          const label = c?.label || tApp('connect.thisConnector');
+          setComingSoonOffer(desktopOnlyOffer({
+            connector: c, customMatch, canBuild,
+            connect: (connector) => { void handleConnectorPicked(connector); },
+            build: (name) => sendFromApp(buildCustomConnectorRequest(name)),
+          }));
+          setComingSoonFeature(label);
+        }}
+        onAddMcpUrl={() => {
+          setConnectorPickerOpen(false);
+          setCustomMcpOpen(true);
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);
@@ -7773,7 +7882,8 @@ function AppCore() {
 
       <ComingSoonModal
         feature={comingSoonFeature}
-        onClose={() => setComingSoonFeature(null)}
+        offer={comingSoonOffer}
+        onClose={() => { setComingSoonFeature(null); setComingSoonOffer(null); }}
       />
 
       {!host.isWeb && (

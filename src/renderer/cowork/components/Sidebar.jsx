@@ -328,6 +328,9 @@ export default function Sidebar({
   // The quick toggles are keyed off "is the user menu actually rendered", not
   // "is the user signed in" — while the pill shows, the menu (which hosts the
   // theme switch) isn't on screen, so the toggles must stay.
+  // The macOS desktop app hides its title bar and draws the traffic lights
+  // over the sidebar's top-left corner. Windows and Linux keep a native one.
+  const hasTrafficLights = !host.isWeb && host.isMac();
   const showsStatusPill = !host.isWeb && (!serverOnline || serverBusy);
   const showsUserMenu = !showsStatusPill && !!accountUser;
   // Which app this is (ENG-2172), and the note that explains an empty list
@@ -502,18 +505,20 @@ export default function Sidebar({
       <div
         className="anton-sidebar__chrome drag-region shrink-0"
         // cascade-forced: overrides .anton-sidebar__chrome's default
-        // `padding: 14px 14px 8px` — also dynamic (host.isWeb picks the
-        // left inset that clears the macOS traffic lights in Electron).
-        style={{ padding: `9px 14px 8px ${host.isWeb ? 14 : 88}px` }}
+        // `padding: 14px 14px 8px` — also dynamic: only the macOS desktop
+        // app draws traffic lights inside the window, so only it needs the
+        // wide left inset. Windows and Linux keep their native title bar
+        // (ENG-4415).
+        style={{ padding: `9px 14px 8px ${hasTrafficLights ? 88 : 14}px` }}
       >
-        {/* Right-aligned cluster: collapse + search icons, then a
-            middle-dot separator, then the ANTON wordmark. The chrome's
-            existing `justify-content: space-between` pushes the whole
-            cluster against the right edge (the left half is empty space
-            past the traffic-light pad). */}
-        <div className="flex-1" />
+        {/* Collapse + search icons, then a middle-dot separator, then the
+            ANTON wordmark. On macOS and the web the cluster sits against the
+            right edge (on macOS the left half is the traffic-light pad). On
+            Windows and Linux there is nothing to clear, so it starts at the
+            left edge (ENG-4415). */}
+        {(host.isWeb || hasTrafficLights) && <div className="flex-1" />}
         <div
-          className="anton-sidebar__chrome-left ml-auto"
+          className={host.isWeb || hasTrafficLights ? 'anton-sidebar__chrome-left ml-auto' : 'anton-sidebar__chrome-left'}
           // cascade-forced: overrides .anton-sidebar__chrome-left's default
           // `gap: 14px` with a tighter 4px for this cluster.
           style={{ gap: 4 }}

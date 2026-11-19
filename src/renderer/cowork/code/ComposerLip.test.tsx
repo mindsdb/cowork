@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CodingEvent, CodingSession } from './api';
 import { ComposerLip } from './ComposerLip';
-import { accountFailure, failureNotice, messageNotice, pickNotice, recoveryNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, pickNotice, recoveryNotice, writesNotice } from './composerNotices';
 
 
 function session(overrides: Partial<CodingSession> = {}): CodingSession {
@@ -132,17 +132,63 @@ describe('ComposerLip', () => {
     expect(screen.getByRole('button', { name: 'More options' })).toBeInTheDocument();
   });
 
-  it('names a spent org budget, opens Budgets, offers a model change for MindsHub Air, and never credits', async () => {
+  it('names a spent budget, opens Budgets, offers a model change for MindsHub Air, and never credits', async () => {
     const user = userEvent.setup();
     const { onChooseModel, onViewBudgets } = renderFailure('budget_exceeded', 'upstream 402');
-    expect(screen.getByText("Your organization's budget is used up.")).toBeInTheDocument();
-    expect(screen.getByText('An owner or admin can raise it in Budgets, or choose an available model to continue in this task.')).toBeInTheDocument();
+    expect(screen.getByText("A budget is used up.")).toBeInTheDocument();
+    expect(screen.getByText('An administrator can raise it in Budgets, or choose an available model to continue in this task.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'View budgets' }));
     expect(onViewBudgets).toHaveBeenCalledOnce();
     await user.click(screen.getByRole('button', { name: 'More options' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Choose another model' }));
     expect(onChooseModel).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['org', "Your organization's budget is used up.", 'An owner or admin can raise it'],
+    ['workspace', "This workspace's budget is used up.", 'An administrator can raise it'],
+    ['api_key', "This API key's budget is used up.", 'An administrator can raise it'],
+    ['team', "Your team's budget is used up.", 'An administrator can raise it'],
+    ['user', 'Your budget is used up.', 'An administrator can raise it'],
+    ['guild', 'A budget is used up.', 'An administrator can raise it'],
+  ])('names whose budget stopped the turn when the failure says %s', (scope, title, raiser) => {
+    const event = failure('budget_exceeded', 'upstream 402');
+    event.data.budget_scope = scope;
+    const notice = failureNotice(accountFailure(session(), undefined, event), 'GPT 5.6 Sol');
+    render(<ComposerLip notice={notice!} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onViewBudgets={vi.fn()} onReopen={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.getByText(`${raiser} in Budgets, or choose an available model to continue in this task.`)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['org', 'month', "Your organization's monthly budget is used up."],
+    ['workspace', 'day', "This workspace's daily budget is used up."],
+    ['api_key', 'year', "This API key's yearly budget is used up."],
+    ['team', 'month', "Your team's monthly budget is used up."],
+    ['all_members', 'day', 'Your daily budget is used up.'],
+    ['guild', 'day', 'A daily budget is used up.'],
+    ['workspace', 'week', "This workspace's budget is used up."],
+  ])('names the %s budget\'s %s period when the failure carries it', (scope, period, title) => {
+    const event = failure('budget_exceeded', 'upstream 402');
+    event.data.budget_scope = scope;
+    event.data.budget_period = period;
+    const notice = failureNotice(accountFailure(session(), undefined, event), 'GPT 5.6 Sol');
+    render(<ComposerLip notice={notice!} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onViewBudgets={vi.fn()} onReopen={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText(title)).toBeInTheDocument();
+  });
+
+  it('names the model a per-model budget stops, by its catalog label or else its alias', () => {
+    const event = failure('budget_exceeded', 'upstream 402');
+    event.data.budget_scope = 'workspace';
+    event.data.budget_model = 'haiku-4-5';
+    const labelled = failureNotice(accountFailure(session(), undefined, event), 'GPT 5.6 Sol', (id) => (id === 'haiku-4-5' ? 'Claude Haiku' : id));
+    expect(labelled!.body).toBe("Claude Haiku can't run until an administrator raises it in Budgets. Choose another model to continue in this task.");
+    const bare = failureNotice(accountFailure(session(), undefined, event), 'GPT 5.6 Sol');
+    expect(bare!.body).toMatch(/^haiku-4-5 can't run until an administrator/);
+    delete event.data.budget_model;
+    const allModels = failureNotice(accountFailure(session(), undefined, event), 'GPT 5.6 Sol');
+    expect(allModels!.body).toBe('An administrator can raise it in Budgets, or choose an available model to continue in this task.');
   });
 
   it('shows nothing for a limit once new work has started or while the task reopens', () => {
@@ -233,5 +279,30 @@ describe('ComposerLip', () => {
   it('leaves an account limit to its own notice rather than a paused-task one', () => {
     expect(recoveryNotice(session(), undefined, failure('insufficient_credits', '402'))).toBeNull();
     expect(recoveryNotice(session({ status: 'running', run_status: 'running' }), undefined, undefined)).toBeNull();
+  });
+
+  it('offers to allow edits on a task held to a read-only sandbox', async () => {
+    const onAllowWrites = vi.fn();
+    const notice = writesNotice(session({ status: 'completed', run_status: 'ready', workspace_kind: 'direct_folder', writes_allowed: false }));
+    if (!notice) throw new Error('no writes notice');
+    render(<ComposerLip notice={notice} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onReopen={vi.fn()} onAllowWrites={onAllowWrites} onDismiss={vi.fn()} />);
+
+    expect(screen.getByText(/no Git history/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Allow edits' }));
+    expect(onAllowWrites).toHaveBeenCalledOnce();
+  });
+
+  it('holds Allow edits while a turn runs', () => {
+    const notice = writesNotice(session({ status: 'running', run_status: 'running', writes_allowed: false }));
+    if (!notice) throw new Error('no writes notice');
+    render(<ComposerLip notice={notice} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onReopen={vi.fn()} onDismiss={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Allow edits' })).toBeDisabled();
+  });
+
+  it('says nothing about edits once they are allowed, under Full access, or to an older server', () => {
+    expect(writesNotice(session({ writes_allowed: true }))).toBeNull();
+    expect(writesNotice(session({ writes_allowed: false, permission_mode: 'full_access' }))).toBeNull();
+    expect(writesNotice(session())).toBeNull();
   });
 });

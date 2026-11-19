@@ -25,6 +25,9 @@ vi.mock('../../api', () => ({
   validateSettings: vi.fn(async () => ({ ok: true })),
   revealSettingKey: vi.fn(async () => ''),
   testProviders: vi.fn(async () => ({})),
+  // The Account section reads whether a deletion request is open.
+  getDeletionRequest: vi.fn(async () => null),
+  requestAccountDeletion: vi.fn(),
 }));
 vi.mock('../../../platform/host', () => ({
   host: {

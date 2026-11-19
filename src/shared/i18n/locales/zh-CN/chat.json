@@ -31,6 +31,7 @@
       "retryExhausted": "已提前停止：任务反复失败。",
       "questionUnanswered": "已提前停止：有问题未得到回答。",
       "contentFilter": "已提前停止：模型的内容过滤器拦截了一条回复。",
+      "userStopped": "已停止。",
       "fallback": "未完成即已停止。"
     },
     "figureFile": {
@@ -71,7 +72,9 @@
       "thumbnailAlt": "产物缩略图",
       "deletedTitle": "此产物已删除",
       "liveArtifact": "实时产物",
-      "deletedBadge": "已删除"
+      "deletedBadge": "已删除",
+      "share": "分享",
+      "shareTooltip": "选择谁可以打开"
     },
     "kinds": {
       "provider": "提供商",
@@ -107,7 +110,7 @@
       "tryAgainIn": "{seconds} 秒后重试",
       "tryAgain": "重试",
       "adminSpendingLimitBody": "已达到管理员设置的支出上限。请联系管理员。",
-      "budgetUsedUpTitle": "你所在组织的预算已用完",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {你所在组织的每日预算已用完} month {你所在组织的每月预算已用完} year {你所在组织的每年预算已用完} other {你所在组织的预算已用完}}} workspace {{period, select, day {此工作区的每日预算已用完} month {此工作区的每月预算已用完} year {此工作区的每年预算已用完} other {此工作区的预算已用完}}} api_key {{period, select, day {此 API 密钥的每日预算已用完} month {此 API 密钥的每月预算已用完} year {此 API 密钥的每年预算已用完} other {此 API 密钥的预算已用完}}} team {{period, select, day {你所在团队的每日预算已用完} month {你所在团队的每月预算已用完} year {你所在团队的每年预算已用完} other {你所在团队的预算已用完}}} member {{period, select, day {你的每日预算已用完} month {你的每月预算已用完} year {你的每年预算已用完} other {你的预算已用完}}} other {{period, select, day {每日预算已用完} month {每月预算已用完} year {每年预算已用完} other {预算已用完}}}}",
       "viewBudgets": "查看预算",
       "balanceRanOutMobile": "任务完成前你的余额已用完。",
       "autoTopUpFailedBodyMobile": "无法从你的银行卡扣款。",
@@ -226,7 +229,16 @@
         "notRead": "已加入队列：任务在读取之前就已结束。"
       }
     },
-    "reconnecting": "正在尝试重新连接"
+    "reconnecting": "正在尝试重新连接",
+    "nextSteps": {
+      "groupLabel": "后续步骤",
+      "ownData": "用我自己的数据做同样的事",
+      "anotherFile": "对另一个文件做同样的事",
+      "makePage": "做成一个页面",
+      "schedule": "按计划运行",
+      "scheduled": "已安排“{title}”",
+      "scheduledDone": "已安排 ✓"
+    }
   },
   "composer": {
     "placeholder": "老板好，今天有什么可以帮你？",
@@ -743,6 +755,31 @@
     "noMicrophone": "未找到麦克风。",
     "couldNotStart": "无法开始语音通话。",
     "endedReason": "通话已结束（{reason}）。"
+  },
+  "connectorDraft": {
+    "notSaved": "连接器模板 · 未保存",
+    "kept": "你已经有一个使用此 ID 的连接器。再次保存会替换它。",
+    "saved": "已保存。请在“连接应用和数据”中添加你的凭据。",
+    "savedConnect": "已保存。连接它以添加你的凭据。",
+    "saveFailed": "无法保存连接器。",
+    "button": {
+      "save": "保存连接器",
+      "saveAgain": "再次保存",
+      "saving": "正在保存…",
+      "done": "已保存",
+      "connect": "连接"
+    },
+    "modal": {
+      "fieldsTitle": "你需要输入的内容",
+      "usageTitle": "Anton 将如何使用",
+      "helpUrl": "获取位置：{url}"
+    },
+    "field": {
+      "secret": "机密",
+      "required": "必填",
+      "optional": "可选",
+      "example": "示例：{value}"
+    }
   },
   "notionPicker": {
     "title": "从 Notion 添加页面",

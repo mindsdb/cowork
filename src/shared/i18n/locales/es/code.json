@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "No se pudieron eliminar algunos archivos de tareas borradas. Reintenta la limpieza para liberar espacio en disco.",
+    "retry": "Reintentar limpieza",
+    "retrying": "Reintentando limpieza…",
+    "retryFailed": "No se pudo reintentar la limpieza. Inténtalo de nuevo."
+  },
   "reviewPanel": {
     "ariaLabel": "Revisar cambios",
     "closeAriaLabel": "Cerrar panel de revisión",
@@ -1022,7 +1028,7 @@
       "noModels": "No hay modelos de código disponibles.",
       "chooseModel": "Elige un modelo para continuar.",
       "chooseFolder": "Elige una carpeta para continuar.",
-      "budgetReached": "Se agotó el presupuesto de tu organización. Elige un modelo disponible o pide a un propietario o administrador que lo aumente."
+      "budgetReached": "Se agotó un presupuesto que cubre este modelo. Elige un modelo disponible o pide a un administrador que lo aumente."
     }
   },
   "executionTarget": {
@@ -1308,6 +1314,7 @@
     "record": {
       "approvalDenied": "Aprobación denegada",
       "approvalResolved": "Aprobación resuelta",
+      "folderBusy": "Otra tarea está trabajando en esta carpeta, así que esta trabaja en un worktree.",
       "followUpDelivered": "Mensaje de seguimiento entregado",
       "requestRejected": "Solicitud rechazada",
       "taskStatus": "Estado de la tarea"
@@ -1412,7 +1419,8 @@
     "details": "Detalles",
     "moreOptions": "Más opciones",
     "dismiss": "Descartar",
-    "viewBudgets": "Ver presupuestos"
+    "viewBudgets": "Ver presupuestos",
+    "allowWrites": "Permitir ediciones"
   },
   "composerNotices": {
     "thisModel": "Este modelo",
@@ -1464,8 +1472,11 @@
       "body": "{reason}, así que todavía usa disco."
     },
     "budgetExceeded": {
-      "title": "Se agotó el presupuesto de tu organización",
-      "body": "Un propietario o administrador puede aumentarlo en Presupuestos, o puedes elegir un modelo disponible para seguir con esta tarea."
+      "title": "{scope, select, org {{period, select, day {Se agotó el presupuesto diario de tu organización} month {Se agotó el presupuesto mensual de tu organización} year {Se agotó el presupuesto anual de tu organización} other {Se agotó el presupuesto de tu organización}}} workspace {{period, select, day {Se agotó el presupuesto diario de este espacio de trabajo} month {Se agotó el presupuesto mensual de este espacio de trabajo} year {Se agotó el presupuesto anual de este espacio de trabajo} other {Se agotó el presupuesto de este espacio de trabajo}}} api_key {{period, select, day {Se agotó el presupuesto diario de esta clave de API} month {Se agotó el presupuesto mensual de esta clave de API} year {Se agotó el presupuesto anual de esta clave de API} other {Se agotó el presupuesto de esta clave de API}}} team {{period, select, day {Se agotó el presupuesto diario de tu equipo} month {Se agotó el presupuesto mensual de tu equipo} year {Se agotó el presupuesto anual de tu equipo} other {Se agotó el presupuesto de tu equipo}}} member {{period, select, day {Se agotó tu presupuesto diario} month {Se agotó tu presupuesto mensual} year {Se agotó tu presupuesto anual} other {Se agotó tu presupuesto}}} other {{period, select, day {Se agotó un presupuesto diario} month {Se agotó un presupuesto mensual} year {Se agotó un presupuesto anual} other {Se agotó un presupuesto}}}}",
+      "body": "{hasModel, select, true {{scope, select, org {{model} no puede ejecutarse hasta que un propietario o administrador aumente el presupuesto en Presupuestos. Elige otro modelo para seguir con esta tarea.} other {{model} no puede ejecutarse hasta que un administrador aumente el presupuesto en Presupuestos. Elige otro modelo para seguir con esta tarea.}}} other {{scope, select, org {Un propietario o administrador puede aumentarlo en Presupuestos, o puedes elegir un modelo disponible para seguir con esta tarea.} other {Un administrador puede aumentarlo en Presupuestos, o puedes elegir un modelo disponible para seguir con esta tarea.}}}}"
+    },
+    "writesHeld": {
+      "body": "Esta carpeta no tiene historial de Git para revisar o deshacer cambios, así que el agente pregunta antes de cada edición."
     }
   },
   "planModeCommand": {
@@ -1624,6 +1635,16 @@
     },
     "initializeGit": "Inicializar Git",
     "initializeFailed": "No se pudo inicializar Git. Inténtalo de nuevo.",
-    "unavailable": "No hay ningún modo de espacio de trabajo disponible para esta carpeta."
+    "unavailable": "No hay ningún modo de espacio de trabajo disponible para esta carpeta.",
+    "reason": {
+      "notARepository": "Esta carpeta no es un repositorio de Git. Inicializa Git para usar un Worktree.",
+      "notARepositoryInFolder": "{folder} no es un repositorio de Git. Inicializa Git para usar un Worktree.",
+      "noCommits": "Este repositorio aún no tiene commits. Haz un primer commit para usar un Worktree.",
+      "noCommitsInFolder": "{folder} aún no tiene commits. Haz un primer commit para usar un Worktree.",
+      "noLocalCheckout": "{folder} no tiene una copia local en esta computadora donde trabajar. Elige Worktree.",
+      "inPlaceUnsupportedPlatform": "Trabajar en la carpeta original aún no está disponible en esta plataforma. Elige Worktree.",
+      "inPlaceOtherComputer": "Las tareas en otra computadora se ejecutan en un worktree aislado. Elige Worktree.",
+      "sharedRepository": "Dos carpetas del proyecto están en el mismo repositorio, así que no pueden trabajar ambas directamente en la carpeta. Elige Worktree."
+    }
   }
 }

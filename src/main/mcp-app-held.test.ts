@@ -149,6 +149,16 @@ describe('hand-over on server start', () => {
     expect(puts[0].body).toEqual({ access_token: 'at-fresh', expires_at: '2030-01-01T00:00:00.000Z', access_mode: 'write' });
   });
 
+  it('gives a custom MCP connection no generic token, mode or loop, even with an account email in its file', async () => {
+    protectedMode();
+    const requests = fakeServer([{ engine: 'custom_mcp', name: `cm-${'0'.repeat(32)}`, method: 'mcp', fields: { account_email: 'me@example.com' } }]);
+
+    await syncAppHeldMcpConnections();
+
+    expect(requests.filter((r) => r.path.startsWith('/connections/custom_mcp'))).toEqual([]);
+    expect(keychain.modes.size).toBe(0);
+  });
+
   it('migrates the vault file\'s mode into the keychain before the PUT that strips it', async () => {
     protectedMode();
     const requests = fakeServer([{ engine: 'hubspot', name: 'acme', method: 'mcp', fields: { _access_mode: 'write' } }]);
@@ -479,6 +489,17 @@ describe('access-mode change from the desktop UI', () => {
     expect(requests[0]).toMatchObject({ method: 'PATCH', path: '/connections/hubspot/acme/access-mode', body: { access_mode: 'write' } });
     expect(requests[0].headers[APP_SECRET_HEADER]).toBe(secret);
     expect(requests[0].keychainAtSend).toEqual({ 'hubspot:acme': 'write' });
+  });
+
+  it('refuses a custom MCP connection before writing the keychain or calling the server', async () => {
+    protectedMode();
+    const requests = fakeServer([]);
+
+    const result = await setConnectionAccessMode('custom_mcp', `cm-${'0'.repeat(32)}`, 'write');
+
+    expect(result).toMatchObject({ ok: false });
+    expect(requests).toEqual([]);
+    expect(keychain.modes.size).toBe(0);
   });
 
   it('puts the keychain back when the server refuses the change', async () => {

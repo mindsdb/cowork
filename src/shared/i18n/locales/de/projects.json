@@ -66,8 +66,8 @@
         "balanceLowToo": "Auch Ihr Guthaben ist niedrig ({usd})."
       },
       "budgetExceeded": {
-        "raise": "Kostenpflichtige Modelle sind gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht.",
-        "airHasRoom": "Kostenpflichtige Modelle sind gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange das Gratiskontingent reicht."
+        "raise": "{hasModel, select, true {{scope, select, org {{model} ist gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.} other {{model} ist gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.}}} other {{scope, select, org {Kostenpflichtige Modelle sind gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht.} other {Kostenpflichtige Modelle sind gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht.}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} ist gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.} other {{model} ist gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.}}} other {{scope, select, org {Kostenpflichtige Modelle sind gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange das Gratiskontingent reicht.} other {Kostenpflichtige Modelle sind gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange das Gratiskontingent reicht.}}}}"
       }
     },
     "scheduleWhen": {
@@ -106,7 +106,7 @@
         "walletEmpty": "Kein Guthaben verfügbar. Laden Sie Guthaben auf, um MindsHub zu nutzen.",
         "allowanceExhausted": "Keine kostenlosen MindsHub Air-Tokens verfügbar und das Guthaben ist aufgebraucht.",
         "freeAirPaused": "Das kostenlose MindsHub Air ist derzeit pausiert.",
-        "budgetExceeded": "Das Budget Ihrer Organisation ist aufgebraucht.",
+        "budgetExceeded": "Ein Budget ist aufgebraucht.",
         "walletEmptyMobile": "Kein Guthaben verfügbar."
       },
       "missingApiKey": "Fügen Sie rechts einen API-Schlüssel hinzu.",
@@ -204,8 +204,8 @@
       "unjudgeable": {
         "both": "Beiden Modellen ist vor dem Abschluss das Guthaben ausgegangen, daher kann dieser Durchgang nicht bewertet werden.",
         "one": "{name} ist vor dem Abschluss das Guthaben ausgegangen, daher kann dieser Durchgang nicht bewertet werden.",
-        "bothBudget": "Beide Modelle haben vor dem Abschluss das Budget Ihrer Organisation erreicht, daher kann dieser Durchgang nicht bewertet werden.",
-        "oneBudget": "{name} hat vor dem Abschluss das Budget Ihrer Organisation erreicht, daher kann dieser Durchgang nicht bewertet werden."
+        "bothBudget": "{scope, select, org {Beide Modelle haben vor dem Abschluss das Budget Ihrer Organisation erreicht} workspace {Beide Modelle haben vor dem Abschluss das Budget dieses Arbeitsbereichs erreicht} api_key {Beide Modelle haben vor dem Abschluss das Budget dieses API-Schlüssels erreicht} team {Beide Modelle haben vor dem Abschluss das Budget Ihres Teams erreicht} member {Beide Modelle haben vor dem Abschluss Ihr Budget erreicht} other {Beide Modelle haben vor dem Abschluss ein Budget erreicht}}, daher kann dieser Durchgang nicht bewertet werden.",
+        "oneBudget": "{scope, select, org {{name} hat vor dem Abschluss das Budget Ihrer Organisation erreicht} workspace {{name} hat vor dem Abschluss das Budget dieses Arbeitsbereichs erreicht} api_key {{name} hat vor dem Abschluss das Budget dieses API-Schlüssels erreicht} team {{name} hat vor dem Abschluss das Budget Ihres Teams erreicht} member {{name} hat vor dem Abschluss Ihr Budget erreicht} other {{name} hat vor dem Abschluss ein Budget erreicht}}, daher kann dieser Durchgang nicht bewertet werden."
       },
       "verdict": {
         "tie": "Etwa gleich",
@@ -414,7 +414,8 @@
       "andMore": "{source} und {count} weitere"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "Unbekannter Connector"
+      "unrecognizedConnector": "Unbekannter Connector",
+      "mcpServer": "MCP-Server"
     },
     "datasourceSubmission": {
       "errors": {
@@ -475,7 +476,7 @@
       "needsCredits": "Guthaben erforderlich",
       "budgetReached": {
         "tag": "Budget erreicht",
-        "title": "Das Budget Ihrer Organisation ist aufgebraucht. Ein Inhaber oder Administrator kann es unter „Budgets“ erhöhen."
+        "title": "Ein Budget für dieses Modell ist aufgebraucht. Ein Administrator kann es unter „Budgets“ erhöhen."
       }
     },
     "settingsTransform": {
@@ -649,6 +650,7 @@
     "atMinute": "zur Minute",
     "at": "um",
     "time": "Uhrzeit",
+    "timeZone": "Zeitzone",
     "nextRuns": "{count, plural, one {Nächste Ausführung: {runs}} other {Nächste Ausführungen: {runs}}}",
     "timePassed": "Dieser Zeitpunkt ist bereits vorbei.",
     "name": "Name",

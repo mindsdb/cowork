@@ -50,6 +50,45 @@ export function projectWorkspaceModeOptions(): Array<{ value: string; label: str
   ];
 }
 
+// The server's reasons for refusing a mode, by code: one message for the
+// reason alone and one naming the project folder it is about.
+const REASON_KEYS: Record<string, { plain?: string; inFolder?: string }> = {
+  not_a_repository: { plain: 'workspaceMode.reason.notARepository', inFolder: 'workspaceMode.reason.notARepositoryInFolder' },
+  no_commits: { plain: 'workspaceMode.reason.noCommits', inFolder: 'workspaceMode.reason.noCommitsInFolder' },
+  no_local_checkout: { inFolder: 'workspaceMode.reason.noLocalCheckout' },
+  in_place_unsupported_platform: { plain: 'workspaceMode.reason.inPlaceUnsupportedPlatform' },
+  in_place_other_computer: { plain: 'workspaceMode.reason.inPlaceOtherComputer' },
+  shared_repository: { plain: 'workspaceMode.reason.sharedRepository' },
+};
+
+/**
+ * A refused mode's reason in the UI's language. A code this UI doesn't know
+ * (a newer server) or no code (an older one) shows the server's own text.
+ */
+export function workspaceReasonText(
+  code: string | null | undefined,
+  folder: string | null | undefined,
+  serverText: string,
+): string {
+  const keys = code ? REASON_KEYS[code] : undefined;
+  const key = folder ? keys?.inFolder : keys?.plain;
+  return key ? i18n.t(key, { ns: 'code', folder }) : serverText;
+}
+
+/** Why a worktree is not offered, or '' when it is. */
+export function worktreeUnavailableText(options: WorkspaceModeOptions): string {
+  return workspaceReasonText(
+    options.worktree_unavailable_code, options.worktree_unavailable_folder, options.worktree_unavailable_reason || '',
+  );
+}
+
+/** Why working in the folder itself is not offered, or '' when it is. */
+export function inPlaceUnavailableText(options: WorkspaceModeOptions): string {
+  return workspaceReasonText(
+    options.in_place_unavailable_code, options.in_place_unavailable_folder, options.in_place_unavailable_reason || '',
+  );
+}
+
 export function isWorkspaceMode(value: string | null | undefined): value is WorkspaceMode {
   return value === 'in_place' || value === 'worktree';
 }
