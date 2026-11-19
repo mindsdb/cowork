@@ -236,6 +236,25 @@ describe('DocCanvas selection bar', () => {
     expect(screen.queryByRole('textbox', { name: 'Request for the agent' })).toBeNull();
   });
 
+  it('forgets the request when the handler goes away, so nothing stale returns with it', async () => {
+    const user = userEvent.setup();
+    const initial = docWith([{ id: 'b_1', type: 'paragraph', text: 'Acme is the pick' }]);
+    const { rerender } = render(<Live initial={initial} onAskAgent={vi.fn()} />);
+    const p = screen.getByText('Acme is the pick');
+    select(p, 0, 4);
+    await screen.findByRole('toolbar', { name: 'Format' });
+    await user.click(screen.getByRole('button', { name: /Edit with agent/ }));
+    expect(document.querySelector('.doc-block--selected')).not.toBeNull();
+
+    rerender(<Live initial={initial} />);
+    expect(document.querySelector('.doc-block--selected')).toBeNull();
+    select(p, 0, 4);
+    expect(await screen.findByRole('toolbar', { name: 'Format' })).toBeInTheDocument();
+
+    rerender(<Live initial={initial} onAskAgent={vi.fn()} />);
+    expect(screen.queryByRole('textbox', { name: 'Request for the agent' })).toBeNull();
+  });
+
   it('links the selected words', async () => {
     const user = userEvent.setup();
     render(<Live initial={docWith([{ id: 'b_1', type: 'paragraph', text: 'See the brief' }])} />);
