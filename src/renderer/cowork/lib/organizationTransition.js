@@ -1,5 +1,7 @@
+import { diagnostic } from '../../../shared/diagnostics';
 import { clearDraftsForOrganizationSwitch } from './draftStore';
 import { clearCachedSettings } from './settingsCache';
+import { clearCachedOrgBranding } from './orgBrandingCache';
 import {
   DOCUMENT_ORGANIZATION_EPOCH,
   DOCUMENT_ORGANIZATION_TRANSITION,
@@ -206,10 +208,11 @@ export function prepareForOrganizationReload({
   if (transitionId) rememberReload(transitionId);
   if (clearTenantState) {
     clearCachedSettings();
+    clearCachedOrgBranding();
     clearDraftsForOrganizationSwitch();
   }
   if (!consumeReloadBudget()) {
-    console.warn('[organization] too many reloads in a row; staying put and refusing tokens');
+    diagnostic("renderer.cowork.lib.organizationTransition", "WARNING", "organization_too_many_reloads_in_a_row_staying_put_and_refusing_tokens", '[organization] too many reloads in a row; staying put and refusing tokens');
     return;
   }
   globalThis.location?.reload();
@@ -235,6 +238,7 @@ function publishReload(id, applyLocally) {
      * current; a bfcache resurrection must still reload on pageshow.
      */
     clearCachedSettings();
+    clearCachedOrgBranding();
     clearDraftsForOrganizationSwitch();
   }
   if (ownedPendingId === id) ownedPendingId = null;

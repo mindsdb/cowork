@@ -1,10 +1,10 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
-import { createPortal } from 'react-dom';
+import { projectLabel } from '../lib/projectLabel';
 import Ico from './Icons';
+import { ComposerFrame } from './chat/ComposerFrame';
 import { Tooltip } from './ui';
 import { ToggleGroup } from './ui/ToggleGroup';
-import NewProjectModal from './project/NewProjectModal';
+import ProjectPicker from './ProjectPicker';
 import {
   parseFences,
   fenceCtxAtParsed,
@@ -13,13 +13,15 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL,
+  MODEL_ROUTER_ID, modelRouterLabel, operatorDefaultLabel,
 } from '../lib/modelCatalog';
-import { buildModelPickerOptions } from '../lib/modelPickerOptions';
+import { buildModelPickerOptions, offeredModels } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
 import Select from './ui/Select.jsx';
-import { effortLevelsFor, effortOptions, resolveEffort } from '../code/reasoning';
+import {
+  MODEL_DEFAULT_VALUE, effortLevelsFor, effortOptions, operatorEffortOptions, resolveEffort,
+} from '../code/reasoning';
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { renameClipboardImages } from '../lib/clipboardImageName';
@@ -27,9 +29,16 @@ import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
 import { host } from '../../platform/host';
+import { PLATFORM_UI } from '../../lib/deployment';
+import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
+import { connectionMuteKey } from '../lib/connectionMutes';
+import { useTranslation } from '../../lib/i18n';
+
+// Marks where an inline element (a link) sits inside a translated sentence.
+const INLINE_SLOT = '\u2063';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -52,18 +61,19 @@ function detectSlashToken(text, caret) {
 // (Class strings stay whole literals — Tailwind's scanner can't see through
 // template interpolation, and a missed candidate fails silently.)
 function TaskModeChip({ mode, onClear }) {
+  const { t } = useTranslation('chat');
   return (
     <button
       type="button"
-      className="group inline-flex h-7 cursor-pointer items-center gap-[6px] rounded-full px-[11px] border border-solid border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--primary-50)] text-[var(--primary-700)] [font-family:inherit] text-[13px] font-medium dark:border-[color-mix(in_srgb,var(--accent)_40%,transparent)] dark:text-accent [transition:background_140ms_ease,border-color_140ms_ease,transform_160ms_cubic-bezier(0.23,1,0.32,1)] animate-chip-in motion-reduce:animate-none active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
-      aria-label={`Remove ${mode.chipNoun || mode.chipLabel} mode`}
+      className="group inline-flex h-7 cursor-pointer items-center gap-[6px] rounded-full px-[11px] border border-solid border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--primary-50)] text-[var(--primary-700)] [font-family:inherit] text-[13px] font-medium dark:border-[color-mix(in_srgb,var(--accent)_40%,transparent)] dark:text-accent [transition:background_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease,transform_var(--dur-hover)_var(--ease-out)] animate-chip-in active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
+      aria-label={t('composer.removeMode', { mode: mode.chipNoun || mode.chipLabel })}
       onClick={onClear}
     >
       <span className="relative inline-flex h-3.5 w-3.5" aria-hidden>
-        <span className="absolute inset-0 inline-flex [transition:opacity_150ms_cubic-bezier(0.2,0,0,1),transform_150ms_cubic-bezier(0.2,0,0,1)] group-focus-visible:scale-[0.25] group-focus-visible:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.25] [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-0 [@media(hover:none)]:scale-[0.25] [@media(hover:none)]:opacity-0">
+        <span className="absolute inset-0 inline-flex [transition:opacity_var(--dur-hover)_var(--ease-out),transform_var(--dur-hover)_var(--ease-out)] group-focus-visible:scale-[0.25] group-focus-visible:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.25] [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-0 [@media(hover:none)]:scale-[0.25] [@media(hover:none)]:opacity-0">
           {Ico[mode.icon](14)}
         </span>
-        <span className="absolute inset-0 inline-flex [transition:opacity_150ms_cubic-bezier(0.2,0,0,1),transform_150ms_cubic-bezier(0.2,0,0,1)] scale-[0.25] opacity-0 group-focus-visible:scale-100 group-focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 [@media(hover:none)]:scale-100 [@media(hover:none)]:opacity-100">
+        <span className="absolute inset-0 inline-flex [transition:opacity_var(--dur-hover)_var(--ease-out),transform_var(--dur-hover)_var(--ease-out)] scale-[0.25] opacity-0 group-focus-visible:scale-100 group-focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 [@media(hover:none)]:scale-100 [@media(hover:none)]:opacity-100">
           {Ico.close(14)}
         </span>
       </span>
@@ -73,11 +83,12 @@ function TaskModeChip({ mode, onClear }) {
 }
 
 function AttachmentChip({ attachment, onRemove }) {
+  const { t } = useTranslation('chat');
   const src = attachment.source || attachment.kind || 'file';
   const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
-  const label = src === 'connector' ? 'Connector' : src === 'gdrive' ? 'Google Drive' : isImage ? 'Image' : 'File';
+  const label = src === 'connector' ? t('composer.attachment.connector') : src === 'gdrive' ? 'Google Drive' : isImage ? t('composer.attachment.image') : t('composer.attachment.file');
   const status = attachment.pendingFile
-    ? 'Queued'
+    ? t('composer.attachment.queued')
     : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
       ? attachment.extractionStatus.replace('_', ' ')
       : null);
@@ -87,19 +98,19 @@ function AttachmentChip({ attachment, onRemove }) {
   return (
     <div className="attachment-chip" title={attachment.note || attachment.textPreview || attachment.name}>
       <span className="attachment-chip-icon">
-        {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || 'Image'} />
-          : src === 'connector' ? Ico.link(13)
-            : src === 'gdrive' ? Ico.googleDrive(13)
-              : isImage ? Ico.image(13)
-                : Ico.doc(13)}
+        {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || t('composer.attachment.image')} />
+          : src === 'connector' ? Ico.link(14)
+            : src === 'gdrive' ? Ico.googleDrive(14)
+              : isImage ? Ico.image(14)
+                : Ico.doc(14)}
       </span>
       <span className="attachment-chip-body">
         <span className="attachment-chip-name">{attachment.name || label}</span>
         <span className="attachment-chip-meta">{status || label}</span>
       </span>
       {onRemove && (
-        <Tooltip content="Remove attachment">
-          <button className="attachment-chip-remove" aria-label="Remove attachment" onClick={() => onRemove(attachment.id)}>
+        <Tooltip content={t('composer.attachment.remove')}>
+          <button className="attachment-chip-remove" aria-label={t('composer.attachment.remove')} onClick={() => onRemove(attachment.id)}>
             x
           </button>
         </Tooltip>
@@ -137,12 +148,19 @@ export default function Composer({
   onNavigateToConnectors,
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddSharePointFiles,
   /** When set with `onUpdateConnectorMute`, Connectors submenu toggles mute (applied when you send). */
   conversationId = null,
   disabledConnections = [],
   onUpdateConnectorMute,
+  /**
+   * The shared browser for this task or the next one, shown as a Browser
+   * switch in the + menu. Null hides it.
+   * @type {{ on: boolean, onChange: (on: boolean) => void, agentLabel: string } | null}
+   */
+  browserSwitch = null,
   onRemoveAttachment,
-  placeholder = 'Hi Boss, how can I help you today?',
+  placeholder: placeholderProp,
   disabled = false,
   metaReadOnly = false,
   // Whether the model pill is a fixed label rather than a picker. Defaults
@@ -185,8 +203,8 @@ export default function Composer({
   draftKey = null,
   // Coding mode (MVP, ENG-1656 follow-up): when true, show a harness pill
   // (Anton / Claude Code) independent of `metaReadOnly` (which only locks
-  // the project pill). Model selection is a separate, always-on capability
-  // below — it applies to whichever harness is picked, Anton included.
+  // the project pill). Model selection is separate and requires platform UI;
+  // it applies to whichever harness is picked, Anton included.
   codingModeEnabled = false,
   // Whether onSend's 2nd argument carries {harness, model}. Must default to
   // false: ChatView's onSend is handleSendInTask(text, queuedAttachments,
@@ -215,6 +233,8 @@ export default function Composer({
   // the default agent and always offered.
   harnessClaudeCodeEnabled = true,
 }) {
+  const { t } = useTranslation('chat');
+  const placeholder = placeholderProp === undefined ? t('composer.placeholder') : placeholderProp;
   const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
@@ -241,13 +261,6 @@ export default function Composer({
       from "I can't find it" to "make it" without changing surfaces.
       `flipUp` anchors the menu above the pill when there's no room
       below (chat composer glued to the viewport bottom). */
-  const [projectSearch, setProjectSearch] = useState('');
-  const [projectMenuBusy, setProjectMenuBusy] = useState(false);
-  const [projectMenuError, setProjectMenuError] = useState('');
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const projectSearchRef = useRef(null);
-  const projectPillRef = useRef(null);
-  const projectMenuRef = useRef(null);
   /** Attach menu opens above the composer by default; flip down when clipped (e.g. project view composer at scroll top). */
   const [attachMenuBelow, setAttachMenuBelow] = useState(false);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
@@ -368,11 +381,11 @@ export default function Composer({
       opts.push({
         value: 'claude-code',
         label: 'Claude-Code',
-        title: claudeCodeInfo.installed ? undefined : 'Claude-Code — not detected on this machine',
+        title: claudeCodeInfo.installed ? undefined : t('composer.claudeCodeNotDetected'),
       });
     }
     return opts;
-  }, [harnessClaudeCodeEnabled, claudeCodeInfo.installed]);
+  }, [harnessClaudeCodeEnabled, claudeCodeInfo.installed, t]);
 
   // Claude Code needs a real, concrete model for its `--model` flag — no
   // auto-routing concept in the CLI — so Model Router is hidden whenever
@@ -410,13 +423,25 @@ export default function Composer({
     ? (resolveEffort(effort, modelMeta?.planningReasoningEffort, effortLevels) ?? effortLevels.levels[0])
     : '';
 
+  // With platform UI off, the operator's picker (lib/modelPicker) also sets
+  // which efforts users may pick: on the picked model, or with "Operator
+  // default" on both role models. The pill leads with "Default", which
+  // sends no effort, so it never names a level the question won't run at.
+  const operatorPicker = modelPickerMode() !== 'off';
+  const operatorLevels = useMemo(
+    () => (operatorPicker ? operatorEffortLevels(model?.id && model.id !== MODEL_ROUTER_ID ? model.id : null) : []),
+    [operatorPicker, model?.id],
+  );
+
   // Drop a pick the current model does not offer, so the pill never names a
   // level the request will not send (Code mode does the same in
   // useNewTaskDraft). Only a known entry can veto a pick: a model missing
   // from the map may mean the catalog has not loaded, or that the MindsHub
   // bucket failed and the server sent only the direct-provider entries, and
-  // neither is a reason to throw away a saved choice.
-  const knownLevels = modelMeta?.modelEfforts?.[model?.id]?.efforts;
+  // neither is a reason to throw away a saved choice. The operator's list
+  // is in the page from the start, so there a model missing from it offers
+  // no level.
+  const knownLevels = operatorPicker ? operatorLevels : modelMeta?.modelEfforts?.[model?.id]?.efforts;
   useEffect(() => {
     if (effort && knownLevels && !knownLevels.includes(effort)) onEffortChange?.('');
   }, [effort, knownLevels, onEffortChange]);
@@ -427,12 +452,34 @@ export default function Composer({
   // so this only applies to the Anton-routed picker.
   const noRealModels = !isClaudeCode && (models?.length || 0) === 0 && !!onOpenSettings;
 
+  // With platform UI off, the operator's picker (lib/modelPicker) shows only
+  // the models the operator offers. With none offered it shows nothing at
+  // all, never the Settings shortcut, which that build hides.
+  const operatorModels = useMemo(
+    () => (operatorPicker ? offeredModels(models, modelMeta?.modelEnabled) : []),
+    [operatorPicker, models, modelMeta?.modelEnabled],
+  );
+  const showModelControl = PLATFORM_UI || operatorModels.length > 0;
+
   // Flat options for <ModelSelect> — the same searchable, bounded-height,
   // provider-grouped picker the Settings model rows use (ui/Combobox).
   // ModelSelect groups internally (lib/modelCatalog), so this only builds the
   // per-row tag/provider metadata, mirroring settingsTransform's
   // buildModelOptions so the two pickers can't drift apart again.
   const modelPickerOptions = useMemo(() => {
+    if (operatorPicker && !isClaudeCode) {
+      // The operator's own model leads, pinned above every section: no
+      // MindsHub group and no settings gear, since this build has neither.
+      return [
+        {
+          value: MODEL_ROUTER_ID,
+          label: operatorDefaultLabel(),
+          title: t('composer.model.operatorDefaultTitle'),
+          pin: 'top',
+        },
+        ...buildModelPickerOptions(operatorModels, modelMeta),
+      ];
+    }
     const catalogOptions = buildModelPickerOptions(models, modelMeta);
     // "Model Router" (defer to this account's Settings) leads the list,
     // inside the MindsHub group rather than pinned above every section —
@@ -443,9 +490,9 @@ export default function Composer({
     return isClaudeCode ? catalogOptions : [
       {
         value: MODEL_ROUTER_ID,
-        label: MODEL_ROUTER_LABEL,
+        label: modelRouterLabel(),
         maker: 'mindshub',
-        title: "Routes to this account's configured model automatically",
+        title: t('composer.model.routerTitle'),
         // stopPropagation: a plain click on this row would otherwise also
         // fire Base UI's Combobox.Item select handler (it listens on the
         // row itself), selecting Model Router as a side effect of opening
@@ -453,10 +500,10 @@ export default function Composer({
         // avoids it lingering open behind the Settings modal this opens.
         ...(onOpenSettings ? {
           action: (
-            <Tooltip content="Router Settings">
+            <Tooltip content={t('composer.model.routerSettings')}>
               <button
                 type="button"
-                aria-label="Router Settings"
+                aria-label={t('composer.model.routerSettings')}
                 className="composer-icon shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -465,7 +512,7 @@ export default function Composer({
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                {Ico.settings(13)}
+                {Ico.settings(14)}
               </button>
             </Tooltip>
           ),
@@ -473,7 +520,7 @@ export default function Composer({
       },
       ...catalogOptions,
     ];
-  }, [models, modelMeta, isClaudeCode, onOpenSettings]);
+  }, [models, modelMeta, isClaudeCode, onOpenSettings, operatorPicker, operatorModels, t]);
 
   // True once the picked model isn't valid for Claude Code — nothing
   // picked yet, or still Model Router (hidden from the picker once this
@@ -614,7 +661,7 @@ export default function Composer({
   const slashItems = useMemo(() => {
     if (!slashOpen) return [];
     const builtins = [
-      { id: 'add-files', label: 'add-files', hint: 'Open file picker', kind: 'action',
+      { id: 'add-files', label: 'add-files', hint: t('composer.slash.openFilePicker'), kind: 'action',
         run: () => fileRef.current?.click() },
     ];
     const currentProject = project?.name;
@@ -633,9 +680,19 @@ export default function Composer({
     return all.filter(
       (i) => i.label.toLowerCase().includes(slashQuery) || (i.hint || '').toLowerCase().includes(slashQuery),
     );
-  }, [slashOpen, slashQuery, allSkills, project]);
+  }, [slashOpen, slashQuery, allSkills, project, t]);
 
   const closeSlash = useCallback(() => setSlashOpen((prev) => (prev ? false : prev)), []);
+  // Blur closes the menu after a short delay so a click on a menu row still
+  // lands. Focus cancels the pending close, so a quick click back into the box
+  // keeps the menu. The timer is cleared on unmount so it never sets state
+  // afterwards.
+  const closeSlashTimerRef = useRef(null);
+  const closeSlashSoon = () => {
+    clearTimeout(closeSlashTimerRef.current);
+    closeSlashTimerRef.current = setTimeout(closeSlash, 120);
+  };
+  useEffect(() => () => clearTimeout(closeSlashTimerRef.current), []);
 
   // Known skill names — the overlay colours only "/<known-skill>" tokens (not
   // arbitrary slashes like a file path), matching how the sent message tints
@@ -758,80 +815,6 @@ export default function Composer({
     return () => document.removeEventListener('mousedown', handler);
   }, [openMenu]);
 
-  // Reset the project menu's transient state every time it closes, and
-  // autofocus the search input on open so the user can start filtering
-  // immediately (also doubles as "tap-to-type" on mobile where there's
-  // no keyboard shortcut to open the menu).
-  useEffect(() => {
-    if (openMenu !== 'project') {
-      setProjectSearch('');
-      setProjectMenuBusy(false);
-      setProjectMenuError('');
-      return;
-    }
-    const id = requestAnimationFrame(() => {
-      projectSearchRef.current?.focus();
-    });
-    return () => cancelAnimationFrame(id);
-  }, [openMenu]);
-
-  // Outside-click dismissal for every meta-pill menu (project / attach /
-  // model) is handled in one place: the wrapRef `mousedown` listener
-  // above. It closes whichever menu is open (they share `openMenu`) on a
-  // press outside the composer. This works on desktop because the
-  // content column (`<main>` in App.jsx) opts out of the window drag
-  // region — otherwise Electron would swallow mouse events over the
-  // canvas and the press would never reach the listener.
-
-  // Filter + create logic shared by Enter-on-search-input and the
-  // explicit create footer. Defined inside the component body so the
-  // menu render can call into them without prop-drilling.
-  const _projectSearchTrimmed = projectSearch.trim();
-  const _filteredProjects = _projectSearchTrimmed
-    ? projects.filter((p) => projectMatches(p, _projectSearchTrimmed))
-    : projects;
-  // Case-insensitive exact match short-circuits "create" so Enter on
-  // a search term that already names a project selects it rather than
-  // POSTing a duplicate (the server would reject anyway, but failing
-  // fast on the client keeps the UX snappy).
-  const _projectExactMatch = _projectSearchTrimmed
-    ? projects.find((p) => projectNamed(p, _projectSearchTrimmed))
-    : null;
-  const _canCreateFromSearch = !!onCreateProject && !!_projectSearchTrimmed && !_projectExactMatch;
-
-  const createProjectFromSearch = async () => {
-    if (!_canCreateFromSearch || projectMenuBusy) return;
-    setProjectMenuBusy(true);
-    setProjectMenuError('');
-    try {
-      const created = await onCreateProject({ name: _projectSearchTrimmed });
-      if (created) onProjectChange?.(created);
-      setOpenMenu(null);
-    } catch (e) {
-      setProjectMenuError(e?.message || 'Could not create project.');
-    } finally {
-      setProjectMenuBusy(false);
-    }
-  };
-
-  const submitProjectSearch = () => {
-    if (projectMenuBusy) return;
-    // Any results → Enter selects the top match (or the exact match
-    // when it's not at the top, e.g. an alphabetised list where the
-    // exact "acme" sits below "acme-engineering" / "acme-marketing").
-    if (_filteredProjects.length > 0) {
-      const pick = _projectExactMatch || _filteredProjects[0];
-      onProjectChange?.(pick);
-      setOpenMenu(null);
-      return;
-    }
-    // Zero results with text → create. Empty search is a no-op
-    // (Enter on an empty filter shouldn't do anything surprising).
-    if (_canCreateFromSearch) {
-      createProjectFromSearch();
-    }
-  };
-
   const updateAttachPlacement = () => {
     const anchor = attachAnchorRef.current;
     if (!anchor) return;
@@ -852,8 +835,11 @@ export default function Composer({
     try {
       await Promise.resolve(onAttachFiles(files));
       setOpenMenu(null);
+      // The picker's menu item unmounts with the menu, which leaves focus on
+      // the page, so Enter would do nothing until the reader clicks back in.
+      taRef.current?.focus();
     } catch (err) {
-      setError(err.message || 'Could not attach files.');
+      setError(err.message || t('composer.errors.attachFiles'));
     } finally {
       if (fileRef.current) fileRef.current.value = '';
     }
@@ -867,7 +853,7 @@ export default function Composer({
     try {
       await Promise.resolve(onAddGoogleDriveFiles(project?.name));
     } catch (err) {
-      setError(err.message || 'Could not add Google Drive files.');
+      setError(err.message || t('composer.errors.addGoogleDriveFiles'));
     } finally {
       setGdrivePickerBusy(false);
     }
@@ -896,13 +882,9 @@ export default function Composer({
     handleAttachFiles(renameClipboardImages(files));
   };
 
-  function pairKey(engine, name) {
-    return `${String(engine || '').trim().toLowerCase()}\t${String(name || '').trim()}`;
-  }
-
   function isConnectionDisabled(connector) {
-    const k = pairKey(connector.engine, connector.name);
-    return (disabledConnections || []).some((d) => pairKey(d.engine, d.name) === k);
+    const k = connectionMuteKey(connector.engine, connector.name);
+    return (disabledConnections || []).some((d) => connectionMuteKey(d.engine, d.name) === k);
   }
 
   const canMuteConnectors = typeof onUpdateConnectorMute === 'function';
@@ -914,7 +896,7 @@ export default function Composer({
     try {
       await Promise.resolve(onUpdateConnectorMute(connector, useInChat));
     } catch (err) {
-      setError(err?.message || 'Could not update datasource setting.');
+      setError(err?.message || t('composer.errors.updateDatasource'));
     } finally {
       setBusy(false);
     }
@@ -943,7 +925,7 @@ export default function Composer({
       setError('');
       if (taRef.current) taRef.current.style.height = 'auto';
     } catch (err) {
-      setError(err?.message || 'Could not send.');
+      setError(err?.message || t('composer.errors.send'));
     } finally {
       setBusy(false);
     }
@@ -982,10 +964,11 @@ export default function Composer({
   // `visibility: hidden` keeps the layout and drops it out of the tab order,
   // and aria-hidden keeps it out of the accessibility tree.
   const reservedBar = !usageWarning && anyPickWarning?.resting ? anyPickWarning : null;
+  const [noConnectorsBefore, noConnectorsAfter = ''] = t('composer.menu.noConnectors', { link: INLINE_SLOT }).split(INLINE_SLOT);
 
   return (
     <div ref={wrapRef} {...fileDropHandlers} className="relative w-full max-w-[var(--composer-max-width,_640px)]">
-      <FileDropOverlay active={filesDragging} label="Drop files to attach" />
+      <FileDropOverlay active={filesDragging} label={t('composer.dropFiles')} />
       <input
         ref={fileRef}
         type="file"
@@ -1008,16 +991,16 @@ export default function Composer({
             <UsageBar warning={reservedBar} />
           </div>
         )}
-        <div className={`composer-wrap relative${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
+        <ComposerFrame className={`composer-wrap${inFence ? ' in-fence' : ''}`} focused={focused}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears
               just above/below the textarea, not below the toolbar. */}
           {slashOpen && slashItems.length > 0 && (
             <div
               role="listbox"
-              aria-label="Skills and actions"
+              aria-label={t('composer.slash.ariaLabel')}
               onMouseDown={(e) => e.preventDefault()}
-              className="menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto"
+              className={`menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto${slashMenuBelow ? ' menu--drop-down' : ''}`}
               style={{
                 ...(slashMenuBelow
                   ? { top: 'calc(100% + 8px)', bottom: 'auto' }
@@ -1041,7 +1024,7 @@ export default function Composer({
                     onClick={() => acceptSlash(item)}
                   >
                     <span className="inline-flex text-ink-2">
-                      {item.kind === 'action' ? Ico.upload(15) : Ico.cube(15)}
+                      {item.kind === 'action' ? Ico.upload(14) : Ico.cube(14)}
                     </span>
                     <span className="flex-1 min-w-0 truncate text-left">
                       {item.label}
@@ -1080,8 +1063,8 @@ export default function Composer({
             value={value}
             onChange={(e) => { setValue(e.target.value); bumpTyping(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onPaste={handlePaste}
-            onFocus={() => setFocused(true)}
-            onBlur={() => { setFocused(false); setTimeout(() => closeSlash(), 120); }}
+            onFocus={() => { setFocused(true); clearTimeout(closeSlashTimerRef.current); }}
+            onBlur={() => { setFocused(false); closeSlashSoon(); }}
             onSelect={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onClick={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onScroll={handleScroll}
@@ -1236,13 +1219,13 @@ export default function Composer({
               ref={attachAnchorRef}
               className="relative inline-flex items-center"
             >
-              <Tooltip content="Add context">
+              <Tooltip content={t('composer.addContext')}>
               {/* Native title only while disabled — a disabled button fires no
                   hover/focus events, so the styled Tooltip can't open. */}
               <button
                 className="composer-icon"
-                aria-label="Add context"
-                title={(disabled || busy) ? 'Add context' : undefined}
+                aria-label={t('composer.addContext')}
+                title={(disabled || busy) ? t('composer.addContext') : undefined}
                 disabled={disabled || busy}
                 onClick={() => {
                   if (openMenu === 'attach') {
@@ -1257,7 +1240,7 @@ export default function Composer({
                   setOpenMenu('attach');
                 }}
               >
-                {Ico.plus(15)}
+                {Ico.plus(16)}
               </button>
               </Tooltip>
               {openMenu === 'attach' && (
@@ -1275,7 +1258,7 @@ export default function Composer({
                   }}
                 >
                   <button className="menu-item" onClick={() => fileRef.current?.click()}>
-                    {Ico.attach(14)} Attach files or photos
+                    {Ico.attach(14)} {t('composer.menu.attachFiles')}
                   </button>
                   {onAddGoogleDriveFiles && (
                     <button
@@ -1283,8 +1266,47 @@ export default function Composer({
                       onClick={handleAddGoogleDriveFiles}
                       disabled={gdrivePickerBusy}
                     >
-                      {Ico.googleDrive(14)} {gdrivePickerBusy ? 'Opening Google Drive…' : 'Add files from Google Drive'}
+                      {Ico.googleDrive(14)} {gdrivePickerBusy ? t('composer.menu.openingGoogleDrive') : t('composer.menu.addFromGoogleDrive')}
                     </button>
+                  )}
+                  {onAddSharePointFiles && project?.name && (
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        onAddSharePointFiles(project.name);
+                      }}
+                    >
+                      {Ico.folder(14)} {t('composer.menu.addFromSharePoint')}
+                    </button>
+                  )}
+                  {browserSwitch && (
+                    <div
+                      className="menu-item flex-nowrap"
+                      style={{
+                        // cascade-forced: legacy .menu-item sets cursor:pointer.
+                        cursor: 'default',
+                      }}
+                      title={t('composer.menu.browserTitle', { agent: browserSwitch.agentLabel })}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      {Ico.globe(14)}
+                      <span className="flex-1">{t('composer.menu.browser')}</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={!!browserSwitch.on}
+                        aria-label={browserSwitch.on ? t('composer.menu.browserOff') : t('composer.menu.browserOn')}
+                        className={`toggle shrink-0${browserSwitch.on ? ' on' : ''}`}
+                        disabled={busy}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          browserSwitch.onChange(!browserSwitch.on);
+                        }}
+                      >
+                        <span className="toggle-thumb" />
+                      </button>
+                    </div>
                   )}
                   <button
                     className="menu-item"
@@ -1292,7 +1314,7 @@ export default function Composer({
                     aria-expanded={connectorsOpen}
                   >
                     {Ico.link(14)}
-                    <span className="flex-1">Connectors</span>
+                    <span className="flex-1">{t('composer.menu.connectors')}</span>
                     <span className="inline-flex text-ink-4">
                       {connectorsOpen ? Ico.chevDown(12) : Ico.chevRight(12)}
                     </span>
@@ -1306,21 +1328,26 @@ export default function Composer({
                         className="menu-connectors-accordion__scroll"
                         inert={!connectorsOpen || undefined}
                       >
+                        {connectors.length > 0 && (
+                          <div className="pt-1.5 px-[14px] pb-1 text-[11px] text-ink-4 leading-[1.5]">
+                            {t('composer.menu.connectorsHint')}
+                          </div>
+                        )}
                         {connectors.length === 0 ? (
                           <div className="py-2 px-[14px] text-sm text-ink-3">
-                            No connectors yet. Add one in{' '}
+                            {noConnectorsBefore}
                             {onNavigateToConnectors ? (
                               <button
                                 type="button"
                                 onClick={navigateToConnectors}
                                 className="m-0 p-0 border-0 bg-transparent text-accent [font:inherit] cursor-pointer underline underline-offset-2"
                               >
-                                Connect Apps and Data
+                                {t('composer.menu.connectAppsAndData')}
                               </button>
                             ) : (
-                              'Connect Apps and Data'
+                              t('composer.menu.connectAppsAndData')
                             )}
-                            .
+                            {noConnectorsAfter}
                           </div>
                         ) : (
                           connectors.map((c) => {
@@ -1340,17 +1367,17 @@ export default function Composer({
                                 }}
                                 onMouseDown={(e) => e.stopPropagation()}
                               >
-                                <span className="inline-flex text-ink-2 shrink-0">{Ico.link(13)}</span>
+                                <span className="inline-flex text-ink-2 shrink-0">{Ico.link(14)}</span>
                                 <span className="flex-[1_1_120px] min-w-0 flex flex-col items-start gap-0.5">
                                   <span className="font-medium">{c.name}</span>
-                                  <span className="text-xs text-ink-3">{c.displayName || c.engine}</span>
+                                  <span className="text-xs text-ink-3">{c.display_name || c.engine}</span>
                                 </span>
                                 {canMuteConnectors ? (
                                   <button
                                     type="button"
                                     role="switch"
                                     aria-checked={!muted}
-                                    aria-label={muted ? `Enable ${c.name} for this chat` : `Disable ${c.name} for this chat`}
+                                    aria-label={muted ? t('composer.menu.enableConnector', { name: c.name }) : t('composer.menu.disableConnector', { name: c.name })}
                                     className={`toggle shrink-0${!muted ? ' on' : ''}`}
                                     disabled={busy}
                                     onClick={(e) => {
@@ -1386,9 +1413,9 @@ export default function Composer({
                 lives in one place. `modelReadOnly` (defaults to
                 `metaReadOnly`) keeps ChatView's existing "model is fixed
                 once a task starts" behavior. */}
-            {modelReadOnly ? (
-              <span className="meta-pill" title="Model is fixed for this task">
-                <span>{model?.name ?? 'Model'}</span>
+            {showModelControl && (modelReadOnly ? (
+              <span className="meta-pill" title={t('composer.model.fixed')}>
+                <span>{model?.name ?? t('composer.model.model')}</span>
               </span>
             ) : noRealModels ? (
               // No provider connected (MindsHub or BYOK) — `models` (the
@@ -1398,7 +1425,7 @@ export default function Composer({
               // broken; show a plain button instead — no caret, since there
               // is nothing to open — that goes straight to where a model
               // actually gets connected.
-              <Tooltip content="Connect a provider in Settings to choose a model">
+              <Tooltip content={t('composer.model.connectProvider')}>
                 <button
                   type="button"
                   className="meta-pill"
@@ -1411,10 +1438,10 @@ export default function Composer({
                       Settings, not as an unrelated control. */}
                   <span className="flex items-center gap-[8px] min-w-0">
                     <ProviderIcon maker="other" className="text-ink-2" />
-                    <span className="truncate">{MODEL_ROUTER_LABEL}</span>
+                    <span className="truncate">{modelRouterLabel()}</span>
                   </span>
                   <span className="inline-flex shrink-0 text-ink-3">
-                    {Ico.settings(13)}
+                    {Ico.settings(14)}
                   </span>
                 </button>
               </Tooltip>
@@ -1423,8 +1450,12 @@ export default function Composer({
                 // Falls back to unselected (rather than a synthesized
                 // "model-router" row) if the current pick isn't a valid
                 // option right now — e.g. Model Router was picked, then the
-                // harness pill switched to Claude Code, which hides it.
-                value={modelPickerOptions.some((o) => o.value === model?.id) ? model.id : ''}
+                // harness pill switched to Claude Code, which hides it. Under
+                // the operator's picker, a model it no longer offers shows as
+                // the operator's own, which is what App then sends.
+                value={modelPickerOptions.some((o) => o.value === model?.id)
+                  ? model.id
+                  : (operatorPicker ? MODEL_ROUTER_ID : '')}
                 onValueChange={(id) => {
                   const found = modelPickerOptions.find((o) => o.value === id);
                   onModelChange({ id, name: found?.label || id });
@@ -1434,24 +1465,35 @@ export default function Composer({
                 options={modelPickerOptions}
                 variant="unstyled"
                 className="meta-pill"
-                ariaLabel="Choose model"
-                placeholder="Select model"
+                ariaLabel={t('composer.model.choose')}
+                placeholder={t('composer.model.select')}
               />
-            )}
+            ))}
             {/* Reasoning effort as its own pill (ENG-2591), the same
                 <Select> Code mode's composer uses. Fixed with the model
                 once a task's model is read-only, and absent with no
                 provider connected, where the model pill is only a
                 shortcut to Settings. */}
-            {!modelReadOnly && !noRealModels && effortLevels && (
+            {PLATFORM_UI && !modelReadOnly && !noRealModels && effortLevels && (
               <Select
                 value={resolvedEffort}
                 onValueChange={onEffortChange}
                 options={effortOptions(effortLevels)}
                 variant="unstyled"
                 className="meta-pill"
-                ariaLabel="Reasoning effort"
-                menuLabel="Reasoning effort"
+                ariaLabel={t('composer.model.effort')}
+                menuLabel={t('composer.model.effort')}
+              />
+            )}
+            {operatorPicker && !modelReadOnly && operatorLevels.length > 0 && (
+              <Select
+                value={operatorLevels.includes(effort) ? effort : MODEL_DEFAULT_VALUE}
+                onValueChange={(value) => onEffortChange?.(value === MODEL_DEFAULT_VALUE ? '' : value)}
+                options={operatorEffortOptions(operatorLevels)}
+                variant="unstyled"
+                className="meta-pill"
+                ariaLabel={t('composer.model.effort')}
+                menuLabel={t('composer.model.effort')}
               />
             )}
             {/* Mic / voice input intentionally hidden — voice flow isn't
@@ -1459,11 +1501,11 @@ export default function Composer({
                 around so we can reinstate later by re-rendering the
                 button (e.g. behind a `showMic` prop). */}
             {streaming && onStop ? (
-              <Tooltip content="Stop generation">
+              <Tooltip content={t('composer.stop')}>
               <button
                 className="send-btn stop"
                 onClick={onStop}
-                aria-label="Stop generation"
+                aria-label={t('composer.stop')}
                 style={{
                   // cascade-forced: .send-btn sets background/color/border/
                   // box-shadow at rest AND background on :hover — a same-
@@ -1497,29 +1539,29 @@ export default function Composer({
               </button>
               </Tooltip>
             ) : (
-              <Tooltip content="Send">
+              <Tooltip content={t('composer.send')}>
                 <button
                   className="send-btn"
                   disabled={disabled || !value.trim() || busy}
                   onClick={handleSend}
-                  aria-label="Send"
-                  title={(disabled || !value.trim() || busy) ? 'Send' : undefined}
+                  aria-label={t('composer.send')}
+                  title={(disabled || !value.trim() || busy) ? t('composer.send') : undefined}
                 >
-                  {Ico.send(15)}
+                  {Ico.send(16)}
                 </button>
               </Tooltip>
             )}
           </div>
-        </div>
+        </ComposerFrame>
       </div>
 
       {!hideMeta && (
         <div className="meta-row">
           {metaReadOnly ? (
             <>
-              <span className="meta-pill" title="Project is fixed for this task">
+              <span className="meta-pill" title={t('composer.project.fixed')}>
                 {Ico.folder(14)}
-                <span>{project ? projectLabel(project) : 'No project'}</span>
+                <span>{project ? projectLabel(project) : t('composer.project.none')}</span>
               </span>
             </>
           ) : (
@@ -1531,152 +1573,14 @@ export default function Composer({
                   so `bottom: calc(100% + 6px)` placed the menu above
                   the ENTIRE composer rather than just above the pill.
                   An inline-block span hugs the pill's box exactly. */}
-              <span
-                className="relative inline-flex"
-              >
-                <Tooltip content="Choose project">
-                  <button
-                    ref={projectPillRef}
-                    className="meta-pill"
-                    aria-label="Choose project"
-                    onClick={() => setOpenMenu(openMenu === 'project' ? null : 'project')}
-                  >
-                    {Ico.folder(14)}
-                    <span>{project ? projectLabel(project) : 'Work in a project'}</span>
-                    <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
-                  </button>
-                </Tooltip>
-
-                {openMenu === 'project' && !metaReadOnly && (
-                  <div
-                    ref={projectMenuRef}
-                    // Always drop downward from the pill. The earlier
-                    // flip-up was over-engineering: the chat-view composer
-                    // (which is glued to the viewport bottom) sets
-                    // `metaReadOnly` and hides this menu entirely, so by
-                    // construction every surface that opens the menu (home
-                    // view, projects view) has plenty of room below. The
-                    // menu's max-height + internal scroll caps it if the
-                    // viewport is unusually short.
-                    className="menu menu--drop-down left-0 top-[calc(100%_+_6px)] max-h-[min(60vh,360px)] flex flex-col overflow-hidden"
-                    style={{
-                      // cascade-forced: legacy .menu sets min-width:200px;
-                      // a same-property Tailwind utility would lose to it
-                      // (loads after Tailwind).
-                      minWidth: 260,
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {/* Search input — sticky header (first flex
-                        child of a non-scrolling container). */}
-                    <div className="pt-1 px-[6px] pb-[6px]">
-                      <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-md py-1 px-2">
-                        <span className="inline-flex text-ink-3">{Ico.folder(13)}</span>
-                        <input
-                          ref={projectSearchRef}
-                          type="text"
-                          value={projectSearch}
-                          onChange={(e) => {
-                            setProjectSearch(e.target.value);
-                            setProjectMenuError('');
-                          }}
-                          placeholder={onCreateProject ? 'Search or create…' : 'Search projects…'}
-                          disabled={projectMenuBusy}
-                          spellCheck={false}
-                          autoCapitalize="none"
-                          autoCorrect="off"
-                          onKeyDown={(e) => {
-                            e.stopPropagation();
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              submitProjectSearch();
-                            } else if (e.key === 'Escape') {
-                              e.preventDefault();
-                              if (_projectSearchTrimmed) setProjectSearch('');
-                              else setOpenMenu(null);
-                            }
-                          }}
-                          className="flex-1 min-w-0 bg-transparent border-0 outline-none text-ink text-[13px]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Filtered project list — only scrollable region. */}
-                    <div
-                      className="project-menu-list flex-1 min-h-0 overflow-y-auto py-0.5 px-0"
-                    >
-                      {_filteredProjects.length === 0 ? (
-                        <div className="py-[10px] px-3 text-[12px] text-ink-3">
-                          {_projectSearchTrimmed
-                            ? `No project matches “${_projectSearchTrimmed}”.`
-                            : 'No projects yet.'}
-                        </div>
-                      ) : _filteredProjects.map((p) => (
-                        <button
-                          key={p.name}
-                          className={`menu-item${project?.name === p.name ? ' checked' : ''}`}
-                          onClick={() => { onProjectChange(p); setOpenMenu(null); }}
-                        >
-                          <span className="inline-flex text-ink-2">{Ico.folder(14)}</span>
-                          <span className="flex-1 truncate">{projectLabel(p)}</span>
-                          {project?.name === p.name && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* "+ New project" footer — always present when
-                        `onCreateProject` is wired, so the create
-                        affordance is discoverable without first
-                        typing something into the search box (which
-                        the previous "footer only when no match"
-                        rule hid). Label adapts to the search state:
-                          - empty            → "New project"
-                                                (opens the full
-                                                 "Start a new project"
-                                                 modal).
-                          - typed, no match  → "Create '<text>'"
-                                                (calls create).
-                          - typed, exact     → hidden (no duplicates).
-                    */}
-                    {onCreateProject && !_projectExactMatch && (
-                      <>
-                        <div className="h-px bg-line my-0.5" />
-                        <button
-                          className="menu-item"
-                          disabled={projectMenuBusy}
-                          onClick={() => {
-                            if (_canCreateFromSearch) {
-                              createProjectFromSearch();
-                            } else {
-                              setOpenMenu(null);
-                              setNewProjectOpen(true);
-                            }
-                          }}
-                          // cascade-forced: legacy .menu-item sets color at
-                          // rest; a same-property Tailwind utility would
-                          // lose to it (loads after Tailwind).
-                          style={{ color: 'var(--primary-700)' }}
-                        >
-                          <span className="inline-flex text-[var(--primary-700)]">{Ico.plus(14)}</span>
-                          <span className="flex-1 truncate">
-                            {projectMenuBusy
-                              ? 'Creating…'
-                              : (_canCreateFromSearch
-                                  ? <>Create <strong className="font-semibold">“{_projectSearchTrimmed}”</strong></>
-                                  : 'New project')}
-                          </span>
-                        </button>
-                      </>
-                    )}
-
-                    {projectMenuError && (
-                      <div className="py-[6px] px-[10px] text-[11.5px] text-danger border-t border-x-0 border-b-0 border-solid border-line">
-                        {projectMenuError}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </span>
+              <ProjectPicker
+                projects={projects}
+                project={project}
+                onChange={onProjectChange}
+                onCreateProject={onCreateProject}
+                open={openMenu === 'project'}
+                onOpenChange={(next) => setOpenMenu(next ? 'project' : null)}
+              />
             </>
           )}
 
@@ -1697,7 +1601,7 @@ export default function Composer({
             <ToggleGroup
               value={codingHarness}
               onValueChange={setCodingHarness}
-              aria-label="Choose harness"
+              aria-label={t('composer.chooseHarness')}
               size="sm"
               options={harnessPickerOptions}
             />
@@ -1705,28 +1609,6 @@ export default function Composer({
         </div>
       )}
 
-      {/* Portaled to <body>: the composer sits inside the boot-fadein
-          wrapper whose persistent transform would otherwise make this
-          fixed-position overlay anchor to the card, not the viewport. */}
-      {newProjectOpen && createPortal(
-        <NewProjectModal
-          open={newProjectOpen}
-          onClose={() => setNewProjectOpen(false)}
-          onCreated={async (result) => {
-            const name = result?.name;
-            if (!name) return;
-            let created = { name };
-            try {
-              created = (await onCreateProject?.({ name, _alreadyCreated: true })) || created;
-            } catch {
-              // Project exists on the server; only the list refresh
-              // failed — still select it by name.
-            }
-            onProjectChange?.(created);
-          }}
-        />,
-        document.body,
-      )}
     </div>
   );
 }

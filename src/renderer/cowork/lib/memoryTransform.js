@@ -10,12 +10,19 @@ export function labelCategory(category) {
 export function scopeToApi(scope) {
   if (scope === 'Global' || scope === 'global') return 'global';
   if (scope === 'Project' || scope === 'project') return 'project';
+  if (scope === 'Deployment' || scope === 'managed') return 'managed';
   return String(scope || 'global').toLowerCase();
 }
 
+/* `managed` is the operator's rules for every person on the deployment, which
+   nobody changes from Cowork. Any scope the page doesn't know reads as Global. */
+const SCOPE_LABELS = { project: 'Project', managed: 'Deployment' };
+
 export function scopeToLabel(scope) {
-  return scopeToApi(scope) === 'project' ? 'Project' : 'Global';
+  return SCOPE_LABELS[scopeToApi(scope)] || 'Global';
 }
+
+const SECTION_ORDER = { Global: 0, Deployment: 1, Project: 2 };
 
 export function groupMemoryItems(items, projects) {
   const projectNameById = new Map(
@@ -60,11 +67,10 @@ export function groupMemoryItems(items, projects) {
   }
 
   const sections = Array.from(sectionMap.values());
-  sections.sort((a, b) => {
-    if (a.scope === 'Global' && b.scope !== 'Global') return -1;
-    if (b.scope === 'Global' && a.scope !== 'Global') return 1;
-    return String(a.projectName || '').localeCompare(String(b.projectName || ''));
-  });
+  sections.sort((a, b) => (
+    (SECTION_ORDER[a.scope] - SECTION_ORDER[b.scope])
+    || String(a.projectName || '').localeCompare(String(b.projectName || ''))
+  ));
 
   for (const section of sections) {
     section.files.sort((a, b) => String(a.category).localeCompare(String(b.category)));
@@ -73,8 +79,10 @@ export function groupMemoryItems(items, projects) {
   return { sections };
 }
 
+/** How many slots hold something learned; the deployment's rules are not. */
 export function countNonEmptyMemory(data) {
   return (data?.sections || [])
+    .filter((s) => s.scope !== 'Deployment')
     .flatMap((s) => s.files || [])
     .filter((f) => String(f.content || '').trim())
     .length;

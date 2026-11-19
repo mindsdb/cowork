@@ -5,13 +5,14 @@
 // flags + a transient `phase` the parent owns) — no internal state, so the
 // status can't get "stuck": whatever the parent passes is exactly what shows.
 //
-//   <ArtifactStatus artifact={a} phase={statusByPath[a.path]} publishable onRetry={…} />
+//   <ArtifactStatus artifact={a} phase={statusByPath[a.path]} publishable orgMode={orgMode} onRetry={…} />
 //
 // phase: 'publishing' | 'updating' | 'unpublishing' | 'deleting' | 'failed' | undefined(idle)
 
 import Ico from '../Icons';
 import { Badge, Tooltip } from '../ui';
-import { isOwnerOnlySelection } from '../artifact/publish/AccessChooser';
+import { isOwnerOnlyAccess } from '../../lib/orgSharing';
+import i18n, { useTranslation } from '../../../lib/i18n';
 import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 
 // One mode-aware badge per published artifact (ENG-1212). ONLY a genuinely
@@ -23,9 +24,9 @@ import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 // content, so the label is always shown (ENG-1475); when a tight cell also holds
 // the "Unshared changes" badge the two wrap to a second line.
 const ACCESS_BADGE = {
-  public: { variant: 'success', icon: Ico.globe(11), label: 'Public' },
-  password: { variant: 'default', icon: Ico.lock(11), label: 'Password' },
-  restricted: { variant: 'default', icon: Ico.people(11), label: 'Restricted' },
+  public: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.public' },
+  password: { variant: 'default', icon: Ico.lock(12), labelKey: 'status.badge.password' },
+  restricted: { variant: 'default', icon: Ico.people(12), labelKey: 'status.badge.restricted' },
 };
 
 // Fail CLOSED: only a positively-recognised mode gets its badge, and only
@@ -36,7 +37,7 @@ const ACCESS_BADGE = {
 // resolves to a neutral protected pill instead of defaulting to Public.
 // `Object.hasOwn` (not `mode in`/`ACCESS_BADGE[mode]`) also stops a mode string
 // like `constructor`/`__proto__` from yielding a blank inherited-property pill.
-const UNKNOWN_BADGE = { variant: 'default', icon: Ico.lock(11), label: 'Restricted' };
+const UNKNOWN_BADGE = { variant: 'default', icon: Ico.lock(12), labelKey: 'status.badge.restricted' };
 
 function accessMode(artifact) {
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
@@ -48,26 +49,39 @@ function accessBadge(artifact) {
   return mode ? ACCESS_BADGE[mode] : UNKNOWN_BADGE;
 }
 
+/** A restricted artifact's line when its card doesn't say who it reaches. */
+export const ORG_RESTRICTED_HINT = 'Restricted. Open Share to see who can open the link.';
+
+const hint = (key) => i18n.t(`status.hint.${key}`, { ns: 'artifacts' });
+
 /*
  * One line under each idle label saying what it means for who can open the
  * artifact (ENG-2177). "Draft" and "Restricted" were shown bare, and nothing
  * said which state can be shared. Public and Password name their own meaning,
  * so they get none. The unknown fallback says so rather than naming an
  * audience it cannot see, for the same fail-closed reason as its badge.
+ *
+ * In MindsHub mode (`orgMode`) a card doesn't say who a restricted artifact
+ * reaches (its audience fields are null): only the owner's access route does.
+ * Its line then names nobody and points at Share, which reads that route
+ * (ORG_RESTRICTED_HINT). So does any card whose audience is unknown
+ * (isOwnerOnlyAccess's null).
  */
-export function artifactStatusHint(artifact, publishable = true) {
+export function artifactStatusHint(artifact, publishable = true, { orgMode = false } = {}) {
   if (!artifact?.publishedUrl) {
     return publishable
-      ? 'Not shared yet. Open it and choose Share to get a web link.'
-      : 'Not shared. Only web pages and Markdown documents can be shared as a link.';
+      ? hint('notSharedYet')
+      : hint('notShareable');
   }
   const mode = accessMode(artifact);
   if (mode === 'restricted') {
-    return isOwnerOnlySelection(artifact)
-      ? 'Shared, but only you can open the link.'
-      : 'Shared. Only the people you chose can open the link.';
+    const ownerOnly = isOwnerOnlyAccess(artifact);
+    if (orgMode || ownerOnly === null) return hint('orgRestricted');
+    return ownerOnly
+      ? hint('ownerOnly')
+      : hint('chosenPeople');
   }
-  if (!mode) return 'Shared. Who can open the link could not be confirmed, so it is treated as restricted.';
+  if (!mode) return hint('unknown');
   return '';
 }
 
@@ -78,7 +92,15 @@ export function artifactStatusHint(artifact, publishable = true) {
 // member" / "Unknown owner" tag right after the primary badge (ENG-2979).
 // Pass null, not an element that renders nothing, when there is none: without
 // it the DOM is exactly what it was.
-export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null }) {
+//
+// `pageBadge` — false drops the idle "Not shared" / "Draft" badge of an
+// unpublished artifact that can't become a page (a live app shares through
+// "Share with…" instead). Phases and the authorship tag still show.
+//
+// `orgMode`: MindsHub mode, whose cards don't say who an artifact reaches
+// (artifactStatusHint).
+export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null, pageBadge = true, orgMode = false }) {
+  const { t } = useTranslation('artifacts');
   const tag = authorship ? <ArtifactAuthorshipBadge authorship={authorship} /> : null;
   const withExtra = (primary) => (tag
     ? <span className="inline-flex items-center gap-[10px] min-w-0 flex-wrap">{primary}{tag}</span>
@@ -88,9 +110,9 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   if (phase === 'failed') {
     return withExtra(
       <span className="inline-flex items-center gap-2 min-w-0">
-        <Badge variant="danger" size="sm">Sharing failed</Badge>
+        <Badge variant="danger" size="sm">{t('status.sharingFailed')}</Badge>
         <span className="font-body text-[12px] text-ink-3 whitespace-nowrap">
-          Couldn't share.{onRetry ? ' ' : ''}
+          {t('status.couldNotShare')}{onRetry ? ' ' : ''}
           {onRetry && (
             // `all: unset` stays inline — as a utility its ordering vs the
             // sibling utilities isn't guaranteed, so it could reset them.
@@ -99,22 +121,23 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
               onClick={(e) => { e.stopPropagation(); onRetry(); }}
               onMouseDown={(e) => e.stopPropagation()}
               style={{ all: 'unset', cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-            >Try again</button>
+            >{t('status.tryAgain')}</button>
           )}
         </span>
       </span>,
     );
   }
-  if (phase === 'publishing') return withExtra(<Badge variant="accent" size="sm">Sharing…</Badge>);
-  if (phase === 'updating') return withExtra(<Badge variant="accent" size="sm">Updating…</Badge>);
-  if (phase === 'unpublishing') return withExtra(<Badge variant="default" size="sm">Stopping sharing…</Badge>);
-  if (phase === 'deleting') return withExtra(<Badge variant="default" size="sm">Deleting…</Badge>);
+  if (phase === 'publishing') return withExtra(<Badge variant="accent" size="sm">{t('status.sharing')}</Badge>);
+  if (phase === 'updating') return withExtra(<Badge variant="accent" size="sm">{t('status.updating')}</Badge>);
+  if (phase === 'unpublishing') return withExtra(<Badge variant="default" size="sm">{t('status.stoppingSharing')}</Badge>);
+  if (phase === 'deleting') return withExtra(<Badge variant="default" size="sm">{t('status.deleting')}</Badge>);
 
   // Idle — persisted state.
   if (!artifact?.publishedUrl) {
+    if (!pageBadge) return tag;
     return withExtra(
-      <Tooltip content={artifactStatusHint(artifact, publishable)}>
-        <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>
+      <Tooltip content={artifactStatusHint(artifact, publishable, { orgMode })}>
+        <Badge variant="default" size="sm">{publishable ? t('status.notShared') : t('status.draft')}</Badge>
       </Tooltip>,
     );
   }
@@ -125,16 +148,16 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
     // card it wraps to its own line, still right-aligned there. `tag` sits
     // between them, in the same row.
     <span className="flex items-center gap-[10px] w-full min-w-0 flex-wrap">
-      <Tooltip content={artifactStatusHint(artifact, publishable)}>
+      <Tooltip content={artifactStatusHint(artifact, publishable, { orgMode })}>
         <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
-          {badge.label}
+          {t(badge.labelKey)}
         </Badge>
       </Tooltip>
       {tag}
       {artifact.modified && (
         inlineChanges
-          ? <Badge variant="warning" size="sm" dot>Unshared changes</Badge>
-          : <span className="ml-auto inline-flex"><Badge variant="warning" size="sm" dot>Unshared changes</Badge></span>
+          ? <Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge>
+          : <span className="ml-auto inline-flex"><Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge></span>
       )}
     </span>
   );

@@ -50,12 +50,12 @@ describe('CodeProjectsView', () => {
     render(
       <CodeProjectsView
         projects={projects}
-        selectedId="mindshub"
         loading={false}
         error=""
         onOpen={onOpen}
         onCreate={vi.fn()}
         onEdit={vi.fn()}
+        onDelete={vi.fn()}
       />,
     );
 
@@ -65,25 +65,41 @@ describe('CodeProjectsView', () => {
     expect(onOpen).toHaveBeenCalledWith('atlas');
   });
 
-  it('keeps project creation and settings directly reachable', async () => {
+  it('keeps project creation reachable and puts settings and delete in each row menu', async () => {
     const user = userEvent.setup();
     const onCreate = vi.fn();
     const onEdit = vi.fn();
+    const onDelete = vi.fn();
     render(
       <CodeProjectsView
         projects={projects}
-        selectedId="mindshub"
         loading={false}
         error=""
         onOpen={vi.fn()}
         onCreate={onCreate}
         onEdit={onEdit}
+        onDelete={onDelete}
       />,
     );
 
     await user.click(screen.getByRole('button', { name: 'New project' }));
-    await user.click(screen.getByRole('button', { name: 'Edit MindsHub' }));
-    expect(onCreate).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: 'MindsHub actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Project settings' }));
+    await user.click(screen.getByRole('button', { name: 'MindsHub actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete project' }));
+    expect(onCreate).toHaveBeenCalledTimes(1);
     expect(onEdit).toHaveBeenCalledWith('mindshub');
+    expect(onDelete).toHaveBeenCalledWith('mindshub');
+  });
+
+  it('opens as cards and switches to rows, like the Cowork Projects page', async () => {
+    localStorage.removeItem('anton:code-projects-view');
+    const user = userEvent.setup();
+    render(<CodeProjectsView projects={projects} loading={false} error="" onOpen={vi.fn()} onCreate={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('region', { name: 'Code Projects' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.getByRole('region', { name: 'Code Projects' })).toBeInTheDocument();
+    expect(localStorage.getItem('anton:code-projects-view')).toBe('list');
   });
 });

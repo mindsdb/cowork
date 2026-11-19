@@ -38,7 +38,10 @@ function useBodyTheme() {
   return theme;
 }
 
-export function CodeBlock({ code = '', language = 'python', maxHeight = 360 }) {
+/* `wrap` breaks long lines, anywhere in a long token too, instead of
+   scrolling them sideways: for one-line text such as a request's URL, where
+   the line breaks of code carry no meaning. */
+export function CodeBlock({ code = '', language = 'python', maxHeight = 360, wrap = false }) {
   const theme = useBodyTheme();
   const palette = theme === 'dark' ? vscDarkPlus : oneLight;
   // Override the highlighter's default block bg so the code panel
@@ -59,8 +62,8 @@ export function CodeBlock({ code = '', language = 'python', maxHeight = 360 }) {
       language={language}
       style={palette}
       customStyle={customStyle}
-      codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
-      wrapLongLines={false}
+      codeTagProps={{ style: wrap ? { fontFamily: 'var(--font-mono)', overflowWrap: 'anywhere' } : { fontFamily: 'var(--font-mono)' } }}
+      wrapLongLines={wrap}
     >
       {code}
     </Prism>

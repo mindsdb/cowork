@@ -25,11 +25,14 @@ import {
 } from 'react-router-dom';
 import { host } from '../platform/host';
 import { fetchSessionResult } from './api';
-import { EmptyState, Button, Spinner } from './components/ui';
+import { EmptyState, Spinner } from './components/ui';
+import { useTranslation } from '../lib/i18n';
 
 // Ids that aren't yet loadable via the API (a new-chat send + the canonical id
 // the server later mints). The loader renders these from local state instead of
-// fetching (which would 404 and bounce home). Marked on adopt, cleared on turn
+// fetching (which would 404 and bounce home). A repair resumed from Live
+// Artifacts also marks an existing chat it hydrated itself, so the loader does
+// not merge a page over the turn it just started. Marked on adopt, cleared on turn
 // completion so a later revisit hydrates fresh. Module-level so the loader
 // (outside the tree) can read it; it also empties on a full reload, when a
 // `/c/:id` refresh SHOULD hit the server.
@@ -41,6 +44,18 @@ export function markOptimisticConversation(id) {
 
 export function clearOptimisticConversation(id) {
   if (id) optimisticIds.delete(id);
+}
+
+// Called before the loader's fetch, so the snapshot predates the page and a
+// late page cannot hide rows that arrived since.
+let knownRowIdsProvider = null;
+
+/**
+ * Sets the function the `/c/:id` loader asks for a conversation's local row
+ * ids (a Set, or undefined when it has none). App registers it; null clears it.
+ */
+export function setKnownRowIdsProvider(provider) {
+  knownRowIdsProvider = provider;
 }
 
 export function isOptimisticConversation(id) {
@@ -58,6 +73,7 @@ const VIEW_ROUTES = [
   'customize',
   'skills',
   'memory',
+  'compare',
   'publish',
 ];
 
@@ -249,17 +265,20 @@ function ScheduleDetailRoute() {
 // failure. Unlike a 404 (redirect Home), the URL is kept and retry re-runs the
 // loader via the revalidator.
 export function ConversationUnavailable() {
+  const { t } = useTranslation('app');
   const revalidator = useRevalidator();
   const retrying = revalidator.state !== 'idle';
   return (
     <EmptyState
-      title="This conversation didn’t load"
-      description="We couldn’t reach the server. Your link is still valid — try again once you’re back online."
-      action={
-        <Button variant="primary" onClick={() => revalidator.revalidate()} disabled={retrying}>
-          {retrying ? 'Retrying…' : 'Try again'}
-        </Button>
-      }
+      title={t('router.unavailableTitle')}
+      description={t('router.unavailableDescription')}
+      action={{
+        label: retrying ? t('router.retrying') : t('router.tryAgain'),
+        onClick: () => revalidator.revalidate(),
+        disabled: retrying,
+        // The only way forward on this screen, so it takes the primary weight.
+        primary: true,
+      }}
     />
   );
 }
@@ -275,13 +294,26 @@ export function ConversationLoading() {
   );
 }
 
+/**
+ * Fetches a conversation the way the `/c/:id` loader does, for `openConversation`.
+ * The local row-id snapshot is taken before the fetch, so a late page cannot
+ * hide rows that arrived meanwhile.
+ *
+ * @returns {Promise<{status:'ok', task:object, knownIds?:Set} | {status:'not_found'} | {status:'unavailable', code:number}>}
+ */
+export async function loadConversation(id, { timeoutMs } = {}) {
+  const knownIds = knownRowIdsProvider?.(id);
+  const result = await fetchSessionResult(id, { timeoutMs });
+  return result.status === 'ok' ? { ...result, knownIds } : result;
+}
+
 // `/c/:id` loader. Distinguishes the failure modes so the route can react: a
 // 404 drops the dead link Home; a transient failure keeps the URL + retries.
 async function conversationLoader({ params }) {
   const id = params.conversationId;
   // Not-yet-persisted conversation (mid-send): render from local state.
   if (isOptimisticConversation(id)) return { optimistic: true, id };
-  const result = await fetchSessionResult(id);
+  const result = await loadConversation(id);
   // 404 → `redirect('/')`, NOT `replace('/')`. In RR7's data router a loader
   // redirect fires while still committed to the origin — the `/c/:id` entry
   // never commits — so this pushes `[origin, /]`: Back returns to the origin and
@@ -290,7 +322,7 @@ async function conversationLoader({ params }) {
   // a cold deep-link RR already forces the initial redirect to replace.
   if (result.status === 'not_found') return redirect('/');
   if (result.status === 'unavailable') return { unavailable: true, id };
-  return { task: result.task, id };
+  return { task: result.task, id, knownIds: result.knownIds };
 }
 
 // Exported for behavior tests; production goes through createCoworkRouter.

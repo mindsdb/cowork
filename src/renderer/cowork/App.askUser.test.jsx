@@ -87,7 +87,7 @@ describe('drainQueueAttachments', () => {
 });
 
 describe('planQueueDrain', () => {
-  const queues = { 'conv-a': [{ text: 'first' }, { text: 'second' }] };
+  const queues = { 'conv-a': [{ id: 'q1', text: 'first' }, { id: 'q2', text: 'second' }] };
 
   it('drains the queue of the task the question belongs to', () => {
     expect(planQueueDrain([askStep()], ['conv-a'], queues, new Set())).toEqual({
@@ -96,7 +96,18 @@ describe('planQueueDrain', () => {
       questionId: 'ask:1',
       text: 'first\nsecond',
       attachments: [],
+      itemIds: ['q1', 'q2'],
     });
+  });
+
+  it('leaves a message whose add-on request is still out (ENG-4194)', () => {
+    const plan = planQueueDrain([askStep()], ['conv-a'], {
+      'conv-a': [{ id: 'q1', text: 'pending', addonPending: true }, { id: 'q2', text: 'second' }],
+    }, new Set());
+    expect(plan).toMatchObject({ text: 'second', itemIds: ['q2'] });
+    expect(planQueueDrain([askStep()], ['conv-a'], {
+      'conv-a': [{ id: 'q1', text: 'pending', addonPending: true }],
+    }, new Set())).toBeNull();
   });
 
   it('finds the queue under either id a stream is known by', () => {
@@ -113,7 +124,7 @@ describe('planQueueDrain', () => {
     const plan = planQueueDrain(
       [askStep()],
       ['conv-new', 'tmp-1'],
-      { 'tmp-1': [{ text: 'queued before adoption' }] },
+      { 'tmp-1': [{ id: 'q9', text: 'queued before adoption' }] },
       new Set(),
     );
     expect(plan).toEqual({
@@ -122,6 +133,7 @@ describe('planQueueDrain', () => {
       questionId: 'ask:1',
       text: 'queued before adoption',
       attachments: [],
+      itemIds: ['q9'],
     });
   });
 

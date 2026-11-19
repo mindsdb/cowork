@@ -8,6 +8,7 @@ import {
 } from './deliveryAutomation';
 import { isActiveStatus } from './presentation';
 import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
+import i18n from '../../lib/i18n';
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -118,7 +119,7 @@ export function DeliveryAutomationMonitor({
       if (action) executed.current.get(session.id)?.delete(action.key);
       callbacksRef.current.onError(
         session.id,
-        reason instanceof Error ? reason.message : 'Delivery automation could not continue.',
+        reason instanceof Error ? reason.message : i18n.t('deliveryAutomation.error', { ns: 'code' }),
       );
       return false;
     } finally {

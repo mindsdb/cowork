@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 import { app } from 'electron';
 import { httpsGet } from './http-get';
 import * as fs from 'fs';
@@ -71,7 +72,7 @@ function warnIfBundledVersionNotCalVer(): void {
   const bundled = getAppDisplayVersion();
   if (parseCalVer(bundled)) return; // healthy: a CalVer is baked
   _warnedBundledNotCalVer = true;
-  console.warn(
+  diagnostic("main.ui-updater", "WARNING", "ui_updater_ota_is_enabled_but_the_bundled_app_version_is_not_calver_major_yy_m_d_seq_the_freshness_g",
     `[ui-updater] OTA is enabled but the bundled app version "${bundled}" is not CalVer ` +
     `(MAJOR.YY.M.D.SEQ) — the freshness gate will withhold EVERY update, so OTA is inert. ` +
     `Ensure a CalVer BUILD_APP_VERSION is baked at build time (see gen-build-channel.mjs).`,
@@ -277,16 +278,16 @@ export async function extractTarGz(buf: Buffer, targetDir: string): Promise<void
 
 /** Download, verify, and stage a new UI bundle. Returns true on success. */
 async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
-  console.log(`[ui-updater] downloading UI ${manifest.version}...`);
+  diagnostic("main.ui-updater", "INFO", "ui_updater_downloading_ui", `[ui-updater] downloading UI ${manifest.version}...`);
   const res = await httpsGet(manifest.url, UI_DOWNLOAD_INACTIVITY_MS, UI_DOWNLOAD_DEADLINE_MS);
   if (res.statusCode !== 200) {
-    console.error(`[ui-updater] download failed: HTTP ${res.statusCode}`);
+    diagnostic("main.ui-updater", "ERROR", "ui_updater_download_failed_http", { status: res.statusCode });
     return false;
   }
 
   const hash = sha256(res.body);
   if (hash !== manifest.sha256) {
-    console.error(`[ui-updater] SHA-256 mismatch: expected ${manifest.sha256}, got ${hash}`);
+    diagnostic("main.ui-updater", "ERROR", "ui_updater_sha_256_mismatch_expected_got", `[ui-updater] SHA-256 mismatch: expected ${manifest.sha256}, got ${hash}`);
     return false;
   }
 
@@ -295,14 +296,14 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
   try {
     await extractTarGz(res.body, staging);
   } catch (err) {
-    console.error('[ui-updater] extraction failed:', err);
+    diagnostic("main.ui-updater", "ERROR", "ui_updater_extraction_failed", '[ui-updater] extraction failed:', err);
     rmDir(staging);
     return false;
   }
 
   // Verify index.html exists in the extracted bundle
   if (!fs.existsSync(path.join(staging, 'index.html'))) {
-    console.error('[ui-updater] extracted bundle missing index.html');
+    diagnostic("main.ui-updater", "ERROR", "ui_updater_extracted_bundle_missing_index_html", '[ui-updater] extracted bundle missing index.html');
     rmDir(staging);
     return false;
   }
@@ -345,7 +346,7 @@ async function activateStaged(version: string, minServerVersion?: string): Promi
     }
     throw err;
   }
-  console.log(`[ui-updater] activated UI ${version}`);
+  diagnostic("main.ui-updater", "INFO", "ui_updater_activated_ui", `[ui-updater] activated UI ${version}`);
 }
 
 /** Reason to withhold this UI bundle for server-compat, or null if OK to apply.
@@ -356,7 +357,7 @@ async function serverCompatSkip(manifest: UIManifest): Promise<string | null> {
   if (!manifest.minServerVersion) return null;
   const { server } = await fetchServerVersions().catch(() => ({ server: null }));
   const reason = uiServerCompatSkipReason({ minServerVersion: manifest.minServerVersion, serverVersion: server });
-  if (reason) console.log(`[ui-updater] withholding UI ${manifest.version}: ${reason}`);
+  if (reason) diagnostic("main.ui-updater", "INFO", "ui_updater_withholding_ui", `[ui-updater] withholding UI ${manifest.version}: ${reason}`);
   return reason;
 }
 
@@ -366,7 +367,7 @@ async function serverCompatSkip(manifest: UIManifest): Promise<string | null> {
  */
 export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
   if (!otaEnabled()) {
-    console.log('[ui-updater] OTA UI disabled for this build channel');
+    diagnostic("main.ui-updater", "INFO", "ui_updater_ota_ui_disabled_for_this_build_channel", '[ui-updater] OTA UI disabled for this build channel');
     return { updateAvailable: false, applied: false };
   }
   warnIfBundledVersionNotCalVer();
@@ -381,7 +382,7 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
   // re-downloads, re-activates, and re-fails the same bundle.
   const rejected = getRejectedVersion();
   if (rejected === manifest.version) {
-    console.log(`[ui-updater] skipping ${manifest.version} — quarantined after a failed activation`);
+    diagnostic("main.ui-updater", "INFO", "ui_updater_skipping_quarantined_after_a_failed_activation", `[ui-updater] skipping ${manifest.version} — quarantined after a failed activation`);
     return { updateAvailable: false, applied: false };
   }
   if (rejected) clearRejectedVersion(); // manifest moved on — retry allowed
@@ -411,6 +412,19 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
  * the one in-flight run.
  */
 let _applyInFlight: Promise<boolean> | null = null;
+// The manifest version the last apply downloaded, or null when it stopped
+// before downloading (no manifest, quarantined, not newer, held for server
+// compat). Read-only observability: the orchestrator credits a failed apply
+// to the version it actually tried, which can differ from the one the earlier
+// check offered when a release publishes in between.
+let _lastAttemptedVersion: string | null = null;
+
+/** The version the last `applyUIUpdate` run tried to install, or null if it
+ *  stopped before downloading anything. */
+export function lastUiApplyAttempt(): string | null {
+  return _lastAttemptedVersion;
+}
+
 export function applyUIUpdate(): Promise<boolean> {
   if (_applyInFlight) return _applyInFlight;
   _applyInFlight = runApplyUIUpdate().finally(() => { _applyInFlight = null; });
@@ -418,6 +432,7 @@ export function applyUIUpdate(): Promise<boolean> {
 }
 
 async function runApplyUIUpdate(): Promise<boolean> {
+  _lastAttemptedVersion = null;
   if (!otaEnabled()) return false;
   warnIfBundledVersionNotCalVer();
   const manifest = await fetchManifest();
@@ -435,6 +450,7 @@ async function runApplyUIUpdate(): Promise<boolean> {
   // forces a UI apply without a fresh checkForUIUpdate).
   if (await serverCompatSkip(manifest)) return false;
 
+  _lastAttemptedVersion = manifest.version;
   const ok = await downloadAndStage(manifest);
   if (!ok) return false;
 
@@ -443,7 +459,7 @@ async function runApplyUIUpdate(): Promise<boolean> {
   try {
     await serializeSwap(() => activateStaged(manifest.version, manifest.minServerVersion));
   } catch (err) {
-    console.error('[ui-updater] activation failed — kept the existing UI slot', err);
+    diagnostic("main.ui-updater", "ERROR", "ui_updater_activation_failed_kept_the_existing_ui_slot", '[ui-updater] activation failed — kept the existing UI slot', err);
     return false;
   }
 
@@ -498,6 +514,6 @@ export async function verifyServedUiCompat(): Promise<'none' | 'verified' | 'def
   const { server } = await fetchServerVersions().catch(() => ({ server: null }));
   const reason = uiServerCompatSkipReason({ minServerVersion: meta.minServerVersion, serverVersion: server });
   if (!reason) { _verifiedCompatVersion = meta.version; return 'verified'; }
-  console.warn(`[ui-updater] active OTA cache not served this session: ${reason}`);
+  diagnostic("main.ui-updater", "WARNING", "ui_updater_active_ota_cache_not_served_this_session", `[ui-updater] active OTA cache not served this session: ${reason}`);
   return 'deferred';
 }

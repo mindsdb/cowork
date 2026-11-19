@@ -1,0 +1,1595 @@
+{
+  "reviewPanel": {
+    "ariaLabel": "Rivedi le modifiche",
+    "closeAriaLabel": "Chiudi il pannello di revisione",
+    "resizeAriaLabel": "Ridimensiona il pannello di revisione",
+    "eyebrow": "Risultato dell’attività",
+    "title": "Rivedi le modifiche",
+    "tabsAriaLabel": "Sezioni della revisione",
+    "tabs": {
+      "changes": "Modifiche",
+      "deliver": "Consegna"
+    },
+    "summary": {
+      "changedFiles": "{count, plural, one {# file modificato} other {# file modificati}}",
+      "trackingUnavailable": "Tracciamento delle modifiche non disponibile",
+      "unchanged": "Albero di lavoro invariato"
+    },
+    "empty": {
+      "directTitle": "Apri la cartella per rivedere le modifiche",
+      "title": "Ancora nessuna modifica da rivedere",
+      "directDescription": "Le cartelle dirette non hanno una base Git, quindi {product} non può mostrare le differenze in linea.",
+      "description": "Le modifiche ai file appariranno qui mentre l’agente lavora."
+    },
+    "deliver": {
+      "heading": "Consegna questa attività",
+      "project": "Progetto",
+      "branch": "Branch",
+      "openOriginalFolder": "Apri la cartella originale",
+      "openIsolatedCopy": "Apri la copia isolata",
+      "openOriginal": "Apri l’originale"
+    },
+    "sourceChanged": {
+      "title": "All’avvio dell’attività l’origine aveva modifiche locali",
+      "body": "Quelle modifiche sono rimaste nella cartella di origine. {product} verifica i conflitti prima di applicarle."
+    },
+    "reconcile": {
+      "title": "Concilia le modifiche originali",
+      "body": "Chiedi all’agente di conservare entrambe le versioni nella copia isolata, poi rivedi di nuovo.",
+      "action": "Risolvi con l’agente"
+    },
+    "checks": {
+      "title": "Controlli del progetto",
+      "run": "Esegui controlli",
+      "adopt": "Usa i comandi più recenti del progetto",
+      "failed": "{failed} controlli del progetto su {total} non superati. Apri l’attività per vedere l’output.",
+      "passed": "{count, plural, one {# controllo del progetto superato.} other {# controlli del progetto superati.}}",
+      "none": "Questa attività non ha controlli del progetto. Le attività avviate da questo progetto usano i comandi salvati nelle impostazioni del progetto.",
+      "noValidationCommands": "Le impostazioni del progetto non hanno comandi di convalida per le cartelle di questa attività, quindi non c’è nulla da controllare. {count, plural, one {# azione di esecuzione è ora disponibile.} other {# azioni di esecuzione sono ora disponibili.}}",
+      "noCommands": "Le impostazioni del progetto non hanno ancora comandi per le cartelle di questa attività. Aggiungi lì i comandi di convalida, poi riprova."
+    },
+    "applyLocally": {
+      "title": "Applica in locale",
+      "tooltip": "Copia le modifiche riviste nelle cartelle originali",
+      "applied": "Applicate",
+      "appliedNotice": "Queste modifiche riviste sono state applicate alle cartelle di origine.",
+      "nothingToApply": "Questa attività lavora già nella cartella selezionata, quindi non c’è nulla da applicare."
+    },
+    "git": {
+      "title": "Opzioni Git",
+      "branchLabel": "Crea un branch nel worktree dell’attività",
+      "create": "Crea",
+      "commitLabel": "Esegui il commit di tutte le modifiche",
+      "commitPlaceholder": "Descrivi la modifica",
+      "commit": "Commit"
+    },
+    "applyConfirm": {
+      "title": "Applicare le modifiche alla cartella di origine?",
+      "message": "Aggiornare {target} con le modifiche riviste dell’attività? Se trova un conflitto, {product} si fermerà prima di modificare qualsiasi cartella.",
+      "confirm": "Applica modifiche",
+      "error": "Impossibile applicare le modifiche. Riprova."
+    }
+  },
+  "fileReview": {
+    "staged": "In stage",
+    "unstaged": "Non in stage",
+    "committed": "Nel commit",
+    "stage": "Aggiungi allo stage",
+    "unstage": "Rimuovi dallo stage",
+    "askCodex": "Chiedi a Codex",
+    "discardAriaLabel": "Annulla le modifiche a {path}",
+    "noteAriaLabel": "Nota di revisione per {path}",
+    "notePlaceholder": "Cosa va cambiato in questo file?",
+    "toSend": "per inviare",
+    "cancel": "Annulla",
+    "sendToCodex": "Invia a Codex",
+    "discardConfirm": {
+      "title": "Annullare le modifiche a questo file?",
+      "message": "{path} tornerà alla versione attuale dell’attività. L’operazione non può essere annullata.",
+      "confirm": "Annulla modifiche"
+    }
+  },
+  "reviewFileCard": {
+    "binary": "File binario modificato",
+    "noTextualDiff": "Nessuna differenza testuale"
+  },
+  "diffPatch": {
+    "ariaLabel": "Differenze del file",
+    "selectLine": "Seleziona la riga {line}",
+    "selectRemovedLine": "Seleziona la riga rimossa {line}",
+    "selectedLines": "righe selezionate",
+    "line": "riga {line}",
+    "lines": "righe {start}–{end}"
+  },
+  "filesPanel": {
+    "ariaLabel": "File dell’attività",
+    "closeAriaLabel": "Chiudi il pannello dei file",
+    "resizeAriaLabel": "Ridimensiona il pannello dei file",
+    "eyebrow": "Contesto dell’attività",
+    "title": "File",
+    "folderMenuAriaLabel": "Cartella del progetto",
+    "resourceAriaLabel": "Risorsa: {name}",
+    "searchPlaceholder": "Cerca nei file dell’attività",
+    "loading": "Caricamento…",
+    "empty": {
+      "title": "Nessun file dell’attività disponibile",
+      "description": "Questa attività non ha una copia di lavoro preparata su questo computer."
+    },
+    "noMatches": {
+      "title": "Nessun risultato",
+      "description": "Prova con un nome di file, un simbolo o una frase del codice."
+    },
+    "back": "Indietro",
+    "folderEmpty": "Questa cartella è vuota.",
+    "backToFiles": "File",
+    "lineWindow": "Righe {start}–{end} di {total}",
+    "linesAriaLabel": "Righe di {name}",
+    "pagesAriaLabel": "Pagine del file",
+    "previous": "Precedente",
+    "next": "Successiva",
+    "selectedLine": "Riga {start}",
+    "selectedLines": "Righe {start}–{end}",
+    "wholeFile": "Intero file",
+    "addToPrompt": "Aggiungi al prompt",
+    "errors": {
+      "loadFiles": "Impossibile caricare i file.",
+      "openFolder": "Impossibile aprire questa cartella.",
+      "search": "Ricerca non riuscita.",
+      "openFile": "Impossibile aprire questo file."
+    }
+  },
+  "previewPanel": {
+    "ariaLabel": "Anteprima live",
+    "closeAriaLabel": "Chiudi l’anteprima",
+    "eyebrow": "Azione del progetto",
+    "title": "Anteprima",
+    "reloadAriaLabel": "Ricarica l’anteprima",
+    "openInBrowserAriaLabel": "Apri l’anteprima nel browser",
+    "unavailable": "Anteprima non disponibile",
+    "widthAriaLabel": "Larghezza dell’anteprima",
+    "responsiveAriaLabel": "anteprima responsive",
+    "tabletAriaLabel": "anteprima tablet",
+    "mobileAriaLabel": "anteprima mobile",
+    "frameTitle": "Anteprima del progetto",
+    "empty": {
+      "title": "Ancora nessuna anteprima locale",
+      "description": "Esegui un’azione del progetto in ascolto sulla porta di sviluppo dell’attività."
+    }
+  },
+  "draftPullRequest": {
+    "status": {
+      "merged": "Unita",
+      "closed": "Chiusa",
+      "draft": "Bozza",
+      "changesRequested": "Modifiche richieste",
+      "checksFailing": "Controlli non superati",
+      "readyToMerge": "Pronta per il merge",
+      "checksRunning": "Controlli in corso",
+      "open": "Aperta",
+      "draftCreated": "Bozza creata"
+    },
+    "item": {
+      "needsCommit": "Commit necessario",
+      "noChanges": "Nessuna modifica",
+      "readyFor": "Pronta per {branch}",
+      "baseBranch": "il branch di base",
+      "unavailable": "Non disponibile"
+    },
+    "review": {
+      "approved": "Revisione approvata",
+      "changesRequested": "Modifiche richieste",
+      "pending": "Revisione in attesa"
+    },
+    "ci": {
+      "passing": "Controlli superati",
+      "failing": "Controlli non superati",
+      "running": "Controlli in corso"
+    },
+    "checkState": "{state, select, passing {superato} failing {non superato} pending {in attesa} other {{state}}}",
+    "updatedAt": "Aggiornata {time}",
+    "checks": "Controlli",
+    "reviewFeedback": "Feedback della revisione",
+    "reviewer": "Revisore",
+    "fixWithAgent": "Correggi con l’agente",
+    "resolve": "Risolvi",
+    "markReady": "Segna come pronta",
+    "addressFeedback": "Gestisci il feedback",
+    "fixChecks": "Correggi i controlli",
+    "merge": "Esegui merge",
+    "automationOptions": {
+      "fixFailingChecks": "Correggi i controlli non superati",
+      "fixFailingChecksHint": "{count, plural, one {Fino a # tentativo dell’agente per errore} other {Fino a # tentativi dell’agente per errore}}",
+      "markReady": "Segna come pronta",
+      "markReadyHint": "Dopo il superamento dei controlli",
+      "merge": "Esegui merge",
+      "mergeHint": "Dopo l’approvazione e i controlli",
+      "completeLinkedIssues": "Completa le issue collegate",
+      "completeLinkedIssuesHint": "Dopo gli ultimi aggiornamenti e tutti i merge",
+      "archiveTask": "Archivia l’attività",
+      "archiveTaskHint": "Dopo tutti i merge"
+    },
+    "loadError": "Impossibile preparare la consegna su GitHub.",
+    "sectionAriaLabel": "Completa con GitHub",
+    "title": "Completa con GitHub",
+    "summary": {
+      "published": "{count, plural, one {# pubblicata} other {# pubblicate}}",
+      "toResolve": "{count, plural, one {# elemento da risolvere} other {# elementi da risolvere}}",
+      "ready": "{count, plural, one {# pronta} other {# pronte}}"
+    },
+    "automation": "Automazione",
+    "automationAriaLabel": "Automazione della consegna",
+    "refreshAriaLabel": "Aggiorna le pull request",
+    "attempt": {
+      "created": "{count, plural, one {# creata} other {# create}}",
+      "failed": "{count, plural, one {# non riuscita} other {# non riuscite}}",
+      "failureHint": "Risolvi il problema nel repository interessato e riprova: le bozze già create non verranno ricreate."
+    },
+    "allMerged": "Tutte le pull request sono state unite.",
+    "archiveTask": "Archivia l’attività",
+    "githubAccount": "Account GitHub",
+    "connected": "Connesso a questo progetto",
+    "addAccount": "Aggiungi un account a questo progetto",
+    "addGithub": "Aggiungi GitHub",
+    "commitMessagePlaceholder": "Messaggio di commit",
+    "commitRepositories": "{count, plural, one {Esegui il commit in # repository} other {Esegui il commit in # repository}}",
+    "githubAccountAriaLabel": "Account GitHub",
+    "titlePlaceholder": "Titolo della pull request",
+    "bodyPlaceholder": "Contesto facoltativo per i revisori…",
+    "repositories": "Repository",
+    "selectedOf": "{selected} di {total}",
+    "includeAriaLabel": "Includi {name}",
+    "into": "in {branch}",
+    "editOverride": "Modifica titolo o contesto",
+    "createDrafts": "{count, plural, one {Crea # bozza di pull request} other {Crea # bozze di pull request}}",
+    "createConfirm": {
+      "title": "{count, plural, one {Creare # bozza di pull request?} other {Creare # bozze di pull request?}}",
+      "message": "Verranno eseguiti il push dei branch selezionati dell’attività e poi la creazione delle bozze nell’ordine mostrato. Le bozze esistenti restano invariate.",
+      "confirm": "Crea bozze"
+    },
+    "mergeConfirm": {
+      "title": "Eseguire il merge di {name}?",
+      "message": "GitHub unirà questa pull request con il metodo di merge predefinito del repository. Da qui non potrai annullare l’operazione.",
+      "confirm": "Esegui merge"
+    },
+    "resolveConfirm": {
+      "title": "Risolvere questo thread di revisione?",
+      "message": "Segna questa conversazione di revisione su GitHub come risolta. Il thread resta visibile nella cronologia di GitHub.",
+      "confirm": "Risolvi thread"
+    },
+    "readyConfirm": {
+      "title": "Segnare {name} come pronta?",
+      "pullRequest": "la pull request",
+      "message": "Rimuove lo stato di bozza e richiede la revisione su GitHub.",
+      "confirm": "Segna come pronta"
+    }
+  },
+  "sourceUpdate": {
+    "ariaLabel": "Aggiornamenti del lavoro collegato",
+    "title": "Lavoro collegato",
+    "completeIssue": "Completa issue",
+    "cancel": "Annulla",
+    "postAnother": "Pubblicane un altro",
+    "postUpdate": "Pubblica aggiornamento",
+    "needsAttention": "Richiede attenzione",
+    "completed": "Completata",
+    "posted": "Pubblicato",
+    "placeholder": "Scrivi un aggiornamento per {target}…",
+    "progress": "Avanzamento",
+    "finalResult": "Risultato finale",
+    "typeAriaLabel": "Tipo di aggiornamento",
+    "useLatestSummary": "Usa l’ultimo riepilogo",
+    "postTo": "Pubblica su {provider}",
+    "completeConfirm": {
+      "title": "Completare {target}?",
+      "issue": "la issue",
+      "linearMessage": "Sposta questa issue di Linear nello stato di completamento del team.",
+      "githubMessage": "Chiude questa issue di GitHub. La discussione e la cronologia restano disponibili.",
+      "confirm": "Completa issue"
+    }
+  },
+  "repositoryLocalChanges": {
+    "ariaLabel": "Modifiche locali in {name}",
+    "heading": "{count, plural, one {{name} ha # modifica locale} other {{name} ha # modifiche locali}}",
+    "hideDiff": "Nascondi differenze",
+    "viewDiff": "Mostra differenze",
+    "moreFiles": "{count, plural, one {# file in più} other {# file in più}}",
+    "loadError": "Impossibile caricare le modifiche locali. Riprova.",
+    "closeAndRetry": "Chiudi e riprova",
+    "binary": "File binario modificato.",
+    "noChanges": "Non restano modifiche locali. Aggiorna per aggiornare questo pannello."
+  },
+  "deliveryAutomation": {
+    "error": "L’automazione della consegna non può continuare."
+  },
+  "developerTools": {
+    "comments": "{count, plural, one {# commento} other {# commenti}}",
+    "attachments": "{count, plural, one {# allegato} other {# allegati}}"
+  },
+  "workspaceUsage": {
+    "explanation": "Spazio approssimativo che Cowork occupa per questa attività: la sua area di lavoro, la copia di confronto e i dati di ripristino. Non sono conteggiati la tua cartella né la cronologia Git condivisa dai worktree. Su macOS le copie condividono lo spazio su disco con la loro origine, quindi eliminare un’attività può liberare molto meno di quanto indicato.",
+    "storage": "Spazio di archiviazione",
+    "measuring": "Misurazione…",
+    "notMeasured": "Non ancora misurato",
+    "taskSize": "~{size}",
+    "taskSizeUpdating": "~{size} · aggiornamento…",
+    "recovery": "Ripristino",
+    "recoveryOfThat": "di cui {size}",
+    "allTasks": "Tutte le attività"
+  },
+  "repositorySetup": {
+    "invalidBranch": "Usa un nome di branch Git valido, ad esempio {example}."
+  },
+  "gitIdentity": {
+    "saveFailed": "Impossibile salvare l’identità Git.",
+    "title": "Git deve sapere chi sei",
+    "body": "Per i commit su questo computer servono un nome e un’email. Salvali una volta e il commit verrà rieseguito. Quello che Git ha già viene mantenuto.",
+    "namePlaceholder": "Il tuo nome",
+    "nameAriaLabel": "Nome per i commit Git",
+    "emailAriaLabel": "Email per i commit Git",
+    "saving": "Salvataggio…",
+    "save": "Salva ed esegui commit"
+  },
+  "deleteProject": {
+    "title": "Eliminare questo progetto Code?",
+    "message": "Viene rimossa la configurazione del progetto. Le cartelle di origine non vengono toccate. I progetti con attività di codice non possono essere eliminati.",
+    "confirm": "Elimina progetto",
+    "deleting": "Eliminazione…",
+    "failed": "Impossibile eliminare questo progetto Code."
+  },
+  "renameTask": {
+    "failed": "Impossibile rinominare questa attività di codice.",
+    "title": "Rinomina attività di codice",
+    "label": "Nome dell’attività",
+    "cancel": "Annulla",
+    "rename": "Rinomina"
+  },
+  "recovery": {
+    "title": "Riapri attività",
+    "subtitle": "Scegli dove riaprire questa attività. Poi invia un messaggio per riprendere il lavoro interrotto.",
+    "computerAriaLabel": "Computer per l’attività ripresa",
+    "recommended": "Consigliato",
+    "savedCopy": "Copia di lavoro salvata",
+    "freshCopy": "Nuova copia di lavoro",
+    "empty": {
+      "title": "Nessun computer compatibile online",
+      "body": "Riporta online il computer originale o collega un altro computer compatibile."
+    },
+    "recreateWarning": "Si riparte dalle revisioni salvate del repository. Le modifiche non inviate con push sul computer precedente non possono seguire l’attività.",
+    "cancel": "Annulla",
+    "reopening": "Riapertura…",
+    "startFresh": "Usa nuova copia"
+  },
+  "projectResources": {
+    "title": "Codice",
+    "errors": {
+      "chooseFolder": "Impossibile scegliere quella cartella.",
+      "duplicateResource": "Quella risorsa è già in questo progetto.",
+      "inspectFolder": "Impossibile analizzare quella cartella.",
+      "invalidUrl": "Inserisci l’URL di un repository Git, ad esempio {example}.",
+      "duplicateRepository": "Quel repository è già in questo progetto."
+    },
+    "status": {
+      "offline": "{computer} offline",
+      "computerOffline": "Computer offline",
+      "anyComputer": "Qualsiasi computer",
+      "only": "Solo {computer}",
+      "onlyThisComputer": "Solo questo computer"
+    },
+    "baseBranch": "Branch di base",
+    "baseBranchPlaceholder": "Predefinito del repository",
+    "commands": "Comandi",
+    "optional": "(facoltativo)",
+    "setup": "Configurazione",
+    "setupAriaLabel": "Comando di configurazione",
+    "validate": "Convalida",
+    "validateAriaLabel": "Comando di convalida",
+    "run": "Esecuzione",
+    "runAriaLabel": "Comando di esecuzione",
+    "remove": "Rimuovi",
+    "removeAriaLabel": "Rimuovi {name}",
+    "adding": "Aggiunta…",
+    "addFolder": "Aggiungi cartella",
+    "addRepository": "Aggiungi repository",
+    "chooseFolder": "Scegli una cartella",
+    "runsOnThisComputer": "Viene eseguito su questo computer",
+    "cloneRepository": "Clona un repository",
+    "runsOnAnyComputer": "Viene eseguito su qualsiasi computer"
+  },
+  "projectConnectedTools": {
+    "title": "Connettori",
+    "usedByRepository": " · Usato da un repository",
+    "reconnect": "Riconnetti",
+    "manage": "Gestisci connettori",
+    "empty": "Collega GitHub o Linear per avviare attività dalle issue e consegnare pull request.",
+    "open": "Apri Connettori"
+  },
+  "projectConnections": {
+    "backToSettings": "Torna alle impostazioni del progetto",
+    "backToTask": "Torna all’attività"
+  },
+  "projectActions": {
+    "settings": "Impostazioni del progetto",
+    "delete": "Elimina progetto",
+    "noTask": "Apri un’attività di codice prima di eseguire un’azione del progetto."
+  },
+  "projectDefaults": {
+    "invalidEnvironmentLine": "La riga dell’ambiente deve avere il formato NOME=valore: {line}"
+  },
+  "projectSettings": {
+    "title": "Impostazioni del progetto",
+    "newTitle": "Nuovo progetto di codice",
+    "subtitle": "Le attività di questo progetto ne condividono codice, connettori e impostazioni predefinite.",
+    "name": "Nome del progetto",
+    "skills": "Competenze",
+    "teamSetup": {
+      "title": "Configurazione del team",
+      "summary": "{branch} · {count} inclusi",
+      "updateAvailable": "Aggiornamento disponibile",
+      "checkForUpdates": "Cerca aggiornamenti",
+      "reviewUpdate": "Rivedi aggiornamento",
+      "newerRevision": "È disponibile una revisione più recente della configurazione del team.",
+      "applyUpdate": "Applica aggiornamento",
+      "includedGuidance": "Linee guida incluse",
+      "includedCount": "{enabled} di {total}",
+      "details": "Dettagli",
+      "source": "Origine",
+      "revision": "Revisione",
+      "checking": "Verifica…",
+      "openSource": "Apri origine",
+      "openLocalCopy": "Apri copia locale"
+    },
+    "defaults": {
+      "title": "Impostazioni predefinite delle attività",
+      "agent": "Agente",
+      "agentAriaLabel": "Agente di codice predefinito",
+      "model": "Modello",
+      "modelAriaLabel": "Modello di codice predefinito",
+      "modelPlaceholder": "Seleziona modello",
+      "noModels": "Nessun modello di codice disponibile",
+      "reasoning": "Ragionamento",
+      "reasoningAriaLabel": "Livello di ragionamento predefinito",
+      "permissions": "Autorizzazioni",
+      "permissionsAriaLabel": "Autorizzazioni di codice predefinite"
+    },
+    "environment": {
+      "title": "Ambiente",
+      "ports": "Porte di sviluppo",
+      "portsHelp": "Ogni attività riceve una propria porta libera per ciascun nome.",
+      "variables": "Variabili d’ambiente",
+      "variablesHelp": "Visibili a tutte le attività di questo progetto. Non inserire qui dati segreti."
+    },
+    "errors": {
+      "inspectPlaybook": "Impossibile analizzare il playbook del team.",
+      "checkAvailability": "Impossibile verificare la disponibilità delle risorse.",
+      "nameRequired": "Assegna un nome a questo progetto Code.",
+      "resourceRequired": "Aggiungi almeno un repository o una cartella.",
+      "save": "Impossibile salvare questo progetto Code.",
+      "checkTeamSetup": "Impossibile cercare aggiornamenti della configurazione del team.",
+      "applyTeamSetup": "Impossibile applicare l’aggiornamento della configurazione del team.",
+      "updateGuidance": "Impossibile aggiornare le linee guida della configurazione del team.",
+      "openRepository": "Impossibile aprire quel repository."
+    },
+    "cancel": "Annulla",
+    "saving": "Salvataggio…",
+    "creating": "Creazione…",
+    "save": "Salva modifiche",
+    "create": "Crea progetto"
+  },
+  "runtimeControls": {
+    "tryAgain": "Riprova.",
+    "title": "Impostazioni dell’attività",
+    "subtitle": "Queste impostazioni si applicano ai prossimi turni di questa attività di codice.",
+    "model": "Modello",
+    "modelAriaLabel": "Modello dell’attività",
+    "reasoning": "Ragionamento",
+    "modelDefault": "Predefinito del modello",
+    "reasoningAriaLabel": "Livello di ragionamento",
+    "effortPlaceholder": "Livello",
+    "permissions": "Autorizzazioni",
+    "permissionsAriaLabel": "Autorizzazioni dell’attività",
+    "personality": "Personalità",
+    "personalityAriaLabel": "Personalità dell’agente",
+    "personalities": {
+      "pragmatic": "Pragmatica",
+      "friendly": "Cordiale",
+      "none": "Nessuna personalità"
+    },
+    "fast": {
+      "title": "Veloce",
+      "description": "Usa l’inferenza prioritaria quando il modello la supporta.",
+      "ariaLabel": "Inferenza veloce"
+    },
+    "network": {
+      "title": "Accesso alla rete",
+      "includedWithFullAccess": "Incluso con l’accesso completo.",
+      "description": "Consenti ai comandi di raggiungere servizi esterni."
+    },
+    "webSearch": {
+      "title": "Ricerca web",
+      "description": "Consenti all’agente di codice di cercare sul web quando serve."
+    },
+    "folders": {
+      "title": "Cartelle aggiuntive",
+      "description": "Consenti a questa attività di lavorare su cartelle locali correlate.",
+      "add": "Aggiungi cartella",
+      "removeAriaLabel": "Rimuovi la cartella aggiuntiva {path}"
+    },
+    "sandbox": {
+      "title": "Sandbox di Windows",
+      "checking": "Verifica…",
+      "unknown": "sconosciuto",
+      "unavailable": "non disponibile",
+      "setupStarted": "configurazione avviata",
+      "setupFailed": "configurazione non riuscita",
+      "ready": "pronta",
+      "setUp": "Configura"
+    },
+    "applyFailed": "Impossibile applicare le impostazioni dell’attività",
+    "cancel": "Annulla",
+    "apply": "Applica"
+  },
+  "extensions": {
+    "alsoInstalled": "Installata anche in {location}",
+    "alsoInstalledAt": "Installata anche in {location} · {path}",
+    "loadFailed": "Impossibile caricare le estensioni dell’attività.",
+    "title": "Estensioni dell’attività",
+    "subtitle": "Funzionalità caricate da questa cartella, dalle tue competenze di Codex e dalla Libreria delle competenze di Cowork.",
+    "typesAriaLabel": "Tipi di estensione",
+    "tabs": {
+      "skills": "Competenze",
+      "mcp_servers": "MCP",
+      "plugins": "Plugin",
+      "apps": "App",
+      "hooks": "Hook"
+    },
+    "refreshAriaLabel": "Aggiorna le estensioni dell’attività",
+    "loading": "Caricamento {tab, select, skills {delle competenze} mcp_servers {dei server MCP} plugins {dei plugin} apps {delle app} hooks {degli hook} other {delle estensioni}}…",
+    "empty": "{tab, select, skills {Nessuna competenza attiva} mcp_servers {Nessun server MCP attivo} plugins {Nessun plugin attivo} apps {Nessuna app attiva} hooks {Nessun hook attivo} other {Nessuna estensione attiva}} per questa attività.",
+    "sourceErrors": "Non è stato possibile analizzare alcune origini delle estensioni",
+    "config": {
+      "title": "Configurazione della modalità codice",
+      "description": "Questa configurazione privata di Codex è condivisa dalle attività di codice. I file {file} dei progetti vengono applicati automaticamente sopra di essa.",
+      "open": "Apri configurazione"
+    }
+  },
+  "projects": {
+    "viewTasks": "Mostra le attività in {name}",
+    "resourceCount": "{count, plural, one {# risorsa} other {# risorse}}",
+    "actionsAriaLabel": "Azioni per {name}",
+    "title": "Progetti",
+    "subtitle": "Repository, cartelle, competenze e impostazioni predefinite condivisi dalle attività di codice.",
+    "new": "Nuovo progetto",
+    "search": "Cerca progetti",
+    "sort": {
+      "updated": "Aggiornati di recente",
+      "name": "Nome"
+    },
+    "empty": {
+      "title": "Ancora nessun progetto",
+      "description": "Crea un progetto per riunire repository e cartelle correlati.",
+      "action": "Crea il tuo primo progetto"
+    },
+    "listAriaLabel": "Progetti Code",
+    "loadFailed": "Impossibile caricare i progetti Code."
+  },
+  "projectPicker": {
+    "resourceCount": "{count, plural, one {# risorsa} other {# risorse}}",
+    "noProject": "Nessun progetto",
+    "localFolder": "Cartella locale",
+    "projects": "Progetti",
+    "newProject": "Nuovo progetto",
+    "search": "Cerca progetti",
+    "noResults": "Nessun progetto trovato",
+    "ariaLabel": "Progetto Code",
+    "menuLabel": "Progetto"
+  },
+  "skills": {
+    "origin": {
+      "all": "Tutte le origini",
+      "team": "Team",
+      "personal": "Tue"
+    },
+    "kind": {
+      "instructions": "Istruzioni",
+      "workflow": "Flusso di lavoro",
+      "skill": "Competenza"
+    },
+    "unversioned": "Senza versione",
+    "cancel": "Annulla",
+    "close": "Chiudi",
+    "save": "Salva",
+    "saving": "Salvataggio…",
+    "usedBy": "Usata da {count, plural, one {# progetto} other {# progetti}}",
+    "updateAvailable": "Aggiornamento disponibile",
+    "addSource": {
+      "title": "Aggiungi origine del team",
+      "subtitle": "Collega un repository Git che contiene competenze, istruzioni o flussi di lavoro.",
+      "repositoryLabel": "Repository o cartella",
+      "choose": "Scegli",
+      "nameLabel": "Nome",
+      "optional": "Facoltativo",
+      "namePlaceholder": "Standard di ingegneria",
+      "branchLabel": "Branch",
+      "repositoryRequired": "Scegli un repository Git o inseriscine l’URL.",
+      "addFailed": "Impossibile aggiungere quell’origine del team.",
+      "folderFailed": "Impossibile scegliere quella cartella.",
+      "adding": "Aggiunta…",
+      "add": "Aggiungi origine"
+    },
+    "projects": {
+      "title": "Scegli i progetti",
+      "subtitle": "Rendi questo elemento disponibile alle attività dei progetti Code selezionati.",
+      "folders": "{count, plural, one {# cartella} other {# cartelle}}",
+      "empty": "Crea un progetto Code prima di assegnare le competenze del team."
+    },
+    "source": {
+      "fallbackTitle": "Origine del team",
+      "repository": "Repository",
+      "itemsUnit": "{count, plural, one {elemento} other {elementi}}",
+      "projectsUnit": "{count, plural, one {progetto} other {progetti}}",
+      "openRepository": "Apri repository",
+      "checkUpdates": "Cerca aggiornamenti",
+      "update": "Aggiorna origine",
+      "remove": "Rimuovi origine"
+    },
+    "view": {
+      "title": "Competenze",
+      "subtitle": "I tuoi flussi di lavoro e gli standard di ingegneria del tuo team, pronti per le attività Code.",
+      "addPersonal": "Aggiungi competenza personale",
+      "searchPlaceholder": "Cerca competenze",
+      "noMatch": "Nessuna competenza corrisponde alla ricerca.",
+      "emptyPersonal": {
+        "title": "Ancora nessuna competenza personale",
+        "description": "Scrivi le istruzioni o importa un file SKILL.md. Non serve un repository Git.",
+        "action": "Aggiungi la tua prima competenza"
+      },
+      "emptyTeam": {
+        "title": "Ancora nessuna origine del team",
+        "description": "Collega un repository Git per condividere gli standard di ingegneria tra i progetti."
+      },
+      "emptyView": "Nessuna competenza in questa vista.",
+      "viewItem": "Visualizza {name}",
+      "moreActions": "Altre azioni per {name}",
+      "edit": "Modifica",
+      "delete": "Elimina",
+      "projectCount": "{count, plural, one {# progetto} other {# progetti}}",
+      "available": "Disponibile",
+      "disabled": "Disattivata",
+      "sourceFilter": "Origine",
+      "itemCount": "{count, plural, one {# elemento} other {# elementi}}",
+      "needsAttention": "Richiede attenzione",
+      "sourceDetails": "Dettagli dell’origine",
+      "sourceUnavailable": "Origine non disponibile: aprila per i dettagli.",
+      "noItemsMatch": "Nessun elemento corrisponde a questa ricerca.",
+      "noSharedItems": "Nessun elemento condiviso trovato.",
+      "personalDescription": "Competenze personali disponibili nella modalità codice",
+      "builtInDescription": "Competenze di ingegneria gestite da MindsHub"
+    },
+    "errors": {
+      "updateProjects": "Impossibile aggiornare le competenze del progetto.",
+      "updateSource": "Impossibile aggiornare quell’origine.",
+      "openRepository": "Impossibile aprire quel repository.",
+      "removeSource": "Impossibile rimuovere quell’origine.",
+      "deleteSkill": "Impossibile eliminare quella competenza.",
+      "loadLibrary": "Impossibile caricare la Libreria delle competenze."
+    },
+    "removeConfirm": {
+      "title": "Rimuovere l’origine del team?",
+      "message": "{name} verrà rimossa da questa Libreria delle competenze. Il suo repository Git non verrà modificato.",
+      "busy": "Rimozione…"
+    },
+    "deleteConfirm": {
+      "title": "Eliminare la competenza personale?",
+      "message": "{name} verrà rimossa dalla tua libreria. Le attività esistenti conservano la propria copia salvata.",
+      "confirm": "Elimina competenza",
+      "busy": "Eliminazione…"
+    }
+  },
+  "personalSkill": {
+    "saveFailed": "Impossibile salvare questa competenza. Riprova.",
+    "errors": {
+      "fileType": "Scegli un file di testo SKILL.md o .skill.",
+      "fileTooLarge": "Scegli una competenza di dimensioni inferiori a 120 KB.",
+      "fileUnreadable": "Impossibile leggere questo file. Scegli una competenza in formato testo UTF-8.",
+      "instructionsTooLong": "Le istruzioni non devono superare 120 KB."
+    },
+    "fields": {
+      "name": "Nome",
+      "namePlaceholder": "ad es. Rivedi il mio TypeScript",
+      "description": "Quando usarla",
+      "descriptionHelp": "Aiuta l’agente a capire quando questa competenza è pertinente.",
+      "descriptionPlaceholder": "Rivedi le modifiche TypeScript per verificarne la chiarezza e la gestione affidabile degli errori.",
+      "instructions": "Istruzioni",
+      "instructionsHelp": "Scrivi o incolla i passaggi e gli standard che l’agente deve seguire.",
+      "instructionsPlaceholder": "Inizia leggendo i file modificati…",
+      "available": "Disponibile per l’agente",
+      "keepRestrictions": "Le restrizioni esistenti dei progetti verranno mantenute.",
+      "availableHint": "Disponibile per le nuove attività Code su questo computer."
+    },
+    "editTitle": "Modifica competenza personale",
+    "addTitle": "Aggiungi competenza personale",
+    "subtitle": "Per le tue attività Code. Non serve un repository Git.",
+    "loading": "Caricamento della competenza…",
+    "tryAgain": "Riprova",
+    "tabs": {
+      "ariaLabel": "Aggiungi una competenza personale",
+      "write": "Scrivi le istruzioni",
+      "import": "Importa file"
+    },
+    "import": {
+      "fileAriaLabel": "File della competenza",
+      "title": "Usa il tuo SKILL.md",
+      "description": "Scegli un file di testo con nome, descrizione e istruzioni. Verrà copiato nelle tue competenze Code. Il file originale resta invariato.",
+      "chooseAnother": "Scegli un altro file",
+      "choose": "Scegli file",
+      "limits": "SKILL.md o .skill · Fino a 120 KB"
+    },
+    "cancel": "Annulla",
+    "saving": "Salvataggio…",
+    "saveChanges": "Salva modifiche",
+    "add": "Aggiungi competenza",
+    "discard": {
+      "title": "Annullare le modifiche?",
+      "message": "Le modifiche non salvate alla competenza andranno perse.",
+      "confirm": "Annulla modifiche",
+      "cancel": "Continua a modificare"
+    }
+  },
+  "skillDetail": {
+    "loadFailed": "Impossibile caricare questa competenza.",
+    "rendered": "Formattata",
+    "viewSource": "Mostra sorgente",
+    "files": "File"
+  },
+  "projectSkills": {
+    "heading": {
+      "added": "{count, plural, one {# competenza aggiunta} other {# competenze aggiunte}}",
+      "choose": "Scegli le competenze",
+      "included": "{count, plural, one {# competenza inclusa} other {# competenze incluse}}"
+    },
+    "summary": {
+      "selected": "{count} selezionate",
+      "available": "{count} disponibili",
+      "included": "{count} incluse",
+      "none": "Nessuna competenza Code disponibile"
+    },
+    "footer": {
+      "selected": "{count} selezionate per questo progetto",
+      "maintained": "{count, plural, one {# competenza gestita inclusa automaticamente} other {# competenze gestite incluse automaticamente}}",
+      "default": "Scegli le linee guida che ogni attività deve ricevere"
+    },
+    "loadingEngineering": "Caricamento delle competenze di ingegneria…",
+    "search": "Cerca competenze Code",
+    "loading": "Caricamento delle competenze…",
+    "maintained": "Gestita da MindsHub",
+    "included": "Inclusa",
+    "empty": "Nessuna competenza Code è ancora disponibile per questa organizzazione.",
+    "openSkills": "Apri Competenze"
+  },
+  "connectors": {
+    "title": "Connettori",
+    "subtitle": "Collega gli strumenti di sviluppo una sola volta, poi aggiungili a qualsiasi progetto Code.",
+    "ariaLabel": "Connettori Code",
+    "providers": {
+      "github": "Avvia attività dalle issue, crea bozze di pull request e segui revisioni e controlli.",
+      "linear": "Avvia attività dalle issue di Linear e pubblica lì gli aggiornamenti sull’avanzamento."
+    },
+    "usage": {
+      "none": "Non usato da alcun progetto",
+      "used": "Usato da {count, plural, one {# progetto} other {# progetti}}"
+    },
+    "errors": {
+      "loadOptions": "Impossibile caricare le opzioni di connessione di {provider}.",
+      "connect": "Impossibile connettere {provider}.",
+      "validate": "Impossibile convalidare questa credenziale.",
+      "postConnect": "Connesso, ma non è stato possibile completare l’aggiornamento di Code: {reason}",
+      "postConnectFallback": "prova a riaprire Connettori.",
+      "disconnect": "Impossibile disconnettere questo account."
+    },
+    "returnProject": {
+      "before": "Gli account che colleghi qui vengono aggiunti a",
+      "after": ". Collegane quanti ne servono, poi torna indietro."
+    },
+    "returnTask": "Collega un account, poi torna alla tua attività.",
+    "backToTask": "Torna all’attività",
+    "status": {
+      "reconnect": "{count, plural, one {# account · da riconnettere} other {# account · da riconnettere}}",
+      "connectedCount": "{count} connessi",
+      "notConnected": "Non connesso",
+      "reconnectNeeded": "Riconnessione necessaria",
+      "connected": "Connesso"
+    },
+    "connecting": "Connessione…",
+    "addAccount": "Aggiungi account",
+    "connect": "Connetti",
+    "browser": {
+      "title": "Continua nel browser",
+      "hint": "Torna qui quando {provider} avrà completato l’autorizzazione."
+    },
+    "cancel": "Annulla",
+    "reconnecting": "Riconnessione…",
+    "reconnect": "Riconnetti",
+    "credential": {
+      "title": "Connetti {provider}",
+      "githubSubtitle": "Usa un token di accesso personale per questa build locale.",
+      "linearSubtitle": "Usa una chiave API personale per questa build locale."
+    },
+    "disconnect": {
+      "action": "Disconnetti",
+      "title": "Disconnettere {name}?",
+      "titleFallback": "Disconnettere questo account?",
+      "message": "I progetti che usano questo account manterranno il riferimento, ma Code non potrà leggere né pubblicare tramite l’account finché non lo riconnetti."
+    }
+  },
+  "commandPalette": {
+    "skillFallback": "Competenza MindsHub",
+    "view": "Visualizza",
+    "ariaLabel": "Competenze e comandi",
+    "search": "Cerca competenze e comandi",
+    "skillsSection": "Competenze MindsHub",
+    "commandsSection": "Comandi {agent}",
+    "empty": "Nessuna competenza o comando corrispondente"
+  },
+  "sidebarSessions": {
+    "title": "Attività di Code",
+    "noProject": "Nessun progetto",
+    "errors": {
+      "pin": "Impossibile fissare questa attività.",
+      "unpin": "Impossibile rimuovere questa attività dalle fissate."
+    },
+    "untitled": "Attività di codice senza titolo",
+    "untitledLower": "attività di codice senza titolo",
+    "rowAriaLabel": "{title}, {status}{unread, select, yes {, non letta} other {}}, {repository}, {updated}",
+    "actionsFor": "Azioni per {name}",
+    "organize": "Organizza",
+    "organizeAriaLabel": "Organizza le attività di codice",
+    "projects": "Progetti",
+    "taskList": "Elenco attività",
+    "sort": "Ordina",
+    "priority": "Priorità",
+    "lastUpdated": "Ultimo aggiornamento",
+    "searchPlaceholder": "Trova un’attività",
+    "searchAriaLabel": "Trova un’attività di codice",
+    "noMatch": "Nessuna attività di codice corrisponde alla ricerca.",
+    "empty": "Avvia un’attività di codice per conservare qui la conversazione e le modifiche.",
+    "pinned": "Fissate",
+    "archived": "Archiviate"
+  },
+  "tasksView": {
+    "status": {
+      "all": "Tutti gli stati",
+      "attention": "Richiede attenzione",
+      "inProgress": "In corso",
+      "completed": "Completate",
+      "failed": "Non riuscite",
+      "readyOrStopped": "Pronte o arrestate"
+    },
+    "sort": {
+      "updated": "Aggiornate di recente",
+      "created": "Create di recente",
+      "title": "Titolo"
+    },
+    "unavailableProject": "Progetto non disponibile",
+    "filters": {
+      "project": "Progetto",
+      "allProjects": "Tutti i progetti",
+      "status": "Stato"
+    },
+    "allTasks": "Tutte le attività",
+    "projectSubtitle": "Attività di codice di questo progetto.",
+    "projectActions": "Azioni di {name}",
+    "newTask": "Nuova attività",
+    "search": "Cerca attività",
+    "count": "{count, plural, one {# attività} other {# attività}}",
+    "filteredCount": "{shown} attività su {total}",
+    "noMatch": "Nessuna attività corrispondente",
+    "clearFilters": "Cancella filtri",
+    "emptyArchived": {
+      "title": "Nessuna attività archiviata",
+      "description": "Le attività che archivi verranno visualizzate qui."
+    },
+    "empty": {
+      "title": "Ancora nessuna attività",
+      "description": "Un’attività raccoglie una conversazione di codice e le modifiche che apporta a una cartella o a un repository.",
+      "action": "Avvia la tua prima attività"
+    },
+    "projectTasks": "Attività del progetto"
+  },
+  "taskMenu": {
+    "errors": {
+      "archive": "Impossibile archiviare questa attività.",
+      "restore": "Impossibile ripristinare questa attività.",
+      "delete": "Impossibile eliminare questa attività."
+    },
+    "stopFirst": "Prima arresta il turno in corso.",
+    "pin": "Fissa",
+    "unpin": "Non fissare più",
+    "rename": "Rinomina",
+    "archive": "Archivia",
+    "restore": "Ripristina",
+    "delete": "Elimina",
+    "deleteConfirm": {
+      "title": "Eliminare questa attività di codice?",
+      "message": "Verranno rimossi la cronologia dell’attività ed eventuali copie di lavoro isolate. I tuoi file originali non verranno toccati.",
+      "confirm": "Elimina attività"
+    }
+  },
+  "taskList": {
+    "loadFailed": "Impossibile caricare le attività di codice."
+  },
+  "taskActions": {
+    "refreshFailed": "{completed}, ma non è stato possibile aggiornare l’elenco delle attività: {reason}",
+    "tryAgainShortly": "riprova tra poco",
+    "operationFailed": "Operazione di codice non riuscita.",
+    "completed": {
+      "operation": "L’operazione è stata completata",
+      "started": "L’attività è stata avviata",
+      "forked": "L’attività è stata duplicata",
+      "archived": "L’attività è stata archiviata",
+      "restored": "L’attività è stata ripristinata"
+    },
+    "errors": {
+      "start": "Impossibile avviare questa attività.",
+      "fork": "Impossibile duplicare questa attività di codice.",
+      "update": "Impossibile aggiornare questa attività di codice."
+    }
+  },
+  "taskAttention": {
+    "answer": "Un’attività attende la tua risposta.",
+    "approval": "Un’attività attende la tua approvazione.",
+    "plan": "Un piano è pronto per la tua revisione.",
+    "failed": "Un’attività richiede attenzione prima di poter continuare.",
+    "finished": "Un’attività di codice è terminata.",
+    "bar": {
+      "ariaLabel": "Attività da gestire",
+      "unavailable": "Le notifiche desktop non sono disponibili in questa finestra.",
+      "denied": "Consenti le notifiche di MindsHub nelle impostazioni di sistema per ricevere gli avvisi.",
+      "failed": "Impossibile attivare le notifiche. Puoi comunque trovare le decisioni in «Richiede attenzione».",
+      "needsYou": "{count, plural, one {# attività ti aspetta →} other {# attività ti aspettano →}}",
+      "on": "Notifiche attive",
+      "off": "Avvisami quando non ci sono"
+    }
+  },
+  "catalog": {
+    "loadAgentsFailed": "Impossibile caricare gli agenti di codice.",
+    "loadModelsFailed": "Impossibile caricare i modelli di codice."
+  },
+  "newTask": {
+    "heading": "Cosa costruiamo?",
+    "composerAriaLabel": "Crea attività di codice",
+    "dropHint": "Trascina qui i file da allegare",
+    "editProject": "Modifica {name}",
+    "changeFolder": "Cambia cartella (attuale: {name})",
+    "chooseFolder": "Scegli cartella",
+    "localResources": "Risorse locali",
+    "promptPlaceholder": "Descrivi la modifica, i vincoli importanti e come vuoi che venga verificata…",
+    "promptAriaLabel": "Attività di codice",
+    "agentAriaLabel": "Agente di codice",
+    "agentMenuLabel": "Agente",
+    "modelAriaLabel": "Scegli modello",
+    "modelMenuLabel": "Modello",
+    "modelPlaceholder": "Seleziona modello",
+    "noModels": "Nessun modello di codice disponibile",
+    "effortLabel": "Livello di ragionamento",
+    "effortPlaceholder": "Livello",
+    "starting": "Avvio…",
+    "startPlanning": "Avvia pianificazione",
+    "startTask": "Avvia attività",
+    "automaticBranches": "Branch automatici per attività",
+    "localChangesIncluded": "Modifiche locali incluse",
+    "localChangesExcluded": "Modifiche locali escluse",
+    "loadingSource": "Caricamento della issue o della PR…",
+    "planUnavailable": "La modalità piano non è disponibile qui. Disattivala o scegli un computer che la supporti.",
+    "connectToStart": "Collega MindsHub per avviare un’attività.",
+    "mindsHubRequired": "Code viene eseguito su MindsHub. Collega il tuo account MindsHub per avviare un’attività.",
+    "connecting": "Connessione…",
+    "connectMindsHub": "Collega MindsHub"
+  },
+  "newTaskDraft": {
+    "folderUnavailable": "{name} non è disponibile. Rimuovilo e aggiungilo di nuovo nelle impostazioni del progetto.",
+    "baseBranchMissing": "{name} non trova il branch di base {branch}. Aggiornalo in {location, select, setup {«Repository e cartelle»} other {«Impostazioni progetto»}}.",
+    "sourcePromptOne": "Lavora su {id}: {title}",
+    "sourcePromptMany": "{count, plural, one {Lavora sull’elemento di lavoro collegato.} other {Lavora sui # elementi di lavoro collegati.}}",
+    "foldersCheckFailed": "Impossibile controllare le cartelle di questo progetto.",
+    "engineUnavailable": "Non disponibile",
+    "folderGone": "Questa cartella non è più disponibile. Scegline un’altra.",
+    "folderAccessFailed": "Impossibile accedere alla cartella.",
+    "folderChooseFailed": "Impossibile scegliere la cartella.",
+    "readiness": {
+      "startingTask": "Avvio dell’attività…",
+      "loadingAgent": "Caricamento dell’agente di codice…",
+      "checkingResources": "Controllo delle risorse del progetto…",
+      "checkingFolder": "Controllo della cartella…",
+      "findingComputer": "Ricerca di un computer disponibile…",
+      "addResource": "Aggiungi un repository o una cartella a questo progetto nelle impostazioni del progetto.",
+      "noComputer": "Nessun computer può eseguire questa attività.",
+      "noAgent": "Nessun agente di codice disponibile.",
+      "modelRestricted": "Un amministratore ha limitato questo modello. Scegline un altro.",
+      "addCredits": "Aggiungi crediti o scegli un modello disponibile.",
+      "noModels": "Nessun modello di codice disponibile.",
+      "chooseModel": "Scegli un modello per continuare.",
+      "chooseFolder": "Scegli una cartella per continuare.",
+      "budgetReached": "Il budget della tua organizzazione è esaurito. Scegli un modello disponibile o chiedi a un proprietario o a un amministratore di aumentarlo."
+    }
+  },
+  "executionTarget": {
+    "thisComputer": "Questo computer",
+    "readyNow": "{platform} · Pronto ora",
+    "offline": "{platform} · Offline",
+    "activeTasks": "{platform} · {count, plural, one {# attività attiva} other {# attività attive}}",
+    "ready": "{platform} · Pronto",
+    "localFolder": "Cartella locale",
+    "unavailable": "Non disponibile",
+    "computers": "Computer",
+    "cloudDescription": "Calcolo gestito on demand",
+    "comingSoon": "Prossimamente",
+    "runOn": "Esegui attività su",
+    "capacityIssue": "Al momento nessun computer online può eseguire questa attività.",
+    "offlineIssue": "{name} si trova su un computer offline.",
+    "findFailed": "Impossibile trovare questo computer.",
+    "checkFailed": "Impossibile verificare dove può essere eseguita questa attività."
+  },
+  "permissions": {
+    "ariaLabel": "Autorizzazioni di codice",
+    "menuLabel": "Autorizzazioni",
+    "readOnly": {
+      "label": "Sola lettura",
+      "title": "Esamina e spiega senza modificare i file."
+    },
+    "supervised": {
+      "label": "Chiedi prima",
+      "title": "Si ferma prima dei comandi che richiedono la tua approvazione."
+    },
+    "workspace": {
+      "label": "Auto nell’area di lavoro",
+      "title": "Lavora in autonomia nella copia isolata di questa attività."
+    },
+    "fullAccess": {
+      "label": "Accesso completo",
+      "title": "Lavora in autonomia senza restrizioni sul file system."
+    }
+  },
+  "branchSelect": {
+    "loadFailed": "Impossibile caricare i branch. Apri il selettore per riprovare.",
+    "ariaLabel": "Avvia {name} da",
+    "placeholder": "Branch predefinito",
+    "searchPlaceholder": "Trova un branch…",
+    "menuLabel": "Parti da"
+  },
+  "repositoryPicker": {
+    "resultsAriaLabel": "Repository GitHub",
+    "private": "Privato",
+    "public": "Pubblico",
+    "archivedSuffix": " · Archiviato",
+    "added": "Aggiunto",
+    "add": "Aggiungi",
+    "searchingMore": "Ricerca di altri repository…",
+    "loading": "Caricamento dei repository…",
+    "noMatches": "Nessun repository corrispondente.",
+    "noRepositories": "Nessun repository disponibile per questa connessione.",
+    "tryAgain": "Riprova",
+    "manageConnection": "Gestisci connessione",
+    "loadMore": "Carica altri repository",
+    "ariaLabel": "Aggiungi repository Git",
+    "title": "Repository GitHub",
+    "close": "Chiudi selettore repository",
+    "accountAriaLabel": "Account GitHub",
+    "accountMenuLabel": "Account",
+    "reconnectHint": "Ricollega GitHub per sfogliare i tuoi repository.",
+    "connectHint": "Collega GitHub per scegliere tra i tuoi repository.",
+    "reconnect": "Ricollega GitHub",
+    "connect": "Collega GitHub",
+    "searchPlaceholder": "Cerca repository…",
+    "searchAriaLabel": "Cerca repository",
+    "missingHint": "Manca un repository? Questa connessione potrebbe non avervi accesso.",
+    "manageAccess": "Gestisci accesso",
+    "pasteUrl": "Incolla URL repository",
+    "urlAriaLabel": "URL repository Git",
+    "loadFailed": "Impossibile caricare i repository. Riprova."
+  },
+  "taskRepositories": {
+    "checkFailed": "Impossibile controllare i repository. Aggiorna per riprovare.",
+    "ariaLabel": "Repository e cartelle",
+    "resources": "{count, plural, one {# risorsa} other {# risorse}}",
+    "localChanges": "Modifiche locali"
+  },
+  "repositoryDrawer": {
+    "branchExists": "Questo branch esiste già. Scegli un altro nome per il branch dell’attività.",
+    "remoteCheckFailed": "Impossibile controllare i branch remoti.",
+    "retryApply": "{message} Applica di nuovo per riprovare.",
+    "newTask": "Nuova attività",
+    "title": "Repository e cartelle",
+    "remoteNotice": "Scegli questo computer per impostare i branch dell’attività e includere le modifiche locali. La selezione delle risorse funziona su qualsiasi computer.",
+    "branchLabel": "Nuovo branch per questa attività",
+    "optional": "Facoltativo",
+    "branchHint": "Viene creato in ogni repository selezionato. Lascia vuoto per un nome automatico.",
+    "includeInTask": "Includi in questa attività",
+    "startFrom": "Parti da",
+    "computerOffline": "{name} è offline",
+    "requiredComputer": "Computer richiesto",
+    "onlyOn": "Solo su {name}",
+    "linkedComputer": "il computer collegato",
+    "include": "Includi {name}",
+    "localFolder": "Cartella locale · copiata in questa attività",
+    "onSelectedComputer": "Sul computer selezionato",
+    "onThisComputer": "Su questo computer: {branch}",
+    "onThisComputerClean": "Su questo computer: {branch} · nessuna modifica",
+    "checkingRepository": "Controllo del repository…",
+    "statusUnavailable": "Stato non disponibile",
+    "checkingRepositories": "Controllo dei repository…",
+    "checkoutStatus": "Stato della copia locale",
+    "refresh": "Aggiorna",
+    "localChanges": "Modifiche locali",
+    "committedTitle": "Parti dal codice con commit",
+    "committedHint": "Lascia le modifiche locali su questo computer.",
+    "includeTitle": "Includi le mie modifiche locali",
+    "includeHint": "Copiale in questa attività. Gli originali restano invariati.",
+    "count": "{repositories, plural, one {# repository} other {# repository}} · {folders, plural, one {# cartella} other {# cartelle}}",
+    "checkingBranches": "Controllo dei branch…",
+    "apply": "Applica all’attività"
+  },
+  "workItemPicker": {
+    "justNow": "Adesso",
+    "hours": "{count} h",
+    "days": "{count} g",
+    "ariaLabel": "Parti da un lavoro esistente",
+    "title": "Parti da un lavoro",
+    "searchSubtitle": "Cerca issue e pull request",
+    "recentSubtitle": "Aggiornati di recente e assegnati a te",
+    "close": "Chiudi selettore lavori",
+    "providerAriaLabel": "Strumento di sviluppo",
+    "accountAriaLabel": "Account {provider}",
+    "accountMenuLabel": "Account",
+    "searchPlaceholder": "Cerca in {provider}",
+    "searchAriaLabel": "Cerca lavori in {provider}",
+    "resultsAriaLabel": "Lavori in {provider}",
+    "finding": "Ricerca dei lavori…",
+    "noMatches": "Nessun lavoro corrispondente.",
+    "noAssigned": "Nessun lavoro assegnato.",
+    "linkPlaceholder": "Oppure incolla il link di una issue o di una pull request",
+    "linkAriaLabel": "Link di issue o pull request",
+    "adding": "Aggiunta…",
+    "add": "Aggiungi",
+    "connectHint": "Collega GitHub o Linear per partire da un lavoro esistente.",
+    "openConnectors": "Apri Connettori"
+  },
+  "taskSourceLinks": {
+    "invalidLink": "Incolla il link di una issue o di una pull request di GitHub o Linear.",
+    "chooseAccount": "Scegli l’account {provider} da usare.",
+    "loadFailed": "Impossibile caricare questo elemento di lavoro.",
+    "searchFailed": "Impossibile cercare nei lavori collegati.",
+    "linkedAriaLabel": "Lavori collegati",
+    "remove": "Rimuovi {label}",
+    "addAnother": "Aggiungi un’altra issue o PR",
+    "add": "Aggiungi issue o PR"
+  },
+  "activity": {
+    "phrase": {
+      "edit": "ha modificato {count, plural, one {# file} other {# file}}",
+      "command": "ha eseguito {count, plural, one {# comando} other {# comandi}}",
+      "read": "ha letto {count, plural, one {# file} other {# file}}",
+      "search": "ha eseguito {count, plural, one {# ricerca} other {# ricerche}}",
+      "list": "ha elencato {count, plural, one {# cartella} other {# cartelle}}",
+      "tool": "ha usato {count, plural, one {# strumento} other {# strumenti}}",
+      "plan": "ha aggiornato il piano",
+      "compact": "ha compattato il contesto",
+      "retry": "{count, plural, one {ha riprovato una volta} other {ha riprovato # volte}}"
+    },
+    "askedForApproval": "Ha chiesto l’approvazione",
+    "thoughtItThrough": "Ci ha riflettuto a fondo",
+    "agentActivity": "Attività dell’agente",
+    "aFile": "un file",
+    "planStep": "Passaggio del piano",
+    "stepPosition": "Passaggio {step} di {total}",
+    "live": {
+      "editingFile": "Modifica di {name}",
+      "editingFiles": "Modifica dei file",
+      "compacting": "Compattazione del contesto",
+      "calling": "Chiamata a {tool}",
+      "using": "Uso di {tool}",
+      "usingTool": "Uso di uno strumento",
+      "reading": "Lettura di {name}",
+      "searchingFor": "Ricerca di {query}",
+      "searching": "Ricerca",
+      "listing": "Elenco dei file",
+      "running": "Esecuzione di {command}",
+      "reconnecting": "Riconnessione…",
+      "thinking": "Sto pensando…"
+    },
+    "step": {
+      "edited": "Ha modificato",
+      "files": "{count, plural, one {# file} other {# file}}",
+      "updatedPlan": "Ha aggiornato il piano",
+      "planProgress": "· {done} di {total} completati",
+      "retried": "Ha riprovato",
+      "retryTarget": "dopo la perdita della connessione",
+      "retryTargetAttempt": "dopo la perdita della connessione ({attempt})",
+      "askedToRun": "Ha chiesto di eseguire",
+      "compacted": "Ha compattato il contesto",
+      "viewed": "Ha visualizzato",
+      "anImage": "un’immagine",
+      "called": "Ha chiamato",
+      "used": "Ha usato",
+      "aTool": "uno strumento",
+      "read": "Ha letto",
+      "searchedFor": "Ha cercato",
+      "searched": "Ha eseguito una ricerca",
+      "listed": "Ha elencato",
+      "filesWord": "i file",
+      "ran": "Ha eseguito",
+      "created": "Ha creato",
+      "deleted": "Ha eliminato"
+    }
+  },
+  "presentation": {
+    "status": {
+      "ready": "Pronta",
+      "working": "In corso",
+      "needsApproval": "Approvazione richiesta",
+      "completed": "Completata",
+      "stopped": "Arrestata",
+      "interrupted": "Interrotta",
+      "failed": "Non riuscita",
+      "preparing": "Preparazione",
+      "needsAttention": "Richiede attenzione",
+      "paused": "In pausa",
+      "reopening": "Riapertura",
+      "computerOffline": "Computer offline",
+      "answerNeeded": "Risposta richiesta",
+      "reviewPlan": "Rivedi il piano",
+      "planning": "Pianificazione"
+    },
+    "relative": {
+      "now": "ora",
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} g"
+    },
+    "replaces": "sostituisce {skills}"
+  },
+  "reasoning": {
+    "levels": {
+      "none": "Nessuno",
+      "minimal": "Minimo",
+      "low": "Basso",
+      "medium": "Medio",
+      "high": "Alto",
+      "xhigh": "Molto alto",
+      "max": "Massimo"
+    },
+    "levelEffort": "Livello: {level}",
+    "projectDefault": "Predefinito del progetto",
+    "modelDefault": "Predefinito del modello",
+    "default": "Predefinito",
+    "defaultEffort": "Livello predefinito"
+  },
+  "timeline": {
+    "failed": "Non riuscito",
+    "exitCode": "Codice di uscita {code}",
+    "failedCount": "{count, plural, one {# non riuscito} other {# non riusciti}}",
+    "workedFor": "Ha lavorato per {duration}",
+    "worked": "Ha lavorato",
+    "turnChanges": {
+      "ariaLabel": "File modificati in questo turno",
+      "edited": "{count, plural, one {# file modificato} other {# file modificati}}",
+      "review": "Rivedi",
+      "more": "e altri {count}"
+    },
+    "preparingWorkspace": "Preparazione dell’area di lavoro dell’attività…",
+    "preparingPlan": "Esplorazione e preparazione di un piano…",
+    "plan": {
+      "heading": "Piano",
+      "preparing": "L’agente sta preparando un piano…"
+    },
+    "childWork": {
+      "ariaLabel": "Lavoro parallelo di Codex",
+      "label": "Lavoro parallelo",
+      "worker": "Processo Codex",
+      "working": "In corso",
+      "stopped": "Arrestato",
+      "done": "Fatto"
+    },
+    "copyMessage": "Copia messaggio",
+    "copyResponse": "Copia risposta",
+    "agentMessageAriaLabel": "Messaggio dell’agente di codice",
+    "record": {
+      "approvalDenied": "Approvazione negata",
+      "approvalResolved": "Approvazione gestita",
+      "followUpDelivered": "Istruzione aggiuntiva consegnata",
+      "requestRejected": "Richiesta rifiutata",
+      "taskStatus": "Stato dell’attività"
+    },
+    "failureDetails": "Dettagli dell’errore",
+    "showEarlier": "Mostra {count} aggiornamenti precedenti"
+  },
+  "externalLink": {
+    "unsafeRepository": "Non è sicuro aprire questo indirizzo di repository.",
+    "openRepositoryFailed": "Impossibile aprire il repository."
+  },
+  "commandLine": {
+    "unclosedQuote": "Chiudi le virgolette dell’argomento del comando."
+  },
+  "queuedResume": {
+    "failed": "Impossibile riprendere l’istruzione in coda."
+  },
+  "session": {
+    "refreshFailed": "Impossibile aggiornare questa attività di codice.",
+    "liveDisconnected": "Aggiornamenti in tempo reale disconnessi. Riconnessione…",
+    "loadFailed": "Impossibile caricare questa attività di codice.",
+    "historyReconnecting": "Riconnessione della cronologia dell’attività…"
+  },
+  "codeView": {
+    "resumeFailed": "Impossibile riprendere l’attività.",
+    "recoveryOptionsFailed": "Impossibile caricare le opzioni di ripristino.",
+    "projectActionFailed": "Impossibile avviare l’azione del progetto.",
+    "loadingTasks": "Caricamento delle attività di codice…",
+    "restoringTask": "Ripristino dell’attività…",
+    "steerTimeout": "L’attività non ha accettato il cambio di rotta in tempo. Se c’è un’approvazione in sospeso, gestiscila prima e riprova.",
+    "stopTimeout": "L’attività non ha confermato la richiesta di arresto in tempo. Riprova.",
+    "commandUnavailable": "I controlli di /{command} non sono ancora disponibili in questa build.",
+    "projectCommandsNotUpdated": "I comandi del progetto non sono stati aggiornati.",
+    "restoreFailed": "Impossibile ripristinare questa attività di codice.",
+    "applyBlocked": "Potrai applicare le modifiche al termine del turno in corso"
+  },
+  "api": {
+    "serviceStartFailed": "Impossibile avviare il servizio Code locale.",
+    "requestFailed": "Richiesta di codice non riuscita ({status})",
+    "outdatedBackend": "Questa build desktop è collegata a un backend meno recente che non supporta la modalità codice. Riavvia l’app con la build di cowork-server corrispondente."
+  },
+  "composer": {
+    "checkingModes": "Verifica delle modalità disponibili per l’attività…",
+    "modeUnavailable": "Questa modalità non è disponibile per l’attività. Cambia modalità prima di inviare.",
+    "dropHint": "Trascina qui i file da allegare",
+    "placeholder": {
+      "queueWhileWaiting": "Metti in coda un’istruzione mentre l’agente attende…",
+      "steer": "Correggi la rotta del lavoro in corso…",
+      "followUp": "Aggiungi un’istruzione per dopo questo turno…",
+      "notStarted": "Avvia una nuova attività per continuare",
+      "recoverable": "Riapri l’attività, poi indica come continuare…",
+      "refinePlan": "Perfeziona il piano…",
+      "anotherChange": "Chiedi un’altra modifica…"
+    },
+    "inputAriaLabel": "Istruzione aggiuntiva",
+    "whenBuilding": "Durante l’esecuzione:",
+    "permissionsLocked": "Potrai cambiare le autorizzazioni al termine del turno in corso",
+    "stopAriaLabel": "Arresta l’agente di codice",
+    "stop": "Arresta",
+    "deliveryAriaLabel": "Invio dell’istruzione",
+    "queue": "Accoda",
+    "steer": "Correggi rotta",
+    "steerAriaLabel": "Correggi la rotta del turno in corso",
+    "queueAriaLabel": "Metti in coda l’istruzione",
+    "sendAriaLabel": "Invia istruzione aggiuntiva",
+    "send": "Invia"
+  },
+  "promptQueue": {
+    "ariaLabel": "Istruzioni in coda",
+    "queued": "{count, plural, =0 {In coda} one {In coda · # file} other {In coda · # file}}",
+    "steerAriaLabel": "Correggi la rotta con l’istruzione in coda {position}",
+    "steer": "Correggi rotta",
+    "removeAriaLabel": "Rimuovi l’istruzione in coda {position}"
+  },
+  "slashMenu": {
+    "ariaLabel": "Comandi di Code",
+    "label": "Comandi"
+  },
+  "mentionMenu": {
+    "ariaLabel": "File dell’attività",
+    "label": "File e cartelle di questa attività"
+  },
+  "composerAddMenu": {
+    "ariaLabel": "Aggiungi",
+    "triggerAriaLabel": "Aggiungi al prompt",
+    "heading": "Aggiungi",
+    "planMode": "Modalità piano",
+    "planUnavailable": "Disponibile al termine del turno in corso",
+    "files": "File e cartelle",
+    "planOffAriaLabel": "Disattiva la modalità piano",
+    "plan": "Piano"
+  },
+  "composerLip": {
+    "showMore": "{count, plural, one {Mostra # altro avviso} other {Mostra altri # avvisi}}",
+    "addCredits": "Aggiungi crediti",
+    "reopening": "Riapertura…",
+    "reopen": "Riapri attività",
+    "chooseModel": "Scegli modello",
+    "chooseAnotherModel": "Scegli un altro modello",
+    "hideDetails": "Nascondi dettagli",
+    "showDetails": "Mostra dettagli",
+    "details": "Dettagli",
+    "moreOptions": "Altre opzioni",
+    "dismiss": "Ignora",
+    "viewBudgets": "Visualizza budget"
+  },
+  "composerNotices": {
+    "thisModel": "Questo modello",
+    "insufficientCredits": {
+      "title": "{model} richiede crediti",
+      "body": "Aggiungi crediti o scegli un altro modello, poi continua in questa attività."
+    },
+    "authFailed": {
+      "title": "Il tuo accesso non corrisponde a questo server",
+      "body": "Accedi di nuovo o torna all’ambiente in cui hai effettuato l’accesso, poi continua in questa attività."
+    },
+    "modelUnavailable": {
+      "title": "{model} non è disponibile",
+      "body": "Scegli un altro modello, poi continua in questa attività."
+    },
+    "rateLimited": {
+      "title": "MindsHub sta ricevendo troppe richieste",
+      "body": "Questo turno si è interrotto. Attendi un momento, poi continua in questa attività."
+    },
+    "allowanceExhausted": {
+      "title": "Hai esaurito la quota inclusa",
+      "body": "Aggiungi crediti per continuare subito oppure attendi che la quota si ricarichi, poi continua in questa attività."
+    },
+    "freeAirPaused": {
+      "title": "MindsHub Air gratuito è in pausa",
+      "body": "Riprenderà quando il budget giornaliero verrà azzerato. Aggiungi crediti o scegli un altro modello per continuare subito."
+    },
+    "notStarted": {
+      "title": "L’attività non è stata avviata",
+      "body": "Non è stato possibile preparare l’area di lavoro, quindi l’agente non è mai partito. Avvia una nuova attività una volta risolto il problema."
+    },
+    "reopening": {
+      "title": "Riapertura dell’attività",
+      "body": "Riconnessione ai file dell’attività…"
+    },
+    "paused": {
+      "title": "Attività in pausa",
+      "offlineBody": "Il computer dell’attività si è disconnesso. La conversazione è al sicuro: riaprila lì o scegli un altro computer compatibile.",
+      "interruptedBody": "Il turno si è interrotto prima di finire. Riaprendo l’attività viene ripristinata la copia di lavoro; invia un messaggio per continuare il lavoro interrotto."
+    },
+    "restoreError": {
+      "title": "Impossibile riaprire l’area di lavoro di questa attività",
+      "body": "{error}. Il lavoro dell’attività è ancora salvato; riprova una volta risolto il problema."
+    },
+    "released": {
+      "body": "L’area di lavoro di questa attività è stata messa da parte per liberare spazio su disco. Verrà ricostruita con tutte le modifiche quando continui o la rivedi."
+    },
+    "kept": {
+      "body": "{reason}, quindi occupa ancora spazio su disco."
+    },
+    "budgetExceeded": {
+      "title": "Il budget della tua organizzazione è esaurito",
+      "body": "Un proprietario o un amministratore può aumentarlo in «Budget», oppure scegli un modello disponibile per continuare in questa attività."
+    }
+  },
+  "planModeCommand": {
+    "label": "Modalità piano",
+    "turnOn": "Attiva la modalità piano",
+    "turnOff": "Disattiva la modalità piano"
+  },
+  "taskBar": {
+    "originalFolder": "Cartella originale",
+    "isolatedFolders": "{count, plural, one {# cartella isolata} other {# cartelle isolate}}",
+    "isolatedCopy": "Copia isolata",
+    "allProjectFiles": "Tutti i file del progetto",
+    "allProjectFolders": "{count, plural, one {La cartella del progetto} other {Tutte le # cartelle del progetto}}",
+    "selectedFolders": "{count, plural, one {# cartella selezionata} other {# cartelle selezionate}}",
+    "openOriginalFolder": "Apri cartella originale",
+    "openIsolatedCopy": "Apri copia isolata",
+    "forkTask": "Duplica attività",
+    "taskSettings": "Impostazioni attività",
+    "detailsMenuAriaLabel": "Copia di lavoro e dettagli dell’attività",
+    "showDetailsAriaLabel": "Mostra i dettagli dell’attività per {label}",
+    "details": {
+      "title": "Configurazione dell’attività",
+      "files": "File",
+      "branch": "Branch",
+      "computer": "Computer",
+      "agent": "Agente",
+      "model": "Modello",
+      "folder": "Cartella"
+    },
+    "runAndPreviewAriaLabel": "Esegui e visualizza anteprima",
+    "runAction": "Esegui {action}",
+    "startingAction": "Avvio di {action}",
+    "starting": "Avvio…",
+    "run": "Esegui",
+    "runMenuAriaLabel": "Esegui un’azione del progetto",
+    "chooseActionAriaLabel": "Scegli un’azione del progetto da eseguire",
+    "previewRunning": "Anteprima del progetto in esecuzione",
+    "previewUnavailable": "Esegui il progetto per attivare l’anteprima",
+    "preview": "Anteprima",
+    "surfacesAriaLabel": "Viste dell’attività",
+    "files": "File",
+    "terminal": "Terminale",
+    "reviewChanges": "Rivedi le modifiche",
+    "review": "Rivedi",
+    "taskActionsAriaLabel": "Azioni dell’attività di codice"
+  },
+  "terminal": {
+    "status": {
+      "running": "In esecuzione",
+      "disconnected": "Disconnesso",
+      "ready": "Pronto",
+      "exited": "Terminato",
+      "exitedWithCode": "Terminato con codice {code}"
+    },
+    "errors": {
+      "open": "Impossibile aprire il terminale.",
+      "actionTerminal": "L’azione del progetto è stata avviata, ma non è stato possibile aprirne il terminale.",
+      "refresh": "Impossibile aggiornare l’elenco dei terminali.",
+      "create": "Impossibile creare un terminale.",
+      "rename": "Impossibile rinominare il terminale.",
+      "close": "Impossibile chiudere il terminale.",
+      "stop": "Impossibile arrestare il terminale.",
+      "restart": "Impossibile riavviare il terminale.",
+      "write": "Impossibile scrivere nel terminale.",
+      "interrupted": "Connessione al terminale interrotta. Cambia scheda o riapri il pannello per riconnetterti.",
+      "unavailable": "Il terminale non è disponibile."
+    },
+    "ariaLabel": "Terminali dell’attività",
+    "resize": "Ridimensiona terminale",
+    "tabs": "Schede del terminale",
+    "renameAriaLabel": "Rinomina {label}",
+    "renameHint": "Fai doppio clic per rinominare",
+    "tabAriaLabel": "{label}, {status}",
+    "closeAriaLabel": "Chiudi {label}",
+    "limit": "Fino a {max} terminali per attività",
+    "new": "Nuovo terminale",
+    "stopHint": "Arresta questo terminale senza chiuderne la scheda",
+    "stop": "Arresta terminale",
+    "restart": "Riavvia",
+    "hide": "Nascondi pannello terminale",
+    "opening": "Apertura del terminale…",
+    "empty": "Nessun terminale aperto",
+    "output": "Output del terminale"
+  },
+  "planDecision": {
+    "error": "Impossibile continuare. Riprova.",
+    "label": "Rivedi il piano",
+    "kind": "Piano pronto",
+    "cancelRevision": "Annulla revisione",
+    "revise": "Rivedi piano",
+    "update": "Aggiorna piano",
+    "build": "Esegui il piano",
+    "buildTooltip": "Usa le autorizzazioni selezionate per questa attività",
+    "question": "Vuoi iniziare a eseguire questo piano?",
+    "changesAriaLabel": "Modifiche al piano",
+    "changesPlaceholder": "Cosa va cambiato nel piano?"
+  },
+  "question": {
+    "error": "Impossibile inviare le risposte. Riprova.",
+    "label": "Domande dell’agente",
+    "kind": "{count, plural, one {Domanda} other {# domande}}",
+    "sending": "Invio…",
+    "continue": "Continua",
+    "privateAnswer": "Risposta privata",
+    "ownAnswer": "Oppure scrivi la tua risposta",
+    "yourAnswer": "La tua risposta"
+  },
+  "approval": {
+    "kinds": {
+      "command": {
+        "label": "Terminale",
+        "question": "Eseguire questo comando?"
+      },
+      "fileChange": {
+        "label": "Modifica dei file",
+        "question": "Modificare file protetti?"
+      },
+      "network": {
+        "label": "Accesso",
+        "question": "Concedere un accesso aggiuntivo?"
+      },
+      "elevated": {
+        "label": "Privilegi elevati",
+        "question": "Approvare l’azione con privilegi elevati?"
+      }
+    },
+    "deny": "Nega",
+    "alwaysAllow": "Consenti sempre",
+    "alwaysAllowTooltip": "Consenti ora questo comando e quelli simili per il resto dell’attività",
+    "label": "Approvazione richiesta",
+    "kind": "Approvazione",
+    "allowOnce": "Consenti una volta",
+    "fallbackQuestion": "L’agente richiede un’approvazione"
+  },
+  "promptReferences": {
+    "desktopOnly": "Gli allegati di file locali sono disponibili nell’app desktop.",
+    "ariaLabel": "Contesto allegato",
+    "removeAriaLabel": "Rimuovi {name}"
+  }
+}

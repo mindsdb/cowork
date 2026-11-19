@@ -105,6 +105,8 @@ export const MINDS_ADD_FUNDS_URL = `${MINDS_BILLING_URL}?exhausted=1`;
    the console's auto top up controls call owner-only wallet endpoints, and a
    member who follows this link gets a dialog they cannot submit. */
 export const MINDS_AUTO_TOP_UP_URL = `${MINDS_BILLING_URL}?autoTopUp=1`;
+// The org's spending budgets; an owner or admin raises a spent one here.
+export const MINDS_BUDGETS_URL = `${MINDS_BILLING_URL}?tab=budgets`;
 export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 
 // Console settings pages the sidebar user menu deep-links to (ENG-1408) —
@@ -117,6 +119,26 @@ export const MINDS_MEMBERS_URL = `${MINDS_CONSOLE_URL}/settings/organization/mem
 // flow of its own. Plural `workspaces` is the new namespace; singular
 // `/settings/workspace/*` redirects to the organization pages.
 export const MINDS_WORKSPACES_URL = `${MINDS_CONSOLE_URL}/settings/workspaces`;
+
+/**
+ * A console link that names the organization and account it was opened for
+ * (ENG-3274). The console's active organization is one value per account,
+ * shared by every surface, so a bare link showed whatever the browser session
+ * happened to have active: another organization when the account had been
+ * switched on the web since, or another account's pages entirely when the
+ * browser was signed in as someone else. The console reads these parameters
+ * on landing, switches to the organization when it can, and says so when it
+ * cannot. Either value may be unknown; whatever is known is sent.
+ */
+export function consoleUrlFor(
+  url: string,
+  { organizationId, subject }: { organizationId?: string | null; subject?: string | null },
+): string {
+  const target = new URL(url);
+  if (organizationId) target.searchParams.set('organization', organizationId);
+  if (subject) target.searchParams.set('subject', subject);
+  return target.toString();
+}
 
 // Environment-independent MindsHub destinations (docs site + support page).
 export const MINDS_DOCS_URL = 'https://docs.mindshub.ai';

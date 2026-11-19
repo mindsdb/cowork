@@ -11,10 +11,12 @@ vi.mock('../api', () => ({
 import { deleteArtifact, fetchArtifactsStrict } from '../api';
 import {
   __resetForTests,
+  artifactCardBySlug,
   artifactDeletedNow,
   deleteArtifactAndSync,
   noteArtifactCreated,
   noteArtifactsFromSteps,
+  onArtifactDeleted,
   revalidate,
   scopeKeyOf,
   setArtifactsScope,
@@ -183,6 +185,51 @@ describe('tombstones', () => {
   });
 });
 
+describe('onArtifactDeleted', () => {
+  it('hands listeners the card once the server confirms the delete', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([]);
+    vi.mocked(deleteArtifact).mockResolvedValue({ status: 'deleted' });
+    const listener = vi.fn();
+    onArtifactDeleted(listener);
+
+    await deleteArtifactAndSync(serverCard());
+
+    expect(listener).toHaveBeenCalledWith(serverCard());
+  });
+
+  it('stays silent when the DELETE fails', async () => {
+    vi.mocked(deleteArtifact).mockRejectedValue(new Error('Delete failed (500)'));
+    const listener = vi.fn();
+    onArtifactDeleted(listener);
+
+    await expect(deleteArtifactAndSync(serverCard())).rejects.toThrow('Delete failed (500)');
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('does not turn a listener error into a failed delete', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([]);
+    vi.mocked(deleteArtifact).mockResolvedValue({ status: 'deleted' });
+    const after = vi.fn();
+    onArtifactDeleted(() => { throw new Error('boom'); });
+    onArtifactDeleted(after);
+
+    await expect(deleteArtifactAndSync(serverCard())).resolves.toEqual({ status: 'deleted' });
+    expect(after).toHaveBeenCalled();
+  });
+
+  it('stops calling a listener after it unsubscribes', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([]);
+    vi.mocked(deleteArtifact).mockResolvedValue({ status: 'deleted' });
+    const listener = vi.fn();
+    const unsubscribe = onArtifactDeleted(listener);
+    unsubscribe();
+
+    await deleteArtifactAndSync(serverCard());
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
 describe('born', () => {
   it('shields an artifact created after the index was loaded', async () => {
     vi.mocked(fetchArtifactsStrict).mockResolvedValue([]);
@@ -279,3 +326,35 @@ describe('live cards', () => {
     expect(artifactDeletedNow(chatCard(), { live: true })).toBe(false);
   });
 });
+
+// The chat's quick-edit pill names an artifact by its slug (ENG-4227).
+describe('artifactCardBySlug', () => {
+  beforeEach(() => {
+    __resetForTests();
+    vi.mocked(fetchArtifactsStrict).mockReset();
+  });
+
+  it('finds a loaded card by slug, and nothing before the load or for another slug', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([serverCard({ title: 'Clock' })]);
+    expect(artifactCardBySlug('clock-7db94eb8')).toBeNull();
+    await revalidate();
+    expect(artifactCardBySlug('clock-7db94eb8')).toMatchObject({ title: 'Clock' });
+    expect(artifactCardBySlug('other')).toBeNull();
+    expect(artifactCardBySlug('')).toBeNull();
+  });
+
+  it('forgets the cards when the scope changes, and a deleted one', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([serverCard()]);
+    await revalidate();
+    vi.mocked(deleteArtifact).mockResolvedValue({ ok: true });
+    await deleteArtifactAndSync(serverCard());
+    expect(artifactCardBySlug('clock-7db94eb8')).toBeNull();
+
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([serverCard({ slug: 'kept-1', id: 'aaaaaaaa', folder: '/x', path: '/x/i.html' })]);
+    await revalidate();
+    expect(artifactCardBySlug('kept-1')).not.toBeNull();
+    setArtifactsScope(SCOPE);
+    expect(artifactCardBySlug('kept-1')).toBeNull();
+  });
+});
+

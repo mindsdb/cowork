@@ -42,6 +42,7 @@ import HowToModal from './HowToModal';
 import { computeHeroView, orderMethods } from './methodHero';
 import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
+import { useTranslation } from '../../../lib/i18n';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -81,14 +82,25 @@ function FormLogo({ logo, logoUrl, color, connectorId }) {
   );
 }
 
+// A field is masked when it says so, whatever type it declares. Every secret
+// in the registry today is a password (masked already) or a textarea — a PEM
+// or JSON blob you have to see to paste — so this is the guard for the next
+// spec, not a change to those. select and boolean keep their own rendering.
+const MASKABLE_TYPES = new Set(['text', 'password', 'url', undefined, null, '']);
+
+function isMaskedField(field) {
+  return field.type === 'password' || (!!field.secret && MASKABLE_TYPES.has(field.type));
+}
+
 function FieldInput({ field, value, onChange, disabled, inputRef }) {
+  const masked = isMaskedField(field);
   const baseStyle = {
     width: '100%', boxSizing: 'border-box',
     padding: '8px 10px', borderRadius: 7,
     background: 'var(--surface-2)',
     border: '1px solid var(--line)',
     color: 'var(--ink)',
-    fontFamily: field.type === 'password' ? FONT_MONO : FONT_BODY,
+    fontFamily: masked ? FONT_MONO : FONT_BODY,
     fontSize: 13,
     outline: 'none',
     opacity: disabled ? 0.6 : 1,
@@ -171,11 +183,14 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
   return (
     <Input
       ref={inputRef}
-      type={field.type === 'password' ? 'password' : (field.type === 'url' ? 'url' : 'text')}
+      type={masked ? 'password' : (field.type === 'url' ? 'url' : 'text')}
       aria-label={field.label}
       value={displayValue}
       placeholder={placeholder}
-      autoComplete={field.type === 'password' ? 'current-password' : 'off'}
+      // `new-password` asks the browser not to offer a credential it saved for
+      // somewhere else; it is a hint about autofill, and says nothing about
+      // what the browser chooses to store.
+      autoComplete={masked ? 'new-password' : 'off'}
       autoCapitalize="none"
       autoCorrect="off"
       spellCheck={false}
@@ -188,9 +203,10 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
 
 export function DataVaultForm({
   spec, busy = false, onAction, onMethodChange, conversationId,
-  userLabel, onUserLabelChange,
+  userLabel, onUserLabelChange, onFieldChange,
   hideHeader = false,
 }) {
+  const { t } = useTranslation('library');
   // ── Multi-method shape ──────────────────────────────────────────
   // A form can either be single-method (top-level `fields[]` array,
   // legacy shape) or multi-method (`methods[]` array of method
@@ -260,6 +276,11 @@ export function DataVaultForm({
   // for multi-method, or the top-level fields[] for single-method.
   const fields = isMultiMethod ? (activeMethod?.fields || []) : (spec?.fields || []);
 
+  // The host passes `userLabel={undefined}` to hide the Label (on success),
+  // and there is nothing to label while the method picker is up.
+  const showUserLabel = userLabel !== undefined && !(isMultiMethod && !activeMethod);
+  const userLabelRequired = showUserLabel && !!spec?._cloud_datasource;
+
   // Per-(form, method) input state so flipping methods preserves
   // anything typed under each one. Storing inside a Map keyed by
   // `${form_id}::${method_id || 'default'}` keeps the state shape flat
@@ -267,6 +288,8 @@ export function DataVaultForm({
   const [valuesByKey, setValuesByKey] = useState({});
   const [skippedByKey, setSkippedByKey] = useState({});
   const [requiredErrorsByKey, setRequiredErrorsByKey] = useState({});
+  // Kept apart from the per-field map, whose keys are whatever a spec names.
+  const [userLabelError, setUserLabelError] = useState('');
   /* Focus target for the first field that fails the required check.
      `fieldRefs` holds the real control, which is what we want the caret in,
      but only `Input` and `Textarea` forward a ref — a `select` or `boolean`
@@ -274,6 +297,7 @@ export function DataVaultForm({
      every field type has, so the error is at least scrolled into view. */
   const fieldRefs = useRef({});
   const fieldContainerRefs = useRef({});
+  const userLabelRef = useRef(null);
 
   const initialFor = (fs) => {
     const out = {};
@@ -291,6 +315,7 @@ export function DataVaultForm({
       setValuesByKey({});
       setSkippedByKey({});
       setRequiredErrorsByKey({});
+      setUserLabelError('');
       setLocalSelectedMethod(null);
     }
   }, [spec?.form_id]);
@@ -304,8 +329,13 @@ export function DataVaultForm({
   // can inject context into messages sent during a connect task.
   // Secret fields (password type or `secret: true`) are flagged but
   // never carry their value.
+  //
+  // Not for a cloud datasource form. App.jsx appends this snapshot to the
+  // text of the next message the user sends, so a filled database form would
+  // put its host, database and username into the conversation and the model.
+  // That form is dedicated entry, kept out of chat.
   useEffect(() => {
-    if (!conversationId || !spec) return;
+    if (!conversationId || !spec || spec._cloud_datasource) return;
     const fieldSnapshot = {};
     for (const f of fields || []) {
       if (skipped?.has?.(f.name)) continue;
@@ -341,6 +371,57 @@ export function DataVaultForm({
 
   if (!spec) return null;
 
+  // Pending state — a cloud database connection is created `pending`: the
+  // server holds the credential encrypted and a separate check decides
+  // whether it works. Replacing the field surface is the point, not just the
+  // message: it takes the typed password off the page and stops a second
+  // submit, which would only earn a duplicate-name refusal.
+  if (spec._datasource_pending) {
+    return (
+      <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)] py-[14px] px-0">
+        <div className="flex items-start gap-3">
+          <span className="inline-grid place-items-center w-[36px] h-[36px] rounded-card-row"
+            style={{
+              background: 'color-mix(in srgb, var(--ink-4) 14%, var(--surface))',
+              color: 'var(--ink-2)',
+              border: '1px solid var(--line)',
+            }}
+          >{Ico.link(20)}</span>
+          <div className="min-w-0 flex-1 flex flex-col gap-[2px]">
+            <div className="s-h3">{spec.title || t('dataVault.pending.title')}</div>
+            <div className="text-sm text-ink-3 leading-[1.5]">
+              {spec.subtitle || t('dataVault.pending.subtitle')}
+            </div>
+          </div>
+        </div>
+        <Alert variant="info">
+          {t('dataVault.pending.note')}
+        </Alert>
+        <div className="flex justify-end gap-2">
+          <Button variant="default" onClick={() => onAction?.({ id: 'cancel', kind: 'cancel', values: {}, skipped: [] })}>
+            {t('connections.close')}
+          </Button>
+          <Button variant="primary" onClick={() => onAction?.({ id: 'view_connectors', kind: 'primary', values: {}, skipped: [] })}>
+            {t('dataVault.viewConnections')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // A custom connector saved before connection tests existed can never pass
+  // one, so its stored form is not offered; the agent has to build it again.
+  if (spec._needs_rebuild && !spec._is_success) {
+    return (
+      <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)] py-[14px] px-0">
+        <Alert variant="info">{t('dataVault.needsRebuild.body')}</Alert>
+        <div className="flex justify-end">
+          <Button variant="subtle" onClick={() => onAction?.({ id: 'dismiss', kind: 'cancel' })}>{t('dataVault.needsRebuild.close')}</Button>
+        </div>
+      </div>
+    );
+  }
+
   // Success state — the agent endpoint flips `_is_success` after a
   // save. Replace the noisy fields/actions surface with a green
   // check + the title/subtitle. The user can dismiss via the panel's
@@ -359,7 +440,7 @@ export function DataVaultForm({
             }}
           >{Ico.check(20)}</span>
           <div className="min-w-0 flex-1 flex flex-col gap-[2px]">
-            <div className="s-h3">{spec.title || 'Connected'}</div>
+            <div className="s-h3">{spec.title || t('connections.connected')}</div>
             {spec.subtitle && (
               <div className="text-sm text-ink-3 leading-[1.5]">
                 {spec.subtitle}
@@ -368,8 +449,8 @@ export function DataVaultForm({
           </div>
         </div>
         {(spec.engine === 'google_drive' || spec._connector_id === 'google_drive') && (
-          <Alert variant="info" icon="ℹ️">
-            This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
+          <Alert variant="info">
+            {t('dataVault.driveNote')}
           </Alert>
         )}
         <div className="flex justify-end gap-2">
@@ -385,8 +466,8 @@ export function DataVaultForm({
           {(spec.actions && spec.actions.length > 0
             ? spec.actions
             : [
-                { id: 'dismiss', label: 'Close', kind: 'cancel' },
-                { id: 'view_connectors', label: 'View connectors →', kind: 'primary' },
+                { id: 'dismiss', label: t('connections.close'), kind: 'cancel' },
+                { id: 'view_connectors', label: t('dataVault.viewConnectors'), kind: 'primary' },
               ]
           ).map((a) => (
             <Button
@@ -402,6 +483,7 @@ export function DataVaultForm({
 
   const updateField = (name, v) => {
     setValues((prev) => ({ ...prev, [name]: v }));
+    onFieldChange?.(name);
     setRequiredErrorsByKey((prev) => {
       if (!prev[stateKey]?.[name]) return prev;
       const next = { ...prev[stateKey] };
@@ -414,6 +496,11 @@ export function DataVaultForm({
       next.delete(name);
       return next;
     });
+  };
+
+  const updateUserLabel = (v) => {
+    onUserLabelChange?.(v);
+    setUserLabelError('');
   };
 
   const skipField = (name) => {
@@ -451,12 +538,21 @@ export function DataVaultForm({
         const value = values[field.name];
         return value === null || value === undefined || String(value).trim() === '';
       });
-      if (missing.length) {
+      // A cloud database form saves the Label as the connection's name,
+      // which the relay requires; other forms fall back to a generated one.
+      const labelMissing = userLabelRequired && String(userLabel ?? '').trim() === '';
+      if (missing.length || labelMissing) {
         const errors = Object.fromEntries(
-          missing.map((field) => [field.name, `${field.label || field.name} is required.`]),
+          missing.map((field) => [field.name, t('dataVault.required', { field: field.label || field.name })]),
         );
         setRequiredErrorsByKey((prev) => ({ ...prev, [stateKey]: errors }));
+        setUserLabelError(labelMissing ? t('dataVault.labelRequired') : '');
         requestAnimationFrame(() => {
+          // The Label sits above the fields, so it is the first one missing.
+          if (labelMissing) {
+            userLabelRef.current?.focus?.();
+            return;
+          }
           const name = missing[0].name;
           (fieldRefs.current[name] || fieldContainerRefs.current[name])?.focus?.();
         });
@@ -511,29 +607,39 @@ export function DataVaultForm({
         <div className="flex items-center gap-3">
           <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} connectorId={spec._connector_id || spec.engine} />
           <div className="min-w-0 flex-1">
-            <div className="s-h3">{spec.title || 'Connect'}</div>
+            <div className="s-h3">{spec.title || t('connections.connect')}</div>
           </div>
         </div>
       )}
 
       {/* Generic "name this connection" field — applies to every connector
           regardless of method, so it renders right under the title rather
-          than inside the per-method fields list below. Hidden on success
-          (host passes `userLabel={undefined}` in that case) and while the
-          user is still on the method picker (nothing to label yet). */}
-      {userLabel !== undefined && !(isMultiMethod && !activeMethod) && (
+          than inside the per-method fields list below. */}
+      {showUserLabel && (
         <div className="flex flex-col gap-1">
-          <label htmlFor="connection-user-label" className="text-[12px] text-ink-3 font-medium">
-            Label
-          </label>
+          {/* The marker sits outside the <label> so the input's accessible
+              name stays "Label"; aria-required carries the meaning. */}
+          <div className="flex items-baseline">
+            <label htmlFor="connection-user-label" className="text-[12px] text-ink-3 font-medium">
+              {t('skillModal.label')}
+            </label>
+            {userLabelRequired && (
+              <span aria-hidden="true" className="text-[12px] text-danger ml-[3px]">*</span>
+            )}
+          </div>
           <Input
+            ref={userLabelRef}
             id="connection-user-label"
             type="text"
             value={userLabel}
-            onChange={(v) => onUserLabelChange?.(v)}
+            onChange={updateUserLabel}
             disabled={busy}
-            placeholder={spec.engine || spec._connector_id || 'e.g. prod-db'}
+            aria-required={userLabelRequired || undefined}
+            placeholder={spec.engine || spec._connector_id || t('dataVault.labelPlaceholder')}
           />
+          {userLabelRequired && userLabelError && (
+            <div className="text-[11.5px] text-danger">{userLabelError}</div>
+          )}
         </div>
       )}
 
@@ -618,15 +724,17 @@ export function DataVaultForm({
                     `skipable: false` in the spec is still respected.
                     Locked fields (modify-flow identity) drop the
                     skip affordance entirely — there's nothing for
-                    Anton to figure out about a fixed row key. */}
-                {f.skipable !== false && !isLocked && (
+                    Anton to figure out about a fixed row key. A cloud
+                    database form posts straight to the relay, so no
+                    agent ever reads the skipped set there. */}
+                {f.skipable !== false && !isLocked && !spec._cloud_datasource && (
                   <button
                     type="button"
                     onClick={() => isSkipped ? updateField(f.name, values[f.name] ?? '') : skipField(f.name)}
                     disabled={busy}
-                    className="bg-transparent border-0 p-0 font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.04em]"
+                    className="bg-transparent border-0 p-0 text-xs text-ink-4"
                     style={{ cursor: busy ? 'not-allowed' : 'pointer' }}
-                  >{isSkipped ? 'unskip' : 'skip'}</button>
+                  >{isSkipped ? t('dataVault.unskip') : t('dataVault.skip')}</button>
                 )}
               </div>
               {!isSkipped && (
@@ -639,7 +747,7 @@ export function DataVaultForm({
                 />
               )}
               {isSkipped && (
-                <div className="px-[10px] py-2 rounded-[7px] bg-surface-2 border border-dashed border-line-2 text-ink-4 text-[12px] font-[family-name:var(--font-body)] italic">Skipped — the agent will figure this one out.</div>
+                <div className="px-[10px] py-2 rounded-[7px] bg-surface-2 border border-dashed border-line-2 text-ink-4 text-[12px] font-[family-name:var(--font-body)] italic">{t('dataVault.skipped')}</div>
               )}
               {(requiredErrors[f.name] || f.error) && !isSkipped && (
                 <div className="text-[11.5px] text-danger">{requiredErrors[f.name] || f.error}</div>
@@ -704,7 +812,7 @@ export function DataVaultForm({
               type="button"
               onClick={onClick}
               className={sharedClass}
-            >How to?</button>
+            >{t('dataVault.howToLink')}</button>
           ) : (
             <a
               href={m.help_url}
@@ -712,18 +820,18 @@ export function DataVaultForm({
               rel="noopener noreferrer"
               onClick={onClick}
               className={sharedClass}
-            >How to?</a>
+            >{t('dataVault.howToLink')}</a>
           );
         })()}
         <div className="flex gap-2 flex-wrap">
-        {(activeMethod?.actions || spec.actions || [{ id: 'submit', label: 'Submit', kind: 'primary' }]).map((a) => {
+        {(activeMethod?.actions || spec.actions || [{ id: 'submit', label: t('dataVault.submit'), kind: 'primary' }]).map((a) => {
           // Modify mode swaps the primary action's label to make
           // the destination explicit — "Save changes" reads as an
           // overwrite, "Connect" implies a fresh attachment. Only
           // touches the visible label; the action id + kind go
           // through unchanged so server-side handling is identical.
           const label = (spec._modify && a.kind === 'primary')
-            ? 'Save changes'
+            ? t('dataVault.saveChanges')
             : a.label;
           return (
             <Button
@@ -750,7 +858,7 @@ export function DataVaultForm({
               // rather than "dead."
               className={a.kind === 'primary' && busy ? 'is-busy' : undefined}
             >
-              {a.kind === 'primary' && busy ? 'Working…' : label}
+              {a.kind === 'primary' && busy ? t('datasource.working') : label}
             </Button>
           );
         })}
@@ -764,7 +872,7 @@ export function DataVaultForm({
           stacking context) so the docs read as a centered modal. */}
       <HowToModal
         open={formHowToOpen}
-        title={`How to · ${(activeMethod || spec)?.label || 'Connect'}`}
+        title={t('dataVault.howToTitle', { name: (activeMethod || spec)?.label || t('connections.connect') })}
         content={(activeMethod || spec)?.how_to || ''}
         onClose={() => setFormHowToOpen(false)}
       />
@@ -779,6 +887,7 @@ export function DataVaultForm({
 // the method (host pulls the choice into local state and the form
 // switches to the picked method's fields).
 function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
+  const { t } = useTranslation('library');
   // When a method exposes `how_to` markdown, clicking the help
   // affordance opens an in-app modal instead of an external URL.
   // We hold the active method so the modal can show its title.
@@ -829,7 +938,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
             background: 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
             border: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
             cursor: busy ? 'not-allowed' : 'pointer',
-            transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
+            transition: 'transform var(--dur-hover) ease, background var(--dur-hover) ease, border-color var(--dur-hover) ease',
           }}
           onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
           onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
@@ -839,7 +948,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
           <FormLogo logo={spec?.logo} logoUrl={spec?.logo_url} color={spec?.logo_color} connectorId={spec?._connector_id || spec?.engine} />
           <span className="flex flex-col gap-[2px] min-w-0 flex-[1_1_auto] [overflow-wrap:anywhere] [word-break:break-word]">
             <span className="font-semibold text-[14.5px] text-ink">
-              {busy ? 'Working…' : label}
+              {busy ? t('datasource.working') : label}
             </span>
             {helper && !busy && (
               <span className="text-[11.5px] font-normal text-ink-3 leading-[1.35]">
@@ -854,7 +963,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
               type="button"
               onClick={handleHelp}
               className="self-start text-[11.5px] text-accent bg-transparent border-0 p-0 cursor-pointer font-medium font-[inherit] no-underline hover:underline"
-            >How to?</button>
+            >{t('dataVault.howToLink')}</button>
           ) : (
             <a
               href={hero.help_url}
@@ -862,7 +971,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
               rel="noopener noreferrer"
               onClick={handleHelp}
               className="self-start text-[11.5px] text-accent font-medium no-underline hover:underline"
-            >How to?</a>
+            >{t('dataVault.howToLink')}</a>
           )
         )}
       </div>
@@ -924,7 +1033,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 ? '1px solid color-mix(in srgb, var(--accent) 35%, transparent)'
                 : '1px solid var(--line)',
               cursor: busy ? 'not-allowed' : 'pointer',
-              transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
+              transition: 'transform var(--dur-hover) ease, background var(--dur-hover) ease, border-color var(--dur-hover) ease',
             }}
             onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
             onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
@@ -943,8 +1052,8 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 <Badge
                   variant="accent"
                   size="sm"
-                  className="font-mono uppercase tracking-[0.04em]"
-                >Recommended</Badge>
+                  className="uppercase tracking-[0.04em]"
+                >{t('dataVault.recommended')}</Badge>
               )}
             </div>
             {m.description && (
@@ -968,7 +1077,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                   }}
                   className="self-start mt-[2px] text-[11.5px] text-accent bg-transparent border-0 p-0 cursor-pointer font-medium font-[inherit] no-underline hover:underline"
                 >
-                  How to?
+                  {t('dataVault.howToLink')}
                 </button>
               ) : (
                 <a
@@ -983,7 +1092,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                   }}
                   className="self-start mt-[2px] text-[11.5px] text-accent no-underline font-medium rounded-[4px] hover:underline"
                 >
-                  How to?
+                  {t('dataVault.howToLink')}
                 </a>
               )
             )}
@@ -1005,12 +1114,12 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
               panelClassName="pt-2"
               title={(
                 <span className="inline-flex items-center justify-center gap-1 w-full text-[11.5px] text-ink-3">
-                  See other options to connect {providerName}
+                  {t('dataVault.otherOptions', { provider: providerName })}
                   <span
-                    className="inline-flex transition-transform duration-200 group-data-[panel-open]:rotate-180"
+                    className="inline-flex transition-transform duration-layout group-data-[panel-open]:rotate-180"
                     aria-hidden
                   >
-                    {Ico.chevDown(13)}
+                    {Ico.chevDown(14)}
                   </span>
                 </span>
               )}
@@ -1025,7 +1134,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
         // No recommended method — fall back to today's flat card list.
         <>
           <div className="text-sm text-ink-3 mb-[2px]">
-            Pick how you want to connect:
+            {t('dataVault.pickMethod')}
           </div>
           {orderedMethods.map(renderCard)}
         </>
@@ -1033,7 +1142,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
 
       <HowToModal
         open={!!howToFor}
-        title={howToFor ? `How to · ${howToFor.label || howToFor.id}` : 'How to'}
+        title={howToFor ? t('dataVault.howToTitle', { name: howToFor.label || howToFor.id }) : t('dataVault.howTo')}
         content={howToFor?.how_to || ''}
         onClose={() => setHowToFor(null)}
       />
@@ -1050,6 +1159,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
 // below and the back affordance is left-aligned, button-like, and
 // obvious.
 function MethodBreadcrumb({ method, onChange, busy }) {
+  const { t } = useTranslation('library');
   return (
     <button
       type="button"
@@ -1068,7 +1178,7 @@ function MethodBreadcrumb({ method, onChange, busy }) {
         color: 'inherit',
         textAlign: 'left',
         alignSelf: 'flex-start',
-        transition: 'background 120ms ease',
+        transition: 'background var(--dur-hover) ease',
       }}
       onMouseOver={(e) => { if (!busy) e.currentTarget.style.background = 'var(--surface-2)'; }}
       onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -1079,7 +1189,7 @@ function MethodBreadcrumb({ method, onChange, busy }) {
         display: 'inline-flex', alignItems: 'center', gap: 4,
       }}>
         <span aria-hidden>{'←'}</span>
-        Back to options
+        {t('dataVault.backToOptions')}
       </span>
       <span style={{
         color: 'var(--ink-4)', fontFamily: FONT_BODY, fontSize: 12,

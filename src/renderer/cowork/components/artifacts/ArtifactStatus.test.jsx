@@ -152,6 +152,46 @@ describe('ArtifactStatus hints (ENG-2177)', () => {
   });
 });
 
+/* A MindsHub mode card doesn't say who a restricted artifact reaches:
+   cowork-server answers its audience fields null
+   (cowork.schemas.artifact_access.ArtifactAccessView.audience_unknown) and
+   leaves out accessEmails, owner-only artifacts included. The list never
+   reads the access route, so its hint must name no audience. */
+describe('ArtifactStatus hints in MindsHub mode', () => {
+  const card = {
+    publishedUrl: 'https://x.test/a', accessMode: 'restricted', accessProtected: false,
+    ownerOnly: null, orgAllowed: null, allowedTeamIds: null, allowedUserIds: null,
+  };
+  // A desktop card, which carries its audience.
+  const desktopCard = {
+    publishedUrl: 'https://x.test/a', accessMode: 'restricted', ownerOnly: false, orgAllowed: false,
+    allowedTeamIds: [], allowedUserIds: [], accessEmails: ['a@b.com'],
+  };
+
+  it('names no audience for a restricted card, and points at Share', () => {
+    expect(artifactStatusHint(card, true, { orgMode: true }))
+      .toBe('Restricted. Open Share to see who can open the link.');
+    expect(artifactStatusHint({ ...desktopCard, ownerOnly: true }, true, { orgMode: true }))
+      .toBe('Restricted. Open Share to see who can open the link.');
+  });
+
+  it('keeps the desktop hints, which read a card that carries its audience', () => {
+    expect(artifactStatusHint(desktopCard, true)).toBe('Shared. Only the people you chose can open the link.');
+    expect(artifactStatusHint({ ...desktopCard, ownerOnly: true }, true)).toBe('Shared, but only you can open the link.');
+  });
+
+  it('names no audience for a card that does not know it, outside MindsHub mode too', () => {
+    expect(artifactStatusHint(card, true)).toBe('Restricted. Open Share to see who can open the link.');
+  });
+
+  it('shows it on hover', async () => {
+    render(<ArtifactStatus artifact={card} orgMode />);
+    await userEvent.hover(screen.getByText('Restricted'));
+    expect(await screen.findByText('Restricted. Open Share to see who can open the link.')).toBeInTheDocument();
+    expect(screen.queryByText(/the people you chose/)).toBeNull();
+  });
+});
+
 // ENG-2979: the "Another member" tag rides in the status row. As a sibling of
 // ArtifactStatus it wrapped to a second line on every published card, because
 // the published row is `w-full`. `authorship` replaced the generic `extra`
@@ -235,5 +275,30 @@ describe('ArtifactStatus authorship tag (ENG-2979)', () => {
       expect(container.firstElementChild.className).not.toContain('flex-wrap');
       unmount();
     }
+  });
+});
+describe('ArtifactStatus without a page badge (a live app shares through "Share with…")', () => {
+  const app = { publishedUrl: '', type: 'fullstack-stateless-app' };
+
+  it('drops the idle "Not shared" badge', () => {
+    const { container } = render(<ArtifactStatus artifact={app} pageBadge={false} />);
+    expect(screen.queryByText('Not shared')).toBeNull();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('still shows a phase, such as a delete in progress', () => {
+    render(<ArtifactStatus artifact={app} phase="deleting" pageBadge={false} />);
+    expect(screen.getByText('Deleting…')).toBeInTheDocument();
+  });
+
+  it('still tags an app that is not the viewer\'s', () => {
+    render(<ArtifactStatus artifact={app} pageBadge={false} authorship={artifactAuthorship({ role: 'reviewer' })} />);
+    expect(screen.getByText('Another member')).toBeInTheDocument();
+    expect(screen.queryByText('Not shared')).toBeNull();
+  });
+
+  it('keeps the access badge once the app is published', () => {
+    render(<ArtifactStatus artifact={{ ...app, publishedUrl: 'https://pages.example/a', accessMode: 'public' }} pageBadge={false} />);
+    expect(screen.getByText('Public')).toBeInTheDocument();
   });
 });

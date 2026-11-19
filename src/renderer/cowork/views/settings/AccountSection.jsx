@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { ArrowLeftRight, Server, Cloud, Sparkle, LogIn, LogOut } from 'lucide-react';
+import { Icon } from '../../components/ui/Icon';
 import { Alert, Button, Tooltip } from '../../components/ui';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../../hooks/useLogout';
 import { useMindsOrgs } from '../../hooks/useMindsOrgs';
-import { organizationLabel } from '../../../../shared/minds-orgs';
+import { organizationLabel, orgDisplayName } from '../../../../shared/minds-orgs';
 import { accountInitials } from '../../lib/accountUser';
 import { MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
 import { Section, SettingsSectionPanel } from './settingsLayout';
+import { sharedTranslator, useTranslation } from '../../../lib/i18n';
 
 // The Account settings section: the signed-in user card, the MindsHub sign-in
 // pitch when signed out, and sign-out. The account identity and the sign-out
@@ -17,6 +19,7 @@ import { Section, SettingsSectionPanel } from './settingsLayout';
 // user menu (ENG-1408) runs the same flows; this section owns only its confirm
 // modal and layout.
 export default function AccountSection({ isSsoConnected = false, ssoError = '', onSsoSignIn }) {
+  const { t } = useTranslation('settingsSystem');
   // Decoded from the JWT, null until loaded.
   const accountUser = useAccountUser(isSsoConnected);
   // Named from the organization listing rather than from the token, for the
@@ -37,7 +40,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
   // Through `organizationLabel` so this row and the account menu cannot
   // disagree, and so a personal organization does not flash `Personal` and then
   // swap to auth's long generated label once the listing lands (ENG-2109).
-  const orgName = organizationLabel(activeOrg) || accountUser?.org || null;
+  const orgName = organizationLabel(activeOrg, sharedTranslator('app')) || orgDisplayName(accountUser?.org, sharedTranslator('app'));
 
   // User info card — shown on both Electron and web if we have a token
   const userCard = accountUser && (
@@ -76,13 +79,13 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         <div className="border-t border-x-0 border-b-0 border-solid border-line py-2.5 px-[18px] flex gap-5">
           {accountUser.username && (
             <div>
-              <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Username</div>
-              <div className="text-[13px] text-ink-2 font-[family-name:var(--font-mono)]">{accountUser.username}</div>
+              <div className="section-label mb-0.5">{t('account.username')}</div>
+              <div className="text-[13px] text-ink-2">{accountUser.username}</div>
             </div>
           )}
           {orgName && (
             <div>
-              <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Organization</div>
+              <div className="section-label mb-0.5">{t('account.organization')}</div>
               <div className="text-[13px] text-ink-2">{orgName}</div>
             </div>
           )}
@@ -96,20 +99,20 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       {/* Header */}
       <div>
         <div className="text-[18px] font-bold text-ink leading-[1.25] mb-1.5">
-          Enable cloud capabilities
+          {t('account.signIn.title')}
         </div>
         <div className="text-[13.5px] text-ink-3 leading-[1.6] max-w-[440px]">
-          Sign in with MindsHub to access every model, cloud execution, and publishing — all in one place.
+          {t('account.signIn.subtitle')}
         </div>
       </div>
 
       {/* Feature grid */}
       <div className="grid grid-cols-2 gap-y-2.5 gap-x-5 w-full">
         {[
-          { icon: <ArrowLeftRight size={15} strokeWidth={1.5} aria-hidden="true" />, label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
-          { icon: <Server size={15} strokeWidth={1.5} aria-hidden="true" />, label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
-          { icon: <Cloud size={16} strokeWidth={1.5} aria-hidden="true" />, label: 'Share & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
-          { icon: <Sparkle size={15} strokeWidth={1.5} aria-hidden="true" />, label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
+          { icon: <Icon of={ArrowLeftRight} size={16} />, label: t('account.signIn.features.router.label'), desc: t('account.signIn.features.router.desc') },
+          { icon: <Icon of={Server} size={16} />, label: t('account.signIn.features.remote.label'), desc: t('account.signIn.features.remote.desc'), soon: true },
+          { icon: <Icon of={Cloud} size={16} />, label: t('account.signIn.features.share.label'), desc: t('account.signIn.features.share.desc') },
+          { icon: <Icon of={Sparkle} size={16} />, label: t('account.signIn.features.unified.label'), desc: t('account.signIn.features.unified.desc') },
         ].map(({ icon, label, desc, soon }) => (
           <div key={label} className="flex gap-2.5 items-start">
             <span className="text-[16px] leading-none text-accent mt-0.5 shrink-0 inline-flex items-center">{icon}</span>
@@ -117,7 +120,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
               <div className="text-[13px] font-[650] text-ink mb-0.5 flex items-center gap-1.5">
                 {label}
                 {soon && (
-                  <span className="text-[9.5px] font-semibold tracking-[0.05em] uppercase py-px px-[5px] rounded-[99px] bg-[rgba(127,127,127,0.1)] border border-solid border-[rgba(127,127,127,0.2)] text-ink-3">coming soon</span>
+                  <span className="text-[9.5px] font-semibold tracking-[0.05em] uppercase py-px px-[5px] rounded-[99px] bg-surface-2 border border-solid border-line text-ink-3">{t('account.signIn.comingSoon')}</span>
                 )}
               </div>
               <div className="text-[12px] text-ink-3 leading-[1.5]">{desc}</div>
@@ -131,14 +134,14 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
           with no idea anything went wrong. */}
       {ssoError && (
         <Alert variant="danger" className="w-full">
-          Sign-in didn't complete: {ssoError}
+          {t('account.signIn.error', { error: ssoError })}
         </Alert>
       )}
 
       {/* CTA */}
       <Button variant="primary" onClick={onSsoSignIn}>
-        <LogIn size={14} strokeWidth={1.5} aria-hidden="true" />
-        Sign in / Sign up to MindsHub
+        <Icon of={LogIn} size={14} />
+        {t('account.signIn.button')}
       </Button>
     </div>
   );
@@ -149,14 +152,14 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       title={LOGOUT_CONFIRM_COPY.title}
       message={LOGOUT_CONFIRM_COPY.message}
       confirmLabel={LOGOUT_CONFIRM_COPY.confirmLabel}
-      cancelLabel="Cancel"
+      cancelLabel={t('account.cancel')}
       destructive
       busy={loggingOut}
       // Sign-out can outlast the person's patience, so the dialog hands the
       // keyboard back rather than becoming the app's only exit.
       dismissableWhileBusy
       note={waitNote}
-      busyLabel="Signing out…"
+      busyLabel={t('account.signingOut')}
       onConfirm={logout}
       onClose={() => setLogoutConfirmOpen(false)}
     />
@@ -168,8 +171,8 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         <SettingsSectionPanel>
           {userCard || (
             <div className="py-8 px-0 flex flex-col items-center justify-center gap-2.5 text-center text-ink-3 text-[13px]">
-              <div className="font-semibold text-ink text-base">Managed via MindsHub</div>
-              <div className="max-w-[320px]">Account management is handled through MindsHub for the web version.</div>
+              <div className="font-semibold text-ink text-base">{t('account.web.title')}</div>
+              <div className="max-w-[320px]">{t('account.web.body')}</div>
             </div>
           )}
         </SettingsSectionPanel>
@@ -184,12 +187,12 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         {signInCard}
         {userCard}
         {accountUser && <div className={`${CARD} pt-0 px-[18px] pb-2`}>
-          <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
+          <Section title={t('account.signOut')} subtitle={LOGOUT_CONFIRM_COPY.paneSubtitle}>
             <div className="flex justify-end">
-              <Tooltip content="Sign out and clear stored credentials">
+              <Tooltip content={LOGOUT_CONFIRM_COPY.tooltip}>
                 <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut}>
-                  <LogOut size={13} strokeWidth={1.5} aria-hidden="true" />
-                  {loggingOut ? 'Signing out…' : 'Sign out'}
+                  <Icon of={LogOut} size={14} />
+                  {loggingOut ? t('account.signingOut') : t('account.signOut')}
                 </Button>
               </Tooltip>
             </div>

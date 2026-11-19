@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="cowork-provider-tests-enabled" content="false" />
+    <title>Platform settings visual fixture</title>
+    <script type="module">
+      // Explicit file URLs bypass the web app's navigation fallback and HTML transform.
+      import { injectIntoGlobalHook } from '/@react-refresh';
+      injectIntoGlobalHook(window);
+      window.$RefreshReg$ = () => {};
+      window.$RefreshSig$ = () => (type) => type;
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // This development-only entry never contacts an API or opens an external page.
+      window.fetch = async (input) => {
+        const path = new URL(typeof input === 'string' ? input : input.url, location.href).pathname;
+        const payload = path.includes('/skills') ? { skills: [] }
+          : path.includes('/health') ? { status: 'ok' }
+          : path.includes('/validate') ? { config_ready: true }
+          : {};
+        return new Response(JSON.stringify(payload), { headers: { 'Content-Type': 'application/json' } });
+      };
+      window.open = () => null;
+    </script>
+    <script type="module" src="./visual-fixtures/platform-settings.jsx"></script>
+  </body>
+</html>

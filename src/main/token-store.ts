@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 import { safeStorage, app, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -70,7 +71,7 @@ function writeEncryptedFile(refreshToken: string): void {
 // stale token may survive and shadow a rotated one later — say so.
 function removeStaleStore(file: string): void {
   try { fs.unlinkSync(file); } catch (e: any) {
-    if (e?.code !== 'ENOENT') console.warn(`[token-store] could not remove stale token store ${file}`, e);
+    if (e?.code !== 'ENOENT') diagnostic("main.token-store", "WARNING", "token_store_could_not_remove_stale_token_store", `[token-store] could not remove stale token store ${file}`, e);
   }
 }
 
@@ -90,7 +91,7 @@ function writeToken(refreshToken: string): void {
     // rotated token can never shadow the real one. Best-effort — the
     // safeStorage write above already persisted the session.
     try { writeEncryptedFile(refreshToken); } catch (e) {
-      console.warn('[token-store] could not refresh encrypted-file copy', e);
+      diagnostic("main.token-store", "WARNING", "token_store_could_not_refresh_encrypted_file_copy", '[token-store] could not refresh encrypted-file copy', e);
     }
     return;
   }
@@ -98,7 +99,7 @@ function writeToken(refreshToken: string): void {
   // silently persisted NOTHING — the user looked signed in until the
   // next launch, then showed up as unauthenticated (ENG-761). Fall back
   // to the same encrypted file macOS uses so the session survives.
-  console.warn('[token-store] safeStorage unavailable — using encrypted-file fallback');
+  diagnostic("main.token-store", "WARNING", "token_store_safestorage_unavailable_using_encrypted_file_fallback", '[token-store] safeStorage unavailable — using encrypted-file fallback');
   writeEncryptedFile(refreshToken);
   // Do not let a previously stored DPAPI token take precedence if
   // safeStorage recovers after the refresh token has rotated.
@@ -151,7 +152,7 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
   _expiresAt = Date.now() + expiresInSeconds * 1000;
   if (refreshToken) {
     try { writeToken(refreshToken); } catch (e) {
-      console.warn('[token-store] failed to persist refresh token', e);
+      diagnostic("main.token-store", "WARNING", "token_store_failed_to_persist_refresh_token", '[token-store] failed to persist refresh token', e);
     }
   }
   recordSignedInAccount(accessToken, refreshToken);
@@ -176,7 +177,7 @@ function recordSignedInAccount(accessToken: string, refreshToken: string): void 
   if (!accountId) {
     // Both tokens opaque, and the session still authenticates, so the previous
     // account's record must not be left standing for it.
-    console.warn('[token-store] the signed-in tokens name no account');
+    diagnostic("main.token-store", "WARNING", "token_store_the_signed_in_tokens_name_no_account", '[token-store] the signed-in tokens name no account');
     quarantineSession();
     return;
   }
@@ -191,7 +192,7 @@ function recordSignedInAccount(accessToken: string, refreshToken: string): void 
     try {
       claimDefaultRoot(coworkHome(), accountId);
     } catch (claimErr) {
-      console.warn('[token-store] could not settle the account data root', claimErr);
+      diagnostic("main.token-store", "WARNING", "token_store_could_not_settle_the_account_data_root", '[token-store] could not settle the account data root', claimErr);
     }
     // The record names this session again, so an earlier held quarantine has
     // nothing left to protect against. Lifting it here rather than holding it
@@ -199,7 +200,7 @@ function recordSignedInAccount(accessToken: string, refreshToken: string): void 
     // the rest of the session on an empty root.
     clearInMemorySessionQuarantine();
   } catch (e) {
-    console.warn('[token-store] could not record the signed-in account', e);
+    diagnostic("main.token-store", "WARNING", "token_store_could_not_record_the_signed_in_account", '[token-store] could not record the signed-in account', e);
     quarantineSession();
   }
 }
@@ -213,7 +214,7 @@ function quarantineSession(): void {
     markActiveAccountUnresolved(coworkHome());
     return;
   } catch (markErr) {
-    console.warn('[token-store] could not mark the session unresolved', markErr);
+    diagnostic("main.token-store", "WARNING", "token_store_could_not_mark_the_session_unresolved", '[token-store] could not mark the session unresolved', markErr);
   }
   // Disk refused, so hold it in memory instead. Without this the session keeps
   // running on whatever the file still says, and saveTokens has already kept
@@ -225,7 +226,7 @@ function quarantineSession(): void {
   try {
     clearActiveAccountRecord(coworkHome());
   } catch (removeErr) {
-    console.error(
+    diagnostic("main.token-store", "ERROR", "token_store_could_not_clear_the_signed_in_account_record_this_session_may_resolve_onto_another_accou",
       '[token-store] could not clear the signed-in account record — '
       + 'this session may resolve onto another account data root',
       removeErr,
@@ -265,7 +266,7 @@ function recordActiveOrganization(accessToken: string): void {
     // Attributing that data to one organization is better than sharing it with
     // all of them, and unlike the sharing it is visible.
     if (readOrgClaim(root).kind !== 'claimed' && claimOrgRoot(root, orgId).kind !== 'claimed') {
-      console.error(
+      diagnostic("main.token-store", "ERROR", "token_store_could_not_record_which_organization_owns_this_data_root_organizations_on_this_account_ma",
         '[token-store] could not record which organization owns this data root — '
         + 'organizations on this account may share stores until it can be written',
       );
@@ -276,7 +277,7 @@ function recordActiveOrganization(accessToken: string): void {
     // record names the PREVIOUS organization and every check downstream
     // compares against it and agrees, so the sidecar is never moved. Removing
     // it resolves to an empty quarantine root instead, which is recoverable.
-    console.warn('[token-store] could not record the active organization', e);
+    diagnostic("main.token-store", "WARNING", "token_store_could_not_record_the_active_organization", '[token-store] could not record the active organization', e);
     try {
       writeActiveOrgSync(root, null);
     } catch (removeErr) {
@@ -286,7 +287,7 @@ function recordActiveOrganization(accessToken: string): void {
       // transition, so without this the session operates as one organization
       // while every store resolution agrees with the record and picks another.
       markOrganizationUnresolvedInMemory();
-      console.error(
+      diagnostic("main.token-store", "ERROR", "token_store_could_not_record_or_clear_the_active_organization_this_session_may_read_another_organiza",
         '[token-store] could not record OR clear the active organization — '
         + 'this session may read another organization\'s data',
         removeErr,
@@ -327,7 +328,7 @@ export function clearTokens(): void {
   try {
     writeActiveAccountSync(coworkHome(), null);
   } catch (e) {
-    console.warn('[token-store] could not record the sign-out', e);
+    diagnostic("main.token-store", "WARNING", "token_store_could_not_record_the_sign_out", '[token-store] could not record the sign-out', e);
   }
   broadcastAuthChanged(false);
 }

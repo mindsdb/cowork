@@ -1,0 +1,8 @@
+# Views for pages.test.ts's pixel cap case. Each is a shown page width in CSS
+# pixels and a screen pixel ratio. At every one, pageCanvasSize must keep a
+# page of the largest PDF size within maxPdfCanvasPixels.
+
+views:
+  - { cssWidth: 360, ratio: 1 }
+  - { cssWidth: 2400, ratio: 4 }
+  - { cssWidth: 10000, ratio: 3 }

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
+import { updateMetadataYaml } from './update-metadata.mjs';
 
 function value(flag) {
   const index = process.argv.indexOf(flag);
@@ -38,19 +39,14 @@ if (blockmapIndex !== -1) {
 const bytes = readFileSync(artifact);
 const sha512 = createHash('sha512').update(bytes).digest('base64');
 const name = basename(artifact);
-// JSON-quoted strings are valid YAML scalars and prevent filenames from
-// changing the metadata structure.
-const yaml = [
-  `version: ${JSON.stringify(version)}`,
-  'files:',
-  `  - url: ${JSON.stringify(name)}`,
-  `    sha512: ${JSON.stringify(sha512)}`,
-  `    size: ${statSync(artifact).size}`,
-  `path: ${JSON.stringify(name)}`,
-  `sha512: ${JSON.stringify(sha512)}`,
-  `releaseDate: ${JSON.stringify(new Date().toISOString())}`,
-  '',
-].join('\n');
+const yaml = updateMetadataYaml({
+  platform,
+  name,
+  sha512,
+  size: statSync(artifact).size,
+  version,
+  releaseDate: new Date().toISOString(),
+});
 
 writeFileSync(output, yaml, 'utf8');
 console.log(`[update-metadata] wrote ${output} for ${name} (${version})`);

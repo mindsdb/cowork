@@ -7,7 +7,13 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 vi.mock('../../../platform/host', () => ({
-  host: { isWeb: true, isElectron: false, isMac: () => false, openExternal: vi.fn() },
+  host: {
+    isWeb: true,
+    isElectron: false,
+    isMac: () => false,
+    openExternal: vi.fn(),
+    getApiOrigin: () => 'https://cowork.example',
+  },
 }));
 // Stubbed to a bare button: the real menu drives a whole publish controller
 // (versions, access drafts, passwords), and none of that is what this file is
@@ -48,14 +54,12 @@ const props = {
     disabledReason: '',
   },
   actions: {
-    canOpenInBrowser: false,
     canOpenLocalFile: false,
     isBackendArtifact: false,
     backendPort: null,
     artifact: { serveUrl: '' },
     deleteBusy: false,
     onReload: vi.fn(),
-    onOpenInBrowser: vi.fn(),
     onOpenFolder: vi.fn(),
     onOpenOS: vi.fn(),
     onDownload: vi.fn(),
@@ -88,13 +92,15 @@ describe('preview window chrome in org mode', () => {
     expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
   });
 
-  it('keeps review and close', () => {
+  it('keeps the address and close; Comments moved to the revision line', () => {
     setOrgMode(true);
     render(<ArtifactViewerHeader {...props} />);
 
-    expect(screen.getByRole('button', { name: 'Comments' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Comments' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Preview' })).toBeInTheDocument();
+    // The address pill took the mode tabs' place.
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(document.querySelector('.artifact-address-pill')).not.toBeNull();
   });
 });
 
@@ -172,12 +178,6 @@ describe('preview errors button', () => {
 
 // IconButton renders aria-pressed only for a real toggle.
 describe('top-bar toggle semantics', () => {
-  it('keeps aria-pressed on the comments switch', () => {
-    render(<ArtifactViewerHeader {...props} />);
-
-    expect(screen.getByRole('button', { name: 'Comments' })).toHaveAttribute('aria-pressed', 'false');
-  });
-
   it('leaves it off plain actions', () => {
     render(<ArtifactViewerHeader {...props} />);
 

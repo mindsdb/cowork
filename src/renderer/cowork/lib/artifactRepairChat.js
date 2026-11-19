@@ -13,6 +13,8 @@
 // only mint a fresh one when that chat can't be reached: deleted, another
 // tenant's, or an artifact older than provenance.
 
+import { originConversationId } from './artifactIdentity';
+
 /** @typedef {{ id: string, task: object|null }} RepairTarget */
 
 // A turn only looks for queued handoffs under its own conversation's project
@@ -44,7 +46,7 @@ function sameProject(artifact, task) {
  * @returns {Promise<RepairTarget>}
  */
 export async function resolveRepairConversation({ artifact, tasks = [], fetchConversation }) {
-  const originId = String(artifact?.originConversationId || '');
+  const originId = originConversationId(artifact);
   if (!originId) return { id: '', task: null };
   const local = (tasks || []).find((task) => String(task?.id || '') === originId);
   if (local) return sameProject(artifact, local) ? { id: originId, task: local } : { id: '', task: null };

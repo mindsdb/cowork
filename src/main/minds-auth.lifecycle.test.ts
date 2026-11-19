@@ -117,12 +117,14 @@ import { revokeDeviceKeyAndEndSession, getRevokeToken } from './minds-auth';
 // ─── ENG-498: revoke this device's key on logout ─────────────────────
 describe('revokeDeviceKeyAndEndSession', () => {
   beforeEach(() => {
+    vi.stubEnv("LOG_LEVEL", "INFO");
     // Prove endKeycloakSession used the PASSED snapshot token rather than
     // a store read — these tests pass tokens explicitly and must not
     // depend on the token-store mocks at all.
     (getRefreshToken as Mock).mockReturnValue(null);
   });
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -163,7 +165,7 @@ describe('revokeDeviceKeyAndEndSession', () => {
     // wiped the store by the time this detached chain runs.
     expect(calls[endSession].body).toContain('rt-snapshot');
     // Visibility (ENG-498 review): a matched revoke logs how many keys it got.
-    expect(logSpy).toHaveBeenCalledWith('[logout] revoked %d device key(s)', 2);
+    expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toMatchObject({ event: 'logout_revoked_d_device_key_s', count: 2 });
   });
 
   it('skips soft-revoked rows so the bounded budget is spent on the live key', async () => {
@@ -210,10 +212,9 @@ describe('revokeDeviceKeyAndEndSession', () => {
     // Visibility (ENG-498 review): a zero-match revoke logs why it's
     // ambiguous (list failure vs. already-gone vs. wrong org) rather than
     // silently deleting nothing forever.
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[logout] no per-device key found to revoke (name=%s) — list failed, key already gone, or key lives in another org',
-      DEVICE_KEY_NAME,
-    );
+    expect(JSON.parse(String(warnSpy.mock.calls[0][0]))).toMatchObject({
+      log_level: 'WARNING', device_key_id: DEVICE_KEY_NAME,
+    });
   });
 
   it('skips the revoke without a token but still ends the session', async () => {

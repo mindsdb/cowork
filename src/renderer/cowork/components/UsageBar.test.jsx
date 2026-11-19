@@ -271,4 +271,15 @@ describe('UsageBar', () => {
     second.rerender(<UsageBar warning={freeLow} usageKnown />);
     expect(screen.queryByText(/of your free allowance left/)).toBeNull();
   });
+  it('paints every status tone over a solid base so the conversation cannot show through', () => {
+    // The dark theme's status -bg tokens are translucent; the tint alone would
+    // let scrolled chat content read through the bar.
+    for (const tone of ['info', 'warning', 'danger']) {
+      const { unmount } = render(<UsageBar warning={{ ...balanceLow, tone }} />);
+      const bar = document.querySelector('.usage-bar');
+      expect(bar.classList).toContain('bg-bg');
+      expect(bar.className).toContain(`linear-gradient(var(--${tone}-bg)`);
+      unmount();
+    }
+  });
 });

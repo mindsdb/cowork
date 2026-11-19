@@ -3,6 +3,7 @@
 
 import { RailCard } from './RailCard';
 import { ContextCard } from './ContextCard';
+import { useTranslation } from '../../../lib/i18n';
 
 export function ContextBox({
   /** For resolving a stored project slug to its label (ENG-1676). */
@@ -13,20 +14,22 @@ export function ContextBox({
   /** Bumps when the task transcript changes (turn finish, send, etc.) so attachments and memory stay in sync. */
   refreshKey,
   defaultOpen = true,
-  maxBodyHeight = 360,
   slim = true,
   onAddGoogleDriveFiles,
+  onAddSharePointFiles,
   onFetchGoogleDriveFiles,
   onRemoveGoogleDriveFile,
 }) {
+  const { t } = useTranslation('shell');
   return (
-    <RailCard title="Context" defaultOpen={defaultOpen} slim={slim} maxBodyHeight={maxBodyHeight}>
+    <RailCard title={t('rail.context.title')} defaultOpen={defaultOpen} slim={slim}>
       <ContextCard
         projects={projects}
         project={project}
         conversationId={conversationId}
         refreshKey={refreshKey}
         onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+        onAddSharePointFiles={onAddSharePointFiles}
         onFetchGoogleDriveFiles={onFetchGoogleDriveFiles}
         onRemoveGoogleDriveFile={onRemoveGoogleDriveFile}
       />

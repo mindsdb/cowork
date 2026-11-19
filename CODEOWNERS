@@ -1,0 +1,13 @@
+# The deployment brand that web builds without the platform UI load at run time, and the guards
+# around it. A change here changes what a deployment's users see, so Devops reviews it.
+/src/shared/deployment-brand.ts @mindsdb/devops
+/src/shared/product-name.ts @mindsdb/devops
+/src/renderer/lib/deploymentBrand.ts @mindsdb/devops
+/src/renderer/lib/skins.ts @mindsdb/devops
+/src/renderer/lib/navBranding.ts @mindsdb/devops
+/src/renderer/public/brand/ @mindsdb/devops
+/src/renderer/cowork/lib/surface.js @mindsdb/devops
+/src/renderer/vite.config.ts @mindsdb/devops
+/src/renderer/web-main.tsx @mindsdb/devops
+/src/main/branding.test.ts @mindsdb/devops
+/scripts/spa_wrapper.py @mindsdb/devops

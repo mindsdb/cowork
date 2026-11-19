@@ -1,0 +1,669 @@
+{
+  "collection": {
+    "filter": {
+      "label": "필터",
+      "activeAriaLabel": "필터, {count}개 적용됨",
+      "activeFilters": "적용된 필터",
+      "removeAriaLabel": "‘{label}’ 필터 제거",
+      "clear": "지우기"
+    },
+    "search": "검색",
+    "loading": "로드 중",
+    "noResultsFor": "‘{query}’에 대한 결과가 없습니다",
+    "noResults": "결과 없음",
+    "clearSearch": "검색 지우기",
+    "view": {
+      "grid": "그리드",
+      "list": "목록",
+      "ariaLabel": "보기"
+    },
+    "back": "뒤로",
+    "breadcrumb": "탐색 경로",
+    "sort": "정렬"
+  },
+  "attribution": {
+    "createdBy": "만든 사람: {name}",
+    "lastModifiedBy": "마지막으로 수정한 사람: {name}"
+  },
+  "share": {
+    "shared": "공유됨",
+    "share": "공유",
+    "whoCanUseSkill": "이 스킬을 사용할 수 있는 사용자",
+    "changeFailed": "이 스킬을 사용할 수 있는 사용자를 변경하지 못했습니다.",
+    "shareNamed": "{name} 공유",
+    "dismiss": "닫기",
+    "audienceLocked": "사용할 수 있는 사용자는 소유자 또는 관리자만 변경할 수 있습니다.",
+    "updating": "업데이트 중…",
+    "update": "업데이트"
+  },
+  "recipients": {
+    "directoryFailed": {
+      "unreachable": "조직 디렉터리를 불러오지 못했습니다",
+      "refused": "MindsHub에서 조직 구성원 목록 조회를 거부했습니다"
+    },
+    "teamsFailed": {
+      "unreachable": "팀을 불러오지 못했습니다. 나중에 다시 시도하세요.",
+      "refused": "MindsHub에서 팀 목록 조회를 거부했습니다."
+    },
+    "namesFailed": {
+      "unreachable": "일부 이름을 불러오지 못했습니다.",
+      "refused": "MindsHub에서 일부 사용자 이름 조회를 거부했습니다."
+    },
+    "retry": "다시 시도",
+    "label": {
+      "emails": "이메일로 사용자 추가",
+      "external": "팀, 사용자 또는 이메일 추가",
+      "org": "팀 또는 사용자 추가"
+    },
+    "placeholder": {
+      "emails": "이메일로 사용자 추가…",
+      "external": "팀, 사용자 또는 이메일 추가…",
+      "org": "팀 또는 사용자 추가…"
+    },
+    "team": "팀",
+    "teams": "팀",
+    "invite": "{email} 초대",
+    "add": "{email} 추가",
+    "outside": " ({org} 외부)",
+    "peopleIn": "{org} 멤버",
+    "noOneElse": "{org}에는 아직 다른 멤버가 없습니다. ",
+    "invitePeople": "멤버 초대 ↗",
+    "everyoneInOrgAdded": "{org}의 모든 멤버가 이미 추가되었습니다.",
+    "thatsYou": "본인입니다",
+    "onlyPeopleIn": "{org} 멤버만",
+    "noMatches": "일치하는 항목 없음",
+    "everyoneAdded": "추가할 수 있는 사용자가 모두 이미 추가되었습니다.",
+    "truncated": "처음 {count}명을 표시하고 있습니다.",
+    "suggestions": "추천",
+    "notAdded": "추가되지 않음: {list}",
+    "ariaLabel": "공유 대상",
+    "checking": "확인 중…",
+    "unknownTeam": "알 수 없는 팀",
+    "personNotLoaded": "이름을 불러오지 못함",
+    "loading": "로드 중…",
+    "remove": "{name} 제거",
+    "removePerson": "사용자 제거",
+    "outsideOrg": "{org} 외부",
+    "removeTooltip": "제거",
+    "more": "외 {count}개",
+    "sharedWith": "공유 대상",
+    "whoCanUseIt": "사용할 수 있는 사용자",
+    "reason": {
+      "notEmail": "이메일 주소가 아님",
+      "self": "본인",
+      "notInOrg": "{org} 멤버가 아님",
+      "uncheckedUnreachable": "{org} 멤버인지 확인하지 못함, 다시 시도하세요",
+      "uncheckedRefused": "MindsHub에서 {org} 멤버 확인을 거부함",
+      "uncheckedThrottled": "MindsHub에서 요청을 제한하고 있음, 1분 후 다시 시도하세요"
+    }
+  },
+  "skillCard": {
+    "noContent": "_내용이 없습니다._",
+    "skill": "스킬",
+    "downloaded": "다운로드됨",
+    "savedShared": "저장되었으며 모든 사용자와 공유됨",
+    "savedToSkills": "내 스킬에 저장됨",
+    "noPermission": "이 공유 스킬을 대체할 권한이 없습니다.",
+    "verifyFailed": "이 공유 스킬을 대체할 권한을 확인하지 못했습니다. 다시 시도하세요.",
+    "sharingKept": "기존 스킬을 덮어써서 저장했습니다. 사용할 수 있는 사용자는 변경되지 않았으니 스킬 페이지에서 설정하세요.",
+    "saveFailed": "스킬을 저장하지 못했습니다.",
+    "saved": "저장됨",
+    "draft": "초안 · 저장되지 않음",
+    "download": "스킬 다운로드",
+    "saving": "저장 중…",
+    "readOnly": "읽기 전용",
+    "save": "스킬 저장"
+  },
+  "skillDetail": {
+    "you": "나",
+    "unknown": "알 수 없음",
+    "audienceAriaLabel": "공유 대상: {names}. 모두 보기",
+    "allProjects": "모든 프로젝트",
+    "disabledForEveryone": "모든 사용자에게 사용 안 함",
+    "disabled": "사용 안 함",
+    "actions": "스킬 작업",
+    "details": "세부 정보",
+    "project": "프로젝트",
+    "everyone": "모든 사용자",
+    "builtIn": "기본 제공",
+    "owner": "소유자",
+    "updated": "업데이트",
+    "instructions": "지침",
+    "noInstructions": "이 스킬에는 아직 지침이 없습니다.",
+    "addInstructions": "지침 추가"
+  },
+  "skillModal": {
+    "noEditPermission": "이 공유 스킬을 편집할 권한이 없습니다.",
+    "unknownError": "알 수 없는 오류",
+    "shareUpdateFailed": "스킬은 저장되었지만 공유 설정을 업데이트하지 못했습니다: {reason}.",
+    "shareCreateFailed": "스킬은 만들어졌지만 공유하지 못했습니다: {reason}. 스킬 메뉴에서 공유할 수 있습니다.",
+    "editTitle": "스킬 편집",
+    "addTitle": "스킬 추가",
+    "subtitle": "스킬의 이름, 설명, 지침을 작성하세요.",
+    "ownSharedChangeNote": "공유된 스킬이므로, 변경 내용은 공유된 모든 사용자의 다음 답변부터 적용됩니다.",
+    "label": "레이블",
+    "description": "설명",
+    "descriptionPlaceholder": "최근 작업을 바탕으로 주간 현황 보고서를 생성합니다. 업데이트나 진행 상황 요약을 요청받았을 때 사용합니다.",
+    "instructionsPlaceholder": "내 최근 작업을 성과, 걸림돌, 다음 단계의 세 섹션으로 요약해 주세요. 어조는 전문적이되 딱딱하지 않게 해 주세요...",
+    "settings": "스킬 설정",
+    "ownerOnlyHint": "사용할 수 있는 사용자는 소유자만 변경할 수 있습니다",
+    "cancel": "취소",
+    "retrySharing": "공유 다시 시도",
+    "save": "저장",
+    "create": "만들기"
+  },
+  "skills": {
+    "sharing": {
+      "updated": "{name}을(를) 사용할 수 있는 사용자를 업데이트했습니다.",
+      "alwaysOnDetail": "모든 작업에 포함되며, 소유자만 변경할 수 있습니다.",
+      "readOnlyOrgNote": "사용할 수는 있지만 변경할 수는 없습니다."
+    },
+    "sharedSkillNote": "이 스킬은 나와 공유된 스킬이므로 여기에서 변경할 수 없습니다.",
+    "lockedHint": {
+      "sharedWithYou": "나와 공유됨",
+      "adminOrCreator": "관리자 또는 만든 사람"
+    },
+    "readOnly": {
+      "builtin": "기본 제공 스킬은 읽기 전용입니다.",
+      "other": "읽기 전용입니다. 이 스킬은 만든 사람 또는 조직 관리자만 변경할 수 있습니다."
+    },
+    "switch": {
+      "on": "켜기: Anton이 이 스킬을 사용할 수 있습니다",
+      "off": "끄기: Anton이 이 스킬을 사용하지 않습니다",
+      "onForMe": "나만 켜기: Anton이 내 작업에서 이 스킬을 사용할 수 있습니다",
+      "offForMe": "나만 끄기: Anton이 내 작업에서 이 스킬을 사용하지 않습니다",
+      "disabledForEveryoneHint": "편집자가 모든 사용자에게 사용 안 함으로 설정함",
+      "noPermission": "이 스킬을 사용하거나 사용 중지할 권한이 없습니다.",
+      "ownSharedHint": "{label}. 켜거나 끄면 공유된 모든 사용자에게 적용됩니다."
+    },
+    "updatedAge": "{age} 업데이트됨",
+    "sharedBy": "공유한 사람: {email}",
+    "sharedByPrefix": "공유한 사람: {email}. ",
+    "upload": {
+      "failed": "스킬을 업로드하지 못했습니다.",
+      "title": "스킬 파일 업로드",
+      "subtitle": ".md 또는 .skill 파일을 업로드하여 스킬을 가져옵니다.",
+      "sizeKb": "{size}KB",
+      "dropHint": "끌어서 놓거나 클릭하여 업로드",
+      "requirements": "파일 요구 사항",
+      "requirementMd": ".md 또는 .skill 파일에는 YAML 형식의 스킬 이름과 설명이 포함되어야 합니다",
+      "requirementZip": ".zip 파일에는 SKILL.md 파일이 포함되어야 합니다",
+      "uploading": "업로드 중…",
+      "upload": "업로드"
+    },
+    "create": {
+      "write": "스킬 지침 작성",
+      "cowork": "{product}와(과) 함께 만들기",
+      "coworkPrefill": "/skill-creator 스킬을 사용해서 함께 스킬을 만들어 보겠습니다. 먼저 이 스킬이 무엇을 해야 하는지 저에게 물어봐 주세요.",
+      "upload": "스킬 업로드",
+      "button": "스킬 만들기"
+    },
+    "sort": {
+      "name": "이름",
+      "recent": "최근 항목"
+    },
+    "toast": {
+      "createdShared": "{name}을(를) 만들고 공유했습니다.",
+      "savedUpdatedSharing": "{name}을(를) 저장하고 사용할 수 있는 사용자를 업데이트했습니다.",
+      "savedSharedEveryone": "{name}을(를) 저장하고 모든 사용자와 공유했습니다.",
+      "savedStoppedSharing": "{name}을(를) 저장하고 공유를 중지했습니다.",
+      "saved": "{name}을(를) 저장했습니다.",
+      "removed": "{name}을(를) 제거했습니다.",
+      "removeFailed": "스킬을 제거하지 못했습니다.",
+      "sharedEveryone": "{name}을(를) 모든 사용자와 공유했습니다.",
+      "stoppedSharing": "{name} 공유를 중지했습니다.",
+      "updateFailed": "스킬을 업데이트하지 못했습니다.",
+      "onForEveryone": "모든 사용자에게 {name}을(를) 켰습니다.",
+      "offForEveryone": "모든 사용자에게 {name}을(를) 껐습니다."
+    },
+    "menu": {
+      "disableEveryone": "모든 사용자에게 사용 안 함",
+      "enableEveryone": "모든 사용자에게 사용",
+      "tryInChat": "채팅에서 사용해 보기",
+      "edit": "편집",
+      "noEditPermission": "이 스킬을 편집할 권한이 없습니다.",
+      "uninstall": "제거",
+      "noUninstallPermission": "이 스킬을 제거할 권한이 없습니다."
+    },
+    "sharedAriaLabel": "공유됨: {name}",
+    "moreActionsFor": "{name} 추가 작업",
+    "moreActions": "추가 작업",
+    "title": "스킬",
+    "editNamed": "{name} 편집",
+    "subtitle": "작업별 스킬로 {product}의 기능을 확장하세요",
+    "searchPlaceholder": "스킬 검색",
+    "countFiltered": "스킬 {total}개 중 {shown}개",
+    "count": "{count, plural, other {스킬 #개}}",
+    "sharingSettings": "공유 설정",
+    "empty": {
+      "title": "아직 저장된 스킬이 없습니다",
+      "description": "스킬을 작성하거나, SKILL.md를 업로드하거나, {product}에 만들어 달라고 요청하세요.",
+      "action": "첫 번째 스킬 작성"
+    },
+    "remove": {
+      "title": "‘{name}’ 스킬을 제거하시겠습니까?",
+      "ownSharedNote": "공유된 스킬이므로, 공유된 모든 사용자도 이 스킬을 더 이상 사용할 수 없습니다."
+    },
+    "disableEveryone": {
+      "title": "공유된 모든 사용자에게 {name}을(를) 끄시겠습니까?",
+      "message": "편집자가 다시 켤 때까지 Anton은 누구의 작업에서도 이 스킬을 사용하지 않습니다."
+    }
+  },
+  "connections": {
+    "connect": "연결",
+    "sortEngine": "엔진",
+    "countFiltered": "연결 {total}개 중 {shown}개",
+    "count": "{count, plural, other {연결 #개}}",
+    "drive": {
+      "noAccountEmail": "이 연결에 등록된 계정 이메일이 없습니다. 다시 연결해 보세요.",
+      "pickerFailed": "Drive 파일 선택기를 열지 못했습니다.",
+      "title": "Drive 파일",
+      "intro": "이 연결은 직접 만든 파일만 읽을 수 있습니다. 다른 파일에도 액세스 권한을 부여하려면 아래에서 파일을 선택하세요. 여러 파일이나 공유 드라이브 전체도 선택할 수 있습니다.",
+      "waiting": "브라우저에서 열렸습니다. 브라우저에서 파일을 선택한 후 이곳으로 돌아오세요. 돌아온 후 액세스 권한이 확인되기까지 몇 초 정도 걸릴 수 있습니다.",
+      "select": "Google Drive에서 파일 선택",
+      "failed": "Google에서 {count, plural, other {선택한 파일}}에 대한 액세스 권한이 실제로 부여되지 않았습니다. {count, plural, other {파일을}} 다시 선택하세요:",
+      "noFiles": "선택한 파일이 없습니다.",
+      "granted": "{count, plural, other {파일 #개}}에 대한 액세스 권한을 부여했습니다:"
+    },
+    "reconnectRequired": "다시 연결 필요",
+    "expired": {
+      "own": "이 연결의 액세스 권한이 만료되었거나 취소되었습니다. 다시 연결하여 액세스 권한을 복원하거나, 카드에서 연결을 해제하세요.",
+      "shared": "이 연결의 액세스 권한이 만료되었거나 취소되었습니다. 이 연결을 공유한 사용자가 다시 연결할 수 있습니다.",
+      "operator": "이 연결의 액세스 권한이 만료되었거나 취소되었습니다. 운영자가 다시 연결할 수 있습니다."
+    },
+    "sharedNote": "이 연결은 나와 공유된 연결이므로 여기에서 변경할 수 없습니다.",
+    "operatorNote": "이 연결은 운영자가 제공하므로 여기에서 변경할 수 없습니다.",
+    "lastUpdated": "마지막 업데이트",
+    "connected": "연결됨",
+    "credentials": "자격 증명",
+    "secretSaved": "•••••••• 저장됨",
+    "sharepoint": {
+      "title": "키 및 사이트",
+      "intro": "이 연결이 읽을 수 있는 앱 키 또는 사이트를 변경합니다. {product}은(는) 저장하기 전에 Microsoft에서 키를 확인합니다.",
+      "edit": "키 및 사이트 편집"
+    },
+    "toolAccess": {
+      "title": "도구 액세스",
+      "intro": "Anton이 이 연결의 도구로 할 수 있는 작업입니다. 변경해도 다시 연결할 필요가 없습니다.",
+      "write": "읽기 및 쓰기",
+      "none": "도구 액세스 없음"
+    },
+    "close": "닫기",
+    "reconnectConfirm": {
+      "title": "{name}을(를) 다시 연결하시겠습니까?",
+      "sharepoint": "키와 사이트를 업데이트합니다. 새 키가 확인되고 저장될 때까지는 현재 상태가 유지됩니다.",
+      "shared": "공유된 연결이므로, 같은 계정을 연결하면 공유된 모든 사용자에게 그대로 업데이트됩니다.",
+      "own": "기존 연결이 제거되고 처음부터 다시 연결하게 됩니다."
+    },
+    "reconnect": "다시 연결",
+    "theAgent": "에이전트",
+    "title": "앱 및 데이터 연결",
+    "subtitle": "이미 사용 중인 도구에 {agent}을(를) 연결하고 작업을 자동화하세요.",
+    "searchPlaceholder": "연결 검색",
+    "empty": {
+      "title": "아직 연결된 앱이 없습니다",
+      "description": "커넥터에 따라 {agent}이(가) 사용자와 함께 일하는 방식이 달라집니다. 이미 사용 중인 앱과 데이터베이스를 연결하면 {agent}이(가) 그곳에서 작업을 자동화합니다.",
+      "action": "첫 번째 앱 연결"
+    },
+    "disconnectFailed": "연결을 해제하지 못했습니다",
+    "ok": "확인"
+  },
+  "utilities": {
+    "title": "유틸리티"
+  },
+  "memory": {
+    "title": "메모리",
+    "subtitle": "에이전트가 여러 작업에서 재사용할 수 있는 프로필, 규칙, 학습 내용입니다.",
+    "scope": {
+      "global": "전역",
+      "deployment": "배포",
+      "projectMemory": "프로젝트 메모리",
+      "project": "프로젝트 · {name}"
+    },
+    "readOnly": {
+      "deployment": "읽기 전용입니다. 운영자가 모든 사용자에게 이 규칙을 설정하며, 모든 답변이 이 규칙을 따릅니다.",
+      "ownAuto": "나만 사용하는 메모리입니다. 작업하는 동안 {product}이(가) 자동으로 저장하므로 편집할 수 없습니다. 삭제는 할 수 있습니다.",
+      "ownAutoEditTitle": "이 메모리는 {product}이(가) 자동으로 저장하므로 편집할 수 없습니다.",
+      "shared": "읽기 전용입니다. 메모리 작성자 또는 조직 관리자만 변경할 수 있습니다."
+    },
+    "noEditPermission": "이 공유 메모리를 편집할 권한이 없습니다.",
+    "noDeletePermission": "이 공유 메모리를 삭제할 권한이 없습니다.",
+    "noCategory": "선택한 메모리 범주가 없습니다.",
+    "pickProject": "이 메모리의 프로젝트를 선택하세요.",
+    "saved": "{name} 메모리를 저장했습니다.",
+    "saveFailed": "메모리를 저장하지 못했습니다.",
+    "delete": {
+      "title": "‘{name}’ 메모리를 삭제하시겠습니까?",
+      "message": "저장된 내용이 지워집니다.",
+      "confirm": "삭제"
+    },
+    "deleted": "{name} 메모리를 삭제했습니다.",
+    "deleteFailed": "메모리를 삭제하지 못했습니다.",
+    "resetDone": "메모리를 초기화했습니다. 학습한 내용이 모두 지워졌습니다.",
+    "resetFailed": "메모리를 초기화하지 못했습니다.",
+    "reset": {
+      "title": "메모리를 초기화하시겠습니까?",
+      "message": "{product}이(가) 나에 대해 학습한 모든 내용(내 모든 프로젝트의 프로필, 규칙, 학습 내용)이 삭제됩니다. 다음 질문은 학습한 내용이 없는 상태에서 시작됩니다. 배포 규칙은 유지됩니다. 이 작업은 실행 취소할 수 없습니다.",
+      "confirm": "내 메모리 초기화",
+      "busy": "초기화 중…"
+    },
+    "empty": "메모리 항목이 없습니다.",
+    "selectHint": "내용을 확인할 메모리 항목을 선택하세요.",
+    "active": "· 활성"
+  },
+  "publish": {
+    "title": "공유",
+    "subtitle": "에이전트가 Minds 자격 증명으로 공유할 수 있는 HTML 아티팩트입니다.",
+    "sharing": "공유 중…",
+    "sharedUrl": "공유됨: {url}",
+    "shared": "공유했습니다.",
+    "failed": "공유하지 못했습니다.",
+    "copied": "URL을 클립보드에 복사했습니다.",
+    "copyFailed": "복사하지 못했습니다. 위의 URL을 선택하여 직접 복사하세요.",
+    "notReady": "공유하기 전에 설정에서 Minds API 키를 구성하세요.",
+    "copyUrl": "URL 복사",
+    "open": "열기",
+    "empty": "출력 폴더에 HTML 아티팩트가 없습니다.",
+    "history": "공유 기록"
+  },
+  "connectionCard": {
+    "disconnectTitle": "{engine}/{name} 연결을 해제하시겠습니까?",
+    "disconnectShared": "공유된 연결이므로, 공유된 모든 사용자도 이 연결을 더 이상 사용할 수 없습니다. 운영자가 공유를 중지할 때까지 새 연결에서 이 이름을 사용할 수 없습니다.",
+    "customTitle": "{title}(사용자 지정 커넥터)",
+    "repairHint": ". 이전 버전에서 저장되었습니다. 연결을 해제한 후 다시 연결하세요.",
+    "reconnectNeeded": "다시 연결 필요",
+    "managed": "관리됨",
+    "removeDatasource": "{name}이(가) 제거되고 저장된 자격 증명이 삭제됩니다. 이 연결을 사용하는 대화는 더 이상 액세스할 수 없습니다.",
+    "disconnect": "연결 해제",
+    "custom": "사용자 지정",
+    "legacy": "이전 버전에서 저장되었습니다. 연결을 해제한 후 다시 연결하세요.",
+    "activateLabel": "{title} {action, select, view {보기} reconnect {다시 연결} other {관리}}: {subtitle}{hint}",
+    "removing": "제거 중…"
+  },
+  "datasource": {
+    "failed": "작업이 실패했습니다.",
+    "ariaLabel": "{name} 연결",
+    "pending": "연결을 확인하고 있습니다. 자격 증명은 암호화되어 저장됩니다. 확인이 끝나면 이 내용이 업데이트됩니다.",
+    "couldNotConnect": "연결할 수 없음",
+    "lastCheckFailed": "마지막 확인에 실패했습니다.",
+    "host": "호스트",
+    "port": "포트",
+    "database": "데이터베이스",
+    "schema": "스키마",
+    "username": "사용자 이름",
+    "certificateTrust": "인증서 신뢰",
+    "trust": {
+      "prefer": {
+        "label": "서버가 지원하는 경우 암호화",
+        "note": "서버가 지원하는 경우 연결이 암호화되지만 서버의 신원은 확인하지 않으므로, 해당 주소에서 응답한 누구에게나 자격 증명이 전달될 수 있습니다."
+      },
+      "system": {
+        "label": "공인 인증 기관",
+        "note": "연결이 암호화되며 서버의 인증서와 호스트 이름을 확인합니다."
+      },
+      "custom_ca": {
+        "label": "직접 제공한 CA 인증서",
+        "note": "연결이 암호화되며 직접 제공한 인증 기관을 기준으로 확인합니다."
+      },
+      "encrypted": {
+        "label": "암호화, 인증서 확인 안 함",
+        "note": "연결은 암호화되지만 서버의 신원은 확인하지 않으므로, 해당 주소에서 응답한 누구에게나 자격 증명이 전달될 수 있습니다."
+      },
+      "disabled": {
+        "label": "암호화 안 함",
+        "note": "연결이 암호화되지 않습니다. 자격 증명, 쿼리, 반환되는 행이 일반 텍스트로 전송되므로 경로상의 누구나 읽을 수 있습니다."
+      }
+    },
+    "passwordNote": "암호는 서버에 암호화되어 보관되며 다시 표시되지 않습니다. 쿼리는 읽기 전용으로 실행됩니다.",
+    "working": "처리 중…",
+    "tryAgain": "다시 시도",
+    "removeTitle": "{name}을(를) 제거하시겠습니까?",
+    "removeMessage": "저장된 자격 증명이 삭제되며, 이 연결을 사용하는 대화는 더 이상 액세스할 수 없습니다. 나중에 다시 추가할 수 있습니다."
+  },
+  "connectorPicker": {
+    "category": {
+      "crm": "CRM",
+      "sales-engagement": "세일즈 인게이지먼트",
+      "enrichment": "리드 보강",
+      "marketing": "마케팅 자동화",
+      "analytics": "제품 및 웹 분석",
+      "ads": "광고",
+      "support": "지원 및 헬프데스크",
+      "customer-success": "고객 성공",
+      "revenue-intel": "레버뉴 인텔리전스",
+      "communication": "커뮤니케이션",
+      "productivity": "생산성 및 프로젝트 관리",
+      "scheduling": "일정 관리",
+      "forms": "양식",
+      "documents": "문서 및 전자 서명",
+      "billing": "청구 및 결제",
+      "accounting": "회계",
+      "hr": "인사 및 피플 운영",
+      "files": "파일",
+      "mobility": "모빌리티 및 배달",
+      "logistics": "물류 및 배송",
+      "ai": "AI API",
+      "web-search": "웹 검색",
+      "maps": "지도 및 지오코딩",
+      "public-data": "공공 데이터 API",
+      "engineering": "엔지니어링 및 DevOps",
+      "observability": "관측 가능성 및 모니터링",
+      "database": "데이터베이스",
+      "vector-db": "벡터 데이터베이스",
+      "data": "데이터 인프라",
+      "cloud": "클라우드 공급자",
+      "other": "기타"
+    },
+    "buildCustom": "사용자 지정 커넥터 만들기",
+    "buildCustomDescription": "목록에 없는 시스템을 연결합니다. Anton이 함께 설정해 줍니다.",
+    "loadFailed": "커넥터를 불러오지 못했습니다",
+    "title": "커넥터 디렉터리",
+    "searchPlaceholder": "커넥터 검색 — gmail, postgres, slack…",
+    "searchAriaLabel": "커넥터 검색",
+    "filterBy": "필터",
+    "allCategories": "모든 범주",
+    "sortBy": "정렬 기준",
+    "byCategory": "범주별",
+    "byName": "이름(A–Z)",
+    "cloudNote": {
+      "before": "이곳에서 사용할 수 있는 커넥터가 계속 추가될 예정입니다. 나머지 커넥터는 현재",
+      "link": "Cowork 데스크톱 앱",
+      "after": "에서 사용할 수 있습니다."
+    },
+    "loading": "커넥터 로드 중…",
+    "noMatchQuery": "‘{query}’에 해당하는 커넥터가 없습니다",
+    "buildDescription": "Anton과 함께 만들 수 있습니다. Anton이 시스템에 접속하는 방법을 물어본 후 연결을 설정하고 테스트합니다.",
+    "buildFor": "‘{query}’용 사용자 지정 커넥터 만들기",
+    "noMatchInCategory": {
+      "before": "이 범주에는 ",
+      "after": "에 해당하는 커넥터가 없습니다."
+    },
+    "noMatch": {
+      "before": "",
+      "after": "에 해당하는 커넥터가 없습니다."
+    },
+    "noneAvailable": "아직 사용할 수 있는 커넥터가 없습니다.",
+    "cloudAvailable": "이곳에서 사용 가능(MindsHub Cloud)",
+    "available": "사용 가능한 커넥터",
+    "featured": "추천",
+    "desktopOnly": "Cowork 데스크톱 앱에서 사용할 수 있는 커넥터"
+  },
+  "sharepoint": {
+    "folderListFailed": "이 폴더의 목록을 표시하지 못했습니다.",
+    "setup": {
+      "editTitle": "SharePoint 연결 편집",
+      "connectTitle": "SharePoint 연결",
+      "subtitle": "{product}은(는) 키를 저장하기 전에 Microsoft에서 확인합니다.",
+      "loadFailed": "저장된 연결을 불러오지 못했습니다.",
+      "saveFailed": "SharePoint를 저장하지 못했습니다.",
+      "help": "관리자가 Microsoft Entra에서 Graph 애플리케이션 권한 Sites.Selected를 사용하여 앱을 등록하고, 관리자 동의를 부여하고, 클라이언트 암호를 만든 다음, 여기에 나열된 각 사이트에 대한 읽기 액세스 권한을 앱에 부여합니다.",
+      "steps": "설정 단계",
+      "name": "연결 이름",
+      "nameHelp": "영문자와 숫자를 하나의 - 또는 _로 연결하여 입력합니다.",
+      "labelHelp": "저장된 레이블은 여기에서 변경할 수 있지만 제거할 수는 없습니다.",
+      "tenantId": "디렉터리(테넌트) ID",
+      "clientId": "애플리케이션(클라이언트) ID",
+      "clientSecret": "클라이언트 암호",
+      "secretSaved": "저장되었습니다. 그대로 유지하려면 비워 두세요.",
+      "sites": "사이트 주소",
+      "sitesHelp": "한 줄에 하나씩 입력합니다(예: https://contoso.sharepoint.com/sites/team).",
+      "howTo": "설정 방법 · SharePoint"
+    },
+    "import": {
+      "title": "SharePoint에서 파일 추가",
+      "subtitle": "복사본은 {project}의 최상위에 저장됩니다.",
+      "noSites": "이 연결에 지정된 사이트가 없습니다. ‘사용자 지정’에서 연결을 편집하여 사이트를 추가하세요.",
+      "connectionLoadFailed": "이 연결을 불러오지 못했습니다.",
+      "noLibraries": "이 사이트에는 문서 라이브러리가 없습니다.",
+      "librariesFailed": "이 사이트의 라이브러리 목록을 표시하지 못했습니다.",
+      "failed": "가져오지 못했습니다.",
+      "connection": "연결",
+      "site": "사이트",
+      "library": "라이브러리",
+      "treeAriaLabel": "SharePoint 파일 및 폴더",
+      "picked": "{max}개 중 {count}개를 선택했습니다. 선택한 폴더 안의 파일도 최대 {max}개 제한에 포함됩니다.",
+      "importing": "가져오는 중…",
+      "importInto": "{project}(으)로 가져오기",
+      "collapse": "{name} 접기",
+      "expand": "{name} 펼치기",
+      "pick": "{name} 선택",
+      "emptyFolder": "이 폴더는 비어 있습니다.",
+      "loadMore": "더 불러오기",
+      "imported": "{count, plural, other {파일 #개}}를 가져왔습니다.",
+      "skipped": "{count, plural, other {항목 #개}}를 건너뛰었습니다:",
+      "done": "완료"
+    }
+  },
+  "dataVault": {
+    "howTo": "설정 방법",
+    "formCrashed": "양식 패널에서 오류가 발생했습니다:",
+    "theProvider": "공급자",
+    "hero": {
+      "authorize": "{provider}(으)로 인증",
+      "helper": "브라우저에서 {provider} 인증 페이지가 열립니다. 클릭 한 번으로 연결됩니다."
+    },
+    "howToLink": "설정 방법",
+    "pending": {
+      "title": "연결 확인 중",
+      "subtitle": "자격 증명은 암호화되어 저장됩니다.",
+      "note": "잠시 시간이 걸릴 수 있습니다. 결과는 ‘앱 및 데이터 연결’에 표시되며, 확인에 실패하면 그곳에서 다시 시도할 수 있습니다."
+    },
+    "viewConnections": "연결 보기",
+    "driveNote": "이 연결은 직접 만든 파일과 사용자가 선택한 파일에 액세스할 수 있습니다. 채팅의 + 메뉴에서 ‘Google Drive에서 파일 추가’를 사용하거나, 이 연결 설정에서 ‘Google Drive에서 파일 선택’을 사용하세요.",
+    "viewConnectors": "커넥터 보기 →",
+    "required": "{field}은(는) 필수 항목입니다.",
+    "labelPlaceholder": "예: prod-db",
+    "unskip": "건너뛰기 취소",
+    "skip": "건너뛰기",
+    "skipped": "건너뛰었습니다. 이 항목은 에이전트가 알아서 처리합니다.",
+    "submit": "제출",
+    "saveChanges": "변경 내용 저장",
+    "howToTitle": "설정 방법 · {name}",
+    "recommended": "권장",
+    "otherOptions": "{provider}에 연결하는 다른 방법 보기",
+    "pickMethod": "연결 방법을 선택하세요:",
+    "backToOptions": "옵션으로 돌아가기",
+    "saved": {
+      "now": "데이터 볼트에 저장했습니다. 이제 {product}이(가) 작업에서 이 연결을 사용할 수 있습니다.",
+      "can": "데이터 볼트에 저장했습니다. {product}이(가) 작업에서 이 연결을 사용할 수 있습니다.",
+      "agent": "데이터 볼트에 저장했습니다. 에이전트가 작업에서 이 연결을 사용할 수 있습니다."
+    },
+    "providerConnected": "{provider} 연결됨",
+    "oauth": {
+      "waiting": "{provider} 로그인을 기다리는 중…",
+      "noConfig": "‘{engine}’에 대한 OAuth 구성이 없습니다.",
+      "startFailedServer": "{provider} 로그인을 시작하지 못했습니다. 서버가 실행 중인지 확인하세요.",
+      "startFailed": "{provider} 로그인을 시작하지 못했습니다.",
+      "failed": "OAuth 흐름이 실패했습니다.",
+      "signInFailed": "로그인하지 못했습니다. 다시 시도하세요.",
+      "missingClientId": "OAuth 클라이언트 ID가 없습니다. 아래의 ‘Client ID’ 필드를 입력하세요.",
+      "incompleteMeta": "커넥터 사양의 OAuth 메타데이터가 불완전합니다(auth_url / token_url / scopes).",
+      "noBrowserDesktop": "이 커넥터는 브라우저에서 인증할 수 없습니다(커넥터 ID 없음). 데스크톱 앱을 사용하세요.",
+      "noBrowser": "이 커넥터는 이 웹 UI에서 인증할 수 없습니다.",
+      "startFlowFailed": "OAuth 흐름을 시작하지 못했습니다.",
+      "expired": "로그인이 완료되기 전에 만료되었습니다. 다시 시도하세요.",
+      "timeout": "OAuth 로그인이 완료되기를 기다리다가 시간이 초과되었습니다."
+    },
+    "posthog": {
+      "project": "프로젝트 {id}",
+      "none": "이 개인 API 키로 사용할 수 있는 PostHog 프로젝트가 없습니다. 프로젝트 ID를 직접 입력하거나 키의 액세스 권한을 확인하세요.",
+      "choose": "연결할 PostHog 프로젝트를 선택하세요.",
+      "label": "PostHog 프로젝트",
+      "help": "연결할 PostHog 프로젝트를 선택하거나, ‘Project ID’ 필드에 숫자 ID를 직접 입력하세요.",
+      "findFailed": "PostHog 프로젝트를 찾지 못했습니다."
+    },
+    "saveFailed": "연결을 저장하지 못했습니다.",
+    "datasource": {
+      "retryNote": "‘다시 시도’를 누르면 양식이 다시 열립니다. 암호를 한 번 더 입력해야 합니다.",
+      "ready": "이제 이 워크스페이스에서 {name}을(를) 사용할 수 있습니다."
+    },
+    "staleVersion": "이 연결을 연 후에 연결이 변경되었습니다. 닫았다가 다시 열어 최신 버전을 편집하세요.",
+    "submitFailed": "양식을 제출하지 못했습니다",
+    "closeForm": "양식 닫기",
+    "testing": "연결 테스트 중…",
+    "connectionFailed": "연결 실패",
+    "dismissStatus": "상태 닫기",
+    "replace": {
+      "title": "이미 있는 연결입니다",
+      "message": "같은 정보를 가진 {provider} 연결이 이미 있습니다. 이 연결로 대체하거나, 취소하여 기존 연결을 그대로 유지하세요.",
+      "messageLabeled": "같은 정보를 가진 {provider} 연결(‘{label}’)이 이미 있습니다. 이 연결로 대체하거나, 취소하여 기존 연결을 그대로 유지하세요.",
+      "confirm": "대체"
+    },
+    "labelRequired": "레이블은 필수 항목입니다.",
+    "needsRebuild": {
+      "body": "이 커넥터는 연결 테스트가 도입되기 전에 저장되었습니다. 에이전트에게 다시 만들어 달라고 요청하세요.",
+      "close": "닫기"
+    },
+    "connectionTest": {
+      "notWaiting": "이 테스트 결과는 더 이상 대기 중이 아닙니다. 양식을 다시 제출하세요.",
+      "failed": "문제가 발생했습니다. 다시 시도하세요.",
+      "privateTitle": "사설 주소를 허용하시겠습니까?",
+      "privateBody": "{product}이(가) {target}에 {request}을(를) 보내려고 합니다. 이 대상은 {where}에 있습니다({addresses}). 이번 테스트에 허용하시겠습니까?",
+      "thisComputer": "이 컴퓨터",
+      "privateNetwork": "사설 네트워크",
+      "previewTitle": "이 데이터가 맞습니까?",
+      "previewBody": "{product}에서 연결을 테스트했습니다. 저장하기 전에 반환된 내용을 확인하세요. 입력한 값은 ***로 가려져 있습니다.",
+      "tokenFrom": "토큰 출처",
+      "dataFrom": "데이터 출처",
+      "answer": "응답",
+      "answerValue": "HTTP {status}, {size, plural, other {#바이트}}",
+      "items": "항목",
+      "fields": "필드",
+      "hidden": "숨김",
+      "hiddenValue": "{count, plural, other {값 #개}}",
+      "dontAllow": "허용 안 함",
+      "cancel": "취소",
+      "working": "처리 중…",
+      "allow": "이번 테스트에 허용",
+      "confirm": "확인 후 저장"
+    }
+  },
+  "legacyConnect": {
+    "shapeChecked": "자격 증명 형식을 확인했습니다.",
+    "missingFields": "필수 필드 누락: {fields}",
+    "fieldsPresent": "필수 필드가 모두 입력되었습니다. 이 연결을 저장하면 에이전트 작업에서 사용할 수 있습니다.",
+    "validateFailed": "데이터 소스 자격 증명을 검증하지 못했습니다.",
+    "saved": "{name}을(를) 데이터 볼트에 저장했습니다.",
+    "saveFailed": "데이터 소스 연결을 저장하지 못했습니다.",
+    "remove": {
+      "title": "데이터 소스를 제거하시겠습니까?",
+      "message": "{name}이(가) 제거됩니다."
+    },
+    "removed": "{name}을(를) 제거했습니다.",
+    "removeFailed": "데이터 소스 연결을 제거하지 못했습니다.",
+    "savedConnections": "저장된 연결",
+    "ready": "데이터 소스 도구에서 사용 가능",
+    "savedInVault": "데이터 볼트에 저장됨",
+    "empty": "데이터 볼트에 연결이 없습니다.",
+    "authMethod": "인증 방법",
+    "nameLabel": "연결 이름(선택 사항)",
+    "namePlaceholder": "연결 이름(선택 사항)",
+    "required": "필수: {fields}",
+    "none": "없음",
+    "noFields": "설치된 레지스트리에서 이 엔진은 편집 가능한 자격 증명 필드를 제공하지 않습니다.",
+    "checking": "확인 중",
+    "checkFields": "필드 확인",
+    "saving": "저장 중",
+    "saveConnection": "연결 저장"
+  }
+}

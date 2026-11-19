@@ -2,6 +2,9 @@
 // the web entry's Keycloak init gate so a reload never paints an empty page.
 
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
+import { productName } from './lib/deploymentBrand';
+import { useTranslation } from './lib/i18n';
+import { STOCK_PRODUCT_NAME } from '../shared/product-name';
 
 /**
  * Map skin + theme to the onboarding shell's look. arcade.css reads
@@ -20,6 +23,7 @@ export function applyArcadePreset(skin: string): void {
 
 /** The welcome orb and title, with an optional boot status line under them. */
 export function WelcomeLoading({ status }: { status?: string | null }) {
+  const { t } = useTranslation('app');
   return (
     <div
       className="arc-root welcome-loading"
@@ -27,7 +31,7 @@ export function WelcomeLoading({ status }: { status?: string | null }) {
     >
       <OrbitMorph state="thinking" size={72} />
       <div className="arc-welcome-title">
-        Welcome to MindsHub Cowork
+        {t('shell.welcome', { product: productName(STOCK_PRODUCT_NAME) })}
       </div>
       {status && (
         <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)' }}>

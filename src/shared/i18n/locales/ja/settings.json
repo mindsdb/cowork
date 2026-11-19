@@ -1,0 +1,498 @@
+{
+  "nav": {
+    "title": "設定",
+    "ariaLabel": "設定のセクション",
+    "groups": {
+      "General": "一般",
+      "Code": "コード",
+      "App": "アプリ",
+      "System": "システム"
+    },
+    "items": {
+      "agent": "エージェント",
+      "codingAgent": "コーディングエージェント",
+      "computers": "コンピュータ",
+      "appearance": "外観",
+      "branding": "ブランディング",
+      "desktop": "デスクトップ",
+      "channels": "チャネル",
+      "updates": "アップデート",
+      "backend": "バックエンド",
+      "usage": "使用量",
+      "account": "アカウント"
+    }
+  },
+  "header": {
+    "signIn": "サインイン",
+    "signInTooltip": "MindsHubにサインインして管理対象のモデルを使用"
+  },
+  "autoSave": {
+    "saving": "保存中…",
+    "failed": "保存できませんでした",
+    "saved": "保存しました",
+    "savedAutomatically": "変更は自動的に保存されます。"
+  },
+  "language": {
+    "title": "言語",
+    "ariaLabel": "言語",
+    "matchSystem": "システムに合わせる（{language}）"
+  },
+  "appearance": {
+    "title": "外観",
+    "style": {
+      "title": "スタイル",
+      "lockedSubtitle": "このデプロイメントで設定されています。ライトとダークは引き続き選択できます。",
+      "subtitle": "ノーマル、8-Bit、またはカスタムで独自にデザインできます。ライト・ダークと組み合わせて使えます。",
+      "ariaLabel": "スタイル",
+      "optionAriaLabel": "{name}スタイル"
+    },
+    "skins": {
+      "normal": {
+        "label": "ノーマル",
+        "title": "標準の外観を使用します。"
+      },
+      "8bit": {
+        "label": "8-Bit",
+        "title": "レトロな8-Bitの外観を使用します。"
+      },
+      "custom": {
+        "label": "カスタム",
+        "title": "独自の外観をデザインします。"
+      }
+    },
+    "theme": {
+      "title": "テーマ",
+      "subtitle": "ライトまたはダーク。アニメーション背景にも反映されます。",
+      "ariaLabel": "テーマ",
+      "light": "ライト",
+      "lightAriaLabel": "ライトテーマ",
+      "lightHint": "ライトテーマを使用します。",
+      "dark": "ダーク",
+      "darkAriaLabel": "ダークテーマ",
+      "darkHint": "ダークテーマを使用します。"
+    },
+    "accent": {
+      "title": "アクセントカラー",
+      "subtitle": "ボタン、ハイライト、フォーカスに使われる、テーマのブランドカラーです。",
+      "ariaLabel": "カスタムアクセントカラー"
+    },
+    "background": {
+      "default": "デフォルト",
+      "lightTitle": "ライト背景",
+      "lightSubtitle": "ライトテーマで使用されます。暗い色を選ぶと、その色相の明るい色合いになります。テキストは読みやすさを保つように調整されます。「デフォルト」の場合は、ダーク背景の色合いが反映されるか、ライトの標準の外観が適用されます。",
+      "lightAriaLabel": "カスタム背景色（ライトモード）",
+      "lightDefaultAriaLabel": "ライトモードのデフォルト背景",
+      "darkTitle": "ダーク背景",
+      "darkSubtitle": "ダークテーマで使用されます。明るい色を選ぶと、その色相の暗い色合いになります。テキストは読みやすさを保つように調整されます。「デフォルト」の場合は、ライト背景の色合いが反映されるか、ダークの標準の外観が適用されます。",
+      "darkAriaLabel": "カスタム背景色（ダークモード）",
+      "darkDefaultAriaLabel": "ダークモードのデフォルト背景"
+    },
+    "corners": {
+      "title": "角の形",
+      "subtitle": "画面要素の角の丸みを設定します。",
+      "ariaLabel": "角の丸み",
+      "square": "四角",
+      "squareAriaLabel": "四角い角",
+      "squareHint": "シャープなピクセルの角。",
+      "soft": "ソフト",
+      "softAriaLabel": "やや丸い角",
+      "softHint": "ゆるやかな丸み。",
+      "round": "ラウンド",
+      "roundAriaLabel": "丸い角",
+      "roundHint": "完全な丸み。"
+    },
+    "typeface": {
+      "title": "書体",
+      "subtitle": "標準のUIフォント、またはターミナル風にすべて等幅フォントにできます。",
+      "ariaLabel": "カスタム書体",
+      "standard": "標準",
+      "standardAriaLabel": "標準フォント",
+      "standardHint": "UIテキストにInterを使用。",
+      "mono": "等幅",
+      "monoAriaLabel": "等幅フォント",
+      "monoHint": "すべてにJetBrains Monoを使用。"
+    },
+    "scanlines": {
+      "title": "走査線",
+      "subtitle": "アプリ全体にCRT風のうっすらとした走査線を重ねます。",
+      "ariaLabel": "走査線オーバーレイ"
+    },
+    "greeting": {
+      "title": "あいさつ",
+      "subtitle": "新しいタスクを始めるときに表示される文です。",
+      "hint": "新しいタスクを始めるとき、タスク入力欄の上に表示されます。",
+      "ariaLabel": "あいさつのテキスト"
+    },
+    "sidebarTitle": {
+      "title": "サイドバーのタイトル",
+      "subtitle": "左側のナビゲーションパネルの上部に表示されます。空欄にするとデフォルトの{product}になります。",
+      "hint": "ナビゲーションパネルの{product}ロゴの代わりに表示されます。",
+      "ariaLabel": "サイドバーのタイトルテキスト"
+    },
+    "sidebarTitleColor": {
+      "title": "サイドバーのタイトルの色",
+      "subtitle": "サイドバーのタイトルの色を選択するか、テーマのデフォルトのテキスト色に合わせます。",
+      "ariaLabel": "サイドバーのタイトルの色",
+      "follow": "テーマに合わせる",
+      "followAriaLabel": "テーマの色に合わせる"
+    },
+    "sidebarLogo": {
+      "title": "サイドバーのロゴ",
+      "subtitle": "サイドバーのタイトルの横に表示されるアイコンです。PNG、JPG、SVG形式、300 KB未満。",
+      "change": "ロゴを変更",
+      "upload": "ロゴをアップロード",
+      "remove": "削除",
+      "tooLarge": "ロゴは300 KB未満にしてください。"
+    },
+    "favicon": {
+      "title": "ブラウザタブのアイコン",
+      "subtitle": "PNG、ICO、SVG、WEBP形式、100 KB未満。32 × 32ピクセル以上の正方形の画像が最適です。",
+      "previewAlt": "ブラウザタブのアイコンのプレビュー",
+      "change": "アイコンを変更",
+      "upload": "アイコンをアップロード",
+      "remove": "削除",
+      "removeAriaLabel": "ブラウザタブのアイコンを削除",
+      "fileAriaLabel": "ブラウザタブのアイコンファイル",
+      "wrongType": "PNG、ICO、SVG、WEBP形式の画像を選択してください。",
+      "tooLarge": "ブラウザタブのアイコンは100 KB未満にしてください。",
+      "unreadable": "この画像を読み込めませんでした。別のファイルをお試しください。"
+    },
+    "figureSources": {
+      "title": "数値の出典を表示",
+      "subtitle": "回答内の各数値に、その数値を得たステップを示す下線を付け、どのステップからも得られなかった数値には印を付けます。"
+    },
+    "animatedBackground": {
+      "title": "アニメーション背景",
+      "subtitle": "単色の背景の代わりに、アプリの背後にアニメーションするドットグリッドを表示します。"
+    },
+    "counters": {
+      "title": "ナビゲーションパネルのカウンターを表示",
+      "subtitle": "プロジェクト、スケジュール済み、アーティファクト、接続済みアプリに件数バッジを表示し、最近の項目の各行に経過時間を表示します。",
+      "ariaLabel": "ナビゲーションパネルのカウンター"
+    },
+    "themeToggle": {
+      "title": "テーマ切り替えボタン",
+      "subtitle": "ウィンドウの隅にある表示ボタンで、ライトとダークを切り替えられるようにします。"
+    },
+    "styleToggle": {
+      "title": "8-Bitスタイル切り替えボタン",
+      "subtitle": "同じボタンで、ノーマルと8-Bitのスタイルを切り替えられるようにします。両方オンにすると、ボタンから表示設定が開きます。"
+    },
+    "setByOrg": "組織によって設定されています。",
+    "yourStyle": {
+      "title": "あなたのスタイル",
+      "description": "あなただけに適用され、組織の外観より優先されます。",
+      "off": "個人のスタイル設定はオフです。全員に組織の外観が表示されます。",
+      "orgSetsRest": "その他のスタイル設定は、組織のブランディングで設定されています。",
+      "changeInBranding": "「ブランディング」で変更 →"
+    },
+    "display": {
+      "title": "表示",
+      "description": "個人の表示設定です。あなたにのみ適用されます。"
+    }
+  },
+  "mobile": {
+    "back": "設定に戻る",
+    "close": "設定を閉じる"
+  },
+  "footer": {
+    "hint": {
+      "missingNames": "各カスタムプロバイダには名前が必要です",
+      "saving": "保存中…",
+      "noChanges": "未保存の変更はありません",
+      "save": "変更を保存します。",
+      "retest": "失敗したプロバイダを再テストします。",
+      "saveAndTest": "変更を保存し、プロバイダのテストを再実行します。"
+    },
+    "status": {
+      "testing": "構成をテスト中…",
+      "saving": "設定を保存中…",
+      "testPassed": "テストに合格しました。プロバイダ、モデル、認証情報に問題はありません。",
+      "saved": "設定を保存しました。",
+      "testProblem": "テストで問題が見つかりました。",
+      "configProblem": "構成に問題が見つかりました。",
+      "applyOnSave": "変更は保存時に適用されます。"
+    },
+    "button": {
+      "saving": "保存中…",
+      "save": "設定を保存",
+      "saved": "保存しました"
+    },
+    "errors": {
+      "saveFailed": "設定を保存できませんでした。",
+      "verifyFailed": "設定は保存されましたが、検証に失敗しました：{error}",
+      "checkFailed": "構成を確認できませんでした。",
+      "validateFailed": "設定を検証できませんでした。"
+    }
+  },
+  "fields": {
+    "clearTooltip": "クリア（「設定を保存」で確定）",
+    "clearAriaLabel": "値をクリア"
+  },
+  "apiKey": {
+    "ariaLabel": "APIキー",
+    "namedAriaLabel": "{name}のAPIキー",
+    "revealFirst": "コピーするには、まずキーを表示してください",
+    "copied": "コピーしました",
+    "copyFailed": "コピーできませんでした。キーを選択して手動でコピーしてください",
+    "copy": "クリップボードにコピー",
+    "copiedAriaLabel": "クリップボードにコピーしました",
+    "copyAriaLabel": "キーをクリップボードにコピー",
+    "hide": "キーを隠す",
+    "revealing": "表示中…",
+    "reveal": "キーを表示",
+    "clearTooltip": "このキーをクリア（「設定を保存」で確定）",
+    "clearAriaLabel": "キーをクリア"
+  },
+  "budget": {
+    "fieldTitle": "{label}（{min}〜{max}、デフォルト：{fallback}{unit, select, million {百万トークン} other {}}）",
+    "millionTokens": "百万トークン",
+    "safetyLimit": "安全上限",
+    "noLimitHint": "上限なし（ステップ数と自動続行回数の上限のみ適用）",
+    "default": "デフォルト：{value}",
+    "or": "— または —"
+  },
+  "probe": {
+    "byok": "または、下で独自のプロバイダとAPIキーを追加してください。",
+    "noCredits": "利用できるクレジットがありません。",
+    "topUp": "残高をチャージ →",
+    "addFunds": "残高を追加 →",
+    "slowDown": "{sentence}これはクレジットの問題ではありません。",
+    "budgetReached": "組織の予算を使い切りました。{detail}",
+    "viewBudgetsArrow": "予算を表示 →"
+  },
+  "providers": {
+    "title": "LLMプロバイダ",
+    "unavailable": "設定されたプロバイダは現在利用できません。もう一度お試しいただくか、管理者にお問い合わせください。",
+    "status": {
+      "connected": "接続済み",
+      "unableToConnect": "接続できません",
+      "testing": "テスト中…",
+      "notTested": "未テスト"
+    },
+    "statusTitle": {
+      "signedIn": "MindsHubのサインインで接続されています。",
+      "passed": "前回のテストに合格しました",
+      "passedDetail": "前回のテストに合格しました（{detail}）",
+      "failed": "前回のテストに失敗しました",
+      "failedDetail": "前回のテストに失敗しました：{detail}",
+      "testing": "テスト中…",
+      "notTested": "まだテストされていません。設定を保存し、テストを実行して確認してください。",
+      "notTestedNoTests": "プロバイダの接続はまだテストされていません。"
+    },
+    "desc": {
+      "mindsCloud": "Claude、GPT、Geminiなど、最先端のモデルをすべて1か所で利用できます。",
+      "anthropic": "AnthropicのAPIキーでClaudeモデルを使用します。",
+      "openai": "OpenAIのAPIキーでGPTモデルを使用します。",
+      "gemini": "GoogleのOpenAI互換エンドポイント経由でGeminiモデルを使用します。",
+      "openaiCompatible": "OpenAI互換の任意のサーバー（Ollama、vLLM、Together、Groqなど）。"
+    },
+    "customHeading": "カスタムのOpenAI互換プロバイダ",
+    "customName": {
+      "label": "カスタムプロバイダ名",
+      "hint": "このカスタムプロバイダの表示名です。下のモデルのドロップダウンに表示されます。",
+      "required": "名前は必須です"
+    },
+    "baseUrl": "ベースURL",
+    "getKey": "APIキーは{link}で取得できます",
+    "openInBrowser": "{url}をブラウザで開きます。",
+    "noAccount": "アカウントをお持ちでない場合",
+    "signUp": "登録 →",
+    "signUpTooltip": "MindsHubの登録ページをブラウザで開きます。",
+    "remove": "このプロバイダを削除",
+    "editKey": "APIキーを編集",
+    "allConfigured": "すべての種類のプロバイダが設定済みです",
+    "addAnother": "別のプロバイダを追加",
+    "add": "プロバイダを追加",
+    "choose": "プロバイダを選択：",
+    "hidePicker": "プロバイダの選択を閉じます。",
+    "closePicker": "プロバイダの選択を閉じる"
+  },
+  "agent": {
+    "modelRouter": "モデルルーター",
+    "roles": {
+      "planning": "計画用モデル",
+      "router": "ルーティング・要約用モデル",
+      "coding": "コーディング用モデル",
+      "planningSubtitle": "推論、オーケストレーション、応答に使用されます。",
+      "codingSubtitle": "スクラッチパッドでのコード生成に使用されます。"
+    },
+    "providerLabel": "プロバイダ：",
+    "modelLabel": "モデル：",
+    "providerHint": "{role, select, planning {計画} coding {コーディング} router {ルーティング} other {{role}}}の役割に使用するプロバイダを選択します。",
+    "modelHint": "{role, select, planning {計画} coding {コーディング} router {ルーティング} other {{role}}}に使用するモデルを選択します。カスタムのモデルIDを入力するには「その他…」を選択してください。",
+    "customModelPlaceholder": "モデルIDを入力",
+    "customModelHint": "入力したモデルIDはそのままプロバイダに送信されます。",
+    "modelIdHint": "このプロバイダにそのまま送信されるモデルIDです。",
+    "checking": "{provider}の接続を確認中…",
+    "notConfigured": "{provider}は設定されていません。上の「LLMプロバイダ」で認証情報を追加するか、別のプロバイダを選択してください。",
+    "unknownNotConfigured": "このプロバイダは設定されていません。上の「LLMプロバイダ」で追加してください。",
+    "failed": "{provider}は前回のテストに失敗しました。上の「LLMプロバイダ」で確認するか、別のプロバイダを選択してください。",
+    "modelUnavailable": "{model}は利用できません。別のモデルを選択するか、管理者にお問い合わせください。",
+    "modelRestricted": "{model}は組織の管理者によって制限されています。別のモデルを選択してください。",
+    "modelNeedsCredits": "{model}にはクレジットが必要です。使用するには{link}。",
+    "topUpBalance": "残高をチャージしてください",
+    "modelBudgetReached": "組織の予算を使い切ったため、{model}を実行できません。",
+    "viewBudgets": "予算を表示"
+  },
+  "memory": {
+    "title": "メモリ",
+    "mode": {
+      "title": "メモリモード",
+      "subtitle": "{agent}が長期メモリを更新する方法です。",
+      "ariaLabel": "メモリモード",
+      "autopilot": "自動",
+      "autopilotHint": "{agent}が長期メモリを自動的に更新します。",
+      "copilot": "確認あり",
+      "copilotHint": "{agent}がメモリの更新を提案し、あなたが確認します。",
+      "off": "オフ",
+      "offHint": "長期メモリの更新を無効にします。"
+    },
+    "episodic": {
+      "title": "エピソード記憶",
+      "subtitle": "会話の履歴を保存し、後で思い出せるようにします。"
+    },
+    "dashboards": {
+      "title": "プロアクティブなダッシュボード",
+      "subtitle": "スクラッチパッドの出力からHTMLレポートを自動生成します。"
+    },
+    "actFirst": {
+      "title": "まず実行し、後で確認",
+      "subtitle": "途中で止まって質問する代わりに、妥当なデフォルトで実行し、前提をその場で示します。"
+    }
+  },
+  "advanced": {
+    "title": "詳細設定",
+    "limits": {
+      "title": "タスクの実行量を制限",
+      "subtitleOn": "下で設定したステップ数、自動続行回数、トークン数に達すると、{agent}は停止するか、続行する前に確認します。",
+      "subtitleOff": "オフ：タスクは完了するまで実行され、高めの安全上限に達した時点で{agent}が続行するか確認します。独自の上限を設定するにはオンにしてください。"
+    },
+    "maxSteps": {
+      "title": "タスクあたりの最大ステップ数",
+      "subtitle": "1つのリクエストで{agent}が実行できるアクション（コードの実行、ファイルの読み取り、検索など）の数です。上限に達すると一時停止して確認を求めます。大きなタスクを一度に終わらせたい場合は上げ、時間とコストを厳しく管理したい場合は下げてください。"
+    },
+    "maxContinuations": {
+      "title": "最大自動続行回数",
+      "subtitle": "{agent}が停止しても作業が未完了に見える場合、Coworkは作業を完了させるために続行させます。その回数の上限です。手を離したままでも徹底的に進めたい場合は上げてください。0にすると最初の試行後に停止します（不足している点の概要は引き続き表示されます）。"
+    },
+    "maxTokens": {
+      "title": "タスクあたりの最大トークン数",
+      "subtitle": "1つのリクエストで{agent}が使用できるトークンの上限です。上限に達すると一時停止して確認を求めるため、行き詰まったタスクが完了しないまま無料枠や残高の多くを消費することを防げます。大きな作業を頻繁に任せる場合は上げ、1つのリクエストのコストを抑えたい場合は下げてください。",
+      "noLimit": "上限なし"
+    },
+    "jev": {
+      "title": "Jevで高速に回答",
+      "subtitle": "MindsHubの判定モデルであるJevが、各メッセージと最近の会話を読み、選択したモデルが直接回答できるかどうかを判断し、{agent}が作業を完了したかどうかを確認します。オフにすると、すべてのメッセージで{agent}が実行されます。"
+    }
+  },
+  "desktop": {
+    "title": "デスクトップ",
+    "keepAwake": {
+      "title": "スケジュール済みタスクの実行中はスリープしない",
+      "subtitle": "電源接続中は、スケジュール済みタスクの実行中または実行直前にこのコンピュータがスリープしないようにします。すでにスリープしているコンピュータを起動したり、蓋を閉じたときのスリープを防いだりすることはできません。"
+    }
+  },
+  "branding": {
+    "title": "ブランディング",
+    "description": "組織の全員に適用される外観です。メンバーには、次にアプリまたは設定を開いたときに反映されます。",
+    "adminOnly": "組織の管理者によって設定されています。",
+    "saveError": {
+      "forbidden": "ブランディングを変更できるのは組織の管理者のみです。",
+      "generic": "ブランディングを保存できませんでした。もう一度お試しください。"
+    },
+    "sidebarTitle": {
+      "title": "サイドバーのタイトル",
+      "subtitle": "組織の全員のサイドバー上部に表示されます。「会社名」はコンソールでの名前の変更に追従し、カスタムのタイトルは入力したとおりに表示され、「なし」はロゴのみを表示します。",
+      "ariaLabel": "サイドバーのタイトル",
+      "company": "会社名",
+      "companyHint": "会社名に追従します（名前の変更も反映されます）。",
+      "custom": "カスタム",
+      "customHint": "入力したタイトルです。名前を変更しても維持されます。",
+      "none": "なし",
+      "noneAriaLabel": "なし（ロゴのみ）",
+      "noneHint": "タイトルなし（ロゴのみ）。",
+      "customAriaLabel": "カスタムのサイドバータイトル",
+      "required": "サイドバーのタイトルを入力するか、「会社名」または「なし」を選択してください。",
+      "preview": "サイドバーの表示：",
+      "logoOnly": "ロゴのみ",
+      "noTitle": "（タイトルなし）"
+    },
+    "logo": {
+      "title": "ロゴとアイコン",
+      "subtitle": "ロゴはサイドバーのロゴ、アイコンはブラウザタブのアイコンとして、組織の全員に表示されます。これらはコンソールで設定します。",
+      "iconAlt": "組織のアイコン",
+      "logoAlt": "組織のロゴ",
+      "logoDarkAlt": "暗い背景用の組織のロゴ",
+      "noneSet": "設定されていません。",
+      "opensInBrowser": "ブラウザで開きます",
+      "editInConsole": "コンソールで編集"
+    },
+    "theme": {
+      "title": "組織のテーマ",
+      "subtitle": "全員にライトまたはダークを適用するか、各メンバーに任せます。",
+      "ariaLabel": "組織のテーマ",
+      "notSet": "未設定",
+      "notSetAriaLabel": "組織のテーマなし",
+      "lightAriaLabel": "組織のライトテーマ",
+      "darkAriaLabel": "組織のダークテーマ"
+    },
+    "style": {
+      "title": "組織のスタイル",
+      "deploymentLocked": "このデプロイメントで、すべての組織に対して設定されています。",
+      "subtitle": "組織の全員の出発点となる外観です。「カスタム」では色、背景、角の形、書体を選択できます。",
+      "ariaLabel": "組織のスタイル",
+      "notSet": "未設定",
+      "notSetAriaLabel": "組織のスタイルなし",
+      "notSetHint": "メンバーにはアプリの標準の外観が適用されます。",
+      "optionAriaLabel": "組織のスタイル：{name}"
+    },
+    "accent": {
+      "subtitle": "ボタン、ハイライト、フォーカスリング。",
+      "ariaLabel": "組織のアクセントカラー"
+    },
+    "background": {
+      "lightSubtitle": "ライトテーマで使用されます。暗い色を選ぶと、その色相の明るい色合いになります。テキストは読みやすさを保つように調整されます。「デフォルト」の場合は、ダーク背景の色合いが反映されるか、標準のライトの外観が適用されます。",
+      "lightAriaLabel": "組織のライト背景色",
+      "lightDefaultAriaLabel": "組織のデフォルトのライト背景",
+      "darkSubtitle": "ダークテーマで使用されます。明るい色を選ぶと、その色相の暗い色合いになります。テキストは読みやすさを保つように調整されます。「デフォルト」の場合は、ライト背景の色合いが反映されるか、標準のダークの外観が適用されます。",
+      "darkAriaLabel": "組織のダーク背景色",
+      "darkDefaultAriaLabel": "組織のデフォルトのダーク背景"
+    },
+    "corners": {
+      "ariaLabel": "組織の角の丸み",
+      "squareAriaLabel": "組織の四角い角",
+      "softAriaLabel": "組織のやや丸い角",
+      "roundAriaLabel": "組織の丸い角"
+    },
+    "typeface": {
+      "subtitle": "標準のUIフォント、またはすべて等幅フォント。",
+      "ariaLabel": "組織の書体",
+      "standardAriaLabel": "組織の標準フォント",
+      "monoAriaLabel": "組織の等幅フォント"
+    },
+    "greeting": {
+      "title": "組織のあいさつ",
+      "subtitle": "メンバーが新しいタスクを始めるときに表示される文です。空欄にすると標準のあいさつになります。",
+      "ariaLabel": "組織のあいさつ"
+    },
+    "membersChoose": {
+      "title": "メンバーが自分のスタイルを選択できるようにする",
+      "subtitle": "オン：組織のスタイルを出発点に、メンバーが「あなたのスタイル」で変更できます。オフ：全員に組織のスタイルが表示されます。"
+    },
+    "guidelines": {
+      "title": "Anton向けのブランドガイドライン",
+      "subtitle": "Antonがスライド、ドキュメント、アプリ、グラフでブランドをどう使うか（トーン、使う言葉・避ける言葉、ロゴの配置など）を記述します。Antonは上記の色、書体、ロゴも使用します。",
+      "placeholder": "Markdown。例：\n- 見出しは簡潔な体言止めにする\n- タイトルスライドではロゴを左上に配置する"
+    },
+    "footer": {
+      "ariaLabel": "未保存のブランディングの変更",
+      "saving": "保存中…",
+      "unsaved": "未保存のブランディングの変更があります。あなたにはすでに表示されています。他のメンバーには保存後に表示されます。",
+      "cancel": "キャンセル",
+      "save": "ブランディングを保存",
+      "saved": "保存しました。メンバーには、次にアプリまたは設定を開いたときに反映されます。",
+      "clean": "未保存のブランディングの変更はありません"
+    }
+  }
+}

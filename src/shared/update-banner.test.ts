@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveUpdateBanner, shellAutoOwnsBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES } from './update-banner';
+import { deriveUpdateBanner, restartUnderway, shellAutoOwnsBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES } from './update-banner';
 import { transitionShellUpdate, type ShellUpdateSnapshot } from '../main/shell-update-state';
 
 describe('deriveUpdateBanner', () => {
@@ -25,6 +25,14 @@ describe('deriveUpdateBanner', () => {
     it('omits the version suffix when unknown', () => {
       expect(deriveUpdateBanner({ ota: { phase: 'available' } })?.title).toBe('Update ready');
     });
+
+    it('ota-ready hints the next-launch path; ota-error does not', () => {
+      expect(deriveUpdateBanner({ ota: { phase: 'available', version: '0.26.8.1' } })?.hint)
+        .toBe('Reloads the app to finish updating to 0.26.8.1. It also applies on its own the next time you open the app.');
+      expect(deriveUpdateBanner({ ota: { phase: 'available' } })?.hint)
+        .toContain('the next time you open the app');
+      expect(deriveUpdateBanner({ ota: { phase: 'error', version: 'ui-1' } })?.hint).toBeUndefined();
+    });
   });
 
   describe('shell auto-update only', () => {
@@ -44,9 +52,41 @@ describe('deriveUpdateBanner', () => {
       expect(deriveUpdateBanner({ shellAuto: { phase: 'downloading', progress: { percent: null } } })?.title).toBe('Downloading update…');
     });
 
-    it('ready-to-install → "Restart"', () => {
+    it('ready-to-install → "Restart now"', () => {
       const b = deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install' } });
-      expect(b).toMatchObject({ tone: 'ready', title: 'App update ready', actionLabel: 'Restart', action: 'shell-auto', disabled: false });
+      expect(b).toMatchObject({ tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'shell-auto', disabled: false });
+    });
+
+    it('ready-to-install after an aborted install says why and offers Try again', () => {
+      const b = deriveUpdateBanner({ shellAuto: {
+        phase: 'ready-to-install', mode: 'auto', version: '25.9.1',
+        errorCode: 'update-request-failed', errorMessage: 'installer launch failed',
+      } });
+      expect(b).toMatchObject({ tone: 'error', title: 'Last restart attempt failed', actionLabel: 'Try again', action: 'shell-auto', disabled: false });
+      expect(b?.hint).toBe('Last restart attempt failed: installer launch failed. The update is still downloaded. Try again to restart.');
+      // No message: still says it failed, still offers the retry.
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', errorCode: 'update-request-failed' } })?.hint)
+        .toBe('The last restart attempt failed. The update is still downloaded. Try again to restart.');
+    });
+
+    it('ready-to-install in auto mode hints the install-on-quit path', () => {
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', mode: 'auto', version: '25.9.1' } })?.hint)
+        .toBe('The new version (25.9.1) is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.');
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', mode: 'auto' } })?.hint)
+        .toContain('the next time you quit the app');
+    });
+
+    it('ready-to-install in manual mode promises no install on quit', () => {
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', mode: 'manual', version: '25.9.1' } })?.hint)
+        .toBeUndefined();
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install' } })?.hint).toBeUndefined();
+    });
+
+    it('no hint on in-flight or failed shell phases', () => {
+      for (const phase of ['available', 'downloading', 'installing']) {
+        expect(deriveUpdateBanner({ shellAuto: { phase } })?.hint).toBeUndefined();
+      }
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-1' } })?.hint).toBeUndefined();
     });
 
     it('installing → progress, disabled', () => {
@@ -127,6 +167,17 @@ describe('deriveUpdateBanner', () => {
       expect(b?.kind).toBe('ota-ready');
     });
 
+    it('a check that produced no answer raises no banner at all, while a rejected check still offers Retry', () => {
+      for (const errorCode of ['check-stalled']) {
+        expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, errorCode } })).toBeNull();
+      }
+      // A failed download keeps its target and stays actionable whatever its code.
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'download-stalled', targetVersion: 'sh-1' } }))
+        .toMatchObject({ tone: 'error', actionLabel: 'Retry' });
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'update-request-failed' } }))
+        .toMatchObject({ tone: 'error', actionLabel: 'Retry' });
+    });
+
     it('a check-only shell failure does NOT outrank the manual notice either', () => {
       const b = deriveUpdateBanner({ shellManual: { version: 'man-1' }, shellAuto: { phase: 'failed', recoverable: true } });
       expect(b?.kind).toBe('shell-manual');
@@ -194,5 +245,22 @@ describe('deriveUpdateBanner', () => {
       // …but the Retry affordance survives when nothing else is pending.
       expect(deriveUpdateBanner({ shellAuto: s })).toMatchObject({ kind: 'shell-auto', actionLabel: 'Retry' });
     });
+  });
+});
+
+describe('restartUnderway', () => {
+  it('is true while an OTA apply downloads or reloads, or the shell installs', () => {
+    expect(restartUnderway({ ota: { phase: 'downloading' } })).toBe(true);
+    expect(restartUnderway({ ota: { phase: 'reloading' } })).toBe(true);
+    expect(restartUnderway({ shellAuto: { phase: 'installing' } })).toBe(true);
+  });
+
+  it('is false while an update is only offered, failed, or absent', () => {
+    expect(restartUnderway({})).toBe(false);
+    expect(restartUnderway({ ota: null, shellAuto: null })).toBe(false);
+    expect(restartUnderway({ ota: { phase: 'available' } })).toBe(false);
+    expect(restartUnderway({ ota: { phase: 'error' } })).toBe(false);
+    expect(restartUnderway({ shellAuto: { phase: 'ready-to-install' } })).toBe(false);
+    expect(restartUnderway({ shellAuto: { phase: 'downloading' } })).toBe(false);
   });
 });

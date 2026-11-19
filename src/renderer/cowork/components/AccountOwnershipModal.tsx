@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import Button from './ui/Button';
+import { useTranslation } from '../../lib/i18n';
+
+/* Marks where the account name goes, so the sentence keeps each language's word order. */
+const WHO_MARK = '\u0000';
 
 // Asks who owns the data already on this machine.
 //
@@ -44,6 +48,7 @@ export default function AccountOwnershipModal({
   onDecide,
   onDismiss,
 }: AccountOwnershipModalProps) {
+  const { t } = useTranslation('app');
   const [busy, setBusy] = useState<'keep' | 'fresh' | null>(null);
 
   const decide = async (keepExisting: boolean) => {
@@ -56,45 +61,45 @@ export default function AccountOwnershipModal({
     }
   };
 
-  const who = accountLabel ? <strong>{accountLabel}</strong> : 'this account';
+  const who = accountLabel ? <strong>{accountLabel}</strong> : t('ownership.thisAccount');
+  const [introBefore, introAfter = ''] = t('ownership.intro', { who: WHO_MARK }).split(WHO_MARK);
 
   return (
     <Modal
       open={open}
       size="md"
       labelledBy="account-ownership-title"
-      onClose={busy ? () => {} : onDismiss}
+      onClose={onDismiss}
+      dismissible={!busy}
     >
       <ModalHeader
         id="account-ownership-title"
-        title="Whose data is this?"
-        onClose={busy ? undefined : onDismiss}
+        title={t('ownership.title')}
+        onClose={onDismiss}
       />
       <ModalBody>
-        <p style={{ margin: 0, lineHeight: 1.5 }}>
-          There is existing data on this computer from before accounts were kept
-          separate, and we can&apos;t tell whether it belongs to {who}.
+        <p className="s-body" style={{ margin: 0 }}>
+          {introBefore}{who}{introAfter}
         </p>
-        <p style={{ margin: '12px 0 0', lineHeight: 1.5 }}>
-          It is more than past chats. Taking it also takes the provider API keys
-          saved here and the credentials for any datasources that were connected.
+        <p className="s-body" style={{ margin: '12px 0 0' }}>
+          {t('ownership.credentials')}
         </p>
-        <p style={{ margin: '12px 0 0', lineHeight: 1.5 }}>
-          Nothing is deleted either way. If you start fresh, the existing data
-          stays on this computer for whoever it belongs to.
+        <p className="s-body" style={{ margin: '12px 0 0' }}>
+          {t('ownership.nothingDeleted')}
         </p>
         {error && (
-          <p style={{ margin: '12px 0 0', lineHeight: 1.5, color: 'var(--danger, #c0392b)' }}>
+          <p className="s-body" style={{ margin: '12px 0 0', color: 'var(--danger, #c0392b)' }}>
             {error}
           </p>
         )}
       </ModalBody>
-      <ModalFooter align="space-between">
+      {/* A forced choice: both answers sit on the right, no Cancel. */}
+      <ModalFooter>
         <Button variant="subtle" disabled={busy !== null} onClick={() => decide(false)}>
-          {busy === 'fresh' ? 'Starting fresh…' : 'Start fresh'}
+          {busy === 'fresh' ? t('ownership.startingFresh') : t('ownership.startFresh')}
         </Button>
         <Button variant="primary" disabled={busy !== null} onClick={() => decide(true)}>
-          {busy === 'keep' ? 'Restoring…' : 'This data is mine'}
+          {busy === 'keep' ? t('ownership.restoring') : t('ownership.mine')}
         </Button>
       </ModalFooter>
     </Modal>

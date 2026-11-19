@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { connectionIdentity, humanLabel } from './connectionIdentity';
+import { connectionIdentity, connectorInitials, humanLabel, isLegacyEngine } from './connectionIdentity';
 
 // Fixtures mirror real records observed in ~/.cowork/data-vault — the shapes
 // the summary endpoint actually returns, not invented ones.
@@ -44,12 +44,21 @@ describe('connectionIdentity — title', () => {
   });
 
   it('humanizes the engine id when the engine has no registry spec', () => {
-    // The fm_<uuid> records from ENG-1706: registry lookup misses, so `label`
-    // is null. Nothing in the payload identifies these as LinkedIn.
+    const { title } = connectionIdentity({ engine: 'linkedin', name: 'linkedin-1a2b3c4d', label: null });
+    expect(title).toBe('Linkedin');
+  });
+
+  it('names a legacy generated-id connection plainly instead of humanizing the id', () => {
+    // Records saved before connector ids were validated: nothing in the
+    // payload says what service they are, and "Fm Ec163d25cf" reads as noise.
     const { title } = connectionIdentity({
       engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-2cf3a6', label: null, user_label: null,
     });
-    expect(title).toBe('Fm Ec163d25cf');
+    expect(title).toBe('Unrecognized connector');
+  });
+
+  it('keeps a registry label even when the engine looks legacy', () => {
+    expect(connectionIdentity({ engine: 'fm_ec163d25cf', name: 'x', label: 'LinkedIn' }).title).toBe('LinkedIn');
   });
 
   it('is never empty, even for a connection with nothing on it', () => {
@@ -117,9 +126,10 @@ describe('connectionIdentity — subtitle', () => {
   });
 
   it('does not repeat the title when user_label is the raw engine id, punctuation and all', () => {
-    // cowork-server defaults a fresh connection's user_label to the bare
-    // engine id (default_user_label()) whenever it has no account name to
-    // use instead — seen live connecting Google Drive: title correctly read
+    // A connection can carry the bare engine id as its user_label (anton's
+    // connect_datasource default, and older cowork-server saves) when there
+    // was no account name to use instead — seen live connecting Google
+    // Drive: title correctly read
     // "Google Drive", but the subtitle showed "google_drive · <email>"
     // because a plain lowercase compare doesn't equate an underscore with
     // the space in the humanized title.
@@ -211,12 +221,34 @@ describe('humanLabel', () => {
   });
 
   it('titlecases across hyphens without collapsing them', () => {
-    expect(humanLabel('kinaxis-maestro-connect')).toBe('Kinaxis-Maestro-Connect');
+    expect(humanLabel('acme-planner-connect')).toBe('Acme-Planner-Connect');
   });
 
   it('tolerates empty input', () => {
     expect(humanLabel('')).toBe('');
     expect(humanLabel(null)).toBe('');
     expect(humanLabel(undefined)).toBe('');
+  });
+});
+
+describe('isLegacyEngine', () => {
+  it('recognises only generated form ids', () => {
+    expect(isLegacyEngine('fm_ec163d25cf')).toBe(true);
+    expect(isLegacyEngine('linkedin')).toBe(false);
+    expect(isLegacyEngine('fm_notahexid')).toBe(false);
+    // A custom connector may legally be named like this; only the generated
+    // 10-digit shape is legacy.
+    expect(isLegacyEngine('fm_cafe')).toBe(false);
+    expect(isLegacyEngine('fm_ec163d25cf00')).toBe(false);
+    expect(isLegacyEngine(undefined)).toBe(false);
+  });
+});
+
+describe('connectorInitials', () => {
+  it('takes the first letter of the first two words', () => {
+    expect(connectorInitials('Aminta Planner')).toBe('AP');
+    expect(connectorInitials('httpbin')).toBe('H');
+    expect(connectorInitials('  acme  supply  chain ')).toBe('AS');
+    expect(connectorInitials('')).toBe('?');
   });
 });

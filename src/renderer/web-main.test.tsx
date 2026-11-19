@@ -20,25 +20,39 @@ import { act } from 'react';
 
 const rendered = {
   provider: false,
+  providerInitOptions: null as unknown,
+  shellRoot: null as null | { shell: unknown; initOptions: unknown },
   handoffAtProvider: null as string | null,
+  settingsAtAuth: null as string | null,
   app: false,
   identityRequired: false,
   identityToken: null as string | null,
   identityReadyAtApp: false,
+  iconAtApp: null as string | null,
 };
 
 // Mirrors @react-keycloak/core's provider: LoadingComponent until init resolves.
+const languageState = vi.hoisted(() => ({ ready: Promise.resolve() }));
+vi.mock('./lib/i18n', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./lib/i18n')>(),
+  whenI18nReady: () => languageState.ready,
+}));
+
 const keycloakState = { initialized: true };
-const skinState = { skin: 'normal' };
+const skinState = { skin: 'normal', seed: () => {} };
+const brandState = { brand: null as { iconUrl: string } | null };
 
 vi.mock('@react-keycloak/web', () => ({
-  ReactKeycloakProvider: ({ children, onTokens, LoadingComponent }: {
+  ReactKeycloakProvider: ({ children, onTokens, LoadingComponent, initOptions }: {
     children?: unknown;
     onTokens?: (tokens: { token?: string }) => void;
     LoadingComponent?: unknown;
+    initOptions?: unknown;
   }) => {
     rendered.provider = true;
+    rendered.providerInitOptions = initOptions;
     rendered.handoffAtProvider = window.sessionStorage.getItem('anton.consoleHandoff');
+    rendered.settingsAtAuth = window.sessionStorage.getItem('anton.settingsDeepLink');
     if (!keycloakState.initialized && LoadingComponent) return LoadingComponent;
     onTokens?.({ token: 'initial-token' });
     return children ?? null;
@@ -49,7 +63,17 @@ vi.mock('./App', () => ({
   default: () => {
     rendered.app = true;
     rendered.identityReadyAtApp = rendered.identityToken === 'initial-token';
+    rendered.iconAtApp = document.querySelector('link[rel="icon"]')?.getAttribute('href') ?? null;
     return null;
+  },
+}));
+
+// The app's root (ENG-4023) has its own tests; here only which root renders.
+vi.mock('./MobileShellRoot', () => ({
+  MobileShellRoot: ({ children, shell, initOptions }: { children?: unknown; shell: unknown; initOptions: unknown }) => {
+    rendered.shellRoot = { shell, initOptions };
+    rendered.settingsAtAuth = window.sessionStorage.getItem('anton.settingsDeepLink');
+    return children ?? null;
   },
 }));
 
@@ -69,8 +93,20 @@ vi.mock('./cowork/lib/organizationTransition', () => ({
 // doesn't fully provide, and this test is about the wrapper choice, not the
 // client. Same for the skin loader (localStorage) and the CSS side-effect
 // imports, which Vite handles in a real build but not here.
-vi.mock('./lib/keycloak', () => ({ keycloak: { onAuthError: null } }));
-vi.mock('./lib/skins', () => ({ loadSkin: () => skinState.skin }));
+// keycloak.ts builds the app's adapter only inside the app; null in a browser.
+const adapterState = vi.hoisted(() => ({ adapter: null as null | { login: () => void } }));
+vi.mock('./lib/keycloak', () => ({
+  keycloak: { onAuthError: null },
+  get mobileShellAdapter() { return adapterState.adapter; },
+}));
+vi.mock('./lib/skins', () => ({
+  loadSkin: () => skinState.skin,
+  seedBrandDefaults: () => skinState.seed(),
+}));
+vi.mock('./lib/deploymentBrand', () => ({
+  get DEPLOYMENT_BRAND() { return brandState.brand; },
+  productName: (stock: string) => stock,
+}));
 vi.mock('./cowork/styles/tailwind.css', () => ({}));
 vi.mock('./cowork/styles/globals.css', () => ({}));
 vi.mock('./cowork/styles/skin-8bit.css', () => ({}));
@@ -78,11 +114,15 @@ vi.mock('./styles.css', () => ({}));
 
 async function renderOnHost(hostname: string, search = '') {
   rendered.provider = false;
+  rendered.providerInitOptions = null;
+  rendered.shellRoot = null;
   rendered.handoffAtProvider = null;
+  rendered.settingsAtAuth = null;
   rendered.app = false;
   rendered.identityRequired = false;
   rendered.identityToken = null;
   rendered.identityReadyAtApp = false;
+  rendered.iconAtApp = null;
 
   // happy-dom's location is read-only; replace the descriptor for the case.
   Object.defineProperty(window, 'location', {
@@ -120,6 +160,27 @@ describe('web-main auth wrapper selection', () => {
     });
   });
 
+  it.each([false, true])('waits for language loading before mounting auth (mobile=%s)', async (mobile) => {
+    let ready!: () => void;
+    languageState.ready = new Promise<void>((resolve) => { ready = resolve; });
+    const userAgent = navigator.userAgent;
+    vi.stubGlobal('navigator', { userAgent: mobile ? 'MindsHubCowork-iOS/1.0.0' : userAgent });
+    try {
+      await renderOnHost('cowork.mindshub.ai');
+      expect(rendered.provider).toBe(false);
+      expect(rendered.shellRoot).toBeNull();
+      expect(rendered.app).toBe(false);
+      await act(async () => { ready(); });
+      expect(mobile ? rendered.shellRoot !== null : rendered.provider).toBe(true);
+      expect(rendered.app).toBe(true);
+    } finally {
+      ready();
+      languageState.ready = Promise.resolve();
+      vi.unstubAllGlobals();
+      delete document.documentElement.dataset.shell;
+    }
+  });
+
   // The regression this PR fixes: a Keycloak login on this host dead-ends on
   // "Invalid parameter: redirect_uri" (ENG-1281), so the wrapper must be absent.
   it('renders WITHOUT the Keycloak provider on a legacy cw- instance host', async () => {
@@ -146,6 +207,20 @@ describe('web-main auth wrapper selection', () => {
     expect(r.provider).toBe(true);
     expect(rendered.identityRequired).toBe(true);
     expect(rendered.identityReadyAtApp).toBe(true);
+  });
+
+  // Outside the app the login is exactly as before ENG-4023: on load, by
+  // redirect, with the web page as the redirect URI.
+  it('initializes Keycloak with the unchanged web options in a browser', async () => {
+    const r = await renderOnHost('cowork.mindshub.ai');
+    expect(r.shellRoot).toBeNull();
+    expect(r.providerInitOptions).toStrictEqual({
+      onLoad: 'login-required',
+      pkceMethod: 'S256',
+      checkLoginIframe: false,
+      redirectUri: 'https://cowork.mindshub.ai/',
+    });
+    expect(document.documentElement.dataset.shell).toBeUndefined();
   });
 
   it('renders the development Code fixture without the Keycloak provider', async () => {
@@ -240,9 +315,125 @@ describe('web-main console handoff', () => {
     });
   });
 
+  it('captures a settings link before browser authentication', async () => {
+    const r = await renderOnHost('cowork.mindshub.ai', '?settings=appearance&section=branding');
+    expect(r.provider).toBe(true);
+    expect(JSON.parse(r.settingsAtAuth ?? 'null')).toMatchObject({ page: 'branding', section: null });
+  });
+
   it('saves nothing for an ordinary visit', async () => {
     const r = await renderOnHost('cowork.mindshub.ai');
 
     expect(r.handoffAtProvider).toBeNull();
+  });
+});
+
+describe('web-main deployment brand', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('link').forEach((link) => link.remove());
+    document.head.innerHTML += '<link rel="icon" type="image/svg+xml" href="/minds-icon.svg">';
+    keycloakState.initialized = true;
+  });
+
+  afterEach(() => {
+    brandState.brand = null;
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: realLocation });
+  });
+
+  it("puts the brand's icon in the tab before the app renders", async () => {
+    brandState.brand = { iconUrl: '/brand/icon.png' };
+    const r = await renderOnHost('cowork.mindshub.ai');
+    expect(r.app).toBe(true);
+    expect(r.iconAtApp).toBe('/brand/icon.png');
+  });
+
+  it('leaves the stock icon without a brand', async () => {
+    const r = await renderOnHost('cowork.mindshub.ai');
+    expect(r.iconAtApp).toBe('/minds-icon.svg');
+  });
+
+  it("applies the brand's defaults before reading the theme and style", async () => {
+    window.localStorage.setItem('anton.theme', 'dark');
+    skinState.seed = () => {
+      window.localStorage.setItem('anton.theme', 'light');
+      skinState.skin = 'acme';
+    };
+    try {
+      await renderOnHost('cowork.mindshub.ai');
+      expect(document.body.dataset.theme).toBe('light');
+      expect(document.body.dataset.skin).toBe('acme');
+    } finally {
+      skinState.seed = () => {};
+      skinState.skin = 'normal';
+      window.localStorage.removeItem('anton.theme');
+    }
+  });
+});
+
+describe('web-main inside the mobile app (ENG-4023)', () => {
+  const realLocation = window.location;
+  const realUserAgent = window.navigator.userAgent;
+
+  function setUserAgent(value: string) {
+    Object.defineProperty(window.navigator, 'userAgent', { configurable: true, get: () => value });
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('meta[name="viewport"]').forEach((meta) => meta.remove());
+    document.head.innerHTML += '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
+    keycloakState.initialized = true;
+  });
+
+  afterEach(() => {
+    setUserAgent(realUserAgent);
+    delete document.documentElement.dataset.shell;
+    document.head.querySelectorAll('meta[name="viewport"]').forEach((meta) => meta.remove());
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: realLocation });
+  });
+
+  it('renders the app root, marks the page, and covers the viewport', async () => {
+    setUserAgent(`${realUserAgent} MindsHubCowork-iOS/1.0.0`);
+    adapterState.adapter = { login: () => {} };
+    const r = await renderOnHost('cowork.mindshub.ai');
+    adapterState.adapter = null;
+
+    expect(r.app).toBe(true);
+    expect(r.provider).toBe(false);
+    expect(r.shellRoot?.shell).toEqual({ platform: 'ios', version: '1.0.0' });
+    // No login on load: the app's sign-in screen opens the sheet on a tap.
+    expect(r.shellRoot?.initOptions).toStrictEqual({ onLoad: undefined, pkceMethod: 'S256', checkLoginIframe: false, adapter: expect.anything() });
+    expect(r.identityRequired).toBe(true);
+    expect(document.documentElement.dataset.shell).toBe('ios');
+    expect(document.querySelector('meta[name="viewport"]')?.getAttribute('content'))
+      .toBe('width=device-width, initial-scale=1.0, viewport-fit=cover');
+  });
+
+  it('captures a settings link before mobile authentication', async () => {
+    window.sessionStorage.removeItem('anton.settingsDeepLink');
+    setUserAgent(`${realUserAgent} MindsHubCowork-iOS/1.0.0`);
+    adapterState.adapter = { login: () => {} };
+    try {
+      const r = await renderOnHost('cowork.mindshub.ai', '?settings=appearance&section=style');
+      expect(r.shellRoot).not.toBeNull();
+      expect(JSON.parse(r.settingsAtAuth ?? 'null')).toMatchObject({ page: 'appearance', section: 'style' });
+    } finally {
+      adapterState.adapter = null;
+      window.sessionStorage.removeItem('anton.settingsDeepLink');
+    }
+  });
+
+  it('leaves a plain mobile browser on the web login and viewport', async () => {
+    setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) Mobile/15E148');
+    const r = await renderOnHost('cowork.mindshub.ai');
+
+    expect(r.shellRoot).toBeNull();
+    expect(r.provider).toBe(true);
+    expect(document.documentElement.dataset.shell).toBeUndefined();
+    expect(document.querySelector('meta[name="viewport"]')?.getAttribute('content'))
+      .toBe('width=device-width, initial-scale=1.0');
   });
 });

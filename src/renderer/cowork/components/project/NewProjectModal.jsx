@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 // "Start a new project" modal.
 //
 // Replaces the inline-edit dashed card on the projects page. Owns
@@ -25,6 +26,7 @@ import {
 } from '../../api';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { useTranslation } from '../../../lib/i18n';
 
 // Kept for the Input/Textarea `style` props below: those carry the
 // `.field-input` globals class (which itself declares padding/border/bg), so
@@ -32,6 +34,7 @@ import { useOrgMode } from '../../../lib/orgMode';
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 
 function FileList({ files, onRemove }) {
+  const { t } = useTranslation('projects');
   if (!files.length) return null;
   return (
     <div className="flex flex-col gap-1 mt-2">
@@ -40,16 +43,16 @@ function FileList({ files, onRemove }) {
           key={`${f.name}-${i}`}
           className="flex items-center gap-2 py-[6px] px-[10px] rounded-[6px] bg-surface-2 border border-solid border-line font-[family-name:var(--font-body)] text-sm text-ink-2"
         >
-          <span className="inline-flex text-ink-3">{Ico.doc(13)}</span>
+          <span className="inline-flex text-ink-3">{Ico.doc(14)}</span>
           <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{f.name}</span>
-          <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4">
-            {Math.ceil(f.size / 1024)} KB
+          <span className="text-xs tabular-nums text-ink-4">
+            {t('newProjectModal.fileSizeKb', { size: Math.ceil(f.size / 1024) })}
           </span>
-          <Tooltip content="Remove">
+          <Tooltip content={t('newProjectModal.remove')}>
             <button
               type="button"
               onClick={() => onRemove(i)}
-              aria-label="Remove"
+              aria-label={t('newProjectModal.remove')}
               className="bg-transparent border-0 p-0 text-ink-4 hover:text-danger cursor-pointer inline-grid place-items-center w-[20px] h-[20px] rounded-[4px]"
             >×</button>
           </Tooltip>
@@ -60,6 +63,7 @@ function FileList({ files, onRemove }) {
 }
 
 export default function NewProjectModal({ open, onClose, onCreated }) {
+  const { t } = useTranslation('projects');
   const [name, setName] = useState('');
   const [instructions, setInstructions] = useState('');
   const [files, setFiles] = useState([]);
@@ -91,8 +95,8 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  // Esc + backdrop dismissal are <Modal>'s job (suppressed while busy via
-  // closeOnEsc / closeOnBackdrop). The name field auto-focuses on open.
+  // Esc, backdrop and X dismissal are <Modal>'s job (suppressed while busy
+  // via `dismissible`). The name field auto-focuses on open.
 
   const addFiles = (incoming) => {
     if (!incoming || !incoming.length) return;
@@ -118,7 +122,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   const create = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError('Project name is required.');
+      setError(t('newProjectModal.nameRequired'));
       nameRef.current?.focus();
       return;
     }
@@ -145,12 +149,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         // The message names a project to delete, and onCreated (the only other
         // refresh signal) is skipped here, so ask for the refetch directly.
         window.dispatchEvent(new CustomEvent('anton:projects-changed'));
-        setError(
-          'This server does not support pointing a project at a folder. It created '
-          + `"${finalName}" as a normal project and cleared your folder selection. `
-          + 'Update Cowork to use your folder, or delete that project if you do '
-          + 'not want it.'
-        );
+        setError(t('newProjectModal.folderUnsupported', { name: finalName }));
         return;
       }
 
@@ -162,7 +161,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           await writeProjectFile(finalName, ANTON_PROJECT_INSTRUCTIONS_PATH, trimmedInstr);
         } catch (e) {
           // eslint-disable-next-line no-console
-          console.warn('[new-project] writing anton.md failed', e);
+          diagnostic("renderer.cowork.components.project.NewProjectModal", "WARNING", "new_project_writing_anton_md_failed", '[new-project] writing anton.md failed', e);
         }
       }
 
@@ -174,14 +173,14 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           await uploadProjectFiles(finalName, files);
         } catch (e) {
           // eslint-disable-next-line no-console
-          console.warn('[new-project] uploads failed', e);
+          diagnostic("renderer.cowork.components.project.NewProjectModal", "WARNING", "new_project_uploads_failed", '[new-project] uploads failed', e);
         }
       }
 
       onCreated?.(result);
       onClose?.();
     } catch (e) {
-      setError(e?.message || 'Could not create project.');
+      setError(e?.message || t('newProjectModal.couldNotCreate'));
     } finally {
       setBusy(false);
     }
@@ -197,12 +196,12 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     } catch (e) {
       // A rejected invoke would otherwise throw out of the click handler and
       // the button would look like it did nothing.
-      setError(e?.message || 'Could not open the folder picker.');
+      setError(e?.message || t('newProjectModal.couldNotOpenPicker'));
       return;
     }
     if (result?.cancelled) return;
     if (!result?.ok || !result.path) {
-      setError(result?.reason || 'Could not open the folder picker.');
+      setError(result?.reason || t('newProjectModal.couldNotOpenPicker'));
       return;
     }
     setFolderPath(result.path);
@@ -216,17 +215,16 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
       width="min(560px, 92vw)"
       maxHeight="min(680px, 88vh)"
       labelledBy="new-project-title"
-      closeOnBackdrop={!busy}
-      closeOnEsc={!busy}
+      dismissible={!busy}
     >
       <ModalHeader
         id="new-project-title"
-        title="Start a new project"
-        onClose={busy ? undefined : onClose}
+        title={t('newProjectModal.title')}
+        onClose={onClose}
       />
-      <ModalBody padding="16px 18px">
+      <ModalBody>
         <div className="flex flex-col gap-[14px]">
-          <Field label="Project name">
+          <Field label={t('newProjectModal.nameLabel')}>
             <Input
               ref={nameRef}
               value={name}
@@ -251,18 +249,18 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           </Field>
 
           <Field
-            label="Instructions"
+            label={t('newProjectModal.instructionsLabel')}
             optional
             help={
               <>
-                Saved as <code className="font-[family-name:var(--font-mono)] bg-surface-2 py-[1px] px-[5px] rounded-[3px] text-ink-3">.anton/anton.md</code>
+                {t('newProjectModal.savedAs')} <code className="font-[family-name:var(--font-mono)] bg-surface-2 py-[1px] px-[5px] rounded-[3px] text-ink-3">.anton/anton.md</code>
               </>
             }
           >
             <Textarea
               value={instructions}
               onChange={(v) => setInstructions(v)}
-              placeholder="Tell the agent how to work in this project — codebase conventions, output preferences, things to avoid…"
+              placeholder={t('newProjectModal.instructionsPlaceholder')}
               rows={5}
               disabled={busy}
               spellCheck={false}
@@ -281,12 +279,12 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
 
           {canChooseFolder && (
             <Field
-              label="Location"
+              label={t('newProjectModal.locationLabel')}
               optional
               help={
                 folderPath
-                  ? 'The agent works on the files already in this folder. Cowork adds skills/ and .anton/ folders inside it, and deleting the project leaves your files in place.'
-                  : 'By default Cowork creates a new folder for the project.'
+                  ? t('newProjectModal.locationHelpChosen')
+                  : t('newProjectModal.locationHelpDefault')
               }
             >
               <div className="flex items-center gap-2">
@@ -295,7 +293,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                   disabled={busy}
                   onClick={chooseFolder}
                 >
-                  {folderPath ? 'Change folder' : 'Use an existing folder'}
+                  {folderPath ? t('newProjectModal.changeFolder') : t('newProjectModal.useExistingFolder')}
                 </Button>
                 {folderPath && (
                   <>
@@ -306,7 +304,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                       {folderPath}
                     </span>
                     <Button variant="subtle" disabled={busy} onClick={() => setFolderPath('')}>
-                      Clear
+                      {t('newProjectModal.clear')}
                     </Button>
                   </>
                 )}
@@ -315,13 +313,13 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           )}
 
           <div className="flex flex-col gap-[6px]">
-            <span className="text-sm font-medium text-ink-2">Files <span className="font-normal text-ink-4">(optional)</span></span>
+            <span className="text-sm font-medium text-ink-2">{t('newProjectModal.filesLabel')} <span className="font-normal text-ink-4">{t('newProjectModal.optional')}</span></span>
             <div
               onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
               onDragLeave={() => setDragActive(false)}
               onDrop={onDrop}
               onClick={() => !busy && fileInputRef.current?.click()}
-              className="py-[22px] px-4 rounded-[9px] text-ink-3 font-[family-name:var(--font-body)] text-[13px] text-center [transition:border-color_120ms_ease,background_120ms_ease,color_120ms_ease]"
+              className="py-[22px] px-4 rounded-[9px] text-ink-3 font-[family-name:var(--font-body)] text-[13px] text-center [transition:border-color_var(--dur-hover)_ease,background_var(--dur-hover)_ease,color_var(--dur-hover)_ease]"
               style={{
                 // Dynamic (dragActive / busy) — the fill, dashed border colour,
                 // and cursor all depend on drag + busy state.
@@ -336,10 +334,10 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                 {Ico.upload?.(20) || Ico.plus(20)}
               </div>
               <div className="font-medium text-ink-2">
-                Drop files here or <span className="text-accent">click to browse</span>
+                {t('newProjectModal.dropFiles')} <span className="text-accent">{t('newProjectModal.clickToBrowse')}</span>
               </div>
               <div className="text-[11.5px] text-ink-4 mt-1">
-                Reference docs, schemas, examples — anything the agent should know about.
+                {t('newProjectModal.dropHint')}
               </div>
             </div>
             <input
@@ -365,19 +363,22 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         </div>
       </ModalBody>
 
-      <ModalFooter>
-        <Button
-          variant="subtle"
-          onClick={() => !busy && onClose?.()}
-          disabled={busy}
-        >Cancel</Button>
+      <ModalFooter
+        cancel={(
+          <Button
+            variant="subtle"
+            onClick={() => !busy && onClose?.()}
+            disabled={busy}
+          >{t('newProjectModal.cancel')}</Button>
+        )}
+      >
         <Button
           variant="primary"
           onClick={create}
           disabled={busy || !name.trim()}
         >
           {!busy && Ico.plus(14)}
-          {busy ? 'Creating…' : 'Create'}
+          {busy ? t('newProjectModal.creating') : t('newProjectModal.create')}
         </Button>
       </ModalFooter>
     </Modal>

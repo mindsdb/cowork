@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react';
+import type { IconSize } from './ui/Icon';
 
-type IconRenderer = (size?: number) => ReactNode;
+type IconRenderer = (size?: IconSize) => ReactNode;
 
 declare const Ico: {
   attach: IconRenderer;
   brain: IconRenderer;
+  building: IconRenderer;
+  arrowDown: IconRenderer;
   arrowUpLeft: IconRenderer;
   arrowUpRight: IconRenderer;
   appWindow: IconRenderer;
@@ -19,14 +22,17 @@ declare const Ico: {
   copy: IconRenderer;
   cube: IconRenderer;
   doc: IconRenderer;
+  download: IconRenderer;
   edit: IconRenderer;
   externalLink: IconRenderer;
   folder: IconRenderer;
   globe: IconRenderer;
+  grid: IconRenderer;
   image: IconRenderer;
   key: IconRenderer;
   lock: IconRenderer;
   mindsdb: IconRenderer;
+  more: IconRenderer;
   moreVert: IconRenderer;
   openFolder: IconRenderer;
   panelExpandLeft: IconRenderer;

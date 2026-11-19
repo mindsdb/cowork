@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 import { BrowserWindow } from 'electron';
 import { getServerPort } from './server-process';
 import { getRefreshToken, setRefreshToken } from './keychain-service';
@@ -49,7 +50,7 @@ export function startRefreshLoop(
   // itself immediately.
   revokedConnections.delete(key);
   const expiresAtMs = new Date(expiresAtIso).getTime();
-  console.log(`[token-refresh] loop started: ${key} expires ${new Date(expiresAtMs).toISOString()} refresh-in ${Math.round((expiresAtMs - PRE_REFRESH_WINDOW_MS - Date.now()) / 60000)}min`);
+  diagnostic("main.token-refresh", "INFO", "token_refresh_loop_started_expires_refresh_in_min", `[token-refresh] loop started: ${key} expires ${new Date(expiresAtMs).toISOString()} refresh-in ${Math.round((expiresAtMs - PRE_REFRESH_WINDOW_MS - Date.now()) / 60000)}min`);
   const state: LoopState = {
     name,
     tokenUrl,
@@ -89,11 +90,11 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
   if (!state) return;
 
   const msUntilWindow = state.expiresAt - PRE_REFRESH_WINDOW_MS - Date.now();
-  console.log(`[token-refresh] tick: ${key} window-in ${Math.round(msUntilWindow / 60000)}min`);
+  diagnostic("main.token-refresh", "INFO", "token_refresh_tick_window_in_min", `[token-refresh] tick: ${key} window-in ${Math.round(msUntilWindow / 60000)}min`);
   if (msUntilWindow > 0) return;
 
   if (!OAUTH_CREDENTIALS[engine]) {
-    console.error(`[token-refresh] no credentials configured for engine: ${engine}`);
+    diagnostic("main.token-refresh", "ERROR", "token_refresh_no_credentials_configured_for_engine", `[token-refresh] no credentials configured for engine: ${engine}`);
     return;
   }
 
@@ -105,20 +106,20 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       { headers: authHeader() },
     );
     if (!credsRes.ok) {
-      console.error(`[token-refresh] credentials endpoint returned ${credsRes.status} for ${engine}`);
+      diagnostic("main.token-refresh", "ERROR", "token_refresh_credentials_endpoint_returned_for", `[token-refresh] credentials endpoint returned ${credsRes.status} for ${engine}`);
       return;
     }
     const credsData = await credsRes.json() as { client_id: string; client_secret: string };
     clientId = credsData.client_id;
     clientSecret = credsData.client_secret;
   } catch (err) {
-    console.error(`[token-refresh] failed to fetch credentials for ${engine}:`, err);
+    diagnostic("main.token-refresh", "ERROR", "token_refresh_failed_to_fetch_credentials_for", `[token-refresh] failed to fetch credentials for ${engine}:`, err);
     return;
   }
 
   const refreshToken = await getRefreshToken(engine, accountEmail);
   if (!refreshToken) {
-    console.error(`[token-refresh] no refresh token in keychain for ${key}`);
+    diagnostic("main.token-refresh", "ERROR", "token_refresh_no_refresh_token_in_keychain_for", `[token-refresh] no refresh token in keychain for ${key}`);
     return;
   }
 
@@ -193,11 +194,11 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       access_token: data.access_token,
       expires_at: newExpiresAt,
     });
-    console.log(`[token-refresh] refreshed: ${key} new expiry ${newExpiresAt}`);
+    diagnostic("main.token-refresh", "INFO", "token_refresh_refreshed_new_expiry", `[token-refresh] refreshed: ${key} new expiry ${newExpiresAt}`);
 
   } catch (err) {
     state.failureCount++;
-    console.error(`[token-refresh] refresh failed for ${key} (attempt ${state.failureCount}):`, err);
+    diagnostic("main.token-refresh", "ERROR", "token_refresh_refresh_failed_for_attempt", `[token-refresh] refresh failed for ${key} (attempt ${state.failureCount}):`, err);
 
     if (state.failureCount >= FAILURE_NOTIFY_THRESHOLD && !state.notifiedFailure) {
       state.notifiedFailure = true;

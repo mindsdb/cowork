@@ -6,7 +6,7 @@ import { EventTimeline } from './EventTimeline';
 import { indexLatestEvents } from './useCodingSession';
 import { copyText } from '../lib/clipboard';
 
-vi.mock('../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
+vi.mock('../lib/clipboard', async (importOriginal) => ({ ...(await importOriginal<typeof import('../lib/clipboard')>()), copyText: vi.fn(async () => true) }));
 
 
 beforeAll(() => {
@@ -462,7 +462,7 @@ describe('EventTimeline', () => {
     expect(screen.getByText('src/a.ts')).toBeInTheDocument();
     // The changed files stay with the answer, and its actions close the turn.
     const answer = screen.getByRole('article', { name: 'Coding agent message' });
-    expect(answer.querySelector('.code-turn-changes + .code-response-actions')).not.toBeNull();
+    expect(answer.querySelector('.code-turn-changes + .turn-actions')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Review' }));
     expect(onOpenReview).toHaveBeenCalledOnce();
 

@@ -1,0 +1,216 @@
+{
+  "install": {
+    "title": "CARREGANDO MUNDO",
+    "subtitle": "instalando o motor",
+    "spriteTitle": "Instalando",
+    "preparing": "Preparando a instalação…",
+    "steps": {
+      "xcode": "Ferramentas de linha de comando do Xcode",
+      "git": "Verificar / instalar git",
+      "uv": "Instalar uv (gerenciador de pacotes Python)",
+      "coworkServer": "Instalar cowork-server",
+      "verify": "Verificar a instalação",
+      "server": "Iniciar o servidor"
+    },
+    "failedAt": "Falhou em:",
+    "tryAgain": "TENTAR DE NOVO",
+    "consoleIdle": "> sequência de inicialização iniciada…",
+    "cancel": "CANCELAR INSTALAÇÃO",
+    "cancelling": "CANCELANDO…",
+    "cancelled": "Instalação cancelada.",
+    "cancellingLog": "Cancelando a instalação...",
+    "doneSpriteTitle": "Instalação concluída",
+    "done": "INSTALAÇÃO CONCLUÍDA!",
+    "launching": "Abrindo seu espaço de trabalho…"
+  },
+  "legal": {
+    "terms": "Termos de Serviço",
+    "privacy": "Política de Privacidade",
+    "termsHeading": "TERMOS DE SERVIÇO",
+    "privacyHeading": "POLÍTICA DE PRIVACIDADE",
+    "back": "← VOLTAR"
+  },
+  "terms": {
+    "title": "CONTRATO DE LICENÇA",
+    "subtitle": "toda aventura começa com um pergaminho",
+    "spriteTitle": "Pergaminho da licença",
+    "intro": "Antes de começar, leia e aceite nossas políticas.",
+    "readTerms": "→ LER TERMOS DE SERVIÇO",
+    "readPrivacy": "→ LER POLÍTICA DE PRIVACIDADE",
+    "consentAriaLabel": "Li e concordo com os Termos de Serviço e a Política de Privacidade da MindsDB",
+    "consentBefore": "Li e concordo com os documentos da MindsDB:",
+    "consentAnd": "e",
+    "consentAfter": "Entendo que, ao marcar esta caixa, estou dando meu consentimento para ficar vinculado a estes termos.",
+    "accept": "ACEITAR E CONTINUAR ▶",
+    "nextInstall": "Agora vamos instalar as dependências do sistema de que o {product} precisa.",
+    "takesAMinute": "Leva cerca de um minuto."
+  },
+  "theme": {
+    "title": "ESCOLHA SUA TELA",
+    "subtitle": "escolha sua tela · mude quando quiser",
+    "groupAriaLabel": "Escolha o tema da sua tela",
+    "presets": {
+      "midnight": {
+        "name": "MEIA-NOITE",
+        "sub": "PADRÃO · ESCURO",
+        "desc": "O visual padrão em superfícies azul-noite com destaque ciano neon."
+      },
+      "daylight": {
+        "name": "LUZ DO DIA",
+        "sub": "PADRÃO · CLARO",
+        "desc": "O visual padrão em superfícies brancas e limpas com destaque verde-azulado."
+      },
+      "gameboy": {
+        "name": "GAME BOY",
+        "sub": "8-BIT · CLARO",
+        "desc": "Papel oliva e tinta verde-escura, fonte monoespaçada. Nostalgia portátil para ambientes claros."
+      },
+      "arcade": {
+        "name": "ARCADE",
+        "sub": "8-BIT · ESCURO",
+        "desc": "Ciano fosforescente sobre azul-marinho, linhas de CRT e fonte monoespaçada robusta. O clássico dos fliperamas."
+      }
+    },
+    "custom": {
+      "name": "CRIE O SEU",
+      "sub": "PERSONALIZADO",
+      "desc": "Crie seu próprio tema dentro do app: destaque, fundo, cantos, fonte e linhas de varredura. Configurações → Aparência → Estilo → Personalizado."
+    },
+    "cardAriaLabel": "{name} — {sub}",
+    "customAriaLabel": "{name} — crie seu próprio tema dentro do app",
+    "pick": "PRESSIONE ⏎ PARA ESCOLHER {name}",
+    "customPrompt": "CRIE DENTRO DO APP — ESCOLHA UM TEMA PARA COMEÇAR",
+    "back": "← voltar"
+  },
+  "launch": {
+    "tagline": "UM APP. QUALQUER AGENTE.",
+    "nowPlaying": "jogando agora:",
+    "nowLoading": "CARREGANDO…"
+  },
+  "onboarding": {
+    "errors": {
+      "saveFailed": "Não foi possível salvar suas configurações. Tente novamente.",
+      "saveToServerFailed": "Não foi possível salvar suas configurações no servidor. Tente novamente.",
+      "invalidKey": "Chave de API inválida",
+      "mindsKeySaveFailed": "Não foi possível salvar a chave do MindsHub.",
+      "validationFailed": "A validação falhou",
+      "signInTimedOut": "O login expirou: o navegador não terminou a autorização. Tente novamente e conclua a aba mais recente que ele abrir (feche as abas antigas de \"You're authorized\"), ou pressione {reloadKey} para recarregar.",
+      "signInCancelled": "O login foi cancelado. Tente novamente quando quiser.",
+      "signInFailed": "Não foi possível fazer login. Tente novamente.",
+      "signUpFailed": "Não foi possível criar a conta. Tente novamente.",
+      "mindsSetupFailed": "Não foi possível configurar o MindsHub: {reason}",
+      "unexpected": "Erro inesperado. Tente novamente.",
+      "mindsSetupFailedRetry": "Não foi possível configurar o MindsHub. Tente novamente."
+    },
+    "welcome": {
+      "title": "Boas-vindas",
+      "subtitle": "preparando tudo"
+    },
+    "ready": {
+      "subtitle": "tudo pronto",
+      "body": "Seu espaço de trabalho está pronto. Dê uma tarefa ao agente. Ele faz o trabalho e entrega os resultados.",
+      "desktop": "O Cowork também roda no seu computador.",
+      "getDesktop": "Baixar o app para desktop"
+    },
+    "continue": "Continuar",
+    "agreePrefix": "Ao continuar, você concorda com nossos",
+    "agreeAnd": "e a",
+    "pickOrg": {
+      "title": "Escolha uma organização",
+      "subtitle": "quem paga pelo seu uso",
+      "body": "Você faz parte de mais de uma organização. Escolha em qual este computador vai trabalhar: os créditos dela pagam pelo seu uso, e os administradores dela podem ver e revogar o acesso deste computador. Você pode mudar isso depois no menu da conta."
+    },
+    "success": {
+      "title": "Tudo pronto",
+      "subtitle": "você entrou",
+      "heading": "Tudo pronto!",
+      "workingIn": "Trabalhando em",
+      "readyToGo": "Pronto para começar"
+    },
+    "validating": {
+      "spriteTitle": "Validando",
+      "label": "TESTANDO CONEXÃO…"
+    },
+    "signupWait": {
+      "spriteTitle": "Aguardando o cadastro",
+      "heading": "CONCLUA O CADASTRO NO SEU NAVEGADOR",
+      "body": "Crie sua conta e abra o e-mail de verificação que vamos enviar: ao clicar no link, você entra aqui automaticamente.",
+      "cancel": "Cancelar"
+    },
+    "byok": {
+      "title": "Use sua própria chave",
+      "subtitle": "adicione um provedor de LLM para continuar",
+      "skippedIntro": "Escolha o provedor de LLM que você quer usar. Você pode conectar o MindsHub depois em Configurações → Provedores (necessário para compartilhar na web).",
+      "noCreditsIntro": "Sua conta do MindsHub ainda não tem créditos de LLM. Recarregue para usar os modelos gerenciados, ou conecte seu próprio provedor abaixo.",
+      "back": "← voltar às opções de conta",
+      "selectProvider": "Escolha um provedor",
+      "custom": "Personalizado",
+      "baseUrl": "URL base",
+      "baseUrlHint": "Ollama, vLLM, Together, Groq, LM Studio etc.",
+      "model": "Modelo",
+      "customModel": "Personalizado...",
+      "modelIdPlaceholder": "Digite o ID do modelo...",
+      "modelNamePlaceholder": "Digite o nome do modelo...",
+      "keyLabel": {
+        "anthropic": "Chave de API da Anthropic",
+        "gemini": "Chave de API do Google AI",
+        "custom": "Chave de API (opcional)",
+        "openai": "Chave de API da OpenAI"
+      },
+      "customKeyPlaceholder": "Deixe em branco se não for necessária",
+      "connect": "Conectar"
+    },
+    "minds": {
+      "title": "Vamos começar",
+      "subtitle": "crie uma conta grátis ou entre para continuar",
+      "managedBy": "GERENCIADO PELA MINDSDB",
+      "benefits": {
+        "routing": "Roteamento inteligente de modelos",
+        "connectors": "Conectores de dados seguros",
+        "dashboards": "Compartilhe painéis"
+      },
+      "oneMoment": "Um momento…",
+      "createAccount": "Criar uma conta grátis",
+      "signIn": "Entrar",
+      "apiKeyLabel": "Chave de API do MindsHub",
+      "connecting": "Conectando…",
+      "connect": "Conectar",
+      "noAccount": "Não tem conta?",
+      "createOne": "Crie uma grátis →",
+      "verifyBefore": "Já verificou seu e-mail? Quase lá: clique em",
+      "verifyAfter": "para concluir. Não precisa se cadastrar de novo.",
+      "continueWithout": "Continuar sem conta →"
+    }
+  },
+  "checklist": {
+    "title": "Conheça o Cowork",
+    "closeAriaLabel": "Fechar lista",
+    "close": "Fechar",
+    "startFailed": "Não foi possível iniciar o chat. Tente novamente.",
+    "completeHeading": "Você já domina o básico!",
+    "steps": {
+      "bring-your-work": {
+        "title": "Comece com seu próprio trabalho",
+        "description": "Conte ao Cowork no que você está trabalhando e passe um arquivo ou suas notas."
+      },
+      "customize-role": {
+        "title": "Adapte o Cowork à sua função",
+        "description": "Adicione ferramentas e fluxos de trabalho prontos."
+      },
+      "connect-app": {
+        "title": "Conecte um app",
+        "description": "Vincule o Google Drive para o Cowork trabalhar com seus arquivos."
+      },
+      "see-it-work": {
+        "title": "Teste um exemplo",
+        "description": "Escolha um no Início e veja ele ser criado."
+      }
+    }
+  },
+  "firstArtifactTip": {
+    "ariaLabel": "Seu primeiro artefato ao vivo",
+    "body": "Seu primeiro artefato ao vivo está pronto. Ele fica aqui. Abra quando quiser ou publique para compartilhar uma URL ao vivo.",
+    "gotIt": "Entendi",
+    "showMe": "Mostrar"
+  }
+}

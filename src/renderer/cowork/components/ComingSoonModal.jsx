@@ -9,6 +9,8 @@
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import { Button } from './ui';
 import { host } from '../../platform/host';
+import { PLATFORM_UI } from '../../lib/deployment';
+import { useTranslation } from '../../lib/i18n';
 
 // Marketing download page. `os=auto` lets that page detect the visitor's OS
 // server-side and serve the right installer; `from` tags the referral source
@@ -16,6 +18,7 @@ import { host } from '../../platform/host';
 const DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-web';
 
 export default function ComingSoonModal({ feature, onClose }) {
+  const { t } = useTranslation('shell');
   return (
     <Modal
       open={feature != null}
@@ -25,30 +28,43 @@ export default function ComingSoonModal({ feature, onClose }) {
     >
       <ModalHeader
         id="coming-soon-title"
-        title="Coming soon to Cloud"
+        title={PLATFORM_UI ? t('comingSoon.cloudTitle') : t('comingSoon.unavailableTitle')}
         onClose={onClose}
       />
       <ModalBody>
         <p className="s-body">
-          {feature ? `${feature} isn’t` : 'This feature isn’t'}{' '}
-          available on Cloud just yet. In the meantime, you can use it in the
-          desktop app.
+          {PLATFORM_UI
+            ? (feature ? t('comingSoon.cloudBodyNamed', { feature }) : t('comingSoon.cloudBody'))
+            : (feature ? t('comingSoon.unavailableBodyNamed', { feature }) : t('comingSoon.unavailableBody'))}
         </p>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose}>
-          Not now
-        </Button>
-        <Button
-          variant="primary"
-          onClick={() => {
-            host.openExternal(DOWNLOAD_URL);
-            onClose();
-          }}
+      {/* The mobile app (ENG-4023) offers no installer: a phone cannot run
+          the desktop app, so the note stands alone with a Close button. */}
+      {PLATFORM_UI && !host.isMobileShell ? (
+        <ModalFooter
+          cancel={(
+            <Button variant="subtle" onClick={onClose}>
+              {t('comingSoon.notNow')}
+            </Button>
+          )}
         >
-          Download the app
-        </Button>
-      </ModalFooter>
+          <Button
+            variant="primary"
+            onClick={() => {
+              host.openExternal(DOWNLOAD_URL);
+              onClose();
+            }}
+          >
+            {t('comingSoon.download')}
+          </Button>
+        </ModalFooter>
+      ) : (
+        <ModalFooter>
+          <Button variant="subtle" onClick={onClose}>
+            {t('ui.modal.close')}
+          </Button>
+        </ModalFooter>
+      )}
     </Modal>
   );
 }

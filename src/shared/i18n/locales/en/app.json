@@ -1,0 +1,268 @@
+{
+  "common": {
+    "justNow": "just now",
+    "untitledTask": "Untitled task",
+    "newTask": "New task",
+    "delete": "Delete",
+    "keep": "Keep",
+    "cancel": "Cancel",
+    "connect": "Connect"
+  },
+  "connect": {
+    "taskTitle": "Connect {name}",
+    "intro": "Let's connect {name}.",
+    "thisConnector": "This connector",
+    "followups": {
+      "fields": "Have a question about any of the fields? I'm happy to explain.",
+      "credentials": "Need help finding your credentials? Just ask.",
+      "unclear": "If anything's unclear, let me know — I can walk you through it.",
+      "fieldExpects": "Curious what a specific field expects? I can clarify.",
+      "steps": "Want more detail on any of the steps? Just ask.",
+      "beforeSubmit": "Have questions before you submit? I'm here.",
+      "deeper": "Want me to explain any of the fields more deeply? Let me know.",
+      "clarify": "Happy to clarify anything before you fill it out.",
+      "context": "If you'd like more context on a field, just ask.",
+      "setup": "Any questions about the setup? I'm here to help."
+    }
+  },
+  "modify": {
+    "taskTitle": "Modify {name}",
+    "body": "Update the credentials or settings for \"{name}\" — saving overwrites the existing connection.",
+    "intro": "Let's update {name}.",
+    "chatRequest": "Update connection {name} ({label}).",
+    "savedValuesLabel": "Currently saved values",
+    "savedValuesDescription": "Edit the values stored for this connection."
+  },
+  "disconnect": {
+    "title": "Disconnect {name}?",
+    "titleFallback": "Disconnect this connection?",
+    "message": "The saved {engine} connection and its stored credentials are deleted. You can connect it again later.",
+    "confirm": "Disconnect",
+    "busy": "Disconnecting…"
+  },
+  "oauth": {
+    "reconnectNeeded": "{engine} connection needs to be reconnected — refresh token expired.",
+    "refreshRetrying": "{engine} connection refresh failed — retrying automatically."
+  },
+  "askUser": {
+    "selectOnly": "This question needs one of the options above. Pick one, or press Skip if you want to type something else.",
+    "rejected": "That answer was rejected. Try one of the offered options.",
+    "sendFailed": "Could not send your answer. Please try again.",
+    "notAccepted": "That answer was not accepted. Reload the conversation to see the question as it stands now."
+  },
+  "attachments": {
+    "needSavedConversation": "Pick a project and use a saved conversation before sending file attachments.",
+    "waitForStart": "Wait until this conversation has started before sending file attachments.",
+    "sendFailed": "Could not send your attachment. Please try again.",
+    "notSent": "{count, plural, one {Your file was not sent — the agent asked a question first. It is still attached.} other {Your # files were not sent — the agent asked a question first. They are still attached.}}"
+  },
+  "tasks": {
+    "stopFailed": "Couldn’t stop the task — it may still be running. Check your connection and try again.",
+    "ownerOnly": "Only the owner can run tasks in this shared project.",
+    "creating": "Creating task…",
+    "configuredPlanningModel": "Configured planning model",
+    "formSubmitFailed": "Form submission failed.",
+    "loadEarlierFailed": "Couldn't load earlier messages. Try again."
+  },
+  "codeMode": {
+    "stopUnchecked": "Code Mode is hidden, but running tasks could not be fully checked.",
+    "stopFailed": "{count, plural, one {Code Mode is hidden, but one task could not be stopped.} other {Code Mode is hidden, but # tasks could not be stopped.}}",
+    "needFolder": "Pick a project with a folder before launching Claude Code.",
+    "needModel": "Pick a model before launching Claude Code.",
+    "noKey": "No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.",
+    "createFailed": "Could not create the Claude Code task."
+  },
+  "deleteTask": {
+    "title": "Delete this task?",
+    "message": "The conversation history and any per-task scratchpad cells will be removed. This can't be undone.",
+    "failed": "Couldn't delete this chat. It is back in your list; try again."
+  },
+  "deleteTurn": {
+    "title": "Delete this exchange?",
+    "message": "This removes both your question and {agent}'s response from the conversation. Any scratchpad cells, artifacts, or memory writes produced as part of this turn stay on disk. This can't be undone.",
+    "unconfirmedRefresh": "The last delete here left this list unconfirmed, so it will be refreshed now. Check it, then delete again if you still need to.",
+    "refreshFailed": "This conversation could not be refreshed. Reload it before deleting anything else in it.",
+    "messageChanged": "This message changed before it could be deleted. Try again.",
+    "unconfirmedNoRefresh": "Could not confirm this delete, and the conversation could not be refreshed. Reload this conversation before deleting anything else in it.",
+    "deletedNoRefresh": "This exchange was deleted, but the conversation could not be refreshed, so the list may be out of date. Reload this conversation before deleting anything else in it.",
+    "unconfirmed": "Could not confirm this delete. It may still have gone through, so this conversation will be refreshed before the next delete in it.",
+    "failedWithReason": "Could not delete this exchange: {reason}",
+    "notDeletedAsShown": "The server did not delete this exchange as shown, so the conversation has been refreshed. Check it, then delete again if you still need to."
+  },
+  "deleteProject": {
+    "title": "Delete project \"{name}\"?",
+    "messageExternal": "The project and its conversations will be removed. Your folder {path} stays where it is and your own files in it are not touched, though Cowork's skills/ and .anton/ folders are left behind inside it. This can't be undone.",
+    "message": "All conversations, scratchpad output, memory, and artifacts under this project will be removed from disk. This can't be undone.",
+    "confirm": "Delete project",
+    "failed": "Couldn't delete this project. Nothing was removed; try again."
+  },
+  "display": {
+    "settings": "Display settings",
+    "toggleTheme": "Toggle dark/light mode"
+  },
+  "compare": {
+    "unavailableTitle": "Compare Models isn't available here",
+    "unavailableDescription": "There are no models to choose from on this deployment, so there's nothing to compare. Your operator decides which models you can pick."
+  },
+  "drive": {
+    "connectTitle": "Connect Google Drive?",
+    "connectMessage": "You need to connect your Google Drive account to add files from Drive.",
+    "chooseAccountTitle": "Choose a Google Drive account",
+    "chooseAccountSubtitle": "More than one Google Drive account is connected — pick which one to use."
+  },
+  "update": {
+    "updating": "Updating...",
+    "updatingTo": "Updating to {version}...",
+    "almostThere": "Almost there..."
+  },
+  "router": {
+    "unavailableTitle": "This conversation didn’t load",
+    "unavailableDescription": "We couldn’t reach the server. Your link is still valid — try again once you’re back online.",
+    "retrying": "Retrying…",
+    "tryAgain": "Try again"
+  },
+  "shell": {
+    "welcome": "Welcome to {product}",
+    "setupErrorTitle": "Couldn't finish setup",
+    "setupErrorBody": "Your provider is saved, but we couldn't apply your model. Check your connection, then try again.",
+    "retrying": "Retrying…",
+    "retry": "Retry",
+    "tryAgain": "Try again",
+    "switchToLight": "Switch to light theme",
+    "switchToDark": "Switch to dark theme",
+    "toggleTheme": "Toggle colour theme",
+    "dismiss": "Dismiss",
+    "dismissUntilNextLaunch": "Dismiss until the next launch",
+    "serviceUnconfiguredTitle": "The service is not configured yet",
+    "serviceUnavailableTitle": "The service is unavailable",
+    "serviceUnconfiguredBody": "Ask your administrator to check the model settings, then try again.",
+    "serviceUnavailableBody": "The server may be restarting. Wait a moment, then try again."
+  },
+  "ownership": {
+    "title": "Whose data is this?",
+    "intro": "There is existing data on this computer from before accounts were kept separate, and we can't tell whether it belongs to {who}.",
+    "thisAccount": "this account",
+    "credentials": "It is more than past chats. Taking it also takes the provider API keys saved here and the credentials for any datasources that were connected.",
+    "nothingDeleted": "Nothing is deleted either way. If you start fresh, the existing data stays on this computer for whoever it belongs to.",
+    "startingFresh": "Starting fresh…",
+    "startFresh": "Start fresh",
+    "restoring": "Restoring…",
+    "mine": "This data is mine",
+    "accountChanged": "The signed-in account changed. Sign in again to answer this.",
+    "claimFailed": "Could not take that data. Nothing was changed — try again."
+  },
+  "updateBanner": {
+    "downloading": "Downloading update…",
+    "downloadingPercent": "Downloading update ({percent}%)",
+    "installing": "Installing update…",
+    "restartFailed": "Last restart attempt failed",
+    "tryAgain": "Try again",
+    "ready": "Update ready",
+    "readyVersion": "Update ready{hasVersion, select, yes { ({version})} other {}}",
+    "restartNow": "Restart now",
+    "restart": "Restart",
+    "readyAutoHint": "The new version{hasVersion, select, yes { ({version})} other {}} is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.",
+    "appUpdateFailed": "App update failed",
+    "retry": "Retry",
+    "download": "Download",
+    "appVersionAvailable": "New app version available",
+    "newVersion": "New version available{hasVersion, select, yes { ({version})} other {}}",
+    "abortedHint": "The last restart attempt failed. The update is still downloaded. Try again to restart.",
+    "abortedHintReason": "Last restart attempt failed: {reason}. The update is still downloaded. Try again to restart.",
+    "debInstallStep": "run {command} from the directory you downloaded it to",
+    "otaHint": "Reloads the app to finish updating{hasVersion, select, yes { to {version}} other {}}. It also applies on its own the next time you open the app.",
+    "otaFailed": "Update failed{hasVersion, select, yes { ({version})} other {}}"
+  },
+  "shellSupport": {
+    "tooOld": {
+      "title": "This app is too old for this version of Cowork",
+      "body": "App shell {installed} is installed; {current} is current. Some features are hidden until the app updates.",
+      "restartToUpdate": "Restart to update",
+      "downloadUpdate": "Download update",
+      "checking": "Checking for update…",
+      "downloading": "Downloading…",
+      "downloadingPercent": "Downloading ({percent}%)",
+      "installing": "Installing…",
+      "retryUpdate": "Retry update",
+      "downloadLatest": "Download the latest app"
+    },
+    "osCapped": {
+      "minimum": "macOS {version} or later",
+      "belowFloorTitle": "Update macOS to keep using Cowork safely",
+      "belowFloorBody": "This version of the app is unsafe if more than one person signs in to Cowork on this Mac user account: it can show one account's data to the next person who signs in. Newer versions fix this but need {minimum}.",
+      "title": "Your version of macOS no longer receives app updates",
+      "body": "This Mac runs macOS {major}. Update to {minimum} to keep getting app updates. Some features may stop working over time."
+    }
+  },
+  "serverStatus": {
+    "exitCode": {
+      "stillStarting": "still starting",
+      "notApplicable": "not applicable",
+      "stopped": "stopped",
+      "unknown": "unknown",
+      "neverStarted": "never started"
+    },
+    "timeout": {
+      "headline": "The backend was still starting when the app stopped waiting.",
+      "firstLaunch": "This is usually the first launch after an install: the whole Python environment is being scanned as it runs for the first time, which is much slower than every launch after it.",
+      "reopen": "Quit the app completely and reopen it. The backend gets a fresh start and normally comes up on the second try."
+    },
+    "exited": {
+      "headline": "The backend started and then exited before it finished booting."
+    },
+    "spawnError": {
+      "headline": "The backend program couldn't be launched at all.",
+      "antivirus": "Antivirus or endpoint protection blocking the executable is the usual cause; allow the {product} backend and try again.",
+      "reinstall": "If that is not it, re-run the installer to reinstall the backend."
+    },
+    "notInstalled": {
+      "headline": "The backend isn't installed yet.",
+      "rerun": "Re-run the installer to set it up."
+    },
+    "credentialClear": {
+      "headline": "The backend couldn't remove the API keys from your last sign-out, so it stopped instead of using them.",
+      "reopen": "Quit {product} completely and reopen it. The backend tries again on every start.",
+      "filesHeld": "If it keeps failing, another program may be holding files in the Cowork data folder open; close it, or restart the machine."
+    },
+    "incompatible": {
+      "headline": "The backend needs to be updated for this version of {product}.",
+      "reopen": "Quit {product} completely and reopen it so the matching backend can be installed and started.",
+      "rerun": "If the update does not complete, re-run the latest installer."
+    },
+    "notRunning": {
+      "headline": "The backend is not running.",
+      "startBelow": "Start it below."
+    },
+    "portHeld": "Process {pid} is holding port {port}. Close it (or restart the machine) and start the backend again.",
+    "copyLog": "If it keeps failing, copy the log below and send it to support.",
+    "noLog": {
+      "timeout": "The backend had not printed anything yet when the app stopped waiting, so there is no log to send.",
+      "exited": "Nothing was captured in the log because the backend died before it printed anything, so there is no log to send.",
+      "spawnError": "The program never ran, so the launch error above is the only evidence there is; there is no log to send.",
+      "notInstalled": "Nothing has run yet, so there is no log to send.",
+      "incompatible": "The backend responded normally, but it is an older incompatible version; there may be no error log.",
+      "credentialClear": "The backend stopped before it printed its reason, so there is no log to send.",
+      "default": "No log has been captured yet, so there is nothing to send."
+    }
+  },
+  "restartConfirm": {
+    "confirm": "Restart anyway",
+    "cancel": "Cancel",
+    "unknownTitle": "Restart now?",
+    "unknownBody": "Cowork cannot tell whether any tasks are running. Restarting stops every running task.",
+    "title": "Stop {count, plural, one {# running task} other {# running tasks}} and restart?",
+    "body": "Restarting stops the tasks mid-answer. You can restart later from Settings or the update banner."
+  },
+  "bootStatus": {
+    "downloading": "Downloading the latest update…",
+    "finishing": "Finishing up…",
+    "installing": "Installing the update — Cowork will reopen…"
+  },
+  "orgs": {
+    "personal": "Personal"
+  },
+  "addon": {
+    "moveFailed": "Could not move that message to the queue. Please try again.",
+    "stayQueued": "{agent} could not take it now. It stays in the queue."
+  }
+}

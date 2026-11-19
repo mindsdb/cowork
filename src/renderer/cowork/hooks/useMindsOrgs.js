@@ -1,3 +1,4 @@
+import { PLATFORM_UI } from '../../lib/deployment';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isElectron, mindshubListOrgs, mindshubSwitchOrg } from '../../platform/host';
 import { prepareForOrganizationReload } from '../lib/organizationTransition';
@@ -5,6 +6,7 @@ import { notifyOrganizationChanged } from '../lib/organizationChanges';
 import { purgeOrganizationScopedState } from '../lib/accountLocalState';
 import { clearDraftsForOrganizationSwitch } from '../lib/draftStore';
 import { clearCachedSettings } from '../lib/settingsCache';
+import { clearCachedOrgBranding } from '../lib/orgBrandingCache';
 
 /**
  * The MindsHub organizations this person belongs to, and which one is active in
@@ -66,7 +68,7 @@ export function useMindsOrgs(accountUser) {
    */
   const load = useCallback(async () => {
     const mine = generation.current;
-    if (!sub) {
+    if (!PLATFORM_UI || !sub) {
       setState(NONE);
       return true;
     }
@@ -84,6 +86,7 @@ export function useMindsOrgs(accountUser) {
   }, [sub]);
 
   useEffect(() => {
+    if (!PLATFORM_UI) return;
     generation.current += 1;
     /**
      * A switch belongs to the identity that started it. Do not hand a new
@@ -119,6 +122,7 @@ export function useMindsOrgs(accountUser) {
    * the organization its requests are scoped to.
    */
   const switchOrg = useCallback(async (organizationId) => {
+    if (!PLATFORM_UI) return { ok: false };
     const mine = generation.current;
     setSwitching(true);
     try {
@@ -157,6 +161,7 @@ export function useMindsOrgs(accountUser) {
             // half; the in-memory clear is what stops the same heap serving it.
             clearDraftsForOrganizationSwitch();
             clearCachedSettings();
+            clearCachedOrgBranding();
           }
           /**
            * The reload goes FIRST, and nothing may be put between it and the

@@ -3,6 +3,7 @@
 
 import Ico from '../Icons';
 import { RailCard } from './RailCard';
+import { useTranslation } from '../../../lib/i18n';
 
 // Kept for the clickable row below, which stays inline (its `all: unset`,
 // padding, cursor, transition are all clickable-conditional + it uses a
@@ -10,10 +11,11 @@ import { RailCard } from './RailCard';
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 
 function ScheduledList({ items, onSelect }) {
+  const { t } = useTranslation('shell');
   if (!items.length) {
     return (
       <p className="font-body text-sm text-ink-4 pt-2 px-1 pb-1">
-        Nothing scheduled here yet.
+        {t('rail.scheduled.empty')}
       </p>
     );
   }
@@ -42,7 +44,7 @@ function ScheduledList({ items, onSelect }) {
               fontSize: 12.5, color: 'var(--ink-2)',
               cursor: clickable ? 'pointer' : 'default',
               transition: clickable
-                ? 'background 120ms ease, color 120ms ease'
+                ? 'background var(--dur-hover) ease, color var(--dur-hover) ease'
                 : undefined,
             }}
             onMouseOver={clickable ? (e) => {
@@ -55,7 +57,7 @@ function ScheduledList({ items, onSelect }) {
             } : undefined}
           >
             <span className="text-ink-3 inline-flex shrink-0">
-              {Ico.clock(13)}
+              {Ico.clock(14)}
             </span>
             <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
               {label}
@@ -73,11 +75,11 @@ function ScheduledList({ items, onSelect }) {
 export function ScheduledBox({
   items = [],
   defaultOpen = true,
-  maxBodyHeight = 320,
   onSelect,
 }) {
+  const { t } = useTranslation('shell');
   return (
-    <RailCard title="Scheduled Tasks" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
+    <RailCard title={t('rail.scheduled.title')} defaultOpen={defaultOpen}>
       <ScheduledList items={items} onSelect={onSelect} />
     </RailCard>
   );

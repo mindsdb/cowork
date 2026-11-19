@@ -8,10 +8,16 @@ import { host } from '../../platform/host';
 // minimized; the main process forwards the window state to fill that gap.
 let windowVisible = true;
 let attached = false;
+let lastVisible = true;
 const listeners = new Set<() => void>();
 
 
+// Both signals fire for one restore, and subscribers reopen streams and
+// refetch on every notify, so only a change in the combined state goes out.
 function notify(): void {
+  const visible = isAppVisible();
+  if (visible === lastVisible) return;
+  lastVisible = visible;
   listeners.forEach((listener) => listener());
 }
 
@@ -19,8 +25,8 @@ function notify(): void {
 function attach(): void {
   if (attached) return;
   attached = true;
+  lastVisible = isAppVisible();
   host.onWindowVisibility((visible) => {
-    if (visible === windowVisible) return;
     windowVisible = visible;
     notify();
   });

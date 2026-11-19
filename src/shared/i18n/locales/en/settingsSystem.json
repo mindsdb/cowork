@@ -1,0 +1,210 @@
+{
+  "updates": {
+    "backendVersion": {
+      "loading": "Loading…",
+      "unavailable": "Unavailable"
+    },
+    "currentVersion": {
+      "title": "Current version",
+      "subtitle": "The version currently running. Server and UI updates are applied automatically at launch; components under the hood are shown in details.",
+      "releaseWeek": "Release week {range}",
+      "outOfSyncHint": "Underlying components span {days} days — a component is lagging. See details.",
+      "outOfSync": "⚠ out of sync",
+      "built": "built {date}",
+      "appShell": "App shell",
+      "tooOldHint": "Supported: {minVersion} or newer, and within {days} days of the latest app ({latestVersion}).",
+      "tooOld": "⚠ too old",
+      "osCappedHint": "The newest app needs macOS {minMacos} or later, so this app no longer updates.",
+      "osCapped": "⚠ no updates on macOS {macos}",
+      "tooOldAlert": "This app is too old for this version of {product}. Some features are hidden until the app updates to {version}. Use Software updates below.",
+      "showDetails": "Details",
+      "hideDetails": "Hide details",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyFailed": "Couldn't copy — select the details above to copy manually"
+    },
+    "software": {
+      "title": "Software updates",
+      "subtitle": "UI and server updates apply automatically when the app restarts. A new app version downloads in the background and installs the next time you relaunch.",
+      "manualAfterFailure": "You can still download the installer manually.",
+      "installerDownloading": "Installer downloading — when it's done, quit {product} and open the installer to finish updating.",
+      "installerDownloadingDeb": "Installer downloading — when it's done, quit {product} and {step}.",
+      "downloadInstallerHint": "Download the installer, then quit {product} and open it to finish updating.",
+      "downloadInstallerHintDeb": "Download the installer, then quit {product} and {step}.",
+      "offline": "Couldn't check — you appear to be offline.",
+      "checkFailed": "Couldn't check for updates. Please try again.",
+      "upToDate": "You're up to date.",
+      "serverPart": "Server → {version}",
+      "agentPart": "Agent → {version}",
+      "uiPart": "UI → {version}",
+      "newVersion": "new version",
+      "checking": "Checking…",
+      "check": "Check for updates",
+      "updateReady": "Update ready",
+      "restartToApply": "Restart the app to apply it.",
+      "restartToApplyWith": "Restart the app to apply it ({changes}).",
+      "restarting": "Restarting…",
+      "tryAgain": "Try again",
+      "restartNow": "Restart now",
+      "auto": {
+        "checking": "Checking for an app update…",
+        "available": "New app version available",
+        "downloading": "Downloading app update…",
+        "downloadingPercent": "Downloading app update — {percent}%",
+        "ready": "App update ready",
+        "installing": "Installing app update…",
+        "failed": "App update failed",
+        "readyHint": "Restart {product} to finish installing the downloaded update.",
+        "failedHint": "The automatic update could not be completed. Your current installation is still usable.",
+        "availableManualHint": "Download it when you are ready.",
+        "availableHint": "The update is ready to download.",
+        "workingHint": "You can continue working while {product} prepares the update.",
+        "download": "Download update",
+        "retry": "Retry"
+      },
+      "newAppVersion": "New app version {version}",
+      "downloadAgain": "Download again",
+      "downloadInstaller": "Download installer",
+      "applyFailed": "Couldn't apply the update. Please try again."
+    }
+  },
+  "backend": {
+    "web": {
+      "title": "Backend is managed server-side",
+      "body": "The Python backend runs on the server — it isn't controllable from this interface."
+    },
+    "status": {
+      "online": {
+        "title": "MindsHub backend is running",
+        "subtitle": "The local Python server is responding to /health."
+      },
+      "starting": {
+        "title": "MindsHub backend is starting…",
+        "subtitle": "Spawning the local Python server. This usually takes a few seconds."
+      },
+      "stopping": {
+        "title": "MindsHub backend is stopping…",
+        "subtitle": "Waiting for the local Python server to terminate."
+      },
+      "stopped": {
+        "title": "MindsHub backend is stopped",
+        "subtitle": "You stopped the local Python server. Click \"Start backend\" below to bring it back up."
+      },
+      "failed": {
+        "title": "MindsHub backend isn't running",
+        "subtitle": "The local Python server didn't start. The most recent error and log tail are captured below."
+      }
+    },
+    "refreshTooltip": "Refresh diagnostics",
+    "refresh": "Refresh",
+    "stopping": "Stopping…",
+    "stop": "Stop backend",
+    "starting": "Starting…",
+    "restarting": "Restarting…",
+    "start": "Start backend",
+    "restart": "Restart backend",
+    "statusHeading": "Status",
+    "port": "Port",
+    "exit": "Exit",
+    "started": "Started",
+    "noStartError": "No specific start error was captured. Check the log tail — the process may have died after starting.",
+    "log": "Log",
+    "noLog": "(no log captured yet)"
+  },
+  "account": {
+    "username": "Username",
+    "organization": "Organization",
+    "signIn": {
+      "title": "Enable cloud capabilities",
+      "subtitle": "Sign in with MindsHub to access every model, cloud execution, and publishing — all in one place.",
+      "features": {
+        "router": {
+          "label": "Seamless model router",
+          "desc": "The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more."
+        },
+        "remote": {
+          "label": "Remote tasks",
+          "desc": "Run code and long tasks on managed infrastructure, not your laptop."
+        },
+        "share": {
+          "label": "Share & collaborate",
+          "desc": "Share dashboards, reports, and artifacts — and work on them together."
+        },
+        "unified": {
+          "label": "Unified account",
+          "desc": "One login, one bill — no juggling API keys across providers."
+        }
+      },
+      "comingSoon": "coming soon",
+      "error": "Sign-in didn't complete: {error}",
+      "button": "Sign in / Sign up to MindsHub"
+    },
+    "cancel": "Cancel",
+    "signingOut": "Signing out…",
+    "signOut": "Sign out",
+    "web": {
+      "title": "Managed via MindsHub",
+      "body": "Account management is handled through MindsHub for the web version."
+    }
+  },
+  "usage": {
+    "actions": {
+      "viewUsage": "View usage",
+      "addFunds": "Add funds",
+      "setUpAutoTopUp": "Set up auto top up",
+      "manageAutoTopUp": "Manage auto top up",
+      "updatePaymentMethod": "Update payment method"
+    },
+    "free": {
+      "title": "Free Air allowance",
+      "badge": "MindsHub Air only",
+      "resetsAt": "Resets at {time}",
+      "unlimited": "Unlimited on this account.",
+      "used": "{percent} of your allowance used",
+      "left": "{percent} left",
+      "meterLabel": "Free Air allowance used",
+      "usedUpUntil": "Used up. MindsHub Air is billing your balance until it refills at {time}.",
+      "usedUp": "Used up. MindsHub Air is billing your balance until it refills.",
+      "afterUntil": "After that, MindsHub Air uses your balance until it refills at {time}.",
+      "after": "After that, MindsHub Air uses your balance."
+    },
+    "autoTopUp": {
+      "off": "Auto top up is off. Turn it on so tasks keep running when your balance gets low.",
+      "rule": "Tops up to {target} when your balance drops below {floor}.",
+      "on": "On.",
+      "paymentFailed": "Auto top up failed: we couldn't charge your card. Update your payment method to resume it.",
+      "capReached": "{rule} Paused to stay within this month's cap.",
+      "pendingAction": "{rule} Waiting on your bank to confirm the latest charge.",
+      "badgeOn": "Auto top up on",
+      "badgeFailed": "Auto top up failed",
+      "badgePaused": "Auto top up paused"
+    },
+    "low": {
+      "off": "Running low. Add funds or turn on auto top up to keep tasks running.",
+      "ok": "Running low. Auto top up will refill it.",
+      "pending": "Running low. Auto top up is waiting on your bank.",
+      "other": "Running low. Add funds to keep tasks running."
+    },
+    "balance": {
+      "title": "Balance",
+      "empty": "Empty. Paid models won't run until you add funds.",
+      "usedBy": "Used by paid models, and by MindsHub Air once the free tokens run out.",
+      "spentRange": "credit spent {start} to {end}",
+      "spentDate": "credit spent {date}",
+      "spentThisPeriod": "credit spent this period",
+      "notOwner": "Only your organization's billing owner can add funds or change auto top up."
+    },
+    "signIn": {
+      "title": "Sign in to see your usage",
+      "body": "Your free Air allowance and your balance show up here once you're signed in to MindsHub.",
+      "goToAccount": "Go to Account"
+    },
+    "loading": "Loading usage…",
+    "error": {
+      "title": "Couldn't load usage",
+      "body": "MindsHub didn't answer. Try again, or check your usage in the console.",
+      "tryAgain": "Try again"
+    },
+    "empty": "No usage to show for this account yet."
+  }
+}

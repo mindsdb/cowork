@@ -37,7 +37,7 @@ describe('CustomizeView without onConnectNew', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('CustomizeView rendered without onConnectNew'),
+      expect.stringContaining('customizeview_rendered_without_onconnectnew'),
     );
   });
 });

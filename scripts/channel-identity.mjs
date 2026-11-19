@@ -8,12 +8,13 @@
 // Icon values are BARE basenames, matching the yml's own `icon: icon.png`:
 // electron-builder resolves them under directories.buildResources (= assets/). A
 // prefixed `assets/…` only resolved via the secondary projectDir fallback.
+// macIcon is the .icns built from the same PNG (scripts/generate-mac-icons.sh).
 
 const IDENTITY = {
   preview: {
     appId: 'com.mindshub.cowork.preview',
     productName: 'MindsHub Cowork (Preview)',
-    macIcon: 'icon-preview.png',
+    macIcon: 'icon-preview.icns',
     winIcon: 'icon-preview.png',
     linuxIcon: 'icon-preview.png',
     linuxName: 'mindshub-cowork-preview',
@@ -26,7 +27,7 @@ const IDENTITY = {
   stable: {
     appId: 'com.mindshub.cowork.stable',
     productName: 'MindsHub Cowork (Staging)',
-    macIcon: 'icon-staging.png',
+    macIcon: 'icon-staging.icns',
     winIcon: 'icon-staging.png',
     linuxIcon: 'icon-staging.png',
     // Debian package AND executable name. Both must differ from prod's or dpkg

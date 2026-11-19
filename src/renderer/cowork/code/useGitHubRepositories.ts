@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { codingApi, type GitHubRepository } from './api';
+import i18n from '../../lib/i18n';
 
 /** Mounted per connection by RepositoryPicker: no account data survives a switch. */
 export function useGitHubRepositories(connectionName: string, searching: boolean) {
@@ -19,7 +20,7 @@ export function useGitHubRepositories(connectionName: string, searching: boolean
       setItems((previous) => [...new Map([...previous, ...result.items].map((item) => [item.clone_url, item])).values()]);
       setNextPage(result.next_page);
     }).catch((reason) => {
-      if (active) setError(reason instanceof Error ? reason.message : 'Could not load repositories. Try again.');
+      if (active) setError(reason instanceof Error ? reason.message : i18n.t('repositoryPicker.loadFailed', { ns: 'code' }));
     }).finally(() => {
       if (active) setLoading(false);
     });

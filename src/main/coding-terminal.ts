@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Embedded Claude Code terminal (ENG-1656 follow-up): runs the `claude` CLI
 // in a real PTY, keyed by task id, so each Claude-Code task is its own
 // independent, reconnectable session — mirroring how this app ran Anton's
@@ -15,6 +16,7 @@ import * as path from 'path';
 import { utilityProcess } from 'electron';
 import type { UtilityProcess, WebContents } from 'electron';
 import { IPC } from '../shared/ipc-channels';
+import { mindsApiRoot } from '../shared/minds-endpoint';
 import { detectClaudeCode, revealMindsApiKey, revealMindsBaseUrl } from './coding-mode';
 import { ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
 import { getEnvPath } from './uv-paths';
@@ -151,7 +153,8 @@ export async function startCodingTerminal(
   if (!authToken) {
     return { ok: false, reason: 'No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.' };
   }
-  const inferenceBaseUrl = (await revealMindsBaseUrl()) || MINDSHUB_INFERENCE_FALLBACK_URL;
+  // Claude Code appends /v1/messages itself, so the stored URL goes in as the API root.
+  const inferenceBaseUrl = mindsApiRoot(await revealMindsBaseUrl()) || MINDSHUB_INFERENCE_FALLBACK_URL;
 
   // Each task runs in its own git worktree so concurrent Claude Code tasks
   // in the same project can never step on each other's uncommitted edits.
@@ -169,7 +172,7 @@ export async function startCodingTerminal(
     isNewSession = worktree.isNew;
   } catch (err: any) {
     // eslint-disable-next-line no-console
-    console.error('[coding-terminal] failed to set up task worktree, falling back to project dir', err?.message || err);
+    diagnostic("main.coding-terminal", "ERROR", "coding_terminal_failed_to_set_up_task_worktree_falling_back_to_project_dir", '[coding-terminal] failed to set up task worktree, falling back to project dir', err?.message || err);
   }
 
   // Per-project, not a single shared dir — keeps MindsHub Claude Code
@@ -213,7 +216,7 @@ export async function startCodingTerminal(
           break;
         case 'error':
           // eslint-disable-next-line no-console
-          console.error('[coding-terminal] host process error', msg.where, msg.reason, msg.stack);
+          diagnostic("main.coding-terminal", "ERROR", "coding_terminal_host_process_error", '[coding-terminal] host process error', msg.where, msg.reason, msg.stack);
           finish({ ok: false, reason: msg.reason });
           break;
       }
@@ -267,7 +270,7 @@ export async function startCodingTerminal(
     }
     if (badFields.length) {
       // eslint-disable-next-line no-console
-      console.error('[coding-terminal] non-string field(s) about to be sent to pty host:', badFields);
+      diagnostic("main.coding-terminal", "ERROR", "coding_terminal_non_string_field_s_about_to_be_sent_to_pty_host", '[coding-terminal] non-string field(s) about to be sent to pty host:', badFields);
     }
 
     child.postMessage(startMsg);

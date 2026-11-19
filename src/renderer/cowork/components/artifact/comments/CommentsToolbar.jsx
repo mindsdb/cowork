@@ -13,6 +13,7 @@
 import { Toolbar } from '@base-ui/react/toolbar';
 import { Tooltip } from '../../ui';
 import { CommentIcon, InboxIcon, XIcon } from './icons';
+import { useTranslation } from '../../../../lib/i18n';
 
 // Reference shadows (Figma "NewShadow"): outer stack + glass insets.
 const SHADOW_TOOLBAR =
@@ -44,7 +45,7 @@ function ToolButton({ label, on = false, dim = false, onClick, children }) {
         <span
           className={[
             'w-[24px] h-[24px] rounded-full flex items-center justify-center',
-            'transition-[background,color,transform] duration-150',
+            'transition-[background,color,transform] duration-hover',
             'group-active/tb:scale-90',
             on
               ? 'bg-ink text-surface'
@@ -73,9 +74,10 @@ export function CommentsToolbar({
   onToggleMarkers,
   onClose,         // leaves the comments chrome (reopen from the top bar)
 }) {
+  const { t } = useTranslation('artifacts');
   return (
     <Toolbar.Root
-      aria-label="Comments toolbar"
+      aria-label={t('comments.toolbar.ariaLabel')}
       className="absolute left-1/2 bottom-[34px] z-40 h-[32px]
         flex items-center gap-[2px] px-1 rounded-[46px]
         motion-reduce:!animate-none"
@@ -86,17 +88,17 @@ export function CommentsToolbar({
         WebkitBackdropFilter: 'blur(5.6px)',
         boxShadow: SHADOW_TOOLBAR,
         fontFamily: 'var(--font-body)',
-        animation: 'cw-act-bar-in .4s cubic-bezier(.16,1,.3,1)',
+        animation: 'cw-act-bar-in var(--dur-layout) var(--ease-out)',
       }}
     >
       <ToolButton
-        label="Comment — click an element (⌥ selects the container)"
+        label={t('comments.toolbar.comment')}
         on={mode}
         onClick={onToggleMode}
       >
         <CommentIcon />
       </ToolButton>
-      <ToolButton label="Comments inbox" on={inboxOpen} onClick={onToggleInbox}>
+      <ToolButton label={t('comments.toolbar.inbox')} on={inboxOpen} onClick={onToggleInbox}>
         <InboxIcon />
       </ToolButton>
       <Divider />
@@ -106,10 +108,10 @@ export function CommentsToolbar({
           cursor-pointer text-[12px] font-medium text-ink whitespace-nowrap font-[inherit]
           transition-colors hover:bg-surface-2"
       >
-        {markersShown ? 'Hide comment' : 'Show comment'}
+        {markersShown ? t('comments.toolbar.hideComment') : t('comments.toolbar.showComment')}
       </Toolbar.Button>
       <Divider />
-      <ToolButton label="Close comments" dim onClick={onClose}>
+      <ToolButton label={t('comments.toolbar.close')} dim onClick={onClose}>
         <XIcon />
       </ToolButton>
     </Toolbar.Root>

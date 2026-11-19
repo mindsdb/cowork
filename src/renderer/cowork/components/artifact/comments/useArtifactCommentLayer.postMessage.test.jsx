@@ -16,6 +16,14 @@ function Harness({ threads }) {
   return <iframe ref={iframeRef} title="Draft preview" srcDoc="<html></html>" />;
 }
 
+/* The comment layer with no iframe mounted, as a text, image or document
+   preview has it. */
+function FramelessHarness({ handlers }) {
+  const iframeRef = useRef(null);
+  useArtifactCommentLayer(iframeRef, { threads: [], viewer: { id: 'u1' }, enabled: true, ...handlers });
+  return null;
+}
+
 describe('useArtifactCommentLayer postMessage bridge', () => {
   it('answers a ready announcement from a srcdoc iframe with the current thread list', () => {
     const threads = [{ id: 't1', status: 'open', created_at: '2026-01-01T00:00:00Z' }];
@@ -50,5 +58,24 @@ describe('useArtifactCommentLayer postMessage bridge', () => {
     }));
 
     expect(postMessageSpy).not.toHaveBeenCalled();
+  });
+
+  it('ignores create, delete and status messages from a foreign window when no iframe is mounted', () => {
+    const handlers = { onCreate: vi.fn(), onDeleteThread: vi.fn(), onStatus: vi.fn() };
+    render(<FramelessHarness handlers={handlers} />);
+    const foreign = { postMessage: vi.fn() };
+
+    for (const data of [
+      { source: 'anton-comments', type: 'create', selector: '#total', text: 'Change this' },
+      { source: 'anton-comments', type: 'delete', id: 't1' },
+      { source: 'anton-comments', type: 'status', id: 't1', status: 'resolved' },
+    ]) {
+      fireEvent(window, new MessageEvent('message', { source: foreign, data }));
+      fireEvent(window, new MessageEvent('message', { source: null, data }));
+    }
+
+    expect(handlers.onCreate).not.toHaveBeenCalled();
+    expect(handlers.onDeleteThread).not.toHaveBeenCalled();
+    expect(handlers.onStatus).not.toHaveBeenCalled();
   });
 });

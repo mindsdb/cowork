@@ -29,12 +29,14 @@
 
 import { useCallback } from 'react';
 import { ArrowUpRight, Check, ChevronDown, Settings2 } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import Menu from './ui/Menu';
 import { useToastManager } from './ui/Toast';
 import { useHubWorkspaces } from '../hooks/useHubWorkspaces';
 import { tileLetter, tileStyle } from '../lib/letterTile';
 import { openExternal } from '../../platform/host';
 import { MINDS_WORKSPACES_URL } from '../../lib/mindsUrls';
+import { useTranslation } from '../../lib/i18n';
 
 // The letter square. Colour is hashed from the id, not the name, so a rename
 // keeps the tile people recognise (see lib/letterTile).
@@ -50,11 +52,12 @@ export function WorkspaceTile({ id, name, size = 18 }) {
   );
 }
 
-const workspaceName = (workspace) => workspace?.displayName || 'Workspace';
+const workspaceName = (workspace, t) => workspace?.displayName || t('workspace.label');
 
 export function WorkspaceSelector({ user, returnFocusRef }) {
   const { enabled, reachable, workspaces, activeWorkspaceId, switching, switchWorkspace } =
     useHubWorkspaces(user);
+  const { t } = useTranslation('shell');
   const toastManager = useToastManager();
   const preserveFocusOnRemoval = useCallback((element) => {
     // React 19 calls this cleanup before removing the focused trigger. A delayed
@@ -83,8 +86,8 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
       toastManager.add({
         title:
           err?.status === 409
-            ? 'That workspace has been archived. Pick another one.'
-            : 'We could not switch workspace. Please try again.',
+            ? t('workspace.archived')
+            : t('workspace.switchFailed'),
         type: 'danger',
       });
     }
@@ -113,20 +116,20 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
   // archived under you.
   if (!enabled || !reachable || !active || workspaces.length < 2) return null;
 
-  const activeName = workspaceName(active);
+  const activeName = workspaceName(active, t);
 
   const items = [
     {
       id: 'workspace-group',
       heading: (
-        <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">
-          Workspace
+        <div className="section-label">
+          {t('workspace.label')}
         </div>
       ),
     },
     ...workspaces.map((workspace) => {
       const isActive = workspace.id === active.id;
-      const name = workspaceName(workspace);
+      const name = workspaceName(workspace, t);
       return {
         id: `workspace-${workspace.id}`,
         icon: <WorkspaceTile id={workspace.id} name={name} />,
@@ -146,7 +149,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
         // signal is the row being disabled. lucide marks its own icons
         // `aria-hidden` when no other a11y prop is passed, so there is nothing
         // to add here.
-        hint: isActive ? <Check size={13} strokeWidth={2} className="text-accent" /> : undefined,
+        hint: isActive ? <Icon of={Check} size={14} className="text-accent" /> : undefined,
         // The active row is not a destination, and a second click during an
         // in-flight switch would race the first.
         disabled: isActive || switching,
@@ -156,10 +159,10 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
     { divider: true },
     {
       id: 'manage-workspaces',
-      icon: <Settings2 size={14} strokeWidth={1.5} aria-hidden="true" />,
-      label: 'Manage workspaces',
-      hint: <ArrowUpRight size={12} strokeWidth={1.5} aria-hidden="true" />,
-      title: 'Opens in your browser',
+      icon: <Icon of={Settings2} size={14} />,
+      label: t('workspace.manage'),
+      hint: <Icon of={ArrowUpRight} size={12} />,
+      title: t('common.opensInBrowser'),
       onClick: () => openExternal(MINDS_WORKSPACES_URL),
     },
   ];
@@ -168,7 +171,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
     <button
       type="button"
       data-workspace-selector
-      aria-label={`Workspace: ${activeName}`}
+      aria-label={t('workspace.triggerAriaLabel', { name: activeName })}
       // Bordered and surface-filled so it reads as a control rather than a
       // heading. `no-drag` because the whole window is a drag region.
       className="w-full flex items-center gap-2 h-9 px-2.5 rounded-lg border border-solid border-line bg-surface text-left cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] [-webkit-app-region:no-drag]"
@@ -177,7 +180,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
       <span className="flex-1 min-w-0 truncate text-[13px] font-medium text-ink" title={activeName}>
         {activeName}
       </span>
-      <ChevronDown size={14} strokeWidth={1.5} aria-hidden="true" className="shrink-0 text-ink-3" />
+      <Icon of={ChevronDown} size={14} className="shrink-0 text-ink-3" />
     </button>
   );
 
@@ -191,7 +194,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
         side="top"
         align="start"
         width={248}
-        ariaLabel="Workspace"
+        ariaLabel={t('workspace.label')}
       />
     </div>
   );

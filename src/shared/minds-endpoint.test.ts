@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isMindsBaseUrl, mindsServesOpenAiCompatible, endpointHost } from './minds-endpoint';
+import { isMindsBaseUrl, mindsServesOpenAiCompatible, endpointHost, mindsApiRoot } from './minds-endpoint';
 
 // Routing is decided here, so every branch gets a case only it can satisfy.
 // Getting this wrong sends a prompt meant for a machine on the user's own
@@ -82,5 +82,21 @@ describe('endpointHost', () => {
   it('is empty when no host is named', () => {
     expect(endpointHost('')).toBe('');
     expect(endpointHost('not a url')).toBe('');
+  });
+});
+
+describe('mindsApiRoot', () => {
+  it.each([
+    ['https://api.mindshub.ai/v1', 'https://api.mindshub.ai'],
+    ['https://api.mindshub.ai/v1/', 'https://api.mindshub.ai'],
+    ['https://api.mindshub.ai/', 'https://api.mindshub.ai'],
+    [' https://api.staging.mindshub.ai ', 'https://api.staging.mindshub.ai'],
+  ])('maps %s to %s', (stored, expected) => {
+    expect(mindsApiRoot(stored)).toBe(expected);
+  });
+
+  it('is empty when nothing usable is given', () => {
+    expect(mindsApiRoot('')).toBe('');
+    expect(mindsApiRoot(' / ')).toBe('');
   });
 });

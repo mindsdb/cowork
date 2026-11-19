@@ -1,0 +1,89 @@
+# Text a preview bundle must never hold. generatedBundles.test.ts checks each
+# type's generated/<type>.iife.txt, the script the frame runs, so these checks
+# see the renderer, its libraries, the frame runtime and JSZip together. Each
+# `pattern` is a JavaScript regular expression source, and `flags` its
+# optional flags. The test asserts that a check's pattern matches each of its
+# `matches` and none of its `skips`. `except` names the types a check leaves
+# out, and the comment above it says why.
+#
+# shared: every type's bundle.
+# <type>: that type's bundle as well.
+
+shared:
+  # Nothing in the frame may reach the network, start a thread or run strings
+  # as code. pdf.js keeps its fetch and XMLHttpRequest streams, its Worker and
+  # its font compiler's Function constructor. The pdf renderer hands pdf.js the
+  # file's bytes and runs its worker as a fake worker on the frame's thread, and
+  # the frame policy refuses each of them anyway (connect-src and worker-src
+  # 'none', and a script-src of one hash).
+  - name: a fetch call
+    pattern: '\bfetch\b'
+    except: [pdf]
+  - name: XMLHttpRequest
+    pattern: '\bXMLHttpRequest\b'
+    except: [pdf]
+  # A Worker or SharedWorker built, called or read off a global, and
+  # importScripts. JSZip's stream classes end in Worker, so a bare name ending
+  # in Worker is not a match.
+  - name: a Worker
+    pattern: '\bnew\s+(?:Shared)?Worker\b|\b(?:Shared)?Worker\s*\(|\.(?:Shared)?Worker\b|\bimportScripts\b'
+    except: [pdf]
+    matches:
+      - new Worker(url)
+      - new SharedWorker(url)
+      - Worker(url)
+      - self.Worker
+      - globalThis.SharedWorker
+      - importScripts('x.js')
+    skips:
+      - new GenericWorker('x')
+      - this._compressWorker
+      - n.Utf8DecodeWorker
+      - FlateWorker.prototype
+      - var e = `Worker ` + this.name
+  # Any mention of eval, so an indirect call or a copy of eval called later
+  # counts as well as a direct call.
+  - name: eval
+    pattern: '\beval\b'
+    matches:
+      - eval(src)
+      - (0, eval)(src)
+      - const run = eval
+      - globalThis['eval'](src)
+    skips:
+      - evaluate(x)
+      - medieval
+  - name: the Function constructor
+    pattern: '\bFunction\s*\('
+    except: [pdf]
+  # The bundle generator's own bans: the frame runs one inline script by hash.
+  - name: a dynamic import
+    pattern: '\bimport\s*\('
+  - name: import.meta
+    pattern: '\bimport\s*\.\s*meta\b'
+  - name: an opening script tag
+    pattern: '<script'
+    flags: i
+  - name: a closing script tag
+    pattern: '</script'
+    flags: i
+  - name: a NUL character
+    pattern: '\x00'
+  - name: a process reference
+    pattern: '\bprocess\.'
+  # Text from a file reaches the frame through textContent and attributes
+  # only. docx-preview sets one tab stop's innerHTML to the constant &nbsp;,
+  # and the Word renderer cleans docx-preview's output in an inert document
+  # before it attaches it.
+  - name: an innerHTML write
+    pattern: '\binnerHTML\b'
+    except: [docx]
+  - name: an outerHTML write
+    pattern: '\bouterHTML\b'
+  - name: insertAdjacentHTML
+    pattern: '\binsertAdjacentHTML\b'
+
+xlsx:
+  # The grid never builds HTML from a sheet.
+  - name: SheetJS's HTML writer
+    pattern: 'sheet_to_html'

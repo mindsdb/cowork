@@ -7,7 +7,8 @@ describe('normalizeExternalBrowserUrl', () => {
   it.each([
     ['https://github.com/mindsdb/cowork/pull/1', 'https://github.com/mindsdb/cowork/pull/1'],
     ['http://127.0.0.1:4173/preview', 'http://127.0.0.1:4173/preview'],
-  ])('accepts browser URLs', (value, expected) => {
+    ['mailto:team@example.com', 'mailto:team@example.com'],
+  ])('accepts browser and mail URLs', (value, expected) => {
     expect(normalizeExternalBrowserUrl(value)).toBe(expected);
   });
 

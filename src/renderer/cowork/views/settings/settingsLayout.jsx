@@ -2,6 +2,7 @@ import { useContext, createContext, Children, useState } from 'react';
 import Ico from '../../components/Icons';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
+import { useTranslation } from '../../../lib/i18n';
 
 // Layout mode for the settings surface. Desktop (default) renders the
 // two-column nav + scrolling panel inside a modal; mobile (ENG-990) renders
@@ -13,11 +14,10 @@ export const SettingsLayoutContext = createContext({ mobile: false });
 // A titled card shared by settings pages. Keeping it in the canonical layout
 // module lets focused settings sections live outside the already-large parent
 // view without copying desktop/mobile chrome.
-export function SettingsGroup({ title, children, collapsible = false, defaultCollapsed = false }) {
+export function SettingsGroup({ title, description = null, children, collapsible = false, defaultCollapsed = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
   const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
-  const headingClass =
-    'm-0 font-[family-name:var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-ink-3';
+  const headingClass = 'section-label m-0';
   const heading = collapsible ? (
     <button
       type="button"
@@ -35,6 +35,7 @@ export function SettingsGroup({ title, children, collapsible = false, defaultCol
     return (
       <div className="mb-1.5">
         <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{heading}</h2>
+        {description && !collapsed && <p className="m-0 px-0.5 pb-1 text-sm text-ink-3">{description}</p>}
         {!collapsed && <div className="pt-0 px-0.5 pb-1">{children}</div>}
       </div>
     );
@@ -42,6 +43,7 @@ export function SettingsGroup({ title, children, collapsible = false, defaultCol
   return (
     <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
       <h2 className={`${headingClass} pt-[14px] px-[18px] ${collapsed ? 'pb-[14px]' : 'pb-0'}`}>{heading}</h2>
+      {description && !collapsed && <p className="m-0 pt-1.5 px-[18px] text-sm text-ink-3">{description}</p>}
       {!collapsed && <div className="pt-2.5 px-[18px] pb-2">{children}</div>}
     </div>
   );
@@ -77,6 +79,7 @@ export function Section({ title, subtitle, notice, children }) {
 // Pass `footer` as JSX — buttons, status text, whatever the section needs.
 export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
+  const { t } = useTranslation('settings');
   if (mobile) {
     // Natural flow so the whole detail page scrolls (no internal scroll or
     // width cap). A sticky full-bleed bottom bar carries the action: the Save
@@ -98,9 +101,9 @@ export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
         ) : autoSaved ? (
           <div className={`${barClass} gap-2 text-ink-3 text-sm`}>
             <span aria-hidden="true" className="inline-flex text-[var(--ok)]">
-              {Ico.check ? Ico.check(13) : '✓'}
+              {Ico.check ? Ico.check(14) : '✓'}
             </span>
-            <span>Changes are saved automatically.</span>
+            <span>{t('autoSave.savedAutomatically')}</span>
           </div>
         ) : null}
       </div>

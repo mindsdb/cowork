@@ -7,6 +7,7 @@ const spies = vi.hoisted(() => ({
   fetchSession: vi.fn(),
   fetchSessionResult: vi.fn(),
   fetchSessions: vi.fn(),
+  fetchOlderMessages: vi.fn(async () => null),
 }));
 
 vi.mock('./api', async (importOriginal) => ({
@@ -15,6 +16,7 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSessions: (...args) => spies.fetchSessions(...args),
   fetchSession: (...args) => spies.fetchSession(...args),
   fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
+  fetchOlderMessages: (...args) => spies.fetchOlderMessages(...args),
   fetchConversationList: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
   fetchArtifacts: vi.fn(async () => []),
@@ -39,18 +41,23 @@ vi.mock('./api', async (importOriginal) => ({
 // views/ChatView.deletingTurn.test.jsx, which also pins the prop contract
 // between the two.
 vi.mock('./views/ChatView', () => ({
-  default: ({ task, deletingTurnIndex, onDeleteTurn }) => (
+  default: ({ task, deletingTurnMessageId, onDeleteTurn }) => (
     <div>
       <div>Chat task: {task?.title || 'none'}</div>
-      {deletingTurnIndex != null && <div>{`Deleting turn: ${deletingTurnIndex}`}</div>}
+      {deletingTurnMessageId != null && <div>{`Deleting turn: ${deletingTurnMessageId}`}</div>}
       {(task?.messages || []).map((m, i) => (
         <div key={i}>{`msg: ${m.role}: ${m.content}`}</div>
       ))}
-      {[0, 1].map((idx) => (
-        <button key={idx} type="button" onClick={() => onDeleteTurn?.(idx)}>
-          {`Request turn delete ${idx}`}
-        </button>
+      {(task?.usageNotices || []).map((n, i) => (
+        <div key={`n${i}`}>{`notice after: ${n.anchorId}`}</div>
       ))}
+      {(task?.messages || [])
+        .filter((m) => m.role === 'assistant' && m.id)
+        .map((m, idx) => (
+          <button key={m.id} type="button" onClick={() => onDeleteTurn?.(m.id)}>
+            {`Request turn delete ${idx}`}
+          </button>
+        ))}
     </div>
   ),
 }));
@@ -95,11 +102,13 @@ vi.mock('../platform/host', async (importOriginal) => {
 
 import App from './App';
 
+// Anchors are message ids now, and a turn's anchor is its assistant reply, so
+// turn 0 is `a1` and turn 1 is `a2`.
 const exchange = [
-  { role: 'user', content: 'first question' },
-  { role: 'assistant', content: 'first answer' },
-  { role: 'user', content: 'second question' },
-  { role: 'assistant', content: 'second answer' },
+  { role: 'user', id: 'u1', content: 'first question' },
+  { role: 'assistant', id: 'a1', content: 'first answer' },
+  { role: 'user', id: 'u2', content: 'second question' },
+  { role: 'assistant', id: 'a2', content: 'second answer' },
 ];
 
 const task = {
@@ -115,13 +124,15 @@ const otherTask = {
   status: 'idle',
 };
 // A conversation with no server history yet: performDeleteTurn drops the pair
-// locally and never reaches the network.
+// locally and never reaches the network. The rows still carry ids — a tmp-
+// task that has streamed gets them from the turn's own created/completed
+// frames — because a row with no id offers no delete affordance at all now.
 const localTask = {
   id: 'tmp-local-1',
   title: 'Unsaved task',
   messages: [
-    { role: 'user', content: 'local question' },
-    { role: 'assistant', content: 'local answer' },
+    { role: 'user', id: 'lu1', content: 'local question' },
+    { role: 'assistant', id: 'la1', content: 'local answer' },
   ],
   status: 'idle',
 };
@@ -142,6 +153,7 @@ beforeEach(() => {
     status: 'ok',
     task: { id, messages: exchange },
   }));
+  spies.fetchOlderMessages.mockReset().mockResolvedValue(null);
   spies.fetchSessions.mockReset().mockResolvedValue([
     { ...task },
     { ...otherTask },
@@ -178,7 +190,7 @@ describe('deleting a turn shows it as in flight', () => {
     await confirmDelete(user, 0);
 
     // The DELETE is still out: the turn must already read as in flight.
-    expect(await screen.findByText('Deleting turn: 0')).toBeInTheDocument();
+    expect(await screen.findByText('Deleting turn: a1')).toBeInTheDocument();
 
     // The server has answered, but the list still shows the old messages until
     // the refetch lands. Clearing here would un-dim the turn and leave it
@@ -188,13 +200,13 @@ describe('deleting a turn shows it as in flight', () => {
       resolveRefetch = resolve;
     }));
     await act(async () => { resolveDelete({ status: 'deleted' }); });
-    expect(screen.getByText('Deleting turn: 0')).toBeInTheDocument();
+    expect(screen.getByText('Deleting turn: a1')).toBeInTheDocument();
 
     await act(async () => {
       resolveRefetch({ status: 'ok', task: { id: task.id, messages: exchange.slice(2) } });
     });
     await waitFor(() => {
-      expect(screen.queryByText('Deleting turn: 0')).not.toBeInTheDocument();
+      expect(screen.queryByText('Deleting turn: a1')).not.toBeInTheDocument();
     });
     expect(screen.queryByText('msg: user: first question')).not.toBeInTheDocument();
     expect(screen.getByText('msg: user: second question')).toBeInTheDocument();
@@ -210,7 +222,7 @@ describe('deleting a turn shows it as in flight', () => {
     await openTask(user, task);
 
     await confirmDelete(user, 0);
-    expect(await screen.findByText('Deleting turn: 0')).toBeInTheDocument();
+    expect(await screen.findByText('Deleting turn: a1')).toBeInTheDocument();
 
     // A stale index: the server reindexes what survives, so this second
     // request would delete the wrong exchange.
@@ -230,12 +242,12 @@ describe('deleting a turn shows it as in flight', () => {
     render(<App />);
     await openTask(user, task);
     await confirmDelete(user, 0);
-    expect(await screen.findByText('Deleting turn: 0')).toBeInTheDocument();
+    expect(await screen.findByText('Deleting turn: a1')).toBeInTheDocument();
 
     await openTask(user, otherTask);
     // The in-flight turn belongs to the other conversation, so nothing here
     // reads as deleting and the affordance still works.
-    expect(screen.queryByText('Deleting turn: 0')).not.toBeInTheDocument();
+    expect(screen.queryByText('Deleting turn: a1')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
     expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
 
@@ -253,7 +265,7 @@ describe('deleting a turn shows it as in flight', () => {
     await confirmDelete(user, 0);
 
     await waitFor(() => {
-      expect(screen.queryByText('Deleting turn: 0')).not.toBeInTheDocument();
+      expect(screen.queryByText('Deleting turn: a1')).not.toBeInTheDocument();
     });
     expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('turn is locked'));
     // Nothing was removed, and the turn can be deleted again.
@@ -402,6 +414,208 @@ describe('deleting a turn shows it as in flight', () => {
     // The list is the server's again, so deleting works normally from here.
     await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
     expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+  });
+
+  describe('a timed-out delete the server did commit', () => {
+    const timedOut = () => spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' }),
+    );
+    const withNotices = () => spies.fetchSessions.mockResolvedValue([
+      { ...task, usageNotices: [{ kind: 'free_exhausted', anchorId: 'u1' }, { kind: 'topup_failed', anchorId: 'u2' }] },
+      { ...otherTask },
+      { ...localTask },
+    ]);
+    const firstTurnOnly = { status: 'ok', task: { id: task.id, messages: exchange.slice(0, 2) } };
+
+    it('drops the cut turn\'s notices and treats it as done when the resync shows the turn gone', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      withNotices();
+      render(<App />);
+      await openTask(user, task);
+      expect(screen.getByText('notice after: u2')).toBeInTheDocument();
+      spies.fetchSessionResult.mockResolvedValue(firstTurnOnly);
+
+      await confirmDelete(user, 1);
+
+      await waitFor(() => expect(screen.queryByText('msg: user: second question')).toBeNull());
+      expect(screen.queryByText('notice after: u2')).toBeNull();
+      expect(screen.getByText('notice after: u1')).toBeInTheDocument();
+      expect(alertSpy).not.toHaveBeenCalled();
+      // Nothing is left unconfirmed, so the next delete goes straight to the dialog.
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+      expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+    });
+
+    it('drops the cut turn\'s notices on the later refresh that first shows the turn gone', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      withNotices();
+      render(<App />);
+      await openTask(user, task);
+
+      await confirmDelete(user, 1);
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      expect(screen.getByText('notice after: u2')).toBeInTheDocument();
+
+      // The server commits after the immediate resync already read the turn.
+      spies.fetchSessionResult.mockResolvedValue(firstTurnOnly);
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+
+      await waitFor(() => expect(screen.queryByText('msg: user: second question')).toBeNull());
+      expect(screen.queryByText('notice after: u2')).toBeNull();
+      expect(screen.getByText('notice after: u1')).toBeInTheDocument();
+    });
+
+    it('keeps an uncommitted cut unconfirmed when newer turns push it off the page', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      withNotices();
+      render(<App />);
+      await openTask(user, task);
+      await confirmDelete(user, 1);
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      alertSpy.mockClear();
+
+      // The cut never happened, but enough was sent since that the newest page
+      // holds neither its rows nor the row before it.
+      const newerOnly = [
+        { role: 'user', id: 'u9', content: 'ninth question' },
+        { role: 'assistant', id: 'a9', content: 'ninth answer' },
+      ];
+      spies.fetchSessionResult.mockResolvedValue({
+        status: 'ok', task: { id: task.id, messages: newerOnly, hasMoreMessages: true, messagesCursor: 'c9' },
+      });
+
+      // The unconfirmed refresh reads that page. It must not take the cut's
+      // absence as proof that it committed.
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+      await screen.findByText('msg: user: ninth question');
+
+      expect(screen.getByText('notice after: u2')).toBeInTheDocument();
+    });
+
+    it('confirms a committed delete of the oldest loaded turn in a long conversation', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      // Only the newest page is loaded; older history sits behind `c-old`.
+      spies.fetchSessionResult.mockImplementation(async (id) => ({
+        status: 'ok',
+        task: { id, messages: exchange, hasMoreMessages: true, messagesCursor: 'c-old' },
+      }));
+      render(<App />);
+      await openTask(user, task);
+
+      // The server committed: what is left is the older history, itself
+      // longer than one page.
+      const older = [
+        { role: 'user', id: 'u0', content: 'older question' },
+        { role: 'assistant', id: 'a0', content: 'older answer' },
+      ];
+      spies.fetchOlderMessages.mockResolvedValue({ messages: older, hasMoreMessages: true, messagesCursor: 'c-older' });
+      spies.fetchSessionResult.mockResolvedValue({
+        status: 'ok', task: { id: task.id, messages: older, hasMoreMessages: true, messagesCursor: 'c-older' },
+      });
+
+      await confirmDelete(user, 0);
+
+      await waitFor(() => expect(screen.queryByText('msg: user: first question')).toBeNull());
+      expect(spies.fetchOlderMessages).toHaveBeenCalledWith(
+        task.id, 'c-old', expect.objectContaining({ timeoutMs: expect.any(Number) }),
+      );
+      expect(alertSpy).not.toHaveBeenCalled();
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+      expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+    });
+
+    it('leaves that delete unconfirmed when the older page cannot be read', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      spies.fetchSessionResult.mockImplementation(async (id) => ({
+        status: 'ok',
+        task: { id, messages: exchange, hasMoreMessages: true, messagesCursor: 'c-old' },
+      }));
+      render(<App />);
+      await openTask(user, task);
+      const older = [
+        { role: 'user', id: 'u0', content: 'older question' },
+        { role: 'assistant', id: 'a0', content: 'older answer' },
+      ];
+      spies.fetchOlderMessages.mockResolvedValue(null);
+      spies.fetchSessionResult.mockResolvedValue({
+        status: 'ok', task: { id: task.id, messages: older, hasMoreMessages: true, messagesCursor: 'c-older' },
+      });
+
+      await confirmDelete(user, 0);
+
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      expect(alertSpy.mock.calls[0][0]).toMatch(/may still have gone through/i);
+      alertSpy.mockClear();
+      // Still unconfirmed: the next delete click is spent on a refresh.
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      expect(alertSpy.mock.calls[0][0]).toMatch(/refreshed/i);
+    });
+
+    it('settles a late commit that emptied the conversation when it is reopened', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      withNotices();
+      render(<App />);
+      await openTask(user, task);
+      await confirmDelete(user, 0);
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      expect(screen.getByText('msg: user: first question')).toBeInTheDocument();
+
+      // The server commits: the cut covered every turn, so nothing is left.
+      const empty = { id: task.id, messages: [], hasMoreMessages: false, messagesCursor: null };
+      spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: empty });
+      spies.fetchSession.mockResolvedValue(empty);
+      // The real list fetch never carries messages; this file's default does.
+      spies.fetchSessions.mockResolvedValue([
+        { ...task, messages: [] }, { ...otherTask }, { ...localTask },
+      ]);
+      await openTask(user, otherTask);
+      await openTask(user, task);
+
+      await waitFor(() => expect(screen.queryByText('msg: user: first question')).toBeNull());
+      expect(screen.queryByText('msg: user: second question')).toBeNull();
+      expect(screen.queryByText('notice after: u1')).toBeNull();
+      expect(screen.queryByText('notice after: u2')).toBeNull();
+
+      // Settled, so once there are turns again a delete is not spent on a refresh.
+      spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: { id: task.id, messages: exchange } });
+      spies.fetchSession.mockResolvedValue({ id: task.id, messages: exchange });
+      await openTask(user, otherTask);
+      await openTask(user, task);
+      alertSpy.mockClear();
+      await user.click(await screen.findByRole('button', { name: 'Request turn delete 0' }));
+      expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
+
+    it('settles a late commit when the conversation is reopened', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      withNotices();
+      render(<App />);
+      await openTask(user, task);
+      await confirmDelete(user, 1);
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      alertSpy.mockClear();
+
+      spies.fetchSessionResult.mockResolvedValue(firstTurnOnly);
+      spies.fetchSession.mockResolvedValue({ id: task.id, messages: exchange.slice(0, 2) });
+      await openTask(user, otherTask);
+      await openTask(user, task);
+
+      await waitFor(() => expect(screen.queryByText('notice after: u2')).toBeNull());
+      expect(screen.getByText('notice after: u1')).toBeInTheDocument();
+      // Settled by the reopen, so the next delete is not spent on a refresh.
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+      expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
   });
 
   it('gates the next delete when the delete answered with a gateway error', async () => {

@@ -79,8 +79,8 @@ describe('ArtifactsView Title (A–Z) sort — end-to-end switch wiring (ENG-112
     ];
     render(<ArtifactsView artifacts={artifacts} />);
 
-    await user.click(screen.getByRole('button', { name: /^Sort:/ }));
-    await user.click(screen.getByRole('button', { name: 'Title (A–Z)' }));
+    await user.click(screen.getByRole('combobox', { name: 'Sort' }));
+    await user.click(await screen.findByRole('option', { name: 'Title (A–Z)' }));
 
     const titles = screen.getAllByText(/Report$/).map((el) => el.textContent);
     expect(titles).toEqual(['Alpha Report', 'Mike Report', 'Zulu Report']);

@@ -6,6 +6,9 @@
 //
 // Header states:
 //   active + collapsed  →  [orb] <current step label>            (shimmer)
+//   active + collapsed, →  [orb] <current step label> · Waiting for the model (1m 0s)
+//   model call silent      (the suffix is muted; it is the server's model-wait
+//                          status, never the model's own reasoning text)
 //   active + expanded   →  [orb] Working for 6s                  (live timer;
 //                          the current step sits at the END of the list below)
 //   finished            →  Worked for 3m 9s  ⌄                   (chevron always visible)
@@ -23,20 +26,23 @@ import { Tooltip } from '../ui';
 import { ThinkingStep } from './ThinkingStep';
 import { WorkingIndicator } from './WorkingIndicator';
 import { truncateLabel } from '../../lib/responseStreamAdapter';
+import { useFold } from '../../hooks/useFold';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 function formatDuration(ms) {
   if (ms == null || ms < 0) return null;
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) return i18n.t('duration.seconds', { ns: 'chat', seconds: s });
   const m = Math.floor(s / 60);
   const r = s % 60;
-  if (m < 60) return `${m}m ${r}s`;
+  if (m < 60) return i18n.t('duration.minutesSeconds', { ns: 'chat', minutes: m, seconds: r });
   const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
+  return i18n.t('duration.hoursMinutes', { ns: 'chat', hours: h, minutes: m % 60 });
 }
 
 // Live "Working for 6s" text — ticks once a second while the turn runs.
 function WorkingLabel({ startedAt }) {
+  const { t } = useTranslation('chat');
   const [elapsed, setElapsed] = useState(() =>
     startedAt ? Math.max(0, Date.now() - startedAt) : 0
   );
@@ -47,18 +53,25 @@ function WorkingLabel({ startedAt }) {
     }, 1000);
     return () => clearInterval(id);
   }, [startedAt]);
-  return <span className="tabular-nums">Working for {formatDuration(elapsed)}</span>;
+  return <span className="tabular-nums">{t('thinking.workingFor', { duration: formatDuration(elapsed) })}</span>;
 }
 
 export function ThinkingBlock({
   steps = [],
   isActive = false,
   startedAt = null,
+  // When the turn ended; without it the block ends at its last step.
+  endedAt = null,
   currentLabel = null,
   currentThought = null,
   slotId = null,
   onActivateStep,
+  // A turn that just finished live: its steps were open while it ran, so the
+  // finished block starts open and folds shut, instead of the list vanishing
+  // in one frame when the live turn is swapped for the finished message.
+  collapseOnMount = false,
 }) {
+  const { t } = useTranslation('chat');
   const hasSteps = steps.length > 0;
   // ToolProgress rows count: the block that appears below an answered
   // question may hold nothing but a tool's step lines (ENG-2981).
@@ -67,10 +80,21 @@ export function ThinkingBlock({
     [steps]
   );
   const hasLiveThought = isActive && Boolean(currentThought?.text);
+  const modelWaitText = currentThought?.kind === 'model_wait' ? currentThought.text : '';
 
   const [isExpanded, setIsExpanded] = useState(
-    () => isActive && (hasInspectableSteps || Boolean(currentThought?.text))
+    () => (isActive && (hasInspectableSteps || Boolean(currentThought?.text)))
+      || (collapseOnMount && hasInspectableSteps)
   );
+
+  // Fold a just-finished turn's steps shut once it has painted open.
+  useEffect(() => {
+    if (!collapseOnMount || isActive) return undefined;
+    const raf = requestAnimationFrame(() => setIsExpanded(false));
+    return () => cancelAnimationFrame(raf);
+  }, [collapseOnMount, isActive]);
+
+  const { mounted: stepsMounted, folded: stepsFolded } = useFold(isExpanded);
   const hasAutoExpanded = useRef(false);
 
   // Auto-expand the first time inspectable work appears — including a
@@ -92,11 +116,11 @@ export function ThinkingBlock({
 
   const finalDuration = useMemo(() => {
     if (!isActive && startedAt && steps.length > 0) {
-      const last = steps[steps.length - 1];
-      if (last.completedAt) return formatDuration(last.completedAt - startedAt);
+      const end = endedAt ?? steps[steps.length - 1].completedAt;
+      if (end) return formatDuration(end - startedAt);
     }
     return null;
-  }, [isActive, startedAt, steps]);
+  }, [isActive, startedAt, endedAt, steps]);
 
   // Glanceable kill signal: how many cells timed out / were killed. Surfaced
   // in the (collapsed) header so a retry-on-timeout loop is visible without
@@ -114,13 +138,15 @@ export function ThinkingBlock({
 
   return (
     <div className="w-full">
-      <Tooltip content={isExpanded ? 'Hide thought process' : 'Show thought process'}>
+      <Tooltip content={isExpanded ? t('thinking.hide') : t('thinking.show')}>
         <button
           type="button"
           onClick={toggleExpanded}
           aria-expanded={isExpanded}
           className={clsx(
-            'group flex w-full cursor-pointer items-center gap-1 rounded-md py-1 text-left',
+            // Only as wide as its label, so hovering empty space beside it does
+            // nothing.
+            'group flex w-fit max-w-full cursor-pointer items-center gap-1 rounded-md py-1 text-left',
             'border-0 bg-transparent'
           )}
         >
@@ -130,20 +156,25 @@ export function ThinkingBlock({
               label={
                 isExpanded
                   ? <WorkingLabel startedAt={startedAt} />
-                  : (currentLabel || 'Thinking…')
+                  : (
+                    <>
+                      {currentLabel || t('thinking.thinking')}
+                      {modelWaitText && <span className="text-ink-4"> · {modelWaitText}</span>}
+                    </>
+                  )
               }
             />
           ) : (
             <>
               {/* Same size as the answer body (14.5px) — the header reads
                   as part of the message, not as fine print. */}
-              <span className="flex-none text-[14.5px] text-ink-3">
-                {finalDuration ? `Worked for ${finalDuration}` : 'Thought process'}
+              <span className="flex-none text-[14.5px] text-ink-3 group-hover:text-ink">
+                {finalDuration ? t('thinking.workedFor', { duration: finalDuration }) : t('thinking.thoughtProcess')}
               </span>
               <span
                 className={clsx(
-                  'inline-flex flex-none items-center self-center text-ink-4',
-                  'transition-transform duration-200',
+                  'inline-flex flex-none items-center self-center text-ink-4 group-hover:text-ink',
+                  'transition-transform duration-layout',
                   isExpanded && 'rotate-180'
                 )}
               >
@@ -155,15 +186,17 @@ export function ThinkingBlock({
           {timedOutCount > 0 && (
             <span
               className="ml-2 flex-none rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-danger"
-              title={`${timedOutCount} cell${timedOutCount > 1 ? 's' : ''} timed out — the agent retried with smaller steps. Expand to see which.`}
+              title={t('thinking.timedOutTitle', { count: timedOutCount })}
             >
-              {timedOutCount} timed out
+              {t('thinking.timedOutBadge', { count: timedOutCount })}
             </span>
           )}
         </button>
       </Tooltip>
 
-      {isExpanded && (hasSteps || (isActive && currentThought?.text)) && (
+      {stepsMounted && (hasSteps || (isActive && currentThought?.text)) && (
+        <div className={clsx('fold', stepsFolded && 'is-folded')}>
+        <div className="fold__inner">
         <div className="ml-0 mt-1">
           {steps.map((step, index) => (
             <ThinkingStep
@@ -202,6 +235,8 @@ export function ThinkingBlock({
               </div>
             </div>
           )}
+        </div>
+        </div>
         </div>
       )}
     </div>

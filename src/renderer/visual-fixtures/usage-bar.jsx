@@ -50,7 +50,7 @@ const CASES = [
   { label: 'Low, seen by a member rather than the billing owner.', usage: lowBalance(8.42), opts: PAID, owner: false },
   { label: 'Low, auto top up healthy. Informational: nothing to do.', usage: lowBalance(8.42, withAuto('ok')), opts: PAID },
   { label: 'Low, auto top up waiting on the bank.', usage: lowBalance(8.42, withAuto('pending_action')), opts: PAID },
-  { label: 'Low, auto top up hit its monthly cap.', usage: lowBalance(8.42, withAuto('cap_reached')), opts: PAID },
+  { label: 'Low, auto top up paused to stay within its monthly cap.', usage: lowBalance(8.42, withAuto('cap_reached')), opts: PAID },
   { label: 'Auto top up failed. Outranks every balance state.', usage: lowBalance(8.42, withAuto('payment_failed')), opts: PAID },
   {
     label: 'Balance empty on an explicit paid pick, allowance still available.',

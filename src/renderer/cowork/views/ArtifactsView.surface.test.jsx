@@ -51,3 +51,11 @@ describe('ArtifactsView empty state names where other artifacts are', () => {
     expect(screen.queryByText(/stay there/)).toBeNull();
   });
 });
+
+describe('ArtifactsView loading', () => {
+  it('shows skeletons, not the empty state, until the first fetch settles', () => {
+    render(<ArtifactsView artifacts={[]} agentLabel="Anton" loading />);
+    expect(screen.getByLabelText('Loading')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByText('No artifacts yet')).not.toBeInTheDocument();
+  });
+});

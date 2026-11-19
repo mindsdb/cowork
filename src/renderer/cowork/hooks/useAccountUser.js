@@ -11,16 +11,20 @@ import { accountUserFromToken } from '../lib/accountUser';
 // stayed on its signed-out state. The cancelled guard means a stale
 // resolution (from a slow network refresh in getAccessToken) can't overwrite
 // a newer run.
-export function useAccountUser(isSsoConnected = false) {
+//
+// `active` false reads no token and answers null, for a surface that needs
+// the account only while one of its features is on (useSharingOrgName).
+export function useAccountUser(isSsoConnected = false, { active = true } = {}) {
   const [accountUser, setAccountUser] = useState(null);
 
   useEffect(() => {
+    if (!active) return undefined;
     let cancelled = false;
     getAccessToken().then((token) => {
       if (!cancelled) setAccountUser(accountUserFromToken(token));
     }).catch(() => { });
     return () => { cancelled = true; };
-  }, [isSsoConnected]);
+  }, [isSsoConnected, active]);
 
-  return accountUser;
+  return active ? accountUser : null;
 }

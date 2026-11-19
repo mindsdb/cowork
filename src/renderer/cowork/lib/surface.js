@@ -1,21 +1,28 @@
-// Which app the user is in, said out loud (ENG-2172), and why their work from
-// the other one is not here (ENG-2169).
+// Why the user's work from the other app is not here.
 //
 // The web and desktop apps look the same, but they are not talking to the same
 // server: desktop runs its own local cowork-server and web uses the hosted one.
 // Tasks and artifacts live in whichever server made them, so each app shows
 // only its own. The product already branches on `host.isWeb` everywhere; this
-// is the one place the answer is turned into words. One module, so the label,
-// its hint and the empty-state notes cannot drift apart.
+// is the one place the answer is turned into words. One module, so the
+// empty-state notes cannot drift apart.
+//
+// A web build without the platform UI runs against its own server, with no
+// desktop app beside it, so there is no other app to point at and the notes
+// are empty. Callers render a note only when it has text.
 
-/** Copy that names the current app and points at the other one. */
-export function surfaceCopy(isWeb) {
-  const here = isWeb ? 'web app' : 'desktop app';
-  const other = isWeb ? 'desktop app' : 'web app';
+import { PLATFORM_UI } from '../../lib/deployment';
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.surface.${key}`, { ns: 'projects', ...vars });
+
+/** Empty-state copy that points at the other app. */
+export function surfaceCopy(isWeb, platformUi = PLATFORM_UI) {
+  if (isWeb && !platformUi) return { tasksNote: '', artifactsNote: '' };
+  const other = isWeb ? 'desktop' : 'web';
   return {
-    label: isWeb ? 'Web app' : 'Desktop app',
-    detail: `Tasks and artifacts made here stay in the ${here}. The ${other} keeps its own.`,
-    tasksNote: `Tasks made in the ${other} stay there.`,
-    artifactsNote: `Artifacts made in the ${other} stay there.`,
+    tasksNote: tr('tasksNote', { other }),
+    artifactsNote: tr('artifactsNote', { other }),
   };
 }

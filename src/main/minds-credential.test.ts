@@ -110,10 +110,10 @@ describe('isMindsCredentialSidecarReachable', () => {
     expect(isMindsCredentialSidecarReachable()).toBe(true);
   });
 
-  it('is true while the sidecar is still starting', () => {
+  it('is false while the sidecar is still starting', () => {
     (isServerRunning as Mock).mockReturnValue(false);
     (isServerStarting as Mock).mockReturnValue(true);
-    expect(isMindsCredentialSidecarReachable()).toBe(true);
+    expect(isMindsCredentialSidecarReachable()).toBe(false);
   });
 
   it('is false at boot, before any sidecar exists', () => {
@@ -184,8 +184,19 @@ describe('pushMindsCredential', () => {
     const send = vi.fn();
     getAllWindows.mockReturnValue([{ isDestroyed: () => false, webContents: { send } }]);
     installFetch(503);
-    await expect(pushMindsCredential('private-credential', { invalidateCatalog: true })).resolves.toBe(false);
-    expect(send).not.toHaveBeenCalled();
+    const output = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(pushMindsCredential('private-credential', { invalidateCatalog: true })).resolves.toBe(false);
+      expect(send).not.toHaveBeenCalled();
+      const lines = output.mock.calls.map(([line]) => String(line));
+      const returned = lines.find((line) => line.includes('minds_credential_hand_over_returned'));
+      expect(JSON.parse(String(returned))).toMatchObject({
+        event: 'minds_credential_hand_over_returned', status_code: 503,
+      });
+      for (const line of lines) expect(line).not.toContain('private-credential');
+    } finally {
+      output.mockRestore();
+    }
   });
 
   it('PUTs the value to the sidecar carrying the server bearer token', async () => {
@@ -209,7 +220,7 @@ describe('pushMindsCredential', () => {
     vi.mocked(getRunningSidecarOrgId).mockReturnValueOnce('org-a');
     await pushMindsCredential('a-token');
 
-    const noOrg = warn.mock.calls.filter(([msg]) => String(msg).includes('no organization'));
+    const noOrg = warn.mock.calls.filter(([msg]) => String(msg).includes('minds_credential_hand_over_without_organization'));
     expect(noOrg).toHaveLength(1);
     warn.mockRestore();
   });
@@ -322,6 +333,14 @@ describe('pushMindsCredential', () => {
   it('does not call a sidecar that is down', async () => {
     (isServerRunning as Mock).mockReturnValue(false);
     (isServerStarting as Mock).mockReturnValue(false);
+    const calls = installFetch();
+    expect(await pushMindsCredential('a-token')).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does not call a sidecar that is only starting', async () => {
+    (isServerRunning as Mock).mockReturnValue(false);
+    (isServerStarting as Mock).mockReturnValue(true);
     const calls = installFetch();
     expect(await pushMindsCredential('a-token')).toBe(false);
     expect(calls).toHaveLength(0);

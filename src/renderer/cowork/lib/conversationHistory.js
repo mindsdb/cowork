@@ -6,10 +6,17 @@
 // Their side-effecting counterparts stay in App.jsx: `openStreamedForm`
 // (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
 // (async, hits the API) — the latter just calls `applySessionMessages` here.
-import { initialStreamState, reduceStream } from './responseStreamAdapter';
+import { withQuickEditGroup } from './quickEditGroup';
+import { answerBody, initialStreamState, reduceStream } from './responseStreamAdapter';
+import { foldAddonMessages } from './addons';
+import { rebaseFigureSources } from './figureSources';
 import { isAntonConfigError, normalizeAntonError } from './antonErrors';
 
-const THINKING_PLACEHOLDER = 'Thinking...';
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.conversationHistory.${key}`, { ns: 'projects', ...vars });
+const thinkingPlaceholder = () => tr('thinkingDots');
 
 export function stripStreaming(messages) {
   return messages.filter((m) => m.role !== '_streaming');
@@ -49,7 +56,7 @@ export function reconcileTaskMessages(messages, isLive, isServerInFlight = false
     const hasContent = messages.length > 0 && messages.some(
       (m) => m && (m.role === 'assistant' || m.role === '_streaming'),
     );
-    if (!hasContent) return withThinkingPlaceholder(messages, { label: 'Running task…' });
+    if (!hasContent) return withThinkingPlaceholder(messages, { label: tr('runningTask') });
     return messages;
   }
   const cleaned = messages
@@ -88,7 +95,7 @@ export function withThinkingPlaceholder(messages, opts = {}) {
   // `_streaming` stub (primary render via the existing streaming
   // branch) carry the same string, so whichever lands in the
   // viewport reads consistently.
-  const label = opts.label || 'Thinking…';
+  const label = opts.label || tr('thinking');
   // Two rows:
   //   1. The activity placeholder — kept so any code path that
   //      consumes it (rail Progress card today, future surfaces) sees
@@ -158,11 +165,11 @@ export function describeActivity(event, agentName = 'Anton') {
 
   const phase = humanizeToken(event?.phase);
   const normalizedPhase = phase.toLowerCase();
-  if (normalizedPhase === 'reasoning') return THINKING_PLACEHOLDER;
-  if (normalizedPhase === 'reasoning done') return 'Finished reasoning';
-  if (normalizedPhase === 'context') return 'Updated context';
+  if (normalizedPhase === 'reasoning') return thinkingPlaceholder();
+  if (normalizedPhase === 'reasoning done') return tr('finishedReasoning');
+  if (normalizedPhase === 'context') return tr('updatedContext');
 
-  return phase ? `${agentName} is ${phase}` : `${agentName} is working`;
+  return phase ? tr('agentPhase', { agent: agentName, phase }) : tr('agentWorking', { agent: agentName });
 }
 
 // ─── Per-turn step persistence ───────────────────────────────────────────
@@ -175,7 +182,7 @@ export function describeActivity(event, agentName = 'Anton') {
 // Scratchpad modal.
 //
 // We sidecar the full step list in localStorage keyed by conversation
-// id → assistant turn index. Persistence is local to this install
+// id → assistant message id. Persistence is local to this install
 // (fine for a desktop app); promote to a server-side sidecar later if
 // cross-device sync matters.
 //
@@ -206,30 +213,54 @@ export function writeConvTurns(cid, data) {
   catch {} // private mode / quota — fail silently
 }
 
-// One-time migration from the old artifact-only sidecar. Each entry
-// was an array of artifact-shape steps; promote it to the new shape.
-export function migrateLegacyArtifacts(cid) {
+// Drops the sidecar entries for message ids removed by a turn delete —
+// hygiene, not correctness: an id key can't collide with a
+// surviving turn's entry the way a counted position could, so leaving a
+// stale entry behind would only ever be inert, never wrong. `removedIds`
+// may be an array or a Set.
+export function removeConvTurnsFor(cid, removedIds) {
+  if (!cid) return;
+  const ids = removedIds instanceof Set ? removedIds : new Set(removedIds || []);
+  if (ids.size === 0) return;
+  const map = readConvTurns(cid);
+  if (!map) return;
+  let changed = false;
+  for (const id of ids) {
+    if (id in map) { delete map[id]; changed = true; }
+  }
+  if (changed) writeConvTurns(cid, map);
+}
+
+// Both sidecars predating the id rekey were keyed by assistant TURN INDEX.
+// Nothing can read those entries any more, and they cannot be translated:
+// recovering the message id an index meant needs the conversation's full
+// message list, which a lazily-paginated client no longer has — guessing
+// from a partial list is what attached one turn's steps to another turn in
+// the first place. So they are dropped rather than migrated: a turn loses a
+// restored Thinking block until it is streamed again, which is cosmetic,
+// where a wrong id would silently show the wrong turn's work.
+//
+// Runs on every hydration (mergeConvTurns), so the dead keys are cleared out
+// on first open instead of accumulating forever.
+const _isTurnIndexKey = (key) => /^\d+$/.test(key);
+
+export function dropLegacyIndexKeyedSidecar(cid) {
   if (!cid) return;
   try {
-    const legacy = localStorage.getItem(LEGACY_ARTIFACTS_KEY(cid));
-    if (!legacy) return;
-    const map = JSON.parse(legacy);
-    if (!map || typeof map !== 'object') return;
-    const next = readConvTurns(cid) || {};
-    for (const [idx, arts] of Object.entries(map)) {
-      if (!Array.isArray(arts) || arts.length === 0) continue;
-      const existing = next[idx]?.steps || [];
-      next[idx] = { steps: [...existing, ...arts], startedAt: next[idx]?.startedAt || null };
-    }
-    writeConvTurns(cid, next);
     localStorage.removeItem(LEGACY_ARTIFACTS_KEY(cid));
+    const map = readConvTurns(cid);
+    if (!map) return;
+    const stale = Object.keys(map).filter(_isTurnIndexKey);
+    if (stale.length === 0) return;
+    for (const key of stale) delete map[key];
+    writeConvTurns(cid, map);
   } catch {}
 }
 
 // Replay the server-persisted event log for one assistant turn
 // through the same reducer the live stream uses. The resulting
-// `steps` and `startedAt` are identical to what the client would
-// have built during a fresh stream — no parity drift.
+// `steps`, `startedAt` and `figureSources` are identical to what the
+// client would have built during a fresh stream — no parity drift.
 export function reduceServerEvents(events, fallbackStartedAt) {
   if (!Array.isArray(events) || events.length === 0) return null;
   let state = initialStreamState();
@@ -239,11 +270,43 @@ export function reduceServerEvents(events, fallbackStartedAt) {
   return {
     steps: state.steps || [],
     startedAt: state.startedAt || fallbackStartedAt || null,
+    endedAt: state.endedAt || null,
+    figureSources: state.figureSources,
     // 'done' once the persisted events carried response.completed,
     // 'error' on response.failed — the authoritative "this turn
     // finished" signal from the detached stream buffer.
     status: state.status,
+    // The turn's response id, which a saved add-on names (ENG-4194).
+    responseId: state.responseId || null,
+    incompleteReason: state.incompleteReason,
+    // What the live turn showed as its answer: the last round's text, with
+    // earlier rounds' narration in the steps as Notes (ENG-3554). The saved
+    // content joins every round's text, so a reload would otherwise show the
+    // narration twice: once as Notes, once at the top of the answer.
+    answer: answerBody(state),
+    answerFigureSources: state.figureSources
+      ? rebaseFigureSources(state.figureSources, state.answerText, answerBody(state), state.bodyTextMap)
+      : null,
   };
+}
+
+/**
+ * The answer a finished turn showed live, to put in place of its saved
+ * content: `{ content, figureSources }`, or null to keep the saved content.
+ *
+ * The saved content joins every round's text, so a turn that narrated before
+ * its tool calls ("I'll pull the prices…") would otherwise show that
+ * narration at the top of its answer as well as in its Notes (ENG-3554,
+ * ENG-4194). Only when the replay produced an answer: an older event log
+ * without the text keeps the saved content. Every path that replays saved
+ * events (a conversation's first page, a refetch after a turn ends, an older
+ * page) must apply it, or the same turn reads differently depending on how it
+ * was loaded.
+ */
+export function replayedAnswer(reduced, content) {
+  if (!reduced || (reduced.status !== 'done' && reduced.status !== 'error')) return null;
+  if (typeof content !== 'string' || !reduced.answer?.trim() || reduced.answer === content) return null;
+  return { content: reduced.answer, figureSources: reduced.answerFigureSources };
 }
 
 export function failedEventMeta(events) {
@@ -284,7 +347,7 @@ export function failedEventMeta(events) {
 
 // Walk a messages payload from the server and, for any assistant
 // turn that carries an `events` array (the new sidecar), derive
-// `steps`/`startedAt` via the live reducer. A terminal
+// `steps`/`startedAt`/`figureSources` via the live reducer. A terminal
 // `response.failed` becomes a client-side error bubble after the
 // partial assistant turn. Drops the raw `events` array.
 export function hydrateMessagesFromServerEvents(messages) {
@@ -295,6 +358,12 @@ export function hydrateMessagesFromServerEvents(messages) {
       out.push(m);
       continue;
     }
+    // A quick-edit group (ENG-4227) is a card, not a turn to replay.
+    const group = withQuickEditGroup(m);
+    if (group) {
+      out.push(group);
+      continue;
+    }
     const reduced = reduceServerEvents(m.events, m.startedAt);
     const { events: _drop, ...rest } = m;
     if (!reduced) {
@@ -303,17 +372,22 @@ export function hydrateMessagesFromServerEvents(messages) {
     }
     const turnComplete = reduced.status === 'done' || reduced.status === 'error';
     const completeFlag = turnComplete ? { _turnComplete: true } : {};
+    const liveAnswer = replayedAnswer(reduced, rest.content);
     out.push({
       ...rest,
+      ...(reduced.responseId ? { _responseId: reduced.responseId } : {}),
       ...completeFlag,
+      ...(reduced.incompleteReason ? { incompleteReason: reduced.incompleteReason } : {}),
       ...(reduced.steps.length > 0
-        ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt }
+        ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt, endedAt: rest.endedAt || reduced.endedAt }
         : {}),
+      ...(reduced.figureSources ? { figureSources: reduced.figureSources } : {}),
+      ...(liveAnswer || {}),
     });
     if (reduced.status === 'error') {
       const failed = failedEventMeta(m.events);
       const code = failed?.code || null;
-      const errText = failed?.message || 'An unexpected error occurred.';
+      const errText = failed?.message || tr('unexpectedError');
       if (isAntonConfigError(errText, { code })) {
         out.push({ role: 'provider_required' });
       } else {
@@ -332,7 +406,8 @@ export function hydrateMessagesFromServerEvents(messages) {
       }
     }
   }
-  return out;
+  // Messages added to a running turn (ENG-4194) render inside that turn.
+  return foldAddonMessages(out);
 }
 
 export function applySessionMessages(
@@ -347,10 +422,14 @@ export function applySessionMessages(
 
 // Persist the full step set for one assistant turn so reload restores
 // the Thinking block, scratchpad tabs, and inline artifact cards.
-// `turnIndex` is the 0-based position of this assistant message among
-// all assistant messages in the conversation.
-export function persistTurnState(cid, turnIndex, steps, startedAt) {
-  if (!cid || !Array.isArray(steps) || steps.length === 0) return;
+// `messageId` is the assistant message's own persisted id —
+// previously a counted position among assistant messages, which broke
+// once a conversation could be lazily/partially loaded (the same write
+// could land under a DIFFERENT turn's key depending on how much history
+// happened to be in memory, silently overwriting it). An id-keyed write
+// can't collide with another turn's entry regardless of what's loaded.
+export function persistTurnState(cid, messageId, steps, startedAt) {
+  if (!cid || !messageId || !Array.isArray(steps) || steps.length === 0) return;
   const map = readConvTurns(cid) || {};
   // Strip any non-serialisable fields (refs, functions). The step
   // shape is plain data otherwise.
@@ -382,24 +461,29 @@ export function persistTurnState(cid, turnIndex, steps, startedAt) {
     _isToolCall: !!s._isToolCall,
     _scratchpadTabId: s._scratchpadTabId || null,
   }));
-  map[turnIndex] = { steps: sanitized, startedAt: startedAt ?? null };
+  map[messageId] = { steps: sanitized, startedAt: startedAt ?? null };
   writeConvTurns(cid, map);
 }
 
-// Merge persisted step + timing data onto assistant messages by turn
-// index. Idempotent — if a message already has steps from a fresh
-// stream we don't overwrite (the live data is more accurate).
+// Merge persisted step + timing data onto assistant messages by id
+// (previously a counted position, see persistTurnState).
+// Idempotent — if a message already has steps from a fresh stream we
+// don't overwrite (the live data is more accurate). A message with no id
+// yet (a live/local-only row still in flight) has nothing to look up and
+// is left as-is; old position-keyed entries from before this change
+// simply stop matching, which only means those specific turns render
+// without their restored Thinking block until re-run — never a
+// wrong-turn attachment, which is the bug this replaces.
 export function mergeConvTurns(cid, messages) {
   if (!cid || !messages) return messages;
-  migrateLegacyArtifacts(cid);
+  dropLegacyIndexKeyedSidecar(cid);
   const map = readConvTurns(cid);
   if (!map) return messages;
-  let assistantIdx = 0;
   return messages.map((m) => {
     if (m.role !== 'assistant') return m;
     if (m._turnComplete) return m;
-    const saved = map[assistantIdx];
-    assistantIdx += 1;
+    if (!m.id) return m;
+    const saved = map[m.id];
     if (!saved || !Array.isArray(saved.steps) || saved.steps.length === 0) return m;
     const hasLiveSteps = Array.isArray(m.steps) && m.steps.length > 0;
     if (hasLiveSteps) return m;

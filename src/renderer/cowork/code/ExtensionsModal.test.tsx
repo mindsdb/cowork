@@ -34,6 +34,12 @@ it('loads the runtime inventory and switches extension categories', async () => 
 });
 
 
+it('keeps the category tabs pinned outside the scrolling body', async () => {
+  render(<ExtensionsModal open sessionId="task-1" initialTab="skills" onClose={vi.fn()} />);
+  const tablist = await screen.findByRole('tablist', { name: 'Extension types' });
+  expect(tablist.closest('[style*="overflow-y: auto"]')).toBeNull();
+});
+
 it('shows a skill with two sources as one capability that names its other location', async () => {
   extensions.mockResolvedValueOnce({
     skills: [{

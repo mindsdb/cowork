@@ -1,0 +1,25 @@
+# Only successful, exact GET/HEAD health probes are omitted in every mode.
+map "$request_method:$request_uri:$status" $successful_probe {
+    default 0;
+    ~^(GET|HEAD):/healthz(?:\?.*)?:2[0-9][0-9]$ 1;
+}
+map "$successful_probe:${ACCESS_LOG_MODE}:$status" $diagnostic_access {
+    default 1;
+    ~^1: 0;
+    ~^0:errors:[123] 0;
+}
+map $status $diagnostic_level {
+    default INFO;
+    ~^4 WARNING;
+    ~^5 ERROR;
+}
+map $request_method $diagnostic_method {
+    default OTHER;
+    GET GET; HEAD HEAD; POST POST; PUT PUT; PATCH PATCH;
+    DELETE DELETE; OPTIONS OPTIONS; CONNECT CONNECT; TRACE TRACE;
+}
+log_format diagnostic_json escape=json
+    '{"logged_at":"$time_iso8601","logger":"nginx.access","log_level":"$diagnostic_level",'
+    '"message":"HTTP request completed","event":"http_access","method":"$diagnostic_method",'
+    '"status_code":$status,"request_id":"$request_id","duration_seconds":$request_time}';
+error_log stderr ${NGINX_LOG_LEVEL};

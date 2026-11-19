@@ -1,0 +1,8 @@
+# Images for render.test.ts's image cap case. Each names a .pdf in
+# e2e/document-preview/fixtures/pdf whose page 1 paints one image, and that
+# image's pixel count: the Width times the Height in its image dictionary.
+
+images:
+  - { file: jbig2-page.pdf, pixels: 28800 }
+  - { file: ccitt-page.pdf, pixels: 28800 }
+  - { file: jpx-page.pdf, pixels: 28800 }

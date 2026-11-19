@@ -13,11 +13,14 @@ import { fileURLToPath } from 'node:url';
 // hostState.isElectron is a hoisted mutable so a test can flip the surface to
 // web before importAnalytics() (SURFACE/LIB are read at import time); getters
 // keep the mock reading the current value on each fresh import.
-const { getAccessToken, checkInstall, getVersionInfo, hostState } = vi.hoisted(() => ({
+const { getAccessToken, checkInstall, getVersionInfo, drainUpdateJournal, ackUpdateJournal, fetchHealth, hostState } = vi.hoisted(() => ({
   getAccessToken: vi.fn(),
   checkInstall: vi.fn(),
   getVersionInfo: vi.fn(),
-  hostState: { isElectron: true },
+  drainUpdateJournal: vi.fn(async () => []),
+  ackUpdateJournal: vi.fn(async () => {}),
+  fetchHealth: vi.fn(async () => null),
+  hostState: { isElectron: true, credentialListeners: [] },
 }));
 vi.mock('../../platform/host', () => ({
   host: {
@@ -27,6 +30,13 @@ vi.mock('../../platform/host', () => ({
     getAccessToken,
     checkInstall,
     getVersionInfo,
+    drainUpdateJournal,
+    ackUpdateJournal,
+    getApiOrigin: () => 'http://127.0.0.1:26866',
+  },
+  onMindsHubCredentialChanged: (cb) => {
+    hostState.credentialListeners.push(cb);
+    return () => {};
   },
   get isElectron() {
     return hostState.isElectron;
@@ -35,6 +45,10 @@ vi.mock('../../platform/host', () => ({
     return !hostState.isElectron;
   },
 }));
+
+// trackBootScreenResolved reads the sidecar version through api.js, which
+// imports this module; the lazy import is mocked so no health request is made.
+vi.mock('../api', () => ({ fetchHealth }));
 
 async function importAnalytics() {
   vi.resetModules();
@@ -53,10 +67,10 @@ function mockFetch() {
 const sentEvent = async (fetchMock, name) => {
   await vi.waitFor(() =>
     expect(
-      fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
+      fetchMock.mock.calls.filter((c) => c[1]?.body).map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
     ).toBe(true)
   );
-  return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
+  return fetchMock.mock.calls.filter((c) => c[1]?.body).map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
 };
 
 // Minimal unsigned JWT — decodeJwtPayload only base64url-decodes the middle
@@ -440,15 +454,25 @@ describe('trackShellUpdatePhase', () => {
   it('reports the relaunch verdict once, and not again as a failed phase', async () => {
     const fetchMock = mockFetch();
     const { trackShellUpdatePhase } = await importAnalytics();
-    const lastInstall = { applied: false, version: '2.260928.1', expected: '2.260930.1' };
+    const lastInstall = { applied: false, version: '2.260928.1', expected: '2.260930.1', source: 'boot' };
 
     trackShellUpdatePhase(snapshot({ phase: 'failed', errorCode: 'install-not-applied', recoverable: true, targetVersion: '2.260930.1', lastInstall }));
     trackShellUpdatePhase(snapshot({ phase: 'idle', lastInstall }));
 
     await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(1));
     expect(sent(fetchMock)[0]).toMatchObject({
-      phase: 'relaunched', current_version: '2.260928.1', target_version: '2.260930.1', error_code: 'install-not-applied',
+      phase: 'relaunched', current_version: '2.260928.1', target_version: '2.260930.1', error_code: 'install-not-applied', install_source: 'boot',
     });
+  });
+
+  it('tells a boot install apart from a Restart click', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'installing', targetVersion: '2.260930.1', installSource: 'boot' }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(1));
+    expect(sent(fetchMock)[0]).toMatchObject({ phase: 'installing', install_source: 'boot' });
   });
 
   it('is a no-op off Electron', async () => {
@@ -459,6 +483,147 @@ describe('trackShellUpdatePhase', () => {
     trackShellUpdatePhase(snapshot({ phase: 'available', targetVersion: '2.260930.1' }));
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('boot_screen_resolved per-layer versions', () => {
+  it('names the running UI and server versions beside the shell', async () => {
+    vi.stubGlobal('__APP_VERSION__', '2.26.10.7.1');
+    checkInstall.mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+    getVersionInfo.mockResolvedValue({ app: '2.26.10.1.1', ui: '2.26.10.7.1', source: 'ota', buildKind: 'prod' });
+    fetchHealth.mockResolvedValueOnce({ server_version: '0.26.10.7.1' });
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('terminal');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties).toMatchObject({
+      shell_version: '2.26.10.1.1',
+      ui_version: '2.26.10.7.1',
+      app_version: '2.26.10.7.1',
+      server_version: '0.26.10.7.1',
+      build_kind: 'prod',
+    });
+  });
+
+  it('reports a server that has not answered as null, not as a dropped event', async () => {
+    checkInstall.mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+    fetchHealth.mockRejectedValueOnce(new Error('offline'));
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('auth');
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).properties.server_version).toBeNull();
+  });
+});
+
+describe('update_phase journal drain', () => {
+  const entry = (id, over = {}) => ({
+    id, at: '2026-10-07T01:02:03.000Z', channel: 'ui', phase: 'applied', trigger: 'boot',
+    from: '2.26.10.1.1', to: '2.26.10.7.1', buildKind: 'prod', durationMs: 420, ...over,
+  });
+  const sent = (fetchMock) => fetchMock.mock.calls
+    .map((c) => JSON.parse(c[1].body))
+    .filter((b) => b.event === 'update_phase')
+    .map((b) => b.properties);
+
+  beforeEach(() => {
+    drainUpdateJournal.mockReset().mockResolvedValue([]);
+    ackUpdateJournal.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('sends one event per entry with the documented shape, then acks them', async () => {
+    drainUpdateJournal.mockResolvedValue([
+      entry('a'),
+      entry('b', { channel: 'server', phase: 'rolled-back', trigger: 'manual', errorCode: 'health-check', from: '0.3.1', to: '0.3.2' }),
+    ]);
+    const fetchMock = mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+
+    expect(sent(fetchMock)).toEqual([
+      expect.objectContaining({ channel: 'ui', phase: 'applied', from: '2.26.10.1.1', to: '2.26.10.7.1', error_code: null, trigger: 'boot', duration_ms: 420, build_kind: 'prod', journal_id: 'a', journaled_at: '2026-10-07T01:02:03.000Z' }),
+      expect.objectContaining({ channel: 'server', phase: 'rolled-back', error_code: 'health-check', trigger: 'manual', journal_id: 'b' }),
+    ]);
+    expect(ackUpdateJournal).toHaveBeenCalledWith(['a', 'b']);
+  });
+
+  it('sends the journal id as the event uuid and the outcome time as the event time', async () => {
+    const id = '0f9a1d2e-3b4c-4d5e-8f60-718293a4b5c6';
+    drainUpdateJournal.mockResolvedValue([entry(id, { at: '2026-10-05T09:00:00.000Z' })]);
+    const fetchMock = mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+
+    const body = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === 'update_phase');
+    // PostHog dedupes on uuid, so a resend after a lost ack is one event, and
+    // buckets by timestamp, so it counts on the day of the outcome.
+    expect(body.uuid).toBe(id);
+    expect(body.timestamp).toBe('2026-10-05T09:00:00.000Z');
+  });
+
+  it('falls back to send time and no uuid for a malformed journal entry', async () => {
+    drainUpdateJournal.mockResolvedValue([entry('not-a-uuid', { at: 'not a date' })]);
+    const fetchMock = mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+
+    const body = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === 'update_phase');
+    expect(body).not.toHaveProperty('uuid');
+    expect(Number.isNaN(Date.parse(body.timestamp))).toBe(false);
+    expect(body.properties.journal_id).toBe('not-a-uuid');
+  });
+
+  it('drains once per renderer, so a second call sends nothing', async () => {
+    drainUpdateJournal.mockResolvedValue([entry('a')]);
+    const fetchMock = mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+    await drain();
+
+    expect(drainUpdateJournal).toHaveBeenCalledTimes(1);
+    expect(sent(fetchMock)).toHaveLength(1);
+  });
+
+  it('acks only what PostHog took, so a failed send stays for the next launch', async () => {
+    drainUpdateJournal.mockResolvedValue([entry('a'), entry('b'), entry('c')]);
+    const fetchMock = mockFetch();
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockRejectedValueOnce(new Error('network'));
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+
+    expect(sent(fetchMock).map((p) => p.journal_id)).toEqual(['a', 'b', 'c']);
+    expect(ackUpdateJournal).toHaveBeenCalledWith(['a']);
+  });
+
+  it('acks nothing when nothing was delivered, and never throws', async () => {
+    drainUpdateJournal.mockRejectedValue(new Error('old shell'));
+    mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+    await expect(drain()).resolves.toBeUndefined();
+    expect(ackUpdateJournal).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op on web', async () => {
+    hostState.isElectron = false;
+    try {
+      drainUpdateJournal.mockResolvedValue([entry('a')]);
+      const { drainUpdateJournal: drain } = await importAnalytics();
+      await drain();
+      expect(drainUpdateJournal).not.toHaveBeenCalled();
+    } finally {
+      hostState.isElectron = true;
+    }
   });
 });
 
@@ -746,6 +911,15 @@ describe('billing + provisioning events (ENG-1533)', () => {
 
     const event = await sentEvent(fetchMock, 'billing_opened');
     expect(event.properties.trigger).toBe('token_limit');
+  });
+
+  it('billing_opened arms the post-payment availability follow-up (ENG-4147)', async () => {
+    mockFetch();
+    const { trackBillingOpened } = await importAnalytics();
+    const { creditsFlowState } = await import('./creditsFlow');
+    expect(creditsFlowState().armedAt).toBeNull();
+    trackBillingOpened('locked_model_row');
+    expect(creditsFlowState().armedAt).not.toBeNull();
   });
 
   it('billing_opened: every trigger a renderer call site sends is named in the EVENTS vocabulary', () => {
@@ -1428,7 +1602,517 @@ describe('console handoff attribution', () => {
     const body = await sentEvent(fetchMock, 'composer_ready');
 
     expect(body.properties).toMatchObject({ entry_source: 'console', example_id: 'classic-snake-game', prefilled: true });
+    expect(body.properties).not.toHaveProperty('entry_placement');
     // No prompt text rides on the event under any key.
     expect(JSON.stringify(body)).not.toMatch(/koi|snake moves/i);
+  });
+
+  it('credits a Gallery handoff to the Gallery on every event the handoff leads to', async () => {
+    const fetchMock = mockFetch();
+    const {
+      setEntryAttribution, trackComposerReady, trackNewTaskMessageSent, trackAgentSessionStarted,
+    } = await importAnalytics();
+
+    trackComposerReady('console', 'celestial-merge-2048', true, 'gallery');
+    setEntryAttribution('console', 'celestial-merge-2048', 'gallery');
+    trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'example', example_id: 'celestial-merge-2048' } });
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    const [ready, sent, session] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(ready.properties.entry_placement).toBe('gallery');
+    expect(sent.event).toBe('new_task_message_sent');
+    expect(sent.properties).toMatchObject({ via: 'console_link', entry_placement: 'gallery' });
+    expect(session.properties).toMatchObject({
+      entry_source: 'console', example_id: 'celestial-merge-2048', entry_placement: 'gallery',
+    });
+  });
+
+  it('records no placement for a handoff that named none', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackNewTaskMessageSent, trackAgentSessionStarted } = await importAnalytics();
+
+    setEntryAttribution('console', 'classic-snake-game');
+    trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'example', example_id: 'classic-snake-game' } });
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    for (const call of fetchMock.mock.calls) {
+      expect(JSON.parse(call[1].body).properties).not.toHaveProperty('entry_placement');
+    }
+  });
+});
+
+describe('artifact_stats_opened', () => {
+  it('carries the artifact, its access mode and whether it has views', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactStatsOpened } = await importAnalytics();
+
+    trackArtifactStatsOpened({ artifactId: 'a1', accessMode: 'restricted', hasViews: true });
+
+    const event = await sentEvent(fetchMock, 'artifact_stats_opened');
+    expect(event.properties).toMatchObject({
+      artifact_id: 'a1',
+      access_mode: 'restricted',
+      has_views: true,
+    });
+  });
+
+  it('sends a null access mode while the real one is still loading', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactStatsOpened } = await importAnalytics();
+
+    trackArtifactStatsOpened({ artifactId: 'a1', accessMode: null, hasViews: false });
+
+    const event = await sentEvent(fetchMock, 'artifact_stats_opened');
+    expect(event.properties.access_mode).toBeNull();
+    expect(event.properties.has_views).toBe(false);
+  });
+});
+
+describe('artifact sharing events', () => {
+  const signedIn = () => getAccessToken.mockResolvedValue(fakeJwt({
+    sub: 'user-share',
+    email: 'owner@example.com',
+    activate_organization: { id: 'org-share', name: 'Acme' },
+  }));
+
+  it('artifact_built names the artifact, and builds without an id still send', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactBuilt } = await importAnalytics();
+
+    trackArtifactBuilt('html', 'a1b2');
+    const event = await sentEvent(fetchMock, 'artifact_built');
+    expect(event.properties).toMatchObject({ artifact_type: 'html', artifact_id: 'a1b2' });
+  });
+
+  it('artifact_access_changed carries the before and after as categories and counts, and the session org', async () => {
+    signedIn();
+    const fetchMock = mockFetch();
+    const { trackArtifactAccessChanged } = await importAnalytics();
+
+    trackArtifactAccessChanged({
+      artifactId: 'a1', artifactType: 'html', entry: 'viewer', reportId: 'r1',
+      before: { shared: false, audience: 'only_me' },
+      after: { shared: true, audience: 'specific', orgWide: false, teamCount: 1, peopleCount: 2 },
+      notified: true,
+    });
+
+    const event = await sentEvent(fetchMock, 'artifact_access_changed');
+    expect(event.properties).toMatchObject({
+      artifact_id: 'a1',
+      artifact_type: 'html',
+      entry: 'viewer',
+      report_id: 'r1',
+      was_shared: false,
+      is_shared: true,
+      was_audience: 'only_me',
+      audience: 'specific',
+      org_wide: false,
+      team_count: 1,
+      people_count: 2,
+      notified: true,
+      sso_organization_id: 'org-share',
+    });
+  });
+
+  it('sends null, not false, when the audience before the save was unknown', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactAccessChanged } = await importAnalytics();
+
+    trackArtifactAccessChanged({
+      artifactId: 'a1', entry: 'viewer',
+      before: { shared: null, audience: 'unknown' },
+      after: { shared: false, audience: 'only_me', orgWide: false, teamCount: 0, peopleCount: 0 },
+    });
+
+    const event = await sentEvent(fetchMock, 'artifact_access_changed');
+    expect(event.properties.was_shared).toBeNull();
+    expect(event.properties.is_shared).toBe(false);
+  });
+
+  it('the other sharing events carry the artifact, where it happened and the session org', async () => {
+    signedIn();
+    const fetchMock = mockFetch();
+    const {
+      trackArtifactShareOpened, trackArtifactAccessChangeFailed, trackArtifactLinkCopied, trackArtifactDownloaded,
+    } = await importAnalytics();
+    const ref = { artifactId: 'a1', artifactType: 'html', entry: 'list', reportId: 'rep-9' };
+
+    trackArtifactShareOpened({ ...ref, isShared: null });
+    trackArtifactAccessChangeFailed({ ...ref, reason: 'share_org_not_allowed' });
+    trackArtifactLinkCopied(ref);
+    trackArtifactDownloaded({ ...ref, kind: 'export', format: 'pdf' });
+
+    const common = { artifact_id: 'a1', artifact_type: 'html', entry: 'list', report_id: 'rep-9', sso_organization_id: 'org-share' };
+    expect((await sentEvent(fetchMock, 'artifact_share_opened')).properties).toMatchObject({ ...common, is_shared: null });
+    expect((await sentEvent(fetchMock, 'artifact_access_change_failed')).properties)
+      .toMatchObject({ ...common, reason: 'share_org_not_allowed' });
+    expect((await sentEvent(fetchMock, 'artifact_link_copied')).properties).toMatchObject(common);
+    expect((await sentEvent(fetchMock, 'artifact_downloaded')).properties)
+      .toMatchObject({ ...common, kind: 'export', format: 'pdf' });
+  });
+
+  describe('the organization the action ran under', () => {
+    const ORG_PATH = '/api/v1/runtime-credential/minds/organization';
+    // PostHog's POST answers ok; the sidecar's organization read answers `org`.
+    function mockFetchWithSidecar(answer) {
+      const fn = vi.fn(async (url) => {
+        if (String(url).endsWith(ORG_PATH)) return answer();
+        return { ok: true, status: 200 };
+      });
+      globalThis.fetch = fn;
+      return fn;
+    }
+    const orgAnswer = (organizationId) => ({ ok: true, status: 200, json: async () => ({ organizationId }) });
+    const askedSidecar = (fetchMock) => fetchMock.mock.calls.filter((c) => String(c[0]).endsWith(ORG_PATH)).length;
+
+    afterEach(() => { hostState.isElectron = true; hostState.credentialListeners = []; });
+
+    it('on Desktop is the held key\'s organization, not the signed-in one', async () => {
+      signedIn();
+      const fetchMock = mockFetchWithSidecar(() => orgAnswer('org-of-the-key'));
+      const { trackArtifactLinkCopied } = await importAnalytics();
+
+      trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+
+      const event = await sentEvent(fetchMock, 'artifact_link_copied');
+      expect(event.properties.acting_organization_id).toBe('org-of-the-key');
+      expect(event.properties.sso_organization_id).toBe('org-share');
+    });
+
+    it('on Desktop is left out when the sidecar cannot say, and the session org still rides', async () => {
+      signedIn();
+      for (const answer of [() => ({ ok: false, status: 404 }), () => orgAnswer(null), () => { throw new Error('down'); }]) {
+        const fetchMock = mockFetchWithSidecar(answer);
+        const { trackArtifactDownloaded } = await importAnalytics();
+
+        trackArtifactDownloaded({ artifactId: 'a1', entry: 'viewer', kind: 'file' });
+
+        const event = await sentEvent(fetchMock, 'artifact_downloaded');
+        expect(event.properties).not.toHaveProperty('acting_organization_id');
+        expect(event.properties.sso_organization_id).toBe('org-share');
+      }
+    });
+
+    it('on Web is the session\'s organization, and the sidecar is not asked', async () => {
+      hostState.isElectron = false;
+      signedIn();
+      const fetchMock = mockFetchWithSidecar(() => orgAnswer('never'));
+      const { trackArtifactShareOpened } = await importAnalytics();
+
+      trackArtifactShareOpened({ artifactId: 'a1', entry: 'viewer', isShared: false });
+
+      const event = await sentEvent(fetchMock, 'artifact_share_opened');
+      expect(event.properties.acting_organization_id).toBe('org-share');
+      expect(askedSidecar(fetchMock)).toBe(0);
+    });
+
+    it('asks again after the credential changes, and not before', async () => {
+      signedIn();
+      let org = 'org-A';
+      const fetchMock = mockFetchWithSidecar(() => orgAnswer(org));
+      const { trackArtifactLinkCopied } = await importAnalytics();
+      const acting = () => fetchMock.mock.calls
+        .filter((c) => c[1]?.body)
+        .map((c) => JSON.parse(c[1].body))
+        .filter((b) => b.event === 'artifact_link_copied')
+        .map((b) => b.properties.acting_organization_id);
+
+      trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+      await vi.waitFor(() => expect(acting()).toEqual(['org-A']));
+      org = 'org-B';
+      trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+      await vi.waitFor(() => expect(acting()).toHaveLength(2));
+      expect(acting()).toEqual(['org-A', 'org-A']);
+      expect(askedSidecar(fetchMock)).toBe(1);
+
+      for (const listener of hostState.credentialListeners) listener();
+      trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+      await vi.waitFor(() => expect(acting()).toHaveLength(3));
+      expect(acting()).toEqual(['org-A', 'org-A', 'org-B']);
+    });
+
+    it('is not asked for an event that does not carry it', async () => {
+      signedIn();
+      const fetchMock = mockFetchWithSidecar(() => orgAnswer('org-of-the-key'));
+      const { trackArtifactBuilt } = await importAnalytics();
+
+      trackArtifactBuilt('html', 'a1');
+
+      expect((await sentEvent(fetchMock, 'artifact_built')).properties).not.toHaveProperty('acting_organization_id');
+      expect(askedSidecar(fetchMock)).toBe(0);
+    });
+  });
+
+  it('names the organization switched to in place, not the cached one', async () => {
+    const tokenFor = (id) => fakeJwt({ sub: 'user-share', email: 'owner@example.com', activate_organization: { id, name: id } });
+    getAccessToken.mockResolvedValue(tokenFor('org-A'));
+    const fetchMock = mockFetch();
+    const { trackArtifactLinkCopied } = await importAnalytics();
+    const { notifyOrganizationChanged } = await import('./organizationChanges');
+    const copiedOrgs = () => fetchMock.mock.calls
+      .filter((c) => c[1]?.body)
+      .map((c) => JSON.parse(c[1].body))
+      .filter((b) => b.event === 'artifact_link_copied')
+      .map((b) => b.properties.sso_organization_id);
+
+    trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+    await vi.waitFor(() => expect(copiedOrgs()).toEqual(['org-A']));
+
+    getAccessToken.mockResolvedValue(tokenFor('org-B'));
+    notifyOrganizationChanged('user-share');
+    trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+
+    await vi.waitFor(() => expect(copiedOrgs()).toHaveLength(2));
+    expect(copiedOrgs()).toEqual(['org-A', 'org-B']);
+  });
+
+  it('a file download sends no format', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactDownloaded } = await importAnalytics();
+
+    trackArtifactDownloaded({ artifactId: 'a1', entry: 'list', kind: 'file', format: 'pdf' });
+
+    const event = await sentEvent(fetchMock, 'artifact_downloaded');
+    expect(event.properties.kind).toBe('file');
+    expect(event.properties).not.toHaveProperty('format');
+  });
+});
+
+describe('onboarding and start events', () => {
+  it('onboarding_row_clicked and onboarding_step_completed carry only the step and where it happened', async () => {
+    const fetchMock = mockFetch();
+    const { trackOnboardingRowClicked, trackOnboardingStepCompleted } = await importAnalytics();
+
+    trackOnboardingRowClicked('bring-your-work');
+    trackOnboardingStepCompleted('bring-your-work', 'checklist');
+
+    expect((await sentEvent(fetchMock, 'onboarding_row_clicked')).properties).toMatchObject({ step_id: 'bring-your-work' });
+    expect((await sentEvent(fetchMock, 'onboarding_step_completed')).properties)
+      .toMatchObject({ step_id: 'bring-your-work', via: 'checklist' });
+  });
+
+  it('example_picked names the example and the list it was picked from', async () => {
+    const fetchMock = mockFetch();
+    const { trackExamplePicked } = await importAnalytics();
+
+    trackExamplePicked('classic-snake-game', 'examples');
+
+    expect((await sentEvent(fetchMock, 'example_picked')).properties)
+      .toMatchObject({ example_id: 'classic-snake-game', list: 'examples' });
+  });
+
+  it('new_task_message_sent describes the message without quoting it', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent, setStartVia } = await importAnalytics();
+
+    const text = 'Summarize https://example.com/quarterly-report for the zebra committee';
+    setStartVia('checklist');
+    trackNewTaskMessageSent({
+      text,
+      attachments: 2,
+      start: { start_kind: 'example', example_id: 'summarize-a-document-and-draft-my-reply', added_chars: 41 },
+    });
+    const body = await sentEvent(fetchMock, 'new_task_message_sent');
+
+    expect(body.properties).toMatchObject({
+      start_kind: 'example',
+      example_id: 'summarize-a-document-and-draft-my-reply',
+      via: 'checklist',
+      attachments: 2,
+      has_link: true,
+      chars: text.length,
+      added_chars: 41,
+    });
+    // No text, and no part of the link, rides on the event under any key.
+    expect(JSON.stringify(body)).not.toMatch(/zebra|quarterly|example\.com/);
+  });
+
+  it('says a plain message has no link, and defaults the start to free text from the composer', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent } = await importAnalytics();
+
+    trackNewTaskMessageSent({ text: 'hello there', start: undefined });
+    const body = await sentEvent(fetchMock, 'new_task_message_sent');
+
+    expect(body.properties).toMatchObject({ start_kind: 'free_text', via: 'composer', attachments: 0, has_link: false, chars: 11 });
+    expect(body.properties).not.toHaveProperty('example_id');
+    expect(body.properties).not.toHaveProperty('added_chars');
+  });
+
+  it('reads a console handoff as the way in, without clearing it for the session event that follows', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackNewTaskMessageSent, trackAgentSessionStarted } = await importAnalytics();
+
+    setEntryAttribution('console', 'own-work');
+    trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'own_work' } });
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const [sent, session] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(sent.properties.via).toBe('console_link');
+    expect(session.event).toBe('agent_session_started');
+    expect(session.properties).toMatchObject({ entry_source: 'console', example_id: 'own-work' });
+  });
+
+  it('a checklist start set long ago is not carried onto a later message', async () => {
+    const fetchMock = mockFetch();
+    const { setStartVia, trackNewTaskMessageSent } = await importAnalytics();
+    const now = vi.spyOn(Date, 'now');
+    try {
+      now.mockReturnValue(5_000_000);
+      setStartVia('checklist');
+      now.mockReturnValue(5_000_000 + 61 * 1000);
+      trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'free_text' } });
+    } finally {
+      now.mockRestore();
+    }
+
+    expect((await sentEvent(fetchMock, 'new_task_message_sent')).properties.via).toBe('composer');
+  });
+
+  it('reads a link with a www. host and not a number or a file name', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent } = await importAnalytics();
+    const texts = ['see www.acme.com/report', 'about 1.5/2 of it', 'in report.v2/final'];
+    texts.forEach((text) => trackNewTaskMessageSent({ text, start: undefined }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    const links = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.has_link);
+    expect(links).toEqual([true, false, false]);
+  });
+
+  it('labels a send that goes out, and says so for one the app starts itself', async () => {
+    const fetchMock = mockFetch();
+    const { sendWithStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    await sendWithStartVia('app', async () => {
+      trackNewTaskMessageSent({ text: 'Connect Gmail', start: undefined });
+      return true;
+    });
+
+    expect((await sentEvent(fetchMock, 'new_task_message_sent')).properties.via).toBe('app');
+  });
+
+  it('does not leave its label for the next message when a send is refused or throws', async () => {
+    const fetchMock = mockFetch();
+    const { sendWithStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    await expect(sendWithStartVia('checklist', async () => false)).resolves.toBe(false);
+    trackNewTaskMessageSent({ text: 'after a refusal', start: undefined });
+    await expect(sendWithStartVia('app', async () => { throw new Error('owner only'); })).rejects.toThrow('owner only');
+    trackNewTaskMessageSent({ text: 'after a throw', start: undefined });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
+    expect(vias).toEqual(['composer', 'composer']);
+  });
+
+  it('uses a checklist start once, so the next message is from the composer', async () => {
+    const fetchMock = mockFetch();
+    const { setStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    setStartVia('checklist');
+    trackNewTaskMessageSent({ text: 'first', start: { start_kind: 'own_work' } });
+    trackNewTaskMessageSent({ text: 'second', start: { start_kind: 'free_text' } });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
+    expect(vias).toEqual(['checklist', 'composer']);
+  });
+});
+
+describe('Compare Models events', () => {
+  const cost = { cost_a_usd: 0.02, cost_b_usd: 0.5, cost_total_usd: 0.52, cost_partial: false, tokens_a: 110, tokens_b: 900, cheaper_side: 'a' };
+
+  it('compare_view_opened fires once per launch', async () => {
+    const fetchMock = mockFetch();
+    const { trackCompareViewOpened, trackComparisonFollowUpSent } = await importAnalytics();
+    trackCompareViewOpened();
+    trackCompareViewOpened();
+    trackComparisonFollowUpSent('cmp-1', 'both', 1);
+    await sentEvent(fetchMock, 'comparison_follow_up_sent');
+    const opened = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).event).filter((e) => e === 'compare_view_opened');
+    expect(opened).toHaveLength(1);
+  });
+
+  it('comparison_started names the models and the start, never the prompt or title', async () => {
+    const fetchMock = mockFetch();
+    const { trackComparisonStarted } = await importAnalytics();
+    trackComparisonStarted(
+      { id: 'cmp-1', title: 'A secret prompt', sourceProjectId: 'p-1', sides: [{ model: 'kimi', reasoningEffort: null }, { model: 'qwen', reasoningEffort: 'xhigh' }] },
+      { fileCount: 2, exampleId: 'website' },
+    );
+    const { properties } = await sentEvent(fetchMock, 'comparison_started');
+    expect(properties).toMatchObject({
+      comparison_id: 'cmp-1', model_a: 'kimi', model_b: 'qwen', effort_b: 'xhigh', from_project: true, file_count: 2, example_id: 'website',
+    });
+    expect(properties.effort_a).toBeUndefined();
+    expect(JSON.stringify(properties)).not.toContain('secret');
+  });
+
+  it.each([
+    ['the cheaper side wins', 'a', true],
+    ['the dearer side wins', 'b', false],
+    ['a tie', 'tie', undefined],
+  ])('comparison_verdict_recorded carries both costs, and whether the cheaper side won, for %s', async (_case, winner, cheaperWon) => {
+    const fetchMock = mockFetch();
+    const { trackComparisonVerdictRecorded } = await importAnalytics();
+    trackComparisonVerdictRecorded('cmp-1', { turnIndex: 0, winner, models: { a: 'kimi', b: 'qwen' }, changed: true, cost });
+    const { properties } = await sentEvent(fetchMock, 'comparison_verdict_recorded');
+    expect(properties).toMatchObject({ comparison_id: 'cmp-1', turn_index: 0, winner, changed: true, ...cost });
+    expect(properties.cheaper_won).toBe(cheaperWon);
+    expect(properties.winner_model).toBe(winner === 'a' ? 'kimi' : winner === 'b' ? 'qwen' : undefined);
+  });
+
+  it('comparison_continued says which side, whether it was the winner and the cheaper one', async () => {
+    const fetchMock = mockFetch();
+    const { trackComparisonContinued } = await importAnalytics();
+    trackComparisonContinued('cmp-1', { side: 'a', models: { a: 'kimi', b: 'qwen' }, turns: 3, carriedAll: true, verdict: 'b', cost });
+    const { properties } = await sentEvent(fetchMock, 'comparison_continued');
+    expect(properties).toMatchObject({
+      comparison_id: 'cmp-1', side: 'a', model: 'kimi', other_model: 'qwen', turns: 3, carried_all: true,
+      chose_winner: false, chose_cheaper: true, ...cost,
+    });
+  });
+});
+
+describe('mid-task message events (ENG-4194)', () => {
+  it('addon_added says who decided and from where, never the text', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonAdded } = await importAnalytics();
+    trackAddonAdded('jev', 'send');
+    const { properties } = await sentEvent(fetchMock, 'addon_added');
+    expect(properties).toMatchObject({ decided_by: 'jev', via: 'send' });
+  });
+
+  it('addon_queued carries the reason', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonQueued } = await importAnalytics();
+    trackAddonQueued('timeout');
+    const { properties } = await sentEvent(fetchMock, 'addon_queued');
+    expect(properties).toMatchObject({ reason: 'timeout' });
+  });
+
+  it('addon_overridden carries the direction, the outcome and who had decided', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonOverridden } = await importAnalytics();
+    trackAddonOverridden('to_queue', 'withdrawn', 'jev');
+    const { properties } = await sentEvent(fetchMock, 'addon_overridden');
+    expect(properties).toMatchObject({ direction: 'to_queue', outcome: 'withdrawn', decided_by: 'jev' });
+  });
+
+  it('reports a reason it does not know as unknown, never the raw string', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonQueued, trackAddonOverridden } = await importAnalytics();
+    trackAddonQueued('too_many');
+    expect((await sentEvent(fetchMock, 'addon_queued')).properties.reason).toBe('too_many');
+    fetchMock.mockClear();
+    trackAddonQueued('something the server made up');
+    expect((await sentEvent(fetchMock, 'addon_queued')).properties.reason).toBe('unknown');
+    fetchMock.mockClear();
+    trackAddonOverridden('to_task', 'free text', 'robot');
+    expect((await sentEvent(fetchMock, 'addon_overridden')).properties).toMatchObject({ outcome: 'unknown', decided_by: 'jev' });
   });
 });

@@ -22,6 +22,7 @@ describe('accountUserFromToken', () => {
       sub: 'user-1',
       org: 'MindsDB',
       orgId: 'org-1',
+      orgIsPersonal: false,
       picture: null,
     });
   });
@@ -56,6 +57,7 @@ describe('accountUserFromToken', () => {
     expect(user.org).toBe(PERSONAL_ORG_LABEL);
     expect(user.org).not.toContain('personal_');
     expect(user.orgId).toBe('org-personal');
+    expect(user.orgIsPersonal).toBe(true);
   });
 
   it('leaves the label null when the claim names no organization at all', () => {

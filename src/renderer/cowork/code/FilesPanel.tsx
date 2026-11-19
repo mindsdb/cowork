@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
 import Input from '../components/ui/Input';
 import Menu from '../components/ui/Menu';
 import Spinner from '../components/ui/Spinner';
@@ -13,6 +14,7 @@ import {
   type WorkspaceResource,
   type WorkspaceSearchMatch,
 } from './workspaceApi';
+import { useTranslation } from '../../lib/i18n';
 import './files-panel.css';
 
 
@@ -44,6 +46,7 @@ export function FilesPanel({
   onClose: () => void;
   onReference: (reference: InputReference) => void;
 }) {
+  const { t } = useTranslation('code');
   const [resources, setResources] = useState<WorkspaceResource[]>([]);
   const [resourceId, setResourceId] = useState('');
   const [path, setPath] = useState('');
@@ -84,7 +87,7 @@ export function FilesPanel({
         setResources(items);
         setResourceId((current) => items.some((item) => item.id === current) ? current : items[0]?.id || '');
       })
-      .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Files could not be loaded.'); })
+      .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : t('filesPanel.errors.loadFiles')); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [open, sessionId]);
@@ -96,7 +99,7 @@ export function FilesPanel({
     setError('');
     workspaceApi.entries(sessionId, resourceId, path)
       .then((page) => { if (alive) setEntries(page.items); })
-      .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'This folder could not be opened.'); })
+      .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : t('filesPanel.errors.openFolder')); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [file, open, path, query, resourceId, sessionId]);
@@ -112,7 +115,7 @@ export function FilesPanel({
       setError('');
       workspaceApi.search(sessionId, query, resourceId || null)
         .then((page) => { if (alive) setResults(page.items); })
-        .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Search failed.'); })
+        .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : t('filesPanel.errors.search')); })
         .finally(() => { if (alive) setLoading(false); });
     }, 180);
     return () => { alive = false; window.clearTimeout(timer); };
@@ -150,7 +153,7 @@ export function FilesPanel({
       })
       .catch((reason) => {
         if (fileRequest.current === request) {
-          setError(reason instanceof Error ? reason.message : 'This file could not be opened.');
+          setError(reason instanceof Error ? reason.message : t('filesPanel.errors.openFile'));
         }
       })
       .finally(() => {
@@ -201,17 +204,17 @@ export function FilesPanel({
 
   return (
     <>
-      <button type="button" className="code-files-scrim" aria-label="Close files panel" onClick={onClose} />
+      <button type="button" className="code-files-scrim" aria-label={t('filesPanel.closeAriaLabel')} onClick={onClose} />
       <aside
         id="code-files-panel"
         className="code-files"
-        aria-label="Task files"
+        aria-label={t('filesPanel.ariaLabel')}
         style={{ '--code-files-width': `${width}px` } as FilesStyle}
       >
         <div
           className="code-files__resize"
           role="separator"
-          aria-label="Resize files panel"
+          aria-label={t('filesPanel.resizeAriaLabel')}
           aria-orientation="vertical"
           aria-valuemin={400}
           aria-valuemax={760}
@@ -233,10 +236,10 @@ export function FilesPanel({
         />
         <header className="code-files__header">
           <div>
-            <div className="code-eyebrow">TASK CONTEXT</div>
-            <div className="code-files__title">Files</div>
+            <div className="section-label">{t('filesPanel.eyebrow')}</div>
+            <div className="code-files__title">{t('filesPanel.title')}</div>
           </div>
-          <Button icon size="sm" variant="subtle" aria-label="Close files panel" onClick={onClose}>{Ico.close(14)}</Button>
+          <Button icon size="sm" variant="subtle" aria-label={t('filesPanel.closeAriaLabel')} onClick={onClose}>{Ico.close(14)}</Button>
         </header>
         <div className="code-files__tools">
           {selectedResource && (
@@ -244,17 +247,17 @@ export function FilesPanel({
               side="bottom"
               align="start"
               width={220}
-              ariaLabel="Project folder"
+              ariaLabel={t('filesPanel.folderMenuAriaLabel')}
               trigger={(
-                <Button size="sm" variant="subtle" aria-label={`Resource: ${selectedResource.name}`}>
-                  {Ico.folder(13)}<span>{selectedResource.name}</span>{resources.length > 1 && Ico.chevDown(10)}
+                <Button size="sm" variant="subtle" aria-label={t('filesPanel.resourceAriaLabel', { name: selectedResource.name })}>
+                  {Ico.folder(14)}<span>{selectedResource.name}</span>{resources.length > 1 && Ico.chevDown(12)}
                 </Button>
               )}
               items={resources.map((resource) => ({
                 key: resource.id,
                 label: resource.name,
-                icon: Ico.folder(13),
-                hint: resource.id === selectedResource.id ? Ico.check(11) : undefined,
+                icon: Ico.folder(14),
+                hint: resource.id === selectedResource.id ? Ico.check(12) : undefined,
                 onClick: () => chooseResource(resource.id),
               }))}
             />
@@ -263,20 +266,20 @@ export function FilesPanel({
             value={query}
             onChange={setQuery}
             size="sm"
-            leading={Ico.search(13)}
+            leading={Ico.search(14)}
             wrapperClassName="code-files__search"
-            placeholder="Search task files"
-            aria-label="Search task files"
+            placeholder={t('filesPanel.searchPlaceholder')}
+            aria-label={t('filesPanel.searchPlaceholder')}
           />
         </div>
         {error && <div className="code-files__error"><Alert variant="danger">{error}</Alert></div>}
         <div className="code-files__body scroll-clean">
-          {loading && !file && <div className="code-files__loading"><Spinner /> Loading…</div>}
+          {loading && !file && <div className="code-files__loading"><Spinner /> {t('filesPanel.loading')}</div>}
           {!loading && resources.length === 0 && !error && (
-            <div className="code-files__empty"><span>{Ico.folder(18)}</span><strong>No task files available</strong><p>This task does not have a prepared working copy on this computer.</p></div>
+            <EmptyState size="sm" icon={Ico.folder(20)} title={t('filesPanel.empty.title')} description={t('filesPanel.empty.description')} />
           )}
           {!!query && !loading && results.length === 0 && !error && (
-            <div className="code-files__empty"><span>{Ico.search(18)}</span><strong>No matches</strong><p>Try a filename, symbol, or phrase from the code.</p></div>
+            <EmptyState size="sm" icon={Ico.search(20)} title={t('filesPanel.noMatches.title')} description={t('filesPanel.noMatches.description')} />
           )}
           {!!query && results.length > 0 && (
             <div className="code-files__results">
@@ -304,27 +307,27 @@ export function FilesPanel({
               </div>
               {path && (
                 <button type="button" className="code-files__entry is-parent" onClick={() => setPath(parentPath(path))}>
-                  <span>{Ico.chevLeft(12)}</span><strong>Back</strong>
+                  <span>{Ico.chevLeft(12)}</span><strong>{t('filesPanel.back')}</strong>
                 </button>
               )}
               {entries.map((entry) => (
                 <button type="button" className="code-files__entry" key={`${entry.kind}:${entry.path}`} onClick={() => chooseEntry(entry)}>
                   <span>{entry.kind === 'directory' ? Ico.folder(14) : Ico.code(14)}</span>
                   <strong>{entry.name}</strong>
-                  {entry.kind === 'directory' && <i>{Ico.chevRight(11)}</i>}
+                  {entry.kind === 'directory' && <i>{Ico.chevRight(12)}</i>}
                 </button>
               ))}
-              {!loading && entries.length === 0 && <div className="code-files__folder-empty">This folder is empty.</div>}
+              {!loading && entries.length === 0 && <div className="code-files__folder-empty">{t('filesPanel.folderEmpty')}</div>}
             </div>
           )}
           {!query && file && (
             <div className="code-files__viewer">
               <div className="code-files__viewer-bar">
-                <Button size="xxs" variant="subtle" className="code-files__viewer-back" onClick={() => { setFile(null); setSelection(null); }}>{Ico.chevLeft(12)} Files</Button>
+                <Button size="xxs" variant="subtle" className="code-files__viewer-back" onClick={() => { setFile(null); setSelection(null); }}>{Ico.chevLeft(12)} {t('filesPanel.backToFiles')}</Button>
                 <strong title={file.path}>{file.name}</strong>
-                <span>Lines {file.line_start}–{file.line_end} of {file.line_count}</span>
+                <span>{t('filesPanel.lineWindow', { start: file.line_start, end: file.line_end, total: file.line_count })}</span>
               </div>
-              <div className="code-files__code" role="listbox" aria-label={`${file.name} lines`} aria-multiselectable="true">
+              <div className="code-files__code" role="listbox" aria-label={t('filesPanel.linesAriaLabel', { name: file.name })} aria-multiselectable="true">
                 {lines.map((line, index) => {
                   const lineNumber = file.line_start + index;
                   const selected = !!selectedRange && lineNumber >= selectedRange[0] && lineNumber <= selectedRange[1];
@@ -347,14 +350,14 @@ export function FilesPanel({
                 })}
               </div>
               {file.truncated && (
-                <nav className="code-files__pagination" aria-label="File pages">
+                <nav className="code-files__pagination" aria-label={t('filesPanel.pagesAriaLabel')}>
                   <Button
                     size="sm"
                     variant="subtle"
                     disabled={file.line_start <= 1 || loading}
                     onClick={() => openFileWindow(Math.max(1, file.line_start - FILE_WINDOW_LINES))}
                   >
-                    {Ico.chevLeft(11)} Previous
+                    {Ico.chevLeft(12)} {t('filesPanel.previous')}
                   </Button>
                   <span>{file.line_start}–{file.line_end}</span>
                   <Button
@@ -363,7 +366,7 @@ export function FilesPanel({
                     disabled={file.line_end >= file.line_count || loading}
                     onClick={() => openFileWindow(file.line_end + 1)}
                   >
-                    Next {Ico.chevRight(11)}
+                    {t('filesPanel.next')} {Ico.chevRight(12)}
                   </Button>
                 </nav>
               )}
@@ -372,8 +375,12 @@ export function FilesPanel({
         </div>
         {file && !query && (
           <footer className="code-files__footer">
-            <span>{selectedRange ? `Lines ${selectedRange[0]}${selectedRange[1] !== selectedRange[0] ? `–${selectedRange[1]}` : ''}` : 'Whole file'}</span>
-            <Button size="sm" variant="primary" onClick={addReference}>{Ico.plus(12)} Add to prompt</Button>
+            <span>{selectedRange
+              ? selectedRange[1] !== selectedRange[0]
+                ? t('filesPanel.selectedLines', { start: selectedRange[0], end: selectedRange[1] })
+                : t('filesPanel.selectedLine', { start: selectedRange[0] })
+              : t('filesPanel.wholeFile')}</span>
+            <Button size="sm" variant="primary" onClick={addReference}>{Ico.plus(12)} {t('filesPanel.addToPrompt')}</Button>
           </footer>
         )}
       </aside>

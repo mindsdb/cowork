@@ -1,4 +1,7 @@
 import { host } from '../../platform/host';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.sharedResourceAccess.${key}`, { ns: 'projects', ...vars });
 
 /**
  * Shared-resource capabilities are server decisions. Hosted Cowork fails
@@ -9,6 +12,11 @@ export function canUseSharedResource(resource, capability, isWeb = host.isWeb) {
   const decision = resource?.capabilities?.[capability];
   if (typeof decision === 'boolean') return decision;
   return !isWeb;
+}
+
+/** Older servers have no selective shares; their existing projects remain runnable. */
+export function canRunProject(project) {
+  return !project?.shared && project?.capabilities?.canRun !== false;
 }
 
 /**
@@ -23,15 +31,18 @@ export function isReservedProjectName(name, isWeb = host.isWeb) {
 
 /** Stands in for an actor the server identified but deliberately did not name. */
 export const OTHER_ACTOR_LABEL = 'Another member';
+export const otherActorLabel = () => tr('otherActor');
 
 /** Stands in for an actor the server could not identify at all. */
 export const UNKNOWN_ACTOR_LABEL = 'Unknown';
+export const unknownActorLabel = () => tr('unknownActor');
 
 /**
- * The server no longer stores email addresses, and returns one only when the
- * actor is the viewer themselves. Everyone else arrives as a bare user id,
- * which is a UUID no member can read and which we have no directory to
- * resolve, so it never reaches the screen.
+ * Attribution carries an email only when the actor is the viewer themselves
+ * (shared_resources.py); live-app sharing's `ownerEmail` and `receivedFrom`,
+ * which do name an owner, never reach this helper. Everyone else arrives as a
+ * bare user id, which is a UUID no member can read and which we have no
+ * directory to resolve, so it never reaches the screen.
  */
 export function actorLabel(actor) {
   if (!actor) return '';

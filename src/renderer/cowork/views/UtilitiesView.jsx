@@ -1,35 +1,45 @@
 import { useEffect, useMemo, useState } from 'react';
 import { projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
-import { Alert, Button, Card, Field, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
+import { Alert, Button, Card, Field, EmptyState, Select, Input, Textarea } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { copyText } from '../lib/clipboard';
+import { host } from '../../platform/host';
 import {
   deleteDatasource,
   deleteMemory,
   fetchDatasources,
   fetchMemory,
+  fetchMemoryCapabilities,
   fetchPublishable,
   findMemoryEntry,
   labelCategory,
   publishArtifact,
+  resetMemory,
   saveDatasource,
   saveMemory,
   validateDatasource,
 } from '../api';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { trackArtifactPublished } from '../lib/analytics';
+import {
+  UNKNOWN_SHARE_SNAPSHOT, publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, shareSnapshot,
+} from '../lib/artifactShareAnalytics';
+import { publishFailureReason } from '../components/artifact/publish/publishErrors';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import { canUseSharedResource } from '../lib/sharedResourceAccess';
+import { productName } from '../../lib/deploymentBrand';
+import { STOCK_SHORT_NAME } from '../../../shared/product-name';
+import { useConfirm } from '../components/ConfirmModal';
+import i18n, { useTranslation } from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(key, { ns: 'library', ...vars });
 
 const TITLES = {
-  memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
-  publish: ['Share', 'HTML artifacts the agent can share with Minds credentials.'],
+  memory:  ['memory.title', 'memory.subtitle'],
+  publish: ['publish.title', 'publish.subtitle'],
 };
-
-function EmptyState({ children }) {
-  return <div className="p-8 text-[var(--frost-600)] text-[13px]">{children}</div>;
-}
 
 function credentialTemplate(engineDef) {
   return Object.fromEntries(activeCredentialFields(engineDef).map((field) => [field.name, field.default || '']));
@@ -59,6 +69,7 @@ function shouldUseTextarea(field) {
 }
 
 export default function UtilitiesView({ kind, project, onRefreshArtifacts, projects = [] }) {
+  const { t } = useTranslation('library');
   const [data, setData] = useState(null);
   const [selected, setSelected] = useState(null);
   const [status, setStatus] = useState('');
@@ -75,7 +86,9 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
     if (kind === 'publish') fetchPublishable().then(setData).catch((err) => setStatus(err.message));
   }, [kind, project?.path]);
 
-  const [title, subtitle] = TITLES[kind] || ['Utility', ''];
+  const [titleKey, subtitleKey] = TITLES[kind] || ['utilities.title', null];
+  const title = t(titleKey);
+  const subtitle = subtitleKey ? t(subtitleKey) : '';
 
   // Memory kind owns its own scrolling: the sidebar list and the
   // viewer pane each scroll independently so flipping through a long
@@ -92,7 +105,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
           keep the plain header here. */}
       {!isMemoryKind && <CollectionPageHeader title={title} subtitle={subtitle} />}
       {status && <Alert variant="danger" role="status" aria-live="polite" style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Alert>}
-      {!data ? <EmptyState>Loading…</EmptyState> : null}
+      {!data ? <EmptyState size="sm" title={t('recipients.loading')} /> : null}
       {data && kind === 'memory' && (
         <MemoryView
           data={data}
@@ -112,10 +125,49 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
   );
 }
 
+/* A project tier whose project the caller can't see, such as another
+   person's project on a deployment that shares memory, has no name to show. */
+function memoryScopeLabel(memory, projects) {
+  if (memory.scope === 'Global') return tr('memory.scope.global');
+  if (memory.scope === 'Deployment') return tr('memory.scope.deployment');
+  if (memory.scope !== 'Project') return memory.scope;
+  if (!memory.projectName) return tr('memory.scope.projectMemory');
+  return tr('memory.scope.project', { name: projectLabelByName(projects, memory.projectName) });
+}
+
+// A deployment's brand names the product on the pages where memory is a
+// person's own, so the copy below reads it instead of saying Cowork.
+const PRODUCT_NAME = productName(STOCK_SHORT_NAME);
+
+/* Why an entry can't be edited. Memory that is the person's own but only
+   deletable is memory their agent saves on its own: the server lets nobody
+   hand-write it there. */
+function memoryReadOnlyCopy(memory) {
+  if (memory.scope === 'Deployment') {
+    return {
+      note: tr('memory.readOnly.deployment'),
+      editTitle: undefined,
+    };
+  }
+  if (canUseSharedResource(memory, 'canDelete')) {
+    return {
+      note: tr('memory.readOnly.ownAuto', { product: PRODUCT_NAME }),
+      editTitle: tr('memory.readOnly.ownAutoEditTitle', { product: PRODUCT_NAME }),
+    };
+  }
+  return {
+    note: tr('memory.readOnly.shared'),
+    editTitle: tr('memory.noEditPermission'),
+  };
+}
+
 function MemoryView({ data, selected, onSelect, project, projects, setData, setStatus }) {
+  const { t } = useTranslation('library');
+  const [confirm, confirmModal] = useConfirm();
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const projectSections = sections.filter((s) => s.scope === 'Project');
   const globalSection = sections.find((s) => s.scope === 'Global');
+  const deploymentSection = sections.find((s) => s.scope === 'Deployment');
   const totalFiles = sections.reduce((acc, s) => acc + (s.files?.length || 0), 0);
 
   // `selected` holds the sidebar selection; after save `data.sections`
@@ -130,6 +182,20 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
   const [draft, setDraft] = useState({
     path: null, scope: 'Global', category: '', content: '', projectName: null, projectId: null,
   });
+  const [canReset, setCanReset] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
+
+  // The reset is offered only where the server carries it out. A failed check
+  // leaves it hidden: the page itself still works.
+  useEffect(() => {
+    let cancelled = false;
+    fetchMemoryCapabilities()
+      .then((capabilities) => { if (!cancelled) setCanReset(capabilities.canReset); })
+      .catch(() => { if (!cancelled) setCanReset(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   // The editor writes the slot the draft was seeded from, which is not
   // necessarily whatever the sidebar has selected by the time Save runs.
@@ -172,15 +238,15 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
 
   const save = async () => {
     if (!canUseSharedResource(draftTarget, 'canEdit')) {
-      setStatus('You do not have permission to edit this shared memory.');
+      setStatus(t('memory.noEditPermission'));
       return;
     }
     if (!draft.category) {
-      setStatus('No memory category selected.');
+      setStatus(t('memory.noCategory'));
       return;
     }
     if (draft.scope === 'Project' && !draft.projectId) {
-      setStatus('Pick a project for this memory.');
+      setStatus(t('memory.pickProject'));
       return;
     }
     try {
@@ -190,40 +256,71 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
         content: draft.content,
         projectId: draft.scope === 'Project' ? draft.projectId : null,
       });
-      setStatus(`Saved ${labelCategory(draft.category)} memory.`);
+      setStatus(t('memory.saved', { name: labelCategory(draft.category) }));
       setEditing(null);
       await refresh({ forceFresh: true });
     } catch (err) {
-      setStatus(err.message || 'Could not save memory.');
+      setStatus(err.message || t('memory.saveFailed'));
     }
   };
 
   const remove = async (file) => {
     if (!canUseSharedResource(file, 'canDelete')) return;
     const label = labelCategory(file.category);
-    if (!window.confirm(`Delete "${label}" memory? This clears the saved content.`)) return;
+    if (!(await confirm({
+      title: t('memory.delete.title', { name: label }),
+      message: t('memory.delete.message'),
+      confirmLabel: t('memory.delete.confirm'),
+      destructive: true,
+    }))) return;
     try {
       await deleteMemory({
         scope: file.scope || 'Global',
         category: file.category,
         projectId: file.scope === 'Project' ? file.projectId : null,
       });
-      setStatus(`Deleted ${label} memory.`);
+      setStatus(t('memory.deleted', { name: label }));
       setEditing(null);
       onSelect(null);
       await refresh({ forceFresh: true });
     } catch (err) {
-      setStatus(err.message || 'Could not delete memory.');
+      setStatus(err.message || t('memory.deleteFailed'));
     }
   };
+
+  const reset = async () => {
+    setResetting(true);
+    setResetError('');
+    try {
+      await resetMemory();
+      setResetOpen(false);
+      setEditing(null);
+      onSelect(null);
+      setStatus(t('memory.resetDone'));
+      await refresh({ forceFresh: true });
+    } catch (err) {
+      setResetError(err.message || t('memory.resetFailed'));
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const displayedCopy = displayed ? memoryReadOnlyCopy(displayed) : null;
 
   return (
     <>
       <CollectionPageHeader
-        title="Memories"
-        subtitle="Profile, rules, and lessons the agent can reuse across tasks."
+        title={t('memory.title')}
+        subtitle={t('memory.subtitle')}
+        actions={canReset ? (
+          <Button variant="subtle" onClick={() => { setResetError(''); setResetOpen(true); }}>
+            {t('memory.reset.confirm')}
+          </Button>
+        ) : null}
       />
-      <div className="h-[14px]" />
+      {/* shrink-0: a flex child of the page column — without it the spacer
+          collapses when the content below needs the height. */}
+      <div className="h-[14px] shrink-0" />
       <div className="util-split flex-1 min-h-0 grid grid-cols-[300px_1fr] px-8 pb-6 gap-6">
         <Card padding="snug" flat className="scroll-clean" style={{
           display: 'flex', flexDirection: 'column', gap: 14,
@@ -231,8 +328,16 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
         }}>
           {globalSection && (
             <MemorySectionList
-              heading="Global"
+              heading={t('memory.scope.global')}
               files={globalSection.files || []}
+              selected={selected}
+              onSelect={selectEntry}
+            />
+          )}
+          {deploymentSection && (
+            <MemorySectionList
+              heading={t('memory.scope.deployment')}
+              files={deploymentSection.files || []}
               selected={selected}
               onSelect={selectEntry}
             />
@@ -240,14 +345,14 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
           {projectSections.map((section, idx) => (
             <MemorySectionList
               key={`${section.projectName}-${idx}`}
-              heading={`Project · ${projectLabelByName(projects, section.projectName)}`}
+              heading={memoryScopeLabel(section, projects)}
               files={section.files || []}
               selected={selected}
               onSelect={selectEntry}
               isActive={section.projectName === project?.name}
             />
           ))}
-          {totalFiles === 0 && <EmptyState>No memory entries found.</EmptyState>}
+          {totalFiles === 0 && <EmptyState size="sm" title={t('memory.empty')} />}
         </Card>
         <div className="scroll-clean overflow-y-auto min-h-0">
           {editing === 'edit' && selected ? (
@@ -258,14 +363,12 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
                     {labelCategory(selected.category)}
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
-                    {selected.scope === 'Project' && selected.projectName
-                      ? `Project · ${projectLabelByName(projects, selected.projectName)}`
-                      : selected.scope}
+                    {memoryScopeLabel(selected, projects)}
                   </div>
                   <SharedResourceAttribution resource={displayed || selected} className="mt-1" />
                 </div>
-                <Button variant="subtle" onClick={() => setEditing(null)}>Cancel</Button>
-                <Button variant="primary" onClick={save}>Save</Button>
+                <Button variant="subtle" onClick={() => setEditing(null)}>{t('skillModal.cancel')}</Button>
+                <Button variant="primary" onClick={save}>{t('skillModal.save')}</Button>
               </div>
               <textarea
                 value={draft.content}
@@ -281,29 +384,31 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
                     {labelCategory(displayed.category)}
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
-                    {displayed.scope === 'Project' && displayed.projectName
-                      ? `Project · ${projectLabelByName(projects, displayed.projectName)}`
-                      : displayed.scope}
+                    {memoryScopeLabel(displayed, projects)}
                   </div>
                   <SharedResourceAttribution resource={displayed} className="mt-1" />
                   {!canUseSharedResource(displayed, 'canEdit') && (
                     <div className="mt-1 text-[12px] text-ink-3" role="note">
-                      Read only. Only the memory author or an organization admin can change it.
+                      {displayedCopy.note}
                     </div>
                   )}
                 </div>
-                <Button
-                  variant="subtle"
-                  disabled={!canUseSharedResource(displayed, 'canEdit')}
-                  title={!canUseSharedResource(displayed, 'canEdit') ? 'You do not have permission to edit this shared memory.' : undefined}
-                  onClick={() => startEdit(displayed)}
-                >Edit</Button>
-                <Button
-                  variant="subtle"
-                  disabled={!canUseSharedResource(displayed, 'canDelete')}
-                  title={!canUseSharedResource(displayed, 'canDelete') ? 'You do not have permission to delete this shared memory.' : undefined}
-                  onClick={() => remove(displayed)}
-                >Delete</Button>
+                {displayed.scope !== 'Deployment' && (
+                  <>
+                    <Button
+                      variant="subtle"
+                      disabled={!canUseSharedResource(displayed, 'canEdit')}
+                      title={!canUseSharedResource(displayed, 'canEdit') ? displayedCopy.editTitle : undefined}
+                      onClick={() => startEdit(displayed)}
+                    >{t('skills.menu.edit')}</Button>
+                    <Button
+                      variant="subtle"
+                      disabled={!canUseSharedResource(displayed, 'canDelete')}
+                      title={!canUseSharedResource(displayed, 'canDelete') ? t('memory.noDeletePermission') : undefined}
+                      onClick={() => remove(displayed)}
+                    >{t('memory.delete.confirm')}</Button>
+                  </>
+                )}
               </div>
               <div className={memoryViewerClass}>
                 <MarkdownContent
@@ -316,22 +421,36 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
             </>
           ) : (
             <div className="h-full flex items-center justify-center">
-              <UiEmptyState description="Select a memory entry to inspect it." />
+              <EmptyState description={t('memory.selectHint')} />
             </div>
           )}
         </div>
       </div>
+      <ConfirmModal
+        open={resetOpen}
+        title={t('memory.reset.title')}
+        message={t('memory.reset.message', { product: PRODUCT_NAME })}
+        confirmLabel={t('memory.reset.confirm')}
+        destructive
+        busy={resetting}
+        busyLabel={t('memory.reset.busy')}
+        error={resetError}
+        onConfirm={reset}
+        onClose={() => setResetOpen(false)}
+      />
+      {confirmModal}
     </>
   );
 }
 
 function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
+  const { t } = useTranslation('library');
   return (
     <div className="flex flex-col gap-px">
-      <div className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-ink-4 font-semibold px-1 pb-1 flex items-center gap-[6px]">
+      <div className="section-label px-1 pb-1 flex items-center gap-[6px]">
         <span>{heading}</span>
-        {isActive && <span className="text-accent tracking-[0] normal-case font-[family-name:var(--font-body)] text-[10.5px]">· active</span>}
-        <span className="ml-auto text-ink-4 tracking-[0] normal-case font-[family-name:var(--font-body)]">{files.length}</span>
+        {isActive && <span className="text-accent">{t('memory.active')}</span>}
+        <span className="ml-auto text-ink-4 tabular-nums">{files.length}</span>
       </div>
       {files.length === 0 ? (
         <div className="px-[6px] py-[2px] text-ink-4 text-[12px]">—</div>
@@ -345,7 +464,7 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
           style={{ height: 'auto', minHeight: 26, padding: '4px 10px' }}
           onClick={() => onSelect(file)}
         >
-          <span className="text-[var(--primary-700)] inline-flex">{Ico.doc(13)}</span>
+          <span className="text-[var(--primary-700)] inline-flex">{Ico.doc(14)}</span>
           <span className="flex-1 whitespace-normal">{labelCategory(file.category)}</span>
         </button>
       ))}
@@ -355,6 +474,8 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
 
 
 function ConnectView({ data, setData, setStatus }) {
+  const { t } = useTranslation('library');
+  const [confirm, confirmModal] = useConfirm();
   const firstEngine = data.engines?.[0]?.engine || '';
   const initialEngine = (data.engines || []).find((item) => item.engine === firstEngine);
   const [engine, setEngine] = useState(firstEngine);
@@ -403,15 +524,15 @@ function ConnectView({ data, setData, setStatus }) {
       setBusy(true);
       setBusyAction('check');
       const result = await validateDatasource({ engine, name, authMethod: authMethod || null, credentials });
-      setValidation(result.message || 'Credential shape checked.');
+      setValidation(result.message || t('legacyConnect.shapeChecked'));
       if (result.missingFields?.length) {
-        setStatus(`Missing required fields: ${result.missingFields.join(', ')}`);
+        setStatus(t('legacyConnect.missingFields', { fields: result.missingFields.join(', ') }));
       } else {
-        setStatus('Required fields are present. Save this connection to make it available to agent tasks.');
+        setStatus(t('legacyConnect.fieldsPresent'));
       }
     } catch (err) {
       setValidation('');
-      setStatus(err.message || 'Could not validate datasource credentials.');
+      setStatus(err.message || t('legacyConnect.validateFailed'));
     } finally {
       setBusy(false);
       setBusyAction('');
@@ -429,10 +550,10 @@ function ConnectView({ data, setData, setStatus }) {
       const saved = await saveDatasource({ engine, name, authMethod: authMethod || null, credentials });
       const latest = await fetchDatasources();
       setData(latest);
-      setStatus(`Saved ${saved.slug || `${engine}-${saved.name || name}`} to the data vault.`);
+      setStatus(t('legacyConnect.saved', { name: saved.slug || `${engine}-${saved.name || name}` }));
       if (!name.trim() && saved.name) setName(saved.name);
     } catch (err) {
-      setStatus(err.message || 'Could not save datasource connection.');
+      setStatus(err.message || t('legacyConnect.saveFailed'));
     } finally {
       setBusy(false);
       setBusyAction('');
@@ -440,37 +561,42 @@ function ConnectView({ data, setData, setStatus }) {
   };
 
   const remove = async (conn) => {
-    if (!window.confirm(`Remove datasource "${conn.engine}/${conn.name}"?`)) return;
+    if (!(await confirm({
+      title: t('legacyConnect.remove.title'),
+      message: t('legacyConnect.remove.message', { name: `${conn.engine}/${conn.name}` }),
+      confirmLabel: t('recipients.removeTooltip'),
+      destructive: true,
+    }))) return;
     try {
       await deleteDatasource(conn.engine, conn.name);
       const latest = await fetchDatasources();
       setData(latest);
-      setStatus(`Removed ${conn.engine}/${conn.name}.`);
+      setStatus(t('legacyConnect.removed', { name: `${conn.engine}/${conn.name}` }));
       // Project files' Context card holds its own Google Drive file list —
       // see the matching dispatch in CustomizeView.handleDelete.
       window.dispatchEvent(new CustomEvent('anton:connections-changed'));
     } catch (err) {
-      setStatus(err.message || 'Could not remove datasource connection.');
+      setStatus(err.message || t('legacyConnect.removeFailed'));
     }
   };
 
   return (
     <div className="util-publish p-[28px] grid grid-cols-[1fr_360px] gap-6">
       <div>
-        <div className="text-[13px] font-[650] text-strong mb-[10px]">Saved connections</div>
+        <div className="text-[13px] font-[650] text-strong mb-[10px]">{t('legacyConnect.savedConnections')}</div>
         {(data.connections || []).length ? (data.connections || []).map((conn) => (
           <div key={`${conn.engine}-${conn.name}`} className="flex items-center gap-[10px] py-[10px] border-b border-t-0 border-x-0 border-solid border-[var(--border-0)] text-[13px]">
             <div className="flex-1">
               <strong className="text-strong">{conn.displayName || conn.engine}</strong> / {conn.name}
-              <div className="text-[11.5px] text-[var(--frost-600)]">{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
+              <div className="text-[11.5px] text-[var(--frost-600)]">{conn.testAvailable ? t('legacyConnect.ready') : t('legacyConnect.savedInVault')}</div>
             </div>
-            <Button variant="subtle" onClick={() => remove(conn)}>Remove</Button>
+            <Button variant="subtle" onClick={() => remove(conn)}>{t('recipients.removeTooltip')}</Button>
           </div>
-        )) : <EmptyState>No data vault connections found.</EmptyState>}
+        )) : <EmptyState size="sm" title={t('legacyConnect.empty')} />}
       </div>
       <form onSubmit={save} className="flex flex-col gap-[10px]">
         <Select
-          ariaLabel="Engine"
+          ariaLabel={t('connections.sortEngine')}
           value={engine}
           onValueChange={setEngineAndTemplate}
           style={inputStyle}
@@ -478,17 +604,17 @@ function ConnectView({ data, setData, setStatus }) {
         />
         {(engineDef?.authMethods || []).length > 0 && (
           <Select
-            ariaLabel="Authentication method"
+            ariaLabel={t('legacyConnect.authMethod')}
             value={selectedAuth?.name || ''}
             onValueChange={setAuthAndTemplate}
             style={inputStyle}
             options={(engineDef.authMethods || []).map((method) => ({ value: method.name, label: method.display }))}
           />
         )}
-        <Input aria-label="Connection name (optional)" value={name} onChange={(v) => setName(v)} placeholder="connection name (optional)" style={inputStyle} />
+        <Input aria-label={t('legacyConnect.nameLabel')} value={name} onChange={(v) => setName(v)} placeholder={t('legacyConnect.namePlaceholder')} style={inputStyle} />
         {fields.length > 0 && (
           <div className="text-[11.5px] text-[var(--frost-600)]">
-            Required: {fields.filter((field) => field.required).map((field) => field.name).join(', ') || 'none'}
+            {t('legacyConnect.required', { fields: fields.filter((field) => field.required).map((field) => field.name).join(', ') || t('legacyConnect.none') })}
           </div>
         )}
         {fields.length ? fields.map((field) => (
@@ -519,64 +645,79 @@ function ConnectView({ data, setData, setStatus }) {
           </Field>
         )) : (
           <div className="p-3 border border-solid border-[var(--border-01)] rounded-card-row text-[var(--frost-600)] text-sm">
-            This engine does not expose editable credential fields in the installed registry.
+            {t('legacyConnect.noFields')}
           </div>
         )}
         {validation && <div className="text-[12px] text-[var(--frost-700)]">{validation}</div>}
         <Button variant="subtle" disabled={!engine.trim() || busy} onClick={validate}>
-          {busyAction === 'check' ? 'Checking' : 'Check fields'}
+          {busyAction === 'check' ? t('legacyConnect.checking') : t('legacyConnect.checkFields')}
         </Button>
         <Button type="submit" variant="primary" disabled={!engine.trim() || busy}>
-          {busyAction === 'save' ? 'Saving' : 'Save connection'}
+          {busyAction === 'save' ? t('legacyConnect.saving') : t('legacyConnect.saveConnection')}
         </Button>
       </form>
+      {confirmModal}
     </div>
   );
 }
 
 function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
+  const { t } = useTranslation('library');
   const publish = async (artifact) => {
+    // This list may not say who a published artifact reaches.
+    const knowsAccess = artifact.accessMode != null || artifact.accessProtected != null;
+    const before = artifact.publishedUrl && !knowsAccess ? UNKNOWN_SHARE_SNAPSHOT : shareSnapshot(artifact);
     try {
-      setStatus('Sharing…');
+      setStatus(t('publish.sharing'));
       const result = await publishArtifact(artifact.path);
       if (result.url) trackArtifactPublished(result.report_id || artifact.id || '', 'public');
-      setStatus(result.url ? `Shared: ${result.url}` : 'Shared.');
+      if (result.url) {
+        reportAccessChanged(artifact, {
+          entry: 'utilities',
+          before,
+          after: shareSnapshot({ ...result, publishedUrl: result.url }),
+          reportId: publishedPageId(result),
+        });
+      }
+      setStatus(result.url ? t('publish.sharedUrl', { url: result.url }) : t('publish.shared'));
       const latest = await fetchPublishable();
       setData(latest);
       onRefreshArtifacts?.();
     } catch (err) {
-      setStatus(err.message || 'Sharing failed.');
+      reportAccessChangeFailed(artifact, { entry: 'utilities', reason: publishFailureReason(err) });
+      setStatus(err.message || t('publish.failed'));
     }
   };
 
-  const copyUrl = async (url) => {
-    const ok = await copyText(url);
-    setStatus(ok ? 'Copied URL to clipboard.' : "Couldn't copy — select the URL above to copy it manually.");
+  const copyUrl = async (artifact) => {
+    const ok = await copyText(artifact.publishedUrl);
+    if (ok) reportLinkCopied(artifact, { entry: 'utilities' });
+    setStatus(ok ? t('publish.copied') : t('publish.copyFailed'));
   };
 
   return (
     <div className="p-[28px] flex flex-col gap-[10px]">
       {!data.publishReady && (
         <Alert variant="warning">
-          Configure a Minds API key in Settings before sharing.
+          {t('publish.notReady')}
         </Alert>
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
         <div key={artifact.path} className="flex items-center gap-3 p-3 border border-solid border-[var(--border-01)] rounded-[9px]">
-          <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(15)}</span>
+          <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(14)}</span>
           <div className="flex-1 min-w-0">
             <div className="text-[13.5px] font-[650] text-strong">{artifact.title}</div>
             <div className="text-[11.5px] text-[var(--frost-600)] whitespace-nowrap overflow-hidden text-ellipsis">{artifact.path}</div>
             {artifact.publishedUrl && <div className="text-[12px] text-[var(--sage-700)] mt-1 select-text">{artifact.publishedUrl}</div>}
           </div>
-          {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact.publishedUrl)}>Copy URL</Button>}
-          {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
-          <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Share</Button>
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact)}>{t('publish.copyUrl')}</Button>}
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => host.openExternal(artifact.publishedUrl)}>{t('publish.open')}</Button>}
+          <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>{t('share.share')}</Button>
         </div>
-      )) : <EmptyState>No HTML artifacts found in output folders.</EmptyState>}
+      )) : <EmptyState size="sm" title={t('publish.empty')} />}
       {(data.history || []).length > 0 && (
         <div className="mt-[18px]">
-          <div className="text-[13px] font-[650] text-strong mb-2">Share history</div>
+          <div className="text-[13px] font-[650] text-strong mb-2">{t('publish.history')}</div>
           {(data.history || []).slice(0, 10).map((item) => (
             <div key={`${item.artifact}-${item.publishedAt}`} className="py-2 border-t border-x-0 border-b-0 border-solid border-[var(--border-0)] text-sm">
               <strong>{item.artifactName}</strong>

@@ -174,3 +174,22 @@ describe('console host derivation (the one role that differs by host shape)', ()
     );
   });
 });
+
+describe('consoleUrlFor (ENG-3274)', () => {
+  it('names the organization and account a console link is opened for', async () => {
+    const { MINDS_MEMBERS_URL, consoleUrlFor } = await importUrls();
+    const url = new URL(consoleUrlFor(MINDS_MEMBERS_URL, { organizationId: 'org-1', subject: 'user-1' }));
+    expect(`${url.origin}${url.pathname}`).toBe(MINDS_MEMBERS_URL);
+    expect(url.searchParams.get('organization')).toBe('org-1');
+    expect(url.searchParams.get('subject')).toBe('user-1');
+  });
+
+  it('keeps existing parameters and sends only what is known', async () => {
+    const { MINDS_ADD_FUNDS_URL, consoleUrlFor } = await importUrls();
+    const url = new URL(consoleUrlFor(MINDS_ADD_FUNDS_URL, { organizationId: null, subject: 'user-1' }));
+    expect(url.searchParams.get('exhausted')).toBe('1');
+    expect(url.searchParams.has('organization')).toBe(false);
+    expect(url.searchParams.get('subject')).toBe('user-1');
+    expect(consoleUrlFor(MINDS_ADD_FUNDS_URL, {})).toBe(MINDS_ADD_FUNDS_URL);
+  });
+});

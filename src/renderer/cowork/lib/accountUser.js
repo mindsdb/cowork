@@ -43,6 +43,10 @@ export function accountUserFromToken(token) {
 // the realm may carry auth's generated `<email>'s organization` in the claim
 // too, and that is the label we are replacing, wherever it arrives from.
 //
+// `orgIsPersonal` carries that check for copy that must not name a personal
+// organization at all (sharing's "Everyone at ‹org›"). `org` alone can't say
+// it, since a company organization can be named `Personal` too.
+//
 // This used to say the listing upgraded the value once it arrived, because
 // every reader preferred the listing's `displayName`. It no longer does:
 // `organizationLabel` (shared/minds-orgs.ts) substitutes the same short label
@@ -52,9 +56,9 @@ export function accountUserFromToken(token) {
 function activeOrgFromPayload(payload) {
   let org = payload.activate_organization ?? payload.active_organization ?? payload.organization;
   if (typeof org === 'string') {
-    try { org = JSON.parse(org); } catch { return { org: null, orgId: null }; }
+    try { org = JSON.parse(org); } catch { return { org: null, orgId: null, orgIsPersonal: false }; }
   }
-  if (!org || typeof org !== 'object') return { org: null, orgId: null };
+  if (!org || typeof org !== 'object') return { org: null, orgId: null, orgIsPersonal: false };
   const name = org.name || null;
   const isPersonal = Boolean(payload.sub) && name === personalOrgName(payload.sub);
   // `isPersonal` short-circuits ahead of the claim's own display name, the same
@@ -66,6 +70,7 @@ function activeOrgFromPayload(payload) {
   return {
     org: isPersonal ? PERSONAL_ORG_LABEL : (org.displayName || name),
     orgId: org.id || name || null,
+    orgIsPersonal: isPersonal,
   };
 }
 

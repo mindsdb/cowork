@@ -14,7 +14,7 @@ vi.mock('./cowork-home', () => ({
   buildKind: () => 'prod',
 }));
 
-import { getInstalledVersion, resolveUv, findUv } from './uv-paths';
+import { getInstalledVersion, inspectInstalledVersion, resolveUv, findUv } from './uv-paths';
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -120,6 +120,75 @@ describe('getInstalledVersion — uv discovery', () => {
     await expect(getInstalledVersion()).resolves.toBeNull();
     // The PATH fallback must at least be attempted before giving up.
     expect(cp.execFile).toHaveBeenCalled();
+  });
+});
+
+describe('inspectInstalledVersion — why there is no version', () => {
+  it('keeps uv\'s first error line when `uv tool list` refuses to run', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(cp.execFile).mockImplementation(((
+        cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
+      ) => {
+        cb(Object.assign(new Error(`Command failed: ${cmd} tool list`), { code: 2 }), '',
+          '\nerror: Not a valid package or extra name: ".cowork-release-contracts".\n');
+        return {} as never;
+      }) as never);
+
+      const pending = inspectInstalledVersion();
+      await vi.advanceTimersByTimeAsync(2000);
+      await expect(pending).resolves.toEqual({
+        version: null,
+        reason: 'uv tool list failed: error: Not a valid package or extra name: ".cowork-release-contracts".',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps only the first line of Node\'s message when uv wrote no stderr', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(cp.execFile).mockImplementation(((
+        cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
+      ) => {
+        cb(Object.assign(new Error(`Command failed: ${cmd} tool list\n`), { killed: true, signal: 'SIGTERM' }), '', '');
+        return {} as never;
+      }) as never);
+
+      const pending = inspectInstalledVersion('/usr/bin/uv');
+      await vi.advanceTimersByTimeAsync(2000);
+      await expect(pending).resolves.toEqual({ version: null, reason: 'uv tool list failed: Command failed: /usr/bin/uv tool list' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says the listing lacks cowork-server when uv answers without it', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(cp.execFile).mockImplementation(((
+        _cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
+      ) => { cb(null, 'No tools installed\n', ''); return {} as never; }) as never);
+
+      const pending = inspectInstalledVersion();
+      await vi.advanceTimersByTimeAsync(2000);
+      await expect(pending).resolves.toEqual({ version: null, reason: 'uv tool list does not list cowork-server' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('returns the version alone when the listing has it', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(cp.execFile).mockImplementation(((
+      _cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
+    ) => { cb(null, 'cowork-server v0.26.10.22.1rc4\n- cowork-server\n', ''); return {} as never; }) as never);
+
+    await expect(inspectInstalledVersion()).resolves.toEqual({ version: '0.26.10.22.1rc4' });
   });
 });
 

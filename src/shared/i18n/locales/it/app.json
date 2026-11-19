@@ -1,0 +1,268 @@
+{
+  "common": {
+    "justNow": "poco fa",
+    "untitledTask": "Attività senza titolo",
+    "newTask": "Nuova attività",
+    "delete": "Elimina",
+    "keep": "Mantieni",
+    "cancel": "Annulla",
+    "connect": "Connetti"
+  },
+  "connect": {
+    "taskTitle": "Connetti {name}",
+    "intro": "Connettiamo {name}.",
+    "thisConnector": "Questo connettore",
+    "followups": {
+      "fields": "Hai dubbi su qualche campo? Te lo spiego volentieri.",
+      "credentials": "Non sai dove trovare le credenziali? Chiedi pure.",
+      "unclear": "Se qualcosa non è chiaro, dimmelo: ti guido passo passo.",
+      "fieldExpects": "Vuoi sapere cosa va inserito in un campo? Te lo chiarisco.",
+      "steps": "Vuoi più dettagli su un passaggio? Chiedi pure.",
+      "beforeSubmit": "Hai domande prima di inviare? Sono qui.",
+      "deeper": "Vuoi che ti spieghi meglio qualche campo? Fammi sapere.",
+      "clarify": "Se serve, ti chiarisco qualsiasi cosa prima che compili il modulo.",
+      "context": "Se vuoi più contesto su un campo, chiedi pure.",
+      "setup": "Domande sulla configurazione? Sono qui per aiutarti."
+    }
+  },
+  "modify": {
+    "taskTitle": "Modifica {name}",
+    "body": "Aggiorna le credenziali o le impostazioni di «{name}». Salvando, sovrascrivi la connessione esistente.",
+    "intro": "Aggiorniamo {name}.",
+    "chatRequest": "Aggiorna la connessione {name} ({label}).",
+    "savedValuesLabel": "Valori salvati",
+    "savedValuesDescription": "Modifica i valori memorizzati per questa connessione."
+  },
+  "disconnect": {
+    "title": "Disconnettere {name}?",
+    "titleFallback": "Disconnettere questa connessione?",
+    "message": "La connessione {engine} salvata e le relative credenziali verranno eliminate. Potrai riconnetterla in seguito.",
+    "confirm": "Disconnetti",
+    "busy": "Disconnessione…"
+  },
+  "oauth": {
+    "reconnectNeeded": "La connessione {engine} deve essere ricollegata: il token di aggiornamento è scaduto.",
+    "refreshRetrying": "Aggiornamento della connessione {engine} non riuscito. Nuovo tentativo automatico in corso."
+  },
+  "askUser": {
+    "selectOnly": "Per questa domanda devi scegliere una delle opzioni qui sopra. Scegline una, oppure premi Salta se vuoi scrivere altro.",
+    "rejected": "La risposta è stata rifiutata. Prova una delle opzioni proposte.",
+    "sendFailed": "Impossibile inviare la risposta. Riprova.",
+    "notAccepted": "La risposta non è stata accettata. Ricarica la conversazione per vedere la domanda aggiornata."
+  },
+  "attachments": {
+    "needSavedConversation": "Scegli un progetto e usa una conversazione salvata prima di inviare allegati.",
+    "waitForStart": "Attendi l’avvio della conversazione prima di inviare allegati.",
+    "sendFailed": "Impossibile inviare l’allegato. Riprova.",
+    "notSent": "{count, plural, one {Il file non è stato inviato perché l’agente ha prima fatto una domanda. È ancora allegato.} other {I # file non sono stati inviati perché l’agente ha prima fatto una domanda. Sono ancora allegati.}}"
+  },
+  "tasks": {
+    "stopFailed": "Impossibile interrompere l’attività: potrebbe essere ancora in esecuzione. Controlla la connessione e riprova.",
+    "ownerOnly": "Solo il proprietario può eseguire attività in questo progetto condiviso.",
+    "creating": "Creazione attività…",
+    "configuredPlanningModel": "Modello di pianificazione configurato",
+    "formSubmitFailed": "Invio del modulo non riuscito.",
+    "loadEarlierFailed": "Impossibile caricare i messaggi precedenti. Riprova."
+  },
+  "codeMode": {
+    "stopUnchecked": "La modalità codice è nascosta, ma non è stato possibile verificare del tutto le attività in esecuzione.",
+    "stopFailed": "{count, plural, one {La modalità codice è nascosta, ma non è stato possibile interrompere un’attività.} other {La modalità codice è nascosta, ma non è stato possibile interrompere # attività.}}",
+    "needFolder": "Scegli un progetto con una cartella prima di avviare Claude Code.",
+    "needModel": "Scegli un modello prima di avviare Claude Code.",
+    "noKey": "Nessuna chiave API MindsHub configurata: accedi con MindsHub o aggiungi una chiave in Impostazioni prima di usare la modalità codice.",
+    "createFailed": "Impossibile creare l’attività di Claude Code."
+  },
+  "deleteTask": {
+    "title": "Eliminare questa attività?",
+    "message": "La cronologia della conversazione e le eventuali celle del blocco appunti di questa attività verranno rimosse. L’operazione non può essere annullata.",
+    "failed": "Impossibile eliminare questa chat. È tornata nell’elenco; riprova."
+  },
+  "deleteTurn": {
+    "title": "Eliminare questo scambio?",
+    "message": "Verranno rimosse dalla conversazione sia la tua domanda sia la risposta di {agent}. Le celle del blocco appunti, gli artefatti o le scritture in memoria prodotti in questo turno restano sul disco. L’operazione non può essere annullata.",
+    "unconfirmedRefresh": "L’ultima eliminazione non è stata confermata, quindi l’elenco verrà aggiornato ora. Controllalo, poi elimina di nuovo se serve ancora.",
+    "refreshFailed": "Impossibile aggiornare questa conversazione. Ricaricala prima di eliminare altro.",
+    "messageChanged": "Il messaggio è cambiato prima di poter essere eliminato. Riprova.",
+    "unconfirmedNoRefresh": "Impossibile confermare l’eliminazione e impossibile aggiornare la conversazione. Ricaricala prima di eliminare altro.",
+    "deletedNoRefresh": "Lo scambio è stato eliminato, ma non è stato possibile aggiornare la conversazione, quindi l’elenco potrebbe non essere aggiornato. Ricaricala prima di eliminare altro.",
+    "unconfirmed": "Impossibile confermare l’eliminazione. Potrebbe essere comunque andata a buon fine, quindi la conversazione verrà aggiornata prima della prossima eliminazione.",
+    "failedWithReason": "Impossibile eliminare questo scambio: {reason}",
+    "notDeletedAsShown": "Il server non ha eliminato lo scambio come mostrato, quindi la conversazione è stata aggiornata. Controllala, poi elimina di nuovo se serve ancora."
+  },
+  "deleteProject": {
+    "title": "Eliminare il progetto «{name}»?",
+    "messageExternal": "Il progetto e le sue conversazioni verranno rimossi. La cartella {path} resta dov’è e i tuoi file al suo interno non vengono toccati, ma le cartelle skills/ e .anton/ di Cowork rimangono al suo interno. L’operazione non può essere annullata.",
+    "message": "Tutte le conversazioni, l’output del blocco appunti, la memoria e gli artefatti di questo progetto verranno rimossi dal disco. L’operazione non può essere annullata.",
+    "confirm": "Elimina progetto",
+    "failed": "Impossibile eliminare questo progetto. Non è stato rimosso nulla; riprova."
+  },
+  "display": {
+    "settings": "Impostazioni di visualizzazione",
+    "toggleTheme": "Passa da tema scuro a chiaro"
+  },
+  "compare": {
+    "unavailableTitle": "Confronta modelli non è disponibile qui",
+    "unavailableDescription": "In questa installazione non ci sono modelli tra cui scegliere, quindi non c’è nulla da confrontare. È l’operatore a decidere quali modelli puoi usare."
+  },
+  "drive": {
+    "connectTitle": "Connettere Google Drive?",
+    "connectMessage": "Per aggiungere file da Drive devi connettere il tuo account Google Drive.",
+    "chooseAccountTitle": "Scegli un account Google Drive",
+    "chooseAccountSubtitle": "Sono connessi più account Google Drive: scegli quale usare."
+  },
+  "update": {
+    "updating": "Aggiornamento...",
+    "updatingTo": "Aggiornamento a {version}...",
+    "almostThere": "Quasi fatto..."
+  },
+  "router": {
+    "unavailableTitle": "Impossibile caricare la conversazione",
+    "unavailableDescription": "Impossibile raggiungere il server. Il link è ancora valido: riprova quando sei di nuovo online.",
+    "retrying": "Nuovo tentativo…",
+    "tryAgain": "Riprova"
+  },
+  "shell": {
+    "welcome": "Ti diamo il benvenuto in {product}",
+    "setupErrorTitle": "Impossibile completare la configurazione",
+    "setupErrorBody": "Il provider è stato salvato, ma non è stato possibile applicare il modello. Controlla la connessione e riprova.",
+    "retrying": "Nuovo tentativo…",
+    "retry": "Riprova",
+    "tryAgain": "Riprova",
+    "switchToLight": "Passa al tema chiaro",
+    "switchToDark": "Passa al tema scuro",
+    "toggleTheme": "Cambia tema colore",
+    "dismiss": "Ignora",
+    "dismissUntilNextLaunch": "Ignora fino al prossimo avvio",
+    "serviceUnconfiguredTitle": "Il servizio non è ancora configurato",
+    "serviceUnavailableTitle": "Il servizio non è disponibile",
+    "serviceUnconfiguredBody": "Chiedi all’amministratore di controllare le impostazioni del modello, poi riprova.",
+    "serviceUnavailableBody": "Il server potrebbe essere in fase di riavvio. Attendi qualche istante, poi riprova."
+  },
+  "ownership": {
+    "title": "Di chi sono questi dati?",
+    "intro": "Su questo computer ci sono dati creati prima che gli account venissero tenuti separati, e non possiamo sapere se appartengono a {who}.",
+    "thisAccount": "questo account",
+    "credentials": "Non si tratta solo delle chat passate. Prendendoli, prendi anche le chiavi API dei provider salvate qui e le credenziali delle origini dati che erano state connesse.",
+    "nothingDeleted": "In ogni caso non viene eliminato nulla. Se ricominci da zero, i dati esistenti restano su questo computer per chi ne è il proprietario.",
+    "startingFresh": "Avvio da zero…",
+    "startFresh": "Ricomincia da zero",
+    "restoring": "Ripristino…",
+    "mine": "Questi dati sono miei",
+    "accountChanged": "L’account con cui hai effettuato l’accesso è cambiato. Accedi di nuovo per rispondere.",
+    "claimFailed": "Impossibile prendere quei dati. Non è stato modificato nulla: riprova."
+  },
+  "updateBanner": {
+    "downloading": "Download dell’aggiornamento…",
+    "downloadingPercent": "Download dell’aggiornamento ({percent}%)",
+    "installing": "Installazione dell’aggiornamento…",
+    "restartFailed": "L’ultimo tentativo di riavvio non è riuscito",
+    "tryAgain": "Riprova",
+    "ready": "Aggiornamento pronto",
+    "readyVersion": "Aggiornamento pronto{hasVersion, select, yes { ({version})} other {}}",
+    "restartNow": "Riavvia ora",
+    "restart": "Riavvia",
+    "readyAutoHint": "La nuova versione{hasVersion, select, yes { ({version})} other {}} è stata scaricata. Riavvia ora per usarla, oppure verrà installata automaticamente la prossima volta che chiudi l’app.",
+    "appUpdateFailed": "Aggiornamento dell’app non riuscito",
+    "retry": "Riprova",
+    "download": "Scarica",
+    "appVersionAvailable": "Nuova versione dell’app disponibile",
+    "newVersion": "Nuova versione disponibile{hasVersion, select, yes { ({version})} other {}}",
+    "abortedHint": "L’ultimo tentativo di riavvio non è riuscito. L’aggiornamento è ancora scaricato. Riprova a riavviare.",
+    "abortedHintReason": "L’ultimo tentativo di riavvio non è riuscito: {reason}. L’aggiornamento è ancora scaricato. Riprova a riavviare.",
+    "debInstallStep": "esegui {command} dalla cartella in cui l’hai scaricato",
+    "otaHint": "Ricarica l’app per completare l’aggiornamento{hasVersion, select, yes { alla versione {version}} other {}}. Viene applicato anche automaticamente la prossima volta che apri l’app.",
+    "otaFailed": "Aggiornamento non riuscito{hasVersion, select, yes { ({version})} other {}}"
+  },
+  "shellSupport": {
+    "tooOld": {
+      "title": "Questa app è troppo vecchia per questa versione di Cowork",
+      "body": "È installata la shell dell’app {installed}; quella attuale è {current}. Alcune funzioni restano nascoste finché l’app non viene aggiornata.",
+      "restartToUpdate": "Riavvia per aggiornare",
+      "downloadUpdate": "Scarica aggiornamento",
+      "checking": "Ricerca aggiornamenti…",
+      "downloading": "Download…",
+      "downloadingPercent": "Download ({percent}%)",
+      "installing": "Installazione…",
+      "retryUpdate": "Riprova aggiornamento",
+      "downloadLatest": "Scarica l’app più recente"
+    },
+    "osCapped": {
+      "minimum": "macOS {version} o versioni successive",
+      "belowFloorTitle": "Aggiorna macOS per continuare a usare Cowork in sicurezza",
+      "belowFloorBody": "Questa versione dell’app non è sicura se più persone accedono a Cowork con questo account utente del Mac: potrebbe mostrare i dati di un account alla persona che accede dopo. Le versioni più recenti risolvono il problema, ma richiedono {minimum}.",
+      "title": "La tua versione di macOS non riceve più aggiornamenti dell’app",
+      "body": "Questo Mac usa macOS {major}. Aggiorna a {minimum} per continuare a ricevere gli aggiornamenti dell’app. Col tempo alcune funzioni potrebbero smettere di funzionare."
+    }
+  },
+  "serverStatus": {
+    "exitCode": {
+      "stillStarting": "ancora in avvio",
+      "notApplicable": "non applicabile",
+      "stopped": "arrestato",
+      "unknown": "sconosciuto",
+      "neverStarted": "mai avviato"
+    },
+    "timeout": {
+      "headline": "Il backend era ancora in avvio quando l’app ha smesso di attendere.",
+      "firstLaunch": "Di solito succede al primo avvio dopo l’installazione: l’intero ambiente Python viene analizzato mentre viene eseguito per la prima volta, ed è molto più lento di tutti gli avvii successivi.",
+      "reopen": "Chiudi completamente l’app e riaprila. Il backend riparte da zero e di norma si avvia al secondo tentativo."
+    },
+    "exited": {
+      "headline": "Il backend si è avviato, ma si è chiuso prima di completare l’avvio."
+    },
+    "spawnError": {
+      "headline": "Non è stato possibile avviare il programma del backend.",
+      "antivirus": "Di solito la causa è un antivirus o un software di protezione degli endpoint che blocca l’eseguibile: consenti il backend di {product} e riprova.",
+      "reinstall": "Se non è questo il problema, esegui di nuovo il programma di installazione per reinstallare il backend."
+    },
+    "notInstalled": {
+      "headline": "Il backend non è ancora installato.",
+      "rerun": "Esegui di nuovo il programma di installazione per configurarlo."
+    },
+    "credentialClear": {
+      "headline": "Il backend non è riuscito a rimuovere le chiavi API dopo l’ultima disconnessione, quindi si è arrestato invece di usarle.",
+      "reopen": "Chiudi completamente {product} e riaprilo. Il backend riprova a ogni avvio.",
+      "filesHeld": "Se continua a non funzionare, un altro programma potrebbe tenere aperti dei file nella cartella dei dati di Cowork: chiudilo oppure riavvia il computer."
+    },
+    "incompatible": {
+      "headline": "Il backend deve essere aggiornato per questa versione di {product}.",
+      "reopen": "Chiudi completamente {product} e riaprilo per installare e avviare il backend corrispondente.",
+      "rerun": "Se l’aggiornamento non si completa, esegui di nuovo il programma di installazione più recente."
+    },
+    "notRunning": {
+      "headline": "Il backend non è in esecuzione.",
+      "startBelow": "Avvialo qui sotto."
+    },
+    "portHeld": "Il processo {pid} sta occupando la porta {port}. Chiudilo (o riavvia il computer) e avvia di nuovo il backend.",
+    "copyLog": "Se continua a non funzionare, copia il log qui sotto e invialo all’assistenza.",
+    "noLog": {
+      "timeout": "Il backend non aveva ancora scritto nulla quando l’app ha smesso di attendere, quindi non c’è alcun log da inviare.",
+      "exited": "Il log è vuoto perché il backend si è arrestato prima di scrivere qualcosa, quindi non c’è alcun log da inviare.",
+      "spawnError": "Il programma non è mai stato eseguito, quindi l’unica informazione disponibile è l’errore di avvio qui sopra; non c’è alcun log da inviare.",
+      "notInstalled": "Non è stato ancora eseguito nulla, quindi non c’è alcun log da inviare.",
+      "incompatible": "Il backend ha risposto normalmente, ma è una versione precedente non compatibile; potrebbe non esserci un log degli errori.",
+      "credentialClear": "Il backend si è arrestato prima di indicarne il motivo, quindi non c’è alcun log da inviare.",
+      "default": "Non è stato ancora acquisito alcun log, quindi non c’è nulla da inviare."
+    }
+  },
+  "restartConfirm": {
+    "confirm": "Riavvia comunque",
+    "cancel": "Annulla",
+    "unknownTitle": "Riavviare ora?",
+    "unknownBody": "Cowork non riesce a capire se ci sono attività in esecuzione. Il riavvio interrompe tutte le attività in corso.",
+    "title": "Interrompere {count, plural, one {# attività in corso} other {# attività in corso}} e riavviare?",
+    "body": "Il riavvio interrompe le attività mentre stanno rispondendo. Puoi riavviare più tardi da Impostazioni o dal banner di aggiornamento."
+  },
+  "bootStatus": {
+    "downloading": "Download dell’ultimo aggiornamento…",
+    "finishing": "Ultimi ritocchi…",
+    "installing": "Installazione dell’aggiornamento: Cowork si riaprirà…"
+  },
+  "orgs": {
+    "personal": "Personale"
+  },
+  "addon": {
+    "moveFailed": "Impossibile spostare il messaggio nella coda. Riprova.",
+    "stayQueued": "{agent} non può accettarlo ora. Resta in coda."
+  }
+}

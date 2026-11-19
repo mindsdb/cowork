@@ -1,4 +1,5 @@
 import Ico from '../Icons';
+import { useTranslation } from '../../../lib/i18n';
 
 // Small rounded checkbox — hollow while pending, accent-filled with a tick
 // once the step is done.
@@ -6,13 +7,13 @@ function Checkbox({ done }) {
   return (
     <span
       aria-hidden
-      className="shrink-0 mt-[1px] w-4 h-4 rounded-[5px] grid place-items-center text-white border border-solid [transition:background_140ms_ease,border-color_140ms_ease]"
+      className="shrink-0 mt-[1px] w-4 h-4 rounded-[5px] grid place-items-center text-white border border-solid [transition:background_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease]"
       style={{
         borderColor: done ? 'var(--accent)' : 'var(--border-02, var(--line-2))',
         background: done ? 'var(--accent)' : 'transparent',
       }}
     >
-      {done && Ico.check(11)}
+      {done && Ico.check(12)}
     </span>
   );
 }
@@ -21,6 +22,11 @@ function Checkbox({ done }) {
 // through and muted, description collapsed — revealed again on hover. Hover
 // visuals live in CSS (`.onboarding-step-row`), not React state.
 export default function OnboardingItem({ step, done, onStart }) {
+  const { t } = useTranslation('setup');
+  // Copy comes from the catalog by step id; steps.js keeps the English
+  // source (and stays the fallback for a step the catalog doesn't know).
+  const title = t(`checklist.steps.${step.id}.title`, { defaultValue: step.title });
+  const description = t(`checklist.steps.${step.id}.description`, { defaultValue: step.description });
   return (
     <button
       type="button"
@@ -38,14 +44,14 @@ export default function OnboardingItem({ step, done, onStart }) {
             textDecoration: done ? 'line-through' : 'none',
           }}
         >
-          {step.title}
+          {title}
         </span>
         {/* Collapsible description: the 0fr→1fr grid row animates height
             open/closed without hard-coding a pixel value. */}
         <span className="onboarding-step-desc">
           <span className="overflow-hidden min-h-0">
             <span className="block text-[12px] leading-[1.4] text-[var(--frost-600)] mt-[2px]">
-              {step.description}
+              {description}
             </span>
           </span>
         </span>

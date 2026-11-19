@@ -1,0 +1,498 @@
+{
+  "nav": {
+    "title": "设置",
+    "ariaLabel": "设置分区",
+    "groups": {
+      "General": "通用",
+      "Code": "代码",
+      "App": "应用",
+      "System": "系统"
+    },
+    "items": {
+      "agent": "智能体",
+      "codingAgent": "编程智能体",
+      "computers": "计算机",
+      "appearance": "外观",
+      "branding": "品牌",
+      "desktop": "桌面端",
+      "channels": "渠道",
+      "updates": "更新",
+      "backend": "后端",
+      "usage": "用量",
+      "account": "账户"
+    }
+  },
+  "header": {
+    "signIn": "登录",
+    "signInTooltip": "登录 MindsHub 以使用托管模型"
+  },
+  "autoSave": {
+    "saving": "正在保存…",
+    "failed": "无法保存",
+    "saved": "已保存",
+    "savedAutomatically": "更改会自动保存。"
+  },
+  "language": {
+    "title": "语言",
+    "ariaLabel": "语言",
+    "matchSystem": "跟随系统（{language}）"
+  },
+  "appearance": {
+    "title": "外观",
+    "style": {
+      "title": "风格",
+      "lockedSubtitle": "由当前部署设定。浅色和深色仍可自行选择。",
+      "subtitle": "标准、8-Bit，或通过“自定义”打造你自己的风格。可与浅色和深色搭配使用。",
+      "ariaLabel": "风格",
+      "optionAriaLabel": "{name} 风格"
+    },
+    "skins": {
+      "normal": {
+        "label": "标准",
+        "title": "使用标准外观。"
+      },
+      "8bit": {
+        "label": "8-Bit",
+        "title": "使用复古 8-Bit 外观。"
+      },
+      "custom": {
+        "label": "自定义",
+        "title": "设计你自己的外观。"
+      }
+    },
+    "theme": {
+      "title": "主题",
+      "subtitle": "浅色或深色，同时决定动态背景的样式。",
+      "ariaLabel": "主题",
+      "light": "浅色",
+      "lightAriaLabel": "浅色主题",
+      "lightHint": "使用浅色主题。",
+      "dark": "深色",
+      "darkAriaLabel": "深色主题",
+      "darkHint": "使用深色主题。"
+    },
+    "accent": {
+      "title": "强调色",
+      "subtitle": "用于按钮、高亮和焦点，是主题的品牌色。",
+      "ariaLabel": "自定义强调色"
+    },
+    "background": {
+      "default": "默认",
+      "lightTitle": "浅色背景",
+      "lightSubtitle": "用于浅色主题。如果选择深色，会转为同一色相的浅色调；文字会自动调整以保持清晰可读。选择“默认”时，由深色背景为其着色，否则使用浅色主题的原始外观。",
+      "lightAriaLabel": "自定义背景色（浅色模式）",
+      "lightDefaultAriaLabel": "默认浅色背景",
+      "darkTitle": "深色背景",
+      "darkSubtitle": "用于深色主题。如果选择浅色，会转为同一色相的深色调；文字会自动调整以保持清晰可读。选择“默认”时，由浅色背景为其着色，否则使用深色主题的原始外观。",
+      "darkAriaLabel": "自定义背景色（深色模式）",
+      "darkDefaultAriaLabel": "默认深色背景"
+    },
+    "corners": {
+      "title": "圆角",
+      "subtitle": "界面元素边角的锐利程度。",
+      "ariaLabel": "圆角半径",
+      "square": "直角",
+      "squareAriaLabel": "直角",
+      "squareHint": "像素风格的锐利边角。",
+      "soft": "柔和",
+      "softAriaLabel": "柔和圆角",
+      "softHint": "轻微圆角。",
+      "round": "圆润",
+      "roundAriaLabel": "大圆角",
+      "roundHint": "完全圆角。"
+    },
+    "typeface": {
+      "title": "字体",
+      "subtitle": "标准界面字体，或全部使用等宽字体，营造终端风格。",
+      "ariaLabel": "自定义字体",
+      "standard": "标准",
+      "standardAriaLabel": "标准字体",
+      "standardHint": "界面文字使用 Inter。",
+      "mono": "等宽",
+      "monoAriaLabel": "等宽字体",
+      "monoHint": "全部使用 JetBrains Mono。"
+    },
+    "scanlines": {
+      "title": "扫描线",
+      "subtitle": "在整个应用上叠加一层淡淡的 CRT 扫描线效果。",
+      "ariaLabel": "扫描线叠加"
+    },
+    "greeting": {
+      "title": "问候语",
+      "subtitle": "开始新任务时显示的文字。",
+      "hint": "开始新任务时，显示在任务输入框上方。",
+      "ariaLabel": "问候语文字"
+    },
+    "sidebarTitle": {
+      "title": "侧边栏标题",
+      "subtitle": "显示在左侧导航面板顶部。留空则使用默认标题 {product}。",
+      "hint": "替换导航面板中的 {product} 文字标识。",
+      "ariaLabel": "侧边栏标题文字"
+    },
+    "sidebarTitleColor": {
+      "title": "侧边栏标题颜色",
+      "subtitle": "为侧边栏标题选择颜色，或跟随主题的默认文字颜色。",
+      "ariaLabel": "侧边栏标题颜色",
+      "follow": "跟随主题",
+      "followAriaLabel": "跟随主题颜色"
+    },
+    "sidebarLogo": {
+      "title": "侧边栏徽标",
+      "subtitle": "显示在侧边栏标题旁边的图标。支持 PNG、JPG 或 SVG，小于 300 KB。",
+      "change": "更换徽标",
+      "upload": "上传徽标",
+      "remove": "移除",
+      "tooLarge": "徽标必须小于 300 KB。"
+    },
+    "favicon": {
+      "title": "浏览器标签页图标",
+      "subtitle": "支持 PNG、ICO、SVG 或 WEBP，小于 100 KB。建议使用至少 32 × 32 像素的正方形图片。",
+      "previewAlt": "浏览器标签页图标预览",
+      "change": "更换图标",
+      "upload": "上传图标",
+      "remove": "移除",
+      "removeAriaLabel": "移除浏览器标签页图标",
+      "fileAriaLabel": "浏览器标签页图标文件",
+      "wrongType": "请选择 PNG、ICO、SVG 或 WEBP 格式的图片。",
+      "tooLarge": "浏览器标签页图标必须小于 100 KB。",
+      "unreadable": "无法读取此图片，请换一个文件试试。"
+    },
+    "figureSources": {
+      "title": "显示数字来源",
+      "subtitle": "为回答中的每个数字加下划线并标明其来源步骤，并标记未由任何步骤返回的数字。"
+    },
+    "animatedBackground": {
+      "title": "动态背景",
+      "subtitle": "在应用背后显示动态点阵，而不是纯色背景。"
+    },
+    "counters": {
+      "title": "显示导航面板计数",
+      "subtitle": "在“项目”“定时任务”“产物”“已连接的应用”上显示数量徽章，并在“最近”的每一行显示距今时间。",
+      "ariaLabel": "导航面板计数"
+    },
+    "themeToggle": {
+      "title": "主题切换按钮",
+      "subtitle": "在窗口角落的显示按钮上切换浅色和深色。"
+    },
+    "styleToggle": {
+      "title": "8-Bit 风格切换按钮",
+      "subtitle": "在同一按钮上切换标准和 8-Bit 风格。两项都开启时，点按该按钮会打开显示设置。"
+    },
+    "setByOrg": "由你的组织设定。",
+    "yourStyle": {
+      "title": "你的风格",
+      "description": "这些设置会覆盖你所在组织的外观，仅对你生效。",
+      "off": "个人风格设置已关闭。所有人看到的都是组织的外观。",
+      "orgSetsRest": "其他风格设置由你的组织品牌设定。",
+      "changeInBranding": "在“品牌”中更改 →"
+    },
+    "display": {
+      "title": "显示",
+      "description": "个人显示偏好，只有你能看到。"
+    }
+  },
+  "mobile": {
+    "back": "返回设置",
+    "close": "关闭设置"
+  },
+  "footer": {
+    "hint": {
+      "missingNames": "每个自定义服务商都需要名称",
+      "saving": "正在保存…",
+      "noChanges": "没有未保存的更改",
+      "save": "保存更改。",
+      "retest": "重新测试失败的服务商。",
+      "saveAndTest": "保存更改并重新运行服务商测试。"
+    },
+    "status": {
+      "testing": "正在测试配置…",
+      "saving": "正在保存设置…",
+      "testPassed": "测试通过，服务商、模型和凭据均正常。",
+      "saved": "设置已保存。",
+      "testProblem": "测试发现问题。",
+      "configProblem": "配置检查发现问题。",
+      "applyOnSave": "更改将在保存后生效。"
+    },
+    "button": {
+      "saving": "正在保存…",
+      "save": "保存设置",
+      "saved": "已保存"
+    },
+    "errors": {
+      "saveFailed": "无法保存设置。",
+      "verifyFailed": "设置已保存，但验证失败：{error}",
+      "checkFailed": "无法检查配置。",
+      "validateFailed": "无法验证设置。"
+    }
+  },
+  "fields": {
+    "clearTooltip": "清除（点按“保存设置”后生效）",
+    "clearAriaLabel": "清除值"
+  },
+  "apiKey": {
+    "ariaLabel": "API 密钥",
+    "namedAriaLabel": "{name} API 密钥",
+    "revealFirst": "请先显示密钥再复制",
+    "copied": "已复制",
+    "copyFailed": "无法复制，请选中密钥手动复制",
+    "copy": "复制到剪贴板",
+    "copiedAriaLabel": "已复制到剪贴板",
+    "copyAriaLabel": "将密钥复制到剪贴板",
+    "hide": "隐藏密钥",
+    "revealing": "正在显示…",
+    "reveal": "显示密钥",
+    "clearTooltip": "清除此密钥（点按“保存设置”后生效）",
+    "clearAriaLabel": "清除密钥"
+  },
+  "budget": {
+    "fieldTitle": "{label}（{min}–{max}，默认 {fallback}{unit, select, million { 百万 token} other {}}）",
+    "millionTokens": "百万 token",
+    "safetyLimit": "安全上限",
+    "noLimitHint": "无上限，仅受步骤数和自动继续次数上限约束",
+    "default": "默认 {value}",
+    "or": "— 或 —"
+  },
+  "probe": {
+    "byok": "或者在下方添加你自己的服务商和 API 密钥。",
+    "noCredits": "没有可用积分。",
+    "topUp": "充值余额 →",
+    "addFunds": "充值 →",
+    "slowDown": "{sentence}这不是积分问题。",
+    "budgetReached": "你所在组织的预算已用完。{detail}",
+    "viewBudgetsArrow": "查看预算 →"
+  },
+  "providers": {
+    "title": "LLM 服务商",
+    "unavailable": "已配置的服务商当前不可用。请重试，或联系你的管理员。",
+    "status": {
+      "connected": "已连接",
+      "unableToConnect": "无法连接",
+      "testing": "正在测试…",
+      "notTested": "未测试"
+    },
+    "statusTitle": {
+      "signedIn": "已通过 MindsHub 登录连接。",
+      "passed": "上次测试已通过",
+      "passedDetail": "上次测试已通过（{detail}）",
+      "failed": "上次测试失败",
+      "failedDetail": "上次测试失败：{detail}",
+      "testing": "正在测试…",
+      "notTested": "尚未测试。请保存设置并运行测试以进行验证。",
+      "notTestedNoTests": "尚未测试服务商连接。"
+    },
+    "desc": {
+      "mindsCloud": "所有前沿模型集于一处：Claude、GPT、Gemini 等。",
+      "anthropic": "使用你的 Anthropic API 密钥调用 Claude 模型。",
+      "openai": "使用你的 OpenAI API 密钥调用 GPT 模型。",
+      "gemini": "通过 Google 的 OpenAI 兼容端点使用 Gemini 模型。",
+      "openaiCompatible": "任何兼容 OpenAI 的服务器（Ollama、vLLM、Together、Groq 等）。"
+    },
+    "customHeading": "自定义 OpenAI 兼容服务商",
+    "customName": {
+      "label": "自定义服务商名称",
+      "hint": "此自定义服务商的显示名称，会出现在下方的模型下拉菜单中。",
+      "required": "名称为必填项"
+    },
+    "baseUrl": "基础 URL",
+    "getKey": "在 {link} 获取你的 API 密钥",
+    "openInBrowser": "在浏览器中打开 {url}。",
+    "noAccount": "还没有账户？",
+    "signUp": "注册 →",
+    "signUpTooltip": "在浏览器中打开 MindsHub 注册页面。",
+    "remove": "移除此服务商",
+    "editKey": "编辑 API 密钥",
+    "allConfigured": "所有类型的服务商均已配置",
+    "addAnother": "添加其他服务商",
+    "add": "添加服务商",
+    "choose": "选择服务商：",
+    "hidePicker": "隐藏服务商选择器。",
+    "closePicker": "关闭服务商选择器"
+  },
+  "agent": {
+    "modelRouter": "模型路由",
+    "roles": {
+      "planning": "规划模型",
+      "router": "路由与摘要模型",
+      "coding": "编程模型",
+      "planningSubtitle": "用于推理、编排和回复。",
+      "codingSubtitle": "用于在草稿区生成代码。"
+    },
+    "providerLabel": "服务商：",
+    "modelLabel": "模型：",
+    "providerHint": "选择为{role, select, planning {规划} coding {编程} router {路由} other {“{role}”}}角色提供支持的服务商。",
+    "modelHint": "选择用于{role, select, planning {规划} coding {编程} router {路由} other {“{role}”}}的模型。选择“其他…”可输入自定义模型 ID。",
+    "customModelPlaceholder": "输入模型 ID",
+    "customModelHint": "自由填写的模型 ID，将原样发送给服务商。",
+    "modelIdHint": "将原样发送给此服务商的模型 ID。",
+    "checking": "正在检查 {provider} 连接…",
+    "notConfigured": "{provider} 尚未配置。请在上方“LLM 服务商”中添加其凭据，或选择其他服务商。",
+    "unknownNotConfigured": "此服务商尚未配置。请在上方“LLM 服务商”中添加。",
+    "failed": "{provider} 上次测试失败。请在上方“LLM 服务商”中检查，或选择其他服务商。",
+    "modelUnavailable": "{model} 不可用。请选择其他模型，或联系你的管理员。",
+    "modelRestricted": "{model} 已被你所在组织的管理员限制使用。请选择其他模型。",
+    "modelNeedsCredits": "{model} 需要积分。{link}后即可使用。",
+    "topUpBalance": "充值余额",
+    "modelBudgetReached": "你所在组织的预算已用完，无法运行 {model}。",
+    "viewBudgets": "查看预算"
+  },
+  "memory": {
+    "title": "记忆",
+    "mode": {
+      "title": "记忆模式",
+      "subtitle": "{agent} 更新长期记忆的方式。",
+      "ariaLabel": "记忆模式",
+      "autopilot": "自动",
+      "autopilotHint": "{agent} 自动更新长期记忆。",
+      "copilot": "需确认",
+      "copilotHint": "{agent} 提出记忆更新建议，由你确认。",
+      "off": "关闭",
+      "offHint": "停用长期记忆更新。"
+    },
+    "episodic": {
+      "title": "情景记忆",
+      "subtitle": "保存对话历史，以便日后回忆。"
+    },
+    "dashboards": {
+      "title": "主动生成仪表板",
+      "subtitle": "根据草稿区输出自动生成 HTML 报告。"
+    },
+    "actFirst": {
+      "title": "先行动，后询问",
+      "subtitle": "按合理的默认选择直接执行，并在回复中说明所做的假设，而不是停下来询问。"
+    }
+  },
+  "advanced": {
+    "title": "高级设置",
+    "limits": {
+      "title": "限制任务的执行量",
+      "subtitleOn": "达到下方设置的步骤数、自动继续次数或 token 数时，{agent} 会停止，或先询问你再继续。",
+      "subtitleOff": "关闭：任务会一直运行到完成，直至达到一个较高的安全上限，届时 {agent} 会先询问你再继续。开启后可自行设置上限。"
+    },
+    "maxSteps": {
+      "title": "每个任务的最大步骤数",
+      "subtitle": "{agent} 处理一个请求时，在暂停并向你确认之前最多可执行的操作数（运行代码、读取文件、搜索等）。调高可让大型任务一次完成；调低可更严格地控制时间和成本。"
+    },
+    "maxContinuations": {
+      "title": "最大自动继续次数",
+      "subtitle": "当 {agent} 停止但工作看起来尚未完成时，Cowork 会让它继续完成，此项限制最多继续几次。调高可在无人值守时完成得更彻底；设为 0 则在首次尝试后停止（你仍会收到一份未完成内容的摘要）。"
+    },
+    "maxTokens": {
+      "title": "每个任务的最大 token 数",
+      "subtitle": "{agent} 处理一个请求时，在暂停并向你确认之前最多可使用的 token 数。这样，卡住的任务就不会在没有完成的情况下耗掉你大量的免费额度或余额。如果你经常交给它大型工作，可以调高；如果想控制单个请求的最高花费，可以调低。",
+      "noLimit": "无上限"
+    },
+    "jev": {
+      "title": "使用 Jev 快速回答",
+      "subtitle": "Jev 是 MindsHub 的决策模型，它会读取每条消息和近期对话，判断你选择的模型能否直接回答，并检查 {agent} 是否已完成工作。关闭后，每条消息都会交由 {agent} 运行。"
+    }
+  },
+  "desktop": {
+    "title": "桌面端",
+    "keepAwake": {
+      "title": "为定时任务保持唤醒",
+      "subtitle": "接通电源时，如果有定时任务正在运行或即将运行，会阻止这台计算机进入睡眠。它无法唤醒已处于睡眠状态的计算机，也无法阻止合上盖子后进入睡眠。"
+    }
+  },
+  "branding": {
+    "title": "品牌",
+    "description": "你所在组织的外观，适用于组织中的所有人。成员下次打开应用或设置时就会看到。",
+    "adminOnly": "由你的组织管理员设定。",
+    "saveError": {
+      "forbidden": "只有组织管理员才能更改品牌设置。",
+      "generic": "无法保存品牌设置。请重试。"
+    },
+    "sidebarTitle": {
+      "title": "侧边栏标题",
+      "subtitle": "为组织中的所有人显示在侧边栏顶部。“公司名称”会跟随控制台中的改名；自定义标题保持你输入的内容；“无”只显示徽标。",
+      "ariaLabel": "侧边栏标题",
+      "company": "公司名称",
+      "companyHint": "跟随公司名称，包括改名。",
+      "custom": "自定义",
+      "customHint": "你输入的标题，改名后保持不变。",
+      "none": "无",
+      "noneAriaLabel": "无（仅徽标）",
+      "noneHint": "不显示标题：只显示徽标。",
+      "customAriaLabel": "自定义侧边栏标题",
+      "required": "请输入侧边栏标题，或选择“公司名称”或“无”。",
+      "preview": "侧边栏显示：",
+      "logoOnly": "仅徽标",
+      "noTitle": "（无标题）"
+    },
+    "logo": {
+      "title": "徽标和图标",
+      "subtitle": "徽标即侧边栏徽标，图标即浏览器标签页图标，适用于组织中的所有人。它们在控制台中设置。",
+      "iconAlt": "组织图标",
+      "logoAlt": "组织徽标",
+      "logoDarkAlt": "用于深色背景的组织徽标",
+      "noneSet": "未设置。",
+      "opensInBrowser": "在浏览器中打开",
+      "editInConsole": "在控制台中编辑"
+    },
+    "theme": {
+      "title": "组织主题",
+      "subtitle": "为所有人设定浅色或深色，或交由每位成员自行选择。",
+      "ariaLabel": "组织主题",
+      "notSet": "未设置",
+      "notSetAriaLabel": "无组织主题",
+      "lightAriaLabel": "浅色组织主题",
+      "darkAriaLabel": "深色组织主题"
+    },
+    "style": {
+      "title": "组织风格",
+      "deploymentLocked": "由当前部署设定，适用于其中的所有组织。",
+      "subtitle": "组织中所有人的初始外观。选择“自定义”可设置颜色、背景、圆角和字体。",
+      "ariaLabel": "组织风格",
+      "notSet": "未设置",
+      "notSetAriaLabel": "无组织风格",
+      "notSetHint": "成员保持应用的标准外观。",
+      "optionAriaLabel": "{name} 组织风格"
+    },
+    "accent": {
+      "subtitle": "用于按钮、高亮和焦点框。",
+      "ariaLabel": "组织强调色"
+    },
+    "background": {
+      "lightSubtitle": "用于浅色主题。如果选择深色，会转为同一色相的浅色调；文字会自动调整以保持清晰可读。选择“默认”时，由深色背景为其着色，否则使用原始的浅色外观。",
+      "lightAriaLabel": "组织浅色背景颜色",
+      "lightDefaultAriaLabel": "默认组织浅色背景",
+      "darkSubtitle": "用于深色主题。如果选择浅色，会转为同一色相的深色调；文字会自动调整以保持清晰可读。选择“默认”时，由浅色背景为其着色，否则使用原始的深色外观。",
+      "darkAriaLabel": "组织深色背景颜色",
+      "darkDefaultAriaLabel": "默认组织深色背景"
+    },
+    "corners": {
+      "ariaLabel": "组织圆角半径",
+      "squareAriaLabel": "组织直角",
+      "softAriaLabel": "组织柔和圆角",
+      "roundAriaLabel": "组织大圆角"
+    },
+    "typeface": {
+      "subtitle": "标准界面字体，或全部使用等宽字体。",
+      "ariaLabel": "组织字体",
+      "standardAriaLabel": "组织标准字体",
+      "monoAriaLabel": "组织等宽字体"
+    },
+    "greeting": {
+      "title": "组织问候语",
+      "subtitle": "成员开始新任务时看到的文字。留空则使用标准问候语。",
+      "ariaLabel": "组织问候语"
+    },
+    "membersChoose": {
+      "title": "允许成员选择自己的风格",
+      "subtitle": "开启：成员以组织风格为起点，并可在“你的风格”中更改。关闭：所有人都看到组织风格。"
+    },
+    "guidelines": {
+      "title": "Anton 品牌指南",
+      "subtitle": "Anton 在演示文稿、文档、应用和图表中应如何使用你的品牌：语气、推荐或避免使用的措辞、徽标的位置。Anton 也会获取上方设置的颜色、字体和徽标。",
+      "placeholder": "Markdown。例如：\n- 标题只大写首字母\n- 在标题页幻灯片上将徽标放在左上角"
+    },
+    "footer": {
+      "ariaLabel": "未保存的品牌更改",
+      "saving": "正在保存…",
+      "unsaved": "品牌更改尚未保存。你现在已能看到；保存后其他人也会看到。",
+      "cancel": "取消",
+      "save": "保存品牌设置",
+      "saved": "已保存。成员下次打开应用或设置时就会看到。",
+      "clean": "没有未保存的品牌更改"
+    }
+  }
+}

@@ -1,7 +1,10 @@
 // Whose artifact this is, as far as the viewer is allowed to know (ENG-2979).
 //
-// The server never names another member: shared_resources.py returns an
-// actor's identity only to that actor. So the UI can say "not you", never who.
+// shared_resources.py never names another member: it returns an actor's
+// identity only to that actor. So this marker can say "not you", never who.
+// With live apps on, two places name another member, and only to someone that
+// member shared with: `ownerEmail` in the shared-live-apps list, and
+// `receivedFrom` on a copy's card in the artifact list (lib/liveAppSharing.js).
 //
 // Keyed on `role`, never on `canEdit`: the server lowers `canEdit` for an owner
 // who lacks the `artifact.manage` product permission, and that artifact is
@@ -9,26 +12,31 @@
 //
 // No capabilities, no marker. That is fail-open on purpose, unlike
 // canUseSharedResource: this is a hint, and the server enforces every action.
-import { OTHER_ACTOR_LABEL } from './sharedResourceAccess';
+import { otherActorLabel } from './sharedResourceAccess';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.artifactAuthorship.${key}`, { ns: 'projects', ...vars });
 
 export const UNKNOWN_OWNER_LABEL = 'Unknown owner';
+export const unknownOwnerLabel = () => tr('unknownOwner');
 
-const OTHER_MEMBER = Object.freeze({
+/* Built per call so the copy follows the current language. */
+const OTHER_MEMBER = () => Object.freeze({
   kind: 'other',
-  label: OTHER_ACTOR_LABEL,
-  description: 'Created by another member of this project. You can review it but not change it.',
+  label: otherActorLabel(),
+  description: tr('otherMemberDescription'),
 });
 
-const UNKNOWN_OWNER = Object.freeze({
+const UNKNOWN_OWNER = () => Object.freeze({
   kind: 'unknown',
-  label: UNKNOWN_OWNER_LABEL,
-  description: "Nobody is recorded as this artifact's owner.",
+  label: unknownOwnerLabel(),
+  description: tr('unknownOwnerDescription'),
 });
 
 export function artifactAuthorship(capabilities) {
   if (!capabilities) return null;
   // Checked first: the server sends it together with role 'reviewer'.
-  if (capabilities.ownerUnknown === true) return UNKNOWN_OWNER;
-  if (capabilities.role === 'reviewer') return OTHER_MEMBER;
+  if (capabilities.ownerUnknown === true) return UNKNOWN_OWNER();
+  if (capabilities.role === 'reviewer') return OTHER_MEMBER();
   return null;
 }

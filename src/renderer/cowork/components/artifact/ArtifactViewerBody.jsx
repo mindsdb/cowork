@@ -5,9 +5,17 @@ import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { ConfirmModal } from '../ConfirmModal';
 import { CommentsPanel, CommentsToolbar } from './comments';
+import { useDraftImageLoader } from './draftImages';
+import { StatsPanel } from './stats/StatsPanel';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
+import { LiveAppPreview } from './LiveAppPreview';
+import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
+import { launchLiveAppLabel } from '../../lib/liveAppState';
+import { DocumentPreview } from '../../preview/DocumentPreview';
+import { csvPreviewNotice } from './artifactPreviewUtils';
+import { useTranslation } from '../../../lib/i18n';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -17,6 +25,7 @@ const FONT_MONO = "var(--font-mono)";
 // iframe has actually painted (or while a text preview is fetching), so the
 // user never sees a flash of empty grey.
 function PreviewPlaceholder() {
+  const { t } = useTranslation('artifacts');
   return (
     <div aria-hidden="true" style={{
       position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
@@ -27,13 +36,43 @@ function PreviewPlaceholder() {
         fontSize: 'clamp(40px, 9vw, 84px)', color: 'var(--ink)', opacity: 0.06,
         transform: 'rotate(-12deg)', letterSpacing: '-0.02em',
         userSelect: 'none', whiteSpace: 'nowrap',
-      }}>Preview</span>
+      }}>{t('body.previewWatermark')}</span>
       <div style={{
         position: 'absolute', bottom: 22,
         display: 'flex', alignItems: 'center', gap: 8,
         color: 'var(--ink-4)', fontFamily: FONT_BODY, fontSize: 12,
       }}>
-        <Spinner /> Loading preview…
+        <Spinner /> {t('documentPreview.loading')}
+      </div>
+    </div>
+  );
+}
+
+// Live apps keep their own origin while the pane hosts their trusted bootstrap.
+function LiveAppPanel({ notice, state, reloadKey, onOpen, onLaunch }) {
+  const origin = host.isWeb ? liveAppPreviewOrigin(state) : '';
+  if (origin) return <LiveAppPreview key={`${state.launchId}:${reloadKey}`} origin={origin} launchId={state.launchId} reloadKey={reloadKey} onOpen={onOpen} />;
+  if (!notice) return <PreviewPlaceholder />;
+  const address = notice.address ? new URL(notice.address) : null;
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
+      <div style={{
+        display: 'grid', justifyItems: 'center', gap: 12, maxWidth: 460,
+        textAlign: 'center', fontFamily: FONT_BODY,
+      }}>
+        <div style={{ color: 'var(--ink-2)', fontSize: 13 }}>{notice.text}</div>
+        {address && (
+          <Button onClick={onOpen} title={address.href}>
+            {Ico.arrowUpRight(14)}
+            {address.host}
+          </Button>
+        )}
+        {notice.canLaunch && onLaunch && (
+          <Button onClick={onLaunch}>
+            {Ico.play(14)}
+            {launchLiveAppLabel()}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -41,12 +80,19 @@ function PreviewPlaceholder() {
 
 export function ArtifactViewerBody({
   workspace,
+  // The viewer's Live edit layer (ENG-4227): `{ source }`, the code editor in
+  // the preview's place. Without it the body follows `workspace.mode`.
+  layers = null,
   preview,
   review,
+  stats = null,
   agentReview,
 }) {
+  const { t } = useTranslation('artifacts');
   const {
     draftUrl: draftPreviewUrl,
+    contentVersion,
+    document: documentPreview,
     error: err,
     setError: setErr,
     isText,
@@ -62,6 +108,7 @@ export function ArtifactViewerBody({
     csv: csvPreview,
     onDownload,
     onOpenOS,
+    liveApp,
     url: previewUrl,
     doc: previewDoc = '',
     kind: previewKind,
@@ -70,6 +117,7 @@ export function ArtifactViewerBody({
     iframeReady,
     setIframeReady,
     onReload,
+    reloadPhase = 'idle',
   } = preview;
   const {
     layer,
@@ -96,13 +144,17 @@ export function ArtifactViewerBody({
     || /\.html?$/i.test(sourcePath)
   );
   const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
-  const showEditor = workspace.mode === 'edit' && !!workspace.source;
+  const showEditor = (layers ? layers.source : workspace.mode === 'edit') && !!workspace.source;
   const [retainedEditorKey, setRetainedEditorKey] = useState('');
   // Rejecting restores the pre-agent content over head. Once the artifact has
   // moved on, that also discards the work written since, so the server refuses
   // until the user has been told exactly that and said yes.
   const [confirmRejectHead, setConfirmRejectHead] = useState(null);
   const [confirmRejectError, setConfirmRejectError] = useState('');
+  // One loader for Preview and Edit's split preview, so switching between
+  // them asks for no image twice. Keyed on the viewer's content version, so a
+  // change to the artifact or a Reload asks again.
+  const loadDraftImage = useDraftImageLoader(draftPreviewUrl, contentVersion);
 
   // Once the preview has painted, prepare the HTML editor during idle time.
   // The first Edit click is then a surface swap, not a second parse/download;
@@ -130,6 +182,7 @@ export function ArtifactViewerBody({
       onChange={workspace.setDraft}
       onSave={(content) => workspace.save('Edited artifact', content)}
       draftUrl={draftPreviewUrl}
+      loadImage={loadDraftImage}
     />
   ) : null;
 
@@ -137,6 +190,10 @@ export function ArtifactViewerBody({
     <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
       <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
     </div>
+  ) : liveApp ? (
+    <LiveAppPanel {...liveApp} />
+  ) : documentPreview ? (
+    <DocumentPreview {...documentPreview} />
   ) : isText ? (
     loading || !textPreview ? (
       <PreviewPlaceholder />
@@ -150,7 +207,7 @@ export function ArtifactViewerBody({
         }}
       >
         {textExt === '.md' ? (
-          <MarkdownContent text={textPreview.content} id={artifact.path} />
+          <MarkdownContent text={textPreview.content} id={artifact.path} loadImage={loadDraftImage} />
         ) : textExt === '.csv' && csvPreview ? (
           <MarkdownContent text={csvPreview.markdown} id={artifact.path} />
         ) : (
@@ -168,13 +225,11 @@ export function ArtifactViewerBody({
             gap: 12, flexWrap: 'wrap',
           }}>
             <span>
-              {csvPreview && csvPreview.truncated
-                ? `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`
-                : 'Preview is truncated.'}
+              {csvPreviewNotice(csvPreview)}
             </span>
             <Button onClick={host.isWeb ? onDownload : onOpenOS}>
-              {host.isWeb ? Ico.download(13) : Ico.externalLink(13)}
-              {host.isWeb ? 'Download full file' : 'Open full file in OS'}
+              {host.isWeb ? Ico.download(14) : Ico.externalLink(14)}
+              {host.isWeb ? t('body.downloadFull') : t('body.openFullInOs')}
             </Button>
           </div>
         )}
@@ -183,13 +238,13 @@ export function ArtifactViewerBody({
   ) : isImage ? (
     imageFailed ? (
       <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
-        <div style={{ color: 'var(--ink-3)', fontSize: 13, fontFamily: FONT_BODY }}>Could not load image.</div>
+        <div style={{ color: 'var(--ink-3)', fontSize: 13, fontFamily: FONT_BODY }}>{t('body.imageFailed')}</div>
       </div>
     ) : imageSrc ? (
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <img
           src={imageSrc}
-          alt={title || 'Artifact preview'}
+          alt={title || t('body.artifactPreview')}
           style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }}
         />
       </div>
@@ -201,7 +256,7 @@ export function ArtifactViewerBody({
       {(previewUrl || previewDoc) && (
         <iframe
           ref={iframeRef}
-          title={title || 'Artifact preview'}
+          title={title || t('body.artifactPreview')}
           // The comment-layer activation flag (when applicable) is already
           // baked into previewUrl/previewDoc at mount time, so neither prop
           // below is reactive after the initial mount.
@@ -213,11 +268,21 @@ export function ArtifactViewerBody({
             : 'allow-scripts allow-popups allow-forms allow-modals'}
           style={{
             width: '100%', height: '100%', border: 0, background: '#fff',
-            opacity: iframeReady ? 1 : 0, transition: 'opacity 180ms ease',
+            opacity: iframeReady ? 1 : 0, transition: 'opacity var(--dur-layout) ease',
           }}
         />
       )}
-      {(loading || !(previewUrl || previewDoc) || !iframeReady) && <PreviewPlaceholder />}
+      {/* Under the reload cover the page reloads unseen: no placeholder
+          flashes in between, the cover itself is the wait. */}
+      {(loading || !(previewUrl || previewDoc) || !iframeReady) && reloadPhase === 'idle' && <PreviewPlaceholder />}
+      {reloadPhase !== 'idle' && (
+        <div
+          className="artifact-preview-reload-cover"
+          data-phase={reloadPhase}
+          data-testid="preview-reload-cover"
+          aria-hidden="true"
+        />
+      )}
     </>
   );
 
@@ -235,10 +300,10 @@ export function ArtifactViewerBody({
             {htmlSource || !(isText || isImage) ? (
               <>
                 {htmlSource && (showEditor || retainedEditorKey === editorKey) && (
-                  <div className="artifact-mode-surface" hidden={!showEditor}>{sourceEditor}</div>
+                  <div className="artifact-mode-surface is-source-side" data-testid="source-surface" hidden={!showEditor}>{sourceEditor}</div>
                 )}
                 {!htmlSource && showEditor ? sourceEditor : (
-                  <div className="artifact-mode-surface" hidden={showEditor}>{previewContent}</div>
+                  <div className="artifact-mode-surface is-preview-side" data-testid="preview-surface" hidden={showEditor}>{previewContent}</div>
                 )}
               </>
             ) : showEditor ? sourceEditor : previewContent}
@@ -256,7 +321,8 @@ export function ArtifactViewerBody({
               onClose={toggleComments}
             />
           )}
-          {textSelection && workspace.mode === 'review' && (
+          {/* Stats replaces the comments chrome, so no composer opens beside it. */}
+          {textSelection && commentsOpen && !stats?.open && (
             <TextSelectionComment
               selection={textSelection}
               onCancel={() => setTextSelection(null)}
@@ -289,6 +355,19 @@ export function ArtifactViewerBody({
             onClose={() => setInboxOpen(false)}
           />
         )}
+        {stats?.open && (
+          <StatsPanel
+            data={stats.controller?.data ?? null}
+            loading={!!stats.controller?.loading}
+            error={stats.controller?.error ?? null}
+            trackingBusy={!!stats.controller?.trackingBusy}
+            accessMode={stats.accessMode}
+            accessLoaded={!!stats.accessLoaded}
+            onToggleTracking={stats.controller?.setTracking}
+            onRetry={stats.controller?.reload}
+            onClose={stats.onClose}
+          />
+        )}
         <ArtifactComparison
           comparison={workspace.comparison}
           busy={repairBusy || workspace.status === 'saving'}
@@ -306,7 +385,7 @@ export function ArtifactViewerBody({
               if (decisionError?.status === 409) {
                 setConfirmRejectHead(workspace.currentRevision?.id || null);
               } else {
-                setErr(decisionError?.message || 'Could not reject the agent change. Try again.');
+                setErr(decisionError?.message || t('body.rejectFailed'));
               }
             } finally {
               setRepairBusy(false);
@@ -326,12 +405,12 @@ export function ArtifactViewerBody({
                 ? await comments.setStatus(threadId, 'resolved')
                 : true;
               if (!resolved) {
-                setErr('The change was accepted, but the comment could not be resolved. Try resolving it again.');
+                setErr(t('body.resolveFailed'));
               }
               await workspace.load();
               onReload();
             } catch (decisionError) {
-              setErr(decisionError?.message || 'Could not accept the agent change. Try again.');
+              setErr(decisionError?.message || t('body.acceptFailed'));
             } finally {
               setRepairBusy(false);
             }
@@ -339,11 +418,10 @@ export function ArtifactViewerBody({
         />
         <ConfirmModal
           open={confirmRejectHead !== null}
-          title="Restore the earlier version?"
-          message={"This artifact changed after the agent's edit. Restoring the version "
-            + 'from before it will also discard everything written since.'}
-          confirmLabel="Restore anyway"
-          busyLabel="Restoring…"
+          title={t('body.restoreTitle')}
+          message={t('body.restoreMessage')}
+          confirmLabel={t('body.restoreAnyway')}
+          busyLabel={t('body.restoring')}
           destructive
           busy={repairBusy}
           error={confirmRejectError}
@@ -361,7 +439,7 @@ export function ArtifactViewerBody({
               setConfirmRejectHead(null);
             } catch (decisionError) {
               setConfirmRejectError(decisionError?.message
-                || 'Could not restore the earlier version. Try again.');
+                || t('body.restoreFailed'));
             } finally {
               setRepairBusy(false);
             }

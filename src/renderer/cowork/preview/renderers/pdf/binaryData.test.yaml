@@ -1,0 +1,18 @@
+# Requests for binaryData.test.ts, each as pdf.js makes them: a kind and a file
+# name. `served` ones reach ctx.requestAsset with that exact name. `refused`
+# ones fail without reaching it.
+
+served:
+  - { kind: cMapUrl, filename: UniGB-UCS2-H.bcmap }
+  - { kind: cMapUrl, filename: Adobe-Japan1-UCS2.bcmap }
+  - { kind: standardFontDataUrl, filename: LiberationSans-Regular.ttf }
+  - { kind: standardFontDataUrl, filename: FoxitSerif.pfb }
+
+refused:
+  - { kind: wasmUrl, filename: openjpeg.wasm }
+  - { kind: wasmUrl, filename: jbig2.wasm }
+  - { kind: iccUrl, filename: sRGB.icc }
+  - { kind: cMapUrl, filename: ../../api/v1/x.bcmap }
+  - { kind: cMapUrl, filename: 'https://docs.google.com/x.bcmap' }
+  - { kind: standardFontDataUrl, filename: fonts/LiberationSans-Regular.ttf }
+  - { kind: standardFontDataUrl, filename: LiberationSans-Regular.woff2 }

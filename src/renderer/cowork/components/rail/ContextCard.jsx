@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 // Context card body — surfaces memories (Project + Global) AND
 // project instructions (`.anton/anton.md`) plus any legacy `.context/`
 // files. Listed via GET /projects/{name}/files; Working folder hides
@@ -28,10 +29,13 @@ import {
 import ContextFileModal from '../project/ContextFileModal';
 import { ConfirmModal } from '../ConfirmModal';
 import { OverflowMenu } from '../OverflowMenu';
+import { RailShowMore } from './RailShowMore';
 import * as host from '../../../platform/host';
 import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 import { openAuthenticatedResource } from '../../lib/authenticatedResource';
 import { canUseSharedResource } from '../../lib/sharedResourceAccess';
+import { PROJECT_FILES_CHANGED } from '../sharepoint/SharePointImportModal';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 /*
   Ticket guard for the async loads that paint shared state. Every start claims
@@ -53,10 +57,10 @@ function relativeAge(ts) {
   const d = typeof ts === 'string' ? new Date(ts) : new Date(ts);
   if (Number.isNaN(d.getTime())) return '';
   const secs = Math.max(0, (Date.now() - d.getTime()) / 1000);
-  if (secs < 60) return 'just now';
-  if (secs < 3600) return `${Math.floor(secs / 60)}m`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
-  return `${Math.floor(secs / 86400)}d`;
+  if (secs < 60) return i18n.t('common.time.justNow', { ns: 'shell' });
+  if (secs < 3600) return i18n.t('common.time.minutesShort', { ns: 'shell', count: Math.floor(secs / 60) });
+  if (secs < 86400) return i18n.t('common.time.hoursShort', { ns: 'shell', count: Math.floor(secs / 3600) });
+  return i18n.t('common.time.daysShort', { ns: 'shell', count: Math.floor(secs / 86400) });
 }
 
 function mergeFileResource(current, fresh) {
@@ -94,15 +98,20 @@ function mergeFileResource(current, fresh) {
   return merged;
 }
 
+// Hover says what the file is for, not what's in it: memory files grow
+// to pages of raw markdown, and clicking opens the editor anyway.
+// Message keys; translated at render.
+const MEMORY_DESCRIPTIONS = {
+  lessons: 'rail.context.memoryDescriptions.lessons',
+  rules: 'rail.context.memoryDescriptions.rules',
+  profile: 'rail.context.memoryDescriptions.profile',
+};
+
 function MemoryRow({ entry, onOpen }) {
-  // Single-line row — the previous version displayed
-  // `previewFirstLine(entry.content)` underneath the filename, which
-  // for the canonical files (lessons.md, rules.md, identity.md, …)
-  // is just the H1 of the file and reads as a duplicate of the
-  // filename itself. Hover/click opens the editor, which has the
-  // full content; the rail row only needs the file identity + age.
+  const { t } = useTranslation('shell');
+  const descriptionKey = MEMORY_DESCRIPTIONS[entry.category];
   return (
-    <Tooltip content={entry.content || labelCategory(entry.category)}>
+    <Tooltip content={descriptionKey ? t(descriptionKey) : undefined}>
       <button
         type="button"
         onClick={onOpen}
@@ -112,7 +121,7 @@ function MemoryRow({ entry, onOpen }) {
           'border-0 bg-transparent w-full grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
         )}
       >
-        <span className="text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
+        <span className="text-ink-4 inline-flex flex-none">{Ico.code(14)}</span>
         <span className="block truncate text-sm text-ink min-w-0">
           {labelCategory(entry.category) || entry.name}
         </span>
@@ -129,15 +138,16 @@ function MemoryRow({ entry, onOpen }) {
 // present anton.md with a subtle "Project instructions" label.
 function attachmentSourceIcon(item) {
   const source = item.source || item.kind || 'file';
-  if (source === 'connector') return Ico.link(13);
-  if (item.mime && String(item.mime).startsWith('image/')) return Ico.image(13);
-  return Ico.doc(13);
+  if (source === 'connector') return Ico.link(14);
+  if (item.mime && String(item.mime).startsWith('image/')) return Ico.image(14);
+  return Ico.doc(14);
 }
 
 function SessionAttachmentRow({
   item, menuOpen, onMenuOpenChange, onOpen, menuItems = [],
 }) {
-  const label = item.name || item.id || 'Attachment';
+  const { t } = useTranslation('shell');
+  const label = item.name || item.id || t('rail.context.attachmentFallbackName');
   const when = item.updated_at || item.created_at || item.updatedAt || item.createdAt;
   // The mime/size used to be a second visible line — moved to the
   // hover tooltip so the row is one line like Project Files. Same
@@ -184,7 +194,7 @@ function SessionAttachmentRow({
           <OverflowMenu
             open={menuOpen}
             onOpenChange={onMenuOpenChange}
-            ariaLabel="Task upload actions"
+            ariaLabel={t('rail.context.taskUploadActionsAriaLabel')}
             width={180}
             items={menuItems}
             triggerClassName={clsx(
@@ -199,6 +209,7 @@ function SessionAttachmentRow({
 }
 
 function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
+  const { t } = useTranslation('shell');
   const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
   const canDelete = deletable && !!onRequestDelete;
   // The row was a <button>, but nesting a <button> inside a
@@ -218,9 +229,9 @@ function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
         'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
       )}
     >
-      <span className="text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
+      <span className="text-ink-4 inline-flex flex-none">{Ico.doc(14)}</span>
       <span className="block truncate text-sm text-ink min-w-0">
-        {isAnton ? 'Instructions' : (file.path || file.name)}
+        {isAnton ? t('rail.context.instructions') : (file.path || file.name)}
       </span>
       {/* Trailing slot: age normally, trash on hover. Both share
           the same column with relative/absolute stacking so the
@@ -237,10 +248,10 @@ function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
           </span>
         ) : null}
         {canDelete && (
-          <Tooltip content="Delete file">
+          <Tooltip content={t('rail.context.deleteFile')}>
             <button
               type="button"
-              aria-label={`Delete ${file.path || file.name}`}
+              aria-label={t('rail.context.deleteFileAriaLabel', { name: file.path || file.name })}
               onClick={(e) => {
                 // Don't let the click bubble up to the row — that
                 // would open the file modal instead of confirming
@@ -256,7 +267,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
                 'bg-transparent border-0 cursor-pointer p-0',
               )}
             >
-              {Ico.trash(13)}
+              {Ico.trash(14)}
             </button>
           </Tooltip>
         )}
@@ -270,6 +281,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
 // than the ContextFileModal preview, since there's no local content to
 // show.
 function DriveReferenceRow({ file, onRequestDelete }) {
+  const { t } = useTranslation('shell');
   const openInDrive = () => { if (file.url) host.openExternal(file.url); };
   return (
     <div
@@ -277,15 +289,15 @@ function DriveReferenceRow({ file, onRequestDelete }) {
       tabIndex={0}
       onClick={openInDrive}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openInDrive(); } }}
-      title={`Open "${file.name}" in Google Drive`}
+      title={t('rail.context.openNamedInDrive', { name: file.name })}
       className={clsx(
         'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
         'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
       )}
     >
-      <span className="text-ink-4 inline-flex flex-none">{Ico.googleDrive(13)}</span>
-      <span className="block truncate text-sm text-ink min-w-0">{file.name || 'untitled'}</span>
+      <span className="text-ink-4 inline-flex flex-none">{Ico.googleDrive(14)}</span>
+      <span className="block truncate text-sm text-ink min-w-0">{file.name || t('rail.context.untitled')}</span>
       {/* Both actions show together on hover — unlike ContextFileRow's
           single age/trash swap, there's no "normal" state content to
           protect here, so open + delete can just sit side by side. */}
@@ -297,16 +309,16 @@ function DriveReferenceRow({ file, onRequestDelete }) {
           role="button"
           tabIndex={-1}
           aria-hidden
-          title="Open in Google Drive"
+          title={t('rail.context.openInDrive')}
           className="text-ink-4 inline-flex items-center justify-center"
         >
-          {Ico.externalLink(11)}
+          {Ico.externalLink(12)}
         </span>
         {onRequestDelete && (
-          <Tooltip content="Remove from project files">
+          <Tooltip content={t('rail.context.removeFromProjectFiles')}>
             <button
               type="button"
-              aria-label={`Remove ${file.name || 'file'} from project files`}
+              aria-label={t('rail.context.removeFromProjectFilesAriaLabel', { name: file.name || t('rail.context.fileFallbackName') })}
               onClick={(e) => {
                 // Don't let the click bubble up to the row — that would
                 // open the file in Drive instead of confirming a delete.
@@ -319,7 +331,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
                 'bg-transparent border-0 cursor-pointer p-0',
               )}
             >
-              {Ico.trash(13)}
+              {Ico.trash(14)}
             </button>
           </Tooltip>
         )}
@@ -328,9 +340,10 @@ function DriveReferenceRow({ file, onRequestDelete }) {
   );
 }
 
-export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile,
+export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoogleDriveFiles, onAddSharePointFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile,
   projects = [],
 }) {
+  const { t } = useTranslation('shell');
   const [sections, setSections] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
   // The server caps the listing. Without surfacing it, a project with more
@@ -551,6 +564,16 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
     return () => window.removeEventListener('anton:connections-changed', reloadDriveFiles);
   }, [reloadDriveFiles]);
 
+  // A SharePoint import can start from the composer as well as here, so the
+  // import announces its project and this card refetches that project's files.
+  useEffect(() => {
+    const onProjectFilesChanged = (event) => {
+      if (event?.detail?.project === project?.name) reloadFiles({ forceFresh: true });
+    };
+    window.addEventListener(PROJECT_FILES_CHANGED, onProjectFilesChanged);
+    return () => window.removeEventListener(PROJECT_FILES_CHANGED, onProjectFilesChanged);
+  }, [project?.name, reloadFiles]);
+
   const sessionRelevant = conversationId
     && !String(conversationId).startsWith('tmp-')
     && !!project?.name;
@@ -591,7 +614,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       .catch((err) => {
         if (!cancelled) {
           setSessionAttachments([]);
-          setAttachmentsError(err?.message || 'Could not load attachments');
+          setAttachmentsError(err?.message || i18n.t('rail.context.loadAttachmentsFailed', { ns: 'shell' }));
         }
       })
       .finally(() => {
@@ -600,9 +623,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
     return () => { cancelled = true; };
   }, [sessionRelevant, conversationId, refreshKey, project?.name, attachmentsTick]);
 
-  // Order: Project section first, Global second.
+  // Order: Project section first, Global second. The deployment's rules are
+  // nothing learned, so they stay on the Memories page.
   const ordered = useMemo(() => {
-    const sorted = [...sections].sort((a, b) => {
+    const sorted = sections.filter((s) => s.scope !== 'Deployment').sort((a, b) => {
       if (a.scope === 'Project' && b.scope !== 'Project') return -1;
       if (b.scope === 'Project' && a.scope !== 'Project') return 1;
       return 0;
@@ -642,7 +666,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       await uploadProjectFiles(project.name, files);
       reloadFiles();
     } catch (err) {
-      setUploadError(err?.message || 'Upload failed.');
+      setUploadError(err?.message || t('rail.context.uploadFailed'));
     } finally {
       setUploadBusy(false);
     }
@@ -655,14 +679,14 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
   if (blockGlobalEmpty) {
     return (
       <p className="text-sm text-ink-4 px-1 pt-2 pb-1">
-        The agent learns as you work — memories will appear here.
+        {t('rail.context.emptyMemories')}
       </p>
     );
   }
 
   return (
     <div className="relative flex flex-col gap-3 pt-2" {...projectFileDropHandlers}>
-      <FileDropOverlay active={projectFilesDragging} label="Drop files to add to project" />
+      <FileDropOverlay active={projectFilesDragging} label={t('rail.context.dropToAdd')} />
       {/* All working-folder files. Instructions row is pinned first;
           the rest follow by most-recent-mtime. >10 files gets a
           fixed-height scroll container so the rail stays compact.
@@ -672,36 +696,42 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {project?.name && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
-              Project files{(projectFiles.length + driveFiles.length) > 1 ? ` · ${projectFiles.length + driveFiles.length}` : ''}
+            <span className="section-label">
+              {t('rail.context.projectFiles')}{(projectFiles.length + driveFiles.length) > 1 ? ` · ${projectFiles.length + driveFiles.length}` : ''}
             </span>
             <OverflowMenu
-              icon={Ico.plus(13)}
-              label="Add files to this project"
-              title={uploadBusy ? 'Uploading…' : 'Add files to this project'}
+              icon={Ico.plus(14)}
+              label={t('rail.context.addToProject')}
+              title={uploadBusy ? t('rail.context.uploading') : t('rail.context.addToProject')}
               disabled={uploadBusy}
               width={220}
               triggerClassName="h-5 w-5 justify-center rounded hover:bg-surface-2"
               items={[
                 {
                   id: 'attach-computer',
-                  label: 'Attach files',
-                  icon: Ico.upload(13),
+                  label: t('rail.context.attachFiles'),
+                  icon: Ico.upload(14),
                   onClick: () => fileInputRef.current?.click(),
                 },
                 onAddGoogleDriveFiles && {
                   id: 'attach-gdrive',
-                  label: drivePickerBusy ? 'Connecting…' : 'Attach Google Drive files',
-                  icon: Ico.googleDrive(13),
+                  label: drivePickerBusy ? t('rail.context.connecting') : t('rail.context.attachDriveFiles'),
+                  icon: Ico.googleDrive(14),
                   disabled: drivePickerBusy,
                   onClick: () => {
                     setDrivePickerBusy(true);
                     setUploadError('');
                     Promise.resolve(onAddGoogleDriveFiles(project?.name))
                       .then(() => reloadDriveFiles())
-                      .catch((err) => setUploadError(err?.message || 'Could not add Google Drive files.'))
+                      .catch((err) => setUploadError(err?.message || t('rail.context.addDriveFilesFailed')))
                       .finally(() => setDrivePickerBusy(false));
                   },
+                },
+                onAddSharePointFiles && project?.name && {
+                  id: 'attach-sharepoint',
+                  label: t('rail.context.addFromSharePoint'),
+                  icon: Ico.folder(14),
+                  onClick: () => onAddSharePointFiles(project.name),
                 },
               ].filter(Boolean)}
             />
@@ -726,7 +756,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 await uploadProjectFiles(project.name, files);
                 reloadFiles();
               } catch (err) {
-                setUploadError(err?.message || 'Upload failed.');
+                setUploadError(err?.message || t('rail.context.uploadFailed'));
               } finally {
                 setUploadBusy(false);
               }
@@ -747,8 +777,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 'cursor-pointer bg-transparent border-0 text-left',
               )}
             >
-              <span className="text-ink-4 inline-flex flex-none">{Ico.upload(13)}</span>
-              <span>Add files to give the agent context.</span>
+              <span className="text-ink-4 inline-flex flex-none">{Ico.upload(14)}</span>
+              <span>{t('rail.context.emptyProjectFiles')}</span>
             </button>
           )}
           {hasAnyProjectFiles && (
@@ -794,8 +824,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 color: 'var(--ink-4)',
               }}
             >
-              This folder holds more files than the list can show, so some
-              are missing here.
+              {t('rail.context.truncated')}
             </div>
           )}
         </div>
@@ -804,16 +833,16 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {sessionRelevant && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
-              Task uploads{sessionAttachments.length > 1 ? ` · ${sessionAttachments.length}` : ''}
+            <span className="section-label">
+              {t('rail.context.taskUploads')}{sessionAttachments.length > 1 ? ` · ${sessionAttachments.length}` : ''}
             </span>
-            <Tooltip content="Attach files to this task">
+            <Tooltip content={t('rail.context.attachToTask')}>
               {/* Native title only while disabled — a disabled button fires no
                   hover/focus events, so the styled Tooltip can't open. */}
               <button
                 type="button"
-                aria-label="Attach files to this task"
-                title={taskUploadBusy ? 'Uploading…' : undefined}
+                aria-label={t('rail.context.attachToTask')}
+                title={taskUploadBusy ? t('rail.context.uploading') : undefined}
                 disabled={taskUploadBusy}
                 onClick={() => taskUploadInputRef.current?.click()}
                 className={clsx(
@@ -824,7 +853,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                   'disabled:opacity-50 disabled:cursor-wait',
                 )}
               >
-                {Ico.plus(13)}
+                {Ico.plus(14)}
               </button>
             </Tooltip>
           </div>
@@ -843,7 +872,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 await uploadAttachments(files, { projectName: project.name, sessionId: conversationId });
                 bumpAttachments();
               } catch (err) {
-                setTaskUploadError(err?.message || 'Upload failed.');
+                setTaskUploadError(err?.message || t('rail.context.uploadFailed'));
               } finally {
                 setTaskUploadBusy(false);
               }
@@ -855,7 +884,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             </p>
           )}
           {attachmentsLoading && (
-            <p className="text-[12px] text-ink-4 px-1 pb-0.5">Loading attachments…</p>
+            <p className="text-[12px] text-ink-4 px-1 pb-0.5">{t('rail.context.loadingAttachments')}</p>
           )}
           {attachmentsError && (
             <p className="text-[12px] px-1 pb-0.5 text-[var(--danger-600,#b3261e)]">
@@ -877,8 +906,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                   affordance — the explicit "+" header button is the
                   primary surface, this is a fallback for when the
                   list is empty and the user might miss the header. */}
-              <span className="text-ink-4 inline-flex flex-none">{Ico.attach(13)}</span>
-              <span>No files attached yet — click to add.</span>
+              <span className="text-ink-4 inline-flex flex-none">{Ico.attach(14)}</span>
+              <span>{t('rail.context.emptyTaskUploads')}</span>
             </button>
           )}
           {!attachmentsLoading
@@ -886,10 +915,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
               const rawUrl = attachmentRawUrl(project?.name, conversationId, item.id);
               const closeAttachmentMenu = () => setOpenAttachmentMenuId(null);
               const menuItems = [
+                /* Desktop has nowhere to open an upload, so it saves it
+                   (openAuthenticatedResource) and says Download. */
                 rawUrl && {
                   id: 'open',
-                  label: 'Open',
-                  icon: Ico.upload(13),
+                  label: host.isWeb ? t('rail.context.open') : t('rail.artifacts.download'),
+                  icon: host.isWeb ? Ico.upload(14) : Ico.download(14),
                   onClick: () => {
                     closeAttachmentMenu();
                     openAuthenticatedResource(rawUrl, { filename: item.name }).catch(() => {});
@@ -897,8 +928,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 },
                 {
                   id: 'move',
-                  label: 'Move to project files',
-                  icon: Ico.folder(13),
+                  label: t('rail.context.moveToProjectFiles'),
+                  icon: Ico.folder(14),
                   onClick: () => {
                     closeAttachmentMenu();
                     // Optimistic: drop from Task uploads right away
@@ -916,7 +947,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                         await moveAttachmentToProject(project.name, conversationId, item.id);
                         reloadFiles();
                       } catch (err) {
-                        setTaskUploadError(err?.message || 'Could not move file.');
+                        setTaskUploadError(err?.message || t('rail.context.moveFailed'));
                         // Restore the row so the user sees the
                         // file still belongs to the task.
                         setSessionAttachments((prev) => {
@@ -930,8 +961,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 { separator: true },
                 {
                   id: 'delete',
-                  label: 'Delete',
-                  icon: Ico.trash(13),
+                  label: t('common.delete'),
+                  icon: Ico.trash(14),
                   danger: true,
                   onClick: () => {
                     closeAttachmentMenu();
@@ -948,9 +979,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                   onMenuOpenChange={(next) => setOpenAttachmentMenuId(next ? item.id : null)}
                   onOpen={() => {
                     // Open the shared ContextFileModal — same UX as a
-                    // project file. The modal renders images inline and
-                    // gives non-images an "Open" (OS shell via rawUrl)
-                    // escape hatch.
+                    // project file. The modal shows images, text, Office
+                    // files and PDFs inline, and downloads anything else on
+                    // web or gives it a Download escape hatch on desktop.
                     setOpenAttachmentMenuId(null);
                     setOpenAttachment(item);
                   }}
@@ -963,18 +994,17 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {ordered.map((section) => {
         const max = showAll ? section.files.length : 4;
         const visible = section.files.slice(0, max);
-        const remaining = section.files.length - visible.length;
         if (visible.length === 0) return null;
         return (
           <div key={section.scope} className="flex flex-col gap-0.5">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
+            <span className="section-label px-1 mb-1">
               {/* Display label spelled out — "Project" / "Global" on
                   their own read as project metadata, not memory. The
                   vault scope (`section.scope`) is still the canonical
                   id used to save/edit; this is purely the heading
                   shown in the rail. */}
-              {section.scope === 'Project' ? 'Project memory'
-                : section.scope === 'Global' ? 'Global memory'
+              {section.scope === 'Project' ? t('rail.context.projectMemory')
+                : section.scope === 'Global' ? t('rail.context.globalMemory')
                 : section.scope}
             </span>
             {visible.map((entry) => (
@@ -984,15 +1014,11 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 onOpen={() => openMemoryEntry(entry)}
               />
             ))}
-            {remaining > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowAll(true)}
-                className="ml-1 mt-1 self-start text-xs text-ink-3 hover:text-ink underline-offset-2 hover:underline cursor-pointer bg-transparent border-0 p-0"
-              >
-                + {remaining} more
-              </button>
-            )}
+            <RailShowMore
+              hiddenCount={section.files.length - 4}
+              expanded={showAll}
+              onToggle={() => setShowAll((all) => !all)}
+            />
           </div>
         );
       })}
@@ -1002,8 +1028,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         title={labelCategory(openEntry?.category) || openEntry?.name || ''}
         subtitle={
           openEntry?.scope === 'Project' && openEntry?.projectName
-            ? `Project · ${projectLabelByName(projects, openEntry.projectName)}`
-            : (openEntry?.scope || '')
+            ? t('rail.context.projectMemorySubtitle', { name: projectLabelByName(projects, openEntry.projectName) })
+            : (openEntry?.scope === 'Global' ? t('rail.context.globalScope') : (openEntry?.scope || ''))
         }
         initialContent={openEntry?.content || ''}
         saver={async (content) => {
@@ -1023,8 +1049,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             projectId: openEntry.scope === 'Project' ? openEntry.projectId : null,
           });
         }}
-        emptyMessage="(empty memory)"
-        placeholder="Memory contents — what should the agent remember?"
+        emptyMessage={t('rail.context.emptyMemory')}
+        placeholder={t('rail.context.memoryPlaceholder')}
         dense
         editable={canUseSharedResource(openEntry, 'canEdit')}
         deletable={canUseSharedResource(openEntry, 'canDelete')}
@@ -1038,11 +1064,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         projectPath={project?.path}
         filePath={openFile?.path}
         isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
-        remover={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH && (
-          openFile?.synthetic || !host.isWeb
-        )
-          ? null
-          : undefined}
+        // Delete is the file row's own flow (its trash button + confirm).
+        remover={null}
         editable={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH
           ? canUseSharedResource(openFile, 'canEdit')
             && canUseSharedResource(project, 'canEditInstructions')
@@ -1062,11 +1085,14 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {/* Task upload modal — same component, driven by the attachment's
           raw URL. No `projectName`/`projectPath` is passed, so the modal
           does no project-file IO: images render inline from `rawUrl`,
-          non-images land in 'binary' mode with an Open action that uses
-          `rawUrl` via the OS shell. `filePath` is the name only (for the
-          image-extension sniff + header title), NOT a real project path.
-          `remover` reuses the same attachment delete the row's menu and
-          ConfirmModal use, then closes the modal. */}
+          .xlsx/.docx/.pptx/.pdf open in the document preview, UTF-8 text
+          under the inline cap shows as text, and anything else lands in
+          'binary' mode, which downloads it on web and offers Download on
+          desktop: the OS browser an Open would hand `rawUrl` to carries
+          no server token.
+          `filePath` is the name only (for the extension checks + header
+          title), NOT a real project path, so there is nothing for Edit to
+          save to. */}
       <ContextFileModal
         open={!!openAttachment}
         title={openAttachment?.name}
@@ -1074,22 +1100,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         rawUrl={openAttachment
           ? attachmentRawUrl(project?.name, conversationId, openAttachment.id)
           : ''}
-        remover={async () => {
-          const target = openAttachment;
-          if (!target?.id) return;
-          setSessionAttachments((prev) => prev.filter((a) => a.id !== target.id));
-          try {
-            await deleteAttachment(target.id, {
-              projectName: project?.name,
-              sessionId: conversationId,
-            });
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            console.error('[context] delete attachment failed', err);
-            setTaskUploadError(err?.message || 'Could not delete attachment.');
-            bumpAttachments();
-          }
-        }}
+        showRawText
+        showEditAction={false}
+        // Delete is the attachment row's own flow (its menu + confirm).
+        remover={null}
         onClose={() => setOpenAttachment(null)}
         onChanged={() => setOpenAttachment(null)}
       />
@@ -1102,10 +1116,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
           correcting behavior the memory rail uses on edit. */}
       <ConfirmModal
         open={!!pendingDeleteFile}
-        title={`Delete "${pendingDeleteFile?.path || pendingDeleteFile?.name || 'file'}"?`}
-        message="The file will be removed from the project working folder. This can't be undone."
-        confirmLabel="Delete"
-        cancelLabel="Keep"
+        title={t('rail.context.deleteFileTitle', { name: pendingDeleteFile?.path || pendingDeleteFile?.name || t('rail.context.fileFallbackName') })}
+        message={t('rail.context.deleteFileMessage')}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.keep')}
         destructive
         onClose={() => setPendingDeleteFile(null)}
         onConfirm={async () => {
@@ -1129,8 +1143,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             if (isInstructions) reloadFiles({ forceFresh: true });
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] delete file failed', err);
-            setUploadError(err?.message || 'Could not delete file.');
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_delete_file_failed", '[context] delete file failed', err);
+            setUploadError(err?.message || t('rail.context.deleteFileFailed'));
             // Restore by refetching the canonical list from server.
             reloadFiles();
           }
@@ -1143,9 +1157,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
           itself is untouched in Drive. */}
       <ConfirmModal
         open={!!pendingDeleteDriveFile}
-        title={`Remove "${pendingDeleteDriveFile?.name || 'file'}" from project files?`}
-        message="Cowork will no longer have access to this file. The file itself is not affected in Google Drive."
-        confirmLabel="Remove"
+        title={t('rail.context.removeDriveFileTitle', { name: pendingDeleteDriveFile?.name || t('rail.context.fileFallbackName') })}
+        message={t('rail.context.removeDriveFileMessage')}
+        confirmLabel={t('common.remove')}
         cancelLabel="Keep"
         destructive
         onClose={() => setPendingDeleteDriveFile(null)}
@@ -1156,11 +1170,11 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
           setDriveFiles((prev) => prev.filter((f) => f.id !== target.id));
           try {
             const res = await onRemoveGoogleDriveFile(target.id, target._connectionName, project?.name);
-            if (!res?.ok) throw new Error(res?.reason || 'Could not remove file.');
+            if (!res?.ok) throw new Error(res?.reason || t('rail.context.removeFileFailed'));
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] remove drive file failed', err);
-            setUploadError(err?.message || 'Could not remove file.');
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_remove_drive_file_failed", '[context] remove drive file failed', err);
+            setUploadError(err?.message || t('rail.context.removeFileFailed'));
             reloadDriveFiles();
           }
         }}
@@ -1168,10 +1182,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
 
       <ConfirmModal
         open={!!pendingDeleteAttachment}
-        title={`Delete "${pendingDeleteAttachment?.name || pendingDeleteAttachment?.id || 'attachment'}"?`}
-        message="The file will be removed from this task's uploads. Future turns won't see it. This can't be undone."
-        confirmLabel="Delete"
-        cancelLabel="Keep"
+        title={t('rail.context.deleteFileTitle', { name: pendingDeleteAttachment?.name || pendingDeleteAttachment?.id || t('rail.context.attachmentFallbackLower') })}
+        message={t('rail.context.deleteAttachmentMessage')}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.keep')}
         destructive
         onClose={() => setPendingDeleteAttachment(null)}
         onConfirm={async () => {
@@ -1191,8 +1205,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             });
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] delete attachment failed', err);
-            setTaskUploadError(err?.message || 'Could not delete attachment.');
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_delete_attachment_failed", '[context] delete attachment failed', err);
+            setTaskUploadError(err?.message || t('rail.context.deleteAttachmentFailed'));
             bumpAttachments();
           }
         }}

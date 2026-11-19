@@ -1,14 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { host } from '../../platform/host';
+import { useTranslation } from '../../lib/i18n';
 import { ConfirmModal } from '../components/ConfirmModal';
 import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import Checkbox from '../components/ui/Checkbox';
 import Input from '../components/ui/Input';
+import OverflowMenu from '../components/OverflowMenu';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { PageHeader, FilterRow, SearchInput } from '../components/collection';
+import {
+  CollectionState,
+  FilterChips,
+  FilterMenu,
+  FilterRow,
+  ItemActions,
+  ListGroup,
+  ListItem,
+  ListNotice,
+  PageHeader,
+  SearchInput,
+  type Filter,
+} from '../components/collection';
 import {
   codingApi,
   type CodeProject,
@@ -17,20 +31,32 @@ import {
 } from './api';
 import { SkillDetailModal } from './SkillDetailModal';
 import { PersonalSkillModal } from './PersonalSkillModal';
+import { personalSkillsApi } from './personalSkillsApi';
 import { openCodeRepository } from './shellLinks';
 import { useSkillLibrary } from './useSkillLibrary';
 import './code-skills.css';
 
 type OriginFilter = 'all' | SkillLibraryItem['origin'];
 
-function kindLabel(kind: SkillLibraryItem['kind']): string {
-  if (kind === 'instructions') return 'Instructions';
-  if (kind === 'workflow') return 'Workflow';
-  return 'Skill';
+type T = (key: string, values?: Record<string, unknown>) => string;
+
+function originOptions(t: T) {
+  return [
+    { value: 'all', label: t('skills.origin.all') },
+    { value: 'team', label: t('skills.origin.team') },
+    { value: 'personal', label: t('skills.origin.personal') },
+    { value: 'built_in', label: 'MindsHub' },
+  ];
 }
 
-function shortRevision(value: string | null | undefined): string {
-  return value?.slice(0, 8) || 'Unversioned';
+function kindLabel(kind: SkillLibraryItem['kind'], t: T): string {
+  if (kind === 'instructions') return t('skills.kind.instructions');
+  if (kind === 'workflow') return t('skills.kind.workflow');
+  return t('skills.kind.skill');
+}
+
+function shortRevision(value: string | null | undefined, t: T): string {
+  return value?.slice(0, 8) || t('skills.unversioned');
 }
 
 function AddSkillSourceModal({
@@ -44,6 +70,7 @@ function AddSkillSourceModal({
   onClose: () => void;
   onAdd: (values: { name?: string; repository: string; branch: string }) => Promise<void>;
 }) {
+  const { t } = useTranslation('code');
   const [name, setName] = useState('');
   const [repository, setRepository] = useState('');
   const [branch, setBranch] = useState('main');
@@ -58,40 +85,39 @@ function AddSkillSourceModal({
   }, [open]);
 
   const submit = async () => {
-    if (!repository.trim()) { setError('Choose a Git repository or enter its URL.'); return; }
+    if (!repository.trim()) { setError(t('skills.addSource.repositoryRequired')); return; }
     setError('');
     try {
       await onAdd({ name: name.trim() || undefined, repository: repository.trim(), branch: branch.trim() || 'main' });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not add that team source.');
+      setError(reason instanceof Error ? reason.message : t('skills.addSource.addFailed'));
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="add-skill-source-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="add-skill-source-title" dismissible={!busy}>
       <ModalHeader
         id="add-skill-source-title"
-        title="Add team source"
-        subtitle="Connect a Git repository containing skills, instructions, or workflows."
+        title={t('skills.addSource.title')}
+        subtitle={t('skills.addSource.subtitle')}
         onClose={onClose}
       />
       <ModalBody>
         <div className="code-skill-source-form">
-          <label><span>Repository or folder</span><div><Input value={repository} onChange={setRepository} placeholder="https://github.com/acme/engineering-skills" autoFocus /><Button variant="subtle" onClick={async () => {
+          <label><span>{t('skills.addSource.repositoryLabel')}</span><div><Input value={repository} onChange={setRepository} placeholder="https://github.com/acme/engineering-skills" autoFocus /><Button variant="subtle" onClick={async () => {
             const result = await host.pickCodeFolder();
             if (result.ok && result.path) { setRepository(result.path); setError(''); }
-            else if (!result.cancelled) setError(result.reason || 'Could not choose that folder.');
-          }}>{Ico.folder(13)} Choose</Button></div></label>
+            else if (!result.cancelled) setError(result.reason || t('skills.addSource.folderFailed'));
+          }}>{Ico.folder(14)} {t('skills.addSource.choose')}</Button></div></label>
           <div className="code-skill-source-form__pair">
-            <label><span>Name <small>Optional</small></span><Input value={name} onChange={setName} placeholder="Engineering standards" /></label>
-            <label><span>Branch</span><Input value={branch} onChange={setBranch} placeholder="main" /></label>
+            <label><span>{t('skills.addSource.nameLabel')} <small>{t('skills.addSource.optional')}</small></span><Input value={name} onChange={setName} placeholder={t('skills.addSource.namePlaceholder')} /></label>
+            <label><span>{t('skills.addSource.branchLabel')}</span><Input value={branch} onChange={setBranch} placeholder="main" /></label>
           </div>
           {error && <Alert variant="danger">{error}</Alert>}
         </div>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
-        <Button variant="primary" onClick={() => void submit()} disabled={busy || !repository.trim()}>{busy ? 'Adding…' : 'Add source'}</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>{t('skills.cancel')}</Button>}>
+        <Button variant="primary" onClick={() => void submit()} disabled={busy || !repository.trim()}>{busy ? t('skills.addSource.adding') : t('skills.addSource.add')}</Button>
       </ModalFooter>
     </Modal>
   );
@@ -114,37 +140,37 @@ function SkillProjectsModal({
   onClose: () => void;
   onSave: (projectIds: string[]) => Promise<void>;
 }) {
+  const { t } = useTranslation('code');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   useEffect(() => {
     setSelected(new Set(item?.enabled_project_ids || []));
   }, [item]);
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="skill-projects-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="skill-projects-title" dismissible={!busy}>
       <ModalHeader
         id="skill-projects-title"
-        title={item?.name || 'Choose projects'}
-        subtitle="Make this available to tasks in the selected Code Projects."
+        title={item?.name || t('skills.projects.title')}
+        subtitle={t('skills.projects.subtitle')}
         onClose={onClose}
       />
       <ModalBody padding="0">
         <div className="code-skill-project-list">
           {projects.map((project) => (
             <label key={project.id}>
-              <input type="checkbox" checked={selected.has(project.id)} onChange={(event) => setSelected((current) => {
+              <Checkbox size="sm" aria-label={project.name} checked={selected.has(project.id)} onCheckedChange={(checked) => setSelected((current) => {
                 const next = new Set(current);
-                if (event.target.checked) next.add(project.id); else next.delete(project.id);
+                if (checked) next.add(project.id); else next.delete(project.id);
                 return next;
               })} />
-              <span><strong>{project.name}</strong><small>{project.folders.length} folder{project.folders.length === 1 ? '' : 's'}</small></span>
+              <span className="code-skill-project-list__copy"><strong>{project.name}</strong><small>{t('skills.projects.folders', { count: project.folders.length })}</small></span>
             </label>
           ))}
-          {!projects.length && <div className="code-skill-project-list__empty">Create a Code Project before assigning team skills.</div>}
+          {!projects.length && <div className="code-skill-project-list__empty">{t('skills.projects.empty')}</div>}
         </div>
         {error && <div className="code-skill-modal-error"><Alert variant="danger">{error}</Alert></div>}
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
-        <Button variant="primary" onClick={() => void onSave([...selected])} disabled={busy || !projects.length}>{busy ? 'Saving…' : 'Save'}</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>{t('skills.cancel')}</Button>}>
+        <Button variant="primary" onClick={() => void onSave([...selected])} disabled={busy || !projects.length}>{busy ? t('skills.saving') : t('skills.save')}</Button>
       </ModalFooter>
     </Modal>
   );
@@ -158,7 +184,6 @@ function SkillSourceModal({
   onClose,
   onRefresh,
   onApply,
-  onRemove,
   onOpenRepository,
 }: {
   source: SkillLibrarySource | null;
@@ -168,43 +193,41 @@ function SkillSourceModal({
   onClose: () => void;
   onRefresh: () => Promise<void>;
   onApply: () => Promise<void>;
-  onRemove: () => Promise<void>;
   onOpenRepository: () => Promise<void>;
 }) {
+  const { t } = useTranslation('code');
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="skill-source-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
-      <ModalHeader id="skill-source-title" title={source?.name || 'Team source'} subtitle={source ? `${source.branch} · ${shortRevision(source.current_revision)}` : ''} onClose={onClose} />
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="skill-source-title" dismissible={!busy}>
+      <ModalHeader id="skill-source-title" title={source?.name || t('skills.source.fallbackTitle')} subtitle={source ? `${source.branch} · ${shortRevision(source.current_revision, t)}` : ''} onClose={onClose} />
       <ModalBody>
         {source && <div className="code-skill-source-detail">
-          <div><span>Repository</span><code>{source.repository}</code></div>
+          <div><span>{t('skills.source.repository')}</span><code>{source.repository}</code></div>
           <div className="code-skill-source-detail__stats">
-            <span><strong>{source.item_count}</strong> items</span>
-            <span><strong>{source.enabled_project_count}</strong> project{source.enabled_project_count === 1 ? '' : 's'}</span>
+            <span><strong>{source.item_count}</strong> {t('skills.source.itemsUnit', { count: source.item_count })}</span>
+            <span><strong>{source.enabled_project_count}</strong> {t('skills.source.projectsUnit', { count: source.enabled_project_count })}</span>
           </div>
+          {source.enabled_project_count > 0 && <span className="code-skill-source-usage">
+            {Ico.folder(14)} {t('skills.usedBy', { count: source.enabled_project_count })}
+          </span>}
           {(actionError || source.error) && <Alert variant="danger">{actionError || source.error}</Alert>}
           {source.update_available && <div className="code-skill-source-update">
-            <strong>Update available</strong>
-            <span>{shortRevision(source.current_revision)} → {shortRevision(source.available_revision)}</span>
+            <strong>{t('skills.updateAvailable')}</strong>
+            <span>{shortRevision(source.current_revision, t)} → {shortRevision(source.available_revision, t)}</span>
             {source.diff && <pre>{source.diff}</pre>}
           </div>}
         </div>}
       </ModalBody>
-      <ModalFooter>
-        {source?.enabled_project_count ? (
-          <span className="code-skill-source-usage">
-            {Ico.folder(13)} Used by {source.enabled_project_count} project{source.enabled_project_count === 1 ? '' : 's'}
-          </span>
-        ) : <Button variant="danger" onClick={() => void onRemove()} disabled={busy}>Remove source</Button>}
-        <span className="flex-1" />
-        <Button variant="subtle" onClick={() => void onOpenRepository()} disabled={busy}>Open repository</Button>
-        <Button variant="subtle" onClick={() => void onRefresh()} disabled={busy}>{Ico.refresh(13)} Check for updates</Button>
-        {source?.update_available && <Button variant="primary" onClick={() => void onApply()} disabled={busy}>Update source</Button>}
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>{t('skills.close')}</Button>}>
+        <Button variant="subtle" onClick={() => void onOpenRepository()} disabled={busy}>{t('skills.source.openRepository')}</Button>
+        <Button variant="subtle" onClick={() => void onRefresh()} disabled={busy}>{Ico.refresh(14)} {t('skills.source.checkUpdates')}</Button>
+        {source?.update_available && <Button variant="primary" onClick={() => void onApply()} disabled={busy}>{t('skills.source.update')}</Button>}
       </ModalFooter>
     </Modal>
   );
 }
 
 export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
+  const { t } = useTranslation('code');
   const { page: library, loading, error, reload: load } = useSkillLibrary();
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState('');
@@ -218,6 +241,8 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   const [removeError, setRemoveError] = useState('');
   const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
   const [personalEditor, setPersonalEditor] = useState<{ id?: string } | null>(null);
+  const [deletePending, setDeletePending] = useState<SkillLibraryItem | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -259,7 +284,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
       await load();
       setProjectItem(null);
     } catch (reason) {
-      setProjectError(reason instanceof Error ? reason.message : 'Could not update project skills.');
+      setProjectError(reason instanceof Error ? reason.message : t('skills.errors.updateProjects'));
     } finally { setBusy(false); }
   };
 
@@ -272,81 +297,140 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
         : await codingApi.applySkillSource(sourceDetail.id);
       setSourceDetail(updated);
       await load();
-    } catch (reason) { setSourceActionError(reason instanceof Error ? reason.message : 'Could not update that source.'); }
+    } catch (reason) { setSourceActionError(reason instanceof Error ? reason.message : t('skills.errors.updateSource')); }
     finally { setBusy(false); }
   };
 
+  const openSource = (source: SkillLibrarySource) => { setSourceActionError(''); setSourceDetail(source); };
+  const groupTitle = (label: string) => <h2>{label}</h2>;
   const rows = (items: SkillLibraryItem[]) => items.map((item) => (
-    <div className="code-skill-row" key={item.id}>
-      <button type="button" className="code-skill-row__open" onClick={() => setDetailItem(item)} aria-label={`View ${item.name}`}>
-        <span className="code-skill-row__icon" aria-hidden="true">{item.kind === 'skill' ? Ico.cube(14) : Ico.code(14)}</span>
-        <span className="code-skill-row__main"><strong>{item.name}</strong><span>{item.description || item.path}</span></span>
-      </button>
-      <span className="code-skill-row__kind">{kindLabel(item.kind)}</span>
-      {item.origin === 'team' ? (
-        <Button size="sm" variant="subtle" onClick={() => setProjectItem(item)}>
-          {item.enabled_project_ids.length ? `${item.enabled_project_ids.length} project${item.enabled_project_ids.length === 1 ? '' : 's'}` : 'Choose projects'}
-        </Button>
-      ) : item.origin === 'personal' ? (
-        <div className="code-skill-row__personal">
-          <span className="code-skill-row__availability">{item.enabled ? 'Available' : 'Disabled'}</span>
-          <Button size="sm" variant="subtle" aria-label={`Edit ${item.name}`} onClick={() => setPersonalEditor({ id: item.path })}>Edit</Button>
-        </div>
-      ) : <span className="code-skill-row__availability">{item.enabled ? 'Available' : 'Disabled'}</span>}
-    </div>
+    <ListItem
+      key={item.id}
+      leading={<span className="inline-flex size-6 items-center justify-center rounded-md bg-surface-2 text-ink-3">
+        {item.kind === 'skill' ? Ico.cube(14) : Ico.code(14)}
+      </span>}
+      title={item.name}
+      description={item.description || item.path}
+      onActivate={() => setDetailItem(item)}
+      activateLabel={t('skills.view.viewItem', { name: item.name })}
+      meta={<>
+        <span className="max-sm:hidden">{kindLabel(item.kind, t)}</span>
+        {item.origin === 'team' ? (
+          <ItemActions>
+            <Button size="sm" variant="subtle" onClick={() => setProjectItem(item)}>
+              {item.enabled_project_ids.length ? t('skills.view.projectCount', { count: item.enabled_project_ids.length }) : t('skills.projects.title')}
+            </Button>
+          </ItemActions>
+        ) : <span>{item.enabled ? t('skills.view.available') : t('skills.view.disabled')}</span>}
+      </>}
+      // Delete is its own flow beside Edit, not a button inside the editor.
+      actions={item.origin === 'personal'
+        ? <OverflowMenu
+            label={t('skills.view.moreActions', { name: item.name })}
+            icon={Ico.more(14)}
+            size="sm"
+            items={[
+              { id: 'edit', label: t('skills.view.edit'), icon: Ico.edit(14), onClick: () => setPersonalEditor({ id: item.path }) },
+              { id: 'delete', label: t('skills.view.delete'), icon: Ico.trash(14), danger: true, onClick: () => { setDeleteError(''); setDeletePending(item); } },
+            ]}
+          />
+        : undefined}
+    />
   ));
+  const showTeam = filter === 'all' || filter === 'team';
+  const searching = Boolean(query.trim());
+
+  const filters: Filter[] = [{
+    id: 'source', label: t('skills.view.sourceFilter'), value: filter, allValue: 'all', options: originOptions(t),
+    onChange: (value) => setFilter(value as OriginFilter),
+  }];
 
   return (
     <main className="code-skills-view">
       <PageHeader
-        title="Skills"
-        subtitle="Your workflows and your team’s engineering standards, ready for Code tasks."
-        actions={<div className="code-skills-view__actions">
-          <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(13)} Add team source</Button>
-          <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(13)} Add personal skill</Button>
+        title={t('skills.view.title')}
+        subtitle={t('skills.view.subtitle')}
+        actions={<div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(14)} {t('skills.addSource.title')}</Button>
+          <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(14)} {t('skills.view.addPersonal')}</Button>
         </div>}
       />
       <FilterRow
-        search={<SearchInput value={query} onChange={setQuery} placeholder="Search skills" shortcut="" />}
-        sort={<ToggleGroup
-          className="code-skills-filter"
-          aria-label="Filter skills"
-          value={filter}
-          onValueChange={(value) => setFilter(value as OriginFilter)}
-          options={[
-            { value: 'all', label: 'All' },
-            { value: 'team', label: 'Team' },
-            { value: 'personal', label: 'Yours' },
-            { value: 'built_in', label: 'MindsHub' },
-          ]}
-        />}
+        search={<SearchInput value={query} onChange={setQuery} placeholder={t('skills.view.searchPlaceholder')} shortcut="" />}
+        filter={<FilterMenu filters={filters} />}
+        chips={<FilterChips filters={filters} onClear={() => setFilter('all')} />}
       />
 
-      {error && <div className="code-skills-view__notice"><Alert variant="danger">{error}</Alert></div>}
-      {loading ? <div className="code-skills-empty">Loading skills…</div> : <div className="code-skills-catalog">
-        {(filter === 'all' || filter === 'team') && library.sources.map((source) => {
-          const items = teamBySource.get(source.id) || [];
-          if (!items.length && query.trim()) return null;
-          return <section className="code-skill-group" key={source.id}>
-            <header>
-              <button type="button" onClick={() => { setSourceActionError(''); setSourceDetail(source); }}><span>{Ico.link(14)}</span><strong>{source.name}</strong><small>{source.branch} · {shortRevision(source.current_revision)}</small></button>
-              {source.error ? <Button size="sm" variant="tinted" onClick={() => { setSourceActionError(''); setSourceDetail(source); }}>Needs attention</Button>
-                : source.update_available ? <Button size="sm" variant="tinted" onClick={() => { setSourceActionError(''); setSourceDetail(source); }}>Update available</Button>
-                  : <span>{source.item_count} item{source.item_count === 1 ? '' : 's'}</span>}
-            </header>
-            <div>{items.length ? rows(items) : <div className="code-skill-group__empty">{source.error ? 'Source unavailable — open for details.' : query.trim() ? 'No items match this search.' : 'No shared items found.'}</div>}</div>
-          </section>;
-        })}
-        {(filter === 'all' || filter === 'personal') && personal.length > 0 && <section className="code-skill-group"><header><div><strong>Yours</strong><small>Personal skills available in Code Mode</small></div><span>{personal.length}</span></header><div>{rows(personal)}</div></section>}
-        {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && <section className="code-skill-group"><header><div><strong>MindsHub</strong><small>Engineering skills maintained by MindsHub</small></div><span>{builtIn.length}</span></header><div>{rows(builtIn)}</div></section>}
-        {!hasVisibleCatalog && <div className="code-skills-empty">
-          {query.trim() ? 'No skills match your search.' : filter === 'personal' || filter === 'all' ? <>
-            <span>{Ico.cube(20)}</span><strong>No personal skills yet</strong>
-            <p>Write instructions or import a SKILL.md. No Git repository needed.</p>
-            <Button variant="subtle" onClick={() => setPersonalEditor({})}>Add your first skill</Button>
-          </> : filter === 'team' ? <><strong>No team sources yet</strong><p>Connect a Git repository to share engineering standards across projects.</p></> : 'No skills in this view.'}
-        </div>}
-      </div>}
+      {error && <div className="mx-8 mb-4"><Alert variant="danger">{error}</Alert></div>}
+      <div className="mx-8 grid gap-6">
+        <CollectionState
+          loading={loading}
+          skeleton="rows"
+          skeletonCount={4}
+          // The origin pill narrows what exists, so an empty pill reads as
+          // "nothing here yet"; only a search with no hits is a no-match.
+          total={hasVisibleCatalog || searching ? 1 : 0}
+          shown={hasVisibleCatalog ? 1 : 0}
+          onClear={() => setQuery('')}
+          noMatchTitle={t('skills.view.noMatch')}
+          empty={filter === 'personal' || filter === 'all'
+            ? {
+                icon: Ico.cube(20),
+                title: t('skills.view.emptyPersonal.title'),
+                description: t('skills.view.emptyPersonal.description'),
+                action: { label: t('skills.view.emptyPersonal.action'), onClick: () => setPersonalEditor({}) },
+              }
+            : filter === 'team'
+              ? { icon: Ico.link(20), title: t('skills.view.emptyTeam.title'), description: t('skills.view.emptyTeam.description') }
+              : { title: t('skills.view.emptyView') }}
+        >
+          {showTeam && library.sources.map((source) => {
+            const items = teamBySource.get(source.id) || [];
+            if (!items.length && searching) return null;
+            return <ListGroup
+              key={source.id}
+              title={<button
+                type="button"
+                className="group/src flex min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-body text-ink"
+                onClick={() => openSource(source)}
+              >
+                <span className="inline-flex text-ink-4">{Ico.link(14)}</span>
+                <strong className="group-hover/src:text-accent">{source.name}</strong>
+                <small className="truncate font-mono text-xs font-normal text-ink-4">{source.branch} · {shortRevision(source.current_revision, t)}</small>
+              </button>}
+              meta={source.error || source.update_available ? undefined : t('skills.view.itemCount', { count: source.item_count })}
+              actions={<>
+                {source.error ? <Button size="sm" variant="tinted" onClick={() => openSource(source)}>{t('skills.view.needsAttention')}</Button>
+                  : source.update_available ? <Button size="sm" variant="tinted" onClick={() => openSource(source)}>{t('skills.updateAvailable')}</Button>
+                    : null}
+                <OverflowMenu
+                  label={t('skills.view.moreActions', { name: source.name })}
+                  icon={Ico.more(14)}
+                  size="sm"
+                  items={[
+                    { id: 'details', label: t('skills.view.sourceDetails'), icon: Ico.settings(14), onClick: () => openSource(source) },
+                    // A source in use can't be removed; say why instead of hiding it.
+                    { id: 'remove', label: t('skills.source.remove'), icon: Ico.trash(14), danger: true,
+                      disabled: source.enabled_project_count > 0,
+                      hint: source.enabled_project_count > 0 ? t('skills.usedBy', { count: source.enabled_project_count }) : undefined,
+                      onClick: () => { setRemoveError(''); setRemovePending(source); } },
+                  ]}
+                />
+              </>}
+            >
+              {items.length ? rows(items) : <ListNotice className="py-6 text-center text-xs text-ink-4">
+                {source.error ? t('skills.view.sourceUnavailable') : searching ? t('skills.view.noItemsMatch') : t('skills.view.noSharedItems')}
+              </ListNotice>}
+            </ListGroup>;
+          })}
+          {(filter === 'all' || filter === 'personal') && personal.length > 0 && (
+            <ListGroup title={groupTitle(t('skills.origin.personal'))} description={t('skills.view.personalDescription')} meta={personal.length}>{rows(personal)}</ListGroup>
+          )}
+          {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && (
+            <ListGroup title={groupTitle('MindsHub')} description={t('skills.view.builtInDescription')} meta={builtIn.length}>{rows(builtIn)}</ListGroup>
+          )}
+        </CollectionState>
+      </div>
 
       <AddSkillSourceModal open={addOpen} busy={busy} onClose={() => setAddOpen(false)} onAdd={async (values) => {
         setBusy(true);
@@ -366,18 +450,17 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
           if (!sourceDetail) return;
           setSourceActionError('');
           try { await openCodeRepository(sourceDetail.repository); }
-          catch (reason) { setSourceActionError(reason instanceof Error ? reason.message : 'Could not open that repository.'); }
+          catch (reason) { setSourceActionError(reason instanceof Error ? reason.message : t('skills.errors.openRepository')); }
         }}
-        onRemove={async () => { if (sourceDetail) { setRemoveError(''); setRemovePending(sourceDetail); } }}
       />
       <ConfirmModal
         open={!!removePending}
-        title="Remove team source?"
-        message={removeError || (removePending ? `${removePending.name} will be removed from this Skills Library. Its Git repository will not be changed.` : '')}
-        confirmLabel="Remove source"
+        title={t('skills.removeConfirm.title')}
+        message={removeError || (removePending ? t('skills.removeConfirm.message', { name: removePending.name }) : '')}
+        confirmLabel={t('skills.source.remove')}
         destructive
         busy={busy}
-        busyLabel="Removing…"
+        busyLabel={t('skills.removeConfirm.busy')}
         onClose={() => { setRemovePending(null); setRemoveError(''); }}
         onConfirm={async () => {
           if (!removePending) return;
@@ -388,7 +471,29 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
             setSourceDetail(null);
             await load();
           } catch (reason) {
-            setRemoveError(reason instanceof Error ? reason.message : 'Could not remove that source.');
+            setRemoveError(reason instanceof Error ? reason.message : t('skills.errors.removeSource'));
+          } finally { setBusy(false); }
+        }}
+      />
+      <ConfirmModal
+        open={!!deletePending}
+        title={t('skills.deleteConfirm.title')}
+        message={deletePending ? t('skills.deleteConfirm.message', { name: deletePending.name }) : ''}
+        confirmLabel={t('skills.deleteConfirm.confirm')}
+        destructive
+        busy={busy}
+        busyLabel={t('skills.deleteConfirm.busy')}
+        error={deleteError}
+        onClose={() => { setDeletePending(null); setDeleteError(''); }}
+        onConfirm={async () => {
+          if (!deletePending) return;
+          setBusy(true); setDeleteError('');
+          try {
+            await personalSkillsApi.remove(deletePending.path);
+            setDeletePending(null);
+            await load();
+          } catch (reason) {
+            setDeleteError(reason instanceof Error ? reason.message : t('skills.errors.deleteSkill'));
           } finally { setBusy(false); }
         }}
       />

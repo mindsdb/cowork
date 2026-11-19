@@ -1,0 +1,864 @@
+{
+  "messages": {
+    "usage": {
+      "actions": {
+        "viewUsage": "View usage",
+        "addFunds": "Add funds",
+        "setUpAutoTopUp": "Set up auto top up",
+        "manageAutoTopUp": "Manage auto top up",
+        "updatePaymentMethod": "Update payment method"
+      },
+      "noFreeGrant": "This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.",
+      "allowanceStop": {
+        "noGrant": "{noGrant} Your balance is empty, so add funds to continue.",
+        "withTime": "Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at {time}.",
+        "noTime": "Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working."
+      },
+      "freeServingPaused": {
+        "until": "Free MindsHub Air is paused for everyone until {until}. This doesn't use your allowance. Add funds to keep working now.",
+        "dailyReset": "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now."
+      },
+      "resting": {
+        "resetsAt": "Resets at {time}.",
+        "noReset": "Air runs on these until they are used up."
+      },
+      "balanceEmptySentence": "Your balance is empty.",
+      "percentLeft": "{percent} of your free allowance left",
+      "autoTopUpFailed": {
+        "title": "Auto top up failed",
+        "body": "We couldn't charge your card. Add funds or update your payment method."
+      },
+      "balanceEmpty": {
+        "title": "Balance empty",
+        "body": "Add funds to start another task.",
+        "freeUsedToo": "Your free allowance is used up too. Add funds, or wait for it to refill.",
+        "freeUsedTooWithTime": "Your free allowance is used up too. Add funds, or wait for it to refill at {time}."
+      },
+      "balanceLow": {
+        "title": "Balance running low",
+        "autoRefills": "{usd} left. Auto top up refills it to {target} when it drops below {floor}.",
+        "autoCovers": "{usd} left. Auto top up will cover it.",
+        "autoPending": "{usd} left. Auto top up is waiting on your bank.",
+        "autoCapReached": "{usd} left and auto top up is paused to stay within its monthly cap. Add funds to keep going.",
+        "body": "{usd} left. Add funds or turn on auto top up."
+      },
+      "freeUsed": {
+        "title": "Free allowance used up",
+        "body": "MindsHub Air is on your balance until your allowance refills.",
+        "bodyWithTime": "MindsHub Air is on your balance until your allowance refills at {time}.",
+        "bodyWithUsd": "MindsHub Air is on your balance ({usd} left) until your allowance refills.",
+        "bodyWithUsdWithTime": "MindsHub Air is on your balance ({usd} left) until your allowance refills at {time}."
+      },
+      "freeLow": {
+        "body": "After that, MindsHub Air uses your balance until your allowance refills.",
+        "bodyWithTime": "After that, MindsHub Air uses your balance until your allowance refills at {time}.",
+        "balanceLowToo": "Your balance is low too ({usd})."
+      },
+      "budgetExceeded": {
+        "raise": "Paid models can't run until an owner or admin raises it in Budgets.",
+        "airHasRoom": "Paid models can't run until an owner or admin raises it in Budgets. MindsHub Air still works while its free allowance lasts."
+      }
+    },
+    "scheduleWhen": {
+      "timeZone": "{city} time",
+      "onceNoDate": "Once at {time}",
+      "once": "Once, on {day} at {time}",
+      "every15": "Every 15 minutes",
+      "every30": "Every 30 minutes",
+      "hourly": "Every hour at :{minute}",
+      "daily": "Every day at {time}",
+      "weekdays": "Every weekday at {time}",
+      "weekly": "Every {weekday} at {time}",
+      "weeklyNoDay": "Every week at {time}"
+    },
+    "scheduleCopy": {
+      "missedOnceServer": "If the server is down at this time, the task runs when it’s back within the hour. After that it’s marked missed, and you can run it yourself.",
+      "missedOnceApp": "If MindsHub is closed at this time, the task runs when it reopens within the hour. After that it’s marked missed, and you can run it yourself.",
+      "missedRecurringServer": "If the server is down when this is due, the task runs once when it’s back, for the latest time it missed in the last 7 days. Other missed times are skipped.",
+      "missedRecurringApp": "If MindsHub is closed when this is due, the task runs once when it reopens, for the latest time it missed in the last 7 days. Other missed times are skipped.",
+      "missedLabelServer": "If the server is down at this time",
+      "missedLabelApp": "If MindsHub is closed at this time",
+      "missedOnceTitleServer": "This one-time task’s time passed while the server was down",
+      "missedOnceTitleApp": "This one-time task’s time passed while MindsHub was closed"
+    },
+    "stopScheduleRun": {
+      "unreachable": "Couldn’t reach the server to stop the run. Try again.",
+      "failed": "Couldn’t stop the run. Try again.",
+      "starting": "The run is still starting. Try Stop again in a moment."
+    },
+    "providerStatus": {
+      "probe": {
+        "rateLimited": "Too many requests too quickly. Wait a moment, then test again.",
+        "policyUnavailable": "Billing is temporarily unavailable. Try again in a moment."
+      },
+      "row": {
+        "walletEmpty": "No credits available. Add funds to use MindsHub.",
+        "allowanceExhausted": "No free MindsHub Air tokens available, and the balance is empty.",
+        "freeAirPaused": "Free MindsHub Air is paused right now.",
+        "budgetExceeded": "Your organization's budget is used up."
+      },
+      "missingApiKey": "Add an API key on the right.",
+      "missingBaseUrl": "Add a base URL on the right.",
+      "http": {
+        "unauthorized": "Unauthorized — the API key was rejected.",
+        "forbidden": "Forbidden — the API key does not have access.",
+        "notFound": "Endpoint not found — check the base URL.",
+        "rateLimited": "Rate limited — try again in a moment.",
+        "unreachable": "Provider is currently unreachable (HTTP {code}).",
+        "rejected": "Provider rejected the request (HTTP {code})."
+      },
+      "connectError": "Could not reach the provider — network or DNS problem.",
+      "timeout": "Provider did not respond in time.",
+      "tls": "TLS / certificate problem reaching the provider."
+    },
+    "witPhrases": {
+      "thinking": {
+        "0": "Warming up the neurons",
+        "1": "Reading the room",
+        "2": "Picking the angle",
+        "3": "Sketching the approach",
+        "4": "Mapping the question",
+        "5": "Skimming what I know",
+        "6": "Choosing the tools",
+        "7": "Lining up the steps",
+        "8": "Sizing it up",
+        "9": "Deciding where to start",
+        "10": "Sniffing for clues",
+        "11": "Wiring the plan"
+      },
+      "working": {
+        "0": "Crunching the numbers",
+        "1": "Asking the data nicely",
+        "2": "Wrangling the data",
+        "3": "Running the gauntlet",
+        "4": "Pulling the threads",
+        "5": "Mining for gold",
+        "6": "Compiling the picture",
+        "7": "Stress-testing the math",
+        "8": "Plotting the points",
+        "9": "Hammering on it",
+        "10": "Following the breadcrumbs",
+        "11": "Doing the heavy lifting"
+      },
+      "reasoning": {
+        "0": "Distilling the insight",
+        "1": "Composing the response",
+        "2": "Polishing the phrasing",
+        "3": "Turning data into wisdom",
+        "4": "Putting the puzzle together",
+        "5": "Connecting the dots",
+        "6": "Weaving the threads",
+        "7": "Triangulating the truth",
+        "8": "Choosing the right words",
+        "9": "Making it readable",
+        "10": "Tightening the story",
+        "11": "Almost there, hang tight"
+      }
+    },
+    "responseStream": {
+      "reasoning": "Reasoning…",
+      "responseFailed": "Response failed",
+      "questionForYou": "Question for you",
+      "runningCode": "Running code",
+      "toolCall": "Tool call",
+      "rateLimitedWaiting": "Rate limited — waiting",
+      "waitingForModel": "Waiting for the model",
+      "standIn": {
+        "0": "Getting started…",
+        "1": "Working on it…",
+        "2": "On it…",
+        "3": "Getting things ready…",
+        "4": "Setting things up…",
+        "5": "Gathering what I need…",
+        "6": "Lining up the first steps…",
+        "7": "Planning the approach…",
+        "8": "Sorting out the details…",
+        "9": "Laying the groundwork…",
+        "10": "Thinking it through…",
+        "11": "Mapping out the steps…",
+        "12": "Getting the pieces together…",
+        "13": "Starting on the first part…",
+        "14": "Taking a first pass…",
+        "15": "Working through it…",
+        "16": "Rolling up my sleeves…",
+        "17": "Warming up…",
+        "18": "Getting oriented…",
+        "19": "First things first…"
+      },
+      "artifact": "Artifact",
+      "skill": "Skill"
+    },
+    "compare": {
+      "unjudgeable": {
+        "both": "Both models ran out of credits before finishing, so this turn can't be judged.",
+        "one": "{name} ran out of credits before finishing, so this turn can't be judged.",
+        "bothBudget": "Both models hit your organization's budget before finishing, so this turn can't be judged.",
+        "oneBudget": "{name} hit your organization's budget before finishing, so this turn can't be judged."
+      },
+      "verdict": {
+        "tie": "About the same",
+        "neither": "Neither",
+        "none": "No verdict"
+      },
+      "status": {
+        "continued": "Continued as a task",
+        "working": "Working",
+        "waiting": "Waiting",
+        "done": "Done",
+        "outOfCredits": "Out of credits",
+        "rateLimited": "Rate limited",
+        "failed": "Failed",
+        "stopped": "Stopped",
+        "budgetReached": "Budget reached"
+      },
+      "block": {
+        "loadFailed": "A side couldn't load. Retry it above before following up.",
+        "loading": "You can follow up once both models have loaded.",
+        "checkFailed": "Couldn't check whether a side is still working.",
+        "sending": "Sending the task to both models…",
+        "firstFailed": "The task hasn't reached either model yet. Try sending it again above.",
+        "outOfCreditsBoth": "Both models stopped because the balance ran out. Add funds to keep comparing.",
+        "outOfCreditsOne": "{name} stopped because the balance ran out. Add funds to keep comparing.",
+        "bothWorking": "You can follow up when both models finish.",
+        "oneWorking": "You can follow up when {name} finishes.",
+        "bothContinued": "Both sides were continued as tasks, so this comparison takes no more messages.",
+        "sideContinued": "{name} was continued as a task. Send to {other} only.",
+        "sideWorking": "{name} is still working. Send to {other} only, or wait."
+      },
+      "twiceTheCredits": "A comparison runs two models, so it uses about twice the credits of one task.",
+      "turnsTitle": "{nameA}: {countA, plural, one {# turn} other {# turns}} · {nameB}: {countB, plural, one {# turn} other {# turns}}",
+      "cost": {
+        "truncated": "The session was too long to count in full, so this is a minimum.",
+        "unpriced": "Some calls couldn't be priced and are left out."
+      },
+      "usage": {
+        "inputDetail": "{fresh} new · {cached} cached · {written} written to cache",
+        "notPriced": "not priced",
+        "turn": "Turn {turn}",
+        "total": "Total"
+      }
+    },
+    "orgSharing": {
+      "counts": {
+        "teams": "{count, plural, one {# team} other {# teams}}",
+        "people": "{count, plural, one {# person} other {# people}}",
+        "outsideEmails": "{count, plural, one {# outside email} other {# outside emails}}"
+      },
+      "list": {
+        "two": "{first} and {second}",
+        "three": "{first}, {second} and {third}"
+      },
+      "orgAdminOnlyHint": "Only admins can share with everyone in the organization",
+      "orgArtifactShareWithheldHint": "Your role can't share with everyone in the organization",
+      "mindsHubUnreachableHint": "Couldn't reach MindsHub",
+      "mindsHubUnreachablePermissions": "Couldn't reach MindsHub to check what you can share.",
+      "mindsHubUnreachableEdit": "Couldn't reach MindsHub to check whether you can change it.",
+      "mindsHubUnreachableTeams": "Couldn't reach MindsHub to load your teams, so skills shared with them aren't listed.",
+      "mindsHubThrottled": "MindsHub is limiting requests. Try again in a minute.",
+      "onlyMeTitle": "Only me",
+      "onlyMeDesc": {
+        "skill": "Nobody else can use it",
+        "artifact": "Nobody else can open this"
+      },
+      "specificTitle": "Specific teams and people",
+      "specificDesc": {
+        "skill": "Pick teams or colleagues",
+        "artifact": "Pick teams, colleagues or outside emails"
+      },
+      "alwaysOnLabel": "Always include in every task",
+      "thisSkill": "this skill",
+      "alwaysOnHelp": {
+        "on": "Anton will include {name} in every task.",
+        "off": "Anton will use {name} only when it's relevant."
+      },
+      "alwaysOnOrgAdminHint": "Only admins can make a skill shared with everyone always on",
+      "alwaysOnEditorHint": "Only people who can edit this skill can change this",
+      "alwaysOnBadge": "Always on",
+      "alwaysOnBadgeHint": "Part of every task for everyone it's shared with",
+      "everyoneAt": "Everyone at {org}",
+      "everyoneInOrganization": "Everyone in the organization",
+      "everyoneAtDesc": "Anyone in your organization",
+      "yourOrganization": "your organization",
+      "unknownPerson": "Unknown person",
+      "recipients": {
+        "addEmail": "Add at least one email.",
+        "outside": "{count} outside {org}",
+        "addTeamPersonOrEmail": "Add at least one team, person or email.",
+        "addTeamOrPerson": "Add at least one team or person."
+      },
+      "teamBadge": "Team: {team}",
+      "sections": {
+        "mine": "Yours",
+        "sharedWithMe": "Shared with me",
+        "team": "My teams",
+        "builtin": "Built-in"
+      },
+      "share": {
+        "everyoneAt": "Shared with everyone at {org}",
+        "everyoneInOrganization": "Shared with everyone in the organization",
+        "with": "Shared with {phrase}",
+        "notYet": "Not shared yet",
+        "public": "Public link: anyone with the URL can open it",
+        "password": "Password protected",
+        "shared": "Shared"
+      }
+    },
+    "sharedResourceAccess": {
+      "otherActor": "Another member",
+      "unknownActor": "Unknown"
+    },
+    "liveAppSharing": {
+      "shareLabel": "Let others duplicate…",
+      "everyoneLabel": "Everyone on this stack",
+      "sharedWithYouLabel": "Apps you can duplicate",
+      "copyGoesToGeneral": "Your copy goes to your General project.",
+      "from": "From {owner}",
+      "fromForEveryone": "From {owner} · for everyone",
+      "duplicatedFrom": "Duplicated from {owner}",
+      "thisApp": "this app",
+      "duplicateTitle": "Duplicate \"{name}\"?",
+      "duplicateDisclaimer": "{owner} lets you duplicate this app. Your copy runs with your own connections and can use whatever they can use. Review it before you launch it."
+    },
+    "liveAppState": {
+      "liveAt": "Live at {host}",
+      "live": "Live",
+      "stoppedAt": "Stopped {when}",
+      "stopped": "Stopped",
+      "stoppedLineReason": "{stopped}, {reason}. Ask your agent to relaunch it.",
+      "stoppedLine": "{stopped}. Ask your agent to relaunch it.",
+      "checkFailed": "Couldn't check whether this app is running. Reload to try again.",
+      "runsAtOwnAddress": "This live app runs at its own address.",
+      "runningAskAddress": "This live app is running. Ask your agent for its address.",
+      "notRunning": "This live app isn't running. Ask your agent to launch it.",
+      "launch": "Launch"
+    },
+    "skillSharing": {
+      "label": "Who can use it",
+      "private": {
+        "label": "Only me",
+        "description": "Only you see and use it."
+      },
+      "everyone": {
+        "label": "Everyone (read-only)",
+        "description": "Everyone here can use it. Only you can change it."
+      },
+      "createHint": "You can change this later on the skill's page."
+    },
+    "artifactAuthorship": {
+      "unknownOwner": "Unknown owner",
+      "otherMemberDescription": "Created by another member of this project. You can review it but not change it.",
+      "unknownOwnerDescription": "Nobody is recorded as this artifact's owner."
+    },
+    "artifactExport": {
+      "cannotExport": "This file can't be exported.",
+      "alreadyRunning": "An export is already running; try again in a moment.",
+      "pdfBusy": "PDF export is busy; try again.",
+      "pdfTooLong": "PDF export took too long.",
+      "failed": "Couldn't export this file.",
+      "omittedReferences": "{count, plural, one {# item outside this artifact was left out.} other {# items outside this artifact were left out.}}",
+      "notSaved": "Exported {filename}, but couldn't download it."
+    },
+    "artifactPaths": {
+      "noPath": "This artifact did not include a file path.",
+      "relativeNoProject": "This artifact path is relative, but the task has no project folder.",
+      "outsideProject": "This artifact path points outside the project folder."
+    },
+    "artifactActions": {
+      "noPreviewDownloaded": "No preview for this file type; downloaded instead."
+    },
+    "browserApproval": {
+      "unreadable": "This approval request can't be checked, so nothing ran.",
+      "lapsed": "This step is no longer waiting in the browser, so nothing ran.",
+      "unavailable": "The browser isn't available here, so nothing ran.",
+      "refusedReason": "Couldn't approve this step in the browser: {reason}.",
+      "refused": "Couldn't approve this step in the browser. Try again.",
+      "notConfirmed": "The browser didn't confirm the approval, so nothing ran. Try again."
+    },
+    "browserSession": {
+      "opened": "Opened the browser"
+    },
+    "figureSources": {
+      "noSource": "No source: no step in this answer returned this figure. Check it before you act on it.",
+      "repeated": "Repeated from an earlier answer",
+      "aFile": "a file",
+      "fromPage": "From {name}, page {page}",
+      "from": "From {name}",
+      "fromQueryLabel": "From a query: {label}",
+      "fromQuery": "From a query",
+      "fromWebLabel": "From the web: {label}",
+      "fromWeb": "From the web",
+      "fromStepLabel": "From a step: {label}",
+      "fromStep": "From a step",
+      "andMore": "{source} and {count} more"
+    },
+    "connectionIdentity": {
+      "unrecognizedConnector": "Unrecognized connector"
+    },
+    "datasourceSubmission": {
+      "errors": {
+        "nameRequired": "Give this connection a name so you can tell it apart later.",
+        "tlsModeRequired": "Choose how this server's certificate should be checked.",
+        "caRequired": "Paste the CA certificate, or choose public certificate authorities.",
+        "caTooLarge": "That CA certificate is larger than the 64 KiB limit. Paste only the chain this server needs."
+      },
+      "hints": {
+        "tlsFailed": "The server's certificate could not be verified. A self-hosted database usually presents the certificate it generated for itself, which no client can check. If that is this server, turn off \"Only connect if the certificate is signed by a public authority\".",
+        "destinationForbidden": "That address cannot be reached from here. The database has to be on a public address, not a private or local one.",
+        "authenticationFailed": "The server refused the username or password.",
+        "insufficientPrivileges": "The account cannot read anything this connection points at. If you named a schema, check its spelling and its capitals, which PostgreSQL treats as part of the name, and that the account has USAGE on that schema as well as SELECT on its tables. An account that can also write is fine; one with superuser rights, or that can read server files, is refused, because those reach past your database.",
+        "connectionFailed": "The server did not answer. Check the host and port, and that your firewall allows the connection.",
+        "tls": {
+          "refusedLogin": "The server asked for the password itself, and this connection does not check the server's certificate, so the password was not sent.",
+          "refusedLoginOrHandshake": "Either the server did not complete an encrypted connection, or it asked for the password itself and, since this connection does not check the server's certificate, the password was not sent.",
+          "refusedPgLogin": "The server asked for a kind of login this connection does not allow without checking the server's certificate, so the password was not sent.",
+          "refusedPgLoginOrHandshake": "Either the server did not complete an encrypted connection, or it asked for a kind of login this connection does not allow without checking the server's certificate. The password was not sent.",
+          "turnChecksOnCheckbox": "If the server's certificate is signed by a public authority, turn on \"Only connect if the certificate is signed by a public authority\" and try again.",
+          "turnChecksOnMysql": "Under \"Certificate\", choose \"Signed by a public authority\", or \"Signed by my own certificate authority\" and paste the server's CA certificate, then try again.",
+          "pgScramFallback": "If the server has no TLS, or its certificate is not signed by a public authority, ask its administrator to switch this account to SCRAM-SHA-256 logins.",
+          "mysqlUnverifiedCertificate": "The server's certificate could not be verified. If the server signs its own certificate or uses a private authority, choose \"Signed by my own certificate authority\" under \"Certificate\" and paste that authority's certificate. \"Encrypt when offered, don't check the certificate\" also connects, but a login can then fail whenever the server asks for the password itself, for example after it restarts.",
+          "mysqlCustomCaMismatch": "The server's certificate could not be verified against the CA certificate you pasted. Check that it is the authority that signed this server's certificate, and that the host you entered is a name on that certificate."
+        }
+      },
+      "state": {
+        "connected": "Connected",
+        "failed": "Could not connect",
+        "pending": "Checking the connection",
+        "pendingDetail": "Your credentials are stored encrypted. This page updates when the check finishes."
+      }
+    },
+    "fileDrop": {
+      "uploading": "Uploading…"
+    },
+    "authenticatedResource": {
+      "loadFailedStatus": "Could not load file ({status})",
+      "loadFailed": "Could not load file"
+    },
+    "artifactWorkspaceApi": {
+      "requestFailed": "Request failed ({status})",
+      "draftLoadFailed": "Could not load private draft ({status})"
+    },
+    "skillsStore": {
+      "catalogueInvalid": "The skills catalogue response was invalid."
+    },
+    "modelCatalog": {
+      "modelRouter": {
+        "label": "Model Router",
+        "desc": "Routes to this account's configured model automatically"
+      },
+      "operatorDefault": "Operator default",
+      "restricted": {
+        "title": "An admin in your organization restricted this model.",
+        "tag": "Restricted"
+      },
+      "needsCredits": "Needs credits",
+      "budgetReached": {
+        "tag": "Budget reached",
+        "title": "Your organization's budget is used up. An owner or admin can raise it in Budgets."
+      }
+    },
+    "settingsTransform": {
+      "routerSubtitle": {
+        "legacy": "Used for fast respond-or-delegate gating on each turn, and history summarization.",
+        "gateOffUntilPicked": "Used for history summarization. The respond-or-delegate gate ahead of each chat turn is off until a model is picked here.",
+        "gateOffNoModel": "Used for history summarization. The respond-or-delegate gate ahead of each chat turn is off: no model is available for it.",
+        "followsPick": "Used for history summarization and for the respond-or-delegate gate ahead of each chat turn, which has a strict latency budget: pick your fastest model here, not your smartest.",
+        "gateRunsOn": "Used for history summarization. The respond-or-delegate gate ahead of each chat turn runs on {model}, not on this pick.",
+        "gateRunsOnWithProvider": "Used for history summarization. The respond-or-delegate gate ahead of each chat turn runs on {model} ({provider}), not on this pick."
+      },
+      "staleModel": "{model} (legacy — re-select a model)",
+      "otherModel": "Other…",
+      "latestNote": "latest"
+    },
+    "time": {
+      "justNow": "just now",
+      "ago": {
+        "s": "{value}s ago",
+        "m": "{value}m ago",
+        "h": "{value}h ago",
+        "d": "{value}d ago"
+      },
+      "in": {
+        "s": "in {value}s",
+        "m": "in {value}m",
+        "h": "in {value}h",
+        "d": "in {value}d"
+      }
+    },
+    "turnError": {
+      "tryAgain": "Try again",
+      "setUpMindsHub": "Set up MindsHub"
+    },
+    "surface": {
+      "tasksNote": "Tasks made in the {other, select, desktop {desktop app} other {web app}} stay there.",
+      "artifactsNote": "Artifacts made in the {other, select, desktop {desktop app} other {web app}} stay there."
+    },
+    "antonErrors": {
+      "noProvider": "No LLM provider is connected for this account. Start free with MindsHub or add your own provider in Settings.",
+      "couldNotComplete": "Could not complete this task."
+    },
+    "displayToggle": {
+      "switchStyle": "Switch to {style} style"
+    },
+    "conversationHistory": {
+      "thinkingDots": "Thinking...",
+      "thinking": "Thinking…",
+      "runningTask": "Running task…",
+      "finishedReasoning": "Finished reasoning",
+      "updatedContext": "Updated context",
+      "agentPhase": "{agent} is {phase}",
+      "agentWorking": "{agent} is working",
+      "unexpectedError": "An unexpected error occurred."
+    },
+    "cloudConnector": {
+      "editTitle": "Edit {name}"
+    },
+    "artifactRepair": {
+      "queued": "Making changes",
+      "ready": "Changes ready to review",
+      "accepted": "Changes applied",
+      "rejected": "Changes discarded",
+      "noChange": "No changes were needed",
+      "conflict": "Could not apply the changes",
+      "cancelled": "Cancelled",
+      "discarded": "Suggestion dismissed",
+      "sent": "Sent to the agent"
+    }
+  },
+  "scheduleCommon": {
+    "untitled": "Untitled schedule",
+    "deleteTitle": "Delete scheduled task?",
+    "deleteMessage": "\"{title}\" will be permanently deleted. This can't be undone.",
+    "delete": "Delete",
+    "keep": "Keep",
+    "deleting": "Deleting…",
+    "edit": "Edit",
+    "noProject": "No project",
+    "breadcrumb": "Scheduled Tasks"
+  },
+  "scheduleStatus": {
+    "pausedFinishing": "Paused · finishing run",
+    "running": "Running",
+    "autoPaused": "Auto-paused",
+    "paused": "Paused",
+    "missed": "Missed",
+    "lastFailed": "Last failed",
+    "lastRunFailed": "Last run failed",
+    "done": "Done",
+    "active": "Active"
+  },
+  "scheduleRow": {
+    "cadence": {
+      "once": "One-off",
+      "every15": "Every 15 min",
+      "every30": "Every 30 min",
+      "hourly": "Hourly",
+      "daily": "Daily",
+      "weekdays": "Weekdays",
+      "weekly": "Weekly"
+    },
+    "openProject": "Open {project}",
+    "descriptionWithNext": "{sentence} · next {next}",
+    "stop": "Stop",
+    "run": "Run",
+    "pause": "Pause",
+    "resume": "Resume"
+  },
+  "scheduleRunAlert": {
+    "finishingTitle": "Paused — the current run will finish",
+    "finishingNote": "Nothing else starts while it’s paused. Stop run ends it now; anything it has already done stays done.",
+    "missedNote": "It was more than an hour late, so it didn’t run on its own. Run it now, or edit it to give it a new time.",
+    "autoPausedTitleCount": "Paused after {count} failed runs in a row",
+    "autoPausedTitle": "Paused after repeated failed runs",
+    "autoPausedNote": "Resume turns the schedule back on and may catch up a pending run. Run now runs it once, now.",
+    "partialTitle": "The last run stopped partway",
+    "partialNote": "Some of its actions may have completed. Review the run before running it again.",
+    "failedTitle": "The last run failed",
+    "resume": "Resume",
+    "runNow": "Run now",
+    "reviewRun": "Review run",
+    "runAgain": "Run again"
+  },
+  "scheduleTaskModal": {
+    "cadence": {
+      "once": "Once",
+      "every15": "Every 15 minutes",
+      "every30": "Every 30 minutes",
+      "hourly": "Every hour",
+      "daily": "Every day",
+      "weekdays": "Every weekday",
+      "weekly": "Every week"
+    },
+    "errorNoPrompt": "Tell {agent} what to do.",
+    "errorPickFutureTime": "Pick a time in the future.",
+    "errorPickTime": "Pick a time.",
+    "errorSave": "Could not save schedule.",
+    "editTitle": "Edit scheduled task",
+    "createTitle": "Schedule a task",
+    "editSubtitle": "Changes apply from the next run.",
+    "createSubtitleWeb": "{agent} runs this on its own, even with this tab closed.",
+    "createSubtitleDesktop": "{agent} runs this on its own while MindsHub is open.",
+    "promptLabel": "What should {agent} do?",
+    "promptPlaceholder": "Ask {agent} to…",
+    "when": "When",
+    "howOften": "How often",
+    "dayOfWeek": "Day of the week",
+    "date": "Date",
+    "atMinute": "at minute",
+    "at": "at",
+    "time": "Time",
+    "nextRuns": "{count, plural, one {Next run: {runs}} other {Next runs: {runs}}}",
+    "timePassed": "That time has passed.",
+    "name": "Name",
+    "namePlaceholder": "Named from the prompt",
+    "project": "Project",
+    "model": "Model",
+    "accountDefault": "Account default",
+    "cancel": "Cancel",
+    "saveAndRunOnce": "Save and run once",
+    "saving": "Saving…",
+    "saveChanges": "Save changes",
+    "schedule": "Schedule"
+  },
+  "scheduledView": {
+    "sort": {
+      "next": "Next run",
+      "name": "Name",
+      "created": "Recently created"
+    },
+    "trialRunFailed": "Saved “{title}”, but its trial run didn’t start: {reason}",
+    "trialRunFallback": "try Run now.",
+    "deleteFailed": "Could not delete schedule.",
+    "actionFailed": "Schedule action failed.",
+    "title": "Scheduled Tasks",
+    "subtitleDesktop": "Scheduled tasks run while {product} is open. If a run was due while it was closed, {agent} runs the latest one from the last 7 days when it reopens.",
+    "subtitleWeb": "Scheduled tasks run on the server, even with this tab closed. If a run was due while the server was down, {agent} runs the latest one from the last 7 days when it's back.",
+    "scheduleTask": "Schedule task",
+    "searchPlaceholder": "Search scheduled tasks",
+    "filteredCount": "{shown} of {total} scheduled tasks",
+    "count": "{count, plural, one {# scheduled task} other {# scheduled tasks}}",
+    "missedCount": "{count, plural, one {# missed run} other {# missed runs}}",
+    "autoPausedOne": "“{title}” was paused after failing several runs in a row",
+    "autoPausedMany": "{count} scheduled tasks were paused after failing several runs in a row",
+    "review": "Review",
+    "reviewNamed": "Review “{title}”",
+    "emptyTitle": "No scheduled tasks yet",
+    "emptyDescription": "Have {agent} repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.",
+    "emptyAction": "Schedule your first task",
+    "needsAttention": "Needs attention",
+    "everythingElse": "Everything else"
+  },
+  "scheduleDetail": {
+    "runStatus": {
+      "running": "Running",
+      "success": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Stopped"
+    },
+    "sentence": "{when}, {zone}",
+    "runningNow": "Running now",
+    "nextRun": "Next run {when}",
+    "notFound": "Schedule not found.",
+    "backToList": "Back to scheduled tasks",
+    "actionFailed": "Action failed.",
+    "allScheduledTasks": "All scheduled tasks",
+    "enabledAriaLabel": "Schedule enabled",
+    "stopping": "Stopping…",
+    "stopRun": "Stop run",
+    "running": "Running…",
+    "runNow": "Run now",
+    "scheduleAriaLabel": "Schedule",
+    "accountDefaultModel": "Account default model",
+    "ranOnDefaultModel": "Default model",
+    "modelUnavailable": "{model} isn't available, so this run used your default model.",
+    "succeededCount": "{total, plural, one {{succeeded} of # run succeeded} other {{succeeded} of # runs succeeded}}",
+    "promptAriaLabel": "Prompt",
+    "runs": "Runs",
+    "loading": "Loading…",
+    "noRuns": "No runs yet. Click Run now to try it.",
+    "manual": "Manual",
+    "statusWithReason": "{status}: {reason}",
+    "openFailedRun": "Open the failed run from {when}: {reason}",
+    "openRun": "Open the run from {when}",
+    "showOlder": "Show older runs"
+  },
+  "contextFileModal": {
+    "download": "Download",
+    "revealInFinder": "Reveal in Finder",
+    "reveal": "Reveal",
+    "openInDefaultApp": "Open in default app",
+    "open": "Open",
+    "binary": {
+      "cantDisplay": "This file can't be displayed inline (binary, too large, or not text).",
+      "useActions": "Use the actions below to view it.",
+      "downloading": "Downloading…"
+    },
+    "projectInstructions": "Project instructions",
+    "instructionsPlaceholder": "Tell the agent how to work in this project — codebase conventions, output preferences, things to avoid…",
+    "fileContentsPlaceholder": "File contents",
+    "noInstructionsYet": "(no instructions yet — click Edit to add some)",
+    "emptyFile": "(empty file)",
+    "thisFileCapitalized": "This file",
+    "thisFile": "this file",
+    "noLongerAttached": "{name} is no longer attached to this chat.",
+    "noLongerInProject": "{path} is no longer in this project.",
+    "couldNotLoadImage": "Could not load image.",
+    "couldNotLoadPreview": "Could not load preview",
+    "couldNotReadFile": "Could not read file",
+    "couldNotSave": "Could not save",
+    "couldNotDelete": "Could not delete",
+    "deleteConfirm": {
+      "title": "Delete {name}?",
+      "message": "This can't be undone."
+    },
+    "delete": "Delete",
+    "loading": "Loading…",
+    "readOnly": "Read only. You do not have permission to edit this shared resource.",
+    "preview": "Preview",
+    "file": "file",
+    "deletePermanently": "Delete this permanently.",
+    "noDeletePermission": "You do not have permission to delete this shared resource.",
+    "noEditPermission": "You do not have permission to edit this shared resource.",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "save": "Save",
+    "close": "Close",
+    "edit": "Edit"
+  },
+  "newProjectModal": {
+    "remove": "Remove",
+    "fileSizeKb": "{size} KB",
+    "nameRequired": "Project name is required.",
+    "folderUnsupported": "This server does not support pointing a project at a folder. It created \"{name}\" as a normal project and cleared your folder selection. Update Cowork to use your folder, or delete that project if you do not want it.",
+    "couldNotCreate": "Could not create project.",
+    "couldNotOpenPicker": "Could not open the folder picker.",
+    "title": "Start a new project",
+    "nameLabel": "Project name",
+    "instructionsLabel": "Instructions",
+    "savedAs": "Saved as",
+    "instructionsPlaceholder": "Tell the agent how to work in this project — codebase conventions, output preferences, things to avoid…",
+    "locationLabel": "Location",
+    "locationHelpChosen": "The agent works on the files already in this folder. Cowork adds skills/ and .anton/ folders inside it, and deleting the project leaves your files in place.",
+    "locationHelpDefault": "By default Cowork creates a new folder for the project.",
+    "changeFolder": "Change folder",
+    "useExistingFolder": "Use an existing folder",
+    "clear": "Clear",
+    "filesLabel": "Files",
+    "optional": "(optional)",
+    "dropFiles": "Drop files here or",
+    "clickToBrowse": "click to browse",
+    "dropHint": "Reference docs, schemas, examples — anything the agent should know about.",
+    "cancel": "Cancel",
+    "creating": "Creating…",
+    "create": "Create"
+  },
+  "projectCard": {
+    "untitledTask": "Untitled task",
+    "stats": {
+      "tasks": "{count, plural, one {# task} other {# tasks}}",
+      "memories": "{count, plural, one {# memory} other {# memories}}",
+      "schedules": "{count, plural, one {# schedule} other {# schedules}}",
+      "artifacts": "{count, plural, one {# artifact} other {# artifacts}}"
+    },
+    "pin": "Pin project",
+    "unpin": "Unpin project",
+    "menu": "Project menu",
+    "deleting": "Deleting…",
+    "sharedReadOnly": "Shared with you · Read only",
+    "noActivity": "No activity yet",
+    "running": "{count} running"
+  },
+  "sharedProjectFiles": {
+    "unavailable": "This shared project is unavailable. Its owner or operator may have removed access.",
+    "notText": "This file cannot be displayed as text. Download it if it is still available.",
+    "downloadUnavailable": "Download unavailable. Access may have been removed.",
+    "ariaLabel": "Shared project files",
+    "projectsCrumb": "Projects",
+    "allProjects": "All projects",
+    "sharedReadOnly": "Shared with you · Read only",
+    "intro": "Browse and download files. Only the owner can edit this project or run tasks here.",
+    "loadingFiles": "Loading files…",
+    "files": "Files",
+    "noFiles": "No shared files yet.",
+    "truncated": "This project has more files than can be listed.",
+    "download": "Download",
+    "loadingFile": "Loading file…",
+    "selectFile": "Select a file to read it. HTML is shown as source."
+  },
+  "sharedProjectReference": {
+    "title": "Project ID: {id}",
+    "label": "Project · {id}"
+  },
+  "projectPicker": {
+    "couldNotCreate": "Could not create project.",
+    "choose": "Choose project",
+    "workInProject": "Work in a project",
+    "searchOrCreate": "Search or create…",
+    "searchProjects": "Search projects…",
+    "noMatch": "No project matches “{query}”.",
+    "noProjects": "No projects yet.",
+    "creating": "Creating…",
+    "createPrefix": "Create",
+    "quotedName": "“{name}”",
+    "newProject": "New project"
+  },
+  "moveToProjectModal": {
+    "title": "Move to project",
+    "subtitleNamed": "Move “{title}” and its work",
+    "subtitle": "Move this task and its work",
+    "searchPlaceholder": "Search projects or type a new name…",
+    "createNew": "Create “{name}”",
+    "alreadyIn": "This task is already in “{name}”.",
+    "noOtherProjects": "No other projects yet — type a name to create one.",
+    "moveEverythingAriaLabel": "Move everything — the files and artifacts this task created",
+    "moveEverything": "Move everything — the files & artifacts this task created",
+    "cancel": "Cancel",
+    "moving": "Moving…",
+    "moveTo": "Move to {name}",
+    "move": "Move"
+  },
+  "projectsView": {
+    "newProject": "New project",
+    "sort": {
+      "recent": "Recent",
+      "name": "Name",
+      "mostActive": "Most active",
+      "leastActive": "Least active"
+    },
+    "counts": {
+      "filtered": "{filtered} of {total} projects",
+      "total": "{count, plural, one {# project} other {# projects}}",
+      "pinned": "{count, plural, other {# pinned}}"
+    },
+    "menu": {
+      "open": "Open",
+      "pin": "Pin",
+      "unpin": "Unpin",
+      "rename": "Rename…",
+      "chosenFolderHint": "Chosen folder",
+      "adminOrCreatorHint": "Admin or creator",
+      "chosenFolderRenameTitle": "This project points at a folder you chose. Rename the folder itself instead.",
+      "revealInFinder": "Reveal in Finder",
+      "delete": "Delete…",
+      "generalUndeletable": "The General project can't be deleted — it's the orphan-fallback workspace.",
+      "noDeletePermission": "You do not have permission to delete this project.",
+      "ariaLabel": "Project actions"
+    },
+    "noRenamePermission": "You do not have permission to rename this project.",
+    "renameFailed": "Rename failed: {error}",
+    "expandPanel": "Expand panel",
+    "collapsePanel": "Collapse panel",
+    "title": "Projects",
+    "allProjects": "All projects",
+    "deleting": "Deleting…",
+    "projectMenu": "Project menu",
+    "composerPlaceholder": "Start a new task in {project}…",
+    "subtitle": "Workspaces {agent} uses to group conversations, memory, and outputs.",
+    "theAgent": "the agent",
+    "searchPlaceholder": "Search projects",
+    "empty": {
+      "title": "No projects yet",
+      "description": "Create your first project to start grouping conversations and outputs.",
+      "action": "Create your first project"
+    }
+  }
+}

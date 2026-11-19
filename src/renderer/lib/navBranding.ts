@@ -3,6 +3,9 @@
 // the "Design your own" CustomTheme recipe (customTheme.ts, local-only,
 // tied to the Custom skin), branding applies regardless of skin/theme.
 
+import type { DeploymentBrand } from './deploymentBrand';
+import { trustedBrandImageUrl } from './orgBranding';
+
 /**
  * Apply (or with null/empty, clear) the sidebar wordmark color as an inline
  * body property. Independent of the active skin — works in every style.
@@ -10,4 +13,95 @@
 export function applyNavTitleColor(color: string | null | undefined): void {
   if (color) document.body.style.setProperty('--nav-title-color', color);
   else document.body.style.removeProperty('--nav-title-color');
+}
+
+/**
+ * Point the tab and home-screen icons at a deployment brand's own files.
+ * Runs before the app renders, so the brand's icon is the page's own icon:
+ * a favicon set in Settings still wins, and clearing it brings the brand's
+ * icon back. Does nothing without a brand, or for an icon the brand doesn't set.
+ */
+export function applyBrandIcons(brand: DeploymentBrand | null, doc: Document = document): void {
+  if (brand?.iconUrl) {
+    const icon = doc.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    if (icon) {
+      icon.setAttribute('href', brand.iconUrl);
+      // The stock link declares SVG; the brand's icon may be any image type.
+      icon.removeAttribute('type');
+    }
+  }
+  if (brand?.appleTouchIconUrl) {
+    doc.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')?.setAttribute('href', brand.appleTouchIconUrl);
+  }
+}
+
+interface OriginalFavicon {
+  href: string | null;
+  type: string | null;
+  created: boolean;
+}
+
+const originalFavicons = new WeakMap<HTMLLinkElement, OriginalFavicon>();
+
+/** Put the page's own icon back once nothing overrides it. */
+function restoreFavicon(): void {
+  const link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+  const original = link && originalFavicons.get(link);
+  if (!link || !original) return;
+  if (original.created) link.remove();
+  else {
+    for (const attribute of ['href', 'type'] as const) {
+      const value = original[attribute];
+      if (value === null) link.removeAttribute(attribute);
+      else link.setAttribute(attribute, value);
+    }
+  }
+  originalFavicons.delete(link);
+}
+
+/** Point the tab icon at `href`, remembering the page's own icon first. */
+function setFavicon(href: string, type: string | null): void {
+  let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+  const created = !link;
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  if (!originalFavicons.has(link)) {
+    originalFavicons.set(link, {
+      href: link.getAttribute('href'),
+      type: link.getAttribute('type'),
+      created,
+    });
+  }
+  link.href = href;
+  if (type) link.type = type;
+  else link.removeAttribute('type');
+}
+
+/** Restore the page's own icon when the synced override is cleared. */
+export function applyFavicon(dataUri: string | null | undefined): void {
+  if (!dataUri) {
+    restoreFavicon();
+    return;
+  }
+  const mime = /^data:(image\/(?:png|x-icon|vnd\.microsoft\.icon|svg\+xml|webp));base64,/i.exec(dataUri)?.[1];
+  if (!mime) return;
+  setFavicon(dataUri, mime.toLowerCase());
+}
+
+/**
+ * Use the org's icon as the tab icon, or with null put the page's
+ * own icon back. Only an https URL on the auth host is used
+ * (orgBranding.ts trustedBrandImageUrl); anything else restores the page's own.
+ */
+export function applyOrgFavicon(url: string | null | undefined): void {
+  const href = trustedBrandImageUrl(url);
+  if (!href) {
+    restoreFavicon();
+    return;
+  }
+  // The org's icon may be PNG, JPEG or WebP; the browser sniffs it.
+  setFavicon(href, null);
 }

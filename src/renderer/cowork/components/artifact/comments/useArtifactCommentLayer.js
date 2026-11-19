@@ -69,9 +69,10 @@ export function useArtifactCommentLayer(
       // Defense-in-depth: only trust messages from OUR iframe. (This does not
       // isolate untrusted artifact JS running in the same frame — that script
       // can already reach the comments API directly on the shared origin — but
-      // it does reject other windows spoofing the source tag.)
+      // it does reject other windows spoofing the source tag.) With no iframe
+      // mounted there is no layer to hear from, so every message is dropped.
       const win = iframeRef.current && iframeRef.current.contentWindow;
-      if (win && ev.source !== win) return;
+      if (!win || ev.source !== win) return;
       const h = handlersRef.current;
       switch (d.type) {
         // The layer announces readiness during document parse (before the

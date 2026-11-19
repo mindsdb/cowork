@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Local-only native crash collection for the main process.
 //
 // Without a crashpad handler, a native fault that unwinds through a JS frame
@@ -14,5 +15,5 @@ export function startCrashReporter(): void {
   // Minidumps hold process memory, tokens included, so nothing is uploaded and
   // no account data is attached.
   crashReporter.start({ uploadToServer: false });
-  console.log(`[crash-reporter] minidumps → ${app.getPath('crashDumps')}`);
+  diagnostic("main.crash-reporter", "INFO", "crash_reporter_minidumps", `[crash-reporter] minidumps → ${app.getPath('crashDumps')}`);
 }

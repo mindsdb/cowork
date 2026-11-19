@@ -33,6 +33,10 @@ import { ReactKeycloakProvider } from '@react-keycloak/web';
 // the Electron bundle, where the App-subtree CSS imports execute before
 // main.tsx's tailwind.css import. Before this reorder the web bundle had
 // the opposite tie-resolution from Electron for every migrated component.
+/* KaTeX's stylesheet for the math MarkdownContent renders (remark-math and
+ * rehype-katex), before globals.css so its `.katex-display` tweaks win, as in
+ * main.tsx. Without it the browser shows each formula's MathML copy as text. */
+import 'katex/dist/katex.min.css';
 import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';
@@ -44,12 +48,23 @@ import {
 } from './cowork/lib/organizationCacheIdentity';
 import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
-import { keycloak } from './lib/keycloak';
+import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
+import { keycloak, mobileShellAdapter } from './lib/keycloak';
+import { keycloakInitOptions } from './lib/mobileAuth';
+import { applyMobileShellDocument, mobileShell } from './lib/mobileShell';
+import { startMobilePush } from './lib/mobilePush';
+import { MobileShellRoot } from './MobileShellRoot';
 import { isLegacyTenantHost } from './lib/legacyHost';
-import { loadSkin } from './lib/skins';
+import { loadSkin, seedBrandDefaults } from './lib/skins';
+import { DEPLOYMENT_BRAND } from './lib/deploymentBrand';
+import { applyBrandIcons } from './lib/navBranding';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
+import { whenI18nReady } from './lib/i18n';
 
 (() => {
+  applyBrandIcons(DEPLOYMENT_BRAND);
+  // Before reading either preference, so a changed brand default applies now.
+  seedBrandDefaults();
   let theme: 'light' | 'dark' = 'dark';
   try {
     const saved = window.localStorage.getItem('anton.theme');
@@ -59,15 +74,26 @@ import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
   document.body.dataset.skin = loadSkin();
   document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
   applyArcadePreset(document.body.dataset.skin);
+  // Inside the mobile app (ENG-4023): data-shell on <html> and
+  // viewport-fit=cover, so the safe-area padding applies. Browsers: untouched.
+  if (mobileShell) applyMobileShellDocument(mobileShell);
 })();
+
+// Mobile app: listen for push taps before anything else, so a tap that
+// launched the app is kept until the router exists (lib/mobilePush.ts).
+if (mobileShell) startMobilePush();
 
 // Before the redirect below drops the query string: a console link's
 // ?from=console&mode=…&sample=… has to outlive the Keycloak round trip.
 captureConsoleHandoff();
+// Same for a link into Settings (?settings=appearance&section=branding).
+captureSettingsDeepLink();
 
 // Base URL without query params. Keycloak validates redirect URIs strictly.
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
-const initOptions = { onLoad: 'login-required' as const, pkceMethod: 'S256', checkLoginIframe: false, redirectUri: cleanRedirectUri };
+// In a browser, log in on load. In the mobile app, sign in from the app's own
+// screen through the system browser sheet (MobileShellRoot, lib/mobileAuth.ts).
+const initOptions = keycloakInitOptions(cleanRedirectUri, mobileShellAdapter);
 
 // Legacy per-user host (cw-<id>): canonical `cowork.*` and localhost dev are
 // unaffected — see the TRANSITION EXCEPTION note above and lib/legacyHost.ts.
@@ -86,25 +112,32 @@ function bindOrganizationCacheTokens(tokens: { token?: string }) {
 
 const root = document.getElementById('root')!;
 
-createRoot(root).render(
-  <StrictMode>
-    {legacyTenant || codeFixture ? (
-      // Access is gated upstream; render directly without a Keycloak login.
-      <App />
-    ) : (
-      // LoadingComponent holds the mount until keycloak.init() resolves. Without
-      // it the provider renders App immediately, App's boot effect probes
-      // /api/v1/health before `authenticated` is set, getAccessToken() returns
-      // null so no Bearer is attached, the auth ingress 401s the probe, and
-      // resolveBootTarget lands a signed-in user on the auth screen.
-      <ReactKeycloakProvider
-        authClient={keycloak}
-        initOptions={initOptions}
-        LoadingComponent={<WelcomeLoading />}
-        onTokens={bindOrganizationCacheTokens}
-      >
+// Load the user's language before the first paint (bounded, never rejects).
+void whenI18nReady().then(() => {
+  createRoot(root).render(
+    <StrictMode>
+      {legacyTenant || codeFixture ? (
         <App />
-      </ReactKeycloakProvider>
-    )}
-  </StrictMode>
-);
+      ) : mobileShell ? (
+        <MobileShellRoot
+          shell={mobileShell}
+          authClient={keycloak}
+          initOptions={initOptions}
+          onTokens={bindOrganizationCacheTokens}
+        >
+          <App />
+        </MobileShellRoot>
+      ) : (
+        // Hold mounting until auth resolves, so the first API probe has a token.
+        <ReactKeycloakProvider
+          authClient={keycloak}
+          initOptions={initOptions}
+          LoadingComponent={<WelcomeLoading />}
+          onTokens={bindOrganizationCacheTokens}
+        >
+          <App />
+        </ReactKeycloakProvider>
+      )}
+    </StrictMode>
+  );
+});

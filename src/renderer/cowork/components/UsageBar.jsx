@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import { host } from '../../platform/host';
 import { trackBillingOpened } from '../lib/analytics';
 import { usageActionUrl } from '../lib/usageWarnings';
 import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDismiss';
+import { useTranslation } from '../../lib/i18n';
 
 // The usage bar above the chat input (ENG-1782): a tab tucked behind the
 // composer's top edge, so it reads as part of the input rather than a system
@@ -13,15 +15,17 @@ import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDism
 // (ChatView's UsageAlertCard).
 //
 // Colors use the pre-mixed -bg/-border/-text tokens (see Alert.tsx for why
-// `bg-warning/10` cannot work against a var() color).
+// `bg-warning/10` cannot work against a var() color). The dark theme's status
+// -bg tokens are translucent, and the conversation scrolls behind the bar, so
+// each status tone paints its tint as an image over the solid page colour.
 const TONE = {
   // `resting` is the standing allowance figure rather than a warning, so it
   // borrows the app's own surface instead of a status colour: it stays in view
   // until closed and must not read as something being wrong.
   resting: 'bg-surface-2 border-line text-ink-3',
-  info: 'bg-info-bg border-info-border text-info-text',
-  warning: 'bg-warning-bg border-warning-border text-warning-text',
-  danger: 'bg-danger-bg border-danger-border text-danger-text',
+  info: 'bg-bg bg-[image:linear-gradient(var(--info-bg),var(--info-bg))] border-info-border text-info-text',
+  warning: 'bg-bg bg-[image:linear-gradient(var(--warning-bg),var(--warning-bg))] border-warning-border text-warning-text',
+  danger: 'bg-bg bg-[image:linear-gradient(var(--danger-bg),var(--danger-bg))] border-danger-border text-danger-text',
 };
 
 // `dismissKey` narrows a dismissal to one step of a band the resource sits in
@@ -32,6 +36,7 @@ const keyOf = (d) => d.dismissKey ?? d.kind;
 // warning about. Only then does an at-rest bar mean "healthy", which is when
 // closed warnings are forgotten.
 export default function UsageBar({ warning, isBillingOwner = false, usageKnown = false, trigger = 'usage_notice' }) {
+  const { t } = useTranslation('shell');
   const [dismissed, dismiss] = useUsageBarDismiss({
     // Closed warnings are forgotten once the bar is back at rest: the standing
     // figure or nothing at all. Not while a warning is up, even one the person
@@ -97,11 +102,11 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
           onClick={() => (shown.resting ? hideFigure() : dismiss(keyOf(shown)))}
           // The label names what goes, since for a free user the figure's
           // button is a permanent fixture rather than a passing warning's.
-          aria-label={shown.resting ? 'Hide allowance' : 'Dismiss'}
-          title={shown.resting ? 'Hide' : 'Dismiss'}
+          aria-label={shown.resting ? t('usageBar.hideAllowance') : t('ui.toast.dismiss')}
+          title={shown.resting ? t('usageBar.hide') : t('ui.toast.dismiss')}
           className="absolute top-1 right-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md border-0 bg-transparent text-[color:inherit] opacity-70 cursor-pointer hover:opacity-100 hover:bg-[rgba(127,127,127,0.12)]"
         >
-          <X size={14} strokeWidth={1.5} aria-hidden="true" />
+          <Icon of={X} size={14} />
         </button>
       </div>
     </>

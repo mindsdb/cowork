@@ -1,0 +1,130 @@
+name: Mobile smoke
+
+# Unsigned smoke build of the Capacitor shell in mobile/ (ENG-4023): proves the
+# iOS project compiles for the simulator and the Android project assembles a
+# debug APK. No certificates, no store upload; signed release builds live in
+# their own workflows.
+#
+# Node 22, not 20: Capacitor 8's CLI requires Node >= 22.
+
+# `workflow_call` from the PR pipeline (dev-build-deploy.yml, only when the PR
+# touches mobile/, this file, or build-android.yml), so every PR event lands in one run tree.
+# Concurrency belongs to the caller. `workflow_dispatch` for a manual run.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      # Capacitor 8 needs Xcode 26+. Use the newest stable Xcode on the image
+      # rather than whatever the image happens to default to.
+      - name: Select Xcode
+        run: |
+          xcode="$(printf '%s\n' /Applications/Xcode_*.app | grep -viE 'beta|rc|release_candidate' | sort -V | tail -1)"
+          echo "Selecting $xcode"
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+          working-directory: mobile
+      - name: Check Android release prerequisites without secrets
+        run: ruby fastlane/test/android_workflow_test.rb
+      - name: Check release labels without uploading
+        run: ruby fastlane/test/release_test.rb
+      - name: Typecheck capacitor.config.ts
+        run: npm run typecheck
+      - name: Sync iOS
+        run: npx cap sync ios
+      - name: Build (simulator, unsigned)
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            mobile/android/*.gradle*
+            mobile/android/**/gradle-wrapper.properties
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+          working-directory: mobile
+      - name: Sync Android
+        run: npx cap sync android
+      - name: Assemble debug APK
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Check the APK's version and package
+        working-directory: mobile/android
+        run: |
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          test -f "$apk"
+          aapt="$(printf '%s\n' "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -1)"
+          badging="$("$aapt" dump badging "$apk")"
+          echo "$badging" | grep '^package:'
+          expected_version="$(node -p "require('../package.json').version")"
+          echo "$badging" | grep '^package:' | grep -Fq "name='ai.mindshub.cowork' versionCode='1' versionName='$expected_version'"
+      # Exercises the release signingConfig build-android.yml relies on, with a
+      # throwaway key, so a break there shows up on the PR rather than on the
+      # first tag. Nothing is uploaded.
+      - name: Bundle a release AAB signed with a throwaway key
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/smoke-upload.jks
+          ANDROID_KEYSTORE_PASSWORD: smoke-only
+          ANDROID_KEY_ALIAS: smoke
+          ANDROID_KEY_PASSWORD: smoke-only
+        run: |
+          keytool -genkeypair -keystore "$ANDROID_KEYSTORE_PATH" -storetype PKCS12 \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" -keypass "$ANDROID_KEY_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 1 \
+            -dname 'CN=mobile smoke' -noprompt
+          ./gradlew bundleRelease --no-daemon --stacktrace
+          aab=app/build/outputs/bundle/release/app-release.aab
+          test -f "$aab"
+          jarsigner -verify -verbose -certs "$aab" > "$RUNNER_TEMP/verify.txt"
+          grep -m1 'jar verified' "$RUNNER_TEMP/verify.txt"
+          grep -m1 'CN=mobile smoke' "$RUNNER_TEMP/verify.txt"

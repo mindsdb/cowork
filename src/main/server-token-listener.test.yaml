@@ -1,0 +1,53 @@
+# Requests src/main/server-token-listener.test.ts sends through the server
+# token listener with no gate holding them, and whether each must go out with
+# the server's Authorization header. The test runs the listener with the real
+# document preview guard, the server on port 26866 and a fixed token.
+#
+#   frame        main: a frame in the main window. preview: the frame created
+#                with the preview name. none: a request with no frame.
+#   viteDevPort  Vite's port when the renderer is served from Vite. Left out,
+#                the renderer is not served from Vite.
+#   serverToken  false when the server runs without auth. Left out, the server
+#                has a token.
+#   authorized   whether the request goes out with the token.
+requests:
+  - name: a main-window call to the server
+    url: http://127.0.0.1:26866/api/v1/conversations
+    frame: main
+    authorized: true
+  - name: a preview-frame call to the server
+    url: http://127.0.0.1:26866/api/v1/conversations
+    frame: preview
+    authorized: false
+  - name: a server call with no frame
+    url: http://127.0.0.1:26866/api/v1/conversations
+    frame: none
+    authorized: false
+  - name: a main-window /api/ call through Vite
+    url: http://localhost:5173/api/v1/conversations
+    frame: main
+    viteDevPort: "5173"
+    authorized: true
+  - name: a preview-frame /api/ call through Vite
+    url: http://localhost:5173/api/v1/conversations
+    frame: preview
+    viteDevPort: "5173"
+    authorized: false
+  - name: a Vite module request outside /api/
+    url: http://localhost:5173/src/main.tsx
+    frame: main
+    viteDevPort: "5173"
+    authorized: false
+  - name: an /api/ call to Vite's port when the renderer is not served from Vite
+    url: http://localhost:5173/api/v1/conversations
+    frame: main
+    authorized: false
+  - name: a main-window call to another loopback port
+    url: http://127.0.0.1:9999/api/v1/conversations
+    frame: main
+    authorized: false
+  - name: a main-window call when the server runs without auth
+    url: http://127.0.0.1:26866/api/v1/conversations
+    frame: main
+    serverToken: false
+    authorized: false

@@ -234,7 +234,7 @@ describe('loadBundledServerCredentials — unconfigured diagnostics', () => {
     vi.mocked(getStaticCredential).mockResolvedValue(null);
     await loadBundledServerCredentials();
     expect(console.warn).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(console.warn).mock.calls[0].join(' ')).toMatch(/no OAuth credentials/i);
+    expect(JSON.parse(String(vi.mocked(console.warn).mock.calls[0][0])).event).toContain('no_oauth_credentials');
   });
 
   it('stays quiet once the values are in the store, which is every normal launch', async () => {

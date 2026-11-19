@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { GitBranch } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 import Combobox from '../components/ui/Combobox';
 import { codingApi } from './api';
+import { useTranslation } from '../../lib/i18n';
 
 export function RepositoryBranchSelect({
   projectId,
@@ -24,6 +26,7 @@ export function RepositoryBranchSelect({
   onChange: (value: string) => void;
   onBranchesLoaded: (branches: string[]) => void;
 }) {
+  const { t } = useTranslation('code');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const load = async (open: boolean) => {
@@ -34,7 +37,7 @@ export function RepositoryBranchSelect({
       onBranchesLoaded((await codingApi.repositoryBranches(projectId, resourceId)).items);
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : 'Could not load branches. Open the picker to retry.',
+        reason instanceof Error ? reason.message : t('branchSelect.loadFailed'),
       );
     } finally {
       setLoading(false);
@@ -46,19 +49,19 @@ export function RepositoryBranchSelect({
   return (
     <div className="code-repository-base">
       <Combobox
-        ariaLabel={`Start ${name} from`}
+        ariaLabel={t('branchSelect.ariaLabel', { name })}
         size="sm"
         value={value}
         groups={[
           {
             key: 'branches',
             name: null,
-            items: options.map((branch) => ({ value: branch, label: branch, icon: <GitBranch size={13} /> })),
+            items: options.map((branch) => ({ value: branch, label: branch, icon: <Icon of={GitBranch} size={14} /> })),
           },
         ]}
-        placeholder="Default branch"
-        searchPlaceholder="Find a branch…"
-        menuLabel="Start from"
+        placeholder={t('branchSelect.placeholder')}
+        searchPlaceholder={t('branchSelect.searchPlaceholder')}
+        menuLabel={t('branchSelect.menuLabel')}
         loading={loading}
         disabled={disabled}
         onOpenChange={(open) => void load(open)}

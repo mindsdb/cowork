@@ -1,61 +1,40 @@
-// `<ScheduledView>` — list of scheduled tasks with grid/list view
-// toggle + create modal + per-card hover actions.
+// `<ScheduledView>` — scheduled tasks as rows, with a create modal and
+// per-row actions.
 //
-// Click on a card → host opens the schedule detail page (set via
+// Click on a row → host opens the schedule detail page (set via
 // onOpenSchedule prop, wired in App.jsx to setRoute('schedule-detail')).
 //
 // Create + edit happen in <ScheduleTaskModal>. Per-task actions (Edit,
-// Pause/Resume, Delete) live in an overflow menu on each card/row; Delete
+// Pause/Resume, Delete) live in an overflow menu on each row; Delete
 // opens a <ConfirmModal> here rather than deleting from inside the edit form.
 //
 // Run-now happens inline (no modal) — optimistic UI at the host via the
 // existing onRunNow handler.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import {
-  PageHeader, FilterRow, SearchInput, SortPill,
-  useCollectionShortcut,
+  PageHeader, FilterRow, SearchInput, SortPill, CollectionState,
+  ListGroup, useCollectionShortcut,
 } from '../components/collection';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Alert, Button, CardRow, EmptyState, Tooltip } from '../components/ui';
-import OverflowMenu from '../components/OverflowMenu';
+import { Alert, Button } from '../components/ui';
+import { useToastManager } from '../components/ui/Toast';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
-import ScheduleCard, { taskMenuItems } from '../components/schedule/ScheduleCard';
+import ScheduleRow from '../components/schedule/ScheduleRow';
+import { lastRunFailed, scheduleState } from '../components/schedule/ScheduleStatusBadge';
+import { host } from '../../platform/host';
+import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
+import { useTranslation } from '../../lib/i18n';
 
-const SORT_OPTIONS = [
-  { id: 'next', label: 'Next run' },
-  { id: 'name', label: 'Name' },
-  { id: 'created', label: 'Recently created' },
-];
-
-const VIEW_OPTIONS = [
-  { value: 'grid', label: 'Grid', icon: Ico.grid(13) },
-  { value: 'list', label: 'List', icon: Ico.list(13) }
-];
-
-// Match the storage-key convention used by ArtifactsView /
-// ProjectsView (`anton:<surface>-view`). Same value-shape too —
-// 'grid' | 'list'.
-const VIEW_MODE_KEY = 'anton:scheduled-view';
-
-function loadViewMode() {
-  if (typeof localStorage === 'undefined') return 'grid';
-  const v = localStorage.getItem(VIEW_MODE_KEY);
-  return v === 'list' ? 'list' : 'grid';
-}
-
-function saveViewMode(mode) {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch { }
-}
-
+const SORT_IDS = ['next', 'name', 'created'];
 
 export default function ScheduledView({
   scheduled,
   projects,
+  models,
+  modelMeta,
   selectedProject,
   onCreate,
   onUpdate,
@@ -63,26 +42,33 @@ export default function ScheduledView({
   onPause,
   onResume,
   onRunNow,
+  // (scheduleId) — stops the schedule's run in flight, as the chat's Stop does.
+  onStopRun,
   onOpenSchedule,
   // Optional — receives the project object when a card or list row's
   // "project:" label is clicked. Wired by App.jsx to setSelected
   // Project + setRoute('projects'), the same path Live artifacts uses.
   onOpenProject,
+  // Auto-paused schedules the user has not opened since they were paused
+  // (useAutoPauseNotifications). Shown here until each is reviewed, so a
+  // pause is not missed when its desktop notification was not.
+  unseenAutoPauses = [],
   agentLabel,
 }) {
+  const { t } = useTranslation('projects');
+  const sortOptions = SORT_IDS.map((id) => ({ id, label: t(`scheduledView.sort.${id}`) }));
+  const untitled = t('scheduleCommon.untitled');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [busyId, setBusyId] = useState(null);
-  const [error, setError] = useState('');
-  const [viewMode, setViewMode] = useState(loadViewMode);
+  const toastManager = useToastManager();
+  const showError = (title) => toastManager.add({ type: 'danger', title });
+  // Rows by default: a schedule is something you manage (status, next run,
+  // run now), not a place you work in. Phones get rows too.
   // Delete confirmation is a standalone ConfirmModal (not part of the edit
   // form). `deletingTask` holds the task awaiting confirmation.
   const [deletingTask, setDeletingTask] = useState(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
-
-  // Persist the view-mode choice — same toggle should still feel set
-  // when the user comes back to this surface tomorrow.
-  useEffect(() => { saveViewMode(viewMode); }, [viewMode]);
 
   // Total runs that slipped while the app was closed, summed across
   // all schedules. Surfaced as a small subtitle next to the total
@@ -124,32 +110,42 @@ export default function ScheduledView({
     return [...filtered].sort(cmp);
   }, [scheduled, search, sort, projects]);
 
+  const attentionCount = useMemo(() => visible.filter(needsAttention).length, [visible]);
+
   function openCreate() {
     setEditing(null);
-    setError('');
     setModalOpen(true);
   }
 
   function openEdit(task) {
     setEditing(task);
-    setError('');
     setModalOpen(true);
   }
 
-  async function handleSubmit(payload, id) {
-    if (id) await onUpdate(id, payload);
-    else await onCreate(payload);
+  async function handleSubmit(payload, id, { runOnce = false } = {}) {
+    if (id) {
+      await onUpdate(id, payload);
+      return;
+    }
+    const created = await onCreate(payload);
+    if (!runOnce || !created?.id) return;
+    // The task exists now, so a failed trial run must not fail the save: the
+    // form would stay open, and saving again would create a second task.
+    try {
+      await onRunNow(created.id, { trial: true });
+    } catch (err) {
+      showError(t('scheduledView.trialRunFailed', { title: payload.title, reason: err?.message || t('scheduledView.trialRunFallback') }));
+    }
   }
 
   async function confirmDelete() {
     if (!deletingTask) return;
     setDeleteBusy(true);
-    setError('');
     try {
       await onDelete(deletingTask.id);
       setDeletingTask(null);
     } catch (err) {
-      setError(err?.message || 'Could not delete schedule.');
+      showError(err?.message || t('scheduledView.deleteFailed'));
     } finally {
       setDeleteBusy(false);
     }
@@ -157,20 +153,23 @@ export default function ScheduledView({
 
   async function runAction(id, action) {
     setBusyId(id);
-    setError('');
     try { await action(id); }
-    catch (err) { setError(err?.message || 'Schedule action failed.'); }
+    catch (err) { showError(err?.message || t('scheduledView.actionFailed')); }
     finally { setBusyId(null); }
   }
 
   return (
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
-        title="Scheduled Tasks"
-        subtitle={`Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
+        title={t('scheduledView.title')}
+        // Desktop runs its own server, so tasks stop with the app. Every web
+        // build, hosted or self-hosted, runs them on a server that stays up.
+        subtitle={!host.isWeb
+          ? t('scheduledView.subtitleDesktop', { product: STOCK_PRODUCT_NAME, agent: agentLabel })
+          : t('scheduledView.subtitleWeb', { agent: agentLabel })}
         actions={
           <Button variant="primary" onClick={openCreate}>
-            {Ico.plus(14)} Schedule task
+            {Ico.plus(14)} {t('scheduledView.scheduleTask')}
           </Button>
         }
       />
@@ -183,21 +182,20 @@ export default function ScheduledView({
               value={search}
               onChange={setSearch}
               inputRef={searchRef}
-              placeholder="Search scheduled tasks"
+              placeholder={t('scheduledView.searchPlaceholder')}
             />
           }
-          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<ToggleGroup value={viewMode} onValueChange={setViewMode} size="md" aria-label="View" options={VIEW_OPTIONS} />}
+          sort={<SortPill value={sort} onChange={setSort} options={sortOptions} />}
           counts={
             <>
               {(search || '').trim().length > 0
-                ? `Showing ${visible.length} of ${scheduled.length}`
-                : `${scheduled.length} scheduled ${scheduled.length === 1 ? 'task' : 'tasks'}`}
+                ? t('scheduledView.filteredCount', { shown: visible.length, total: scheduled.length })
+                : t('scheduledView.count', { count: scheduled.length })}
               {totalMissed > 0 && (
                 <>
                   {' · '}
                   <span className="text-ink-3">
-                    {totalMissed} missed run{totalMissed === 1 ? '' : 's'}
+                    {t('scheduledView.missedCount', { count: totalMissed })}
                   </span>
                 </>
               )}
@@ -206,66 +204,64 @@ export default function ScheduledView({
         />
       )}
 
-      {error && (
-        <Alert variant="danger" className="mx-7 mb-3">{error}</Alert>
+      {unseenAutoPauses.length > 0 && (
+        <Alert
+          variant="danger"
+          className="mx-8 mb-3"
+          title={unseenAutoPauses.length === 1
+            ? t('scheduledView.autoPausedOne', { title: unseenAutoPauses[0].title || untitled })
+            : t('scheduledView.autoPausedMany', { count: unseenAutoPauses.length })}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            {unseenAutoPauses.map((task) => (
+              <Button key={task.id} size="sm" onClick={() => onOpenSchedule?.(task)}>
+                {unseenAutoPauses.length === 1 ? t('scheduledView.review') : t('scheduledView.reviewNamed', { title: task.title || untitled })}
+              </Button>
+            ))}
+          </div>
+        </Alert>
       )}
 
-      {/* Body — empty state, grid, or list. */}
-      {!scheduled.length ? (
-        <EmptyState
-          bordered
-          icon={
-            <span className="inline-grid place-items-center w-[48px] h-[48px] rounded-card bg-[color-mix(in_srgb,var(--accent)_12%,var(--surface-2))] text-accent">
-              {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
-            </span>
-          }
-          title="No scheduled tasks yet"
-          description={`Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`}
-          action={
-            <Button variant="primary" onClick={openCreate}>
-              {Ico.plus(14)} Schedule your first task
-            </Button>
-          }
-          style={{ margin: '40px 28px' }}
-        />
-      ) : viewMode === 'grid' ? (
-        <div className="pt-2 px-7 pb-7 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]">
-          {visible.map((task) => (
-            <ScheduleCard
-              key={task.id}
-              task={task}
-              projects={projects}
-              busy={busyId === task.id}
-              onOpen={() => onOpenSchedule?.(task)}
-              onRunNow={() => runAction(task.id, onRunNow)}
-              onPause={() => runAction(task.id, onPause)}
-              onResume={() => runAction(task.id, onResume)}
-              onEdit={() => openEdit(task)}
-              onDelete={() => setDeletingTask(task)}
-              onOpenProject={onOpenProject}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="pt-2 px-7 pb-7">
-          <ListHeaderRow />
-          {visible.map((task) => (
-            <ScheduleListRow
-              key={task.id}
-              task={task}
-              projects={projects}
-              busy={busyId === task.id}
-              onOpen={() => onOpenSchedule?.(task)}
-              onRunNow={() => runAction(task.id, onRunNow)}
-              onPause={() => runAction(task.id, onPause)}
-              onResume={() => runAction(task.id, onResume)}
-              onEdit={() => openEdit(task)}
-              onDelete={() => setDeletingTask(task)}
-              onOpenProject={onOpenProject}
-            />
-          ))}
-        </div>
-      )}
+      {/* Body — empty state or list. */}
+      <CollectionState
+        total={scheduled.length}
+        shown={visible.length}
+        query={search}
+        onClear={() => setSearch('')}
+        empty={{
+          icon: Ico.schedule ? Ico.schedule(20) : Ico.clock(20),
+          title: t('scheduledView.emptyTitle'),
+          description: t('scheduledView.emptyDescription', { agent: agentLabel }),
+          action: { label: t('scheduledView.emptyAction'), onClick: openCreate },
+          className: 'mx-8 mb-8',
+        }}
+      >
+        {/* What needs you sits on top: auto-paused, missed, or a failed last
+            run. The rest follow in the chosen order. */}
+        {[
+          ['attention', t('scheduledView.needsAttention'), visible.filter(needsAttention)],
+          ['rest', attentionCount ? t('scheduledView.everythingElse') : null, visible.filter((t) => !needsAttention(t))],
+        ].filter(([, , rows]) => rows.length > 0).map(([key, title, rows]) => (
+          <ListGroup key={key} className="mx-8 mb-8" title={title ? <h2>{title}</h2> : undefined} meta={title ? rows.length : undefined}>
+            {rows.map((task) => (
+              <ScheduleRow
+                key={task.id}
+                task={task}
+                projects={projects}
+                busy={busyId === task.id}
+                onOpen={() => onOpenSchedule?.(task)}
+                onRunNow={() => runAction(task.id, onRunNow)}
+                onStopRun={() => runAction(task.id, onStopRun)}
+                onPause={() => runAction(task.id, onPause)}
+                onResume={() => runAction(task.id, onResume)}
+                onEdit={() => openEdit(task)}
+                onDelete={() => setDeletingTask(task)}
+                onOpenProject={onOpenProject}
+              />
+            ))}
+          </ListGroup>
+        ))}
+      </CollectionState>
 
       <ScheduleTaskModal
         open={modalOpen}
@@ -273,21 +269,23 @@ export default function ScheduledView({
         onSubmit={handleSubmit}
         task={editing}
         projects={projects}
+        models={models}
+        modelMeta={modelMeta}
         defaultProjectPath={selectedProject?.path || ''}
         agentLabel={agentLabel}
       />
 
       <ConfirmModal
         open={!!deletingTask}
-        title="Delete scheduled task?"
+        title={t('scheduleCommon.deleteTitle')}
         message={deletingTask
-          ? `"${deletingTask.title || 'Untitled schedule'}" will be permanently deleted. This can't be undone.`
+          ? t('scheduleCommon.deleteMessage', { title: deletingTask.title || untitled })
           : ''}
-        confirmLabel="Delete"
-        cancelLabel="Keep"
+        confirmLabel={t('scheduleCommon.delete')}
+        cancelLabel={t('scheduleCommon.keep')}
         destructive
         busy={deleteBusy}
-        busyLabel="Deleting…"
+        busyLabel={t('scheduleCommon.deleting')}
         onConfirm={confirmDelete}
         onClose={() => { if (!deleteBusy) setDeletingTask(null); }}
       />
@@ -296,208 +294,11 @@ export default function ScheduledView({
 }
 
 
-// ── List view ──
-//
-// Slick table that mirrors the rhythm used by Live Artifacts and
-// Projects: monospaced uppercase header, tight bordered rows, hover
-// reveals row-level actions in the right meta slot. Columns:
-//   • status dot
-//   • Title (with prompt subtitle)
-//   • Cadence
-//   • Project (clickable when resolved)
-//   • Next run
-//   • Last run
-//   • action menu (hover-revealed)
-
-// 24px dot · 2.2fr title · 90px cadence · 1.1fr project · 130px next ·
-// 110px last · fixed-width actions slot.
-//
-// The action column needs a *fixed* width because each row is its
-// own CSS-grid, not a child of one shared grid — `auto` would size
-// the header's empty slot to 0 while the rows' slot would size to
-// the inline action buttons (~190px), throwing the columns off by
-// the difference. Width is chosen to fit Run + Pause/Resume + Edit
-// without wrapping.
-const LIST_GRID = '24px minmax(0, 2.2fr) 90px minmax(0, 1.1fr) 130px 110px 190px';
-
-function ListHeaderRow() {
-  const Cell = ({ children, align }) => (
-    <div className={`font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase ${align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'}`}>{children}</div>
-  );
-  return (
-    <div
-      className="grid gap-[14px] py-2.5 px-[14px] border-b border-t-0 border-x-0 border-solid border-line"
-      style={{ gridTemplateColumns: LIST_GRID }}
-    >
-      <Cell />
-      <Cell>Title</Cell>
-      <Cell>Cadence</Cell>
-      <Cell>Project</Cell>
-      <Cell>Next run</Cell>
-      <Cell>Last run</Cell>
-      <Cell />
-    </div>
-  );
-}
-
-function ScheduleListRow({
-  task, busy, projects = [], onOpen,
-  onRunNow, onPause, onResume, onEdit, onDelete, onOpenProject,
-}) {
-  const [hover, setHover] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const open = () => onOpen?.(task);
-  const stop = (e) => { e.stopPropagation(); };
-
-  const status = (() => {
-    if (task.running) return { label: 'Running', dot: 'var(--accent)' };
-    if (!task.enabled) return { label: 'Paused', dot: 'var(--ink-4)' };
-    if (task.lastError) return { label: 'Failed', dot: 'var(--danger)' };
-    return { label: 'Active', dot: 'var(--success)' };
-  })();
-  const missedRuns = Number(task.missedRuns) || 0;
-
-  const cadenceLabel = {
-    once: 'Once', hourly: 'Hourly', daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly',
-  }[task.cadence] || task.cadence;
-
-  // Resolve the project name from the stored id (ENG-1255) — the server keys
-  // by project id (a UUID), not a name.
-  const projectMatch = task.projectId
-    ? projects.find((p) => p.id === task.projectId) || null
-    : null;
-  // Holds the label, not the slug. The id lookup above means this row -- unlike
-  // TasksView's, which matches a project by name -- needs the slug for nothing
-  // (ENG-1676).
-  const projectDisplay = projectLabel(projectMatch) || '';
-  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
-
-  return (
-    <CardRow
-      as="div"
-      onActivate={open}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className="grid gap-[14px] py-3 px-[14px] items-center"
-      style={{
-        gridTemplateColumns: LIST_GRID,
-        borderBottom: '1px solid var(--line)',
-      }}
-    >
-      <div className="flex justify-center">
-        <span aria-hidden title={status.label}
-          className="w-2 h-2 rounded-full"
-          style={{
-            background: status.dot,
-            boxShadow: status.dot === 'var(--success)'
-              ? '0 0 6px var(--success-glow)'
-              : 'none',
-          }}
-        />
-      </div>
-
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="font-[family-name:var(--font-display)] text-base font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap">{task.title || 'Untitled schedule'}</span>
-          {/* Missed-runs annotation — shows alongside the title so the
-              user sees how many cadence ticks were skipped while the
-              app was off. Cleared on the next successful run. */}
-          {missedRuns > 0 && (
-            <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.04em] shrink-0">
-              missed {missedRuns}
-            </span>
-          )}
-        </div>
-        {task.prompt && (
-          <div className="font-[family-name:var(--font-body)] text-[11.5px] text-ink-4 overflow-hidden text-ellipsis whitespace-nowrap mt-0.5">{task.prompt}</div>
-        )}
-      </div>
-
-      <div className="font-[family-name:var(--font-mono)] text-xs text-ink-3 tracking-[0.06em] uppercase">{cadenceLabel}</div>
-
-      <div className="font-[family-name:var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
-        {projectDisplay ? (
-          canOpenProject ? (
-            <Tooltip content={`Open ${projectDisplay}`}>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-                style={{
-                  all: 'unset', cursor: 'pointer',
-                  color: 'var(--ink-2)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  maxWidth: '100%', display: 'inline-block',
-                  transition: 'color 120ms ease',
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.color = 'var(--accent)';
-                  e.currentTarget.style.textDecoration = 'underline';
-                  e.currentTarget.style.textUnderlineOffset = '2px';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.color = 'var(--ink-2)';
-                  e.currentTarget.style.textDecoration = 'none';
-                }}
-              >{projectDisplay}</button>
-            </Tooltip>
-          ) : projectDisplay
-        ) : <span className="text-ink-5">—</span>}
-      </div>
-
-      <div title={absoluteFull(task.nextRunAt)} className="font-[family-name:var(--font-mono)] text-xs text-ink-3 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap">{task.enabled ? formatAbsolute(task.nextRunAt) : 'Paused'}</div>
-
-      <div title={task.lastRunAt ? absoluteFull(task.lastRunAt) : ''} className="font-[family-name:var(--font-mono)] text-xs text-ink-4 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap">{task.lastRunAt ? formatAbsolute(task.lastRunAt) : '—'}</div>
-
-      <div onClick={stop} onMouseDown={stop}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          justifyContent: 'flex-end',
-          opacity: (hover || menuOpen) ? 1 : 0,
-          transition: 'opacity 140ms ease',
-          pointerEvents: (hover || menuOpen) ? 'auto' : 'none',
-        }}
-      >
-        <RowAction icon={Ico.send(12)} label="Run" onClick={onRunNow} busy={busy} />
-        <OverflowMenu
-          items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
-          disabled={busy}
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
-          // Ghost icon button (matches the grid card / Live-artifacts kebab):
-          // a real hit target + hover surface instead of the bare icon.
-          icon={Ico.moreVert(16)}
-          triggerClassName="h-7 w-7 justify-center rounded-md hover:bg-surface-2"
-        />
-      </div>
-    </CardRow>
-  );
-}
-
-function absoluteFull(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString(undefined, {
-    weekday: 'short', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
-}
-
-function formatAbsolute(iso) {
-  if (!iso) return 'not set';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return 'not set';
-  return d.toLocaleString(undefined, {
-    month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
-}
-
-function RowAction({ icon, label, onClick, busy }) {
-  return (
-    <Button
-      onClick={onClick}
-      disabled={busy}
-    >{icon}{label}</Button>
-  );
+// A task that needs the user: paused by failures, a missed one-off, or a last
+// run that failed.
+export function needsAttention(task) {
+  if (task.running) return false;
+  const state = scheduleState(task);
+  return state === 'auto_paused' || state === 'missed'
+    || (state === 'active' && lastRunFailed(task));
 }

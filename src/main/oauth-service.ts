@@ -105,6 +105,15 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     return { ok: false, reason: 'OAuth opts missing authUrl, tokenUrl, or clientId.' };
   }
 
+  // The authorize URL goes to shell.openExternal, which hands any scheme to the
+  // OS (file:, custom app handlers). Only an https provider page may open, and
+  // the check runs before cancelling, so a refused call leaves a live flow alone.
+  let authProtocol = '';
+  try { authProtocol = new URL(opts.authUrl).protocol; } catch {}
+  if (authProtocol !== 'https:') {
+    return { ok: false, reason: 'OAuth authorize URL must use https.' };
+  }
+
   // Only one attempt at a time. A dangling previous attempt (double-
   // click, retry after a hung exchange) would otherwise keep its own
   // loopback server alive — two live callback ports and whichever tab

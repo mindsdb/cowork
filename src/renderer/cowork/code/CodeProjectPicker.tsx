@@ -1,6 +1,7 @@
 import Ico from '../components/Icons';
 import Combobox from '../components/ui/Combobox';
 import { projectResources, type CodeProject } from './api';
+import { useTranslation } from '../../lib/i18n';
 
 
 const NEW_PROJECT_VALUE = '__new_code_project__';
@@ -19,12 +20,13 @@ export function CodeProjectPicker({
   onValueChange: (id: string | null) => void;
   onCreateProject: () => void;
 }) {
+  const { t } = useTranslation('code');
   const items = [
     ...projects.map((project) => ({
       value: project.id,
       label: project.name,
-      tag: `${projectResources(project).length} resource${projectResources(project).length === 1 ? '' : 's'}`,
-      icon: Ico.folder(13),
+      tag: t('projectPicker.resourceCount', { count: projectResources(project).length }),
+      icon: Ico.folder(14),
     })),
   ];
 
@@ -41,32 +43,32 @@ export function CodeProjectPicker({
           key: 'standalone',
           name: null,
           className: projects.length ? 'code-project-picker__standalone-group' : undefined,
-          items: [{ value: NO_PROJECT_VALUE, label: 'No project', tag: 'Local folder', icon: Ico.openFolder(13) }],
+          items: [{ value: NO_PROJECT_VALUE, label: t('projectPicker.noProject'), tag: t('projectPicker.localFolder'), icon: Ico.openFolder(14) }],
         },
-        { key: 'projects', name: projects.length ? 'Projects' : null, items },
+        { key: 'projects', name: projects.length ? t('projectPicker.projects') : null, items },
         {
           key: 'create',
           name: null,
           className: 'code-project-picker__create-group',
-          items: [{ value: NEW_PROJECT_VALUE, label: 'New project', icon: Ico.plus(13) }],
+          items: [{ value: NEW_PROJECT_VALUE, label: t('projectPicker.newProject'), icon: Ico.plus(14) }],
         },
       ]}
-      placeholder="No project"
-      searchPlaceholder="Search projects"
-      searchAriaLabel="Search projects"
-      emptyText="No projects found"
+      placeholder={t('projectPicker.noProject')}
+      searchPlaceholder={t('projectPicker.search')}
+      searchAriaLabel={t('projectPicker.search')}
+      emptyText={t('projectPicker.noResults')}
       variant="unstyled"
       className="code-project-picker"
-      ariaLabel="Code Project"
-      menuLabel="Project"
+      ariaLabel={t('projectPicker.ariaLabel')}
+      menuLabel={t('projectPicker.menuLabel')}
       disabled={disabled}
       renderValue={(selected: { value: string; label: string; tag?: string } | null) => (
         <>
           <span className="code-project-picker__icon" aria-hidden="true">
-            {selected?.value === NO_PROJECT_VALUE || !selected ? Ico.openFolder(13) : Ico.folder(13)}
+            {selected?.value === NO_PROJECT_VALUE || !selected ? Ico.openFolder(14) : Ico.folder(14)}
           </span>
           <span className="code-project-picker__copy">
-            <span className="code-project-picker__label">{selected?.label || 'No project'}</span>
+            <span className="code-project-picker__label">{selected?.label || t('projectPicker.noProject')}</span>
             {selected?.tag && selected.value !== NEW_PROJECT_VALUE && selected.value !== NO_PROJECT_VALUE && <small>{selected.tag}</small>}
           </span>
         </>

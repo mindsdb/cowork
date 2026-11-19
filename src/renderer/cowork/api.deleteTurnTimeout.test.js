@@ -67,11 +67,10 @@ describe('deleteConversationTurn', () => {
   });
 
   it('surfaces the server detail on a refused delete', async () => {
-    global.fetch = vi.fn(async () => ({
-      ok: false,
-      status: 409,
-      json: async () => ({ detail: 'turn is locked' }),
-    }));
+    global.fetch = vi.fn(async () => new Response(
+      JSON.stringify({ detail: 'turn is locked' }),
+      { status: 409, headers: { 'Content-Type': 'application/json' } },
+    ));
 
     await expect(deleteConversationTurn('conv-a', 0)).rejects.toThrow('turn is locked');
     expect(vi.getTimerCount()).toBe(0);
@@ -105,10 +104,10 @@ describe('deleteConversationTurn', () => {
   it('still maps a 404 to gone rather than an error', async () => {
     global.fetch = vi.fn(async () => ({ ok: false, status: 404 }));
 
-    await expect(deleteConversationTurn('conv-a', 2)).resolves.toEqual({
+    await expect(deleteConversationTurn('conv-a', 'msg-2')).resolves.toEqual({
       status: 'gone',
       id: 'conv-a',
-      turnIndex: 2,
+      messageId: 'msg-2',
     });
     expect(vi.getTimerCount()).toBe(0);
   });

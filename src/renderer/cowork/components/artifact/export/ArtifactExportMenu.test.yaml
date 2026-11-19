@@ -1,0 +1,58 @@
+# The Export button's answers, read by ArtifactExportMenu.test.jsx. Each case
+# is one answer from POST /api/v1/artifacts/workspace/{project_ref}/{artifact_id}/export
+# and the message the button shows for it.
+
+# Answers that write no file. `status: null` is a request that got no answer.
+failures:
+  - status: 413
+    message: This file can't be exported.
+  - status: 422
+    message: This file can't be exported.
+  - status: 429
+    message: An export is already running; try again in a moment.
+  - status: 503
+    message: PDF export is busy; try again.
+  - status: 504
+    message: PDF export took too long.
+  # Every status without its own row.
+  - status: 400
+    message: Couldn't export this file.
+  - status: 401
+    message: Couldn't export this file.
+  - status: 403
+    message: Couldn't export this file.
+  - status: 404
+    message: Couldn't export this file.
+  - status: 409
+    message: Couldn't export this file.
+  - status: 500
+    message: Couldn't export this file.
+  - status: 502
+    message: Couldn't export this file.
+  - status: null
+    message: Couldn't export this file.
+
+# A 200 writes the file, which then downloads. `message: null` shows none.
+written:
+  - omittedCount: 0
+    scriptsDropped: false
+    message: null
+  - omittedCount: 0
+    scriptsDropped: true
+    message: null
+  - omittedCount: 1
+    scriptsDropped: false
+    message: 1 item outside this artifact was left out.
+  - omittedCount: 3
+    scriptsDropped: true
+    message: 3 items outside this artifact were left out.
+
+# A 200 whose file then fails to download. The note on references left out
+# still shows, since the file was written.
+downloadFailed:
+  - filename: brief.docx
+    omittedCount: 0
+    message: Exported brief.docx, but couldn't download it.
+  - filename: brief.docx
+    omittedCount: 3
+    message: Exported brief.docx, but couldn't download it. 3 items outside this artifact were left out.

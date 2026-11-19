@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 // Error boundary specifically for the data-vault form panel. The
 // panel renders user-controlled markdown blocks (the `data-vault-form`
 // JSON spec from anton's response) — a malformed spec or a render
@@ -7,6 +8,7 @@
 
 import { Component } from 'react';
 import { Alert } from '../ui';
+import i18n from '../../../lib/i18n';
 
 export class FormErrorBoundary extends Component {
   constructor(props) {
@@ -20,14 +22,14 @@ export class FormErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     // eslint-disable-next-line no-console
-    console.error('[DataVaultFormPanel] render crash', error, info);
+    diagnostic("renderer.cowork.components.datavault.FormErrorBoundary", "ERROR", "datavaultformpanel_render_crash", '[DataVaultFormPanel] render crash', error, info);
   }
 
   render() {
     if (this.state.error) {
       return (
         <Alert variant="danger" className="my-2">
-          Form panel crashed: <code style={{ fontFamily: 'var(--font-mono)' }}>{String(this.state.error?.message || this.state.error)}</code>
+          {i18n.t('dataVault.formCrashed', { ns: 'library' })} <code style={{ fontFamily: 'var(--font-mono)' }}>{String(this.state.error?.message || this.state.error)}</code>
         </Alert>
       );
     }

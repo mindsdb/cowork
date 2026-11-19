@@ -4,13 +4,16 @@ import {
   AccessChooser,
   accessDraftFromArtifact,
   isAccessDraftValid,
-  isOwnerOnlySelection,
   buildAccessPayload,
+  addedIndividuals,
   ACCESS_LABELS,
+  accessSummaryLabel,
+  newAccessDraft,
 } from './AccessChooser';
 
+// A "Specific people" draft.
 const restricted = (emailsText, orgAllowed = false) => ({
-  mode: 'restricted', password: '', emailsText, orgAllowed,
+  mode: 'specific', password: '', emailsText, orgAllowed,
 });
 
 describe('isAccessDraftValid — restricted', () => {
@@ -20,12 +23,12 @@ describe('isAccessDraftValid — restricted', () => {
     expect(isAccessDraftValid(restricted(''))).toBe(false);
   });
 
-  it('accepts an empty list once the org is included', () => {
-    expect(isAccessDraftValid({ ...restricted(''), orgAllowed: true })).toBe(true);
+  it('accepts Everyone at the org on its own', () => {
+    expect(isAccessDraftValid({ mode: 'org' })).toBe(true);
   });
 
   it('accepts the owner-only mode on its own', () => {
-    expect(isAccessDraftValid({ mode: 'ownerOnly' })).toBe(true);
+    expect(isAccessDraftValid({ mode: 'private' })).toBe(true);
   });
 
   it('accepts valid addresses', () => {
@@ -40,8 +43,12 @@ describe('isAccessDraftValid — restricted', () => {
     expect(isAccessDraftValid(restricted('a@x.com, colleague@corp'))).toBe(false);
   });
 
-  it('accepts org-only with an empty list', () => {
-    expect(isAccessDraftValid(restricted('', true))).toBe(true);
+  it('counts teams and people only with sharing in MindsHub mode', () => {
+    const draft = { ...restricted(''), teamIds: ['t1'], userIds: [] };
+    expect(isAccessDraftValid(draft)).toBe(false);
+    expect(isAccessDraftValid(draft, { orgSharing: true })).toBe(true);
+    expect(isAccessDraftValid({ ...restricted(''), teamIds: [], userIds: ['u1'] }, { orgSharing: true })).toBe(true);
+    expect(isAccessDraftValid({ ...restricted(''), teamIds: [], userIds: [] }, { orgSharing: true })).toBe(false);
   });
 });
 
@@ -58,18 +65,71 @@ describe('buildAccessPayload — restricted', () => {
     });
   });
 
-  it('does not set owner_only when the org is allowed', () => {
-    expect(buildAccessPayload(restricted('', true))).toEqual({
-      mode: 'restricted', emails: [], org_allowed: true, owner_only: false,
+  it('sends Everyone at the org as org_allowed and nothing else', () => {
+    expect(buildAccessPayload({ mode: 'org', emailsText: 'a@x.com', teamIds: ['t1'], userIds: ['u1'] }, { orgMode: true })).toEqual({
+      mode: 'restricted', org_allowed: true, owner_only: false,
+      allowed_emails: [], allowed_team_ids: [], allowed_user_ids: [],
     });
+  });
+
+  it('never sends org_allowed for specific people', () => {
+    expect(buildAccessPayload(restricted('a@x.com', true))).toEqual({
+      mode: 'restricted', emails: ['a@x.com'], org_allowed: false, owner_only: false,
+    });
+  });
+
+  it('splits specific teams, people and outside emails in MindsHub mode, under the canonical names only', () => {
+    expect(buildAccessPayload({ mode: 'specific', emailsText: 'zed@partner.io', teamIds: ['t1'], userIds: ['u1', 'u1'] }, { orgMode: true })).toEqual({
+      mode: 'restricted', org_allowed: false, owner_only: false,
+      allowed_emails: ['zed@partner.io'], allowed_team_ids: ['t1'], allowed_user_ids: ['u1'],
+    });
+  });
+
+  // The org access route answers `emails` with a 400.
+  it('never sends emails in MindsHub mode, Only me and Specific people included', () => {
+    expect(buildAccessPayload({ mode: 'private', emailsText: 'a@x.com' }, { orgMode: true })).toEqual({
+      mode: 'restricted', org_allowed: false, owner_only: true,
+      allowed_emails: [], allowed_team_ids: [], allowed_user_ids: [],
+    });
+    const specific = buildAccessPayload(restricted('a@x.com'), { orgMode: true });
+    expect(specific).toEqual({
+      mode: 'restricted', org_allowed: false, owner_only: false,
+      allowed_emails: ['a@x.com'], allowed_team_ids: [], allowed_user_ids: [],
+    });
+    expect(specific).not.toHaveProperty('emails');
+  });
+});
+
+/* A draft mode the payload doesn't know (Everyone at ‹org› reaching a
+   desktop save, a mode a later chooser adds) saves as Only me, never as
+   Public, which would open the link to anyone who has it. */
+describe('buildAccessPayload: a mode it does not know', () => {
+  it.each(['org', 'link', '', undefined])('saves %j on desktop as Only me, never Public', (mode) => {
+    expect(buildAccessPayload({ mode, emailsText: 'a@x.com' })).toEqual({
+      mode: 'restricted', emails: [], org_allowed: false, owner_only: true,
+    });
+  });
+
+  it.each(['link', '', undefined])('saves %j in MindsHub mode as Only me, never Public', (mode) => {
+    expect(buildAccessPayload({ mode, emailsText: 'a@x.com', teamIds: ['t1'] }, { orgMode: true })).toEqual({
+      mode: 'restricted', org_allowed: false, owner_only: true,
+      allowed_emails: [], allowed_team_ids: [], allowed_user_ids: [],
+    });
+  });
+
+  it('still saves Public when Public is picked', () => {
+    expect(buildAccessPayload({ mode: 'public' })).toEqual({ mode: 'public' });
+    expect(buildAccessPayload({ mode: 'public' }, { orgMode: true })).toEqual({ mode: 'public' });
   });
 });
 
 describe('ACCESS_LABELS', () => {
   it('is exported for reuse by PublishMenu', () => {
-    expect(ACCESS_LABELS.restricted.title).toBe('Specific people');
-    expect(ACCESS_LABELS.restricted.desc).toBe('Only the people you list — or your whole org');
-    expect(ACCESS_LABELS.ownerOnly.title).toBe('Only you');
+    expect(ACCESS_LABELS.specificPeople.title).toBe('Specific people');
+    expect(ACCESS_LABELS.specificPeople.desc).toBe('Only the people you list');
+    expect(ACCESS_LABELS.specific.title).toBe('Specific teams and people');
+    expect(ACCESS_LABELS.specific.desc).toBe('Pick teams, colleagues or outside emails');
+    expect(ACCESS_LABELS.private.title).toBe('Only me');
     expect(typeof ACCESS_LABELS.public.icon).toBe('function');
   });
 });
@@ -83,57 +143,123 @@ describe('owner-only as its own selection', () => {
   it('collapses to the wire shape, carrying the flag that keeps it private', () => {
     // Without `owner_only`, restricted-with-nothing-selected reads as an empty
     // selection and degrades to public — the exact opposite of the choice.
-    expect(buildAccessPayload({ mode: 'ownerOnly' })).toEqual({
+    expect(buildAccessPayload({ mode: 'private' })).toEqual({
       mode: 'restricted', emails: [], org_allowed: false, owner_only: true,
     });
   });
 
-  it('drops a stale recipient list when the user switches to Only you', () => {
-    expect(buildAccessPayload({ mode: 'ownerOnly', emailsText: 'alice@x.com', orgAllowed: true }))
+  it('drops a stale recipient list when the user switches to Only me', () => {
+    expect(buildAccessPayload({ mode: 'private', emailsText: 'alice@x.com', orgAllowed: true }))
       .toEqual({ mode: 'restricted', emails: [], org_allowed: false, owner_only: true });
   });
 
   it('reads an owner-only artifact back as the owner-only mode', () => {
     expect(accessDraftFromArtifact({
       accessMode: 'restricted', accessEmails: [], orgAllowed: false, ownerOnly: true,
-    }).mode).toBe('ownerOnly');
+    }).mode).toBe('private');
   });
 
   it('reads a shared artifact back as Specific people', () => {
     const draft = accessDraftFromArtifact({
       accessMode: 'restricted', accessEmails: ['a@x.com'], orgAllowed: false, ownerOnly: false,
     });
-    expect(draft.mode).toBe('restricted');
+    expect(draft.mode).toBe('specific');
     expect(draft.emailsText).toBe('a@x.com');
   });
 
   it('falls back to deriving owner-only for a record written before the flag', () => {
-    expect(isOwnerOnlySelection({ accessEmails: [], orgAllowed: false })).toBe(true);
-    expect(isOwnerOnlySelection({ accessEmails: ['a@x.com'], orgAllowed: false })).toBe(false);
-    expect(isOwnerOnlySelection({ accessEmails: [], orgAllowed: true })).toBe(false);
+    const mode = (artifact) => accessDraftFromArtifact({ accessMode: 'restricted', ...artifact }).mode;
+    expect(mode({ accessEmails: [], orgAllowed: false })).toBe('private');
+    expect(mode({ accessEmails: ['a@x.com'], orgAllowed: false })).toBe('specific');
+    expect(mode({ accessEmails: [], orgAllowed: true })).toBe('specific');
   });
 
   it('prefers the server flag over the derivation when both are present', () => {
-    expect(isOwnerOnlySelection({ ownerOnly: false, accessEmails: [], orgAllowed: false }))
-      .toBe(false);
+    expect(accessDraftFromArtifact({ accessMode: 'restricted', ownerOnly: false, accessEmails: [], orgAllowed: false }).mode)
+      .toBe('specific');
   });
 
-  it('offers Only you and Specific people as separate choices, private first', () => {
+  it('offers Only me and Specific people as separate choices, private first', () => {
     const { container } = render(
-      <AccessChooser value={{ mode: 'ownerOnly', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
+      <AccessChooser value={{ mode: 'private', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
     );
-    expect(screen.getByText('Only you')).toBeInTheDocument();
+    expect(screen.getByText('Only me')).toBeInTheDocument();
     expect(screen.getByText('Specific people')).toBeInTheDocument();
     const order = [...container.querySelectorAll('span')]
       .map((n) => n.textContent)
-      .filter((t) => ['Only you', 'Specific people', 'Password protected', 'Public'].includes(t));
-    expect(order).toEqual(['Only you', 'Specific people', 'Password protected', 'Public']);
+      .filter((t) => ['Only me', 'Specific people', 'Password protected', 'Public'].includes(t));
+    expect(order).toEqual(['Only me', 'Specific people', 'Password protected', 'Public']);
   });
 
-  it('does not show the recipient textarea for Only you', () => {
+  it('does not show the recipient field for Only me', () => {
     render(
-      <AccessChooser value={{ mode: 'ownerOnly', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
+      <AccessChooser value={{ mode: 'private', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
     );
-    expect(screen.queryByPlaceholderText('alice@acme.com, bob@acme.com')).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+});
+
+/* cowork-server's MindsHub mode card of a restricted artifact answers its
+   audience null (cowork.schemas.artifact_access.ArtifactAccessView
+   .audience_unknown): only the access route says who it reaches. */
+describe('an artifact that does not know who it reaches', () => {
+  const card = {
+    publishedUrl: 'https://share/abc', accessMode: 'restricted', accessProtected: false,
+    orgAllowed: null, ownerOnly: null, allowedTeamIds: null, allowedUserIds: null,
+  };
+
+  it('seeds a draft with nothing picked and nobody listed, which cannot be saved', () => {
+    for (const orgSharing of [false, true]) {
+      const draft = accessDraftFromArtifact(card, { orgSharing });
+      expect(draft).toEqual({ mode: '', password: '', emailsText: '', teamIds: [], userIds: [] });
+      expect(isAccessDraftValid(draft, { orgSharing })).toBe(false);
+    }
+  });
+
+  it('labels the summary Restricted, neither Only me nor a list', () => {
+    for (const orgSharing of [false, true]) {
+      expect(accessSummaryLabel(card, { orgSharing, orgName: 'Acme' })).toBe(ACCESS_LABELS.restricted);
+    }
+    expect(ACCESS_LABELS.restricted.title).toBe('Restricted');
+    expect(ACCESS_LABELS.restricted.desc).toBe("Who can open the link isn't known yet");
+  });
+});
+
+describe('a first share with the platform UI on', () => {
+  it('starts on Public', () => {
+    expect(newAccessDraft().mode).toBe('public');
+    expect(accessDraftFromArtifact({ publishedUrl: '' }).mode).toBe('public');
+  });
+
+  it('describes Public and Password as reaching the internet', () => {
+    expect(ACCESS_LABELS.public.desc).toBe('Anyone on the internet with the URL');
+    expect(ACCESS_LABELS.password.desc).toBe('Anyone on the internet with the password');
+  });
+});
+
+describe('notifying added people', () => {
+  const draft = (over) => ({ mode: 'specific', password: '', emailsText: '', teamIds: [], userIds: [], ...over });
+
+  it('adds notify with exactly the people to email, on a restricted payload only', () => {
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { notify: { userIds: [], emails: ['a@x.io'] } }))
+      .toEqual(expect.objectContaining({ mode: 'restricted', notify: { user_ids: [], emails: ['a@x.io'] } }));
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { orgMode: true, notify: { userIds: ['u1', 'u1'], emails: ['a@x.io'] } }))
+      .toEqual(expect.objectContaining({ allowed_emails: ['a@x.io'], notify: { user_ids: ['u1'], emails: ['a@x.io'] } }));
+    // Not asked, or Don't notify: no notify at all.
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }))).not.toHaveProperty('notify');
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { notify: null })).not.toHaveProperty('notify');
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { notify: { userIds: [], emails: [] } })).not.toHaveProperty('notify');
+    expect(buildAccessPayload({ mode: 'password', password: 'pw' }, { notify: { emails: ['a@x.io'] } })).toEqual({ mode: 'password', password: 'pw' });
+    expect(buildAccessPayload({ mode: 'public' }, { notify: { emails: ['a@x.io'] } })).toEqual({ mode: 'public' });
+  });
+
+  it('counts only people and emails the saved access lacks', () => {
+    const saved = draft({ emailsText: 'a@x.io', userIds: ['u1'], teamIds: ['t1'] });
+    const next = draft({ emailsText: 'a@x.io, b@x.io', userIds: ['u1', 'u2'], teamIds: ['t1', 't2'] });
+    expect(addedIndividuals(next, saved, { orgSharing: true })).toEqual({ userIds: ['u2'], emails: ['b@x.io'] });
+    // Without sharing in MindsHub mode there are no user ids.
+    expect(addedIndividuals(next, saved)).toEqual({ userIds: [], emails: ['b@x.io'] });
+    // Only a Specific draft adds anyone.
+    expect(addedIndividuals({ ...next, mode: 'org' }, saved, { orgSharing: true })).toEqual({ userIds: [], emails: [] });
   });
 });

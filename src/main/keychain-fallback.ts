@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Fallback store for keychain-service.ts, used only when keytar itself
 // throws - most commonly on Linux desktops/distros that don't ship or
 // auto-start a Secret Service provider (gnome-keyring, kwalletd) reachable
@@ -59,7 +60,7 @@ function readStore(): Record<string, string> {
     raw = fs.readFileSync(FALLBACK_FILE, 'utf8');
   } catch (err: any) {
     if (err?.code !== 'ENOENT') {
-      console.warn('[keychain-fallback] could not read fallback store, treating as empty:', err);
+      diagnostic("main.keychain-fallback", "WARNING", "keychain_fallback_could_not_read_fallback_store_treating_as_empty", '[keychain-fallback] could not read fallback store, treating as empty:', err);
     }
     return {};
   }
@@ -67,7 +68,7 @@ function readStore(): Record<string, string> {
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch (err) {
-    console.warn('[keychain-fallback] fallback store is not valid JSON, treating as empty:', err);
+    diagnostic("main.keychain-fallback", "WARNING", "keychain_fallback_fallback_store_is_not_valid_json_treating_as_empty", '[keychain-fallback] fallback store is not valid JSON, treating as empty:', err);
     return {};
   }
 }
@@ -83,7 +84,7 @@ export function getFallbackPassword(service: string, account: string): string | 
   try {
     return decrypt(value);
   } catch (err) {
-    console.warn(`[keychain-fallback] could not decrypt entry for ${service}:${account}:`, err);
+    diagnostic("main.keychain-fallback", "WARNING", "keychain_fallback_could_not_decrypt_entry_for", `[keychain-fallback] could not decrypt entry for ${service}:${account}:`, err);
     return null;
   }
 }

@@ -1,0 +1,18 @@
+# Cases for assets.test.ts. `loaded` names a folder under
+# node_modules/pdfjs-dist and a file in it: the provider loads that name as the
+# file's bytes. `notHeld` names the provider holds no file for, so it loads
+# nothing. `refusedUrls` are not base64 data: URLs, so dataUrlBytes refuses
+# them.
+
+loaded:
+  - { folder: cmaps, name: UniGB-UCS2-H.bcmap }
+  - { folder: cmaps, name: UniJIS-UCS2-H.bcmap }
+  - { folder: standard_fonts, name: LiberationSans-Regular.ttf }
+
+notHeld:
+  - LICENSE_FOXIT
+  - ../../api/v1/x.bcmap
+
+refusedUrls:
+  - /node_modules/pdfjs-dist/cmaps/UniGB-UCS2-H.bcmap
+  - data:text/plain,abc

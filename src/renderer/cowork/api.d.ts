@@ -9,6 +9,8 @@ export const BASE: string;
  * injects the loopback token in main). Use for any direct call to the server.
  */
 export function authFetch(url: string, options?: RequestInit): Promise<Response>;
+export const UI_LOCALE_HEADER: 'X-Cowork-UI-Locale';
+export function withUiLocale<T extends RequestInit>(options?: T): T;
 
 /** Per-provider recommended (planning, coding) model id pair. */
 export interface RecommendedModels {
@@ -24,12 +26,15 @@ export interface RecommendedModels {
    * only (never a custom endpoint). cowork-server relays any non-empty
    * `disabled_reason` string, so this is the raw relay: mergeRecommendedModels
    * narrows it with `knownModelDisabledReasons` before anything reads it.
-   * `model_restricted` renders "Restricted" with no credits action; any other
+   * `model_restricted` renders "Restricted" and `budget_exceeded` "Budget
+   * reached", both with no credits action; any other
    * known reason, an unknown one, or no entry renders "Needs credits".
    */
   modelDisabledReasons?: Record<string, string>;
   /** MindsHub's display label per model id. Absent ⇒ derive from the id. */
   modelLabels?: Record<string, string>;
+  /** Refresh scopes the server honors ('all', 'minds'); absent on servers that predate them. */
+  refreshScopes?: string[];
   /** MindsHub's authoritative maker per model id, deciding the picker section. */
   modelProviders?: Record<string, string>;
   /**
@@ -45,7 +50,7 @@ export interface RecommendedModels {
  * Fetch the backend's recommended-models map (MindsHub's live `/v1/models`
  * for minds-cloud). Returns null if the request fails.
  */
-export function fetchRecommendedModels(): Promise<RecommendedModels | null>;
+export function fetchRecommendedModels(opts?: { refresh?: boolean; scope?: 'all' | 'minds' }): Promise<RecommendedModels | null>;
 
 export interface ConnectorConnection {
   engine: string;
@@ -56,11 +61,31 @@ export interface ConnectorConnection {
   status?: string | null;
   updated_at?: string | null;
   updatedAt?: string | null;
+  /**
+   * True for a connection the caller can't change: one the operator provides,
+   * or one someone else shares with the caller. The page shows it read-only,
+   * with no Reconnect or Remove. With `shared` false, only the operator can
+   * change it. Absent means false.
+   */
+  managed?: boolean;
+  /**
+   * True for a connection in the shared-connection registry, and also for
+   * another person's connection in a deployment-wide vault (connections left
+   * off COWORK_PERSONAL_RESOURCES). With `managed` true it is shared with the
+   * caller, who can't change it. With `managed` false it is the caller's own
+   * shared connection: the page shows a Shared badge and keeps every action.
+   * Absent means false.
+   */
+  shared?: boolean;
 }
 
 export interface SavedConnectorConnection {
   method?: string | null;
   fields?: Record<string, unknown>;
+  /** Same meaning as ConnectorConnection.managed. */
+  managed?: boolean;
+  /** Same meaning as ConnectorConnection.shared. */
+  shared?: boolean;
 }
 
 export interface ConnectorFieldSpec {
@@ -106,3 +131,86 @@ export function validateAndSaveConnector(
   connectorId: string,
   payload: { method: string; name?: string; replace_existing?: boolean; values: Record<string, unknown> },
 ): Promise<SavedConnectorResult>;
+
+export const CONNECTIONS_VAULT_KEEP: string;
+export const SHAREPOINT_UNAVAILABLE_MESSAGE: string;
+
+export interface SharePointKey {
+  userLabel?: string;
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  siteUrls: string;
+}
+export interface SharePointSaved { ok: boolean; name: string; user_label: string | null }
+export interface SharePointLibrary { id: string; name: string }
+export interface SharePointItem {
+  id: string;
+  name: string;
+  size: number;
+  kind: 'file' | 'folder' | 'other';
+  modified: string | null;
+}
+export interface SharePointImportResult {
+  imported: { path: string; size: number }[];
+  skipped: { path: string; reason: string }[];
+}
+export function createSharePointConnection(key: SharePointKey & { name: string }): Promise<SharePointSaved>;
+export function editSharePointConnection(name: string, key: SharePointKey): Promise<SharePointSaved>;
+export function listSharePointLibraries(name: string, site: string): Promise<{ libraries: SharePointLibrary[] }>;
+export function listSharePointChildren(
+  name: string,
+  page: { site: string; driveId: string; itemId?: string; cursor?: string | null },
+): Promise<{ items: SharePointItem[]; cursor: string | null }>;
+export function importSharePointFiles(
+  projectName: string,
+  pick: { connection: string; site: string; driveId: string; folder?: string; itemIds: string[] },
+): Promise<SharePointImportResult>;
+
+export interface LiveAppPreviewLease { id: string; intent: string }
+export function createLiveAppPreview(launchId: string): Promise<LiveAppPreviewLease>;
+export function keepLiveAppPreview(id: string): Promise<void>;
+export function revokeLiveAppPreview(id: string): Promise<void>;
+export function revokeLiveAppPreviews(): Promise<void>;
+
+/** A team of the caller's MindsHub org, as the sharing pickers show it. */
+export interface MindsHubTeam { id: string; display_name: string; is_default: boolean }
+/** A person of the caller's MindsHub org: the id sharing stores, and what labels a row. */
+export interface MindsHubPerson { id: string; name: string | null; email: string | null }
+/** A MindsHub read's outcome: `reachable` false when it got no answer, and
+ *  `failure` saying why (null when it answered). */
+export interface MindsHubRead {
+  reachable: boolean;
+  failure: import('./lib/sharingContract').MindsHubFailure | null;
+}
+/** One `GET /hub/people/` lookup by ids or emails. `unanswered` could not be
+ *  asked yet; `invalid` are values cowork-server refused as malformed (an id
+ *  that isn't a UUID, an address MindsHub wouldn't take). */
+export interface MindsHubPeopleLookup extends MindsHubRead {
+  people: MindsHubPerson[];
+  unanswered: string[];
+  invalid: string[];
+}
+export function fetchSkillSharingCapabilities(): Promise<import('./lib/sharingContract').SharingCapabilities>;
+export function setSkillAccess(
+  slug: string,
+  access: import('./lib/sharingContract').SkillAccessPayload | import('./lib/sharingContract').SkillAlwaysOnPayload,
+): Promise<Record<string, unknown>>;
+export function fetchMindsHubTeams(): Promise<MindsHubRead & { teams: MindsHubTeam[] }>;
+export function fetchMindsHubDirectory(): Promise<MindsHubRead & { people: MindsHubPerson[]; truncated: boolean }>;
+export function fetchMindsHubPeopleByIds(ids: string[]): Promise<MindsHubPeopleLookup>;
+export function fetchMindsHubPeopleByEmails(emails: string[]): Promise<MindsHubPeopleLookup>;
+export function publishArtifact(
+  path: string,
+  access?: import('./lib/sharingContract').ArtifactAccessPayload | null,
+): Promise<Record<string, unknown>>;
+
+/** Mobile app push (ENG-4023): register this device's APNs/FCM token. Rejects with `status` on a refusal. */
+export function registerPushDevice(body: {
+  token: string;
+  platform: 'ios' | 'android';
+  appVersion?: string | null;
+  environment?: 'production' | 'sandbox' | null;
+}): Promise<{ ok: true } | Record<string, unknown>>;
+/** Mobile app push: remove this device's token from the signed-in user. */
+export function unregisterPushDevice(token: string, options?: { timeoutMs?: number }): Promise<{ ok: true } | Record<string, unknown>>;

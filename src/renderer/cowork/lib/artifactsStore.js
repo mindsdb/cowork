@@ -5,7 +5,8 @@
 // surfaced through useSyncExternalStore, because the app has no React Query or
 // global store. The artifact list App.jsx already holds cannot answer this: it
 // is a system-wide snapshot refreshed on boot, at turn end and on the artifacts
-// route, and never after a delete. Consolidating the two is deliberate debt.
+// route; it hears about artifact deletes through onArtifactDeleted, while a
+// project delete reloads it directly. Consolidating the two is deliberate debt.
 //
 // Three indices, all the same shape so one matcher (artifactLiveness) serves
 // all of them:
@@ -40,6 +41,9 @@ function globalScope() {
 let _scope = globalScope();
 let _scopeKey = GLOBAL_SCOPE_KEY;
 let _index = null;
+// The cards the index was built from, for surfaces that name an artifact by
+// its slug (the chat's quick-edit pill, ENG-4227). Same load, same scope.
+let _cards = [];
 let _tombstones = emptyArtifactIndex();
 let _born = emptyArtifactIndex();
 // Born entries the in-flight load has promised to account for. Dropped when it
@@ -53,6 +57,7 @@ let _inFlight = null;
 // request cannot write a stale index.
 let _loadGen = 0;
 const _subscribers = new Set();
+const _deleteListeners = new Set();
 
 function _recomputeBorn() {
   _bornEffective = _bornPending ? mergeArtifactIndex(_born, _bornPending) : _born;
@@ -90,6 +95,7 @@ async function _load() {
       });
       if (gen !== _loadGen) return;
       _index = buildArtifactIndex(cards);
+      _cards = cards;
       _bornPending = null;
     } catch {
       if (gen !== _loadGen) return;
@@ -126,6 +132,7 @@ export function setArtifactsScope(scope) {
   _born = mergeArtifactIndex(_born, _bornPending);
   _bornPending = null;
   _index = null;
+  _cards = [];
   _recomputeBorn();
   _emit();
   if (_subscribers.size > 0) queueMicrotask(_load);
@@ -170,8 +177,19 @@ export function noteArtifactsFromSteps(steps) {
 export async function deleteArtifactAndSync(artifact) {
   const result = await deleteArtifact(artifact);
   noteArtifactDeleted(artifact);
+  for (const listener of _deleteListeners) {
+    // The server already deleted it, so a listener error must not read as a failed delete.
+    try { listener(artifact); } catch { /* ignored */ }
+  }
   revalidate().catch(() => {});
   return result;
+}
+
+/** Called with the deleted card after every confirmed delete, whichever surface
+ *  made it. Returns the unsubscribe function. */
+export function onArtifactDeleted(listener) {
+  _deleteListeners.add(listener);
+  return () => _deleteListeners.delete(listener);
 }
 
 /** The decision, outside React. */
@@ -209,10 +227,33 @@ export function useArtifactLiveness(card, { live = false } = {}) {
   );
 }
 
+/** The loaded card with this slug, or null (not loaded, not in scope, gone). */
+export function artifactCardBySlug(slug) {
+  if (!slug) return null;
+  const card = _cards.find((c) => c?.slug === slug) || null;
+  if (!card || artifactDeletedNow(card)) return null;
+  return card;
+}
+
+/**
+ * React hook: the artifact card for a slug, from the same load the liveness
+ * index uses (subscribing starts it). Null until it loads or when no card in
+ * scope has that slug. The snapshot is the card object itself, which only
+ * changes when a load lands, so it cannot loop.
+ */
+export function useArtifactCardBySlug(slug) {
+  return useSyncExternalStore(
+    _subscribe,
+    () => artifactCardBySlug(slug),
+    () => null,
+  );
+}
+
 export function __resetForTests() {
   _scope = globalScope();
   _scopeKey = GLOBAL_SCOPE_KEY;
   _index = null;
+  _cards = [];
   _tombstones = emptyArtifactIndex();
   _born = emptyArtifactIndex();
   _bornPending = null;
@@ -220,4 +261,5 @@ export function __resetForTests() {
   _loadGen += 1;
   _recomputeBorn();
   _subscribers.clear();
+  _deleteListeners.clear();
 }

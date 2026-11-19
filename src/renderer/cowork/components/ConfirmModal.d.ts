@@ -15,3 +15,6 @@ export interface ConfirmModalProps {
 }
 
 export function ConfirmModal(props: ConfirmModalProps): JSX.Element | null;
+
+export type ConfirmOptions = Omit<ConfirmModalProps, 'open' | 'onClose' | 'onConfirm'>;
+export function useConfirm(): [(options: ConfirmOptions) => Promise<boolean>, JSX.Element];

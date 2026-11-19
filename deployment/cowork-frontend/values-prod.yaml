@@ -1,4 +1,7 @@
 deployment:
+  extraEnvs:
+    - name: ACCESS_LOG_MODE
+      value: "all"
   ingress:
     enabled: true
     name: cowork-frontend

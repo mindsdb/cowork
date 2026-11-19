@@ -1,3 +1,4 @@
+import i18n from '../../lib/i18n';
 import { getApiOrigin, isElectron, serverStart } from '../../platform/host';
 import { getCodeFixtureApi } from './fixtures';
 import type { RepositoryStatus, TaskRepositorySetup } from './repositorySetupModels';
@@ -49,6 +50,21 @@ export interface PendingQuestion {
     isOther: boolean;
     isSecret: boolean;
   }>;
+}
+
+/**
+ * Approximate storage Cowork manages for each task: workspaces, baselines and
+ * recovery data in its own folders. The user's checkout and the repository
+ * objects worktrees share are not counted, and on macOS folder copies share
+ * blocks with their source, so deleting a task can free much less.
+ */
+export interface WorkspaceUsagePage {
+  items: Array<{ session_id: string; bytes: number; recovery_bytes?: number }>;
+  /** Storage still held for removed tasks; older servers omit it. */
+  removed_task_bytes?: number;
+  total_bytes: number;
+  measured_at: string | null;
+  measuring: boolean;
 }
 
 export interface SessionCreateBody {
@@ -202,6 +218,12 @@ export interface CodingSession {
   base_revision?: string | null;
   source_dirty: boolean;
   workspace_warning?: string | null;
+  /** Set while the workspace is put away to save disk; it is rebuilt on next use. */
+  workspace_released_at?: string | null;
+  /** Why archiving kept the workspace instead of putting it away. */
+  workspace_kept_reason?: string | null;
+  /** Why rebuilding a put-away workspace last failed; its work is still saved. */
+  workspace_restore_error?: string | null;
   guidance_summary?: string | null;
   resolved_skills?: ResolvedSkill[];
   skill_roots?: string[];
@@ -751,12 +773,12 @@ export async function requestJson<T>(path: string, init?: RequestInit, policy: R
     if (!isElectron || (method !== 'GET' && method !== 'HEAD')) throw error;
     const recovered = await serverStart();
     if (!recovered.running) {
-      throw new Error(recovered.error || 'The local Code service could not start.');
+      throw new Error(recovered.error || i18n.t('api.serviceStartFailed', { ns: 'code' }));
     }
     response = await fetch(url, request);
   }
   if (!response.ok) {
-    let detail = `Coding request failed (${response.status})`;
+    let detail = i18n.t('api.requestFailed', { ns: 'code', status: String(response.status) });
     try {
       const body = await response.json();
       if (typeof body?.detail === 'string') detail = body.detail;
@@ -764,7 +786,7 @@ export async function requestJson<T>(path: string, init?: RequestInit, policy: R
       // Preserve the status-based message when an intermediary returns HTML.
     }
     if (response.status === 404 && detail === 'Not Found') {
-      detail = 'This desktop build is connected to an older backend that does not support Code Mode. Restart the app with the matching cowork-server build.';
+      detail = i18n.t('api.outdatedBackend', { ns: 'code' });
     }
     const error = new Error(detail) as CodingRequestError;
     error.status = response.status;
@@ -782,7 +804,7 @@ async function ensureCodeService(): Promise<void> {
   if (!isElectron) return;
   const result = await serverStart();
   if (!result.running) {
-    throw new Error(result.error || 'The local Code service could not start.');
+    throw new Error(result.error || i18n.t('api.serviceStartFailed', { ns: 'code' }));
   }
 }
 
@@ -808,6 +830,9 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  workspaceUsage: (sessionId?: string) => requestJson<WorkspaceUsagePage>(
+    `/workspace-usage${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
+  ),
   computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
     method: 'POST',
   }),
@@ -999,10 +1024,12 @@ export function openCodingEventStream(
   after: number,
   onEvent: (event: CodingEvent) => void,
   onError: () => void,
+  onOpen?: () => void,
 ): () => void {
   if (fixtureCodingApi) return () => {};
   const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/stream?after=${after}`;
   const source = new EventSource(url);
+  if (onOpen) source.onopen = onOpen;
   source.addEventListener('coding-event', (raw) => {
     try {
       const parsed: unknown = JSON.parse((raw as MessageEvent).data);

@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
+  brandIconFromAttributes,
   type MindsOrg,
   PERSONAL_ORG_LABEL,
   chooseMindsOrg,
+  isIdOrganizationName,
   needsOrgPick,
   organizationLabel,
   personalOrgName,
@@ -60,6 +62,26 @@ describe('toMindsOrg', () => {
   });
 });
 
+describe('the org icon', () => {
+  it('reads brand_icon_url from Keycloak attributes, list or string', () => {
+    expect(brandIconFromAttributes({ brand_icon_url: ['https://auth.acme.com/i.png'] })).toBe('https://auth.acme.com/i.png');
+    expect(brandIconFromAttributes({ brand_icon_url: ' https://auth.acme.com/i.png ' })).toBe('https://auth.acme.com/i.png');
+  });
+
+  it.each([undefined, null, [], {}, { brand_icon_url: [] }, { brand_icon_url: [''] }, { brand_icon_url: 7 }])(
+    'reads %j as no icon',
+    (attributes) => {
+      expect(brandIconFromAttributes(attributes)).toBeUndefined();
+    },
+  );
+
+  it('carries the icon onto the org only when there is one', () => {
+    expect(toMindsOrg({ id: 'o1', slug: 'acme.example', iconUrl: 'https://auth.acme.com/i.png' }, USER).iconUrl)
+      .toBe('https://auth.acme.com/i.png');
+    expect(toMindsOrg({ id: 'o1', slug: 'acme.example' }, USER)).not.toHaveProperty('iconUrl');
+  });
+});
+
 describe('rankMindsOrgs', () => {
   it('puts company organizations ahead of the personal one', () => {
     // The reported bug in one line: Personal happened to be active, so the key
@@ -108,6 +130,24 @@ describe('needsOrgPick', () => {
     expect(needsOrgPick([PERSONAL, ACME])).toBe(false);
     expect(needsOrgPick([PERSONAL])).toBe(false);
     expect(needsOrgPick([])).toBe(false);
+  });
+});
+
+describe('isIdOrganizationName', () => {
+  /* MindsHub names an organization its staff create `staff-org-<uuid>`, and
+     a user's own organization `personal_<uuid>`: ids, with the readable name
+     kept in the display name. */
+  it('spots the ids MindsHub gives a staff-created and a personal organization', () => {
+    expect(isIdOrganizationName('staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b')).toBe(true);
+    expect(isIdOrganizationName(personalOrgName('6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b'))).toBe(true);
+  });
+
+  it('leaves a name a person chose alone', () => {
+    expect(isIdOrganizationName('acme')).toBe(false);
+    expect(isIdOrganizationName('staff-org-acme')).toBe(false);
+    expect(isIdOrganizationName('personal_acme')).toBe(false);
+    expect(isIdOrganizationName('Acme staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b')).toBe(false);
+    expect(isIdOrganizationName(null)).toBe(false);
   });
 });
 
