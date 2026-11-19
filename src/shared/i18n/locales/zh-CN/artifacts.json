@@ -733,7 +733,7 @@
     "loading": "正在加载统计",
     "retry": "重试",
     "metrics": {
-      "views": "浏览量",
+      "visits": "访问次数",
       "viewers": "独立访客",
       "avgTime": "平均时长",
       "completion": "完读率",
@@ -745,9 +745,7 @@
       "email": "邮箱",
       "lastSeen": "最近访问",
       "restrictedOnly": "仅在共享受限时记录访客名称。",
-      "title": "访客",
       "anonymous": "匿名访客",
-      "summary": "{count, plural, other {# 次访问}} · {time}",
       "none": "尚未记录访客。"
     },
     "noViews": "暂无浏览",
@@ -765,21 +763,32 @@
       "body": "开启后可以看到谁打开了此页面、停留了多久以及阅读了哪些部分。",
       "turnOn": "开启"
     },
-    "sections": {
-      "title": "各部分停留时长",
+    "pages": {
+      "title": "每页时长",
+      "audienceChart": "每页平均时长，所有访客",
+      "position": "第 {number} / {total} 页",
+      "untitled": "第 {number} 页",
+      "timeSpent": "停留时长",
       "avgTime": "平均时长",
       "reached": "到达率",
-      "untitled": "第 {number} 部分",
-      "row": "{name}：{time}",
-      "rowWithReach": "{name}：平均 {time}，{reach} 的访问到达此处"
+      "barSpent": "第 {number} / {total} 页，{name}：{time}",
+      "barAvg": "第 {number} / {total} 页，{name}：平均 {time}",
+      "barAvgReach": "第 {number} / {total} 页，{name}：平均 {time}，{reach} 的访问到达"
     },
-    "viewer": {
-      "back": "所有访客",
-      "loading": "正在加载访问记录",
-      "summary": "{count, plural, other {# 次访问}} · 共 {time} · 最近 {lastSeen}",
-      "noVisits": "没有访问记录。",
-      "visits": "访问",
-      "visitSections": "各部分停留时长，{started} 的访问"
+    "activity": {
+      "title": "所有访问",
+      "viewerCount": "{count, plural, other {# 位访客}}",
+      "summary": "{count, plural, other {# 次访问}} · {lastSeen}",
+      "totalTime": "总时长 {time}",
+      "viewed": "已查看：{percent}",
+      "whereabouts": "设备、操作系统和位置",
+      "loading": "正在加载访问",
+      "noVisits": "没有记录到访问。",
+      "visit": "访问",
+      "allVisits": "{count, plural, other {全部 # 次访问}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "每页时长，{name}",
+      "visitChart": "每页时长，{name}，{date} 的访问"
     },
     "devices": {
       "desktop": "桌面设备",

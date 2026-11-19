@@ -733,7 +733,7 @@
     "loading": "통계 불러오는 중",
     "retry": "다시 시도",
     "metrics": {
-      "views": "조회수",
+      "visits": "방문",
       "viewers": "순 방문자",
       "avgTime": "평균 시간",
       "completion": "완독률",
@@ -745,9 +745,7 @@
       "email": "이메일",
       "lastSeen": "마지막 방문",
       "restrictedOnly": "방문자 이름은 공유가 제한된 경우에만 기록됩니다.",
-      "title": "방문자",
       "anonymous": "익명 방문자",
-      "summary": "{count, plural, other {방문 #회}} · {time}",
       "none": "아직 기록된 방문자가 없습니다."
     },
     "noViews": "아직 조회수가 없습니다",
@@ -765,21 +763,32 @@
       "body": "켜면 이 페이지를 누가 열었는지, 얼마나 머물렀는지, 어느 부분을 읽었는지 볼 수 있습니다.",
       "turnOn": "켜기"
     },
-    "sections": {
-      "title": "섹션별 시간",
+    "pages": {
+      "title": "페이지별 시간",
+      "audienceChart": "페이지별 평균 시간, 전체 방문자",
+      "position": "페이지 {number} / {total}",
+      "untitled": "페이지 {number}",
+      "timeSpent": "머문 시간",
       "avgTime": "평균 시간",
       "reached": "도달률",
-      "untitled": "섹션 {number}",
-      "row": "{name}: {time}",
-      "rowWithReach": "{name}: 평균 {time}, 방문의 {reach}가 도달"
+      "barSpent": "페이지 {number} / {total}, {name}: {time}",
+      "barAvg": "페이지 {number} / {total}, {name}: 평균 {time}",
+      "barAvgReach": "페이지 {number} / {total}, {name}: 평균 {time}, 방문의 {reach} 도달"
     },
-    "viewer": {
-      "back": "모든 방문자",
-      "loading": "방문 기록 불러오는 중",
-      "summary": "{count, plural, other {방문 #회}} · 총 {time} · 최근 {lastSeen}",
+    "activity": {
+      "title": "모든 방문",
+      "viewerCount": "{count, plural, other {방문자 #명}}",
+      "summary": "{count, plural, other {방문 #회}} · {lastSeen}",
+      "totalTime": "총 시간 {time}",
+      "viewed": "조회: {percent}",
+      "whereabouts": "기기, OS 및 위치",
+      "loading": "방문 불러오는 중",
       "noVisits": "기록된 방문이 없습니다.",
-      "visits": "방문",
-      "visitSections": "섹션별 시간, {started} 방문"
+      "visit": "방문",
+      "allVisits": "{count, plural, other {모든 방문 #회}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "페이지별 시간, {name}",
+      "visitChart": "페이지별 시간, {name}, {date} 방문"
     },
     "devices": {
       "desktop": "데스크톱",

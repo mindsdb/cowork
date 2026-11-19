@@ -733,7 +733,7 @@
     "loading": "Loading stats",
     "retry": "Retry",
     "metrics": {
-      "views": "Views",
+      "visits": "Visits",
       "viewers": "Unique viewers",
       "avgTime": "Avg. time",
       "completion": "Completion",
@@ -745,9 +745,7 @@
       "email": "Email",
       "lastSeen": "Last seen",
       "restrictedOnly": "Viewer names are recorded only when sharing is restricted.",
-      "title": "Viewers",
       "anonymous": "Anonymous viewer",
-      "summary": "{count, plural, one {# visit} other {# visits}} · {time}",
       "none": "No viewers recorded yet."
     },
     "noViews": "No views yet",
@@ -765,21 +763,32 @@
       "body": "Turn it on to see who opens this page, how long they stay and which parts they read.",
       "turnOn": "Turn on"
     },
-    "sections": {
-      "title": "Time per section",
+    "pages": {
+      "title": "Time per page",
+      "audienceChart": "Average time per page, all viewers",
+      "position": "Page {number} / {total}",
+      "untitled": "Page {number}",
+      "timeSpent": "Time spent",
       "avgTime": "Avg. time",
       "reached": "Reached",
-      "untitled": "Section {number}",
-      "row": "{name}: {time}",
-      "rowWithReach": "{name}: {time} on average, reached by {reach} of visits"
+      "barSpent": "Page {number} of {total}, {name}: {time}",
+      "barAvg": "Page {number} of {total}, {name}: {time} on average",
+      "barAvgReach": "Page {number} of {total}, {name}: {time} on average, reached by {reach} of visits"
     },
-    "viewer": {
-      "back": "All viewers",
+    "activity": {
+      "title": "All visits",
+      "viewerCount": "{count, plural, one {# viewer} other {# viewers}}",
+      "summary": "{count, plural, one {# visit} other {# visits}} · {lastSeen}",
+      "totalTime": "Total time {time}",
+      "viewed": "Viewed: {percent}",
+      "whereabouts": "Device, OS & location",
       "loading": "Loading visits",
-      "summary": "{count, plural, one {# visit} other {# visits}} · {time} total · last seen {lastSeen}",
       "noVisits": "No visits recorded.",
-      "visits": "Visits",
-      "visitSections": "Time per section, visit of {started}"
+      "visit": "Visit",
+      "allVisits": "{count, plural, one {# visit} other {All # visits}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "Time per page, {name}",
+      "visitChart": "Time per page, {name}, visit of {date}"
     },
     "devices": {
       "desktop": "Desktop",

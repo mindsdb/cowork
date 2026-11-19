@@ -733,7 +733,7 @@
     "loading": "Caricamento delle statistiche",
     "retry": "Riprova",
     "metrics": {
-      "views": "Visualizzazioni",
+      "visits": "Visite",
       "viewers": "Visitatori unici",
       "avgTime": "Tempo medio",
       "completion": "Completamento",
@@ -745,9 +745,7 @@
       "email": "Email",
       "lastSeen": "Ultima visita",
       "restrictedOnly": "I nomi dei visitatori vengono registrati solo quando la condivisione è limitata.",
-      "title": "Visitatori",
       "anonymous": "Visitatore anonimo",
-      "summary": "{count, plural, one {# visita} other {# visite}} · {time}",
       "none": "Nessun visitatore registrato finora."
     },
     "noViews": "Ancora nessuna visualizzazione",
@@ -765,21 +763,32 @@
       "body": "Attivala per vedere chi apre questa pagina, quanto tempo resta e quali parti legge.",
       "turnOn": "Attiva"
     },
-    "sections": {
-      "title": "Tempo per sezione",
+    "pages": {
+      "title": "Tempo per pagina",
+      "audienceChart": "Tempo medio per pagina, tutti i visitatori",
+      "position": "Pagina {number} / {total}",
+      "untitled": "Pagina {number}",
+      "timeSpent": "Tempo trascorso",
       "avgTime": "Tempo medio",
       "reached": "Raggiunta",
-      "untitled": "Sezione {number}",
-      "row": "{name}: {time}",
-      "rowWithReach": "{name}: {time} in media, raggiunta dal {reach} delle visite"
+      "barSpent": "Pagina {number} di {total}, {name}: {time}",
+      "barAvg": "Pagina {number} di {total}, {name}: {time} in media",
+      "barAvgReach": "Pagina {number} di {total}, {name}: {time} in media, raggiunta dal {reach} delle visite"
     },
-    "viewer": {
-      "back": "Tutti i visitatori",
+    "activity": {
+      "title": "Tutte le visite",
+      "viewerCount": "{count, plural, one {# visitatore} other {# visitatori}}",
+      "summary": "{count, plural, one {# visita} other {# visite}} · {lastSeen}",
+      "totalTime": "Tempo totale {time}",
+      "viewed": "Visto: {percent}",
+      "whereabouts": "Dispositivo, sistema operativo e posizione",
       "loading": "Caricamento delle visite",
-      "summary": "{count, plural, one {# visita} other {# visite}} · {time} in totale · visto {lastSeen}",
       "noVisits": "Nessuna visita registrata.",
-      "visits": "Visite",
-      "visitSections": "Tempo per sezione, visita del {started}"
+      "visit": "Visita",
+      "allVisits": "{count, plural, one {# visita} other {Tutte le # visite}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "Tempo per pagina, {name}",
+      "visitChart": "Tempo per pagina, {name}, visita del {date}"
     },
     "devices": {
       "desktop": "Computer",

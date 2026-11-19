@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -31,12 +31,17 @@ const ANALYTICS = {
   sections: [
     { key: 's2', index: 2, label: 'Pricing', avg_seconds: 21, reach: 0.5 },
     { key: 's1', index: 1, label: 'Intro', avg_seconds: 42, reach: 1 },
+    { key: 's3', index: 3, label: 'Team', avg_seconds: 0.4, reach: 0.25 },
   ],
   viewers: [
     {
       id: 'v_1', kind: 'email', email: 'a@example.com', visits: 3, total_seconds: 240,
       first_seen: hoursAgo(30), last_seen: hoursAgo(3), furthest: 2,
+      last_device: 'desktop', last_os: 'macOS',
+      last_location: { city: 'Lisbon', region: 'Lisbon', country: 'Portugal' },
+      completion: 0.75,
     },
+    // Recorded before the backend sent device, OS, location and completion.
     {
       id: 'v_2', kind: 'anonymous', email: null, visits: 1, total_seconds: 84,
       first_seen: hoursAgo(5), last_seen: hoursAgo(5), furthest: 1,
@@ -69,14 +74,29 @@ const DETAIL = {
   viewer: ANALYTICS.viewers[0],
   visits: [
     {
-      id: 'visit-1', started_at: '2026-11-17T10:42:00Z', seconds: 95, device: 'mobile', furthest: 2,
+      id: 'visit-1', started_at: '2026-11-17T10:42:00Z', seconds: 95, device: 'desktop', os: 'macOS',
+      location: { city: 'Lisbon', region: 'Lisbon', country: 'Portugal' }, furthest: 2,
       sections: [
         { key: 's1', index: 1, label: 'Intro', seconds: 12 },
         { key: 's2', index: 2, label: 'Pricing', seconds: 83 },
       ],
     },
+    {
+      id: 'visit-2', started_at: '2026-11-18T09:05:00Z', seconds: 30.2, device: 'mobile', os: 'iOS',
+      location: { city: 'Porto', region: null, country: 'Portugal' }, furthest: 2,
+      sections: [
+        { key: 's1', index: 1, label: 'Intro', seconds: 30 },
+        { key: 's2', index: 2, label: 'Pricing', seconds: 0.2 },
+      ],
+    },
   ],
 };
+// One visit with nothing but its time: no OS, no location, no device.
+const BARE_DETAIL = {
+  viewer: ANALYTICS.viewers[1],
+  visits: [{ id: 'visit-9', started_at: '2026-11-18T08:00:00Z', seconds: 84, sections: [{ key: 's1', index: 1, seconds: 84 }] }],
+};
+const opened = (id, data, extra = {}) => ({ viewer: { id, data, loading: false, error: null, ...extra } });
 
 function renderPanel(props = {}) {
   const handlers = {
@@ -110,10 +130,10 @@ describe('StatsPanel overview', () => {
     expect(screen.getByRole('status', { name: 'Loading stats' })).toBeInTheDocument();
   });
 
-  it('shows views, unique viewers, average time and completion', () => {
+  it('shows visits, unique viewers, average time and completion', () => {
     renderPanel();
 
-    expect(within(metric('Views')).getByText('152')).toBeInTheDocument();
+    expect(within(metric('Visits')).getByText('152')).toBeInTheDocument();
     expect(within(metric('Unique viewers')).getByText('2')).toBeInTheDocument();
     expect(within(metric('Avg. time')).getByText('1m 25s')).toBeInTheDocument();
     expect(within(metric('Completion')).getByText('42%')).toBeInTheDocument();
@@ -121,46 +141,93 @@ describe('StatsPanel overview', () => {
     expect(screen.getByText('Views, last 30 days')).toBeInTheDocument();
   });
 
-  it('charts time per section in page order, with the reach of each', () => {
+  it('charts the average time per page in page order, with the reach of each', () => {
     renderPanel();
 
-    const list = screen.getByRole('list', { name: 'Time per section' });
-    const rows = within(list).getAllByRole('listitem');
-    expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual([
-      'Intro: 42s on average, reached by 100% of visits',
-      'Pricing: 21s on average, reached by 50% of visits',
+    const chart = screen.getByRole('group', { name: 'Average time per page, all viewers' });
+    const bars = within(chart).getAllByRole('button');
+    expect(bars.map((bar) => bar.getAttribute('aria-label'))).toEqual([
+      'Page 1 of 3, Intro: 42s on average, reached by 100% of visits',
+      'Page 2 of 3, Pricing: 21s on average, reached by 50% of visits',
+      'Page 3 of 3, Team: 0s on average, reached by 25% of visits',
     ]);
-    // Bars scale to the longest section.
-    const bars = within(list).getAllByTestId('section-bar');
-    expect(bars[0]).toHaveStyle({ width: '100%' });
-    expect(bars[1]).toHaveStyle({ width: '50%' });
+    // Heights scale to the y-axis top (an even 45s over the longest 42s).
+    const fills = bars.map((bar) => bar.firstElementChild.style.height);
+    expect(parseFloat(fills[0])).toBeCloseTo((42 / 45) * 100);
+    expect(parseFloat(fills[1])).toBeCloseTo((21 / 45) * 100);
+    // A glance too short to see still gets a sliver.
+    expect(bars[2].firstElementChild.style.minHeight).toBe('2px');
   });
 
-  it('leaves the sections chart out when the page has no sections', () => {
+  it('shows a page\'s average time and reach on hover', async () => {
+    const { user } = renderPanel();
+    const chart = screen.getByRole('group', { name: 'Average time per page, all viewers' });
+
+    await user.hover(within(chart).getAllByRole('button')[2]);
+
+    const tip = screen.getByRole('tooltip');
+    expect(tip).toHaveTextContent('Page 3 / 3');
+    expect(tip).toHaveTextContent('Team');
+    expect(tip).toHaveTextContent('Avg. time00:00.4');
+    expect(tip).toHaveTextContent('Reached25%');
+    expect(within(chart).getAllByRole('button')[2]).toHaveAttribute('aria-describedby', tip.id);
+  });
+
+  it('leaves the time-per-page chart out when the page has no sections', () => {
     renderPanel({ data: { ...DATA, analytics: { ...ANALYTICS, sections: [], completion: null } } });
 
-    expect(screen.queryByRole('list', { name: 'Time per section' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Average time per page, all viewers' })).toBeNull();
     expect(within(metric('Completion')).getByText('—')).toBeInTheDocument();
   });
 
-  it('lists viewers by email, or as an anonymous viewer, with visits and time', () => {
+  it('lists every viewer with visits, last seen, total time and how much they saw', () => {
     renderPanel();
 
-    const list = screen.getByRole('list', { name: 'Viewers' });
-    const [first, second] = within(list).getAllByRole('button');
-    expect(first).toHaveTextContent('a@example.com');
-    expect(first).toHaveTextContent('3 visits · 4m');
-    expect(first).toHaveTextContent('3h ago');
-    expect(second).toHaveTextContent('Anonymous viewer');
-    expect(second).toHaveTextContent('1 visit · 1m 24s');
+    const list = screen.getByRole('list', { name: 'All visits' });
+    const rows = within(list).getAllByRole('button');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('a@example.com');
+    expect(rows[0]).toHaveTextContent('3 visits · 3h ago');
+    expect(rows[0]).toHaveTextContent('04:00');
+    expect(rows[0]).toHaveAccessibleName(/Total time 4m/);
+    expect(rows[1]).toHaveTextContent('Anonymous viewer');
+    expect(rows[1]).toHaveTextContent('1 visit · 5h ago');
+    expect(rows[1]).toHaveTextContent('01:24');
+    expect(screen.getByText('2 viewers')).toBeInTheDocument();
   });
 
-  it('opens a viewer from the list', async () => {
-    const { onOpenViewer, user } = renderPanel();
+  it('draws a completion ring filled to the share each viewer saw', () => {
+    renderPanel();
 
-    await user.click(screen.getByRole('button', { name: /Anonymous viewer/ }));
+    const ring = screen.getByRole('img', { name: 'Viewed: 75%' });
+    expect(ring).toHaveAttribute('data-completion', '0.75');
+    const progress = ring.querySelectorAll('circle')[1];
+    const circumference = Number(progress.getAttribute('stroke-dasharray'));
+    expect(Number(progress.getAttribute('stroke-dashoffset'))).toBeCloseTo(circumference * 0.25);
+    // No completion recorded for the anonymous viewer: no ring.
+    expect(screen.getAllByRole('img', { name: /^Viewed:/ })).toHaveLength(1);
+  });
+
+  it('unfolds a viewer row in place', async () => {
+    const { onOpenViewer, user } = renderPanel();
+    const row = screen.getByRole('button', { name: /Anonymous viewer/ });
+    expect(row).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(row);
 
     expect(onOpenViewer).toHaveBeenCalledWith('v_2');
+  });
+
+  it('folds an open row back up', async () => {
+    const { onCloseViewer, onOpenViewer, user } = renderPanel(opened('v_1', DETAIL));
+    const row = screen.getByRole('button', { name: /a@example\.com/ });
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    expect(row).toHaveAttribute('aria-controls', screen.getByRole('region', { name: 'a@example.com' }).id);
+
+    await user.click(row);
+
+    expect(onCloseViewer).toHaveBeenCalledTimes(1);
+    expect(onOpenViewer).not.toHaveBeenCalled();
   });
 
   it('falls back to the recorded emails when there is no analytics yet', () => {
@@ -188,7 +255,7 @@ describe('StatsPanel overview', () => {
     await user.click(screen.getByRole('button', { name: 'Turn on' }));
 
     expect(onToggleTracking).toHaveBeenCalledWith(true);
-    expect(within(metric('Views')).getByText('152')).toBeInTheDocument();
+    expect(within(metric('Visits')).getByText('152')).toBeInTheDocument();
   });
 
   it('says No views yet when nobody opened the artifact', () => {
@@ -209,42 +276,104 @@ describe('StatsPanel overview', () => {
   });
 });
 
-describe('StatsPanel viewer detail', () => {
-  it('shows the viewer\'s visits with start, device, total and time per section', () => {
-    renderPanel({ viewer: { id: 'v_1', data: DETAIL, loading: false, error: null } });
+describe('StatsPanel open viewer', () => {
+  const viewerChart = () => screen.getByRole('group', { name: 'Time per page, a@example.com' });
+  const barLabels = (chart) => within(chart).getAllByRole('button').map((bar) => bar.getAttribute('aria-label'));
 
-    expect(screen.getByRole('heading', { name: 'a@example.com' })).toBeInTheDocument();
-    expect(screen.getByText(/3 visits · 4m total · last seen 3h ago/)).toBeInTheDocument();
-    const visits = screen.getByRole('list', { name: 'Visits' });
-    const visit = within(visits).getAllByRole('listitem')[0];
-    expect(visit).toHaveTextContent(new Date(DETAIL.visits[0].started_at).toLocaleString('en'));
-    expect(visit).toHaveTextContent('Mobile');
-    expect(visit).toHaveTextContent('1m 35s');
-    const sections = within(visit).getAllByRole('listitem').map((row) => row.getAttribute('aria-label'));
-    expect(sections).toEqual(['Intro: 12s', 'Pricing: 1m 23s']);
-    // The overview is replaced, not stacked under it.
-    expect(screen.queryByRole('list', { name: 'Viewers' })).toBeNull();
+  it('shows the device, OS and location, and the time per page over every visit', () => {
+    renderPanel(opened('v_1', DETAIL));
+
+    const region = screen.getByRole('region', { name: 'a@example.com' });
+    expect(within(region).getByText('Device, OS & location')).toBeInTheDocument();
+    expect(within(region).getByText('Desktop')).toBeInTheDocument();
+    expect(within(region).getByText('macOS')).toBeInTheDocument();
+    expect(within(region).getByText('Lisbon, Lisbon, Portugal')).toBeInTheDocument();
+    // One bar per section of the page, summed over both visits; Team was never reached.
+    expect(barLabels(viewerChart())).toEqual([
+      'Page 1 of 3, Intro: 42s',
+      'Page 2 of 3, Pricing: 1m 23s',
+      'Page 3 of 3, Team: 0s',
+    ]);
+    // The rest of the list stays where it was.
+    expect(screen.getByRole('button', { name: /Anonymous viewer/ })).toBeInTheDocument();
   });
 
-  it('goes back to the overview', async () => {
-    const { onCloseViewer, user } = renderPanel({ viewer: { id: 'v_1', data: DETAIL, loading: false, error: null } });
+  it('shows a bar\'s page, heading and time on hover', async () => {
+    const { user } = renderPanel(opened('v_1', DETAIL));
 
-    await user.click(screen.getByRole('button', { name: 'All viewers' }));
+    await user.hover(within(viewerChart()).getAllByRole('button')[1]);
 
-    expect(onCloseViewer).toHaveBeenCalledTimes(1);
+    const tip = screen.getByRole('tooltip');
+    expect(tip).toHaveTextContent('Page 2 / 3');
+    expect(tip).toHaveTextContent('Pricing');
+    expect(tip).toHaveTextContent('Time spent01:23');
   });
 
-  it('names the viewer from the list while the visits load', () => {
-    renderPanel({ viewer: { id: 'v_2', data: null, loading: true, error: null } });
+  it('shows the same card on keyboard focus and moves between bars with the arrow keys', async () => {
+    const { user } = renderPanel(opened('v_1', DETAIL));
+    const bars = within(viewerChart()).getAllByRole('button');
+    // One tab stop for the whole chart.
+    expect(bars.map((bar) => bar.tabIndex)).toEqual([0, -1, -1]);
 
-    expect(screen.getByRole('heading', { name: 'Anonymous viewer' })).toBeInTheDocument();
-    expect(screen.getByRole('status', { name: 'Loading visits' })).toBeInTheDocument();
+    act(() => bars[0].focus());
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Page 1 / 3');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Intro');
+
+    await user.keyboard('{ArrowRight}');
+    expect(bars[1]).toHaveFocus();
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Page 2 / 3');
+    await user.keyboard('{End}');
+    expect(bars[2]).toHaveFocus();
+    expect(bars.map((bar) => bar.tabIndex)).toEqual([-1, -1, 0]);
+  });
+
+  it('picks one visit from the list to see its bars, device and place', async () => {
+    const { user } = renderPanel(opened('v_1', DETAIL));
+    const picker = screen.getByRole('combobox', { name: 'Visit' });
+    expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'All 2 visits · 02:05',
+      expect.stringMatching(/ · 01:35 · Desktop$/),
+      expect.stringMatching(/ · 00:30 · Mobile$/),
+    ]);
+
+    await user.selectOptions(picker, 'visit-2');
+
+    const chart = screen.getByRole('group', { name: /^Time per page, a@example\.com, visit of / });
+    expect(barLabels(chart)).toEqual(['Page 1 of 3, Intro: 30s', 'Page 2 of 3, Pricing: 0s', 'Page 3 of 3, Team: 0s']);
+    const region = screen.getByRole('region', { name: 'a@example.com' });
+    expect(within(region).getByText('Mobile')).toBeInTheDocument();
+    expect(within(region).getByText('iOS')).toBeInTheDocument();
+    expect(within(region).getByText('Porto, Portugal')).toBeInTheDocument();
+
+    // A glance under a minute keeps its tenth of a second.
+    await user.hover(within(chart).getAllByRole('button')[1]);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Time spent00:00.2');
+  });
+
+  it('renders a visit with no OS, location or device', () => {
+    renderPanel(opened('v_2', BARE_DETAIL));
+
+    const region = screen.getByRole('region', { name: 'Anonymous viewer' });
+    expect(within(region).getByText('Unknown device')).toBeInTheDocument();
+    expect(within(region).queryByRole('combobox')).toBeNull();
+    expect(barLabels(within(region).getByRole('group'))).toEqual([
+      'Page 1 of 3, Intro: 1m 24s',
+      'Page 2 of 3, Pricing: 0s',
+      'Page 3 of 3, Team: 0s',
+    ]);
+  });
+
+  it('shows the visits loading inside the row', () => {
+    renderPanel(opened('v_2', null, { loading: true }));
+
+    const region = screen.getByRole('region', { name: 'Anonymous viewer' });
+    expect(within(region).getByRole('status', { name: 'Loading visits' })).toBeInTheDocument();
   });
 
   it('retries a failed viewer load for that viewer', async () => {
-    const { onOpenViewer, user } = renderPanel({
-      viewer: { id: 'v_2', data: null, loading: false, error: { status: 502, code: null, message: 'Could not reach MindsHub.' } },
-    });
+    const { onOpenViewer, user } = renderPanel(
+      opened('v_2', null, { error: { status: 502, code: null, message: 'Could not reach MindsHub.' } }),
+    );
 
     expect(screen.getByRole('alert')).toHaveTextContent('Could not reach MindsHub.');
     await user.click(screen.getByRole('button', { name: 'Retry' }));
@@ -319,7 +448,7 @@ describe('StatsPanel errors', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('Publishing is busy right now.');
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-    expect(within(metric('Views')).getByText('152')).toBeInTheDocument();
+    expect(within(metric('Visits')).getByText('152')).toBeInTheDocument();
   });
 
   it('asks for credits, with a link to add them, when turning analytics on is refused', async () => {

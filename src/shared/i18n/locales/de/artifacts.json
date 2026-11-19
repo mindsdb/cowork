@@ -733,7 +733,7 @@
     "loading": "Statistiken werden geladen",
     "retry": "Erneut versuchen",
     "metrics": {
-      "views": "Aufrufe",
+      "visits": "Besuche",
       "viewers": "Eindeutige Besucher",
       "avgTime": "Ø Zeit",
       "completion": "Abschluss",
@@ -745,9 +745,7 @@
       "email": "E-Mail",
       "lastSeen": "Zuletzt gesehen",
       "restrictedOnly": "Namen von Besuchern werden nur bei eingeschränkter Freigabe erfasst.",
-      "title": "Besucher",
       "anonymous": "Anonymer Besucher",
-      "summary": "{count, plural, one {# Besuch} other {# Besuche}} · {time}",
       "none": "Noch keine Besucher erfasst."
     },
     "noViews": "Noch keine Aufrufe",
@@ -765,21 +763,32 @@
       "body": "Schalte sie ein, um zu sehen, wer diese Seite öffnet, wie lange und welche Teile gelesen werden.",
       "turnOn": "Einschalten"
     },
-    "sections": {
-      "title": "Zeit pro Abschnitt",
+    "pages": {
+      "title": "Zeit pro Seite",
+      "audienceChart": "Durchschnittliche Zeit pro Seite, alle Besucher",
+      "position": "Seite {number} / {total}",
+      "untitled": "Seite {number}",
+      "timeSpent": "Verbrachte Zeit",
       "avgTime": "Ø Zeit",
       "reached": "Erreicht",
-      "untitled": "Abschnitt {number}",
-      "row": "{name}: {time}",
-      "rowWithReach": "{name}: im Schnitt {time}, von {reach} der Besuche erreicht"
+      "barSpent": "Seite {number} von {total}, {name}: {time}",
+      "barAvg": "Seite {number} von {total}, {name}: im Schnitt {time}",
+      "barAvgReach": "Seite {number} von {total}, {name}: im Schnitt {time}, von {reach} der Besuche erreicht"
     },
-    "viewer": {
-      "back": "Alle Besucher",
+    "activity": {
+      "title": "Alle Besuche",
+      "viewerCount": "{count, plural, one {# Besucher} other {# Besucher}}",
+      "summary": "{count, plural, one {# Besuch} other {# Besuche}} · {lastSeen}",
+      "totalTime": "Gesamtzeit {time}",
+      "viewed": "Angesehen: {percent}",
+      "whereabouts": "Gerät, Betriebssystem & Standort",
       "loading": "Besuche werden geladen",
-      "summary": "{count, plural, one {# Besuch} other {# Besuche}} · {time} gesamt · zuletzt {lastSeen}",
       "noVisits": "Keine Besuche erfasst.",
-      "visits": "Besuche",
-      "visitSections": "Zeit pro Abschnitt, Besuch vom {started}"
+      "visit": "Besuch",
+      "allVisits": "{count, plural, one {# Besuch} other {Alle # Besuche}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "Zeit pro Seite, {name}",
+      "visitChart": "Zeit pro Seite, {name}, Besuch vom {date}"
     },
     "devices": {
       "desktop": "Desktop",

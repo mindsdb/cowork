@@ -733,7 +733,7 @@
     "loading": "統計を読み込み中",
     "retry": "再試行",
     "metrics": {
-      "views": "閲覧数",
+      "visits": "訪問数",
       "viewers": "ユニーク閲覧者",
       "avgTime": "平均時間",
       "completion": "読了率",
@@ -745,9 +745,7 @@
       "email": "メール",
       "lastSeen": "最終閲覧",
       "restrictedOnly": "閲覧者の名前は、共有が制限されている場合にのみ記録されます。",
-      "title": "閲覧者",
       "anonymous": "匿名の閲覧者",
-      "summary": "{count, plural, other {#回の訪問}} · {time}",
       "none": "まだ閲覧者は記録されていません。"
     },
     "noViews": "まだ閲覧はありません",
@@ -765,21 +763,32 @@
       "body": "オンにすると、このページを誰が開き、どれくらい滞在し、どの部分を読んだかがわかります。",
       "turnOn": "オンにする"
     },
-    "sections": {
-      "title": "セクションごとの時間",
+    "pages": {
+      "title": "ページごとの時間",
+      "audienceChart": "ページごとの平均時間（全閲覧者）",
+      "position": "ページ {number} / {total}",
+      "untitled": "ページ {number}",
+      "timeSpent": "閲覧時間",
       "avgTime": "平均時間",
       "reached": "到達率",
-      "untitled": "セクション {number}",
-      "row": "{name}：{time}",
-      "rowWithReach": "{name}：平均{time}、訪問の{reach}が到達"
+      "barSpent": "ページ {number} / {total}、{name}：{time}",
+      "barAvg": "ページ {number} / {total}、{name}：平均{time}",
+      "barAvgReach": "ページ {number} / {total}、{name}：平均{time}、訪問の{reach}が到達"
     },
-    "viewer": {
-      "back": "すべての閲覧者",
+    "activity": {
+      "title": "すべての訪問",
+      "viewerCount": "{count, plural, other {閲覧者 #人}}",
+      "summary": "{count, plural, other {#回の訪問}} · {lastSeen}",
+      "totalTime": "合計時間 {time}",
+      "viewed": "閲覧済み：{percent}",
+      "whereabouts": "デバイス、OS、場所",
       "loading": "訪問を読み込み中",
-      "summary": "{count, plural, other {#回の訪問}} · 合計{time} · 最終閲覧 {lastSeen}",
       "noVisits": "記録された訪問はありません。",
-      "visits": "訪問",
-      "visitSections": "セクションごとの時間（{started}の訪問）"
+      "visit": "訪問",
+      "allVisits": "{count, plural, other {すべての訪問（#回）}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "ページごとの時間、{name}",
+      "visitChart": "ページごとの時間、{name}、{date}の訪問"
     },
     "devices": {
       "desktop": "デスクトップ",

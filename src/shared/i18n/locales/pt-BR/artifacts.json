@@ -733,7 +733,7 @@
     "loading": "Carregando estatísticas",
     "retry": "Tentar novamente",
     "metrics": {
-      "views": "Visualizações",
+      "visits": "Visitas",
       "viewers": "Visitantes únicos",
       "avgTime": "Tempo médio",
       "completion": "Conclusão",
@@ -745,9 +745,7 @@
       "email": "E-mail",
       "lastSeen": "Última visita",
       "restrictedOnly": "Os nomes de quem visualiza só são registrados quando o compartilhamento é restrito.",
-      "title": "Visitantes",
       "anonymous": "Visitante anônimo",
-      "summary": "{count, plural, one {# visita} other {# visitas}} · {time}",
       "none": "Nenhum visitante registrado ainda."
     },
     "noViews": "Ainda sem visualizações",
@@ -765,21 +763,32 @@
       "body": "Ative para ver quem abre esta página, quanto tempo fica e quais partes lê.",
       "turnOn": "Ativar"
     },
-    "sections": {
-      "title": "Tempo por seção",
+    "pages": {
+      "title": "Tempo por página",
+      "audienceChart": "Tempo médio por página, todos os visitantes",
+      "position": "Página {number} / {total}",
+      "untitled": "Página {number}",
+      "timeSpent": "Tempo gasto",
       "avgTime": "Tempo médio",
       "reached": "Alcançada",
-      "untitled": "Seção {number}",
-      "row": "{name}: {time}",
-      "rowWithReach": "{name}: {time} em média, alcançada em {reach} das visitas"
+      "barSpent": "Página {number} de {total}, {name}: {time}",
+      "barAvg": "Página {number} de {total}, {name}: {time} em média",
+      "barAvgReach": "Página {number} de {total}, {name}: {time} em média, alcançada por {reach} das visitas"
     },
-    "viewer": {
-      "back": "Todos os visitantes",
+    "activity": {
+      "title": "Todas as visitas",
+      "viewerCount": "{count, plural, one {# visitante} other {# visitantes}}",
+      "summary": "{count, plural, one {# visita} other {# visitas}} · {lastSeen}",
+      "totalTime": "Tempo total {time}",
+      "viewed": "Visto: {percent}",
+      "whereabouts": "Dispositivo, SO e local",
       "loading": "Carregando visitas",
-      "summary": "{count, plural, one {# visita} other {# visitas}} · {time} no total · visto {lastSeen}",
       "noVisits": "Nenhuma visita registrada.",
-      "visits": "Visitas",
-      "visitSections": "Tempo por seção, visita de {started}"
+      "visit": "Visita",
+      "allVisits": "{count, plural, one {# visita} other {Todas as # visitas}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "Tempo por página, {name}",
+      "visitChart": "Tempo por página, {name}, visita de {date}"
     },
     "devices": {
       "desktop": "Computador",

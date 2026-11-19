@@ -37,3 +37,30 @@ export function exactTime(iso) {
   const ts = Date.parse(iso || '');
   return Number.isFinite(ts) ? new Date(ts).toLocaleString(numberLocale()) : '';
 }
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+// A clock reading for a duration: "04:12", "1:02:03". With `fraction`, a time
+// under a minute keeps one decimal ("00:00.2", "00:12.5"), so a glance at a
+// section is not rounded away to "00:00".
+export function formatClock(seconds, { fraction = false } = {}) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return '—';
+  if (fraction && value < 59.95) {
+    return `00:${(Math.round(value * 10) / 10).toFixed(1).padStart(4, '0')}`;
+  }
+  const total = Math.round(value);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h ? `${h}:${pad2(m)}:${pad2(s)}` : `${pad2(m)}:${pad2(s)}`;
+}
+
+// A visit's start, short: "Nov 17, 10:42 AM".
+export function shortDateTime(iso) {
+  const ts = Date.parse(iso || '');
+  if (!Number.isFinite(ts)) return '';
+  return new Date(ts).toLocaleString(numberLocale(), {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+}
