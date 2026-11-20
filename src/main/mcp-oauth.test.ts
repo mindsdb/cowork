@@ -416,6 +416,11 @@ describe('token requests', () => {
     },
   );
 
+  it('takes the token from a 200 answer whose error field is null', async () => {
+    const { fetchFn } = tokenAnswer({ error: null, access_token: 'at', token_type: 'Bearer' });
+    await expect(exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW)).resolves.toMatchObject({ accessToken: 'at' });
+  });
+
   it('keeps the fixed message for a failed answer whose body is not JSON', async () => {
     const fetchFn: GuardedFetch = async () => new Response('<html>oops</html>', { status: 502 });
     await expect(exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW)).rejects.toThrow(/^the token endpoint answered 502$/);
@@ -442,12 +447,14 @@ describe('token requests', () => {
     [500, {}, 'token_failed'],
     [200, { error: 'invalid_grant' }, 'grant_refused'],
     [500, { error: 'invalid_grant' }, 'grant_refused'],
-    [200, { error: 'invalid_request' }, 'token_failed'],
-    [200, { error: 'temporarily_unavailable' }, 'token_failed'],
+    [503, { error: 'invalid_grant' }, 'grant_refused'],
+    [429, { error: 'invalid_client' }, 'grant_refused'],
+    [200, { error: 'invalid_request', access_token: 'at', token_type: 'Bearer' }, 'token_failed'],
+    [200, { error: 'temporarily_unavailable', access_token: 'at', token_type: 'Bearer' }, 'token_failed'],
     [200, { error: 'bad_refresh_token' }, 'grant_refused'],
     [200, { error: 'incorrect_client_credentials' }, 'grant_refused'],
-    [200, { error: 'bad_verification_code' }, 'token_failed'],
-    [200, { error: 'redirect_uri_mismatch' }, 'token_failed'],
+    [200, { error: 'bad_verification_code', access_token: 'at', token_type: 'Bearer' }, 'token_failed'],
+    [200, { error: 'redirect_uri_mismatch', access_token: 'at', token_type: 'Bearer' }, 'token_failed'],
   ])('tells a refused grant (%i %j) from a failure worth retrying', async (status, body, code) => {
     const fetchFn: GuardedFetch = async () => new Response(JSON.stringify(body), { status });
     expect(await failure(refreshTokens(AS, { clientId: 'id', authMethod: 'none' }, { refreshToken: 'rt', resource: SERVER }, fetchFn, NOW))).toBe(code);
