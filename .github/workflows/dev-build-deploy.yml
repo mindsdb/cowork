@@ -135,6 +135,7 @@ jobs:
     if: needs.gate.outputs.run == 'true'
     permissions:
       contents: read
+      id-token: write # the build's ECR role, assumed over OIDC
     uses: ./.github/workflows/build-deploy.yml
     with:
       build-environment: development

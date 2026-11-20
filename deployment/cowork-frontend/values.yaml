@@ -6,8 +6,8 @@ deployment:
   replicaCount: 2
 
   image:
-    # ECR repo name is the GitHub repo slug (mindsdb-cowork), matching the
-    # build-push-ecr default. The cowork repo builds only the web SPA image to
+    # The module-name the build-image step in build-deploy.yml pushes to.
+    # The cowork repo builds only the web SPA image to
     # ECR (the all-in-one ./Dockerfile is never pushed), so no -frontend suffix
     # is needed and this stays consistent with the tags.cowork deploy key.
     repository: 168681354662.dkr.ecr.us-east-1.amazonaws.com/mindsdb-cowork
