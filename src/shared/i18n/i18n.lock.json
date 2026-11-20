@@ -98191,6 +98191,108 @@
       "text": "7886e0c0098b"
     }
   },
+  "docs:comments.commentHint": {
+    "de": {
+      "from": "50400f884f5e",
+      "text": "8a676cbdf7df"
+    },
+    "es": {
+      "from": "50400f884f5e",
+      "text": "966053c72fc3"
+    },
+    "fr": {
+      "from": "50400f884f5e",
+      "text": "a0d8aef9df79"
+    },
+    "it": {
+      "from": "50400f884f5e",
+      "text": "30e547bfe638"
+    },
+    "ja": {
+      "from": "50400f884f5e",
+      "text": "c876b63eefd3"
+    },
+    "ko": {
+      "from": "50400f884f5e",
+      "text": "31fae5ce58fc"
+    },
+    "pt-BR": {
+      "from": "50400f884f5e",
+      "text": "cf642d46cede"
+    },
+    "zh-CN": {
+      "from": "50400f884f5e",
+      "text": "05a7cbbc613f"
+    }
+  },
+  "docs:comments.edit": {
+    "de": {
+      "from": "464c4ffd019e",
+      "text": "84e45ee73411"
+    },
+    "es": {
+      "from": "464c4ffd019e",
+      "text": "2eba946b2e1e"
+    },
+    "fr": {
+      "from": "464c4ffd019e",
+      "text": "42e37604b638"
+    },
+    "it": {
+      "from": "464c4ffd019e",
+      "text": "49e493ba9d9c"
+    },
+    "ja": {
+      "from": "464c4ffd019e",
+      "text": "11f9049ddab5"
+    },
+    "ko": {
+      "from": "464c4ffd019e",
+      "text": "87b0acef85a7"
+    },
+    "pt-BR": {
+      "from": "464c4ffd019e",
+      "text": "2eba946b2e1e"
+    },
+    "zh-CN": {
+      "from": "464c4ffd019e",
+      "text": "051836569928"
+    }
+  },
+  "docs:comments.editHint": {
+    "de": {
+      "from": "718438091381",
+      "text": "f2f2a0b64f65"
+    },
+    "es": {
+      "from": "718438091381",
+      "text": "8240120e2db4"
+    },
+    "fr": {
+      "from": "718438091381",
+      "text": "f244ef7d81c4"
+    },
+    "it": {
+      "from": "718438091381",
+      "text": "7f9531543b18"
+    },
+    "ja": {
+      "from": "718438091381",
+      "text": "b083a30ec173"
+    },
+    "ko": {
+      "from": "718438091381",
+      "text": "22dfb6bdb401"
+    },
+    "pt-BR": {
+      "from": "718438091381",
+      "text": "3c1f279a7b0f"
+    },
+    "zh-CN": {
+      "from": "718438091381",
+      "text": "5784ad043019"
+    }
+  },
   "docs:doc": {
     "de": {
       "from": "49f4e57c2625",

@@ -190,6 +190,11 @@
     "placeholderChange": "何を変更しますか？",
     "send": "送信"
   },
+  "comments": {
+    "edit": "編集",
+    "editHint": "ドキュメントに入力",
+    "commentHint": "コメント — ブロックをクリックするか、語句を選択"
+  },
   "chart": {
     "label": "グラフ",
     "title": "グラフのタイトル",
