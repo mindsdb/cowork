@@ -719,7 +719,6 @@
       "wrongOrganization": "This sign-in was started in another organization. Switch back to the organization you added the server in, then add it again.",
       "expired": "This sign-in has expired or was already used. Add the server again.",
       "moved": "The server answered from another address. Check the URL, including whether it should end with a slash.",
-      "wrongIssuer": "The sign-in came back from a different login server than the one it started with, so it wasn't used. Try again.",
       "tooManyTools": "You can have at most {limit} tools switched on across your MCP servers. Switch some off first."
     },
     "detail": {
@@ -737,7 +736,7 @@
       "stale": "The tool list couldn't be refreshed. These are the tools last listed, and their switches still work.",
       "reasonReadOnlyRemoved": "Switched off: the server no longer marks this tool as read-only.",
       "reasonSizeCeiling": "Switched off: the tools you have on reached their size limit.",
-      "reasonDefinitionChanged": "Switched off: the server changed this tool's description. Review it and switch it back on.",
+      "reasonDefinitionChanged": "Switched off: the server changed this tool's description or inputs. Review it and switch it back on.",
       "reasonCountCeiling": "Switched off: you can have at most {limit} tools switched on across your MCP servers.",
       "reasonUnusable": "Anton can't use this tool."
     },

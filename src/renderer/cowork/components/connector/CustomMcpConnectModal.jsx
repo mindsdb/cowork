@@ -15,7 +15,7 @@ import { CUSTOM_MCP_REDIRECT_URI } from '../../../../shared/custom-mcp';
 export { CUSTOM_MCP_REDIRECT_URI } from '../../../../shared/custom-mcp';
 
 const EMPTY = { label: '', url: '', clientId: '', clientSecret: '' };
-// auth's bound on one member's switched-on tools across their servers; auth enforces it.
+// A copy of auth's MAX_SWITCHED_ON_TOOLS: one member's switched-on tools across their servers; auth enforces it.
 export const CUSTOM_MCP_TOOL_LIMIT = 100;
 
 /**
@@ -78,8 +78,6 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.expired');
     case 'moved':
       return t('customMcp.error.moved');
-    case 'wrong_issuer':
-      return t('customMcp.error.wrongIssuer');
     case 'too_many_tools':
       return t('customMcp.error.tooManyTools', { limit: CUSTOM_MCP_TOOL_LIMIT });
     default:

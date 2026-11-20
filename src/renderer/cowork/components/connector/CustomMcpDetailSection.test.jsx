@@ -135,7 +135,7 @@ describe('CustomMcpDetailSection', () => {
 
     expect(await screen.findByText('Switched off: the server no longer marks this tool as read-only.')).toBeTruthy();
     expect(screen.getByText('Switched off: the tools you have on reached their size limit.')).toBeTruthy();
-    expect(screen.getByText("Switched off: the server changed this tool's description. Review it and switch it back on.")).toBeTruthy();
+    expect(screen.getByText("Switched off: the server changed this tool's description or inputs. Review it and switch it back on.")).toBeTruthy();
     expect(screen.getByText('Switched off: you can have at most 100 tools switched on across your MCP servers.')).toBeTruthy();
     expect(screen.getByText("Anton can't use this tool.")).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'Let Anton use odd' }).getAttribute('aria-disabled')).toBe('true');

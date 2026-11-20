@@ -719,7 +719,6 @@
       "wrongOrganization": "Questo accesso è stato avviato in un'altra organizzazione. Torna all'organizzazione in cui hai aggiunto il server, poi aggiungilo di nuovo.",
       "expired": "Questo accesso è scaduto o è già stato usato. Aggiungi di nuovo il server.",
       "moved": "Il server ha risposto da un altro indirizzo. Controlla l'URL, anche se deve terminare con una barra.",
-      "wrongIssuer": "L'accesso è tornato da un server di accesso diverso da quello da cui era partito, quindi non è stato usato. Riprova.",
       "tooManyTools": "Puoi avere al massimo {limit} strumenti attivi tra tutti i tuoi server MCP. Disattivane prima alcuni."
     },
     "detail": {
@@ -737,7 +736,7 @@
       "stale": "Non è stato possibile aggiornare l'elenco degli strumenti. Questi sono gli ultimi strumenti elencati e i loro interruttori funzionano ancora.",
       "reasonReadOnlyRemoved": "Disattivato: il server non contrassegna più questo strumento come di sola lettura.",
       "reasonSizeCeiling": "Disattivato: gli strumenti che hai attivato hanno raggiunto il limite di dimensione.",
-      "reasonDefinitionChanged": "Disattivato: il server ha cambiato la descrizione di questo strumento. Controllala e riattivalo.",
+      "reasonDefinitionChanged": "Disattivato: il server ha cambiato la descrizione o gli input di questo strumento. Controllalo e riattivalo.",
       "reasonCountCeiling": "Disattivato: puoi avere al massimo {limit} strumenti attivi tra tutti i tuoi server MCP.",
       "reasonUnusable": "Anton non può usare questo strumento."
     },

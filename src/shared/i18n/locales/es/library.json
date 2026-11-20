@@ -719,7 +719,6 @@
       "wrongOrganization": "Este inicio de sesión se inició en otra organización. Vuelve a la organización en la que añadiste el servidor y añádelo de nuevo.",
       "expired": "Este inicio de sesión caducó o ya se usó. Vuelve a añadir el servidor.",
       "moved": "El servidor respondió desde otra dirección. Revisa la URL, incluido si debe terminar con una barra.",
-      "wrongIssuer": "El inicio de sesión volvió desde un servidor de inicio de sesión distinto del que lo empezó, así que no se usó. Inténtalo de nuevo.",
       "tooManyTools": "Puedes tener como máximo {limit} herramientas activadas entre todos tus servidores MCP. Desactiva algunas primero."
     },
     "detail": {
@@ -737,7 +736,7 @@
       "stale": "No se pudo actualizar la lista de herramientas. Estas son las últimas herramientas listadas y sus interruptores siguen funcionando.",
       "reasonReadOnlyRemoved": "Desactivada: el servidor ya no marca esta herramienta como de solo lectura.",
       "reasonSizeCeiling": "Desactivada: las herramientas que tienes activadas alcanzaron su límite de tamaño.",
-      "reasonDefinitionChanged": "Desactivada: el servidor cambió la descripción de esta herramienta. Revísala y vuelve a activarla.",
+      "reasonDefinitionChanged": "Desactivada: el servidor cambió la descripción o las entradas de esta herramienta. Revísala y vuelve a activarla.",
       "reasonCountCeiling": "Desactivada: puedes tener como máximo {limit} herramientas activadas entre todos tus servidores MCP.",
       "reasonUnusable": "Anton no puede usar esta herramienta."
     },

@@ -719,7 +719,6 @@
       "wrongOrganization": "Este login foi iniciado em outra organização. Volte para a organização em que você adicionou o servidor e adicione-o de novo.",
       "expired": "Este login expirou ou já foi usado. Adicione o servidor de novo.",
       "moved": "O servidor respondeu de outro endereço. Confira a URL, inclusive se ela deve terminar com uma barra.",
-      "wrongIssuer": "O login voltou de um servidor de login diferente daquele em que começou, então não foi usado. Tente novamente.",
       "tooManyTools": "Você pode ter no máximo {limit} ferramentas ativadas entre seus servidores MCP. Desative algumas primeiro."
     },
     "detail": {
@@ -737,7 +736,7 @@
       "stale": "Não foi possível atualizar a lista de ferramentas. Estas são as últimas ferramentas listadas, e seus interruptores continuam funcionando.",
       "reasonReadOnlyRemoved": "Desativada: o servidor não marca mais esta ferramenta como somente leitura.",
       "reasonSizeCeiling": "Desativada: as ferramentas que você ativou atingiram o limite de tamanho.",
-      "reasonDefinitionChanged": "Desativada: o servidor mudou a descrição desta ferramenta. Revise-a e ative-a de novo.",
+      "reasonDefinitionChanged": "Desativada: o servidor mudou a descrição ou as entradas desta ferramenta. Revise-a e ative-a de novo.",
       "reasonCountCeiling": "Desativada: você pode ter no máximo {limit} ferramentas ativadas entre seus servidores MCP.",
       "reasonUnusable": "O Anton não pode usar esta ferramenta."
     },

@@ -97309,36 +97309,36 @@
   },
   "library:customMcp.detail.reasonDefinitionChanged": {
     "de": {
-      "from": "55393dc14b7e",
-      "text": "59896ea3192a"
+      "from": "97753bca743d",
+      "text": "909ffd047d4a"
     },
     "es": {
-      "from": "55393dc14b7e",
-      "text": "98e95c84a269"
+      "from": "97753bca743d",
+      "text": "8df78c359299"
     },
     "fr": {
-      "from": "55393dc14b7e",
-      "text": "a8fa3c4c723a"
+      "from": "97753bca743d",
+      "text": "16437f8937bf"
     },
     "it": {
-      "from": "55393dc14b7e",
-      "text": "65ecb7d4852b"
+      "from": "97753bca743d",
+      "text": "15c20429cffe"
     },
     "ja": {
-      "from": "55393dc14b7e",
-      "text": "1bbf6b89d221"
+      "from": "97753bca743d",
+      "text": "4895c2f574d6"
     },
     "ko": {
-      "from": "55393dc14b7e",
-      "text": "afa118110868"
+      "from": "97753bca743d",
+      "text": "d3968e927b84"
     },
     "pt-BR": {
-      "from": "55393dc14b7e",
-      "text": "02216bcfd778"
+      "from": "97753bca743d",
+      "text": "0b9824d22927"
     },
     "zh-CN": {
-      "from": "55393dc14b7e",
-      "text": "0fac04d2c32e"
+      "from": "97753bca743d",
+      "text": "7585509136b2"
     }
   },
   "library:customMcp.detail.reasonReadOnlyRemoved": {
@@ -98563,40 +98563,6 @@
     "zh-CN": {
       "from": "5ab10b624189",
       "text": "b5a8469f091e"
-    }
-  },
-  "library:customMcp.error.wrongIssuer": {
-    "de": {
-      "from": "c95fe1e1ea5f",
-      "text": "dcb4d868e70e"
-    },
-    "es": {
-      "from": "c95fe1e1ea5f",
-      "text": "76c7f4688b5d"
-    },
-    "fr": {
-      "from": "c95fe1e1ea5f",
-      "text": "fe2f87e6f68a"
-    },
-    "it": {
-      "from": "c95fe1e1ea5f",
-      "text": "e9751ff347ca"
-    },
-    "ja": {
-      "from": "c95fe1e1ea5f",
-      "text": "eadca2aabd30"
-    },
-    "ko": {
-      "from": "c95fe1e1ea5f",
-      "text": "aa56f2fef7e9"
-    },
-    "pt-BR": {
-      "from": "c95fe1e1ea5f",
-      "text": "a5ee0dc6eecb"
-    },
-    "zh-CN": {
-      "from": "c95fe1e1ea5f",
-      "text": "46ba9ca53f86"
     }
   },
   "library:customMcp.error.wrongOrganization": {
