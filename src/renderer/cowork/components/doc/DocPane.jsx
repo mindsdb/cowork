@@ -112,8 +112,8 @@ export default function DocPane({
   // flow and access choices (public, password, named people, only me) as any
   // HTML artifact. The controller addresses the page, not the JSON beside it.
   const shareTarget = useMemo(() => docPageTarget(card), [card]);
-  const pub = usePublish(shareTarget, { enabled: !!shareTarget && !orgMode });
-  const canShare = !orgMode && !!shareTarget && capabilities?.canEdit !== false;
+  const pub = usePublish(shareTarget, { enabled: !!shareTarget });
+  const canShare = !!shareTarget && capabilities?.canEdit !== false;
   const [activeTab, setActiveTab] = useState(null);
   const [unseen, setUnseen] = useState(new Set());
   const [notice, setNotice] = useState(null);
@@ -328,12 +328,14 @@ export default function DocPane({
   const pubRefresh = pub.refresh;
   const lastRev = useRef(null);
   useEffect(() => {
-    if (!doc || !pub.publishedUrl) return undefined;
+    // In org mode a read here is the owner-only audience route, which an edit
+    // never changes; the page itself follows edits on the server.
+    if (orgMode || !doc || !pub.publishedUrl) return undefined;
     if (lastRev.current === doc.rev) return undefined;
     lastRev.current = doc.rev;
     const t = setTimeout(() => { pubRefresh?.(); }, 1200);
     return () => clearTimeout(t);
-  }, [doc, pub.publishedUrl, pubRefresh]);
+  }, [orgMode, doc, pub.publishedUrl, pubRefresh]);
 
   // Published: the shared link, behind whatever access it was given. Not yet:
   // the page itself, opened from disk in the default browser (desktop), the

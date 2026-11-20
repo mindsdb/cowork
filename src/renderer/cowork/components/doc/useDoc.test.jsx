@@ -42,11 +42,11 @@ function fakeTransport() {
 const texts = (d) => d?.tabs[0].blocks.map((b) => b.text);
 const edit = (id, text) => [{ op: 'update', id, set: { text } }];
 
-async function opened(t, id = 'a', rev = 1) {
+async function opened(t, id = 'a', rev = 1, card) {
   const hook = renderHook(({ artifactId }) => useDoc({ projectRef: 'p', artifactId, transport: t }), {
     initialProps: { artifactId: id },
   });
-  await act(async () => { t.fetches.at(-1).resolve({ doc: doc(id, rev), capabilities: { canEdit: true } }); });
+  await act(async () => { t.fetches.at(-1).resolve({ doc: doc(id, rev), capabilities: { canEdit: true }, ...(card && { card }) }); });
   return hook;
 }
 
@@ -676,5 +676,46 @@ describe('useDoc undo with no doc to undo in', () => {
     await act(async () => { t.posts[0].resolve({ doc: doc('a', 2), undo: edit('b_1', 'One') }); });
     expect(await undone).toBe('none');
     expect(t.posts).toHaveLength(1);
+  });
+});
+
+describe('useDoc publish events', () => {
+  const noLink = { id: 'a', publishedUrl: '' };
+
+  it('rereads only the card when the page was published', async () => {
+    const t = fakeTransport();
+    const { result } = await opened(t, 'a', 1, noLink);
+    act(() => { t.streams[0].onEvent({ type: 'doc.published', rev: 0 }); });
+    expect(t.fetches).toHaveLength(2);
+    await act(async () => {
+      t.fetches[1].resolve({ doc: doc('a', 9), capabilities: { canEdit: true }, card: { id: 'a', publishedUrl: 'https://view.test/a' } });
+    });
+    expect(result.current.card.publishedUrl).toBe('https://view.test/a');
+    expect(result.current.doc.rev).toBe(1);
+  });
+
+  it('keeps the card object when the link did not change', async () => {
+    const t = fakeTransport();
+    const card = { id: 'a', publishedUrl: 'https://view.test/a', modified: false };
+    const { result } = await opened(t, 'a', 1, card);
+    const before = result.current.card;
+    act(() => { t.streams[0].onEvent({ type: 'doc.published', rev: 0 }); });
+    await act(async () => { t.fetches[1].resolve({ doc: doc('a', 1), capabilities: { canEdit: true }, card: { ...card } }); });
+    expect(result.current.card).toBe(before);
+  });
+
+  it('does not reread for a reader who has no card', async () => {
+    const t = fakeTransport();
+    await opened(t);
+    act(() => { t.streams[0].onEvent({ type: 'doc.published', rev: 0 }); });
+    expect(t.fetches).toHaveLength(1);
+  });
+
+  it('rereads the doc when any event says events were lost', async () => {
+    const t = fakeTransport();
+    const { result } = await opened(t, 'a', 1, noLink);
+    act(() => { t.streams[0].onEvent({ type: 'doc.published', rev: 0, gap: true }); });
+    await act(async () => { t.fetches[1].resolve({ doc: doc('a', 4), capabilities: { canEdit: true }, card: { id: 'a' } }); });
+    expect(result.current.doc.rev).toBe(4);
   });
 });
