@@ -82,6 +82,7 @@
   "tabs": {
     "label": "Schede",
     "add": "Aggiungi scheda",
+    "addHint": "Aggiungi una nuova scheda a questo documento",
     "hide": "Nascondi schede",
     "changed": "Modificata",
     "showChanged": "Mostra la scheda modificata",

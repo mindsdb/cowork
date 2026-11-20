@@ -132,8 +132,9 @@ export function TabStrip({ tabs, activeId, onSelect, idBase, onAdd, unseen }) {
  * it is renamed (double-click or F2) and its options menu; `apply` sends the
  * tab ops, `unseen` holds the tabs the agent changed out of sight. `onHide`
  * folds it away; `hidden`, it is folded, and out of reach of keys and readers.
+ * `addable` false leaves adding a tab to the viewer's rail (DocPane's preview).
  */
-export function TabRail({ tabs, activeId, unseen, editable, onSelect, apply, idBase, hidden = false, onHide }) {
+export function TabRail({ tabs, activeId, unseen, editable, onSelect, apply, idBase, hidden = false, onHide, addable = true }) {
   const { t } = useTranslation('docs');
   const [renaming, setRenaming] = useState(null);
   const [menuFor, setMenuFor] = useState(null);
@@ -202,7 +203,7 @@ export function TabRail({ tabs, activeId, unseen, editable, onSelect, apply, idB
           </div>
         ))}
       </div>
-      {editable && (
+      {editable && addable && (
         <button type="button" className="doc-tabs__add" onClick={add}><Icon of={Plus} size={14} /> {t('tabs.add')}</button>
       )}
     </nav>

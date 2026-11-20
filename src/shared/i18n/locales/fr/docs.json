@@ -82,6 +82,7 @@
   "tabs": {
     "label": "Onglets",
     "add": "Ajouter un onglet",
+    "addHint": "Ajouter un nouvel onglet à ce document",
     "hide": "Masquer les onglets",
     "changed": "Modifié",
     "showChanged": "Afficher l’onglet modifié",

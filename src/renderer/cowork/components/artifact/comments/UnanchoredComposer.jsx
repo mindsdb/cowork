@@ -2,6 +2,7 @@
 // (general) threads: comments not attached to any element on the page
 // (selector: null). Anchored comments are still created on the artifact via
 // comment mode; this is the only UI path that posts without a selector.
+// An inbox card that holds its thread (a doc's) reuses it as the reply box.
 //
 // Enter posts, Shift+Enter inserts a newline. On failure the draft stays in
 // the field (the hook surfaces the error banner) so the user can retry.
@@ -21,9 +22,11 @@ export function UnanchoredComposer({
   onPosted,
   kind = 'review',
   placeholder: placeholderProp,
+  ariaLabel: ariaLabelProp,
 }) {
   const { t } = useTranslation('artifacts');
   const placeholder = placeholderProp ?? t('comments.composer.placeholder');
+  const ariaLabel = ariaLabelProp ?? t('comments.composer.ariaLabel');
   const [text, setText] = useState('');
   const [pending, setPending] = useState(false);
   const taRef = useRef(null);
@@ -72,7 +75,7 @@ export function UnanchoredComposer({
         rows={1}
         value={text}
         placeholder={placeholder}
-        aria-label={t('comments.composer.ariaLabel')}
+        aria-label={ariaLabel}
         disabled={pending}
         className="flex-1 min-w-0 resize-none outline-none border-0 bg-transparent
           text-[14px] leading-[24px] text-ink placeholder:text-ink-4 px-[4px]"

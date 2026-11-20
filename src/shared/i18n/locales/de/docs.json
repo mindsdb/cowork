@@ -82,6 +82,7 @@
   "tabs": {
     "label": "Tabs",
     "add": "Tab hinzufügen",
+    "addHint": "Diesem Dokument einen neuen Tab hinzufügen",
     "hide": "Tabs ausblenden",
     "changed": "Geändert",
     "showChanged": "Geänderten Tab anzeigen",

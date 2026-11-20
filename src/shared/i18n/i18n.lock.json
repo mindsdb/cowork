@@ -9349,6 +9349,74 @@
       "text": "808922398afc"
     }
   },
+  "artifacts:comments.card.replyAriaLabel": {
+    "de": {
+      "from": "1a05f1ffa233",
+      "text": "b25f948820df"
+    },
+    "es": {
+      "from": "1a05f1ffa233",
+      "text": "b0a4e19c2519"
+    },
+    "fr": {
+      "from": "1a05f1ffa233",
+      "text": "2978d7091a36"
+    },
+    "it": {
+      "from": "1a05f1ffa233",
+      "text": "3bbbdb77278e"
+    },
+    "ja": {
+      "from": "1a05f1ffa233",
+      "text": "e8fbe78ad819"
+    },
+    "ko": {
+      "from": "1a05f1ffa233",
+      "text": "4621333739a3"
+    },
+    "pt-BR": {
+      "from": "1a05f1ffa233",
+      "text": "b6ec10a0eded"
+    },
+    "zh-CN": {
+      "from": "1a05f1ffa233",
+      "text": "2d890e32a97b"
+    }
+  },
+  "artifacts:comments.card.replyPlaceholder": {
+    "de": {
+      "from": "1d627af010c0",
+      "text": "218317c601d2"
+    },
+    "es": {
+      "from": "1d627af010c0",
+      "text": "5e5b72c756dd"
+    },
+    "fr": {
+      "from": "1d627af010c0",
+      "text": "bd82f108b1fe"
+    },
+    "it": {
+      "from": "1d627af010c0",
+      "text": "7dbf001bff12"
+    },
+    "ja": {
+      "from": "1d627af010c0",
+      "text": "b72404423c7b"
+    },
+    "ko": {
+      "from": "1d627af010c0",
+      "text": "ff6ee76ca299"
+    },
+    "pt-BR": {
+      "from": "1d627af010c0",
+      "text": "5e5b72c756dd"
+    },
+    "zh-CN": {
+      "from": "1d627af010c0",
+      "text": "b828687b8bc0"
+    }
+  },
   "artifacts:comments.card.resolve": {
     "de": {
       "from": "c8f193b315c8",
@@ -102473,6 +102541,40 @@
     "zh-CN": {
       "from": "8e1051de37f3",
       "text": "d72ad3fcc3be"
+    }
+  },
+  "docs:tabs.addHint": {
+    "de": {
+      "from": "26f0886f4fc5",
+      "text": "22289b0a45d5"
+    },
+    "es": {
+      "from": "26f0886f4fc5",
+      "text": "bd72b50925da"
+    },
+    "fr": {
+      "from": "26f0886f4fc5",
+      "text": "97c93840bc62"
+    },
+    "it": {
+      "from": "26f0886f4fc5",
+      "text": "8d965823b6a7"
+    },
+    "ja": {
+      "from": "26f0886f4fc5",
+      "text": "a4504132c762"
+    },
+    "ko": {
+      "from": "26f0886f4fc5",
+      "text": "0474645199d0"
+    },
+    "pt-BR": {
+      "from": "26f0886f4fc5",
+      "text": "fb9232342304"
+    },
+    "zh-CN": {
+      "from": "26f0886f4fc5",
+      "text": "4e07ea9c194c"
     }
   },
   "docs:tabs.changed": {

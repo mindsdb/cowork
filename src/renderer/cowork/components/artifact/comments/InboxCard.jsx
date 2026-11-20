@@ -2,7 +2,8 @@
 // A SUMMARY of the thread, not the conversation: avatar + name + relative
 // time (+ edited), the text clamped to 4 lines, and a footer with the reply
 // count and its location context. The full thread (replies, editing) lives
-// in the on-artifact popover, reached by clicking the card (onFocus).
+// in the on-artifact popover, reached by clicking the card (onFocus); with no
+// popover (a doc), the card opens to hold the replies itself (`onReply`).
 //
 // Hover highlights the anchored element in the iframe (onHover/onLeave).
 // Owner actions remain visible so they are usable from touch and keyboard.
@@ -11,8 +12,9 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../../Icons';
 import { composeCommentText, parseCommentText } from '../../../lib/commentImages';
 import { CommentImages } from './CommentImages';
-import { threadAuthorEmail, threadReplies, threadText, viewerCanEdit, isoToEpoch }
+import { replyAuthorEmail, threadAuthorEmail, threadReplies, threadText, viewerCanEdit, isoToEpoch }
   from '../../../lib/commentsReducer';
+import { UnanchoredComposer } from './UnanchoredComposer';
 import { Tooltip } from '../../ui';
 import OverflowMenu from '../../OverflowMenu';
 import { CheckCircleIcon, DotsIcon, InfoIcon } from './icons';
@@ -114,6 +116,38 @@ function InlineCommentEdit({ words, onSave, onCancel }) {
   );
 }
 
+// A thread held in its card: the replies in order, then a box to add one.
+// Clicks inside stay here rather than going to the card.
+function ThreadReplies({ thread, loadImage, onReply }) {
+  const { t } = useTranslation('artifacts');
+  return (
+    <div className="flex flex-col gap-2 pl-3 border-l border-line" onClick={(event) => event.stopPropagation()}>
+      {threadReplies(thread).map((reply, index) => {
+        const { body, images } = parseCommentText(reply?.text || '');
+        const email = replyAuthorEmail(reply);
+        return (
+          <div key={reply?.id || index} className="flex flex-col gap-1">
+            <span className="flex items-center gap-[6px] min-w-0">
+              <Avatar email={email} />
+              <span className="text-base font-medium leading-[20px] text-ink truncate">{displayName(email)}</span>
+              <span className="text-base leading-[20px] text-ink-3 whitespace-nowrap">
+                {inboxTimeAgo(reply?.created_at)}
+              </span>
+            </span>
+            <div className="text-base leading-[20px] text-ink whitespace-pre-wrap break-words">{body}</div>
+            <CommentImages images={images} loadImage={loadImage} />
+          </div>
+        );
+      })}
+      <UnanchoredComposer
+        placeholder={t('comments.card.replyPlaceholder')}
+        ariaLabel={t('comments.card.replyAriaLabel')}
+        onCreate={({ text, images }) => onReply(thread.id, text, images)}
+      />
+    </div>
+  );
+}
+
 export function InboxCard({
   thread,
   state,      // layer anchor state: 'hidden' | 'orphan' | undefined
@@ -137,6 +171,11 @@ export function InboxCard({
   // `(threadId, text) => Promise<boolean>`: saves an edit of your own comment
   // made right here (ENG-4383); absent, the card offers none.
   onEditThread = null,
+  // `(threadId, text, images) => Promise<boolean>`: where there is no
+  // on-artifact popover (a doc), the card holds the thread itself: while
+  // `expanded`, its replies and a box to reply.
+  onReply = null,
+  expanded = false,
 }) {
   // The text's image markers become thumbnails under the words (ENG-4410).
   const { body, images } = parseCommentText(threadText(thread));
@@ -212,11 +251,15 @@ export function InboxCard({
           }}
         />
       ) : (
-        <div className="text-base leading-[20px] text-ink whitespace-pre-wrap break-words line-clamp-4">
+        <div className={`text-base leading-[20px] text-ink whitespace-pre-wrap break-words${expanded && onReply ? '' : ' line-clamp-4'}`}>
           {body}
         </div>
       )}
       <CommentImages images={images} loadImage={loadImage} />
+
+      {onReply && expanded && (
+        <ThreadReplies thread={thread} loadImage={loadImage} onReply={onReply} />
+      )}
 
       {/* Foot: reply count and plain-language location context. */}
       {(repliesTxt || unanchored || hidden || pinned) && (

@@ -131,6 +131,8 @@
       "hoursAgo": "{count, plural, other {#시간 전}}",
       "daysAgo": "{count, plural, other {#일 전}}",
       "replies": "{count, plural, other {답글 #개}}",
+      "replyPlaceholder": "답글…",
+      "replyAriaLabel": "이 댓글에 답글 달기",
       "edited": "(편집됨)",
       "unattachedTip": "이 댓글이 가리키던 아티팩트의 부분을 더 이상 사용할 수 없습니다.",
       "generalTip": "아티팩트 전체에 대한 일반 피드백입니다.",

@@ -82,6 +82,7 @@
   "tabs": {
     "label": "탭",
     "add": "탭 추가",
+    "addHint": "이 문서에 새 탭 추가",
     "hide": "탭 숨기기",
     "changed": "변경됨",
     "showChanged": "변경된 탭 표시",

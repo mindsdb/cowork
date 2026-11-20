@@ -82,6 +82,7 @@
   "tabs": {
     "label": "Guias",
     "add": "Adicionar guia",
+    "addHint": "Adicionar uma nova guia a este documento",
     "hide": "Ocultar guias",
     "changed": "Alterada",
     "showChanged": "Mostrar a guia alterada",

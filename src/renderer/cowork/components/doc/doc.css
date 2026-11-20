@@ -204,6 +204,8 @@ body[data-theme="dark"] .doc-root {
   transition: background-color 900ms var(--ease-out);
 }
 .doc-block--flash { background: var(--doc-flash); transition: none; }
+/* A block an open comment is on, while the comments panel is open. */
+.doc-block--commented { background: color-mix(in srgb, var(--warning-border) 30%, transparent); }
 .doc-block--selected { background: var(--doc-select); }
 .doc-gutter {
   position: absolute;

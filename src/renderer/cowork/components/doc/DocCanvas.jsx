@@ -10,7 +10,10 @@
 // tab from the page head of a doc of one tab; `nameTitle` and `onNamed`, for
 // a tab just added, select its title to be named. `onUploadImage(file)`
 // keeps an image beside the doc and resolves its src: with it, an image can
-// be pasted, dropped, or picked from the "/" menu.
+// be pasted, dropped, or picked from the "/" menu. `onComment` (when the doc
+// takes comments) offers "Comment" on selected words; `commented` marks the
+// blocks open comments are on and `highlighted` the ones a comment in the
+// inbox points at.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import PageHead from './PageHead';
 import TextBlock from './TextBlock';
@@ -39,9 +42,10 @@ const IMAGE_TYPES = /^image\/(png|jpeg|gif|webp)$/;
 
 export default function DocCanvas({
   doc, tab, editable, apply, flash = {}, changed = NO_CHANGES, agentLive = false, onAskAgent, onSelectionChange,
-  onAddTab, nameTitle = false, onNamed, onUploadImage,
+  onAddTab, nameTitle = false, onNamed, onUploadImage, onComment, commented = NO_CHANGES, highlighted = NO_CHANGES,
 }) {
   const { t } = useTranslation('docs');
+  const { t: tArtifacts } = useTranslation('artifacts');
   const root = useRef(null);
   const picker = useRef(null);
   const pickFor = useRef(null);
@@ -50,8 +54,10 @@ export default function DocCanvas({
   const slashId = useId();
   const [toolbar, setToolbar] = useCanvasSelection(root, onSelectionChange); // {rect, blockIds, quote, editable, mode, range}
   const [askFor, setAskFor] = useState(null); // {rect, blockIds, quote, mode}
+  const [commentFor, setCommentFor] = useState(null); // {rect, blockIds, quote}
   // Without a handler there is nothing to ask; drop the request so it does not come back stale.
   useEffect(() => { if (!onAskAgent) setAskFor(null); }, [onAskAgent]);
+  useEffect(() => { if (!onComment) setCommentFor(null); }, [onComment]);
   // Which block's options menu is open; the id outlives the close so the menu
   // keeps its items while it animates out.
   const [menu, setMenu] = useState({ id: null, open: false });
@@ -271,6 +277,17 @@ export default function DocCanvas({
     onAskAgent?.({ blockIds: target.blockIds, quote: target.quote, request: request.trim(), tabId: tab.id, mode: target.mode });
   };
 
+  // The draft stays open until the comment is posted; a failure shows in the inbox.
+  const comment = async (text) => {
+    const target = commentFor;
+    if (!target || !text.trim()) return;
+    const ok = await onComment?.({ tab: tab.id, blockIds: target.blockIds, quote: target.quote, text: text.trim() });
+    if (ok) {
+      setCommentFor(null);
+      setToolbar(null);
+    }
+  };
+
   const addBelow = (b) => {
     const nb = makeBlock('paragraph');
     run([{ op: 'insert', position: { after: b.id }, blocks: [nb] }]);
@@ -314,7 +331,7 @@ export default function DocCanvas({
     }
   };
 
-  const askTargets = new Set(askFor?.blockIds || []);
+  const askTargets = new Set([...(askFor?.blockIds || []), ...(commentFor?.blockIds || [])]);
 
   // A file dragged over the page: images land after the block they're dropped on.
   const dragHasImages = (e) => canImage && [...(e.dataTransfer?.items || [])].some((i) => i.kind === 'file' && IMAGE_TYPES.test(i.type));
@@ -359,7 +376,7 @@ export default function DocCanvas({
         <div
           key={b.id}
           data-block-id={b.id}
-          className={`doc-block doc-block--${b.type} ${flash[b.id] ? 'doc-block--flash' : ''} ${askTargets.has(b.id) ? 'doc-block--selected' : ''} ${changed.has(b.id) ? 'doc-block--changed' : ''}`}
+          className={`doc-block doc-block--${b.type} ${flash[b.id] ? 'doc-block--flash' : ''} ${askTargets.has(b.id) || highlighted.has(b.id) ? 'doc-block--selected' : ''} ${changed.has(b.id) ? 'doc-block--changed' : ''} ${commented.has(b.id) ? 'doc-block--commented' : ''}`}
         >
           {editable && (
             <BlockGutter
@@ -404,7 +421,7 @@ export default function DocCanvas({
         />
       )}
 
-      {toolbar && !askFor && toolbar.rect && (
+      {toolbar && !askFor && !commentFor && toolbar.rect && (
         <FloatingToolbar
           toolbar={toolbar}
           canFormat={editable && !!toolbar.editable}
@@ -412,10 +429,24 @@ export default function DocCanvas({
           onLinkMode={() => setToolbar({ ...toolbar, mode: 'link' })}
           onClose={() => setToolbar(null)}
           onAsk={() => setAskFor({ rect: toolbar.rect, blockIds: toolbar.blockIds, quote: toolbar.quote, mode: 'edit' })}
+          onComment={onComment && (() => setCommentFor({ rect: toolbar.rect, blockIds: toolbar.blockIds, quote: toolbar.quote }))}
         />
       )}
 
       {askFor && onAskAgent && <AskAgent target={askFor} onSubmit={askAgent} onCancel={() => setAskFor(null)} />}
+      {commentFor && onComment && (
+        <AskAgent
+          target={commentFor}
+          onSubmit={comment}
+          onCancel={() => setCommentFor(null)}
+          labels={{
+            label: tArtifacts('comments.composer.ariaLabel'),
+            input: tArtifacts('comments.composer.ariaLabel'),
+            placeholder: tArtifacts('comments.composer.placeholder'),
+            send: tArtifacts('comments.composer.send'),
+          }}
+        />
+      )}
     </div>
   );
 }

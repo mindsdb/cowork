@@ -53,6 +53,9 @@ export function CommentsPanel({
   onLeaveThread,
   onFocusThread,
   loadImage = null,
+  // Replying from the inbox, where nothing else holds the thread (a doc's
+  // comments): a card clicked opens to its replies (InboxCard).
+  onReply = null,
 }) {
   const { t: tr } = useTranslation('artifacts');
   const [tab, setTab] = useState('open');
@@ -61,6 +64,7 @@ export function CommentsPanel({
   // ConfirmModal instead of window.confirm — the native dialog steals
   // webContents focus in Electron and leaves inputs dead afterwards.
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
 
   const groups = useMemo(() => {
     const notDismissed = threads.filter((t) => t.status !== 'dismissed');
@@ -185,7 +189,12 @@ export function CommentsPanel({
             onRequestDelete={setPendingDelete}
             onHover={onHoverThread}
             onLeave={onLeaveThread}
-            onFocus={onFocusThread}
+            onFocus={(id) => {
+              if (onReply) setExpandedId((current) => (current === id ? null : id));
+              onFocusThread?.(id);
+            }}
+            onReply={onReply}
+            expanded={expandedId === t.id}
           />
         ))}
       </div>

@@ -82,6 +82,7 @@
   "tabs": {
     "label": "Pestañas",
     "add": "Agregar pestaña",
+    "addHint": "Agrega una pestaña nueva a este documento",
     "hide": "Ocultar pestañas",
     "changed": "Modificada",
     "showChanged": "Mostrar la pestaña modificada",
