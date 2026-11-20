@@ -40,6 +40,12 @@ on:
         description: "Run the per-PR environment rollout"
         type: boolean
         default: false
+      deploy-through-argocd:
+        description: >-
+          Deploy by recording the build in mindsdb/argocd-state for Argo CD to
+          sync (staging) instead of running Helm from the runner (prod).
+        type: boolean
+        default: false
     outputs:
       pr-env-deployed:
         description: >-
@@ -138,13 +144,15 @@ jobs:
         run: echo "deployed=true" >> "$GITHUB_OUTPUT"
 
   deploy:
+    # The Helm deploy, from a runner with the cluster's credentials: prod.
+    # staging goes through deploy-argocd below.
     runs-on: ${{ inputs.build-runner }}
     # `scan` too: it is blocking on a deploy branch (see `allow-vulns` above), so
     # needing only `build` would let a rollout run beside a failing scan.
     needs: [build, scan]
     # Only the two long-lived environments have a static rollout. A `development`
     # build is either a PR (handled by `deploy-pr-env`) or nothing.
-    if: inputs.build-environment == 'staging' || inputs.build-environment == 'production'
+    if: (inputs.build-environment == 'staging' || inputs.build-environment == 'production') && !inputs.deploy-through-argocd
     env:
       # `build-environment` names the image tag prefix (production); the Helm
       # chart and namespace name the environment (prod). One is not the other, so
@@ -169,3 +177,67 @@ jobs:
       # matches the old ReplicaSet's terminating pods, and `wait` fails when one
       # disappears mid-wait even though the deploy succeeded.
       - run: kubectl -n "$DEPLOY_ENV" rollout status deployment/cowork-frontend --timeout=10m
+
+  deploy-argocd:
+    # The staging deploy. Records the commit and its image tag in
+    # mindsdb/argocd-state, which Argo CD in newdev watches and syncs, then
+    # waits for the argocd/staging commit status Argo CD sets once the sync
+    # is healthy. No cluster credential, and no `environment:` block: Argo CD
+    # creates the GitHub Deployment itself.
+    runs-on: ubuntu-latest
+    needs: [build, scan]
+    if: inputs.build-environment == 'staging' && inputs.deploy-through-argocd
+    permissions:
+      contents: read
+      # write-env-state sets argocd/staging to pending on the commit; the
+      # wait below reads it.
+      statuses: write
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      # A superseded run must not record an older commit over the newer one's.
+      - name: Check this commit is still the branch tip
+        id: freshness
+        run: |
+          set -euo pipefail
+          tip="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          if [ -n "$tip" ] && [ "$tip" != "$GITHUB_SHA" ]; then
+            echo "superseded=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Deploy skipped::${GITHUB_SHA} is no longer the tip of ${GITHUB_REF_NAME} (now ${tip}). That commit's run deploys instead."
+          fi
+      - name: Mint a token for argocd-state
+        id: release-train
+        if: steps.freshness.outputs.superseded != 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: mindsdb
+          repositories: argocd-state
+          permission-contents: write
+      - uses: mindsdb/github-actions/write-env-state@main
+        if: steps.freshness.outputs.superseded != 'true'
+        with:
+          env: staging
+          service: cowork-frontend
+          sha: ${{ github.sha }}
+          tag: ${{ inputs.build-environment }}-${{ github.sha }}
+          token: ${{ steps.release-train.outputs.token }}
+      - name: Wait for Argo CD
+        if: steps.freshness.outputs.superseded != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 45); do
+            state="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/status" --jq '.statuses[] | select(.context == "argocd/staging") | .state')"
+            case "$state" in
+              success) echo "Argo CD synced $GITHUB_SHA to staging"; exit 0 ;;
+              failure|error) echo "::error::Argo CD reported $state for $GITHUB_SHA in staging: see the argocd/staging status on the commit"; exit 1 ;;
+            esac
+            sleep 20
+          done
+          echo "::error::Argo CD has not reported on $GITHUB_SHA in staging: see the argocd/staging status on the commit"
+          exit 1
