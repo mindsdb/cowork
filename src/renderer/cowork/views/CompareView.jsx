@@ -28,6 +28,7 @@ import { relativeAge } from '../lib/formatTime';
 import { projectLabel } from '../lib/projectLabel';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, deriveUsageWarning, usageActionUrl } from '../lib/usageWarnings';
+import { useConsoleLink } from '../hooks/useConsoleLink';
 import { billingActions, offersBilling } from '../lib/billingLinks';
 import {
   trackBillingOpened,
@@ -135,9 +136,9 @@ function useCreditNotices(modelIds) {
   return { notices, isBillingOwner: !!usage?.isBillingOwner };
 }
 
-function openBilling(action, isBillingOwner, trigger) {
+function openBilling(action, isBillingOwner, trigger, consoleLink) {
   trackBillingOpened(trigger);
-  host.openExternal(usageActionUrl(action, { isBillingOwner }));
+  host.openExternal(consoleLink(usageActionUrl(action, { isBillingOwner })));
 }
 
 const NOTICE_VARIANT = { danger: 'danger', warning: 'warning', info: 'info' };
@@ -147,6 +148,7 @@ const NOTICE_VARIANT = { danger: 'danger', warning: 'warning', info: 'info' };
 // is the only explanation for the disabled button.
 function CreditNotice({ notice, isBillingOwner, trigger }) {
   const { t } = useTranslation('artifacts');
+  const consoleLink = useConsoleLink();
   const [dismissed, dismiss] = useUsageBarDismiss();
   if (!notice) return null;
   if (!offersBilling()) {
@@ -174,7 +176,7 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
         {actions.length > 0 && (
           <span className="flex flex-wrap gap-2">
             {actions.map((action) => (
-              <Button key={action.key} size="sm" variant={action.key === 'addFunds' ? 'primary' : 'subtle'} onClick={() => openBilling(action, isBillingOwner, trigger)}>
+              <Button key={action.key} size="sm" variant={action.key === 'addFunds' ? 'primary' : 'subtle'} onClick={() => openBilling(action, isBillingOwner, trigger, consoleLink)}>
                 {action.label}
               </Button>
             ))}
@@ -1029,6 +1031,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   // side that happens to be free, which would make the two diverge.
   const names = namesFor(models, sides.a, sides.b);
   const credits = useCreditNotices([sides.a?.model, sides.b?.model]);
+  const consoleLink = useConsoleLink();
   // A side whose state is unknown may still be mid-turn: its cost waits too.
   const holding = Object.fromEntries(SIDE_LABELS.map((label) => [label, !!busy[label] || !!unknown[label]]));
   const usage = useComparisonUsage(comparisonId, holding);
@@ -1227,7 +1230,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
                 </Button>
               )}
               {block.action === 'addFunds' && offersBilling() && (
-                <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up')}>
+                <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up', consoleLink)}>
                   {t('compare.addFunds')}
                 </Button>
               )}

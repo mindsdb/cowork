@@ -7,6 +7,7 @@ import { host } from '../../../../platform/host';
 import { useTranslation } from '../../../../lib/i18n';
 import { useHubUsageContext } from '../../../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl } from '../../../lib/usageWarnings';
+import { useConsoleLink } from '../../../hooks/useConsoleLink';
 
 export const CREDITS_REQUIRED_CODE = 'credits_required';
 export const TRACKING_OFF_CODE = 'tracking_off';
@@ -14,6 +15,7 @@ export const TRACKING_OFF_CODE = 'tracking_off';
 export function TrackingRefusal({ error, className = '' }) {
   const { t } = useTranslation('artifacts');
   const isBillingOwner = !!useHubUsageContext()?.usage?.isBillingOwner;
+  const consoleLink = useConsoleLink();
   if (!error) return null;
   const credits = error.code === CREDITS_REQUIRED_CODE;
   const message = credits
@@ -28,7 +30,7 @@ export function TrackingRefusal({ error, className = '' }) {
         <button
           type="button"
           className="cursor-pointer border-0 bg-transparent p-0 font-body text-[12px] font-medium text-accent"
-          onClick={() => host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }))}
+          onClick={() => host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })))}
         >
           {t('analytics.addCredits')}
         </button>
