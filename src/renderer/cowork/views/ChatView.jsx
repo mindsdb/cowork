@@ -1402,7 +1402,7 @@ export function AllowanceExhaustedCard({
       agentLabel={agentLabel}
       // The gate only issues this code when the org has no
       // balance to fall onto, so the turn ended.
-      kind={t('chatView.kinds.billing')}
+      kind={t(offersBilling() ? 'chatView.kinds.billing' : 'chatView.kinds.usage')}
       title={t('chatView.cards.taskStopped')}
       body={allowanceStopCopy({ resetAt, usage })}
       buttons={billingActions([
@@ -1471,6 +1471,12 @@ export function BalanceEmptyCard({
   const { t } = useTranslation('chat');
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const free = freeAllowanceState(usage);
+  if (!offersBilling()) {
+    return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
+      kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}
+      body={free.status === 'spent' ? allowanceStopCopy({ usage }) : t('chatView.cards.providerLimitBody')}
+      buttons={free.status === 'has_room' ? switchToAirButtons(onSwitchToAir) : []} />;
+  }
   const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
   const refill = formatResetTime(free.resetsAt);
   const addFunds = {
@@ -1576,6 +1582,12 @@ export function BudgetExceededCard({
 }) {
   const { t } = useTranslation('chat');
   const budgetsUrl = useBudgetsUrl();
+  if (!offersBilling()) {
+    return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
+      kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}
+      body={t('chatView.cards.providerLimitBody')}
+      buttons={freeAllowanceState(usage).status === 'has_room' ? switchToAirButtons(onSwitchToAir) : []} />;
+  }
   if (!PLATFORM_UI) {
     return (
       <ActionCard
@@ -1652,7 +1664,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 // click the bar.
 function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
   const { t } = useTranslation('chat');
-  if (!PLATFORM_UI) return null;
+  if (!PLATFORM_UI || (!offersBilling() && kind !== 'free_low')) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert', undefined, kind);
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
@@ -1963,7 +1975,7 @@ export function ModelUnavailableCard({
     // disabled model back on, so that row keeps the plain billing page.
     host.openExternal(denied ? usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }) : MINDS_BILLING_URL);
   };
-  const title = denied
+  const title = denied && offersBilling()
     ? t('chatView.model.needsCreditsTitle', { model: label })
     : t('chatView.model.unavailableTitle', { model: label });
 
@@ -1978,7 +1990,7 @@ export function ModelUnavailableCard({
       kind={t('chatView.kinds.model')}
       title={title}
       body={denied
-        ? t(billingCopyKey('chatView.model.needsCreditsBody'))
+        ? t(offersBilling() ? 'chatView.model.needsCreditsBody' : 'chatView.model.askOperatorBody')
         : t('chatView.model.disabledBody')}
       buttons={denied
         ? [

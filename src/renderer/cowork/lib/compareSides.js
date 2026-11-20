@@ -3,7 +3,7 @@
 // message and whatever the agent answered to it.
 
 import { offeredModels } from './modelPickerOptions';
-import { billingCopyKey } from './billingLinks';
+import { offersBilling } from './billingLinks';
 import { budgetScopeOf } from './budgetScope';
 import i18n from '../../lib/i18n';
 
@@ -126,7 +126,7 @@ export function unjudgeableReason(aTurns = [], bTurns = [], names = { a: 'A', b:
   if (turn === null) return null;
   const sides = { a: aTurns[turn], b: bTurns[turn] };
   const out = ['a', 'b'].filter((l) => isCreditFailure(sides[l]));
-  if (out.length === 0) return null;
+  if (out.length === 0 || !offersBilling()) return null;
   // Credits do not lift a budget, so a budget stop is never called running out of credits.
   const budget = out.every((l) => sides[l].failureCode === 'budget_exceeded');
   // Both sides name one budget only when they agree on whose it is.
@@ -247,6 +247,7 @@ export function sideStatus(turns = [], { busy = false, continued = false } = {})
   if (last.reply === 'running') return { tone: 'working', label: tr('status.working') };
   if (last.reply === 'done') return { tone: 'done', label: tr('status.done') };
   if (isCreditFailure(last)) {
+    if (!offersBilling()) return { tone: 'failed', label: tr('status.stopped') };
     return { tone: 'failed', label: last.failureCode === 'budget_exceeded' ? tr('status.budgetReached') : tr('status.outOfCredits') };
   }
   if (last.reply === 'failed' && last.failureCode === 'rate_limited') return { tone: 'failed', label: tr('status.rateLimited') };
@@ -278,10 +279,11 @@ export function composerBlock(target, sides = {}, names = { a: 'A', b: 'B' }, { 
   // Both sides spend from one wallet, so once one side has stopped for want of
   // credits any follow-up would stop too. Blocks until the account can pay.
   if (outOfCredits.length > 0) {
+    if (!offersBilling()) return { message: tr('status.stopped'), canSwitch: false };
     return {
       message: outOfCredits.length === 2
-        ? tr(billingCopyKey('block.outOfCreditsBoth'))
-        : tr(billingCopyKey('block.outOfCreditsOne'), { name: names[outOfCredits[0]] }),
+        ? tr('block.outOfCreditsBoth')
+        : tr('block.outOfCreditsOne', { name: names[outOfCredits[0]] }),
       canSwitch: false,
       action: 'addFunds',
     };
