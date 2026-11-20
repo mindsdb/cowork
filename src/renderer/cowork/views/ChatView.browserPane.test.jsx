@@ -767,4 +767,160 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show browser' })); });
     expect(pane()).not.toBeNull();
   });
+
+  /* Below the inline layout the pane floats over the chat, covering the
+     waiting card entirely (ENG-4341). A hand-over still needs the pane: the
+     person has to act inside the browser itself, so only a real HAND_OVER
+     card (one `isHandOverCard` recognizes) counts as one for this rule. */
+  const handOver = (questionId = 'browser:ho1') => ({
+    id: `ask-${questionId}`, label: 'Question for you', badge: 'AskUser', status: 'in_progress', startedAt: 2,
+    data: {
+      question_id: questionId,
+      prompt: "Your turn on www.united.com: Sign in to United\n\nUse the browser beside the chat, and click Done in the browser when you're finished.",
+      options: [{ value: 'later', label: 'Finish later' }, { value: 'stop', label: 'Stop' }],
+    },
+  });
+  const answer = (c) => ({ ...c, data: { ...c.data, answer: { status: 'answered', values: ['approve'] } } });
+
+  describe('in overlay mode (ENG-4341)', () => {
+    it('does not open the pane over a waiting approval card; the card shows', async () => {
+      setWidth(800);
+      render(<ChatView task={task('ov-1', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+      expect(screen.getByRole('button', { name: /^Approve/ })).toBeInTheDocument();
+    });
+
+    it('steps a pane the person opened by hand aside for the card, and restores it once answered', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-2', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+      expect(pane()).not.toBeNull();
+
+      rerender(<ChatView task={task('ov-2', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+      expect(screen.getByRole('button', { name: /^Approve/ })).toBeInTheDocument();
+
+      rerender(<ChatView task={task('ov-2', [asked, live(answer(HELD))])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('does not restore the pane if the person closed it themselves before the card was answered', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-3', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+
+      rerender(<ChatView task={task('ov-3', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      // The person reopens it by hand, then closes it again before answering.
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+      expect(pane()).not.toBeNull();
+      await act(async () => { fireEvent.click(within(pane()).getByRole('button', { name: 'Close browser' })); });
+      expect(pane()).toBeNull();
+
+      rerender(<ChatView task={task('ov-3', [asked, live(answer(HELD))])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+    });
+
+    it('does not restore the pane if the person sends a message instead of answering the card', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-4', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+
+      rerender(<ChatView task={task('ov-4', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      // The turn ends with the card left unanswered, the person sends a
+      // fresh message instead, and a new turn (a different session) starts.
+      const turnDone = { id: 'a1', role: 'assistant', content: 'Done.', steps: [step(), HELD] };
+      const nextMessage = { id: 'u2', role: 'user', content: 'never mind, do something else' };
+      rerender(<ChatView task={task('ov-4', [asked, turnDone, nextMessage, liveTurn('t-xyz')])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+    });
+
+    it('does not restore the pane when the turn ends with the card still unanswered', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-5', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+
+      rerender(<ChatView task={task('ov-5', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      rerender(<ChatView task={task('ov-5', [asked, { id: 'a1', role: 'assistant', content: 'Done.', steps: [step(), HELD] }])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+    });
+
+    it('leaves the pane alone when a held step waits together with a live hand-over', async () => {
+      setWidth(800);
+      render(<ChatView task={task('ov-6', [asked, live(HELD, handOver())])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('frees the card from an "always show the browser" pane too', async () => {
+      setWidth(800);
+      syncBrowserPrefs({ browserOnlyWhenNeeded: false });
+      const { rerender } = render(<ChatView task={task('ov-7', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+
+      rerender(<ChatView task={task('ov-7', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+      expect(screen.getByRole('button', { name: /^Approve/ })).toBeInTheDocument();
+    });
+
+    it('guard: a hand-over alone still opens the pane and never closes it', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-g1', [asked, live(handOver())])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+      rerender(<ChatView task={task('ov-g1', [asked, live(handOver())])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('the browser button still opens the pane while a card waits, and it stays open', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-g2', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+      expect(pane()).not.toBeNull();
+      rerender(<ChatView task={task('ov-g2', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('guard: at 1400 (inline) a held step still opens the pane', async () => {
+      setWidth(1400);
+      const { rerender } = render(<ChatView task={task('ov-g3', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      rerender(<ChatView task={task('ov-g3', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('guard: at 480 (phone dock) a held step still opens the pane', async () => {
+      setWidth(480);
+      const { rerender } = render(<ChatView task={task('ov-g4', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      rerender(<ChatView task={task('ov-g4', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+  });
 });
