@@ -836,6 +836,11 @@ export default function ArtifactsView({
 
 
   const updateOne = (updated) => onArtifactChanged?.(updated);
+  // The doc editor hands back the doc's card, which carries a rename.
+  const closeDoc = (card) => {
+    if (card) updateOne(card);
+    setViewerPath(null);
+  };
 
   const setBusy = (path, isBusy) => {
     setBusyPaths((prev) => {
@@ -1238,12 +1243,12 @@ export default function ArtifactsView({
       {viewer && isDocArtifact(viewer) && (
         <DocModal
           artifact={viewer}
-          onClose={() => setViewerPath(null)}
-          onAskAgent={onEditDocWithAgent ? (ask) => {
+          onClose={closeDoc}
+          onAskAgent={onEditDocWithAgent ? (ask, card) => {
             // Sent as the doc beside a chat sends it: the host takes it to the
             // doc's chat (or a new one) with the doc docked there.
-            setViewerPath(null);
-            onEditDocWithAgent({ artifact: viewer, ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask) });
+            closeDoc(card);
+            onEditDocWithAgent({ artifact: card ? { ...viewer, ...card } : viewer, ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask) });
           } : undefined}
         />
       )}

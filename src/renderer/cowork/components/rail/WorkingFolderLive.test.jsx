@@ -63,7 +63,14 @@ vi.mock('../artifact', () => ({
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 // The doc editor is tested on its own; here it only has to be what opens.
 vi.mock('../doc/DocPane', () => ({
-  default: ({ title }) => <div role="region" aria-label={`Doc editor: ${title}`} />,
+  default: ({ title, onClose, onCardChange }) => (
+    <div role="region" aria-label={`Doc editor: ${title}`}>
+      <button type="button" onClick={() => onCardChange?.({
+        title: 'Hiring plan 2027', path: '/proj/.anton/artifacts/q4-hiring-plan-36623b3b/doc.cdoc.json',
+      })}>Rename</button>
+      <button type="button" onClick={() => onClose?.()}>Close doc</button>
+    </div>
+  ),
 }));
 vi.mock('../../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => downloadArtifactFile(...a),
@@ -1075,6 +1082,16 @@ describe('a doc in the artifacts rail (desktop)', () => {
     fireEvent.click(row);
     expect(await screen.findByRole('region', { name: 'Doc editor: Q4 Hiring Plan' })).toBeInTheDocument();
     expect(openPath).not.toHaveBeenCalled();
+  });
+
+  it('shows a title renamed in the doc editor once the editor closes', async () => {
+    const row = await renderRail(doc());
+    fireEvent.click(row);
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close doc' }));
+    expect(screen.queryByRole('region', { name: /Doc editor/ })).toBeNull();
+    expect(await screen.findByText('Hiring plan 2027')).toBeInTheDocument();
+    expect(screen.queryByText('Q4 Hiring Plan')).toBeNull();
   });
 
   it('opens beside the chat when the rail is in one, as from its card', async () => {

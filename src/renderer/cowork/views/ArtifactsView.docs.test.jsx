@@ -20,8 +20,10 @@ vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
 vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: vi.fn() }) }));
 // The doc editor itself is tested on its own; here it only has to be the thing that opens.
 vi.mock('../components/doc/DocPane', () => ({
-  default: ({ artifactId, title, onAskAgent }) => (
+  default: ({ artifactId, title, onAskAgent, onClose, onCardChange }) => (
     <div role="region" aria-label={`Doc editor: ${title}`} data-artifact={artifactId}>
+      <button type="button" onClick={() => onCardChange?.({ ...docCard, title: 'Hiring plan 2027' })}>Rename</button>
+      <button type="button" onClick={() => onClose?.()}>Close doc</button>
       {onAskAgent && (
         <button type="button" onClick={() => onAskAgent({ blockIds: ['b_1'], quote: 'Hire  two\nengineers', request: 'Make it three', tabId: 't_1', mode: 'edit' })}>
           Edit with agent
@@ -31,13 +33,24 @@ vi.mock('../components/doc/DocPane', () => ({
   ),
 }));
 
+import { useState } from 'react';
 import ArtifactsView from './ArtifactsView';
+import { withArtifactChange } from '../lib/artifactList';
 
 const doc = {
   id: 'a1', title: 'Q4 Hiring Plan Tracker', format: 'doc', type: 'document', mtime: 1, projectId: 'p1',
   path: '/p/.anton/artifacts/q4-hiring-plan-tracker-36623b3b/doc.cdoc.json', primary: 'doc.cdoc.json',
   htmlPath: '/p/.anton/artifacts/q4-hiring-plan-tracker-36623b3b/doc.html',
 };
+
+// The card the doc's API returns: the library's own, under the doc's title.
+const docCard = { id: 'a1', title: 'Q4 Hiring Plan Tracker', format: 'doc', path: doc.path, htmlPath: doc.htmlPath };
+
+/** The library as the app holds it: a changed card replaces its row. */
+function Library(props) {
+  const [artifacts, setArtifacts] = useState(props.artifacts);
+  return <ArtifactsView {...props} artifacts={artifacts} onArtifactChanged={(c) => setArtifacts((prev) => withArtifactChange(prev, c))} />;
+}
 
 beforeEach(() => { api.openArtifactFile.mockReset(); localStorage.clear(); });
 
@@ -59,6 +72,19 @@ describe('a doc in the library', () => {
     await user.click(screen.getByRole('button', { name: 'Open' }));
     expect(api.openArtifactFile).toHaveBeenCalledWith(expect.objectContaining({ path: doc.htmlPath, file_path: doc.htmlPath }));
     expect(screen.queryByRole('region', { name: /Doc editor/ })).toBeNull();
+  });
+});
+
+describe('a doc renamed in the doc editor', () => {
+  it('shows its new title in the library once the editor closes', async () => {
+    const user = userEvent.setup();
+    render(<Library artifacts={[doc]} agentLabel="Anton" />);
+    await user.click(screen.getByRole('button', { name: /Q4 Hiring Plan Tracker/ }));
+    await user.click(await screen.findByRole('button', { name: 'Rename' }));
+    await user.click(screen.getByRole('button', { name: 'Close doc' }));
+    expect(screen.queryByRole('region', { name: /Doc editor/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Hiring plan 2027/ })).toBeInTheDocument();
+    expect(screen.queryByText('Q4 Hiring Plan Tracker')).toBeNull();
   });
 });
 

@@ -687,7 +687,16 @@ export function WorkingFolderLive({
         }}
       />
 
-      {docArt && <DocModal artifact={docArt} onClose={() => setDocArt(null)} />}
+      {docArt && (
+        <DocModal
+          artifact={docArt}
+          onClose={(card) => {
+            // The card carries a rename, and the rail does not refetch.
+            if (card) setArtifacts((prev) => prev.map((a) => a.path === card.path ? { ...a, ...card } : a));
+            setDocArt(null);
+          }}
+        />
+      )}
 
       <ArtifactViewer
         open={!!previewArt}
