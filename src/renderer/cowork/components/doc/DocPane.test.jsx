@@ -448,7 +448,7 @@ describe('DocPane folding the tabs away', () => {
   });
   afterEach(() => localStorage.removeItem('cowork:doc-tabs-hidden:v1'));
 
-  it('folds the rail away and brings it back from the header, and keeps the choice for the next doc', async () => {
+  it('folds the rail away and brings it back from the page, and keeps the choice for the next doc', async () => {
     const user = userEvent.setup();
     const { unmount } = render(<DocPane projectRef="p1" artifactId="a1" />);
     await user.click(await screen.findByRole('button', { name: 'Hide tabs' }));
@@ -473,6 +473,21 @@ describe('DocPane folding the tabs away', () => {
       doc: twoTabs(3, [{ id: 'b_new', type: 'paragraph', text: 'New risk.', v: 3, by: 'agent' }]),
     }));
     expect(await screen.findByRole('button', { name: 'Show tabs (a tab has changed)' })).toBeInTheDocument();
+  });
+
+  it('puts Show tabs on the page where Hide tabs was, and keeps the doc icon in the header', async () => {
+    const user = userEvent.setup();
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    const hide = await screen.findByRole('button', { name: 'Hide tabs' });
+    expect(document.querySelector('.doc-header__icon')).toBeInTheDocument();
+    expect(document.querySelector('.doc-body')).not.toHaveAttribute('data-tabs-hidden');
+    await user.click(hide);
+    const show = screen.getByRole('button', { name: 'Show tabs' });
+    expect(show.closest('.doc-header')).toBeNull();
+    expect(show.closest('.doc-tabs')).toBeNull();
+    expect(show.closest('.doc-tabs-show').parentElement).toHaveClass('doc-body');
+    expect(document.querySelector('.doc-body')).toHaveAttribute('data-tabs-hidden');
+    expect(document.querySelector('.doc-header__icon')).toBeInTheDocument();
   });
 });
 

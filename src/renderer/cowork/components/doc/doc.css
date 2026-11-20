@@ -40,7 +40,7 @@ body[data-theme="dark"] .doc-root {
 
 /* One reset for the doc's own controls and fields; each rule below adds its
    look. It comes first so those rules win at the same specificity. */
-:is(.doc-iconbtn, .doc-header__title--editable, .doc-tab, .doc-tab__title, .doc-tabs__add, .doc-tabs__hide, .doc-tabstrip__add, .doc-tabstrip__more, .doc-byline__add, .doc-gutter__btn,
+:is(.doc-iconbtn, .doc-header__title--editable, .doc-tab, .doc-tab__title, .doc-tabs__add, .doc-tabs__hide, .doc-tabs-show__btn, .doc-tabstrip__add, .doc-tabstrip__more, .doc-byline__add, .doc-gutter__btn,
   .doc-check, .doc-cellbtn, .doc-addbtn, .doc-float__btn, .doc-slash__item) {
   all: unset;
   box-sizing: border-box;
@@ -109,13 +109,33 @@ body[data-theme="dark"] .doc-root {
   text-transform: uppercase;
   color: var(--ink-4);
 }
-.doc-tabs__hide {
+.doc-tabs__hide, .doc-tabs-show__btn {
   display: inline-grid; place-items: center;
   width: 26px; height: 26px; margin: -6px 0; border-radius: var(--r);
   color: var(--ink-4);
 }
-.doc-tabs__hide:hover { background: var(--doc-hover); color: var(--ink); }
-.doc-tabs__hide:focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); }
+:is(.doc-tabs__hide, .doc-tabs-show__btn):hover { background: var(--doc-hover); color: var(--ink); }
+:is(.doc-tabs__hide, .doc-tabs-show__btn):focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); }
+/* Show tabs, over the folded rail's place: the rail's top padding, and a line
+   as tall as the rail's label (the zero-width space), centre the button where
+   Hide tabs was. It stays put while the page scrolls under it. */
+.doc-tabs-show {
+  position: absolute; z-index: 1; top: 14px; left: 8px;
+  display: flex; align-items: center;
+  font-size: var(--text-2xs);
+}
+.doc-tabs-show::before { content: '\200b'; }
+.doc-tabs-show__btn { position: relative; animation: doc-tabs-show-in var(--dur-layout) var(--ease-out); }
+.doc-tabs-show__dot {
+  position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--surface);
+}
+@keyframes doc-tabs-show-in { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .doc-tabs-show__btn { animation: none; } }
+/* The page keeps clear of Show tabs: its left margin never drops below the
+   button's width, so neither the text nor the block handles in the page's
+   left padding pass under it. A wide pane's centred margin is already more. */
+.doc-body[data-tabs-hidden] .doc-page { margin-left: max(40px, calc((100% - var(--doc-page-max)) / 2)); }
 .doc-tab {
   display: flex; align-items: center; gap: 6px;
   min-height: 30px;
