@@ -53,17 +53,15 @@ jobs:
         run: npm run typecheck
       - name: Sync iOS
         run: npx cap sync ios
-      - name: Build (simulator, unsigned)
-        run: |
-          xcodebuild \
-            -project ios/App/App.xcodeproj \
-            -scheme App \
-            -configuration Release \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+      - name: Build, install and reopen Cowork on an iPhone simulator
+        env:
+          SIMULATOR_OUTPUT_DIR: ${{ runner.temp }}/cowork-ios-smoke
+        run: bash scripts/ios-simulator-smoke.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iphone-launch
+          path: ${{ runner.temp }}/cowork-ios-smoke/iphone-launch.png
+          if-no-files-found: error
 
   android:
     runs-on: ubuntu-latest
