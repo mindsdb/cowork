@@ -52,6 +52,7 @@ import {
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
 import { AUDIENCE_CHOICE, groupArtifactsBySection, isOrgSharingOn } from '../lib/orgSharing';
+import { useArtifactAudiences } from '../hooks/useArtifactAudiences';
 import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
 import { artifactOwnerUserId } from '../lib/artifactAuthorship';
 import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
@@ -62,7 +63,7 @@ import {
 } from '../lib/artifactShareAnalytics';
 import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
-import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
+import { ArtifactStatus, ArtifactStatusOrgName } from '../components/artifacts/ArtifactStatus';
 import { ArtifactOwnerNamesProvider, useArtifactAuthorship } from '../hooks/useArtifactAuthorship';
 import {
   PageHeader,
@@ -276,7 +277,14 @@ async function downloadWithFeedback(artifact, toastManager, { note } = {}) {
   if (note) toastManager.add({ title: note });
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+// The owner tag of the viewer's own artifact where a section shares it with
+// others (My teams, Everyone at the org): there, whose it is isn't a given.
+function useOwnTag(markOwn) {
+  const { t } = useTranslation('artifacts');
+  return markOwn ? { label: t('artifactsView.owner.you'), description: t('artifactsView.owner.youHint') } : null;
+}
+
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
   /* Same open rules as the list row: the body opens the best destination, and
      ↗ opens the artifact outside the app. */
   const { openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
@@ -317,7 +325,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // The owner's name, "Another member" or "Unknown owner" (ENG-2979,
   // ENG-4455). Null for the viewer's own artifact, so ArtifactStatus renders
   // exactly what it did before.
-  const authorship = useArtifactAuthorship(artifact.capabilities);
+  const ownTag = useOwnTag(markOwn);
+  const authorship = useArtifactAuthorship(artifact.capabilities) || ownTag;
   const { base, secondary } = splitArtifactName(artifact);
   // A duplicated live app says whose it was, in the line a web app leaves empty.
   const received = liveLines?.received ?? null;
@@ -556,9 +565,10 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
 
 // Status badges carry tooltips and a Try again link, so they sit above the
 // stretched open button.
-function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true }) {
+function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true, markOwn = false }) {
   const orgMode = useOrgMode();
-  const authorship = useArtifactAuthorship(artifact.capabilities);
+  const ownTag = useOwnTag(markOwn);
+  const authorship = useArtifactAuthorship(artifact.capabilities) || ownTag;
   return (
     <ItemActions className="min-w-0 shrink">
       <ArtifactStatus
@@ -710,7 +720,7 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     }));
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
   const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
@@ -755,6 +765,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             onRetry={onRetry}
             inlineChanges
             pageBadge={!liveAppCard}
+            markOwn={markOwn}
           />
           <ArtifactProject artifact={artifact} projects={projects} onOpenProject={onOpenProject} />
           <span className="shrink-0 whitespace-nowrap">{artifact.updated || '—'}</span>
@@ -767,7 +778,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({
-  artifacts: list = EMPTY_ARTIFACTS,
+  artifacts: cards = EMPTY_ARTIFACTS,
   // App owns the list (it also feeds the sidebar count), so publish-state
   // changes go up rather than into a local copy that the next prop would reset.
   // Deletes reach App on their own through artifactsStore.onArtifactDeleted.
@@ -786,6 +797,9 @@ export default function ArtifactsView({
   // this for itself; the grid's is built here, so the gate has to be applied at
   // both sites or one view silently keeps the desktop-only actions.
   const orgMode = useOrgMode();
+  // In MindsHub mode a restricted card doesn't say who it reaches; read it,
+  // so its section, badge and hover say (useArtifactAudiences).
+  const list = useArtifactAudiences(cards, { enabled: orgMode });
   const liveApps = useLiveApps();
   // App hands down a new list after each turn, so the states re-read with it.
   const liveAppStates = useLiveAppStates(liveApps, list);
@@ -1173,9 +1187,12 @@ export default function ArtifactsView({
     [sectionsOn, visible, orgName, teamsState?.teams],
   );
 
-  const renderCard = (a) => (
+  // `section`: the section the item sits in, when the page is grouped.
+  const sharedSection = (section) => section === 'team' || section === 'org';
+  const renderCard = (a, section) => (
     <ArtifactBubble
       key={a.id || a.path}
+      markOwn={sharedSection(section)}
       artifact={a}
       projects={projects}
       onOpenViewer={openViewer}
@@ -1191,9 +1208,10 @@ export default function ArtifactsView({
       liveAppAddress={liveAddressOf(a)}
     />
   );
-  const renderRow = (a) => (
+  const renderRow = (a, section) => (
     <ArtifactRow
       key={a.id || a.path}
+      markOwn={sharedSection(section)}
       artifact={a}
       projects={projects}
       onOpenViewer={openViewer}
@@ -1269,7 +1287,9 @@ export default function ArtifactsView({
         />
       )}
 
-      {/* Every card's owner named in one lookup (ENG-4455). */}
+      {/* Every card's owner named in one lookup (ENG-4455), and the org's
+          name for "Everyone at ‹org›" badges once for the list. */}
+      <ArtifactStatusOrgName.Provider value={orgName}>
       <ArtifactOwnerNamesProvider capabilitiesList={visible.map((a) => a.capabilities)}>
       <CollectionState
         loading={loading}
@@ -1309,7 +1329,7 @@ export default function ArtifactsView({
                     <span className="font-normal text-ink-4" data-testid="section-count">{section.artifacts.length}</span>
                   </div>
                   <div className="artifacts-grid">
-                    {section.artifacts.map(renderCard)}
+                    {section.artifacts.map((a) => renderCard(a, section.id))}
                   </div>
                 </section>
               ))}
@@ -1333,7 +1353,7 @@ export default function ArtifactsView({
                   description={<span data-testid="section-count">{section.artifacts.length}</span>}
                 >
                   {sortHeader}
-                  {section.artifacts.map(renderRow)}
+                  {section.artifacts.map((a) => renderRow(a, section.id))}
                 </ListGroup>
               ))}
             </div>
@@ -1346,6 +1366,7 @@ export default function ArtifactsView({
         )}
       </CollectionState>
       </ArtifactOwnerNamesProvider>
+      </ArtifactStatusOrgName.Provider>
 
       <ArtifactViewer
         open={!!viewer}
