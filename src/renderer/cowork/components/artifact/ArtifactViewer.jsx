@@ -30,7 +30,7 @@ import {
 import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
-import { artifactAuthorship } from '../../lib/artifactAuthorship';
+import { useArtifactAuthorship } from '../../hooks/useArtifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { fetchAuthenticatedResponse } from '../../lib/authenticatedResource';
 import {
@@ -752,7 +752,8 @@ export function ArtifactViewer({
   // server-sent role: a guessed reviewer would hide "Another member" on the
   // user's own artifact, and a guessed owner would hide it on a colleague's.
   // Server-sent workspace capabilities win; otherwise the card's (ENG-2979).
-  const authorship = artifactAuthorship(
+  // The owner is named once MindsHub answers for `ownerUserId` (ENG-4455).
+  const authorship = useArtifactAuthorship(
     (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
   );
 

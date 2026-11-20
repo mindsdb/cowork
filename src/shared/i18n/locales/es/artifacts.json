@@ -364,7 +364,16 @@
       "sharingSettings": "la configuración de uso compartido",
       "currentAccess": "el acceso actual"
     },
-    "editList": "Editar lista"
+    "editList": "Editar lista",
+    "sharedWith": {
+      "title": "Compartido con",
+      "hint": "Ver con quién se comparte",
+      "triggerLabel": "Compartido: ver con quién se comparte",
+      "whoCanOpen": "Quién puede abrirlo",
+      "ownerOnlyTitle": "Solo su propietario",
+      "ownerOnlyDesc": "Nadie más puede abrir el enlace compartido",
+      "listWithheld": "Solo los equipos y las personas con quienes se comparte"
+    }
   },
   "previewErrors": {
     "reported": "{count, plural, one {La vista previa informó # error} other {La vista previa informó # errores}}",

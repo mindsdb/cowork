@@ -33,6 +33,18 @@
     },
     "field": {
       "optional": "(facoltativo)"
+    },
+    "sortHeader": {
+      "label": "Ordina l'elenco",
+      "sortBy": "Ordina per {column}",
+      "columns": {
+        "name": "Nome",
+        "project": "Progetto",
+        "updated": "Aggiornato",
+        "activity": "Attività",
+        "type": "Tipo",
+        "status": "Stato"
+      }
     }
   },
   "rail": {
