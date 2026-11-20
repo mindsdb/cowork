@@ -181,7 +181,7 @@ jobs:
   deploy-argocd:
     # The staging deploy. Records the commit and its image tag in
     # mindsdb/argocd-state, which Argo CD in newdev watches and syncs, then
-    # waits for the argocd/staging commit status Argo CD sets once the sync
+    # waits for the argocd/staging/cowork-frontend commit status Argo CD sets once the sync
     # is healthy. No cluster credential, and no `environment:` block: Argo CD
     # creates the GitHub Deployment itself.
     runs-on: ubuntu-latest
@@ -189,7 +189,7 @@ jobs:
     if: inputs.build-environment == 'staging' && inputs.deploy-through-argocd
     permissions:
       contents: read
-      # write-env-state sets argocd/staging to pending on the commit; the
+      # write-env-state sets argocd/staging/cowork-frontend to pending on the commit; the
       # wait below reads it.
       statuses: write
     concurrency:
@@ -232,12 +232,12 @@ jobs:
         run: |
           set -euo pipefail
           for _ in $(seq 1 45); do
-            state="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/status" --jq '.statuses[] | select(.context == "argocd/staging") | .state')"
+            state="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/status" --jq '.statuses[] | select(.context == "argocd/staging/cowork-frontend") | .state')"
             case "$state" in
               success) echo "Argo CD synced $GITHUB_SHA to staging"; exit 0 ;;
-              failure|error) echo "::error::Argo CD reported $state for $GITHUB_SHA in staging: see the argocd/staging status on the commit"; exit 1 ;;
+              failure|error) echo "::error::Argo CD reported $state for $GITHUB_SHA in staging: see the argocd/staging/cowork-frontend status on the commit"; exit 1 ;;
             esac
             sleep 20
           done
-          echo "::error::Argo CD has not reported on $GITHUB_SHA in staging: see the argocd/staging status on the commit"
+          echo "::error::Argo CD has not reported on $GITHUB_SHA in staging: see the argocd/staging/cowork-frontend status on the commit"
           exit 1

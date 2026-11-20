@@ -34,7 +34,7 @@ jobs:
     permissions:
       contents: read
       id-token: write # the build's ECR role, assumed over OIDC
-      statuses: write # the argocd/staging commit status the Argo CD deploy sets
+      statuses: write # the argocd/staging/cowork-frontend commit status the Argo CD deploy sets
     uses: ./.github/workflows/build-deploy.yml
     with:
       build-environment: staging
