@@ -1,7 +1,7 @@
 // ENG-2979: the viewer derives the tag from the workspace's capabilities once
 // they load, and from the card's until then, the same precedence as canManage.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
 const workspaceMock = vi.hoisted(() => ({
   supported: true,
@@ -26,7 +26,9 @@ const workspaceMock = vi.hoisted(() => ({
   cancelRepair: vi.fn(),
 }));
 
+const peopleByIds = vi.hoisted(() => vi.fn());
 vi.mock('../../api', () => ({
+  fetchMindsHubPeopleByIds: peopleByIds,
   fetchPublishStats: vi.fn(),
   setPublishTracking: vi.fn(),
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -143,5 +145,16 @@ describe('viewer authorship tag', () => {
     workspaceMock.capabilitiesFromServer = false;
     render(<ArtifactViewer open artifact={artifact({ role: 'reviewer' })} onClose={vi.fn()} />);
     expect(shown()).toBe('Another member');
+  });
+
+  // ENG-4455: the owner's id, named through MindsHub.
+  it('names the owner from the workspace\'s ownerUserId once MindsHub answers', async () => {
+    peopleByIds.mockResolvedValue({ reachable: true, people: [{ id: 'u-ana', name: 'Ana Ruiz', email: 'ana@acme.com' }] });
+    workspaceMock.capabilities = { role: 'reviewer', canEdit: false, ownerUserId: 'u-ana' };
+    workspaceMock.capabilitiesFromServer = true;
+    render(<ArtifactViewer open artifact={artifact({ role: 'reviewer' })} onClose={vi.fn()} />);
+    expect(shown()).toBe('Another member');
+    await waitFor(() => expect(shown()).toBe('Ana Ruiz'));
+    expect(peopleByIds).toHaveBeenCalledWith(['u-ana']);
   });
 });

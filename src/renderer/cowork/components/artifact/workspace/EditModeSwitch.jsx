@@ -1,7 +1,8 @@
-// Live edit's Navigate / Edit switch (ENG-4383). Navigate leaves the page
-// working (click through slides, open tabs, follow buttons) without leaving
-// Live edit or saving; Edit holds the page still and makes any text,
-// buttons' and links' included, editable on click.
+// Live edit's Navigate / Edit switch (ENG-4383), the pill over the page, as
+// Comments' Navigate / Comment. Navigate leaves the page working (click through slides,
+// open tabs, follow buttons) without leaving Live edit or saving; Edit holds
+// the page still and makes any text, buttons' and links' included, editable
+// on click.
 
 import Ico from '../../Icons';
 import { ModeSwitch } from '../ModeSwitch';

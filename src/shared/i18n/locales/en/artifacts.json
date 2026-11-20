@@ -161,6 +161,10 @@
       "edit": "Failed to edit",
       "delete": "Failed to delete",
       "markRead": "Failed to mark feedback as read"
+    },
+    "guide": {
+      "title": "Comments",
+      "body": "Leave notes on any part of the page, and anyone you share it with can comment too. Pick the comments you want fixed and ask the agent to resolve them."
     }
   },
   "export": {
@@ -247,7 +251,7 @@
   "htmlEditor": {
     "blockGone": "The selected text block is no longer available.",
     "updateFailed": "This text could not be updated.",
-    "advancedMode": "Advanced mode — changes still save as a revision",
+    "advancedMode": "Source code — changes still save as a revision",
     "selected": "{label} selected — type to change it",
     "preparing": "Preparing editable text…",
     "noEditable": "No directly editable text was found",
@@ -267,7 +271,6 @@
       "caption": "Caption",
       "text": "Text"
     },
-    "exitLiveEdit": "Exit Live edit",
     "mode": {
       "ariaLabel": "Live edit mode",
       "navigate": "Navigate",
@@ -275,7 +278,8 @@
       "navigateHint": "Use the page as usual: click through slides, tabs and links",
       "editHint": "Click any text to change it",
       "navigateGuidance": "Navigating. Use the page as usual, then switch to Edit text to change something."
-    }
+    },
+    "sourceCode": "Source code"
   },
   "workspace": {
     "noWorkspace": "This artifact was created before editing was available",
@@ -359,6 +363,16 @@
     "load": {
       "sharingSettings": "sharing settings",
       "currentAccess": "current access"
+    },
+    "editList": "Edit list",
+    "sharedWith": {
+      "title": "Shared with",
+      "hint": "See who this is shared with",
+      "triggerLabel": "Shared: see who this is shared with",
+      "whoCanOpen": "Who can open it",
+      "ownerOnlyTitle": "Only its owner",
+      "ownerOnlyDesc": "Nobody else can open the shared link",
+      "listWithheld": "Only the teams and people it's shared with"
     }
   },
   "previewErrors": {
@@ -676,7 +690,8 @@
     "send": "Send",
     "route": {
       "edit": "Editing directly…",
-      "agent": "Handing this to the agent…"
+      "agent": "Handing this to the agent…",
+      "reply": "Answering…"
     },
     "stage": {
       "routing": "Working out how to do this…",
@@ -728,28 +743,25 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "Stats",
-      "hide": "Hide stats"
-    },
     "title": "Stats",
     "close": "Close stats panel",
     "loading": "Loading stats",
     "retry": "Retry",
-    "trackViews": "Track views",
-    "trackingOff": "Tracking is off. Turn it on to start counting views.",
     "metrics": {
-      "viewsInPeriod": "Views (30 days)",
-      "uniqueViewers": "Unique viewers (30 days)",
-      "totalViews": "Total views",
-      "lastViewed": "Last viewed"
+      "views": "Views",
+      "viewers": "Unique viewers",
+      "avgTime": "Avg. time",
+      "completion": "Completion",
+      "lastViewedHint": "Last viewed {time}"
     },
     "daysInUtc": "Days in UTC",
     "chartLabel": "Views per day",
     "viewers": {
       "email": "Email",
       "lastSeen": "Last seen",
-      "restrictedOnly": "Viewer names are recorded only when sharing is restricted."
+      "restrictedOnly": "Viewer names are recorded only when sharing is restricted.",
+      "anonymous": "Anonymous viewer",
+      "none": "No viewers recorded yet."
     },
     "noViews": "No views yet",
     "errors": {
@@ -758,7 +770,66 @@
       "reconnect": "Reconnect MindsHub to see stats.",
       "temporarilyUnavailable": "Stats are temporarily unavailable.",
       "loadFailed": "Could not load stats."
-    }
+    },
+    "chartTitle": "Views, last 30 days",
+    "noViewsHint": "Views show up here once someone opens the link.",
+    "off": {
+      "title": "Viewer analytics is off",
+      "body": "Turn it on to see who opens this page, how long they stay and which parts they read.",
+      "turnOn": "Turn on"
+    },
+    "pages": {
+      "title": "Time per page",
+      "audienceChart": "Average time per page, all viewers",
+      "position": "Page {number} / {total}",
+      "untitled": "Page {number}",
+      "timeSpent": "Time spent",
+      "avgTime": "Avg. time",
+      "reached": "Reached",
+      "barSpent": "Page {number} of {total}, {name}: {time}",
+      "barAvg": "Page {number} of {total}, {name}: {time} on average",
+      "barAvgReach": "Page {number} of {total}, {name}: {time} on average, reached by {reach} of visits"
+    },
+    "activity": {
+      "title": "All visits",
+      "viewerCount": "{count, plural, one {# viewer} other {# viewers}}",
+      "summary": "{count, plural, one {# visit} other {# visits}} · {lastSeen}",
+      "totalTime": "Total time {time}",
+      "viewed": "Viewed: {percent}",
+      "whereabouts": "Device, OS & location",
+      "loading": "Loading visits",
+      "noVisits": "No visits recorded.",
+      "visit": "Visit",
+      "allVisits": "{count, plural, one {# visit} other {All # visits}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "Time per page, {name}",
+      "visitChart": "Time per page, {name}, visit of {date}"
+    },
+    "devices": {
+      "desktop": "Desktop",
+      "mobile": "Mobile",
+      "tablet": "Tablet",
+      "unknown": "Unknown device"
+    },
+    "delete": {
+      "action": "Delete analytics",
+      "title": "Delete viewer analytics?",
+      "message": "This removes every view, visit and viewer recorded for this page. It can't be undone.",
+      "confirm": "Delete",
+      "hint": "Removes every view and visit recorded for this artifact. This can't be undone."
+    },
+    "duration": {
+      "seconds": "{s}s",
+      "minutes": "{m}m",
+      "minutesSeconds": "{m}m {s}s",
+      "hours": "{h}h",
+      "hoursMinutes": "{h}h {m}m"
+    },
+    "guide": {
+      "title": "Stats",
+      "body": "How many times your shared link was opened each day, over the last 30 days. Your own visits aren't counted."
+    },
+    "advanced": "Advanced"
   },
   "refPill": {
     "open": "Open {title}"
@@ -771,14 +842,14 @@
     "showFewer": "Show fewer"
   },
   "layers": {
-    "ariaLabel": "Viewer layers",
     "source": "Live edit",
     "comments": "Comments",
     "sourceOffPrompt": {
       "title": "Turn off Live edit?",
       "message": "Your unsaved changes in Live edit will be discarded.",
       "confirmLabel": "Discard changes"
-    }
+    },
+    "stats": "Stats"
   },
   "address": {
     "draft": "Draft",
@@ -786,8 +857,8 @@
     "copied": "Copied"
   },
   "layout": {
-    "maximize": "Maximize",
-    "restore": "Restore size"
+    "maximize": "Full screen",
+    "restore": "Exit full screen"
   },
   "imageAttachments": {
     "onlyImages": "Only PNG, JPEG, GIF and WebP images can be attached.",
@@ -799,5 +870,35 @@
     "enlarge": "Enlarge image",
     "shrink": "Shrink image",
     "image": "Image"
+  },
+  "analytics": {
+    "title": "Viewer analytics",
+    "collect": "Collect viewer analytics",
+    "collectHint": "See who opens this page, how long they stay and which parts they read.",
+    "loading": "Loading analytics settings",
+    "loadFailed": "Could not load analytics settings.",
+    "addCredits": "Add credits",
+    "errors": {
+      "creditsRequired": "Add credits to collect viewer analytics.",
+      "trackingOff": "Turn on viewer analytics first.",
+      "saveFailed": "Could not save the setting."
+    }
+  },
+  "rail": {
+    "ariaLabel": "Viewer panels",
+    "sourceHint": "Change text and layout on the page",
+    "commentsHint": "Leave and review feedback",
+    "statsHint": "Who viewed and for how long",
+    "commentsOpen": "Comments, {count} open"
+  },
+  "liveEditPanel": {
+    "close": "Close Live edit panel",
+    "changes": {
+      "title": "Unsaved changes",
+      "undo": "Undo this change",
+      "undoNamed": "Undo the change to {label}: {text}",
+      "was": "Was: {text}",
+      "emptyText": "(empty)"
+    }
   }
 }

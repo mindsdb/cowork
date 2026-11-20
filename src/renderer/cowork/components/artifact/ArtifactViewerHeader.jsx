@@ -7,6 +7,7 @@ import { useOrgMode } from '../../../lib/orgMode';
 import { canDownloadArtifact, canShowInBrowserTab } from '../../lib/artifactKinds';
 import { artifactExportFormats } from '../../lib/artifactExport';
 import { PublishMenu } from './publish/PublishMenu';
+import { SharedWithMenu } from './publish/SharedWithMenu';
 import { ArtifactAddressPill } from './ArtifactAddressPill';
 import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
@@ -20,8 +21,6 @@ export function ArtifactViewerHeader({
   authorship = null,
   workspace,
   review,
-  // `{ open, onToggle }` for the Stats side panel; absent on surfaces without it.
-  stats = null,
   publication,
   actions,
   // `{ errors, dismissed, dismiss }` from usePreviewDiagnostics.
@@ -48,7 +47,6 @@ export function ArtifactViewerHeader({
     shareRequest = null,
     onShareRequestClosed,
   } = publication;
-  const showStats = !!stats && isPublished && canManage;
   // A caller with no address to give still gets the pill, named by the
   // title, so ↗ keeps its place.
   const shownAddress = address || { kind: isPublished ? 'published' : 'draft', url: '', fallback: title };
@@ -117,7 +115,8 @@ export function ArtifactViewerHeader({
             minWidth: 0, paddingRight: 12,
           }}
         >{title}</div>
-        {/* "Another member" / "Unknown owner" (ENG-2979). Renders nothing for
+        {/* The owner's name, "Another member" or "Unknown owner" (ENG-2979,
+            ENG-4455). Renders nothing for
             the viewer's own artifact. A direct flex child of this zone
             (Tooltip renders the badge as its own trigger), so `shrink-0`
             keeps it whole while the title truncates. */}
@@ -140,20 +139,14 @@ export function ArtifactViewerHeader({
         )}
       </div>
 
-      {/* Right — preview errors, comments, stats, publishing, more actions, and close. */}
-      <div className="artifact-viewer-action-zone" style={{ minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+      {/* Right — preview errors, reporting, publishing, more actions, and close. Stats is
+          a layer toggle on the revision line (ENG-4455). */}
+      <div className="artifact-viewer-action-zone" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {artifact?.projectId && artifactIdentity(artifact) && (
           <ReportContentButton key={`${artifact.projectId}:${artifactIdentity(artifact)}:${workspace?.currentRevision?.id ?? ''}:${artifact.mtime ?? ''}`}
             artifactTarget={{ projectId: String(artifact.projectId), artifactId: artifactIdentity(artifact) }} />
         )}
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
-        {showStats && (
-          <Tooltip content={stats.open ? t('stats.toggle.hide') : t('stats.toggle.show')}>
-            <IconButton aria-label={t('stats.toggle.show')} onClick={stats.onToggle} active={!!stats.open}>
-              {Ico.chartColumn(16)}
-            </IconButton>
-          </Tooltip>
-        )}
         {/* Sharing is owner-side chrome on BOTH deployments now. It used to be
             desktop-only, on the grounds that org mode's window is a review
             surface and publishing "lives on the gallery card instead" — but the
@@ -177,6 +170,13 @@ export function ArtifactViewerHeader({
             openRequest={shareRequest}
             onRequestClosed={onShareRequestClosed}
           />
+        )}
+        {/* Someone else's shared artifact (ENG-4455): the same "Shared"
+            button, opening a read-only "Shared with" panel. Org mode only,
+            where artifacts have owners other than the viewer; the owner keeps
+            PublishMenu above. */}
+        {!canManage && authorship && orgMode && publishable && isPublished && artifact && (
+          <SharedWithMenu artifact={artifact} />
         )}
         {/* Download is a visible control on every web host, org mode included,
             where the ⋯ menu is hidden. Desktop opens the file in its default

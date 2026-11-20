@@ -20,8 +20,7 @@ vi.mock('./publish/PublishMenu', () => ({
 
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 
-function renderHeader({ isPublished = true, canManage = true, stats, shareRequest, onShareRequestClosed } = {}) {
-  const statsProp = stats === undefined ? { open: false, onToggle: vi.fn() } : stats;
+function renderHeader({ isPublished = true, canManage = true, shareRequest, onShareRequestClosed } = {}) {
   render(
     <ArtifactViewerHeader
       title="Weather Dashboard"
@@ -65,11 +64,9 @@ function renderHeader({ isPublished = true, canManage = true, stats, shareReques
         onDownload: vi.fn(),
         onTrash: vi.fn(),
       }}
-      stats={statsProp}
       onClose={vi.fn()}
     />,
   );
-  return statsProp;
 }
 
 describe('Share panel on open', () => {

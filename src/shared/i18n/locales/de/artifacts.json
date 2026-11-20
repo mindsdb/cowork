@@ -161,6 +161,10 @@
       "edit": "Bearbeiten fehlgeschlagen",
       "delete": "Löschen fehlgeschlagen",
       "markRead": "Feedback konnte nicht als gelesen markiert werden"
+    },
+    "guide": {
+      "title": "Kommentare",
+      "body": "Hinterlasse Notizen an jeder Stelle der Seite – alle, mit denen du sie teilst, können ebenfalls kommentieren. Wähle die Kommentare aus, die umgesetzt werden sollen, und lass sie vom Agenten lösen."
     }
   },
   "export": {
@@ -247,7 +251,7 @@
   "htmlEditor": {
     "blockGone": "Der ausgewählte Textblock ist nicht mehr verfügbar.",
     "updateFailed": "Dieser Text konnte nicht aktualisiert werden.",
-    "advancedMode": "Erweiterter Modus – Änderungen werden weiterhin als Revision gespeichert",
+    "advancedMode": "Quellcode – Änderungen werden weiterhin als Revision gespeichert",
     "selected": "{label} ausgewählt – zum Ändern tippen",
     "preparing": "Bearbeitbarer Text wird vorbereitet…",
     "noEditable": "Kein direkt bearbeitbarer Text gefunden",
@@ -267,7 +271,6 @@
       "caption": "Bildunterschrift",
       "text": "Text"
     },
-    "exitLiveEdit": "Live-Bearbeitung beenden",
     "mode": {
       "ariaLabel": "Modus der Live-Bearbeitung",
       "navigate": "Navigieren",
@@ -275,7 +278,8 @@
       "navigateHint": "Die Seite wie gewohnt nutzen: durch Folien, Tabs und Links klicken",
       "editHint": "Auf einen beliebigen Text klicken, um ihn zu ändern",
       "navigateGuidance": "Navigation aktiv. Nutze die Seite wie gewohnt und wechsle dann zu „Text bearbeiten“, um etwas zu ändern."
-    }
+    },
+    "sourceCode": "Quellcode"
   },
   "workspace": {
     "noWorkspace": "Dieses Artefakt wurde erstellt, bevor Bearbeiten verfügbar war",
@@ -359,6 +363,16 @@
     "load": {
       "sharingSettings": "Freigabeeinstellungen",
       "currentAccess": "aktuellen Zugriffsrechte"
+    },
+    "editList": "Liste bearbeiten",
+    "sharedWith": {
+      "title": "Geteilt mit",
+      "hint": "Sehen, mit wem dies geteilt ist",
+      "triggerLabel": "Geteilt: sehen, mit wem dies geteilt ist",
+      "whoCanOpen": "Wer es öffnen kann",
+      "ownerOnlyTitle": "Nur der Eigentümer",
+      "ownerOnlyDesc": "Niemand sonst kann den geteilten Link öffnen",
+      "listWithheld": "Nur die Teams und Personen, mit denen es geteilt ist"
     }
   },
   "previewErrors": {
@@ -676,7 +690,8 @@
     "send": "Senden",
     "route": {
       "edit": "Wird direkt bearbeitet…",
-      "agent": "Wird an den Agenten übergeben…"
+      "agent": "Wird an den Agenten übergeben…",
+      "reply": "Wird beantwortet…"
     },
     "stage": {
       "routing": "Wird geplant…",
@@ -728,28 +743,25 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "Statistiken",
-      "hide": "Statistiken ausblenden"
-    },
     "title": "Statistiken",
     "close": "Statistikbereich schließen",
     "loading": "Statistiken werden geladen",
     "retry": "Erneut versuchen",
-    "trackViews": "Aufrufe zählen",
-    "trackingOff": "Die Zählung ist deaktiviert. Aktivieren Sie sie, um Aufrufe zu zählen.",
     "metrics": {
-      "viewsInPeriod": "Aufrufe (30 Tage)",
-      "uniqueViewers": "Eindeutige Besucher (30 Tage)",
-      "totalViews": "Aufrufe gesamt",
-      "lastViewed": "Zuletzt aufgerufen"
+      "views": "Aufrufe",
+      "viewers": "Eindeutige Besucher",
+      "avgTime": "Ø Zeit",
+      "completion": "Abschluss",
+      "lastViewedHint": "Zuletzt aufgerufen {time}"
     },
     "daysInUtc": "Tage in UTC",
     "chartLabel": "Aufrufe pro Tag",
     "viewers": {
       "email": "E-Mail",
       "lastSeen": "Zuletzt gesehen",
-      "restrictedOnly": "Namen von Besuchern werden nur bei eingeschränkter Freigabe erfasst."
+      "restrictedOnly": "Namen von Besuchern werden nur bei eingeschränkter Freigabe erfasst.",
+      "anonymous": "Anonymer Besucher",
+      "none": "Noch keine Besucher erfasst."
     },
     "noViews": "Noch keine Aufrufe",
     "errors": {
@@ -758,7 +770,66 @@
       "reconnect": "Verbinden Sie MindsHub erneut, um Statistiken zu sehen.",
       "temporarilyUnavailable": "Statistiken sind vorübergehend nicht verfügbar.",
       "loadFailed": "Statistiken konnten nicht geladen werden."
-    }
+    },
+    "chartTitle": "Aufrufe, letzte 30 Tage",
+    "noViewsHint": "Aufrufe erscheinen hier, sobald jemand den Link öffnet.",
+    "off": {
+      "title": "Besucheranalyse ist aus",
+      "body": "Schalte sie ein, um zu sehen, wer diese Seite öffnet, wie lange und welche Teile gelesen werden.",
+      "turnOn": "Einschalten"
+    },
+    "pages": {
+      "title": "Zeit pro Seite",
+      "audienceChart": "Durchschnittliche Zeit pro Seite, alle Besucher",
+      "position": "Seite {number} / {total}",
+      "untitled": "Seite {number}",
+      "timeSpent": "Verbrachte Zeit",
+      "avgTime": "Ø Zeit",
+      "reached": "Erreicht",
+      "barSpent": "Seite {number} von {total}, {name}: {time}",
+      "barAvg": "Seite {number} von {total}, {name}: im Schnitt {time}",
+      "barAvgReach": "Seite {number} von {total}, {name}: im Schnitt {time}, von {reach} der Besuche erreicht"
+    },
+    "activity": {
+      "title": "Alle Besuche",
+      "viewerCount": "{count, plural, one {# Besucher} other {# Besucher}}",
+      "summary": "{count, plural, one {# Besuch} other {# Besuche}} · {lastSeen}",
+      "totalTime": "Gesamtzeit {time}",
+      "viewed": "Angesehen: {percent}",
+      "whereabouts": "Gerät, Betriebssystem & Standort",
+      "loading": "Besuche werden geladen",
+      "noVisits": "Keine Besuche erfasst.",
+      "visit": "Besuch",
+      "allVisits": "{count, plural, one {# Besuch} other {Alle # Besuche}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "Zeit pro Seite, {name}",
+      "visitChart": "Zeit pro Seite, {name}, Besuch vom {date}"
+    },
+    "devices": {
+      "desktop": "Desktop",
+      "mobile": "Mobilgerät",
+      "tablet": "Tablet",
+      "unknown": "Unbekanntes Gerät"
+    },
+    "delete": {
+      "action": "Analyse löschen",
+      "title": "Besucheranalyse löschen?",
+      "message": "Alle für diese Seite erfassten Aufrufe, Besuche und Besucher werden entfernt. Das lässt sich nicht rückgängig machen.",
+      "confirm": "Löschen",
+      "hint": "Entfernt alle für dieses Artefakt erfassten Aufrufe und Besuche. Das kann nicht rückgängig gemacht werden."
+    },
+    "duration": {
+      "seconds": "{s} s",
+      "minutes": "{m} min",
+      "minutesSeconds": "{m} min {s} s",
+      "hours": "{h} h",
+      "hoursMinutes": "{h} h {m} min"
+    },
+    "guide": {
+      "title": "Statistiken",
+      "body": "Wie oft dein geteilter Link an jedem Tag der letzten 30 Tage geöffnet wurde. Deine eigenen Besuche werden nicht gezählt."
+    },
+    "advanced": "Erweitert"
   },
   "refPill": {
     "open": "{title} öffnen"
@@ -771,14 +842,14 @@
     "showFewer": "Weniger anzeigen"
   },
   "layers": {
-    "ariaLabel": "Viewer-Ebenen",
     "source": "Live-Bearbeitung",
     "comments": "Kommentare",
     "sourceOffPrompt": {
       "title": "Live-Bearbeitung ausschalten?",
       "message": "Deine nicht gespeicherten Änderungen in „Live-Bearbeitung“ werden verworfen.",
       "confirmLabel": "Änderungen verwerfen"
-    }
+    },
+    "stats": "Statistik"
   },
   "address": {
     "draft": "Entwurf",
@@ -786,8 +857,8 @@
     "copied": "Kopiert"
   },
   "layout": {
-    "maximize": "Maximieren",
-    "restore": "Größe wiederherstellen"
+    "maximize": "Vollbild",
+    "restore": "Vollbild beenden"
   },
   "imageAttachments": {
     "onlyImages": "Nur PNG-, JPEG-, GIF- und WebP-Bilder können angehängt werden.",
@@ -799,5 +870,35 @@
     "enlarge": "Bild vergrößern",
     "shrink": "Bild verkleinern",
     "image": "Bild"
+  },
+  "analytics": {
+    "title": "Besucheranalyse",
+    "collect": "Besucheranalyse erfassen",
+    "collectHint": "Sieh, wer diese Seite öffnet, wie lange und welche Teile gelesen werden.",
+    "loading": "Analyse-Einstellungen werden geladen",
+    "loadFailed": "Analyse-Einstellungen konnten nicht geladen werden.",
+    "addCredits": "Guthaben aufladen",
+    "errors": {
+      "creditsRequired": "Lade Guthaben auf, um Besucheranalyse zu erfassen.",
+      "trackingOff": "Schalte zuerst die Besucheranalyse ein.",
+      "saveFailed": "Die Einstellung konnte nicht gespeichert werden."
+    }
+  },
+  "rail": {
+    "ariaLabel": "Ansichtsbereiche",
+    "sourceHint": "Text und Layout auf der Seite ändern",
+    "commentsHint": "Feedback geben und prüfen",
+    "statsHint": "Wer es angesehen hat und wie lange",
+    "commentsOpen": "Kommentare, {count} offen"
+  },
+  "liveEditPanel": {
+    "close": "Live-Bearbeitungsbereich schließen",
+    "changes": {
+      "title": "Ungespeicherte Änderungen",
+      "undo": "Diese Änderung rückgängig machen",
+      "undoNamed": "Änderung an {label} rückgängig machen: {text}",
+      "was": "Vorher: {text}",
+      "emptyText": "(leer)"
+    }
   }
 }

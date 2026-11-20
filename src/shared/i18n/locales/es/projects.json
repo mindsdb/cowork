@@ -376,6 +376,7 @@
     "artifactAuthorship": {
       "unknownOwner": "Propietario desconocido",
       "otherMemberDescription": "Lo creó otro miembro de este proyecto. Puedes revisarlo, pero no cambiarlo.",
+      "namedOwnerDescription": "Lo creó {name}, otro miembro de este proyecto. Puedes revisarlo, pero no cambiarlo.",
       "unknownOwnerDescription": "No hay ningún propietario registrado para este artefacto."
     },
     "artifactExport": {

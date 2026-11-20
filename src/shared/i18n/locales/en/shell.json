@@ -33,6 +33,18 @@
     },
     "field": {
       "optional": "(optional)"
+    },
+    "sortHeader": {
+      "label": "Sort the list",
+      "sortBy": "Sort by {column}",
+      "columns": {
+        "name": "Name",
+        "project": "Project",
+        "updated": "Updated",
+        "activity": "Activity",
+        "type": "Type",
+        "status": "Status"
+      }
     }
   },
   "rail": {
@@ -135,6 +147,27 @@
       "haveCopyTitle": "You have a copy. Delete it to duplicate the app again.",
       "duplicateAriaLabel": "Duplicate {name}",
       "duplicatedToast": "Duplicated into this project."
+    },
+    "workingFolders": {
+      "title": "Working folders",
+      "add": "Add a folder to this chat",
+      "adding": "Adding…",
+      "emptyHint": "Add a folder for the agent to work in.",
+      "loadingFiles": "Loading files…",
+      "emptyFolder": "No files in this folder.",
+      "showFiles": "Show files in {name}",
+      "hideFiles": "Hide files in {name}",
+      "unavailable": "Folder not available",
+      "removeTooltip": "Remove from this chat",
+      "removeAriaLabel": "Remove {name} from this chat",
+      "removeTitle": "Remove \"{name}\" from this chat?",
+      "fallbackName": "folder",
+      "removeMessage": "The agent will no longer work in this folder. The folder and its files stay on your computer.",
+      "loadFailed": "Could not load working folders.",
+      "listFailed": "Could not list this folder.",
+      "pickerFailed": "Could not open the folder picker.",
+      "addFailed": "Could not add this folder.",
+      "removeFailed": "Could not remove this folder."
     }
   },
   "confirm": {
@@ -187,6 +220,8 @@
     "loading": "Loading {what}…"
   },
   "upToDate": "Up to date",
+  "upToDateSaving": "Saving…",
+  "upToDateSaved": "Saved",
   "usageBar": {
     "hideAllowance": "Hide allowance",
     "hide": "Hide"

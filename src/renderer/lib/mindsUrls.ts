@@ -52,7 +52,7 @@ export const MINDS_API_BASE =
 // `pr-cowork-744.dev.mindshub.ai` answers 200. Dropping the prefix is the
 // derivation the chart actually implies. Permanent envs are untouched, because
 // there the console does carry its own `console.` label.
-const mindsServiceHost = (role: 'auth' | 'console' | 'cowork'): string => {
+const mindsServiceHost = (role: 'auth' | 'console' | 'cowork' | 'view'): string => {
   if (role === 'console' && MINDS_API_BASE.includes('://api-')) {
     return MINDS_API_BASE.replace('://api-', '://');
   }
@@ -190,6 +190,11 @@ export const MINDS_DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cow
 // On Cowork web itself this is its own origin, because MINDS_API_BASE was
 // derived from that origin in the first place.
 export const MINDS_COWORK_WEB_URL = mindsServiceHost('cowork');
+
+// The view host that serves published artifacts in this environment. The same
+// token swap as Cowork web above: a PR environment's view host is
+// view-<env>.dev.mindshub.ai.
+export const MINDS_VIEW_URL = mindsServiceHost('view');
 
 /** Where a sign-up link was clicked: the desktop app or Cowork web. */
 export type SignupSource = 'desktop' | 'web';

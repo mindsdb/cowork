@@ -25,6 +25,7 @@ import { cacheSettings } from './lib/settingsCache';
 import { approvalsOffAtOf } from './lib/browserPrefs';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
+import { trackingSettingsBody } from './lib/trackingSettings';
 import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
@@ -3158,12 +3159,25 @@ export async function fetchPublishStats(path) {
   return req(`/publish/stats?path=${encodeURIComponent(path)}`);
 }
 
-export async function setPublishTracking(path, enabled) {
+export async function setPublishTracking(path, settings) {
   if (!path) throw new Error('Artifact has no path');
   return req('/publish/stats/tracking', {
     method: 'PUT',
-    body: JSON.stringify({ path, enabled }),
+    body: JSON.stringify({ path, ...trackingSettingsBody(settings) }),
   });
+}
+
+// One viewer's visits, each with its time per section.
+export async function fetchPublishStatsViewer(path, viewerId) {
+  if (!path) throw new Error('Artifact has no path');
+  if (!viewerId) throw new Error('No viewer');
+  return req(`/publish/stats/viewers/${encodeURIComponent(viewerId)}?path=${encodeURIComponent(path)}`);
+}
+
+// Deletes every view, visit and viewer recorded for the published artifact.
+export async function deletePublishStats(path) {
+  if (!path) throw new Error('Artifact has no path');
+  return req(`/publish/stats?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the
@@ -3759,6 +3773,29 @@ export async function patchConversation(id, body) {
     method: 'PATCH',
     body: JSON.stringify(body),
   });
+}
+
+/** GET /conversations/{id}/folders: `{ folders: [{ id, path, name, available }] }`, oldest first. */
+export async function listConversationFolders(conversationId) {
+  return req(`/conversations/${enc(conversationId)}/folders`);
+}
+
+/** POST /conversations/{id}/folders. A refusal throws with the server's user-facing reason. */
+export async function addConversationFolder(conversationId, path) {
+  return req(`/conversations/${enc(conversationId)}/folders`, {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  });
+}
+
+/** DELETE /conversations/{id}/folders/{folderId}. Detaches only; nothing on disk changes. */
+export async function removeConversationFolder(conversationId, folderId) {
+  return req(`/conversations/${enc(conversationId)}/folders/${enc(folderId)}`, { method: 'DELETE' });
+}
+
+/** GET /conversations/{id}/folders/{folderId}/files: `{ files, truncated? }`, like the project listing. */
+export async function listConversationFolderFiles(conversationId, folderId) {
+  return req(`/conversations/${enc(conversationId)}/folders/${enc(folderId)}/files`);
 }
 
 const DELETE_TURN_TIMEOUT_MS = 30000;

@@ -161,6 +161,10 @@
       "edit": "无法编辑",
       "delete": "无法删除",
       "markRead": "无法将反馈标记为已读"
+    },
+    "guide": {
+      "title": "评论",
+      "body": "可以在页面任意位置留下备注，你共享给的人也能发表评论。选出想修改的评论，让智能体来解决它们。"
     }
   },
   "export": {
@@ -247,7 +251,7 @@
   "htmlEditor": {
     "blockGone": "所选文本块已不存在。",
     "updateFailed": "无法更新此文本。",
-    "advancedMode": "高级模式 — 更改仍会保存为修订版本",
+    "advancedMode": "源代码 — 更改仍会保存为修订版本",
     "selected": "已选择 {label} — 输入即可修改",
     "preparing": "正在准备可编辑文本…",
     "noEditable": "未找到可直接编辑的文本",
@@ -267,7 +271,6 @@
       "caption": "说明文字",
       "text": "文本"
     },
-    "exitLiveEdit": "退出实时编辑",
     "mode": {
       "ariaLabel": "实时编辑模式",
       "navigate": "浏览",
@@ -275,7 +278,8 @@
       "navigateHint": "像平常一样使用页面：切换幻灯片、标签页和链接",
       "editHint": "点击任意文本进行修改",
       "navigateGuidance": "正在浏览。像平常一样使用页面，需要修改时切换到“编辑文本”。"
-    }
+    },
+    "sourceCode": "源代码"
   },
   "workspace": {
     "noWorkspace": "此产物创建于编辑功能推出之前",
@@ -359,6 +363,16 @@
     "load": {
       "sharingSettings": "分享设置",
       "currentAccess": "当前访问权限"
+    },
+    "editList": "编辑列表",
+    "sharedWith": {
+      "title": "分享对象",
+      "hint": "查看分享对象",
+      "triggerLabel": "已分享：查看分享对象",
+      "whoCanOpen": "谁可以打开",
+      "ownerOnlyTitle": "仅所有者",
+      "ownerOnlyDesc": "其他人无法打开分享链接",
+      "listWithheld": "仅限分享给的团队和人员"
     }
   },
   "previewErrors": {
@@ -676,7 +690,8 @@
     "send": "发送",
     "route": {
       "edit": "正在直接编辑…",
-      "agent": "正在交给智能体…"
+      "agent": "正在交给智能体…",
+      "reply": "正在回答…"
     },
     "stage": {
       "routing": "正在确定处理方式…",
@@ -728,28 +743,25 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "统计",
-      "hide": "隐藏统计"
-    },
     "title": "统计",
     "close": "关闭统计面板",
     "loading": "正在加载统计",
     "retry": "重试",
-    "trackViews": "统计浏览量",
-    "trackingOff": "浏览统计已关闭。开启后开始统计浏览量。",
     "metrics": {
-      "viewsInPeriod": "浏览量（30 天）",
-      "uniqueViewers": "独立访客（30 天）",
-      "totalViews": "总浏览量",
-      "lastViewed": "最近浏览"
+      "views": "浏览量",
+      "viewers": "独立访客",
+      "avgTime": "平均时长",
+      "completion": "完读率",
+      "lastViewedHint": "最近浏览 {time}"
     },
     "daysInUtc": "日期按 UTC",
     "chartLabel": "每日浏览量",
     "viewers": {
       "email": "邮箱",
       "lastSeen": "最近访问",
-      "restrictedOnly": "仅在共享受限时记录访客名称。"
+      "restrictedOnly": "仅在共享受限时记录访客名称。",
+      "anonymous": "匿名访客",
+      "none": "尚未记录访客。"
     },
     "noViews": "暂无浏览",
     "errors": {
@@ -758,7 +770,66 @@
       "reconnect": "重新连接 MindsHub 以查看统计。",
       "temporarilyUnavailable": "统计暂时不可用。",
       "loadFailed": "无法加载统计。"
-    }
+    },
+    "chartTitle": "浏览量（近 30 天）",
+    "noViewsHint": "有人打开链接后，浏览记录会显示在这里。",
+    "off": {
+      "title": "访客分析已关闭",
+      "body": "开启后可以看到谁打开了此页面、停留了多久以及阅读了哪些部分。",
+      "turnOn": "开启"
+    },
+    "pages": {
+      "title": "每页时长",
+      "audienceChart": "每页平均时长，所有访客",
+      "position": "第 {number} / {total} 页",
+      "untitled": "第 {number} 页",
+      "timeSpent": "停留时长",
+      "avgTime": "平均时长",
+      "reached": "到达率",
+      "barSpent": "第 {number} / {total} 页，{name}：{time}",
+      "barAvg": "第 {number} / {total} 页，{name}：平均 {time}",
+      "barAvgReach": "第 {number} / {total} 页，{name}：平均 {time}，{reach} 的访问到达"
+    },
+    "activity": {
+      "title": "所有访问",
+      "viewerCount": "{count, plural, other {# 位访客}}",
+      "summary": "{count, plural, other {# 次访问}} · {lastSeen}",
+      "totalTime": "总时长 {time}",
+      "viewed": "已查看：{percent}",
+      "whereabouts": "设备、操作系统和位置",
+      "loading": "正在加载访问",
+      "noVisits": "没有记录到访问。",
+      "visit": "访问",
+      "allVisits": "{count, plural, other {全部 # 次访问}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "每页时长，{name}",
+      "visitChart": "每页时长，{name}，{date} 的访问"
+    },
+    "devices": {
+      "desktop": "桌面设备",
+      "mobile": "手机",
+      "tablet": "平板",
+      "unknown": "未知设备"
+    },
+    "delete": {
+      "action": "删除分析数据",
+      "title": "删除访客分析？",
+      "message": "将删除此页面记录的所有浏览、访问和访客。此操作无法撤销。",
+      "confirm": "删除",
+      "hint": "删除为此工件记录的所有浏览和访问。此操作无法撤销。"
+    },
+    "duration": {
+      "seconds": "{s} 秒",
+      "minutes": "{m} 分",
+      "minutesSeconds": "{m} 分 {s} 秒",
+      "hours": "{h} 小时",
+      "hoursMinutes": "{h} 小时 {m} 分"
+    },
+    "guide": {
+      "title": "统计",
+      "body": "最近 30 天里，你的共享链接每天被打开的次数。你自己的访问不计入。"
+    },
+    "advanced": "高级"
   },
   "refPill": {
     "open": "打开{title}"
@@ -771,14 +842,14 @@
     "showFewer": "收起"
   },
   "layers": {
-    "ariaLabel": "查看器图层",
     "source": "实时编辑",
     "comments": "评论",
     "sourceOffPrompt": {
       "title": "关闭实时编辑？",
       "message": "实时编辑中未保存的更改将被放弃。",
       "confirmLabel": "放弃更改"
-    }
+    },
+    "stats": "统计"
   },
   "address": {
     "draft": "草稿",
@@ -786,8 +857,8 @@
     "copied": "已复制"
   },
   "layout": {
-    "maximize": "最大化",
-    "restore": "恢复大小"
+    "maximize": "全屏",
+    "restore": "退出全屏"
   },
   "imageAttachments": {
     "onlyImages": "只能附加 PNG、JPEG、GIF 和 WebP 图片。",
@@ -799,5 +870,35 @@
     "enlarge": "放大图片",
     "shrink": "缩小图片",
     "image": "图片"
+  },
+  "analytics": {
+    "title": "访客分析",
+    "collect": "收集访客分析",
+    "collectHint": "了解谁打开了此页面、停留了多久以及阅读了哪些部分。",
+    "loading": "正在加载分析设置",
+    "loadFailed": "无法加载分析设置。",
+    "addCredits": "添加额度",
+    "errors": {
+      "creditsRequired": "添加额度后才能收集访客分析。",
+      "trackingOff": "请先开启访客分析。",
+      "saveFailed": "无法保存设置。"
+    }
+  },
+  "rail": {
+    "ariaLabel": "查看器面板",
+    "sourceHint": "修改页面上的文字和布局",
+    "commentsHint": "留下并查看反馈",
+    "statsHint": "谁看过以及看了多久",
+    "commentsOpen": "评论，{count} 条待处理"
+  },
+  "liveEditPanel": {
+    "close": "关闭实时编辑面板",
+    "changes": {
+      "title": "未保存的更改",
+      "undo": "撤销此更改",
+      "undoNamed": "撤销对{label}的更改：{text}",
+      "was": "原为：{text}",
+      "emptyText": "（空）"
+    }
   }
 }

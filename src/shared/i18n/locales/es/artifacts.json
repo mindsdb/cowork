@@ -161,6 +161,10 @@
       "edit": "No se pudo editar",
       "delete": "No se pudo eliminar",
       "markRead": "No se pudieron marcar los comentarios como leídos"
+    },
+    "guide": {
+      "title": "Comentarios",
+      "body": "Deja notas en cualquier parte de la página; cualquier persona con quien la compartas también puede comentar. Elige los comentarios que quieres corregir y pide al agente que los resuelva."
     }
   },
   "export": {
@@ -247,7 +251,7 @@
   "htmlEditor": {
     "blockGone": "El bloque de texto seleccionado ya no está disponible.",
     "updateFailed": "No se pudo actualizar este texto.",
-    "advancedMode": "Modo avanzado: los cambios se siguen guardando como revisión",
+    "advancedMode": "Código fuente: los cambios se siguen guardando como revisión",
     "selected": "{label} seleccionado: escribe para cambiarlo",
     "preparing": "Preparando el texto editable…",
     "noEditable": "No se encontró texto editable directamente",
@@ -267,7 +271,6 @@
       "caption": "Leyenda",
       "text": "Texto"
     },
-    "exitLiveEdit": "Salir de la edición en vivo",
     "mode": {
       "ariaLabel": "Modo de edición en vivo",
       "navigate": "Navegar",
@@ -275,7 +278,8 @@
       "navigateHint": "Usa la página como siempre: pasa diapositivas, pestañas y enlaces",
       "editHint": "Haz clic en cualquier texto para cambiarlo",
       "navigateGuidance": "Navegando. Usa la página como siempre y luego cambia a Editar texto para modificar algo."
-    }
+    },
+    "sourceCode": "Código fuente"
   },
   "workspace": {
     "noWorkspace": "Este artefacto se creó antes de que existiera la edición",
@@ -359,6 +363,16 @@
     "load": {
       "sharingSettings": "la configuración de uso compartido",
       "currentAccess": "el acceso actual"
+    },
+    "editList": "Editar lista",
+    "sharedWith": {
+      "title": "Compartido con",
+      "hint": "Ver con quién se comparte",
+      "triggerLabel": "Compartido: ver con quién se comparte",
+      "whoCanOpen": "Quién puede abrirlo",
+      "ownerOnlyTitle": "Solo su propietario",
+      "ownerOnlyDesc": "Nadie más puede abrir el enlace compartido",
+      "listWithheld": "Solo los equipos y las personas con quienes se comparte"
     }
   },
   "previewErrors": {
@@ -676,7 +690,8 @@
     "send": "Enviar",
     "route": {
       "edit": "Editando directamente…",
-      "agent": "Pasando esto al agente…"
+      "agent": "Pasando esto al agente…",
+      "reply": "Respondiendo…"
     },
     "stage": {
       "routing": "Pensando cómo hacerlo…",
@@ -728,28 +743,25 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "Estadísticas",
-      "hide": "Ocultar estadísticas"
-    },
     "title": "Estadísticas",
     "close": "Cerrar el panel de estadísticas",
     "loading": "Cargando estadísticas",
     "retry": "Reintentar",
-    "trackViews": "Contar visitas",
-    "trackingOff": "El seguimiento está desactivado. Actívalo para empezar a contar visitas.",
     "metrics": {
-      "viewsInPeriod": "Visitas (30 días)",
-      "uniqueViewers": "Visitantes únicos (30 días)",
-      "totalViews": "Visitas totales",
-      "lastViewed": "Última visita"
+      "views": "Vistas",
+      "viewers": "Visitantes únicos",
+      "avgTime": "Tiempo medio",
+      "completion": "Finalización",
+      "lastViewedHint": "Última vista {time}"
     },
     "daysInUtc": "Días en UTC",
     "chartLabel": "Visitas por día",
     "viewers": {
       "email": "Correo electrónico",
       "lastSeen": "Última visita",
-      "restrictedOnly": "Los nombres de quienes lo ven solo se registran cuando el acceso es restringido."
+      "restrictedOnly": "Los nombres de quienes lo ven solo se registran cuando el acceso es restringido.",
+      "anonymous": "Visitante anónimo",
+      "none": "Aún no hay visitantes registrados."
     },
     "noViews": "Aún no hay visitas",
     "errors": {
@@ -758,7 +770,66 @@
       "reconnect": "Vuelve a conectar MindsHub para ver las estadísticas.",
       "temporarilyUnavailable": "Las estadísticas no están disponibles temporalmente.",
       "loadFailed": "No se pudieron cargar las estadísticas."
-    }
+    },
+    "chartTitle": "Vistas, últimos 30 días",
+    "noViewsHint": "Las vistas aparecen aquí cuando alguien abre el enlace.",
+    "off": {
+      "title": "El análisis de visitantes está desactivado",
+      "body": "Actívalo para ver quién abre esta página, cuánto tiempo se queda y qué partes lee.",
+      "turnOn": "Activar"
+    },
+    "pages": {
+      "title": "Tiempo por página",
+      "audienceChart": "Tiempo medio por página, todos los visitantes",
+      "position": "Página {number} / {total}",
+      "untitled": "Página {number}",
+      "timeSpent": "Tiempo dedicado",
+      "avgTime": "Tiempo medio",
+      "reached": "Alcanzada",
+      "barSpent": "Página {number} de {total}, {name}: {time}",
+      "barAvg": "Página {number} de {total}, {name}: {time} de media",
+      "barAvgReach": "Página {number} de {total}, {name}: {time} de media, alcanzada en el {reach} de las visitas"
+    },
+    "activity": {
+      "title": "Todas las visitas",
+      "viewerCount": "{count, plural, one {# visitante} other {# visitantes}}",
+      "summary": "{count, plural, one {# visita} other {# visitas}} · {lastSeen}",
+      "totalTime": "Tiempo total {time}",
+      "viewed": "Visto: {percent}",
+      "whereabouts": "Dispositivo, SO y ubicación",
+      "loading": "Cargando visitas",
+      "noVisits": "No hay visitas registradas.",
+      "visit": "Visita",
+      "allVisits": "{count, plural, one {# visita} other {Las # visitas}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "Tiempo por página, {name}",
+      "visitChart": "Tiempo por página, {name}, visita del {date}"
+    },
+    "devices": {
+      "desktop": "Ordenador",
+      "mobile": "Móvil",
+      "tablet": "Tableta",
+      "unknown": "Dispositivo desconocido"
+    },
+    "delete": {
+      "action": "Eliminar análisis",
+      "title": "¿Eliminar el análisis de visitantes?",
+      "message": "Se eliminarán todas las vistas, visitas y visitantes registrados para esta página. No se puede deshacer.",
+      "confirm": "Eliminar",
+      "hint": "Elimina todas las vistas y visitas registradas para este artefacto. No se puede deshacer."
+    },
+    "duration": {
+      "seconds": "{s} s",
+      "minutes": "{m} min",
+      "minutesSeconds": "{m} min {s} s",
+      "hours": "{h} h",
+      "hoursMinutes": "{h} h {m} min"
+    },
+    "guide": {
+      "title": "Estadísticas",
+      "body": "Cuántas veces se abrió tu enlace compartido cada día, en los últimos 30 días. Tus propias visitas no se cuentan."
+    },
+    "advanced": "Avanzado"
   },
   "refPill": {
     "open": "Abrir {title}"
@@ -771,14 +842,14 @@
     "showFewer": "Mostrar menos"
   },
   "layers": {
-    "ariaLabel": "Capas del visor",
     "source": "Edición en vivo",
     "comments": "Comentarios",
     "sourceOffPrompt": {
       "title": "¿Desactivar Edición en vivo?",
       "message": "Se descartarán los cambios no guardados en Edición en vivo.",
       "confirmLabel": "Descartar cambios"
-    }
+    },
+    "stats": "Estadísticas"
   },
   "address": {
     "draft": "Borrador",
@@ -786,8 +857,8 @@
     "copied": "Copiado"
   },
   "layout": {
-    "maximize": "Maximizar",
-    "restore": "Restaurar tamaño"
+    "maximize": "Pantalla completa",
+    "restore": "Salir de pantalla completa"
   },
   "imageAttachments": {
     "onlyImages": "Solo se pueden adjuntar imágenes PNG, JPEG, GIF y WebP.",
@@ -799,5 +870,35 @@
     "enlarge": "Ampliar imagen",
     "shrink": "Reducir imagen",
     "image": "Imagen"
+  },
+  "analytics": {
+    "title": "Análisis de visitantes",
+    "collect": "Recopilar análisis de visitantes",
+    "collectHint": "Ve quién abre esta página, cuánto tiempo se queda y qué partes lee.",
+    "loading": "Cargando la configuración de análisis",
+    "loadFailed": "No se pudo cargar la configuración de análisis.",
+    "addCredits": "Añadir créditos",
+    "errors": {
+      "creditsRequired": "Añade créditos para recopilar análisis de visitantes.",
+      "trackingOff": "Activa primero el análisis de visitantes.",
+      "saveFailed": "No se pudo guardar el ajuste."
+    }
+  },
+  "rail": {
+    "ariaLabel": "Paneles del visor",
+    "sourceHint": "Cambia el texto y el diseño de la página",
+    "commentsHint": "Deja comentarios y revísalos",
+    "statsHint": "Quién lo vio y durante cuánto tiempo",
+    "commentsOpen": "Comentarios, {count} abiertos"
+  },
+  "liveEditPanel": {
+    "close": "Cerrar el panel de edición en vivo",
+    "changes": {
+      "title": "Cambios sin guardar",
+      "undo": "Deshacer este cambio",
+      "undoNamed": "Deshacer el cambio en {label}: {text}",
+      "was": "Antes: {text}",
+      "emptyText": "(vacío)"
+    }
   }
 }
