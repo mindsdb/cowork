@@ -22,6 +22,7 @@ import { host, onMindsHubCredentialChanged } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
 import { startCreditsFlow } from './creditsFlow';
 import { subscribeOrganizationChanges } from './organizationChanges';
+import { ANALYTICS_MERGED_SUB_KEY, isFirstVisit, firstVisitRecorded } from './accountVisit';
 import { posthogKeyForBuildKind } from '../../../shared/analytics-project';
 
 // The single register of product events, so every event and its own properties
@@ -62,7 +63,7 @@ const EVENTS = {
   ARTIFACT_LINK_COPIED:     'artifact_link_copied',     // {} — only when the copy succeeded
   ARTIFACT_DOWNLOADED:      'artifact_downloaded',      // { kind: 'file'|'export', format? ('pdf'|'docx'|'html', exports only) } — only when the file was saved
   AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id?, entry_placement? } — only on the first task within 30 min of a console handoff
-  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, entry_placement? } — Home composer interactive after a console handoff
+  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, composer_blocked, entry_placement?, first_visit? } — a console handoff reached Home; composer_blocked when the provider panel stood in for the composer
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
   EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
@@ -188,10 +189,12 @@ const EVENTS = {
   // count is the measure of whether that path is being found.
   MENU_API_KEYS_CLICKED:    'menu_api_keys_clicked',    // {}  user menu -> console API keys page
   MENU_API_DOCS_CLICKED:    'menu_api_docs_clicked',    // {}  user menu -> docs.mindshub.ai
-  SIGNUP_LANDED:            'signup_landed',            // { from: 'desktop'|'web' }  a new account reached Cowork web Home from a sign-up link
+  SIGNUP_LANDED:            'signup_landed',            // { from: 'desktop'|'web' }  a new account reached Cowork web Home from one of Cowork's sign-up links
 };
 
 const ORG_STAMPED_EVENTS = new Set([
+  EVENTS.COMPOSER_READY,
+  EVENTS.SIGNUP_LANDED,
   EVENTS.ARTIFACT_SHARE_OPENED,
   EVENTS.ARTIFACT_ACCESS_CHANGED,
   EVENTS.ARTIFACT_ACCESS_CHANGE_FAILED,
@@ -619,7 +622,7 @@ function postCapture(event, distinctId, properties, envelope = {}, apiKey = POST
 // app_installed) follow the user in. PostHog's server-side merge is an
 // `$identify` event carrying `$anon_distinct_id`. Idempotent via a localStorage
 // marker so it fires once per account, not on every event.
-const IDENTITY_MERGED_KEY = 'cowork_identity_merged_sub';
+const IDENTITY_MERGED_KEY = ANALYTICS_MERGED_SUB_KEY;
 // The merge happens in the project the events go to, so its marker is kept per
 // project: an install that merged into production before it was routed
 // elsewhere still merges once where its events now land. Production keeps the
@@ -762,17 +765,24 @@ function capture(event, properties = {}, envelope = {}) {
           eventProps.sso_plan_tier = identity.personProps.plan_tier;
         }
       }
-      // The sharing events carry the session's organisation too, because a
-      // person who switches organisations would otherwise be read against the
-      // last one their profile names. The same session caveats apply, so they
-      // also carry `acting_organization_id`, the organization the action ran
-      // under (actingOrganizationId).
+      // The sharing events and the two arrivals carry the session's
+      // organisation too, because a person who switches organisations would
+      // otherwise be read against the last one their profile names. The same
+      // session caveats apply, so they also carry `acting_organization_id`,
+      // the organization the action ran under (actingOrganizationId).
       if (ORG_STAMPED_EVENTS.has(event) && identity.personProps.organization_id) {
         eventProps.sso_organization_id = identity.personProps.organization_id;
       }
       if (ORG_STAMPED_EVENTS.has(event)) {
         const acting = await actingOrganizationId();
         if (acting) eventProps.acting_organization_id = acting;
+      }
+      // Decided by web-main from the account's first token, so absent on
+      // Desktop and wherever storage could not be read.
+      if (event === EVENTS.COMPOSER_READY && distinctId) {
+        const first = isFirstVisit(distinctId);
+        if (first !== undefined) eventProps.first_visit = first;
+        if (first) firstVisitRecorded(distinctId);
       }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.
@@ -983,12 +993,16 @@ export function trackNewTaskMessageSent({ text, attachments = 0, start, taskMode
 
 // The console handoff's arrival: the Home composer is on screen and usable,
 // with the sample in it (`prefilled`) or empty. Separate from the console's
-// click, which only says the user asked to come here.
-export function trackComposerReady(entrySource, exampleId, prefilled, placement) {
+// click, which only says the user asked to come here. `blocked` is the arrival
+// that found the connect-a-provider panel instead of a composer; it is still
+// recorded, once, so a person who never gets a composer is not read as never
+// having arrived.
+export function trackComposerReady(entrySource, exampleId, prefilled, placement, { blocked = false } = {}) {
   capture(EVENTS.COMPOSER_READY, {
     entry_source: entrySource,
     example_id: exampleId || null,
     prefilled: Boolean(prefilled),
+    composer_blocked: Boolean(blocked),
     ...placementProps(placement),
   });
 }

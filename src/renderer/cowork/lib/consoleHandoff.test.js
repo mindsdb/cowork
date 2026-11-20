@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  captureConsoleHandoff, takeConsoleHandoff, findSample, sampleId, isUntouchedSample,
+  captureConsoleHandoff, takeConsoleHandoff, peekConsoleHandoff, markConsoleHandoffRecorded,
+  findSample, sampleId, isUntouchedSample,
 } from './consoleHandoff';
 import { OWN_WORK_MODE } from '../components/taskmodes/taskModes';
 
@@ -82,6 +83,34 @@ describe('console handoff', () => {
     expect(takeConsoleHandoff()).toMatchObject({ entrySource: 'console', placement: 'gallery' });
   });
 
+  // The console's landing after a fresh web sign-in carries no example, only
+  // the placement, and must reach Home as that landing, not as an unknown link.
+  it('keeps the sign-in landing the console sends with no example', () => {
+    window.history.replaceState(null, '', '/?from=console&placement=sign-in');
+    captureConsoleHandoff(at('?from=console&placement=sign-in'));
+
+    expect(window.location.search).toBe('');
+    expect(takeConsoleHandoff()).toEqual({
+      entrySource: 'console', mode: null, sample: null, start: null, placement: 'sign-in', recorded: false,
+    });
+  });
+
+  it('lets Home read a handoff without taking it, and note its arrival as recorded', () => {
+    captureConsoleHandoff(at('?from=console&placement=sign-in'));
+
+    expect(peekConsoleHandoff()).toMatchObject({ placement: 'sign-in', recorded: false });
+    markConsoleHandoffRecorded();
+    expect(peekConsoleHandoff()).toMatchObject({ placement: 'sign-in', recorded: true });
+    // Still there to apply, once.
+    expect(takeConsoleHandoff()).toMatchObject({ placement: 'sign-in', recorded: true });
+    expect(takeConsoleHandoff()).toBeNull();
+  });
+
+  it('marks nothing when no handoff is waiting', () => {
+    markConsoleHandoffRecorded();
+    expect(window.sessionStorage.getItem('anton.consoleHandoff')).toBeNull();
+  });
+
   it('drops a placement it does not know instead of storing it', () => {
     captureConsoleHandoff(at('?from=console&mode=games&sample=classic-snake-game&placement=<script>'));
     expect(window.sessionStorage.getItem('anton.consoleHandoff')).not.toContain('script');
@@ -115,12 +144,12 @@ describe('console handoff', () => {
   it('degrades an unknown sample to an empty composer instead of storing it', () => {
     captureConsoleHandoff(at('?from=console&mode=games&sample=<script>'));
     expect(window.sessionStorage.getItem('anton.consoleHandoff')).not.toContain('script');
-    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: null, placement: null });
+    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: null, placement: null, recorded: false });
   });
 
   it('carries the own-work start, which names the first onboarding step and no text', () => {
     captureConsoleHandoff(at('?from=console&start=own-work'));
-    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: 'own-work', placement: null });
+    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: 'own-work', placement: null, recorded: false });
   });
 
   it('drops a start it does not know instead of storing it', () => {
@@ -146,7 +175,7 @@ describe('console handoff', () => {
     window.sessionStorage.setItem('anton.consoleHandoff', JSON.stringify({
       entrySource: 'console', modeId: null, sampleId: null, at: Date.now(),
     }));
-    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: null, placement: null });
+    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: null, placement: null, recorded: false });
   });
 
   it('ignores links that are not from the console', () => {

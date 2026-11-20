@@ -13,7 +13,10 @@ import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded } from '../lib/analytics';
-import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START, RETIRED_PROMPTS } from '../lib/consoleHandoff';
+import {
+  takeConsoleHandoff, peekConsoleHandoff, markConsoleHandoffRecorded, sampleId, isUntouchedSample, OWN_WORK_START,
+  RETIRED_PROMPTS,
+} from '../lib/consoleHandoff';
 import { takeSignupWelcome, SIGNUP_FROM_DESKTOP } from '../lib/signupWelcome';
 import { productName } from '../../lib/deploymentBrand';
 import { getDraft, setDraft } from '../lib/draftStore';
@@ -67,6 +70,9 @@ const TYPE_PER_CHAR_MS = 22;
 const TYPE_TAIL_MS = 380;       // pause after last char before settling
 const SETTLE_MS    = 520;
 const CROSSFADE_MS = 800;
+// How long the connect-a-provider panel must hold before a console arrival is
+// recorded as blocked.
+const BLOCKED_ARRIVAL_SETTLE_MS = 5000;
 
 // (Sizing for each visual layer is hard-coded in the JSX below —
 // the big thinking orb is 64px, the dot is 10px, the idle orb is
@@ -561,6 +567,33 @@ export default function HomeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerUsable]);
 
+  // A console link that finds the connect-a-provider panel instead of a
+  // composer is still an arrival. Once the panel has held for a few seconds
+  // (a slow /health can report it briefly at boot), it is recorded on its own
+  // and the link is left waiting, so the sample still lands if the composer
+  // becomes usable later, without a second record.
+  const [blockedSettled, setBlockedSettled] = useState(false);
+  useEffect(() => {
+    if (!blocked) {
+      setBlockedSettled(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setBlockedSettled(true), BLOCKED_ARRIVAL_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [blocked]);
+  const blockedArrivalRef = useRef(false);
+  useEffect(() => {
+    if (!blocked || !blockedSettled || blockedArrivalRef.current) return;
+    blockedArrivalRef.current = true;
+    const handoff = peekConsoleHandoff();
+    if (!handoff || handoff.recorded) return;
+    markConsoleHandoffRecorded();
+    const exampleId = handoff.sample
+      ? sampleId(handoff.sample.label)
+      : (handoff.start === OWN_WORK_START ? OWN_WORK_START : null);
+    trackComposerReady(handoff.entrySource, exampleId, false, handoff.placement, { blocked: true });
+  }, [blocked, blockedSettled]);
+
   const handoffTakenRef = useRef(false);
   useEffect(() => {
     if (!composerUsable || handoffTakenRef.current) return;
@@ -599,7 +632,7 @@ export default function HomeView({
     // (entryExampleId), so a task sent after leaving it is not credited.
     const credited = sample ? prefilled : ownWorkOpened;
     setEntryAttribution(handoff.entrySource, sample && prefilled ? exampleId : null, handoff.placement);
-    trackComposerReady(handoff.entrySource, exampleId, credited, handoff.placement);
+    if (!handoff.recorded) trackComposerReady(handoff.entrySource, exampleId, credited, handoff.placement);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerUsable]);
 
