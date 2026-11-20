@@ -85,9 +85,12 @@ describe('DocPane sharing', () => {
     expect(state.publishOptions).toMatchObject({ enabled: true });
   });
 
-  it('in org mode an edit does not reread who the doc is shared with', async () => {
+  it.each([
+    { org: true, calls: 0, title: 'in org mode an edit does not reread who the doc is shared with' },
+    { org: false, calls: 1, title: 'on desktop a published doc rereads its publish state after an edit' },
+  ])('$title', async ({ org, calls }) => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    state.orgMode = true;
+    state.orgMode = org;
     state.publishedUrl = 'https://view.mindshub.ai/view/abc/123';
     render(<DocPane projectRef="p1" artifactId="a1" />);
     await screen.findByRole('button', { name: 'Share' });
@@ -95,19 +98,7 @@ describe('DocPane sharing', () => {
     state.refresh.mockClear();
     deliverAgentEdit();
     act(() => { vi.advanceTimersByTime(1300); });
-    expect(state.refresh).not.toHaveBeenCalled();
-  });
-
-  it('on desktop a published doc rereads its publish state after an edit', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    state.publishedUrl = 'https://view.mindshub.ai/view/abc/123';
-    render(<DocPane projectRef="p1" artifactId="a1" />);
-    await screen.findByRole('button', { name: 'Share' });
-    act(() => { vi.advanceTimersByTime(1200); });
-    state.refresh.mockClear();
-    deliverAgentEdit();
-    act(() => { vi.advanceTimersByTime(1300); });
-    expect(state.refresh).toHaveBeenCalledTimes(1);
+    expect(state.refresh).toHaveBeenCalledTimes(calls);
   });
 
   it('opens the shared link once published', async () => {
