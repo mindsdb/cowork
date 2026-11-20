@@ -25,6 +25,12 @@ export function withArtifactChange(list, updated) {
   return next;
 }
 
+/** ``list`` with the artifact ``id`` titled ``title``; the same list when nothing changes. */
+export function withArtifactTitle(list, id, title) {
+  if (!id || !title || !list.some((a) => a.id === id && a.title !== title)) return list;
+  return list.map((a) => (a.id === id ? { ...a, title } : a));
+}
+
 /**
  * Latest-wins reloads. A response is applied only if no reload started after
  * it, so an older listing cannot bring back an artifact a newer one dropped.

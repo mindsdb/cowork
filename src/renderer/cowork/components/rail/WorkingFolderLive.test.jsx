@@ -60,15 +60,13 @@ vi.mock('../artifact', () => ({
     )
     : null),
 }));
-vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
+vi.mock('../../lib/artifactsStore', async (importOriginal) => ({
+  ...(await importOriginal()),
+  deleteArtifactAndSync: vi.fn(),
+}));
 // The doc editor is tested on its own; here it only has to be what opens.
 vi.mock('../doc/DocPane', () => ({
-  default: ({ title, onClose, onTitleChange }) => (
-    <div role="region" aria-label={`Doc editor: ${title}`}>
-      <button type="button" onClick={() => onTitleChange?.('Hiring plan 2027')}>Rename</button>
-      <button type="button" onClick={() => onClose?.()}>Close doc</button>
-    </div>
-  ),
+  default: ({ title }) => <div role="region" aria-label={`Doc editor: ${title}`} />,
 }));
 vi.mock('../../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => downloadArtifactFile(...a),
@@ -91,7 +89,7 @@ import { WorkingFolderLive } from './WorkingFolderLive';
 import { fetchArtifacts, unpublishArtifact } from '../../api';
 import { setOrgMode } from '../../../lib/orgMode';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
-import { deleteArtifactAndSync } from '../../lib/artifactsStore';
+import { deleteArtifactAndSync, noteArtifactRenamed } from '../../lib/artifactsStore';
 
 const PROJECT = { id: 'proj-1', name: 'general', path: '/proj' };
 const SHARED_URL = 'https://view.mindshub.ai/r/abc';
@@ -1082,12 +1080,9 @@ describe('a doc in the artifacts rail (desktop)', () => {
     expect(openPath).not.toHaveBeenCalled();
   });
 
-  it('shows a title renamed in the doc editor once the editor closes', async () => {
-    const row = await renderRail(doc());
-    fireEvent.click(row);
-    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Close doc' }));
-    expect(screen.queryByRole('region', { name: /Doc editor/ })).toBeNull();
+  it('retitles its row when the doc is renamed in its editor, wherever that was opened', async () => {
+    await renderRail(doc());
+    act(() => noteArtifactRenamed(doc().id, 'Hiring plan 2027'));
     expect(await screen.findByText('Hiring plan 2027')).toBeInTheDocument();
     expect(screen.queryByText('Q4 Hiring Plan')).toBeNull();
   });

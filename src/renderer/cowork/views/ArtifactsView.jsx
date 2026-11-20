@@ -836,11 +836,6 @@ export default function ArtifactsView({
 
 
   const updateOne = (updated) => onArtifactChanged?.(updated);
-  // The doc editor hands back a title the doc was renamed to while open.
-  const closeDoc = (title) => {
-    if (title && viewerPath) updateOne({ path: viewerPath, title });
-    setViewerPath(null);
-  };
 
   const setBusy = (path, isBusy) => {
     setBusyPaths((prev) => {
@@ -1243,12 +1238,12 @@ export default function ArtifactsView({
       {viewer && isDocArtifact(viewer) && (
         <DocModal
           artifact={viewer}
-          onClose={closeDoc}
-          onAskAgent={onEditDocWithAgent ? (ask, title) => {
+          onClose={() => setViewerPath(null)}
+          onAskAgent={onEditDocWithAgent ? (ask) => {
             // Sent as the doc beside a chat sends it: the host takes it to the
             // doc's chat (or a new one) with the doc docked there.
-            closeDoc(title);
-            onEditDocWithAgent({ artifact: title ? { ...viewer, title } : viewer, ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask) });
+            setViewerPath(null);
+            onEditDocWithAgent({ artifact: viewer, ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask) });
           } : undefined}
         />
       )}
