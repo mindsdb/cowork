@@ -2457,19 +2457,23 @@ export default function ChatView({
   const liveHandOver = (streamingMsg?.steps || []).some((s) => s.badge === 'AskUser' && !s.data?.answer && isHandOverCard(s.data));
   // In overlay mode that question owns the screen, so the pane steps aside.
   const waitingChatCard = overlayMode && !!chatPendingQuestion && !isHandOverCard(chatPendingStep?.data) && !liveHandOver;
+  // Read as a guard inside the two effects below, never as a dependency:
+  // the card being answered must not itself re-open a pane someone closed.
+  const waitingChatCardRef = useRef(waitingChatCard);
+  waitingChatCardRef.current = waitingChatCard;
   useEffect(() => {
-    if (browserOn && liveBrowserId && !onlyWhenNeeded && !waitingChatCard) {
+    if (browserOn && liveBrowserId && !onlyWhenNeeded && !waitingChatCardRef.current) {
       setPendingRestore(null);
       setShownBrowserId(liveBrowserId);
     }
-  }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded, waitingChatCard]);
+  }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded]);
   useEffect(() => {
-    if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId || waitingChatCard) return;
+    if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId || waitingChatCardRef.current) return;
     // A phone push notification is the natural follow-up here once the iPhone app lands.
     setPendingRestore(null);
     setShownBrowserId(personsTurnBrowserId);
     setBrowserMinimized(false);
-  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, waitingChatCard, task.id]);
+  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, task.id]);
   const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
   // A request (a voice call's show_browser or browser_done) applies once:
   // coming back to the task later doesn't open the pane again. Like the
@@ -2499,13 +2503,16 @@ export default function ChatView({
   useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
   const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
   const browserPaneOpen = browserOpen || blankBrowserOpen || openingBrowserOpen;
-  // Leaving overlay mode drops the pending restore: it only applies there.
+  // Leaving overlay mode removes the reason the pane was hidden, so a debt
+  // still owed is paid at once rather than dropped unpaid.
   useEffect(() => {
-    if (!overlayMode) {
-      closedForCardRef.current = new Set();
-      setPendingRestore(null);
-    }
-  }, [overlayMode]);
+    if (overlayMode) return;
+    closedForCardRef.current = new Set();
+    if (!pendingRestore) return;
+    const { sessionId } = pendingRestore;
+    setPendingRestore(null);
+    if (viewable(sessionId)) setShownBrowserId(sessionId);
+  }, [overlayMode, pendingRestore]);
   const waitingChatQuestionId = chatPendingQuestion?.question_id || null;
   // Steps aside for a card the gate above didn't reach (a pane already open
   // by hand, or "always show the browser"). Only the real browser is booked
@@ -2528,8 +2535,8 @@ export default function ChatView({
       setOpeningBrowser(false);
     }
   }, [waitingChatCard, waitingChatQuestionId, browserOpen, blankBrowserOpen, openingBrowserOpen, shownBrowserId]);
-  // Restores once the card it was closed for is answered, keyed on the
-  // answer itself, so a stopped or abandoned turn never restores the pane.
+  // Restores once the card it was closed for is resolved (answered, timed
+  // out, cancelled); a turn that just stops with no resolution never does.
   useEffect(() => {
     if (!pendingRestore) return;
     const card = (streamingMsg?.steps || []).find((s) => s.data?.question_id === pendingRestore.questionId);

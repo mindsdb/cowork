@@ -998,5 +998,58 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
       await act(async () => {});
       expect(pane()).not.toBeNull();
     });
+
+    it('does not reopen a pane the person closed when an "always show the browser" card is later answered', async () => {
+      setWidth(800);
+      syncBrowserPrefs({ browserOnlyWhenNeeded: false });
+      const QUESTION = card('q:name-file', [{ value: 'a', label: 'Option A' }]);
+      const { rerender } = render(<ChatView task={task('ov-11', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+
+      await act(async () => { fireEvent.click(within(pane()).getByRole('button', { name: 'Close browser' })); });
+      expect(pane()).toBeNull();
+
+      rerender(<ChatView task={task('ov-11', [asked, live(QUESTION)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      rerender(<ChatView task={task('ov-11', [asked, live(answer(QUESTION))])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+    });
+
+    it('brings the pane back right away if the window widens past overlay before the card is answered ("always show the browser")', async () => {
+      setWidth(800);
+      syncBrowserPrefs({ browserOnlyWhenNeeded: false });
+      const { rerender } = render(<ChatView task={task('ov-12', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+
+      rerender(<ChatView task={task('ov-12', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      setWidth(1400);
+      rerender(<ChatView task={task('ov-12', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('brings the pane back right away if the window widens past overlay before a held step is answered (only when needed)', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-13', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+
+      rerender(<ChatView task={task('ov-13', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      setWidth(1400);
+      rerender(<ChatView task={task('ov-13', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
   });
 });
