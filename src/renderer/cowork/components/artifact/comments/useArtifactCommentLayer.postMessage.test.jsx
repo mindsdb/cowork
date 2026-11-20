@@ -183,4 +183,17 @@ describe('useArtifactCommentLayer enterModeWhenReady', () => {
     fromFrame(frame, { type: 'ready' });
     expect(modeMessages(spy)).toEqual(['enter-mode', 'exit-mode']);
   });
+
+  it('asks the next page for Comment mode, and nothing of the page going away', () => {
+    let layer;
+    render(<ModeHarness onLayer={(value) => { layer = value; }} />);
+    const frame = screen.getByTitle('Draft preview');
+    const spy = vi.spyOn(frame.contentWindow, 'postMessage');
+
+    layer.enterModeOnNextLoad();
+    expect(modeMessages(spy)).toEqual([]);
+
+    fromFrame(frame, { type: 'ready' });
+    expect(modeMessages(spy)).toEqual(['enter-mode']);
+  });
 });

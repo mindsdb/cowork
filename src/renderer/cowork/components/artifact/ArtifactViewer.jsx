@@ -1316,6 +1316,9 @@ export function ArtifactViewer({
     },
     onThreadReopened: (threadId) => {
       if (!resolvedByEditRef.current.delete(threadId)) return;
+      // Dismissed or reopened by hand since: the person's choice stands.
+      const thread = comments.threads.find((item) => item.id === threadId);
+      if (thread?.status !== 'resolved') return;
       void setCommentStatus(threadId, 'open');
     },
   });
@@ -1384,7 +1387,10 @@ export function ArtifactViewer({
       leftEditorViewRef.current = view;
       return;
     }
+    // Comments asked for Comment mode on the page this reload replaces.
+    const commentMode = layers.comments;
     void previewReload.reload(() => {
+      if (commentMode) layer.enterModeOnNextLoad?.();
       keepPlace(view);
       reloadPreview();
     });

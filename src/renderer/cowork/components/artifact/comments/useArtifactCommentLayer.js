@@ -183,6 +183,11 @@ export function useArtifactCommentLayer(
     wantModeRef.current = false;
     postToLayer({ type: on ? 'enter-mode' : 'exit-mode' });
   }, [postToLayer]);
+  // Comment mode for the next page the layer loads in, asking nothing of the
+  // one going away (a reload about to replace it).
+  const enterModeOnNextLoad = useCallback(() => {
+    wantModeRef.current = true;
+  }, []);
   // Comment mode now, or as soon as the layer is there (opening Comments).
   const enterModeWhenReady = useCallback(() => {
     wantModeRef.current = true;
@@ -193,7 +198,10 @@ export function useArtifactCommentLayer(
   const hlOn = useCallback((id) => postToLayer({ type: 'hl-on', commentId: id }), [postToLayer]);
   const hlOff = useCallback((id) => postToLayer({ type: 'hl-off', commentId: id }), [postToLayer]);
 
-  return { mode, anchorStates, onIframeLoad, exitMode, toggleMode, setPlacing, enterModeWhenReady, focus, hlOn, hlOff };
+  return {
+    mode, anchorStates, onIframeLoad, exitMode, toggleMode, setPlacing, enterModeWhenReady, enterModeOnNextLoad,
+    focus, hlOn, hlOff,
+  };
 }
 
 export default useArtifactCommentLayer;

@@ -383,7 +383,12 @@ export function QuickEditBar({
       role="region"
       onPointerEnter={() => setThreadOpen(true)}
       onPointerDown={() => setThreadOpen(true)}
-      onPointerLeave={(e) => { if (e.pointerType !== 'touch') setThreadOpen(false); }}
+      onPointerLeave={(e) => {
+        if (e.pointerType === 'touch') return;
+        // Folding would hide the focused Undo or Ask the agent instead.
+        if (threadRef.current?.contains(document.activeElement)) return;
+        setThreadOpen(false);
+      }}
       onFocus={() => setThreadOpen(true)}
     >
       {messages.length > 0 && (

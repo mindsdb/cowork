@@ -628,8 +628,9 @@ describe('ArtifactHtmlVisualEditor save progress', () => {
 describe('ArtifactHtmlVisualEditor unsaved changes', () => {
   const TWO = '<html><head></head><body><h1>Title</h1><p>Body text</p></body></html>';
 
-  function Controlled({ initial = TWO, onChange, editActions = null }) {
+  function Controlled({ initial = TWO, onChange, editActions = null, setValueRef = null }) {
     const [value, setValue] = useState(initial);
+    if (setValueRef) setValueRef.current = setValue;
     return (
       <ArtifactHtmlVisualEditor controlsTarget={panel}
         source={SOURCE} value={value} onSave={vi.fn()} draftUrl={DRAFT_URL}
@@ -713,6 +714,21 @@ describe('ArtifactHtmlVisualEditor unsaved changes', () => {
     expect(list()).not.toBeNull();
 
     view.rerender(<Controlled editActions={actions(false)} />);
+    expect(list()).toBeNull();
+  });
+
+  // Elements are known by position: after a change outside the canvas the
+  // same id can be another element, so its row goes rather than undo over it.
+  it('drops a change whose element now holds something else', async () => {
+    const setValueRef = { current: null };
+    render(<Controlled setValueRef={setValueRef} />);
+    await screen.findByTitle('Edit artifact on canvas');
+    await edit('cowork-edit-0', 'Heading', 'New title');
+    expect(list()).not.toBeNull();
+
+    // As Source code would: the heading's text changed outside the canvas.
+    act(() => setValueRef.current('<html><head></head><body><h1>Edited in the source</h1><p>Body text</p></body></html>'));
+    await screen.findByTitle('Edit artifact on canvas');
     expect(list()).toBeNull();
   });
 });

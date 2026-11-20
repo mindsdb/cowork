@@ -445,10 +445,25 @@ export function AccessChooser({
 function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = '' }) {
   const { t } = useTranslation('artifacts');
   const [open, setOpen] = useState(false);
+  // Arrow keys move through the options without picking: the radio group
+  // checks each one it lands on, and a pick closes the dropdown (and, on the
+  // summary, starts a change). Enter or a click picks.
+  const [highlighted, setHighlighted] = useState(null);
+  // The key behind the radio group's change, if any: its change details do
+  // not say whether an arrow key or a click made it.
+  const keyRef = useRef('');
+  const changeOpen = (next) => {
+    setOpen(next);
+    if (!next) setHighlighted(null);
+  };
+  const pick = (m) => {
+    changeOpen(false);
+    if (m !== value) onValueChange(m);
+  };
   const chosen = options.find((option) => option.value === value) || null;
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Root open={open} onOpenChange={changeOpen}>
         <Popover.Trigger
           className="flex w-full min-w-0 cursor-pointer items-center gap-[10px] rounded-card border border-solid border-line
             bg-surface-2 py-[10px] px-3 text-left font-body text-ink outline-none
@@ -474,14 +489,25 @@ function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = ''
         <Popover.Portal>
           <Popover.Positioner side="bottom" align="start" sideOffset={6} style={{ zIndex: 95, width: 'var(--anchor-width)' }}>
             <Popover.Popup
+              onKeyDownCapture={(event) => { keyRef.current = event.key; }}
+              onPointerDownCapture={() => { keyRef.current = ''; }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && highlighted) {
+                  event.preventDefault();
+                  pick(highlighted);
+                }
+              }}
               className="max-h-[var(--available-height,_360px)] overflow-y-auto rounded-[12px] border border-solid border-line
                 bg-surface p-2 shadow-sh-popup outline-none [transform-origin:var(--transform-origin)]
                 data-[open]:animate-scale-in data-[closed]:animate-scale-out"
             >
               <AudiencePanel
                 ariaLabel={t('publish.whoCanAccess')}
-                value={value}
-                onValueChange={(m) => { onValueChange(m); setOpen(false); }}
+                value={highlighted ?? value}
+                onValueChange={(m) => {
+                  if (keyRef.current.startsWith('Arrow')) setHighlighted(m);
+                  else pick(m);
+                }}
                 options={options.map(({ editor: _editor, ...option }) => option)}
               />
             </Popover.Popup>

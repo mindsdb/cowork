@@ -267,6 +267,8 @@ export function useQuickEdit(artifact, {
       }
       return true;
     }
+    // Set once the request was resent after a stale refusal (and a reload).
+    let reloadedForStale = false;
     try {
       let conversationId = null;
       try {
@@ -285,6 +287,9 @@ export function useQuickEdit(artifact, {
         history,
         conversationId,
         forceRoute,
+        // The bar shows an answer (done status `reply`); a server only routes
+        // a message to one when the app says so.
+        allowReply: true,
         // Only what the picker holds, by the rule every turn sends picks by;
         // the server falls back to the account's own model and effort.
         ...pickFields(depsRef.current.picks),
@@ -340,6 +345,7 @@ export function useQuickEdit(artifact, {
         const current = staleRevisionId(error);
         if (!current || streamed || !live()) throw error;
         depsRef.current.onStale?.();
+        reloadedForStale = true;
         headRef.current = current;
         await stream();
       }
@@ -349,7 +355,8 @@ export function useQuickEdit(artifact, {
       if (live() && !finished) patchReply(replyId, { state: 'error', error: tr('errors.stopped') });
     } catch (error) {
       if (controller.signal.aborted || error?.name === 'AbortError') return false;
-      if (error?.status === 409 && error?.detail?.currentRevision) depsRef.current.onStale?.();
+      // Reloaded already when the request was resent.
+      if (error?.status === 409 && error?.detail?.currentRevision && !reloadedForStale) depsRef.current.onStale?.();
       patchReply(replyId, { state: 'error', error: quickEditErrorMessage(error) });
     } finally {
       if (controllerRef.current === controller) {

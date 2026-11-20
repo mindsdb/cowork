@@ -127,4 +127,24 @@ describe('PublishMenu — the access dropdown', () => {
     // Unchanged: nothing to save yet.
     expect(update()).toBeNull();
   });
+
+  it('moves through the options with the arrow keys without picking, and Enter picks', async () => {
+    const user = userEvent.setup();
+    render(<PublishMenu controller={makeController()} />);
+    await user.click(screen.getByText('Shared'));
+    await user.click(dropdown());
+    screen.getByRole('radio', { name: /^Public/ }).focus();
+
+    await user.keyboard('{ArrowUp}');
+    // Still open, nothing drafted yet.
+    expect(screen.getAllByRole('radio').length).toBeGreaterThan(1);
+    expect(screen.queryByText('Dismiss')).toBeNull();
+    const highlighted = screen.getAllByRole('radio').find((radio) => radio.getAttribute('aria-checked') === 'true');
+    expect(highlighted).not.toHaveAccessibleName(/^Public/);
+
+    await user.keyboard('{Enter}');
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.getByText('Dismiss')).toBeInTheDocument();
+  });
 });
+

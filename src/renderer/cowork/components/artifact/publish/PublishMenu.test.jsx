@@ -80,20 +80,15 @@ describe('PublishMenu — restricted access change guard (ENG-931)', () => {
     expect(screen.queryByText('Edit list')).toBeNull();
   });
 
-  it('blocks Update too when another access is picked from the dropdown before the list loads', async () => {
+  it('offers no access dropdown before the real list loads, so no pick drafts over it', async () => {
     const user = userEvent.setup();
-    const ctrl = makeController({
-      ...RESTRICTED, accessEmails: [], accessLoaded: false, modified: true, publish: vi.fn(async () => true),
-    });
-    render(<PublishMenu controller={ctrl} />);
+    const base = { ...RESTRICTED, accessEmails: [], accessLoaded: false, modified: true };
+    const { rerender } = render(<PublishMenu controller={makeController(base)} />);
     await user.click(screen.getByText('Shared'));
-    await user.click(screen.getByTestId('access-dropdown'));
-    await user.click(screen.getByRole('radio', { name: /^Public/ }));
+    expect(screen.queryByTestId('access-dropdown')).toBeNull();
 
-    const guard = screen.getByTitle('Loading current access…');
-    expect(guard).toBeDisabled();
-    await user.click(guard);
-    expect(ctrl.publish).not.toHaveBeenCalled();
+    rerender(<PublishMenu controller={makeController({ ...base, accessEmails: ['alice@x.com'], accessLoaded: true })} />);
+    expect(screen.getByTestId('access-dropdown')).toBeInTheDocument();
   });
 
   it('opens Edit list on the real list once it arrives (no empty overwrite)', () => {

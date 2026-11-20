@@ -40,14 +40,12 @@ export function htmlText(html) {
   return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
-/* Brings the unsaved changes list in line with the source: each change reads
-   its element's HTML now, and one back to what it was is no change at all. */
+/* Brings the unsaved changes list in line with a rebuilt canvas. Elements
+   are known by position, so after a change outside the canvas (Source code,
+   another edit) the same id can name another element: a change stays only
+   while its element still holds exactly what the canvas wrote. */
 function syncChanges(changes, content, elements) {
-  return changes.flatMap((change) => {
-    const after = htmlVisualElementHtml(content, elements, change.id);
-    if (after == null || after === change.before) return [];
-    return [after === change.after ? change : { ...change, after }];
-  });
+  return changes.filter((change) => htmlVisualElementHtml(content, elements, change.id) === change.after);
 }
 
 function buildFrame(content, baseUrl) {
@@ -226,6 +224,12 @@ export function ArtifactHtmlVisualEditor({
     const change = changesRef.current.find((item) => item.id === id);
     if (!change) return;
     setChanges((list) => list.filter((item) => item.id !== id));
+    // Only over what this change wrote: an element that holds something else
+    // now is not the one it changed.
+    if (htmlVisualElementHtml(visualValueRef.current, elementRangesRef.current, id) !== change.after) {
+      setError(t('htmlEditor.blockGone'));
+      return;
+    }
     try {
       const next = restoreHtmlVisualElementAtRanges(
         visualValueRef.current,

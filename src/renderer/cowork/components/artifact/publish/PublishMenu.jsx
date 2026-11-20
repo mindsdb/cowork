@@ -626,7 +626,9 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                               pub={pub}
                               sharing={sharing}
                               orgName={orgName}
-                              picker={current.mode ? (desc) => (
+                              // Not before the real list is in: a pick drafts
+                              // over it, and would not be re-seeded (ENG-931).
+                              picker={current.mode && pub.accessLoaded ? (desc) => (
                                 <AccessChooser
                                   layout="dropdown"
                                   showEditor={false}

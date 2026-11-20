@@ -257,6 +257,7 @@ describe('ArtifactViewer quick edit bar', () => {
       expectedRevisionId: 'r1',
       conversationId: 'conv-1',
       forceRoute: null,
+      allowReply: true,
       model: null,
       reasoningEffort: null,
     });
@@ -651,16 +652,19 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(within(thread()).getByRole('button', { name: 'Undo' })).toBeEnabled();
   });
 
-  it('shows the stale error once when the retry is stale too', async () => {
+  it('shows the stale error once when the retry is stale too, reloading once', async () => {
     workspaceApi.streamQuickEdit.mockRejectedValueOnce(stale('r9')).mockRejectedValueOnce(stale('r10'));
     renderViewer();
     await screen.findByTitle('Launch brief');
+    const loadsBefore = workspaceMock.load.mock.calls.length;
 
     ask('Make the title blue');
 
     expect(await within(thread()).findByRole('alert')).toHaveTextContent('This artifact changed since you opened it.');
     expect(within(thread()).getAllByRole('alert')).toHaveLength(1);
     expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(2);
+    // The reload before the resend; not another for the second refusal.
+    expect(workspaceMock.load.mock.calls.length - loadsBefore).toBe(1);
   });
 
   it('does not retry any other 409', async () => {
@@ -1719,6 +1723,8 @@ describe('ArtifactViewer comments to the change bar', () => {
   it('resolves the comment once its fix is applied, and reopens it on Undo', async () => {
     const t1 = commentThread('t1', 'Make it blue');
     commentsState.threads = [t1];
+    // The inbox follows each status change.
+    commentsState.setStatus = vi.fn(async (_id, status) => { t1.status = status; return true; });
     workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
     workspaceApi.undoQuickEdit.mockResolvedValue({ editId: 'qe-edit-1', restored: ['index.html'], removed: [], revision: { id: 'r3' } });
     renderViewer();
@@ -1780,5 +1786,25 @@ describe('ArtifactViewer comments to the change bar', () => {
 
     expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('list', { name: 'Waiting to run' })).toBeNull();
+  });
+
+  it('leaves a comment dismissed since alone when its fix is undone', async () => {
+    const t1 = commentThread('t1', 'Make it blue');
+    commentsState.threads = [t1];
+    commentsState.setStatus = vi.fn(async (_id, status) => { t1.status = status; return true; });
+    workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+    workspaceApi.undoQuickEdit.mockResolvedValue({ editId: 'qe-edit-1', restored: ['index.html'], removed: [], revision: { id: 'r3' } });
+    renderViewer();
+    await screen.findAllByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: /^Comments/ }));
+    await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(t1); });
+    await waitFor(() => expect(commentsState.setStatus).toHaveBeenCalledWith('t1', 'resolved'));
+
+    t1.status = 'dismissed';
+    fireEvent.click(await within(thread()).findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(workspaceApi.undoQuickEdit).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+    expect(commentsState.setStatus).toHaveBeenCalledTimes(1);
   });
 });

@@ -158,4 +158,13 @@ describe('QuickEditBar thread over the artifact', () => {
     view.rerender(<QuickEditBar controller={controller([user, { ...reply(null), state: 'replied', summary: 'Hi there.' }])} />);
     expect(thread()).toHaveAttribute('data-open');
   });
+
+  it('stays open while the focus is on a button in it', () => {
+    const settled = { id: 'r1', role: 'assistant', state: 'applied', summary: 'Done.', undoable: true };
+    render(<QuickEditBar controller={{ ...controller([user, settled]), running: false, undoableId: 'r1' }} />);
+    screen.getByRole('button', { name: 'Undo' }).focus();
+
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+    expect(thread()).toHaveAttribute('data-open');
+  });
 });
