@@ -27,34 +27,3 @@ export function createBrowserWarmUp(provision, { intervalMs = WARM_UP_INTERVAL_M
     return true;
   };
 }
-
-/* The web session's own warm-up: as soon as a signed-in person opens the app,
-   and again when its tab comes back into view, so the pod is up before the
-   first task asks for it. Only where the browser is offered to them (GET
-   /browse/status answers available), debounced like a task's warm-up under
-   one key. Returns a function that stops listening. */
-export const SESSION_WARM_KEY = 'web-session';
-
-export function warmBrowserForSession({ warm, readStatus, doc = typeof document === 'undefined' ? null : document }) {
-  let offered = null;
-  let stopped = false;
-  const go = async () => {
-    if (stopped || (doc && doc.visibilityState === 'hidden')) return;
-    if (offered === null) {
-      try {
-        const status = await readStatus();
-        offered = Boolean(status?.available) && status?.enabled !== false;
-      } catch {
-        return; // Ask again next time the tab shows.
-      }
-    }
-    if (offered && !stopped) warm(SESSION_WARM_KEY);
-  };
-  void go();
-  const onVisible = () => { if (doc.visibilityState === 'visible') void go(); };
-  doc?.addEventListener('visibilitychange', onVisible);
-  return () => {
-    stopped = true;
-    doc?.removeEventListener('visibilitychange', onVisible);
-  };
-}
