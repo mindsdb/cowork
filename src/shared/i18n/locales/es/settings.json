@@ -258,7 +258,7 @@
     "topUp": "Recargar saldo →",
     "addFunds": "Agregar fondos →",
     "slowDown": "{sentence} No es un problema de créditos.",
-    "budgetReached": "Se agotó el presupuesto de tu organización. {detail}",
+    "budgetReached": "Se agotó un presupuesto. {detail}",
     "viewBudgetsArrow": "Ver presupuestos →"
   },
   "providers": {
@@ -335,7 +335,7 @@
     "modelNeedsCredits": "{model} necesita créditos. {link} para usarlo.",
     "modelNeedsCreditsNoLink": "{model} necesita créditos.",
     "topUpBalance": "Recarga tu saldo",
-    "modelBudgetReached": "{model} no puede ejecutarse porque se agotó el presupuesto de tu organización.",
+    "modelBudgetReached": "{model} no puede ejecutarse porque se agotó un presupuesto que lo cubre.",
     "viewBudgets": "Ver presupuestos",
     "imageModelNeedsMindsHub": "La generación de imágenes funciona con MindsHub. Añádelo en Proveedores de LLM para elegir un modelo de imagen.",
     "imageModelHint": "Elige el modelo que se usa para generar imágenes."

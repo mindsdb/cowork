@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+const commentsPanel = vi.hoisted(() => ({ props: null }));
 const workspaceMock = vi.hoisted(() => ({
   supported: true,
   mode: 'preview',
@@ -97,14 +98,20 @@ vi.mock('./comments', () => ({
     mode: false, anchorStates: {}, onIframeLoad: vi.fn(), exitMode: vi.fn(),
     toggleMode: vi.fn(), focus: vi.fn(), hlOn: vi.fn(), hlOff: vi.fn(),
   }),
-  CommentsPanel: () => null,
+  CommentsPanel: (props) => { commentsPanel.props = props; return null; },
   CommentsToolbar: () => null,
 }));
 vi.mock('./workspace/useArtifactWorkspace', () => ({
   useArtifactWorkspace: () => workspaceMock,
 }));
+// The props the viewer last gave the code editor, so a test can stand in for
+// the editor's own reports (its place) and its Save.
+const sourceEditorProps = vi.hoisted(() => ({ current: null }));
 vi.mock('./workspace/ArtifactSourceEditor', () => ({
-  ArtifactSourceEditor: ({ value }) => <textarea data-testid="source-editor" readOnly value={value ?? ''} />,
+  ArtifactSourceEditor: (props) => {
+    sourceEditorProps.current = props;
+    return <textarea data-testid="source-editor" readOnly value={props.value ?? ''} />;
+  },
 }));
 vi.mock('./workspace/ArtifactComparison', () => ({ ArtifactComparison: () => null }));
 vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () => null }));
@@ -112,7 +119,9 @@ vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () =>
 vi.mock('./workspace/ArtifactRevisionBar', () => ({
   ArtifactRevisionBar: ({ layerControls }) => <div className="artifact-revision-bar">{layerControls}</div>,
 }));
-vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }));
+vi.mock('../ui/Modal', () => ({
+  Modal: ({ children, fullBleed }) => <div data-testid="modal" data-full-bleed={fullBleed ? 'true' : 'false'}>{children}</div>,
+}));
 vi.mock('../ConfirmModal', () => ({
   ConfirmModal: ({ open, title, confirmLabel, cancelLabel, onConfirm, onClose }) => (open ? (
     <div role="alertdialog" aria-label={title}>
@@ -373,6 +382,51 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
   });
 
+  // Images pasted into the bar (ENG-4410) go to the editor's model with the
+  // request, and with the prompt when the change is handed to the chat.
+  function pasteImage(file) {
+    fireEvent.paste(bar(), {
+      clipboardData: {
+        files: [file],
+        items: [{ kind: 'file', type: file.type, getAsFile: () => file }],
+        types: ['Files'],
+        getData: () => '',
+      },
+    });
+  }
+
+  it('sends a pasted image with the request', async () => {
+    URL.createObjectURL ||= () => 'blob:thumb';
+    URL.revokeObjectURL ||= () => {};
+    workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    pasteImage(new File(['hello'], 'shot.png', { type: 'image/png' }));
+    ask('Make it look like this');
+
+    await within(thread()).findByText('Made the title blue.');
+    expect(workspaceApi.streamQuickEdit.mock.calls[0][1].images).toEqual([{ name: 'shot.png', data: 'aGVsbG8=' }]);
+  });
+
+  it('hands a pasted image to the chat with the prompt', async () => {
+    URL.createObjectURL ||= () => 'blob:thumb';
+    URL.revokeObjectURL ||= () => {};
+    const onAddressWithAgent = vi.fn(async () => true);
+    workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+    renderViewer({ onAddressWithAgent });
+    await screen.findByTitle('Launch brief');
+
+    pasteImage(new File(['hello'], 'shot.png', { type: 'image/png' }));
+    ask('Redo the chart like this');
+
+    await within(thread()).findByText('Sent to the chat.');
+    const [{ attachments }] = onAddressWithAgent.mock.calls[0];
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]).toMatchObject({ source: 'file', name: 'shot.png', mime: 'image/png' });
+    expect(attachments[0].pendingFile).toBeInstanceOf(File);
+  });
+
   it.each(['agent', 'escalate'])('continues in the artifact chat on %s', async (status) => {
     const onAddressWithAgent = vi.fn(async () => true);
     const onClose = vi.fn();
@@ -387,6 +441,7 @@ describe('ArtifactViewer quick edit bar', () => {
       artifact,
       prompt: 'Add last quarter sales from the warehouse\n\n(About the artifact `launch-brief`.)',
       conversationId: 'conv-1',
+      attachments: [],
     });
     // Closing the viewer shows the chat; the bar adds no button for it.
     expect(within(thread()).queryByRole('button', { name: 'Open in chat' })).toBeNull();
@@ -447,6 +502,7 @@ describe('ArtifactViewer quick edit bar', () => {
         artifact,
         prompt: 'Why is revenue down?\n\n(About the artifact `launch-brief`.)',
         conversationId: 'conv-1',
+        attachments: [],
       });
     });
   });
@@ -502,7 +558,7 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(await within(thread()).findByRole('alert')).toHaveTextContent('The editor is not available.');
   });
 
-  it('disables send while an edit runs, and aborts it when the viewer closes', async () => {
+  it('queues a message sent while an edit runs, and aborts the edit when the viewer closes', async () => {
     let signal;
     workspaceApi.streamQuickEdit.mockImplementation((_a, _b, opts) => {
       signal = opts.signal;
@@ -513,16 +569,53 @@ describe('ArtifactViewer quick edit bar', () => {
     ask('Make the title blue');
     await waitFor(() => expect(signal).toBeDefined());
 
-    fireEvent.change(bar(), { target: { value: 'And bigger' } });
-    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
-    fireEvent.keyDown(bar(), { key: 'Enter' });
+    ask('And bigger');
     expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
+    const queue = screen.getByRole('list', { name: 'Waiting to run' });
+    expect(within(queue).getByText('And bigger')).toBeInTheDocument();
 
     await act(async () => {
       view.rerender(<ArtifactViewer open={false} artifact={artifact} onClose={vi.fn()} conversationId="conv-1" />);
     });
 
     expect(signal.aborted).toBe(true);
+  });
+
+  it('runs queued messages one after another, oldest first', async () => {
+    const finishes = [];
+    workspaceApi.streamQuickEdit.mockImplementation((_a, _body, { onEvent }) => new Promise((resolve) => {
+      finishes.push(() => { onEvent({ ...applied, summary: `Done ${finishes.length}.` }); resolve(); });
+    }));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    ask('First');
+    await waitFor(() => expect(finishes).toHaveLength(1));
+    ask('Second');
+    ask('Third');
+    expect(within(screen.getByRole('list', { name: 'Waiting to run' })).getAllByRole('listitem')).toHaveLength(2);
+
+    await act(async () => { finishes[0](); });
+    await waitFor(() => expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(2));
+    expect(workspaceApi.streamQuickEdit.mock.calls[1][1].message).toBe('Second');
+
+    await act(async () => { finishes[1](); });
+    await waitFor(() => expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(3));
+    expect(workspaceApi.streamQuickEdit.mock.calls[2][1].message).toBe('Third');
+    expect(screen.queryByRole('list', { name: 'Waiting to run' })).toBeNull();
+  });
+
+  it('drops a queued message on remove', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation(() => new Promise(() => {}));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    ask('First');
+    await waitFor(() => expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1));
+    ask('Second');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from queue' }));
+
+    expect(screen.queryByRole('list', { name: 'Waiting to run' })).toBeNull();
   });
 
   it('aborts a running edit when the viewer unmounts', async () => {
@@ -879,6 +972,83 @@ describe('ArtifactViewer quick edit bar', () => {
     });
   });
 
+  // A save, a quick edit or an agent change reloads the preview; it goes
+  // back to the slide the user was on (ENG-4383).
+  describe('keeping the place across a reload', () => {
+    const loads = () => workspaceApi.loadArtifactDraftDocument.mock.calls.length;
+    const PLACE = {
+      hash: '', scrollX: 0, scrollY: 0, container: null,
+      inputs: [{ type: 'key', key: 'ArrowRight', shiftKey: false }], overflow: false, heading: 'Slide 2',
+    };
+    const fromPreview = (data) => {
+      const frame = document.querySelector('iframe[title="Launch brief"]');
+      fireEvent(window, new MessageEvent('message', {
+        source: frame.contentWindow,
+        data: { source: 'anton-preview', ...data },
+      }));
+    };
+    // The reloaded document announces itself; what the viewer sends it back.
+    const restoresAfterReload = () => {
+      const frame = document.querySelector('iframe[title="Launch brief"]');
+      const post = vi.spyOn(frame.contentWindow, 'postMessage').mockImplementation(() => {});
+      fromPreview({ type: 'document-start' });
+      return post.mock.calls.map(([message]) => message).filter((m) => m?.source === 'anton-preview-parent');
+    };
+    const previewShown = () => waitFor(() => expect(document.querySelector('iframe[title="Launch brief"]')).not.toBeNull());
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    it('sends the preview back to its slide after an applied quick edit', async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      await previewShown();
+      fromPreview({ type: 'view', ...PLACE });
+      const before = loads();
+
+      ask('Make the title blue');
+
+      await waitFor(() => expect(loads()).toBe(before + 1), { timeout: 2000 });
+      expect(restoresAfterReload()).toEqual([
+        { source: 'anton-preview-parent', type: 'restore', view: PLACE },
+      ]);
+    });
+
+    it('sends the preview to the Live editor\'s slide after a save from it', async () => {
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.draft = HTML_SOURCE.content;
+      workspaceMock.save.mockResolvedValue({ ...HTML_SOURCE, revision: { id: 'r2' } });
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      await previewShown();
+      fromPreview({ type: 'view', ...PLACE });
+      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+      const editorPlace = { ...PLACE, inputs: [...PLACE.inputs, ...PLACE.inputs], heading: 'Slide 3' };
+      act(() => sourceEditorProps.current.onViewChange(editorPlace));
+      const before = loads();
+
+      await act(async () => { await sourceEditorProps.current.onSave('<p>Hi</p>'); });
+
+      await waitFor(() => expect(loads()).toBe(before + 1));
+      expect(restoresAfterReload()).toEqual([
+        { source: 'anton-preview-parent', type: 'restore', view: editorPlace },
+      ]);
+    });
+
+    it('starts the page over on the user\'s own Reload', async () => {
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      await previewShown();
+      fromPreview({ type: 'view', ...PLACE });
+      const before = loads();
+
+      await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Reload preview' }));
+
+      await waitFor(() => expect(loads()).toBe(before + 1));
+      expect(restoresAfterReload()).toEqual([]);
+    });
+  });
+
   describe('viewer layers', () => {
     const toggle = (name) => screen.getByRole('button', { name });
     const pressed = (name) => toggle(name).getAttribute('aria-pressed');
@@ -903,7 +1073,7 @@ describe('ArtifactViewer quick edit bar', () => {
       expect(pressed('Comments')).toBe('false');
     });
 
-    it('combines Comments with Live edit (the code editor), the bar staying', async () => {
+    it('has Comments or Live edit (the code editor) on, never both, the bar staying', async () => {
       workspaceMock.commentsReady = true;
       workspaceMock.source = HTML_SOURCE;
       withBodyWidth(1200);
@@ -912,10 +1082,31 @@ describe('ArtifactViewer quick edit bar', () => {
 
       fireEvent.click(toggle('Comments'));
       fireEvent.click(toggle('Live edit'));
-
-      expect(pressed('Comments')).toBe('true');
+      expect(pressed('Comments')).toBe('false');
       expect(pressed('Live edit')).toBe('true');
+
+      fireEvent.click(toggle('Comments'));
+      expect(pressed('Comments')).toBe('true');
+      expect(pressed('Live edit')).toBe('false');
       expect(bar()).not.toBeNull();
+    });
+
+    it('asks before Comments drops unsaved Live edit text, and opens Comments once agreed', async () => {
+      workspaceMock.commentsReady = true;
+      workspaceMock.source = HTML_SOURCE;
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      fireEvent.click(toggle('Live edit'));
+      workspaceMock.dirty = true;
+
+      fireEvent.click(toggle('Comments'));
+      const prompt = await screen.findByRole('alertdialog');
+      expect(pressed('Live edit')).toBe('true');
+
+      fireEvent.click(within(prompt).getAllByRole('button')[0]);
+      await waitFor(() => expect(pressed('Comments')).toBe('true'));
+      expect(pressed('Live edit')).toBe('false');
+      expect(workspaceMock.discard).toHaveBeenCalled();
     });
 
     it('sits on the revision line, not in the header', async () => {
@@ -935,15 +1126,14 @@ describe('ArtifactViewer quick edit bar', () => {
       workspaceMock.source = HTML_SOURCE;
       const view = renderViewer();
       await screen.findByTitle('Launch brief');
-      fireEvent.click(toggle('Live edit'));
       fireEvent.click(toggle('Comments'));
       view.unmount();
 
       expect(JSON.parse(window.localStorage.getItem('cowork.artifactViewer.layers.v1')))
-        .toEqual({ source: true, comments: true });
+        .toEqual({ source: false, comments: true });
       renderViewer();
       await screen.findByTitle('Launch brief');
-      expect(pressed('Live edit')).toBe('true');
+      expect(pressed('Live edit')).toBe('false');
       expect(pressed('Comments')).toBe('true');
     });
 
@@ -1169,3 +1359,126 @@ describe('ArtifactViewer quick edit bar', () => {
   });
 });
 
+
+// Room for the artifact (ENG-4387): maximize, hide the toolbar and the quick
+// edit bar, close always on the line. Remembered on this device.
+describe('ArtifactViewer layout controls', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    workspaceMock.mode = 'preview';
+    workspaceMock.dirty = false;
+    workspaceMock.capabilities = { role: 'owner', canEdit: true, canQuickEdit: true };
+    workspaceMock.source = null;
+    workspaceApi.loadArtifactDraftDocument.mockResolvedValue({
+      content: '<html><body>Hi</body></html>', contentType: 'text/html', isHtml: true,
+    });
+  });
+
+  const revisionBar = () => document.querySelector('.artifact-revision-bar');
+  const modal = () => screen.getByTestId('modal');
+
+  it('maximizes to the window and back, from the button and from Ctrl+Shift+Enter', async () => {
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    expect(modal()).toHaveAttribute('data-full-bleed', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
+    expect(modal()).toHaveAttribute('data-full-bleed', 'true');
+
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true, shiftKey: true });
+    expect(modal()).toHaveAttribute('data-full-bleed', 'false');
+    expect(screen.getByRole('button', { name: 'Maximize' })).toBeInTheDocument();
+  });
+
+  it('offers no way to hide the toolbar or the quick edit bar, and ignores an old choice to', async () => {
+    window.localStorage.setItem('cowork.artifactViewer.layout.v1', JSON.stringify({ toolbarHidden: true, quickEditHidden: true }));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    expect(screen.queryByRole('button', { name: /toolbar/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /quick edit/i })).toBeNull();
+    expect(revisionBar()).not.toBeNull();
+    expect(bar()).not.toBeNull();
+  });
+
+  it('opens the next artifact maximized when the last one was left so', async () => {
+    const first = renderViewer();
+    await screen.findByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
+    first.unmount();
+
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    expect(modal()).toHaveAttribute('data-full-bleed', 'true');
+  });
+
+  it('keeps close at the end of the line, after maximize', async () => {
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
+
+    const controls = document.querySelector('.artifact-viewer-window-controls');
+    const buttons = within(controls).getAllByRole('button');
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Restore size', 'Close']);
+  });
+
+});
+
+// "Address with agent" sends the comment to the "Ask for a change" bar, so
+// its progress shows there, and more than one queue up (ENG-4383).
+describe('ArtifactViewer comments to the change bar', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    workspaceMock.mode = 'preview';
+    workspaceMock.dirty = false;
+    workspaceMock.source = null;
+    workspaceMock.commentsReady = true;
+    workspaceMock.capabilities = { role: 'owner', canEdit: true, canQuickEdit: true, canAddressWithAgent: true };
+    workspaceMock.addressWithAgent.mockReset();
+    workspaceMock.draft = '';
+    workspaceMock.load.mockImplementation(async () => {});
+    publishMock.url = '';
+    vi.useRealTimers();
+    workspaceApi.loadArtifactDraftDocument.mockResolvedValue({
+      content: '<html><body>Hi</body></html>', contentType: 'text/html', isHtml: true,
+    });
+    workspaceApi.streamQuickEdit.mockReset();
+    commentsPanel.props = null;
+  });
+
+  const commentThread = (id, text) => ({ id, selector: 'h1', status: 'open', payload: { text, replies: [] } });
+
+  it('sends the comment as a bar message, queues a second, and marks both on the inbox', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation(() => new Promise(() => {}));
+    renderViewer();
+    await screen.findAllByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(commentThread('t1', 'Make it blue')); });
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(commentThread('t2', 'Shorter title')); });
+
+    expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
+    expect(workspaceApi.streamQuickEdit.mock.calls[0][1].message)
+      .toBe('Address this comment on the element `h1`:\n> Make it blue');
+    expect(within(thread()).getByText(/Make it blue/)).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Waiting to run' })).getByText(/Shorter title/)).toBeInTheDocument();
+    expect(commentsPanel.props.agentWorkingThreadId).toBe('t1');
+    expect(commentsPanel.props.agentQueuedThreadIds).toEqual(['t2']);
+    expect(workspaceMock.addressWithAgent).not.toHaveBeenCalled();
+  });
+
+  it('does not queue the same comment twice', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation(() => new Promise(() => {}));
+    renderViewer();
+    await screen.findAllByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(commentThread('t1', 'Make it blue')); });
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(commentThread('t1', 'Make it blue')); });
+
+    expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('list', { name: 'Waiting to run' })).toBeNull();
+  });
+});

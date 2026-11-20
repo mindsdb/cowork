@@ -25,7 +25,7 @@ import {
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { renameClipboardImages } from '../lib/clipboardImageName';
-import { AttachmentThumbnail } from './AttachmentThumbnail';
+import { AttachmentChip } from './AttachmentChip';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
 import { host } from '../../platform/host';
@@ -80,47 +80,6 @@ function TaskModeChip({ mode, onClear }) {
       </span>
       {mode.chipLabel}
     </button>
-  );
-}
-
-function AttachmentChip({ attachment, onRemove }) {
-  const { t } = useTranslation('chat');
-  const src = attachment.source || attachment.kind || 'file';
-  const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
-  const label = src === 'connector' ? t('composer.attachment.connector')
-    : src === 'gdrive' ? 'Google Drive'
-      : src === 'notion' ? 'Notion'
-        : isImage ? t('composer.attachment.image') : t('composer.attachment.file');
-  const status = attachment.pendingFile
-    ? t('composer.attachment.queued')
-    : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
-      ? attachment.extractionStatus.replace('_', ' ')
-      : null);
-  // Pending image uploads carry the original File, so preview it straight
-  // from a local object URL (no fetch). Other attachments keep the glyph.
-  const showThumb = isImage && attachment.pendingFile;
-  return (
-    <div className="attachment-chip" title={attachment.note || attachment.textPreview || attachment.name}>
-      <span className="attachment-chip-icon">
-        {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || t('composer.attachment.image')} />
-          : src === 'connector' ? Ico.link(14)
-            : src === 'gdrive' ? Ico.googleDrive(14)
-              : src === 'notion' ? Ico.notion(14)
-                : isImage ? Ico.image(14)
-                  : Ico.doc(14)}
-      </span>
-      <span className="attachment-chip-body">
-        <span className="attachment-chip-name">{attachment.name || label}</span>
-        <span className="attachment-chip-meta">{status || label}</span>
-      </span>
-      {onRemove && (
-        <Tooltip content={t('composer.attachment.remove')}>
-          <button className="attachment-chip-remove" aria-label={t('composer.attachment.remove')} onClick={() => onRemove(attachment.id)}>
-            x
-          </button>
-        </Tooltip>
-      )}
-    </div>
   );
 }
 

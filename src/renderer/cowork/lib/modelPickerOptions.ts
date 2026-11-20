@@ -31,7 +31,7 @@ export interface ModelPickerOption {
   locked?: boolean;
   /** An org admin's model rule closes this row; no credits action applies. */
   restricted?: boolean;
-  /** The org's spending budget is used up; no credits action applies. */
+  /** A spending budget is used up; no credits action applies. */
   budgetReached?: boolean;
   /** Row tooltip. */
   title?: string;

@@ -142,6 +142,16 @@
     "cancel": "Cancelar",
     "signingOut": "Saindo…",
     "signOut": "Sair",
+    "delete": {
+      "title": "Excluir conta",
+      "subtitle": "Solicite a exclusão permanente da sua conta MindsHub.",
+      "button": "Excluir conta",
+      "confirmTitle": "Excluir sua conta MindsHub?",
+      "confirmBody": "A equipe de suporte verificará sua solicitação e providenciará a exclusão da conta e dos seus dados pessoais em até 30 dias. Alguns registros de conta, cobrança e suporte podem ser mantidos. Se você for titular de uma organização com outros membros, o suporte ajudará primeiro a transferir a titularidade. Os demais membros manterão a organização e os dados compartilhados. A exclusão é irreversível.",
+      "sending": "Enviando…",
+      "requested": "Solicitação feita em {requestedOn}. Data prevista para exclusão: {deleteBy}.",
+      "error": "Não foi possível confirmar sua solicitação. Você pode tentar novamente com segurança."
+    },
     "web": {
       "title": "Gerenciada pelo MindsHub",
       "body": "Na versão web, a conta é gerenciada pelo MindsHub."

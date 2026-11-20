@@ -96,10 +96,9 @@
     "toolbar": {
       "ariaLabel": "Barra de comentários",
       "comment": "Comentar: clique em um elemento (⌥ seleciona o contêiner)",
-      "inbox": "Caixa de comentários",
-      "hideComment": "Ocultar comentários",
-      "showComment": "Mostrar comentários",
-      "close": "Fechar comentários"
+      "navigate": "Navegar",
+      "navigateHint": "Use a página normalmente, com os comentários fixados",
+      "commentLabel": "Comentar"
     },
     "composer": {
       "placeholder": "Adicione um comentário…",
@@ -147,7 +146,12 @@
       "reopen": "Reabrir",
       "markResolved": "Marcar como resolvido",
       "resolve": "Resolver",
-      "more": "Mais"
+      "more": "Mais",
+      "agentQueued": "Na fila",
+      "edit": "Editar",
+      "editAriaLabel": "Editar comentário",
+      "pinned": "fixado",
+      "pinnedTip": "Fixado em uma parte específica do artefato. Clique no comentário para ir até lá."
     },
     "errors": {
       "load": "Falha ao carregar comentários",
@@ -229,7 +233,16 @@
     "close": "Fechar comparação",
     "reject": "Rejeitar e restaurar",
     "accept": "Aceitar e resolver",
-    "restore": "Restaurar como nova revisão"
+    "restore": "Restaurar como nova revisão",
+    "changePosition": "{current} de {count, plural, one {# alteração} other {# alterações}}",
+    "previousChange": "Alteração anterior",
+    "nextChange": "Próxima alteração",
+    "changeNavigation": "Percorrer as alterações",
+    "publishedArtifact": "Artefato publicado",
+    "reviewBeforePublishing": "Revise a alteração antes de publicar",
+    "keepDraft": "Manter como rascunho",
+    "publishChange": "Publicar esta alteração",
+    "publishing": "Publicando…"
   },
   "htmlEditor": {
     "blockGone": "O bloco de texto selecionado não está mais disponível.",
@@ -238,7 +251,9 @@
     "selected": "{label} selecionado: digite para alterar",
     "preparing": "Preparando o texto editável…",
     "noEditable": "Nenhum texto diretamente editável foi encontrado",
-    "clickToEdit": "Clique em qualquer texto do artefato para editá-lo",
+    "clickToEdit": "Clique em qualquer texto para editá-lo, inclusive botões e links.",
+    "syncingView": "Abrindo o ponto onde você estava na visualização…",
+    "keepingPlace": "Voltando ao ponto onde você estava…",
     "htmlSource": "Código HTML",
     "editing": "Editando artefato",
     "back": "Voltar ao artefato",
@@ -251,6 +266,15 @@
       "buttonLabel": "Texto do botão",
       "caption": "Legenda",
       "text": "Texto"
+    },
+    "exitLiveEdit": "Sair da edição ao vivo",
+    "mode": {
+      "ariaLabel": "Modo da edição ao vivo",
+      "navigate": "Navegar",
+      "edit": "Editar texto",
+      "navigateHint": "Use a página normalmente: passe slides, abas e links",
+      "editHint": "Clique em qualquer texto para alterá-lo",
+      "navigateGuidance": "Navegando. Use a página normalmente e depois mude para Editar texto para alterar algo."
     }
   },
   "workspace": {
@@ -387,7 +411,8 @@
     "artifactActions": "Ações do artefato",
     "moreActions": "Mais ações",
     "reloadPreview": "Recarregar visualização",
-    "close": "Fechar"
+    "close": "Fechar",
+    "unsharedChangesHint": "O link compartilhado mostra uma versão anterior. Use Atualizar em Compartilhar para publicar as alterações."
   },
   "body": {
     "previewWatermark": "Visualização",
@@ -455,7 +480,8 @@
     "discardFailed": "Não foi possível descartar essa sugestão.",
     "deleteTitle": "Excluir artefato?",
     "deleteMessage": "\"{title}\" será excluído permanentemente. Não é possível desfazer.",
-    "changedElsewhere": "Este artefato mudou. Recarregar"
+    "changedElsewhere": "Este artefato mudou. Recarregar",
+    "changePublished": "Publicado"
   },
   "artifactsView": {
     "sort": {
@@ -693,6 +719,14 @@
       "discard": "Descartar e enviar",
       "cancel": "Cancelar",
       "saveFailed": "Não foi possível salvar suas alterações, então nada foi enviado."
+    },
+    "queued": "Na fila",
+    "queueLabel": "Aguardando a vez",
+    "removeQueued": "Remover da fila",
+    "comment": {
+      "onArtifact": "Resolva este comentário sobre o artefato:",
+      "onText": "Resolva este comentário sobre o texto “{quote}”:",
+      "onElement": "Resolva este comentário sobre o elemento `{selector}`:"
     }
   },
   "stats": {
@@ -752,5 +786,20 @@
     "draft": "Rascunho",
     "copy": "Copiar endereço",
     "copied": "Copiado"
+  },
+  "layout": {
+    "maximize": "Maximizar",
+    "restore": "Restaurar tamanho"
+  },
+  "imageAttachments": {
+    "onlyImages": "Só é possível anexar imagens PNG, JPEG, GIF e WebP.",
+    "tooLarge": "{name} tem mais de 5 MB.",
+    "tooMany": "Até {count} imagens por mensagem.",
+    "drop": "Solte imagens para anexar",
+    "uploadFailed": "Não foi possível enviar a imagem. Tente novamente.",
+    "unavailable": "Imagem indisponível",
+    "enlarge": "Ampliar imagem",
+    "shrink": "Reduzir imagem",
+    "image": "Imagem"
   }
 }
