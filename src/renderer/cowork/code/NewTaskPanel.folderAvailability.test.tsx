@@ -14,6 +14,8 @@ const computer = {
 };
 
 vi.mock('../../platform/host', () => ({
+  // Console links read the signed-in account (useConsoleLink).
+  getAccessToken: () => Promise.resolve(null),
   host: { pickCodeFolder: vi.fn(), getPathForFile: vi.fn(() => '') },
   onMindsHubCredentialChanged: () => () => {},
 }));
