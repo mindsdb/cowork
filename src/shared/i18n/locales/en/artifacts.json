@@ -527,7 +527,20 @@
     "search": "Search artifacts",
     "emptyTitle": "No artifacts yet",
     "emptyBody": "When {agent} creates documents, dashboards, or code outputs they'll appear here.",
-    "working": "Working…"
+    "working": "Working…",
+    "filter": {
+      "type": "Type",
+      "allTypes": "All types",
+      "owner": "Owner",
+      "allOwners": "All owners",
+      "me": "Me",
+      "unknownOwner": "Unknown owner",
+      "anotherMember": "Another member",
+      "noMatch": "No artifacts match these filters.",
+      "clear": "Clear filters",
+      "status": "Status",
+      "allStatuses": "All statuses"
+    }
   },
   "compare": {
     "refused": "This side was still working on its last turn, so it didn't get your message. It's back in the box below.",

@@ -52,7 +52,8 @@ import {
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
 import { AUDIENCE_CHOICE, groupArtifactsBySection, isOrgSharingOn } from '../lib/orgSharing';
-import { useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
+import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
+import { artifactOwnerUserId } from '../lib/artifactAuthorship';
 import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
 import { publishFailureReason, publishRefusalMessage } from '../components/artifact/publish/publishErrors';
 import {
@@ -66,6 +67,8 @@ import { ArtifactOwnerNamesProvider, useArtifactAuthorship } from '../hooks/useA
 import {
   PageHeader,
   FilterRow,
+  FilterMenu,
+  FilterChips,
   SearchInput,
   SortPill,
   HoverMenu,
@@ -146,6 +149,23 @@ export function timestampOf(a) {
 
 // Kind pill — short uppercase tag for the file type. Pulls from
 // `artifact.kind` or falls back to the file extension.
+// Who an artifact belongs to, for the Owner filter: the caller's own, a
+// colleague by user id, or someone the server could not name.
+const OWNER_ME = 'me';
+const OWNER_UNKNOWN = 'unknown';
+function ownerKeyOf(a) {
+  const caps = a?.capabilities;
+  if (!caps || caps.role !== 'reviewer') return OWNER_ME;
+  return artifactOwnerUserId(caps) || OWNER_UNKNOWN;
+}
+
+// The status a row shows, for the Status filter: shared, not shared yet (a
+// kind that can be), or a draft (one that can't).
+function statusOf(a) {
+  if (a?.publishedUrl) return 'shared';
+  return isPublishableArtifact(a) ? 'not_shared' : 'draft';
+}
+
 function kindOf(a) {
   if (a.kind) return String(a.kind).toLowerCase();
   const ext = (a.ext || '').replace(/^\./, '').toLowerCase();
@@ -1027,9 +1047,82 @@ export default function ArtifactsView({
   };
 
   // Filter + sort.
+  // Type, Status and Owner filters (ENG-4560): a facet only where it would
+  // narrow anything, with one way to clear them all.
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const statuses = useMemo(
+    () => ['shared', 'not_shared', 'draft'].filter((s) => (list || []).some((a) => statusOf(a) === s)),
+    [list],
+  );
+  const [ownerFilter, setOwnerFilter] = useState('all');
+  const kinds = useMemo(() => [...new Set((list || []).map(kindOf))].sort(), [list]);
+  const ownerKeys = useMemo(() => [...new Set((list || []).map(ownerKeyOf))], [list]);
+  const colleagueIds = useMemo(
+    () => ownerKeys.filter((key) => key !== OWNER_ME && key !== OWNER_UNKNOWN),
+    [ownerKeys],
+  );
+  const { people: owners } = useKnownPeople(colleagueIds);
+  const ownerName = (id) => {
+    const person = owners.find((p) => p.id === id);
+    return (person && !person.pending && !person.failed && (person.name || person.email)) || t('artifactsView.filter.anotherMember');
+  };
+  // A filter on a value the list no longer has would hide everything.
+  useEffect(() => { if (typeFilter !== 'all' && !kinds.includes(typeFilter)) setTypeFilter('all'); }, [kinds, typeFilter]);
+  useEffect(() => { if (ownerFilter !== 'all' && !ownerKeys.includes(ownerFilter)) setOwnerFilter('all'); }, [ownerKeys, ownerFilter]);
+  useEffect(() => { if (statusFilter !== 'all' && !statuses.includes(statusFilter)) setStatusFilter('all'); }, [statuses, statusFilter]);
+  const STATUS_LABELS = {
+    shared: t('publish.shared'),
+    not_shared: t('status.notShared'),
+    draft: t('status.draft'),
+  };
+  const filters = [
+    kinds.length > 1 && {
+      id: 'type',
+      label: t('artifactsView.filter.type'),
+      value: typeFilter,
+      allValue: 'all',
+      onChange: setTypeFilter,
+      options: [
+        { value: 'all', label: t('artifactsView.filter.allTypes') },
+        ...kinds.map((kind) => ({ value: kind, label: kind.toUpperCase() })),
+      ],
+    },
+    statuses.length > 1 && {
+      id: 'status',
+      label: t('artifactsView.filter.status'),
+      value: statusFilter,
+      allValue: 'all',
+      onChange: setStatusFilter,
+      options: [
+        { value: 'all', label: t('artifactsView.filter.allStatuses') },
+        ...statuses.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+      ],
+    },
+    ownerKeys.length > 1 && {
+      id: 'owner',
+      label: t('artifactsView.filter.owner'),
+      value: ownerFilter,
+      allValue: 'all',
+      onChange: setOwnerFilter,
+      options: [
+        { value: 'all', label: t('artifactsView.filter.allOwners') },
+        ...(ownerKeys.includes(OWNER_ME) ? [{ value: OWNER_ME, label: t('artifactsView.filter.me') }] : []),
+        ...colleagueIds
+          .map((id) => ({ value: id, label: ownerName(id) }))
+          .sort((a, b) => a.label.localeCompare(b.label)),
+        ...(ownerKeys.includes(OWNER_UNKNOWN) ? [{ value: OWNER_UNKNOWN, label: t('artifactsView.filter.unknownOwner') }] : []),
+      ],
+    },
+  ].filter(Boolean);
+  const clearFilters = () => { setTypeFilter('all'); setStatusFilter('all'); setOwnerFilter('all'); };
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     let out = (list || []).slice();
+    if (typeFilter !== 'all') out = out.filter((a) => kindOf(a) === typeFilter);
+    if (statusFilter !== 'all') out = out.filter((a) => statusOf(a) === statusFilter);
+    if (ownerFilter !== 'all') out = out.filter((a) => ownerKeyOf(a) === ownerFilter);
     if (q) out = out.filter((a) =>
       (a.title || '').toLowerCase().includes(q)
       || (a.path || '').toLowerCase().includes(q)
@@ -1053,7 +1146,7 @@ export default function ArtifactsView({
       }
     });
     return out;
-  }, [list, search, sort]);
+  }, [list, search, sort, typeFilter, statusFilter, ownerFilter]);
 
   const total = (list || []).length;
   const { artifactsNote } = surfaceCopy(host.isWeb);
@@ -1064,15 +1157,13 @@ export default function ArtifactsView({
   const orgName = useSharingOrgName(sectionsOn);
   const teamsState = useMindsHubTeams(sectionsOn);
   // A long list sorts from its header too, in step with the pill: atop the
-  // one list, or the first section.
+  // one list, or each section.
   const sortHeader = visible.length > LIST_SORT_HEADER_MIN ? (
     <ListSortHeader
       value={sort}
       onChange={setSort}
       columns={[
         { id: 'name', label: ts('ui.sortHeader.columns.name'), sorts: ['title'] },
-        { id: 'type', label: ts('ui.sortHeader.columns.type'), sorts: ['type'] },
-        { id: 'status', label: ts('ui.sortHeader.columns.status'), sorts: ['published'] },
         { id: 'updated', label: ts('ui.sortHeader.columns.updated'), sorts: ['recent', 'oldest'] },
       ]}
     />
@@ -1171,6 +1262,8 @@ export default function ArtifactsView({
               placeholder={t('artifactsView.search')}
             />
           }
+          filter={filters.length > 0 ? <FilterMenu filters={filters} /> : undefined}
+          chips={filters.length > 0 ? <FilterChips filters={filters} onClear={clearFilters} /> : undefined}
           sort={<SortPill value={sort} onChange={setSort} options={sortOptions} />}
           view={<ViewToggle value={view} onValueChange={setView} />}
         />
@@ -1183,7 +1276,11 @@ export default function ArtifactsView({
         total={total}
         shown={visible.length}
         query={search}
-        onClear={() => setSearch('')}
+        // Search and the Type and Owner filters all narrow the list, so the
+        // copy and the action cover them all.
+        onClear={() => { setSearch(''); clearFilters(); }}
+        noMatchTitle={filters.length > 0 ? t('artifactsView.filter.noMatch') : undefined}
+        clearLabel={filters.length > 0 ? t('artifactsView.filter.clear') : undefined}
         // Each skeleton takes its loaded layout's own wrapper classes.
         skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
         skeletonClassName={effectiveView === 'grid' ? 'px-8 pb-[60px]' : LIST_CLASS}
@@ -1235,7 +1332,7 @@ export default function ArtifactsView({
                   title={<SectionTitle section={section} />}
                   description={<span data-testid="section-count">{section.artifacts.length}</span>}
                 >
-                  {section === sections[0] && sortHeader}
+                  {sortHeader}
                   {section.artifacts.map(renderRow)}
                 </ListGroup>
               ))}
