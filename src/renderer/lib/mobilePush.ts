@@ -9,11 +9,11 @@
 //   - After sign-in: if notifications are already allowed, register with
 //     APNs/FCM and send the device token to the server
 //     (POST /api/v1/push/devices). If the OS has not asked yet, it does NOT ask
-//     at launch. The first time the user starts a task, a small in-app card
+//     at launch. When the user first composes or starts a task, a small in-app card
 //     offers "Get notified when your tasks finish"; "Turn on" fires the OS
 //     prompt, "Not now" snoozes the offer for 14 days.
 //   - A tap on a notification opens its `path` in the app's router, or its
-//     `url` (a shared artifact's page) in the system browser. A tap that
+//     shared artifact in the authenticated viewer, or other URL in the browser. A tap that
 //     arrives before the router exists (cold start, or before sign-in, which
 //     reloads the page) is kept in sessionStorage and applied once it does.
 //   - On sign-out, before the tokens are cleared: DELETE the device token, so
@@ -92,7 +92,9 @@ const MAX_PATH_LENGTH = 2048;
 export function safeInAppPath(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const path = value.trim();
-  if (!path.startsWith('/') || path.startsWith('//') || path.length > MAX_PATH_LENGTH) return null;
+  // Encoding a published URL into the artifact fragment can triple its length.
+  const maxLength = path.startsWith('/artifacts#shared=') ? 3 * MAX_PATH_LENGTH + 18 : MAX_PATH_LENGTH;
+  if (!path.startsWith('/') || path.startsWith('//') || path.length > maxLength) return null;
   // eslint-disable-next-line no-control-regex
   if (/[\\\u0000-\u001f\u007f]/.test(path)) return null;
   return path;
@@ -120,6 +122,12 @@ export function actionForNotification(data: unknown): PushTapAction {
   const path = safeInAppPath(record.path);
   if (path) return { type: 'navigate', path };
   const url = safeExternalUrl(record.url);
+  if (record.kind === 'artifact_shared') {
+    // Match the published URL against the signed-in user's artifact cards.
+    // The notification itself never supplies a URL to the viewer.
+    const destination = url ? '/artifacts#' + new URLSearchParams({ shared: url }) : '/artifacts';
+    return { type: 'navigate', path: safeInAppPath(destination) ?? '/artifacts' };
+  }
   if (url) return { type: 'open-url', url };
   return { type: 'none' };
 }
@@ -242,8 +250,8 @@ export interface MobilePushController {
   start(): void;
   /** The user is signed in: register if allowed, or get ready to offer. */
   signedIn(userId: string | null | undefined): Promise<void>;
-  /** The user started a task: the moment to offer push, once. */
-  noteTaskStarted(): void;
+  /** Offer push once when composing or starting a task. */
+  offerForTask(): void;
   acceptSoftPrompt(): Promise<void>;
   dismissSoftPrompt(): void;
   getSoftPrompt(): SoftPromptState;
@@ -270,7 +278,7 @@ export function createMobilePush(deps: MobilePushDeps): MobilePushController {
   const registrations = new Set<Promise<unknown>>();
   const registeredTokens = new Set<string>();
   let signingOut: Promise<void> | null = null;
-  let taskStarted = false;
+  let taskInitiated = false;
   let offeredThisSession = false;
   let softPrompt: SoftPromptState = { visible: false };
   let navigator: ((path: string) => void) | null = null;
@@ -349,8 +357,8 @@ export function createMobilePush(deps: MobilePushDeps): MobilePushController {
     }
   };
 
-  function noteTaskStarted() {
-    taskStarted = true;
+  function offerForTask() {
+    taskInitiated = true;
     if (!userId || unavailable) return;
     if (!shouldOfferSoftPrompt({
       supported,
@@ -412,10 +420,10 @@ export function createMobilePush(deps: MobilePushDeps): MobilePushController {
         return;
       }
       // Signed in after a task was already started this session.
-      if (taskStarted) noteTaskStarted();
+      if (taskInitiated) offerForTask();
     },
 
-    noteTaskStarted,
+    offerForTask,
 
     async acceptSoftPrompt() {
       setSoftPrompt(false);
@@ -535,8 +543,8 @@ export function mobilePushSignedIn(userId: string | null | undefined): void {
   void mobilePush()?.signedIn(userId);
 }
 
-export function noteMobilePushTaskStarted(): void {
-  mobilePush()?.noteTaskStarted();
+export function offerMobileTaskNotifications(): void {
+  mobilePush()?.offerForTask();
 }
 
 export function setMobilePushNavigator(navigate: ((path: string) => void) | null): () => void {

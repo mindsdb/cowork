@@ -831,6 +831,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openCom
 
 export default function ArtifactsView({
   artifacts: cards = EMPTY_ARTIFACTS,
+  initialSharedUrl = null,
   // App owns the list (it also feeds the sidebar count), so publish-state
   // changes go up rather than into a local copy that the next prop would reset.
   // Deletes reach App on their own through artifactsStore.onArtifactDeleted.
@@ -872,12 +873,16 @@ export default function ArtifactsView({
   // By path, so the viewer always shows the current card and closes once the
   // card leaves the list (e.g. after a delete).
   const [viewerPath, setViewerPath] = useState(null);
-  const viewer = viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
+  const [sharedUrl, setSharedUrl] = useState(initialSharedUrl);
+  const viewer = sharedUrl
+    ? list.find((a) => a.publishedUrl === sharedUrl) || null
+    : viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
   // A new object each time a comments counter opens the viewer: it opens on
   // its Comments panel then (ArtifactViewer's commentsRequest), and as it
   // remembers otherwise.
   const [commentsRequest, setCommentsRequest] = useState(null);
   const openViewer = (artifact, { comments = false } = {}) => {
+    setSharedUrl(null);
     setCommentsRequest(comments ? {} : null);
     setViewerPath(artifact?.path || null);
   };
@@ -886,6 +891,7 @@ export default function ArtifactsView({
   // or added while it was open.
   const [commentsRefresh, setCommentsRefresh] = useState(0);
   const closeViewer = () => {
+    setSharedUrl(null);
     if (viewer) forgetOpenCommentCount(viewer);
     setViewerPath(null);
     setCommentsRequest(null);

@@ -158,7 +158,7 @@ import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
 import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
 import { PLATFORM_UI } from '../lib/deployment';
-import { noteMobilePushTaskStarted, setMobilePushNavigator } from '../lib/mobilePush';
+import { offerMobileTaskNotifications, setMobilePushNavigator } from '../lib/mobilePush';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -201,7 +201,7 @@ import {
 } from './lib/browserApproval';
 import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
  * created. Reads as a friendly nudge after the connect-intro card —
@@ -698,6 +698,12 @@ export function searchRecents(tasks, projects) {
       .map((task) => ({ type: 'task', id: task.id, title: task.title || tApp('common.untitledTask'), subtitle: labelFor(task) })),
     ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.id || project.name, title: projectLabel(project) })),
   ];
+}
+
+function RoutedArtifactsView(props) {
+  const location = useLocation();
+  const sharedUrl = new URLSearchParams(location.hash.slice(1)).get('shared');
+  return <ArtifactsView key={location.key} {...props} initialSharedUrl={sharedUrl} />;
 }
 
 function AppCore() {
@@ -4376,9 +4382,8 @@ function AppCore() {
       setActiveTaskId(taskId);
       setRoute('task');
     }
-    // Mobile app (ENG-4023): the first task started is when the app offers
-    // "notify me when tasks finish" (once; no-op outside the app).
-    noteMobilePushTaskStarted();
+    // Also offer for tasks sent without typing in the home composer.
+    offerMobileTaskNotifications();
 
     let resolvedId = taskId;
     /*
@@ -7268,6 +7273,7 @@ function AppCore() {
         >
         {route === 'home' && besideOffTask(
           <HomeView
+            onComposeTask={offerMobileTaskNotifications}
             greeting={look.greeting}
             showDots={showDots}
             activeTasks={activeTasks}
@@ -7627,7 +7633,7 @@ function AppCore() {
           // The viewer hands a message to an artifact's chat without leaving
           // this page, and follows the reply from that chat's task (ENG-4560).
           <ConversationTranscriptsContext.Provider value={artifactTranscripts}>
-          <ArtifactsView
+          <RoutedArtifactsView
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
             onRefreshArtifacts={reloadArtifacts}
