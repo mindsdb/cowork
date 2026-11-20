@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 const RULES_BYTES = readFileSync(resolve(__dirname, '../../__fixtures__/docs-typography/rules.json'));
 const shared = JSON.parse(RULES_BYTES);
 // The same digest is pinned in cowork-server's tests/test_docs_page_typography.py.
-const RULES_SHA256 = '6591c429ba06e88e8d6b0a3582a22ab56b59f9254e1df2b365b0298fb45092fc';
+const RULES_SHA256 = '621c3295182af196d7977c5c911ccc3e2fc9fc2fa51f7dfb49d5f3adb42be10d';
 
 const read = (name) => readFileSync(resolve(__dirname, name), 'utf8');
 const GLOBALS = readFileSync(resolve(__dirname, '../../styles/globals.css'), 'utf8');
