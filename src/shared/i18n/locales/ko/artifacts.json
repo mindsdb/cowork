@@ -363,7 +363,8 @@
     "load": {
       "sharingSettings": "공유 설정",
       "currentAccess": "현재 액세스 설정"
-    }
+    },
+    "editList": "목록 편집"
   },
   "previewErrors": {
     "reported": "{count, plural, other {미리 보기에서 오류 #개가 보고되었습니다}}",

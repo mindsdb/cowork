@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PublishMenu } from './PublishMenu';
 
@@ -50,6 +50,7 @@ describe('PublishMenu — outside-click dismiss', () => {
 });
 
 describe('PublishMenu — restricted access change guard (ENG-931)', () => {
+  // A list's people are edited from "Edit list" beside the section label.
   const RESTRICTED = {
     publishedUrl: 'https://share/abc',
     accessMode: 'restricted',
@@ -61,42 +62,55 @@ describe('PublishMenu — restricted access change guard (ENG-931)', () => {
     });
     render(<PublishMenu controller={ctrl} />);
     fireEvent.click(screen.getByText('Shared'));
-    fireEvent.click(screen.getByText('Change'));
+    fireEvent.click(screen.getByText('Edit list'));
 
     // The loading guard is not shown; the real Update button is clickable.
     expect(screen.queryByTitle('Loading current access…')).toBeNull();
     expect(screen.getByRole('button', { name: 'Update' })).not.toBeDisabled();
   });
 
-  it('blocks Update while the real list has not loaded yet (chat-bubble guard)', () => {
+  it('offers no Edit list while the real list has not loaded yet (chat-bubble guard)', () => {
     const ctrl = makeController({
       ...RESTRICTED, accessEmails: [], accessLoaded: false, modified: true,
     });
     render(<PublishMenu controller={ctrl} />);
     fireEvent.click(screen.getByText('Shared'));
-    fireEvent.click(screen.getByText('Change'));
+
+    // An empty list opened here could be saved over the real one.
+    expect(screen.queryByText('Edit list')).toBeNull();
+  });
+
+  it('blocks Update too when another access is picked from the dropdown before the list loads', async () => {
+    const user = userEvent.setup();
+    const ctrl = makeController({
+      ...RESTRICTED, accessEmails: [], accessLoaded: false, modified: true, publish: vi.fn(async () => true),
+    });
+    render(<PublishMenu controller={ctrl} />);
+    await user.click(screen.getByText('Shared'));
+    await user.click(screen.getByTestId('access-dropdown'));
+    await user.click(screen.getByRole('radio', { name: /^Public/ }));
 
     const guard = screen.getByTitle('Loading current access…');
     expect(guard).toBeDisabled();
+    await user.click(guard);
+    expect(ctrl.publish).not.toHaveBeenCalled();
   });
 
-  it('re-seeds the draft when the real list arrives after Change was opened (no empty overwrite)', () => {
+  it('opens Edit list on the real list once it arrives (no empty overwrite)', () => {
     const base = { ...RESTRICTED, accessEmails: [], accessLoaded: false, modified: false };
     const { rerender } = render(<PublishMenu controller={makeController(base)} />);
     fireEvent.click(screen.getByText('Shared'));
-    fireEvent.click(screen.getByText('Change'));
+    expect(screen.queryByText('Edit list')).toBeNull();
 
-    // Draft seeded empty (list not loaded yet).
-    const recipients = () => screen.getByRole('list', { name: 'Recipients' });
-    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull();
-
-    // Server list lands → draft re-seeds (user hasn't edited), so an empty
-    // list can never be what "Update" would submit.
+    // Server list lands: Edit list opens on it, so an empty list can never be
+    // what "Update" would submit.
     rerender(<PublishMenu controller={makeController({
       ...base, accessEmails: ['alice@x.com', 'bob@x.com'], accessLoaded: true,
     })} />);
-    expect(recipients()).toHaveTextContent('alice@x.com');
-    expect(recipients()).toHaveTextContent('bob@x.com');
+    fireEvent.click(screen.getByText('Edit list'));
+    const recipients = screen.getByRole('list', { name: 'Recipients' });
+    expect(recipients).toHaveTextContent('alice@x.com');
+    expect(recipients).toHaveTextContent('bob@x.com');
   });
 });
 
@@ -236,7 +250,7 @@ describe('PublishMenu — fits a short window', () => {
     });
     render(<PublishMenu controller={ctrl} />);
     fireEvent.click(screen.getByText('Shared'));
-    fireEvent.click(screen.getByText('Change'));
+    fireEvent.click(screen.getByText('Edit list'));
 
     const body = screen.getByTestId('publish-menu-body');
     expect(body.className).toMatch(/\boverflow-y-auto\b/);
@@ -268,8 +282,9 @@ describe('PublishMenu — fits a short window', () => {
   });
 });
 
-// The password field unfolds under its own option now; it must still be the
-// one the share is saved with.
+// The password field unfolds under its own option on a first share, and under
+// the access dropdown on a change; it must still be the one the share is saved
+// with.
 describe('PublishMenu — password share', () => {
   it('publishes a new share with the typed password', async () => {
     const ctrl = makeController({ publish: vi.fn(async () => true) });
@@ -284,12 +299,15 @@ describe('PublishMenu — password share', () => {
 
   it('changes a public share to a password one', async () => {
     const ctrl = makeController({ publishedUrl: 'https://share/abc', accessMode: 'public', publish: vi.fn(async () => true) });
+    const user = userEvent.setup();
     render(<PublishMenu controller={ctrl} />);
-    fireEvent.click(screen.getByText('Shared'));
-    fireEvent.click(screen.getByText('Change'));
-    fireEvent.click(screen.getByText('Password protected'));
-    await userEvent.type(screen.getByPlaceholderText('Add a password'), 'hunter2');
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    await user.click(screen.getByText('Shared'));
+    await user.click(screen.getByTestId('access-dropdown'));
+    await user.click(screen.getByRole('radio', { name: /^Password protected/ }));
+    // The field shows under the dropdown, not among the options.
+    const editor = screen.getByTestId('access-editor');
+    await user.type(within(editor).getByPlaceholderText('Add a password'), 'hunter2');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
     expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }));
   });
 });

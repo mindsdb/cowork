@@ -363,7 +363,8 @@
     "load": {
       "sharingSettings": "共有設定",
       "currentAccess": "現在のアクセス設定"
-    }
+    },
+    "editList": "リストを編集"
   },
   "previewErrors": {
     "reported": "{count, plural, other {プレビューで#件のエラーが報告されました}}",

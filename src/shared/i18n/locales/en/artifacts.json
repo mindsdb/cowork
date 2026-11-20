@@ -363,7 +363,8 @@
     "load": {
       "sharingSettings": "sharing settings",
       "currentAccess": "current access"
-    }
+    },
+    "editList": "Edit list"
   },
   "previewErrors": {
     "reported": "{count, plural, one {The preview reported # error} other {The preview reported # errors}}",

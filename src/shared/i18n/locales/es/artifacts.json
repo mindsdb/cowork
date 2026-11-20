@@ -363,7 +363,8 @@
     "load": {
       "sharingSettings": "la configuración de uso compartido",
       "currentAccess": "el acceso actual"
-    }
+    },
+    "editList": "Editar lista"
   },
   "previewErrors": {
     "reported": "{count, plural, one {La vista previa informó # error} other {La vista previa informó # errores}}",

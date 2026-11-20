@@ -363,7 +363,8 @@
     "load": {
       "sharingSettings": "分享设置",
       "currentAccess": "当前访问权限"
-    }
+    },
+    "editList": "编辑列表"
   },
   "previewErrors": {
     "reported": "{count, plural, other {预览报告了 # 个错误}}",
