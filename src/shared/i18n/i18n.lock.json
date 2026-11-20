@@ -24139,6 +24139,40 @@
       "text": "880be0710a88"
     }
   },
+  "artifacts:quickEdit.route.reply": {
+    "de": {
+      "from": "12c7c2675c0a",
+      "text": "eab710e61803"
+    },
+    "es": {
+      "from": "12c7c2675c0a",
+      "text": "e8bcf71295e4"
+    },
+    "fr": {
+      "from": "12c7c2675c0a",
+      "text": "057cbf4e1273"
+    },
+    "it": {
+      "from": "12c7c2675c0a",
+      "text": "1ed9ac036b0f"
+    },
+    "ja": {
+      "from": "12c7c2675c0a",
+      "text": "ccff8eb0bf0c"
+    },
+    "ko": {
+      "from": "12c7c2675c0a",
+      "text": "661a650a88d9"
+    },
+    "pt-BR": {
+      "from": "12c7c2675c0a",
+      "text": "1730ab6bb58f"
+    },
+    "zh-CN": {
+      "from": "12c7c2675c0a",
+      "text": "985511d8c078"
+    }
+  },
   "artifacts:quickEdit.send": {
     "de": {
       "from": "f6f4688ff23d",

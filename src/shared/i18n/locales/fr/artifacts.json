@@ -681,7 +681,8 @@
     "send": "Envoyer",
     "route": {
       "edit": "Modification directe…",
-      "agent": "Transmission à l'agent…"
+      "agent": "Transmission à l'agent…",
+      "reply": "Réponse en cours…"
     },
     "stage": {
       "routing": "Recherche de la meilleure approche…",

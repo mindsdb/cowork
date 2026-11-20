@@ -176,9 +176,9 @@ function ChatMirror({ reply, chatMessages, onOpenChat }) {
 
 // What a finished reply offers beside its bubble, on the same row: Undo (and
 // its Undoing… / Undone states) after an applied edit, "Ask the agent
-// instead" after a failed one. Null for any other reply.
+// instead" after a failed one or an answer. Null for any other reply.
 const hasReplySide = (reply, canUndo) => (reply.state === 'applied' && (reply.undone || canUndo))
-  || reply.state === 'failed';
+  || reply.state === 'failed' || reply.state === 'replied';
 
 function ReplySide({ reply, canUndo, busy, onUndo, onAskAgent }) {
   const { t } = useTranslation('artifacts');
@@ -201,7 +201,7 @@ function ReplySide({ reply, canUndo, busy, onUndo, onAskAgent }) {
       />
     );
   }
-  if (reply.state === 'failed') {
+  if (reply.state === 'failed' || reply.state === 'replied') {
     return <ReplyAction icon={Ico.sparkle(14)} label={t('quickEdit.askAgent')} disabled={busy} onClick={onAskAgent} />;
   }
   return null;
@@ -216,9 +216,11 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, cha
         ? t(`quickEdit.stage.${reply.stage}`)
         : reply.route === 'agent'
           ? t('quickEdit.route.agent')
-          : reply.route === 'edit'
-            ? t('quickEdit.route.edit')
-            : t('quickEdit.stage.routing');
+          : reply.route === 'reply'
+            ? t('quickEdit.route.reply')
+            : reply.route === 'edit'
+              ? t('quickEdit.route.edit')
+              : t('quickEdit.stage.routing');
     return (
       <span className="artifact-quick-edit-status" role="status">
         <Spinner /> {stage}
@@ -241,6 +243,14 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, cha
       <>
         <span>{reply.summary || t('quickEdit.failed')}</span>
       </>
+    );
+  }
+  // An answer to a question about the artifact, set like the chat's replies.
+  if (reply.state === 'replied') {
+    return (
+      <div className="artifact-quick-edit-mirror">
+        <MarkdownContent text={reply.summary} id={`quick-edit-${reply.id}`} complete size="dense" isAssistant animateStreamingWords={false} />
+      </div>
     );
   }
   if (reply.state === 'chat') {
@@ -279,8 +289,8 @@ export function QuickEditBar({
   // The thread floats over the artifact rather than pushing it up (ENG-4455).
   // It opens on a click into the bar (to type, even into an input that
   // kept the focus) or the focus arriving there, and when a message arrives
-  // or a reply settles (applied, failed, handed to the chat); it folds away
-  // when the pointer goes back to the artifact, leaving the input.
+  // or a reply settles (applied, failed, answered, handed to the chat); it
+  // folds away when the pointer goes back to the artifact, leaving the input.
   const [threadOpen, setThreadOpen] = useState(true);
   const lastStageRef = useRef('');
   useEffect(() => {

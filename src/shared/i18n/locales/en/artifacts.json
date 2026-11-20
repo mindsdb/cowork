@@ -681,7 +681,8 @@
     "send": "Send",
     "route": {
       "edit": "Editing directly…",
-      "agent": "Handing this to the agent…"
+      "agent": "Handing this to the agent…",
+      "reply": "Answering…"
     },
     "stage": {
       "routing": "Working out how to do this…",

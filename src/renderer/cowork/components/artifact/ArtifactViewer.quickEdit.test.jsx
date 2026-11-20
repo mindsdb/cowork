@@ -1,7 +1,7 @@
 /*
  * The viewer's chat bar (ENG-4227). With quick edits on, Preview carries a bar
  * at the bottom; a request streams from POST .../quick-edits and ends one of
- * five ways (applied, noop, failed, agent, escalate). The stream itself is
+ * six ways (applied, noop, failed, agent, escalate, reply). The stream itself is
  * mocked at streamQuickEdit, whose SSE parsing is covered in
  * artifactWorkspaceApi.test.js; the check answer is covered in
  * artifactCheck.test.js.
@@ -381,6 +381,84 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
   });
 
+  // A question the server answers itself (ENG-4455): the answer in the bar,
+  // nothing reloaded, no Undo, and the chat still one click away.
+  const answered = (summary) => ({
+    type: 'done', status: 'reply', summary, revisionId: null, previousRevisionId: null,
+    changed: false, check: null, editId: null, undoable: false, ms: 400,
+  });
+
+  it('shows an answer in the bar, with no Undo, and can still ask the agent', async () => {
+    const onAddressWithAgent = vi.fn(async () => true);
+    workspaceApi.streamQuickEdit.mockImplementation(plays(
+      { type: 'route', route: 'reply', confidence: 0.9, ms: 60 },
+      answered('There are **three** slides.'),
+    ));
+    renderViewer({ onAddressWithAgent });
+    await screen.findByTitle('Launch brief');
+
+    ask('How many slides are there?');
+
+    expect(await within(thread()).findByText('three')).toBeInTheDocument();
+    expect(workspaceMock.load).not.toHaveBeenCalled();
+    expect(onAddressWithAgent).not.toHaveBeenCalled();
+    expect(within(thread()).queryByRole('button', { name: 'Undo' })).toBeNull();
+
+    workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+    fireEvent.click(within(thread()).getByRole('button', { name: 'Ask the agent instead' }));
+
+    await within(thread()).findByText('Sent to the chat.');
+    expect(workspaceApi.streamQuickEdit.mock.calls[1][1])
+      .toMatchObject({ message: 'How many slides are there?', forceRoute: 'agent' });
+    expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it('says it is answering once the server routes to a reply', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation((_a, _body, { onEvent }) => {
+      onEvent({ type: 'route', route: 'reply', confidence: 0.9, ms: 60 });
+      return new Promise(() => {});
+    });
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    ask('What does this chart show?');
+
+    expect(await within(thread()).findByText('Answering…')).toBeInTheDocument();
+    expect(within(thread()).queryByText('Working in the chat…')).toBeNull();
+  });
+
+  it('keeps the Undo of an earlier edit when an answer follows it', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    ask('Make the title blue');
+    await within(thread()).findByText('Made the title blue.');
+
+    workspaceApi.streamQuickEdit.mockImplementation(plays(answered('Thanks!')));
+    ask('Great, thanks');
+    await within(thread()).findByText('Thanks!');
+
+    const undo = within(thread()).getByRole('button', { name: 'Undo' });
+    expect(undo.closest('.artifact-quick-edit-row')).toHaveTextContent('Made the title blue.');
+    // The answer goes back as history, like an edit's summary.
+    workspaceApi.streamQuickEdit.mockImplementation(plays(answered('Sure.')));
+    ask('One more question');
+    await within(thread()).findByText('Sure.');
+    expect(workspaceApi.streamQuickEdit.mock.calls[2][1].history).toContainEqual({ role: 'assistant', text: 'Thanks!' });
+  });
+
+  it('hands an empty answer to the chat', async () => {
+    const onAddressWithAgent = vi.fn(async () => true);
+    workspaceApi.streamQuickEdit.mockImplementation(plays(answered('  ')));
+    renderViewer({ onAddressWithAgent });
+    await screen.findByTitle('Launch brief');
+
+    ask('What does this chart show?');
+
+    await within(thread()).findByText('Sent to the chat.');
+    expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
+  });
+
   // Images pasted into the bar (ENG-4410) go to the editor's model with the
   // request, and with the prompt when the change is handed to the chat.
   function pasteImage(file) {
@@ -538,13 +616,61 @@ describe('ArtifactViewer quick edit bar', () => {
     ask('Make the title blue');
     await within(thread()).findByText(/An agent suggestion for this artifact is waiting/);
 
-    workspaceApi.streamQuickEdit.mockRejectedValueOnce(Object.assign(new Error('stale'), {
-      status: 409, detail: { currentRevision: { id: 'r9' } },
-    }));
+    // Stale on the retry too: only then is it shown.
+    workspaceApi.streamQuickEdit.mockRejectedValueOnce(stale('r9')).mockRejectedValueOnce(stale('r10'));
     ask('Make the title blue');
 
     await within(thread()).findByText(/This artifact changed since you opened it\./);
     expect(workspaceMock.load).toHaveBeenCalled();
+  });
+
+  // A request sent against a revision that is no longer the head is refused
+  // before anything runs; the bar reloads and sends it once more on its own.
+  const stale = (id) => Object.assign(new Error('stale'), {
+    status: 409, detail: { message: 'stale', currentRevision: { id } },
+  });
+
+  it('sends a stale request again against the new head, with no error', async () => {
+    workspaceApi.streamQuickEdit
+      .mockRejectedValueOnce(stale('r9'))
+      .mockImplementationOnce(plays({ ...applied, revisionId: 'r10', previousRevisionId: 'r9' }));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    ask('Make the title blue');
+
+    await within(thread()).findByText('Made the title blue.');
+    expect(within(thread()).queryByRole('alert')).toBeNull();
+    const calls = workspaceApi.streamQuickEdit.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0][1].expectedRevisionId).toBe('r1');
+    expect(calls[1][1]).toEqual({ ...calls[0][1], expectedRevisionId: 'r9' });
+    expect(within(thread()).getByRole('button', { name: 'Undo' })).toBeEnabled();
+  });
+
+  it('shows the stale error once when the retry is stale too', async () => {
+    workspaceApi.streamQuickEdit.mockRejectedValueOnce(stale('r9')).mockRejectedValueOnce(stale('r10'));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    ask('Make the title blue');
+
+    expect(await within(thread()).findByRole('alert')).toHaveTextContent('This artifact changed since you opened it.');
+    expect(within(thread()).getAllByRole('alert')).toHaveLength(1);
+    expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry any other 409', async () => {
+    workspaceApi.streamQuickEdit.mockRejectedValueOnce(Object.assign(new Error('running'), {
+      status: 409, detail: { message: 'running', reason: 'quick_edit_running' },
+    }));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    ask('Make the title blue');
+
+    await within(thread()).findByText(/Another change to this artifact is still running\./);
+    expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
   });
 
   it('shows the error event the server sends', async () => {

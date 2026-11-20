@@ -86,6 +86,22 @@ describe('QuickEditBar reply actions', () => {
     view.rerender(<QuickEditBar controller={ctl([user, done('noop')])} />);
     expect(document.querySelector('.artifact-quick-edit-side')).toBeNull();
   });
+
+  // A question answered in the bar (ENG-4455): the answer, set as markdown,
+  // with no Undo and the agent one click away.
+  it('shows an answer as markdown, with "Ask the agent instead" and no Undo', () => {
+    render(<QuickEditBar controller={ctl([user, done('replied', { summary: 'It has **three** slides.' })])} />);
+    const strong = screen.getByText('three');
+    expect(strong.tagName).toBe('STRONG');
+    expect(strong.closest('.artifact-quick-edit-msg')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Ask the agent instead' }).closest('.artifact-quick-edit-side')).not.toBeNull();
+  });
+
+  it('says it is answering while a reply runs', () => {
+    render(<QuickEditBar controller={controller([user, { ...reply(null), route: 'reply' }])} />);
+    expect(screen.getByRole('status')).toHaveTextContent('Answering…');
+  });
 });
 
 
@@ -127,6 +143,14 @@ describe('QuickEditBar thread over the artifact', () => {
     expect(thread()).not.toHaveAttribute('data-open');
 
     view.rerender(<QuickEditBar controller={controller([user, { ...reply(null), state: 'applied', summary: 'Done' }])} />);
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('opens again when an answer arrives', () => {
+    const view = render(<QuickEditBar controller={controller([user, { ...reply(null), route: 'reply' }])} />);
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+
+    view.rerender(<QuickEditBar controller={controller([user, { ...reply(null), state: 'replied', summary: 'Hi there.' }])} />);
     expect(thread()).toHaveAttribute('data-open');
   });
 });

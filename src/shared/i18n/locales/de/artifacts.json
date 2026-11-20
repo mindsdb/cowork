@@ -681,7 +681,8 @@
     "send": "Senden",
     "route": {
       "edit": "Wird direkt bearbeitet…",
-      "agent": "Wird an den Agenten übergeben…"
+      "agent": "Wird an den Agenten übergeben…",
+      "reply": "Wird beantwortet…"
     },
     "stage": {
       "routing": "Wird geplant…",

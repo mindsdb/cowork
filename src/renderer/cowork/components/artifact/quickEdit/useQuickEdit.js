@@ -11,6 +11,8 @@
 //   escalate  → the message is sent to the artifact's chat (`continueInChat`)
 //   failed    → the summary, and "Ask the agent instead" (forceRoute "agent")
 //   noop      → nothing changed
+//   reply     → a short answer to a question or a hello, shown in the bar;
+//               nothing changed, so no Undo (ENG-4455)
 // A check the server asks for mid-edit is answered by the open preview, the
 // same way an agent turn's check is (lib/artifactCheck).
 //
@@ -65,6 +67,15 @@ export function quickEditErrorMessage(error) {
     }
   }
   return error?.message || tr('errors.failed');
+}
+
+// The head a stale 409 names (the draft PUT's shape: the revision, or its id),
+// or null for any other error.
+function staleRevisionId(error) {
+  if (error?.status !== 409) return null;
+  const current = error?.detail?.currentRevision;
+  if (typeof current === 'string') return current || null;
+  return typeof current?.id === 'string' && current.id ? current.id : null;
 }
 
 function undoErrorMessage(error) {
@@ -221,6 +232,11 @@ export function useQuickEdit(artifact, {
         case 'failed':
           patchReply(replyId, { state: 'failed', summary });
           break;
+        case 'reply':
+          // An answer with no text is no answer: the chat takes the message.
+          if (summary.trim()) patchReply(replyId, { state: 'replied', summary });
+          else await handOff('');
+          break;
         case 'agent':
         case 'escalate':
           await handOff(summary);
@@ -255,24 +271,26 @@ export function useQuickEdit(artifact, {
         data: await fileToBase64(image.pendingFile),
       })));
       if (!live()) return false;
-      await streamQuickEdit(artifact, {
+      const body = {
         message,
         ...(encoded.length ? { images: encoded } : {}),
         history,
-        expectedRevisionId: headRef.current,
         conversationId,
         forceRoute,
         // Only what the picker holds, by the rule every turn sends picks by;
         // the server falls back to the account's own model and effort.
         ...pickFields(depsRef.current.picks),
-      }, {
+      };
+      let streamed = false;
+      const handlers = {
         signal: controller.signal,
         onEvent: (event) => {
           if (!live()) return;
+          streamed = true;
           switch (event?.type) {
             case 'route':
               patchReply(replyId, {
-                route: event.route === 'agent' ? 'agent' : 'edit',
+                route: event.route === 'agent' || event.route === 'reply' ? event.route : 'edit',
                 routeReason: typeof event.reason === 'string' ? event.reason : null,
               });
               break;
@@ -302,7 +320,21 @@ export function useQuickEdit(artifact, {
               break;
           }
         },
-      });
+      };
+      const stream = () => streamQuickEdit(artifact, { ...body, expectedRevisionId: headRef.current }, handlers);
+      try {
+        await stream();
+      } catch (error) {
+        // Sent against a revision that is no longer the head (another tab, an
+        // agent turn, a save): refused before anything ran. Reload, take the
+        // server's head, and send the same request once more; a second
+        // refusal is shown as before.
+        const current = staleRevisionId(error);
+        if (!current || streamed || !live()) throw error;
+        depsRef.current.onStale?.();
+        headRef.current = current;
+        await stream();
+      }
       // A hand-off to the chat and the reload after an applied edit both
       // finish before the bar takes the next message.
       if (settling) await settling;
@@ -380,6 +412,8 @@ export function useQuickEdit(artifact, {
       await depsRef.current.onApplied?.();
       return true;
     } catch (error) {
+      // Not retried when stale, unlike a request: the head moved past the
+      // revision this edit made, so it is no longer the newest edit.
       if (error?.status === 409 && error?.detail?.currentRevision) depsRef.current.onStale?.();
       // Nothing left to undo here: say why and stop offering it.
       const settled = error?.status === 404 || error?.detail?.reason === 'already_undone';
