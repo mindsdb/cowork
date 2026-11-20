@@ -75,6 +75,7 @@ import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { normalizePreviewView, usePreviewView } from './usePreviewView';
+import { usePreviewFit } from './usePreviewFit';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
@@ -414,6 +415,11 @@ export function ArtifactViewer({
     enabled: open && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
     scopeKey: open ? `${artifact?.id || ''}:${artifact?.path || ''}` : '',
+  });
+  // A page cut off in the frame with nothing to scroll is fitted to it.
+  const previewFit = usePreviewFit(iframeRef, {
+    enabled: open && !!(previewUrl || previewDoc),
+    resetKey: previewUrl || previewDoc,
   });
   const comments = useArtifactComments(commentUserDir, commentReportId, {
     enabled: open && commentsEnabled,
@@ -1779,6 +1785,7 @@ export function ArtifactViewer({
     kind: previewKind,
     iframeRef,
     view: previewView,
+    fitStyle: previewFit.style,
     // The Live editor's own place, for a save made from it (keepPreviewPlace).
     onEditorView,
     title,

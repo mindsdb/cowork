@@ -122,6 +122,7 @@ export function ArtifactViewerBody({
     iframeRef,
     view: previewView = null,
     onEditorView = null,
+    fitStyle = null,
     title,
     iframeReady,
     setIframeReady,
@@ -288,6 +289,9 @@ export function ArtifactViewerBody({
           style={{
             width: '100%', height: '100%', border: 0, background: '#fff',
             opacity: iframeReady ? 1 : 0, transition: 'opacity var(--dur-layout) ease',
+            // A page cut off with nothing to scroll: as tall as it asks,
+            // scaled to fit (usePreviewFit).
+            ...fitStyle,
           }}
         />
       )}
