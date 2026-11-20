@@ -43,7 +43,7 @@ import Ico from '../Icons';
 import { commentFixMessage } from '../../lib/commentFixRequest';
 import { threadImageFiles } from '../../lib/commentImages';
 import { imageAttachment } from '../../lib/imageAttachments';
-import { commentedBlocks, docAnchorStates, docCommentSelector, locateComment } from './docComments';
+import { commentedBlocks, docAnchorStates, docCommentSelector, threadLocations } from './docComments';
 import { useDocComments } from './useDocComments';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
@@ -243,25 +243,33 @@ export default function DocPane({
     if (inboxOpen && unreadCount > 0) markRead();
   }, [inboxOpen, unreadCount, markRead]);
   const threads = comments.threads;
-  const anchorStates = useMemo(() => docAnchorStates(doc, threads), [doc, threads]);
+  const locations = useMemo(() => threadLocations(doc, threads), [doc, threads]);
+  const anchorStates = useMemo(() => docAnchorStates(threads, locations), [threads, locations]);
   const commented = useMemo(
-    () => (inboxOpen && !version ? commentedBlocks(doc, threads) : NO_BLOCKS),
-    [inboxOpen, version, doc, threads],
+    () => (inboxOpen && !version ? commentedBlocks(threads, locations) : NO_BLOCKS),
+    [inboxOpen, version, threads, locations],
   );
   // The blocks a card in the inbox points at: while it is hovered, and for a
   // moment after it is clicked (its tab opened and the page scrolled there).
   const [pointed, setPointed] = useState(NO_BLOCKS);
   const [focused, setFocused] = useState(null);
-  const blocksOf = useCallback((threadId) => {
-    const thread = threads.find((item) => item.id === threadId);
-    return thread?.selector ? locateComment(doc, thread.selector) : null;
-  }, [threads, doc]);
   const focusThread = useCallback((threadId) => {
-    const where = blocksOf(threadId);
+    const where = locations.get(threadId);
     if (!where) return;
     setActiveTab(where.tabId);
     setFocused({ blockIds: where.blockIds });
-  }, [blocksOf]);
+  }, [locations]);
+  // A card resolved, reopened or deleted under the pointer can leave the list
+  // without a mouseleave, so acting on one drops its highlight.
+  const { setStatus: setCommentStatus, deleteThread: deleteCommentThread } = comments;
+  const onCommentStatus = useCallback((id, status) => {
+    setPointed(NO_BLOCKS);
+    return setCommentStatus(id, status);
+  }, [setCommentStatus]);
+  const onDeleteComment = useCallback((id) => {
+    setPointed(NO_BLOCKS);
+    return deleteCommentThread(id);
+  }, [deleteCommentThread]);
   useEffect(() => {
     if (!focused) return undefined;
     const first = rootRef.current?.querySelector(`[data-block-id="${focused.blockIds[0]}"]`);
@@ -275,17 +283,17 @@ export default function DocPane({
   );
   const commentKind = comments.viewer?.role === 'reviewer' ? 'issue' : 'review';
   const createComment = comments.create;
-  const commentOnBlocks = useCallback(async ({ tab: tabId, blockIds, quote, text }) => {
-    const ok = await createComment({ selector: docCommentSelector({ tab: tabId, blockIds, quote }), text, kind: commentKind });
-    if (ok) setCommentsOpen(true);
-    return ok;
+  // The inbox opens first: the new thread shows there, and so does a failure to post it.
+  const commentOnBlocks = useCallback(({ tab: tabId, blockIds, quote, text }) => {
+    setCommentsOpen(true);
+    return createComment({ selector: docCommentSelector({ tab: tabId, blockIds, quote }), text, kind: commentKind });
   }, [createComment, commentKind]);
   // A comment sent to the agent goes the way "Edit with agent" goes, on the
   // blocks it was made on, with the thread's words and images.
   const loadCommentImage = comments.loadImage;
   const addressWithAgent = useCallback(async (thread) => {
     if (!askAgent) return;
-    const where = thread?.selector ? locateComment(doc, thread.selector) : null;
+    const where = locations.get(thread.id);
     const files = await threadImageFiles(thread, (id) => loadCommentImage(id));
     askAgent({
       blockIds: where?.blockIds || [],
@@ -293,7 +301,7 @@ export default function DocPane({
       tabId: where?.tabId || tab?.id || null,
       attachments: files.map(imageAttachment),
     });
-  }, [askAgent, doc, tab, loadCommentImage]);
+  }, [askAgent, locations, tab, loadCommentImage]);
   const openComments = (threads || [])
     .filter((thread) => thread.status !== 'resolved' && thread.status !== 'dismissed').length;
   const railTabs = !preview || !doc ? [] : [
@@ -604,78 +612,80 @@ export default function DocPane({
 
       {/* The page and, as a preview, the comments panel and the panel rail beside it. */}
       <div className="doc-workarea">
-        <div className="doc-workarea__main">
-          {status === 'loading' && !doc && (
-            <div className="doc-scroll"><div className="doc-skeleton" aria-label={t('pane.loading')}><div /><div /><div style={{ width: '82%' }} /><div style={{ width: '64%' }} /></div></div>
-          )}
-          {status === 'error' && !doc && (
-            <div className="doc-state">{error?.status === 404 ? t('pane.gone') : t('pane.openFailed', { reason: error?.message || '' })}</div>
-          )}
-          {shown && shownTab && (
-            <div className="doc-body">
-              {tabbed && !narrow && (
-                <TabRail tabs={shown.tabs} activeId={shownTab.id} unseen={version ? NO_TABS : unseen} editable={editable && !version}
-                  onSelect={setActiveTab} apply={apply} idBase={tabsId} hidden={tabsHidden} onHide={hideTabs} addable={!preview} />
-              )}
-              <div className="doc-scroll">
-                {tabbed && narrow && (
-                  <TabStrip tabs={shown.tabs} activeId={shownTab.id} onSelect={setActiveTab} idBase={tabsId}
-                    onAdd={editable && !version && !preview ? addTab : undefined} unseen={version ? NO_TABS : unseen} />
+        <div className="doc-workarea__stage">
+          <div className="doc-workarea__main">
+            {status === 'loading' && !doc && (
+              <div className="doc-scroll"><div className="doc-skeleton" aria-label={t('pane.loading')}><div /><div /><div style={{ width: '82%' }} /><div style={{ width: '64%' }} /></div></div>
+            )}
+            {status === 'error' && !doc && (
+              <div className="doc-state">{error?.status === 404 ? t('pane.gone') : t('pane.openFailed', { reason: error?.message || '' })}</div>
+            )}
+            {shown && shownTab && (
+              <div className="doc-body">
+                {tabbed && !narrow && (
+                  <TabRail tabs={shown.tabs} activeId={shownTab.id} unseen={version ? NO_TABS : unseen} editable={editable && !version}
+                    onSelect={setActiveTab} apply={apply} idBase={tabsId} hidden={tabsHidden} onHide={hideTabs} addable={!preview} />
                 )}
-                <div {...(tabbed ? { role: 'tabpanel', id: `${tabsId}-panel`, 'aria-labelledby': tabElementId(tabsId, shownTab.id) } : {})}>
-                  <PendingEdits.Provider value={onPendingChange}>
-                    <DocImageLoader.Provider value={loadImage}>
-                    <DocCanvas
-                      key={version ? `${shownTab.id}@${version.entry.rev}` : shownTab.id}
-                      doc={shown}
-                      tab={shownTab}
-                      editable={editable && !version}
-                      apply={apply}
-                      flash={version ? NO_FLASH : flash}
-                      changed={changed}
-                      agentLive={live}
-                      onAskAgent={version ? undefined : askAgent}
-                      onSelectionChange={onSelectionChange}
-                      onAddTab={preview ? undefined : addTab}
-                      nameTitle={naming === shownTab.id}
-                      onNamed={named}
-                      onUploadImage={uploadImage}
-                      onComment={comments.enabled && !version ? commentOnBlocks : undefined}
-                      commented={commented}
-                      highlighted={version ? NO_BLOCKS : highlighted}
-                    />
-                    </DocImageLoader.Provider>
-                  </PendingEdits.Provider>
+                <div className="doc-scroll">
+                  {tabbed && narrow && (
+                    <TabStrip tabs={shown.tabs} activeId={shownTab.id} onSelect={setActiveTab} idBase={tabsId}
+                      onAdd={editable && !version && !preview ? addTab : undefined} unseen={version ? NO_TABS : unseen} />
+                  )}
+                  <div {...(tabbed ? { role: 'tabpanel', id: `${tabsId}-panel`, 'aria-labelledby': tabElementId(tabsId, shownTab.id) } : {})}>
+                    <PendingEdits.Provider value={onPendingChange}>
+                      <DocImageLoader.Provider value={loadImage}>
+                      <DocCanvas
+                        key={version ? `${shownTab.id}@${version.entry.rev}` : shownTab.id}
+                        doc={shown}
+                        tab={shownTab}
+                        editable={editable && !version}
+                        apply={apply}
+                        flash={version ? NO_FLASH : flash}
+                        changed={changed}
+                        agentLive={live}
+                        onAskAgent={version ? undefined : askAgent}
+                        onSelectionChange={onSelectionChange}
+                        onAddTab={preview ? undefined : addTab}
+                        nameTitle={naming === shownTab.id}
+                        onNamed={named}
+                        onUploadImage={uploadImage}
+                        onComment={comments.enabled && !version ? commentOnBlocks : undefined}
+                        commented={commented}
+                        highlighted={version ? NO_BLOCKS : highlighted}
+                      />
+                      </DocImageLoader.Provider>
+                    </PendingEdits.Provider>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+          </div>
+          {preview && (
+            <ViewerSidePanel id={sidePanelId} mode={inboxOpen ? 'comments' : null} label={tArtifacts('layers.comments')}>
+              {() => (
+                <CommentsPanel
+                  threads={threads}
+                  anchorStates={anchorStates}
+                  error={comments.error}
+                  expired={comments.expired}
+                  viewer={comments.viewer}
+                  capabilities={comments.capabilities}
+                  onStatus={onCommentStatus}
+                  onAddressWithAgent={askAgent ? addressWithAgent : undefined}
+                  onDeleteThread={onDeleteComment}
+                  onEditThread={comments.editThread}
+                  onCreate={comments.create}
+                  onReply={comments.reply}
+                  loadImage={comments.loadImage}
+                  onHoverThread={(id) => setPointed(new Set(locations.get(id)?.blockIds || []))}
+                  onLeaveThread={() => setPointed(NO_BLOCKS)}
+                  onFocusThread={focusThread}
+                  onClose={() => setCommentsOpen(false)}
+                />
+              )}
+            </ViewerSidePanel>
           )}
         </div>
-        {preview && (
-          <ViewerSidePanel id={sidePanelId} mode={inboxOpen ? 'comments' : null} label={tArtifacts('layers.comments')}>
-            {() => (
-              <CommentsPanel
-                threads={threads}
-                anchorStates={anchorStates}
-                error={comments.error}
-                expired={comments.expired}
-                viewer={comments.viewer}
-                capabilities={comments.capabilities}
-                onStatus={comments.setStatus}
-                onAddressWithAgent={askAgent ? addressWithAgent : undefined}
-                onDeleteThread={comments.deleteThread}
-                onEditThread={comments.editThread}
-                onCreate={comments.create}
-                onReply={comments.reply}
-                loadImage={comments.loadImage}
-                onHoverThread={(id) => setPointed(new Set(blocksOf(id)?.blockIds || []))}
-                onLeaveThread={() => setPointed(NO_BLOCKS)}
-                onFocusThread={focusThread}
-                onClose={() => setCommentsOpen(false)}
-              />
-            )}
-          </ViewerSidePanel>
-        )}
         {preview && <ViewerModeRail label={tArtifacts('rail.ariaLabel')} tabs={railTabs} panelId={sidePanelId} />}
       </div>
       {/* The preview's "Ask for a change" bar, as the artifact viewer has. */}

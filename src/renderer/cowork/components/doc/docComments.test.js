@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DOC_ANCHOR, commentedBlocks, docAnchorStates, docCommentSelector, locateComment, parseDocAnchor,
+  DOC_ANCHOR, commentedBlocks, docAnchorStates, docCommentSelector, locateComment, parseDocAnchor, threadLocations,
 } from './docComments';
 
 const doc = {
@@ -58,11 +58,13 @@ describe('the inbox and the page', () => {
     { id: 'page', selector: '#chart', status: 'open' },
   ];
 
-  it('marks comments whose place is gone, or that a doc cannot point to, as not attached', () => {
-    expect(docAnchorStates(doc, threads)).toEqual({ gone: 'orphan', page: 'orphan' });
+  const locations = threadLocations(doc, threads);
+
+  it('marks doc comments whose blocks are gone as not attached, and shared-page ones as not visible here', () => {
+    expect(docAnchorStates(threads, locations)).toEqual({ gone: 'orphan', page: 'hidden' });
   });
 
   it('marks the blocks open comments are on', () => {
-    expect([...commentedBlocks(doc, threads)]).toEqual(['b_1']);
+    expect([...commentedBlocks(threads, locations)]).toEqual(['b_1']);
   });
 });

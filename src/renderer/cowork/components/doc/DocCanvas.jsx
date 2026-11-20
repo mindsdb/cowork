@@ -55,6 +55,7 @@ export default function DocCanvas({
   const [toolbar, setToolbar] = useCanvasSelection(root, onSelectionChange); // {rect, blockIds, quote, editable, mode, range}
   const [askFor, setAskFor] = useState(null); // {rect, blockIds, quote, mode}
   const [commentFor, setCommentFor] = useState(null); // {rect, blockIds, quote}
+  const posting = useRef(false);
   // Without a handler there is nothing to ask; drop the request so it does not come back stale.
   useEffect(() => { if (!onAskAgent) setAskFor(null); }, [onAskAgent]);
   useEffect(() => { if (!onComment) setCommentFor(null); }, [onComment]);
@@ -277,14 +278,20 @@ export default function DocCanvas({
     onAskAgent?.({ blockIds: target.blockIds, quote: target.quote, request: request.trim(), tabId: tab.id, mode: target.mode });
   };
 
-  // The draft stays open until the comment is posted; a failure shows in the inbox.
+  // The draft stays open until the comment is posted (a failure shows in the
+  // inbox), and a second Enter while it posts is not a second comment.
   const comment = async (text) => {
     const target = commentFor;
-    if (!target || !text.trim()) return;
-    const ok = await onComment?.({ tab: tab.id, blockIds: target.blockIds, quote: target.quote, text: text.trim() });
-    if (ok) {
-      setCommentFor(null);
-      setToolbar(null);
+    if (!target || !text.trim() || posting.current) return;
+    posting.current = true;
+    try {
+      const ok = await onComment?.({ tab: tab.id, blockIds: target.blockIds, quote: target.quote, text: text.trim() });
+      if (ok) {
+        setCommentFor(null);
+        setToolbar(null);
+      }
+    } finally {
+      posting.current = false;
     }
   };
 

@@ -54,7 +54,8 @@ export function CommentsPanel({
   onFocusThread,
   loadImage = null,
   // Replying from the inbox, where nothing else holds the thread (a doc's
-  // comments): a card clicked opens to its replies (InboxCard).
+  // comments): a card clicked opens to its replies (InboxCard) and stays open
+  // until another is, so going back to its place keeps a reply being typed.
   onReply = null,
 }) {
   const { t: tr } = useTranslation('artifacts');
@@ -190,7 +191,7 @@ export function CommentsPanel({
             onHover={onHoverThread}
             onLeave={onLeaveThread}
             onFocus={(id) => {
-              if (onReply) setExpandedId((current) => (current === id ? null : id));
+              if (onReply) setExpandedId(id);
               onFocusThread?.(id);
             }}
             onReply={onReply}

@@ -57,25 +57,33 @@ export function locateComment(doc, selector) {
 
 const isOpen = (thread) => thread.status !== 'resolved' && thread.status !== 'dismissed';
 
+/** Each thread's place in the doc now (locateComment), by thread id; read once per doc or thread change. */
+export function threadLocations(doc, threads) {
+  return new Map((threads || []).map((thread) => [
+    thread.id, thread.selector ? locateComment(doc, thread.selector) : null,
+  ]));
+}
+
 /**
- * The inbox's anchor states (InboxCard `state`): 'orphan' for a comment whose
- * place in the doc is gone, or that was made somewhere a doc can't point to
- * (the shared page's elements). General comments have no selector and no state.
+ * The inbox's anchor states (InboxCard `state`): 'orphan' for a doc comment
+ * whose blocks are gone, 'hidden' for one made on the shared page, which the
+ * editor cannot point to. General comments have no selector and no state.
  */
-export function docAnchorStates(doc, threads) {
+export function docAnchorStates(threads, locations) {
   const states = {};
   for (const thread of threads || []) {
-    if (thread.selector && !locateComment(doc, thread.selector)) states[thread.id] = 'orphan';
+    if (!thread.selector || locations.get(thread.id)) continue;
+    states[thread.id] = parseDocAnchor(thread.selector) ? 'orphan' : 'hidden';
   }
   return states;
 }
 
 /** The blocks open comments are on, to mark in the page. */
-export function commentedBlocks(doc, threads) {
+export function commentedBlocks(threads, locations) {
   const ids = new Set();
   for (const thread of threads || []) {
-    if (!isOpen(thread) || !thread.selector) continue;
-    for (const id of locateComment(doc, thread.selector)?.blockIds || []) ids.add(id);
+    if (!isOpen(thread)) continue;
+    for (const id of locations.get(thread.id)?.blockIds || []) ids.add(id);
   }
   return ids;
 }

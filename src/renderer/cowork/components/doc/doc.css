@@ -203,9 +203,10 @@ body[data-theme="dark"] .doc-root {
   border-radius: var(--r);
   transition: background-color 900ms var(--ease-out);
 }
-.doc-block--flash { background: var(--doc-flash); transition: none; }
-/* A block an open comment is on, while the comments panel is open. */
+/* A block an open comment is on, while the comments panel is open; an agent's
+   write still flashes over it. */
 .doc-block--commented { background: color-mix(in srgb, var(--warning-border) 30%, transparent); }
+.doc-block--flash { background: var(--doc-flash); transition: none; }
 .doc-block--selected { background: var(--doc-select); }
 .doc-gutter {
   position: absolute;
