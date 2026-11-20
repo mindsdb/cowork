@@ -72,6 +72,8 @@ import {
   ViewToggle,
   CollectionState,
   ListGroup,
+  ListSortHeader,
+  LIST_SORT_HEADER_MIN,
   ListItem,
   ItemActions,
   useCollectionShortcut,
@@ -810,6 +812,7 @@ export default function ArtifactsView({
   // descendant to the card itself instead of the viewport.
   const [menuFor, setMenuFor] = useState(null); // { artifact, rect }
   const { t } = useTranslation('artifacts');
+  const { t: ts } = useTranslation('shell');
   const sortOptions = SORT_IDS.map((id) => ({ id, label: t(`artifactsView.sort.${id}`) }));
   const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   // Toast surfaces publish/unpublish results — primarily so failures
@@ -1060,6 +1063,20 @@ export default function ArtifactsView({
   const sectionsOn = isOrgSharingOn(sharingCapabilities);
   const orgName = useSharingOrgName(sectionsOn);
   const teamsState = useMindsHubTeams(sectionsOn);
+  // A long list sorts from its header too, in step with the pill: atop the
+  // one list, or the first section.
+  const sortHeader = visible.length > LIST_SORT_HEADER_MIN ? (
+    <ListSortHeader
+      value={sort}
+      onChange={setSort}
+      columns={[
+        { id: 'name', label: ts('ui.sortHeader.columns.name'), sorts: ['title'] },
+        { id: 'type', label: ts('ui.sortHeader.columns.type'), sorts: ['type'] },
+        { id: 'status', label: ts('ui.sortHeader.columns.status'), sorts: ['published'] },
+        { id: 'updated', label: ts('ui.sortHeader.columns.updated'), sorts: ['recent', 'oldest'] },
+      ]}
+    />
+  ) : null;
   const sections = useMemo(
     () => (sectionsOn ? groupArtifactsBySection(visible, { orgName, teams: teamsState?.teams || [] }) : null),
     [sectionsOn, visible, orgName, teamsState?.teams],
@@ -1218,12 +1235,14 @@ export default function ArtifactsView({
                   title={<SectionTitle section={section} />}
                   description={<span data-testid="section-count">{section.artifacts.length}</span>}
                 >
+                  {section === sections[0] && sortHeader}
                   {section.artifacts.map(renderRow)}
                 </ListGroup>
               ))}
             </div>
           ) : (
             <ListGroup className={LIST_CLASS}>
+              {sortHeader}
               {visible.map(renderRow)}
             </ListGroup>
           )

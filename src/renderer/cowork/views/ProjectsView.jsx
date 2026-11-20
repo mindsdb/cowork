@@ -24,6 +24,8 @@ import {
   CollectionState,
   CardGrid,
   ListGroup,
+  ListSortHeader,
+  LIST_SORT_HEADER_MIN,
   useCollectionShortcut,
   useCollectionView,
 } from '../components/collection';
@@ -607,6 +609,7 @@ export default function ProjectsView({
   harnessClaudeCodeEnabled,
 }) {
   const { t } = useTranslation('projects');
+  const { t: ts } = useTranslation('shell');
   const { pinned, togglePin } = usePinnedProjects();
   // Phones always get the grid; see ViewToggle.
   const { view, setView, effectiveView, isMobile } = useCollectionView('anton:projects-view');
@@ -926,6 +929,18 @@ export default function ProjectsView({
           </CardGrid>
         ) : (
           <ListGroup className={LIST_CLASS}>
+            {/* A long list sorts from its header too, in step with the pill. */}
+            {visibleProjects.length > LIST_SORT_HEADER_MIN && (
+              <ListSortHeader
+                value={sort}
+                onChange={setSort}
+                columns={[
+                  { id: 'name', label: ts('ui.sortHeader.columns.name'), sorts: ['name'] },
+                  { id: 'activity', label: ts('ui.sortHeader.columns.activity'), sorts: ['most-active', 'least-active'] },
+                  { id: 'updated', label: ts('ui.sortHeader.columns.updated'), sorts: ['recent'] },
+                ]}
+              />
+            )}
             {visibleProjects.map((p) => (
               <ProjectRow key={p.id || p.name || p.path} {...itemProps(p)} />
             ))}
