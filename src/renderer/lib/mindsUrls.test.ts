@@ -252,6 +252,27 @@ describe('sign-up lands in Cowork web (ENG-4288)', () => {
   });
 });
 
+describe('view host derivation', () => {
+  it.each([
+    ['https://api.mindshub.ai', 'https://view.mindshub.ai'],
+    ['https://api.staging.mindshub.ai', 'https://view.staging.mindshub.ai'],
+    ['https://api-pr-cowork-744.dev.mindshub.ai', 'https://view-pr-cowork-744.dev.mindshub.ai'],
+  ])('derives the view host from %s', async (api, view) => {
+    vi.stubEnv('VITE_MINDS_API_URL', api);
+    const { MINDS_VIEW_URL } = await importUrls();
+
+    expect(MINDS_VIEW_URL).toBe(view);
+  });
+
+  it('derives the view host from Cowork web itself', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', '');
+    setUrl('https://cowork.staging.mindshub.ai/');
+    const { MINDS_VIEW_URL } = await importUrls();
+
+    expect(MINDS_VIEW_URL).toBe('https://view.staging.mindshub.ai');
+  });
+});
+
 describe('consoleUrlFor (ENG-3274)', () => {
   it('names the organization and account a console link is opened for', async () => {
     const { MINDS_MEMBERS_URL, consoleUrlFor } = await importUrls();
