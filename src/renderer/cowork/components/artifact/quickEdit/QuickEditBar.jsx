@@ -276,6 +276,19 @@ export function QuickEditBar({
   const [confirm, setConfirm] = useState(null);
   const [sendError, setSendError] = useState('');
   const threadHeight = useThreadHeight(threadInnerRef, messages.length > 0);
+  // The thread floats over the artifact rather than pushing it up (ENG-4455).
+  // It opens while the pointer or the focus is on the bar, and when a
+  // message arrives or a reply settles (applied, failed, handed to the
+  // chat); it folds away when the pointer goes back to the artifact,
+  // leaving the input.
+  const [threadOpen, setThreadOpen] = useState(true);
+  const lastStageRef = useRef('');
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    const stage = last ? `${messages.length}:${last.id}:${last.state || ''}` : '';
+    if (stage && stage !== lastStageRef.current) setThreadOpen(true);
+    lastStageRef.current = stage;
+  }, [messages]);
   // Messages whose entrance has played: they never get .is-entering again.
   const enteredRef = useRef(new Set());
   const [, setEnteredCount] = useState(0);
@@ -353,9 +366,22 @@ export function QuickEditBar({
   }, []);
 
   return (
-    <div className="artifact-quick-edit" aria-label={t('quickEdit.ariaLabel')} role="region">
+    <div
+      className="artifact-quick-edit"
+      aria-label={t('quickEdit.ariaLabel')}
+      role="region"
+      onPointerEnter={() => setThreadOpen(true)}
+      onPointerLeave={(e) => { if (e.pointerType !== 'touch') setThreadOpen(false); }}
+      onFocus={() => setThreadOpen(true)}
+    >
       {messages.length > 0 && (
-        <div className="artifact-quick-edit-thread" ref={threadRef} aria-live="polite" style={{ height: threadHeight }}>
+        <div
+          className="artifact-quick-edit-thread"
+          ref={threadRef}
+          aria-live="polite"
+          data-open={threadOpen || undefined}
+          style={{ height: threadHeight }}
+        >
           <div className="artifact-quick-edit-thread-inner" ref={threadInnerRef}>
           {messages.map((m) => (m.role === 'user' ? (
             <div

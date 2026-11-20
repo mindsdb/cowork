@@ -88,3 +88,41 @@ describe('QuickEditBar reply actions', () => {
   });
 });
 
+
+// The thread floats over the artifact (ENG-4455): open while the bar has the
+// pointer or the focus, or when a reply settles; folded away, leaving the
+// input, once the pointer goes back to the artifact.
+describe('QuickEditBar thread over the artifact', () => {
+  const thread = () => document.querySelector('.artifact-quick-edit-thread');
+  const bar = () => screen.getByRole('region');
+
+  it('folds away when the pointer leaves for the artifact, and opens again on the bar', () => {
+    render(<QuickEditBar controller={controller([user, reply('reading')])} />);
+    expect(thread()).toHaveAttribute('data-open');
+
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+    expect(thread()).not.toHaveAttribute('data-open');
+
+    fireEvent.pointerEnter(bar(), { pointerType: 'mouse' });
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('opens when the input takes the focus', () => {
+    render(<QuickEditBar controller={controller([user, reply('reading')])} />);
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+
+    fireEvent.focus(screen.getByRole('textbox'));
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('opens again when a reply settles, but not for each stage on the way', () => {
+    const view = render(<QuickEditBar controller={controller([user, reply('reading')])} />);
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+
+    view.rerender(<QuickEditBar controller={controller([user, reply('writing')])} />);
+    expect(thread()).not.toHaveAttribute('data-open');
+
+    view.rerender(<QuickEditBar controller={controller([user, { ...reply(null), state: 'applied', summary: 'Done' }])} />);
+    expect(thread()).toHaveAttribute('data-open');
+  });
+});
