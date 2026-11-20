@@ -2504,21 +2504,28 @@ export default function ChatView({
   const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
   const browserPaneOpen = browserOpen || blankBrowserOpen || openingBrowserOpen;
   // Leaving overlay mode removes the reason the pane was hidden, so a debt
-  // still owed is paid at once rather than dropped unpaid.
+  // still owed is paid at once rather than dropped unpaid. The handled-id
+  // set is not reset here: a card the person already opened the pane for
+  // stays theirs across a width change, not re-closed on the way back in.
   useEffect(() => {
-    if (overlayMode) return;
-    closedForCardRef.current = new Set();
-    if (!pendingRestore) return;
+    if (overlayMode || !pendingRestore) return;
     const { sessionId } = pendingRestore;
     setPendingRestore(null);
     if (viewable(sessionId)) setShownBrowserId(sessionId);
   }, [overlayMode, pendingRestore]);
   const waitingChatQuestionId = chatPendingQuestion?.question_id || null;
-  // Steps aside for a card the gate above didn't reach (a pane already open
-  // by hand, or "always show the browser"). Only the real browser is booked
-  // to restore; the start page and the opening state are closed but not kept.
+  /* Steps aside for a card the gate above didn't reach (a pane already open
+     by hand, or "always show the browser"). Only the real browser is booked
+     to restore; the start page and the opening state are closed but not
+     kept. `browserOpen`/`shownBrowserId` still describe the task just left
+     on the first render after a task switch (ChatView isn't keyed by task,
+     so that state hasn't been reset by then) - skip that one render rather
+     than book a restore for the wrong task's browser. */
+  const closeEffectTaskRef = useRef(task.id);
   useEffect(() => {
-    if (!waitingChatCard || !waitingChatQuestionId) return;
+    const taskJustChanged = closeEffectTaskRef.current !== task.id;
+    closeEffectTaskRef.current = task.id;
+    if (taskJustChanged || !waitingChatCard || !waitingChatQuestionId) return;
     if (closedForCardRef.current.has(waitingChatQuestionId)) return;
     closedForCardRef.current.add(waitingChatQuestionId);
     if (browserOpen) {
@@ -2534,21 +2541,22 @@ export default function ChatView({
       openSeqRef.current += 1;
       setOpeningBrowser(false);
     }
-  }, [waitingChatCard, waitingChatQuestionId, browserOpen, blankBrowserOpen, openingBrowserOpen, shownBrowserId]);
-  // Restores once the card it was closed for is resolved (answered, timed
-  // out, cancelled); a turn that just stops with no resolution never does.
+  }, [waitingChatCard, waitingChatQuestionId, browserOpen, blankBrowserOpen, openingBrowserOpen, shownBrowserId, task.id]);
+  /* Restores once the card it was closed for is resolved (answered, timed
+     out, cancelled) and no other card is waiting right now - a sibling
+     question already holding the screen must get its own turn at closing
+     the pane first, not have it reopened out from under it. Dropped
+     outright once the card itself is gone, answered or not: a turn that
+     just stops, or folds the card away, leaves nothing to restore to. */
   useEffect(() => {
     if (!pendingRestore) return;
     const card = (streamingMsg?.steps || []).find((s) => s.data?.question_id === pendingRestore.questionId);
-    if (!card?.data?.answer) {
-      // No live turn left to answer it: nothing will ever restore this debt.
-      if (!streamingMsg) setPendingRestore(null);
-      return;
-    }
+    if (!card) { setPendingRestore(null); return; }
+    if (!card.data?.answer || waitingChatCard) return;
     const { sessionId } = pendingRestore;
     setPendingRestore(null);
     if (viewable(sessionId)) setShownBrowserId(sessionId);
-  }, [pendingRestore, streamingMsg]);
+  }, [pendingRestore, streamingMsg, waitingChatCard]);
   /* On a phone the pane docks at the top of the chat (no taller than half
      the screen) and minimizes to its header instead of closing. It expands
      when Anton starts using the browser, and minimizes when the turn ends so

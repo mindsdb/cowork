@@ -1051,5 +1051,74 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
       await act(async () => {});
       expect(pane()).not.toBeNull();
     });
+
+    it("never books a different task's browser into a restore after switching tasks while a card waits", async () => {
+      setWidth(800);
+      syncBrowserPrefs({ browserOnlyWhenNeeded: false });
+      const heldForB = card('browser:approve:t-bbb:pb-1', [{ value: 'approve', label: 'Approve', detail: 'Take this step once' }, { value: 'cancel', label: 'Cancel' }]);
+      const liveB = (...extra) => ({ ...liveTurn('t-bbb'), steps: [step('t-bbb'), ...extra] });
+
+      const { rerender } = render(<ChatView task={task('ov-14', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+      expect(embedBrowser).toHaveBeenCalledWith('t-abc');
+
+      // Switch tasks while a card waits on a different task's own browser.
+      // On this first render, browserOpen/shownBrowserId still describe
+      // task A (ChatView isn't keyed by task), so a close-and-book here
+      // would wrongly pair task B's card with task A's session.
+      rerender(<ChatView task={task('ov-14b', [asked, liveB(heldForB)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+      const callsAfterSwitch = embedBrowser.mock.calls.length;
+
+      rerender(<ChatView task={task('ov-14b', [asked, liveB(answer(heldForB))])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      // Whatever shows now, it must never be task A's browser again.
+      expect(embedBrowser.mock.calls.slice(callsAfterSwitch)).not.toContainEqual(['t-abc']);
+    });
+
+    it('defers restoring until no other card is waiting, when two cards arrive close together', async () => {
+      setWidth(800);
+      const QUESTION = card('q:name-file', [{ value: 'a', label: 'Option A' }]);
+      const { rerender } = render(<ChatView task={task('ov-15', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+
+      rerender(<ChatView task={task('ov-15', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      // HELD is answered and a new question arrives in the same update.
+      rerender(<ChatView task={task('ov-15', [asked, live(answer(HELD), QUESTION)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+      expect(screen.getByRole('button', { name: 'Option A' })).toBeInTheDocument();
+
+      // Only once the new question is answered too does the pane come back.
+      rerender(<ChatView task={task('ov-15', [asked, live(answer(HELD), answer(QUESTION))])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('does not close a pane the person opened by hand twice, after widening past overlay and narrowing back', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-16', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+      expect(pane()).not.toBeNull();
+
+      setWidth(1400);
+      rerender(<ChatView task={task('ov-16', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+
+      setWidth(800);
+      rerender(<ChatView task={task('ov-16', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
   });
 });
