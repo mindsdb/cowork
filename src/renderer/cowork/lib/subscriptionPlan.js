@@ -25,7 +25,8 @@ export const WINDOW_WARN_PERCENT = 80;
    again at 90% and at 95%, as the free allowance's bar does. */
 const WINDOW_WARN_STEPS = [WINDOW_WARN_PERCENT, 90, 95];
 
-const tierRank = (tier) => PLAN_TIERS.indexOf(tier);
+/** Where `tier` sits in PLAN_TIERS: free 0, plus 1, pro 2, anything else -1. */
+export const tierRank = (tier) => PLAN_TIERS.indexOf(tier);
 
 function cleanWindow(raw) {
   if (!raw || typeof raw !== 'object') return null;

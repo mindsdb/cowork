@@ -234,7 +234,6 @@
       "windowUsedResets": "{percent}を使用済み · {time}にリセット",
       "windowMeterLabel": "{window, select, 7d {週間の利用枠の使用量} other {5時間の利用枠の使用量}}",
       "afterCap": "いずれかの利用枠を超えると、タスクは残高からAPI料金で支払うか、リセットされるまで一時停止します。",
-      "afterCapMobile": "いずれかの利用枠を超えると、残高で支払えない限り、リセットされるまでタスクは一時停止します。",
       "upgrade": "{tier, select, plus {Plusにする} pro {Proにアップグレード} other {アップグレード}}",
       "manage": "管理"
     }

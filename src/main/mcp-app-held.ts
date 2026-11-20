@@ -4,6 +4,8 @@ import { authHeader } from './server-auth';
 import { appSecretGeneration, appSecretHeader, isAppSecretProtected } from './app-secret';
 import { deleteMcpAccessMode, getMcpAccessMode, isMcpAccessModeMigrated, markMcpAccessModeMigrated, setMcpAccessMode } from './keychain-service';
 import { hasRefreshLoop, refreshAccessTokenNow, startRefreshLoop } from './token-refresh';
+import { CUSTOM_MCP_ENGINE } from './custom-mcp-routes';
+import { syncCustomMcpConnections } from './custom-mcp-held';
 
 /*
  * In protected mode the server keeps an MCP connection's access token and its
@@ -116,6 +118,7 @@ export async function syncAppHeldMcpConnections(): Promise<void> {
     diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_migration_marker_unreadable', err);
   }
   await syncConnections(storeRoot, migrated, markerReadable, stillCurrent, 0);
+  await syncCustomMcpConnections(storeRoot, stillCurrent);
 }
 
 function retryDelay(attempt: number): number {
@@ -180,6 +183,8 @@ function scheduleRetry(storeRoot: string, engine: string, name: string, migrated
 /** One connection's hand-over. `retry` when anything that should have worked
  *  failed; `gone` when there is nothing (left) to hand over. */
 async function handOverConnection(storeRoot: string, engine: string, name: string, migrated: boolean, stillCurrent: () => boolean): Promise<HandOver> {
+  // Custom connections have their own hand-over (custom-mcp-held.ts); none of this path's token or mode applies.
+  if (engine === CUSTOM_MCP_ENGINE) return { outcome: 'gone', modeInKeychain: true };
   try {
     const detailRes = await fetch(connectionUrl(engine, name), { headers: authHeader() });
     if (detailRes.status === 404) return { outcome: 'gone', modeInKeychain: true };
@@ -242,6 +247,7 @@ export async function setConnectionAccessMode(
   name: string,
   mode: AccessMode,
 ): Promise<{ ok: true; access_mode: AccessMode } | { ok: false; status?: number; reason: string }> {
+  if (engine === CUSTOM_MCP_ENGINE) return { ok: false, reason: 'Custom MCP servers switch tools one by one.' };
   const storeRoot = activeStoreRoot();
   if (!storeRoot) return { ok: false, reason: 'The backend is not running.' };
   modeChanges.set(`${storeRoot}|${engine}:${name}`, modeChangeCount(storeRoot, engine, name) + 1);

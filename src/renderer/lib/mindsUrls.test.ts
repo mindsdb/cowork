@@ -272,7 +272,7 @@ describe('consoleUrlFor (ENG-3274)', () => {
 });
 
 describe('mindsUpgradeUrl (ENG-4186)', () => {
-  it('opens the billing page straight into checkout for the named plan and organization', async () => {
+  it('opens the plan confirm for the named plan and organization', async () => {
     const { MINDS_BILLING_URL, MINDS_UPGRADE_URL, mindsUpgradeUrl } = await importUrls();
     expect(MINDS_UPGRADE_URL.plus).toBe(`${MINDS_BILLING_URL}?upgrade=plus`);
     const url = new URL(mindsUpgradeUrl('pro', { organizationId: 'org-1', subject: 'user-1' }));

@@ -234,7 +234,6 @@
       "windowUsedResets": "已使用 {percent} · {time} 重置",
       "windowMeterLabel": "{window, select, 7d {每周额度用量} other {5 小时额度用量}}",
       "afterCap": "超出任一额度后，任务将按 API 价格使用你的余额，或暂停至额度重置。",
-      "afterCapMobile": "超出任一额度后，除非余额足以支付，任务将暂停至额度重置。",
       "upgrade": "{tier, select, plus {开通 Plus} pro {升级到 Pro} other {升级}}",
       "manage": "管理"
     }

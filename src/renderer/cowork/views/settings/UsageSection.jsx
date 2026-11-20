@@ -101,6 +101,10 @@ function WindowMeter({ w }) {
 function PlanCard({ plan, upgrade }) {
   const { t } = useTranslation('settingsSystem');
   if (!isPaidPlan(plan)) return null;
+  // Inside the mobile app the card shows the plan and its windows only: no
+  // failed payment and no word about the wallet, like the Free card there.
+  const billing = offersBilling();
+  const pastDue = billing && plan.status === 'past_due';
   const date = formatResetDate(plan.renewsAt);
   const ending = plan.cancelAtPeriodEnd || plan.status === 'canceled';
   let periodLine = null;
@@ -109,15 +113,13 @@ function PlanCard({ plan, upgrade }) {
     <div className={CARD}>
       <div className="flex items-center justify-between gap-3 mb-1">
         <div className="text-base font-semibold text-ink">{t('usage.plan.title', { tier: plan.tier })}</div>
-        {plan.status === 'past_due' && <Badge variant="warning" size="xs" dot>{t('usage.plan.pastDue')}</Badge>}
+        {pastDue && <Badge variant="warning" size="xs" dot>{t('usage.plan.pastDue')}</Badge>}
         {plan.status !== 'past_due' && ending && <Badge variant="muted" size="xs">{t('usage.plan.ending')}</Badge>}
       </div>
       {periodLine && <div className="text-[12px] text-ink-3">{periodLine}</div>}
-      {plan.status === 'past_due' && offersBilling() && (
-        <div className="text-[12px] text-warning-text mt-1">{t('usage.plan.pastDueBody')}</div>
-      )}
+      {pastDue && <div className="text-[12px] text-warning-text mt-1">{t('usage.plan.pastDueBody')}</div>}
       {plan.windows.map((w) => <WindowMeter key={w.window} w={w} />)}
-      <div className="text-[12px] text-ink-3 mt-3">{t(billingCopyKey('usage.plan.afterCap'))}</div>
+      {billing && <div className="text-[12px] text-ink-3 mt-3">{t('usage.plan.afterCap')}</div>}
       {upgrade.eligible && (
         <div className="flex flex-wrap gap-2 mt-3">
           <UpgradeButton upgrade={upgrade} tier={upgrade.tier} variant="primary" />
@@ -176,11 +178,11 @@ function FreeTokensCard({ free, isBillingOwner, upgrade = null }) {
             <div className="text-[13px] text-ink-3 tabular-nums">{t('usage.free.left', { percent: formatPercentShort(fractionLeft) })}</div>
           </div>
           <Meter value={fraction} tone={exhausted ? 'danger' : low ? 'warning' : 'accent'} label={t('usage.free.meterLabel')} />
-          <div className="text-[12px] text-ink-3 mt-2">
+          {offersBilling() && <div className="text-[12px] text-ink-3 mt-2">
             {exhausted
               ? (reset ? t('usage.free.usedUpUntil', { time: reset }) : t('usage.free.usedUp'))
               : (reset ? t('usage.free.afterUntil', { time: reset }) : t('usage.free.after'))}
-          </div>
+          </div>}
         </>
       )}
       <div className="flex gap-2 mt-3">
@@ -278,6 +280,10 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
   // A Free plan's "Get Plus" sits on the allowance card, or on the balance
   // card when there is no allowance to show.
   const freePlan = upgrade.plan?.tier === 'free';
+  // On Plus or Pro the plan pays for Air, so the free allowance card would
+  // count Air use the plan covers and say the balance is paying for it. The
+  // plan card's meters are the account's figure instead.
+  const paidPlan = isPaidPlan(upgrade.plan);
   const freeCardShown = describableGrant(usage?.freeTokens);
 
   let body;
@@ -285,7 +291,7 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
     body = (
       <div className={`${CARD} flex flex-col items-start gap-3`}>
         <div className="text-base font-semibold text-ink">{t('usage.signIn.title')}</div>
-        <div className="text-[13px] text-ink-3">{t('usage.signIn.body')}</div>
+        {offersBilling() && <div className="text-[13px] text-ink-3">{t('usage.signIn.body')}</div>}
         {onOpenAccount && <Button variant="primary" size="sm" onClick={onOpenAccount}>{t('usage.signIn.goToAccount')}</Button>}
       </div>
     );
@@ -314,15 +320,17 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
     body = (
       <>
         <PlanCard plan={upgrade.plan} upgrade={upgrade} />
-        <FreeTokensCard free={usage.freeTokens} isBillingOwner={usage.isBillingOwner} upgrade={upgrade} />
-        <BalanceCard
-          balance={usage.balance}
-          auto={usage.autoTopUp}
-          spend={usage.creditSpend}
-          isBillingOwner={usage.isBillingOwner}
-          upgrade={freePlan && !freeCardShown ? upgrade : null}
-        />
-        {!describableGrant(usage.freeTokens) && !usage.balance && (
+        {!paidPlan && <FreeTokensCard free={usage.freeTokens} isBillingOwner={usage.isBillingOwner} upgrade={upgrade} />}
+        {offersBilling() && (
+          <BalanceCard
+            balance={usage.balance}
+            auto={usage.autoTopUp}
+            spend={usage.creditSpend}
+            isBillingOwner={usage.isBillingOwner}
+            upgrade={freePlan && !freeCardShown ? upgrade : null}
+          />
+        )}
+        {!paidPlan && !describableGrant(usage.freeTokens) && (!offersBilling() || !usage.balance) && (
           <div className={`${CARD} text-[13px] text-ink-3`}>{t('usage.empty')}</div>
         )}
       </>

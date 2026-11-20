@@ -114,7 +114,7 @@ import ProviderIcon from './ProviderIcon.jsx';
 import { Tooltip } from './ui';
 import { useTranslation } from '../../lib/i18n';
 import { useUpgradeOffer } from '../hooks/useUpgradeOffer';
-import { isPaidPlan } from '../lib/subscriptionPlan';
+import { cleanRequiredTier, isPaidPlan } from '../lib/subscriptionPlan';
 
 // How long the flyout stays open after the pointer leaves both the footer
 // row and the panel itself, with nothing else happening — long enough that
@@ -461,6 +461,9 @@ export function ModelSelect({
     // — Model Router carries its own and is never locked anyway.
     const entries = options.filter(Boolean)
       .map((o) => {
+        if (!offersBilling() && (o.locked || o.budgetReached)) {
+          return { ...o, title: undefined, tag: t('picker.unavailable'), action: undefined };
+        }
         if (!PLATFORM_UI && o.locked) return { ...o, tag: t('picker.unavailable') };
         if (o.locked && !o.action) {
           // Outside the plan: "Upgrade" to the tier that covers it, beside
@@ -482,8 +485,7 @@ export function ModelSelect({
           return { ...o, action: credits };
         }
         // On Plus or Pro, an open row names the plan that covers it.
-        if (paidTier && !o.disabled && !o.tag && !o.pin
-          && (o.coveredByTier === 'plus' || o.coveredByTier === 'pro')) {
+        if (paidTier && !o.disabled && !o.tag && !o.pin && cleanRequiredTier(o.coveredByTier)) {
           return { ...o, tag: t('picker.tierTag', { tier: o.coveredByTier }) };
         }
         return o;

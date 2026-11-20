@@ -234,7 +234,6 @@
       "windowUsedResets": "{percent} used · resets at {time}",
       "windowMeterLabel": "{window, select, 7d {Weekly allowance used} other {5-hour allowance used}}",
       "afterCap": "Past either allowance, tasks continue from your wallet at API rates, or pause until it resets.",
-      "afterCapMobile": "Past either allowance, tasks pause until it resets unless your balance covers them.",
       "upgrade": "{tier, select, plus {Get Plus} pro {Upgrade to Pro} other {Upgrade}}",
       "manage": "Manage"
     }

@@ -22,6 +22,7 @@ import { host, onMindsHubCredentialChanged } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
 import { startCreditsFlow } from './creditsFlow';
 import { subscribeOrganizationChanges } from './organizationChanges';
+import { subscribeUsagePlanTier, usagePlanTier } from './usagePlanTier';
 import { posthogKeyForBuildKind } from '../../../shared/analytics-project';
 
 // The single register of product events, so every event and its own properties
@@ -335,6 +336,10 @@ const identity = {
 // reloading the document) re-reads the token on the next event, so the
 // organization the events name is the one switched to.
 subscribeOrganizationChanges(() => { identity.cacheExpiry = 0; });
+// A plan the usage read names (a subscribe, a cancel, the first read after
+// launch) re-reads the identity on the next event too, so the plan tier it
+// stamps follows at once rather than after the cache expires.
+subscribeUsagePlanTier(() => { identity.cacheExpiry = 0; });
 
 // The organization a Desktop's MindsHub work runs under, read from the sidecar.
 // A key the person pasted wins over their sign-in, and it can belong to another
@@ -433,16 +438,20 @@ function getDeviceId() {
   return identity.deviceId;
 }
 
-// Resolve the plan tier from Keycloak realm roles, mirroring the web console's
-// useHasFullAccess (ENG-452). An account can carry several tier roles at once (a
-// paid user keeps the `free` role too), so a paid/staff role must win over
-// `free`. Precedence: staff > team > pro/pro-hub > free. Returns undefined when
-// roles are absent, so the property is omitted rather than guessed.
+// Resolve the plan tier, mirroring the web console's useHasFullAccess for the
+// Keycloak realm roles. An account can carry several tier roles at once (a paid
+// user keeps the `free` role too), so a paid/staff role must win over `free`.
+// The usage read's plan is the subscription itself, so it wins over the roles,
+// which know no Plus and read a legacy `pro-hub` holder as pro. Precedence:
+// staff > team > the usage read's plan > pro/pro-hub > free. Returns undefined
+// when roles are absent, so the property is omitted rather than guessed.
 function resolvePlanTier(roles) {
   if (!Array.isArray(roles)) return undefined;
   const set = new Set(roles.map((r) => String(r).toLowerCase()));
   if (set.has('staff')) return 'staff';
   if (set.has('team')) return 'team';
+  const planTier = usagePlanTier();
+  if (planTier) return planTier;
   if (set.has('pro') || set.has('pro-hub')) return 'pro';
   return 'free';
 }
@@ -557,9 +566,10 @@ async function getDistinctId() {
     identity.isInternal = resolveIsInternal(email, roles);
     identity.distinctId = payload.sub;
     // Account attributes for `$set`. Active org is the `activate_organization`
-    // claim; tier comes from realm roles via resolvePlanTier. is_internal rides
-    // `$set` too, so the internal/external split is a stable person property and
-    // pre-login events inherit it via the merge.
+    // claim; tier comes from resolvePlanTier (the usage read's plan, else the
+    // realm roles). is_internal rides `$set` too, so the internal/external
+    // split is a stable person property and pre-login events inherit it via
+    // the merge.
     const activeOrg = payload.activate_organization;
     const planTier = resolvePlanTier(roles);
     identity.personProps = {
@@ -893,7 +903,10 @@ export function setEntryAttribution(entrySource, exampleId, placement) {
 // "not recorded", the same as before the console sent it.
 const placementProps = (placement) => (placement ? { entry_placement: placement } : {});
 
-export function trackAgentSessionStarted() {
+// `exampleId` rides with a send whose start is only known when it goes out
+// (the own-work mode a console link opened): set on arrival, it would also
+// credit an unrelated task sent after the person left the mode.
+export function trackAgentSessionStarted({ exampleId } = {}) {
   const pending = pendingEntryAttribution;
   pendingEntryAttribution = null;
   const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
@@ -902,7 +915,7 @@ export function trackAgentSessionStarted() {
     fresh
       ? {
         entry_source: pending.entry_source,
-        example_id: pending.example_id,
+        example_id: exampleId || pending.example_id,
         ...placementProps(pending.entry_placement),
       }
       : {}
@@ -955,14 +968,16 @@ export function trackExamplePicked(exampleId, list) {
  * event, which clears the console attribution this one uses. `taskMode` is
  * Home's note on a selected task mode and its instruction line (`modeMessage`):
  * only Home knows whether an example was placed, so it rides with the send.
+ * `startVia` is a start label that rode with the send the same way, and wins
+ * over one set with setStartVia.
  */
-export function trackNewTaskMessageSent({ text, attachments = 0, start, taskMode }) {
+export function trackNewTaskMessageSent({ text, attachments = 0, start, taskMode, startVia }) {
   const entry = pendingEntryAttribution && Date.now() - pendingEntryAttribution.at <= ENTRY_ATTRIBUTION_TTL_MS
     ? pendingEntryAttribution : null;
   const pending = pendingStartVia;
   pendingStartVia = null;
   const fresh = pending && Date.now() - pending.at <= START_VIA_TTL_MS;
-  const via = fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer');
+  const via = startVia || (fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer'));
   const body = typeof text === 'string' ? text : '';
   const props = {
     start_kind: start?.start_kind || 'free_text',
@@ -1059,10 +1074,11 @@ export function trackTurnFailed(conversationId, event) {
 //   connect_provider          "Start for free" on the connect-a-provider card
 //                             (chat and home render the same card)
 //   no_credits_notice         Settings, after a minds-cloud provider test came
-//                             back wallet_empty, or, from a sidecar that sends
-//                             no reasons map at all, with any 402/429/credit/
-//                             quota in the detail. A sidecar that sends the map
-//                             and names no reason never records this.
+//                             back wallet_empty or window_allowance_exhausted,
+//                             or, from a sidecar that sends no reasons map at
+//                             all, with any 402/429/credit/quota in the
+//                             detail. A sidecar that sends the map and names
+//                             no reason never records this.
 //   allowance_used_notice     Settings, after a minds-cloud provider test came
 //                             back included_allowance_exhausted
 //   free_air_paused_notice    Settings, after a minds-cloud provider test hit
@@ -1101,7 +1117,7 @@ export function trackBillingOpened(trigger, workspaceMode, kind) {
 // A plan upgrade was clicked (ENG-4186): "Get Plus", "Upgrade to Pro" or
 // "Upgrade". `surface` is where, so conversion can be graded per surface;
 // `tier` is the plan offered and `from_tier` the plan the org is on. It opens
-// the console's checkout deep link, so it arms the same post-payment
+// the console's plan confirm dialog, so it arms the same post-payment
 // availability follow-up as a billing link: a new plan unlocks models just as
 // funds do.
 export function trackUpgradeClicked(surface, tier, fromTier) {

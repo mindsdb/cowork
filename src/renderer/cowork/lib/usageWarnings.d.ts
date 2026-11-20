@@ -22,7 +22,7 @@ export const USAGE_ACTIONS: Readonly<{
 export function upgradeAction(tier: 'plus' | 'pro' | string | null | undefined): UsageAction;
 
 /** The console URL an action opens; only a billing owner is deep-linked into a
- *  wallet dialog, and an upgrade opens checkout for the named organization. */
+ *  wallet dialog, and an upgrade opens the plan's confirm dialog for the named organization. */
 export function usageActionUrl(
   action: UsageAction | null | undefined,
   options?: { isBillingOwner?: boolean; organizationId?: string | null; subject?: string | null },

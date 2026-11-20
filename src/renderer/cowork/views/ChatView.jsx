@@ -95,6 +95,7 @@ import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
 import { useUpgradeOffer } from '../hooks/useUpgradeOffer';
+import { cleanRequiredTier } from '../lib/subscriptionPlan';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { budgetPeriodOf, budgetScopeOf, budgetModelName } from '../lib/budgetScope';
@@ -104,6 +105,7 @@ import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 import { ChatScroller } from '../components/chat/ChatScroller';
 import { useStickToBottom } from '../components/chat/useStickToBottom';
 import { useDockInset } from '../components/chat/useDockInset';
+import { ReportContentButton } from '../components/chat/ReportContentButton';
 import { TurnActions } from '../components/chat/TurnActions';
 import { NextSteps } from '../components/chat/NextSteps';
 import { nextStepsFor, offersNextSteps, scheduledPromptFor } from '../lib/nextSteps';
@@ -451,7 +453,7 @@ const INCOMPLETE_REASON_KEYS = {
 // No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
 // is the single indicator; once done, a hover-only footer (bottom-right)
 // names the agent that answered and when.
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast, deleting = false }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast, conversationId, messageId, deleting = false }) {
   const { t } = useTranslation('chat');
   return (
     <div
@@ -466,6 +468,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
           {showActions && !deleting && (
             <TurnActions text={copyText || ''} copyLabel={t('chatView.turn.copyResponse')} onDelete={onDelete} isLast={isLast} />
           )}
+          {!deleting && <ReportContentButton conversationId={conversationId} messageId={messageId} />}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
               sends `created_at` and nothing maps it. */}
@@ -1408,7 +1411,7 @@ export function AllowanceExhaustedCard({
       agentLabel={agentLabel}
       // The gate only issues this code when the org has no
       // balance to fall onto, so the turn ended.
-      kind={t('chatView.kinds.billing')}
+      kind={t(offersBilling() ? 'chatView.kinds.billing' : 'chatView.kinds.usage')}
       title={t('chatView.cards.taskStopped')}
       body={allowanceStopCopy({ resetAt, usage })}
       buttons={billingActions([
@@ -1459,6 +1462,7 @@ export function WindowAllowanceExhaustedCard({
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const until = formatResetTime(resetAt);
   const windowKey = allowanceWindow === '7d' || allowanceWindow === '5h' ? allowanceWindow : 'other';
+  // The mobile copy names the window and when it frees up, and nothing about the balance.
   const body = until
     ? t(billingCopyKey('chatView.cards.windowPausedUntil'), { window: windowKey, time: until })
     : t(billingCopyKey('chatView.cards.windowPaused'), { window: windowKey });
@@ -1468,7 +1472,7 @@ export function WindowAllowanceExhaustedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
-      kind={t('chatView.kinds.billing')}
+      kind={t(offersBilling() ? 'chatView.kinds.billing' : 'chatView.kinds.usage')}
       title={t('chatView.cards.windowUsedUpTitle')}
       body={body}
       buttons={billingActions([
@@ -1529,6 +1533,12 @@ export function BalanceEmptyCard({
   const { t } = useTranslation('chat');
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const free = freeAllowanceState(usage);
+  if (!offersBilling()) {
+    return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
+      kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}
+      body={free.status === 'spent' ? allowanceStopCopy({ usage }) : t('chatView.cards.providerLimitBody')}
+      buttons={free.status === 'has_room' ? switchToAirButtons(onSwitchToAir) : []} />;
+  }
   const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
   const refill = formatResetTime(free.resetsAt);
   const addFunds = {
@@ -1634,6 +1644,12 @@ export function BudgetExceededCard({
 }) {
   const { t } = useTranslation('chat');
   const budgetsUrl = useBudgetsUrl();
+  if (!offersBilling()) {
+    return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
+      kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}
+      body={t('chatView.cards.providerLimitBody')}
+      buttons={freeAllowanceState(usage).status === 'has_room' ? switchToAirButtons(onSwitchToAir) : []} />;
+  }
   if (!PLATFORM_UI) {
     return (
       <ActionCard
@@ -1713,7 +1729,11 @@ function UsageAlertCard({
   allowanceWindow = null, percentUsed = null, onWallet = false,
 }) {
   const { t } = useTranslation('chat');
-  if (!PLATFORM_UI) return null;
+  // Inside the mobile app only the lines that name no wallet show: the free
+  // allowance or a plan window running low, and a plan window used up that
+  // paused the task. A window that put the task on the wallet stays hidden.
+  const namesNoWallet = kind === 'free_low' || kind === 'window_low' || (kind === 'window_exhausted' && !onWallet);
+  if (!PLATFORM_UI || (!offersBilling() && !namesNoWallet)) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert', undefined, kind);
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
@@ -2028,17 +2048,24 @@ export function ModelUnavailableCard({
      out work: a plan that covers it (the tier the gate named), or funds, which
      pay for any model at API rates on any plan. */
   if (code === 'model_not_in_tier') {
-    const tier = requiredTier === 'plus' || requiredTier === 'pro' ? requiredTier : null;
+    const tier = cleanRequiredTier(requiredTier);
     const offerTier = tier || upgrade.tier;
     const canUpgrade = !!offerTier && upgrade.canOffer(offerTier);
+    // Inside the mobile app it reads like the credit denial below: the model
+    // is unavailable, with no plan to buy and no word about the balance.
+    const billing = offersBilling();
     return (
       <ActionCard
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
         kind={t('chatView.kinds.model')}
-        title={t('chatView.model.notInTierTitle', { model: label })}
-        body={t(billingCopyKey('chatView.model.notInTierBody'), { model: label, tier: tier || 'other' })}
+        title={billing
+          ? t('chatView.model.notInTierTitle', { model: label })
+          : t('chatView.model.unavailableTitle', { model: label })}
+        body={billing
+          ? t('chatView.model.notInTierBody', { model: label, tier: tier || 'other' })
+          : t('chatView.model.askOperatorBody')}
         buttons={[
           ...billingActions([
             ...(canUpgrade ? [{
@@ -2073,7 +2100,7 @@ export function ModelUnavailableCard({
     // disabled model back on, so that row keeps the plain billing page.
     host.openExternal(denied ? usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }) : MINDS_BILLING_URL);
   };
-  const title = denied
+  const title = denied && offersBilling()
     ? t('chatView.model.needsCreditsTitle', { model: label })
     : t('chatView.model.unavailableTitle', { model: label });
 
@@ -2088,7 +2115,7 @@ export function ModelUnavailableCard({
       kind={t('chatView.kinds.model')}
       title={title}
       body={denied
-        ? t(billingCopyKey('chatView.model.needsCreditsBody'))
+        ? t(offersBilling() ? 'chatView.model.needsCreditsBody' : 'chatView.model.askOperatorBody')
         : t('chatView.model.disabledBody')}
       buttons={denied
         ? [
@@ -4046,7 +4073,11 @@ export default function ChatView({
               if (quickEditGroup) {
                 return (
                   <div key={messageKey(m, i)} className={deletingThisTurn ? 'opacity-60' : undefined}>
-                    <QuickEditGroupCard group={quickEditGroup} onOpenArtifact={handleArtifactOpen} />
+                    <QuickEditGroupCard
+                      group={quickEditGroup}
+                      onOpenArtifact={handleArtifactOpen}
+                      conversationId={deletingThisTurn ? undefined : task.id}
+                    />
                   </div>
                 );
               }
@@ -4065,6 +4096,8 @@ export default function ChatView({
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
+                  conversationId={task.id}
+                  messageId={m.id}
                   // Anchored on this assistant message's own id; hidden, not
                   // disabled, without one. A partial kept after a transport
                   // failure whose recovery also failed has none until reload.

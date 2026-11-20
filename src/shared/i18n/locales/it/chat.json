@@ -118,8 +118,8 @@
       "windowUsedUpTitle": "Quota del piano esaurita",
       "windowPausedUntil": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}} e il tuo saldo è a zero. In pausa fino alle {time}. Aggiungi fondi per continuare.",
       "windowPaused": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}} e il tuo saldo è a zero. In pausa fino al rinnovo. Aggiungi fondi per continuare.",
-      "windowPausedUntilMobile": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}} e il tuo saldo è a zero. In pausa fino alle {time}.",
-      "windowPausedMobile": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}} e il tuo saldo è a zero. In pausa fino al rinnovo."
+      "windowPausedUntilMobile": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}}. In pausa fino alle {time}.",
+      "windowPausedMobile": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}}. In pausa fino al rinnovo."
     },
     "usageAlert": {
       "freeLow": "Quota gratuita di Air rimanente: {percent}",
@@ -161,8 +161,7 @@
       "topUpBalance": "Ricarica saldo",
       "needsCreditsBodyMobile": "Non hai crediti sufficienti per questo modello.",
       "notInTierTitle": "{model} non è incluso nel tuo piano",
-      "notInTierBody": "{tier, select, plus {{model} è incluso in Plus.} pro {{model} è incluso in Pro.} other {Il tuo piano non include {model}.}} Cambia piano o aggiungi fondi per usarlo a tariffe API.",
-      "notInTierBodyMobile": "{tier, select, plus {{model} è incluso in Plus.} pro {{model} è incluso in Pro.} other {Il tuo piano non include {model}.}} Il tuo saldo è a zero."
+      "notInTierBody": "{tier, select, plus {{model} è incluso in Plus.} pro {{model} è incluso in Pro.} other {Il tuo piano non include {model}.}} Cambia piano o aggiungi fondi per usarlo a tariffe API."
     },
     "overloaded": {
       "theModelProvider": "Il provider del modello",
@@ -510,7 +509,8 @@
         "1": "Analizza il panorama competitivo e il posizionamento",
         "2": "Automatizza il report settimanale sullo stato del team",
         "3": "Valuta l’opportunità di mercato per il lancio di un prodotto",
-        "4": "Prepara l’aggiornamento di questa settimana partendo da quello della scorsa"
+        "4": "Prepara l’aggiornamento di questa settimana partendo da quello della scorsa",
+        "5": "Trasforma un report in una presentazione"
       }
     },
     "website": {
@@ -555,7 +555,8 @@
         "3": "Confronta i migliori VLM usando i dati di Hugging Face",
         "4": "Calcola l’IRR dei flussi di cassa di un investimento",
         "5": "Riordina il mio foglio di calcolo e creane un grafico",
-        "6": "Estrai i termini chiave di un contratto"
+        "6": "Estrai i termini chiave di un contratto",
+        "7": "Trasforma un estratto conto in un foglio di calcolo"
       }
     },
     "visualization": {
@@ -586,7 +587,10 @@
         "7": "Rivedi cosa ho in programma questa settimana",
         "8": "Fai ricerche su un potenziale cliente e prepara un primo contatto",
         "9": "Consigliami su una trattativa a partire dalla trascrizione di una chiamata",
-        "10": "Trasforma le note di una riunione in azioni da fare"
+        "10": "Trasforma le note di una riunione in azioni da fare",
+        "11": "Mappa la strategia go-to-market di un concorrente",
+        "12": "Crea una guida di studio dal materiale del corso",
+        "13": "Crea una lista di lead in ordine di priorità"
       }
     },
     "games": {
@@ -607,7 +611,11 @@
       "placeholder": "Scegli un esempio o descrivi la tua attività"
     },
     "samplePrompts": "Prompt di esempio",
-    "pillsAriaLabel": "Tipi di attività"
+    "pillsAriaLabel": "Tipi di attività",
+    "own-work": {
+      "chipLabel": "Il tuo lavoro",
+      "placeholder": "Incolla un testo o un link, oppure allega un file"
+    }
   },
   "taskRows": {
     "openProject": "Apri {project}",
@@ -809,5 +817,50 @@
     "fallbackName": "immagine",
     "alt": "Immagine generata {name}",
     "notShown": "Impossibile mostrare {name}. Potrebbe essere stato spostato o eliminato."
+  },
+  "ownWork": {
+    "needsMaterial": "Ora aggiungi su cosa deve lavorare: allega un file, oppure incolla un testo o un link dopo l'attività.",
+    "waysLabel": "Modi per portare il tuo lavoro",
+    "attach": "Allega un file",
+    "orPaste": "oppure incolla un testo o un link nel riquadro sopra",
+    "jobsHeading": "Scegli un'attività, se vuoi",
+    "kindsLabel": "Tipo di lavoro",
+    "groups": {
+      "finance": "Finanza e amministrazione",
+      "sales": "Vendite e marketing",
+      "operations": "Operazioni",
+      "legal": "Contratti e ricerca"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Trasforma questi estratti conto o fatture in un unico foglio di calcolo.",
+        "1": "Prepara il prossimo report mensile con questi numeri.",
+        "2": "Controlla questi estratti per trovare errori o voci insolite."
+      },
+      "sales": {
+        "0": "Ripulisci questo elenco clienti e segnala i duplicati.",
+        "1": "Confronta questi due listini prezzi e mostra cosa è cambiato.",
+        "2": "Scrivi email di follow-up a partire da questi appunti delle chiamate."
+      },
+      "operations": {
+        "0": "Trasforma questi appunti della riunione in decisioni e azioni da fare.",
+        "1": "Trasforma questi appunti in una sintesi di una pagina.",
+        "2": "Trasforma questo documento di processo in una checklist passo passo."
+      },
+      "legal": {
+        "0": "Riassumi i termini principali e i rischi di questo contratto.",
+        "1": "Riassumi questo report ed evidenzia i numeri che contano.",
+        "2": "Leggi questa pagina e dimmi cosa conta per noi."
+      }
+    }
+  },
+  "reportContent": {
+    "title": "Segnala contenuto",
+    "message": "Segnalare questo contenuto come pericoloso o offensivo? Il testo o il riferimento e gli identificativi del tuo account saranno inviati al team MindsHub per la verifica.",
+    "submit": "Invia segnalazione",
+    "sent": "Segnalazione ricevuta.",
+    "failed": "Impossibile inviare la segnalazione. Riprova.",
+    "rateLimited": "Hai raggiunto il limite giornaliero di segnalazioni. Riprova più tardi.",
+    "retryAt": "Hai raggiunto il limite giornaliero di segnalazioni. Riprova il {when, date, short} alle {when, time, short}."
   }
 }

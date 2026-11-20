@@ -29,7 +29,11 @@ import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefresh
 import { serverMayReceiveTokens, serverTrust } from './app-secret';
 import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNotionPagesInMain } from './notion-pages';
 import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
-import { OAUTH_CREDENTIALS } from './credentials';
+import { cancelCustomMcpConnects, connectCustomMcp } from './custom-mcp-connect';
+import { customMcpAvailable, customSummary, disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
+import { stopAllCustomRefreshLoops } from './custom-mcp-refresh';
+import { CUSTOM_MCP_ENGINE } from './custom-mcp-routes';
+import { OAUTH_CREDENTIALS, SCOPE_SEPARATORS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
@@ -803,6 +807,8 @@ function setupIPC() {
   // env file only gets touched once the user picks an LLM path.
   ipcMain.handle(IPC.OAUTH_CANCEL, () => {
     cancelCurrentOAuth();
+    // The add-server form's Cancel sends this too, before the browser opens.
+    cancelCustomMcpConnects();
     return true;
   });
 
@@ -895,6 +901,7 @@ function setupIPC() {
         clientId,
         clientSecret,
         scopes: oauthBlock.scopes,
+        scopeSeparator: SCOPE_SEPARATORS[engine],
         extraAuthParams: oauthBlock.extra_auth_params,
         redirectPort: oauthBlock.redirect_port,
         redirectHost: oauthBlock.redirect_host,
@@ -1064,6 +1071,7 @@ function setupIPC() {
   ipcMain.handle(IPC.KEYCHAIN_REVOKE, async (_event, opts) => {
     const { engine, name, accountEmail } = opts || {};
     if (!engine || !name || !accountEmail) return { ok: false, reason: 'engine, name, and accountEmail are required.' };
+    if (engine === CUSTOM_MCP_ENGINE) return { ok: false, reason: 'Custom MCP servers are disconnected through their own channel.' };
     const key = `${engine}:${accountEmail}`;
     revokedConnections.add(key);
     stopRefreshLoop(engine, accountEmail);
@@ -1138,6 +1146,14 @@ function setupIPC() {
       return { ok: false, reason: 'Could not change tool access.' };
     }
   });
+
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_CONNECT, (_event, opts) => connectCustomMcp(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_TOOLS, (_event, opts) => listCustomTools(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_SET_TOOLS, (_event, opts) => setCustomTools(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_RECONNECT, (_event, opts) => reconnectCustom(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_DISCONNECT, (_event, opts) => disconnectCustom(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_AVAILABLE, () => customMcpAvailable());
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_SUMMARY, (_event, opts) => customSummary(opts));
 
   // Desktop only, for the same reason: these read pages with the app-held token.
   ipcMain.handle(IPC.NOTION_SEARCH_PAGES, (_event, opts) => searchNotionPagesInMain(opts?.name, opts?.query));
@@ -2225,6 +2241,7 @@ async function drainServerForQuit(): Promise<void> {
   // Stop all OAuth refresh loops before the server shuts down so no
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
+  stopAllCustomRefreshLoops();
   // An auto-mode shell update installs itself as the app goes down, outside
   // the update-maintenance gate that the in-app "Restart now" install enters.
   // The download only stages the payload (Windows: the NSIS installer on disk;

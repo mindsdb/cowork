@@ -118,8 +118,8 @@
       "windowUsedUpTitle": "套餐额度已用完",
       "windowPausedUntil": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度，且余额已用完。已暂停至 {time}。充值即可继续。",
       "windowPaused": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度，且余额已用完。已暂停，直到额度重置。充值即可继续。",
-      "windowPausedUntilMobile": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度，且余额已用完。已暂停至 {time}。",
-      "windowPausedMobile": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度，且余额已用完。已暂停，直到额度重置。"
+      "windowPausedUntilMobile": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度。已暂停至 {time}。",
+      "windowPausedMobile": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度。已暂停，直到额度重置。"
     },
     "usageAlert": {
       "freeLow": "Air 免费额度剩余 {percent}",
@@ -161,8 +161,7 @@
       "topUpBalance": "为余额充值",
       "needsCreditsBodyMobile": "你的积分不足以使用此模型。",
       "notInTierTitle": "{model} 不在你的套餐内",
-      "notInTierBody": "{tier, select, plus {Plus 包含 {model}。} pro {Pro 包含 {model}。} other {你的套餐不包含 {model}。}}升级，或充值后按 API 价格使用。",
-      "notInTierBodyMobile": "{tier, select, plus {Plus 包含 {model}。} pro {Pro 包含 {model}。} other {你的套餐不包含 {model}。}}你的余额已用完。"
+      "notInTierBody": "{tier, select, plus {Plus 包含 {model}。} pro {Pro 包含 {model}。} other {你的套餐不包含 {model}。}}升级，或充值后按 API 价格使用。"
     },
     "overloaded": {
       "theModelProvider": "模型提供商",
@@ -510,7 +509,8 @@
         "1": "分析竞争格局与市场定位",
         "2": "自动生成每周团队状态报告",
         "3": "调研新产品上市的市场机会",
-        "4": "根据上周的更新起草本周更新"
+        "4": "根据上周的更新起草本周更新",
+        "5": "把报告做成演示文稿"
       }
     },
     "website": {
@@ -555,7 +555,8 @@
         "3": "用 Hugging Face 数据对比主流 VLM 模型",
         "4": "计算投资现金流的 IRR",
         "5": "整理我的电子表格并生成图表",
-        "6": "提取合同中的关键条款"
+        "6": "提取合同中的关键条款",
+        "7": "把银行对账单转成电子表格"
       }
     },
     "visualization": {
@@ -586,7 +587,10 @@
         "7": "看看我这周有哪些待办事项",
         "8": "调研潜在客户并起草首次联系邮件",
         "9": "根据通话记录为我辅导一笔交易",
-        "10": "把会议记录整理成待办事项"
+        "10": "把会议记录整理成待办事项",
+        "11": "梳理竞争对手的市场进入策略",
+        "12": "根据课程资料制作学习指南",
+        "13": "整理一份排好序的潜在客户名单"
       }
     },
     "games": {
@@ -607,7 +611,11 @@
       "placeholder": "选择一个示例，或描述你自己的任务"
     },
     "samplePrompts": "示例提示词",
-    "pillsAriaLabel": "任务类型"
+    "pillsAriaLabel": "任务类型",
+    "own-work": {
+      "chipLabel": "你的工作",
+      "placeholder": "粘贴文本或链接，或附加文件"
+    }
   },
   "taskRows": {
     "openProject": "打开 {project}",
@@ -809,5 +817,50 @@
     "fallbackName": "图像",
     "alt": "生成的图像 {name}",
     "notShown": "无法显示 {name}。它可能已被移动或删除。"
+  },
+  "ownWork": {
+    "needsMaterial": "现在添加要处理的内容：附加一个文件，或在任务后粘贴文本或链接。",
+    "waysLabel": "带入你的工作的方式",
+    "attach": "附加文件",
+    "orPaste": "或在上方输入框中粘贴文本或链接",
+    "jobsHeading": "如果需要，选择一个任务",
+    "kindsLabel": "工作类型",
+    "groups": {
+      "finance": "财务与行政",
+      "sales": "销售与营销",
+      "operations": "运营",
+      "legal": "合同与研究"
+    },
+    "jobs": {
+      "finance": {
+        "0": "把这些银行对账单或发票整理成一个电子表格。",
+        "1": "用这些数据制作下一份月度报告。",
+        "2": "检查这些对账单中的错误或异常项目。"
+      },
+      "sales": {
+        "0": "整理这份客户名单并标出重复项。",
+        "1": "比较这两份价目表，列出变化。",
+        "2": "根据这些通话记录起草跟进邮件。"
+      },
+      "operations": {
+        "0": "把这些会议记录整理成决定和待办事项。",
+        "1": "把这些笔记整理成一页摘要。",
+        "2": "把这份流程文档变成分步检查清单。"
+      },
+      "legal": {
+        "0": "总结这份合同的关键条款和风险。",
+        "1": "总结这份报告，并找出重要的数字。",
+        "2": "阅读这个页面，告诉我哪些内容对我们重要。"
+      }
+    }
+  },
+  "reportContent": {
+    "title": "举报内容",
+    "message": "要将此内容举报为不安全或冒犯性内容吗？其文本或引用信息及您的账号标识信息将发送给 MindsHub 团队审核。",
+    "submit": "提交举报",
+    "sent": "举报已收到。",
+    "failed": "无法提交举报，请重试。",
+    "rateLimited": "已达到每日举报上限。请稍后重试。",
+    "retryAt": "已达到每日举报上限。请在 {when, date, short} {when, time, short} 后重试。"
   }
 }

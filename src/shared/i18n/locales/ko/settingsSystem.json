@@ -234,7 +234,6 @@
       "windowUsedResets": "{percent} 사용함 · {time}에 초기화",
       "windowMeterLabel": "{window, select, 7d {주간 제공량 사용량} other {5시간 제공량 사용량}}",
       "afterCap": "두 제공량 중 하나라도 초과하면 작업은 잔액에서 API 요금으로 차감되거나 초기화될 때까지 일시 중지됩니다.",
-      "afterCapMobile": "두 제공량 중 하나라도 초과하면 잔액으로 충당되지 않는 한 초기화될 때까지 작업이 일시 중지됩니다.",
       "upgrade": "{tier, select, plus {Plus 시작} pro {Pro로 업그레이드} other {업그레이드}}",
       "manage": "관리"
     }

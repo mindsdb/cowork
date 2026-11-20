@@ -234,7 +234,6 @@
       "windowUsedResets": "{percent} usados · renova às {time}",
       "windowMeterLabel": "{window, select, 7d {Cota semanal usada} other {Cota de 5 horas usada}}",
       "afterCap": "Ao esgotar qualquer uma das cotas, as tarefas usam seu saldo a preços de API ou ficam pausadas até a renovação.",
-      "afterCapMobile": "Ao esgotar qualquer uma das cotas, as tarefas ficam pausadas até a renovação, a menos que seu saldo as cubra.",
       "upgrade": "{tier, select, plus {Assinar Plus} pro {Mudar para Pro} other {Fazer upgrade}}",
       "manage": "Gerenciar"
     }

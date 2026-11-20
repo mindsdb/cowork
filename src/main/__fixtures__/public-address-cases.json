@@ -1,0 +1,33 @@
+{
+  "_source": "Copied from anton tests/core/mcp/test_egress.py (custom MCP servers, milestone 1), plus 3fff::1 and 5f00::1, which anton's is_public_destination also refuses. Keep both lists in step when either changes.",
+  "refused": [
+    "127.0.0.1",
+    "10.0.0.5",
+    "172.16.0.1",
+    "192.168.1.1",
+    "169.254.169.254",
+    "100.64.0.1",
+    "0.0.0.0",
+    "224.0.0.251",
+    "255.255.255.255",
+    "::1",
+    "::",
+    "::ffff:169.254.169.254",
+    "::ffff:127.0.0.1",
+    "64:ff9b::a9fe:a9fe",
+    "2002:a9fe:a9fe::1",
+    "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+    "fec0::1",
+    "ff02::1",
+    "fe80::1",
+    "fd00::1",
+    "fd00:ec2::254",
+    "3fff::1",
+    "5f00::1"
+  ],
+  "public": [
+    "93.184.215.14",
+    "2606:4700:4700::1111",
+    "::ffff:93.184.215.14"
+  ]
+}

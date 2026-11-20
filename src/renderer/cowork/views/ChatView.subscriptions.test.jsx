@@ -82,7 +82,7 @@ beforeEach(() => {
 });
 
 describe('AllowanceExhaustedCard: Get Plus for a Free plan', () => {
-  it('leads with Get Plus, opening checkout for this organization', async () => {
+  it('leads with Get Plus, opening the plan confirm for this organization', async () => {
     render(withUsage(usageWith(FREE), <ChatView task={taskWith(failedTurn('included_allowance_exhausted'))} />));
     const stop = card('Task stopped');
     const getPlus = stop.getByRole('button', { name: 'Get Plus' });
@@ -141,6 +141,18 @@ describe('window_allowance_exhausted card', () => {
     expect(screen.getByRole('button', { name: 'Add funds' })).toBeEnabled();
   });
 
+  it('inside the mobile app, reads as a usage stop with nothing to buy', () => {
+    mobile.current = true;
+    render(withUsage(usageWith(PLUS), (
+      <WindowAllowanceExhaustedCard resetAt={null} allowanceWindow="5h" isBillingOwner />
+    )));
+    expect(screen.getByText('Usage')).toBeInTheDocument();
+    expect(screen.queryByText('Billing')).toBeNull();
+    expect(screen.getByText("You've used your 5-hour allowance. Paused until it resets.")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/balance|wallet|funds|API rates|\$/i);
+    expect(screen.queryByRole('button', { name: /Add funds|Upgrade/ })).toBeNull();
+  });
+
   it('carries the window through a reloaded failure', () => {
     // The hydrate path reads the wire's snake_case, as it does reset_at.
     const meta = failedEventMeta([
@@ -173,6 +185,17 @@ describe('ModelUnavailableCard: model_not_in_tier', () => {
     )));
     expect(screen.queryByRole('button', { name: 'Get Plus' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Add funds' })).toBeEnabled();
+  });
+
+  it('inside the mobile app, says only that the model is unavailable, with nothing to buy', () => {
+    mobile.current = true;
+    render(withUsage(usageWith(PLUS), (
+      <ModelUnavailableCard code="model_not_in_tier" failedModel="claude-opus-5-5" requiredTier="pro" isBillingOwner />
+    )));
+    expect(screen.getByText(/isn't available right now/)).toBeInTheDocument();
+    expect(screen.getByText('Ask your operator to check the configured model and its access.')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/in your plan|included with|balance|wallet|funds|API rates|\$/i);
+    expect(screen.queryByRole('button', { name: /Add funds|Upgrade|Get Plus/ })).toBeNull();
   });
 
   it('is dispatched from the turn, the Air switch folded under More actions', () => {

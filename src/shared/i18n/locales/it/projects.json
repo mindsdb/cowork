@@ -429,7 +429,8 @@
       "andMore": "{source} e altri {count}"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "Connettore non riconosciuto"
+      "unrecognizedConnector": "Connettore non riconosciuto",
+      "mcpServer": "Server MCP"
     },
     "datasourceSubmission": {
       "errors": {
