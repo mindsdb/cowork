@@ -104,8 +104,10 @@ describe('DocPane version history', () => {
     const user = userEvent.setup();
     await lookAtVersion7(user);
     expect(document.querySelector('.doc-header__title')).toHaveTextContent('Launch plan (draft)');
+    expect(screen.queryByRole('button', { name: /^Rename doc/ })).toBeNull(); // a version is read-only
     await user.click(screen.getByRole('button', { name: 'Back to current' }));
     expect(document.querySelector('.doc-header__title')).toHaveTextContent('Launch plan');
+    expect(screen.getByRole('button', { name: 'Rename doc: Launch plan' })).toBeInTheDocument();
   });
 
   it('steps through the versions with the arrows, and goes back to the doc', async () => {

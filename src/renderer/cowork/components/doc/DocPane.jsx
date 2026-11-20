@@ -14,6 +14,7 @@ import { Icon } from '../ui/Icon';
 import { Button, Menu, Spinner, Tooltip } from '../ui';
 import DocAskBar from './DocAskBar';
 import DocCanvas from './DocCanvas';
+import DocHeaderTitle from './DocHeaderTitle';
 import { TabRail, TabStrip, tabElementId, useTabsHidden } from './DocTabs';
 import { docPageTarget } from './docArtifact';
 import { useDoc } from './useDoc';
@@ -169,6 +170,7 @@ export default function DocPane({
     if (done === 'changed') warn(t(kind === 'redo' ? 'notice.cantRedo' : 'notice.cantUndo'));
     return done;
   }, [undo, redo, warn, t]);
+  const renameDoc = useCallback((title) => apply([{ op: 'rename_doc', title }]), [apply]);
   const uploadImage = useCallback(async (file) => {
     try {
       return await uploadDocImage(projectRef, artifactId, file);
@@ -383,6 +385,7 @@ export default function DocPane({
   // the chat beside it may be about something else entirely.
   const live = agentActive;
   const tabbed = (shown?.tabs.length || 0) > 1;
+  const headerTitle = shown?.title || fallbackTitle || t('doc');
   const offline = writeError?.code === 'offline';
   const statusEl = live
     ? <span className="doc-header__status doc-header__status--agent"><span className="doc-header__pulse" aria-hidden="true" />{t('pane.status.agentWriting')}</span>
@@ -397,7 +400,7 @@ export default function DocPane({
       ref={rootRef}
       className={`doc-root ${variant === 'modal' ? 'doc-pane--modal' : 'doc-pane'} ${narrow ? 'doc-root--narrow' : ''}`}
       data-corner={headerCorner({ fillsWindow, expanded })}
-      aria-label={shown?.title || fallbackTitle || t('doc')}
+      aria-label={headerTitle}
       onKeyDownCapture={onKeyDownCapture}
     >
       <header className="doc-header">
@@ -413,7 +416,8 @@ export default function DocPane({
           <span className="doc-header__icon"><Icon of={FileText} size={16} /></span>
         )}
         {/* A version looked at shows its own title: restoring it brings that back too. */}
-        <span className="doc-header__title" title={shown?.title || fallbackTitle}>{shown?.title || fallbackTitle || t('doc')}</span>
+        <DocHeaderTitle title={headerTitle}
+          onRename={doc && editable && !version ? renameDoc : undefined} />
         <span aria-live="polite">{statusEl}</span>
         {doc && (
           <Tooltip content={canOpenInBrowser ? openLabel : t('pane.shareToOpen')}>

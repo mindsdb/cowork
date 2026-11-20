@@ -15,6 +15,8 @@
     "expand": "Erweitern",
     "close": "Schließen",
     "closeDoc": "Dokument schließen",
+    "renameDoc": "Dokument umbenennen: {title}",
+    "docName": "Dokumentname",
     "loading": "Dokument wird geladen",
     "gone": "Dieses Dokument existiert nicht mehr.",
     "openFailed": "Dieses Dokument konnte nicht geöffnet werden. {reason}",

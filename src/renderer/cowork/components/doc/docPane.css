@@ -57,6 +57,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Only as wide as the name, so the text cursor shows over the name alone; the
+   margin still pushes the rest of the row to the end. */
+.doc-header__title--editable {
+  flex: 0 1 auto;
+  margin-right: auto;
+  border-radius: 4px;
+  cursor: text;
+}
+.doc-header__title--editable:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--ink-4); }
+.doc-header__title--editable:focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); }
+.doc-header__title-input { border-bottom: 1px solid var(--accent); }
 .doc-header__status {
   display: inline-flex;
   align-items: center;

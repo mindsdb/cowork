@@ -338,6 +338,105 @@ describe('DocPane adding a tab', () => {
 });
 
 
+describe('DocPane renaming the doc from its header', () => {
+  const twoTabs = () => ({ ...doc(), tabs: [...doc().tabs, { id: 't_2', title: 'Risks', blocks: [] }] });
+  beforeEach(() => {
+    api.fetchDoc.mockResolvedValue({ doc: twoTabs() });
+    api.postDocOps.mockImplementation(async (_p, _a, { ops }) => {
+      const next = { ...twoTabs(), rev: 3 };
+      if (ops[0]?.op === 'rename_doc') next.title = ops[0].title;
+      return { doc: next, rev: 3, results: [] };
+    });
+  });
+
+  async function startRenaming(user) {
+    await user.click(await screen.findByRole('button', { name: 'Rename doc: Vendor shortlist' }));
+    const field = screen.getByRole('textbox', { name: 'Doc name' });
+    expect(field).toHaveFocus();
+    expect(field.selectionStart).toBe(0);
+    expect(field.selectionEnd).toBe('Vendor shortlist'.length);
+    return field;
+  }
+
+  it('renames the doc, not the tab, in a doc of two tabs, and tells the lists', async () => {
+    const heard = vi.fn();
+    const stop = onArtifactRenamed(heard);
+    try {
+      const user = userEvent.setup();
+      render(<DocPane projectRef="p1" artifactId="a1" />);
+      const field = await startRenaming(user);
+      await user.clear(field);
+      await user.keyboard('  Vendors 2027  {Enter}');
+      await waitFor(() => expect(api.postDocOps).toHaveBeenCalled());
+      expect(api.postDocOps.mock.calls[0][2].ops).toEqual([{ op: 'rename_doc', title: 'Vendors 2027' }]);
+      const renamed = await screen.findByRole('button', { name: 'Rename doc: Vendors 2027' });
+      expect(renamed).toHaveFocus();
+      expect(heard).toHaveBeenLastCalledWith({ id: 'a1', title: 'Vendors 2027' });
+      // The page's title still names the tab.
+      expect(screen.getByRole('textbox', { name: 'Title' })).toHaveTextContent('Vendor shortlist');
+    } finally {
+      stop();
+    }
+  });
+
+  it('renames on leaving the field too', async () => {
+    const user = userEvent.setup();
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    const field = await startRenaming(user);
+    await user.clear(field);
+    await user.keyboard('Shortlist');
+    await user.click(screen.getByRole('textbox', { name: 'Title' }));
+    await waitFor(() => expect(api.postDocOps).toHaveBeenCalled());
+    expect(api.postDocOps.mock.calls[0][2].ops).toEqual([{ op: 'rename_doc', title: 'Shortlist' }]);
+  });
+
+  it('puts the name back on Escape, without closing what the doc is open in', async () => {
+    const outside = vi.fn();
+    document.addEventListener('keydown', outside);
+    try {
+      const user = userEvent.setup();
+      render(<DocPane projectRef="p1" artifactId="a1" />);
+      const field = await startRenaming(user);
+      await user.clear(field);
+      await user.keyboard('Something else{Escape}');
+      expect(await screen.findByRole('button', { name: 'Rename doc: Vendor shortlist' })).toHaveFocus();
+      expect(outside.mock.calls.map(([e]) => e.key)).not.toContain('Escape');
+      expect(api.postDocOps).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('keydown', outside);
+    }
+  });
+
+  it('sends nothing for an emptied or unchanged name', async () => {
+    const user = userEvent.setup();
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    await user.clear(await startRenaming(user));
+    await user.keyboard('   {Enter}');
+    await startRenaming(user);
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Rename doc: Vendor shortlist' })).toBeInTheDocument();
+    expect(api.postDocOps).not.toHaveBeenCalled();
+  });
+
+  it('keeps a rename the agent made while the field was open and left as it was', async () => {
+    const user = userEvent.setup();
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    await startRenaming(user);
+    act(() => api.stream.handlers.onEvent({ type: 'doc.updated', by: 'agent', rev: 3, doc: { ...twoTabs(), rev: 3, title: 'Vendors 2027' } }));
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('button', { name: 'Rename doc: Vendors 2027' })).toBeInTheDocument();
+    expect(api.postDocOps).not.toHaveBeenCalled();
+  });
+
+  it('is plain text for a viewer who cannot edit', async () => {
+    api.fetchDoc.mockResolvedValue({ doc: twoTabs(), capabilities: { canEdit: false } });
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    await screen.findByLabelText('Title');
+    expect(document.querySelector('.doc-header__title')).toHaveTextContent('Vendor shortlist');
+    expect(screen.queryByRole('button', { name: /^Rename doc/ })).toBeNull();
+  });
+});
+
 describe('DocPane folding the tabs away', () => {
   const twoTabs = (rev = 2, extra = []) => ({
     ...doc(rev),

@@ -15,6 +15,8 @@
     "expand": "展开",
     "close": "关闭",
     "closeDoc": "关闭文档",
+    "renameDoc": "重命名文档：{title}",
+    "docName": "文档名称",
     "loading": "正在加载文档",
     "gone": "此文档已不存在。",
     "openFailed": "无法打开此文档。{reason}",
