@@ -11,6 +11,7 @@ import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { useConsoleLink } from '../hooks/useConsoleLink';
 import { billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded } from '../lib/analytics';
 import {
@@ -290,6 +291,7 @@ export default function HomeView({
   harnessClaudeCodeEnabled,
 }) {
   const { t } = useTranslation('shell');
+  const consoleLink = useConsoleLink();
   const greetingText = greeting || t('home.greetingFallback');
   const blocked = configReady === false;
 
@@ -807,7 +809,7 @@ export default function HomeView({
                     // (ENG-1533) — one surface reached two ways, so the two must
                     // not read as different causes in the funnel.
                     trackBillingOpened('connect_provider');
-                    host.openExternal(MINDS_BILLING_URL);
+                    host.openExternal(consoleLink(MINDS_BILLING_URL));
                   }}
                 >{t('home.connectProvider.startFree')}</Button>}
                 <Button

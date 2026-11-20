@@ -553,7 +553,10 @@ export default function CodeView({
                       onChooseModel={() => setControlsOpen(true)}
                       onAddCredits={(billingTrigger) => {
                         trackBillingOpened(billingTrigger, 'code');
-                        void openCodeExternalUrl(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+                        void openCodeExternalUrl(consoleUrlFor(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }), {
+                          organizationId: account?.orgId ?? null,
+                          subject: account?.sub ?? null,
+                        }));
                       }}
                       onViewBudgets={() => {
                         trackBillingOpened('budget_exceeded', 'code');

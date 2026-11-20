@@ -3,6 +3,7 @@ import { Icon } from '../../components/ui/Icon';
 import { Badge, Button, Meter } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
+import { useConsoleLink } from '../../hooks/useConsoleLink';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
 import { trackBillingOpened } from '../../lib/analytics';
 import { billingCopyKey, offersBilling } from '../../lib/billingLinks';
@@ -27,18 +28,19 @@ import { useTranslation } from '../../../lib/i18n';
 
 const CARD = 'border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] px-[18px] py-4';
 
-function openConsole(action, isBillingOwner) {
+function openConsole(action, isBillingOwner, consoleLink) {
   trackBillingOpened('usage_settings');
-  host.openExternal(usageActionUrl(action, { isBillingOwner }));
+  host.openExternal(consoleLink(usageActionUrl(action, { isBillingOwner })));
 }
 
 // Labels come from the catalog by the action's key; the English `label` on
 // USAGE_ACTIONS stays the fallback for an action this section doesn't know.
 function ActionButton({ action, isBillingOwner, variant = 'default' }) {
   const { t } = useTranslation('settingsSystem');
+  const consoleLink = useConsoleLink();
   if (!offersBilling()) return null;
   return (
-    <Button variant={variant} size="sm" onClick={() => openConsole(action, isBillingOwner)}>
+    <Button variant={variant} size="sm" onClick={() => openConsole(action, isBillingOwner, consoleLink)}>
       {t(`usage.actions.${action.key}`, { defaultValue: action.label })}
       <Icon of={ExternalLink} size={12} />
     </Button>
