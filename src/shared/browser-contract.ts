@@ -15,8 +15,8 @@
  * which refusal it got.
  */
 
-/** GET /healthz's `api`. Bumped with any shape change, in anton's fixtures too. */
-export const BROWSER_HOST_API = 1;
+/** GET /healthz's `api`. Bumped with any shape change. */
+export const BROWSER_HOST_API = 2;
 
 /** A task's session id and a project key. anton's BrowserConfig and the renderer's
     Browser step use the same pattern. */
@@ -77,6 +77,131 @@ export const ANTON_REQUEST_TIMEOUT_MS = 45_000;
     before anton stops waiting. A type step's keyed typing is sized to end
     inside the budget (KEYED_CHARS in src/main/browser-input.ts). */
 export const STEP_TIMEOUT_MS = 33_000;
+
+/** A step settles before it answers (ElectronTab.act in
+    src/main/browser-view.ts). One that started a main-frame request or a
+    navigation, or changed the page in place, waits until those requests are
+    done, nothing shown is marked aria-busy and the page has shown no change
+    for SETTLE_QUIET_MS, at most SETTLE_MAX_MS, and always inside
+    STEP_TIMEOUT_MS; after an in-place change that started nothing it stops
+    SETTLE_QUIET_MS past its first look, so a page that changes on its own (a
+    ticker) doesn't hold every step to the cap. One that changed nothing and
+    started neither answers SETTLE_QUIET_MS into its settle, unless the page
+    shows something marked aria-busy, so a request it starts by then (a
+    search box's suggestions) is waited for, as on the web pod. The web pod
+    holds the same two numbers, and action.json's `limits` pins both. */
+export const SETTLE_MAX_MS = 3_000;
+export const SETTLE_QUIET_MS = 400;
+
+/** A page read's child frames, as page.json's `limits` pins them; the web
+    pod holds the same values. A read reads at most FRAMES_READ frames, each
+    at least FRAME_MIN_READ_PX each way, and lists at most ELEMENTS_PER_FRAME
+    of a frame's elements and TEXT_PER_FRAME characters of its text. */
+export const FRAMES_READ = 5;
+export const ELEMENTS_PER_FRAME = 50;
+export const TEXT_PER_FRAME = 1_000;
+export const FRAME_MIN_READ_PX = 32;
+/** How long each of a page read's two frame phases may take, as page.json's
+    `frames_phase_ms` pins it: the page's world starts no frame read past it
+    from its first (browser-page-script.ts), and ElectronTab.read starts no
+    look at a read frame past it from its first (browser-view.ts). A frame
+    left for later is listed unread. */
+export const FRAMES_PHASE_MS = 2_000;
+
+/** Hosts whose frames hold a payment provider's card fields. A frame on one,
+    or on a name under one, is never read and is blacked out of every
+    screenshot. page.json's `limits` pins the list. */
+export const PAYMENT_FRAME_HOSTS: readonly string[] = [
+  'stripe.com', 'braintreegateway.com', 'braintree-api.com', 'adyen.com', 'checkout.com', 'squareup.com', 'squarecdn.com',
+  'recurly.com', 'chargebee.com', 'spreedly.com', 'authorize.net', 'cybersource.com', 'worldpay.com', 'paddle.com',
+  'paypal.com', 'shopifycs.com', 'shopifyinc.com', 'pay.google.com', 'mollie.com', 'razorpay.com', 'nmi.com', 'klarna.com',
+];
+
+/** Identity providers' sign-in hosts: a frame on one, or on a name under
+    one, is never read. page.json's `limits` pins the list. */
+export const SIGN_IN_FRAME_HOSTS: readonly string[] = [
+  'accounts.google.com', 'appleid.apple.com', 'login.microsoftonline.com', 'login.live.com', 'facebook.com',
+];
+
+/** The one rule both hosts hold for a field a page names for a payment
+    card, as page.json's `limits` pins it (`card_field_name`,
+    `card_field_exempt`, `card_field_conjunction`, `card_field_payment`,
+    `card_field_word_breaks`, `card_field_attributes`), which the pod host
+    holds too. The rule reads each value of a field's CARD_FIELD_ATTRIBUTES,
+    a missing one as empty, and that value's word-split form: each of
+    CARD_FIELD_WORD_BREAKS applied in order, case-sensitive, replacing every
+    match with its first group and a space, so cardNumberInput reads as
+    "card Number Input" and CVVCode as "CVV Code". Then every match of
+    CARD_FIELD_EXEMPT, ignoring case, is replaced with a space in each value
+    and in each split form on its own, so an exempt match never runs from one
+    attribute into the next, but a match stays when CARD_FIELD_CONJUNCTION,
+    ignoring case, matches the text before it in its form, read before any
+    replacement. A field skips that step when CARD_FIELD_PAYMENT, ignoring
+    case, matches any of its values or their split forms. Its two name forms
+    are then its values joined in order with a space and its split forms
+    joined the same way, and the field is card-named when CARD_FIELD_NAME,
+    ignoring case, matches either name form. CARD_FIELD_EXEMPT matches the
+    number of a card that isn't a payment card, such as a gift or e-gift,
+    loyalty, library or insurance card or an identity card (an ID,
+    identification, green, residence, Social Security, Aadhaar, PAN, citizen
+    or voter card; an id, a pan, or an e-gift card's e, with no letter or
+    digit right before it, so prepaid's id and Japan's pan never count).
+    CARD_FIELD_NAME and CARD_FIELD_EXEMPT take # as a card's number, as in
+    "Card #". CARD_FIELD_CONJUNCTION matches text that ends in a join: one
+    or more conjunctions (or, and, &, +, / or a comma), each followed only
+    by spaces or separators (. _ -), then at most one article (a, an, the,
+    your or any) followed by spaces or separators. The text's names are its
+    text before its first join and between one join and the next. A name is
+    exempt when it ends in an exempt name, or holds neither card nor cc and
+    ends in an identifier's number, followed only by spaces or separators,
+    and the pattern doesn't match when each name is exempt. An exempt name
+    is one of CARD_FIELD_EXEMPT's qualifiers or the name of an ID document
+    (passport, license, licence, permit, DL or SSN), a contact (name, phone,
+    telephone, mobile, email or username), a checkout code (promo,
+    promotional, coupon, voucher, discount or certificate) or a barcode,
+    alone or followed by card, code or address, and then by a number
+    (number, num, no or #) or not. An identifier's number is a letter or
+    digit, then number, num or no after one or more spaces or separators, or
+    # or ID right after it or after spaces or separators, as in "Account
+    number", "A-number", "Order no.", "Account#" and "ICCID". Or and and
+    count only with no letter or digit right before or after them, an
+    article and an exempt name only with none right before them, and cc only
+    with no letter right before or after it. So the card number stays when a
+    conjunction before it joins it to a name that isn't exempt: it stays in
+    "Card or gift card number", "Card or eGift card number", "Card or a gift
+    card number", "Payment or rewards card number", "Card, gift or loyalty
+    card number", "Card or gift certificate or gift card number" and "Card
+    account number or gift card number", and not in "Gift or loyalty card
+    number", "Gift, loyalty, or rewards card number", "Gift card or library
+    card number", "Driver license or ID card number", "Passport, residence
+    permit or ID card number", "Phone number or loyalty card number",
+    "Account number or rewards card number" or "Gift card number and PIN".
+    The pattern reads each name one way, and the join at the end from one
+    start (the text's start or right after a character no join holds), so a
+    long list or a long run of joins costs time in step with its length.
+    CARD_FIELD_PAYMENT matches a word for a payment card with no letter
+    right before or after it: credit, debit, prepaid, CC, ATM, EBT, HSA or
+    FSA, or one of the card networks Visa, Mastercard, Amex, American
+    Express, Discover, Diners, JCB, UnionPay, Maestro, RuPay and Interac.
+    Payment, bank and charge aren't payment words, since they also name a
+    checkout's section. So giftCardNumber, payment[gift_card_number],
+    "Library card number", "Gift card #", "ID card number", "PAN card
+    number" and "Green card number" are ordinary fields, while giftCardCvv, "Card #", "Benefits card number",
+    "Japan card number", "Credit card or gift card number",
+    creditOrGiftCardNumber, "Visa gift card number",
+    "Green Dot card number", a field named giftCardNumber with the
+    placeholder "Card number" and one with the id member and the placeholder
+    "Card number" stay card-named. A card-named field is a secret field: a
+    read never carries its value, a screenshot blacks it out, a type, a
+    select or an editing key into it answers 403 password_field, and a page
+    read never reads a frame that holds one. The page's world reads it
+    (`cardNamed` and `isSecret` in src/main/browser-page-script.ts). */
+export const CARD_FIELD_NAME = /(^|[^a-z0-9]|card|cc)(cvc|cvv2?|csc)([^a-z0-9]|$)|card[\s._-]*(numbers?|num|no|#)(?![a-z])|(^|[^a-z0-9])cc[\s._-]*(numbers?|num|#)(?![a-z])|security[\s._-]*code/i;
+export const CARD_FIELD_EXEMPT = /(((?<![a-z0-9])e[\s._-]*)?gift|loyalty|rewards?|library|members?(hip)?|insurance|health|medicare|medicaid|student|transit|sim|national[\s._-]*id|identity|identification|(?<![a-z0-9])id|green|residen(t|ce|cy)|social[\s._-]*security|aadhaa?r|(?<![a-z0-9])pan|citizen(ship)?|voter)[\s._-]*card[\s._-]*(numbers?|num|no|#)(?![a-z])/i;
+export const CARD_FIELD_CONJUNCTION = /^(?![\s._-]*((?![\s._-])(?=(((?!((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,]))[\s\S])*(?<![a-z0-9])((((?<![a-z0-9])e[\s._-]*)?gift|loyalty|rewards?|library|members?(hip)?|insurance|health|medicare|medicaid|student|transit|sim|national[\s._-]*id|identity|identification|(?<![a-z0-9])id|green|residen(t|ce|cy)|social[\s._-]*security|aadhaa?r|(?<![a-z0-9])pan|citizen(ship)?|voter)|(passport|licen[cs]e|permit|dl|ssn|name|(tele)?phone|mobile|e[\s._-]*mail|user[\s._-]*name|promo(tion(al)?)?|coupon|voucher|discount|certificate|bar[\s._-]*code))([\s._-]*(card|code|address))?([\s._-]*(numbers?|num|no|#))?|((?!((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,])|card|(?<![a-z])cc(?![a-z]))[\s\S])*[a-z0-9]([\s._-]+(numbers?|num|no)|[\s._-]*(#|id)))[\s._-]*((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,]))((?!((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,]))[\s\S])*(((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,])[\s._-]*)+)+((?<![a-z0-9])(a|an|the|your|any)[\s._-]+)?$)([\s\S]*[^&+/,\s._-](?<!(?<![a-z0-9])or)(?<!(?<![a-z0-9])and))?[\s._-]*(((?<![a-z0-9])(or|and)(?![a-z0-9])|[&+/,])[\s._-]*)+((?<![a-z0-9])(a|an|the|your|any)[\s._-]+)?$/i;
+export const CARD_FIELD_PAYMENT = /(?<![a-z])(credit|debit|prepaid|cc|atm|ebt|hsa|fsa|visa|master[\s._-]*card|am[\s._-]*ex|american[\s._-]*express|discover|diners|jcb|union[\s._-]*pay|maestro|ru[\s._-]*pay|interac)(?![a-z])/i;
+export const CARD_FIELD_WORD_BREAKS: readonly RegExp[] = [/([a-z0-9])(?=[A-Z])/g, /([A-Z])(?=[A-Z][a-z])/g];
+export const CARD_FIELD_ATTRIBUTES: readonly string[] = ['name', 'id', 'aria-label', 'placeholder'];
 
 /** anton's STEP_ACTIONS (anton/core/browser/tool.py). */
 export const STEP_ACTIONS = [
@@ -144,6 +269,59 @@ export interface PageElement {
   options?: string[];
 }
 
+/** A child frame's element. It has no id, so a step reaches it only by
+    position, and it never carries a field's value: a select keeps its value
+    and options. */
+export interface PageFrameElement {
+  role: string;
+  name: string;
+  value?: string;
+  checked?: boolean;
+  disabled?: true;
+  offscreen?: true;
+  options?: string[];
+}
+
+/** A frame's content box in the screenshot's pixels. */
+export interface FrameBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A frame element's top-left in its document's content, in whole CSS
+    pixels: its top-left in the view plus the scroll of every scrolling
+    element it is laid out in and the page's, so no scroll changes it. */
+export interface FramePoint {
+  x: number;
+  y: number;
+}
+
+/** A rendered child frame. `url` is origin and path for http and https,
+    about:blank or about:srcdoc, otherwise the scheme alone. A placed frame
+    has its `box` and `at`; `box` is null, with no `at`, for a frame the host
+    can't place. Only a read frame carries what it holds. `secret` is true,
+    read or not, when the frame, or a frame inside it at any depth, is on a
+    PAYMENT_FRAME_HOSTS host or holds a secret, card-named or sign-in field,
+    and left out for any other frame and for one the host couldn't look into
+    within FRAMES_PHASE_MS; anton watches no hand-over on a page that lists
+    one. */
+export type PageFrame =
+  | { url: string; read: false; box: null; secret?: true }
+  | { url: string; read: false; box: FrameBox; at: FramePoint; offscreen?: true; secret?: true }
+  | {
+    url: string;
+    read: true;
+    box: FrameBox;
+    at: FramePoint;
+    offscreen?: true;
+    secret?: true;
+    elements: PageFrameElement[];
+    text: string;
+    truncated: boolean;
+  };
+
 /** A check frame the person can see. */
 export interface Challenge {
   host: string;
@@ -163,12 +341,35 @@ export interface PageSnapshot {
   scroll: PageScroll;
   elements: PageElement[];
   text: string;
+  /** More elements exist than `elements` lists. */
   truncated: boolean;
   challenges: Challenge[];
+  /** The page's rendered child frames, on-screen first, and after them,
+      unread, the frames inside each frame the read read, as page.json lets
+      a host list them (readFrames in src/main/browser-page-script.ts, and
+      ElectronTab.read in src/main/browser-view.ts for one only the frame
+      tree places). */
+  frames: PageFrame[];
+  /** An opaque token naming the node the focus rests on, the deepest one
+      through frames this host can read, and that frame's element when the
+      focus is inside a frame it can't read: equal tokens mean the same
+      node. This host names it by its frame and its backend node id
+      (FrameReads.focusToken in src/main/browser-frames.ts), and leaves it
+      out only while nothing has the focus or it can't read the page at all
+      (the debugger is held elsewhere, or the read times out). */
+  focus?: string;
+}
+
+/** What a step did to the page: whether it changed what the page shows,
+    or null when the host can't tell (a frame, canvas or media element in
+    view or under the step, a hover, a wait, a page it couldn't watch, or a
+    change the person's input during the step may have made). */
+export interface StepOutcome {
+  changed: boolean | null;
 }
 
 /** POST /sessions/{id}/action. */
-export interface ActionAnswer {
+export interface ActionAnswer extends StepOutcome {
   ok: true;
   url: string;
   page?: PageSnapshot;
@@ -209,6 +410,8 @@ export type BridgeErrorCode =
   | 'tab_not_found'
   | 'too_many_saved_tabs'
   | 'human_in_control'
+  | 'not_a_text_field'
+  | 'focus_unreadable'
   | 'stale_element'
   | 'page_blocked'
   | 'page_busy'
@@ -227,6 +430,8 @@ export const BRIDGE_ERROR_STATUS: Record<BridgeErrorCode, number> = {
   too_large: 413,
   too_many_saved_tabs: 409,
   human_in_control: 409,
+  not_a_text_field: 409,
+  focus_unreadable: 409,
   stale_element: 409,
   page_blocked: 409,
   page_busy: 409,
@@ -277,9 +482,16 @@ export type StepTarget = PointTarget | ElementTarget;
 export type MouseButton = 'left' | 'right' | 'middle';
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 
+/** A checked step. A type step names its field by number, or, with
+    `focused`, types into whatever has the focus: a frame's field has no
+    number, so the model clicks it by position first. A focused type types at
+    the caret and clears nothing, and the host types it only into a text entry
+    that isn't read only, disabled, secret or named for a card (typeIntoFocus
+    in src/main/browser-input.ts). */
 export type Step =
   | { action: 'click'; target: StepTarget; button: MouseButton; clicks: 1 | 2 | 3 }
-  | { action: 'type'; element: number; text: string; clear: boolean; submit: boolean }
+  | { action: 'type'; focused?: false; element: number; text: string; clear: boolean; submit: boolean }
+  | { action: 'type'; focused: true; text: string; submit: boolean }
   | { action: 'press'; key: string; element?: number }
   | { action: 'select'; element: number; values: string[] }
   | { action: 'scroll'; direction: ScrollDirection; amount: number; element?: number }
@@ -292,11 +504,27 @@ export type Step =
   | { action: 'navigate'; url: string };
 
 /** POST /sessions/{id}/action, checked. Points are in page CSS pixels, or in
-    the latest screenshot's pixels when `coords` is "screenshot". */
+    the latest screenshot's pixels when `coords` is "screenshot".
+    `intoFrame` is the body's into_frame. anton sends true after the person
+    approves a one-step card for a step whose point may land in a frame,
+    whatever held the step: a click by position anton raised for the frame,
+    a click on a consent page, or a drag from a commit control. It sends
+    false on every other body, a click after the person's approval of
+    clicks by position on the page included. With true, a press or a drag's
+    release is bound to the frame under its point when the step starts: it
+    goes only into that frame, at the address it had then, and is refused
+    once that frame moved away, another lies there, it navigated, or the
+    debugger can't say which frame lies there, and so is one where a frame
+    arrived under a point that had none (frameGuard in
+    src/main/browser-input.ts). Anything else, a missing field included, is
+    false, and a press or a drag's release whose point lands in a frame,
+    when the step starts or just before it, is refused. A type with focused
+    true presses at no point, so into_frame never stops it. */
 export interface StepRequest {
   step: Step;
   coords: 'page' | 'screenshot';
   includePage: boolean;
+  intoFrame: boolean;
 }
 
 const BUTTONS: readonly MouseButton[] = ['left', 'right', 'middle'];
@@ -349,6 +577,7 @@ function parseStep(body: Record<string, unknown>): Parsed<Step> {
   if (typeof action !== 'string' || !(STEP_ACTIONS as readonly string[]).includes(action)) {
     return refuse(`unknown action ${typeof action === 'string' ? JSON.stringify(action) : `of type ${typeof action}`}; expected one of ${STEP_ACTIONS.join(', ')}`);
   }
+  if (body.focused !== undefined && action !== 'type') return refuse('focused goes only on a type step');
   switch (action as StepAction) {
     case 'click': {
       const at = target(body, 'click');
@@ -360,11 +589,20 @@ function parseStep(body: Record<string, unknown>): Parsed<Step> {
       return ok({ action: 'click', target: at.value, button: button as MouseButton, clicks });
     }
     case 'type': {
-      const element = elementId(body.element);
-      if (element === null) return refuse('type needs a positive integer "element"');
       if (typeof body.text !== 'string') return refuse('type needs a string "text"');
       if (body.text.length > MAX_TEXT_CHARS) return refuse(`type text is longer than ${MAX_TEXT_CHARS} characters`);
-      return ok({ action: 'type', element, text: body.text, clear: body.clear !== false, submit: body.submit === true });
+      const submit = body.submit === true;
+      if (body.focused === undefined) {
+        const element = elementId(body.element);
+        if (element === null) return refuse('type needs a positive integer "element", or "focused": true to type where the focus is');
+        return ok({ action: 'type', element, text: body.text, clear: body.clear !== false, submit });
+      }
+      if (body.focused !== true) return refuse('focused, when a type step sends it, is true');
+      if (body.element !== undefined || body.x !== undefined || body.y !== undefined) {
+        return refuse('a type with focused true types where the focus is, so it names no element or point');
+      }
+      if (body.clear !== undefined && body.clear !== false) return refuse('a type with focused true types at the caret and clears nothing');
+      return ok({ action: 'type', focused: true, text: body.text, submit });
     }
     case 'press': {
       if (typeof body.key !== 'string' || !body.key || body.key.length > MAX_KEY_CHARS) {
@@ -436,7 +674,7 @@ export function parseStepRequest(body: unknown): Parsed<StepRequest> {
   if (coords !== 'page' && coords !== 'screenshot') return refuse('coords must be "page" or "screenshot"');
   const step = parseStep(body);
   if (!step.ok) return step;
-  return ok({ step: step.value, coords, includePage: body.include_page === true });
+  return ok({ step: step.value, coords, includePage: body.include_page === true, intoFrame: body.into_frame === true });
 }
 
 /** POST /sessions. */

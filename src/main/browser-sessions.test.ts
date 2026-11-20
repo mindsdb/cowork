@@ -1,5 +1,5 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { type BrowserDownload, type BrowserViewState, parseStepRequest, type PageSnapshot, type StepRequest } from '../shared/browser-contract';
+import { type BrowserDownload, type BrowserViewState, parseStepRequest, type PageSnapshot, type StepOutcome, type StepRequest } from '../shared/browser-contract';
 import type { Screenshot } from './browser-screenshot';
 import {
   BrowserSessions,
@@ -45,10 +45,11 @@ function harness(options: { maxLive?: number } = {}) {
         loading: () => false,
         canGoBack: () => false,
         canGoForward: () => false,
-        read: vi.fn<TabView['read']>(async () => ({ url: tab.currentUrl, title: 'Title', scroll: { y: 0, height: 100, viewport: 100 }, elements: [], text: '', truncated: false, challenges: [] })),
+        read: vi.fn<TabView['read']>(async () => ({ url: tab.currentUrl, title: 'Title', scroll: { y: 0, height: 100, viewport: 100 }, elements: [], text: '', truncated: false, challenges: [], frames: [] })),
         act: vi.fn<TabView['act']>(async (request: StepRequest) => {
           tab.actions.push(request);
           if (request.step.action === 'wait') await new Promise<void>((resolve) => { release = resolve; });
+          return { changed: null };
         }),
         screenshot: vi.fn<TabView['screenshot']>(async () => ({ jpeg: Buffer.from('x'), width: 10, height: 10 })),
         load: vi.fn(async (u: string) => { tab.currentUrl = u; }),
@@ -59,6 +60,7 @@ function harness(options: { maxLive?: number } = {}) {
         park: vi.fn(() => { tab.shownAt = null; }),
         abortInput: vi.fn(() => { tab.aborts += 1; }),
         watchSecrets: vi.fn(() => { tab.watches += 1; }),
+        handbackElement: vi.fn(async () => null),
         close: vi.fn(() => { tab.closed = true; }),
       };
       tabs.push(tab);
@@ -100,7 +102,7 @@ function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => voi
 const BOUNDS = { x: 10, y: 20, width: 600, height: 700 };
 /* What the pane reports while something covers it. */
 const EMPTY = { x: 0, y: 0, width: 0, height: 0 };
-const PAGE: PageSnapshot = { url: 'https://a.test/', title: 'Title', scroll: { y: 0, height: 100, viewport: 100 }, elements: [], text: 'what the person typed', truncated: false, challenges: [] };
+const PAGE: PageSnapshot = { url: 'https://a.test/', title: 'Title', scroll: { y: 0, height: 100, viewport: 100 }, elements: [], text: 'what the person typed', truncated: false, challenges: [], frames: [] };
 const SHOT: Screenshot = { jpeg: Buffer.from('x'), width: 10, height: 10 };
 
 describe('control', () => {
@@ -160,7 +162,7 @@ describe('control', () => {
     sessions.takeOver('t-a');
     expect(tabs[0].aborts).toBe(1);
     release();
-    await expect(running).resolves.toEqual({ ok: true, url: 'about:blank' });
+    await expect(running).resolves.toEqual({ ok: true, url: 'about:blank', changed: null });
     expect(tabs[0].read).not.toHaveBeenCalled();
     await expect(queued).rejects.toMatchObject({ code: 'human_in_control' });
     expect(tabs[0].actions).toHaveLength(1);
@@ -175,7 +177,7 @@ describe('control', () => {
     await vi.waitFor(() => expect(tabs[0].read).toHaveBeenCalled());
     sessions.takeOver('t-a');
     reading.resolve(PAGE);
-    await expect(answer).resolves.toEqual({ ok: true, url: 'https://a.test/' });
+    await expect(answer).resolves.toEqual({ ok: true, url: 'https://a.test/', changed: null });
   });
 
   it("answers a navigate without the page when a site's sign-in prompt hands the browser over during it", async () => {
@@ -185,11 +187,12 @@ describe('control', () => {
       tabs[0].actions.push(request);
       await new Promise<void>((resolve) => tabs[0].hooks.login({ host: 'intranet.test', respond: () => resolve() }));
       tabs[0].currentUrl = 'https://intranet.test/';
+      return { changed: true };
     });
     const answer = sessions.action('t-a', step({ action: 'navigate', url: 'https://intranet.test/', include_page: true }));
     await vi.waitFor(() => expect(sessions.stateOf('t-a')!.login).toEqual({ host: 'intranet.test' }));
     sessions.answerLogin('t-a', { username: 'ada', password: 'pw' });
-    await expect(answer).resolves.toEqual({ ok: true, url: 'https://intranet.test/' });
+    await expect(answer).resolves.toEqual({ ok: true, url: 'https://intranet.test/', changed: null });
     expect(tabs[0].read).not.toHaveBeenCalled();
     await expect(sessions.page('t-a', 100)).rejects.toMatchObject({ code: 'human_in_control', status: 409 });
   });
@@ -441,7 +444,7 @@ describe('live tasks', () => {
     sessions.show('t-a', BOUNDS);
     for (let minute = 0; minute < 20; minute += 1) {
       advance(60_000);
-      tabs[0].hooks.personInput();
+      tabs[0].hooks.personInput('press');
     }
     sessions.hide();
     advance(60_000);
@@ -451,7 +454,7 @@ describe('live tasks', () => {
 
   /* Each of the person's own calls on a task, after any setup it needs. */
   const personUses: Array<[string, (s: BrowserSessions, tabs: FakeTab[]) => void, (s: BrowserSessions, tabs: FakeTab[]) => unknown]> = [
-    ['input in the page', () => {}, (_s, tabs) => tabs[0].hooks.personInput()],
+    ['input in the page', () => {}, (_s, tabs) => tabs[0].hooks.personInput('press')],
     ['back', () => {}, (s) => s.personNavigate('t-a', 'back')],
     ['a tab switch', () => {}, (s) => s.personActivateTab('t-a', 't1')],
     ['Take over', () => {}, (s) => s.takeOver('t-a')],
@@ -577,7 +580,102 @@ describe('the pane', () => {
     expect(tabs[0].hooks.popupAllowed()).toBe(true);
     advance(1001);
     expect(tabs[0].hooks.popupAllowed()).toBe(false);
-    tabs[0].hooks.personInput();
+    tabs[0].hooks.personInput('press');
+    expect(tabs[0].hooks.popupAllowed()).toBe(true);
+  });
+
+  it("ends the popup window 1 s after a step's input, not after the settle that follows it", async () => {
+    const { sessions, tabs, advance } = harness();
+    sessions.open('t-a', null);
+    const settling = deferred<StepOutcome>();
+    tabs[0].act.mockImplementationOnce(async (_request, onInputDone) => {
+      onInputDone?.();
+      return settling.promise;
+    });
+    const click = sessions.action('t-a', step({ action: 'click', element: 1 }));
+    await vi.waitFor(() => expect(tabs[0].act).toHaveBeenCalled());
+    expect(tabs[0].hooks.popupAllowed()).toBe(true);
+    advance(1001);
+    expect(tabs[0].hooks.popupAllowed()).toBe(false);
+    settling.resolve({ changed: true });
+    await expect(click).resolves.toEqual({ ok: true, url: 'about:blank', changed: true });
+    expect(tabs[0].hooks.popupAllowed()).toBe(false);
+  });
+
+  it("asks for the focused node only on anton's page read and a step's page read, which run in the session's queue", async () => {
+    const { sessions, tabs } = harness();
+    sessions.open('t-a', 'https://a.test/');
+    await sessions.page('t-a', 100);
+    expect(tabs[0].read).toHaveBeenLastCalledWith(100, { focus: true });
+    await sessions.action('t-a', step({ action: 'click', element: 1, include_page: true }));
+    expect(tabs[0].read).toHaveBeenLastCalledWith(3000, { focus: true });
+    expect(tabs[0].read).toHaveBeenCalledTimes(2);
+  });
+
+  it("answers whether the step changed the page, and can't tell once the person took the browser during the step or its read", async () => {
+    const { sessions, tabs } = harness();
+    sessions.open('t-a', 'https://a.test/');
+    tabs[0].act.mockResolvedValueOnce({ changed: false });
+    await expect(sessions.action('t-a', step({ action: 'click', element: 1, include_page: true }))).resolves.toMatchObject({ ok: true, changed: false, page: { url: 'https://a.test/' } });
+    tabs[0].act.mockResolvedValueOnce({ changed: true });
+    tabs[0].read.mockImplementationOnce(async () => {
+      sessions.takeOver('t-a');
+      return PAGE;
+    });
+    await expect(sessions.action('t-a', step({ action: 'click', element: 1, include_page: true }))).resolves.toEqual({ ok: true, url: 'https://a.test/', changed: null });
+    sessions.handBack('t-a');
+    tabs[0].act.mockImplementationOnce(async () => {
+      sessions.takeOver('t-a');
+      return { changed: true };
+    });
+    await expect(sessions.action('t-a', step({ action: 'click', element: 1 }))).resolves.toEqual({ ok: true, url: 'https://a.test/', changed: null });
+  });
+
+  /* The desktop never holds the person's input back during a step, so a
+     change the step's settle saw may be theirs. The clock stands still: only
+     input that came during the step counts, not input just before it. */
+  it("can't tell what a step changed when the person's move, press, release, key or wheel, or the pane's Back or address, reached the page during it, and says what the step alone changed otherwise", async () => {
+    const { sessions, tabs } = harness();
+    sessions.open('t-a', 'https://a.test/');
+    const click = step({ action: 'click', element: 1 });
+    const changed = async (request: StepRequest, outcome: StepOutcome, person?: () => unknown) => {
+      tabs[0].act.mockImplementationOnce(async () => {
+        await person?.();
+        return outcome;
+      });
+      return (await sessions.action('t-a', request)).changed;
+    };
+    tabs[0].hooks.personInput('press');
+    expect(await changed(click, { changed: true })).toBe(true);
+    for (const input of ['move', 'press', 'release', 'key', 'wheel'] as const) {
+      expect(await changed(click, { changed: true }, () => tabs[0].hooks.personInput(input)), input).toBeNull();
+    }
+    expect(await changed(click, { changed: true }, () => sessions.personNavigate('t-a', 'back')), 'Back').toBeNull();
+    expect(await changed(click, { changed: true }, () => sessions.personOpen('t-a', 'https://b.test/')), 'an address').toBeNull();
+    expect(await changed(click, { changed: true })).toBe(true);
+    expect(await changed(click, { changed: false }, () => tabs[0].hooks.personInput('wheel')), 'nothing changed').toBe(false);
+    expect(await changed(step({ action: 'wait', ms: 10 }), { changed: null }, () => tabs[0].hooks.personInput('press')), 'a wait').toBeNull();
+    // Input during the step's page read came after its settle answered.
+    tabs[0].read.mockImplementationOnce(async () => {
+      tabs[0].hooks.personInput('key');
+      return PAGE;
+    });
+    tabs[0].act.mockResolvedValueOnce({ changed: true });
+    await expect(sessions.action('t-a', step({ action: 'click', element: 1, include_page: true }))).resolves.toEqual({ ok: true, url: 'https://b.test/', changed: true, page: PAGE });
+  });
+
+  /* A move or a wheel isn't a gesture Chromium lets open a window, and a
+     release follows a press that already counts. */
+  it("opens no popup window on the person's move, wheel or release, which still count as use of the task", () => {
+    const { sessions, tabs, advance, now } = harness();
+    sessions.open('t-a', null);
+    advance(60_000);
+    tabs[0].hooks.personInput('move');
+    tabs[0].hooks.personInput('wheel');
+    tabs[0].hooks.personInput('release');
+    expect(tabs[0].hooks.popupAllowed()).toBe(false);
+    expect(sessions.info('t-a').last_active_at).toBe(new Date(now()).toISOString());
+    tabs[0].hooks.personInput('key');
     expect(tabs[0].hooks.popupAllowed()).toBe(true);
   });
 
@@ -590,12 +688,12 @@ describe('the pane', () => {
     release();
     await waiting;
     advance(1001);
-    const clicking = deferred();
+    const clicking = deferred<StepOutcome>();
     tabs[0].act.mockImplementationOnce(() => clicking.promise);
     const click = sessions.action('t-a', step({ action: 'click', element: 1 }));
     await vi.waitFor(() => expect(tabs[0].act).toHaveBeenCalledTimes(2));
     expect(tabs[0].hooks.popupAllowed()).toBe(true);
-    clicking.resolve();
+    clicking.resolve({ changed: null });
     await click;
   });
 
