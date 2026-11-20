@@ -13,7 +13,9 @@
 // be pasted, dropped, or picked from the "/" menu. `onComment` (when the doc
 // takes comments) offers "Comment" on selected words; `commented` marks the
 // blocks open comments are on and `highlighted` the ones a comment in the
-// inbox points at.
+// inbox points at. `commenting` is comment mode: the pane passes the page as
+// read-only, a click on a block opens a comment on that whole block, and words
+// selected open one on that passage.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import PageHead from './PageHead';
 import TextBlock from './TextBlock';
@@ -24,7 +26,7 @@ import { CodeBlock, DividerBlock, ImageBlock, MetricsBlock, PendingBlock } from 
 import SlashMenu, { slashOptionId } from './SlashMenu';
 import FloatingToolbar from './FloatingToolbar';
 import AskAgent from './AskAgent';
-import { useCanvasSelection } from './useCanvasSelection';
+import { selectionPick, useCanvasSelection } from './useCanvasSelection';
 import { useFocusAfterCommit } from './useFocusAfterCommit';
 import { useSlashMenu } from './useSlashMenu';
 import { applyInlineFormat, caretOffset, caretOnEdgeLine, caretState, splitAtCaret } from './caret';
@@ -43,6 +45,7 @@ const IMAGE_TYPES = /^image\/(png|jpeg|gif|webp)$/;
 export default function DocCanvas({
   doc, tab, editable, apply, flash = {}, changed = NO_CHANGES, agentLive = false, onAskAgent, onSelectionChange,
   onAddTab, nameTitle = false, onNamed, onUploadImage, onComment, commented = NO_CHANGES, highlighted = NO_CHANGES,
+  commenting = false,
 }) {
   const { t } = useTranslation('docs');
   const root = useRef(null);
@@ -58,6 +61,9 @@ export default function DocCanvas({
   // Without a handler there is nothing to send; drop the box so it does not come back stale.
   const askHandler = askFor?.mode === 'comment' ? onComment : onAskAgent;
   useEffect(() => { if (!askHandler) setAskFor(null); }, [askHandler]);
+  // A box closing on its own (its field left empty) closes only itself: the
+  // click that left it may have opened the next one.
+  const closeAsk = (target) => setAskFor((a) => (a === target ? null : a));
   // Which block's options menu is open; the id outlives the close so the menu
   // keeps its items while it animates out.
   const [menu, setMenu] = useState({ id: null, open: false });
@@ -176,6 +182,38 @@ export default function DocCanvas({
     const ids = new Set(blocks.map((b) => b.id));
     for (const id of refCallbacks.current.keys()) if (!ids.has(id)) refCallbacks.current.delete(id);
   }, [blocks]);
+
+  // Entering comment mode saves what was typed and takes the caret out of the page.
+  useEffect(() => {
+    if (!commenting) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && root.current?.contains(active)) active.blur();
+    handles.current.forEach((h) => h.flush());
+    slashMenu.close();
+    setMenu((m) => ({ ...m, open: false }));
+    setAskFor((a) => (a && a.mode !== 'comment' ? null : a));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commenting]);
+
+  // In comment mode a click on a block is a comment on it (the click does
+  // nothing else: a link is not followed, a chart's button not pressed), and
+  // a click that ends a selection is a comment on the words selected.
+  const commentOnClick = (e) => {
+    const target = e.target instanceof Element ? e.target : null;
+    // The comment box itself sits in the page.
+    if (!target || target.closest('.doc-float')) return;
+    // A selection across blocks ends in a click on the page, not on a block.
+    const pick = selectionPick(root.current);
+    const el = target.closest('[data-block-id]');
+    if (!pick && !el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setToolbar(null);
+    setAskFor(pick
+      ? { rect: pick.range.getBoundingClientRect(), blockIds: pick.blockIds, quote: pick.quote, mode: 'comment' }
+      : { rect: el.getBoundingClientRect(), blockIds: [el.dataset.blockId], quote: '', mode: 'comment' });
+  };
+  const commentable = commenting && !!onComment;
 
   const textBlocks = blocks.filter(isTextBlock);
   const neighborText = (id, dir) => {
@@ -351,7 +389,8 @@ export default function DocCanvas({
   };
 
   return (
-    <div className="doc-page" ref={root} onDragOver={onDragOver} onDrop={onDrop}>
+    <div className={`doc-page ${commentable ? 'doc-page--commenting' : ''}`} ref={root} onDragOver={onDragOver} onDrop={onDrop}
+      onClickCapture={commentable ? commentOnClick : undefined}>
       {canImage && (
         <input ref={picker} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden
           onChange={(e) => {
@@ -427,7 +466,7 @@ export default function DocCanvas({
         />
       )}
 
-      {toolbar && !askFor && toolbar.rect && (
+      {toolbar && !askFor && toolbar.rect && !commenting && (
         <FloatingToolbar
           toolbar={toolbar}
           canFormat={editable && !!toolbar.editable}
@@ -440,7 +479,8 @@ export default function DocCanvas({
       )}
 
       {askFor && askHandler && (
-        <AskAgent target={askFor} onSubmit={askFor.mode === 'comment' ? comment : askAgent} onCancel={() => setAskFor(null)} />
+        <AskAgent key={`${askFor.mode}:${askFor.blockIds.join(',')}`} target={askFor}
+          onSubmit={askFor.mode === 'comment' ? comment : askAgent} onCancel={() => closeAsk(askFor)} />
       )}
     </div>
   );

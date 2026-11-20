@@ -190,6 +190,11 @@
     "placeholderChange": "Was soll sich ändern?",
     "send": "Senden"
   },
+  "comments": {
+    "edit": "Bearbeiten",
+    "editHint": "Im Dokument schreiben",
+    "commentHint": "Kommentieren – auf einen Block klicken oder Wörter markieren"
+  },
   "chart": {
     "label": "Diagramm",
     "title": "Diagrammtitel",

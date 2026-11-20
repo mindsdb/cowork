@@ -228,6 +228,10 @@ body[data-theme="dark"] .doc-root {
 .doc-block--commented { background: color-mix(in srgb, var(--warning-border) 30%, transparent); }
 .doc-block--flash { background: var(--doc-flash); transition: none; }
 .doc-block--selected { background: var(--doc-select); }
+/* Comment mode: the block under the pointer is what a click comments on. */
+.doc-page--commenting .doc-block { cursor: pointer; }
+.doc-page--commenting .doc-block:hover { background: var(--doc-select); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.doc-page--commenting .doc-editable { cursor: text; }
 .doc-gutter {
   position: absolute;
   /* Sits in the page's own left padding, whatever its width, so the handles are

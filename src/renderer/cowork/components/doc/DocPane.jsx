@@ -12,11 +12,15 @@
 // its right edge: Add tab, and Comments, which opens the viewer's comments
 // inbox beside the page. Comments sit on blocks (docComments); the doc beside
 // a chat has no rail and adds tabs from the page and the tab list instead.
+// Comments opened from the rail start in comment mode (the Comment / Edit
+// switch over the page): the page is read-only to the person, and a click on a
+// block comments on it. The agent's writes still land and show.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, ChevronDown, FilePlus, FileText, Maximize2, Minimize2, X } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { Button, Menu, Spinner, Tooltip } from '../ui';
 import DocAskBar from './DocAskBar';
+import DocCommentModeSwitch from './DocCommentModeSwitch';
 import DocCanvas from './DocCanvas';
 import DocHeaderTitle from './DocHeaderTitle';
 import { ShowTabsButton, TabRail, TabStrip, tabElementId, useTabsHidden } from './DocTabs';
@@ -219,9 +223,14 @@ export default function DocPane({
 
   const tab = useMemo(() => doc?.tabs?.find((t) => t.id === activeTab) || doc?.tabs?.[0] || null, [doc, activeTab]);
 
+  // Comment mode, while the inbox is open: from the rail it starts on; a
+  // comment from the formatting bar opens the inbox and stays in edit mode.
+  const [commentMode, setCommentMode] = useState(false);
   // A tab the person adds opens at once, its title selected to be named.
   const [naming, setNaming] = useState(null);
   const addTab = useCallback(async () => {
+    // A tab is added to be named and written in: out of comment mode.
+    setCommentMode(false);
     const before = new Set(doc.tabs.map((t) => t.id));
     const res = await apply([{ op: 'add_tab', title: 'Untitled' }]);
     const created = res?.doc?.tabs?.find((t) => !before.has(t.id));
@@ -246,6 +255,15 @@ export default function DocPane({
   const [commentsOpen, setCommentsOpen] = useState(false);
   const sidePanelId = useId();
   const inboxOpen = commentsOpen && commentsEnabled;
+  useEffect(() => {
+    if (!inboxOpen) setCommentMode(false);
+  }, [inboxOpen]);
+  const toggleComments = () => {
+    setCommentsOpen(!inboxOpen);
+    setCommentMode(!inboxOpen);
+  };
+  // Someone who cannot edit has nothing to switch to: the open inbox is comment mode.
+  const commenting = inboxOpen && !version && (commentMode || !editable);
   useEffect(() => {
     if (inboxOpen && unreadCount > 0) markRead();
   }, [inboxOpen, unreadCount, markRead]);
@@ -324,7 +342,7 @@ export default function DocPane({
       label: tArtifacts('layers.comments'),
       description: tArtifacts('rail.commentsHint'),
       pressed: inboxOpen,
-      onSelect: () => setCommentsOpen((open) => !open),
+      onSelect: toggleComments,
       badge: openComments,
       badgeLabel: tArtifacts('rail.commentsOpen', { count: openComments }),
     },
@@ -431,7 +449,7 @@ export default function DocPane({
       pane.focus({ preventScroll: true });
     });
   }, [stepBack]);
-  const ownUndo = (target) => editable && !version && !(target instanceof HTMLInputElement);
+  const ownUndo = (target) => editable && !version && !commenting && !(target instanceof HTMLInputElement);
   const onKeyDownCapture = (e) => {
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || e.altKey) return;
@@ -619,7 +637,7 @@ export default function DocPane({
             {shown && shownTab && (
               <div className="doc-body" data-tabs-hidden={(tabbed && !narrow && tabsHidden) || undefined}>
                 {tabbed && !narrow && (
-                  <TabRail tabs={shown.tabs} activeId={shownTab.id} unseen={version ? NO_TABS : unseen} editable={editable && !version}
+                  <TabRail tabs={shown.tabs} activeId={shownTab.id} unseen={version ? NO_TABS : unseen} editable={editable && !version && !commenting}
                     onSelect={setActiveTab} apply={apply} idBase={tabsId} hidden={tabsHidden} onHide={hideTabs} addable={!preview} />
                 )}
                 {tabbed && !narrow && tabsHidden && (
@@ -637,7 +655,7 @@ export default function DocPane({
                         key={version ? `${shownTab.id}@${version.entry.rev}` : shownTab.id}
                         doc={shown}
                         tab={shownTab}
-                        editable={editable && !version}
+                        editable={editable && !version && !commenting}
                         apply={apply}
                         flash={version ? NO_FLASH : flash}
                         changed={changed}
@@ -651,12 +669,16 @@ export default function DocPane({
                         onComment={commentsEnabled && !version ? commentOnBlocks : undefined}
                         commented={commented}
                         highlighted={highlighted}
+                        commenting={commenting}
                       />
                       </DocImageLoader.Provider>
                     </PendingEdits.Provider>
                   </div>
                 </div>
               </div>
+            )}
+            {inboxOpen && doc && editable && !version && (
+              <DocCommentModeSwitch commenting={commentMode} onChange={setCommentMode} />
             )}
           </div>
           {preview && (

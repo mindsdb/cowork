@@ -170,6 +170,79 @@ describe('DocModal panel rail', () => {
     }));
   });
 
+  const commentsOn = (more = {}) => ({
+    ...commentsOff(),
+    enabled: true,
+    viewer: { user_id: 'u1', role: 'owner' },
+    capabilities: { canResolve: true, canAddressWithAgent: true },
+    create: vi.fn().mockResolvedValue(true),
+    ...more,
+  });
+  const railButton = (name) => within(document.querySelector('.artifact-mode-rail')).getByRole('button', { name });
+  const modeSwitch = () => screen.queryByRole('toolbar', { name: 'Comments toolbar' });
+
+  it('opens the comments from the rail in comment mode: the page is read-only and a click comments on a block', async () => {
+    comments.current = commentsOn();
+    await renderModal();
+    fireEvent.click(railButton(/^Comments/));
+
+    expect(within(modeSwitch()).getByRole('button', { name: 'Comment' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('textbox', { name: 'Paragraph' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Title' })).toBeNull();
+
+    fireEvent.click(screen.getByText('Acme'));
+    const box = document.querySelector('.doc-ask input');
+    fireEvent.change(box, { target: { value: 'Too vague' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(comments.current.create).toHaveBeenCalledWith(expect.objectContaining({
+      selector: JSON.stringify({ type: 'doc-block', tab: 't_1', blocks: ['b_1'], quote: '' }),
+      text: 'Too vague',
+    })));
+  });
+
+  it('switches to Edit and back, and closing the comments leaves edit mode on', async () => {
+    comments.current = commentsOn();
+    await renderModal();
+    fireEvent.click(railButton(/^Comments/));
+    expect(screen.queryByRole('textbox', { name: 'Paragraph' })).toBeNull();
+
+    fireEvent.click(within(modeSwitch()).getByRole('button', { name: 'Edit' }));
+    expect(screen.getByRole('textbox', { name: 'Paragraph' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Acme'));
+    expect(document.querySelector('.doc-ask input')).toBeNull();
+
+    fireEvent.click(within(modeSwitch()).getByRole('button', { name: 'Comment' }));
+    expect(screen.queryByRole('textbox', { name: 'Paragraph' })).toBeNull();
+
+    fireEvent.click(railButton(/^Comments/));
+    expect(modeSwitch()).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'Paragraph' })).toBeInTheDocument();
+  });
+
+  it('keeps a general comment on the whole doc in the inbox', async () => {
+    comments.current = commentsOn();
+    await renderModal();
+    fireEvent.click(railButton(/^Comments/));
+    const panel = await screen.findByTestId('viewer-side-panel');
+    const box = within(panel).getByRole('textbox', { name: 'Add a comment' });
+    fireEvent.change(box, { target: { value: 'Shorter, please' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(comments.current.create).toHaveBeenCalledWith(expect.objectContaining({
+      selector: null, text: 'Shorter, please',
+    })));
+  });
+
+  it('offers no Edit to someone who cannot edit, and a click still comments', async () => {
+    api.fetchDoc.mockResolvedValue({ doc, capabilities: { canEdit: false } });
+    comments.current = commentsOn();
+    render(<DocModal artifact={artifact} onClose={() => {}} />);
+    await screen.findByText('Acme');
+    fireEvent.click(railButton(/^Comments/));
+    expect(modeSwitch()).toBeNull();
+    fireEvent.click(screen.getByText('Acme'));
+    expect(document.querySelector('.doc-ask input')).not.toBeNull();
+  });
+
   it('shows no Comments tab while the doc has no comments to reach', async () => {
     await renderModal();
     expect(screen.queryByRole('button', { name: /^Comments/ })).toBeNull();

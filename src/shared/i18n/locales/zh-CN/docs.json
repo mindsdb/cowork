@@ -190,6 +190,11 @@
     "placeholderChange": "需要修改什么？",
     "send": "发送"
   },
+  "comments": {
+    "edit": "编辑",
+    "editHint": "在文档中输入",
+    "commentHint": "评论 — 点击一个块，或选中文字"
+  },
   "chart": {
     "label": "图表",
     "title": "图表标题",

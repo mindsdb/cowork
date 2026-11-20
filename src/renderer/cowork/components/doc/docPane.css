@@ -82,7 +82,9 @@
 
 /* The page, inside the artifact viewer's work area and body (with, in a
    preview, its side panel and rail beside it). */
-.doc-workarea__main { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.doc-workarea__main { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
+/* The Edit / Comment pill sits over the bottom of the page, clear of its last line. */
+.doc-workarea__main > .doc-comment-mode-switch { bottom: 12px; }
 .doc-body { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }
 
 .doc-banner {

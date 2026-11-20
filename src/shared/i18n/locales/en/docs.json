@@ -190,6 +190,11 @@
     "placeholderChange": "What should change?",
     "send": "Send"
   },
+  "comments": {
+    "edit": "Edit",
+    "editHint": "Type in the doc",
+    "commentHint": "Comment — click a block, or select words"
+  },
   "chart": {
     "label": "Chart",
     "title": "Chart title",

@@ -190,6 +190,11 @@
     "placeholderChange": "무엇을 변경할까요?",
     "send": "보내기"
   },
+  "comments": {
+    "edit": "편집",
+    "editHint": "문서에 입력",
+    "commentHint": "댓글 — 블록을 클릭하거나 단어를 선택"
+  },
   "chart": {
     "label": "차트",
     "title": "차트 제목",
