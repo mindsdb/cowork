@@ -717,7 +717,10 @@
       "refused": "Cette connexion a été finalisée dans le compte de quelqu'un d'autre, elle n'a donc pas été utilisée. Ajoutez à nouveau le serveur.",
       "loginNotYours": "Ce lien de connexion a été lancé par quelqu'un d'autre, il n'a donc pas été utilisé. Ne finalisez que les connexions que vous avez lancées vous-même.",
       "wrongOrganization": "Cette connexion a été lancée dans une autre organisation. Revenez à l'organisation dans laquelle vous avez ajouté le serveur, puis ajoutez-le à nouveau.",
-      "expired": "Cette connexion a expiré ou a déjà été utilisée. Ajoutez à nouveau le serveur."
+      "expired": "Cette connexion a expiré ou a déjà été utilisée. Ajoutez à nouveau le serveur.",
+      "moved": "Le serveur a répondu depuis une autre adresse. Vérifiez l'URL, y compris si elle doit se terminer par une barre oblique.",
+      "wrongIssuer": "La connexion est revenue d'un autre serveur de connexion que celui où elle a commencé, elle n'a donc pas été utilisée. Réessayez.",
+      "tooManyTools": "Vous pouvez activer au plus {limit} outils sur l'ensemble de vos serveurs MCP. Désactivez-en d'abord quelques-uns."
     },
     "detail": {
       "server": "Serveur",
@@ -734,6 +737,8 @@
       "stale": "La liste d'outils n'a pas pu être actualisée. Voici les derniers outils listés, et leurs interrupteurs fonctionnent toujours.",
       "reasonReadOnlyRemoved": "Désactivé : le serveur ne marque plus cet outil comme en lecture seule.",
       "reasonSizeCeiling": "Désactivé : les outils que vous avez activés ont atteint leur limite de taille.",
+      "reasonDefinitionChanged": "Désactivé : le serveur a modifié la description de cet outil. Vérifiez-la et réactivez-le.",
+      "reasonCountCeiling": "Désactivé : vous pouvez activer au plus {limit} outils sur l'ensemble de vos serveurs MCP.",
       "reasonUnusable": "Anton ne peut pas utiliser cet outil."
     },
     "finish": {

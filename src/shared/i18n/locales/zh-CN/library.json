@@ -717,7 +717,10 @@
       "refused": "此登录是在其他人的账户中完成的，因此未被使用。请重新添加服务器。",
       "loginNotYours": "此登录链接由其他人发起，因此未被使用。只完成你自己发起的登录。",
       "wrongOrganization": "此登录是在另一个组织中发起的。请切换回你添加服务器时所在的组织，然后重新添加。",
-      "expired": "此登录已过期或已被使用。请重新添加服务器。"
+      "expired": "此登录已过期或已被使用。请重新添加服务器。",
+      "moved": "服务器从另一个地址作出了响应。请检查 URL，包括它是否应以斜杠结尾。",
+      "wrongIssuer": "登录是从与开始时不同的登录服务器返回的，因此未被使用。请重试。",
+      "tooManyTools": "你在所有 MCP 服务器中最多只能开启 {limit} 个工具。请先关闭一些。"
     },
     "detail": {
       "server": "服务器",
@@ -734,6 +737,8 @@
       "stale": "无法刷新工具列表。这些是上次列出的工具，它们的开关仍然可用。",
       "reasonReadOnlyRemoved": "已关闭：服务器不再将此工具标记为只读。",
       "reasonSizeCeiling": "已关闭：你开启的工具已达到大小上限。",
+      "reasonDefinitionChanged": "已关闭：服务器更改了此工具的描述。请查看后重新开启。",
+      "reasonCountCeiling": "已关闭：你在所有 MCP 服务器中最多只能开启 {limit} 个工具。",
       "reasonUnusable": "Anton 无法使用此工具。"
     },
     "finish": {

@@ -717,7 +717,10 @@
       "refused": "Diese Anmeldung wurde im Konto einer anderen Person abgeschlossen und daher nicht verwendet. Füge den Server erneut hinzu.",
       "loginNotYours": "Dieser Anmeldelink wurde von einer anderen Person gestartet und daher nicht verwendet. Schließe nur Anmeldungen ab, die du selbst gestartet hast.",
       "wrongOrganization": "Diese Anmeldung wurde in einer anderen Organisation gestartet. Wechsle zurück zu der Organisation, in der du den Server hinzugefügt hast, und füge ihn erneut hinzu.",
-      "expired": "Diese Anmeldung ist abgelaufen oder wurde bereits verwendet. Füge den Server erneut hinzu."
+      "expired": "Diese Anmeldung ist abgelaufen oder wurde bereits verwendet. Füge den Server erneut hinzu.",
+      "moved": "Der Server hat von einer anderen Adresse geantwortet. Prüfe die URL, auch ob sie mit einem Schrägstrich enden sollte.",
+      "wrongIssuer": "Die Anmeldung kam von einem anderen Anmeldeserver zurück als dem, bei dem sie begonnen hat, und wurde daher nicht verwendet. Versuche es erneut.",
+      "tooManyTools": "Du kannst über alle deine MCP-Server höchstens {limit} Tools einschalten. Schalte zuerst einige aus."
     },
     "detail": {
       "server": "Server",
@@ -734,6 +737,8 @@
       "stale": "Die Tool-Liste konnte nicht aktualisiert werden. Das sind die zuletzt aufgelisteten Tools, und ihre Schalter funktionieren weiterhin.",
       "reasonReadOnlyRemoved": "Ausgeschaltet: Der Server kennzeichnet dieses Tool nicht mehr als schreibgeschützt.",
       "reasonSizeCeiling": "Ausgeschaltet: Deine eingeschalteten Tools haben ihre Größengrenze erreicht.",
+      "reasonDefinitionChanged": "Ausgeschaltet: Der Server hat die Beschreibung dieses Tools geändert. Prüfe es und schalte es wieder ein.",
+      "reasonCountCeiling": "Ausgeschaltet: Du kannst über alle deine MCP-Server höchstens {limit} Tools einschalten.",
       "reasonUnusable": "Anton kann dieses Tool nicht verwenden."
     },
     "finish": {

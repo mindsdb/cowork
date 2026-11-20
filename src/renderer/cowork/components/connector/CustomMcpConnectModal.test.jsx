@@ -183,4 +183,20 @@ describe('CustomMcpConnectModal', () => {
 
     await waitFor(() => expect(screen.getByLabelText(/^Client secret/).value).toBe(''));
   });
+
+  it.each([
+    ['moved', 'The server answered from another address. Check the URL, including whether it should end with a slash.'],
+    ['wrong_issuer', "The sign-in came back from a different login server than the one it started with, so it wasn't used. Try again."],
+  ])('says plainly why the server was not added when the answer is %s', async (code, message) => {
+    const user = userEvent.setup();
+    shell.isWeb = true;
+    customMcpRedirectUri.mockResolvedValue(null);
+    customMcpConnect.mockResolvedValue({ ok: false, code, reason: 'auth text' });
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(await screen.findByText(message)).toBeTruthy();
+  });
 });

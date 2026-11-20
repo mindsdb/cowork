@@ -15,6 +15,8 @@ import { CUSTOM_MCP_REDIRECT_URI } from '../../../../shared/custom-mcp';
 export { CUSTOM_MCP_REDIRECT_URI } from '../../../../shared/custom-mcp';
 
 const EMPTY = { label: '', url: '', clientId: '', clientSecret: '' };
+// auth's bound on one member's switched-on tools across their servers; auth enforces it.
+export const CUSTOM_MCP_TOOL_LIMIT = 100;
 
 /**
  * The message for a refused connect, by the code main answered.
@@ -74,6 +76,12 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.wrongOrganization');
     case 'expired':
       return t('customMcp.error.expired');
+    case 'moved':
+      return t('customMcp.error.moved');
+    case 'wrong_issuer':
+      return t('customMcp.error.wrongIssuer');
+    case 'too_many_tools':
+      return t('customMcp.error.tooManyTools', { limit: CUSTOM_MCP_TOOL_LIMIT });
     default:
       return t('customMcp.error.generic', { reason: result.reason || result.code });
   }

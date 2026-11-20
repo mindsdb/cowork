@@ -83,6 +83,16 @@ describe('CustomMcpDetailSection', () => {
     expect(await screen.findByText("That request isn't valid: Tools must be a list of at most 500 names.")).toBeTruthy();
   });
 
+  it('puts a switch back and names the tool limit when too many tools would be on', async () => {
+    bridge.customMcpSetTools.mockResolvedValue({ ok: false, code: 'too_many_tools', reason: 'auth text' });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(await screen.findByText('You can have at most 100 tools switched on across your MCP servers. Switch some off first.')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
+  });
+
   it('says so when the server cannot list its tools', async () => {
     bridge.customMcpTools.mockResolvedValue({ ok: false, code: 'unreachable', reason: 'the server answered 502' });
     renderSection();
@@ -116,6 +126,8 @@ describe('CustomMcpDetailSection', () => {
       tools: [
         { name: 'edit', description: '', readOnly: false, allowed: false, usable: true, reason: 'read_only_removed' },
         { name: 'big', description: '', readOnly: true, allowed: false, usable: true, reason: 'size_ceiling' },
+        { name: 'changed', description: '', readOnly: true, allowed: false, usable: true, reason: 'definition_changed' },
+        { name: 'extra', description: '', readOnly: true, allowed: false, usable: true, reason: 'count_ceiling' },
         { name: 'odd', description: '', readOnly: true, allowed: false, usable: false, reason: 'schema' },
       ],
     });
@@ -123,6 +135,8 @@ describe('CustomMcpDetailSection', () => {
 
     expect(await screen.findByText('Switched off: the server no longer marks this tool as read-only.')).toBeTruthy();
     expect(screen.getByText('Switched off: the tools you have on reached their size limit.')).toBeTruthy();
+    expect(screen.getByText("Switched off: the server changed this tool's description. Review it and switch it back on.")).toBeTruthy();
+    expect(screen.getByText('Switched off: you can have at most 100 tools switched on across your MCP servers.')).toBeTruthy();
     expect(screen.getByText("Anton can't use this tool.")).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'Let Anton use odd' }).getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByRole('switch', { name: 'Let Anton use edit' }).getAttribute('aria-disabled')).not.toBe('true');

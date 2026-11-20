@@ -10,7 +10,7 @@ import { Switch } from '../ui/Switch';
 import Spinner from '../ui/Spinner';
 import { host } from '../../../platform/host';
 import { useTranslation } from '../../../lib/i18n';
-import { connectErrorMessage } from './CustomMcpConnectModal';
+import { CUSTOM_MCP_TOOL_LIMIT, connectErrorMessage } from './CustomMcpConnectModal';
 
 // Tool switches still saving, by connection. They outlive a panel that
 // closed, so a panel opened again for the same connection reads after them.
@@ -19,7 +19,7 @@ const pendingSaves = new Map();
 /**
  * Why a tool is off and cannot simply be read as the member's choice, or null.
  *
- * @param {(key: string) => string} t the `library` translator
+ * @param {(key: string, values?: object) => string} t the `library` translator
  * @param {{usable?: boolean, reason?: string | null}} tool
  * @returns {string | null}
  */
@@ -27,6 +27,8 @@ function toolNote(t, tool) {
   if (tool.usable === false) return t('customMcp.detail.reasonUnusable');
   if (tool.reason === 'read_only_removed') return t('customMcp.detail.reasonReadOnlyRemoved');
   if (tool.reason === 'size_ceiling') return t('customMcp.detail.reasonSizeCeiling');
+  if (tool.reason === 'definition_changed') return t('customMcp.detail.reasonDefinitionChanged');
+  if (tool.reason === 'count_ceiling') return t('customMcp.detail.reasonCountCeiling', { limit: CUSTOM_MCP_TOOL_LIMIT });
   return null;
 }
 
