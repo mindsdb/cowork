@@ -690,9 +690,9 @@ export function WorkingFolderLive({
       {docArt && (
         <DocModal
           artifact={docArt}
-          onClose={(card) => {
-            // The card carries a rename, and the rail does not refetch.
-            if (card) setArtifacts((prev) => prev.map((a) => a.path === card.path ? { ...a, ...card } : a));
+          onClose={(title) => {
+            // A rename made while open: the rail does not refetch.
+            if (title) setArtifacts((prev) => prev.map((a) => a.path === docArt.path ? { ...a, title } : a));
             setDocArt(null);
           }}
         />

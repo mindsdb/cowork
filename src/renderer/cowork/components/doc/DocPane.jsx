@@ -96,7 +96,7 @@ export function writeErrorText(e) {
 
 export default function DocPane({
   projectRef, artifactId, title: fallbackTitle, variant = 'side', expanded = false, fillsWindow = false,
-  onToggleExpand, onClose, onAskAgent, onViewChange, onCardChange,
+  onToggleExpand, onClose, onAskAgent, onViewChange, onTitleChange,
 }) {
   const {
     doc, status, error, capabilities, card, apply: applyOps, undo, redo, flash, agentActive, saving, writeError,
@@ -112,12 +112,11 @@ export default function DocPane({
   // flow and access choices (public, password, named people, only me) as any
   // HTML artifact. The controller addresses the page, not the JSON beside it.
   const shareTarget = useMemo(() => docPageTarget(card), [card]);
-  // The card as the library should show it: a rename changes the doc's title
-  // without reloading the card.
+  // A rename, by the person or the agent, for the list that shows the doc's card.
   const docTitle = doc?.title;
   useEffect(() => {
-    if (card && docTitle) onCardChange?.({ ...card, title: docTitle });
-  }, [card, docTitle, onCardChange]);
+    if (docTitle) onTitleChange?.(docTitle);
+  }, [docTitle, onTitleChange]);
   const pub = usePublish(shareTarget, { enabled: !!shareTarget });
   const canShare = !!shareTarget && capabilities?.canEdit !== false;
   const [activeTab, setActiveTab] = useState(null);

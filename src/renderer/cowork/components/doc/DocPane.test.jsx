@@ -157,24 +157,14 @@ describe('DocPane', () => {
   });
 });
 
-describe('DocPane and the card the library shows', () => {
-  const card = { id: 'a1', title: 'Vendor shortlist', format: 'doc', path: '/p/.anton/artifacts/vendors/doc.cdoc.json' };
-
-  it('reports its card under the doc\'s current title once the doc is renamed', async () => {
-    api.fetchDoc.mockResolvedValue({ doc: doc(), capabilities: { canEdit: true }, card });
-    const onCardChange = vi.fn();
-    render(<DocPane projectRef="p1" artifactId="a1" onCardChange={onCardChange} />);
+describe('DocPane and the title the library shows', () => {
+  it('reports the doc\'s title, and again once the doc is renamed', async () => {
+    const onTitleChange = vi.fn();
+    render(<DocPane projectRef="p1" artifactId="a1" onTitleChange={onTitleChange} />);
     await screen.findByRole('textbox', { name: 'Title' });
-    expect(onCardChange).toHaveBeenLastCalledWith(card);
+    expect(onTitleChange).toHaveBeenLastCalledWith('Vendor shortlist');
     act(() => api.stream.handlers.onEvent({ type: 'doc.updated', by: 'agent', rev: 3, doc: { ...doc(3), title: 'Vendors 2027' } }));
-    await waitFor(() => expect(onCardChange).toHaveBeenLastCalledWith({ ...card, title: 'Vendors 2027' }));
-  });
-
-  it('reports nothing without a card (a doc the person may only read)', async () => {
-    const onCardChange = vi.fn();
-    render(<DocPane projectRef="p1" artifactId="a1" onCardChange={onCardChange} />);
-    await screen.findByRole('textbox', { name: 'Title' });
-    expect(onCardChange).not.toHaveBeenCalled();
+    await waitFor(() => expect(onTitleChange).toHaveBeenLastCalledWith('Vendors 2027'));
   });
 });
 

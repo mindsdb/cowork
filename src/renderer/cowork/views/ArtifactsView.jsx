@@ -836,9 +836,9 @@ export default function ArtifactsView({
 
 
   const updateOne = (updated) => onArtifactChanged?.(updated);
-  // The doc editor hands back the doc's card, which carries a rename.
-  const closeDoc = (card) => {
-    if (card) updateOne(card);
+  // The doc editor hands back a title the doc was renamed to while open.
+  const closeDoc = (title) => {
+    if (title && viewerPath) updateOne({ path: viewerPath, title });
     setViewerPath(null);
   };
 
@@ -1244,11 +1244,11 @@ export default function ArtifactsView({
         <DocModal
           artifact={viewer}
           onClose={closeDoc}
-          onAskAgent={onEditDocWithAgent ? (ask, card) => {
+          onAskAgent={onEditDocWithAgent ? (ask, title) => {
             // Sent as the doc beside a chat sends it: the host takes it to the
             // doc's chat (or a new one) with the doc docked there.
-            closeDoc(card);
-            onEditDocWithAgent({ artifact: card ? { ...viewer, ...card } : viewer, ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask) });
+            closeDoc(title);
+            onEditDocWithAgent({ artifact: title ? { ...viewer, title } : viewer, ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask) });
           } : undefined}
         />
       )}

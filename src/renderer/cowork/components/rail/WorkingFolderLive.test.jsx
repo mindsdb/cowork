@@ -63,11 +63,9 @@ vi.mock('../artifact', () => ({
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 // The doc editor is tested on its own; here it only has to be what opens.
 vi.mock('../doc/DocPane', () => ({
-  default: ({ title, onClose, onCardChange }) => (
+  default: ({ title, onClose, onTitleChange }) => (
     <div role="region" aria-label={`Doc editor: ${title}`}>
-      <button type="button" onClick={() => onCardChange?.({
-        title: 'Hiring plan 2027', path: '/proj/.anton/artifacts/q4-hiring-plan-36623b3b/doc.cdoc.json',
-      })}>Rename</button>
+      <button type="button" onClick={() => onTitleChange?.('Hiring plan 2027')}>Rename</button>
       <button type="button" onClick={() => onClose?.()}>Close doc</button>
     </div>
   ),
