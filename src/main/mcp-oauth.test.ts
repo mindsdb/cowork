@@ -395,6 +395,23 @@ describe('token requests', () => {
     }
   });
 
+  it.each([
+    ['a listed code', { error: 'invalid_grant' }, 'the token endpoint answered 200: invalid_grant'],
+    ['an unlisted code', { error: 'nope' }, 'the token endpoint answered 200'],
+    ['a code with extra text', { error: 'invalid_grant refresh_token=rt-SECRET-VALUE' }, 'the token endpoint answered 200'],
+    ['an error that is not text', { error: { message: 'rt-SECRET-VALUE' } }, 'the token endpoint answered 200'],
+  ])('fails a 200 answer carrying %s even beside a token, showing only a listed code', async (_label, error, message) => {
+    const { fetchFn } = tokenAnswer({ ...error, access_token: 'at', refresh_token: 'rt', token_type: 'Bearer' });
+    const result = exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW);
+    await expect(result).rejects.toBeInstanceOf(McpOAuthError);
+    await expect(result).rejects.toThrow(new RegExp(`^${message}$`));
+  });
+
+  it('keeps the fixed message for a failed answer whose body is not JSON', async () => {
+    const fetchFn: GuardedFetch = async () => new Response('<html>oops</html>', { status: 502 });
+    await expect(exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW)).rejects.toThrow(/^the token endpoint answered 502$/);
+  });
+
   it.each(['Bearer', 'bearer', undefined])('accepts token_type %j', async (tokenType) => {
     const { fetchFn } = tokenAnswer({ access_token: 'at', token_type: tokenType });
     await expect(exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW)).resolves.toMatchObject({ accessToken: 'at' });
@@ -414,6 +431,10 @@ describe('token requests', () => {
     [429, {}, 'token_failed'],
     [503, { error: 'temporarily_unavailable' }, 'token_failed'],
     [500, {}, 'token_failed'],
+    [200, { error: 'invalid_grant' }, 'grant_refused'],
+    [500, { error: 'invalid_grant' }, 'grant_refused'],
+    [200, { error: 'invalid_request' }, 'token_failed'],
+    [200, { error: 'temporarily_unavailable' }, 'token_failed'],
   ])('tells a refused grant (%i %j) from a failure worth retrying', async (status, body, code) => {
     const fetchFn: GuardedFetch = async () => new Response(JSON.stringify(body), { status });
     expect(await failure(refreshTokens(AS, { clientId: 'id', authMethod: 'none' }, { refreshToken: 'rt', resource: SERVER }, fetchFn, NOW))).toBe(code);
