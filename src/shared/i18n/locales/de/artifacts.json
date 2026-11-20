@@ -58,7 +58,9 @@
       "orgRestricted": "Eingeschränkt. Öffnen Sie „Teilen“, um zu sehen, wer den Link öffnen kann.",
       "ownerOnly": "Geteilt, aber nur Sie können den Link öffnen.",
       "chosenPeople": "Geteilt. Nur die von Ihnen ausgewählten Personen können den Link öffnen.",
-      "unknown": "Geteilt. Wer den Link öffnen kann, ließ sich nicht bestätigen, daher gilt er als eingeschränkt."
+      "unknown": "Geteilt. Wer den Link öffnen kann, ließ sich nicht bestätigen, daher gilt er als eingeschränkt.",
+      "sharedWith": "Geteilt mit {names}",
+      "sharedWithMore": "Geteilt mit {names} und {count} weiteren"
     },
     "sharingFailed": "Teilen fehlgeschlagen",
     "couldNotShare": "Teilen nicht möglich.",
@@ -540,6 +542,10 @@
       "clear": "Filter zurücksetzen",
       "status": "Status",
       "allStatuses": "Alle Status"
+    },
+    "owner": {
+      "you": "Du",
+      "youHint": "Deins, mit anderen geteilt."
     }
   },
   "compare": {

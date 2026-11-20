@@ -58,7 +58,9 @@
       "orgRestricted": "Restrito. Abra Compartilhar para ver quem pode abrir o link.",
       "ownerOnly": "Compartilhado, mas só você pode abrir o link.",
       "chosenPeople": "Compartilhado. Só as pessoas que você escolheu podem abrir o link.",
-      "unknown": "Compartilhado. Não foi possível confirmar quem pode abrir o link, então ele é tratado como restrito."
+      "unknown": "Compartilhado. Não foi possível confirmar quem pode abrir o link, então ele é tratado como restrito.",
+      "sharedWith": "Compartilhado com {names}",
+      "sharedWithMore": "Compartilhado com {names} e mais {count}"
     },
     "sharingFailed": "Falha ao compartilhar",
     "couldNotShare": "Não foi possível compartilhar.",
@@ -540,6 +542,10 @@
       "clear": "Limpar filtros",
       "status": "Status",
       "allStatuses": "Todos os status"
+    },
+    "owner": {
+      "you": "Você",
+      "youHint": "Seu, compartilhado com outras pessoas."
     }
   },
   "compare": {

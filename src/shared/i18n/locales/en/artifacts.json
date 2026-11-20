@@ -58,7 +58,9 @@
       "orgRestricted": "Restricted. Open Share to see who can open the link.",
       "ownerOnly": "Shared, but only you can open the link.",
       "chosenPeople": "Shared. Only the people you chose can open the link.",
-      "unknown": "Shared. Who can open the link could not be confirmed, so it is treated as restricted."
+      "unknown": "Shared. Who can open the link could not be confirmed, so it is treated as restricted.",
+      "sharedWith": "Shared with {names}",
+      "sharedWithMore": "Shared with {names} and {count} more"
     },
     "sharingFailed": "Sharing failed",
     "couldNotShare": "Couldn't share.",
@@ -540,6 +542,10 @@
       "clear": "Clear filters",
       "status": "Status",
       "allStatuses": "All statuses"
+    },
+    "owner": {
+      "you": "You",
+      "youHint": "Yours, shared with others."
     }
   },
   "compare": {

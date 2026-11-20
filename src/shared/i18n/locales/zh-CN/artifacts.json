@@ -58,7 +58,9 @@
       "orgRestricted": "受限。打开“分享”可查看谁能打开此链接。",
       "ownerOnly": "已分享，但只有你能打开此链接。",
       "chosenPeople": "已分享。只有你选择的人能打开此链接。",
-      "unknown": "已分享。无法确认谁能打开此链接，因此按受限处理。"
+      "unknown": "已分享。无法确认谁能打开此链接，因此按受限处理。",
+      "sharedWith": "已与 {names} 共享",
+      "sharedWithMore": "已与 {names} 及另外 {count} 个对象共享"
     },
     "sharingFailed": "分享失败",
     "couldNotShare": "无法分享。",
@@ -540,6 +542,10 @@
       "clear": "清除筛选",
       "status": "状态",
       "allStatuses": "所有状态"
+    },
+    "owner": {
+      "you": "你",
+      "youHint": "你的内容，已与他人共享。"
     }
   },
   "compare": {
