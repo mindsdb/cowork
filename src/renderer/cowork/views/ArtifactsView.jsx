@@ -62,7 +62,7 @@ import {
 import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
-import { artifactAuthorship } from '../lib/artifactAuthorship';
+import { ArtifactOwnerNamesProvider, useArtifactAuthorship } from '../hooks/useArtifactAuthorship';
 import {
   PageHeader,
   FilterRow,
@@ -292,9 +292,10 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // is a "file" (shows its extension) yet still publishable. The name renders
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
-  // "Another member" / "Unknown owner" tag (ENG-2979). Null for the viewer's
-  // own artifact, so ArtifactStatus renders exactly what it did before.
-  const authorship = artifactAuthorship(artifact.capabilities);
+  // The owner's name, "Another member" or "Unknown owner" (ENG-2979,
+  // ENG-4455). Null for the viewer's own artifact, so ArtifactStatus renders
+  // exactly what it did before.
+  const authorship = useArtifactAuthorship(artifact.capabilities);
   const { base, secondary } = splitArtifactName(artifact);
   // A duplicated live app says whose it was, in the line a web app leaves empty.
   const received = liveLines?.received ?? null;
@@ -535,6 +536,7 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
 // stretched open button.
 function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true }) {
   const orgMode = useOrgMode();
+  const authorship = useArtifactAuthorship(artifact.capabilities);
   return (
     <ItemActions className="min-w-0 shrink">
       <ArtifactStatus
@@ -548,9 +550,9 @@ function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, p
         onRetry={onRetry}
         inlineChanges={inlineChanges}
         pageBadge={pageBadge}
-        // "Another member" / "Unknown owner" tag (ENG-2979). Null for the
-        // viewer's own artifact.
-        authorship={artifactAuthorship(artifact.capabilities)}
+        // The owner's name, "Another member" or "Unknown owner" (ENG-2979,
+        // ENG-4455). Null for the viewer's own artifact.
+        authorship={authorship}
       />
     </ItemActions>
   );
@@ -1157,6 +1159,8 @@ export default function ArtifactsView({
         />
       )}
 
+      {/* Every card's owner named in one lookup (ENG-4455). */}
+      <ArtifactOwnerNamesProvider capabilitiesList={visible.map((a) => a.capabilities)}>
       <CollectionState
         loading={loading}
         total={total}
@@ -1225,6 +1229,7 @@ export default function ArtifactsView({
           )
         )}
       </CollectionState>
+      </ArtifactOwnerNamesProvider>
 
       <ArtifactViewer
         open={!!viewer}

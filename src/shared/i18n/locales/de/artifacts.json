@@ -364,7 +364,16 @@
       "sharingSettings": "Freigabeeinstellungen",
       "currentAccess": "aktuellen Zugriffsrechte"
     },
-    "editList": "Liste bearbeiten"
+    "editList": "Liste bearbeiten",
+    "sharedWith": {
+      "title": "Geteilt mit",
+      "hint": "Sehen, mit wem dies geteilt ist",
+      "triggerLabel": "Geteilt: sehen, mit wem dies geteilt ist",
+      "whoCanOpen": "Wer es öffnen kann",
+      "ownerOnlyTitle": "Nur der Eigentümer",
+      "ownerOnlyDesc": "Niemand sonst kann den geteilten Link öffnen",
+      "listWithheld": "Nur die Teams und Personen, mit denen es geteilt ist"
+    }
   },
   "previewErrors": {
     "reported": "{count, plural, one {Die Vorschau hat # Fehler gemeldet} other {Die Vorschau hat # Fehler gemeldet}}",

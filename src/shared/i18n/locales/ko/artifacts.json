@@ -364,7 +364,16 @@
       "sharingSettings": "공유 설정",
       "currentAccess": "현재 액세스 설정"
     },
-    "editList": "목록 편집"
+    "editList": "목록 편집",
+    "sharedWith": {
+      "title": "공유 대상",
+      "hint": "공유 대상 보기",
+      "triggerLabel": "공유됨: 공유 대상 보기",
+      "whoCanOpen": "열 수 있는 사람",
+      "ownerOnlyTitle": "소유자만",
+      "ownerOnlyDesc": "다른 사람은 공유 링크를 열 수 없습니다",
+      "listWithheld": "공유된 팀과 사람만"
+    }
   },
   "previewErrors": {
     "reported": "{count, plural, other {미리 보기에서 오류 #개가 보고되었습니다}}",
