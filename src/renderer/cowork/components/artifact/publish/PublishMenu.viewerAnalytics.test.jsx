@@ -1,7 +1,6 @@
 // The Share panel's viewer-analytics settings (ENG-4455): "Collect viewer
-// analytics". "Ask for email before viewing" is out of the first version and
-// shows only to turn off a gate already on. A refusal for want of credits
-// links to adding them.
+// analytics". "Ask for email before viewing" is out of the first version. A
+// refusal for want of credits links to adding them.
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent, within } from '@testing-library/react';
 
@@ -90,15 +89,11 @@ describe('PublishMenu viewer analytics', () => {
     expect(within(settings).queryByRole('switch', { name: 'Ask for email before viewing' })).toBeNull();
   });
 
-  it('shows the email gate only where it is already on, to turn it off', () => {
+  it('offers no email gate even where one is already on', () => {
     stats.value = makeStats({ data: { tracking: true, require_email: true } });
     const settings = openMenu();
 
-    const gate = within(settings).getByRole('switch', { name: 'Ask for email before viewing' });
-    expect(gate).toBeChecked();
-    fireEvent.click(gate);
-
-    expect(stats.value.setRequireEmail).toHaveBeenCalledWith(false);
+    expect(within(settings).queryByRole('switch', { name: 'Ask for email before viewing' })).toBeNull();
   });
 
   it('holds the switches while a change saves', () => {

@@ -864,8 +864,6 @@
     "title": "방문자 분석",
     "collect": "방문자 분석 수집",
     "collectHint": "이 페이지를 누가 열었는지, 얼마나 머물렀는지, 어느 부분을 읽었는지 확인하세요.",
-    "requireEmail": "보기 전에 이메일 요청",
-    "requireEmailHint": "방문자는 이메일을 입력해야 페이지를 열 수 있습니다.",
     "loading": "분석 설정 불러오는 중",
     "loadFailed": "분석 설정을 불러오지 못했습니다.",
     "addCredits": "크레딧 추가",

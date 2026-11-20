@@ -864,8 +864,6 @@
     "title": "Besucheranalyse",
     "collect": "Besucheranalyse erfassen",
     "collectHint": "Sieh, wer diese Seite öffnet, wie lange und welche Teile gelesen werden.",
-    "requireEmail": "Vor dem Ansehen nach E-Mail fragen",
-    "requireEmailHint": "Besucher geben ihre E-Mail ein, um die Seite zu öffnen.",
     "loading": "Analyse-Einstellungen werden geladen",
     "loadFailed": "Analyse-Einstellungen konnten nicht geladen werden.",
     "addCredits": "Guthaben aufladen",

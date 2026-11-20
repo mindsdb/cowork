@@ -864,8 +864,6 @@
     "title": "访客分析",
     "collect": "收集访客分析",
     "collectHint": "了解谁打开了此页面、停留了多久以及阅读了哪些部分。",
-    "requireEmail": "查看前要求填写邮箱",
-    "requireEmailHint": "访客需输入邮箱才能打开页面。",
     "loading": "正在加载分析设置",
     "loadFailed": "无法加载分析设置。",
     "addCredits": "添加额度",

@@ -864,8 +864,6 @@
     "title": "Analyse des visiteurs",
     "collect": "Collecter l’analyse des visiteurs",
     "collectHint": "Voyez qui ouvre cette page, combien de temps et quelles parties sont lues.",
-    "requireEmail": "Demander l’e-mail avant l’affichage",
-    "requireEmailHint": "Les visiteurs saisissent leur e-mail pour ouvrir la page.",
     "loading": "Chargement des réglages d’analyse",
     "loadFailed": "Impossible de charger les réglages d’analyse.",
     "addCredits": "Ajouter des crédits",

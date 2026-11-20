@@ -3,8 +3,7 @@
 //   Collect viewer analytics      — who opens the page, for how long, and
 //                                   which parts they read
 //
-// "Ask for email before viewing" is out of the first version: it is offered
-// only on a page that already has it on, so it can be turned off there.
+// "Ask for email before viewing" is out of the first version.
 //
 // `controller` is a useArtifactStats for the artifact: the settings come with
 // its stats, and a change saved here reaches an open Stats panel too.
@@ -32,8 +31,6 @@ export function ViewerAnalyticsSettings({ controller }) {
   const error = controller?.error || null;
   const busy = !!controller?.trackingBusy;
   const tracking = data?.tracking === true;
-  // Only to turn off an email gate set before it left the menu.
-  const emailGate = data?.require_email === true;
   const loadFailure = !data && error ? describeStatsError(error) : null;
   return (
     <div className="flex flex-col gap-3" data-testid="viewer-analytics-settings">
@@ -44,15 +41,6 @@ export function ViewerAnalyticsSettings({ controller }) {
         disabled={!data || busy}
         onChange={(on) => controller?.setTracking(on)}
       />
-      {emailGate && (
-        <SettingRow
-          label={t('analytics.requireEmail')}
-          hint={t('analytics.requireEmailHint')}
-          checked={data.require_email === true}
-          disabled={busy}
-          onChange={(on) => controller?.setRequireEmail(on)}
-        />
-      )}
       {!data && controller?.loading && (
         <span role="status" className="font-body text-xs text-ink-3">{t('analytics.loading')}</span>
       )}

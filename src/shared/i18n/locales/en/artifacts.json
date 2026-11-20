@@ -864,8 +864,6 @@
     "title": "Viewer analytics",
     "collect": "Collect viewer analytics",
     "collectHint": "See who opens this page, how long they stay and which parts they read.",
-    "requireEmail": "Ask for email before viewing",
-    "requireEmailHint": "Viewers enter their email to open the page.",
     "loading": "Loading analytics settings",
     "loadFailed": "Could not load analytics settings.",
     "addCredits": "Add credits",

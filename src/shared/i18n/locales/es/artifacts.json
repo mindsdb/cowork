@@ -864,8 +864,6 @@
     "title": "Análisis de visitantes",
     "collect": "Recopilar análisis de visitantes",
     "collectHint": "Ve quién abre esta página, cuánto tiempo se queda y qué partes lee.",
-    "requireEmail": "Pedir el correo antes de ver",
-    "requireEmailHint": "Los visitantes escriben su correo para abrir la página.",
     "loading": "Cargando la configuración de análisis",
     "loadFailed": "No se pudo cargar la configuración de análisis.",
     "addCredits": "Añadir créditos",

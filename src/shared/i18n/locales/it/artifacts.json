@@ -864,8 +864,6 @@
     "title": "Analisi dei visitatori",
     "collect": "Raccogli l’analisi dei visitatori",
     "collectHint": "Scopri chi apre questa pagina, quanto tempo resta e quali parti legge.",
-    "requireEmail": "Chiedi l’email prima della visualizzazione",
-    "requireEmailHint": "I visitatori inseriscono la loro email per aprire la pagina.",
     "loading": "Caricamento delle impostazioni di analisi",
     "loadFailed": "Impossibile caricare le impostazioni di analisi.",
     "addCredits": "Aggiungi crediti",
