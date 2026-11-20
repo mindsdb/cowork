@@ -527,7 +527,20 @@
     "search": "搜索产物",
     "emptyTitle": "暂无产物",
     "emptyBody": "{agent} 创建的文档、仪表板或代码输出会显示在这里。",
-    "working": "正在处理…"
+    "working": "正在处理…",
+    "filter": {
+      "type": "类型",
+      "allTypes": "所有类型",
+      "owner": "所有者",
+      "allOwners": "所有所有者",
+      "me": "我",
+      "unknownOwner": "未知所有者",
+      "anotherMember": "其他成员",
+      "noMatch": "没有符合这些筛选条件的工件。",
+      "clear": "清除筛选",
+      "status": "状态",
+      "allStatuses": "所有状态"
+    }
   },
   "compare": {
     "refused": "这一侧仍在处理上一轮，因此没有收到你的消息。消息已放回下方的输入框中。",

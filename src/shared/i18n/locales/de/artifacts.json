@@ -527,7 +527,20 @@
     "search": "Artefakte suchen",
     "emptyTitle": "Noch keine Artefakte",
     "emptyBody": "Wenn {agent} Dokumente, Dashboards oder Code erstellt, erscheinen sie hier.",
-    "working": "In Arbeit…"
+    "working": "In Arbeit…",
+    "filter": {
+      "type": "Typ",
+      "allTypes": "Alle Typen",
+      "owner": "Eigentümer",
+      "allOwners": "Alle Eigentümer",
+      "me": "Ich",
+      "unknownOwner": "Unbekannter Eigentümer",
+      "anotherMember": "Anderes Mitglied",
+      "noMatch": "Keine Artefakte entsprechen diesen Filtern.",
+      "clear": "Filter zurücksetzen",
+      "status": "Status",
+      "allStatuses": "Alle Status"
+    }
   },
   "compare": {
     "refused": "Diese Seite war noch mit ihrer letzten Runde beschäftigt und hat Ihre Nachricht daher nicht erhalten. Sie steht wieder im Feld unten.",

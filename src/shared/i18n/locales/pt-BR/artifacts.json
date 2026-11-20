@@ -527,7 +527,20 @@
     "search": "Buscar artefatos",
     "emptyTitle": "Nenhum artefato ainda",
     "emptyBody": "Quando {agent} criar documentos, painéis ou resultados de código, eles aparecerão aqui.",
-    "working": "Processando…"
+    "working": "Processando…",
+    "filter": {
+      "type": "Tipo",
+      "allTypes": "Todos os tipos",
+      "owner": "Proprietário",
+      "allOwners": "Todos os proprietários",
+      "me": "Eu",
+      "unknownOwner": "Proprietário desconhecido",
+      "anotherMember": "Outro membro",
+      "noMatch": "Nenhum artefato corresponde a estes filtros.",
+      "clear": "Limpar filtros",
+      "status": "Status",
+      "allStatuses": "Todos os status"
+    }
   },
   "compare": {
     "refused": "Este lado ainda estava trabalhando no último turno, então não recebeu sua mensagem. Ela voltou para a caixa abaixo.",

@@ -527,7 +527,20 @@
     "search": "Rechercher des artefacts",
     "emptyTitle": "Aucun artefact pour l’instant",
     "emptyBody": "Les documents, tableaux de bord et résultats de code créés par {agent} apparaîtront ici.",
-    "working": "En cours…"
+    "working": "En cours…",
+    "filter": {
+      "type": "Type",
+      "allTypes": "Tous les types",
+      "owner": "Propriétaire",
+      "allOwners": "Tous les propriétaires",
+      "me": "Moi",
+      "unknownOwner": "Propriétaire inconnu",
+      "anotherMember": "Un autre membre",
+      "noMatch": "Aucun artefact ne correspond à ces filtres.",
+      "clear": "Effacer les filtres",
+      "status": "Statut",
+      "allStatuses": "Tous les statuts"
+    }
   },
   "compare": {
     "refused": "Ce côté n’avait pas terminé son dernier tour : il n’a donc pas reçu votre message. Celui-ci a été remis dans la zone ci-dessous.",
