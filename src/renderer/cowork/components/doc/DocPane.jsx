@@ -13,13 +13,13 @@
 // inbox beside the page. Comments sit on blocks (docComments); the doc beside
 // a chat has no rail and adds tabs from the page and the tab list instead.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, ChevronDown, FilePlus, FileText, Maximize2, Minimize2, PanelLeftOpen, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, FilePlus, FileText, Maximize2, Minimize2, X } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { Button, Menu, Spinner, Tooltip } from '../ui';
 import DocAskBar from './DocAskBar';
 import DocCanvas from './DocCanvas';
 import DocHeaderTitle from './DocHeaderTitle';
-import { TabRail, TabStrip, tabElementId, useTabsHidden } from './DocTabs';
+import { ShowTabsButton, TabRail, TabStrip, tabElementId, useTabsHidden } from './DocTabs';
 import { docPageTarget } from './docArtifact';
 import { useDoc } from './useDoc';
 import { noteArtifactRenamed } from '../../lib/artifactsStore';
@@ -151,8 +151,8 @@ export default function DocPane({
   const [narrow, setNarrow] = useState(false);
   const rootRef = useRef(null);
   const tabsId = useId();
-  // The tab rail folds away, as the app's sidebar does; the header's leading
-  // icon brings it back. Focus follows to the control that is left.
+  // The tab rail folds away, as the app's sidebar does; Show tabs, where the
+  // rail's Hide tabs sat, brings it back. Focus follows to the control that is left.
   const [tabsHidden, setTabsHidden] = useTabsHidden();
   const showTabsRef = useRef(null);
   const hideTabs = useCallback(() => {
@@ -519,17 +519,7 @@ export default function DocPane({
       onKeyDownCapture={onKeyDownCapture}
     >
       <header className="doc-header">
-        {tabbed && !narrow && tabsHidden ? (
-          <Tooltip content={t('pane.showTabs')}>
-            <button type="button" ref={showTabsRef} className="doc-iconbtn doc-header__tabs" onClick={showTabs}
-              aria-label={t(unseen.size && !version ? 'pane.showTabsChanged' : 'pane.showTabs')}>
-              <Icon of={PanelLeftOpen} size={16} />
-              {unseen.size > 0 && !version && <span className="doc-header__tabs-dot" />}
-            </button>
-          </Tooltip>
-        ) : (
-          <span className="doc-header__icon"><Icon of={FileText} size={16} /></span>
-        )}
+        <span className="doc-header__icon"><Icon of={FileText} size={16} /></span>
         {/* A version looked at shows its own title: restoring it brings that back too. */}
         <DocHeaderTitle title={headerTitle}
           onRename={doc && editable && !version ? renameDoc : undefined} />
@@ -627,10 +617,13 @@ export default function DocPane({
               <div className="doc-state">{error?.status === 404 ? t('pane.gone') : t('pane.openFailed', { reason: error?.message || '' })}</div>
             )}
             {shown && shownTab && (
-              <div className="doc-body">
+              <div className="doc-body" data-tabs-hidden={(tabbed && !narrow && tabsHidden) || undefined}>
                 {tabbed && !narrow && (
                   <TabRail tabs={shown.tabs} activeId={shownTab.id} unseen={version ? NO_TABS : unseen} editable={editable && !version}
                     onSelect={setActiveTab} apply={apply} idBase={tabsId} hidden={tabsHidden} onHide={hideTabs} addable={!preview} />
+                )}
+                {tabbed && !narrow && tabsHidden && (
+                  <ShowTabsButton onShow={showTabs} changed={unseen.size > 0 && !version} buttonRef={showTabsRef} />
                 )}
                 <div className="doc-scroll">
                   {tabbed && narrow && (

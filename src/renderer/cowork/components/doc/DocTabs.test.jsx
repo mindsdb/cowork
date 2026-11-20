@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { act, render, renderHook, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TabRail, TabStrip, changedOffside, tabKeyTarget, useTabsHidden } from './DocTabs';
+import { ShowTabsButton, TabRail, TabStrip, changedOffside, tabKeyTarget, useTabsHidden } from './DocTabs';
 
 const tabs = [{ id: 't_1', title: 'Plan' }, { id: 't_2', title: 'Risks' }, { id: 't_3', title: 'Budget' }];
 
@@ -161,6 +161,17 @@ describe('folding the rail away', () => {
     expect(rail).toHaveAttribute('data-hidden');
     expect(rail).toHaveAttribute('aria-hidden', 'true');
     expect(rail.inert).toBe(true);
+  });
+
+  it('unfolds it from Show tabs, which marks a tab changed out of sight', async () => {
+    const onShow = vi.fn();
+    const { rerender } = render(<ShowTabsButton onShow={onShow} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Show tabs' }));
+    expect(onShow).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.doc-tabs-show__dot')).toBeNull();
+    rerender(<ShowTabsButton onShow={onShow} changed />);
+    expect(screen.getByRole('button', { name: 'Show tabs (a tab has changed)' })).toBeInTheDocument();
+    expect(document.querySelector('.doc-tabs-show__dot')).toBeInTheDocument();
   });
 
   it('offers no fold without somewhere to unfold it from', () => {
