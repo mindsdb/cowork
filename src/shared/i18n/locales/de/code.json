@@ -1024,6 +1024,7 @@
       "noComputer": "Kein Computer kann diese Aufgabe ausführen.",
       "noAgent": "Kein Coding-Agent verfügbar.",
       "modelRestricted": "Ein Administrator hat dieses Modell eingeschränkt. Wählen Sie ein anderes Modell.",
+      "zdrRestricted": "Zero Data Retention ist aktiviert und dieses Modell ist nicht ZDR-konform. Wählen Sie ein anderes Modell.",
       "addCredits": "Laden Sie Guthaben auf oder wählen Sie ein verfügbares Modell.",
       "noModels": "Keine Code-Modelle verfügbar.",
       "chooseModel": "Wählen Sie ein Modell, um fortzufahren.",

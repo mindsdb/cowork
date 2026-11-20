@@ -474,6 +474,10 @@
         "title": "An admin in your organization restricted this model.",
         "tag": "Restricted"
       },
+      "zdrRestricted": {
+        "title": "Zero data retention is on, so only models from ZDR-compliant providers can be used.",
+        "tag": "ZDR restricted"
+      },
       "needsCredits": "Needs credits",
       "budgetReached": {
         "tag": "Budget reached",

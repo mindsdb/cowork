@@ -29,8 +29,10 @@ export interface ModelPickerOption {
   disabled?: boolean;
   /** The wallet or the spent allowance closes this row; ModelSelect adds "Add credits". */
   locked?: boolean;
-  /** An org admin's model rule closes this row; no credits action applies. */
+  /** An org admin's model rule or zero data retention closes this row; no credits action applies. */
   restricted?: boolean;
+  /** Zero data retention is what closes this row. */
+  zdr?: boolean;
   /** A spending budget is used up; no credits action applies. */
   budgetReached?: boolean;
   /** Row tooltip. */
@@ -79,7 +81,7 @@ export function buildModelPickerOptions(
       label: model.name,
       /* Availability is the only row tag: "Needs credits" for the
          wallet or the allowance, "Restricted" for an admin's model rule,
-         "Budget reached" for the org's spent budget, from
+         "ZDR restricted" for ZDR, "Budget reached" for the org's spent budget, from
          the helper the Settings builder shares. Version state is a muted note,
          not a pill: pills on most rows pushed long names into an ellipsis. */
       ...unavailableModelFields(modelEnabled, modelDisabledReasons, model.id),

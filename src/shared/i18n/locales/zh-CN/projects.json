@@ -474,6 +474,10 @@
         "title": "你所在组织的管理员限制了此模型。",
         "tag": "受限"
       },
+      "zdrRestricted": {
+        "title": "零数据保留（ZDR）已开启，只能使用符合 ZDR 要求的提供商的模型。",
+        "tag": "受 ZDR 限制"
+      },
       "needsCredits": "需要积分",
       "budgetReached": {
         "tag": "已达预算上限",

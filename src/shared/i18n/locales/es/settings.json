@@ -332,6 +332,7 @@
     "failed": "{provider} falló en su última prueba: revísalo en Proveedores de LLM, arriba, o elige otro proveedor.",
     "modelUnavailable": "{model} no está disponible. Elige otro modelo o contacta a tu administrador.",
     "modelRestricted": "Un administrador de tu organización restringió {model}. Elige otro modelo.",
+    "modelZdrRestricted": "{model} no es compatible con ZDR y tu organización tiene activada la retención cero de datos. Elige otro modelo.",
     "modelNeedsCredits": "{model} necesita créditos. {link} para usarlo.",
     "modelNeedsCreditsNoLink": "{model} necesita créditos.",
     "topUpBalance": "Recarga tu saldo",
@@ -388,12 +389,14 @@
     },
     "jev": {
       "title": "Respuestas rápidas con Jev",
-      "subtitle": "Jev, el modelo de decisión de MindsHub, lee cada mensaje y la conversación reciente para decidir si el modelo que elegiste puede responder directamente, y comprueba si {agent} terminó su trabajo. Desactívalo para que {agent} procese cada mensaje."
+      "subtitle": "Jev, el modelo de decisión de MindsHub, lee cada mensaje y la conversación reciente para decidir si el modelo que elegiste puede responder directamente, y comprueba si {agent} terminó su trabajo. Desactívalo para que {agent} procese cada mensaje.",
+      "zdrSubtitle": "Desactivado mientras la retención cero de datos esté activada. {agent} procesa cada mensaje."
     },
     "jevClassify": {
       "title": "Usar Jev para clasificar",
       "subtitle": "Permite que {agent} clasifique muchos textos en categorías, o responda una pregunta de sí o no sobre cada uno, con Jev, el modelo de decisión de MindsHub, en lugar del modelo que elegiste. Más rápido y económico para lotes grandes. Desactívalo para etiquetar los textos con el modelo que elegiste.",
-      "unavailable": "Solo disponible cuando el modelo de código se ejecuta en MindsHub."
+      "unavailable": "Solo disponible cuando el modelo de código se ejecuta en MindsHub.",
+      "zdrUnavailable": "Desactivado mientras la retención cero de datos esté activada."
     }
   },
   "desktop": {
@@ -510,6 +513,7 @@
     "agentTitle": "Agente de voz",
     "agentHelp": "Habla con {agent} desde el botón de llamada. Desactivado oculta los botones de llamada y termina la llamada en curso.",
     "voiceTitle": "Voz",
-    "voiceHelp": "Elige una para escucharla. {agent} dice una frase corta con cada voz nueva."
+    "voiceHelp": "Elige una para escucharla. {agent} dice una frase corta con cada voz nueva.",
+    "zdrSubtitle": "Desactivado mientras la retención cero de datos esté activada."
   }
 }

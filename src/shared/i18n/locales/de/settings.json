@@ -332,6 +332,7 @@
     "failed": "{provider} ist beim letzten Test fehlgeschlagen – prüfen Sie ihn oben unter „LLM-Anbieter“ oder wählen Sie einen anderen Anbieter.",
     "modelUnavailable": "{model} ist nicht verfügbar. Wählen Sie ein anderes Modell oder wenden Sie sich an Ihren Administrator.",
     "modelRestricted": "{model} wurde von einem Administrator Ihrer Organisation eingeschränkt. Wählen Sie ein anderes Modell.",
+    "modelZdrRestricted": "{model} ist nicht ZDR-konform, und Zero Data Retention ist für Ihre Organisation aktiviert. Wählen Sie ein anderes Modell.",
     "modelNeedsCredits": "{model} benötigt Guthaben. {link}, um es zu nutzen.",
     "modelNeedsCreditsNoLink": "{model} benötigt Guthaben.",
     "topUpBalance": "Laden Sie Ihr Guthaben auf",
@@ -388,12 +389,14 @@
     },
     "jev": {
       "title": "Schnelle Antworten mit Jev",
-      "subtitle": "Jev, das Entscheidungsmodell von MindsHub, liest jede Nachricht und den aktuellen Gesprächsverlauf, um zu entscheiden, ob Ihr gewähltes Modell direkt antworten kann, und prüft, ob {agent} seine Arbeit abgeschlossen hat. Deaktivieren Sie die Option, damit jede Nachricht von {agent} bearbeitet wird."
+      "subtitle": "Jev, das Entscheidungsmodell von MindsHub, liest jede Nachricht und den aktuellen Gesprächsverlauf, um zu entscheiden, ob Ihr gewähltes Modell direkt antworten kann, und prüft, ob {agent} seine Arbeit abgeschlossen hat. Deaktivieren Sie die Option, damit jede Nachricht von {agent} bearbeitet wird.",
+      "zdrSubtitle": "Deaktiviert, solange Zero Data Retention aktiviert ist. Jede Nachricht wird von {agent} bearbeitet."
     },
     "jevClassify": {
       "title": "Jev für die Klassifizierung verwenden",
       "subtitle": "Lässt {agent} viele Texte in Kategorien einordnen oder zu jedem eine Ja/Nein-Frage beantworten – mit Jev, dem Entscheidungsmodell von MindsHub, statt mit Ihrem gewählten Modell. Schneller und günstiger bei großen Mengen. Deaktivieren Sie die Option, damit Texte mit Ihrem gewählten Modell eingeordnet werden.",
-      "unavailable": "Nur verfügbar, wenn das Coding-Modell über MindsHub läuft."
+      "unavailable": "Nur verfügbar, wenn das Coding-Modell über MindsHub läuft.",
+      "zdrUnavailable": "Deaktiviert, solange Zero Data Retention aktiviert ist."
     }
   },
   "desktop": {
@@ -510,6 +513,7 @@
     "agentTitle": "Sprachagent",
     "agentHelp": "Sprechen Sie über die Anruftaste mit {agent}. Aus blendet die Anruftasten aus und beendet einen laufenden Anruf.",
     "voiceTitle": "Stimme",
-    "voiceHelp": "Wählen Sie eine aus, um sie zu hören. {agent} sagt in jeder neuen Stimme einen kurzen Satz."
+    "voiceHelp": "Wählen Sie eine aus, um sie zu hören. {agent} sagt in jeder neuen Stimme einen kurzen Satz.",
+    "zdrSubtitle": "Deaktiviert, solange Zero Data Retention aktiviert ist."
   }
 }

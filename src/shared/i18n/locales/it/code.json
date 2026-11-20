@@ -1024,6 +1024,7 @@
       "noComputer": "Nessun computer può eseguire questa attività.",
       "noAgent": "Nessun agente di codice disponibile.",
       "modelRestricted": "Un amministratore ha limitato questo modello. Scegline un altro.",
+      "zdrRestricted": "La conservazione zero dei dati è attiva e questo modello non è conforme a ZDR. Scegline un altro.",
       "addCredits": "Aggiungi crediti o scegli un modello disponibile.",
       "noModels": "Nessun modello di codice disponibile.",
       "chooseModel": "Scegli un modello per continuare.",

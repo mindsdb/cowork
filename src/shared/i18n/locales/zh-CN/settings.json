@@ -332,6 +332,7 @@
     "failed": "{provider} 上次测试失败。请在上方“LLM 服务商”中检查，或选择其他服务商。",
     "modelUnavailable": "{model} 不可用。请选择其他模型，或联系你的管理员。",
     "modelRestricted": "{model} 已被你所在组织的管理员限制使用。请选择其他模型。",
+    "modelZdrRestricted": "{model} 不符合 ZDR 要求，且你所在组织已开启零数据保留。请选择其他模型。",
     "modelNeedsCredits": "{model} 需要积分。{link}后即可使用。",
     "modelNeedsCreditsNoLink": "{model} 需要积分。",
     "topUpBalance": "充值余额",
@@ -388,12 +389,14 @@
     },
     "jev": {
       "title": "使用 Jev 快速回答",
-      "subtitle": "Jev 是 MindsHub 的决策模型，它会读取每条消息和近期对话，判断你选择的模型能否直接回答，并检查 {agent} 是否已完成工作。关闭后，每条消息都会交由 {agent} 运行。"
+      "subtitle": "Jev 是 MindsHub 的决策模型，它会读取每条消息和近期对话，判断你选择的模型能否直接回答，并检查 {agent} 是否已完成工作。关闭后，每条消息都会交由 {agent} 运行。",
+      "zdrSubtitle": "零数据保留开启期间此项关闭。每条消息都会交由 {agent} 运行。"
     },
     "jevClassify": {
       "title": "使用 Jev 进行分类",
       "subtitle": "让 {agent} 在将大量文本归入类别、或对每条文本回答是/否问题时，使用 MindsHub 的决策模型 Jev，而不是你选择的模型。批量处理时更快、更省钱。关闭后，将使用你选择的模型为文本分类。",
-      "unavailable": "仅当编码模型在 MindsHub 上运行时可用。"
+      "unavailable": "仅当编码模型在 MindsHub 上运行时可用。",
+      "zdrUnavailable": "零数据保留开启期间此项关闭。"
     }
   },
   "desktop": {
@@ -510,6 +513,7 @@
     "agentTitle": "语音智能体",
     "agentHelp": "通过通话按钮与 {agent} 交谈。关闭后会隐藏通话按钮，并结束正在进行的通话。",
     "voiceTitle": "语音",
-    "voiceHelp": "选择一个即可试听。每换一种新语音，{agent} 都会说一句简短的话。"
+    "voiceHelp": "选择一个即可试听。每换一种新语音，{agent} 都会说一句简短的话。",
+    "zdrSubtitle": "零数据保留开启期间此项关闭。"
   }
 }

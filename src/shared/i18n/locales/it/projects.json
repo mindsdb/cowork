@@ -474,6 +474,10 @@
         "title": "Un amministratore della tua organizzazione ha limitato questo modello.",
         "tag": "Limitato"
       },
+      "zdrRestricted": {
+        "title": "La conservazione zero dei dati è attiva, quindi puoi usare solo modelli di provider conformi a ZDR.",
+        "tag": "Limitato da ZDR"
+      },
       "needsCredits": "Servono crediti",
       "budgetReached": {
         "tag": "Budget raggiunto",

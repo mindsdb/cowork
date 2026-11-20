@@ -1024,6 +1024,7 @@
       "noComputer": "No computer can run this task.",
       "noAgent": "No coding agent is available.",
       "modelRestricted": "An admin restricted this model. Choose another model.",
+      "zdrRestricted": "Zero data retention is on and this model is not ZDR-compliant. Choose another model.",
       "addCredits": "Add credits or choose an available model.",
       "noModels": "No coding models are available.",
       "chooseModel": "Choose a model to continue.",

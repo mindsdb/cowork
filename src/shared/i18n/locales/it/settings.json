@@ -332,6 +332,7 @@
     "failed": "L’ultimo test di {provider} non è riuscito: controllalo in «Provider LLM» qui sopra oppure scegli un altro provider.",
     "modelUnavailable": "{model} non è disponibile. Scegli un altro modello o contatta l’amministratore.",
     "modelRestricted": "{model} è limitato da un amministratore della tua organizzazione. Scegli un altro modello.",
+    "modelZdrRestricted": "{model} non è conforme a ZDR e la conservazione zero dei dati è attiva per la tua organizzazione. Scegli un altro modello.",
     "modelNeedsCredits": "{model} richiede crediti. {link} per usarlo.",
     "modelNeedsCreditsNoLink": "{model} richiede crediti.",
     "topUpBalance": "Ricarica il saldo",
@@ -388,12 +389,14 @@
     },
     "jev": {
       "title": "Risposte rapide con Jev",
-      "subtitle": "Jev, il modello decisionale di MindsHub, legge ogni messaggio e la conversazione recente per decidere se il modello scelto può rispondere direttamente, e verifica se {agent} ha finito il lavoro. Disattivalo per far passare ogni messaggio da {agent}."
+      "subtitle": "Jev, il modello decisionale di MindsHub, legge ogni messaggio e la conversazione recente per decidere se il modello scelto può rispondere direttamente, e verifica se {agent} ha finito il lavoro. Disattivalo per far passare ogni messaggio da {agent}.",
+      "zdrSubtitle": "Disattivato finché la conservazione zero dei dati è attiva. Ogni messaggio passa da {agent}."
     },
     "jevClassify": {
       "title": "Usa Jev per la classificazione",
       "subtitle": "Consente a {agent} di suddividere molti testi in categorie, o di rispondere a una domanda sì/no su ciascuno, con Jev, il modello decisionale di MindsHub, invece del modello scelto. Più veloce ed economico per grandi quantità. Disattivalo per etichettare i testi con il modello scelto.",
-      "unavailable": "Disponibile solo quando il modello di codice è su MindsHub."
+      "unavailable": "Disponibile solo quando il modello di codice è su MindsHub.",
+      "zdrUnavailable": "Disattivato finché la conservazione zero dei dati è attiva."
     }
   },
   "desktop": {
@@ -510,6 +513,7 @@
     "agentTitle": "Agente vocale",
     "agentHelp": "Parla con {agent} dal pulsante di chiamata. Disattivo nasconde i pulsanti di chiamata e termina la chiamata in corso.",
     "voiceTitle": "Voce",
-    "voiceHelp": "Scegline una per ascoltarla. {agent} dice una breve frase con ogni nuova voce."
+    "voiceHelp": "Scegline una per ascoltarla. {agent} dice una breve frase con ogni nuova voce.",
+    "zdrSubtitle": "Disattivato finché la conservazione zero dei dati è attiva."
   }
 }

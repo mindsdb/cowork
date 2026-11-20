@@ -134,3 +134,39 @@ describe('SettingsView: a model an admin restricted', () => {
     expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
   });
 });
+
+describe('SettingsView: a model zero data retention blocks', () => {
+  it('names ZDR under the current model, with no billing link or admin wording', async () => {
+    render(<Harness initialSettings={settingsWith({
+      modelEnabled: { 'gpt-5.6-sol': false },
+      modelDisabledReasons: { 'gpt-5.6-sol': 'zdr_restricted' },
+    })} />);
+
+    await waitFor(() => expect(
+      screen.getAllByText(
+        'GPT-5.6 Sol is not ZDR-compliant, and zero data retention is on for your organization. Choose another model.',
+      ).length,
+    ).toBeGreaterThan(0));
+    expect(screen.queryByText(/needs credits/)).toBeNull();
+    expect(screen.queryByText(/is restricted by an admin/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Top up your balance' })).toBeNull();
+  });
+
+  it('tags a ZDR-blocked row in the picker without an Add credits button', async () => {
+    const user = userEvent.setup();
+    render(<Harness initialSettings={settingsWith({
+      modelEnabled: { 'gpt-5.6-sol': true, opus: false },
+      modelDisabledReasons: { opus: 'zdr_restricted' },
+    })} />);
+
+    await user.click(screen.getByTitle(/Pick the model used for planning/));
+    const row = await screen.findByRole('option', { name: /Claude Opus 5/ });
+    expect(row).toHaveTextContent('ZDR restricted');
+    expect(row).not.toHaveTextContent('Needs credits');
+    expect(row).toHaveAttribute(
+      'title',
+      'Zero data retention is on, so only models from ZDR-compliant providers can be used.',
+    );
+    expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
+  });
+});
