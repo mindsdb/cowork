@@ -80,6 +80,7 @@ export function useDoc({ projectRef, artifactId, transport }) {
       if (!r.base || res.doc.rev >= r.base.rev) r.base = res.doc;
       setCapabilities(res.capabilities || null);
       setCard(res.card || null);
+      r.hasCard = !!res.card;
       setError(null);
       setStatus('ready');
       rebase();
@@ -91,6 +92,19 @@ export function useDoc({ projectRef, artifactId, transport }) {
       return false;
     }
   }, [rebase, fetchDoc]);
+
+  /** The server published the page: only the card's link can have changed. */
+  const reloadCard = useCallback(async (r) => {
+    if (!r.hasCard) return;
+    try {
+      const res = await fetchDoc(r.projectRef, r.artifactId);
+      if (r !== run.current || !res.card) return;
+      // A new card object resets the Share panel's state (usePublish), so
+      // only a changed link or modified flag replaces it.
+      setCard((cur) => (cur && cur.publishedUrl === res.card.publishedUrl && cur.modified === res.card.modified
+        ? cur : res.card));
+    } catch { /* the next open reads it */ }
+  }, [fetchDoc]);
 
   // After an edit was dropped: reread the doc, and keep of what is still
   // queued only what applies to it (replayed in order, so an edit to a block
@@ -261,6 +275,9 @@ export function useDoc({ projectRef, artifactId, transport }) {
       onEvent: (ev) => {
         // An event the stream delivers after this run ended is the doc open before's.
         if (r !== run.current) return;
+        // A lost event may have been a doc.updated: read the doc again.
+        if (ev.gap && ev.type !== 'doc.updated') { load(); return; }
+        if (ev.type === 'doc.published') { reloadCard(r); return; }
         if (ev.type === 'doc.ready') {
           if (r.base && ev.rev > r.base.rev) load();
           return;
@@ -290,7 +307,7 @@ export function useDoc({ projectRef, artifactId, transport }) {
       clearTimeout(agentTimer.current);
       stop();
     };
-  }, [projectRef, artifactId, clientId, load, rebase, flashBlocks, followDoc, retryNow]);
+  }, [projectRef, artifactId, clientId, load, rebase, flashBlocks, followDoc, retryNow, reloadCard]);
 
   /** Apply ops: locally now when the op allows it, on the server always. */
   const apply = useCallback((ops, { tab, kind } = {}) => new Promise((resolve) => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -152,6 +152,8 @@ import App from './App';
 import { trackAddonAdded, trackAddonQueued, trackAddonOverridden } from './lib/analytics';
 import { __resetDraftsForTests } from './lib/draftStore';
 import { __resetOwnAddonsForTests } from './lib/addons';
+import { clearDocView, setDocView } from './lib/docViewContext';
+import { setDocsEnabled } from '../lib/docsEnabled';
 
 /** Renders App, opens the seeded conversation, and returns the composer. */
 async function openTask(user) {
@@ -767,5 +769,43 @@ describe('reopening a conversation while Anton is working (ENG-4208)', () => {
     await act(async () => { streams[streams.length - 1].opts.onDone(); });
     // The turn ends and nothing runs as a next task here.
     expect(spies.streamMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('a message with a doc passage picked, sent while Anton is working', () => {
+  // What the doc pane beside the chat reports: the open doc and a picked passage.
+  const view = {
+    artifactId: 'a1', projectId: 'p1', title: 'Plan', tab: 't_1', rev: 1, mode: 'edit',
+    selection: { blockIds: ['b_1'], quote: 'Acme' },
+  };
+
+  afterEach(() => {
+    clearDocView('conv-a');
+    setDocsEnabled(true);
+  });
+
+  it('waits for its own turn, so the passage goes with it', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    setDocView('conv-a', view);
+
+    await send(user, composer, 'make it shorter');
+
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.sendAddon).not.toHaveBeenCalled();
+  });
+
+  it('is offered to the running turn when the deployment has no doc tools', async () => {
+    // The passage would be dropped from the request anyway, so it is no
+    // reason to hold the message back.
+    setDocsEnabled(false);
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    setDocView('conv-a', view);
+
+    await send(user, composer, 'make it shorter');
+
+    await waitFor(() => expect(spies.sendAddon)
+      .toHaveBeenCalledWith('conv-a', 'make it shorter', expect.any(Object)));
   });
 });

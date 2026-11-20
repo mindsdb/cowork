@@ -50,6 +50,8 @@ export default function DocCanvas({
   const slashId = useId();
   const [toolbar, setToolbar] = useCanvasSelection(root, onSelectionChange); // {rect, blockIds, quote, editable, mode, range}
   const [askFor, setAskFor] = useState(null); // {rect, blockIds, quote, mode}
+  // Without a handler there is nothing to ask; drop the request so it does not come back stale.
+  useEffect(() => { if (!onAskAgent) setAskFor(null); }, [onAskAgent]);
   // Which block's options menu is open; the id outlives the close so the menu
   // keeps its items while it animates out.
   const [menu, setMenu] = useState({ id: null, open: false });
@@ -413,7 +415,7 @@ export default function DocCanvas({
         />
       )}
 
-      {askFor && <AskAgent target={askFor} onSubmit={askAgent} onCancel={() => setAskFor(null)} />}
+      {askFor && onAskAgent && <AskAgent target={askFor} onSubmit={askAgent} onCancel={() => setAskFor(null)} />}
     </div>
   );
 }

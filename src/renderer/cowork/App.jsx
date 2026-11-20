@@ -76,6 +76,7 @@ import {
 } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
+import { getDocsEnabled } from '../lib/docsEnabled';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { takeDocContext } from './lib/docViewContext';
 import { useBreakpoint } from './hooks/useBreakpoint';
@@ -4793,8 +4794,9 @@ function AppCore() {
       let queuedReason = null;
       // A message that asks for a doc ("Write it as a doc") or acts on a
       // passage ("Edit with agent") needs its own turn with that context:
-      // an add-on reaches the running turn as text alone.
-      const asksForDoc = Boolean(opts.output || docContext?.request || docContext?.selection);
+      // an add-on reaches the running turn as text alone. Without doc tools
+      // the request carries no doc context, so such a message is like any other.
+      const asksForDoc = getDocsEnabled() && Boolean(opts.output || docContext?.request || docContext?.selection);
       if (!opts.targetTask && !opts.skipPendingAnswer && !asksForDoc && hasLiveTurnHere(id)) {
         const eligibility = addonEligibility({
           conversationId: id,
