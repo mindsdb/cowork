@@ -714,6 +714,8 @@
       "port": "Le cloud d'Anton se connecte uniquement sur le port https standard. Retirez le port de l'URL.",
       "listingTooLarge": "La liste d'outils de ce serveur est trop volumineuse pour être lue.",
       "insecureLoginUrl": "La page de connexion du serveur n'est pas une adresse https, elle n'a donc pas été ouverte.",
+      "popupBlocked": "Votre navigateur a bloqué la fenêtre de connexion, ou elle a été fermée. Autorisez les fenêtres pop-up pour ce site et réessayez.",
+      "staleRevision": "La liste des outils a changé. Elle a été rechargée ; réessayez l'interrupteur.",
       "refused": "Cette connexion a été finalisée dans le compte de quelqu'un d'autre, elle n'a donc pas été utilisée. Ajoutez à nouveau le serveur.",
       "loginNotYours": "Ce lien de connexion a été lancé par quelqu'un d'autre, il n'a donc pas été utilisé. Ne finalisez que les connexions que vous avez lancées vous-même.",
       "wrongOrganization": "Cette connexion a été lancée dans une autre organisation. Revenez à l'organisation dans laquelle vous avez ajouté le serveur, puis ajoutez-le à nouveau.",

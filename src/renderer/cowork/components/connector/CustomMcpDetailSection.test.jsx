@@ -93,6 +93,23 @@ describe('CustomMcpDetailSection', () => {
     expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
   });
 
+  it('reloads the tools when a switch is refused for a changed list, so the next switch is saved', async () => {
+    bridge.customMcpSetTools
+      .mockResolvedValueOnce({ ok: false, code: 'stale_revision', reason: 'The tool list changed.' })
+      .mockResolvedValueOnce({ ok: true, tools: ['search', 'delete_issue'] });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(await screen.findByText("The tool list changed. It's been reloaded; try the switch again.")).toBeTruthy();
+    await waitFor(() => expect(bridge.customMcpTools).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search', 'delete_issue']);
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true'));
+  });
+
   it('says so when the server cannot list its tools', async () => {
     bridge.customMcpTools.mockResolvedValue({ ok: false, code: 'unreachable', reason: 'the server answered 502' });
     renderSection();

@@ -714,6 +714,8 @@
       "port": "Anton's cloud connects only on the standard https port. Remove the port from the URL.",
       "listingTooLarge": "This server's tool list is too large to read.",
       "insecureLoginUrl": "The server's login page isn't an https address, so it wasn't opened.",
+      "popupBlocked": "Your browser blocked the sign-in window, or it was closed. Allow pop-ups for this site and try again.",
+      "staleRevision": "The tool list changed. It's been reloaded; try the switch again.",
       "refused": "This sign-in was finished in someone else's account, so it wasn't used. Add the server again.",
       "loginNotYours": "This sign-in link was started by someone else, so it wasn't used. Only finish sign-ins you started yourself.",
       "wrongOrganization": "This sign-in was started in another organization. Switch back to the organization you added the server in, then add it again.",

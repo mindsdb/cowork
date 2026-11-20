@@ -120,6 +120,8 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     if (!result.ok) {
       setTools(previous);
       setSwitchError(connectErrorMessage(t, result));
+      // Every later switch would be refused the same way until the list is read again.
+      if (result.code === 'stale_revision') reloadDueRef.current = true;
     }
     if (reloadDueRef.current) {
       reloadDueRef.current = false;

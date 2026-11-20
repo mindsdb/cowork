@@ -17,11 +17,7 @@ export const CUSTOM_MCP_RELAY_TIMEOUT_MS: number;
 export function beginCustomMcpSignIn(win?: Window): CustomMcpSignIn;
 export function cancelCustomMcpSignIn(): void;
 export function endCustomMcpSignIn(signIn: CustomMcpSignIn | null): void;
-export function openLoginPage(
-  signIn: CustomMcpSignIn,
-  authUrl: unknown,
-  openExternal: (url: string) => Promise<unknown>,
-): Promise<boolean>;
+export function openLoginPage(signIn: CustomMcpSignIn, authUrl: unknown): { ok: true } | CustomMcpWebFailure;
 export function unlessCancelled<T>(signIn: CustomMcpSignIn | null, request: Promise<T>): Promise<T | CustomMcpWebFailure>;
 export function pollCustomMcpSignIn(
   signIn: CustomMcpSignIn,

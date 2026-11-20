@@ -714,6 +714,8 @@
       "port": "La nube de Anton solo se conecta por el puerto https estándar. Quita el puerto de la URL.",
       "listingTooLarge": "La lista de herramientas de este servidor es demasiado grande para leerla.",
       "insecureLoginUrl": "La página de inicio de sesión del servidor no es una dirección https, así que no se abrió.",
+      "popupBlocked": "Tu navegador bloqueó la ventana de inicio de sesión, o se cerró. Permite las ventanas emergentes para este sitio e inténtalo de nuevo.",
+      "staleRevision": "La lista de herramientas cambió. Se volvió a cargar; prueba el interruptor de nuevo.",
       "refused": "Este inicio de sesión se completó en la cuenta de otra persona, así que no se usó. Vuelve a añadir el servidor.",
       "loginNotYours": "Este enlace de inicio de sesión lo inició otra persona, así que no se usó. Completa solo los inicios de sesión que hayas iniciado tú.",
       "wrongOrganization": "Este inicio de sesión se inició en otra organización. Vuelve a la organización en la que añadiste el servidor y añádelo de nuevo.",

@@ -1283,7 +1283,8 @@ function connectionPath(id: string): string {
 async function customMcpWebSignIn(signIn: CustomMcpSignIn, started: { auth_url?: unknown; state?: unknown }): Promise<CustomMcpWebAnswer> {
   try {
     if (typeof started.state !== 'string' || !started.state) return { ok: false, code: 'invalid_response', reason: '' };
-    if (!(await openLoginPage(signIn, started.auth_url, openExternal))) return { ok: false, code: 'insecure_login_url', reason: '' };
+    const opened = openLoginPage(signIn, started.auth_url);
+    if (!opened.ok) return opened;
     const query = `/status?state=${encodeURIComponent(started.state)}`;
     return await pollCustomMcpSignIn(signIn, () => customMcpRequest('GET', query, CUSTOM_MCP_LISTING_TIMEOUT_MS));
   } finally {

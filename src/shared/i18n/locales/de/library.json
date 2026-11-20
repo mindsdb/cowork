@@ -714,6 +714,8 @@
       "port": "Die Cloud von Anton verbindet sich nur über den Standard-https-Port. Entferne den Port aus der URL.",
       "listingTooLarge": "Die Tool-Liste dieses Servers ist zu groß zum Lesen.",
       "insecureLoginUrl": "Die Anmeldeseite des Servers ist keine https-Adresse und wurde daher nicht geöffnet.",
+      "popupBlocked": "Ihr Browser hat das Anmeldefenster blockiert, oder es wurde geschlossen. Erlauben Sie Pop-ups für diese Website und versuchen Sie es erneut.",
+      "staleRevision": "Die Tool-Liste hat sich geändert. Sie wurde neu geladen; versuchen Sie den Schalter erneut.",
       "refused": "Diese Anmeldung wurde im Konto einer anderen Person abgeschlossen und daher nicht verwendet. Füge den Server erneut hinzu.",
       "loginNotYours": "Dieser Anmeldelink wurde von einer anderen Person gestartet und daher nicht verwendet. Schließe nur Anmeldungen ab, die du selbst gestartet hast.",
       "wrongOrganization": "Diese Anmeldung wurde in einer anderen Organisation gestartet. Wechsle zurück zu der Organisation, in der du den Server hinzugefügt hast, und füge ihn erneut hinzu.",

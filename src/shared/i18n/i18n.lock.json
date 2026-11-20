@@ -98191,6 +98191,40 @@
       "text": "09d51bbd3a04"
     }
   },
+  "library:customMcp.error.popupBlocked": {
+    "de": {
+      "from": "e53e6dab6909",
+      "text": "403e95007d17"
+    },
+    "es": {
+      "from": "e53e6dab6909",
+      "text": "2e448f8c4041"
+    },
+    "fr": {
+      "from": "e53e6dab6909",
+      "text": "6c5cbe055bb0"
+    },
+    "it": {
+      "from": "e53e6dab6909",
+      "text": "2d6d37a92817"
+    },
+    "ja": {
+      "from": "e53e6dab6909",
+      "text": "066e085c2d72"
+    },
+    "ko": {
+      "from": "e53e6dab6909",
+      "text": "133809bd1172"
+    },
+    "pt-BR": {
+      "from": "e53e6dab6909",
+      "text": "4a03ed1d1a15"
+    },
+    "zh-CN": {
+      "from": "e53e6dab6909",
+      "text": "8b9dc90400ee"
+    }
+  },
   "library:customMcp.error.port": {
     "de": {
       "from": "a62d357ead94",
@@ -98325,6 +98359,40 @@
     "zh-CN": {
       "from": "c11bfa2731a6",
       "text": "dbe5c1e28251"
+    }
+  },
+  "library:customMcp.error.staleRevision": {
+    "de": {
+      "from": "dabb99274cbe",
+      "text": "09785e88bdb8"
+    },
+    "es": {
+      "from": "dabb99274cbe",
+      "text": "839247c50ad9"
+    },
+    "fr": {
+      "from": "dabb99274cbe",
+      "text": "144996f5b562"
+    },
+    "it": {
+      "from": "dabb99274cbe",
+      "text": "1ef64a44cb5c"
+    },
+    "ja": {
+      "from": "dabb99274cbe",
+      "text": "47801358fd0c"
+    },
+    "ko": {
+      "from": "dabb99274cbe",
+      "text": "904ffa33bb55"
+    },
+    "pt-BR": {
+      "from": "dabb99274cbe",
+      "text": "f8dcd6f3c0fb"
+    },
+    "zh-CN": {
+      "from": "dabb99274cbe",
+      "text": "d86b5e493a8e"
     }
   },
   "library:customMcp.error.timeout": {

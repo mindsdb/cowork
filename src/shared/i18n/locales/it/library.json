@@ -714,6 +714,8 @@
       "port": "Il cloud di Anton si connette solo sulla porta https standard. Rimuovi la porta dall'URL.",
       "listingTooLarge": "L'elenco degli strumenti di questo server è troppo grande per essere letto.",
       "insecureLoginUrl": "La pagina di accesso del server non è un indirizzo https, quindi non è stata aperta.",
+      "popupBlocked": "Il browser ha bloccato la finestra di accesso, oppure è stata chiusa. Consenti i pop-up per questo sito e riprova.",
+      "staleRevision": "L'elenco degli strumenti è cambiato. È stato ricaricato; riprova l'interruttore.",
       "refused": "Questo accesso è stato completato nell'account di un'altra persona, quindi non è stato usato. Aggiungi di nuovo il server.",
       "loginNotYours": "Questo link di accesso è stato avviato da un'altra persona, quindi non è stato usato. Completa solo gli accessi che hai avviato tu.",
       "wrongOrganization": "Questo accesso è stato avviato in un'altra organizzazione. Torna all'organizzazione in cui hai aggiunto il server, poi aggiungilo di nuovo.",

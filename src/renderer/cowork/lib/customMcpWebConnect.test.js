@@ -26,38 +26,44 @@ afterEach(() => {
 describe('the sign-in pop-up', () => {
   it('opens at once and has no opener before its address is set', async () => {
     const { win, popup, openerWhenAddressed } = fakeWindow();
-    const openExternal = vi.fn();
 
     const signIn = beginCustomMcpSignIn(win);
     expect(win.open).toHaveBeenCalledWith('', '_blank');
-    expect(await openLoginPage(signIn, 'https://auth.example.com/authorize?state=s', openExternal)).toBe(true);
+    expect(openLoginPage(signIn, 'https://auth.example.com/authorize?state=s')).toEqual({ ok: true });
 
     expect(popup.location.href).toBe('https://auth.example.com/authorize?state=s');
     expect(openerWhenAddressed()).toBeNull();
-    expect(openExternal).not.toHaveBeenCalled();
+    expect(popup.close).not.toHaveBeenCalled();
   });
 
   it.each(['http://auth.example.com/authorize', 'javascript:alert(1)', 'not a url', 42])(
     'closes the pop-up and opens nothing for %s',
-    async (authUrl) => {
+    (authUrl) => {
       const { win, popup } = fakeWindow();
-      const openExternal = vi.fn();
 
       const signIn = beginCustomMcpSignIn(win);
-      expect(await openLoginPage(signIn, authUrl, openExternal)).toBe(false);
+      expect(openLoginPage(signIn, authUrl)).toEqual({ ok: false, code: 'insecure_login_url', reason: '' });
 
       expect(popup.close).toHaveBeenCalled();
       expect(popup.location.href).toBe('');
-      expect(openExternal).not.toHaveBeenCalled();
     },
   );
 
-  it('opens an https login page outside the app when the pop-up was blocked', async () => {
-    const openExternal = vi.fn(async () => {});
-    const signIn = beginCustomMcpSignIn({ open: () => null });
+  it('refuses at once when the browser blocked the pop-up', () => {
+    const win = { open: vi.fn(() => null) };
+    const signIn = beginCustomMcpSignIn(win);
 
-    expect(await openLoginPage(signIn, 'https://auth.example.com/a', openExternal)).toBe(true);
-    expect(openExternal).toHaveBeenCalledWith('https://auth.example.com/a');
+    expect(openLoginPage(signIn, 'https://auth.example.com/a')).toEqual({ ok: false, code: 'popup_blocked', reason: '' });
+    expect(win.open).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses and closes the pop-up when it was closed before the login page loaded', () => {
+    const { win, popup } = fakeWindow();
+    Object.defineProperty(popup.location, 'href', { set: () => { throw new Error('the window is closed'); } });
+    const signIn = beginCustomMcpSignIn(win);
+
+    expect(openLoginPage(signIn, 'https://auth.example.com/a')).toEqual({ ok: false, code: 'popup_blocked', reason: '' });
+    expect(popup.close).toHaveBeenCalled();
   });
 });
 

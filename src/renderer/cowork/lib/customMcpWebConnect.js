@@ -83,28 +83,28 @@ export function httpsLoginUrl(raw) {
 }
 
 /**
- * Sends the pop-up to the login page, or opens it outside the app when the
- * pop-up was blocked. Anything but https closes the pop-up and opens nothing.
+ * Sends the pop-up to the login page. Anything but https closes the pop-up and
+ * opens nothing. A blocked or vanished pop-up is refused: any other window
+ * opened now, outside the click, would be blocked too.
  *
  * @param {{popup: Window | null}} signIn
  * @param {unknown} authUrl
- * @param {(url: string) => Promise<unknown>} openExternal
- * @returns {Promise<boolean>} whether the login page was opened
+ * @returns {{ok: true} | {ok: false, code: string, reason: string}}
  */
-export async function openLoginPage(signIn, authUrl, openExternal) {
+export function openLoginPage(signIn, authUrl) {
   const url = httpsLoginUrl(authUrl);
   if (!url) {
     endCustomMcpSignIn(signIn);
-    return false;
+    return { ok: false, code: 'insecure_login_url', reason: '' };
   }
   if (signIn.popup) {
     try {
       signIn.popup.location.href = url;
-      return true;
-    } catch { /* the pop-up is gone; open the page outside the app */ }
+      return { ok: true };
+    } catch { /* the member closed it already */ }
   }
-  await openExternal(url);
-  return true;
+  endCustomMcpSignIn(signIn);
+  return { ok: false, code: 'popup_blocked', reason: '' };
 }
 
 /**

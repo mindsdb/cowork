@@ -714,6 +714,8 @@
       "port": "A nuvem do Anton só se conecta pela porta https padrão. Remova a porta da URL.",
       "listingTooLarge": "A lista de ferramentas deste servidor é grande demais para ser lida.",
       "insecureLoginUrl": "A página de login do servidor não é um endereço https, então não foi aberta.",
+      "popupBlocked": "Seu navegador bloqueou a janela de login, ou ela foi fechada. Permita pop-ups para este site e tente de novo.",
+      "staleRevision": "A lista de ferramentas mudou. Ela foi recarregada; tente o botão de novo.",
       "refused": "Este login foi concluído na conta de outra pessoa, então não foi usado. Adicione o servidor de novo.",
       "loginNotYours": "Este link de login foi iniciado por outra pessoa, então não foi usado. Conclua apenas logins que você mesmo iniciou.",
       "wrongOrganization": "Este login foi iniciado em outra organização. Volte para a organização em que você adicionou o servidor e adicione-o de novo.",
