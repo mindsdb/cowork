@@ -4,7 +4,7 @@
 // plus a little view context, which keeps it directly unit-testable without
 // rendering SettingsView.
 
-import { billingCopyKey } from './billingLinks';
+import { billingCopyKey, offersBilling } from './billingLinks';
 import i18n from '../../lib/i18n';
 
 /* User-facing copy, translated when it is read (never at import). */
@@ -166,6 +166,9 @@ const PROBE_REASON_ROW_COPY = {
    the velocity limit share "HTTP 429" or "HTTP 402", and only the reason says
    which one fired. */
 export function friendlyProviderError(detail, reason = null) {
+  if (!offersBilling() && ['wallet_empty', 'included_allowance_exhausted', 'budget_exceeded', 'policy_unavailable'].includes(reason?.code)) {
+    return i18n.t('providers.unavailable', { ns: 'settings' });
+  }
   if (reason && Object.hasOwn(PROBE_REASON_ROW_COPY, reason.code)) return PROBE_REASON_ROW_COPY[reason.code]();
   if (!detail) return '';
   if (detail === 'missing API key') return tr('missingApiKey');

@@ -57,17 +57,6 @@ describe('UsageBar', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
   });
 
-  it('inside the mobile app, keeps the copy and drops its billing actions', () => {
-    hostMock.host.isMobileShell = true;
-    try {
-      render(<UsageBar warning={balanceLow} isBillingOwner />);
-      expect(screen.getByText('You have $8.42 left.')).toBeTruthy();
-      expect(screen.queryByRole('button', { name: 'Add funds' })).toBeNull();
-    } finally {
-      hostMock.host.isMobileShell = false;
-    }
-  });
-
   it('the standing figure can be closed, and stays closed as the number moves', async () => {
     const user = userEvent.setup();
     const { rerender } = render(<UsageBar warning={atRest} usageKnown />);
@@ -298,18 +287,20 @@ describe('UsageBar', () => {
 
 describe('mobile usage copy from real account states', () => {
   it.each([
+    ['standing allowance', { balance: { usd: 0, canConsume: false }, freeTokens: { limit: 100, remaining: 50, resetsAt: '2099-09-11T12:00:00Z' } }, /50% of your free allowance left/],
     ['empty wallet', { balance: { usd: 0, canConsume: false } }, /balance is empty/i],
     ['low wallet', { balance: { usd: 8.42, canConsume: true, alert: 'low' } }, /\$8.42/],
     ['failed auto top up', { autoTopUp: { enabled: true, status: 'payment_failed' } }, /couldn't charge your card/i],
     ['capped auto top up', { balance: { usd: 8.42, canConsume: true, alert: 'low' }, autoTopUp: { enabled: true, status: 'cap_reached' } }, /monthly cap/i],
     ['exhausted allowance', { balance: { usd: 0, canConsume: false }, freeTokens: { limit: 100, remaining: 0, resetsAt: '2099-09-11T12:00:00Z' } }, /Resets at/],
-  ])('%s keeps its facts without a purchase prompt', (_name, overrides, fact) => {
+  ])('%s exposes only allowance information on mobile', (_name, overrides, fact) => {
     hostMock.host.isMobileShell = true;
     try {
       const warning = deriveComposerWarning({ reachable: true, freeTokens: null, balance: null, autoTopUp: null, ...overrides }, { model: overrides.freeTokens ? null : 'claude-sonnet-4' });
       const { container } = render(<UsageBar warning={warning} />);
-      expect(container.textContent).toMatch(fact);
-      expect(container.textContent).not.toMatch(/add funds|turn on|update your payment method|Mobile/);
+      if (overrides.freeTokens) expect(container.textContent).toMatch(fact);
+      else expect(container.textContent).toBe('');
+      expect(container.textContent).not.toMatch(/balance|top up|card|\$|credits|add funds|Mobile/i);
     } finally {
       hostMock.host.isMobileShell = false;
     }

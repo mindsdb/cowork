@@ -102,6 +102,9 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   if (!PLATFORM_UI || !providerTestsAvailable) {
     return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
   }
+  if (!offersBilling() && ['no_credits', 'budget_reached', 'billing_unavailable'].includes(notice.kind)) {
+    return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
+  }
   const byok = <div className="text-ink-3">{t('probe.byok')}</div>;
   if (notice.kind === 'no_credits') {
     return (
@@ -216,6 +219,9 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
       </div>
     );
   }
+  if (!offersBilling()) {
+    return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
+  }
   if (budgetReached) {
     return (
       <div className="text-[11.5px] text-ink-3">
@@ -223,9 +229,6 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
         <ViewBudgetsLink>{t('agent.viewBudgets')}</ViewBudgetsLink>
       </div>
     );
-  }
-  if (!offersBilling()) {
-    return <div className="text-[11.5px] text-ink-3">{t('agent.modelNeedsCreditsNoLink', { model: label })}</div>;
   }
   return (
     <div className="text-[11.5px] text-ink-3">

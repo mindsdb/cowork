@@ -11,7 +11,7 @@
 
 import { MINDSHUB_AIR_MODEL_ID, MODEL_ROUTER_ID } from './modelCatalog';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
-import { billingCopyKey } from './billingLinks';
+import { billingCopyKey, offersBilling } from './billingLinks';
 import { budgetScopeOf } from './budgetScope';
 import i18n, { currentLocale } from '../../lib/i18n';
 
@@ -244,6 +244,11 @@ export function modelAccessSignature(usage) {
  *  all, and the org may have no grant to refill. */
 export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
   const free = freeAllowanceState(usage);
+  if (!offersBilling()) {
+    if (free.status === 'no_grant') return i18n.t('providers.unavailable', { ns: 'settings' });
+    const time = formatResetTime(resetAt || free.resetsAt);
+    return time ? tr('balanceEmpty.freeUsedTooWithTimeMobile', { time }) : tr('freeUsed.title');
+  }
   if (free.status === 'no_grant') {
     return trBilling('allowanceStop.noGrant', { noGrant: noFreeGrantSentence() });
   }
@@ -330,6 +335,27 @@ function restingFigure(free, f, { balanceEmpty = false } = {}) {
   };
 }
 
+export function deriveComposerWarning(usage, options = {}) {
+  if (offersBilling()) return deriveUsageWarning(usage, options);
+  const { providerType = 'minds-cloud', model } = options;
+  if (!usage?.reachable || (providerType && providerType !== 'minds-cloud') || isExplicitPaidModel(pickedModelId(model))) return null;
+  const free = usage.freeTokens;
+  const f = freeState(free);
+  if (f.fractionLeft === null) return null;
+  const figure = restingFigure(free, f);
+  if (!f.out && !f.low) return figure;
+  const time = formatResetTime(free.resetsAt);
+  return {
+    kind: f.out ? 'free_used' : 'free_low',
+    title: f.out ? tr('freeUsed.title') : figure.title,
+    body: time ? tr('resting.resetsAt', { time }) : '',
+    tone: f.out ? 'info' : 'warning',
+    dismissKey: f.out ? 'free_used' : `free_low:${freeDismissStep(f.fractionLeft)}`,
+    actions: [],
+    whenDismissed: figure,
+  };
+}
+
 /**
  * The notice above the composer, or null.
  *
@@ -338,7 +364,7 @@ function restingFigure(free, f, { balanceEmpty = false } = {}) {
  * @param opts.model         the model the composer will send with: an id, or
  *                           a catalog option ({ id }) as HomeView/ChatView pass it
  */
-export function deriveComposerWarning(usage, { providerType = 'minds-cloud', model: modelIn = null } = {}) {
+export function deriveUsageWarning(usage, { providerType = 'minds-cloud', model: modelIn = null } = {}) {
   if (!usage || !usage.reachable) return null;
   if (providerType && providerType !== 'minds-cloud') return null;
   const model = pickedModelId(modelIn);
