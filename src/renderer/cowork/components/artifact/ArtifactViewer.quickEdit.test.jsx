@@ -34,6 +34,7 @@ const workspaceMock = vi.hoisted(() => ({
   refreshRepair: vi.fn(),
   addressWithAgent: vi.fn(),
   cancelRepair: vi.fn(),
+  releaseRepairsForComment: vi.fn(async () => {}),
 }));
 
 const workspaceApi = vi.hoisted(() => ({
@@ -87,10 +88,12 @@ vi.mock('./publish/usePublish', () => ({
   }),
 }));
 vi.mock('./publish/PublishMenu', () => ({ PublishMenu: () => null }));
+// The comments the viewer holds, and their status changes.
+const commentsState = vi.hoisted(() => ({ threads: [], setStatus: null }));
 vi.mock('./comments', () => ({
   useArtifactComments: () => ({
-    threads: [], viewer: null, unreadCount: 0,
-    create: vi.fn(), reply: vi.fn(), setStatus: vi.fn(),
+    threads: commentsState.threads, viewer: null, unreadCount: 0,
+    create: vi.fn(), reply: vi.fn(), setStatus: commentsState.setStatus || (async () => true),
     editThread: vi.fn(), deleteThread: vi.fn(), editReply: vi.fn(),
     deleteReply: vi.fn(), markRead: vi.fn(),
   }),
@@ -1177,9 +1180,11 @@ describe('ArtifactViewer quick edit bar', () => {
 
       // The reload waits for the cover's fade, which is slower under load.
       await waitFor(() => expect(loads()).toBe(before + 1), { timeout: 5000 });
-      expect(restoresAfterReload()).toEqual([
+      // The reloaded document announces itself once the preview is back and
+      // listening again; until then its announcement goes unheard.
+      await waitFor(() => expect(restoresAfterReload()).toEqual([
         { source: 'anton-preview-parent', type: 'restore', view: editorPlace },
-      ]);
+      ]), { timeout: 5000 });
     });
 
     it('reloads nothing when the editor is where the preview already is', async () => {
@@ -1697,10 +1702,51 @@ describe('ArtifactViewer comments to the change bar', () => {
       content: '<html><body>Hi</body></html>', contentType: 'text/html', isHtml: true,
     });
     workspaceApi.streamQuickEdit.mockReset();
+    workspaceApi.undoQuickEdit.mockReset();
     commentsPanel.props = null;
+    commentsState.threads = [];
+    commentsState.setStatus = vi.fn(async () => true);
+  });
+  afterEach(() => {
+    commentsState.threads = [];
+    commentsState.setStatus = null;
   });
 
   const commentThread = (id, text) => ({ id, selector: 'h1', status: 'open', payload: { text, replies: [] } });
+
+  // The fix applied resolves the comment, as the agent's repair did; its
+  // Undo opens it again (ENG-4455).
+  it('resolves the comment once its fix is applied, and reopens it on Undo', async () => {
+    const t1 = commentThread('t1', 'Make it blue');
+    commentsState.threads = [t1];
+    workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+    workspaceApi.undoQuickEdit.mockResolvedValue({ editId: 'qe-edit-1', restored: ['index.html'], removed: [], revision: { id: 'r3' } });
+    renderViewer();
+    await screen.findAllByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: /^Comments/ }));
+    await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(t1); });
+    await waitFor(() => expect(commentsState.setStatus).toHaveBeenCalledWith('t1', 'resolved'));
+
+    fireEvent.click(await within(thread()).findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(commentsState.setStatus).toHaveBeenCalledWith('t1', 'open'));
+    expect(commentsState.setStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves the comment open when nothing was changed for it', async () => {
+    const t1 = commentThread('t1', 'Make it blue');
+    commentsState.threads = [t1];
+    workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'noop', summary: 'Already blue.' }));
+    renderViewer();
+    await screen.findAllByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: /^Comments/ }));
+    await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(t1); });
+    expect(await within(thread()).findByText(/Already blue\./)).toBeInTheDocument();
+    expect(commentsState.setStatus).not.toHaveBeenCalled();
+  });
 
   it('sends the comment as a bar message, queues a second, and marks both on the inbox', async () => {
     workspaceApi.streamQuickEdit.mockImplementation(() => new Promise(() => {}));

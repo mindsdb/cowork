@@ -108,6 +108,8 @@ function undoErrorMessage(error) {
  *   `edit` names the applied edit (absent after an undo): its reply and the
  *   revisions before and after it.
  * @param {() => void} [opts.onStale]  The server refused a stale revision.
+ * @param {(threadId: string) => void} [opts.onThreadAddressed]  An edit made for a comment was applied.
+ * @param {(threadId: string) => void} [opts.onThreadReopened]  That edit was undone.
  */
 export function useQuickEdit(artifact, {
   enabled,
@@ -119,6 +121,8 @@ export function useQuickEdit(artifact, {
   picks,
   onApplied,
   onStale,
+  onThreadAddressed,
+  onThreadReopened,
 }) {
   const [messages, setMessages] = useState([]);
   const [running, setRunning] = useState(false);
@@ -136,7 +140,9 @@ export function useQuickEdit(artifact, {
   const headRef = useRef(headRevisionId || null);
   useEffect(() => { headRef.current = headRevisionId || null; }, [headRevisionId]);
   const depsRef = useRef({});
-  depsRef.current = { resolveConversation, continueInChat, countInChat, picks, onApplied, onStale };
+  depsRef.current = {
+    resolveConversation, continueInChat, countInChat, picks, onApplied, onStale, onThreadAddressed, onThreadReopened,
+  };
 
   // A closed viewer or another artifact ends the edit and the thread with it.
   // Aborting the request closes the stream; the server keeps or undoes the
@@ -221,6 +227,8 @@ export function useQuickEdit(artifact, {
             undoable: done.undoable === true && !!done.editId,
           });
           if (lastCheck) await lastCheck;
+          // A comment sent here is addressed once its fix is applied.
+          if (threadId) depsRef.current.onThreadAddressed?.(threadId);
           await depsRef.current.onApplied?.({
             previewFresh,
             edit: { replyId, revisionId: done.revisionId || null, previousRevisionId: done.previousRevisionId || null },
@@ -409,6 +417,8 @@ export function useQuickEdit(artifact, {
       });
       if (undone?.revision?.id) headRef.current = undone.revision.id;
       patchReply(replyId, { undoing: false, undone: true });
+      // Its comment is open again: the fix it got is gone.
+      if (reply.threadId) depsRef.current.onThreadReopened?.(reply.threadId);
       await depsRef.current.onApplied?.();
       return true;
     } catch (error) {

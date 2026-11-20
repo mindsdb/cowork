@@ -1250,6 +1250,8 @@ export function ArtifactViewer({
   const resolveArtifactConversation = async () => conversationId
     || (resolveRepairConversation ? await resolveRepairConversation(artifact) : '')
     || '';
+  // Comments the bar resolved by applying their fix, so an Undo reopens them.
+  const resolvedByEditRef = useRef(new Set());
   const quickEdit = useQuickEdit(artifact, {
     enabled: open && canQuickEdit,
     // Without a decisions model every message goes to the chat. An older
@@ -1302,6 +1304,20 @@ export function ArtifactViewer({
       }
     },
     onStale: () => { void workspace.load(); },
+    // A comment sent to the bar (Address with agent) is resolved once the
+    // edit made for it is applied, as the agent's repair resolved it, and
+    // opened again if that edit is undone. Only a comment still open is
+    // resolved, and only one resolved this way is reopened.
+    onThreadAddressed: (threadId) => {
+      const thread = comments.threads.find((item) => item.id === threadId);
+      if (!thread || thread.status === 'resolved' || thread.status === 'dismissed') return;
+      resolvedByEditRef.current.add(threadId);
+      void setCommentStatus(threadId, 'resolved');
+    },
+    onThreadReopened: (threadId) => {
+      if (!resolvedByEditRef.current.delete(threadId)) return;
+      void setCommentStatus(threadId, 'open');
+    },
   });
 
   // The publish review's choices (ENG-4409). Publish this change re-publishes
