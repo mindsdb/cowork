@@ -302,5 +302,19 @@
     "justNow": "agora mesmo",
     "minutesAgo": "{count, plural, other {há # min}}",
     "hoursAgo": "{count, plural, other {há # h}}"
+  },
+  "web": {
+    "signIn": "É seu documento? Entre para editar",
+    "waiting": "Aguardando seu computador",
+    "canEdit": "Você pode editar",
+    "viewOnly": "Somente leitura",
+    "stopped": "O proprietário parou de compartilhar este documento. Esta página não vai mais mudar.",
+    "lapsed": "Esta página está aberta há algum tempo. Recarregue para continuar editando.",
+    "lapsedUnsaved": "Esta página está aberta há algum tempo. Recarregue para continuar editando. Sua última alteração ainda não foi salva.",
+    "reload": "Recarregar",
+    "openApp": "Abra o {product} no seu computador para editar. Este documento fica lá e é salvo lá.",
+    "stale": "Esse bloco mudou primeiro no seu computador; sua edição não foi aplicada.",
+    "deferred": "Suas edições estão aguardando o {product} no seu computador. Elas serão aplicadas quando o app estiver aberto.",
+    "notSaved": "Essa edição não foi salva: {reason}"
   }
 }

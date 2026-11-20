@@ -302,5 +302,19 @@
     "justNow": "proprio ora",
     "minutesAgo": "{count, plural, other {# min fa}}",
     "hoursAgo": "{count, plural, one {# ora fa} other {# ore fa}}"
+  },
+  "web": {
+    "signIn": "È il tuo documento? Accedi per modificarlo",
+    "waiting": "In attesa del tuo computer",
+    "canEdit": "Puoi modificarlo",
+    "viewOnly": "Sola lettura",
+    "stopped": "Il proprietario ha smesso di condividere questo documento. Questa pagina non cambierà più.",
+    "lapsed": "Questa pagina è aperta da un po’. Ricaricala per continuare a modificare.",
+    "lapsedUnsaved": "Questa pagina è aperta da un po’. Ricaricala per continuare a modificare. La tua ultima modifica non è ancora stata salvata.",
+    "reload": "Ricarica",
+    "openApp": "Apri {product} sul tuo computer per modificare. Questo documento si trova lì e viene salvato lì.",
+    "stale": "Quel blocco è stato modificato prima sul tuo computer; la tua modifica non è stata applicata.",
+    "deferred": "Le tue modifiche aspettano {product} sul tuo computer. Verranno applicate quando l’app sarà aperta.",
+    "notSaved": "Quella modifica non è stata salvata: {reason}"
   }
 }

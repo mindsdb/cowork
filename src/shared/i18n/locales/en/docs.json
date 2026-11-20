@@ -302,5 +302,19 @@
     "justNow": "just now",
     "minutesAgo": "{count, plural, other {# min ago}}",
     "hoursAgo": "{count, plural, other {# hr ago}}"
+  },
+  "web": {
+    "signIn": "Your doc? Sign in to edit",
+    "waiting": "Waiting for your computer",
+    "canEdit": "You can edit this",
+    "viewOnly": "View only",
+    "stopped": "The owner stopped sharing this doc. This page won’t change any more.",
+    "lapsed": "This page has been open a while. Reload to keep editing.",
+    "lapsedUnsaved": "This page has been open a while. Reload to keep editing. Your last change wasn’t saved yet.",
+    "reload": "Reload",
+    "openApp": "Open {product} on your computer to edit. This doc lives there and saves there.",
+    "stale": "That block changed on your computer first; your edit was not applied.",
+    "deferred": "Your edits are waiting for {product} on your computer. They will be applied when the app is open.",
+    "notSaved": "That edit was not saved: {reason}"
   }
 }
