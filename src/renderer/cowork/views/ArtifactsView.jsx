@@ -789,6 +789,7 @@ export default function ArtifactsView({
   onOpenProject,
   onAddressWithAgent,
   resolveRepairConversation,
+  onOpenConversation,
   agentLabel = 'the agent',
   // True until the app's first artifacts fetch settles; shows skeletons.
   loading = false,
@@ -1380,6 +1381,9 @@ export default function ArtifactsView({
         onAddressWithAgent={onAddressWithAgent}
         // No host chat here — the viewer asks which one a repair belongs to.
         resolveRepairConversation={resolveRepairConversation}
+        // The viewer stays open while the agent works in the artifact's chat;
+        // "Open in chat" goes there.
+        onOpenConversation={onOpenConversation}
       />
 
       {shareTarget && (

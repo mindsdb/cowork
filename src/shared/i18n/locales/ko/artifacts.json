@@ -745,6 +745,13 @@
     "workingInChat": "채팅에서 작업 중…",
     "sentToChat": "채팅으로 보냈습니다.",
     "chatStopped": "채팅 턴이 답변 전에 중단되었습니다.",
+    "resolveThread": {
+      "question": "댓글을 해결됨으로 표시할까요?",
+      "resolve": "해결",
+      "notNow": "나중에",
+      "resolved": "댓글을 해결했습니다.",
+      "failed": "댓글을 해결하지 못했습니다. 다시 시도하세요."
+    },
     "unsavedConfirm": {
       "title": "저장하지 않은 변경 사항이 있습니다. 보내기 전에 저장할까요?",
       "save": "저장하고 보내기",

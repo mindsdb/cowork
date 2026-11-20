@@ -4,9 +4,11 @@
 // send. State and the stream live in useQuickEdit; this file only draws them.
 //
 // A message handed to the chat shows the agent's reply here as it streams,
-// read from the chat's own task state (lib/quickEditPrompt chatReplyFor).
-// Closing the viewer shows that chat, so the bar offers "Open in chat" only
-// while the turn waits for an answer there.
+// read from the chat's own task state (lib/quickEditPrompt chatReplyFor), in
+// a chat or on Live Artifacts alike (ENG-4560). Closing the viewer shows that
+// chat (or the host opens it), so the bar offers "Open in chat" only while the
+// turn waits for an answer there. Once the agent has answered a comment sent
+// to it, the bar asks whether to resolve the comment.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../../Icons';
@@ -136,10 +138,67 @@ function OpenInChat({ onOpenChat }) {
   return <ReplyAction icon={Ico.arrowUpRight(14)} label={t('quickEdit.openInChat')} onClick={onOpenChat} />;
 }
 
+const CLOSED_THREAD = new Set(['resolved', 'dismissed']);
+
+/*
+ * After the agent answered a comment sent to it (Address with agent), the
+ * comment is not resolved for the person: the bar asks, with Resolve beside
+ * the question (ENG-4560). `choice` is this bar's own record for the reply:
+ * 'resolving', 'resolved', 'failed' or 'dismissed'.
+ */
+function ResolveThreadPrompt({ reply, choice, threadStatus, onResolve, onDismiss }) {
+  const { t } = useTranslation('artifacts');
+  if (choice === 'resolved') {
+    return (
+      <span className="artifact-quick-edit-resolve is-done" role="status">
+        {Ico.check(14)}<span>{t('quickEdit.resolveThread.resolved')}</span>
+      </span>
+    );
+  }
+  if (choice === 'dismissed') return null;
+  // Resolved or dismissed some other way since: nothing left to ask.
+  if (choice !== 'resolving' && CLOSED_THREAD.has(threadStatus?.(reply.threadId))) return null;
+  return (
+    <div className="artifact-quick-edit-resolve" role="group" aria-label={t('quickEdit.resolveThread.question')}>
+      <span className="artifact-quick-edit-resolve-question">{t('quickEdit.resolveThread.question')}</span>
+      <span className="artifact-quick-edit-actions">
+        <ReplyAction
+          icon={Ico.check(14)}
+          label={t('quickEdit.resolveThread.resolve')}
+          busy={choice === 'resolving'}
+          onClick={onResolve}
+        />
+        <ReplyAction
+          icon={Ico.close(14)}
+          label={t('quickEdit.resolveThread.notNow')}
+          disabled={choice === 'resolving'}
+          onClick={onDismiss}
+        />
+      </span>
+      {choice === 'failed' && (
+        <div className="artifact-quick-edit-error" role="alert">{t('quickEdit.resolveThread.failed')}</div>
+      )}
+    </div>
+  );
+}
+
 // The reply of a message that went to the chat, mirrored from it.
-function ChatMirror({ reply, chatMessages, onOpenChat }) {
+function ChatMirror({ reply, chatMessages, onOpenChat, resolve = null }) {
   const { t } = useTranslation('artifacts');
   const mirror = chatMessages ? chatReplyFor(chatMessages, reply.chatPrompt, reply.chatBefore || 0) : null;
+  // A comment's message, its turn over (no live row, no question waiting,
+  // no error): ask whether the comment is resolved.
+  const askResolve = !!resolve && !!reply.threadId && !!mirror
+    && !mirror.live && !mirror.needsAnswer && !mirror.failed;
+  const resolvePrompt = askResolve ? (
+    <ResolveThreadPrompt
+      reply={reply}
+      choice={resolve.choiceFor(reply.id)}
+      threadStatus={resolve.threadStatus}
+      onResolve={() => resolve.resolve(reply)}
+      onDismiss={() => resolve.dismiss(reply)}
+    />
+  ) : null;
   if (mirror?.needsAnswer) {
     return (
       <>
@@ -157,6 +216,7 @@ function ChatMirror({ reply, chatMessages, onOpenChat }) {
         {mirror.live && (
           <div className="artifact-quick-edit-actions"><span className="artifact-quick-edit-status"><Spinner /></span></div>
         )}
+        {resolvePrompt}
       </>
     );
   }
@@ -168,8 +228,9 @@ function ChatMirror({ reply, chatMessages, onOpenChat }) {
   return (
     <>
       <span className="artifact-quick-edit-status" role="status">
-        {mirror && !mirror.failed ? <Spinner /> : null}{label}
+        {mirror && !mirror.failed && !askResolve ? <Spinner /> : null}{label}
       </span>
+      {resolvePrompt}
     </>
   );
 }
@@ -207,7 +268,7 @@ function ReplySide({ reply, canUndo, busy, onUndo, onAskAgent }) {
   return null;
 }
 
-function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, chatMessages }) {
+function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, chatMessages, resolve }) {
   const { t } = useTranslation('artifacts');
   if (reply.state === 'running' || reply.state === 'handing-off') {
     const stage = reply.state === 'handing-off'
@@ -254,7 +315,7 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, cha
     );
   }
   if (reply.state === 'chat') {
-    return <ChatMirror reply={reply} chatMessages={chatMessages} onOpenChat={onOpenChat} />;
+    return <ChatMirror reply={reply} chatMessages={chatMessages} onOpenChat={onOpenChat} resolve={resolve} />;
   }
   return <span className="artifact-quick-edit-error" role="alert">{reply.error || t('quickEdit.errors.failed')}</span>;
 }
@@ -269,6 +330,10 @@ export function QuickEditBar({
   controller, onOpenChat, chatMessages = null, picker = null,
   focusRequest = 0, focusUsed = null,
   unsaved = false, onSaveUnsaved, onDiscardUnsaved,
+  // `threadStatus(threadId)`: a comment's status now. `onResolveThread`
+  // resolves it (truthy when it did). Together they let a comment the agent
+  // answered in the chat be resolved from here (ENG-4560).
+  threadStatus = null, onResolveThread = null,
 }) {
   const { t } = useTranslation('artifacts');
   const {
@@ -285,6 +350,22 @@ export function QuickEditBar({
   // The unsaved-changes confirm: null, 'open', or 'saving' while a save runs.
   const [confirm, setConfirm] = useState(null);
   const [sendError, setSendError] = useState('');
+  // What the person chose at each reply's "Mark the comment as resolved?".
+  const [resolveChoices, setResolveChoices] = useState({});
+  const chooseResolve = useCallback((replyId, choice) => {
+    setResolveChoices((prev) => ({ ...prev, [replyId]: choice }));
+  }, []);
+  const resolve = onResolveThread ? {
+    threadStatus,
+    choiceFor: (replyId) => resolveChoices[replyId] || null,
+    dismiss: (reply) => chooseResolve(reply.id, 'dismissed'),
+    resolve: async (reply) => {
+      chooseResolve(reply.id, 'resolving');
+      let ok = false;
+      try { ok = await onResolveThread(reply.threadId); } catch { ok = false; }
+      chooseResolve(reply.id, ok === false ? 'failed' : 'resolved');
+    },
+  } : null;
   const threadHeight = useThreadHeight(threadInnerRef, messages.length > 0);
   // The thread floats over the artifact rather than pushing it up (ENG-4455).
   // It opens when the pointer comes back over the bar, on a click into it
@@ -431,6 +512,7 @@ export function QuickEditBar({
                   onAskAgent={() => askAgent(m.id)}
                   onOpenChat={onOpenChat}
                   chatMessages={chatMessages}
+                  resolve={resolve}
                 />
               </div>
               {hasReplySide(m, m.id === undoableId) && (

@@ -745,6 +745,13 @@
     "workingInChat": "Wird im Chat bearbeitet…",
     "sentToChat": "An den Chat gesendet.",
     "chatStopped": "Der Chat-Durchlauf wurde vor einer Antwort beendet.",
+    "resolveThread": {
+      "question": "Kommentar als erledigt markieren?",
+      "resolve": "Erledigt",
+      "notNow": "Nicht jetzt",
+      "resolved": "Kommentar erledigt.",
+      "failed": "Der Kommentar konnte nicht als erledigt markiert werden. Versuche es noch einmal."
+    },
     "unsavedConfirm": {
       "title": "Du hast nicht gespeicherte Änderungen. Vor dem Senden speichern?",
       "save": "Speichern und senden",

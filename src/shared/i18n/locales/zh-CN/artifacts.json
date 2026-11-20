@@ -745,6 +745,13 @@
     "workingInChat": "正在聊天中处理…",
     "sentToChat": "已发送到聊天。",
     "chatStopped": "聊天轮次在回答前停止了。",
+    "resolveThread": {
+      "question": "将评论标记为已解决？",
+      "resolve": "解决",
+      "notNow": "暂不",
+      "resolved": "评论已解决。",
+      "failed": "无法解决评论。请重试。"
+    },
     "unsavedConfirm": {
       "title": "你有未保存的更改。发送前要保存吗？",
       "save": "保存并发送",

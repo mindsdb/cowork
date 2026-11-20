@@ -32,7 +32,7 @@ import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { FirstTake } from '../components/thinking/FirstTake';
 import { stepDisplayLabel } from '../lib/responseStreamAdapter';
 import { OrbitProvider } from '../lib/orbitRegistry';
-import { ChatTranscriptContext } from '../lib/chatTranscriptContext';
+import { ChatTranscriptContext, useTaskTranscript } from '../lib/chatTranscriptContext';
 import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
@@ -2994,10 +2994,7 @@ export default function ChatView({
   // message it sent into this chat, from these same messages.
   // Quick edits from the artifact viewer, adjacent ones merged into one card.
   const quickEditPlan = planQuickEditCards(visibleMessages);
-  const chatTranscript = useMemo(
-    () => ({ conversationId: task?.id || null, messages: task?.messages || [] }),
-    [task?.id, task?.messages],
-  );
+  const chatTranscript = useTaskTranscript(task);
 
   return (
     <ChatTranscriptContext.Provider value={chatTranscript}>

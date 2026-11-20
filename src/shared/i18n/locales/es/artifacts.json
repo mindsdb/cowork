@@ -745,6 +745,13 @@
     "workingInChat": "Trabajando en el chat…",
     "sentToChat": "Enviado al chat.",
     "chatStopped": "El turno del chat se detuvo antes de responder.",
+    "resolveThread": {
+      "question": "¿Marcar el comentario como resuelto?",
+      "resolve": "Resolver",
+      "notNow": "Ahora no",
+      "resolved": "Comentario resuelto.",
+      "failed": "No se pudo resolver el comentario. Inténtalo de nuevo."
+    },
     "unsavedConfirm": {
       "title": "Tienes cambios sin guardar. ¿Guardarlos antes de enviar?",
       "save": "Guardar y enviar",

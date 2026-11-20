@@ -745,6 +745,13 @@
     "workingInChat": "Working in the chat…",
     "sentToChat": "Sent to the chat.",
     "chatStopped": "The chat turn stopped before it answered.",
+    "resolveThread": {
+      "question": "Mark the comment as resolved?",
+      "resolve": "Resolve",
+      "notNow": "Not now",
+      "resolved": "Comment resolved.",
+      "failed": "Couldn't resolve the comment. Try again."
+    },
     "unsavedConfirm": {
       "title": "You have unsaved changes. Save them before sending?",
       "save": "Save and send",

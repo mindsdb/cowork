@@ -745,6 +745,13 @@
     "workingInChat": "En cours dans le chat…",
     "sentToChat": "Envoyé dans le chat.",
     "chatStopped": "Le tour du chat s'est arrêté avant de répondre.",
+    "resolveThread": {
+      "question": "Marquer le commentaire comme résolu ?",
+      "resolve": "Résoudre",
+      "notNow": "Pas maintenant",
+      "resolved": "Commentaire résolu.",
+      "failed": "Impossible de résoudre le commentaire. Réessayez."
+    },
     "unsavedConfirm": {
       "title": "Vous avez des modifications non enregistrées. Les enregistrer avant d'envoyer ?",
       "save": "Enregistrer et envoyer",
