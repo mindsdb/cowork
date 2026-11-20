@@ -1,5 +1,5 @@
 // ENG-4186: the bar's upgrade action shows only where a plan can be bought,
-// and opens checkout rather than the billing page.
+// and opens the plan confirm rather than the billing page.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -43,7 +43,7 @@ beforeEach(() => {
 });
 
 describe('UsageBar on a plan', () => {
-  it('says the window is used up and opens checkout from Upgrade to Pro', async () => {
+  it('says the window is used up and opens the plan confirm from Upgrade to Pro', async () => {
     renderBar();
     expect(document.querySelector('[data-usage-notice="window_exhausted"]')).toHaveTextContent(/5-hour allowance used up/);
     await userEvent.click(screen.getByRole('button', { name: 'Upgrade to Pro' }));
@@ -97,6 +97,31 @@ describe('UsageBar on a plan inside the mobile app', () => {
     try {
       expect(deriveComposerWarning(plus(30), { model: null })).toBeNull();
       expect(deriveComposerWarning(plus(100), { model: 'claude-opus-5-5', coveredByTier: 'pro' })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
+  it('says nothing about a used-up window to someone on their own provider key', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      expect(deriveComposerWarning(plus(100), { providerType: 'anthropic' })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
+  it('on a Free plan, warns that the free tokens run low, with no actions', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      const free = {
+        ...read,
+        freeTokens: { limit: 100, used: 88, remaining: 12, resetsAt: IN_2H },
+        plan: { ...read.plan, tier: 'free', windows: [] },
+      };
+      const warning = deriveComposerWarning(free, { model: null });
+      expect(warning.kind).toBe('free_low');
+      expect(warning.actions).toEqual([]);
     } finally {
       hostMock.host.isMobileShell = false;
     }

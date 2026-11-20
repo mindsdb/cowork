@@ -346,6 +346,17 @@ export function silentFor(lastEventAt, now, threshold = STALL_HINT_MS) {
 const NOTICE_RANK = { danger: 3, warning: 2, info: 1 };
 
 /**
+ * Whether a side's credits notice (lib/usageWarnings) means its model cannot
+ * run at all: the wallet is empty and nothing else pays for the model, or, on
+ * Plus or Pro with an empty wallet, the plan window that covers the model is
+ * used up. A window used up while the wallet can pay is `window_on_wallet`,
+ * which does not stop the side.
+ */
+export function noticeStopsSide(notice) {
+  return notice?.kind === 'balance_empty' || notice?.kind === 'window_exhausted';
+}
+
+/**
  * One credits notice for a comparison, from the notice each side's model would
  * get on its own (lib/usageWarnings' deriveComposerWarning). The more severe
  * wins; resting figures are left out, since they are not warnings. `blocks` is
@@ -359,7 +370,7 @@ export function compareCreditNotice(notices = []) {
     .sort((x, y) => NOTICE_RANK[y.tone] - NOTICE_RANK[x.tone]);
   const notice = ranked[0];
   if (!notice) return null;
-  const blocks = notices.some((n) => n?.kind === 'balance_empty');
+  const blocks = notices.some(noticeStopsSide);
   const body = notice.kind === 'balance_low'
     ? `${notice.body} ${tr('twiceTheCredits')}`
     : notice.body;

@@ -355,6 +355,13 @@ describe('compareCreditNotice', () => {
     expect(compareCreditNotice([low, null])).toMatchObject({ kind: 'balance_low', blocks: false });
   });
 
+  it('blocks on a used-up plan window with an empty wallet, not on one the wallet carries', () => {
+    const windowOut = { kind: 'window_exhausted', tone: 'danger', title: '5-hour allowance used up', body: 'Paused.' };
+    const onWallet = { kind: 'window_on_wallet', tone: 'info', title: '5-hour allowance used up', body: 'Continuing.' };
+    expect(compareCreditNotice([windowOut, null])).toMatchObject({ kind: 'window_exhausted', blocks: true });
+    expect(compareCreditNotice([onWallet, null])).toMatchObject({ kind: 'window_on_wallet', blocks: false });
+  });
+
   it('says why a low balance matters more here', () => {
     expect(compareCreditNotice([low, low]).body)
       .toBe('$4.20 left. A comparison runs two models, so it uses about twice the credits of one task.');

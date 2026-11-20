@@ -156,8 +156,9 @@ export function consoleUrlFor(
   return target.toString();
 }
 
-/** The console's checkout deep link for `tier` (Plus unless Pro is named),
- *  for the organization and account this session runs in (ENG-4186). */
+/** The console link that opens the plan's confirm dialog for `tier` (Plus
+ *  unless Pro is named), for the organization and account this session runs
+ *  in. */
 export function mindsUpgradeUrl(
   tier: string | null | undefined,
   account: { organizationId?: string | null; subject?: string | null } = {},

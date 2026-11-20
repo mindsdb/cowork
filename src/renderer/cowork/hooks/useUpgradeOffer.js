@@ -72,7 +72,7 @@ export function useUpgradeOffer() {
  * For a surface that paints usage actions (`USAGE_ACTIONS`, `upgradeAction`):
  * `visible(actions)` drops an upgrade this session may not buy, and
  * `isUpgrade(action)` / `openUpgrade(action, surface)` route one that it may
- * through the checkout deep link, with its own analytics event. Every other
+ * through the plan confirm link, with its own analytics event. Every other
  * action is the caller's, exactly as before.
  */
 export function useUsageActions() {

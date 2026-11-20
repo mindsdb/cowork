@@ -64,6 +64,7 @@ import {
   composerBlock,
   divergedAt,
   isCreditFailure,
+  noticeStopsSide,
   silentFor,
   unjudgeableReason,
   formatDuration,
@@ -1048,7 +1049,7 @@ function ComparisonDetail({ comparisonId, models, modelMeta, projects, agentLabe
   // the account still cannot pay for its model. The next usage refresh (every
   // 30s, and on window focus) lifts it once funds arrive.
   const outOfCredits = SIDE_LABELS.filter((l, i) => (
-    isCreditFailure(turns[l][turns[l].length - 1]) && credits.notices[i]?.kind === 'balance_empty'
+    isCreditFailure(turns[l][turns[l].length - 1]) && noticeStopsSide(credits.notices[i])
   ));
   // A continued side takes no messages, so it is never waited for.
   const unloaded = SIDE_LABELS.filter((label) => !(tasks[label] && ready[label]) && !sides[label]?.continuedAt);

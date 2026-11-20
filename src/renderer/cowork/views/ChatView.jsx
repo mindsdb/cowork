@@ -1729,9 +1729,11 @@ function UsageAlertCard({
   allowanceWindow = null, percentUsed = null, onWallet = false,
 }) {
   const { t } = useTranslation('chat');
-  // Inside the mobile app only the "running low" lines show, for the free
-  // allowance and for a plan window alike: neither names the wallet.
-  if (!PLATFORM_UI || (!offersBilling() && kind !== 'free_low' && kind !== 'window_low')) return null;
+  // Inside the mobile app only the lines that name no wallet show: the free
+  // allowance or a plan window running low, and a plan window used up that
+  // paused the task. A window that put the task on the wallet stays hidden.
+  const namesNoWallet = kind === 'free_low' || kind === 'window_low' || (kind === 'window_exhausted' && !onWallet);
+  if (!PLATFORM_UI || (!offersBilling() && !namesNoWallet)) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert', undefined, kind);
     host.openExternal(usageActionUrl(action, { isBillingOwner }));

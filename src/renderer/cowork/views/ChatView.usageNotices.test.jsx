@@ -94,14 +94,17 @@ describe('ChatView usage notices', () => {
     }
   });
 
-  it('inside the mobile app, shows a plan window running low but not one that put the task on the wallet', () => {
+  it('inside the mobile app, shows a plan window running low or pausing the task, but not one that put the task on the wallet', () => {
     hostMock.host.isMobileShell = true;
     try {
       render(<ChatView task={task([
         { kind: 'window_low', window: '5h', percentUsed: 82, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' },
         { kind: 'window_exhausted', window: '7d', onWallet: true, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:01:00Z' },
+        { kind: 'window_exhausted', window: '5h', onWallet: false, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:02:00Z' },
       ])} />);
       expect(screen.getByText(/^82% of your 5-hour allowance used · resets at /)).toBeInTheDocument();
+      expect(screen.getByText(/^5-hour allowance used up · paused until Sep 1[12], 12:00 PM$/)).toBeInTheDocument();
+      expect(screen.queryByText(/Weekly allowance used up/)).toBeNull();
       expect(screen.queryByText(/wallet|balance/i)).toBeNull();
       expect(screen.queryByRole('button', { name: 'View usage' })).toBeNull();
     } finally {

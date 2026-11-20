@@ -12,6 +12,7 @@ import {
   formatResetTime,
   freeAllowanceState,
   isBalanceEmpty,
+  isBalanceUsable,
   modelAccessSignature,
   allowanceStopCopy,
   freeServingPausedCopy,
@@ -655,6 +656,24 @@ describe('isBalanceEmpty', () => {
   });
 });
 
+describe('isBalanceUsable', () => {
+  it.each([
+    ['funded', { usd: 20, canConsume: true, alert: null }],
+    ['low but still payable', { usd: 3, canConsume: true, alert: 'low' }],
+  ])('reads a wallet %s as usable', (_label, balance) => {
+    expect(isBalanceUsable(balance)).toBe(true);
+  });
+
+  it.each([
+    ['depleted', { usd: 0, canConsume: false, alert: 'depleted' }],
+    ['barred from drawing', { usd: 0.4, canConsume: false, alert: null }],
+    ['unflagged but holding nothing', { usd: 0, canConsume: true, alert: null }],
+    ['missing from the read', null],
+  ])('does not read a wallet %s as usable', (_label, balance) => {
+    expect(isBalanceUsable(balance)).toBe(false);
+  });
+});
+
 describe('modelAccessSignature', () => {
   it('has no signature for an unreachable or missing read', () => {
     expect(modelAccessSignature(null)).toBeNull();
@@ -939,7 +958,7 @@ const planRead = (tier, windows = [], over = {}) => usage({
 const EMPTY_WALLET = { balance: { usd: 0, canConsume: false, alert: 'depleted' } };
 
 describe('upgrade actions', () => {
-  it('labels each tier and opens checkout for the named organization', () => {
+  it('labels each tier and opens the plan confirm for the named organization', () => {
     expect(upgradeAction('plus').label).toBe('Get Plus');
     expect(upgradeAction('pro').label).toBe('Upgrade to Pro');
     expect(USAGE_ACTIONS.upgrade.label).toBe('Upgrade');
@@ -1031,6 +1050,15 @@ describe('usageTransitions on a plan', () => {
 
   it('says nothing when a plan arrives mid-task', () => {
     expect(usageTransitions(usage(), plus(100))).toEqual([]);
+  });
+
+  it('says nothing about the windows to a task on a model the plan does not cover', () => {
+    // The task bills the wallet from the start, so the window is not its news.
+    expect(usageTransitions(plus(70), plus(82), { coveredByTier: 'pro' })).toEqual([]);
+    expect(usageTransitions(plus(95), plus(100), { coveredByTier: 'pro' })).toEqual([]);
+    // A model the plan covers still hears about it.
+    expect(usageTransitions(plus(70), plus(82), { coveredByTier: 'plus' }).map((t) => t.kind)).toEqual(['window_low']);
+    expect(usageTransitions(plus(95), plus(100), { coveredByTier: 'free' }).map((t) => t.kind)).toEqual(['window_exhausted']);
   });
 });
 

@@ -1117,7 +1117,7 @@ export function trackBillingOpened(trigger, workspaceMode, kind) {
 // A plan upgrade was clicked (ENG-4186): "Get Plus", "Upgrade to Pro" or
 // "Upgrade". `surface` is where, so conversion can be graded per surface;
 // `tier` is the plan offered and `from_tier` the plan the org is on. It opens
-// the console's checkout deep link, so it arms the same post-payment
+// the console's plan confirm dialog, so it arms the same post-payment
 // availability follow-up as a billing link: a new plan unlocks models just as
 // funds do.
 export function trackUpgradeClicked(surface, tier, fromTier) {

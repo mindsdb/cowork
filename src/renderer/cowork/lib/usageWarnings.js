@@ -239,6 +239,13 @@ export function isBalanceEmpty(balance) {
   return !!balance && (balance.alert === 'depleted' || balance.canConsume === false);
 }
 
+/** Whether a hub usage `balance` is a wallet the next task can fall through
+ *  to: present, not empty, and holding money. A wallet the auth service has
+ *  not flagged but that holds nothing does not count. */
+export function isBalanceUsable(balance) {
+  return !!balance && !isBalanceEmpty(balance) && Number(balance.usd) > 0;
+}
+
 /** What in a usage read decides model locks, as a comparable string (null if unknown). Prefers
  *  `walletCanConsume` (set for members too; never shown in UI), else the balance (ENG-4147). */
 export function modelAccessSignature(usage) {
@@ -366,8 +373,7 @@ export function deriveComposerWarning(usage, options = {}) {
   const plan = planOf(usage);
   if (isPaidPlan(plan)) {
     if (!tierCovers(plan.tier, coveredByTier)) return null;
-    const balance = usage.balance || null;
-    return planWindowWarning(plan, { balanceUsable: !!balance && !isBalanceEmpty(balance) && Number(balance.usd) > 0 });
+    return planWindowWarning(plan, { balanceUsable: isBalanceUsable(usage.balance) });
   }
   if (isExplicitPaidModel(pickedModelId(model))) return null;
   const free = usage.freeTokens;
@@ -421,7 +427,7 @@ export function deriveUsageWarning(usage, {
   // paid changes what they spend, and that is worth hearing.
   // Rounds toward showing the figure: a wallet auth has not flagged but that
   // holds nothing is not one the next task can fall through to.
-  const balanceUsable = !!balance && !balanceEmpty && Number(balance.usd) > 0;
+  const balanceUsable = isBalanceUsable(balance);
   const freeInUse = !isPaidModel;
   const paidInUse = !isAir || f.out || !free;
   // An empty balance only stops the next task when nothing else can pay for
@@ -645,8 +651,14 @@ function planWindowWarning(plan, { balanceUsable }) {
  *                    but a task billing someone else's key never spends these
  *                    tokens, so an account-wide change is not its news either.
  *                    Same gate `deriveComposerWarning` applies to the bar.
+ * @param opts.coveredByTier  the cheapest plan covering the task's model, or
+ *                    null when unknown. A task on a model its Plus or Pro plan
+ *                    does not cover bills the wallet from the start, so the
+ *                    plan's windows are not its news. Same gate the bar uses.
  */
-export function usageTransitions(prev, next, { model: modelIn = null, providerType = 'minds-cloud' } = {}) {
+export function usageTransitions(prev, next, {
+  model: modelIn = null, providerType = 'minds-cloud', coveredByTier = null,
+} = {}) {
   if (!prev?.reachable || !next?.reachable) return [];
   if (providerType && providerType !== 'minds-cloud') return [];
   const out = [];
@@ -681,21 +693,21 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
   }
   // Plus and Pro (ENG-4186): a window crossing a warning step, or filling up,
   // during this task. Both reads must carry the paid plan, or a plan arriving
-  // mid-task would read as a window filling.
+  // mid-task would read as a window filling. The plan must cover the task's
+  // model, or the task was on the wallet all along.
   const planBefore = planOf(prev);
   const planAfter = planOf(next);
-  if (isPaidPlan(planBefore) && isPaidPlan(planAfter)) {
+  if (isPaidPlan(planBefore) && isPaidPlan(planAfter) && tierCovers(planAfter.tier, coveredByTier)) {
     const prior = new Map(planBefore.windows.map((w) => [w.window, w]));
     for (const w of planAfter.windows) {
       const was = prior.get(w.window);
       if (!was) continue;
       if (was.percentUsed < 100 && w.percentUsed >= 100) {
-        const balance = next.balance || null;
         out.push({
           kind: 'window_exhausted',
           window: w.window,
           resetsAt: w.resetsAt,
-          onWallet: !!balance && !isBalanceEmpty(balance) && Number(balance.usd) > 0,
+          onWallet: isBalanceUsable(next.balance),
         });
       } else if (w.percentUsed < 100 && windowWarnStep(w.percentUsed) > windowWarnStep(was.percentUsed)) {
         out.push({ kind: 'window_low', window: w.window, percentUsed: w.percentUsed, resetsAt: w.resetsAt });

@@ -46,8 +46,9 @@ export default function CodingAgentSettingsSection({
       modelFamilies: settings.modelFamilies,
       modelEnabled: settings.modelEnabled,
       modelDisabledReasons: settings.modelDisabledReasons,
+      modelCoveredByTier: settings.modelCoveredByTier,
     });
-  }, [modelId, settings.modelEnabled, settings.modelDisabledReasons, settings.modelFamilies, settings.modelLabels, settings.modelProviders, settings.recommendedModels]);
+  }, [modelId, settings.modelEnabled, settings.modelDisabledReasons, settings.modelCoveredByTier, settings.modelFamilies, settings.modelLabels, settings.modelProviders, settings.recommendedModels]);
 
   useEffect(() => {
     if (host.isWeb || !enabled) return undefined;

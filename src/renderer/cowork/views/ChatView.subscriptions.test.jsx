@@ -82,7 +82,7 @@ beforeEach(() => {
 });
 
 describe('AllowanceExhaustedCard: Get Plus for a Free plan', () => {
-  it('leads with Get Plus, opening checkout for this organization', async () => {
+  it('leads with Get Plus, opening the plan confirm for this organization', async () => {
     render(withUsage(usageWith(FREE), <ChatView task={taskWith(failedTurn('included_allowance_exhausted'))} />));
     const stop = card('Task stopped');
     const getPlus = stop.getByRole('button', { name: 'Get Plus' });

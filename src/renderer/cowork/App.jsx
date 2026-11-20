@@ -3884,13 +3884,18 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => {
       if (t.id !== streamingId) return t;
       // The task's own pick decides which resource it spends, same as the
-      // composer: a task on an explicit paid model never hears about free tokens.
-      const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
+      // composer: a task on an explicit paid model never hears about free
+      // tokens, and one outside its plan never hears about the plan's windows.
+      const changes = usageTransitions(before, hubUsage, {
+        model: t.model,
+        providerType,
+        coveredByTier: settings.modelCoveredByTier?.[t.model] ?? null,
+      });
       if (!changes.length) return t;
       const anchorId = currentTurnAnchorId(t.messages);
       return { ...t, usageNotices: withUsageNotices(t.usageNotices, changes.map((c) => ({ ...c, createdAt, anchorId }))) };
     }));
-  }, [hubUsage, hubUsageCtx.providerType]);
+  }, [hubUsage, hubUsageCtx.providerType, settings.modelCoveredByTier]);
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its
