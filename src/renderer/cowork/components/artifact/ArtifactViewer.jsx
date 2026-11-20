@@ -167,6 +167,10 @@ export function ArtifactViewer({
   // sharing events of that panel only; later opens are the header's own.
   shareRequest = null,
   shareEntry = 'viewer',
+  // One open-comments counter clicked outside the viewer (a new object per
+  // click, ENG-4560): the viewer opens on its Comments panel this time, and
+  // later opens keep the layers this device remembers.
+  commentsRequest = null,
 }) {
   const { t } = useTranslation('artifacts');
   const orgMode = useOrgMode();
@@ -312,8 +316,16 @@ export function ArtifactViewer({
   // The viewer's layers over its one preview (ENG-4227): Live edit (the
   // editor), Comments and Stats, each a tab on the panel rail with its own
   // side panel; Live edit and Comments are remembered on this device.
-  const { layers, setLayer } = useViewerLayers();
+  const { layers, setLayer, restoreLayers } = useViewerLayers();
   setLayerRef.current = setLayer;
+  // Comments asked for from outside: on for this open only, not remembered.
+  // Closing puts the remembered layers back for the next open.
+  useEffect(() => {
+    if (open && commentsRequest) setLayer('comments', true, { remember: false });
+  }, [open, commentsRequest, setLayer]);
+  useEffect(() => {
+    if (!open) restoreLayers();
+  }, [open, restoreLayers]);
   const sidePanelId = useId();
   const { layout, toggle: toggleLayout } = useViewerLayout();
   // Cmd/Ctrl+Shift+Enter maximizes and restores. Keys typed inside the

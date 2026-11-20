@@ -546,7 +546,9 @@
     "owner": {
       "you": "Tu",
       "youHint": "Tuo, condiviso con altre persone."
-    }
+    },
+    "openComments": "{count, plural, one {# commento aperto} other {# commenti aperti}}",
+    "openCommentsHint": "Apri l’anteprima sui commenti"
   },
   "compare": {
     "refused": "Questo lato stava ancora completando il turno precedente, quindi non ha ricevuto il tuo messaggio. Lo trovi di nuovo nella casella qui sotto.",

@@ -546,7 +546,9 @@
     "owner": {
       "you": "Du",
       "youHint": "Deins, mit anderen geteilt."
-    }
+    },
+    "openComments": "{count, plural, one {# offener Kommentar} other {# offene Kommentare}}",
+    "openCommentsHint": "Vorschau mit den Kommentaren öffnen"
   },
   "compare": {
     "refused": "Diese Seite war noch mit ihrer letzten Runde beschäftigt und hat Ihre Nachricht daher nicht erhalten. Sie steht wieder im Feld unten.",

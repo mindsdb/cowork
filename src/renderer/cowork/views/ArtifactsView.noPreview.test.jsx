@@ -44,7 +44,8 @@ vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: mocks.
 vi.mock('../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => mocks.downloadArtifactFile(...a),
 }));
-vi.mock('../preview/kinds', () => ({
+vi.mock('../preview/kinds', async (importOriginal) => ({
+  ...(await importOriginal()),
   canPreviewDocument: (...a) => mocks.canPreviewDocument(...a),
 }));
 vi.mock('../components/artifact', () => ({

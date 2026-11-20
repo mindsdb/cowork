@@ -546,7 +546,9 @@
     "owner": {
       "you": "你",
       "youHint": "你的内容，已与他人共享。"
-    }
+    },
+    "openComments": "{count, plural, other {# 条未解决评论}}",
+    "openCommentsHint": "打开预览并查看评论"
   },
   "compare": {
     "refused": "这一侧仍在处理上一轮，因此没有收到你的消息。消息已放回下方的输入框中。",

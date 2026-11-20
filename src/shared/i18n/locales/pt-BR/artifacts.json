@@ -546,7 +546,9 @@
     "owner": {
       "you": "Você",
       "youHint": "Seu, compartilhado com outras pessoas."
-    }
+    },
+    "openComments": "{count, plural, one {# comentário aberto} other {# comentários abertos}}",
+    "openCommentsHint": "Abrir a pré-visualização nos comentários"
   },
   "compare": {
     "refused": "Este lado ainda estava trabalhando no último turno, então não recebeu sua mensagem. Ela voltou para a caixa abaixo.",
