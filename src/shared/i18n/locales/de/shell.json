@@ -135,6 +135,27 @@
       "haveCopyTitle": "Sie haben bereits eine Kopie. Löschen Sie sie, um die App erneut zu duplizieren.",
       "duplicateAriaLabel": "{name} duplizieren",
       "duplicatedToast": "In dieses Projekt dupliziert."
+    },
+    "workingFolders": {
+      "title": "Arbeitsordner",
+      "add": "Diesem Chat einen Ordner hinzufügen",
+      "adding": "Wird hinzugefügt…",
+      "emptyHint": "Fügen Sie einen Ordner hinzu, in dem der Agent arbeiten kann.",
+      "loadingFiles": "Dateien werden geladen…",
+      "emptyFolder": "Dieser Ordner enthält keine Dateien.",
+      "showFiles": "Dateien in {name} anzeigen",
+      "hideFiles": "Dateien in {name} ausblenden",
+      "unavailable": "Ordner nicht verfügbar",
+      "removeTooltip": "Aus diesem Chat entfernen",
+      "removeAriaLabel": "{name} aus diesem Chat entfernen",
+      "removeTitle": "„{name}“ aus diesem Chat entfernen?",
+      "fallbackName": "Ordner",
+      "removeMessage": "Der Agent arbeitet nicht mehr in diesem Ordner. Der Ordner und seine Dateien bleiben auf Ihrem Computer.",
+      "loadFailed": "Arbeitsordner konnten nicht geladen werden.",
+      "listFailed": "Dieser Ordner konnte nicht aufgelistet werden.",
+      "pickerFailed": "Die Ordnerauswahl konnte nicht geöffnet werden.",
+      "addFailed": "Dieser Ordner konnte nicht hinzugefügt werden.",
+      "removeFailed": "Dieser Ordner konnte nicht entfernt werden."
     }
   },
   "confirm": {

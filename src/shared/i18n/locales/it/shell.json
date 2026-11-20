@@ -135,6 +135,27 @@
       "haveCopyTitle": "Hai già una copia. Eliminala per duplicare di nuovo l’app.",
       "duplicateAriaLabel": "Duplica {name}",
       "duplicatedToast": "Duplicata in questo progetto."
+    },
+    "workingFolders": {
+      "title": "Cartelle di lavoro",
+      "add": "Aggiungi una cartella a questa chat",
+      "adding": "Aggiunta in corso…",
+      "emptyHint": "Aggiungi una cartella in cui l’agente possa lavorare.",
+      "loadingFiles": "Caricamento dei file…",
+      "emptyFolder": "Nessun file in questa cartella.",
+      "showFiles": "Mostra i file in {name}",
+      "hideFiles": "Nascondi i file in {name}",
+      "unavailable": "Cartella non disponibile",
+      "removeTooltip": "Rimuovi da questa chat",
+      "removeAriaLabel": "Rimuovi {name} da questa chat",
+      "removeTitle": "Rimuovere «{name}» da questa chat?",
+      "fallbackName": "cartella",
+      "removeMessage": "L’agente non lavorerà più in questa cartella. La cartella e i suoi file restano sul tuo computer.",
+      "loadFailed": "Impossibile caricare le cartelle di lavoro.",
+      "listFailed": "Impossibile elencare questa cartella.",
+      "pickerFailed": "Impossibile aprire il selettore di cartelle.",
+      "addFailed": "Impossibile aggiungere questa cartella.",
+      "removeFailed": "Impossibile rimuovere questa cartella."
     }
   },
   "confirm": {
