@@ -4,6 +4,8 @@
 // agent" sends. It is stored as the thread's selector, a JSON string the
 // comments services keep as is (at most 2,000 characters).
 
+import { isOpenThread } from '../../lib/commentsReducer';
+
 export const DOC_ANCHOR = 'doc-block';
 
 const SELECTOR_MAX = 2000;
@@ -55,8 +57,6 @@ export function locateComment(doc, selector) {
   return null;
 }
 
-const isOpen = (thread) => thread.status !== 'resolved' && thread.status !== 'dismissed';
-
 /** Each thread's place in the doc now (locateComment), by thread id; read once per doc or thread change. */
 export function threadLocations(doc, threads) {
   return new Map((threads || []).map((thread) => [
@@ -82,7 +82,7 @@ export function docAnchorStates(threads, locations) {
 export function commentedBlocks(threads, locations) {
   const ids = new Set();
   for (const thread of threads || []) {
-    if (!isOpen(thread)) continue;
+    if (!isOpenThread(thread)) continue;
     for (const id of locations.get(thread.id)?.blockIds || []) ids.add(id);
   }
   return ids;

@@ -40,9 +40,9 @@ import {
   loadArtifactDraftText,
   loadArtifactDraftDocument,
   loadArtifactRevisions,
-  loadCommentImage,
 } from '../../lib/artifactWorkspaceApi';
 import { threadImageFiles } from '../../lib/commentImages';
+import { isOpenThread } from '../../lib/commentsReducer';
 import { commentFixMessage } from '../../lib/commentFixRequest';
 import { imageAttachment } from '../../lib/imageAttachments';
 import {
@@ -554,7 +554,7 @@ export function ArtifactViewer({
     // while one runs queue up behind it (ENG-4383).
     if (canQuickEdit && thread?.id) {
       if (quickEdit.runningThreadId === thread.id || quickEdit.queuedThreadIds.includes(thread.id)) return;
-      const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
+      const imageFiles = await threadImageFiles(thread, readCommentImage);
       // Not awaited: the bar shows the run, and the inbox follows it there.
       void quickEdit.send(commentFixMessage(thread), {
         images: imageFiles.map(imageAttachment),
@@ -585,7 +585,7 @@ export function ArtifactViewer({
       if (requested) {
         // The thread's images go with the prompt, which names them in order
         // (ENG-4410).
-        const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
+        const imageFiles = await threadImageFiles(thread, readCommentImage);
         let started;
         try {
           started = await onAddressWithAgent({
@@ -1622,8 +1622,7 @@ export function ArtifactViewer({
   // the open one closes it; the unsaved Live edit prompt guards both ways out.
   // Comments still to review: open ones, as an inbox counts what is in it.
   // Resolved and dismissed ones are done with.
-  const openCommentCount = (comments.threads || [])
-    .filter((thread) => thread.status !== 'resolved' && thread.status !== 'dismissed').length;
+  const openCommentCount = (comments.threads || []).filter(isOpenThread).length;
   const railTabs = [
     canSource && {
       id: 'source',

@@ -7,10 +7,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { artifactCommentsKey } from '../../lib/artifactIdentity';
 import { enableDraftComments, loadArtifactReview } from '../../lib/artifactWorkspaceApi';
+import { draftCommentsNeedProvision } from '../../lib/draftComments';
 import { useArtifactComments, useCommentActions } from '../artifact/comments';
 import { host } from '../../../platform/host';
 
-/** Whether the doc's comments can be reached; mirrors useArtifactWorkspace's commentsReady. */
+/** Whether the doc's comments can be reached: useArtifactWorkspace's commentsReady, without its error states. */
 function useCommentsReady(artifact, enabled) {
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -24,8 +25,7 @@ function useCommentsReady(artifact, enabled) {
     (async () => {
       try {
         const review = await loadArtifactReview(artifact);
-        // Absent capabilities: an older server that only speaks the POST.
-        if (review?.capabilities?.canEdit === false) {
+        if (!draftCommentsNeedProvision(review)) {
           if (live) setReady(true);
           return;
         }

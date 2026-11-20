@@ -45,6 +45,7 @@ import { threadImageFiles } from '../../lib/commentImages';
 import { imageAttachment } from '../../lib/imageAttachments';
 import { commentedBlocks, docAnchorStates, docCommentSelector, threadLocations } from './docComments';
 import { useDocComments } from './useDocComments';
+import { commentKindFor, isOpenThread } from '../../lib/commentsReducer';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { useDocsEnabled } from '../../../lib/docsEnabled';
@@ -58,6 +59,8 @@ const LOCAL_TRANSPORT = { fetchDoc, followDoc, postDocOps };
 const NO_TABS = new Set();
 const NO_FLASH = {};
 const NO_BLOCKS = new Set();
+const NO_LOCATIONS = new Map();
+const NO_STATES = {};
 // How long a block a comment card was clicked for stays marked.
 const FOCUS_MS = 1600;
 
@@ -234,24 +237,32 @@ export default function DocPane({
 
   // ── The preview's rail and its comments ──
   const preview = variant === 'modal';
-  const comments = useDocComments({ projectRef, artifactId, enabled: preview, onError: warn });
+  // Adding a tab from the page and the tab list; a preview adds it from the rail.
+  const addOnPage = editable && !version && !preview ? addTab : undefined;
+  const {
+    enabled: commentsEnabled, threads, viewer: commentViewer, markRead, unreadCount,
+    create: createComment, setStatus: setCommentStatus, loadImage: loadCommentImage, ...comments
+  } = useDocComments({ projectRef, artifactId, enabled: preview, onError: warn });
   const [commentsOpen, setCommentsOpen] = useState(false);
   const sidePanelId = useId();
-  const inboxOpen = commentsOpen && comments.enabled;
-  const { markRead, unreadCount } = comments;
+  const inboxOpen = commentsOpen && commentsEnabled;
   useEffect(() => {
     if (inboxOpen && unreadCount > 0) markRead();
   }, [inboxOpen, unreadCount, markRead]);
-  const threads = comments.threads;
-  const locations = useMemo(() => threadLocations(doc, threads), [doc, threads]);
-  const anchorStates = useMemo(() => docAnchorStates(threads, locations), [threads, locations]);
+  // Where each comment sits now; only the open inbox and the page beside it ask.
+  const locations = useMemo(() => (inboxOpen ? threadLocations(doc, threads) : NO_LOCATIONS), [inboxOpen, doc, threads]);
+  // While the inbox slides out its cards keep no anchor labels rather than read as detached.
+  const anchorStates = useMemo(
+    () => (locations === NO_LOCATIONS ? NO_STATES : docAnchorStates(threads, locations)),
+    [threads, locations],
+  );
   const commented = useMemo(
-    () => (inboxOpen && !version ? commentedBlocks(threads, locations) : NO_BLOCKS),
-    [inboxOpen, version, threads, locations],
+    () => (version ? NO_BLOCKS : commentedBlocks(threads, locations)),
+    [version, threads, locations],
   );
   // The blocks a card in the inbox points at: while it is hovered, and for a
   // moment after it is clicked (its tab opened and the page scrolled there).
-  const [pointed, setPointed] = useState(NO_BLOCKS);
+  const [hoveredId, setHoveredId] = useState(null);
   const [focused, setFocused] = useState(null);
   const focusThread = useCallback((threadId) => {
     const where = locations.get(threadId);
@@ -259,17 +270,13 @@ export default function DocPane({
     setActiveTab(where.tabId);
     setFocused({ blockIds: where.blockIds });
   }, [locations]);
-  // A card resolved, reopened or deleted under the pointer can leave the list
-  // without a mouseleave, so acting on one drops its highlight.
-  const { setStatus: setCommentStatus, deleteThread: deleteCommentThread } = comments;
+  // A card resolved or reopened under the pointer can leave the list without
+  // a mouseleave, so acting on one drops its highlight (a deleted one leaves
+  // `locations`, and its highlight with it).
   const onCommentStatus = useCallback((id, status) => {
-    setPointed(NO_BLOCKS);
+    setHoveredId(null);
     return setCommentStatus(id, status);
   }, [setCommentStatus]);
-  const onDeleteComment = useCallback((id) => {
-    setPointed(NO_BLOCKS);
-    return deleteCommentThread(id);
-  }, [deleteCommentThread]);
   useEffect(() => {
     if (!focused) return undefined;
     const first = rootRef.current?.querySelector(`[data-block-id="${focused.blockIds[0]}"]`);
@@ -277,12 +284,12 @@ export default function DocPane({
     const timer = setTimeout(() => setFocused(null), FOCUS_MS);
     return () => clearTimeout(timer);
   }, [focused]);
-  const highlighted = useMemo(
-    () => (focused ? new Set([...pointed, ...focused.blockIds]) : pointed),
-    [pointed, focused],
-  );
-  const commentKind = comments.viewer?.role === 'reviewer' ? 'issue' : 'review';
-  const createComment = comments.create;
+  const highlighted = useMemo(() => {
+    if (version) return NO_BLOCKS;
+    const ids = [...(locations.get(hoveredId)?.blockIds || []), ...(focused?.blockIds || [])];
+    return ids.length ? new Set(ids) : NO_BLOCKS;
+  }, [version, locations, hoveredId, focused]);
+  const commentKind = commentKindFor(commentViewer);
   // The inbox opens first: the new thread shows there, and so does a failure to post it.
   const commentOnBlocks = useCallback(({ tab: tabId, blockIds, quote, text }) => {
     setCommentsOpen(true);
@@ -290,20 +297,19 @@ export default function DocPane({
   }, [createComment, commentKind]);
   // A comment sent to the agent goes the way "Edit with agent" goes, on the
   // blocks it was made on, with the thread's words and images.
-  const loadCommentImage = comments.loadImage;
+  const viewedTabId = tab?.id || null;
   const addressWithAgent = useCallback(async (thread) => {
     if (!askAgent) return;
     const where = locations.get(thread.id);
-    const files = await threadImageFiles(thread, (id) => loadCommentImage(id));
+    const files = await threadImageFiles(thread, loadCommentImage);
     askAgent({
       blockIds: where?.blockIds || [],
       request: commentFixMessage(thread),
-      tabId: where?.tabId || tab?.id || null,
+      tabId: where?.tabId || viewedTabId,
       attachments: files.map(imageAttachment),
     });
-  }, [askAgent, locations, tab, loadCommentImage]);
-  const openComments = (threads || [])
-    .filter((thread) => thread.status !== 'resolved' && thread.status !== 'dismissed').length;
+  }, [askAgent, locations, viewedTabId, loadCommentImage]);
+  const openComments = threads.filter(isOpenThread).length;
   const railTabs = !preview || !doc ? [] : [
     editable && !version && {
       id: 'add-tab',
@@ -312,7 +318,7 @@ export default function DocPane({
       description: t('tabs.addHint'),
       onSelect: addTab,
     },
-    comments.enabled && {
+    commentsEnabled && {
       id: 'comments',
       icon: Ico.chats(16),
       label: tArtifacts('layers.comments'),
@@ -611,8 +617,8 @@ export default function DocPane({
       )}
 
       {/* The page and, as a preview, the comments panel and the panel rail beside it. */}
-      <div className="doc-workarea">
-        <div className="doc-workarea__stage">
+      <div className="artifact-viewer-workarea">
+        <div className="artifact-viewer-body">
           <div className="doc-workarea__main">
             {status === 'loading' && !doc && (
               <div className="doc-scroll"><div className="doc-skeleton" aria-label={t('pane.loading')}><div /><div /><div style={{ width: '82%' }} /><div style={{ width: '64%' }} /></div></div>
@@ -629,7 +635,7 @@ export default function DocPane({
                 <div className="doc-scroll">
                   {tabbed && narrow && (
                     <TabStrip tabs={shown.tabs} activeId={shownTab.id} onSelect={setActiveTab} idBase={tabsId}
-                      onAdd={editable && !version && !preview ? addTab : undefined} unseen={version ? NO_TABS : unseen} />
+                      onAdd={addOnPage} unseen={version ? NO_TABS : unseen} />
                   )}
                   <div {...(tabbed ? { role: 'tabpanel', id: `${tabsId}-panel`, 'aria-labelledby': tabElementId(tabsId, shownTab.id) } : {})}>
                     <PendingEdits.Provider value={onPendingChange}>
@@ -645,13 +651,13 @@ export default function DocPane({
                         agentLive={live}
                         onAskAgent={version ? undefined : askAgent}
                         onSelectionChange={onSelectionChange}
-                        onAddTab={preview ? undefined : addTab}
+                        onAddTab={addOnPage}
                         nameTitle={naming === shownTab.id}
                         onNamed={named}
                         onUploadImage={uploadImage}
-                        onComment={comments.enabled && !version ? commentOnBlocks : undefined}
+                        onComment={commentsEnabled && !version ? commentOnBlocks : undefined}
                         commented={commented}
-                        highlighted={version ? NO_BLOCKS : highlighted}
+                        highlighted={highlighted}
                       />
                       </DocImageLoader.Provider>
                     </PendingEdits.Provider>
@@ -668,17 +674,17 @@ export default function DocPane({
                   anchorStates={anchorStates}
                   error={comments.error}
                   expired={comments.expired}
-                  viewer={comments.viewer}
+                  viewer={commentViewer}
                   capabilities={comments.capabilities}
                   onStatus={onCommentStatus}
                   onAddressWithAgent={askAgent ? addressWithAgent : undefined}
-                  onDeleteThread={onDeleteComment}
+                  onDeleteThread={comments.deleteThread}
                   onEditThread={comments.editThread}
-                  onCreate={comments.create}
+                  onCreate={createComment}
                   onReply={comments.reply}
-                  loadImage={comments.loadImage}
-                  onHoverThread={(id) => setPointed(new Set(locations.get(id)?.blockIds || []))}
-                  onLeaveThread={() => setPointed(NO_BLOCKS)}
+                  loadImage={loadCommentImage}
+                  onHoverThread={setHoveredId}
+                  onLeaveThread={() => setHoveredId(null)}
                   onFocusThread={focusThread}
                   onClose={() => setCommentsOpen(false)}
                 />

@@ -116,6 +116,24 @@ function InlineCommentEdit({ words, onSave, onCancel }) {
   );
 }
 
+/** Avatar · name · relative time (+ `children`, e.g. "edited"): a card's head and each reply's. */
+function AuthorLine({ email, at, children }) {
+  return (
+    <>
+      <span className="flex items-center gap-1 min-w-0">
+        <Avatar email={email} />
+        <span className="text-base font-medium leading-[20px] text-ink truncate">
+          {displayName(email)}
+        </span>
+      </span>
+      <span className="text-base leading-[20px] text-ink-3 whitespace-nowrap">
+        {inboxTimeAgo(at)}
+        {children}
+      </span>
+    </>
+  );
+}
+
 // A thread held in its card: the replies in order, then a box to add one.
 // Clicks inside stay here rather than going to the card.
 function ThreadReplies({ thread, loadImage, onReply }) {
@@ -127,13 +145,9 @@ function ThreadReplies({ thread, loadImage, onReply }) {
         const email = replyAuthorEmail(reply);
         return (
           <div key={reply?.id || index} className="flex flex-col gap-1">
-            <span className="flex items-center gap-[6px] min-w-0">
-              <Avatar email={email} />
-              <span className="text-base font-medium leading-[20px] text-ink truncate">{displayName(email)}</span>
-              <span className="text-base leading-[20px] text-ink-3 whitespace-nowrap">
-                {inboxTimeAgo(reply?.created_at)}
-              </span>
-            </span>
+            <div className="flex items-center gap-[6px] min-w-0">
+              <AuthorLine email={email} at={reply?.created_at} />
+            </div>
             <div className="text-base leading-[20px] text-ink whitespace-pre-wrap break-words">{body}</div>
             <CommentImages images={images} loadImage={loadImage} />
           </div>
@@ -197,6 +211,8 @@ export function InboxCard({
   const nReplies = threadReplies(thread).length;
   const repliesTxt = nReplies ? t('comments.card.replies', { count: nReplies }) : '';
   const email = threadAuthorEmail(thread);
+  // Holding its thread: the whole text, the replies and a box to reply.
+  const holdsThread = expanded && !!onReply;
 
   return (
     <div
@@ -211,18 +227,11 @@ export function InboxCard({
     >
       {/* Head: avatar · name · time (+edited) */}
       <div className="flex items-center gap-[6px] min-w-0">
-        <span className="flex items-center gap-1 min-w-0">
-          <Avatar email={email} />
-          <span className="text-base font-medium leading-[20px] text-ink truncate">
-            {displayName(email)}
-          </span>
-        </span>
-        <span className="text-base leading-[20px] text-ink-3 whitespace-nowrap">
-          {inboxTimeAgo(thread.created_at || thread.updated_at)}
+        <AuthorLine email={email} at={thread.created_at || thread.updated_at}>
           {thread.payload?.edited_at && (
             <span className="text-xs text-ink-4"> {t('comments.card.edited')}</span>
           )}
-        </span>
+        </AuthorLine>
         {mine && onEditThread && !editing && (
           <Tooltip content={t('comments.card.edit')}>
             <button
@@ -251,13 +260,13 @@ export function InboxCard({
           }}
         />
       ) : (
-        <div className={`text-base leading-[20px] text-ink whitespace-pre-wrap break-words${expanded && onReply ? '' : ' line-clamp-4'}`}>
+        <div className={`text-base leading-[20px] text-ink whitespace-pre-wrap break-words${holdsThread ? '' : ' line-clamp-4'}`}>
           {body}
         </div>
       )}
       <CommentImages images={images} loadImage={loadImage} />
 
-      {onReply && expanded && (
+      {holdsThread && (
         <ThreadReplies thread={thread} loadImage={loadImage} onReply={onReply} />
       )}
 

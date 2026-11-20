@@ -87,11 +87,8 @@
 }
 @keyframes doc-pulse { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
 
-/* The page, and in a preview the comments panel and the panel rail to its
-   right (the artifact viewer's ViewerSidePanel and ViewerModeRail). On a
-   compact screen the panel covers the stage, never the rail. */
-.doc-workarea { display: flex; flex: 1 1 auto; min-height: 0; }
-.doc-workarea__stage { position: relative; display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; }
+/* The page, inside the artifact viewer's work area and body (with, in a
+   preview, its side panel and rail beside it). */
 .doc-workarea__main { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
 .doc-body { display: flex; flex: 1 1 auto; min-height: 0; }
 

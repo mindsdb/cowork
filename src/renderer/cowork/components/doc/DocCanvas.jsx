@@ -45,7 +45,6 @@ export default function DocCanvas({
   onAddTab, nameTitle = false, onNamed, onUploadImage, onComment, commented = NO_CHANGES, highlighted = NO_CHANGES,
 }) {
   const { t } = useTranslation('docs');
-  const { t: tArtifacts } = useTranslation('artifacts');
   const root = useRef(null);
   const picker = useRef(null);
   const pickFor = useRef(null);
@@ -53,12 +52,12 @@ export default function DocCanvas({
   const refCallbacks = useRef(new Map());
   const slashId = useId();
   const [toolbar, setToolbar] = useCanvasSelection(root, onSelectionChange); // {rect, blockIds, quote, editable, mode, range}
+  // The box over picked blocks: "Edit with agent" (mode 'edit' or 'write') or a comment (mode 'comment').
   const [askFor, setAskFor] = useState(null); // {rect, blockIds, quote, mode}
-  const [commentFor, setCommentFor] = useState(null); // {rect, blockIds, quote}
   const posting = useRef(false);
-  // Without a handler there is nothing to ask; drop the request so it does not come back stale.
-  useEffect(() => { if (!onAskAgent) setAskFor(null); }, [onAskAgent]);
-  useEffect(() => { if (!onComment) setCommentFor(null); }, [onComment]);
+  // Without a handler there is nothing to send; drop the box so it does not come back stale.
+  const askHandler = askFor?.mode === 'comment' ? onComment : onAskAgent;
+  useEffect(() => { if (!askHandler) setAskFor(null); }, [askHandler]);
   // Which block's options menu is open; the id outlives the close so the menu
   // keeps its items while it animates out.
   const [menu, setMenu] = useState({ id: null, open: false });
@@ -281,13 +280,13 @@ export default function DocCanvas({
   // The draft stays open until the comment is posted (a failure shows in the
   // inbox), and a second Enter while it posts is not a second comment.
   const comment = async (text) => {
-    const target = commentFor;
+    const target = askFor;
     if (!target || !text.trim() || posting.current) return;
     posting.current = true;
     try {
       const ok = await onComment?.({ tab: tab.id, blockIds: target.blockIds, quote: target.quote, text: text.trim() });
       if (ok) {
-        setCommentFor(null);
+        setAskFor(null);
         setToolbar(null);
       }
     } finally {
@@ -338,7 +337,7 @@ export default function DocCanvas({
     }
   };
 
-  const askTargets = new Set([...(askFor?.blockIds || []), ...(commentFor?.blockIds || [])]);
+  const askTargets = new Set(askFor?.blockIds || []);
 
   // A file dragged over the page: images land after the block they're dropped on.
   const dragHasImages = (e) => canImage && [...(e.dataTransfer?.items || [])].some((i) => i.kind === 'file' && IMAGE_TYPES.test(i.type));
@@ -428,7 +427,7 @@ export default function DocCanvas({
         />
       )}
 
-      {toolbar && !askFor && !commentFor && toolbar.rect && (
+      {toolbar && !askFor && toolbar.rect && (
         <FloatingToolbar
           toolbar={toolbar}
           canFormat={editable && !!toolbar.editable}
@@ -436,23 +435,12 @@ export default function DocCanvas({
           onLinkMode={() => setToolbar({ ...toolbar, mode: 'link' })}
           onClose={() => setToolbar(null)}
           onAsk={() => setAskFor({ rect: toolbar.rect, blockIds: toolbar.blockIds, quote: toolbar.quote, mode: 'edit' })}
-          onComment={onComment && (() => setCommentFor({ rect: toolbar.rect, blockIds: toolbar.blockIds, quote: toolbar.quote }))}
+          onComment={onComment && (() => setAskFor({ rect: toolbar.rect, blockIds: toolbar.blockIds, quote: toolbar.quote, mode: 'comment' }))}
         />
       )}
 
-      {askFor && onAskAgent && <AskAgent target={askFor} onSubmit={askAgent} onCancel={() => setAskFor(null)} />}
-      {commentFor && onComment && (
-        <AskAgent
-          target={commentFor}
-          onSubmit={comment}
-          onCancel={() => setCommentFor(null)}
-          labels={{
-            label: tArtifacts('comments.composer.ariaLabel'),
-            input: tArtifacts('comments.composer.ariaLabel'),
-            placeholder: tArtifacts('comments.composer.placeholder'),
-            send: tArtifacts('comments.composer.send'),
-          }}
-        />
+      {askFor && askHandler && (
+        <AskAgent target={askFor} onSubmit={askFor.mode === 'comment' ? comment : askAgent} onCancel={() => setAskFor(null)} />
       )}
     </div>
   );
