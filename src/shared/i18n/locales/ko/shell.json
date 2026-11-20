@@ -187,6 +187,8 @@
     "loading": "{what} 불러오는 중…"
   },
   "upToDate": "최신 상태",
+  "upToDateSaving": "저장 중…",
+  "upToDateSaved": "저장됨",
   "usageBar": {
     "hideAllowance": "제공량 숨기기",
     "hide": "숨기기"

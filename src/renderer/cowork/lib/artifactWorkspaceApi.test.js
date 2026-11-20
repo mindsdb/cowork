@@ -9,9 +9,11 @@ import {
   artifactRef,
   canUseArtifactWorkspace,
   createDraftLink,
+  deleteArtifactStats,
   loadArtifactDraftText,
   loadArtifactDraftDocument,
   loadArtifactStats,
+  loadArtifactStatsViewer,
   requestArtifactExport,
   setArtifactAccess,
   setArtifactTracking,
@@ -382,6 +384,54 @@ describe('artifact stats routes', () => {
   it('refuses an artifact with no full identity', async () => {
     await expect(loadArtifactStats({ id: '7db94eb8' })).rejects.toThrow('Artifact has no full identity');
     await expect(setArtifactTracking({}, true)).rejects.toThrow('Artifact has no full identity');
+    await expect(loadArtifactStatsViewer({}, 'v_1')).rejects.toThrow('Artifact has no full identity');
+    await expect(deleteArtifactStats({})).rejects.toThrow('Artifact has no full identity');
+  });
+
+  // ENG-4455: the email gate travels with the analytics switch, or alone.
+  it.each([
+    [{ tracking: true, require_email: true }, { enabled: true, require_email: true }],
+    [{ require_email: false }, { require_email: false }],
+  ])('saves analytics settings %j as %j', async (settings, body) => {
+    authFetch.mockResolvedValueOnce(ok({ tracking: true, require_email: false }));
+
+    await setArtifactTracking(ARTIFACT, settings);
+
+    const [url, options] = authFetch.mock.calls.at(-1);
+    expect(url).toBe(`${BASE_PATH}/stats/tracking`);
+    expect(JSON.parse(options.body)).toEqual(body);
+  });
+
+  it('keeps the credits refusal code when turning analytics on', async () => {
+    authFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 402,
+      json: async () => ({ detail: { code: 'credits_required', message: 'Add credits to collect viewer analytics.' } }),
+    });
+
+    const err = await setArtifactTracking(ARTIFACT, true).catch((e) => e);
+
+    expect(err.status).toBe(402);
+    expect(err.code).toBe('credits_required');
+  });
+
+  it('reads one viewer from the viewers route, its id escaped', async () => {
+    authFetch.mockResolvedValueOnce(ok({ viewer: { id: 'v/1' }, visits: [] }));
+
+    const detail = await loadArtifactStatsViewer(ARTIFACT, 'v/1');
+
+    expect(authFetch.mock.calls.at(-1)[0]).toBe(`${BASE_PATH}/stats/viewers/v%2F1`);
+    expect(detail.visits).toEqual([]);
+  });
+
+  it('deletes analytics with a DELETE on the stats route', async () => {
+    authFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+
+    await expect(deleteArtifactStats(ARTIFACT)).resolves.toEqual({ ok: true });
+
+    const [url, options] = authFetch.mock.calls.at(-1);
+    expect(url).toBe(`${BASE_PATH}/stats`);
+    expect(options.method).toBe('DELETE');
   });
 });
 

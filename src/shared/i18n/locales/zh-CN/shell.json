@@ -187,6 +187,8 @@
     "loading": "正在加载 {what}…"
   },
   "upToDate": "已是最新版本",
+  "upToDateSaving": "正在保存…",
+  "upToDateSaved": "已保存",
   "usageBar": {
     "hideAllowance": "隐藏额度",
     "hide": "隐藏"

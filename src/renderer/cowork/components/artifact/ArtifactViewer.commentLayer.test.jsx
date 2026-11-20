@@ -41,14 +41,15 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('./publish/usePublish', () => ({
   usePublish: () => ({ publishedUrl: '', accessMode: 'public', artifactKey: publishMock.key, busy: false }),
 }));
+const commentsMock = vi.hoisted(() => ({ threads: [], enterMode: null }));
 vi.mock('./comments', () => ({
   useArtifactComments: () => ({
-    threads: [], viewer: null, unreadCount: 0,
+    threads: commentsMock.threads, viewer: null, unreadCount: 0,
     create: vi.fn(), reply: vi.fn(), setStatus: vi.fn(),
     editThread: vi.fn(), deleteThread: vi.fn(), editReply: vi.fn(),
     deleteReply: vi.fn(), markRead: vi.fn(),
   }),
-  useArtifactCommentLayer: () => ({ exitMode: vi.fn() }),
+  useArtifactCommentLayer: () => ({ exitMode: vi.fn(), enterModeWhenReady: commentsMock.enterMode }),
 }));
 vi.mock('./workspace/useArtifactWorkspace', () => ({
   useArtifactWorkspace: () => ({
@@ -92,6 +93,8 @@ function renderViewer() {
 describe('ArtifactViewer comment layer', () => {
   beforeEach(() => {
     publishMock.key = '';
+    commentsMock.threads = [];
+    commentsMock.enterMode = vi.fn();
     bodyMock.urls = [];
     mountArtifactPreview.mockClear();
   });
@@ -116,15 +119,57 @@ describe('ArtifactViewer comment layer', () => {
     rerender();
     await settle();
 
-    fireEvent.click(screen.getByText('Comments'));
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
     await settle();
 
     expect(bodyMock.urls).toHaveLength(2);
     expect(bodyMock.urls[1]).toContain('__antonComments=1');
 
-    fireEvent.click(screen.getByText('Comments'));
-    fireEvent.click(screen.getByText('Comments'));
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
     await settle();
     expect(bodyMock.urls).toHaveLength(2);
+  });
+
+  // The Comments tab counts what is still to review, as an inbox does.
+  it('badges the Comments tab with the open comments, not resolved or dismissed ones', async () => {
+    publishMock.key = KEY;
+    commentsMock.threads = [
+      { id: 'a', status: 'open' },
+      { id: 'b', status: 'open' },
+      { id: 'c', status: 'resolved' },
+      { id: 'd', status: 'dismissed' },
+    ];
+    renderViewer();
+    await settle();
+
+    const tab = screen.getByRole('button', { name: 'Comments, 2 open' });
+    expect(tab.parentElement.parentElement.querySelector('.artifact-feedback-badge')).toHaveTextContent('2');
+  });
+
+  it('shows no badge with nothing left to review', async () => {
+    publishMock.key = KEY;
+    commentsMock.threads = [{ id: 'c', status: 'resolved' }];
+    renderViewer();
+    await settle();
+
+    expect(screen.getByRole('button', { name: 'Comments' })).toBeInTheDocument();
+    expect(document.querySelector('.artifact-feedback-badge')).toBeNull();
+  });
+
+  it('opens Comments from its tab in Comment mode, not Navigate', async () => {
+    publishMock.key = KEY;
+    renderViewer();
+    await settle();
+    expect(commentsMock.enterMode).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    await settle();
+    expect(commentsMock.enterMode).toHaveBeenCalledTimes(1);
+
+    // Closing it asks for nothing more.
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    await settle();
+    expect(commentsMock.enterMode).toHaveBeenCalledTimes(1);
   });
 });

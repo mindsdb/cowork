@@ -2,6 +2,7 @@ import { authFetch, BASE } from '../api';
 import { iterateSSE } from './responseStreamAdapter';
 import { host } from '../../platform/host';
 import { artifactIdentity } from './artifactIdentity';
+import { trackingSettingsBody } from './trackingSettings';
 import i18n from '../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(`messages.artifactWorkspaceApi.${key}`, { ns: 'projects', ...vars });
@@ -383,13 +384,30 @@ export function loadArtifactStats(artifact) {
   return request(`${ref.base}/stats`);
 }
 
-export function setArtifactTracking(artifact, enabled) {
+// `settings`: the analytics switch as a boolean, or `{ tracking,
+// require_email }` with omitted fields left unchanged (trackingSettingsBody).
+export function setArtifactTracking(artifact, settings) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/stats/tracking`, {
     method: 'PUT',
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify(trackingSettingsBody(settings)),
   });
+}
+
+// One viewer's visits, each with its time per section. Owner-only.
+export function loadArtifactStatsViewer(artifact, viewerId) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  if (!viewerId) return Promise.reject(new Error('No viewer'));
+  return request(`${ref.base}/stats/viewers/${encodeURIComponent(viewerId)}`);
+}
+
+// Deletes every view, visit and viewer recorded for the artifact. Owner-only.
+export function deleteArtifactStats(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/stats`, { method: 'DELETE' });
 }
 
 export function requestAgentRepair(artifact, payload) {
