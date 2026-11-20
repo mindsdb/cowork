@@ -1,7 +1,7 @@
-// The bar over selected words: inline formatting, a link, and "Edit with agent".
+// The bar over selected words: inline formatting, a link, "Comment" and "Edit with agent".
 // It formats the selection it was raised for (`toolbar.editable`, `toolbar.range`).
 import { useState } from 'react';
-import { Bold, Code, Italic, Link, Sparkles, Strikethrough } from 'lucide-react';
+import { Bold, Code, Italic, Link, MessageSquarePlus, Sparkles, Strikethrough } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import FloatPanel from './FloatPanel';
 import { applyInlineFormat, wrapSelection } from './caret';
@@ -14,10 +14,11 @@ const FORMATS = [
   { kind: 'code', keys: '⌘E', icon: Code },
 ];
 
-export default function FloatingToolbar({ toolbar, canFormat, canAsk, onLinkMode, onClose, onAsk }) {
+export default function FloatingToolbar({ toolbar, canFormat, canAsk, onLinkMode, onClose, onAsk, onComment }) {
   const { t } = useTranslation('docs');
+  const { t: tArtifacts } = useTranslation('artifacts');
   const [href, setHref] = useState('');
-  if (!canFormat && !canAsk) return null;
+  if (!canFormat && !canAsk && !onComment) return null;
   const { editable: el, range } = toolbar;
   const link = (value) => {
     if (el && range) {
@@ -56,7 +57,12 @@ export default function FloatingToolbar({ toolbar, canFormat, canAsk, onLinkMode
           <button type="button" className="doc-float__btn" aria-label={t('format.link')} title={`${t('format.link')} ⌘K`} onClick={onLinkMode}><Icon of={Link} size={14} /></button>
         </>
       )}
-      {canFormat && canAsk && <span className="doc-float__sep" />}
+      {canFormat && (onComment || canAsk) && <span className="doc-float__sep" />}
+      {onComment && (
+        <button type="button" className="doc-float__btn" onClick={onComment}>
+          <Icon of={MessageSquarePlus} size={14} /> {tArtifacts('comments.toolbar.commentLabel')}
+        </button>
+      )}
       {canAsk && (
         <button type="button" className="doc-float__btn doc-float__btn--agent" onClick={onAsk}>
           <Icon of={Sparkles} size={14} /> {t('ask.label')}

@@ -131,6 +131,8 @@
       "hoursAgo": "{count, plural, one {il y a # heure} other {il y a # heures}}",
       "daysAgo": "{count, plural, one {il y a # jour} other {il y a # jours}}",
       "replies": "{count, plural, one {# réponse} other {# réponses}}",
+      "replyPlaceholder": "Répondre…",
+      "replyAriaLabel": "Répondre à ce commentaire",
       "edited": "(modifié)",
       "unattachedTip": "La partie de l’artefact à laquelle ce commentaire faisait référence n’est plus disponible.",
       "generalTip": "Retour général sur l’ensemble de l’artefact.",

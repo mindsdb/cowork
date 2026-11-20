@@ -82,6 +82,7 @@
   "tabs": {
     "label": "标签页",
     "add": "添加标签页",
+    "addHint": "为此文档添加新标签页",
     "hide": "隐藏标签页",
     "changed": "已更改",
     "showChanged": "显示已更改的标签页",

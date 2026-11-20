@@ -10,7 +10,10 @@
 // tab from the page head of a doc of one tab; `nameTitle` and `onNamed`, for
 // a tab just added, select its title to be named. `onUploadImage(file)`
 // keeps an image beside the doc and resolves its src: with it, an image can
-// be pasted, dropped, or picked from the "/" menu.
+// be pasted, dropped, or picked from the "/" menu. `onComment` (when the doc
+// takes comments) offers "Comment" on selected words; `commented` marks the
+// blocks open comments are on and `highlighted` the ones a comment in the
+// inbox points at.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import PageHead from './PageHead';
 import TextBlock from './TextBlock';
@@ -39,7 +42,7 @@ const IMAGE_TYPES = /^image\/(png|jpeg|gif|webp)$/;
 
 export default function DocCanvas({
   doc, tab, editable, apply, flash = {}, changed = NO_CHANGES, agentLive = false, onAskAgent, onSelectionChange,
-  onAddTab, nameTitle = false, onNamed, onUploadImage,
+  onAddTab, nameTitle = false, onNamed, onUploadImage, onComment, commented = NO_CHANGES, highlighted = NO_CHANGES,
 }) {
   const { t } = useTranslation('docs');
   const root = useRef(null);
@@ -49,9 +52,12 @@ export default function DocCanvas({
   const refCallbacks = useRef(new Map());
   const slashId = useId();
   const [toolbar, setToolbar] = useCanvasSelection(root, onSelectionChange); // {rect, blockIds, quote, editable, mode, range}
+  // The box over picked blocks: "Edit with agent" (mode 'edit' or 'write') or a comment (mode 'comment').
   const [askFor, setAskFor] = useState(null); // {rect, blockIds, quote, mode}
-  // Without a handler there is nothing to ask; drop the request so it does not come back stale.
-  useEffect(() => { if (!onAskAgent) setAskFor(null); }, [onAskAgent]);
+  const posting = useRef(false);
+  // Without a handler there is nothing to send; drop the box so it does not come back stale.
+  const askHandler = askFor?.mode === 'comment' ? onComment : onAskAgent;
+  useEffect(() => { if (!askHandler) setAskFor(null); }, [askHandler]);
   // Which block's options menu is open; the id outlives the close so the menu
   // keeps its items while it animates out.
   const [menu, setMenu] = useState({ id: null, open: false });
@@ -271,6 +277,23 @@ export default function DocCanvas({
     onAskAgent?.({ blockIds: target.blockIds, quote: target.quote, request: request.trim(), tabId: tab.id, mode: target.mode });
   };
 
+  // The draft stays open until the comment is posted (a failure shows in the
+  // inbox), and a second Enter while it posts is not a second comment.
+  const comment = async (text) => {
+    const target = askFor;
+    if (!target || !text.trim() || posting.current) return;
+    posting.current = true;
+    try {
+      const ok = await onComment?.({ tab: tab.id, blockIds: target.blockIds, quote: target.quote, text: text.trim() });
+      if (ok) {
+        setAskFor(null);
+        setToolbar(null);
+      }
+    } finally {
+      posting.current = false;
+    }
+  };
+
   const addBelow = (b) => {
     const nb = makeBlock('paragraph');
     run([{ op: 'insert', position: { after: b.id }, blocks: [nb] }]);
@@ -359,7 +382,7 @@ export default function DocCanvas({
         <div
           key={b.id}
           data-block-id={b.id}
-          className={`doc-block doc-block--${b.type} ${flash[b.id] ? 'doc-block--flash' : ''} ${askTargets.has(b.id) ? 'doc-block--selected' : ''} ${changed.has(b.id) ? 'doc-block--changed' : ''}`}
+          className={`doc-block doc-block--${b.type} ${flash[b.id] ? 'doc-block--flash' : ''} ${askTargets.has(b.id) || highlighted.has(b.id) ? 'doc-block--selected' : ''} ${changed.has(b.id) ? 'doc-block--changed' : ''} ${commented.has(b.id) ? 'doc-block--commented' : ''}`}
         >
           {editable && (
             <BlockGutter
@@ -412,10 +435,13 @@ export default function DocCanvas({
           onLinkMode={() => setToolbar({ ...toolbar, mode: 'link' })}
           onClose={() => setToolbar(null)}
           onAsk={() => setAskFor({ rect: toolbar.rect, blockIds: toolbar.blockIds, quote: toolbar.quote, mode: 'edit' })}
+          onComment={onComment && (() => setAskFor({ rect: toolbar.rect, blockIds: toolbar.blockIds, quote: toolbar.quote, mode: 'comment' }))}
         />
       )}
 
-      {askFor && onAskAgent && <AskAgent target={askFor} onSubmit={askAgent} onCancel={() => setAskFor(null)} />}
+      {askFor && askHandler && (
+        <AskAgent target={askFor} onSubmit={askFor.mode === 'comment' ? comment : askAgent} onCancel={() => setAskFor(null)} />
+      )}
     </div>
   );
 }

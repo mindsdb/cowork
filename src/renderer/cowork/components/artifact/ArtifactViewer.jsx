@@ -40,10 +40,9 @@ import {
   loadArtifactDraftText,
   loadArtifactDraftDocument,
   loadArtifactRevisions,
-  loadCommentImage,
-  uploadCommentImage,
 } from '../../lib/artifactWorkspaceApi';
-import { composeCommentText, threadImageFiles } from '../../lib/commentImages';
+import { threadImageFiles } from '../../lib/commentImages';
+import { isOpenThread } from '../../lib/commentsReducer';
 import { commentFixMessage } from '../../lib/commentFixRequest';
 import { imageAttachment } from '../../lib/imageAttachments';
 import {
@@ -68,7 +67,7 @@ import { useLiveApp } from '../../hooks/useLiveApp';
 import { launchLiveAppPrompt, liveAppViewerNotice } from '../../lib/liveAppState';
 import { usePublish } from './publish/usePublish';
 import { stopSharingNotice } from './publish/linkLeftLive';
-import { useArtifactComments, useArtifactCommentLayer } from './comments';
+import { useArtifactComments, useArtifactCommentLayer, useCommentActions } from './comments';
 import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
 import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
@@ -436,42 +435,16 @@ export function ArtifactViewer({
     }
     return ok;
   }, [comments, workspace]);
-  // A comment's images (Files, from a composer here or the on-artifact layer)
-  // are stored with the artifact first; the comment's text then names them
-  // (lib/commentImages, ENG-4410). A failed upload posts nothing, so the
-  // draft stays where it was typed.
-  const commentTextWithImages = useCallback(async (text, images) => {
-    const files = Array.isArray(images) ? images.filter(Boolean) : [];
-    if (!files.length) return text;
-    try {
-      const stored = await Promise.all(files.map(async (file) => {
-        const saved = await uploadCommentImage(artifact, file);
-        return { id: saved.id, name: file.name };
-      }));
-      return composeCommentText(text, stored);
-    } catch (uploadError) {
-      setErr(uploadError?.message || t('imageAttachments.uploadFailed'));
-      return null;
-    }
-  }, [artifact, t]);
-  const createArtifactComment = useCallback(async ({ images, ...payload }) => {
-    const text = await commentTextWithImages(payload.text, images);
-    if (text === null) return false;
-    return comments.create({
-      ...payload,
-      text,
-      revisionId: workspace.currentRevision?.id || null,
-    });
-  }, [commentTextWithImages, comments.create, workspace.currentRevision?.id]);
-  const readCommentImage = useCallback(
-    (imageId, options) => loadCommentImage(artifact, imageId, options),
-    [artifact],
-  );
-  const replyToComment = useCallback(async (threadId, text, images) => {
-    const withImages = await commentTextWithImages(text, images);
-    if (withImages === null) return false;
-    return comments.reply(threadId, withImages);
-  }, [commentTextWithImages, comments.reply]);
+  // Comments and replies from a composer here or the on-artifact layer, with
+  // their images (useCommentActions).
+  const {
+    create: createArtifactComment,
+    reply: replyToComment,
+    loadImage: readCommentImage,
+  } = useCommentActions(artifact, comments, {
+    revisionId: workspace.currentRevision?.id || null,
+    onError: setErr,
+  });
   // The injected layer owns the on-artifact UI (pins, hover highlight, thread
   // popovers) and reports mode changes; this hook pushes the thread list down
   // and exposes the imperative controls the toolbar + inbox drive. Marker
@@ -581,7 +554,7 @@ export function ArtifactViewer({
     // while one runs queue up behind it (ENG-4383).
     if (canQuickEdit && thread?.id) {
       if (quickEdit.runningThreadId === thread.id || quickEdit.queuedThreadIds.includes(thread.id)) return;
-      const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
+      const imageFiles = await threadImageFiles(thread, readCommentImage);
       // Not awaited: the bar shows the run, and the inbox follows it there.
       void quickEdit.send(commentFixMessage(thread), {
         images: imageFiles.map(imageAttachment),
@@ -612,7 +585,7 @@ export function ArtifactViewer({
       if (requested) {
         // The thread's images go with the prompt, which names them in order
         // (ENG-4410).
-        const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
+        const imageFiles = await threadImageFiles(thread, readCommentImage);
         let started;
         try {
           started = await onAddressWithAgent({
@@ -1649,8 +1622,7 @@ export function ArtifactViewer({
   // the open one closes it; the unsaved Live edit prompt guards both ways out.
   // Comments still to review: open ones, as an inbox counts what is in it.
   // Resolved and dismissed ones are done with.
-  const openCommentCount = (comments.threads || [])
-    .filter((thread) => thread.status !== 'resolved' && thread.status !== 'dismissed').length;
+  const openCommentCount = (comments.threads || []).filter(isOpenThread).length;
   const railTabs = [
     canSource && {
       id: 'source',

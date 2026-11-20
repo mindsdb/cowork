@@ -131,6 +131,8 @@
       "hoursAgo": "{count, plural, other {#時間前}}",
       "daysAgo": "{count, plural, other {#日前}}",
       "replies": "{count, plural, other {#件の返信}}",
+      "replyPlaceholder": "返信…",
+      "replyAriaLabel": "このコメントに返信",
       "edited": "（編集済み）",
       "unattachedTip": "このコメントが指していたアーティファクトの部分は、現在は存在しません。",
       "generalTip": "アーティファクト全体に対するフィードバックです。",
