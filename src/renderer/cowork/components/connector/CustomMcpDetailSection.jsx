@@ -84,6 +84,8 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
       if (toolsResult.stale) setStaleCode(toolsResult.staleCode || 'failed');
     } else {
       setTools([]);
+      // No switches are left to retry, so a switch's refusal no longer applies.
+      setSwitchError(null);
       setToolsError(connectErrorMessage(t, toolsResult));
     }
   }

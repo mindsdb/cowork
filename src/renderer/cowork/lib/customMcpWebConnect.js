@@ -97,11 +97,12 @@ export function openLoginPage(signIn, authUrl) {
     endCustomMcpSignIn(signIn);
     return { ok: false, code: 'insecure_login_url', reason: '' };
   }
-  if (signIn.popup) {
+  // Addressing a closed pop-up does nothing rather than throw, so ask first.
+  if (signIn.popup && !signIn.popup.closed) {
     try {
       signIn.popup.location.href = url;
       return { ok: true };
-    } catch { /* the member closed it already */ }
+    } catch { /* a pop-up the browser will not let this tab address */ }
   }
   endCustomMcpSignIn(signIn);
   return { ok: false, code: 'popup_blocked', reason: '' };

@@ -110,6 +110,19 @@ describe('CustomMcpDetailSection', () => {
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true'));
   });
 
+  it('does not claim a reload after a changed-list refusal when the reload fails', async () => {
+    bridge.customMcpSetTools.mockResolvedValueOnce({ ok: false, code: 'stale_revision', reason: '' });
+    bridge.customMcpTools
+      .mockResolvedValueOnce({ ok: true, tools: TOOLS })
+      .mockResolvedValueOnce({ ok: false, code: 'unreachable', reason: '' });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(await screen.findByText("The server couldn't be reached. Try again later.")).toBeTruthy();
+    expect(screen.queryByText("The tool list changed. It's been reloaded; try the switch again.")).toBeNull();
+  });
+
   it('says so when the server cannot list its tools', async () => {
     bridge.customMcpTools.mockResolvedValue({ ok: false, code: 'unreachable', reason: 'the server answered 502' });
     renderSection();

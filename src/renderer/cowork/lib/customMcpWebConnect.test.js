@@ -57,13 +57,13 @@ describe('the sign-in pop-up', () => {
     expect(win.open).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses and closes the pop-up when it was closed before the login page loaded', () => {
+  it('refuses when the member closed the pop-up before the login page was known', () => {
     const { win, popup } = fakeWindow();
-    Object.defineProperty(popup.location, 'href', { set: () => { throw new Error('the window is closed'); } });
     const signIn = beginCustomMcpSignIn(win);
+    popup.closed = true;
 
     expect(openLoginPage(signIn, 'https://auth.example.com/a')).toEqual({ ok: false, code: 'popup_blocked', reason: '' });
-    expect(popup.close).toHaveBeenCalled();
+    expect(popup.location.href).toBe('');
   });
 });
 

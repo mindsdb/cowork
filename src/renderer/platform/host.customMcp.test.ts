@@ -118,6 +118,18 @@ describe('custom MCP on web', () => {
     expect(popup.close).toHaveBeenCalled();
   });
 
+  it('answers popup_blocked at once and never polls when the browser blocked the pop-up', async () => {
+    vi.spyOn(window, 'open').mockImplementation(() => null);
+    answer = (call) => (call.path === '/connect'
+      ? { status: 200, body: { status: 'pending', auth_url: 'https://auth.example.com/authorize?x=1', state: 'st', name: NAME } }
+      : { status: 200, body: { status: 'pending' } });
+
+    const result = await host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
+
+    expect(result).toEqual({ ok: false, code: 'popup_blocked', reason: '' });
+    expect(calls.map((call) => call.path)).toEqual(['/connect']);
+  });
+
   it('gives requests that can list 60 seconds and the others 10', async () => {
     vi.useFakeTimers();
     answer = () => 'hang';
