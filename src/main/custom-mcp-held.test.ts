@@ -232,6 +232,17 @@ describe('handing custom MCP connections over at server start', () => {
     expect(sent).toEqual([{ channel: 'oauth:refresh-error', payload: { engine: 'Tracker', name: ID, accountEmail: '', permanent: true } }]);
   });
 
+  it('asks for no retry and warns the user when GitHub refuses the grant with 200', async () => {
+    await seed(ROOT, ID, { refresh: 'RT-1' });
+    tokens.status = 200;
+    tokens.body = { error: 'bad_refresh_token', access_token: 'AT-NEW', refresh_token: 'RT-NEW', token_type: 'Bearer' };
+
+    expect(await handOverCustomConnection(ROOT, ID, current, fetchFn)).toBe('done');
+    expect(server.puts[0].body).not.toHaveProperty('access_token');
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-1');
+    expect(sent).toEqual([{ channel: 'oauth:refresh-error', payload: { engine: 'Tracker', name: ID, accountEmail: '', permanent: true } }]);
+  });
+
   it('still hands the settings over when the refresh fails, and asks for a retry', async () => {
     await seed(ROOT, ID, { refresh: 'RT-1' });
     tokens.status = 503;

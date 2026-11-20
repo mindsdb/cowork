@@ -166,6 +166,21 @@ describe('custom MCP refresh loops', () => {
     expect(sent).toEqual([{ channel: 'oauth:refresh-error', payload: { engine: 'Tracker', name: ID, accountEmail: '', permanent: true } }]);
   });
 
+  it('stops for good when GitHub refuses the refresh with 200, keeping no token from that answer', async () => {
+    login.status = 200;
+    login.body = { error: 'bad_refresh_token', access_token: 'AT-NEW', refresh_token: 'RT-NEW', token_type: 'Bearer', expires_in: 3600 };
+    startRefreshLoop(ROOT, ID, Date.now() + 10 * 60_000, fetchFn);
+
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    await vi.advanceTimersByTimeAsync(HOUR);
+
+    expect(login.calls).toBe(1);
+    expect(hasRefreshLoop(ROOT, ID)).toBe(false);
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-1');
+    expect(server.puts).toEqual([]);
+    expect(sent).toEqual([{ channel: 'oauth:refresh-error', payload: { engine: 'Tracker', name: ID, accountEmail: '', permanent: true } }]);
+  });
+
   it.each([
     ['a 503', 503, { error: 'temporarily_unavailable' }],
     ['a 429', 429, {}],
