@@ -140555,6 +140555,40 @@
       "text": "5db572ed5e28"
     }
   },
+  "settings:advanced.jevClassify.zdrUnavailable": {
+    "de": {
+      "from": "178e52b69e09",
+      "text": "4342da8cc8a6"
+    },
+    "es": {
+      "from": "178e52b69e09",
+      "text": "57987a558566"
+    },
+    "fr": {
+      "from": "178e52b69e09",
+      "text": "0660d4438077"
+    },
+    "it": {
+      "from": "178e52b69e09",
+      "text": "e3fded151cdd"
+    },
+    "ja": {
+      "from": "178e52b69e09",
+      "text": "58c10a836454"
+    },
+    "ko": {
+      "from": "178e52b69e09",
+      "text": "56940568909f"
+    },
+    "pt-BR": {
+      "from": "178e52b69e09",
+      "text": "2eca6702663d"
+    },
+    "zh-CN": {
+      "from": "178e52b69e09",
+      "text": "d4d8ebfe1cc0"
+    }
+  },
   "settings:advanced.limits.subtitleOff": {
     "de": {
       "from": "1b7c87653598",
@@ -152691,6 +152725,40 @@
     "zh-CN": {
       "from": "87bf2bc08589",
       "text": "89fcbbfdca16"
+    }
+  },
+  "settings:voice.zdrSubtitle": {
+    "de": {
+      "from": "178e52b69e09",
+      "text": "4342da8cc8a6"
+    },
+    "es": {
+      "from": "178e52b69e09",
+      "text": "57987a558566"
+    },
+    "fr": {
+      "from": "178e52b69e09",
+      "text": "0660d4438077"
+    },
+    "it": {
+      "from": "178e52b69e09",
+      "text": "e3fded151cdd"
+    },
+    "ja": {
+      "from": "178e52b69e09",
+      "text": "58c10a836454"
+    },
+    "ko": {
+      "from": "178e52b69e09",
+      "text": "56940568909f"
+    },
+    "pt-BR": {
+      "from": "178e52b69e09",
+      "text": "2eca6702663d"
+    },
+    "zh-CN": {
+      "from": "178e52b69e09",
+      "text": "d4d8ebfe1cc0"
     }
   },
   "settingsSystem:account.cancel": {

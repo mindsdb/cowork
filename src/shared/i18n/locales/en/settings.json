@@ -395,7 +395,8 @@
     "jevClassify": {
       "title": "Use Jev for classification",
       "subtitle": "Lets {agent} sort many texts into categories, or answer a yes/no question about each one, with Jev, MindsHub's decision model, instead of your chosen model. Faster and cheaper for large batches. Turn it off to label texts with your chosen model.",
-      "unavailable": "Available only when the coding model runs on MindsHub."
+      "unavailable": "Available only when the coding model runs on MindsHub.",
+      "zdrUnavailable": "Off while zero data retention is on."
     }
   },
   "desktop": {
@@ -512,6 +513,7 @@
     "agentTitle": "Voice agent",
     "agentHelp": "Talk with {agent} from the call button. Off hides the call buttons and ends a call that is running.",
     "voiceTitle": "Voice",
-    "voiceHelp": "Pick one to hear it. {agent} says a short line in each new voice."
+    "voiceHelp": "Pick one to hear it. {agent} says a short line in each new voice.",
+    "zdrSubtitle": "Off while zero data retention is on."
   }
 }

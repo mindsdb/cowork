@@ -395,7 +395,8 @@
     "jevClassify": {
       "title": "Usar Jev para clasificar",
       "subtitle": "Permite que {agent} clasifique muchos textos en categorías, o responda una pregunta de sí o no sobre cada uno, con Jev, el modelo de decisión de MindsHub, en lugar del modelo que elegiste. Más rápido y económico para lotes grandes. Desactívalo para etiquetar los textos con el modelo que elegiste.",
-      "unavailable": "Solo disponible cuando el modelo de código se ejecuta en MindsHub."
+      "unavailable": "Solo disponible cuando el modelo de código se ejecuta en MindsHub.",
+      "zdrUnavailable": "Desactivado mientras la retención cero de datos esté activada."
     }
   },
   "desktop": {
@@ -512,6 +513,7 @@
     "agentTitle": "Agente de voz",
     "agentHelp": "Habla con {agent} desde el botón de llamada. Desactivado oculta los botones de llamada y termina la llamada en curso.",
     "voiceTitle": "Voz",
-    "voiceHelp": "Elige una para escucharla. {agent} dice una frase corta con cada voz nueva."
+    "voiceHelp": "Elige una para escucharla. {agent} dice una frase corta con cada voz nueva.",
+    "zdrSubtitle": "Desactivado mientras la retención cero de datos esté activada."
   }
 }

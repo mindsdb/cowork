@@ -1485,6 +1485,11 @@ describe('jev classification setting', () => {
     // A server without the setting: nothing to save.
     [{}, 'minds-cloud', { shown: false, available: true, checked: true }],
   ])('for settings %j with coding on %s: %j', (settings, coding, state) => {
-    expect(jevClassifySwitch(settings, coding)).toEqual(state);
+    expect(jevClassifySwitch(settings, coding)).toEqual({ ...state, zdr: false });
+  });
+
+  it('shows off and locked under zero data retention, whatever is stored', () => {
+    expect(jevClassifySwitch({ jevClassifyEnabled: true }, 'minds-cloud', true))
+      .toEqual({ shown: true, available: false, zdr: true, checked: false });
   });
 });

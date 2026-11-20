@@ -13,19 +13,21 @@ export function voiceAgentHelp(agentLabel) {
   return i18n.t('settings:voice.agentHelp', { agent: agentLabel });
 }
 
-export default function VoiceSettingsSection({ agentLabel = 'Anton' }) {
+/* Under zero data retention (`zdr`) voice calls don't run: the switch shows off and locked. */
+export default function VoiceSettingsSection({ agentLabel = 'Anton', zdr = false }) {
   const prefs = useVoicePrefs();
   const { t } = useTranslation('settings');
   return (
     <SettingsGroup title={t('voice.title')}>
-      <Section title={t('voice.agentTitle')} subtitle={voiceAgentHelp(agentLabel)}>
+      <Section title={t('voice.agentTitle')} subtitle={zdr ? t('voice.zdrSubtitle') : voiceAgentHelp(agentLabel)}>
         <Switch
-          checked={prefs.enabled}
+          checked={!zdr && prefs.enabled}
+          disabled={zdr}
           onCheckedChange={(on) => setVoicePrefs({ enabled: on })}
           aria-label={t('voice.agentTitle')}
         />
       </Section>
-      {prefs.enabled && (
+      {!zdr && prefs.enabled && (
         <Section title={t('voice.voiceTitle')} subtitle={t('voice.voiceHelp', { agent: agentLabel })}>
           <Select
             value={prefs.voice}

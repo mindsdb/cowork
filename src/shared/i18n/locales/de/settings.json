@@ -395,7 +395,8 @@
     "jevClassify": {
       "title": "Jev für die Klassifizierung verwenden",
       "subtitle": "Lässt {agent} viele Texte in Kategorien einordnen oder zu jedem eine Ja/Nein-Frage beantworten – mit Jev, dem Entscheidungsmodell von MindsHub, statt mit Ihrem gewählten Modell. Schneller und günstiger bei großen Mengen. Deaktivieren Sie die Option, damit Texte mit Ihrem gewählten Modell eingeordnet werden.",
-      "unavailable": "Nur verfügbar, wenn das Coding-Modell über MindsHub läuft."
+      "unavailable": "Nur verfügbar, wenn das Coding-Modell über MindsHub läuft.",
+      "zdrUnavailable": "Deaktiviert, solange Zero Data Retention aktiviert ist."
     }
   },
   "desktop": {
@@ -512,6 +513,7 @@
     "agentTitle": "Sprachagent",
     "agentHelp": "Sprechen Sie über die Anruftaste mit {agent}. Aus blendet die Anruftasten aus und beendet einen laufenden Anruf.",
     "voiceTitle": "Stimme",
-    "voiceHelp": "Wählen Sie eine aus, um sie zu hören. {agent} sagt in jeder neuen Stimme einen kurzen Satz."
+    "voiceHelp": "Wählen Sie eine aus, um sie zu hören. {agent} sagt in jeder neuen Stimme einen kurzen Satz.",
+    "zdrSubtitle": "Deaktiviert, solange Zero Data Retention aktiviert ist."
   }
 }

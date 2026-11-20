@@ -427,12 +427,13 @@ export function jevOffForZdr(routing) {
  * setting (a server always sends every setting it knows). The agent's
  * classify() runs on Jev, which only MindsHub serves, so the switch is usable,
  * and on unless turned off, only while the coding model runs on MindsHub;
- * elsewhere it shows off and locked.
+ * elsewhere it shows off and locked. Under zero data retention (`zdr`) MindsHub
+ * refuses Jev, so it shows off and locked there too.
  */
-export function jevClassifySwitch(settings, codingProviderType) {
+export function jevClassifySwitch(settings, codingProviderType, zdr = false) {
   const shown = typeof settings?.jevClassifyEnabled === 'boolean';
-  const available = codingProviderType === 'minds-cloud';
-  return { shown, available, checked: available && settings?.jevClassifyEnabled !== false };
+  const available = codingProviderType === 'minds-cloud' && !zdr;
+  return { shown, available, zdr, checked: available && settings?.jevClassifyEnabled !== false };
 }
 
 // ─── Role row copy ──────────────────────────────────────────────────

@@ -1079,7 +1079,7 @@ export default function SettingsView({
   // effectiveRoleProvider already falls back to MindsHub, as the server does.
   const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
   const jevZdrOff = jevOffForZdr(settings?.routing);
-  const jevClassify = jevClassifySwitch(settings, roleProviderType('coding'));
+  const jevClassify = jevClassifySwitch(settings, roleProviderType('coding'), jevZdrOff);
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     // null is a tombstone ("clear the stored row so the server's enabled-aware
@@ -2167,7 +2167,7 @@ export default function SettingsView({
         <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
 
         {/* Voice calls run on MindsHub: only when it is the LLM provider. */}
-        {llmViaMindsHub(settings) && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />}
+        {llmViaMindsHub(settings) && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} zdr={jevZdrOff} />}
 
         {(hasBudgetSettings || jevSwitchShown || jevClassify.shown) && (
           <SettingsGroup title={t('advanced.title')} collapsible defaultCollapsed>
@@ -2258,9 +2258,11 @@ export default function SettingsView({
             {jevClassify.shown && (
               <Section
                 title={t('advanced.jevClassify.title')}
-                subtitle={jevClassify.available
-                  ? t('advanced.jevClassify.subtitle', { agent: agentLabel || 'Anton' })
-                  : t('advanced.jevClassify.unavailable')}
+                subtitle={jevClassify.zdr
+                  ? t('advanced.jevClassify.zdrUnavailable')
+                  : jevClassify.available
+                    ? t('advanced.jevClassify.subtitle', { agent: agentLabel || 'Anton' })
+                    : t('advanced.jevClassify.unavailable')}
               >
                 <Switch
                   checked={jevClassify.checked}

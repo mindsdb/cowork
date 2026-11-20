@@ -17,4 +17,14 @@ describe('Settings > Voice', () => {
     expect(getVoicePrefs().enabled).toBe(false);
     expect(screen.queryByRole('combobox', { name: 'Voice' })).not.toBeInTheDocument();
   });
+
+  it('shows voice off and locked under zero data retention, keeping the saved choice', () => {
+    render(<VoiceSettingsSection agentLabel="Anton" zdr />);
+    const toggle = screen.getByRole('switch', { name: 'Voice agent' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Off while zero data retention is on.')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Voice' })).not.toBeInTheDocument();
+    expect(getVoicePrefs().enabled).toBe(true);
+  });
 });
