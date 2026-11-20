@@ -769,9 +769,9 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
   });
 
   /* Below the inline layout the pane floats over the chat, covering the
-     waiting card entirely (ENG-4341). A hand-over still needs the pane: the
-     person has to act inside the browser itself, so only a real HAND_OVER
-     card (one `isHandOverCard` recognizes) counts as one for this rule. */
+     waiting card entirely. A hand-over still needs the pane: the person has
+     to act inside the browser itself, so only a real HAND_OVER card (one
+     `isHandOverCard` recognizes) counts as one for this rule. */
   const handOver = (questionId = 'browser:ho1') => ({
     id: `ask-${questionId}`, label: 'Question for you', badge: 'AskUser', status: 'in_progress', startedAt: 2,
     data: {
@@ -782,7 +782,7 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
   });
   const answer = (c) => ({ ...c, data: { ...c.data, answer: { status: 'answered', values: ['approve'] } } });
 
-  describe('in overlay mode (ENG-4341)', () => {
+  describe('in overlay mode', () => {
     it('does not open the pane over a waiting approval card; the card shows', async () => {
       setWidth(800);
       render(<ChatView task={task('ov-1', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);

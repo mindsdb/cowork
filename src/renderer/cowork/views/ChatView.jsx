@@ -2415,13 +2415,8 @@ export default function ChatView({
   // Bumped by closing the pane and by a task change, so a browser still
   // opening doesn't show after it, or in another task.
   const openSeqRef = useRef(0);
-  /* The debt a waiting approval card books in overlay mode: a pane this
-     change closed, to bring back once that card is answered. The ref marks
-     a card decided the first time it's seen, whatever the pane was doing
-     then, so a later render of the same card is never read as a fresh
-     closing opportunity. Both reset on a task change, same as the debt is
-     dropped unpaid on leaving overlay mode below: a dropped debt is never
-     paid. */
+  // A pane closed for a waiting approval card, to restore once it's
+  // answered; the ref marks a card id decided, so it's never closed twice.
   const closedForCardRef = useRef(new Set());
   const [pendingRestore, setPendingRestore] = useState(null);
   useEffect(() => {
@@ -2448,11 +2443,8 @@ export default function ChatView({
   const overlayMode = paneFloats && !isMobile;
   const personsTurnStep = (streamingMsg?.steps || []).find(isPersonsBrowserTurn) || null;
   const personsTurnId = personsTurnStep?.data?.question_id || null;
-  /* In overlay mode, a held step the person answers on its own card owns the
-     screen: the pane must not open over it. A hand-over still needs the
-     pane, since the person has to act inside the browser itself, so a held
-     step sitting beside a live hand-over doesn't count as a card the chat
-     alone can answer. */
+  // In overlay mode an approval card owns the screen; a live hand-over still
+  // needs the pane, since the person has to act inside the browser itself.
   const waitingApprovalCard = overlayMode
     && isBrowserStepCard(personsTurnStep?.data)
     && !(streamingMsg?.steps || []).some((s) => s.badge === 'AskUser' && !s.data?.answer && isHandOverCard(s.data));
@@ -2460,11 +2452,15 @@ export default function ChatView({
     ? (liveBrowserId || latestBrowserSessionIdIn(visibleMessages, streamingMsg))
     : null;
   useEffect(() => {
-    if (browserOn && liveBrowserId && !onlyWhenNeeded) setShownBrowserId(liveBrowserId);
+    if (browserOn && liveBrowserId && !onlyWhenNeeded) {
+      setPendingRestore(null);
+      setShownBrowserId(liveBrowserId);
+    }
   }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded]);
   useEffect(() => {
     if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId || waitingApprovalCard) return;
     // A phone push notification is the natural follow-up here once the iPhone app lands.
+    setPendingRestore(null);
     setShownBrowserId(personsTurnBrowserId);
     setBrowserMinimized(false);
   }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, waitingApprovalCard, task.id]);
@@ -2497,23 +2493,16 @@ export default function ChatView({
   useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
   const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
   const browserPaneOpen = browserOpen || blankBrowserOpen || openingBrowserOpen;
-  // Leaving overlay mode drops the debt unpaid: the gate above and this
-  // close only apply there, so a card from that mode has nothing to settle
-  // once the chat and the pane go back to sitting side by side.
+  // Leaving overlay mode drops the pending restore: it only applies there.
   useEffect(() => {
     if (!overlayMode) {
       closedForCardRef.current = new Set();
       setPendingRestore(null);
     }
   }, [overlayMode]);
-  /* Step aside for a waiting approval card the gate above didn't reach: the
-     person opened the pane by hand, or "always show the browser" opened it,
-     before the card arrived. Decided once per card id, whatever the pane is
-     doing at that moment - closing only if the real browser was showing,
-     since that's the only state worth bringing back. The start page and the
-     opening state are closed too (the person sees the same panel over the
-     card either way) but never booked: there's nothing on them to restore,
-     and restoring the opening state would leave a panel starting forever. */
+  // Steps aside for a card the gate above didn't reach (a pane already open
+  // by hand, or "always show the browser"). Only the real browser is booked
+  // to restore; the start page and the opening state are closed but not kept.
   useEffect(() => {
     if (!waitingApprovalCard || !personsTurnId) return;
     if (closedForCardRef.current.has(personsTurnId)) return;
@@ -2532,12 +2521,8 @@ export default function ChatView({
       setOpeningBrowser(false);
     }
   }, [waitingApprovalCard, personsTurnId, browserOpen, blankBrowserOpen, openingBrowserOpen, shownBrowserId]);
-  /* Pay the debt back once the card it was closed for is answered - read
-     from the transcript, not from the turn ending, so a stopped or abandoned
-     turn never puts the pane back over a card still waiting. A message typed
-     instead of answering leaves this card's `data.answer` unset forever, so
-     it never restores either; the existing open rules bring the pane back
-     when the agent's next browser step arrives. */
+  // Restores once the card it was closed for is answered, keyed on the
+  // answer itself, so a stopped or abandoned turn never restores the pane.
   useEffect(() => {
     if (!pendingRestore) return;
     const card = (streamingMsg?.steps || []).find((s) => s.data?.question_id === pendingRestore.questionId);
