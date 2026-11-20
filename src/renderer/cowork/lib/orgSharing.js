@@ -474,26 +474,31 @@ export function groupSkillsBySection(skills, { orgName = null } = {}) {
 }
 
 /**
- * The section the Artifacts page lists an artifact under, by the rule the
- * server gives skills (skill_sharing.section): shared with everyone (or the
- * org's default team) is "org"; else shared with a team is "team"; else the
- * caller's own is "mine"; else "shared_with_me". Someone else's artifact
- * comes with `capabilities.role` "reviewer" (or an owner the server could
- * not name). An audience the card does not know counts by owner alone.
+ * The section the Artifacts page lists an artifact under, owner first:
+ * someone else's artifact is "shared_with_me", however it reached the
+ * caller; the caller's own is "org" when shared with everyone (or the org's
+ * default team), "team" when shared with a team, else "mine". Someone else's
+ * artifact comes with `capabilities.role` "reviewer" (or an owner the server
+ * could not name). An audience the card does not know counts as "mine".
  */
 export function artifactSection(artifact, { teams = [] } = {}) {
   const capabilities = artifact?.capabilities || null;
   const owner = !(capabilities?.role === 'reviewer' || capabilities?.ownerUnknown === true);
+  if (!owner) return 'shared_with_me';
   const audience = readArtifactAudience(artifact);
   if (audience) {
     if (audience.orgAllowed || namesDefaultTeam(audience.teamIds, teams)) return 'org';
     if (audience.teamIds.length > 0) return 'team';
   }
-  return owner ? 'mine' : 'shared_with_me';
+  return 'mine';
 }
 
+// The Artifacts page's order: the caller's own first (theirs alone, then
+// shared with a team, then with everyone), what others shared with them last.
+const ARTIFACT_SECTIONS = ['mine', 'team', 'org', 'shared_with_me'];
+
 /**
- * The Artifacts page's groups, in the Skills page's order, empty ones left
+ * The Artifacts page's groups, in ARTIFACT_SECTIONS' order, empty ones left
  * out; each keeps the order it was given.
  *
  * @returns {Array<{ id: string, title: string, artifacts: object[] }>}
@@ -501,7 +506,7 @@ export function artifactSection(artifact, { teams = [] } = {}) {
 export function groupArtifactsBySection(artifacts, { orgName = null, teams = [] } = {}) {
   const buckets = { mine: [], shared_with_me: [], team: [], org: [] };
   for (const artifact of artifacts || []) buckets[artifactSection(artifact, { teams })].push(artifact);
-  return SKILL_SECTIONS
+  return ARTIFACT_SECTIONS
     .map((id) => ({ id, title: SECTION_TITLES[id](orgName), artifacts: buckets[id] }))
     .filter((group) => group.artifacts.length > 0);
 }
