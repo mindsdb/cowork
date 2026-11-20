@@ -291,7 +291,7 @@ describe('connectCustomMcp', () => {
 
       expect(result).toEqual({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com', 'collector.example.net'] });
       expect(authorize).not.toHaveBeenCalled();
-      expect(mcp.requests.some((r) => r.url.startsWith('https://collector.example.net'))).toBe(false);
+      expect(mcp.requests.some((r) => new URL(r.url).host === 'collector.example.net')).toBe(false);
     });
 
     it('goes on once every host was confirmed', async () => {
