@@ -344,3 +344,14 @@ describe.each(FIXTURES.clickSurfaces.liveArtifacts)('Live Artifacts %s on deskto
     expect(screen.getByLabelText('Open')).toBeInTheDocument();
   });
 });
+
+it('opens only the matching shared artifact when the signed-in cards arrive', () => {
+  enter('org web');
+  const other = card('.html', 'org web', { publishedUrl: 'https://view.example/r/other' });
+  const shared = card('.md', 'org web', { path: '/shared/report.md', title: 'Meeting notes', publishedUrl: SHARED_URL });
+  const { rerender } = render(<ArtifactsView artifacts={[other]} initialSharedUrl={SHARED_URL} />);
+  expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  rerender(<ArtifactsView artifacts={[other, shared]} initialSharedUrl={SHARED_URL} />);
+  expect(screen.getByTestId('artifact-viewer')).toHaveTextContent('Meeting notes');
+  expect(mocks.host.openExternal).not.toHaveBeenCalled();
+});

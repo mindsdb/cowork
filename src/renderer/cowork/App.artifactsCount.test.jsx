@@ -79,6 +79,11 @@ vi.mock('../platform/host', async (importOriginal) => {
   };
 });
 
+vi.mock('./components/artifact', async (importOriginal) => ({
+  ...(await importOriginal()),
+  ArtifactViewer: ({ open, artifact }) => open ? <div role="dialog">{artifact.title}</div> : null,
+}));
+
 import App from './App';
 import { __resetForTests, deleteArtifactAndSync } from './lib/artifactsStore';
 
@@ -157,4 +162,17 @@ describe('Live Artifacts sidebar count', () => {
     await waitFor(() => expect(spies.deleteProject).toHaveBeenCalledWith(project));
     await expectCount(2);
   });
+});
+
+it('opens the notified artifact after a cold start loads the signed-in collection', async () => {
+  const url = 'https://view.example/r/weekly';
+  const oldPath = location.pathname + location.search + location.hash;
+  window.history.replaceState(null, '', '/artifacts#' + new URLSearchParams({ shared: url }));
+  try {
+    spies.fetchArtifactsStrict.mockResolvedValue([{ ...alpha, publishedUrl: url, title: 'Weekly review' }]);
+    render(<App />);
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Weekly review');
+  } finally {
+    window.history.replaceState(null, '', oldPath);
+  }
 });
