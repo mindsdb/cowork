@@ -9,9 +9,9 @@
 // doc view context. Cmd+Z and Shift+Cmd+Z are the doc's undo and redo
 // (useDoc), and a deletion offers its undo in a notice.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Download, FileText, Maximize2, Minimize2, PanelLeftOpen, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, FileText, Maximize2, Minimize2, PanelLeftOpen, X } from 'lucide-react';
 import { Icon } from '../ui/Icon';
-import { Menu, Tooltip } from '../ui';
+import { Button, Menu, Spinner, Tooltip } from '../ui';
 import DocCanvas from './DocCanvas';
 import { TabRail, TabStrip, tabElementId, useTabsHidden } from './DocTabs';
 import { docPageTarget } from './docArtifact';
@@ -29,6 +29,7 @@ import { useVersionHistory } from './useVersionHistory';
 import { changedSince } from './versionHistory';
 import { PublishMenu } from '../artifact/publish/PublishMenu';
 import { usePublish } from '../artifact/publish/usePublish';
+import { maximizeKeyShortcuts } from '../artifact/useViewerLayout';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { useDocsEnabled } from '../../../lib/docsEnabled';
@@ -97,13 +98,15 @@ export function writeErrorText(e) {
 
 export default function DocPane({
   projectRef, artifactId, title: fallbackTitle, variant = 'side', expanded = false, fillsWindow = false,
-  onToggleExpand, onClose, onAskAgent, onViewChange,
+  onToggleExpand, maximized = false, onToggleMaximized, onClose, onAskAgent, onViewChange,
 }) {
   const {
     doc, status, error, capabilities, card, apply: applyOps, undo, redo, flash, agentActive, saving, writeError,
     clearWriteError,
   } = useDoc({ projectRef, artifactId, transport: LOCAL_TRANSPORT });
   const { t } = useTranslation('docs');
+  // Export and full screen use the artifact viewer's own words.
+  const { t: tArtifacts } = useTranslation('artifacts');
   // Images beside the doc, fetched with the app's credentials (the shell shows
   // only blob: images from its own server).
   const loadImage = useDraftImageLoader(card?.draftUrl, null);
@@ -248,7 +251,9 @@ export default function DocPane({
     reportView();
   }, [reportView, tab]);
 
+  const [exporting, setExporting] = useState(false);
   const exportAs = async (format) => {
+    setExporting(true);
     try {
       const name = await downloadDocExport(projectRef, artifactId, format);
       // The download is handed on, not finished: the desktop app asks where
@@ -256,6 +261,8 @@ export default function DocPane({
       setNotice({ tone: 'info', text: t('export.exporting', { name }) });
     } catch (e) {
       setNotice({ tone: 'warn', text: e.message || t('export.failed') });
+    } finally {
+      setExporting(false);
     }
   };
   const copyMarkdown = async () => {
@@ -350,6 +357,8 @@ export default function DocPane({
   const canOpenInBrowser = !!pub.publishedUrl || canOpenLocally;
   const openLabel = t(pub.publishedUrl ? 'pane.openSharedPage' : 'pane.openInBrowser');
   const expandLabel = t(expanded ? 'pane.showChat' : 'pane.expand');
+  // The artifact viewer's own words for the same toggle.
+  const maximizeLabel = tArtifacts(maximized ? 'layout.restore' : 'layout.maximize');
   const exportLabel = t('export.label');
   const openInBrowser = async () => {
     try {
@@ -405,22 +414,6 @@ export default function DocPane({
         {/* A version looked at shows its own title: restoring it brings that back too. */}
         <span className="doc-header__title" title={shown?.title || fallbackTitle}>{shown?.title || fallbackTitle || t('doc')}</span>
         <span aria-live="polite">{statusEl}</span>
-        {doc && editable && <VersionMenu history={history} />}
-        {doc && (
-          <Menu
-            ariaLabel={exportLabel}
-            tooltip={exportLabel}
-            trigger={<button type="button" className="doc-iconbtn" aria-label={exportLabel}><Icon of={Download} size={16} /></button>}
-            items={[
-              { heading: t('export.downloadAs') },
-              ...exportChoices(capabilities?.exportFormats)
-                .map((key) => ({ key, label: t(`export.format.${key}`), onClick: () => exportAs(key) })),
-              { divider: true },
-              { key: 'copy', label: t('export.copyMarkdown'), onClick: copyMarkdown },
-            ]}
-          />
-        )}
-        {doc && canShare && <PublishMenu controller={pub} noun="doc" followsEdits />}
         {doc && (
           <Tooltip content={canOpenInBrowser ? openLabel : t('pane.shareToOpen')}>
             <button type="button" className="doc-iconbtn" aria-label={openLabel}
@@ -429,17 +422,53 @@ export default function DocPane({
             </button>
           </Tooltip>
         )}
-        {onToggleExpand && (
-          <Tooltip content={expandLabel}>
-            <button type="button" className="doc-iconbtn" aria-label={expandLabel} onClick={onToggleExpand}>
-              <Icon of={expanded ? Minimize2 : Maximize2} size={16} />
-            </button>
-          </Tooltip>
+        {doc && editable && <VersionMenu history={history} />}
+        {doc && canShare && <PublishMenu controller={pub} noun="doc" followsEdits />}
+        {/* Worn like the artifact viewer's Export (ArtifactExportMenu). */}
+        {doc && (
+          <Menu
+            ariaLabel={exportLabel}
+            align="end"
+            trigger={
+              <Button size="sm" disabled={exporting}>
+                {exporting
+                  ? (<><Spinner style={{ color: 'currentColor' }} /> {tArtifacts('export.exporting')}</>)
+                  : (<>{tArtifacts('export.export')} <span className="inline-flex text-ink-3"><Icon of={ChevronDown} size={14} /></span></>)}
+              </Button>
+            }
+            items={[
+              ...exportChoices(capabilities?.exportFormats)
+                .map((key) => ({ key, label: t(`export.format.${key}`), onClick: () => exportAs(key) })),
+              { divider: true },
+              { key: 'copy', label: t('export.copyMarkdown'), onClick: copyMarkdown },
+            ]}
+          />
         )}
-        {onClose && (
-          <Tooltip content={t('pane.close')}>
-            <button type="button" className="doc-iconbtn" aria-label={t('pane.closeDoc')} onClick={onClose}><Icon of={X} size={16} /></button>
-          </Tooltip>
+        {/* Expand or full screen, then close, past a divider: the artifact viewer's window controls. */}
+        {(onToggleExpand || onToggleMaximized || onClose) && (
+          <div className="doc-header__window-controls">
+            {onToggleExpand && (
+              <Tooltip content={expandLabel}>
+                <button type="button" className="doc-iconbtn" aria-label={expandLabel} onClick={onToggleExpand}>
+                  <Icon of={expanded ? Minimize2 : Maximize2} size={16} />
+                </button>
+              </Tooltip>
+            )}
+            {onToggleMaximized && (
+              <Tooltip content={maximizeLabel}>
+                <button type="button" className="doc-iconbtn" aria-label={maximizeLabel}
+                  aria-keyshortcuts={maximizeKeyShortcuts()}
+                  onClick={onToggleMaximized}>
+                  <Icon of={maximized ? Minimize2 : Maximize2} size={16} />
+                </button>
+              </Tooltip>
+            )}
+            {onClose && (
+              <Tooltip content={t('pane.close')}>
+                <button type="button" className="doc-iconbtn" aria-label={t('pane.closeDoc')} onClick={onClose}><Icon of={X} size={16} /></button>
+              </Tooltip>
+            )}
+          </div>
         )}
       </header>
 

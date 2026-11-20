@@ -79,7 +79,7 @@ import { usePreviewFit } from './usePreviewFit';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
-import { useViewerLayout } from './useViewerLayout';
+import { useViewerModal } from './useViewerLayout';
 import { ViewerModeRail } from './ViewerModeRail';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
@@ -312,19 +312,7 @@ export function ArtifactViewer({
   const { layers, setLayer } = useViewerLayers();
   setLayerRef.current = setLayer;
   const sidePanelId = useId();
-  const { layout, toggle: toggleLayout } = useViewerLayout();
-  // Cmd/Ctrl+Shift+Enter maximizes and restores. Keys typed inside the
-  // artifact's own frame never reach this window, so the page keeps its keys.
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKeyDown = (event) => {
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key !== 'Enter') return;
-      event.preventDefault();
-      toggleLayout('maximized');
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, toggleLayout]);
+  const { layout, toggle: toggleLayout, modalProps } = useViewerModal(open);
   // The bar takes the caret when the viewer opens (QuickEditBar), once per open.
   const [barFocusRequest, setBarFocusRequest] = useState(0);
   const barFocusUsed = useRef(0);
@@ -1828,10 +1816,7 @@ export function ArtifactViewer({
     <Modal
       open={open}
       onClose={requestClose}
-      size="lg"
-      width="min(1080px, 94vw)"
-      height="min(820px, 88vh)"
-      fullBleed={layout.maximized}
+      {...modalProps}
       labelledBy="artifact-viewer-title"
     >
       <ArtifactViewerHeader
