@@ -1,3 +1,4 @@
+import { offersBilling } from '../lib/billingLinks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -511,6 +512,7 @@ export function useNewTaskDraft({
     /* An admin's model rule is not something credits unlock, so it never
        mentions them. */
     if (selectedModelOption?.restricted) return readiness('modelRestricted');
+    if (!offersBilling() && (selectedModelOption?.locked || selectedModelOption?.budgetReached)) return readiness('chooseModel');
     if (selectedModelOption?.budgetReached) return readiness('budgetReached');
     if (selectedModelOption?.locked) return readiness('addCredits');
     if (enabledModelOptions.length === 0) return catalogError ? '' : (noModelsMessage = readiness('noModels'));

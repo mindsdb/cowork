@@ -303,7 +303,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
 
-  it('inside the mobile app, keeps the Needs credits tag and attaches no Add credits button', async () => {
+  it('inside the mobile app, shows a locked model as unavailable without a billing action', async () => {
     const user = userEvent.setup();
     host.isMobileShell = true;
     try {
@@ -311,7 +311,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
 
       await user.click(screen.getByRole('combobox'));
       const row = screen.getByRole('option', { name: /Claude Opus 5/ });
-      expect(within(row).getByText('Needs credits')).toBeInTheDocument();
+      expect(within(row).getByText('Unavailable')).toBeInTheDocument();
       expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
     } finally {
       host.isMobileShell = false;
