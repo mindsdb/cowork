@@ -2416,8 +2416,8 @@ export default function ChatView({
   // Bumped by closing the pane and by a task change, so a browser still
   // opening doesn't show after it, or in another task.
   const openSeqRef = useRef(0);
-  // A pane closed for a waiting approval card, to restore once it's
-  // answered; the ref marks a card id decided, so it's never closed twice.
+  // A pane closed for a waiting chat card, to restore once it's resolved;
+  // the ref marks a card id decided, so it's never closed twice.
   const closedForCardRef = useRef(new Set());
   const [pendingRestore, setPendingRestore] = useState(null);
   useEffect(() => {
@@ -2466,14 +2466,16 @@ export default function ChatView({
       setPendingRestore(null);
       setShownBrowserId(liveBrowserId);
     }
-  }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded]);
+    // overlayMode: re-offered on leaving overlay, in case the gate blocked
+    // it while narrow and nothing else about the browser session changed.
+  }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded, overlayMode]);
   useEffect(() => {
     if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId || waitingChatCardRef.current) return;
     // A phone push notification is the natural follow-up here once the iPhone app lands.
     setPendingRestore(null);
     setShownBrowserId(personsTurnBrowserId);
     setBrowserMinimized(false);
-  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, task.id]);
+  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, task.id, overlayMode]);
   const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
   // A request (a voice call's show_browser or browser_done) applies once:
   // coming back to the task later doesn't open the pane again. Like the
@@ -2504,30 +2506,30 @@ export default function ChatView({
   const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
   const browserPaneOpen = browserOpen || blankBrowserOpen || openingBrowserOpen;
   // Leaving overlay mode removes the reason the pane was hidden, so a debt
-  // still owed is paid at once rather than dropped unpaid. The handled-id
-  // set is not reset here: a card the person already opened the pane for
-  // stays theirs across a width change, not re-closed on the way back in.
+  // still owed is paid at once rather than dropped unpaid. Unmarks the
+  // card too: if overlay mode comes back while it's still waiting, that's
+  // the same closing decision again, not a fresh one the person made.
   useEffect(() => {
     if (overlayMode || !pendingRestore) return;
-    const { sessionId } = pendingRestore;
+    const { sessionId, questionId } = pendingRestore;
+    closedForCardRef.current.delete(questionId);
     setPendingRestore(null);
     if (viewable(sessionId)) setShownBrowserId(sessionId);
   }, [overlayMode, pendingRestore]);
   const waitingChatQuestionId = chatPendingQuestion?.question_id || null;
   /* Steps aside for a card the gate above didn't reach (a pane already open
      by hand, or "always show the browser"). Only the real browser is booked
-     to restore; the start page and the opening state are closed but not
-     kept. `browserOpen`/`shownBrowserId` still describe the task just left
-     on the first render after a task switch (ChatView isn't keyed by task,
-     so that state hasn't been reset by then) - skip that one render rather
-     than book a restore for the wrong task's browser. */
+     to restore; the start page and the opening state are closed but not kept. */
   const closeEffectTaskRef = useRef(task.id);
   useEffect(() => {
     const taskJustChanged = closeEffectTaskRef.current !== task.id;
     closeEffectTaskRef.current = task.id;
-    if (taskJustChanged || !waitingChatCard || !waitingChatQuestionId) return;
+    if (!waitingChatCard || !waitingChatQuestionId) return;
     if (closedForCardRef.current.has(waitingChatQuestionId)) return;
     closedForCardRef.current.add(waitingChatQuestionId);
+    // browserOpen/shownBrowserId still describe the task just left on this
+    // render (ChatView isn't keyed by task): decide, but don't act on it.
+    if (taskJustChanged) return;
     if (browserOpen) {
       const sessionId = shownBrowserId;
       dropHandBack(sessionId);
@@ -2542,21 +2544,20 @@ export default function ChatView({
       setOpeningBrowser(false);
     }
   }, [waitingChatCard, waitingChatQuestionId, browserOpen, blankBrowserOpen, openingBrowserOpen, shownBrowserId, task.id]);
-  /* Restores once the card it was closed for is resolved (answered, timed
-     out, cancelled) and no other card is waiting right now - a sibling
-     question already holding the screen must get its own turn at closing
-     the pane first, not have it reopened out from under it. Dropped
-     outright once the card itself is gone, answered or not: a turn that
-     just stops, or folds the card away, leaves nothing to restore to. */
+  // Restores once resolved and nothing else is waiting; looks in the last
+  // completed message too, since a turn can end in the same update as the
+  // answer. Drops outright once the card is nowhere to be found.
   useEffect(() => {
     if (!pendingRestore) return;
-    const card = (streamingMsg?.steps || []).find((s) => s.data?.question_id === pendingRestore.questionId);
+    const lastMessage = visibleMessages[visibleMessages.length - 1];
+    const card = (streamingMsg?.steps || []).find((s) => s.data?.question_id === pendingRestore.questionId)
+      || (lastMessage?.steps || []).find((s) => s.data?.question_id === pendingRestore.questionId);
     if (!card) { setPendingRestore(null); return; }
     if (!card.data?.answer || waitingChatCard) return;
     const { sessionId } = pendingRestore;
     setPendingRestore(null);
     if (viewable(sessionId)) setShownBrowserId(sessionId);
-  }, [pendingRestore, streamingMsg, waitingChatCard]);
+  }, [pendingRestore, streamingMsg, waitingChatCard, visibleMessages]);
   /* On a phone the pane docks at the top of the chat (no taller than half
      the screen) and minimizes to its header instead of closing. It expands
      when Anton starts using the browser, and minimizes when the turn ends so

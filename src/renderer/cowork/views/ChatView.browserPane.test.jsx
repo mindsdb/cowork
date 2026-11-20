@@ -1120,5 +1120,76 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
       await act(async () => {});
       expect(pane()).not.toBeNull();
     });
+
+    it('still opens and stays open from the browser button, right after switching into a task with a held step waiting', async () => {
+      setWidth(800);
+      const heldForB = card('browser:approve:t-bbb:pb-1', [{ value: 'approve', label: 'Approve', detail: 'Take this step once' }, { value: 'cancel', label: 'Cancel' }]);
+      const liveB = (...extra) => ({ ...liveTurn('t-bbb'), steps: [step('t-bbb'), ...extra] });
+
+      const { rerender } = render(<ChatView task={task('ov-17', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+
+      rerender(<ChatView task={task('ov-17b', [asked, liveB(heldForB)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+      expect(pane()).not.toBeNull();
+
+      rerender(<ChatView task={task('ov-17b', [asked, liveB(heldForB)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('steps the pane aside again on re-entering overlay mode after our own restore, while the card still waits', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-18', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+
+      rerender(<ChatView task={task('ov-18', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      setWidth(1400);
+      rerender(<ChatView task={task('ov-18', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+
+      setWidth(800);
+      rerender(<ChatView task={task('ov-18', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+    });
+
+    it('opens once widened to 1400, for a held step that arrived while narrow and was never shown', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-19', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      setWidth(1400);
+      rerender(<ChatView task={task('ov-19', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('restores the pane when the card is answered and the turn ends in the same update', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-20', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+
+      rerender(<ChatView task={task('ov-20', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      // The turn ends in the very update that answers the card: it rolls
+      // into a completed message and never appears in streamingMsg again.
+      const completed = { id: 'a1', role: 'assistant', content: 'Done.', steps: [step(), answer(HELD)] };
+      rerender(<ChatView task={task('ov-20', [asked, completed])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
   });
 });
