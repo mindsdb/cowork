@@ -142,8 +142,8 @@ import {
   mergeConvTurns,
   removeConvTurnsFor,
 } from './lib/conversationHistory';
-import { noteArtifactsFromSteps, onArtifactDeleted } from './lib/artifactsStore';
-import { createLatestLoader, withArtifactChange, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
+import { noteArtifactsFromSteps, onArtifactDeleted, onArtifactRenamed } from './lib/artifactsStore';
+import { createLatestLoader, withArtifactChange, withArtifactTitle, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
 import { resolveRepairConversation } from './lib/artifactRepairChat';
 import { originConversationId } from './lib/artifactIdentity';
 import { isOrphanUser } from './lib/turnVisibility';
@@ -978,6 +978,12 @@ function AppCore() {
       reloadArtifacts();
     }
   }), [artifactsLoader, reloadArtifacts]);
+  // A doc renamed in its editor, from any surface, retitles its card in the
+  // library and the sidebar.
+  useEffect(() => onArtifactRenamed(({ id, title }) => {
+    if (withArtifactTitle(artifactsRef.current, id, title) === artifactsRef.current) return;
+    artifactsLoader.change(() => setArtifacts((prev) => withArtifactTitle(prev, id, title)));
+  }), [artifactsLoader]);
   // Publish state changes made on the artifacts page.
   const handleArtifactChanged = useCallback((updated) => {
     artifactsLoader.change(() => setArtifacts((prev) => withArtifactChange(prev, updated)));

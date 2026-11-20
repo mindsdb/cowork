@@ -60,7 +60,10 @@ vi.mock('../artifact', () => ({
     )
     : null),
 }));
-vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
+vi.mock('../../lib/artifactsStore', async (importOriginal) => ({
+  ...(await importOriginal()),
+  deleteArtifactAndSync: vi.fn(),
+}));
 // The doc editor is tested on its own; here it only has to be what opens.
 vi.mock('../doc/DocPane', () => ({
   default: ({ title }) => <div role="region" aria-label={`Doc editor: ${title}`} />,
@@ -86,7 +89,7 @@ import { WorkingFolderLive } from './WorkingFolderLive';
 import { fetchArtifacts, unpublishArtifact } from '../../api';
 import { setOrgMode } from '../../../lib/orgMode';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
-import { deleteArtifactAndSync } from '../../lib/artifactsStore';
+import { deleteArtifactAndSync, noteArtifactRenamed } from '../../lib/artifactsStore';
 
 const PROJECT = { id: 'proj-1', name: 'general', path: '/proj' };
 const SHARED_URL = 'https://view.mindshub.ai/r/abc';
@@ -1075,6 +1078,13 @@ describe('a doc in the artifacts rail (desktop)', () => {
     fireEvent.click(row);
     expect(await screen.findByRole('region', { name: 'Doc editor: Q4 Hiring Plan' })).toBeInTheDocument();
     expect(openPath).not.toHaveBeenCalled();
+  });
+
+  it('retitles its row when the doc is renamed in its editor, wherever that was opened', async () => {
+    await renderRail(doc());
+    act(() => noteArtifactRenamed(doc().id, 'Hiring plan 2027'));
+    expect(await screen.findByText('Hiring plan 2027')).toBeInTheDocument();
+    expect(screen.queryByText('Q4 Hiring Plan')).toBeNull();
   });
 
   it('opens beside the chat when the rail is in one, as from its card', async () => {

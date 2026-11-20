@@ -11,6 +11,7 @@ import * as api from './docApi';
 import { host } from '../../../platform/host';
 import { COMMIT_MS } from './EditableText';
 import { setDocsEnabled } from '../../../lib/docsEnabled';
+import { onArtifactRenamed } from '../../lib/artifactsStore';
 
 const doc = (rev = 2, extra = []) => ({
   schema: 'cowork.doc/1',
@@ -154,6 +155,22 @@ describe('DocPane', () => {
     api.fetchDoc.mockRejectedValue(Object.assign(new Error('gone'), { status: 404 }));
     render(<DocPane projectRef="p1" artifactId="a1" />);
     expect(await screen.findByText('This doc no longer exists.')).toBeInTheDocument();
+  });
+});
+
+describe('DocPane and the title the lists show', () => {
+  it('tells every list the doc\'s title, and again once the doc is renamed', async () => {
+    const heard = vi.fn();
+    const stop = onArtifactRenamed(heard);
+    try {
+      render(<DocPane projectRef="p1" artifactId="a1" />);
+      await screen.findByRole('textbox', { name: 'Title' });
+      expect(heard).toHaveBeenLastCalledWith({ id: 'a1', title: 'Vendor shortlist' });
+      act(() => api.stream.handlers.onEvent({ type: 'doc.updated', by: 'agent', rev: 3, doc: { ...doc(3), title: 'Vendors 2027' } }));
+      await waitFor(() => expect(heard).toHaveBeenLastCalledWith({ id: 'a1', title: 'Vendors 2027' }));
+    } finally {
+      stop();
+    }
   });
 });
 

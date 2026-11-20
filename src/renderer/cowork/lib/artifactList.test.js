@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createLatestLoader,
   withArtifactChange,
+  withArtifactTitle,
   withoutArtifact,
   withoutProjectArtifacts,
 } from './artifactList';
@@ -35,6 +36,15 @@ describe('list updates', () => {
   it('drops every card of a project, by id or under its path', () => {
     const byPath = { path: '/p1/.anton/artifacts/c/index.html' };
     expect(withoutProjectArtifacts([a, b, byPath], p1)).toEqual([b]);
+  });
+
+  it('retitles the card with the id, and keeps the list when the title is already that', () => {
+    const doc = { ...a, id: 'd1', title: 'Plan' };
+    expect(withArtifactTitle([doc, b], 'd1', 'Hiring plan')).toEqual([{ ...doc, title: 'Hiring plan' }, b]);
+    const list = [doc, b];
+    expect(withArtifactTitle(list, 'd1', 'Plan')).toBe(list);
+    expect(withArtifactTitle(list, 'other', 'Hiring plan')).toBe(list);
+    expect(withArtifactTitle(list, 'd1', '')).toBe(list);
   });
 
   it('merges a change into the card with the same path', () => {

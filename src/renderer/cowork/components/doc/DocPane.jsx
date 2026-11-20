@@ -16,6 +16,7 @@ import DocCanvas from './DocCanvas';
 import { TabRail, TabStrip, tabElementId, useTabsHidden } from './DocTabs';
 import { docPageTarget } from './docArtifact';
 import { useDoc } from './useDoc';
+import { noteArtifactRenamed } from '../../lib/artifactsStore';
 import { PendingEdits, useSaveIndicator } from './useSaveIndicator';
 import { downloadDocExport, fetchDoc, fetchDocMarkdown, followDoc, postDocOps, uploadDocImage } from './docApi';
 import { DocImageLoader } from './blocks';
@@ -112,6 +113,11 @@ export default function DocPane({
   // flow and access choices (public, password, named people, only me) as any
   // HTML artifact. The controller addresses the page, not the JSON beside it.
   const shareTarget = useMemo(() => docPageTarget(card), [card]);
+  // A rename, by the person or the agent, reaches every list showing the doc's card.
+  const docTitle = doc?.title;
+  useEffect(() => {
+    if (docTitle) noteArtifactRenamed(artifactId, docTitle);
+  }, [artifactId, docTitle]);
   const pub = usePublish(shareTarget, { enabled: !!shareTarget });
   const canShare = !!shareTarget && capabilities?.canEdit !== false;
   const [activeTab, setActiveTab] = useState(null);

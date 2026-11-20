@@ -48,7 +48,8 @@ import {
 } from '../../lib/artifactKinds';
 import { canPreviewDocument } from '../../preview/kinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { deleteArtifactAndSync } from '../../lib/artifactsStore';
+import { deleteArtifactAndSync, onArtifactRenamed } from '../../lib/artifactsStore';
+import { withArtifactTitle } from '../../lib/artifactList';
 import { reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { stopSharingNotice } from '../artifact/publish/linkLeftLive';
 
@@ -202,6 +203,11 @@ export function WorkingFolderLive({
    * and its row scrolls into view: the rail scrolls, and the copy may land
    * out of sight, or past the collapsed list's end, where it would be hidden.
    */
+  // A doc renamed in its editor, opened here or anywhere else: the rail does not refetch.
+  useEffect(() => onArtifactRenamed(({ id, title }) => {
+    setArtifacts((prev) => withArtifactTitle(prev, id, title));
+  }), []);
+
   const listRef = useRef(null);
   const [revealPath, setRevealPath] = useState(null);
   useEffect(() => {
