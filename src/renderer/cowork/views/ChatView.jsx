@@ -64,13 +64,14 @@ import ProjectBrowsers from '../components/browser/ProjectBrowsers';
 import { browserInsteadRequest } from '../lib/connectorWebsites';
 import TopShortcuts from '../components/TopShortcuts';
 import VoiceOrb from '../components/VoiceOrb';
-import { isBrowserStepCard, isPersonsBrowserTurn, isPositionClickCard } from '../lib/browserApproval';
+import { isPersonsBrowserTurn, isPositionClickCard } from '../lib/browserApproval';
 import { BROWSER_ACTION_BADGE, groupBrowserSteps } from '../lib/browserSteps';
 import { BROWSER_APPROVAL_BADGE, answeredBrowserStep } from '../lib/browserStepPrompt';
 import { BROWSER_HANDOVER_BADGE, finishedHandOverStep, isHandOverCard } from '../lib/browserHandOverPrompt';
 import { BrowserHandOverContext } from '../lib/browserHandOverContext';
 import { dropHandBack } from '../lib/browserHandBack';
 import { useBrowserPrefs } from '../lib/browserPrefs';
+import { pendingQuestionFor } from '../lib/pendingQuestion';
 import Button from '../components/ui/Button';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { useNativeOverlay } from '../lib/nativeOverlay';
@@ -2443,27 +2444,32 @@ export default function ChatView({
   const overlayMode = paneFloats && !isMobile;
   const personsTurnStep = (streamingMsg?.steps || []).find(isPersonsBrowserTurn) || null;
   const personsTurnId = personsTurnStep?.data?.question_id || null;
-  // In overlay mode an approval card owns the screen; a live hand-over still
-  // needs the pane, since the person has to act inside the browser itself.
-  const waitingApprovalCard = overlayMode
-    && isBrowserStepCard(personsTurnStep?.data)
-    && !(streamingMsg?.steps || []).some((s) => s.badge === 'AskUser' && !s.data?.answer && isHandOverCard(s.data));
   const personsTurnBrowserId = personsTurnId
     ? (liveBrowserId || latestBrowserSessionIdIn(visibleMessages, streamingMsg))
     : null;
+  // Any question the person answers in the chat (lib/pendingQuestion, same
+  // filter the composer uses), minus a hand-over: that one still needs the
+  // pane, since the person has to act inside the browser itself.
+  const chatPendingQuestion = pendingQuestionFor(streamingMsg?.steps);
+  const chatPendingStep = chatPendingQuestion
+    ? (streamingMsg?.steps || []).find((s) => s.data?.question_id === chatPendingQuestion.question_id)
+    : null;
+  const liveHandOver = (streamingMsg?.steps || []).some((s) => s.badge === 'AskUser' && !s.data?.answer && isHandOverCard(s.data));
+  // In overlay mode that question owns the screen, so the pane steps aside.
+  const waitingChatCard = overlayMode && !!chatPendingQuestion && !isHandOverCard(chatPendingStep?.data) && !liveHandOver;
   useEffect(() => {
-    if (browserOn && liveBrowserId && !onlyWhenNeeded) {
+    if (browserOn && liveBrowserId && !onlyWhenNeeded && !waitingChatCard) {
       setPendingRestore(null);
       setShownBrowserId(liveBrowserId);
     }
-  }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded]);
+  }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded, waitingChatCard]);
   useEffect(() => {
-    if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId || waitingApprovalCard) return;
+    if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId || waitingChatCard) return;
     // A phone push notification is the natural follow-up here once the iPhone app lands.
     setPendingRestore(null);
     setShownBrowserId(personsTurnBrowserId);
     setBrowserMinimized(false);
-  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, waitingApprovalCard, task.id]);
+  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, waitingChatCard, task.id]);
   const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
   // A request (a voice call's show_browser or browser_done) applies once:
   // coming back to the task later doesn't open the pane again. Like the
@@ -2500,19 +2506,20 @@ export default function ChatView({
       setPendingRestore(null);
     }
   }, [overlayMode]);
+  const waitingChatQuestionId = chatPendingQuestion?.question_id || null;
   // Steps aside for a card the gate above didn't reach (a pane already open
   // by hand, or "always show the browser"). Only the real browser is booked
   // to restore; the start page and the opening state are closed but not kept.
   useEffect(() => {
-    if (!waitingApprovalCard || !personsTurnId) return;
-    if (closedForCardRef.current.has(personsTurnId)) return;
-    closedForCardRef.current.add(personsTurnId);
+    if (!waitingChatCard || !waitingChatQuestionId) return;
+    if (closedForCardRef.current.has(waitingChatQuestionId)) return;
+    closedForCardRef.current.add(waitingChatQuestionId);
     if (browserOpen) {
       const sessionId = shownBrowserId;
       dropHandBack(sessionId);
       openSeqRef.current += 1;
       setShownBrowserId(null);
-      setPendingRestore({ questionId: personsTurnId, sessionId });
+      setPendingRestore({ questionId: waitingChatQuestionId, sessionId });
     } else if (blankBrowserOpen) {
       openSeqRef.current += 1;
       setBlankBrowser(false);
@@ -2520,13 +2527,17 @@ export default function ChatView({
       openSeqRef.current += 1;
       setOpeningBrowser(false);
     }
-  }, [waitingApprovalCard, personsTurnId, browserOpen, blankBrowserOpen, openingBrowserOpen, shownBrowserId]);
+  }, [waitingChatCard, waitingChatQuestionId, browserOpen, blankBrowserOpen, openingBrowserOpen, shownBrowserId]);
   // Restores once the card it was closed for is answered, keyed on the
   // answer itself, so a stopped or abandoned turn never restores the pane.
   useEffect(() => {
     if (!pendingRestore) return;
     const card = (streamingMsg?.steps || []).find((s) => s.data?.question_id === pendingRestore.questionId);
-    if (!card?.data?.answer) return;
+    if (!card?.data?.answer) {
+      // No live turn left to answer it: nothing will ever restore this debt.
+      if (!streamingMsg) setPendingRestore(null);
+      return;
+    }
     const { sessionId } = pendingRestore;
     setPendingRestore(null);
     if (viewable(sessionId)) setShownBrowserId(sessionId);

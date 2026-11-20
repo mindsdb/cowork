@@ -870,7 +870,7 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
       expect(pane()).not.toBeNull();
     });
 
-    it('frees the card from an "always show the browser" pane too', async () => {
+    it('frees the card from an "always show the browser" pane too, and restores it once answered', async () => {
       setWidth(800);
       syncBrowserPrefs({ browserOnlyWhenNeeded: false });
       const { rerender } = render(<ChatView task={task('ov-7', [asked, live()])} onSend={vi.fn()} browserOn />);
@@ -881,6 +881,82 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
       await act(async () => {});
       expect(pane()).toBeNull();
       expect(screen.getByRole('button', { name: /^Approve/ })).toBeInTheDocument();
+
+      rerender(<ChatView task={task('ov-7', [asked, live(answer(HELD))])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('does not reopen the pane if the person toggles "always show the browser" while a card waits', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-8', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+
+      rerender(<ChatView task={task('ov-8', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      act(() => { syncBrowserPrefs({ browserOnlyWhenNeeded: false }); });
+      rerender(<ChatView task={task('ov-8', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      rerender(<ChatView task={task('ov-8', [asked, live(answer(HELD))])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('does not reopen an "always show the browser" pane if the task\'s browser is switched off and back on while a card waits', async () => {
+      setWidth(800);
+      syncBrowserPrefs({ browserOnlyWhenNeeded: false });
+      const { rerender } = render(<ChatView task={task('ov-9', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+
+      rerender(<ChatView task={task('ov-9', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      rerender(<ChatView task={task('ov-9', [asked, live(HELD)])} onSend={vi.fn()} browserOn={false} />);
+      await act(async () => {});
+      rerender(<ChatView task={task('ov-9', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+
+      rerender(<ChatView task={task('ov-9', [asked, live(answer(HELD))])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('steps a pane open by hand aside for a plain question, and restores it once answered', async () => {
+      setWidth(800);
+      const QUESTION = card('q:name-file', [{ value: 'a', label: 'Option A' }, { value: 'b', label: 'Option B' }]);
+      const { rerender } = render(<ChatView task={task('ov-10', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+      expect(pane()).not.toBeNull();
+
+      rerender(<ChatView task={task('ov-10', [asked, live(QUESTION)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).toBeNull();
+      expect(screen.getByRole('button', { name: 'Option A' })).toBeInTheDocument();
+
+      rerender(<ChatView task={task('ov-10', [asked, live(answer(QUESTION))])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
+    });
+
+    it('guard: a click-by-position card the app answers itself moves the pane for nothing', async () => {
+      setWidth(800);
+      const { rerender } = render(<ChatView task={task('ov-g5', [asked, live()])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+      expect(pane()).not.toBeNull();
+
+      rerender(<ChatView task={task('ov-g5', [asked, live(POSITION)])} onSend={vi.fn()} browserOn />);
+      await act(async () => {});
+      expect(pane()).not.toBeNull();
     });
 
     it('guard: a hand-over alone still opens the pane and never closes it', async () => {

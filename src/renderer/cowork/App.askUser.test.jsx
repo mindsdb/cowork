@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  pendingQuestionFor,
   drainQueueToInput,
   drainQueueAttachments,
   planQueueDrain,
   retireQuestionFromSteps,
   resolvePendingAnswer,
 } from './App';
+import { pendingQuestionFor } from './lib/pendingQuestion';
 
 const askStep = (over = {}) => ({
   badge: 'AskUser',
