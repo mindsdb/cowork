@@ -37,11 +37,12 @@ beforeEach(() => {
 });
 
 describe('UsageSection', () => {
-  it('inside the mobile app, shows the figures with no way to the billing console', () => {
+  it('inside the mobile app, shows the free allowance without account billing details', () => {
     hostMock.host.isMobileShell = true;
     try {
       renderWith(usage());
-      expect(screen.getByText('$99.63')).toBeInTheDocument();
+      expect(screen.getByText('87% left')).toBeInTheDocument();
+      expect(document.body.textContent).not.toMatch(/balance|credit spent|top up|\$/i);
       for (const name of ['View usage', 'Add funds', 'Set up auto top up']) {
         expect(screen.queryByRole('button', { name })).toBeNull();
       }
@@ -173,7 +174,7 @@ describe('mobile usage details', () => {
     hostMock.host.isMobileShell = true;
     try {
       const { container } = renderWith(usage(overrides));
-      expect(container.textContent).not.toMatch(/add funds|turn it on|turn on|update your payment method|in the console|Mobile/i);
+      expect(container.textContent).not.toMatch(/add funds|turn it on|turn on|update your payment method|in the console|balance|credit spent|top up|\$|Mobile/i);
     } finally {
       hostMock.host.isMobileShell = false;
     }

@@ -1,7 +1,7 @@
-// The Stats switch belongs to the owner of a published artifact, on both
-// deployments, and sits before Share.
+// Stats left the header for the viewer's layer toggles (ENG-4455): the header
+// keeps Share and no Stats button, even for the owner of a published artifact.
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 
 vi.mock('../../../platform/host', () => ({
   host: {
@@ -18,8 +18,7 @@ vi.mock('./publish/PublishMenu', () => ({
 
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 
-function renderHeader({ isPublished = true, canManage = true, stats } = {}) {
-  const statsProp = stats === undefined ? { open: false, onToggle: vi.fn() } : stats;
+function renderHeader({ isPublished = true, canManage = true } = {}) {
   render(
     <ArtifactViewerHeader
       title="Weather Dashboard"
@@ -61,48 +60,17 @@ function renderHeader({ isPublished = true, canManage = true, stats } = {}) {
         onDownload: vi.fn(),
         onTrash: vi.fn(),
       }}
-      stats={statsProp}
       onClose={vi.fn()}
     />,
   );
-  return statsProp;
 }
 
-describe('Stats button', () => {
-  it('is offered to the owner of a published artifact, before Share', () => {
+describe('Stats in the header', () => {
+  it('is not offered there to the owner of a published artifact', () => {
     renderHeader();
 
-    const stats = screen.getByRole('button', { name: 'Stats' });
-    const share = screen.getByRole('button', { name: 'Share' });
-    expect(stats.compareDocumentPosition(share) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // The layer toggles left the header for the revision line.
+    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Stats' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Comments' })).toBeNull();
-  });
-
-  it('is hidden on an unpublished artifact', () => {
-    renderHeader({ isPublished: false });
-
-    expect(screen.queryByRole('button', { name: 'Stats' })).toBeNull();
-  });
-
-  it('is hidden from someone who cannot manage the artifact', () => {
-    renderHeader({ canManage: false });
-
-    expect(screen.queryByRole('button', { name: 'Stats' })).toBeNull();
-  });
-
-  it('is hidden when the viewer passes no stats controller', () => {
-    renderHeader({ stats: null });
-
-    expect(screen.queryByRole('button', { name: 'Stats' })).toBeNull();
-  });
-
-  it('reads as a toggle and reports clicks', () => {
-    const stats = renderHeader({ stats: { open: true, onToggle: vi.fn() } });
-
-    const button = screen.getByRole('button', { name: 'Stats' });
-    expect(button).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(button);
-    expect(stats.onToggle).toHaveBeenCalledTimes(1);
   });
 });

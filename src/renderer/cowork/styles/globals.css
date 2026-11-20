@@ -4485,3 +4485,8 @@ button.artifact-ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, v
   border-color: color-mix(in srgb, var(--ink) 18%, transparent);
   color: var(--ink);
 }
+
+/* The Share footer's status fades between Saving…, Saved and Up to date. */
+@keyframes up-to-date-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.up-to-date-tag { animation: up-to-date-in 180ms var(--ease-out, ease-out); }
+@media (prefers-reduced-motion: reduce) { .up-to-date-tag { animation: none; } }

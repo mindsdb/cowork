@@ -54,7 +54,8 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
-import { AUDIENCE_CHOICE } from '../lib/orgSharing';
+import { AUDIENCE_CHOICE, groupArtifactsBySection, isOrgSharingOn } from '../lib/orgSharing';
+import { useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
 import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
 import { publishFailureReason, publishRefusalMessage } from '../components/artifact/publish/publishErrors';
 import {
@@ -92,6 +93,24 @@ const EMPTY_ARTIFACTS = [];
 // Page padding of the row group, shared with its loading skeleton so loading
 // does not shift the layout.
 const LIST_CLASS = 'mx-8 mb-[60px]';
+
+// With sharing in the org, artifacts are grouped as skills are (Mine, Shared
+// with me, a team, everyone at the org), with the Skills page's icons.
+const SECTION_ICONS = {
+  mine: Ico.lock,
+  shared_with_me: Ico.user,
+  team: Ico.people,
+  org: Ico.building,
+};
+
+function SectionTitle({ section }) {
+  return (
+    <h2 className="flex items-center gap-2">
+      <span className="inline-flex text-ink-4" aria-hidden="true">{SECTION_ICONS[section.id](14)}</span>
+      {section.title}
+    </h2>
+  );
+}
 
 // Sort options for the artifacts collection. Per-page (publishing
 // state isn't relevant to other collections).
@@ -1042,6 +1061,56 @@ export default function ArtifactsView({
   const total = (list || []).length;
   const { artifactsNote } = surfaceCopy(host.isWeb);
 
+  // Sections, where the org shares (as on the Skills page); one list elsewhere.
+  const sharingCapabilities = useSharingCapabilities().capabilities;
+  const sectionsOn = isOrgSharingOn(sharingCapabilities);
+  const orgName = useSharingOrgName(sectionsOn);
+  const teamsState = useMindsHubTeams(sectionsOn);
+  const sections = useMemo(
+    () => (sectionsOn ? groupArtifactsBySection(visible, { orgName, teams: teamsState?.teams || [] }) : null),
+    [sectionsOn, visible, orgName, teamsState?.teams],
+  );
+
+  const renderCard = (a) => (
+    <ArtifactBubble
+      key={a.id || a.path}
+      artifact={a}
+      projects={projects}
+      onOpenViewer={openViewer}
+      onMenuOpen={(art, rect) => setMenuFor((prev) =>
+        prev?.artifact?.path === art.path ? null : { artifact: art, rect },
+      )}
+      isMenuOpen={menuFor?.artifact?.path === a.path}
+      phase={statusByPath[a.path]}
+      onRetry={() => handlePublish(a)}
+      onOpenProject={onOpenProject}
+      liveLines={linesOf(a)}
+      liveAppCard={isLiveAppCard(a, liveApps)}
+      liveAppAddress={liveAddressOf(a)}
+    />
+  );
+  const renderRow = (a) => (
+    <ArtifactRow
+      key={a.id || a.path}
+      artifact={a}
+      projects={projects}
+      onOpenViewer={openViewer}
+      onPublish={handlePublish}
+      onUnpublish={handleUnpublish}
+      onUpdate={handleUpdate}
+      onShareLiveApp={setShareTarget}
+      onLaunchLiveApp={launchOf(a)}
+      onDelete={handleTrash}
+      onOpenProject={onOpenProject}
+      phase={statusByPath[a.path]}
+      onRetry={() => handlePublish(a)}
+      isMacPlatform={isMacPlatform}
+      liveLines={linesOf(a)}
+      liveAppCard={isLiveAppCard(a, liveApps)}
+      liveAppAddress={liveAddressOf(a)}
+    />
+  );
+
   return (
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through.
@@ -1121,53 +1190,47 @@ export default function ArtifactsView({
         }}
       >
         {effectiveView === 'grid' ? (
-          <div className="artifacts-grid px-8 pb-[60px]">
-            {/* Grid layout (display + responsive columns + gap) lives in CSS
-                (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
-                mobile — pure CSS media queries, no JS resize listener. */}
-            {visible.map((a) => (
-              <ArtifactBubble
-                key={a.id || a.path}
-                artifact={a}
-                projects={projects}
-                onOpenViewer={openViewer}
-                onMenuOpen={(art, rect) => setMenuFor((prev) =>
-                  prev?.artifact?.path === art.path ? null : { artifact: art, rect },
-                )}
-                isMenuOpen={menuFor?.artifact?.path === a.path}
-                phase={statusByPath[a.path]}
-                onRetry={() => handlePublish(a)}
-                onOpenProject={onOpenProject}
-                liveLines={linesOf(a)}
-                liveAppCard={isLiveAppCard(a, liveApps)}
-                liveAppAddress={liveAddressOf(a)}
-              />
-            ))}
-          </div>
+          sections ? (
+            <div className="px-8 pb-[60px] flex flex-col gap-6">
+              {sections.map((section) => (
+                <section key={section.id} aria-label={section.title} className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2 font-body text-[13px] font-semibold text-ink">
+                    <SectionTitle section={section} />
+                    <span className="font-normal text-ink-4" data-testid="section-count">{section.artifacts.length}</span>
+                  </div>
+                  <div className="artifacts-grid">
+                    {section.artifacts.map(renderCard)}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="artifacts-grid px-8 pb-[60px]">
+              {/* Grid layout (display + responsive columns + gap) lives in CSS
+                  (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
+                  mobile — pure CSS media queries, no JS resize listener. */}
+              {visible.map(renderCard)}
+            </div>
+          )
         ) : (
-          <ListGroup className={LIST_CLASS}>
-            {visible.map((a) => (
-              <ArtifactRow
-                key={a.id || a.path}
-                artifact={a}
-                projects={projects}
-                onOpenViewer={openViewer}
-                onPublish={handlePublish}
-                onUnpublish={handleUnpublish}
-                onUpdate={handleUpdate}
-                onShareLiveApp={setShareTarget}
-                onLaunchLiveApp={launchOf(a)}
-                onDelete={handleTrash}
-                onOpenProject={onOpenProject}
-                phase={statusByPath[a.path]}
-                onRetry={() => handlePublish(a)}
-                isMacPlatform={isMacPlatform}
-                liveLines={linesOf(a)}
-                liveAppCard={isLiveAppCard(a, liveApps)}
-                liveAppAddress={liveAddressOf(a)}
-              />
-            ))}
-          </ListGroup>
+          sections ? (
+            <div className={`${LIST_CLASS} flex flex-col gap-6`}>
+              {sections.map((section) => (
+                <ListGroup
+                  key={section.id}
+                  aria-label={section.title}
+                  title={<SectionTitle section={section} />}
+                  description={<span data-testid="section-count">{section.artifacts.length}</span>}
+                >
+                  {section.artifacts.map(renderRow)}
+                </ListGroup>
+              ))}
+            </div>
+          ) : (
+            <ListGroup className={LIST_CLASS}>
+              {visible.map(renderRow)}
+            </ListGroup>
+          )
         )}
       </CollectionState>
 

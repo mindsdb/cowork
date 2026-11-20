@@ -90,11 +90,11 @@ function FreeTokensCard({ free, isBillingOwner }) {
             <div className="text-[13px] text-ink-3 tabular-nums">{t('usage.free.left', { percent: formatPercentShort(fractionLeft) })}</div>
           </div>
           <Meter value={fraction} tone={exhausted ? 'danger' : low ? 'warning' : 'accent'} label={t('usage.free.meterLabel')} />
-          <div className="text-[12px] text-ink-3 mt-2">
+          {offersBilling() && <div className="text-[12px] text-ink-3 mt-2">
             {exhausted
               ? (reset ? t('usage.free.usedUpUntil', { time: reset }) : t('usage.free.usedUp'))
               : (reset ? t('usage.free.afterUntil', { time: reset }) : t('usage.free.after'))}
-          </div>
+          </div>}
         </>
       )}
       <div className="flex gap-2 mt-3">
@@ -192,7 +192,7 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
     body = (
       <div className={`${CARD} flex flex-col items-start gap-3`}>
         <div className="text-base font-semibold text-ink">{t('usage.signIn.title')}</div>
-        <div className="text-[13px] text-ink-3">{t('usage.signIn.body')}</div>
+        {offersBilling() && <div className="text-[13px] text-ink-3">{t('usage.signIn.body')}</div>}
         {onOpenAccount && <Button variant="primary" size="sm" onClick={onOpenAccount}>{t('usage.signIn.goToAccount')}</Button>}
       </div>
     );
@@ -221,8 +221,8 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
     body = (
       <>
         <FreeTokensCard free={usage.freeTokens} isBillingOwner={usage.isBillingOwner} />
-        <BalanceCard balance={usage.balance} auto={usage.autoTopUp} spend={usage.creditSpend} isBillingOwner={usage.isBillingOwner} />
-        {!describableGrant(usage.freeTokens) && !usage.balance && (
+        {offersBilling() && <BalanceCard balance={usage.balance} auto={usage.autoTopUp} spend={usage.creditSpend} isBillingOwner={usage.isBillingOwner} />}
+        {!describableGrant(usage.freeTokens) && (!offersBilling() || !usage.balance) && (
           <div className={`${CARD} text-[13px] text-ink-3`}>{t('usage.empty')}</div>
         )}
       </>

@@ -2,11 +2,12 @@
 // search) used to only focus the search input — visually nothing happened.
 // It must open the "Start a new project" modal, and a create from that
 // modal must select the new project on the composer.
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within, act, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { __resetDraftsForTests } from '../lib/draftStore';
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
@@ -907,5 +908,40 @@ describe('Composer — "Write it as a doc"', () => {
     // Nor does it come back with the chat it was chosen in.
     rerender(<Composer {...props} conversationId="doc-pick-a" />);
     expect(screen.queryByRole('button', { name: 'Output: Doc. Remove' })).toBeNull();
+  });
+});
+
+describe('Composer — a caller\'s send rule', () => {
+  beforeEach(() => { __resetDraftsForTests(); });
+
+  it('sends only what the rule allows, by button and by Enter', async () => {
+    const user = userEvent.setup();
+    const canSend = vi.fn((value) => value.includes('ok'));
+    const { onSend } = renderComposer({ canSend });
+    const ta = screen.getByRole('textbox');
+
+    await user.type(ta, 'nope');
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    await user.keyboard('{Enter}');
+    expect(onSend).not.toHaveBeenCalled();
+
+    await user.type(ta, ' ok');
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+    await user.keyboard('{Enter}');
+    expect(onSend.mock.calls).toEqual([['nope ok']]);
+  });
+
+  it('can send with nothing typed when the rule says so', async () => {
+    const user = userEvent.setup();
+    const { onSend } = renderComposer({ canSend: () => true });
+
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(onSend).toHaveBeenCalledWith('');
+  });
+
+  it('keeps the usual rule without one: text is needed', () => {
+    renderComposer();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
   });
 });

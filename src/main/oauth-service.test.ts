@@ -213,6 +213,32 @@ describe('oauthConnect', () => {
     expect(result.reason).toMatch(/access token/i);
   });
 
+  it('fails the connect with Slack\'s error when the exchange answers 200 with ok: false', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    net.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: false, error: 'invalid_code' }),
+    })) as unknown as typeof net.fetch;
+
+    const flow = oauthConnect(OPTS);
+    const authUrl = await nextAuthUrl();
+    await hitCallback(authUrl, { code: 'c', state: authUrl.searchParams.get('state') as string });
+
+    expect(await flow).toEqual({ ok: false, reason: 'Token exchange failed: invalid_code' });
+  });
+
+  it('joins scopes with the caller\'s separator', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof net.fetch;
+
+    const flow = oauthConnect({ ...OPTS, scopes: ['channels:read', 'chat:write'], scopeSeparator: ',' });
+    const authUrl = await nextAuthUrl();
+    expect(authUrl.searchParams.get('scope')).toBe('channels:read,chat:write');
+    await hitCallback(authUrl, { code: 'c', state: authUrl.searchParams.get('state') as string });
+    await flow;
+  });
+
   it('honors a caller-supplied callback timeout (ENG-917 signup window)', async () => {
     captureAuthUrl(); // swallow the browser open; never fire the callback
     // The default window is 3 minutes — this resolving in milliseconds

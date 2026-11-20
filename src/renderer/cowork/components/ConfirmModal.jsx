@@ -24,6 +24,7 @@ export function ConfirmModal({
   // repeat-fires of an in-flight async action (e.g. a second sign-out
   // request).
   busy = false,
+  confirmDisabled = false,
   // Whether `busy` also locks the modal shut. Default false keeps Esc and
   // backdrop dismissal suppressed while busy, which is what every caller
   // wants for work that finishes in a moment. A caller whose work can outlast
@@ -43,13 +44,14 @@ export function ConfirmModal({
   const title = titleProp === undefined ? t('confirm.title') : titleProp;
   const confirmLabel = confirmLabelProp === undefined ? t('confirm.confirm') : confirmLabelProp;
   const cancelLabel = cancelLabelProp === undefined ? t('common.cancel') : cancelLabelProp;
+  const canConfirm = !busy && !confirmDisabled;
   const locked = busy && !dismissableWhileBusy;
   // Enter-to-confirm. Esc, backdrop and X dismissal are Modal's job
   // (disabled while locked via `dismissible` below).
   // Armed a task late so the Enter that opened the dialog can't confirm it.
   // Repeats are swallowed so a held Enter can't click the focused button.
   useEffect(() => {
-    if (!open || busy) return undefined;
+    if (!open || !canConfirm) return undefined;
     const onKey = (e) => {
       if (e.key !== 'Enter') return;
       if (e.repeat) { e.preventDefault(); return; }
@@ -61,7 +63,7 @@ export function ConfirmModal({
       window.clearTimeout(arm);
       window.removeEventListener('keydown', onKey);
     };
-  }, [open, busy, onConfirm]);
+  }, [open, canConfirm, onConfirm]);
 
   return (
     <Modal
@@ -97,8 +99,8 @@ export function ConfirmModal({
           // The deliberate "yes, do it" moment: destructive confirms use the
           // escalated solid-red variant; everything else, the accent CTA.
           variant={destructive ? 'danger-solid' : 'primary'}
-          onClick={() => { if (!busy) onConfirm?.(); }}
-          disabled={busy}
+          onClick={() => { if (canConfirm) onConfirm?.(); }}
+          disabled={!canConfirm}
           autoFocus
         >
           {busy && (
