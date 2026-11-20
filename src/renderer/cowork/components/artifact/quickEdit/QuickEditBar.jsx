@@ -293,6 +293,12 @@ export function QuickEditBar({
   // or a reply settles (applied, failed, answered, handed to the chat); it
   // folds away when the pointer goes back to the artifact, leaving the input.
   const [threadOpen, setThreadOpen] = useState(true);
+  // A change on its way: an edit running here, or a message the agent is
+  // answering in the chat (its live row). The thread stays open meanwhile.
+  const lastReply = [...messages].reverse().find((m) => m.role === 'assistant') || null;
+  const working = running
+    || lastReply?.state === 'running' || lastReply?.state === 'handing-off'
+    || (lastReply?.state === 'chat' && !!chatMessages?.some((m) => m?.role === '_streaming'));
   const lastStageRef = useRef('');
   useEffect(() => {
     const last = messages[messages.length - 1];
@@ -387,6 +393,8 @@ export function QuickEditBar({
         if (e.pointerType === 'touch') return;
         // Folding would hide the focused Undo or Ask the agent instead.
         if (threadRef.current?.contains(document.activeElement)) return;
+        // Nor while a change is on its way: the thread is where it shows.
+        if (working) return;
         setThreadOpen(false);
       }}
       onFocus={() => setThreadOpen(true)}
