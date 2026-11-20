@@ -67,7 +67,10 @@ import { useLiveApp } from '../../hooks/useLiveApp';
 import { launchLiveAppPrompt, liveAppViewerNotice } from '../../lib/liveAppState';
 import { usePublish } from './publish/usePublish';
 import { stopSharingNotice } from './publish/linkLeftLive';
-import { useArtifactComments, useArtifactCommentLayer, useCommentActions } from './comments';
+import { useArtifactComments, useArtifactCommentLayer } from './comments';
+// Imported past the index so a test that mocks './comments' keeps the real
+// posting and image upload, which used to live in this file.
+import { useCommentActions } from './comments/useCommentActions';
 import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
 import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';

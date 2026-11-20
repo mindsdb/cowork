@@ -8,7 +8,8 @@ vi.mock('./docApi');
 // The doc's comments as the rail and inbox see them; off unless a test turns them on.
 const comments = vi.hoisted(() => ({ current: null }));
 vi.mock('./useDocComments', () => ({ useDocComments: () => comments.current }));
-vi.mock('../ui/Modal', () => ({
+vi.mock('../ui/Modal', async (importOriginal) => ({
+  ...(await importOriginal()),
   Modal: ({ children, fullBleed }) => <div data-testid="modal" data-full-bleed={fullBleed ? 'true' : 'false'}>{children}</div>,
 }));
 
