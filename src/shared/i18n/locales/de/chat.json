@@ -841,5 +841,14 @@
         "2": "Diese Seite lesen und erklären, was für uns wichtig ist."
       }
     }
+  },
+  "reportContent": {
+    "title": "Inhalt melden",
+    "message": "Diesen Inhalt als unsicher oder anstößig melden? Sein Text oder Verweis und deine Kontokennungen werden zur Prüfung an das MindsHub-Team gesendet.",
+    "submit": "Meldung senden",
+    "sent": "Meldung erhalten.",
+    "failed": "Die Meldung konnte nicht gesendet werden. Bitte versuche es erneut.",
+    "rateLimited": "Tägliches Meldelimit erreicht. Bitte versuche es später erneut.",
+    "retryAt": "Tägliches Meldelimit erreicht. Versuche es am {when, date, short} um {when, time, short} erneut."
   }
 }

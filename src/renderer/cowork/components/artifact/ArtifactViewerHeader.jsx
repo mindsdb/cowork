@@ -1,4 +1,6 @@
 import Ico from '../Icons';
+import { ReportContentButton } from '../chat/ReportContentButton';
+import { artifactIdentity } from '../../lib/artifactIdentity';
 import { Badge, Button, Menu, Tooltip } from '../ui';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
@@ -135,9 +137,13 @@ export function ArtifactViewerHeader({
         )}
       </div>
 
-      {/* Right — preview errors, publishing, more actions, and close. Stats is
+      {/* Right — preview errors, reporting, publishing, more actions, and close. Stats is
           a layer toggle on the revision line (ENG-4455). */}
       <div className="artifact-viewer-action-zone" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+        {artifact?.projectId && artifactIdentity(artifact) && (
+          <ReportContentButton key={`${artifact.projectId}:${artifactIdentity(artifact)}:${workspace?.currentRevision?.id ?? ''}:${artifact.mtime ?? ''}`}
+            artifactTarget={{ projectId: String(artifact.projectId), artifactId: artifactIdentity(artifact) }} />
+        )}
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
         {/* Sharing is owner-side chrome on BOTH deployments now. It used to be
             desktop-only, on the grounds that org mode's window is a review

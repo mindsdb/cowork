@@ -177,7 +177,7 @@ describe('SettingsView inside the mobile app', () => {
   beforeEach(() => { hostMock.host.isMobileShell = true; });
   afterEach(() => { hostMock.host.isMobileShell = false; });
 
-  it('says there are no credits without offering a top-up', async () => {
+  it('shows provider availability without exposing billing status', async () => {
     spies.testProviders.mockResolvedValue({
       providerStatus: { 'minds-cloud': 'fail' },
       providerStatusDetails: { 'minds-cloud': 'HTTP 429' },
@@ -188,12 +188,12 @@ describe('SettingsView inside the mobile app', () => {
       providerStatusDetails: { 'minds-cloud': 'HTTP 429' },
     }} />);
 
-    await waitFor(() => expect(screen.getAllByText(/No credits available/i).length).toBeGreaterThan(0));
-    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    await waitFor(() => expect(screen.getAllByText(/configured provider is unavailable/i).length).toBeGreaterThan(0));
+    expect(document.body.textContent).not.toMatch(/needs credits|no credits|add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button', { name: /Top up balance/ })).toBeNull();
   });
 
-  it('names a locked model as needing credits, with no link to top up', async () => {
+  it('names a locked model as unavailable', async () => {
     render(<Harness initialSettings={{
       ...baseSettings(),
       providerStatus: { 'minds-cloud': 'ok' },
@@ -201,8 +201,8 @@ describe('SettingsView inside the mobile app', () => {
       modelEnabled: { 'gpt-5.6-sol': false },
     }} />);
 
-    await waitFor(() => expect(screen.getAllByText(/needs credits\.$/).length).toBeGreaterThan(0));
-    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    await waitFor(() => expect(screen.getAllByText(/is unavailable. Choose another model/).length).toBeGreaterThan(0));
+    expect(document.body.textContent).not.toMatch(/needs credits|no credits|add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button', { name: 'Top up your balance' })).toBeNull();
   });
 
@@ -210,7 +210,7 @@ describe('SettingsView inside the mobile app', () => {
     render(<UnavailableModelHint label="Opus" budgetReached />);
 
     expect(screen.getByText(/Opus/)).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
+    expect(document.body.textContent).not.toMatch(/needs credits|no credits|add funds|top up (?:your|balance)|pay as you go|start (?:for )?free|update your payment method/i);
     expect(screen.queryByRole('button')).toBeNull();
   });
 });

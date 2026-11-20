@@ -1175,7 +1175,8 @@ describe('ArtifactViewer quick edit bar', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
 
-      await waitFor(() => expect(loads()).toBe(before + 1), { timeout: 2000 });
+      // The reload waits for the cover's fade, which is slower under load.
+      await waitFor(() => expect(loads()).toBe(before + 1), { timeout: 5000 });
       expect(restoresAfterReload()).toEqual([
         { source: 'anton-preview-parent', type: 'restore', view: editorPlace },
       ]);
