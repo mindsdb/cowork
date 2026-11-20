@@ -818,7 +818,7 @@
     },
     "guide": {
       "title": "Estadísticas",
-      "body": "Quién abrió tu enlace compartido, cuándo y durante cuánto tiempo. Elige qué se recopila en Compartir."
+      "body": "Cómo va tu enlace compartido: cuántas veces se abrió, las vistas por día de los últimos 30 días y cada visita con quién fue (su correo en un enlace restringido; si no, un visitante anónimo), su dispositivo y, si se conoce, su ubicación. El tiempo dedicado y las páginas leídas aparecen cuando la página los informa. Tus propias visitas no se cuentan. Activa o desactiva la recopilación en Compartir, en Análisis de visitantes."
     },
     "advanced": "Avanzado"
   },

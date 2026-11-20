@@ -181,7 +181,10 @@ function Overview({
               value={data.total_views ?? analytics?.visits ?? 0}
               hint={data.last_viewed ? t('stats.metrics.lastViewedHint', { time: relativeAge(data.last_viewed) || exactTime(data.last_viewed) }) : ''}
             />
-            <Metric label={t('stats.metrics.viewers')} value={uniqueViewers} />
+            {/* Views count every open of the link; viewers only the visits
+                analytics recorded. With none recorded, 0 next to the views
+                would read as wrong, so the tile waits for one. */}
+            {uniqueViewers > 0 && <Metric label={t('stats.metrics.viewers')} value={uniqueViewers} />}
             {showAvgTime && <Metric label={t('stats.metrics.avgTime')} value={formatDuration(analytics.avg_seconds)} />}
             {showCompletion && <Metric label={t('stats.metrics.completion')} value={formatPercent(analytics.completion)} />}
           </div>

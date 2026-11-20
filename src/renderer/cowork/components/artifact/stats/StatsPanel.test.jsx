@@ -579,3 +579,14 @@ describe('StatsPanel guide and Advanced', () => {
     expect(onToggleTracking).toHaveBeenCalledWith(true);
   });
 });
+
+// Views count every open of the link, viewers only the visits analytics
+// recorded: with views but no viewer recorded, no "0 viewers" tile.
+describe('StatsPanel unique viewers', () => {
+  it('leaves out the viewers tile when views have no recorded viewer', () => {
+    renderPanel({ data: { ...EMPTY, total_views: 8, views_in_period: 8, tracking: true } });
+
+    expect(within(metric('Views')).getByText('8')).toBeInTheDocument();
+    expect(screen.queryByText('Unique viewers')).toBeNull();
+  });
+});
