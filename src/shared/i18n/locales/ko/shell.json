@@ -33,6 +33,18 @@
     },
     "field": {
       "optional": "(선택 사항)"
+    },
+    "sortHeader": {
+      "label": "목록 정렬",
+      "sortBy": "{column}(으)로 정렬",
+      "columns": {
+        "name": "이름",
+        "project": "프로젝트",
+        "updated": "업데이트",
+        "activity": "활동",
+        "type": "유형",
+        "status": "상태"
+      }
     }
   },
   "rail": {

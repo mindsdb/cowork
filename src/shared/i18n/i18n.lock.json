@@ -179689,6 +179689,278 @@
       "text": "6b9fe62b4236"
     }
   },
+  "shell:ui.sortHeader.columns.activity": {
+    "de": {
+      "from": "38da1505ca83",
+      "text": "46f08d7f9387"
+    },
+    "es": {
+      "from": "38da1505ca83",
+      "text": "d134a8ecb32a"
+    },
+    "fr": {
+      "from": "38da1505ca83",
+      "text": "6b2b8f1b80e0"
+    },
+    "it": {
+      "from": "38da1505ca83",
+      "text": "387ad1fd422d"
+    },
+    "ja": {
+      "from": "38da1505ca83",
+      "text": "1a369e55e5f2"
+    },
+    "ko": {
+      "from": "38da1505ca83",
+      "text": "d4b47a5cf760"
+    },
+    "pt-BR": {
+      "from": "38da1505ca83",
+      "text": "a5121730503f"
+    },
+    "zh-CN": {
+      "from": "38da1505ca83",
+      "text": "6d00f421df09"
+    }
+  },
+  "shell:ui.sortHeader.columns.name": {
+    "de": {
+      "from": "dcd1d5223f73",
+      "text": "dcd1d5223f73"
+    },
+    "es": {
+      "from": "dcd1d5223f73",
+      "text": "562bb15757a8"
+    },
+    "fr": {
+      "from": "dcd1d5223f73",
+      "text": "b2c124536d21"
+    },
+    "it": {
+      "from": "dcd1d5223f73",
+      "text": "5086900635fe"
+    },
+    "ja": {
+      "from": "dcd1d5223f73",
+      "text": "7ec26292414b"
+    },
+    "ko": {
+      "from": "dcd1d5223f73",
+      "text": "253d1510caf5"
+    },
+    "pt-BR": {
+      "from": "dcd1d5223f73",
+      "text": "5086900635fe"
+    },
+    "zh-CN": {
+      "from": "dcd1d5223f73",
+      "text": "d44e9b3d3b31"
+    }
+  },
+  "shell:ui.sortHeader.columns.project": {
+    "de": {
+      "from": "985959785319",
+      "text": "40ebf93af8d4"
+    },
+    "es": {
+      "from": "985959785319",
+      "text": "f3b525782609"
+    },
+    "fr": {
+      "from": "985959785319",
+      "text": "9c466199f8ec"
+    },
+    "it": {
+      "from": "985959785319",
+      "text": "b7700d71d0ce"
+    },
+    "ja": {
+      "from": "985959785319",
+      "text": "61bc332bf3a6"
+    },
+    "ko": {
+      "from": "985959785319",
+      "text": "f05481bea1dd"
+    },
+    "pt-BR": {
+      "from": "985959785319",
+      "text": "4c7877d7558f"
+    },
+    "zh-CN": {
+      "from": "985959785319",
+      "text": "79f326be4409"
+    }
+  },
+  "shell:ui.sortHeader.columns.status": {
+    "de": {
+      "from": "920e413c7d41",
+      "text": "920e413c7d41"
+    },
+    "es": {
+      "from": "920e413c7d41",
+      "text": "98e5acddb6c4"
+    },
+    "fr": {
+      "from": "920e413c7d41",
+      "text": "dee377cfd8cd"
+    },
+    "it": {
+      "from": "920e413c7d41",
+      "text": "5d788017bfe4"
+    },
+    "ja": {
+      "from": "920e413c7d41",
+      "text": "70e39859279e"
+    },
+    "ko": {
+      "from": "920e413c7d41",
+      "text": "e10195a1239f"
+    },
+    "pt-BR": {
+      "from": "920e413c7d41",
+      "text": "920e413c7d41"
+    },
+    "zh-CN": {
+      "from": "920e413c7d41",
+      "text": "6320b4a8722a"
+    }
+  },
+  "shell:ui.sortHeader.columns.type": {
+    "de": {
+      "from": "baaddf70fb5d",
+      "text": "1b024183cb33"
+    },
+    "es": {
+      "from": "baaddf70fb5d",
+      "text": "3868d2843d59"
+    },
+    "fr": {
+      "from": "baaddf70fb5d",
+      "text": "baaddf70fb5d"
+    },
+    "it": {
+      "from": "baaddf70fb5d",
+      "text": "3868d2843d59"
+    },
+    "ja": {
+      "from": "baaddf70fb5d",
+      "text": "32c421ae4cbf"
+    },
+    "ko": {
+      "from": "baaddf70fb5d",
+      "text": "5cf2792b3fab"
+    },
+    "pt-BR": {
+      "from": "baaddf70fb5d",
+      "text": "3868d2843d59"
+    },
+    "zh-CN": {
+      "from": "baaddf70fb5d",
+      "text": "ba40014ff496"
+    }
+  },
+  "shell:ui.sortHeader.columns.updated": {
+    "de": {
+      "from": "3a5ecca188c0",
+      "text": "1b4933191f5e"
+    },
+    "es": {
+      "from": "3a5ecca188c0",
+      "text": "8b0062fa48c5"
+    },
+    "fr": {
+      "from": "3a5ecca188c0",
+      "text": "6087ab8ea52e"
+    },
+    "it": {
+      "from": "3a5ecca188c0",
+      "text": "e531cb256da2"
+    },
+    "ja": {
+      "from": "3a5ecca188c0",
+      "text": "6c53bb863461"
+    },
+    "ko": {
+      "from": "3a5ecca188c0",
+      "text": "9ea9bd59e20c"
+    },
+    "pt-BR": {
+      "from": "3a5ecca188c0",
+      "text": "9bad2b2f05a9"
+    },
+    "zh-CN": {
+      "from": "3a5ecca188c0",
+      "text": "0a5f9a892960"
+    }
+  },
+  "shell:ui.sortHeader.label": {
+    "de": {
+      "from": "71e7250c0c46",
+      "text": "5bfe50117d11"
+    },
+    "es": {
+      "from": "71e7250c0c46",
+      "text": "9fec582bec0b"
+    },
+    "fr": {
+      "from": "71e7250c0c46",
+      "text": "91ea1c006c47"
+    },
+    "it": {
+      "from": "71e7250c0c46",
+      "text": "dbeba0ee25d2"
+    },
+    "ja": {
+      "from": "71e7250c0c46",
+      "text": "a62244a95b38"
+    },
+    "ko": {
+      "from": "71e7250c0c46",
+      "text": "71a8dc419d79"
+    },
+    "pt-BR": {
+      "from": "71e7250c0c46",
+      "text": "986221db159a"
+    },
+    "zh-CN": {
+      "from": "71e7250c0c46",
+      "text": "8a106e3fa7a2"
+    }
+  },
+  "shell:ui.sortHeader.sortBy": {
+    "de": {
+      "from": "55fb1bf9a665",
+      "text": "f007bf8e364c"
+    },
+    "es": {
+      "from": "55fb1bf9a665",
+      "text": "620c158558c4"
+    },
+    "fr": {
+      "from": "55fb1bf9a665",
+      "text": "05c8dd6b207f"
+    },
+    "it": {
+      "from": "55fb1bf9a665",
+      "text": "15dcf1aa2b2e"
+    },
+    "ja": {
+      "from": "55fb1bf9a665",
+      "text": "e0ecbcf29b55"
+    },
+    "ko": {
+      "from": "55fb1bf9a665",
+      "text": "422e4d0969f1"
+    },
+    "pt-BR": {
+      "from": "55fb1bf9a665",
+      "text": "620c158558c4"
+    },
+    "zh-CN": {
+      "from": "55fb1bf9a665",
+      "text": "60a3e4ec386f"
+    }
+  },
   "shell:ui.toast.dismiss": {
     "de": {
       "from": "48845bff334a",
