@@ -13,7 +13,8 @@
 //     offers "Get notified when your tasks finish"; "Turn on" fires the OS
 //     prompt, "Not now" snoozes the offer for 14 days.
 //   - A tap on a notification opens its `path` in the app's router, or its
-//     shared artifact in the authenticated viewer, or other URL in the browser. A tap that
+//     shared artifact in the viewer when it's in the user's list, or its URL in
+//     the system browser. A tap that
 //     arrives before the router exists (cold start, or before sign-in, which
 //     reloads the page) is kept in sessionStorage and applied once it does.
 //   - On sign-out, before the tokens are cleared: DELETE the device token, so
@@ -92,9 +93,7 @@ const MAX_PATH_LENGTH = 2048;
 export function safeInAppPath(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const path = value.trim();
-  // Encoding a published URL into the artifact fragment can triple its length.
-  const maxLength = path.startsWith('/artifacts#shared=') ? 3 * MAX_PATH_LENGTH + 18 : MAX_PATH_LENGTH;
-  if (!path.startsWith('/') || path.startsWith('//') || path.length > maxLength) return null;
+  if (!path.startsWith('/') || path.startsWith('//') || path.length > MAX_PATH_LENGTH) return null;
   // eslint-disable-next-line no-control-regex
   if (/[\\\u0000-\u001f\u007f]/.test(path)) return null;
   return path;
@@ -123,10 +122,12 @@ export function actionForNotification(data: unknown): PushTapAction {
   if (path) return { type: 'navigate', path };
   const url = safeExternalUrl(record.url);
   if (record.kind === 'artifact_shared') {
-    // Match the published URL against the signed-in user's artifact cards.
-    // The notification itself never supplies a URL to the viewer.
-    const destination = url ? '/artifacts#' + new URLSearchParams({ shared: url }) : '/artifacts';
-    return { type: 'navigate', path: safeInAppPath(destination) ?? '/artifacts' };
+    // Live Artifacts opens the viewer only for a card already in the signed-in
+    // user's list, and the browser otherwise. A URL too long for the path cap
+    // goes straight to the browser.
+    if (!url) return { type: 'navigate', path: '/artifacts' };
+    const destination = safeInAppPath('/artifacts#' + new URLSearchParams({ shared: url }));
+    if (destination) return { type: 'navigate', path: destination };
   }
   if (url) return { type: 'open-url', url };
   return { type: 'none' };

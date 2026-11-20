@@ -201,7 +201,7 @@ import {
 } from './lib/browserApproval';
 import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
  * created. Reads as a friendly nudge after the connect-intro card —
@@ -702,8 +702,14 @@ export function searchRecents(tasks, projects) {
 
 function RoutedArtifactsView(props) {
   const location = useLocation();
+  const navigate = useNavigate();
   const sharedUrl = new URLSearchParams(location.hash.slice(1)).get('shared');
-  return <ArtifactsView key={location.key} {...props} initialSharedUrl={sharedUrl} />;
+  // Drop the fragment once handled, so a reload or Back/Forward doesn't reopen it.
+  const clearShared = useCallback(
+    () => navigate({ pathname: location.pathname, search: location.search }, { replace: true }),
+    [navigate, location.pathname, location.search],
+  );
+  return <ArtifactsView {...props} sharedUrl={sharedUrl} onSharedUrlHandled={clearShared} />;
 }
 
 function AppCore() {
