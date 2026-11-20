@@ -492,6 +492,12 @@ async function openUrl(url) {
   try { await host.openExternal(url); } catch {}
 }
 
+// Stored and notified URLs can differ in case, default port or encoding.
+function sameUrl(a, b) {
+  if (!a || !b) return false;
+  try { return new URL(a).href === new URL(b).href; } catch { return a === b; }
+}
+
 // How a row or a grid card opens. `liveAppAddress` is where an unpublished
 // live app runs (liveAppOpenAddress), '' while it isn't running.
 function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppAddress = '' } = {}) {
@@ -828,7 +834,9 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openCom
 
 export default function ArtifactsView({
   artifacts: cards = EMPTY_ARTIFACTS,
-  initialSharedUrl = null,
+  // From a shared-artifact notification tap (/artifacts#shared=<url>).
+  sharedUrl = null,
+  onSharedUrlHandled,
   // App owns the list (it also feeds the sidebar count), so publish-state
   // changes go up rather than into a local copy that the next prop would reset.
   // Deletes reach App on their own through artifactsStore.onArtifactDeleted.
@@ -870,16 +878,12 @@ export default function ArtifactsView({
   // By path, so the viewer always shows the current card and closes once the
   // card leaves the list (e.g. after a delete).
   const [viewerPath, setViewerPath] = useState(null);
-  const [sharedUrl, setSharedUrl] = useState(initialSharedUrl);
-  const viewer = sharedUrl
-    ? list.find((a) => a.publishedUrl === sharedUrl) || null
-    : viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
+  const viewer = viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
   // A new object each time a comments counter opens the viewer: it opens on
   // its Comments panel then (ArtifactViewer's commentsRequest), and as it
   // remembers otherwise.
   const [commentsRequest, setCommentsRequest] = useState(null);
   const openViewer = (artifact, { comments = false } = {}) => {
-    setSharedUrl(null);
     setCommentsRequest(comments ? {} : null);
     setViewerPath(artifact?.path || null);
   };
@@ -888,12 +892,25 @@ export default function ArtifactsView({
   // or added while it was open.
   const [commentsRefresh, setCommentsRefresh] = useState(0);
   const closeViewer = () => {
-    setSharedUrl(null);
     if (viewer) forgetOpenCommentCount(viewer);
     setViewerPath(null);
     setCommentsRequest(null);
     setCommentsRefresh((n) => n + 1);
   };
+  // Settle a notified share once, against the first loaded list: open its card
+  // if this person has it, else its page in the browser. Checking only once
+  // keeps a card that turns up later from opening over whatever they're doing.
+  const handledShareRef = useRef(null);
+  useEffect(() => {
+    if (!sharedUrl) { handledShareRef.current = null; return; }
+    if (loading || handledShareRef.current === sharedUrl) return;
+    handledShareRef.current = sharedUrl;
+    const match = list.find((a) => sameUrl(a.publishedUrl, sharedUrl));
+    if (match) openViewer(match);
+    else openUrl(sharedUrl);
+    onSharedUrlHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedUrl, loading, list]);
   // Phones always get the grid (list rows are 5 columns); see ViewToggle.
   const { view, setView, effectiveView } = useCollectionView('anton:artifacts-view');
   const [search, setSearch] = useState('');

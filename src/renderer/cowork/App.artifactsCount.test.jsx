@@ -172,6 +172,8 @@ it('opens the notified artifact after a cold start loads the signed-in collectio
     spies.fetchArtifactsStrict.mockResolvedValue([{ ...alpha, publishedUrl: url, title: 'Weekly review' }]);
     render(<App />);
     expect(await screen.findByRole('dialog')).toHaveTextContent('Weekly review');
+    // Handled once, so a reload doesn't reopen it.
+    await waitFor(() => expect(location.hash).toBe(''));
   } finally {
     window.history.replaceState(null, '', oldPath);
   }
