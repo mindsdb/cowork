@@ -546,7 +546,9 @@
     "owner": {
       "you": "あなた",
       "youHint": "あなたのもので、ほかの人と共有しています。"
-    }
+    },
+    "openComments": "{count, plural, other {未解決のコメント # 件}}",
+    "openCommentsHint": "コメントを表示してプレビューを開く"
   },
   "compare": {
     "refused": "この側は前のターンをまだ処理中だったため、メッセージを受け取っていません。メッセージは下の入力欄に戻してあります。",
@@ -745,6 +747,13 @@
     "workingInChat": "チャットで処理中…",
     "sentToChat": "チャットに送信しました。",
     "chatStopped": "チャットのターンは回答前に停止しました。",
+    "resolveThread": {
+      "question": "コメントを解決済みにしますか？",
+      "resolve": "解決",
+      "notNow": "後で",
+      "resolved": "コメントを解決しました。",
+      "failed": "コメントを解決できませんでした。もう一度お試しください。"
+    },
     "unsavedConfirm": {
       "title": "未保存の変更があります。送信する前に保存しますか？",
       "save": "保存して送信",

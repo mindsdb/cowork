@@ -17,6 +17,8 @@ import { Card } from '../components/ui/Card';
 import OverflowMenu from '../components/OverflowMenu';
 import { useToastManager } from '../components/ui/Toast';
 import { Button, Tooltip } from '../components/ui';
+import { badgeVariants } from '../components/ui/Badge';
+import { cn } from '../lib/cn';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   publishTargetPath, artifactServeUrl, openArtifactFile,
@@ -87,6 +89,7 @@ import { host } from '../../platform/host';
 import { surfaceCopy } from '../lib/surface';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
+import { forgetOpenCommentCount, useOpenCommentCounts } from '../hooks/useOpenCommentCounts';
 import i18n, { useTranslation } from '../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(key, { ns: 'artifacts', ...vars });
@@ -284,10 +287,47 @@ function useOwnTag(markOwn) {
   return markOwn ? { label: t('artifactsView.owner.you'), description: t('artifactsView.owner.youHint') } : null;
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
+// Open comments on one of the caller's own artifacts (ENG-4560): an accent
+// pill with the count, drawn only when there is at least one. A click opens
+// the preview on its Comments panel, and only that: the row or card under it
+// does not open as well.
+function OpenCommentsCounter({ count, onOpen }) {
+  const { t } = useTranslation('artifacts');
+  if (!count || !onOpen) return null;
+  const label = t('artifactsView.openComments', { count });
+  return (
+    <Tooltip
+      content={(
+        <span className="flex flex-col gap-0.5">
+          <span className="font-semibold">{label}</span>
+          <span className="opacity-80">{t('artifactsView.openCommentsHint')}</span>
+        </span>
+      )}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        data-testid="open-comments"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onOpen(); }}
+        className={cn(
+          badgeVariants({ variant: 'accent', size: 'sm' }),
+          'm-0 shrink-0 cursor-pointer font-semibold tabular-nums transition-colors',
+          'hover:bg-[color-mix(in_srgb,var(--accent)_18%,transparent)]',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',
+        )}
+      >
+        <span className="inline-flex shrink-0" aria-hidden="true">{Ico.chats(12)}</span>
+        {count > 99 ? '99+' : count}
+      </button>
+    </Tooltip>
+  );
+}
+
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments, openComments = null, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
   /* Same open rules as the list row: the body opens the best destination, and
      ↗ opens the artifact outside the app. */
-  const { openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
+  const { target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const orgMode = useOrgMode();
   const { t } = useTranslation('artifacts');
 
@@ -391,7 +431,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           </div>
         </div>
 
-        <div className="flex min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           <ArtifactStatus
             artifact={artifact}
             phase={phase}
@@ -401,6 +441,10 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             orgMode={orgMode}
             // A live app has no page link to report; its state line says what matters.
             pageBadge={!liveAppCard}
+          />
+          <OpenCommentsCounter
+            count={openComments}
+            onOpen={target === 'preview' && onOpenComments ? () => onOpenComments(artifact) : null}
           />
         </div>
         {liveLines?.state && (
@@ -720,7 +764,7 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     }));
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openComments = null, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
   const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
@@ -767,6 +811,11 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             pageBadge={!liveAppCard}
             markOwn={markOwn}
           />
+          {openComments > 0 && target === 'preview' && onOpenComments && (
+            <ItemActions>
+              <OpenCommentsCounter count={openComments} onOpen={() => onOpenComments(artifact)} />
+            </ItemActions>
+          )}
           <ArtifactProject artifact={artifact} projects={projects} onOpenProject={onOpenProject} />
           <span className="shrink-0 whitespace-nowrap">{artifact.updated || '—'}</span>
         </>
@@ -789,6 +838,7 @@ export default function ArtifactsView({
   onOpenProject,
   onAddressWithAgent,
   resolveRepairConversation,
+  onOpenConversation,
   agentLabel = 'the agent',
   // True until the app's first artifacts fetch settles; shows skeletons.
   loading = false,
@@ -820,7 +870,24 @@ export default function ArtifactsView({
   // card leaves the list (e.g. after a delete).
   const [viewerPath, setViewerPath] = useState(null);
   const viewer = viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
-  const openViewer = (artifact) => setViewerPath(artifact?.path || null);
+  // A new object each time a comments counter opens the viewer: it opens on
+  // its Comments panel then (ArtifactViewer's commentsRequest), and as it
+  // remembers otherwise.
+  const [commentsRequest, setCommentsRequest] = useState(null);
+  const openViewer = (artifact, { comments = false } = {}) => {
+    setCommentsRequest(comments ? {} : null);
+    setViewerPath(artifact?.path || null);
+  };
+  const openComments = (artifact) => openViewer(artifact, { comments: true });
+  // Read again after the viewer closes: its comments may have been resolved
+  // or added while it was open.
+  const [commentsRefresh, setCommentsRefresh] = useState(0);
+  const closeViewer = () => {
+    if (viewer) forgetOpenCommentCount(viewer);
+    setViewerPath(null);
+    setCommentsRequest(null);
+    setCommentsRefresh((n) => n + 1);
+  };
   // Phones always get the grid (list rows are 5 columns); see ViewToggle.
   const { view, setView, effectiveView } = useCollectionView('anton:artifacts-view');
   const [search, setSearch] = useState('');
@@ -1162,6 +1229,10 @@ export default function ArtifactsView({
     return out;
   }, [list, search, sort, typeFilter, statusFilter, ownerFilter]);
 
+  // Open comments on the caller's own artifacts the page shows, read after it
+  // paints (useOpenCommentCounts).
+  const openCommentsOf = useOpenCommentCounts(visible, { refresh: commentsRefresh });
+
   const total = (list || []).length;
   const { artifactsNote } = surfaceCopy(host.isWeb);
 
@@ -1196,6 +1267,8 @@ export default function ArtifactsView({
       artifact={a}
       projects={projects}
       onOpenViewer={openViewer}
+      onOpenComments={openComments}
+      openComments={openCommentsOf(a)}
       onMenuOpen={(art, rect) => setMenuFor((prev) =>
         prev?.artifact?.path === art.path ? null : { artifact: art, rect },
       )}
@@ -1215,6 +1288,8 @@ export default function ArtifactsView({
       artifact={a}
       projects={projects}
       onOpenViewer={openViewer}
+      onOpenComments={openComments}
+      openComments={openCommentsOf(a)}
       onPublish={handlePublish}
       onUnpublish={handleUnpublish}
       onUpdate={handleUpdate}
@@ -1371,7 +1446,8 @@ export default function ArtifactsView({
       <ArtifactViewer
         open={!!viewer}
         artifact={viewer}
-        onClose={() => setViewerPath(null)}
+        onClose={closeViewer}
+        commentsRequest={commentsRequest}
         onChange={updateOne}
         // The viewer closes once its card leaves the list, so a link the
         // delete left live is told here instead.
@@ -1380,6 +1456,9 @@ export default function ArtifactsView({
         onAddressWithAgent={onAddressWithAgent}
         // No host chat here — the viewer asks which one a repair belongs to.
         resolveRepairConversation={resolveRepairConversation}
+        // The viewer stays open while the agent works in the artifact's chat;
+        // "Open in chat" goes there.
+        onOpenConversation={onOpenConversation}
       />
 
       {shareTarget && (

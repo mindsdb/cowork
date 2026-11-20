@@ -546,7 +546,9 @@
     "owner": {
       "you": "Você",
       "youHint": "Seu, compartilhado com outras pessoas."
-    }
+    },
+    "openComments": "{count, plural, one {# comentário aberto} other {# comentários abertos}}",
+    "openCommentsHint": "Abrir a pré-visualização nos comentários"
   },
   "compare": {
     "refused": "Este lado ainda estava trabalhando no último turno, então não recebeu sua mensagem. Ela voltou para a caixa abaixo.",
@@ -745,6 +747,13 @@
     "workingInChat": "Trabalhando no chat…",
     "sentToChat": "Enviado para o chat.",
     "chatStopped": "O turno do chat parou antes de responder.",
+    "resolveThread": {
+      "question": "Marcar o comentário como resolvido?",
+      "resolve": "Resolver",
+      "notNow": "Agora não",
+      "resolved": "Comentário resolvido.",
+      "failed": "Não foi possível resolver o comentário. Tente novamente."
+    },
     "unsavedConfirm": {
       "title": "Você tem alterações não salvas. Salvá-las antes de enviar?",
       "save": "Salvar e enviar",

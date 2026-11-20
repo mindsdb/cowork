@@ -546,7 +546,9 @@
     "owner": {
       "you": "你",
       "youHint": "你的内容，已与他人共享。"
-    }
+    },
+    "openComments": "{count, plural, other {# 条未解决评论}}",
+    "openCommentsHint": "打开预览并查看评论"
   },
   "compare": {
     "refused": "这一侧仍在处理上一轮，因此没有收到你的消息。消息已放回下方的输入框中。",
@@ -745,6 +747,13 @@
     "workingInChat": "正在聊天中处理…",
     "sentToChat": "已发送到聊天。",
     "chatStopped": "聊天轮次在回答前停止了。",
+    "resolveThread": {
+      "question": "将评论标记为已解决？",
+      "resolve": "解决",
+      "notNow": "暂不",
+      "resolved": "评论已解决。",
+      "failed": "无法解决评论。请重试。"
+    },
     "unsavedConfirm": {
       "title": "你有未保存的更改。发送前要保存吗？",
       "save": "保存并发送",

@@ -391,6 +391,11 @@
 .artifact-quick-edit-picker { display: flex; align-items: center; gap: 2px; flex-shrink: 0; align-self: center; }
 .artifact-quick-edit-picker .meta-pill { height: 24px; padding: 0 8px; font-size: 12px; }
 .artifact-quick-edit-muted { color: var(--ink-4); }
+/* "Mark the comment as resolved?" under the chat's answer to a comment, with
+   Resolve and Not now beside it (ENG-4560). */
+.artifact-quick-edit-resolve { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 2px; padding-top: 4px; border-top: 1px solid var(--line); width: 100%; color: var(--ink-2); }
+.artifact-quick-edit-resolve .artifact-quick-edit-actions { margin-left: 0; }
+.artifact-quick-edit-resolve.is-done { display: inline-flex; gap: 4px; border-top: 0; padding-top: 0; width: auto; color: var(--ink-3); }
 .artifact-quick-edit-error { color: var(--danger); }
 .artifact-quick-edit-hint { font: 12px/1.4 var(--font-body); padding: 0 4px; }
 

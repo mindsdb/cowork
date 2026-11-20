@@ -146,6 +146,11 @@ export interface ArtifactViewerProps {
   shareRequest?: object | null;
   /** Where that panel was opened from, for its sharing events. Defaults to 'viewer'. */
   shareEntry?: string;
+  /**
+   * One open-comments counter clicked outside the viewer, a new object per
+   * click: the viewer opens on its Comments panel, for that open only.
+   */
+  commentsRequest?: object | null;
 }
 
 export const ArtifactViewer: ComponentType<ArtifactViewerProps>;

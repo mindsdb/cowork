@@ -39,4 +39,25 @@ describe('useViewerLayers', () => {
     window.localStorage.setItem(LAYERS_STORAGE_KEY, JSON.stringify({ stats: true }));
     expect(readLayers().stats).toBe(false);
   });
+
+  // ENG-4560: the Artifacts page's comments counter opens the viewer on
+  // Comments for that open only.
+  it('switches a layer for one open without remembering it, and puts the saved ones back', () => {
+    window.localStorage.setItem(LAYERS_STORAGE_KEY, JSON.stringify({ source: true, comments: false }));
+    const { result } = renderHook(() => useViewerLayers());
+    act(() => result.current.setLayer('comments', true, { remember: false }));
+    expect(result.current.layers).toEqual({ source: false, comments: true, stats: false });
+    expect(JSON.parse(window.localStorage.getItem(LAYERS_STORAGE_KEY))).toEqual({ source: true, comments: false });
+
+    act(() => result.current.restoreLayers());
+    expect(result.current.layers).toEqual({ source: true, comments: false, stats: false });
+  });
+
+  it('keeps a switch the person makes after one for this open only', () => {
+    const { result } = renderHook(() => useViewerLayers());
+    act(() => result.current.setLayer('comments', true, { remember: false }));
+    act(() => result.current.setLayer('source', true));
+    act(() => result.current.restoreLayers());
+    expect(result.current.layers).toEqual({ source: true, comments: false, stats: false });
+  });
 });

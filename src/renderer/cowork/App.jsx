@@ -171,6 +171,7 @@ import {
   loadConversation,
 } from './CoworkRouter';
 import { normalizeComposerDisabledConnections, toggleConnectionMute } from './lib/connectionMutes';
+import { ConversationTranscriptsContext, transcriptLookup } from './lib/chatTranscriptContext';
 import { rememberTaskBrowser } from './lib/taskBrowser';
 import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/browserSwitch';
 import { useNativeOverlay } from './lib/nativeOverlay';
@@ -3085,13 +3086,14 @@ function AppCore() {
     setRoute('task');
   };
 
-  // Hydrate + reattach the conversation the `/c/:id` route resolved. `loaded` is
-  // the loader result: `{ task }`, `{ optimistic: true }` (new-chat mid-send —
-  // messages live locally, don't clobber), or `{ unavailable: true }` (transient
-  // failure).
-  const openConversation = useCallback((id, loaded) => {
-    setActiveTaskId(id);
-    setRoute('task');
+  // Hydrate + reattach a conversation. `loaded` is the `/c/:id` loader result:
+  // `{ task }`, `{ optimistic: true }` (new-chat mid-send — messages live
+  // locally, don't clobber), or `{ unavailable: true }` (transient failure).
+  // openConversation (below) runs it for the chat it shows; it also loads a
+  // chat a turn is sent into while another page stays on screen (the artifact
+  // viewer's hand-off, ENG-4560). `visit: false` leaves recents ordering alone
+  // then, since nobody opened the chat.
+  const hydrateConversation = useCallback((id, loaded, { visit = true } = {}) => {
     // Composer is cleared by selectTask (sync), not here — see there. On a
     // loader failure flag it for a retry; any resolvable result clears a stale
     // error. The render only shows it when the conversation is absent locally,
@@ -3125,12 +3127,14 @@ function AppCore() {
     // pins + the capped recents list. Runs before the empty-transcript return
     // below so every successful open updates recency — matching the prior
     // selectTask path, which recorded a visit regardless of message count.
-    recordTaskVisit(fresh, false).then(() => {
-      fetchPins().then((data) => setPins(data.pins || []));
-      fetchSessions().then((data) => {
-        if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
-      });
-    }).catch(() => {});
+    if (visit) {
+      recordTaskVisit(fresh, false).then(() => {
+        fetchPins().then((data) => setPins(data.pins || []));
+        fetchSessions().then((data) => {
+          if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+        });
+      }).catch(() => {});
+    }
 
     // A delete left unconfirmed here may have committed since; this page shows it.
     const pendingCut = unconfirmedDeletesRef.current[id];
@@ -3218,6 +3222,13 @@ function AppCore() {
       : [patch(fresh), ...prev]));
     if (cutCommitted) settleCut();
   }, [reconnectInFlight]);
+
+  // Show the conversation the `/c/:id` route resolved, and hydrate it.
+  const openConversation = useCallback((id, loaded) => {
+    setActiveTaskId(id);
+    setRoute('task');
+    hydrateConversation(id, loaded);
+  }, [hydrateConversation]);
 
   const newTask = () => {
     if (sidebarPopout) setNavPopoutOpen(false);
@@ -4215,6 +4226,9 @@ function AppCore() {
     // Preflight: no provider configured → render an action card task
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
+      // Sent from a page that stays on screen (meta.background): no chat
+      // opens to show the card, so the caller reports the refusal.
+      if (meta?.background) return false;
       const taskId = `tmp-${Date.now()}`;
       const generalFallback = runnableProjects.find((p) => p.name === 'general');
       const requestedProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null);
@@ -4293,7 +4307,8 @@ function AppCore() {
       carried ? describeOpenBrowserPage(pageOriginForContext(carried)) : '',
     ].filter(Boolean).join('\n\n');
     if (carried) void carryBrowserInto(taskId, carried);
-    setComposerAttachments([]);
+    // A chat started in the background leaves the composer as it was.
+    if (!meta?.background) setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
     // send. Previously we shipped the user message + placeholder in the
@@ -4338,8 +4353,13 @@ function AppCore() {
       updatedAt: new Date().toISOString(),
     };
     setTasks((prev) => [newT, ...prev]);
-    setActiveTaskId(taskId);
-    setRoute('task');
+    // meta.background: the chat starts without being shown; the page that
+    // sent it (the artifact viewer, ENG-4560) stays on screen and reads the
+    // turn from `tasks`.
+    if (!meta?.background) {
+      setActiveTaskId(taskId);
+      setRoute('task');
+    }
     // Mobile app (ENG-4023): the first task started is when the app offers
     // "notify me when tasks finish" (once; no-op outside the app).
     noteMobilePushTaskStarted();
@@ -5555,6 +5575,8 @@ function AppCore() {
   // back to be sent. The resolution is carried between the two here so the send
   // can't pick a different chat than the repair is bound to.
   const artifactRepairTargetRef = useRef(null);
+  // Every chat's transcript by id, for the viewer on the Artifacts page.
+  const artifactTranscripts = useMemo(() => transcriptLookup(tasks), [tasks]);
 
   const resolveArtifactRepairConversation = useCallback(async (artifact) => {
     let fetched = null;
@@ -5580,7 +5602,10 @@ function AppCore() {
 
   // `attachments`: pending image attachments (lib/imageAttachments) that ride
   // with the prompt, uploaded on send as the composer's are (ENG-4410).
-  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId, attachments = [] }) => {
+  // `inBackground`: the viewer stays open and follows the turn itself (its
+  // chat bar mirrors the reply, ENG-4560), so the chat is loaded and the turn
+  // sent without showing it. Otherwise (a live app's launch) the chat opens.
+  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId, attachments = [], inBackground = false }) => {
     const project = projects.find((item) =>
       String(item.id || '') === String(artifact?.projectId || ''))
       || projects.find((item) => item.name === artifact?.projectName)
@@ -5591,7 +5616,7 @@ function AppCore() {
     // (no origin, unreachable chat, a stale resolution) starts a new one.
     if (!target || !conversationId || target.id !== String(conversationId)) {
       // A new chat owes nothing to the composer of the chat that was open last.
-      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments });
+      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments, background: inBackground });
     }
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
     // Every refusal is settled while the viewer is still open to report it:
@@ -5619,10 +5644,18 @@ function AppCore() {
     // when the turn ends, or below when no turn starts.
     markOptimisticConversation(target.id);
     // A failed load still sends: the repair is already bound to this chat.
-    if (loaded?.status === 'ok') {
-      openConversation(target.id, { task: loaded.task, id: target.id, knownIds: loaded.knownIds });
+    if (inBackground) {
+      // Loaded all the same, so the chat holds its history when it is opened
+      // mid-turn (the flag above keeps the loader from doing it then).
+      if (loaded?.status === 'ok') {
+        hydrateConversation(target.id, { task: loaded.task, id: target.id, knownIds: loaded.knownIds }, { visit: false });
+      }
+    } else {
+      if (loaded?.status === 'ok') {
+        openConversation(target.id, { task: loaded.task, id: target.id, knownIds: loaded.knownIds });
+      }
+      selectTask(target.id);
     }
-    selectTask(target.id);
     let started = false;
     try {
       // Queued when the chat is busy, including a turn waiting on the agent's
@@ -7575,6 +7608,9 @@ function AppCore() {
         )}
 
         {route === 'artifacts' && (
+          // The viewer hands a message to an artifact's chat without leaving
+          // this page, and follows the reply from that chat's task (ENG-4560).
+          <ConversationTranscriptsContext.Provider value={artifactTranscripts}>
           <ArtifactsView
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
@@ -7584,6 +7620,7 @@ function AppCore() {
             agentLabel={agentLabel}
             onAddressWithAgent={addressArtifactWithAgent}
             resolveRepairConversation={resolveArtifactRepairConversation}
+            onOpenConversation={selectTask}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local
@@ -7592,6 +7629,7 @@ function AppCore() {
               setRoute('projects');
             }}
           />
+          </ConversationTranscriptsContext.Provider>
         )}
 
         {route === 'tasks' && (
