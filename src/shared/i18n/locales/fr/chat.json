@@ -841,5 +841,14 @@
         "2": "Lire cette page et expliquer ce qui compte pour nous."
       }
     }
+  },
+  "reportContent": {
+    "title": "Signaler le contenu",
+    "message": "Signaler ce contenu comme dangereux ou offensant ? Son texte ou sa référence et les identifiants de votre compte seront transmis à l’équipe MindsHub pour examen.",
+    "submit": "Envoyer le signalement",
+    "sent": "Signalement reçu.",
+    "failed": "Impossible d’envoyer le signalement. Veuillez réessayer.",
+    "rateLimited": "Limite quotidienne de signalements atteinte. Réessayez plus tard.",
+    "retryAt": "Limite quotidienne de signalements atteinte. Réessayez le {when, date, short} à {when, time, short}."
   }
 }

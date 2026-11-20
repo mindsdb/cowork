@@ -841,5 +841,14 @@
         "2": "Ler esta página e explicar o que importa para nós."
       }
     }
+  },
+  "reportContent": {
+    "title": "Denunciar conteúdo",
+    "message": "Denunciar este conteúdo como perigoso ou ofensivo? O texto ou a referência e os identificadores da sua conta serão enviados à equipe do MindsHub para análise.",
+    "submit": "Enviar denúncia",
+    "sent": "Denúncia recebida.",
+    "failed": "Não foi possível enviar a denúncia. Tente novamente.",
+    "rateLimited": "Você atingiu o limite diário de denúncias. Tente novamente mais tarde.",
+    "retryAt": "Você atingiu o limite diário de denúncias. Tente novamente em {when, date, short} às {when, time, short}."
   }
 }

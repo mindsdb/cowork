@@ -22,12 +22,16 @@
    pill) shrinks before anything overlaps. */
 .artifact-viewer-topbar.is-centered,
 .artifact-revision-bar.is-centered { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(max-content, 1fr); align-items: center; column-gap: 10px; }
-/* The title keeps a readable minimum, so on a tight line the pill gives way
-   first rather than the title collapsing to a letter. */
-.artifact-viewer-topbar.is-centered { grid-template-columns: minmax(min(11rem, 28%), 1fr) minmax(0, auto) minmax(min-content, 1fr); }
-/* The actions wrap onto a second line before anything is pushed out of the
-   modal; the window controls (maximize, hide toolbars, close) stay one group
-   at the end, so close is always on screen. */
+/* The title keeps a readable minimum and the actions their full width, so a
+   long address is cut in its middle before the title collapses to a letter or
+   the actions break onto several lines. With `min-content` as the actions'
+   minimum, a long address took the spare room and left them one button wide,
+   each on its own line. The two `1fr` sides still centre an address that
+   fits. */
+.artifact-viewer-topbar.is-centered { grid-template-columns: minmax(min(11rem, 28%), 1fr) minmax(0, auto) minmax(max-content, 1fr); }
+/* Below 820px the actions wrap onto a second line before anything is pushed
+   out of the modal; the window controls (maximize, hide toolbars, close) stay
+   one group at the end, so close is always on screen. */
 .artifact-viewer-window-controls { display: inline-flex; align-items: center; gap: 2px; flex: none; padding-left: 6px; border-left: 1px solid var(--line); }
 .artifact-revision-bar.is-centered .artifact-revision-actions { justify-content: flex-end; }
 .artifact-revision-center { display: flex; justify-content: center; min-width: 0; }

@@ -841,5 +841,14 @@
         "2": "Leggi questa pagina e dimmi cosa conta per noi."
       }
     }
+  },
+  "reportContent": {
+    "title": "Segnala contenuto",
+    "message": "Segnalare questo contenuto come pericoloso o offensivo? Il testo o il riferimento e gli identificativi del tuo account saranno inviati al team MindsHub per la verifica.",
+    "submit": "Invia segnalazione",
+    "sent": "Segnalazione ricevuta.",
+    "failed": "Impossibile inviare la segnalazione. Riprova.",
+    "rateLimited": "Hai raggiunto il limite giornaliero di segnalazioni. Riprova più tardi.",
+    "retryAt": "Hai raggiunto il limite giornaliero di segnalazioni. Riprova il {when, date, short} alle {when, time, short}."
   }
 }

@@ -4194,3 +4194,18 @@ export async function unregisterPushDevice(token, { timeoutMs = 3_000 } = {}) {
     timeoutMs,
   });
 }
+
+// A durable in-app receipt, never a mailto link or an optimistic success.
+export function reportContent(conversationId, messageId) {
+  return req('/content-reports/', {
+    method: 'POST',
+    body: JSON.stringify({ conversation_id: conversationId, message_id: messageId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export function reportArtifactContent(projectId, artifactId) {
+  return req('/content-reports/artifact', { method: 'POST',
+    body: JSON.stringify({ project_id: projectId, artifact_id: artifactId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
