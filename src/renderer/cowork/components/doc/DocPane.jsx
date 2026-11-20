@@ -399,7 +399,16 @@ export default function DocPane({
         {/* A version looked at shows its own title: restoring it brings that back too. */}
         <span className="doc-header__title" title={shown?.title || fallbackTitle}>{shown?.title || fallbackTitle || t('doc')}</span>
         <span aria-live="polite">{statusEl}</span>
+        {doc && (
+          <Tooltip content={canOpenInBrowser ? openLabel : t('pane.shareToOpen')}>
+            <button type="button" className="doc-iconbtn" aria-label={openLabel}
+              disabled={!canOpenInBrowser} onClick={openInBrowser}>
+              <Icon of={ArrowUpRight} size={16} />
+            </button>
+          </Tooltip>
+        )}
         {doc && editable && <VersionMenu history={history} />}
+        {doc && canShare && <PublishMenu controller={pub} noun="doc" followsEdits />}
         {doc && (
           <Menu
             ariaLabel={exportLabel}
@@ -414,26 +423,22 @@ export default function DocPane({
             ]}
           />
         )}
-        {doc && canShare && <PublishMenu controller={pub} noun="doc" followsEdits />}
-        {doc && (
-          <Tooltip content={canOpenInBrowser ? openLabel : t('pane.shareToOpen')}>
-            <button type="button" className="doc-iconbtn" aria-label={openLabel}
-              disabled={!canOpenInBrowser} onClick={openInBrowser}>
-              <Icon of={ArrowUpRight} size={16} />
-            </button>
-          </Tooltip>
-        )}
-        {onToggleExpand && (
-          <Tooltip content={expandLabel}>
-            <button type="button" className="doc-iconbtn" aria-label={expandLabel} onClick={onToggleExpand}>
-              <Icon of={expanded ? Minimize2 : Maximize2} size={16} />
-            </button>
-          </Tooltip>
-        )}
-        {onClose && (
-          <Tooltip content={t('pane.close')}>
-            <button type="button" className="doc-iconbtn" aria-label={t('pane.closeDoc')} onClick={onClose}><Icon of={X} size={16} /></button>
-          </Tooltip>
+        {/* Expand, then close, past a divider: the artifact viewer's window controls. */}
+        {(onToggleExpand || onClose) && (
+          <div className="doc-header__window-controls">
+            {onToggleExpand && (
+              <Tooltip content={expandLabel}>
+                <button type="button" className="doc-iconbtn" aria-label={expandLabel} onClick={onToggleExpand}>
+                  <Icon of={expanded ? Minimize2 : Maximize2} size={16} />
+                </button>
+              </Tooltip>
+            )}
+            {onClose && (
+              <Tooltip content={t('pane.close')}>
+                <button type="button" className="doc-iconbtn" aria-label={t('pane.closeDoc')} onClick={onClose}><Icon of={X} size={16} /></button>
+              </Tooltip>
+            )}
+          </div>
         )}
       </header>
 
