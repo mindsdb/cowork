@@ -160,6 +160,15 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
   });
 });
 
+describe('Sidebar — notification bell', () => {
+  it('sits in the header beside search, and is absent on a server without notices', () => {
+    const { rerender } = render(<Sidebar {...baseProps} notices={{ available: true, unreadCount: 3, notices: [] }} />);
+    expect(screen.getByRole('button', { name: 'Notifications, 3 unread' })).toBeInTheDocument();
+    rerender(<Sidebar {...baseProps} notices={{ available: false, unreadCount: 3, notices: [] }} />);
+    expect(screen.queryByRole('button', { name: /Notifications/ })).toBeNull();
+  });
+});
+
 describe('Sidebar — Channels has no standalone entry on either platform (ENG-932)', () => {
   // ENG-720 gave web a standalone Channels row *because* the web shell hid
   // Settings entirely, and Channels lives under Settings. ENG-932 makes

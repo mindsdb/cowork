@@ -615,7 +615,12 @@
     "succeededTitle": "定时任务已完成",
     "succeededBody": "“{title}”已完成一次运行。点击打开。",
     "succeededToast": "定时任务“{title}”已完成一次运行。",
-    "openAction": "打开任务"
+    "openAction": "打开任务",
+    "stoppedTitle": "计划任务已停止",
+    "stoppedBody": "“{title}”在完成前达到上限并已停止。点击查看。",
+    "stoppedToast": "计划任务“{title}”在完成前达到上限并已停止。",
+    "genericTitle": "新通知",
+    "genericLine": "新通知：{subject}"
   },
   "scheduleNotifyMenu": {
     "label": "通知",
