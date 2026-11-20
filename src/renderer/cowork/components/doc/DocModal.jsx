@@ -4,7 +4,7 @@
 // window's title bar.
 import { Modal } from '../ui/Modal';
 import DocPane from './DocPane';
-import { useMaximizeShortcut, useViewerLayout } from '../artifact/useViewerLayout';
+import { VIEWER_SIZE, useMaximizeShortcut, useViewerLayout } from '../artifact/useViewerLayout';
 import { useTranslation } from '../../../lib/i18n';
 import './docModal.css';
 
@@ -18,8 +18,8 @@ export default function DocModal({ artifact, onClose, onAskAgent }) {
       onClose={onClose}
       ariaLabel={artifact.title || t('doc')}
       size="lg"
-      width="min(1080px, 94vw)"
-      height="min(820px, 88vh)"
+      width={VIEWER_SIZE.width}
+      height={VIEWER_SIZE.height}
       fullBleed={layout.maximized}
     >
       <DocPane

@@ -1,12 +1,15 @@
 // How much room the artifact viewer gives the artifact (ENG-4387): full
-// screen (the modal filling the window) by default, or the modal's own size. Remembered on this device, like the layers, so the
-// next artifact opens the same way; a doc's preview (DocModal) shares the choice. Storage can be unavailable (private mode,
-// blocked site data), so every read and write is guarded and the default
-// applies then: full screen. (The toolbar and quick edit bar could be
-// hidden once; they always show now, and a saved choice to hide them is
-// ignored.)
+// screen (the modal filling the window) by default, or the modal's own size.
+// Remembered on this device, like the layers, so the next artifact opens the
+// same way; a doc's preview (DocModal) shares the choice. Viewers stay
+// mounted while closed, so every one follows a change made in another.
+// Storage can be unavailable (private mode, blocked site data): the choice
+// then lives in this page's memory, and the default applies on the next
+// launch: full screen. (The toolbar and quick edit bar could be hidden once;
+// they always show now, and a saved choice to hide them is ignored.)
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { host } from '../../../platform/host';
 
 // v2: full screen became the default (ENG-4455), so choices saved under the
 // old normal-size default start over from it.
@@ -14,15 +17,39 @@ export const LAYOUT_STORAGE_KEY = 'cowork.artifactViewer.layout.v2';
 export const DEFAULT_LAYOUT = Object.freeze({
   maximized: true,
 });
+// The viewer's own size, when it is not full screen.
+export const VIEWER_SIZE = Object.freeze({ width: 'min(1080px, 94vw)', height: 'min(820px, 88vh)' });
 const NAMES = Object.keys(DEFAULT_LAYOUT);
+
+// Choices storage refused to keep, by storage key.
+const unsaved = new Map();
+const listeners = new Set();
 
 function storageKey(userKey) {
   return userKey ? `${LAYOUT_STORAGE_KEY}:${userKey}` : LAYOUT_STORAGE_KEY;
 }
 
-export function readLayout(userKey) {
+function readRaw(key) {
+  if (unsaved.has(key)) return unsaved.get(key);
   try {
-    const raw = window.localStorage.getItem(storageKey(userKey));
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeRaw(key, raw) {
+  try {
+    window.localStorage.setItem(key, raw);
+    unsaved.delete(key);
+  } catch {
+    unsaved.set(key, raw);
+  }
+  listeners.forEach((listener) => listener());
+}
+
+function parseLayout(raw) {
+  try {
     const saved = raw ? JSON.parse(raw) : null;
     if (!saved || typeof saved !== 'object') return { ...DEFAULT_LAYOUT };
     return Object.fromEntries(NAMES.map((name) => [
@@ -33,10 +60,13 @@ export function readLayout(userKey) {
   }
 }
 
-function writeLayout(userKey, layout) {
-  try {
-    window.localStorage.setItem(storageKey(userKey), JSON.stringify(layout));
-  } catch { /* not remembered this time; the layout still changes */ }
+export function readLayout(userKey) {
+  return parseLayout(readRaw(storageKey(userKey)));
+}
+
+function subscribe(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 /**
@@ -44,16 +74,22 @@ function writeLayout(userKey, layout) {
  * @returns {{ layout: typeof DEFAULT_LAYOUT, toggle: (name: string) => void }}
  */
 export function useViewerLayout(userKey = '') {
-  const [layout, setLayout] = useState(() => readLayout(userKey));
+  const key = storageKey(userKey);
+  // The raw string is the snapshot: a primitive, so React sees no change
+  // until the saved choice itself changes.
+  const raw = useSyncExternalStore(subscribe, () => readRaw(key));
+  const layout = useMemo(() => parseLayout(raw), [raw]);
   const toggle = useCallback((name) => {
     if (!NAMES.includes(name)) return;
-    setLayout((prev) => {
-      const next = { ...prev, [name]: !prev[name] };
-      writeLayout(userKey, next);
-      return next;
-    });
-  }, [userKey]);
+    const prev = parseLayout(readRaw(key));
+    writeRaw(key, JSON.stringify({ ...prev, [name]: !prev[name] }));
+  }, [key]);
   return { layout, toggle };
+}
+
+/** The full screen shortcut, as `aria-keyshortcuts` names it. */
+export function maximizeKeyShortcuts() {
+  return host.isMac() ? 'Meta+Shift+Enter' : 'Control+Shift+Enter';
 }
 
 /**

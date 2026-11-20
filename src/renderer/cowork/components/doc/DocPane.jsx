@@ -28,6 +28,7 @@ import { useVersionHistory } from './useVersionHistory';
 import { changedSince } from './versionHistory';
 import { PublishMenu } from '../artifact/publish/PublishMenu';
 import { usePublish } from '../artifact/publish/usePublish';
+import { maximizeKeyShortcuts } from '../artifact/useViewerLayout';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { useDocsEnabled } from '../../../lib/docsEnabled';
@@ -439,7 +440,7 @@ export default function DocPane({
             {onToggleMaximized && (
               <Tooltip content={maximizeLabel}>
                 <button type="button" className="doc-iconbtn" aria-label={maximizeLabel}
-                  aria-keyshortcuts={host.isMac() ? 'Meta+Shift+Enter' : 'Control+Shift+Enter'}
+                  aria-keyshortcuts={maximizeKeyShortcuts()}
                   onClick={onToggleMaximized}>
                   <Icon of={maximized ? Minimize2 : Maximize2} size={16} />
                 </button>

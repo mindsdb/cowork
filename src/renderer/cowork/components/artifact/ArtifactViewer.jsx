@@ -79,7 +79,7 @@ import { usePreviewFit } from './usePreviewFit';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
-import { useMaximizeShortcut, useViewerLayout } from './useViewerLayout';
+import { VIEWER_SIZE, useMaximizeShortcut, useViewerLayout } from './useViewerLayout';
 import { ViewerModeRail } from './ViewerModeRail';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
@@ -1818,8 +1818,8 @@ export function ArtifactViewer({
       open={open}
       onClose={requestClose}
       size="lg"
-      width="min(1080px, 94vw)"
-      height="min(820px, 88vh)"
+      width={VIEWER_SIZE.width}
+      height={VIEWER_SIZE.height}
       fullBleed={layout.maximized}
       labelledBy="artifact-viewer-title"
     >
