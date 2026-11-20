@@ -9,9 +9,9 @@
 // doc view context. Cmd+Z and Shift+Cmd+Z are the doc's undo and redo
 // (useDoc), and a deletion offers its undo in a notice.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Download, FileText, Maximize2, Minimize2, PanelLeftOpen, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, FileText, Maximize2, Minimize2, PanelLeftOpen, X } from 'lucide-react';
 import { Icon } from '../ui/Icon';
-import { Menu, Tooltip } from '../ui';
+import { Button, Menu, Spinner, Tooltip } from '../ui';
 import DocCanvas from './DocCanvas';
 import { TabRail, TabStrip, tabElementId, useTabsHidden } from './DocTabs';
 import { docPageTarget } from './docArtifact';
@@ -104,6 +104,7 @@ export default function DocPane({
     clearWriteError,
   } = useDoc({ projectRef, artifactId, transport: LOCAL_TRANSPORT });
   const { t } = useTranslation('docs');
+  // Export and full screen use the artifact viewer's own words.
   const { t: tArtifacts } = useTranslation('artifacts');
   // Images beside the doc, fetched with the app's credentials (the shell shows
   // only blob: images from its own server).
@@ -244,7 +245,9 @@ export default function DocPane({
     reportView();
   }, [reportView, tab]);
 
+  const [exporting, setExporting] = useState(false);
   const exportAs = async (format) => {
+    setExporting(true);
     try {
       const name = await downloadDocExport(projectRef, artifactId, format);
       // The download is handed on, not finished: the desktop app asks where
@@ -252,6 +255,8 @@ export default function DocPane({
       setNotice({ tone: 'info', text: t('export.exporting', { name }) });
     } catch (e) {
       setNotice({ tone: 'warn', text: e.message || t('export.failed') });
+    } finally {
+      setExporting(false);
     }
   };
   const copyMarkdown = async () => {
@@ -413,13 +418,19 @@ export default function DocPane({
         )}
         {doc && editable && <VersionMenu history={history} />}
         {doc && canShare && <PublishMenu controller={pub} noun="doc" followsEdits />}
+        {/* Worn like the artifact viewer's Export (ArtifactExportMenu). */}
         {doc && (
           <Menu
             ariaLabel={exportLabel}
-            tooltip={exportLabel}
-            trigger={<button type="button" className="doc-iconbtn" aria-label={exportLabel}><Icon of={Download} size={16} /></button>}
+            align="end"
+            trigger={
+              <Button size="sm" disabled={exporting}>
+                {exporting
+                  ? (<><Spinner style={{ color: 'currentColor' }} /> {tArtifacts('export.exporting')}</>)
+                  : (<>{tArtifacts('export.export')} <span className="inline-flex text-ink-3"><Icon of={ChevronDown} size={14} /></span></>)}
+              </Button>
+            }
             items={[
-              { heading: t('export.downloadAs') },
               ...exportChoices(capabilities?.exportFormats)
                 .map((key) => ({ key, label: t(`export.format.${key}`), onClick: () => exportAs(key) })),
               { divider: true },
