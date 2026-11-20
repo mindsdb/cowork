@@ -105,6 +105,7 @@ describe('SettingsView: a model an admin restricted', () => {
 
     await user.click(screen.getAllByRole('button', { name: 'View budgets' })[0]);
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('budget_notice');
+    // A warning before any call was refused, so the link stays untagged.
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BUDGETS_URL);
   });
 

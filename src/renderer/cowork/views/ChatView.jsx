@@ -1583,7 +1583,7 @@ export function BudgetExceededCard({
   deleting = false,
 }) {
   const { t } = useTranslation('chat');
-  const budgetsUrl = useBudgetsUrl();
+  const budgetsUrl = useBudgetsUrl({ fromDenial: true });
   if (!offersBilling()) {
     return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
       kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}

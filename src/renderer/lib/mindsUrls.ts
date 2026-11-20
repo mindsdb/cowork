@@ -113,6 +113,9 @@ export const MINDS_ADD_FUNDS_URL = `${MINDS_BILLING_URL}?exhausted=1`;
 export const MINDS_AUTO_TOP_UP_URL = `${MINDS_BILLING_URL}?autoTopUp=1`;
 // The org's Budgets tab; an administrator raises a spent budget here.
 export const MINDS_BUDGETS_URL = `${MINDS_BILLING_URL}?tab=budgets`;
+// From a budget denial (the stopped-task card, Code's composer lip). `from` lets
+// the console's Budgets tab count the visit as a denial's; other links stay bare.
+export const MINDS_BUDGETS_DENIAL_URL = `${MINDS_BUDGETS_URL}&from=budget_denial`;
 export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 
 // Console settings pages the sidebar user menu deep-links to (ENG-1408) —
