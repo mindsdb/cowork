@@ -66,9 +66,6 @@ export const IPC = {
   // account's browser caches are gone before React can seed state from them.
   ACCOUNT_SIGNED_IN_SYNC: 'account:signed-in-sync',
 
-  // Keychain — where the refresh token is stored (file vs macOS keychain)
-  KEYCHAIN_PREF_GET: 'keychain:get',
-  KEYCHAIN_PREF_SET: 'keychain:set',
   USAGE_EVENTS_GET: 'usage-events:get',
   USAGE_EVENTS_SET: 'usage-events:set',
 
