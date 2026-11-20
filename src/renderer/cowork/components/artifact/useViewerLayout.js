@@ -17,8 +17,9 @@ export const LAYOUT_STORAGE_KEY = 'cowork.artifactViewer.layout.v2';
 export const DEFAULT_LAYOUT = Object.freeze({
   maximized: true,
 });
-// The viewer's own size, when it is not full screen.
-export const VIEWER_SIZE = Object.freeze({ width: 'min(1080px, 94vw)', height: 'min(820px, 88vh)' });
+// The viewer keeps the large modal's full height when not full screen, rather
+// than shrinking to its content.
+const VIEWER_HEIGHT = 'min(820px, 88vh)';
 const NAMES = Object.keys(DEFAULT_LAYOUT);
 
 // Choices storage refused to keep, by storage key.
@@ -77,7 +78,8 @@ export function useViewerLayout(userKey = '') {
   const key = storageKey(userKey);
   // The raw string is the snapshot: a primitive, so React sees no change
   // until the saved choice itself changes.
-  const raw = useSyncExternalStore(subscribe, () => readRaw(key));
+  const getSnapshot = useCallback(() => readRaw(key), [key]);
+  const raw = useSyncExternalStore(subscribe, getSnapshot);
   const layout = useMemo(() => parseLayout(raw), [raw]);
   const toggle = useCallback((name) => {
     if (!NAMES.includes(name)) return;
@@ -98,7 +100,7 @@ export function maximizeKeyShortcuts() {
  * @param {boolean} active
  * @param {(name: string) => void} toggle  From useViewerLayout.
  */
-export function useMaximizeShortcut(active, toggle) {
+function useMaximizeShortcut(active, toggle) {
   useEffect(() => {
     if (!active) return undefined;
     const onKeyDown = (event) => {
@@ -109,6 +111,18 @@ export function useMaximizeShortcut(active, toggle) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [active, toggle]);
+}
+
+/**
+ * The viewer modal's layout: the remembered choice, its toggle and shortcut,
+ * and the props that size the <Modal> to match.
+ * @param {boolean} open
+ */
+export function useViewerModal(open) {
+  const { layout, toggle } = useViewerLayout();
+  useMaximizeShortcut(open, toggle);
+  const modalProps = { size: 'lg', height: VIEWER_HEIGHT, fullBleed: layout.maximized };
+  return { layout, toggle, modalProps };
 }
 
 export default useViewerLayout;

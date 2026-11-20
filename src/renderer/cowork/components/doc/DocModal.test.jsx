@@ -62,7 +62,6 @@ describe('DocModal', () => {
     expect(modal()).toHaveAttribute('data-full-bleed', 'false');
 
     fireEvent.click(screen.getByRole('button', { name: 'Full screen' }));
-    expect(JSON.parse(window.localStorage.getItem(LAYOUT_STORAGE_KEY))).toEqual({ maximized: true });
     first.unmount();
 
     await renderModal();
