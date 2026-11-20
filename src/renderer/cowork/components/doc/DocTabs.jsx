@@ -4,7 +4,7 @@
 // move between tabs and open them. The rail folds away, as the app's sidebar
 // does, and stays folded for the next doc (useTabsHidden).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Ellipsis, PanelLeftClose, Plus } from 'lucide-react';
+import { Ellipsis, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { Menu, Tooltip } from '../ui';
 import { useTranslation } from '../../../lib/i18n';
@@ -207,5 +207,25 @@ export function TabRail({ tabs, activeId, unseen, editable, onSelect, apply, idB
         <button type="button" className="doc-tabs__add" onClick={add}><Icon of={Plus} size={14} /> {t('tabs.add')}</button>
       )}
     </nav>
+  );
+}
+
+/**
+ * The way back to a folded rail: on the page's left edge, on the line where
+ * the rail's Hide tabs sat, so the two read as one control. `changed`, a tab
+ * changed out of sight.
+ */
+export function ShowTabsButton({ onShow, changed = false, buttonRef }) {
+  const { t } = useTranslation('docs');
+  return (
+    <div className="doc-tabs-show">
+      <Tooltip content={t('pane.showTabs')}>
+        <button type="button" ref={buttonRef} className="doc-tabs-show__btn" onClick={onShow}
+          aria-label={t(changed ? 'pane.showTabsChanged' : 'pane.showTabs')}>
+          <Icon of={PanelLeftOpen} size={16} />
+          {changed && <span className="doc-tabs-show__dot" />}
+        </button>
+      </Tooltip>
+    </div>
   );
 }
