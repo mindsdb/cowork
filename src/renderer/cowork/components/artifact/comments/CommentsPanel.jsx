@@ -15,7 +15,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ToggleGroup as BaseToggleGroup } from '@base-ui/react/toggle-group';
 import { Toggle as BaseToggle } from '@base-ui/react/toggle';
-import { isoToEpoch } from '../../../lib/commentsReducer';
+import { commentKindFor, isOpenThread, isoToEpoch } from '../../../lib/commentsReducer';
 import { ConfirmModal } from '../../ConfirmModal';
 import { InboxCard } from './InboxCard';
 import { UnanchoredComposer } from './UnanchoredComposer';
@@ -27,7 +27,7 @@ import { useTranslation } from '../../../../lib/i18n';
 // It sits in the viewer's shared side panel (ViewerSidePanel), which plays
 // the slide in and out, so the inbox has no entrance of its own.
 
-const isClosed = (t) => t.status === 'resolved' || t.status === 'dismissed';
+const isClosed = (t) => !isOpenThread(t);
 
 // Empty-state copy — exact reference strings (comments.panel.empty.*).
 const TABS = ['open', 'resolved', 'all'];
@@ -53,6 +53,11 @@ export function CommentsPanel({
   onLeaveThread,
   onFocusThread,
   loadImage = null,
+  // Replying from the inbox, where nothing else holds the thread (a doc's
+  // comments): a card clicked opens to its replies (InboxCard) and stays open
+  // until another is, so going back to its place keeps a reply being typed.
+  // Without it a card ignores `expanded`.
+  onReply = null,
 }) {
   const { t: tr } = useTranslation('artifacts');
   const [tab, setTab] = useState('open');
@@ -61,6 +66,7 @@ export function CommentsPanel({
   // ConfirmModal instead of window.confirm — the native dialog steals
   // webContents focus in Electron and leaves inputs dead afterwards.
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
 
   const groups = useMemo(() => {
     const notDismissed = threads.filter((t) => t.status !== 'dismissed');
@@ -185,7 +191,12 @@ export function CommentsPanel({
             onRequestDelete={setPendingDelete}
             onHover={onHoverThread}
             onLeave={onLeaveThread}
-            onFocus={onFocusThread}
+            onFocus={(id) => {
+              setExpandedId(id);
+              onFocusThread?.(id);
+            }}
+            onReply={onReply}
+            expanded={expandedId === t.id}
           />
         ))}
       </div>
@@ -199,7 +210,7 @@ export function CommentsPanel({
           New threads are open and sort newest-first, so scroll to top. */}
       <UnanchoredComposer
         onCreate={onCreate}
-        kind={viewer?.role === 'reviewer' ? 'issue' : 'review'}
+        kind={commentKindFor(viewer)}
         placeholder={viewer?.role === 'reviewer' ? tr('comments.panel.reportIssue') : tr('comments.composer.placeholder')}
         onPosted={() => listRef.current?.scrollTo({ top: 0 })}
       />

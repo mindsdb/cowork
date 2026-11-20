@@ -609,6 +609,9 @@ export async function checkConfigured(): Promise<{
   // Only a server that issues signed draft links reports them; the bridge
   // path never does.
   draftLinks?: boolean;
+  // Present only when /health reports it; lib/docsEnabled.ts decides what
+  // its absence (an older server, the bridge) means.
+  docsEnabled?: boolean;
 }> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
@@ -623,6 +626,7 @@ export async function checkConfigured(): Promise<{
     org_mode?: boolean;
     live_apps?: boolean;
     draft_links?: boolean;
+    docs_enabled?: unknown;
   };
   return {
     configured: Boolean(h.config_ready),
@@ -630,6 +634,7 @@ export async function checkConfigured(): Promise<{
     orgMode: Boolean(h.org_mode),
     liveApps: h.live_apps === true,
     draftLinks: h.draft_links === true,
+    ...(typeof h.docs_enabled === 'boolean' ? { docsEnabled: h.docs_enabled } : {}),
   };
 }
 

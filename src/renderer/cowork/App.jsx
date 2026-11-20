@@ -76,7 +76,9 @@ import {
 } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
+import { getDocsEnabled } from '../lib/docsEnabled';
 import { clearDraft, moveDraft } from './lib/draftStore';
+import { takeDocContext } from './lib/docViewContext';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -140,9 +142,10 @@ import {
   mergeConvTurns,
   removeConvTurnsFor,
 } from './lib/conversationHistory';
-import { noteArtifactsFromSteps, onArtifactDeleted } from './lib/artifactsStore';
-import { createLatestLoader, withArtifactChange, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
+import { noteArtifactsFromSteps, onArtifactDeleted, onArtifactRenamed } from './lib/artifactsStore';
+import { createLatestLoader, withArtifactChange, withArtifactTitle, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
 import { resolveRepairConversation } from './lib/artifactRepairChat';
+import { originConversationId } from './lib/artifactIdentity';
 import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
@@ -975,6 +978,12 @@ function AppCore() {
       reloadArtifacts();
     }
   }), [artifactsLoader, reloadArtifacts]);
+  // A doc renamed in its editor, from any surface, retitles its card in the
+  // library and the sidebar.
+  useEffect(() => onArtifactRenamed(({ id, title }) => {
+    if (withArtifactTitle(artifactsRef.current, id, title) === artifactsRef.current) return;
+    artifactsLoader.change(() => setArtifacts((prev) => withArtifactTitle(prev, id, title)));
+  }), [artifactsLoader]);
   // Publish state changes made on the artifacts page.
   const handleArtifactChanged = useCallback((updated) => {
     artifactsLoader.change(() => setArtifacts((prev) => withArtifactChange(prev, updated)));
@@ -1501,6 +1510,9 @@ function AppCore() {
       // is out, `addonOffer` for the slot a mid-task send holds from the
       // moment Enter is pressed, `addonLocalKey` to find it again, and
       // `paused` + `unconfirmed` when nobody can say whether it was added.
+      // A doc message's `output` ("Write it as a doc") and `docContext` (the
+      // doc beside the chat as it was when this was sent) ride here too, so
+      // they belong to this message and not to whichever turn starts first.
       ...(extra || {}),
     };
     updateMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
@@ -1523,6 +1535,18 @@ function AppCore() {
       else next[taskId] = arr;
       return next;
     });
+  };
+  // The person took a queued message out. One that held its chat optimistic
+  // (a request from the library or an artifact's viewer) lets the mark go
+  // when no turn runs there and nothing else queued holds it.
+  const removeQueuedItem = (taskId, itemId) => {
+    const queued = messageQueueRef.current[taskId] || [];
+    const item = queued.find((q) => q.id === itemId);
+    removeFromQueue(taskId, itemId);
+    if (item?.holdsOptimistic && !hasLiveTurnHere(taskId)
+      && !queued.some((q) => q.id !== itemId && q.holdsOptimistic)) {
+      clearOptimisticConversation(taskId);
+    }
   };
   // The first item that may run: a paused one waits for the person.
   const queueHead = (taskId) => (messageQueueRef.current[taskId] || []).find((q) => !q.paused) || null;
@@ -2270,6 +2294,9 @@ function AppCore() {
     const onKey = (e) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.altKey || e.shiftKey) return;
+      // A shortcut the focused control already took is not the app's: in a
+      // doc, Cmd+B bolds and Cmd+K adds a link.
+      if (e.defaultPrevented) return;
       const key = e.key.toLowerCase();
       if (key === 'b') {
         // Cowork mirrors Main's task-only affordance; Code treats the whole
@@ -2814,7 +2841,7 @@ function AppCore() {
   const airAvailableForSwitch =
     (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
     && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
-  const handleSwitchToAirAndResend = (text, attachments = null) => {
+  const handleSwitchToAirAndResend = (text, attachments = null, docContext = null) => {
     if (!currentTask || !text) return;
     // Persist the switch on the task so follow-up sends stay on Air, and
     // override the same send explicitly — the state write isn't visible to
@@ -2822,7 +2849,7 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: MINDSHUB_AIR_MODEL_ID } : t)));
     /* `attachments` is the failed message's own list, so its files go with the
        resend and the composer's staged files stay put. */
-    handleSendInTask(text, attachments, { modelOverride: MINDSHUB_AIR_MODEL_ID });
+    handleSendInTask(text, attachments, { modelOverride: MINDSHUB_AIR_MODEL_ID, docContext });
   };
 
   useEffect(() => {
@@ -3074,13 +3101,15 @@ function AppCore() {
   // `/c/:id`, whose loader + openConversation() (below) do the hydration and
   // stream reattach — so sidebar click / deep link / refresh / Back all run one
   // path.
-  const selectTask = (id) => {
+  const selectTask = (id, { keepStaged = false } = {}) => {
     if (sidebarPopout) setNavPopoutOpen(false);
     setWorkspaceMode('cowork');
     // Clear the composer here (the sync nav intent), not in openConversation:
     // that runs after the async loader and would wipe a queued-message redirect
-    // ChatView stages for the conversation. Matches staging's ordering.
-    setComposerAttachments([]);
+    // ChatView stages for the conversation. Matches staging's ordering. A send
+    // that brings the person here itself ("Edit with agent" from the library)
+    // keeps the staged files: they were never its to send or drop.
+    if (!keepStaged) setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
   };
@@ -4201,6 +4230,8 @@ function AppCore() {
   const carriedPageRef = useRef(null);
   carriedPageRef.current = carriedBrowserPage;
 
+  // `meta.docRequest` is a request sent from elsewhere ("Edit with agent"
+  // from the library), naming the doc it is about.
   const handleSendFromHome = async (text, meta) => {
     if (!canRunProject(meta?.project) || (route === 'projects' && !canRunProject(selectedProject))) {
       throw new Error(tApp('tasks.ownerOnly'));
@@ -4215,7 +4246,9 @@ function AppCore() {
     // Preflight: no provider configured → render an action card task
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
-      const taskId = `tmp-${Date.now()}`;
+      // A caller that keeps something beside this chat (a doc) names the
+      // placeholder's id ahead, so it finds the chat this makes.
+      const taskId = meta?.placeholderId || `tmp-${Date.now()}`;
       const generalFallback = runnableProjects.find((p) => p.name === 'general');
       const requestedProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null);
       const effectiveProjectName = requestedProject?.name || 'general';
@@ -4294,6 +4327,8 @@ function AppCore() {
     ].filter(Boolean).join('\n\n');
     if (carried) void carryBrowserInto(taskId, carried);
     setComposerAttachments([]);
+    // A new conversation has no doc view yet: this is just the request's.
+    const docContext = takeDocContext(taskId, meta?.docRequest);
 
     // Two-phase send so the new-task experience matches the in-chat
     // send. Previously we shipped the user message + placeholder in the
@@ -4407,7 +4442,7 @@ function AppCore() {
           ? {
               ...t,
               messages: withThinkingPlaceholder(
-                [{ role: 'user', content: text, attachments: sendingAttachments }],
+                [{ role: 'user', content: text, attachments: sendingAttachments, ...(docContext ? { docContext } : {}) }],
                 // New-task path: the placeholder phase is genuinely
                 // "spinning up the conversation" — anton-core has to
                 // boot the LLM session, attach memories, etc. — so
@@ -4444,6 +4479,8 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       browserOff: browserOffForSend,
+      output: meta?.output,
+      docContext,
       onEvent(ev) {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
@@ -4619,7 +4656,9 @@ function AppCore() {
   const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     // opts.targetTask lets the queue drain re-send to a specific task the
     // user may not currently be viewing (ENG-1378); a fresh composer send
-    // defaults to the task on screen.
+    // defaults to the task on screen. opts.output and opts.docRequest are
+    // this message's doc choices (see enqueueMessage); a drained message
+    // brings the doc context it was sent with as opts.docContext.
     const targetTask = opts.targetTask || currentTask;
     if (!targetTask) return false;
     const targetProject = projects.find((project) => project.id === targetTask.projectId);
@@ -4720,6 +4759,13 @@ function AppCore() {
       retireLiveQuestion(id, answerOutcome.questionId);
     }
 
+    // The doc open beside this chat as it is now, taken for this message: it
+    // goes with it, through the queue if a turn is running, and the passage
+    // picked in it goes with this message only. Taken any later (as the queue
+    // drains, say), it would be whatever the pane shows then, or nothing once
+    // the person has moved to another chat.
+    const docContext = opts.docContext !== undefined ? opts.docContext : takeDocContext(id, opts.docRequest);
+
     // Anton-core can't run two turns in parallel against the same
     // conversation, so if a stream is in flight (or one is about to
     // start) for this task we queue the new message and let
@@ -4752,7 +4798,12 @@ function AppCore() {
       // first (ENG-4194). Only the person's own composer sends: a drained or
       // machine-written prompt (a repair) always queues, as before.
       let queuedReason = null;
-      if (!opts.targetTask && !opts.skipPendingAnswer && hasLiveTurnHere(id)) {
+      // A message that asks for a doc ("Write it as a doc") or acts on a
+      // passage ("Edit with agent") needs its own turn with that context:
+      // an add-on reaches the running turn as text alone. Without doc tools
+      // the request carries no doc context, so such a message is like any other.
+      const asksForDoc = getDocsEnabled() && Boolean(opts.output || docContext?.request || docContext?.selection);
+      if (!opts.targetTask && !opts.skipPendingAnswer && !asksForDoc && hasLiveTurnHere(id)) {
         const eligibility = addonEligibility({
           conversationId: id,
           text,
@@ -4777,6 +4828,13 @@ function AppCore() {
         queuedAttachments ?? composerAttachments,
         mutesForSend,
         queuedReason,
+        {
+          ...(opts.output ? { output: opts.output } : {}),
+          ...(docContext ? { docContext } : {}),
+          // Its sender marked the chat optimistic until this turn runs; removed
+          // from the queue, no turn comes to drop the mark (removeQueuedItem).
+          ...(opts.holdsOptimistic ? { holdsOptimistic: true } : {}),
+        },
       );
       // A voice call that sent it follows its queue item to its own turn.
       opts.onQueued?.(queuedId);
@@ -4893,7 +4951,9 @@ function AppCore() {
             ...t,
             status: 'active',
             attachments: [...(t.attachments || []), ...sendingAttachments],
-            messages: withThinkingPlaceholder([...t.messages, { role: 'user', content: text, attachments: sendingAttachments }]),
+            messages: withThinkingPlaceholder([...t.messages, {
+              role: 'user', content: text, attachments: sendingAttachments, ...(docContext ? { docContext } : {}),
+            }]),
             // "Reviving" a task (replying in an existing one) must
             // bump updatedAt locally — the server only rewrites
             // _meta.json when the turn completes, but we want
@@ -4988,6 +5048,8 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       browserOff: browserOffForSend,
+      output: opts.output,
+      docContext,
       onEvent(ev) {
         if (!isCurrentStream(resolvedId || id, ctrl)) return;
         // Adopt the server's canonical id as soon as it lands. The
@@ -5536,12 +5598,16 @@ function AppCore() {
     // unhandled rejection AND silently lose the message + its file. Put it back
     // on the queue instead — it stays visible as "queued" rather than
     // vanishing, and handleSendInTask surfaces why it failed.
+    // null, not left out, for a message sent with no doc: it must not take
+    // the view as it is now.
+    const docChoices = { output: next.output, docContext: next.docContext ?? null };
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
       drainSkipped: skipped,
+      ...docChoices,
     })).catch(() => {
-      enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || []);
+      enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || [], docChoices);
     });
   };
   // Keep the mount-frozen reconnect closure pointed at the current drain (and
@@ -5578,20 +5644,42 @@ function AppCore() {
     return target.id;
   }, []);
 
+  const projectOfArtifact = (artifact) => projects.find((item) =>
+    String(item.id || '') === String(artifact?.projectId || ''))
+    || projects.find((item) => item.name === artifact?.projectName)
+    || null;
+  // Whether `id` already names a chat here. One is never handed to
+  // handleSendFromHome, which would build a second, empty task under that
+  // chat's key: its history gone from view, a new session streamed into it.
+  const namesChat = (id, artifact) => !!id
+    && (tasksRef.current.some((t) => String(t.id || '') === id) || id === originConversationId(artifact));
+
   // `attachments`: pending image attachments (lib/imageAttachments) that ride
   // with the prompt, uploaded on send as the composer's are (ENG-4410).
   const addressArtifactWithAgent = async ({ artifact, prompt, conversationId, attachments = [] }) => {
-    const project = projects.find((item) =>
-      String(item.id || '') === String(artifact?.projectId || ''))
-      || projects.find((item) => item.name === artifact?.projectName)
-      || null;
-    const target = artifactRepairTargetRef.current;
+    const project = projectOfArtifact(artifact);
+    const id = String(conversationId || '');
+    let target = artifactRepairTargetRef.current;
     artifactRepairTargetRef.current = null;
+    // An existing chat the resolution held here is not for (another one
+    // landed in between): resolve it again rather than start a new chat
+    // under its id.
+    if (target?.id !== id && namesChat(id, artifact)) {
+      await resolveArtifactRepairConversation(artifact);
+      target = artifactRepairTargetRef.current;
+      artifactRepairTargetRef.current = null;
+    }
     // Only resume a chat the repair was actually minted against; anything else
-    // (no origin, unreachable chat, a stale resolution) starts a new one.
-    if (!target || !conversationId || target.id !== String(conversationId)) {
+    // (no origin, unreachable chat, a stale resolution) starts a new one, under
+    // the id the viewer minted for it when that one is new.
+    if (!target || !id || target.id !== id) {
       // A new chat owes nothing to the composer of the chat that was open last.
-      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments });
+      return sendFromApp(prompt, {
+        project,
+        conversationId: namesChat(id, artifact) ? null : id || null,
+        disabledConnections: [],
+        attachments,
+      });
     }
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
     // Every refusal is settled while the viewer is still open to report it:
@@ -5627,7 +5715,65 @@ function AppCore() {
     try {
       // Queued when the chat is busy, including a turn waiting on the agent's
       // question: the repair prompt is not the user's answer to it.
-      started = await handleSendInTask(prompt, attachments, { targetTask, skipPendingAnswer: true });
+      started = await handleSendInTask(prompt, attachments, { targetTask, skipPendingAnswer: true, holdsOptimistic: true });
+    } finally {
+      if (!started) clearOptimisticConversation(target.id);
+    }
+    return started;
+  };
+
+  // ── "Edit with agent" on a doc opened from the library ─────────────────
+  // Sent as the doc beside its chat would send it: a message in the chat the
+  // doc came from (queued there if a turn runs), with the same docRequest,
+  // the doc docked beside it, and none of the composer's staged files. A doc
+  // with no chat to go back to (made before provenance, its chat deleted,
+  // moved to another project or unreadable now) starts a new chat, the doc
+  // docked beside that.
+  const [docToDock, setDocToDock] = useState(null); // { taskId, artifact }, until that chat shows it
+  const editDocWithAgent = async ({ artifact, message, docRequest, attachments = [] }) => {
+    const target = await resolveRepairConversation({
+      artifact,
+      tasks: tasksRef.current,
+      fetchConversation: fetchSessionResult,
+    });
+    // A listed chat this window has not read is read now: the turn about to
+    // start keeps the route loader off it, so it would show without its history.
+    let chat = target.id ? (tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task) : null;
+    if (chat && (chat.messagesStatus === 'loading' || chat.messagesStatus === 'unavailable')) {
+      const read = await fetchSessionResult(target.id);
+      chat = read.status === 'ok' ? { ...chat, ...read.task } : null;
+    }
+    if (!chat) {
+      // A real id from the start, so the doc docked beside the new chat stays
+      // there (a tmp- id changes, and the column follows the chat's id). With
+      // no provider set up the send stops at a placeholder chat that says so;
+      // the doc goes beside that one.
+      const id = allocateConversationId();
+      const placeholderId = `tmp-${Date.now()}`;
+      setDocToDock({ taskId: id, placeholderId, artifact });
+      return sendFromApp(message, {
+        project: projectOfArtifact(artifact), conversationId: id, placeholderId, docRequest, attachments,
+      });
+    }
+    const loaded = chat;
+    setTasks((prev) => (prev.some((t) => String(t.id || '') === target.id)
+      ? prev.map((t) => (String(t.id || '') === target.id ? loaded : t))
+      : [loaded, ...prev]));
+    // The `/c/:id` loader must not re-hydrate over the transcript we hold
+    // while the turn is in flight; the flag drops when the turn completes, or
+    // below when no turn starts.
+    markOptimisticConversation(target.id);
+    setDocToDock({ taskId: target.id, artifact });
+    selectTask(target.id, { keepStaged: true });
+    let started = false;
+    try {
+      // The chat's own connections: the composer's are still those of the
+      // chat it last showed, until this one renders. Queued behind a turn
+      // waiting on the agent's question, never taken as the answer to it.
+      started = await handleSendInTask(message, attachments, {
+        targetTask: loaded, docRequest, disabledConnections: loaded.disabledConnections ?? [], skipPendingAnswer: true,
+        holdsOptimistic: true,
+      });
     } finally {
       if (!started) clearOptimisticConversation(target.id);
     }
@@ -7287,10 +7433,12 @@ function AppCore() {
             browserOn={taskBrowserOn({ switchShown: browserSwitchShown, taskBrowserOff: currentTask?.browserOff })}
             showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
-            onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
+            onRemoveFromQueue={(itemId) => removeQueuedItem(currentTask?.id, itemId)}
             onAddQueuedToTask={(itemId) => addons.handleAddQueuedToTask(currentTask?.id, itemId)}
             onMoveAddonToQueue={(addonId, text, decidedBy) => addons.handleMoveAddonToQueue(currentTask?.id, addonId, text, decidedBy)}
             onResendQueued={(itemId) => addons.handleResendQueued(currentTask?.id, itemId)}
+            dockDoc={docToDock && [docToDock.taskId, docToDock.placeholderId].includes(currentTask.id) ? docToDock.artifact : null}
+            onDocDocked={() => setDocToDock(null)}
             onBack={() => {
               // Returning home = "new task in this project". Pre-select
               // the task's project so the home composer is ready to go.
@@ -7584,6 +7732,7 @@ function AppCore() {
             agentLabel={agentLabel}
             onAddressWithAgent={addressArtifactWithAgent}
             resolveRepairConversation={resolveArtifactRepairConversation}
+            onEditDocWithAgent={editDocWithAgent}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local

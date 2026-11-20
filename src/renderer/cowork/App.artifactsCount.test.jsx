@@ -80,7 +80,7 @@ vi.mock('../platform/host', async (importOriginal) => {
 });
 
 import App from './App';
-import { __resetForTests, deleteArtifactAndSync } from './lib/artifactsStore';
+import { __resetForTests, deleteArtifactAndSync, noteArtifactRenamed } from './lib/artifactsStore';
 
 const project = {
   id: 'project-1',
@@ -141,6 +141,19 @@ describe('Live Artifacts sidebar count', () => {
     }));
     await act(async () => reload.resolve([gamma]));
     await expectCount(1);
+  });
+
+  it('retitles a doc renamed in its editor in the library', async () => {
+    const user = userEvent.setup();
+    spies.fetchArtifactsStrict.mockResolvedValue([{ ...gamma, title: 'Plan', format: 'doc' }]);
+    render(<App />);
+    await expectCount(1);
+    await user.click(screen.getByRole('button', { name: 'Live Artifacts' }));
+    expect(await screen.findByText('Plan')).toBeInTheDocument();
+
+    act(() => noteArtifactRenamed(gamma.id, 'Hiring plan'));
+    expect(await screen.findByText('Hiring plan')).toBeInTheDocument();
+    expect(screen.queryByText('Plan')).toBeNull();
   });
 
   it('drops a deleted project\'s artifacts', async () => {

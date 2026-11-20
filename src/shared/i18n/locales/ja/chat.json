@@ -274,11 +274,17 @@
     },
     "dropFiles": "ドロップしてファイルを添付",
     "addContext": "コンテキストを追加",
+    "docOutput": {
+      "chip": "ドキュメント",
+      "remove": "出力：ドキュメント。削除",
+      "title": "回答はドキュメントとして作成されます。クリックすると解除されます。"
+    },
     "menu": {
       "attachFiles": "ファイルや写真を添付",
       "openingGoogleDrive": "Google Driveを開いています…",
       "addFromGoogleDrive": "Google Driveからファイルを追加",
       "addFromSharePoint": "SharePointからファイルを追加",
+      "writeAsDoc": "ドキュメントとして作成",
       "browserTitle": "このタスクでは、{agent}がブラウザモードを使用できます。オフにすると次のメッセージから適用されます。",
       "browser": "ブラウザ",
       "browserOff": "このタスクのブラウザをオフにする",

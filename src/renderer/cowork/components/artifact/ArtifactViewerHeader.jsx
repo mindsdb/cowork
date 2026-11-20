@@ -10,6 +10,7 @@ import { PublishMenu } from './publish/PublishMenu';
 import { ArtifactAddressPill } from './ArtifactAddressPill';
 import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
+import { maximizeKeyShortcuts } from './useViewerLayout';
 import { PreviewErrorsButton } from './PreviewErrorsButton';
 import { ArtifactExportMenu } from './export/ArtifactExportMenu';
 import { reportDownloaded } from '../../lib/artifactShareAnalytics';
@@ -264,7 +265,7 @@ export function ArtifactViewerHeader({
             <Tooltip content={layout.maximized ? t('layout.restore') : t('layout.maximize')}>
               <IconButton
                 aria-label={layout.maximized ? t('layout.restore') : t('layout.maximize')}
-                aria-keyshortcuts={host.isMac() ? 'Meta+Shift+Enter' : 'Control+Shift+Enter'}
+                aria-keyshortcuts={maximizeKeyShortcuts()}
                 onClick={() => layout.onToggle('maximized')}
               >
                 {layout.maximized ? Ico.minimize(16) : Ico.maximize(16)}

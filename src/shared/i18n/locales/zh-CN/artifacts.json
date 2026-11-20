@@ -131,6 +131,8 @@
       "hoursAgo": "{count, plural, other {# 小时前}}",
       "daysAgo": "{count, plural, other {# 天前}}",
       "replies": "{count, plural, other {# 条回复}}",
+      "replyPlaceholder": "回复…",
+      "replyAriaLabel": "回复此评论",
       "edited": "（已编辑）",
       "unattachedTip": "此评论所指的产物部分已不存在。",
       "generalTip": "针对整个产物的总体反馈。",
@@ -327,6 +329,8 @@
       "specificDesc": "仅限你列出的人"
     },
     "whoCanAccess": "谁可以访问你的应用",
+    "whoCanAccessDoc": "谁可以访问你的文档",
+    "updatesAsYouEdit": "随编辑实时更新",
     "addPassword": "添加密码",
     "hide": "隐藏",
     "show": "显示",

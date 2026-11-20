@@ -131,6 +131,8 @@
       "hoursAgo": "{count, plural, one {hace # hora} other {hace # horas}}",
       "daysAgo": "{count, plural, one {hace # día} other {hace # días}}",
       "replies": "{count, plural, one {# respuesta} other {# respuestas}}",
+      "replyPlaceholder": "Responder…",
+      "replyAriaLabel": "Responder a este comentario",
       "edited": "(editado)",
       "unattachedTip": "La parte del artefacto a la que se refería este comentario ya no está disponible.",
       "generalTip": "Comentario general sobre todo el artefacto.",
@@ -327,6 +329,8 @@
       "specificDesc": "Solo las personas que indiques"
     },
     "whoCanAccess": "Quién puede acceder a tu app",
+    "whoCanAccessDoc": "Quién puede acceder a tu documento",
+    "updatesAsYouEdit": "Se actualiza mientras editas",
     "addPassword": "Agrega una contraseña",
     "hide": "Ocultar",
     "show": "Mostrar",

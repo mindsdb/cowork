@@ -131,6 +131,8 @@
       "hoursAgo": "{count, plural, one {# hour ago} other {# hours ago}}",
       "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
       "replies": "{count, plural, one {# reply} other {# replies}}",
+      "replyPlaceholder": "Reply…",
+      "replyAriaLabel": "Reply to this comment",
       "edited": "(edited)",
       "unattachedTip": "The part of the artifact this comment referred to is no longer available.",
       "generalTip": "General feedback about the whole artifact.",
@@ -327,6 +329,8 @@
       "specificDesc": "Only the people you list"
     },
     "whoCanAccess": "Who can access your app",
+    "whoCanAccessDoc": "Who can access your doc",
+    "updatesAsYouEdit": "Updates as you edit",
     "addPassword": "Add a password",
     "hide": "Hide",
     "show": "Show",

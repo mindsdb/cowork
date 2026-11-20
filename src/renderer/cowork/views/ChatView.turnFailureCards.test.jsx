@@ -341,7 +341,7 @@ describe('token_limit card names the limit that fired', () => {
     expect(stopCard().getByRole('button', { name: 'Add funds' })).toBeEnabled();
     await user.click(stopCard().getByRole('button', { name: 'Switch to MindsHub Air' }));
     // Resends the message whose turn failed, on Air.
-    expect(onSwitchToAirAndResend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSwitchToAirAndResend).toHaveBeenCalledWith('draw me a chart', [], null);
   });
 
   it("switches to Air with the failed question's own files and Drive references", async () => {
@@ -352,7 +352,7 @@ describe('token_limit card names the limit that fired', () => {
       onSwitchToAirAndResend,
     });
     await user.click(stopCard().getByRole('button', { name: 'Switch to MindsHub Air' }));
-    expect(onSwitchToAirAndResend).toHaveBeenCalledWith('draw me a chart', ATTACHMENTS);
+    expect(onSwitchToAirAndResend).toHaveBeenCalledWith('draw me a chart', ATTACHMENTS, null);
   });
 
   it('offers no switch when the task is already on MindsHub Air', () => {
@@ -713,7 +713,7 @@ describe('rate_limited failure card (ENG-1537)', () => {
       />,
     );
     screen.getByRole('button', { name: 'Try again' }).click();
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
 });
 
@@ -747,7 +747,7 @@ describe('server_busy failure card', () => {
       />,
     );
     screen.getByRole('button', { name: 'Try again' }).click();
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
 
   it("resends the question with its own files once Retry-After passes", () => {
@@ -766,7 +766,7 @@ describe('server_busy failure card', () => {
       screen.getByRole('button', { name: 'Try again' }).click();
 
       expect(onSend).toHaveBeenCalledTimes(1);
-      expect(onSend).toHaveBeenCalledWith('draw me a chart', ATTACHMENTS);
+      expect(onSend).toHaveBeenCalledWith('draw me a chart', ATTACHMENTS, { docContext: null });
     } finally {
       vi.useRealTimers();
     }
@@ -814,7 +814,7 @@ describe('cowork_unavailable failure card', () => {
       />,
     );
     screen.getByRole('button', { name: 'Try again' }).click();
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
 });
 
@@ -841,7 +841,7 @@ describe('resend cards carry the failed question\'s files', () => {
       />,
     );
     screen.getByRole('button', { name: 'Try again' }).click();
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', ATTACHMENTS);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', ATTACHMENTS, { docContext: null });
   });
 
   it("model_access_denied: Switch to MindsHub Air resends the text with its attachments", async () => {
@@ -888,7 +888,7 @@ describe('content_recovery failure card', () => {
     // wrong here, the failure isn't anything wrong with the image itself.
     expect(screen.queryByText(/PNG or JPEG/)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
 
   it('hides Try again when there is no user message to resend', () => {
@@ -951,7 +951,7 @@ describe('policy_unavailable failure card', () => {
     );
     expect(screen.getByText(/Billing is temporarily unavailable/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
 
   it('hides Try again when there is no user message to resend', () => {
@@ -980,7 +980,7 @@ describe('worker_unresponsive failure card', () => {
     );
     expect(screen.getByText(/never reached the agent/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
 
   it('blames the infrastructure, not the request', () => {
@@ -1022,7 +1022,7 @@ describe('turn_lost failure card', () => {
     expect(screen.getByText(/Nothing was wrong with your question/)).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
 
   it('hides Try again when there is no user message to resend', () => {
@@ -1079,7 +1079,7 @@ describe.each([
     expect(screen.queryByText(message, { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
 
   it('renders the same card after a reload, from the saved failure event', async () => {
@@ -1091,7 +1091,7 @@ describe.each([
     expect(screen.queryByText(message, { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
 
   it('hides Try again when there is no user message to resend', () => {
@@ -1136,7 +1136,7 @@ describe('stalled failure card', () => {
       />,
     );
     screen.getByRole('button', { name: 'Try again' }).click();
-    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { displayTitle, fileNameOf, splitArtifactName } from './ArtifactIcon';
+import { render } from '@testing-library/react';
+import { ArtifactIcon, displayTitle, fileNameOf, splitArtifactName } from './ArtifactIcon';
 
 describe('displayTitle', () => {
   it('uses the title for a file artifact when title and filename differ', () => {
@@ -58,8 +59,29 @@ describe('splitArtifactName', () => {
     expect(splitArtifactName(a)).toEqual({ base: 'Weather Dashboard', secondary: null });
   });
 
+  it('has no secondary line for a doc, whose file is storage', () => {
+    const a = { type: 'document', format: 'doc', title: 'Q4 hiring plan', path: '/x/q4-hiring-plan-1a2b3c4d/doc.cdoc.json' };
+    expect(splitArtifactName(a)).toEqual({ base: 'Q4 hiring plan', secondary: null });
+  });
+
+  it('knows a doc by its stored file when the card carries no format', () => {
+    const a = { type: 'document', title: 'Q4 hiring plan', path: '/x/q4-hiring-plan-1a2b3c4d/doc.cdoc.json' };
+    expect(splitArtifactName(a)).toEqual({ base: 'Q4 hiring plan', secondary: null });
+  });
+
   it('has no secondary line when a file has no path', () => {
     const a = { type: 'document', title: 'Untitled note' };
     expect(splitArtifactName(a)).toEqual({ base: 'Untitled note', secondary: null });
+  });
+});
+
+describe('ArtifactIcon', () => {
+  const icon = (artifact) => render(<ArtifactIcon artifact={artifact} />).container.innerHTML;
+
+  it('draws a doc as a document, whether its card says format: doc or only names its .cdoc.json', () => {
+    const document = icon({ path: '/x/brief.docx' });
+    expect(icon({ format: 'doc', path: '/x/plan/doc.cdoc.json' })).toBe(document);
+    expect(icon({ path: '/x/plan/doc.cdoc.json' })).toBe(document);
+    expect(icon({ path: '/x/data.json' })).not.toBe(document);
   });
 });
