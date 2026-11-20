@@ -89,14 +89,14 @@ describe('QuickEditBar reply actions', () => {
 });
 
 
-// The thread floats over the artifact (ENG-4455): open while the bar has the
-// pointer or the focus, or when a reply settles; folded away, leaving the
-// input, once the pointer goes back to the artifact.
+// The thread floats over the artifact (ENG-4455): open on a click into the
+// bar or the focus arriving there, or when a reply settles; folded away,
+// leaving the input, once the pointer goes back to the artifact.
 describe('QuickEditBar thread over the artifact', () => {
   const thread = () => document.querySelector('.artifact-quick-edit-thread');
   const bar = () => screen.getByRole('region');
 
-  it('folds away when the pointer leaves for the artifact, and opens again on the bar', () => {
+  it('folds away when the pointer leaves for the artifact, and opens on a click into the input, not a hover', () => {
     render(<QuickEditBar controller={controller([user, reply('reading')])} />);
     expect(thread()).toHaveAttribute('data-open');
 
@@ -104,6 +104,10 @@ describe('QuickEditBar thread over the artifact', () => {
     expect(thread()).not.toHaveAttribute('data-open');
 
     fireEvent.pointerEnter(bar(), { pointerType: 'mouse' });
+    expect(thread()).not.toHaveAttribute('data-open');
+
+    // The input may still hold the focus: the click opens it all the same.
+    fireEvent.pointerDown(screen.getByRole('textbox'));
     expect(thread()).toHaveAttribute('data-open');
   });
 

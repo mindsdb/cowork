@@ -277,10 +277,10 @@ export function QuickEditBar({
   const [sendError, setSendError] = useState('');
   const threadHeight = useThreadHeight(threadInnerRef, messages.length > 0);
   // The thread floats over the artifact rather than pushing it up (ENG-4455).
-  // It opens while the pointer or the focus is on the bar, and when a
-  // message arrives or a reply settles (applied, failed, handed to the
-  // chat); it folds away when the pointer goes back to the artifact,
-  // leaving the input.
+  // It opens on a click into the bar (to type, even into an input that
+  // kept the focus) or the focus arriving there, and when a message arrives
+  // or a reply settles (applied, failed, handed to the chat); it folds away
+  // when the pointer goes back to the artifact, leaving the input.
   const [threadOpen, setThreadOpen] = useState(true);
   const lastStageRef = useRef('');
   useEffect(() => {
@@ -370,7 +370,7 @@ export function QuickEditBar({
       className="artifact-quick-edit"
       aria-label={t('quickEdit.ariaLabel')}
       role="region"
-      onPointerEnter={() => setThreadOpen(true)}
+      onPointerDown={() => setThreadOpen(true)}
       onPointerLeave={(e) => { if (e.pointerType !== 'touch') setThreadOpen(false); }}
       onFocus={() => setThreadOpen(true)}
     >
