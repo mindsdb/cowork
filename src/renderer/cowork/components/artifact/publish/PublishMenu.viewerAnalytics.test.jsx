@@ -187,3 +187,17 @@ describe('PublishMenu analytics save status', () => {
     expect(screen.queryByText('Saved')).toBeNull();
   });
 });
+
+// Analytics is its own setting: it stays on screen whatever access is picked
+// or being changed (ENG-4455).
+describe('PublishMenu viewer analytics beside an access change', () => {
+  it('stays shown after picking another access from the dropdown', () => {
+    openMenu();
+    fireEvent.click(screen.getByTestId('access-dropdown'));
+    fireEvent.click(screen.getByRole('radio', { name: /^Password protected/ }));
+
+    expect(screen.getByText('Dismiss')).toBeInTheDocument();
+    expect(within(screen.getByTestId('viewer-analytics-settings'))
+      .getByRole('switch', { name: 'Collect viewer analytics' })).toBeInTheDocument();
+  });
+});

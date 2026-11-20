@@ -609,7 +609,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                       <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry })} />
                     </div>
 
-                    <div className={`py-3 px-4${view === 'summary' && pub.artifact ? ' border-b border-t-0 border-x-0 border-solid border-line' : ''}`}>
+                    <div className="py-3 px-4">
                       {view === 'summary' && (
                         <>
                           {/* The card is a dropdown: picking another access
@@ -712,8 +712,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                       )}
                     </div>
 
-                    {view === 'summary' && pub.artifact && (
-                      <div className="py-3 px-4">
+                    {/* Whatever access is picked or being changed: analytics
+                        is its own setting, saved as it flips. */}
+                    {pub.artifact && view !== 'versions' && (
+                      <div className="py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
                         <SectionLabel>{t('analytics.title')}</SectionLabel>
                         <ViewerAnalyticsSettings controller={analytics} />
                       </div>
