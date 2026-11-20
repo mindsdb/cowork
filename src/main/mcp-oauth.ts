@@ -62,9 +62,9 @@ export interface TokenSet {
   scope?: string;
 }
 
-// The registered error codes (RFC 6749 5.2, RFC 8707): only these reach
-// messages, which may land in logs and on screen; any other text a server
-// sends could carry a token.
+// The registered error codes (RFC 6749 5.2, RFC 8707), plus GitHub's own:
+// only these reach messages, which may land in logs and on screen; any other
+// text a server sends could carry a token.
 const OAUTH_ERROR_CODES = new Set([
   'invalid_request',
   'invalid_client',
@@ -73,8 +73,19 @@ const OAUTH_ERROR_CODES = new Set([
   'unsupported_grant_type',
   'invalid_scope',
   'invalid_target',
+  'bad_verification_code',
+  'redirect_uri_mismatch',
+  'incorrect_client_credentials',
+  'bad_refresh_token',
 ]);
-const REFUSED_GRANT_CODES = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client']);
+// The codes that mean the grant or the client is dead, GitHub's two included.
+const REFUSED_GRANT_CODES = new Set([
+  'invalid_grant',
+  'invalid_client',
+  'unauthorized_client',
+  'bad_refresh_token',
+  'incorrect_client_credentials',
+]);
 const MAX_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
 const INITIALIZE_BODY = JSON.stringify({

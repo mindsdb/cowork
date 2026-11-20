@@ -407,6 +407,15 @@ describe('token requests', () => {
     await expect(result).rejects.toThrow(new RegExp(`^${message}$`));
   });
 
+  it.each(['bad_verification_code', 'redirect_uri_mismatch', 'incorrect_client_credentials', 'bad_refresh_token'])(
+    "names GitHub's %s from a 200 answer, without its description",
+    async (code) => {
+      const { fetchFn } = tokenAnswer({ error: code, error_description: 'secret stuff', error_uri: 'https://docs.example/x' });
+      await expect(exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW))
+        .rejects.toThrow(new RegExp(`^the token endpoint answered 200: ${code}$`));
+    },
+  );
+
   it('keeps the fixed message for a failed answer whose body is not JSON', async () => {
     const fetchFn: GuardedFetch = async () => new Response('<html>oops</html>', { status: 502 });
     await expect(exchangeCode(AS, { clientId: 'id', authMethod: 'none' }, GRANT, fetchFn, NOW)).rejects.toThrow(/^the token endpoint answered 502$/);
@@ -435,6 +444,10 @@ describe('token requests', () => {
     [500, { error: 'invalid_grant' }, 'grant_refused'],
     [200, { error: 'invalid_request' }, 'token_failed'],
     [200, { error: 'temporarily_unavailable' }, 'token_failed'],
+    [200, { error: 'bad_refresh_token' }, 'grant_refused'],
+    [200, { error: 'incorrect_client_credentials' }, 'grant_refused'],
+    [200, { error: 'bad_verification_code' }, 'token_failed'],
+    [200, { error: 'redirect_uri_mismatch' }, 'token_failed'],
   ])('tells a refused grant (%i %j) from a failure worth retrying', async (status, body, code) => {
     const fetchFn: GuardedFetch = async () => new Response(JSON.stringify(body), { status });
     expect(await failure(refreshTokens(AS, { clientId: 'id', authMethod: 'none' }, { refreshToken: 'rt', resource: SERVER }, fetchFn, NOW))).toBe(code);
