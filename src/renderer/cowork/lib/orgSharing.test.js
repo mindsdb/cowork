@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
 
 import {
+  artifactSection,
+  groupArtifactsBySection,
   artifactShareState,
   audienceCountsPhrase,
   filterPeople,
@@ -448,3 +450,41 @@ describe('Share or Shared', () => {
     expect(artifactShareState({ ...card, accessMode: 'public' }, { audienceKnown: false }).kind).toBe('public');
   });
 });
+
+
+// Artifacts are grouped as skills are, by the server's skill rule (ENG-4455).
+describe('artifactSection and groupArtifactsBySection', () => {
+  const art = (id, extra = {}) => ({ id, title: id, capabilities: { role: 'owner' }, ...extra });
+  const theirs = { capabilities: { role: 'reviewer' } };
+  const TEAMS = [{ id: 't-all', display_name: 'All members', is_default: true }, { id: 't-1', display_name: 'Platform' }];
+
+  it('reads everyone (or the default team) as org, a team as team, then own or not', () => {
+    expect(artifactSection(art('a', { orgAllowed: true }))).toBe('org');
+    expect(artifactSection(art('b', { allowedTeamIds: ['t-all'] }), { teams: TEAMS })).toBe('org');
+    expect(artifactSection(art('c', { allowedTeamIds: ['t-1'] }), { teams: TEAMS })).toBe('team');
+    expect(artifactSection(art('d', { accessEmails: ['x@example.com'] }))).toBe('mine');
+    expect(artifactSection(art('e', { ...theirs, accessEmails: ['me@example.com'] }))).toBe('shared_with_me');
+    expect(artifactSection(art('f', { capabilities: { role: 'reviewer', ownerUnknown: true } }))).toBe('shared_with_me');
+  });
+
+  it('counts an audience the card does not know by its owner alone', () => {
+    expect(artifactSection(art('g', { allowedTeamIds: null }))).toBe('mine');
+    expect(artifactSection(art('h', { ...theirs, allowedTeamIds: null }))).toBe('shared_with_me');
+  });
+
+  it('orders the sections as skills do, keeps each one\'s order, and leaves empty ones out', () => {
+    const groups = groupArtifactsBySection([
+      art('org-1', { orgAllowed: true }),
+      art('mine-1'),
+      art('theirs-1', theirs),
+      art('mine-2'),
+    ], { orgName: 'Acme' });
+
+    expect(groups.map((g) => [g.id, g.title, g.artifacts.map((a) => a.id)])).toEqual([
+      ['mine', 'Yours', ['mine-1', 'mine-2']],
+      ['shared_with_me', 'Shared with me', ['theirs-1']],
+      ['org', 'Everyone at Acme', ['org-1']],
+    ]);
+  });
+});
+

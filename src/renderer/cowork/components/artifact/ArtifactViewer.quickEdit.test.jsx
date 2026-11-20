@@ -1,7 +1,7 @@
 /*
  * The viewer's chat bar (ENG-4227). With quick edits on, Preview carries a bar
  * at the bottom; a request streams from POST .../quick-edits and ends one of
- * five ways (applied, noop, failed, agent, escalate). The stream itself is
+ * six ways (applied, noop, failed, agent, escalate, reply). The stream itself is
  * mocked at streamQuickEdit, whose SSE parsing is covered in
  * artifactWorkspaceApi.test.js; the check answer is covered in
  * artifactCheck.test.js.
@@ -34,6 +34,7 @@ const workspaceMock = vi.hoisted(() => ({
   refreshRepair: vi.fn(),
   addressWithAgent: vi.fn(),
   cancelRepair: vi.fn(),
+  releaseRepairsForComment: vi.fn(async () => {}),
 }));
 
 const workspaceApi = vi.hoisted(() => ({
@@ -87,10 +88,12 @@ vi.mock('./publish/usePublish', () => ({
   }),
 }));
 vi.mock('./publish/PublishMenu', () => ({ PublishMenu: () => null }));
+// The comments the viewer holds, and their status changes.
+const commentsState = vi.hoisted(() => ({ threads: [], setStatus: null }));
 vi.mock('./comments', () => ({
   useArtifactComments: () => ({
-    threads: [], viewer: null, unreadCount: 0,
-    create: vi.fn(), reply: vi.fn(), setStatus: vi.fn(),
+    threads: commentsState.threads, viewer: null, unreadCount: 0,
+    create: vi.fn(), reply: vi.fn(), setStatus: commentsState.setStatus || (async () => true),
     editThread: vi.fn(), deleteThread: vi.fn(), editReply: vi.fn(),
     deleteReply: vi.fn(), markRead: vi.fn(),
   }),
@@ -115,9 +118,8 @@ vi.mock('./workspace/ArtifactSourceEditor', () => ({
 }));
 vi.mock('./workspace/ArtifactComparison', () => ({ ArtifactComparison: () => null }));
 vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () => null }));
-// The revision line, holding the layer toggles the viewer hands it.
 vi.mock('./workspace/ArtifactRevisionBar', () => ({
-  ArtifactRevisionBar: ({ layerControls }) => <div className="artifact-revision-bar">{layerControls}</div>,
+  ArtifactRevisionBar: () => <div className="artifact-revision-bar" />,
 }));
 vi.mock('../ui/Modal', () => ({
   Modal: ({ children, fullBleed }) => <div data-testid="modal" data-full-bleed={fullBleed ? 'true' : 'false'}>{children}</div>,
@@ -255,6 +257,7 @@ describe('ArtifactViewer quick edit bar', () => {
       expectedRevisionId: 'r1',
       conversationId: 'conv-1',
       forceRoute: null,
+      allowReply: true,
       model: null,
       reasoningEffort: null,
     });
@@ -379,6 +382,84 @@ describe('ArtifactViewer quick edit bar', () => {
 
     await within(thread()).findByText('Sent to the chat.');
     expect(workspaceApi.streamQuickEdit.mock.calls[1][1]).toMatchObject({ message: 'Add a chart', forceRoute: 'agent' });
+    expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
+  });
+
+  // A question the server answers itself (ENG-4455): the answer in the bar,
+  // nothing reloaded, no Undo, and the chat still one click away.
+  const answered = (summary) => ({
+    type: 'done', status: 'reply', summary, revisionId: null, previousRevisionId: null,
+    changed: false, check: null, editId: null, undoable: false, ms: 400,
+  });
+
+  it('shows an answer in the bar, with no Undo, and can still ask the agent', async () => {
+    const onAddressWithAgent = vi.fn(async () => true);
+    workspaceApi.streamQuickEdit.mockImplementation(plays(
+      { type: 'route', route: 'reply', confidence: 0.9, ms: 60 },
+      answered('There are **three** slides.'),
+    ));
+    renderViewer({ onAddressWithAgent });
+    await screen.findByTitle('Launch brief');
+
+    ask('How many slides are there?');
+
+    expect(await within(thread()).findByText('three')).toBeInTheDocument();
+    expect(workspaceMock.load).not.toHaveBeenCalled();
+    expect(onAddressWithAgent).not.toHaveBeenCalled();
+    expect(within(thread()).queryByRole('button', { name: 'Undo' })).toBeNull();
+
+    workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+    fireEvent.click(within(thread()).getByRole('button', { name: 'Ask the agent instead' }));
+
+    await within(thread()).findByText('Sent to the chat.');
+    expect(workspaceApi.streamQuickEdit.mock.calls[1][1])
+      .toMatchObject({ message: 'How many slides are there?', forceRoute: 'agent' });
+    expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it('says it is answering once the server routes to a reply', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation((_a, _body, { onEvent }) => {
+      onEvent({ type: 'route', route: 'reply', confidence: 0.9, ms: 60 });
+      return new Promise(() => {});
+    });
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    ask('What does this chart show?');
+
+    expect(await within(thread()).findByText('Answering…')).toBeInTheDocument();
+    expect(within(thread()).queryByText('Working in the chat…')).toBeNull();
+  });
+
+  it('keeps the Undo of an earlier edit when an answer follows it', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    ask('Make the title blue');
+    await within(thread()).findByText('Made the title blue.');
+
+    workspaceApi.streamQuickEdit.mockImplementation(plays(answered('Thanks!')));
+    ask('Great, thanks');
+    await within(thread()).findByText('Thanks!');
+
+    const undo = within(thread()).getByRole('button', { name: 'Undo' });
+    expect(undo.closest('.artifact-quick-edit-row')).toHaveTextContent('Made the title blue.');
+    // The answer goes back as history, like an edit's summary.
+    workspaceApi.streamQuickEdit.mockImplementation(plays(answered('Sure.')));
+    ask('One more question');
+    await within(thread()).findByText('Sure.');
+    expect(workspaceApi.streamQuickEdit.mock.calls[2][1].history).toContainEqual({ role: 'assistant', text: 'Thanks!' });
+  });
+
+  it('hands an empty answer to the chat', async () => {
+    const onAddressWithAgent = vi.fn(async () => true);
+    workspaceApi.streamQuickEdit.mockImplementation(plays(answered('  ')));
+    renderViewer({ onAddressWithAgent });
+    await screen.findByTitle('Launch brief');
+
+    ask('What does this chart show?');
+
+    await within(thread()).findByText('Sent to the chat.');
     expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
   });
 
@@ -539,13 +620,64 @@ describe('ArtifactViewer quick edit bar', () => {
     ask('Make the title blue');
     await within(thread()).findByText(/An agent suggestion for this artifact is waiting/);
 
-    workspaceApi.streamQuickEdit.mockRejectedValueOnce(Object.assign(new Error('stale'), {
-      status: 409, detail: { currentRevision: { id: 'r9' } },
-    }));
+    // Stale on the retry too: only then is it shown.
+    workspaceApi.streamQuickEdit.mockRejectedValueOnce(stale('r9')).mockRejectedValueOnce(stale('r10'));
     ask('Make the title blue');
 
     await within(thread()).findByText(/This artifact changed since you opened it\./);
     expect(workspaceMock.load).toHaveBeenCalled();
+  });
+
+  // A request sent against a revision that is no longer the head is refused
+  // before anything runs; the bar reloads and sends it once more on its own.
+  const stale = (id) => Object.assign(new Error('stale'), {
+    status: 409, detail: { message: 'stale', currentRevision: { id } },
+  });
+
+  it('sends a stale request again against the new head, with no error', async () => {
+    workspaceApi.streamQuickEdit
+      .mockRejectedValueOnce(stale('r9'))
+      .mockImplementationOnce(plays({ ...applied, revisionId: 'r10', previousRevisionId: 'r9' }));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    ask('Make the title blue');
+
+    await within(thread()).findByText('Made the title blue.');
+    expect(within(thread()).queryByRole('alert')).toBeNull();
+    const calls = workspaceApi.streamQuickEdit.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0][1].expectedRevisionId).toBe('r1');
+    expect(calls[1][1]).toEqual({ ...calls[0][1], expectedRevisionId: 'r9' });
+    expect(within(thread()).getByRole('button', { name: 'Undo' })).toBeEnabled();
+  });
+
+  it('shows the stale error once when the retry is stale too, reloading once', async () => {
+    workspaceApi.streamQuickEdit.mockRejectedValueOnce(stale('r9')).mockRejectedValueOnce(stale('r10'));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    const loadsBefore = workspaceMock.load.mock.calls.length;
+
+    ask('Make the title blue');
+
+    expect(await within(thread()).findByRole('alert')).toHaveTextContent('This artifact changed since you opened it.');
+    expect(within(thread()).getAllByRole('alert')).toHaveLength(1);
+    expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(2);
+    // The reload before the resend; not another for the second refusal.
+    expect(workspaceMock.load.mock.calls.length - loadsBefore).toBe(1);
+  });
+
+  it('does not retry any other 409', async () => {
+    workspaceApi.streamQuickEdit.mockRejectedValueOnce(Object.assign(new Error('running'), {
+      status: 409, detail: { message: 'running', reason: 'quick_edit_running' },
+    }));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    ask('Make the title blue');
+
+    await within(thread()).findByText(/Another change to this artifact is still running\./);
+    expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
   });
 
   it('shows the error event the server sends', async () => {
@@ -1034,6 +1166,48 @@ describe('ArtifactViewer quick edit bar', () => {
       ]);
     });
 
+    // Switching from Live edit to Comments, Stats or the plain preview keeps
+    // the user on the slide they were editing (ENG-4455).
+    it('sends the preview to the Live editor\'s slide when Live edit goes off', async () => {
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.draft = HTML_SOURCE.content;
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      await previewShown();
+      fromPreview({ type: 'view', ...PLACE });
+      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+      const editorPlace = { ...PLACE, inputs: [...PLACE.inputs, ...PLACE.inputs], heading: 'Slide 3' };
+      act(() => sourceEditorProps.current.onViewChange(editorPlace));
+      const before = loads();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+
+      // The reload waits for the cover's fade, which is slower under load.
+      await waitFor(() => expect(loads()).toBe(before + 1), { timeout: 5000 });
+      // The reloaded document announces itself once the preview is back and
+      // listening again; until then its announcement goes unheard.
+      await waitFor(() => expect(restoresAfterReload()).toEqual([
+        { source: 'anton-preview-parent', type: 'restore', view: editorPlace },
+      ]), { timeout: 5000 });
+    });
+
+    it('reloads nothing when the editor is where the preview already is', async () => {
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.draft = HTML_SOURCE.content;
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      await previewShown();
+      fromPreview({ type: 'view', ...PLACE });
+      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+      act(() => sourceEditorProps.current.onViewChange(PLACE));
+      const before = loads();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+      await new Promise((resolve) => { setTimeout(resolve, 300); });
+
+      expect(loads()).toBe(before);
+    });
+
     it('starts the page over on the user\'s own Reload', async () => {
       renderViewer();
       await screen.findByTitle('Launch brief');
@@ -1109,16 +1283,84 @@ describe('ArtifactViewer quick edit bar', () => {
       expect(workspaceMock.discard).toHaveBeenCalled();
     });
 
-    it('sits on the revision line, not in the header', async () => {
+    it('sits on the panel rail at the viewer\'s edge, not in the header or the revision line', async () => {
       workspaceMock.commentsReady = true;
       workspaceMock.source = HTML_SOURCE;
       renderViewer();
       await screen.findByTitle('Launch brief');
 
-      const group = screen.getByRole('group', { name: 'Viewer layers' });
-      expect(group.closest('.artifact-revision-bar')).not.toBeNull();
-      expect(group.closest('.artifact-viewer-topbar')).toBeNull();
-      expect(within(group).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Live edit', 'Comments']);
+      const rail = screen.getByRole('toolbar', { name: 'Viewer panels' });
+      expect(rail).toHaveAttribute('aria-orientation', 'vertical');
+      expect(rail.closest('.artifact-viewer-workarea')).not.toBeNull();
+      expect(rail.closest('.artifact-revision-bar')).toBeNull();
+      expect(rail.closest('.artifact-viewer-topbar')).toBeNull();
+      expect(within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Live edit', 'Comments']);
+      expect(toggle('Live edit')).toHaveAccessibleDescription('Change text and layout on the page');
+      expect(toggle('Comments')).toHaveAccessibleDescription('Leave and review feedback');
+    });
+
+    it('offers Stats on the rail only for a published artifact', async () => {
+      workspaceMock.commentsReady = true;
+      workspaceMock.source = HTML_SOURCE;
+      publishMock.url = 'https://pages.example/launch-brief';
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+
+      const rail = screen.getByRole('toolbar', { name: 'Viewer panels' });
+      expect(within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Live edit', 'Comments', 'Stats']);
+    });
+
+    it('switches panels from the rail and closes the open one on a second click', async () => {
+      workspaceMock.commentsReady = true;
+      workspaceMock.source = HTML_SOURCE;
+      publishMock.url = 'https://pages.example/launch-brief';
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+
+      fireEvent.click(toggle('Live edit'));
+      expect(screen.getByRole('button', { name: 'Close Live edit panel' })).toBeInTheDocument();
+      expect(toggle('Live edit')).toHaveAttribute('aria-controls', document.querySelector('.artifact-side-panel').id);
+
+      fireEvent.click(toggle('Stats'));
+      expect(pressed('Live edit')).toBe('false');
+      expect(pressed('Stats')).toBe('true');
+      expect(screen.getByTestId('preview-surface')).not.toHaveAttribute('hidden');
+
+      fireEvent.click(toggle('Stats'));
+      expect(pressed('Stats')).toBe('false');
+      expect(pressed('Live edit')).toBe('false');
+      expect(pressed('Comments')).toBe('false');
+    });
+
+    it('closes Live edit from its panel, asking first over unsaved text', async () => {
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.discard.mockClear();
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      fireEvent.click(toggle('Live edit'));
+      workspaceMock.dirty = true;
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close Live edit panel' }));
+      const prompt = screen.getByRole('alertdialog', { name: 'Turn off Live edit?' });
+      expect(pressed('Live edit')).toBe('true');
+
+      fireEvent.click(within(prompt).getByRole('button', { name: 'Discard changes' }));
+      expect(workspaceMock.discard).toHaveBeenCalledTimes(1);
+      expect(pressed('Live edit')).toBe('false');
+    });
+
+    it('hands the editor the Live edit panel and its Save / Discard', async () => {
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.dirty = true;
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      fireEvent.click(toggle('Live edit'));
+
+      const panel = document.querySelector('.artifact-side-panel');
+      expect(panel).toHaveAttribute('data-mode', 'source');
+      expect(sourceEditorProps.current.controlsTarget).toBe(within(panel).getByTestId('live-edit-slot'));
+      expect(sourceEditorProps.current.editActions).toMatchObject({ dirty: true, canEdit: true });
+      expect(sourceEditorProps.current).not.toHaveProperty('onExit');
     });
 
     it('remembers each layer on this device', async () => {
@@ -1206,6 +1448,27 @@ describe('ArtifactViewer quick edit bar', () => {
       fireEvent.click(within(screen.getByRole('alertdialog', { name: 'Turn off Live edit?' })).getByRole('button', { name: 'Discard changes' }));
       expect(workspaceMock.discard).toHaveBeenCalledTimes(1);
       expect(pressed('Live edit')).toBe('false');
+    });
+
+    // ENG-4455: Stats is the third exclusive layer, so it asks first too.
+    it('asks before Stats turns Live edit off over unsaved text, then opens Stats', async () => {
+      publishMock.url = 'https://pages.example/launch-brief';
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.discard.mockClear();
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      fireEvent.click(toggle('Live edit'));
+      workspaceMock.dirty = true;
+
+      fireEvent.click(toggle('Stats'));
+      const prompt = screen.getByRole('alertdialog', { name: 'Turn off Live edit?' });
+      expect(pressed('Stats')).toBe('false');
+
+      fireEvent.click(within(prompt).getByRole('button', { name: 'Discard changes' }));
+
+      expect(workspaceMock.discard).toHaveBeenCalledTimes(1);
+      expect(pressed('Live edit')).toBe('false');
+      await waitFor(() => expect(pressed('Stats')).toBe('true'));
     });
 
     it('shows a published artifact by its address, with copy and open-in-a-tab inside the pill', async () => {
@@ -1377,17 +1640,18 @@ describe('ArtifactViewer layout controls', () => {
   const revisionBar = () => document.querySelector('.artifact-revision-bar');
   const modal = () => screen.getByTestId('modal');
 
-  it('maximizes to the window and back, from the button and from Ctrl+Shift+Enter', async () => {
+  it('opens full screen, and leaves and goes back to it from the button and from Ctrl+Shift+Enter', async () => {
     renderViewer();
     await screen.findByTitle('Launch brief');
-    expect(modal()).toHaveAttribute('data-full-bleed', 'false');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
     expect(modal()).toHaveAttribute('data-full-bleed', 'true');
 
-    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true, shiftKey: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Exit full screen' }));
     expect(modal()).toHaveAttribute('data-full-bleed', 'false');
-    expect(screen.getByRole('button', { name: 'Maximize' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Full screen' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true, shiftKey: true });
+    expect(modal()).toHaveAttribute('data-full-bleed', 'true');
+    expect(screen.getByRole('button', { name: 'Exit full screen' })).toBeInTheDocument();
   });
 
   it('offers no way to hide the toolbar or the quick edit bar, and ignores an old choice to', async () => {
@@ -1401,25 +1665,24 @@ describe('ArtifactViewer layout controls', () => {
     expect(bar()).not.toBeNull();
   });
 
-  it('opens the next artifact maximized when the last one was left so', async () => {
+  it('opens the next artifact at its size when the last one left full screen', async () => {
     const first = renderViewer();
     await screen.findByTitle('Launch brief');
-    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Exit full screen' }));
     first.unmount();
 
     renderViewer();
     await screen.findByTitle('Launch brief');
-    expect(modal()).toHaveAttribute('data-full-bleed', 'true');
+    expect(modal()).toHaveAttribute('data-full-bleed', 'false');
   });
 
-  it('keeps close at the end of the line, after maximize', async () => {
+  it('keeps close at the end of the line, after full screen', async () => {
     renderViewer();
     await screen.findByTitle('Launch brief');
-    fireEvent.click(screen.getByRole('button', { name: 'Maximize' }));
 
     const controls = document.querySelector('.artifact-viewer-window-controls');
     const buttons = within(controls).getAllByRole('button');
-    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Restore size', 'Close']);
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Exit full screen', 'Close']);
   });
 
 });
@@ -1443,10 +1706,53 @@ describe('ArtifactViewer comments to the change bar', () => {
       content: '<html><body>Hi</body></html>', contentType: 'text/html', isHtml: true,
     });
     workspaceApi.streamQuickEdit.mockReset();
+    workspaceApi.undoQuickEdit.mockReset();
     commentsPanel.props = null;
+    commentsState.threads = [];
+    commentsState.setStatus = vi.fn(async () => true);
+  });
+  afterEach(() => {
+    commentsState.threads = [];
+    commentsState.setStatus = null;
   });
 
   const commentThread = (id, text) => ({ id, selector: 'h1', status: 'open', payload: { text, replies: [] } });
+
+  // The fix applied resolves the comment, as the agent's repair did; its
+  // Undo opens it again (ENG-4455).
+  it('resolves the comment once its fix is applied, and reopens it on Undo', async () => {
+    const t1 = commentThread('t1', 'Make it blue');
+    commentsState.threads = [t1];
+    // The inbox follows each status change.
+    commentsState.setStatus = vi.fn(async (_id, status) => { t1.status = status; return true; });
+    workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+    workspaceApi.undoQuickEdit.mockResolvedValue({ editId: 'qe-edit-1', restored: ['index.html'], removed: [], revision: { id: 'r3' } });
+    renderViewer();
+    await screen.findAllByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: /^Comments/ }));
+    await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(t1); });
+    await waitFor(() => expect(commentsState.setStatus).toHaveBeenCalledWith('t1', 'resolved'));
+
+    fireEvent.click(await within(thread()).findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(commentsState.setStatus).toHaveBeenCalledWith('t1', 'open'));
+    expect(commentsState.setStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves the comment open when nothing was changed for it', async () => {
+    const t1 = commentThread('t1', 'Make it blue');
+    commentsState.threads = [t1];
+    workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'noop', summary: 'Already blue.' }));
+    renderViewer();
+    await screen.findAllByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: /^Comments/ }));
+    await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(t1); });
+    expect(await within(thread()).findByText(/Already blue\./)).toBeInTheDocument();
+    expect(commentsState.setStatus).not.toHaveBeenCalled();
+  });
 
   it('sends the comment as a bar message, queues a second, and marks both on the inbox', async () => {
     workspaceApi.streamQuickEdit.mockImplementation(() => new Promise(() => {}));
@@ -1480,5 +1786,25 @@ describe('ArtifactViewer comments to the change bar', () => {
 
     expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('list', { name: 'Waiting to run' })).toBeNull();
+  });
+
+  it('leaves a comment dismissed since alone when its fix is undone', async () => {
+    const t1 = commentThread('t1', 'Make it blue');
+    commentsState.threads = [t1];
+    commentsState.setStatus = vi.fn(async (_id, status) => { t1.status = status; return true; });
+    workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+    workspaceApi.undoQuickEdit.mockResolvedValue({ editId: 'qe-edit-1', restored: ['index.html'], removed: [], revision: { id: 'r3' } });
+    renderViewer();
+    await screen.findAllByTitle('Launch brief');
+    fireEvent.click(screen.getByRole('button', { name: /^Comments/ }));
+    await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+    await act(async () => { await commentsPanel.props.onAddressWithAgent(t1); });
+    await waitFor(() => expect(commentsState.setStatus).toHaveBeenCalledWith('t1', 'resolved'));
+
+    t1.status = 'dismissed';
+    fireEvent.click(await within(thread()).findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(workspaceApi.undoQuickEdit).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+    expect(commentsState.setStatus).toHaveBeenCalledTimes(1);
   });
 });

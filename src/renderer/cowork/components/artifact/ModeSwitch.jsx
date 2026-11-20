@@ -43,7 +43,7 @@ export function ModeSwitch({ ariaLabel, value, options, onChange, className = ''
   return (
     <Toolbar.Root
       aria-label={ariaLabel}
-      className={`artifact-mode-switch absolute left-1/2 bottom-[24px] z-20 h-[32px]
+      className={`artifact-mode-switch absolute left-1/2 bottom-[4px] z-20 h-[32px]
         flex items-center gap-[2px] px-1 rounded-[46px] motion-reduce:!animate-none ${className}`}
       style={{
         transform: 'translateX(-50%)',

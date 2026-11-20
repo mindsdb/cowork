@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   captureConsoleHandoff, takeConsoleHandoff, findSample, sampleId, isUntouchedSample,
 } from './consoleHandoff';
-import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
+import { OWN_WORK_MODE } from '../components/taskmodes/taskModes';
 
 const at = (search, pathname = '/') => ({ search, pathname, hash: '' });
 
@@ -34,6 +34,11 @@ describe('console handoff', () => {
     ['wide-research', 'turn-meeting-notes-into-action-items', 'Turn meeting notes into action items'],
     ['visualization', 'build-a-project-rollout-timeline', 'Build a project rollout timeline'],
     ['visualization', 'map-a-process-as-a-diagram', 'Map a process as a diagram'],
+    ['slides', 'turn-a-report-into-a-presentation', 'Turn a report into a presentation'],
+    ['spreadsheet', 'turn-a-bank-statement-into-a-spreadsheet', 'Turn a bank statement into a spreadsheet'],
+    ['wide-research', 'map-a-competitor-s-go-to-market', "Map a competitor's go-to-market"],
+    ['wide-research', 'make-a-study-guide-from-course-material', 'Make a study guide from course material'],
+    ['wide-research', 'build-a-ranked-lead-list', 'Build a ranked lead list'],
   ])('resolves %s/%s, which the console links to', (mode, id, label) => {
     expect(findSample(mode, id)?.sample.label).toBe(label);
   });
@@ -60,6 +65,11 @@ describe('console handoff', () => {
     ["website", "build-a-project-status-page", "Build a web page with a status update for a website redesign: five milestones with owners and dates, a progress bar at 60%, and a short risks section."],
     ["website", "build-a-team-offsite-invitation-page", "Build a web page inviting the team to an offsite on Friday 4 December in Lisbon, with the agenda, travel notes and a packing list."],
     ["website", "build-a-feature-announcement-page", "Build a web page announcing a new 'shared calendars' feature, with a headline, three benefits and a short FAQ."],
+    ["slides", "turn-a-report-into-a-presentation", "Write a realistic sample four-page project report, then turn it into a 10-slide presentation for a 10-minute talk, with a consistent color theme, speaker notes, and a time per slide. Afterwards I'll attach my own document."],
+    ["spreadsheet", "turn-a-bank-statement-into-a-spreadsheet", "Create a realistic sample one-month bank statement, then convert it into an Excel workbook with one transaction per row (date, description, money in, money out, running balance). Check that the totals match the statement and list anything that doesn't reconcile. Afterwards I'll attach my real statement."],
+    ["wide-research", "map-a-competitor-s-go-to-market", "Build a one-page competitor snapshot of Clay from public sources: what it sells and to whom, its top three competitors and how it positions against each, and the signals that someone is ready to buy. Cite a source for each part and save it as a Word document. Then tell me where a newer competitor could win against Clay and where Clay is hard to beat. Afterwards I'll describe my company so you can compare us."],
+    ["wide-research", "make-a-study-guide-from-course-material", "Write a realistic sample set of lecture notes on the basics of contract law, then turn them into a study guide: key concepts, definitions in the exact wording from the notes, a glossary, and a 10-question practice quiz with answers. Save it as a document. Afterwards I'll attach my own slides."],
+    ["wide-research", "build-a-ranked-lead-list", "Find 15 mid-sized companies in Germany that make industrial machinery and could need 3D-printed prototypes. Return a ranked spreadsheet with company, what they make, size, a fit score from 0 to 100, why they fit, and a source link. Don't invent contact details."],
   ])('keeps %s/%s word for word as the console Gallery shows it', (mode, id, prompt) => {
     expect(findSample(mode, id)?.sample.prompt).toBe(prompt);
   });
@@ -149,8 +159,15 @@ describe('console handoff', () => {
     expect(takeConsoleHandoff(window.sessionStorage, Date.now() + 11 * 60 * 1000)).toBeNull();
   });
 
-  it('treats the own-work prompt as text the app placed, not the person\'s own', () => {
-    expect(isUntouchedSample(OWN_WORK_PROMPT)).toBe(true);
-    expect(isUntouchedSample(`${OWN_WORK_PROMPT} Also my notes.`)).toBe(false);
+  it('treats a job the own-work mode placed as the app\'s text, and anything added as the person\'s', () => {
+    const job = OWN_WORK_MODE.samples[0].prompt;
+    expect(isUntouchedSample(job)).toBe(true);
+    expect(isUntouchedSample(`${job} Also my notes.`)).toBe(false);
+  });
+
+  it('counts the own-work prompt earlier builds placed as app text, since drafts outlive builds', () => {
+    const retired = 'I\'d like to start with something real from my work. Ask me one question about what I\'m working on, and give me two or three small examples to jump-start it, like a report to update, a spreadsheet to clean, or a thread to answer. Tell me I can attach a file, paste notes or a link, or connect Gmail, and say you\'ll take the first step once I answer.';
+    expect(isUntouchedSample(retired)).toBe(true);
+    expect(isUntouchedSample(`${retired} My notes.`)).toBe(false);
   });
 });

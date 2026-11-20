@@ -4,7 +4,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted, isModelBudgetReached } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow, jevClassifySwitch } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -100,6 +100,9 @@ export const APPEARANCE_ANCHORS = {
 export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false, providerTestsAvailable = true }) {
   const { t } = useTranslation('settings');
   if (!PLATFORM_UI || !providerTestsAvailable) {
+    return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
+  }
+  if (!offersBilling() && ['no_credits', 'budget_reached', 'billing_unavailable'].includes(notice.kind)) {
     return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
   }
   const byok = <div className="text-ink-3">{t('probe.byok')}</div>;
@@ -216,6 +219,9 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
       </div>
     );
   }
+  if (!offersBilling()) {
+    return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
+  }
   if (budgetReached) {
     return (
       <div className="text-[11.5px] text-ink-3">
@@ -223,9 +229,6 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
         <ViewBudgetsLink>{t('agent.viewBudgets')}</ViewBudgetsLink>
       </div>
     );
-  }
-  if (!offersBilling()) {
-    return <div className="text-[11.5px] text-ink-3">{t('agent.modelNeedsCreditsNoLink', { model: label })}</div>;
   }
   return (
     <div className="text-[11.5px] text-ink-3">
@@ -1066,6 +1069,7 @@ export default function SettingsView({
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   // effectiveRoleProvider already falls back to MindsHub, as the server does.
   const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
+  const jevClassify = jevClassifySwitch(settings, roleProviderType('coding'));
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     // null is a tombstone ("clear the stored row so the server's enabled-aware
@@ -2154,7 +2158,7 @@ export default function SettingsView({
         {/* Voice calls run on MindsHub: only when it is the LLM provider. */}
         {llmViaMindsHub(settings) && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />}
 
-        {(hasBudgetSettings || jevSwitchShown) && (
+        {(hasBudgetSettings || jevSwitchShown || jevClassify.shown) && (
           <SettingsGroup title={t('advanced.title')} collapsible defaultCollapsed>
             {hasBudgetSettings && <>
             {hasLimitsSwitch && (
@@ -2234,6 +2238,21 @@ export default function SettingsView({
                   checked={settings.jevDecisionsEnabled ?? true}
                   onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
                   aria-label={t('advanced.jev.title')}
+                />
+              </Section>
+            )}
+            {jevClassify.shown && (
+              <Section
+                title={t('advanced.jevClassify.title')}
+                subtitle={jevClassify.available
+                  ? t('advanced.jevClassify.subtitle', { agent: agentLabel || 'Anton' })
+                  : t('advanced.jevClassify.unavailable')}
+              >
+                <Switch
+                  checked={jevClassify.checked}
+                  disabled={!jevClassify.available}
+                  onCheckedChange={(v) => setSetting('jevClassifyEnabled', v)}
+                  aria-label={t('advanced.jevClassify.title')}
                 />
               </Section>
             )}

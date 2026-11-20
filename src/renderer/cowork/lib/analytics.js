@@ -887,7 +887,10 @@ export function setEntryAttribution(entrySource, exampleId, placement) {
 // "not recorded", the same as before the console sent it.
 const placementProps = (placement) => (placement ? { entry_placement: placement } : {});
 
-export function trackAgentSessionStarted() {
+// `exampleId` rides with a send whose start is only known when it goes out
+// (the own-work mode a console link opened): set on arrival, it would also
+// credit an unrelated task sent after the person left the mode.
+export function trackAgentSessionStarted({ exampleId } = {}) {
   const pending = pendingEntryAttribution;
   pendingEntryAttribution = null;
   const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
@@ -896,7 +899,7 @@ export function trackAgentSessionStarted() {
     fresh
       ? {
         entry_source: pending.entry_source,
-        example_id: pending.example_id,
+        example_id: exampleId || pending.example_id,
         ...placementProps(pending.entry_placement),
       }
       : {}
@@ -949,14 +952,16 @@ export function trackExamplePicked(exampleId, list) {
  * event, which clears the console attribution this one uses. `taskMode` is
  * Home's note on a selected task mode and its instruction line (`modeMessage`):
  * only Home knows whether an example was placed, so it rides with the send.
+ * `startVia` is a start label that rode with the send the same way, and wins
+ * over one set with setStartVia.
  */
-export function trackNewTaskMessageSent({ text, attachments = 0, start, taskMode }) {
+export function trackNewTaskMessageSent({ text, attachments = 0, start, taskMode, startVia }) {
   const entry = pendingEntryAttribution && Date.now() - pendingEntryAttribution.at <= ENTRY_ATTRIBUTION_TTL_MS
     ? pendingEntryAttribution : null;
   const pending = pendingStartVia;
   pendingStartVia = null;
   const fresh = pending && Date.now() - pending.at <= START_VIA_TTL_MS;
-  const via = fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer');
+  const via = startVia || (fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer'));
   const body = typeof text === 'string' ? text : '';
   const props = {
     start_kind: start?.start_kind || 'free_text',

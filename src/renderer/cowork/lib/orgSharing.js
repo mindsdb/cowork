@@ -473,6 +473,39 @@ export function groupSkillsBySection(skills, { orgName = null } = {}) {
   return groups.filter((group) => group.skills.length > 0);
 }
 
+/**
+ * The section the Artifacts page lists an artifact under, by the rule the
+ * server gives skills (skill_sharing.section): shared with everyone (or the
+ * org's default team) is "org"; else shared with a team is "team"; else the
+ * caller's own is "mine"; else "shared_with_me". Someone else's artifact
+ * comes with `capabilities.role` "reviewer" (or an owner the server could
+ * not name). An audience the card does not know counts by owner alone.
+ */
+export function artifactSection(artifact, { teams = [] } = {}) {
+  const capabilities = artifact?.capabilities || null;
+  const owner = !(capabilities?.role === 'reviewer' || capabilities?.ownerUnknown === true);
+  const audience = readArtifactAudience(artifact);
+  if (audience) {
+    if (audience.orgAllowed || namesDefaultTeam(audience.teamIds, teams)) return 'org';
+    if (audience.teamIds.length > 0) return 'team';
+  }
+  return owner ? 'mine' : 'shared_with_me';
+}
+
+/**
+ * The Artifacts page's groups, in the Skills page's order, empty ones left
+ * out; each keeps the order it was given.
+ *
+ * @returns {Array<{ id: string, title: string, artifacts: object[] }>}
+ */
+export function groupArtifactsBySection(artifacts, { orgName = null, teams = [] } = {}) {
+  const buckets = { mine: [], shared_with_me: [], team: [], org: [] };
+  for (const artifact of artifacts || []) buckets[artifactSection(artifact, { teams })].push(artifact);
+  return SKILL_SECTIONS
+    .map((id) => ({ id, title: SECTION_TITLES[id](orgName), artifacts: buckets[id] }))
+    .filter((group) => group.artifacts.length > 0);
+}
+
 /* Artifact access, as a card, a save's answer or the access route reports it. */
 
 /**

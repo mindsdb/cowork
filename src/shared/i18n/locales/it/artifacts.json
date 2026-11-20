@@ -161,6 +161,10 @@
       "edit": "Impossibile modificare",
       "delete": "Impossibile eliminare",
       "markRead": "Impossibile segnare il feedback come letto"
+    },
+    "guide": {
+      "title": "Commenti",
+      "body": "Lascia note in qualsiasi punto della pagina: anche chi la riceve condivisa può commentare. Scegli i commenti da sistemare e chiedi all'agente di risolverli."
     }
   },
   "export": {
@@ -247,7 +251,7 @@
   "htmlEditor": {
     "blockGone": "Il blocco di testo selezionato non è più disponibile.",
     "updateFailed": "Impossibile aggiornare questo testo.",
-    "advancedMode": "Modalità avanzata: le modifiche vengono comunque salvate come revisione",
+    "advancedMode": "Codice sorgente: le modifiche vengono comunque salvate come revisione",
     "selected": "{label} selezionato: scrivi per modificarlo",
     "preparing": "Preparazione del testo modificabile…",
     "noEditable": "Nessun testo modificabile direttamente",
@@ -267,7 +271,6 @@
       "caption": "Didascalia",
       "text": "Testo"
     },
-    "exitLiveEdit": "Esci dalla modifica dal vivo",
     "mode": {
       "ariaLabel": "Modalità della modifica dal vivo",
       "navigate": "Naviga",
@@ -275,7 +278,8 @@
       "navigateHint": "Usa la pagina come sempre: scorri slide, schede e link",
       "editHint": "Fai clic su un testo per cambiarlo",
       "navigateGuidance": "Navigazione. Usa la pagina come sempre, poi passa a Modifica testo per cambiare qualcosa."
-    }
+    },
+    "sourceCode": "Codice sorgente"
   },
   "workspace": {
     "noWorkspace": "Questo artefatto è stato creato prima che la modifica fosse disponibile",
@@ -361,7 +365,8 @@
     "load": {
       "sharingSettings": "impostazioni di condivisione",
       "currentAccess": "accesso attuale"
-    }
+    },
+    "editList": "Modifica elenco"
   },
   "previewErrors": {
     "reported": "{count, plural, one {L’anteprima ha segnalato # errore} other {L’anteprima ha segnalato # errori}}",
@@ -678,7 +683,8 @@
     "send": "Invia",
     "route": {
       "edit": "Modifica diretta…",
-      "agent": "Passaggio all'agente…"
+      "agent": "Passaggio all'agente…",
+      "reply": "Risposta in corso…"
     },
     "stage": {
       "routing": "Valutazione di come procedere…",
@@ -730,28 +736,25 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "Statistiche",
-      "hide": "Nascondi statistiche"
-    },
     "title": "Statistiche",
     "close": "Chiudi il pannello delle statistiche",
     "loading": "Caricamento delle statistiche",
     "retry": "Riprova",
-    "trackViews": "Conta le visualizzazioni",
-    "trackingOff": "Il conteggio è disattivato. Attivalo per iniziare a contare le visualizzazioni.",
     "metrics": {
-      "viewsInPeriod": "Visualizzazioni (30 giorni)",
-      "uniqueViewers": "Visitatori unici (30 giorni)",
-      "totalViews": "Visualizzazioni totali",
-      "lastViewed": "Ultima visualizzazione"
+      "views": "Visualizzazioni",
+      "viewers": "Visitatori unici",
+      "avgTime": "Tempo medio",
+      "completion": "Completamento",
+      "lastViewedHint": "Ultima visualizzazione {time}"
     },
     "daysInUtc": "Giorni in UTC",
     "chartLabel": "Visualizzazioni al giorno",
     "viewers": {
       "email": "Email",
       "lastSeen": "Ultima visita",
-      "restrictedOnly": "I nomi dei visitatori vengono registrati solo quando la condivisione è limitata."
+      "restrictedOnly": "I nomi dei visitatori vengono registrati solo quando la condivisione è limitata.",
+      "anonymous": "Visitatore anonimo",
+      "none": "Nessun visitatore registrato finora."
     },
     "noViews": "Ancora nessuna visualizzazione",
     "errors": {
@@ -760,7 +763,66 @@
       "reconnect": "Riconnetti MindsHub per vedere le statistiche.",
       "temporarilyUnavailable": "Le statistiche sono temporaneamente non disponibili.",
       "loadFailed": "Impossibile caricare le statistiche."
-    }
+    },
+    "chartTitle": "Visualizzazioni, ultimi 30 giorni",
+    "noViewsHint": "Le visualizzazioni compaiono qui quando qualcuno apre il link.",
+    "off": {
+      "title": "L’analisi dei visitatori è disattivata",
+      "body": "Attivala per vedere chi apre questa pagina, quanto tempo resta e quali parti legge.",
+      "turnOn": "Attiva"
+    },
+    "pages": {
+      "title": "Tempo per pagina",
+      "audienceChart": "Tempo medio per pagina, tutti i visitatori",
+      "position": "Pagina {number} / {total}",
+      "untitled": "Pagina {number}",
+      "timeSpent": "Tempo trascorso",
+      "avgTime": "Tempo medio",
+      "reached": "Raggiunta",
+      "barSpent": "Pagina {number} di {total}, {name}: {time}",
+      "barAvg": "Pagina {number} di {total}, {name}: {time} in media",
+      "barAvgReach": "Pagina {number} di {total}, {name}: {time} in media, raggiunta dal {reach} delle visite"
+    },
+    "activity": {
+      "title": "Tutte le visite",
+      "viewerCount": "{count, plural, one {# visitatore} other {# visitatori}}",
+      "summary": "{count, plural, one {# visita} other {# visite}} · {lastSeen}",
+      "totalTime": "Tempo totale {time}",
+      "viewed": "Visto: {percent}",
+      "whereabouts": "Dispositivo, sistema operativo e posizione",
+      "loading": "Caricamento delle visite",
+      "noVisits": "Nessuna visita registrata.",
+      "visit": "Visita",
+      "allVisits": "{count, plural, one {# visita} other {Tutte le # visite}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "Tempo per pagina, {name}",
+      "visitChart": "Tempo per pagina, {name}, visita del {date}"
+    },
+    "devices": {
+      "desktop": "Computer",
+      "mobile": "Cellulare",
+      "tablet": "Tablet",
+      "unknown": "Dispositivo sconosciuto"
+    },
+    "delete": {
+      "action": "Elimina analisi",
+      "title": "Eliminare l’analisi dei visitatori?",
+      "message": "Verranno rimosse tutte le visualizzazioni, le visite e i visitatori registrati per questa pagina. L’operazione non si può annullare.",
+      "confirm": "Elimina",
+      "hint": "Rimuove tutte le visualizzazioni e le visite registrate per questo artefatto. L'operazione non può essere annullata."
+    },
+    "duration": {
+      "seconds": "{s} s",
+      "minutes": "{m} min",
+      "minutesSeconds": "{m} min {s} s",
+      "hours": "{h} h",
+      "hoursMinutes": "{h} h {m} min"
+    },
+    "guide": {
+      "title": "Statistiche",
+      "body": "Quante volte è stato aperto il tuo link condiviso ogni giorno, negli ultimi 30 giorni. Le tue visite non vengono contate."
+    },
+    "advanced": "Avanzate"
   },
   "refPill": {
     "open": "Apri {title}"
@@ -773,14 +835,14 @@
     "showFewer": "Mostra meno"
   },
   "layers": {
-    "ariaLabel": "Livelli del visualizzatore",
     "source": "Modifica dal vivo",
     "comments": "Commenti",
     "sourceOffPrompt": {
       "title": "Disattivare Modifica dal vivo?",
       "message": "Le modifiche non salvate in Modifica dal vivo andranno perse.",
       "confirmLabel": "Scarta modifiche"
-    }
+    },
+    "stats": "Statistiche"
   },
   "address": {
     "draft": "Bozza",
@@ -788,8 +850,8 @@
     "copied": "Copiato"
   },
   "layout": {
-    "maximize": "Ingrandisci",
-    "restore": "Ripristina dimensioni"
+    "maximize": "Schermo intero",
+    "restore": "Esci da schermo intero"
   },
   "imageAttachments": {
     "onlyImages": "Si possono allegare solo immagini PNG, JPEG, GIF e WebP.",
@@ -801,5 +863,35 @@
     "enlarge": "Ingrandisci immagine",
     "shrink": "Riduci immagine",
     "image": "Immagine"
+  },
+  "analytics": {
+    "title": "Analisi dei visitatori",
+    "collect": "Raccogli l’analisi dei visitatori",
+    "collectHint": "Scopri chi apre questa pagina, quanto tempo resta e quali parti legge.",
+    "loading": "Caricamento delle impostazioni di analisi",
+    "loadFailed": "Impossibile caricare le impostazioni di analisi.",
+    "addCredits": "Aggiungi crediti",
+    "errors": {
+      "creditsRequired": "Aggiungi crediti per raccogliere l’analisi dei visitatori.",
+      "trackingOff": "Attiva prima l’analisi dei visitatori.",
+      "saveFailed": "Impossibile salvare l’impostazione."
+    }
+  },
+  "rail": {
+    "ariaLabel": "Pannelli del visualizzatore",
+    "sourceHint": "Cambia testo e layout della pagina",
+    "commentsHint": "Lascia e rivedi i feedback",
+    "statsHint": "Chi l’ha visto e per quanto tempo",
+    "commentsOpen": "Commenti, {count} aperti"
+  },
+  "liveEditPanel": {
+    "close": "Chiudi il pannello di modifica dal vivo",
+    "changes": {
+      "title": "Modifiche non salvate",
+      "undo": "Annulla questa modifica",
+      "undoNamed": "Annulla la modifica a {label}: {text}",
+      "was": "Prima: {text}",
+      "emptyText": "(vuoto)"
+    }
   }
 }

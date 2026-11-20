@@ -39,7 +39,9 @@ import { LOAD_STATUS } from '../../../lib/sharingContract';
 import { LoadStatus, RetryAlert } from '../../LoadStatus';
 import { useArtifactShareState } from './useArtifactShareState';
 import { shareStateIcon } from '../../ShareStateLabel';
-import { UpToDateTag } from '../../UpToDateTag';
+import { UpToDateTag, useSaveStatus } from '../../UpToDateTag';
+import { useArtifactStats } from '../stats/useArtifactStats';
+import { ViewerAnalyticsSettings } from './ViewerAnalyticsSettings';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -135,10 +137,13 @@ function UrlField({ url, onCopied }) {
   );
 }
 
-// Read-only "current access" card (summary view). Shared with specific
-// teams and people, it lists them right away (the first few, then "+N
-// more"), so seeing who has access never takes a click on Change.
-function AccessSummaryCard({ pub, sharing, orgName }) {
+// The "current access" card (summary view). Shared with specific teams and
+// people, it lists them right away (the first few, then "+N more"), so seeing
+// who has access never takes a click. `picker`, when given, takes the card's
+// place: `(desc) => the access dropdown`, which switches the access from
+// here, given the card's line (how many are on a list); the list then
+// follows it in a box of its own.
+function AccessSummaryCard({ pub, sharing, orgName, picker = null }) {
   const orgSharing = !!sharing;
   const m = accessSummaryLabel(pub, { orgSharing, orgName });
   const draft = accessDraftFromArtifact(pub, { orgSharing, teams: sharing?.teams?.teams || [] });
@@ -150,6 +155,24 @@ function AccessSummaryCard({ pub, sharing, orgName }) {
   const desc = count > 0
     ? recipientSummary({ teamIds, userIds, emails }, { orgName, emailsOnly: !orgSharing })
     : m.desc;
+  const list = count > 0 && (
+    <SharedWithList
+      teamIds={teamIds}
+      userIds={userIds}
+      emails={emails}
+      orgName={orgName}
+      teamsState={sharing?.teams || null}
+      emailsOnly={!orgSharing}
+    />
+  );
+  if (picker) {
+    return (
+      <div className="flex flex-col gap-2" data-testid="access-summary">
+        {picker(desc)}
+        {list && <div className="rounded-card border border-solid border-line bg-surface-2 py-1 px-1">{list}</div>}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col rounded-card bg-surface-2 border border-solid border-line" data-testid="access-summary">
       <div className="flex items-center gap-[10px] py-[10px] px-3">
@@ -315,6 +338,11 @@ export function PublishMenu({
   };
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
+  // Viewer analytics settings (ENG-4455), read with the stats while the panel
+  // is open on a published artifact.
+  const analytics = useArtifactStats(pub.artifact, { enabled: open && isPublished && !!pub.artifact });
+  // The analytics switches save as they flip; the footer says so.
+  const analyticsSave = useSaveStatus(!!analytics.trackingBusy, !!analytics.error);
   // Which reads the panel waits on, and whether it may claim "Shared"
   // (useArtifactShareState).
   const {
@@ -590,10 +618,40 @@ export function PublishMenu({
                     <div className="py-3 px-4">
                       {view === 'summary' && (
                         <>
-                          <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.change')}</LinkButton>}>
+                          {/* The card is a dropdown: picking another access
+                              opens the change, with Update to save it. The
+                              people on a list are edited from Edit list. */}
+                          <SectionLabel action={current.mode === AUDIENCE_CHOICE.SPECIFIC && sharingReady && pub.accessLoaded && (
+                            <LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.editList')}</LinkButton>
+                          )}>
                             {whoCanAccess}
                           </SectionLabel>
-                          {accessLoadStatus || <AccessSummaryCard pub={pub} sharing={sharing} orgName={orgName} />}
+                          {accessLoadStatus || sharingSettingsStatus || (<>
+                            {permissionsNotice}
+                            <AccessSummaryCard
+                              pub={pub}
+                              sharing={sharing}
+                              orgName={orgName}
+                              // Not before the real list is in: a pick drafts
+                              // over it, and would not be re-seeded (ENG-931).
+                              picker={current.mode && pub.accessLoaded ? (desc) => (
+                                <AccessChooser
+                                  layout="dropdown"
+                                  showEditor={false}
+                                  chosenDesc={desc}
+                                  ariaLabel={whoCanAccess}
+                                  value={current}
+                                  sharing={sharing}
+                                  onChange={(d) => {
+                                    if (d.mode === current.mode) return;
+                                    editDraft(d);
+                                    setDraftDirty(true);
+                                    setView('access');
+                                  }}
+                                />
+                              ) : null}
+                            />
+                          </>)}
                           {pub.accessMode === 'password' && (
                             <div className="mt-2 flex justify-end">
                               <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>{t('publish.changePassword')}</LinkButton>
@@ -615,7 +673,7 @@ export function PublishMenu({
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} />
+                              <AccessChooser layout="dropdown" value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} />
                             </>
                           )}
                         </>
@@ -662,6 +720,17 @@ export function PublishMenu({
                         </>
                       )}
                     </div>
+
+                    {/* Whatever access is picked or being changed: analytics
+                        is its own setting, saved as it flips. Not for Only
+                        me, which nobody else opens. */}
+                    {pub.artifact && view !== 'versions'
+                      && (view === 'access' ? draft.mode : current.mode) !== AUDIENCE_CHOICE.PRIVATE && (
+                      <div className="py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
+                        <SectionLabel>{t('analytics.title')}</SectionLabel>
+                        <ViewerAnalyticsSettings controller={analytics} />
+                      </div>
+                    )}
                   </div>
   
                   <NoticeRow message={pub.notice || (pub.linkOwnerRecorded === false ? unrecordedLinkWarning() : '')} />
@@ -714,7 +783,7 @@ export function PublishMenu({
                         {t('publish.update')}
                       </FooterButton>
                     ) : (
-                      <UpToDateTag />
+                      <UpToDateTag state={analyticsSave} />
                     )}
                     </>)}
                   </div>

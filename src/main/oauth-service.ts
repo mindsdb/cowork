@@ -36,6 +36,9 @@ export interface OAuthConnectOpts {
   clientSecret?: string;
   /** Scopes to request, e.g. ["https://www.googleapis.com/auth/gmail.compose"] */
   scopes: string[];
+  /** Joins `scopes` in the authorize URL. Defaults to a space (RFC 6749);
+   *  Slack's v2 flow documents a comma. */
+  scopeSeparator?: string;
   /** Client authentication style at the token endpoint. */
   tokenAuthStyle?: 'body' | 'basic';
   /**
@@ -114,6 +117,9 @@ export interface BrowserAuthorizeOpts {
   authUrl: string;
   clientId: string;
   scopes: string[];
+  /** Joins `scopes` in the authorize URL. Defaults to a space (RFC 6749);
+   *  Slack's v2 flow documents a comma. */
+  scopeSeparator?: string;
   /** Extra params merged into the authorize URL (`resource`, provider flags). */
   extraAuthParams?: Record<string, string>;
   redirectPort?: number;
@@ -258,7 +264,7 @@ async function browserStep(opts: BrowserAuthorizeOpts, attempt: Attempt): Promis
     response_type: 'code',
     client_id: opts.clientId,
     redirect_uri: redirectUri,
-    ...(opts.scopes.length ? { scope: opts.scopes.join(' ') } : {}),
+    ...(opts.scopes.length ? { scope: opts.scopes.join(opts.scopeSeparator ?? ' ') } : {}),
     state,
     code_challenge: challenge,
     code_challenge_method: 'S256',
@@ -424,6 +430,10 @@ async function exchangeCode(
     }
     const data = (await res.json()) as Record<string, unknown>;
     if (isCancelled()) return { ok: false, reason: 'cancelled' };
+    // Slack reports a failed exchange as HTTP 200 with {"ok": false, "error": ...}.
+    if (data.ok === false) {
+      return { ok: false, reason: `Token exchange failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}` };
+    }
     if (typeof data.access_token !== 'string' || !data.access_token) {
       return { ok: false, reason: 'Token exchange response did not include an access token.' };
     }
