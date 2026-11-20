@@ -818,7 +818,7 @@
     },
     "guide": {
       "title": "Stats",
-      "body": "How your shared link is doing: how many times it was opened, views per day over the last 30 days, and each visit with who it was (their email on a restricted link, otherwise an anonymous viewer), their device and, where known, their location. Time spent and pages read show up when the page reports them. Your own visits aren't counted. Turn collection on or off in Share, under Viewer analytics."
+      "body": "How many times your shared link was opened each day, over the last 30 days. Your own visits aren't counted."
     },
     "advanced": "Advanced"
   },

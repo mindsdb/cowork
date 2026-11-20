@@ -818,7 +818,7 @@
     },
     "guide": {
       "title": "Statistiques",
-      "body": "Comment se porte votre lien partagé : le nombre d'ouvertures, les vues par jour sur les 30 derniers jours et chaque visite avec qui c'était (son e-mail sur un lien restreint, sinon un visiteur anonyme), son appareil et, si on la connaît, sa localisation. Le temps passé et les pages lues apparaissent quand la page les transmet. Vos propres visites ne sont pas comptées. Activez ou désactivez la collecte dans Partager, sous Analyse des visiteurs."
+      "body": "Combien de fois votre lien partagé a été ouvert chaque jour, sur les 30 derniers jours. Vos propres visites ne sont pas comptées."
     },
     "advanced": "Avancé"
   },

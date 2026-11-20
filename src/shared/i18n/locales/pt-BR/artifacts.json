@@ -818,7 +818,7 @@
     },
     "guide": {
       "title": "Estatísticas",
-      "body": "Como está o seu link compartilhado: quantas vezes foi aberto, as visualizações por dia nos últimos 30 dias e cada visita com quem foi (o e-mail em um link restrito; caso contrário, um visitante anônimo), o dispositivo e, quando conhecida, a localização. O tempo gasto e as páginas lidas aparecem quando a página os informa. Suas próprias visitas não são contadas. Ative ou desative a coleta em Compartilhar, em Análise de visitantes."
+      "body": "Quantas vezes seu link compartilhado foi aberto a cada dia, nos últimos 30 dias. Suas próprias visitas não são contadas."
     },
     "advanced": "Avançado"
   },

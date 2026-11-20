@@ -818,7 +818,7 @@
     },
     "guide": {
       "title": "Statistiche",
-      "body": "Come sta andando il tuo link condiviso: quante volte è stato aperto, le visualizzazioni giornaliere degli ultimi 30 giorni e ogni visita con chi l'ha fatta (la sua email su un link riservato, altrimenti un visitatore anonimo), il dispositivo e, se nota, la posizione. Il tempo trascorso e le pagine lette compaiono quando la pagina li comunica. Le tue visite non vengono contate. Attiva o disattiva la raccolta in Condividi, sotto Analisi dei visitatori."
+      "body": "Quante volte è stato aperto il tuo link condiviso ogni giorno, negli ultimi 30 giorni. Le tue visite non vengono contate."
     },
     "advanced": "Avanzate"
   },

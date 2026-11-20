@@ -818,7 +818,7 @@
     },
     "guide": {
       "title": "Statistiken",
-      "body": "So läuft dein geteilter Link: wie oft er geöffnet wurde, Aufrufe pro Tag in den letzten 30 Tagen und jeder Besuch mit der Person dahinter (ihre E-Mail bei einem eingeschränkten Link, sonst ein anonymer Besucher), ihrem Gerät und, falls bekannt, ihrem Standort. Verweildauer und gelesene Seiten erscheinen, wenn die Seite sie meldet. Deine eigenen Besuche werden nicht gezählt. Schalte die Erfassung unter Teilen bei Besucheranalyse ein oder aus."
+      "body": "Wie oft dein geteilter Link an jedem Tag der letzten 30 Tage geöffnet wurde. Deine eigenen Besuche werden nicht gezählt."
     },
     "advanced": "Erweitert"
   },
