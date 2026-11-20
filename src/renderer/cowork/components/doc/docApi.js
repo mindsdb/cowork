@@ -1,6 +1,7 @@
 // HTTP + SSE client for the docs API (cowork-server /api/v1/docs).
 import { BASE, authFetch } from '../../api';
 import { iterateSSE } from '../../lib/responseStreamAdapter';
+import { contentDispositionFilename } from '../../lib/browserDownload';
 import { sharedTranslator } from '../../../lib/i18n';
 
 const tr = sharedTranslator('docs');
@@ -55,8 +56,7 @@ export async function downloadDocExport(projectRef, artifactId, format) {
   const res = await authFetch(`${BASE}${docPath(projectRef, artifactId)}/export?format=${encodeURIComponent(format)}`);
   if (!res.ok) throw new Error(tr('export.failedStatus', { status: res.status }));
   const blob = await res.blob();
-  const disposition = res.headers.get('content-disposition') || '';
-  const name = /filename="([^"]+)"/.exec(disposition)?.[1] || `doc.${format}`;
+  const name = contentDispositionFilename(res.headers.get('content-disposition'), `doc.${format}`);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
