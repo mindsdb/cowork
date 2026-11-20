@@ -713,8 +713,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                     </div>
 
                     {/* Whatever access is picked or being changed: analytics
-                        is its own setting, saved as it flips. */}
-                    {pub.artifact && view !== 'versions' && (
+                        is its own setting, saved as it flips. Not for Only
+                        me, which nobody else opens. */}
+                    {pub.artifact && view !== 'versions'
+                      && (view === 'access' ? draft.mode : current.mode) !== AUDIENCE_CHOICE.PRIVATE && (
                       <div className="py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
                         <SectionLabel>{t('analytics.title')}</SectionLabel>
                         <ViewerAnalyticsSettings controller={analytics} />

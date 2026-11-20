@@ -200,4 +200,14 @@ describe('PublishMenu viewer analytics beside an access change', () => {
     expect(within(screen.getByTestId('viewer-analytics-settings'))
       .getByRole('switch', { name: 'Collect viewer analytics' })).toBeInTheDocument();
   });
+
+  it('is not offered for Only me, and comes back once another access is picked', () => {
+    render(<PublishMenu controller={makeController({ accessMode: 'restricted', ownerOnly: true })} />);
+    fireEvent.click(screen.getByRole('button', { name: /Share/ }));
+    expect(screen.queryByTestId('viewer-analytics-settings')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('access-dropdown'));
+    fireEvent.click(screen.getByRole('radio', { name: /^Password protected/ }));
+    expect(screen.getByTestId('viewer-analytics-settings')).toBeInTheDocument();
+  });
 });
