@@ -1033,6 +1033,45 @@ describe('ArtifactViewer quick edit bar', () => {
       ]);
     });
 
+    // Switching from Live edit to Comments, Stats or the plain preview keeps
+    // the user on the slide they were editing (ENG-4455).
+    it('sends the preview to the Live editor\'s slide when Live edit goes off', async () => {
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.draft = HTML_SOURCE.content;
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      await previewShown();
+      fromPreview({ type: 'view', ...PLACE });
+      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+      const editorPlace = { ...PLACE, inputs: [...PLACE.inputs, ...PLACE.inputs], heading: 'Slide 3' };
+      act(() => sourceEditorProps.current.onViewChange(editorPlace));
+      const before = loads();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+
+      await waitFor(() => expect(loads()).toBe(before + 1), { timeout: 2000 });
+      expect(restoresAfterReload()).toEqual([
+        { source: 'anton-preview-parent', type: 'restore', view: editorPlace },
+      ]);
+    });
+
+    it('reloads nothing when the editor is where the preview already is', async () => {
+      workspaceMock.source = HTML_SOURCE;
+      workspaceMock.draft = HTML_SOURCE.content;
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      await previewShown();
+      fromPreview({ type: 'view', ...PLACE });
+      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+      act(() => sourceEditorProps.current.onViewChange(PLACE));
+      const before = loads();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+      await new Promise((resolve) => { setTimeout(resolve, 300); });
+
+      expect(loads()).toBe(before);
+    });
+
     it('starts the page over on the user\'s own Reload', async () => {
       renderViewer();
       await screen.findByTitle('Launch brief');

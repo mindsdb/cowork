@@ -74,7 +74,7 @@ import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
-import { usePreviewView } from './usePreviewView';
+import { normalizePreviewView, usePreviewView } from './usePreviewView';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
@@ -380,6 +380,9 @@ export function ArtifactViewer({
   commentLayerRequestedRef.current = commentLayerRequested;
   // Whether the mounted preview was loaded with the bridge.
   const commentLayerMountedRef = useRef(false);
+  // Where the editor was when Live edit went off, for a comment-layer reload
+  // that follows to land there too.
+  const leftEditorViewRef = useRef(null);
   const _akParts = artifactKey.split('/');
   const commentUserDir = _akParts[0] || '';
   const commentReportId = _akParts.slice(1).join('/') || '';
@@ -1060,8 +1063,10 @@ export function ArtifactViewer({
   useEffect(() => {
     if (!open || !commentsOpen || !commentLayerRequested) return;
     if (!(previewUrl || previewDoc) || commentLayerMountedRef.current) return;
-    // The page comes back on the slide the user was commenting on.
-    previewView.keepPlace();
+    // The page comes back on the slide the user was commenting on, or the
+    // one they were editing when they came from Live edit.
+    previewView.keepPlace(leftEditorViewRef.current);
+    leftEditorViewRef.current = null;
     setReloadNonce((n) => n + 1);
   }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc, previewView.keepPlace]);
 
@@ -1344,6 +1349,32 @@ export function ArtifactViewer({
   const canSource = !!workspace.source && workspace.capabilities?.canEdit !== false;
   const sourceOn = layers.source && canSource;
   sourceOnRef.current = sourceOn;
+  // Leaving Live edit for Comments, Stats or the plain preview (ENG-4455):
+  // the preview goes to where the editor was, so the user stays on the slide
+  // they were working on. The preview can only take a place as it loads, so
+  // it reloads behind the cover, unless the comment layer is about to reload
+  // it anyway, which then lands there. Nothing reloads when the editor is
+  // where the preview already is.
+  const wasSourceOnRef = useRef(sourceOn);
+  useEffect(() => {
+    const was = wasSourceOnRef.current;
+    wasSourceOnRef.current = sourceOn;
+    if (!was || sourceOn || !open || !framedPreview) return;
+    const view = editorViewRef.current;
+    if (!view) return;
+    const editorAt = JSON.stringify(normalizePreviewView({ ...view, type: 'view' }));
+    if (editorAt === JSON.stringify(previewView.view)) return;
+    if (layers.comments && commentLayerRequested && !commentLayerMountedRef.current) {
+      leftEditorViewRef.current = view;
+      return;
+    }
+    void previewReload.reload(() => {
+      keepPlace(view);
+      reloadPreview();
+    });
+  // Only on Live edit going off; the rest is read as it is then.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceOn]);
   const setSourceLayer = (on) => {
     if (!on && workspace.dirty) {
       setSourceOffPrompt(true);
