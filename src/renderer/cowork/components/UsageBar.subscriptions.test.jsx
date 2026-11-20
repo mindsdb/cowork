@@ -61,3 +61,44 @@ describe('UsageBar on a plan', () => {
     expect(screen.getByRole('button', { name: 'Add funds' })).toBeInTheDocument();
   });
 });
+
+describe('UsageBar on a plan inside the mobile app', () => {
+  const WALLET = { balance: { usd: 12, canConsume: true, alert: '' } };
+  const plus = (percentUsed, over = {}) => ({
+    ...read,
+    freeTokens: { limit: 100, remaining: 5, resetsAt: IN_2H },
+    ...over,
+    plan: { ...read.plan, windows: [{ window: '5h', percentUsed, resetsAt: IN_2H }] },
+  });
+
+  it.each([
+    ['a used-up window, empty wallet', plus(100), 'window_exhausted', /5-hour allowance used up.*Tasks on your plan are paused until/],
+    ['a used-up window, funded wallet', plus(100, WALLET), 'window_on_wallet', /5-hour allowance used up.*Resets at/],
+    ['a window past 80%, funded wallet', plus(85, WALLET), 'window_low', /85% of your 5-hour allowance used.*Resets at/],
+    ['a window past 80%, empty wallet', plus(85), 'window_low', /85% of your 5-hour allowance used.*After that, tasks pause until/],
+  ])('%s says how full the window is, with no wallet and no buttons', (_name, usage, kind, text) => {
+    hostMock.host.isMobileShell = true;
+    try {
+      const { container } = render(
+        <HubUsageContext.Provider value={{ usage, providerType: 'minds-cloud' }}>
+          <UsageBar warning={deriveComposerWarning(usage, { model: null })} isBillingOwner />
+        </HubUsageContext.Provider>,
+      );
+      expect(container.querySelector(`[data-usage-notice="${kind}"]`)).toHaveTextContent(text);
+      expect(container.textContent).not.toMatch(/wallet|balance|API rates|add funds|\$|Mobile|Free/i);
+      expect(screen.queryByRole('button', { name: /Upgrade|Add funds|View usage/ })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
+  it('says nothing for a plan with room, or for a pick outside the plan', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      expect(deriveComposerWarning(plus(30), { model: null })).toBeNull();
+      expect(deriveComposerWarning(plus(100), { model: 'claude-opus-5-5', coveredByTier: 'pro' })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+});

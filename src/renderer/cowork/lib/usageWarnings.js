@@ -12,7 +12,7 @@
 import { MINDSHUB_AIR_MODEL_ID, MODEL_ROUTER_ID } from './modelCatalog';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL, mindsUpgradeUrl } from '../../lib/mindsUrls';
 import { planOf, isPaidPlan, nextUpgradeTier, tierCovers, windowState, windowWarnStep } from './subscriptionPlan';
-import { billingCopyKey } from './billingLinks';
+import { billingCopyKey, offersBilling } from './billingLinks';
 import { budgetScopeOf } from './budgetScope';
 import i18n, { currentLocale } from '../../lib/i18n';
 
@@ -59,10 +59,10 @@ export function upgradeAction(tier) {
  *  offers is owner-only, so only an owner is deep-linked into a dialog; anyone
  *  else goes to the billing page itself and sees what they are allowed to.
  *
- *  An upgrade always opens the checkout deep link for the organization this
+ *  An upgrade always opens the plan's confirm dialog for the organization this
  *  session runs in (`organizationId`, `subject`): the console checks who may
- *  buy before it leaves for Checkout, and callers only offer an upgrade where
- *  one can be bought (see hooks/useUpgradeOffer). */
+ *  buy before it subscribes, and callers only offer an upgrade where one can
+ *  be bought (see hooks/useUpgradeOffer). */
 export function usageActionUrl(action, { isBillingOwner = false, organizationId = null, subject = null } = {}) {
   if (action?.key === 'upgrade') return mindsUpgradeUrl(action.tier, { organizationId, subject });
   if (!isBillingOwner) return MINDS_BILLING_URL;
@@ -265,6 +265,11 @@ export function modelAccessSignature(usage) {
  *  all, and the org may have no grant to refill. */
 export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
   const free = freeAllowanceState(usage);
+  if (!offersBilling()) {
+    if (free.status === 'no_grant') return i18n.t('providers.unavailable', { ns: 'settings' });
+    const time = formatResetTime(resetAt || free.resetsAt);
+    return time ? tr('balanceEmpty.freeUsedTooWithTimeMobile', { time }) : tr('freeUsed.title');
+  }
   if (free.status === 'no_grant') {
     return trBilling('allowanceStop.noGrant', { noGrant: noFreeGrantSentence() });
   }
@@ -351,6 +356,37 @@ function restingFigure(free, f, { balanceEmpty = false } = {}) {
   };
 }
 
+export function deriveComposerWarning(usage, options = {}) {
+  if (offersBilling()) return deriveUsageWarning(usage, options);
+  const { providerType = 'minds-cloud', model, coveredByTier = null } = options;
+  if (!usage?.reachable || (providerType && providerType !== 'minds-cloud')) return null;
+  // On Plus or Pro the plan's windows, not the free allowance, carry a pick
+  // the tier covers, so they speak for it. A pick outside the tier bills the
+  // wallet, which the mobile app does not talk about.
+  const plan = planOf(usage);
+  if (isPaidPlan(plan)) {
+    if (!tierCovers(plan.tier, coveredByTier)) return null;
+    const balance = usage.balance || null;
+    return planWindowWarning(plan, { balanceUsable: !!balance && !isBalanceEmpty(balance) && Number(balance.usd) > 0 });
+  }
+  if (isExplicitPaidModel(pickedModelId(model))) return null;
+  const free = usage.freeTokens;
+  const f = freeState(free);
+  if (f.fractionLeft === null) return null;
+  const figure = restingFigure(free, f);
+  if (!f.out && !f.low) return figure;
+  const time = formatResetTime(free.resetsAt);
+  return {
+    kind: f.out ? 'free_used' : 'free_low',
+    title: f.out ? tr('freeUsed.title') : figure.title,
+    body: time ? tr('resting.resetsAt', { time }) : '',
+    tone: f.out ? 'info' : 'warning',
+    dismissKey: f.out ? 'free_used' : `free_low:${freeDismissStep(f.fractionLeft)}`,
+    actions: [],
+    whenDismissed: figure,
+  };
+}
+
 /**
  * The notice above the composer, or null.
  *
@@ -359,7 +395,7 @@ function restingFigure(free, f, { balanceEmpty = false } = {}) {
  * @param opts.model         the model the composer will send with: an id, or
  *                           a catalog option ({ id }) as HomeView/ChatView pass it
  */
-export function deriveComposerWarning(usage, {
+export function deriveUsageWarning(usage, {
   providerType = 'minds-cloud', model: modelIn = null, coveredByTier = null,
 } = {}) {
   if (!usage || !usage.reachable) return null;
@@ -543,11 +579,16 @@ const windowName = (w) => (w === '7d' ? '7d' : '5h');
 /* The bar for a paid plan: a used-up window first (work on the plan has
    stopped), then a window at 80% or more. Nothing at rest: the meters live
    in Settings → Usage. No dollar or token figure, ever: only the share of
-   the window and when it frees up. */
+   the window and when it frees up. Inside the mobile app the bar still says
+   how full a window is and when it resets, but it names no wallet and offers
+   no action (see billingLinks). */
 function planWindowWarning(plan, { balanceUsable }) {
   const { exhausted, warning } = windowState(plan);
+  const sells = offersBilling();
   const upgradeTier = nextUpgradeTier(plan.tier);
   const upgrade = upgradeTier ? [upgradeAction(upgradeTier)] : [];
+  const offer = (actions) => (sells ? actions : []);
+  const resets = (time) => (time ? tr('resting.resetsAt', { time }) : '');
   if (exhausted) {
     const time = formatResetTime(exhausted.resetsAt);
     const vars = { window: windowName(exhausted.window), time: time || '' };
@@ -557,8 +598,10 @@ function planWindowWarning(plan, { balanceUsable }) {
         tone: 'info',
         dismissKey: `window_on_wallet:${exhausted.window}`,
         title: tr('window.usedUpTitle', vars),
-        body: time ? tr('window.onWalletWithTime', vars) : tr('window.onWallet', vars),
-        actions: [USAGE_ACTIONS.viewUsage, ...upgrade],
+        body: sells
+          ? (time ? tr('window.onWalletWithTime', vars) : tr('window.onWallet', vars))
+          : resets(time),
+        actions: offer([USAGE_ACTIONS.viewUsage, ...upgrade]),
       };
     }
     return {
@@ -566,22 +609,24 @@ function planWindowWarning(plan, { balanceUsable }) {
       tone: 'danger',
       title: tr('window.usedUpTitle', vars),
       body: time ? trBilling('window.pausedWithTime', vars) : trBilling('window.paused', vars),
-      actions: [USAGE_ACTIONS.addFunds, ...upgrade],
+      actions: offer([USAGE_ACTIONS.addFunds, ...upgrade]),
     };
   }
   if (warning) {
     const time = formatResetTime(warning.resetsAt);
     const vars = { window: windowName(warning.window), percent: `${Math.round(warning.percentUsed)}%`, time: time || '' };
+    let body;
+    if (!balanceUsable) body = time ? tr('window.lowThenPauseWithTime', vars) : tr('window.lowThenPause', vars);
+    else if (sells) body = time ? tr('window.lowThenWalletWithTime', vars) : tr('window.lowThenWallet', vars);
+    else body = resets(time);
     return {
       kind: 'window_low',
       tone: 'warning',
       // Stepped like the free allowance: closing it at 80% asks again at 90%.
       dismissKey: `window_low:${warning.window}:${windowWarnStep(warning.percentUsed)}`,
       title: tr('window.lowTitle', vars),
-      body: balanceUsable
-        ? (time ? tr('window.lowThenWalletWithTime', vars) : tr('window.lowThenWallet', vars))
-        : (time ? tr('window.lowThenPauseWithTime', vars) : tr('window.lowThenPause', vars)),
-      actions: [USAGE_ACTIONS.viewUsage, ...upgrade],
+      body,
+      actions: offer([USAGE_ACTIONS.viewUsage, ...upgrade]),
     };
   }
   return null;

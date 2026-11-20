@@ -1,0 +1,89 @@
+{
+  "_source": "Recorded 2026-11-17 from https://mcp.linear.app/mcp (public discovery documents only, no login).",
+  "server_url": "https://mcp.linear.app/mcp",
+  "steps": [
+    {
+      "headers": {
+        "www-authenticate": "Bearer realm=\"OAuth\", resource_metadata=\"https://mcp.linear.app/.well-known/oauth-protected-resource/mcp\", scope=\"read write\""
+      },
+      "json": null,
+      "method": "POST",
+      "status": 401,
+      "step": "initialize_without_token",
+      "text": "",
+      "url": "https://mcp.linear.app/mcp"
+    },
+    {
+      "headers": {
+        "content-type": "application/json"
+      },
+      "json": {
+        "authorization_servers": [
+          "https://mcp.linear.app"
+        ],
+        "bearer_methods_supported": [
+          "header"
+        ],
+        "resource": "https://mcp.linear.app/mcp",
+        "scopes_supported": [
+          "read",
+          "write"
+        ]
+      },
+      "method": "GET",
+      "status": 200,
+      "step": "protected_resource_metadata",
+      "text": null,
+      "url": "https://mcp.linear.app/.well-known/oauth-protected-resource/mcp"
+    },
+    {
+      "headers": {
+        "content-type": "application/json"
+      },
+      "json": {
+        "authorization_endpoint": "https://mcp.linear.app/authorize",
+        "authorization_grant_profiles_supported": [
+          "urn:ietf:params:oauth:grant-profile:id-jag"
+        ],
+        "authorization_response_iss_parameter_supported": true,
+        "client_id_metadata_document_supported": true,
+        "code_challenge_methods_supported": [
+          "S256"
+        ],
+        "grant_types_supported": [
+          "authorization_code",
+          "refresh_token",
+          "urn:ietf:params:oauth:grant-type:jwt-bearer"
+        ],
+        "issuer": "https://mcp.linear.app",
+        "registration_endpoint": "https://mcp.linear.app/register",
+        "resource": "https://mcp.linear.app/mcp",
+        "resource_metadata": "https://mcp.linear.app/.well-known/oauth-protected-resource/mcp",
+        "response_modes_supported": [
+          "query"
+        ],
+        "response_types_supported": [
+          "code"
+        ],
+        "revocation_endpoint": "https://mcp.linear.app/token",
+        "scopes_supported": [
+          "read",
+          "write",
+          "openid",
+          "email"
+        ],
+        "token_endpoint": "https://mcp.linear.app/token",
+        "token_endpoint_auth_methods_supported": [
+          "client_secret_basic",
+          "client_secret_post",
+          "none"
+        ]
+      },
+      "method": "GET",
+      "status": 200,
+      "step": "authorization_server_metadata",
+      "text": null,
+      "url": "https://mcp.linear.app/.well-known/oauth-authorization-server"
+    }
+  ]
+}

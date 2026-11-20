@@ -92,6 +92,16 @@ const usage = (balance) => ({
   providerType: 'minds-cloud',
 });
 const EMPTY = { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' };
+// A Plus plan whose 5-hour window has room, and which covers Kimi but not Qwen.
+const onPlus = (balance) => {
+  const value = usage(balance);
+  const plan = {
+    tier: 'plus', status: 'active', renewsAt: null, cancelAtPeriodEnd: false,
+    windows: [{ window: '5h', percentUsed: 10, resetsAt: '2099-09-11T12:00:00Z' }],
+  };
+  return { ...value, usage: { ...value.usage, plan } };
+};
+const PLUS_COVERAGE = { modelEnabled: {}, modelCoveredByTier: { kimi: 'plus', qwen: 'pro' } };
 const LOW = { usd: 4.2, canConsume: true, hasToppedUp: true, alert: 'low' };
 // The history as fetchComparisons answers: one page, or null on a server
 // without comparisons.
@@ -135,12 +145,12 @@ function holdStreams() {
   });
 }
 
-async function openDetail(cmp, sessions, hubUsage = null) {
+async function openDetail(cmp, sessions, hubUsage = null, modelMeta = undefined) {
   mockHistory([cmp]);
   api.fetchComparison.mockResolvedValue(cmp);
   api.fetchSession.mockImplementation(async (id) => sessions[id]);
-  const view = render(withUsage(hubUsage, <CompareView models={models} projects={projects} />));
-  openDetail.rerender = (next) => view.rerender(withUsage(next, <CompareView models={models} projects={projects} />));
+  const view = render(withUsage(hubUsage, <CompareView models={models} modelMeta={modelMeta} projects={projects} />));
+  openDetail.rerender = (next) => view.rerender(withUsage(next, <CompareView models={models} modelMeta={modelMeta} projects={projects} />));
   fireEvent.click(await screen.findByText(cmp.title));
   await screen.findAllByRole('region');
   await waitFor(() => expect(api.fetchSession).toHaveBeenCalledTimes(2));
@@ -291,6 +301,17 @@ describe('CompareView', () => {
     expect(screen.getAllByRole('button', { name: /Add funds/ }).length).toBeGreaterThan(0);
   });
 
+  it('on a plan, will not start a side the plan does not cover and the wallet cannot pay for', async () => {
+    mockHistory([]);
+    render(withUsage(onPlus(EMPTY), <CompareView models={models} modelMeta={PLUS_COVERAGE} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.getByText('Balance empty')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
+  });
+
   it('inside the mobile app, explains the blocked start without offering to add funds', async () => {
     hostMock.isMobileShell = true;
     try {
@@ -300,7 +321,8 @@ describe('CompareView', () => {
       const [modelA, modelB] = screen.getAllByLabelText('model');
       fireEvent.change(modelA, { target: { value: 'kimi' } });
       fireEvent.change(modelB, { target: { value: 'qwen' } });
-      expect(screen.getByText('Balance empty')).toBeTruthy();
+      expect(screen.queryByText('Balance empty')).toBeNull();
+      expect(screen.getByText(/provider's usage limit was reached/i)).toBeTruthy();
       expect(screen.queryByRole('button', { name: /Add funds/ })).toBeNull();
       expect(document.body.textContent).not.toMatch(/add funds/i);
     } finally {
@@ -315,7 +337,7 @@ describe('CompareView', () => {
       await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', ranOut) }, usage(EMPTY));
       const held = screen.getByRole('status', { name: 'Follow-up message' });
       expect(within(held).queryByRole('button', { name: 'Add funds' })).toBeNull();
-      expect(held).toHaveTextContent('stopped because the balance ran out');
+      expect(held).toHaveTextContent('Stopped');
       expect(held.textContent).not.toMatch(/add funds/i);
     } finally {
       hostMock.isMobileShell = false;
@@ -373,6 +395,14 @@ describe('CompareView', () => {
 
     openDetail.rerender(usage({ usd: 25, canConsume: true, hasToppedUp: true, alert: '' }));
     expect(await screen.findByRole('textbox', { name: 'Follow-up message' })).toBeTruthy();
+  });
+
+  it('on a plan, reads a side the plan does not cover as out of credits and holds it', async () => {
+    const notInTier = [{ role: 'user', content: 'p', created_at: '2026-09-23T10:00:00Z' }, { role: 'error', code: 'model_not_in_tier', content: 'not in plan' }];
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', notInTier) }, onPlus(EMPTY), PLUS_COVERAGE);
+    const held = screen.getByRole('status', { name: 'Follow-up message' });
+    expect(within(held).getByText('Qwen stopped because the balance ran out. Add funds to keep comparing.')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Side B status' }).textContent).toMatch(/^Out of credits/);
   });
 
   it('says when a working side has gone quiet, without stopping it', async () => {

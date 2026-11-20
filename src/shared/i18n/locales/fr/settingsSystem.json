@@ -234,7 +234,6 @@
       "windowUsedResets": "{percent} utilisé · réinitialisation à {time}",
       "windowMeterLabel": "{window, select, 7d {Quota hebdomadaire utilisé} other {Quota de 5 heures utilisé}}",
       "afterCap": "Au-delà de l’un ou l’autre quota, les tâches utilisent votre solde aux tarifs API ou sont en pause jusqu’à la réinitialisation.",
-      "afterCapMobile": "Au-delà de l’un ou l’autre quota, les tâches sont en pause jusqu’à la réinitialisation, sauf si votre solde les couvre.",
       "upgrade": "{tier, select, plus {Passer à Plus} pro {Passer à Pro} other {Changer de forfait}}",
       "manage": "Gérer"
     }

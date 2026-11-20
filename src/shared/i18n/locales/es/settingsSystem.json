@@ -234,7 +234,6 @@
       "windowUsedResets": "{percent} usado · se renueva a las {time}",
       "windowMeterLabel": "{window, select, 7d {Cupo semanal usado} other {Cupo de 5 horas usado}}",
       "afterCap": "Al agotar cualquiera de los cupos, las tareas usan tu saldo a tarifas de API o se pausan hasta que se renueve.",
-      "afterCapMobile": "Al agotar cualquiera de los cupos, las tareas se pausan hasta que se renueve, salvo que tu saldo las cubra.",
       "upgrade": "{tier, select, plus {Obtener Plus} pro {Mejorar a Pro} other {Mejorar plan}}",
       "manage": "Administrar"
     }

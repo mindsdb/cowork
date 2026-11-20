@@ -37,11 +37,12 @@ beforeEach(() => {
 });
 
 describe('UsageSection', () => {
-  it('inside the mobile app, shows the figures with no way to the billing console', () => {
+  it('inside the mobile app, shows the free allowance without account billing details', () => {
     hostMock.host.isMobileShell = true;
     try {
       renderWith(usage());
-      expect(screen.getByText('$99.63')).toBeInTheDocument();
+      expect(screen.getByText('87% left')).toBeInTheDocument();
+      expect(document.body.textContent).not.toMatch(/balance|credit spent|top up|\$/i);
       for (const name of ['View usage', 'Add funds', 'Set up auto top up']) {
         expect(screen.queryByRole('button', { name })).toBeNull();
       }
@@ -173,7 +174,7 @@ describe('mobile usage details', () => {
     hostMock.host.isMobileShell = true;
     try {
       const { container } = renderWith(usage(overrides));
-      expect(container.textContent).not.toMatch(/add funds|turn it on|turn on|update your payment method|in the console|Mobile/i);
+      expect(container.textContent).not.toMatch(/add funds|turn it on|turn on|update your payment method|in the console|balance|credit spent|top up|\$|Mobile/i);
     } finally {
       hostMock.host.isMobileShell = false;
     }
@@ -223,9 +224,17 @@ describe('UsageSection plan card', () => {
     expect(screen.getByText(/^42% used · resets at /)).toBeInTheDocument();
     expect(screen.getByText('Weekly allowance')).toBeInTheDocument();
     expect(screen.getByText('10% used')).toBeInTheDocument();
+    expect(screen.getByText('Past either allowance, tasks continue from your wallet at API rates, or pause until it resets.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Upgrade to Pro/ })).toBeEnabled();
     await userEvent.click(screen.getByRole('button', { name: /Manage/ }));
     expect(new URL(hostMock.host.openExternal.mock.calls.at(-1)[0]).pathname).toBe('/settings/organization/billing');
+  });
+
+  it('on a failed renewal, flags the payment and says how to keep the plan', () => {
+    personal();
+    renderWith(usage({ plan: plan('plus', { status: 'past_due' }) }));
+    expect(screen.getByText('Payment failed')).toBeInTheDocument();
+    expect(screen.getByText("We couldn't renew your plan. Update your card under Manage to keep it.")).toBeInTheDocument();
   });
 
   it('on Pro set to cancel, says when it ends and offers no upgrade', () => {
@@ -242,5 +251,49 @@ describe('UsageSection plan card', () => {
     expect(screen.getByText('5-hour allowance')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Upgrade to Pro/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Manage/ })).toBeNull();
+  });
+
+  it.each(['plus', 'pro'])('on %s, drops the Free Air allowance card, since the plan pays for Air', (tier) => {
+    personal();
+    renderWith(usage({ plan: plan(tier), freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } }));
+    expect(screen.getByText(tier === 'plus' ? 'Plus plan' : 'Pro plan')).toBeInTheDocument();
+    expect(screen.queryByText('Free Air allowance')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/MindsHub Air is billing your balance/);
+  });
+
+  it('on a paid plan with no allowance and no balance, says nothing about having no usage', () => {
+    personal();
+    renderWith(usage({ plan: plan('plus'), freeTokens: null, balance: null }));
+    expect(screen.getByText('Plus plan')).toBeInTheDocument();
+    expect(screen.queryByText('No usage to show for this account yet.')).toBeNull();
+  });
+
+  it('inside the mobile app, shows the plan and its windows but nothing to buy or manage', () => {
+    personal();
+    hostMock.host.isMobileShell = true;
+    try {
+      const { unmount } = renderWith(usage({ plan: plan('plus') }));
+      expect(screen.getByText('Plus plan')).toBeInTheDocument();
+      expect(screen.getByText('5-hour allowance')).toBeInTheDocument();
+      expect(screen.queryByText('Free Air allowance')).toBeNull();
+      for (const name of [/Upgrade/, /Manage/, /Get Plus/, /Add funds/]) {
+        expect(screen.queryByRole('button', { name })).toBeNull();
+      }
+      expect(document.body.textContent).not.toMatch(/\$|API rates|wallet|balance|allowance, tasks/i);
+      unmount();
+
+      // A failed renewal is a billing notice, so the mobile app leaves it out.
+      const pastDue = renderWith(usage({ plan: plan('plus', { status: 'past_due' }) }));
+      expect(screen.getByText('Plus plan')).toBeInTheDocument();
+      expect(screen.queryByText('Payment failed')).toBeNull();
+      expect(document.body.textContent).not.toMatch(/couldn't renew|balance/i);
+      pastDue.unmount();
+
+      renderWith(usage({ plan: plan('free') }));
+      expect(screen.getByText('Free Air allowance')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Get Plus/ })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
   });
 });

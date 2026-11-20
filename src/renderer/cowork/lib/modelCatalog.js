@@ -12,6 +12,7 @@
 // option carrying an explicit `maker` key skips the inference entirely.
 
 import i18n from '../../lib/i18n';
+import { PLAN_TIERS, cleanRequiredTier } from './subscriptionPlan';
 
 /* User-facing copy, translated when it is read (never at import). */
 const tr = (key, vars) => i18n.t(`messages.modelCatalog.${key}`, { ns: 'projects', ...vars });
@@ -308,7 +309,7 @@ const KNOWN_MODEL_DISABLED_REASONS = new Set([
 ]);
 
 /* The tiers a model row's `coveredByTier` may name. */
-const COVERING_TIERS = new Set(['free', 'plus', 'pro']);
+const COVERING_TIERS = new Set(PLAN_TIERS);
 
 /**
  * cowork-server's `modelCoveredByTier` relay narrowed to known tiers, id →
@@ -405,7 +406,7 @@ export function unavailableModelFields(modelEnabled, modelDisabledReasons, id, m
   if (!isModelLocked(modelEnabled, id)) return {};
   if (isModelNotInTier(modelEnabled, modelDisabledReasons, id)) {
     const tier = (modelCoveredByTier || {})[id];
-    const requiredTier = tier === 'plus' || tier === 'pro' ? tier : null;
+    const requiredTier = cleanRequiredTier(tier);
     return {
       disabled: true,
       locked: true,

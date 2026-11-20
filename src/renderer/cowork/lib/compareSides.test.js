@@ -259,6 +259,9 @@ describe('credit failures', () => {
   it('are told apart from other failures', () => {
     expect(isCreditFailure(turnsOf([user('p'), outOfCredits])[0])).toBe(true);
     expect(isCreditFailure(turnsOf([user('p'), { role: 'error', code: 'included_allowance_exhausted' }])[0])).toBe(true);
+    // A Plus or Pro stop with an empty wallet is the account's, not the model's.
+    expect(isCreditFailure(turnsOf([user('p'), { role: 'error', code: 'window_allowance_exhausted' }])[0])).toBe(true);
+    expect(isCreditFailure(turnsOf([user('p'), { role: 'error', code: 'model_not_in_tier' }])[0])).toBe(true);
     expect(isCreditFailure(turnsOf([user('p'), { role: 'error', code: 'provider_overloaded' }])[0])).toBe(false);
     expect(isCreditFailure(turnsOf([user('p'), reply()])[0])).toBe(false);
   });

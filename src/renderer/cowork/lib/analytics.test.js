@@ -1486,6 +1486,48 @@ describe('the bound subject on the event, not only the person (ENG-2206)', () =>
     expect(event.properties.sso_plan_tier).toBe('free');
   });
 
+  it('stamps the plan the usage read names over the realm roles', async () => {
+    // Realm roles know no Plus, and a legacy `pro-hub` role outlives the
+    // subscription it came with, so the usage read's plan is the tier.
+    getAccessToken.mockResolvedValue(
+      fakeJwt({
+        sub: 'user-plan',
+        email: 'a@example.com',
+        activate_organization: { id: 'org-abc', name: 'Acme' },
+        realm_access: { roles: ['free', 'pro-hub'] },
+      })
+    );
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+    const { setUsagePlanTier } = await import('./usagePlanTier');
+
+    setUsagePlanTier('plus');
+    await trackTokenCapHit('window_allowance_exhausted');
+    const event = await sentEvent(fetchMock, 'token_cap_hit');
+    expect(event.properties.sso_plan_tier).toBe('plus');
+    expect(event.properties.$set.plan_tier).toBe('plus');
+    expect(event.properties.$set.is_free_tier).toBe(false);
+
+    // No plan on the read (gate off, older server): the roles decide, as before.
+    setUsagePlanTier(null);
+    fetchMock.mockClear();
+    await trackTokenCapHit('token_limit');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.sso_plan_tier).toBe('pro');
+  });
+
+  it('keeps staff and team over the usage read\'s plan', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({ sub: 'user-staff', email: 'a@example.com', realm_access: { roles: ['staff'] } })
+    );
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+    const { setUsagePlanTier } = await import('./usagePlanTier');
+
+    setUsagePlanTier('free');
+    await trackTokenCapHit('token_limit');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.sso_plan_tier).toBe('staff');
+  });
+
   it('does not widen the session segments onto unrelated events', async () => {
     getAccessToken.mockResolvedValue(
       fakeJwt({
@@ -2243,6 +2285,36 @@ describe('onboarding and start events', () => {
 
     const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
     expect(vias).toEqual(['composer', 'composer']);
+  });
+
+  it('credits a console handoff\'s session to the example id its send carries', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackAgentSessionStarted } = await importAnalytics();
+
+    setEntryAttribution('console', null, null);
+    trackAgentSessionStarted({ exampleId: 'own-work' });
+    setEntryAttribution('console', null, null);
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const props = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties);
+    expect(props[0]).toMatchObject({ entry_source: 'console', example_id: 'own-work' });
+    expect(props[1]).toMatchObject({ entry_source: 'console', example_id: null });
+  });
+
+  it('keeps a start label that rides with the send, even after a refused second send cleared the pending one', async () => {
+    const fetchMock = mockFetch();
+    const { sendWithStartVia, setStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    // A second Enter mid-send is refused, which clears the pending label.
+    await sendWithStartVia('checklist', async () => false);
+    trackNewTaskMessageSent({ text: 'own work', start: { start_kind: 'own_work' }, startVia: 'checklist' });
+    setStartVia('app');
+    trackNewTaskMessageSent({ text: 'from the row', start: undefined, startVia: 'checklist' });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
+    expect(vias).toEqual(['checklist', 'checklist']);
   });
 
   it('uses a checklist start once, so the next message is from the composer', async () => {

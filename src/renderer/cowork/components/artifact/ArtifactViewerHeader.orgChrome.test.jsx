@@ -4,7 +4,7 @@
 // are not part of it, and both used to render there because the header only ever
 // asked about capabilities. Delete stays reachable from the gallery card.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('../../../platform/host', () => ({
   host: {
@@ -22,6 +22,7 @@ vi.mock('./publish/PublishMenu', () => ({
   PublishMenu: () => <button type="button">Share</button>,
 }));
 
+import * as api from '../../api';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { setOrgMode } from '../../../lib/orgMode';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
@@ -68,7 +69,10 @@ const props = {
   onClose: vi.fn(),
 };
 
-afterEach(() => setOrgMode(false));
+afterEach(() => {
+  setOrgMode(false);
+  vi.restoreAllMocks();
+});
 
 describe('preview window chrome in org mode', () => {
   // Sharing used to be hidden here, on the grounds that publishing "lives on the
@@ -80,6 +84,34 @@ describe('preview window chrome in org mode', () => {
     render(<ArtifactViewerHeader {...props} />);
 
     expect(screen.getByRole('button', { name: /Share/ })).toBeInTheDocument();
+  });
+
+  it.each(['revision', 'mtime'])('lets a viewer report changed content when its %s changes', async (field) => {
+    setOrgMode(true);
+    const report = vi.spyOn(api, 'reportArtifactContent').mockResolvedValue({ id: 'receipt', status: 'received' });
+    const artifact = { projectId: '9c8d86e7-8b7a-4d2a-8981-385b369af213', id: 'a8c2272e0000400080000000000000aa', mtime: 100 };
+    const header = (revisionId, mtime) => (
+      <ArtifactViewerHeader {...props} workspace={{ ...workspace, currentRevision: revisionId ? { id: revisionId } : null }}
+        actions={{ ...props.actions, artifact: { ...artifact, mtime } }} />
+    );
+    const firstRevision = field === 'revision' ? 'revision-one' : null;
+    const view = render(header(firstRevision, 100));
+    const button = () => screen.getByRole('button', { name: 'Report content' });
+    const submitReport = async () => {
+      fireEvent.click(button());
+      fireEvent.click(await screen.findByRole('button', { name: 'Send report' }));
+      expect(await screen.findByText('Report received.')).toBeInTheDocument();
+    };
+    await submitReport();
+    view.rerender(header(firstRevision, 100));
+    expect(button()).toBeDisabled();
+
+    view.rerender(field === 'revision' ? header('revision-two', 100) : header(null, 101));
+    expect(button()).toBeEnabled();
+    expect(screen.queryByText('Report received.')).not.toBeInTheDocument();
+    await submitReport();
+    expect(report).toHaveBeenCalledTimes(2);
+    expect(report).toHaveBeenLastCalledWith(artifact.projectId, artifact.id);
   });
 
   // The ⋯ menu stays hidden: its entries are OS/file actions plus `/publish`

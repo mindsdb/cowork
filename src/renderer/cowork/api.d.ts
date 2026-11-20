@@ -271,3 +271,7 @@ export function registerPushDevice(body: {
 }): Promise<{ ok: true } | Record<string, unknown>>;
 /** Mobile app push: remove this device's token from the signed-in user. */
 export function unregisterPushDevice(token: string, options?: { timeoutMs?: number }): Promise<{ ok: true } | Record<string, unknown>>;
+
+export function reportContent(conversationId: string, messageId: string): Promise<{ id: string; status: "received" }>;
+
+export function reportArtifactContent(projectId: string, artifactId: string): Promise<{ id: string; status: "received" }>;

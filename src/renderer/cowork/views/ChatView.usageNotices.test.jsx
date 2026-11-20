@@ -77,17 +77,33 @@ describe('ChatView usage notices', () => {
     expect(screen.getByRole('button', { name: 'Update payment method' })).toBeInTheDocument();
   });
 
-  it('inside the mobile app, keeps the line and the failure but offers no billing link', () => {
+  it('inside the mobile app, shows the allowance change and hides the payment failure', () => {
     hostMock.host.isMobileShell = true;
     try {
       render(<ChatView task={task([
         { kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' },
         { kind: 'auto_top_up_failed', createdAt: '2099-08-28T10:01:00Z' },
       ])} />);
-      expect(screen.getByText('Auto top up failed')).toBeInTheDocument();
+      expect(screen.queryByText('Auto top up failed')).toBeNull();
+      expect(screen.getByText(/Free Air allowance 12% left/)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'View usage' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Add funds' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Update payment method' })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
+  it('inside the mobile app, shows a plan window running low but not one that put the task on the wallet', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      render(<ChatView task={task([
+        { kind: 'window_low', window: '5h', percentUsed: 82, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' },
+        { kind: 'window_exhausted', window: '7d', onWallet: true, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:01:00Z' },
+      ])} />);
+      expect(screen.getByText(/^82% of your 5-hour allowance used · resets at /)).toBeInTheDocument();
+      expect(screen.queryByText(/wallet|balance/i)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'View usage' })).toBeNull();
     } finally {
       hostMock.host.isMobileShell = false;
     }

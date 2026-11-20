@@ -4,7 +4,7 @@ import { MINDS_BILLING_URL, consoleUrlFor, mindsUpgradeUrl } from '../../lib/min
 import { offersBilling } from '../lib/billingLinks';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { trackUpgradeClicked } from '../lib/analytics';
-import { planOf, nextUpgradeTier, PLAN_TIERS, PAID_PLAN_TIERS } from '../lib/subscriptionPlan';
+import { planOf, nextUpgradeTier, cleanRequiredTier, tierRank } from '../lib/subscriptionPlan';
 import { useAccountUser } from './useAccountUser';
 
 /**
@@ -34,8 +34,7 @@ export function useUpgradeOffer() {
   const subject = user?.sub ?? null;
 
   const canOffer = useCallback(
-    (tier) => eligible && PAID_PLAN_TIERS.includes(tier)
-      && PLAN_TIERS.indexOf(tier) > PLAN_TIERS.indexOf(plan?.tier),
+    (tier) => eligible && !!cleanRequiredTier(tier) && tierRank(tier) > tierRank(plan?.tier),
     [eligible, plan?.tier],
   );
   const urlFor = useCallback(
@@ -43,7 +42,7 @@ export function useUpgradeOffer() {
     [organizationId, subject],
   );
   /* The billing page for this organization, where "Manage" sends someone to
-     the Stripe Customer Portal. */
+     change or cancel the plan in the console itself. */
   const manageUrl = useMemo(
     () => consoleUrlFor(MINDS_BILLING_URL, { organizationId, subject }),
     [organizationId, subject],

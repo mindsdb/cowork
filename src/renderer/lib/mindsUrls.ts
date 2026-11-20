@@ -111,11 +111,11 @@ export const MINDS_ADD_FUNDS_URL = `${MINDS_BILLING_URL}?exhausted=1`;
    the console's auto top up controls call owner-only wallet endpoints, and a
    member who follows this link gets a dialog they cannot submit. */
 export const MINDS_AUTO_TOP_UP_URL = `${MINDS_BILLING_URL}?autoTopUp=1`;
-/* The billing page told to go straight to Stripe Checkout for a plan
-   (ENG-4186). The console checks who may buy (the owner of a personal
-   organization) before it leaves for Checkout, so the link is safe to follow
-   for anyone; callers only offer it where a purchase can be made. Always
-   opened through `mindsUpgradeUrl`, which names the organization. */
+/* The billing page told to open the plan's confirm dialog. The console
+   checks who may buy (the owner of a personal organization) before it
+   subscribes, so the link is safe to follow for anyone; callers only offer
+   it where a purchase can be made. Always opened through `mindsUpgradeUrl`,
+   which names the organization. */
 export const MINDS_UPGRADE_URL = Object.freeze({
   plus: `${MINDS_BILLING_URL}?upgrade=plus`,
   pro: `${MINDS_BILLING_URL}?upgrade=pro`,

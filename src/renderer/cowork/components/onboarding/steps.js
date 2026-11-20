@@ -3,25 +3,15 @@
 // opens a fresh chat seeded with `prompt`, the message Cowork answers to
 // show off that capability. Edit copy or reorder here; the UI follows.
 //
-// A step with `opensExamples` has no prompt: its row takes the person to
-// Home, where the examples are, and it is completed when one of them is sent
-// (see completion.js), not by the click.
+// A step with `opensExamples` or `opensOwnWork` has no prompt: its row takes
+// the person to Home, showing the examples or the own-work mode, and it is
+// completed when a message goes out from there (see completion.js), not by
+// the click. The own-work row sends nothing itself: a prompt that asked the
+// person what they were working on got a question back, and most left there.
 //
 // `desktopOnly: true` hides a step on the web build (useOnboarding filters
 // on host.isWeb): web runs against a cloud workspace, so steps that walk
 // the user through local-machine access can't be completed there.
-
-// The first step starts from the person's own work. The prompt names the ways
-// to bring it and a few small things to start with, so the agent's first reply
-// lists them instead of leaving a blank page; the same text is what a console
-// link places in the composer.
-export const OWN_WORK_PROMPT =
-  'I\'d like to start with something real from my work. Ask me one question about what I\'m working on, and give me two or three small examples to jump-start it, like a report to update, a spreadsheet to clean, or a thread to answer. Tell me I can attach a file, paste notes or a link, or connect Gmail, and say you\'ll take the first step once I answer.';
-
-// Stable prefixes used to recognize a (possibly user-edited) send and complete
-// the matching step. Kept next to the prompts so a copy edit can't silently
-// break the match — steps.test.js asserts each prompt starts with its prefix.
-export const OWN_WORK_PREFIX = 'I\'d like to start with something real';
 
 export const HABIT_TRACKER_PROMPT =
   'Build me a habit tracker as a live artifact: a simple week grid I can tick off each day. Start with three sensible habits and make them easy to rename.';
@@ -31,15 +21,8 @@ export const ONBOARDING_STEPS = [
   {
     id: 'bring-your-work',
     title: 'Start with your own work',
-    description: 'Tell Cowork what you\'re working on and hand it a file or notes.',
-    prompt: OWN_WORK_PROMPT,
-  },
-  {
-    id: 'customize-role',
-    title: 'Customize Cowork to your role',
-    description: 'Add ready-made tools and workflows.',
-    prompt:
-      'I want to set you up for the work I actually do. Ask me a couple of quick questions about my role, remember what matters to me, then suggest and set up a few tools or workflows that would help.',
+    description: 'Hand Cowork a file, notes or a link, and it starts.',
+    opensOwnWork: true,
   },
   {
     id: 'connect-app',

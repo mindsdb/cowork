@@ -234,7 +234,6 @@
       "windowUsedResets": "{percent} verbraucht · wird um {time} zurückgesetzt",
       "windowMeterLabel": "{window, select, 7d {Wochenkontingent verbraucht} other {5-Stunden-Kontingent verbraucht}}",
       "afterCap": "Ist eines der Kontingente aufgebraucht, nutzen Aufgaben Ihr Guthaben zu API-Preisen oder pausieren bis zum Zurücksetzen.",
-      "afterCapMobile": "Ist eines der Kontingente aufgebraucht, pausieren Aufgaben bis zum Zurücksetzen, sofern Ihr Guthaben sie nicht abdeckt.",
       "upgrade": "{tier, select, plus {Plus holen} pro {Auf Pro upgraden} other {Upgraden}}",
       "manage": "Verwalten"
     }

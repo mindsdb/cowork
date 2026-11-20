@@ -1000,6 +1000,13 @@ describe('deriveComposerWarning on a plan', () => {
     const read = planRead('plus', [{ window: '5h', percentUsed: 100, resetsAt: IN_2H }], EMPTY_WALLET);
     expect(deriveComposerWarning(read, { model: 'claude-opus-5-5', coveredByTier: 'pro' }).kind).toBe('balance_empty');
   });
+
+  it('says nothing about plan windows on a provider other than MindsHub', () => {
+    const full = planRead('plus', [{ window: '5h', percentUsed: 100, resetsAt: IN_2H }], EMPTY_WALLET);
+    const half = planRead('plus', [{ window: '5h', percentUsed: 50, resetsAt: IN_2H }], EMPTY_WALLET);
+    expect(deriveComposerWarning(full, { providerType: 'anthropic' })).toBeNull();
+    expect(usageTransitions(half, full, { providerType: 'openai-compatible' })).toEqual([]);
+  });
 });
 
 describe('usageTransitions on a plan', () => {

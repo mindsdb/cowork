@@ -128,6 +128,13 @@ export default function Composer({
   onRemoveAttachment,
   placeholder: placeholderProp,
   disabled = false,
+  /** Whether the draft can be sent. Defaults to "has text"; a mode that
+      sends an attachment alone, or needs more than its own starter text,
+      passes its own rule. */
+  canSend = null,
+  /** Told the text after each change, typed, pasted or placed, for a caller
+      whose guidance depends on it (the own-work mode's "Now add…" hint). */
+  onValueChange,
   metaReadOnly = false,
   // Whether the model pill is a fixed label rather than a picker. Defaults
   // to metaReadOnly (ChatView's prior behavior: "model is fixed once a task
@@ -883,8 +890,13 @@ export default function Composer({
     }
   }
 
+  const sendable = canSend ? canSend(value) : Boolean(value.trim());
+  useEffect(() => {
+    onValueChange?.(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
   const handleSend = async () => {
-    if (disabled || !value.trim()) return;
+    if (disabled || !sendable) return;
     setBusy(true);
     try {
       // Model selection always rides along (it applies to Anton too, not
@@ -1548,10 +1560,10 @@ export default function Composer({
               <Tooltip content={t('composer.send')}>
                 <button
                   className="send-btn"
-                  disabled={disabled || !value.trim() || busy}
+                  disabled={disabled || !sendable || busy}
                   onClick={handleSend}
                   aria-label={t('composer.send')}
-                  title={(disabled || !value.trim() || busy) ? t('composer.send') : undefined}
+                  title={(disabled || !sendable || busy) ? t('composer.send') : undefined}
                 >
                   {Ico.send(16)}
                 </button>

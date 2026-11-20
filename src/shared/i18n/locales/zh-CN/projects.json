@@ -429,7 +429,8 @@
       "andMore": "{source} 等 {count} 个来源"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "无法识别的连接器"
+      "unrecognizedConnector": "无法识别的连接器",
+      "mcpServer": "MCP 服务器"
     },
     "datasourceSubmission": {
       "errors": {
