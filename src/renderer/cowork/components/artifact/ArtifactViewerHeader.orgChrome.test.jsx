@@ -21,6 +21,9 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('./publish/PublishMenu', () => ({
   PublishMenu: () => <button type="button">Share</button>,
 }));
+vi.mock('./publish/SharedWithMenu', () => ({
+  SharedWithMenu: () => <button type="button">Shared (read-only)</button>,
+}));
 
 import * as api from '../../api';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
@@ -215,5 +218,58 @@ describe('top-bar toggle semantics', () => {
 
     expect(screen.getByRole('button', { name: 'Close' })).not.toHaveAttribute('aria-pressed');
     expect(screen.getByRole('button', { name: 'More actions' })).not.toHaveAttribute('aria-pressed');
+  });
+});
+
+// ENG-4455: someone else's shared artifact keeps a "Shared" button, opening the
+// read-only panel, and its tag names the owner.
+describe('a colleague\'s artifact in org mode', () => {
+  const reviewer = (over = {}) => ({
+    ...props,
+    authorship: artifactAuthorship({ role: 'reviewer', canEdit: false, ownerUserId: 'u-ana' }, { ownerName: 'Ana Ruiz' }),
+    workspace: { ...workspace, capabilities: { role: 'reviewer', canEdit: false, ownerUserId: 'u-ana' } },
+    publication: { ...props.publication, canManage: false, isPublished: true, controller: { ...props.publication.controller, publishedUrl: 'https://share/abc' } },
+    actions: { ...props.actions, artifact: { id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70', projectId: 'proj-1', publishedUrl: 'https://share/abc' } },
+    ...over,
+  });
+
+  it('names the owner and offers the read-only Shared panel, not the owner\'s', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...reviewer()} />);
+
+    expect(screen.getByText('Ana Ruiz')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Shared (read-only)' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+  });
+
+  it('keeps "Another member" until the name is in', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...reviewer({ authorship: artifactAuthorship({ role: 'reviewer', ownerUserId: 'u-ana' }) })} />);
+
+    expect(screen.getByText('Another member')).toBeInTheDocument();
+  });
+
+  it('offers nothing while it is not published', () => {
+    setOrgMode(true);
+    const r = reviewer();
+    render(<ArtifactViewerHeader {...r} publication={{ ...r.publication, isPublished: false }} />);
+
+    expect(screen.queryByRole('button', { name: /Shared/ })).toBeNull();
+  });
+
+  it('leaves the owner with their own Share control', () => {
+    setOrgMode(true);
+    const r = reviewer({ authorship: null });
+    render(<ArtifactViewerHeader {...r} publication={{ ...r.publication, canManage: true }} />);
+
+    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Shared (read-only)' })).toBeNull();
+  });
+
+  it('is an org-mode control only', () => {
+    setOrgMode(false);
+    render(<ArtifactViewerHeader {...reviewer()} />);
+
+    expect(screen.queryByRole('button', { name: 'Shared (read-only)' })).toBeNull();
   });
 });

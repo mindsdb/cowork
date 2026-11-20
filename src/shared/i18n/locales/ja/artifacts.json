@@ -364,7 +364,16 @@
       "sharingSettings": "共有設定",
       "currentAccess": "現在のアクセス設定"
     },
-    "editList": "リストを編集"
+    "editList": "リストを編集",
+    "sharedWith": {
+      "title": "共有先",
+      "hint": "共有先を確認",
+      "triggerLabel": "共有済み: 共有先を確認",
+      "whoCanOpen": "開けるユーザー",
+      "ownerOnlyTitle": "所有者のみ",
+      "ownerOnlyDesc": "他のユーザーは共有リンクを開けません",
+      "listWithheld": "共有されているチームとユーザーのみ"
+    }
   },
   "previewErrors": {
     "reported": "{count, plural, other {プレビューで#件のエラーが報告されました}}",

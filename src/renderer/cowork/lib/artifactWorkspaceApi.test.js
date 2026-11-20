@@ -10,6 +10,7 @@ import {
   canUseArtifactWorkspace,
   createDraftLink,
   deleteArtifactStats,
+  loadArtifactAudience,
   loadArtifactDraftText,
   loadArtifactDraftDocument,
   loadArtifactStats,
@@ -288,6 +289,29 @@ describe('createDraftLink', () => {
 
   it('refuses to call without a full identity', async () => {
     await expect(createDraftLink('', 'x')).rejects.toThrow('Artifact has no full identity');
+  });
+});
+
+// The read-only audience (ENG-4455): any previewer may ask it, and it is a
+// GET of its own, never the owner-only `/access`.
+describe('loadArtifactAudience', () => {
+  afterEach(() => { authFetch.mockReset(); });
+
+  it('reads the audience route for the artifact', async () => {
+    const answer = { accessMode: 'restricted', ownerOnly: false, orgAllowed: false, allowedTeamIds: [], allowedUserIds: ['u1'], accessEmails: [], names: true };
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(answer) });
+
+    await expect(loadArtifactAudience({ id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70', projectId: 'proj 1' })).resolves.toEqual(answer);
+
+    expect(authFetch).toHaveBeenLastCalledWith(
+      '/api/v1/artifacts/workspace/proj%201/7db94eb8f0a54c7e9c1d2b3a4f5e6d70/audience',
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+  });
+
+  it('refuses to call without a full identity', async () => {
+    await expect(loadArtifactAudience({ id: 'x' })).rejects.toThrow('Artifact has no full identity');
+    expect(authFetch).not.toHaveBeenCalled();
   });
 });
 

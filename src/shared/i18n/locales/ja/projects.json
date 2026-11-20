@@ -361,6 +361,7 @@
     "artifactAuthorship": {
       "unknownOwner": "不明なオーナー",
       "otherMemberDescription": "このプロジェクトの別のメンバーが作成しました。確認はできますが、変更はできません。",
+      "namedOwnerDescription": "このプロジェクトの別のメンバーである{name}が作成しました。確認はできますが、変更はできません。",
       "unknownOwnerDescription": "このアーティファクトのオーナーは記録されていません。"
     },
     "artifactExport": {

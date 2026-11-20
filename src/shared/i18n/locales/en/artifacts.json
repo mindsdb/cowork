@@ -364,7 +364,16 @@
       "sharingSettings": "sharing settings",
       "currentAccess": "current access"
     },
-    "editList": "Edit list"
+    "editList": "Edit list",
+    "sharedWith": {
+      "title": "Shared with",
+      "hint": "See who this is shared with",
+      "triggerLabel": "Shared: see who this is shared with",
+      "whoCanOpen": "Who can open it",
+      "ownerOnlyTitle": "Only its owner",
+      "ownerOnlyDesc": "Nobody else can open the shared link",
+      "listWithheld": "Only the teams and people it's shared with"
+    }
   },
   "previewErrors": {
     "reported": "{count, plural, one {The preview reported # error} other {The preview reported # errors}}",

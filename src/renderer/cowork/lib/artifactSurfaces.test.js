@@ -126,7 +126,9 @@ describe.each(DELETE_SURFACES)('%s deletion', (_name, rel) => {
 // The "Another member" marker (ENG-2979) must come from the shared helper. A
 // surface deciding on its own would key it on canEdit (wrong for an owner
 // without artifact.manage) or miss ownerUnknown. The inline chat card is not
-// listed: it belongs to the conversation that created the artifact.
+// listed: it belongs to the conversation that created the artifact. Each
+// surface reaches it through useArtifactAuthorship(s), which adds the owner's
+// name (ENG-4455).
 const AUTHORSHIP_SURFACES = [
   ['artifacts panel (grid + list)', 'cowork/views/ArtifactsView.jsx'],
   ['rail working-folder list', 'cowork/components/rail/WorkingFolderLive.jsx'],
@@ -137,7 +139,7 @@ describe.each(AUTHORSHIP_SURFACES)('%s authorship marker', (_name, rel) => {
   const src = readFileSync(resolve(ROOT, rel), 'utf-8');
 
   it('derives the marker from the shared helper', () => {
-    expect(src).toContain('artifactAuthorship(');
+    expect(src).toMatch(/useArtifactAuthorships?\(/);
   });
 
   it('does not test the reviewer role itself', () => {

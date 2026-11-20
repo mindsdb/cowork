@@ -24,6 +24,7 @@ import i18n, { useTranslation } from '../../../../lib/i18n';
 import { copyText } from '../../../lib/clipboard';
 import { reportLinkCopied, reportShareOpened } from '../../../lib/artifactShareAnalytics';
 import {
+  ACCESS_LABELS,
   AccessChooser,
   accessDraftFromArtifact,
   addedIndividuals,
@@ -74,7 +75,7 @@ const SCROLL_BODY = 'min-h-0 overflow-y-auto overscroll-contain';
 // warning next to an error must not push the footer out of the popup.
 const ALERT_ROW = 'mx-4 mb-3 min-h-0 overflow-y-auto';
 
-function PanelHeader({ title }) {
+export function PanelHeader({ title }) {
   // .s-h3 already sets color:var(--ink); it does not set padding/border, so
   // those move safely to utilities. Directional border zeroes its off-axis
   // sides (preflight-off box-paint footgun).
@@ -83,7 +84,7 @@ function PanelHeader({ title }) {
   );
 }
 
-function SectionLabel({ children, action }) {
+export function SectionLabel({ children, action }) {
   return (
     <div className="flex items-baseline justify-between gap-2 mb-2">
       <span className="font-body font-semibold text-sm text-ink">{children}</span>
@@ -143,9 +144,20 @@ function UrlField({ url, onCopied }) {
 // place: `(desc) => the access dropdown`, which switches the access from
 // here, given the card's line (how many are on a list); the list then
 // follows it in a box of its own.
-function AccessSummaryCard({ pub, sharing, orgName, picker = null }) {
+//
+// `readOnly`: shown to someone who doesn't own the artifact (SharedWithMenu,
+// ENG-4455), so its words are about the owner's choice, not the reader's:
+// "Only its owner" for an owner-only link, and, when the lists are withheld
+// (the reader is outside the org), what kind of list it is without one.
+export function AccessSummaryCard({ pub, sharing, orgName, picker = null, readOnly = false }) {
+  const { t } = useTranslation('artifacts');
   const orgSharing = !!sharing;
-  const m = accessSummaryLabel(pub, { orgSharing, orgName });
+  const summary = accessSummaryLabel(pub, { orgSharing, orgName });
+  const m = readOnly && pub?.accessMode === 'restricted' && pub?.ownerOnly
+    ? { icon: Ico.lock, title: t('publish.sharedWith.ownerOnlyTitle'), desc: t('publish.sharedWith.ownerOnlyDesc') }
+    : readOnly && (summary === ACCESS_LABELS.specific || summary === ACCESS_LABELS.specificPeople)
+      ? { icon: summary.icon, title: summary.title, desc: t('publish.sharedWith.listWithheld') }
+      : summary;
   const draft = accessDraftFromArtifact(pub, { orgSharing, teams: sharing?.teams?.teams || [] });
   const listed = draft.mode === AUDIENCE_CHOICE.SPECIFIC;
   const emails = listed ? parseEmailList(draft.emailsText).valid : [];
