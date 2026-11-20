@@ -40,13 +40,13 @@ body[data-theme="dark"] .doc-root {
 
 /* One reset for the doc's own controls and fields; each rule below adds its
    look. It comes first so those rules win at the same specificity. */
-:is(.doc-iconbtn, .doc-tab, .doc-tab__title, .doc-tabs__add, .doc-tabs__hide, .doc-tabstrip__add, .doc-tabstrip__more, .doc-byline__add, .doc-gutter__btn,
+:is(.doc-iconbtn, .doc-header__title--editable, .doc-tab, .doc-tab__title, .doc-tabs__add, .doc-tabs__hide, .doc-tabstrip__add, .doc-tabstrip__more, .doc-byline__add, .doc-gutter__btn,
   .doc-check, .doc-cellbtn, .doc-addbtn, .doc-float__btn, .doc-slash__item) {
   all: unset;
   box-sizing: border-box;
   cursor: pointer;
 }
-:is(.doc-tab__input, .doc-code__lang, .doc-code__text, .doc-date-input, .doc-float__input, .doc-ask__input) {
+:is(.doc-header__title-input, .doc-tab__input, .doc-code__lang, .doc-code__text, .doc-date-input, .doc-float__input, .doc-ask__input) {
   all: unset;
   box-sizing: border-box;
 }
