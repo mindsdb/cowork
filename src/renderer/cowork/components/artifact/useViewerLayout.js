@@ -1,12 +1,12 @@
 // How much room the artifact viewer gives the artifact (ENG-4387): full
 // screen (the modal filling the window) by default, or the modal's own size. Remembered on this device, like the layers, so the
-// next artifact opens the same way. Storage can be unavailable (private mode,
+// next artifact opens the same way; a doc's preview (DocModal) shares the choice. Storage can be unavailable (private mode,
 // blocked site data), so every read and write is guarded and the default
 // applies then: full screen. (The toolbar and quick edit bar could be
 // hidden once; they always show now, and a saved choice to hide them is
 // ignored.)
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 // v2: full screen became the default (ENG-4455), so choices saved under the
 // old normal-size default start over from it.
@@ -54,6 +54,25 @@ export function useViewerLayout(userKey = '') {
     });
   }, [userKey]);
   return { layout, toggle };
+}
+
+/**
+ * Cmd/Ctrl+Shift+Enter toggles full screen while `active`. Keys typed inside
+ * an artifact's own frame never reach this window, so the page keeps its keys.
+ * @param {boolean} active
+ * @param {(name: string) => void} toggle  From useViewerLayout.
+ */
+export function useMaximizeShortcut(active, toggle) {
+  useEffect(() => {
+    if (!active) return undefined;
+    const onKeyDown = (event) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key !== 'Enter') return;
+      event.preventDefault();
+      toggle('maximized');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [active, toggle]);
 }
 
 export default useViewerLayout;

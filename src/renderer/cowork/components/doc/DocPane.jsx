@@ -96,13 +96,14 @@ export function writeErrorText(e) {
 
 export default function DocPane({
   projectRef, artifactId, title: fallbackTitle, variant = 'side', expanded = false, fillsWindow = false,
-  onToggleExpand, onClose, onAskAgent, onViewChange,
+  onToggleExpand, maximized = false, onToggleMaximized, onClose, onAskAgent, onViewChange,
 }) {
   const {
     doc, status, error, capabilities, card, apply: applyOps, undo, redo, flash, agentActive, saving, writeError,
     clearWriteError,
   } = useDoc({ projectRef, artifactId, transport: LOCAL_TRANSPORT });
   const { t } = useTranslation('docs');
+  const { t: tArtifacts } = useTranslation('artifacts');
   // Images beside the doc, fetched with the app's credentials (the shell shows
   // only blob: images from its own server).
   const loadImage = useDraftImageLoader(card?.draftUrl, null);
@@ -344,6 +345,8 @@ export default function DocPane({
   const canOpenInBrowser = !!pub.publishedUrl || canOpenLocally;
   const openLabel = t(pub.publishedUrl ? 'pane.openSharedPage' : 'pane.openInBrowser');
   const expandLabel = t(expanded ? 'pane.showChat' : 'pane.expand');
+  // The artifact viewer's own words for the same toggle.
+  const maximizeLabel = tArtifacts(maximized ? 'layout.restore' : 'layout.maximize');
   const exportLabel = t('export.label');
   const openInBrowser = async () => {
     try {
@@ -423,13 +426,22 @@ export default function DocPane({
             ]}
           />
         )}
-        {/* Expand, then close, past a divider: the artifact viewer's window controls. */}
-        {(onToggleExpand || onClose) && (
+        {/* Expand or full screen, then close, past a divider: the artifact viewer's window controls. */}
+        {(onToggleExpand || onToggleMaximized || onClose) && (
           <div className="doc-header__window-controls">
             {onToggleExpand && (
               <Tooltip content={expandLabel}>
                 <button type="button" className="doc-iconbtn" aria-label={expandLabel} onClick={onToggleExpand}>
                   <Icon of={expanded ? Minimize2 : Maximize2} size={16} />
+                </button>
+              </Tooltip>
+            )}
+            {onToggleMaximized && (
+              <Tooltip content={maximizeLabel}>
+                <button type="button" className="doc-iconbtn" aria-label={maximizeLabel}
+                  aria-keyshortcuts={host.isMac() ? 'Meta+Shift+Enter' : 'Control+Shift+Enter'}
+                  onClick={onToggleMaximized}>
+                  <Icon of={maximized ? Minimize2 : Maximize2} size={16} />
                 </button>
               </Tooltip>
             )}
