@@ -136,6 +136,8 @@ jobs:
     permissions:
       contents: read
       id-token: write # the build's ECR role, assumed over OIDC
+      # Granted so build-deploy.yml loads; the Argo CD deploy is off here.
+      statuses: write
     uses: ./.github/workflows/build-deploy.yml
     with:
       build-environment: development
