@@ -88,6 +88,7 @@ describe('Edit with agent from a doc in the library', () => {
       docRequest: {
         artifactId: 'a1', projectId: 'p1', tab: 't_1', selection: { blockIds: ['b_1'], quote: 'Hire  two\nengineers' }, request: 'Make it three',
       },
+      attachments: [],
     });
     // Not as a comment's repair, whose path started a new chat under the doc's.
     expect(onAddressWithAgent).not.toHaveBeenCalled();

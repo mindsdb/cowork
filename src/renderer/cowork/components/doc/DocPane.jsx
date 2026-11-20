@@ -12,6 +12,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ArrowUpRight, ChevronDown, FileText, Maximize2, Minimize2, PanelLeftOpen, X } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { Button, Menu, Spinner, Tooltip } from '../ui';
+import DocAskBar from './DocAskBar';
 import DocCanvas from './DocCanvas';
 import { TabRail, TabStrip, tabElementId, useTabsHidden } from './DocTabs';
 import { docPageTarget } from './docArtifact';
@@ -537,6 +538,10 @@ export default function DocPane({
             </div>
           </div>
         </div>
+      )}
+      {/* The preview's "Ask for a change" bar, as the artifact viewer has. */}
+      {variant === 'modal' && doc && askAgent && !version && (
+        <DocAskBar artifact={card || { id: artifactId, title: doc.title }} tabId={tab?.id || null} onAskAgent={askAgent} />
       )}
       {version && <RestoreDialog history={history} shared={!!pub.publishedUrl} agentWriting={live} />}
       <RestoredNote history={history} />

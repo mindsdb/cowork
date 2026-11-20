@@ -5730,7 +5730,7 @@ function AppCore() {
   // moved to another project or unreadable now) starts a new chat, the doc
   // docked beside that.
   const [docToDock, setDocToDock] = useState(null); // { taskId, artifact }, until that chat shows it
-  const editDocWithAgent = async ({ artifact, message, docRequest }) => {
+  const editDocWithAgent = async ({ artifact, message, docRequest, attachments = [] }) => {
     const target = await resolveRepairConversation({
       artifact,
       tasks: tasksRef.current,
@@ -5752,7 +5752,7 @@ function AppCore() {
       const placeholderId = `tmp-${Date.now()}`;
       setDocToDock({ taskId: id, placeholderId, artifact });
       return sendFromApp(message, {
-        project: projectOfArtifact(artifact), conversationId: id, placeholderId, docRequest, attachments: [],
+        project: projectOfArtifact(artifact), conversationId: id, placeholderId, docRequest, attachments,
       });
     }
     const loaded = chat;
@@ -5770,7 +5770,7 @@ function AppCore() {
       // The chat's own connections: the composer's are still those of the
       // chat it last showed, until this one renders. Queued behind a turn
       // waiting on the agent's question, never taken as the answer to it.
-      started = await handleSendInTask(message, [], {
+      started = await handleSendInTask(message, attachments, {
         targetTask: loaded, docRequest, disabledConnections: loaded.disabledConnections ?? [], skipPendingAnswer: true,
         holdsOptimistic: true,
       });

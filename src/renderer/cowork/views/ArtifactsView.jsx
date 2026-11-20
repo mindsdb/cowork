@@ -1242,8 +1242,13 @@ export default function ArtifactsView({
           onAskAgent={onEditDocWithAgent ? (ask) => {
             // Sent as the doc beside a chat sends it: the host takes it to the
             // doc's chat (or a new one) with the doc docked there.
+            // The preview's bar also brings the images pasted into it.
             setViewerPath(null);
-            onEditDocWithAgent({ artifact: viewer, ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask) });
+            return onEditDocWithAgent({
+              artifact: viewer,
+              ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask),
+              attachments: ask.attachments || [],
+            });
           } : undefined}
         />
       )}
