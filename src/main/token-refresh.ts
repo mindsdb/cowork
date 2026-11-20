@@ -15,6 +15,9 @@ const FAILURE_NOTIFY_THRESHOLD = 3;
 // keytar can fail for a while after sleep and reads as "no token", so a
 // connection is only marked dead after this many misses in a row (~15 min).
 const MISSING_REFRESH_TOKEN_THRESHOLD = 3;
+// Errors in an HTTP 200 {"ok": false} refresh answer (Slack) that mean the
+// grant is gone, not a transient failure.
+const PERMANENT_REFRESH_ERRORS = new Set(['invalid_refresh_token', 'invalid_grant', 'token_revoked']);
 
 interface LoopState {
   intervalId: ReturnType<typeof setInterval>;
@@ -52,7 +55,8 @@ function loopKey(engine: string, accountEmail: string): string {
   return `${engine}:${accountEmail}`;
 }
 
-function notifyRenderer(payload: { engine: string; name: string; accountEmail: string; permanent: boolean }): void {
+/** Tells the window a connection's refresh failed; `engine` is the name its toast shows. */
+export function notifyRenderer(payload: { engine: string; name: string; accountEmail: string; permanent: boolean }): void {
   BrowserWindow.getAllWindows()[0]?.webContents.send(IPC.OAUTH_REFRESH_ERROR, payload);
 }
 
@@ -257,7 +261,20 @@ async function refresh(
       access_token: string;
       expires_in: number;
       refresh_token?: string;
+      ok?: boolean;
+      error?: string;
     };
+
+    // Slack answers a failed refresh with HTTP 200 and {"ok": false}.
+    if (data.ok === false) {
+      if (data.error && PERMANENT_REFRESH_ERRORS.has(data.error)) {
+        await patchToken(engine, state.name, { status: 'needs_reconnect' });
+        notifyRenderer({ engine, name: state.name, accountEmail, permanent: true });
+        stopRefreshLoop(engine, accountEmail);
+        return null;
+      }
+      throw new Error(`token endpoint returned ok: false (${data.error || 'no error'})`);
+    }
 
     // Re-check: a disconnect can land after the Google round-trip above but
     // before we write anything — without this, we could resurrect a keychain

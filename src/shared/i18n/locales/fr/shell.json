@@ -33,6 +33,18 @@
     },
     "field": {
       "optional": "(facultatif)"
+    },
+    "sortHeader": {
+      "label": "Trier la liste",
+      "sortBy": "Trier par {column}",
+      "columns": {
+        "name": "Nom",
+        "project": "Projet",
+        "updated": "Mis à jour",
+        "activity": "Activité",
+        "type": "Type",
+        "status": "Statut"
+      }
     }
   },
   "rail": {
@@ -135,6 +147,27 @@
       "haveCopyTitle": "Vous en avez déjà une copie. Supprimez-la pour dupliquer à nouveau l’app.",
       "duplicateAriaLabel": "Dupliquer {name}",
       "duplicatedToast": "Dupliquée dans ce projet."
+    },
+    "workingFolders": {
+      "title": "Dossiers de travail",
+      "add": "Ajouter un dossier à ce chat",
+      "adding": "Ajout…",
+      "emptyHint": "Ajoutez un dossier dans lequel l’agent pourra travailler.",
+      "loadingFiles": "Chargement des fichiers…",
+      "emptyFolder": "Aucun fichier dans ce dossier.",
+      "showFiles": "Afficher les fichiers de {name}",
+      "hideFiles": "Masquer les fichiers de {name}",
+      "unavailable": "Dossier indisponible",
+      "removeTooltip": "Retirer de ce chat",
+      "removeAriaLabel": "Retirer {name} de ce chat",
+      "removeTitle": "Retirer « {name} » de ce chat ?",
+      "fallbackName": "dossier",
+      "removeMessage": "L’agent ne travaillera plus dans ce dossier. Le dossier et ses fichiers restent sur votre ordinateur.",
+      "loadFailed": "Impossible de charger les dossiers de travail.",
+      "listFailed": "Impossible de lister ce dossier.",
+      "pickerFailed": "Impossible d’ouvrir le sélecteur de dossiers.",
+      "addFailed": "Impossible d’ajouter ce dossier.",
+      "removeFailed": "Impossible de retirer ce dossier."
     }
   },
   "confirm": {
@@ -187,6 +220,8 @@
     "loading": "Chargement : {what}…"
   },
   "upToDate": "À jour",
+  "upToDateSaving": "Enregistrement…",
+  "upToDateSaved": "Enregistré",
   "usageBar": {
     "hideAllowance": "Masquer le quota",
     "hide": "Masquer"
@@ -414,7 +449,8 @@
     "signupWelcome": {
       "fromDesktop": "Votre compte est prêt. Vous pouvez commencer ici, ou revenir dans l’app {product} et vous connecter.",
       "dismiss": "Fermer"
-    }
+    },
+    "ownWorkHeading": "Sur quoi {product} doit-il travailler ?"
   },
   "logout": {
     "title": "Se déconnecter de {product} ?",

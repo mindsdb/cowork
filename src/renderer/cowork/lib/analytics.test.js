@@ -1819,13 +1819,17 @@ describe('console handoff attribution', () => {
     trackComposerReady('console', 'classic-snake-game', true);
     const body = await sentEvent(fetchMock, 'composer_ready');
 
-    expect(body.properties).toMatchObject({ entry_source: 'console', example_id: 'classic-snake-game', prefilled: true });
+    expect(body.properties).toMatchObject({
+      entry_source: 'console', example_id: 'classic-snake-game', prefilled: true, composer_blocked: false,
+    });
     expect(body.properties).not.toHaveProperty('entry_placement');
     // No prompt text rides on the event under any key.
     expect(JSON.stringify(body)).not.toMatch(/koi|snake moves/i);
   });
 
   it('credits a Gallery handoff to the Gallery on every event the handoff leads to', async () => {
+    // A console handoff only ever arrives on the web build.
+    hostState.isElectron = false;
     const fetchMock = mockFetch();
     const {
       setEntryAttribution, trackComposerReady, trackNewTaskMessageSent, trackAgentSessionStarted,
@@ -1837,7 +1841,11 @@ describe('console handoff attribution', () => {
     trackAgentSessionStarted();
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
 
-    const [ready, sent, session] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    const bodies = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    const byEvent = (name) => bodies.find((b) => b.event === name);
+    const [ready, sent, session] = [
+      byEvent('composer_ready'), byEvent('new_task_message_sent'), byEvent('agent_session_started'),
+    ];
     expect(ready.properties.entry_placement).toBe('gallery');
     expect(sent.event).toBe('new_task_message_sent');
     expect(sent.properties).toMatchObject({ via: 'console_link', entry_placement: 'gallery' });
@@ -2201,6 +2209,24 @@ describe('onboarding and start events', () => {
     expect(links).toEqual([true, false, false]);
   });
 
+  it('says which task mode the message went under and what became of its instruction', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent } = await importAnalytics();
+
+    trackNewTaskMessageSent({
+      text: 'plan a birthday party',
+      start: { start_kind: 'free_text' },
+      taskMode: { task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true },
+    });
+    trackNewTaskMessageSent({ text: 'next task', start: { start_kind: 'free_text' } });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const [first, second] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties);
+    expect(first).toMatchObject({ task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true });
+    expect(second).not.toHaveProperty('task_mode');
+    expect(second).not.toHaveProperty('mode_line');
+  });
+
   it('labels a send that goes out, and says so for one the app starts itself', async () => {
     const fetchMock = mockFetch();
     const { sendWithStartVia, trackNewTaskMessageSent } = await importAnalytics();
@@ -2225,6 +2251,36 @@ describe('onboarding and start events', () => {
 
     const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
     expect(vias).toEqual(['composer', 'composer']);
+  });
+
+  it('credits a console handoff\'s session to the example id its send carries', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackAgentSessionStarted } = await importAnalytics();
+
+    setEntryAttribution('console', null, null);
+    trackAgentSessionStarted({ exampleId: 'own-work' });
+    setEntryAttribution('console', null, null);
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const props = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties);
+    expect(props[0]).toMatchObject({ entry_source: 'console', example_id: 'own-work' });
+    expect(props[1]).toMatchObject({ entry_source: 'console', example_id: null });
+  });
+
+  it('keeps a start label that rides with the send, even after a refused second send cleared the pending one', async () => {
+    const fetchMock = mockFetch();
+    const { sendWithStartVia, setStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    // A second Enter mid-send is refused, which clears the pending label.
+    await sendWithStartVia('checklist', async () => false);
+    trackNewTaskMessageSent({ text: 'own work', start: { start_kind: 'own_work' }, startVia: 'checklist' });
+    setStartVia('app');
+    trackNewTaskMessageSent({ text: 'from the row', start: undefined, startVia: 'checklist' });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
+    expect(vias).toEqual(['checklist', 'checklist']);
   });
 
   it('uses a checklist start once, so the next message is from the composer', async () => {
@@ -2368,6 +2424,107 @@ describe('signup_landed (ENG-4288)', () => {
     const event = await sentEvent(fetchMock, 'signup_landed');
     expect(event.properties.from).toBe(expected);
     expect(JSON.stringify(event.properties)).not.toContain('example.com');
+  });
+});
+
+// The console's sign-in landing is graded from Cowork's arrival, so
+// the arrival has to say which organization it was in, whether the account has
+// been here before, and whether it found a composer at all.
+describe('the console arrival and the sign-up landing carry what grading needs', () => {
+  const ORG = { id: 'org-landing', name: 'Landing Co' };
+  const signedInWeb = (sub = 'user-landing') => {
+    hostState.isElectron = false;
+    getAccessToken.mockResolvedValue(fakeJwt({ sub, email: 'p@example.com', activate_organization: ORG }));
+  };
+  // A first visit is kept in the tab (sessionStorage) for a reload; each case is a new tab.
+  beforeEach(() => { window.sessionStorage.clear(); });
+  afterEach(() => { hostState.isElectron = true; });
+
+  it('composer_ready carries the session organization as both the SSO and the acting organization', async () => {
+    signedInWeb();
+    const fetchMock = mockFetch();
+    const { trackComposerReady } = await importAnalytics();
+
+    trackComposerReady('console', null, false, 'sign-in');
+    const event = await sentEvent(fetchMock, 'composer_ready');
+    expect(event.properties).toMatchObject({
+      entry_placement: 'sign-in',
+      sso_organization_id: 'org-landing',
+      acting_organization_id: 'org-landing',
+    });
+  });
+
+  it('composer_ready says when the provider panel stood in for the composer', async () => {
+    signedInWeb();
+    const fetchMock = mockFetch();
+    const { trackComposerReady } = await importAnalytics();
+
+    trackComposerReady('console', null, false, 'sign-in', { blocked: true });
+    const event = await sentEvent(fetchMock, 'composer_ready');
+    expect(event.properties.composer_blocked).toBe(true);
+  });
+
+  it.each([
+    ['nothing of the account is in the browser', () => {}, true],
+    ['the account used Cowork web here before', () => {
+      window.localStorage.setItem('anton.settingsCache:subject:user-landing:organization:org-landing', '{}');
+    }, false],
+  ])('composer_ready says first_visit when %s', async (_label, arrange, expected) => {
+    signedInWeb();
+    arrange();
+    const fetchMock = mockFetch();
+    const { trackComposerReady } = await importAnalytics();
+    const { noteAccountVisit } = await import('./accountVisit');
+    noteAccountVisit(fakeJwt({ sub: 'user-landing', activate_organization: ORG }));
+
+    trackComposerReady('console', null, false, 'sign-in');
+    const event = await sentEvent(fetchMock, 'composer_ready');
+    expect(event.properties.first_visit).toBe(expected);
+  });
+
+  it('composer_ready says first_visit once: a later arrival in the same tab is not a first again', async () => {
+    signedInWeb();
+    let fetchMock = mockFetch();
+    let analytics = await importAnalytics();
+    let visit = await import('./accountVisit');
+    visit.noteAccountVisit(fakeJwt({ sub: 'user-landing', activate_organization: ORG }));
+    analytics.trackComposerReady('console', null, false, 'sign-in');
+    expect((await sentEvent(fetchMock, 'composer_ready')).properties.first_visit).toBe(true);
+
+    // The next console link opens a new page in the same tab.
+    fetchMock = mockFetch();
+    analytics = await importAnalytics();
+    visit = await import('./accountVisit');
+    visit.noteAccountVisit(fakeJwt({ sub: 'user-landing', activate_organization: ORG }));
+    analytics.trackComposerReady('console', 'celestial-merge-2048', true, 'gallery');
+    expect((await sentEvent(fetchMock, 'composer_ready')).properties.first_visit).toBe(false);
+  });
+
+  it('composer_ready leaves first_visit off when it was never decided for the account', async () => {
+    signedInWeb();
+    const fetchMock = mockFetch();
+    const { trackComposerReady } = await importAnalytics();
+    const { noteAccountVisit } = await import('./accountVisit');
+    noteAccountVisit(fakeJwt({ sub: 'someone-else', activate_organization: ORG }));
+
+    trackComposerReady('console', null, false, 'sign-in');
+    const event = await sentEvent(fetchMock, 'composer_ready');
+    expect(event.properties).not.toHaveProperty('first_visit');
+  });
+
+  it('signup_landed carries the organization and no first_visit', async () => {
+    signedInWeb();
+    const fetchMock = mockFetch();
+    const { trackSignupLanded } = await importAnalytics();
+    const { noteAccountVisit } = await import('./accountVisit');
+    noteAccountVisit(fakeJwt({ sub: 'user-landing', activate_organization: ORG }));
+
+    trackSignupLanded('web');
+    const event = await sentEvent(fetchMock, 'signup_landed');
+    expect(event.properties).toMatchObject({
+      from: 'web', sso_organization_id: 'org-landing', acting_organization_id: 'org-landing',
+    });
+    expect(event.properties).not.toHaveProperty('first_visit');
   });
 });
 

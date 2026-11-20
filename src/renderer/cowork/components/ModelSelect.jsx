@@ -425,6 +425,9 @@ export function ModelSelect({
     // — Model Router carries its own and is never locked anyway.
     const entries = options.filter(Boolean)
       .map((o) => {
+        if (!offersBilling() && (o.locked || o.budgetReached)) {
+          return { ...o, title: undefined, tag: t('picker.unavailable'), action: undefined };
+        }
         if (!PLATFORM_UI && o.locked) return { ...o, tag: t('picker.unavailable') };
         return o.locked && !o.action ? { ...o, action: creditsAction(t, isBillingOwner) } : o;
       });

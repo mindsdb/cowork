@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../../Icons';
 import { ArrowUpIcon } from '../comments/icons';
-import { Spinner, Tooltip } from '../../ui';
+import { Button, Spinner, Tooltip } from '../../ui';
 import { MarkdownContent } from '../../markdown/MarkdownContent';
 import { chatReplyFor } from '../../../lib/quickEditPrompt';
 import { useImageAttachments } from '../../../lib/imageAttachments';
@@ -176,9 +176,9 @@ function ChatMirror({ reply, chatMessages, onOpenChat }) {
 
 // What a finished reply offers beside its bubble, on the same row: Undo (and
 // its Undoing… / Undone states) after an applied edit, "Ask the agent
-// instead" after a failed one. Null for any other reply.
+// instead" after a failed one or an answer. Null for any other reply.
 const hasReplySide = (reply, canUndo) => (reply.state === 'applied' && (reply.undone || canUndo))
-  || reply.state === 'failed';
+  || reply.state === 'failed' || reply.state === 'replied';
 
 function ReplySide({ reply, canUndo, busy, onUndo, onAskAgent }) {
   const { t } = useTranslation('artifacts');
@@ -201,7 +201,7 @@ function ReplySide({ reply, canUndo, busy, onUndo, onAskAgent }) {
       />
     );
   }
-  if (reply.state === 'failed') {
+  if (reply.state === 'failed' || reply.state === 'replied') {
     return <ReplyAction icon={Ico.sparkle(14)} label={t('quickEdit.askAgent')} disabled={busy} onClick={onAskAgent} />;
   }
   return null;
@@ -216,9 +216,11 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, cha
         ? t(`quickEdit.stage.${reply.stage}`)
         : reply.route === 'agent'
           ? t('quickEdit.route.agent')
-          : reply.route === 'edit'
-            ? t('quickEdit.route.edit')
-            : t('quickEdit.stage.routing');
+          : reply.route === 'reply'
+            ? t('quickEdit.route.reply')
+            : reply.route === 'edit'
+              ? t('quickEdit.route.edit')
+              : t('quickEdit.stage.routing');
     return (
       <span className="artifact-quick-edit-status" role="status">
         <Spinner /> {stage}
@@ -241,6 +243,14 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, cha
       <>
         <span>{reply.summary || t('quickEdit.failed')}</span>
       </>
+    );
+  }
+  // An answer to a question about the artifact, set like the chat's replies.
+  if (reply.state === 'replied') {
+    return (
+      <div className="artifact-quick-edit-mirror">
+        <MarkdownContent text={reply.summary} id={`quick-edit-${reply.id}`} complete size="dense" isAssistant animateStreamingWords={false} />
+      </div>
     );
   }
   if (reply.state === 'chat') {
@@ -276,6 +286,20 @@ export function QuickEditBar({
   const [confirm, setConfirm] = useState(null);
   const [sendError, setSendError] = useState('');
   const threadHeight = useThreadHeight(threadInnerRef, messages.length > 0);
+  // The thread floats over the artifact rather than pushing it up (ENG-4455).
+  // It opens when the pointer comes back over the bar, on a click into it
+  // (even into an input that kept the focus) or the focus arriving there,
+  // and when a message arrives
+  // or a reply settles (applied, failed, answered, handed to the chat); it
+  // folds away when the pointer goes back to the artifact, leaving the input.
+  const [threadOpen, setThreadOpen] = useState(true);
+  const lastStageRef = useRef('');
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    const stage = last ? `${messages.length}:${last.id}:${last.state || ''}` : '';
+    if (stage && stage !== lastStageRef.current) setThreadOpen(true);
+    lastStageRef.current = stage;
+  }, [messages]);
   // Messages whose entrance has played: they never get .is-entering again.
   const enteredRef = useRef(new Set());
   const [, setEnteredCount] = useState(0);
@@ -353,9 +377,28 @@ export function QuickEditBar({
   }, []);
 
   return (
-    <div className="artifact-quick-edit" aria-label={t('quickEdit.ariaLabel')} role="region">
+    <div
+      className="artifact-quick-edit"
+      aria-label={t('quickEdit.ariaLabel')}
+      role="region"
+      onPointerEnter={() => setThreadOpen(true)}
+      onPointerDown={() => setThreadOpen(true)}
+      onPointerLeave={(e) => {
+        if (e.pointerType === 'touch') return;
+        // Folding would hide the focused Undo or Ask the agent instead.
+        if (threadRef.current?.contains(document.activeElement)) return;
+        setThreadOpen(false);
+      }}
+      onFocus={() => setThreadOpen(true)}
+    >
       {messages.length > 0 && (
-        <div className="artifact-quick-edit-thread" ref={threadRef} aria-live="polite" style={{ height: threadHeight }}>
+        <div
+          className="artifact-quick-edit-thread"
+          ref={threadRef}
+          aria-live="polite"
+          data-open={threadOpen || undefined}
+          style={{ height: threadHeight }}
+        >
           <div className="artifact-quick-edit-thread-inner" ref={threadInnerRef}>
           {messages.map((m) => (m.role === 'user' ? (
             <div
@@ -405,17 +448,18 @@ export function QuickEditBar({
           aria-label={t('quickEdit.unsavedConfirm.title')}
           onKeyDown={(e) => { if (e.key === 'Escape' && confirm !== 'saving') { e.stopPropagation(); cancelConfirm(); } }}
         >
+          <span className="artifact-html-edit-indicator is-active" aria-hidden="true" />
           <span className="artifact-quick-edit-confirm-text">{t('quickEdit.unsavedConfirm.title')}</span>
           <span className="artifact-quick-edit-confirm-actions">
-            <button type="button" className="artifact-quick-edit-confirm-button" onClick={cancelConfirm} disabled={confirm === 'saving'}>
+            <Button size="sm" variant="subtle" onClick={cancelConfirm} disabled={confirm === 'saving'}>
               {t('quickEdit.unsavedConfirm.cancel')}
-            </button>
-            <button type="button" className="artifact-quick-edit-confirm-button" onClick={discardAndSend} disabled={confirm === 'saving'}>
+            </Button>
+            <Button size="sm" onClick={discardAndSend} disabled={confirm === 'saving'}>
               {t('quickEdit.unsavedConfirm.discard')}
-            </button>
-            <button
-              type="button"
-              className="artifact-quick-edit-confirm-button is-primary"
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
               onClick={saveAndSend}
               disabled={confirm === 'saving'}
               aria-busy={confirm === 'saving' || undefined}
@@ -423,7 +467,7 @@ export function QuickEditBar({
             >
               {confirm === 'saving' ? <Spinner /> : null}
               {t('quickEdit.unsavedConfirm.save')}
-            </button>
+            </Button>
           </span>
         </div>
       )}

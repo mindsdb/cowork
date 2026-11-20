@@ -361,6 +361,7 @@
     "artifactAuthorship": {
       "unknownOwner": "不明なオーナー",
       "otherMemberDescription": "このプロジェクトの別のメンバーが作成しました。確認はできますが、変更はできません。",
+      "namedOwnerDescription": "このプロジェクトの別のメンバーである{name}が作成しました。確認はできますが、変更はできません。",
       "unknownOwnerDescription": "このアーティファクトのオーナーは記録されていません。"
     },
     "artifactExport": {
@@ -414,7 +415,8 @@
       "andMore": "{source}ほか{count}件"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "不明なコネクタ"
+      "unrecognizedConnector": "不明なコネクタ",
+      "mcpServer": "MCP サーバー"
     },
     "datasourceSubmission": {
       "errors": {

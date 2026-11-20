@@ -4,7 +4,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted, isModelZdrRestricted, isModelBudgetReached } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, jevOffForZdr, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, jevOffForZdr, routerRoleSubtitle, showJevSwitch, showRouterRoleRow, jevClassifySwitch } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -102,6 +102,9 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   if (!PLATFORM_UI || !providerTestsAvailable) {
     return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
   }
+  if (!offersBilling() && ['no_credits', 'budget_reached', 'billing_unavailable'].includes(notice.kind)) {
+    return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
+  }
   const byok = <div className="text-ink-3">{t('probe.byok')}</div>;
   if (notice.kind === 'no_credits') {
     return (
@@ -159,7 +162,8 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger">{t('probe.budgetReached', { detail: budgetExceededCopy({ usage }) })} </span>
-          <ViewBudgetsLink>{t('probe.viewBudgetsArrow')}</ViewBudgetsLink>
+          {/* The test call itself was refused, so this is a denial's link. */}
+          <ViewBudgetsLink fromDenial>{t('probe.viewBudgetsArrow')}</ViewBudgetsLink>
         </div>
         {byok}
       </div>
@@ -182,9 +186,10 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   return null;
 }
 
-/** The Budgets tab for this session's organization; credits do not lift a budget. */
-function ViewBudgetsLink({ children }) {
-  const budgetsUrl = useBudgetsUrl();
+/** The Budgets tab for this session's organization; credits do not lift a budget.
+    `fromDenial` when a call was refused, not when a spent budget is only foreseen. */
+function ViewBudgetsLink({ children, fromDenial = false }) {
+  const budgetsUrl = useBudgetsUrl({ fromDenial });
   if (!offersBilling()) return null;
   return (
     <button
@@ -223,6 +228,9 @@ export function UnavailableModelHint({ label, restricted, zdr = false, budgetRea
       </div>
     );
   }
+  if (!offersBilling()) {
+    return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
+  }
   if (budgetReached) {
     return (
       <div className="text-[11.5px] text-ink-3">
@@ -230,9 +238,6 @@ export function UnavailableModelHint({ label, restricted, zdr = false, budgetRea
         <ViewBudgetsLink>{t('agent.viewBudgets')}</ViewBudgetsLink>
       </div>
     );
-  }
-  if (!offersBilling()) {
-    return <div className="text-[11.5px] text-ink-3">{t('agent.modelNeedsCreditsNoLink', { model: label })}</div>;
   }
   return (
     <div className="text-[11.5px] text-ink-3">
@@ -1074,6 +1079,7 @@ export default function SettingsView({
   // effectiveRoleProvider already falls back to MindsHub, as the server does.
   const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
   const jevZdrOff = jevOffForZdr(settings?.routing);
+  const jevClassify = jevClassifySwitch(settings, roleProviderType('coding'));
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     // null is a tombstone ("clear the stored row so the server's enabled-aware
@@ -2163,7 +2169,7 @@ export default function SettingsView({
         {/* Voice calls run on MindsHub: only when it is the LLM provider. */}
         {llmViaMindsHub(settings) && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />}
 
-        {(hasBudgetSettings || jevSwitchShown) && (
+        {(hasBudgetSettings || jevSwitchShown || jevClassify.shown) && (
           <SettingsGroup title={t('advanced.title')} collapsible defaultCollapsed>
             {hasBudgetSettings && <>
             {hasLimitsSwitch && (
@@ -2246,6 +2252,21 @@ export default function SettingsView({
                   disabled={jevZdrOff}
                   onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
                   aria-label={t('advanced.jev.title')}
+                />
+              </Section>
+            )}
+            {jevClassify.shown && (
+              <Section
+                title={t('advanced.jevClassify.title')}
+                subtitle={jevClassify.available
+                  ? t('advanced.jevClassify.subtitle', { agent: agentLabel || 'Anton' })
+                  : t('advanced.jevClassify.unavailable')}
+              >
+                <Switch
+                  checked={jevClassify.checked}
+                  disabled={!jevClassify.available}
+                  onCheckedChange={(v) => setSetting('jevClassifyEnabled', v)}
+                  aria-label={t('advanced.jevClassify.title')}
                 />
               </Section>
             )}

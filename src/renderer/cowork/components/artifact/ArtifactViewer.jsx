@@ -5,7 +5,7 @@ import { downloadUnavailableMessage } from '../../lib/browserDownload';
 //
 //   left   — artifact title (truncated)
 //   middle — Preview / Source / Review modes
-//   right  — comments · stats · Publish control · ⋯ menu · close
+//   right  — Publish control · ⋯ menu · close
 //
 // With quick edits on (capabilities.canQuickEdit, ENG-4227), Preview carries a
 // chat bar at the bottom: the user asks for a change and the server makes it
@@ -15,7 +15,7 @@ import { downloadUnavailableMessage } from '../../lib/browserDownload';
 // popover, backed by the usePublish state machine — so this component is
 // just chrome + preview.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   allocateConversationId,
   mountArtifactPreview,
@@ -30,7 +30,7 @@ import {
 import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
-import { artifactAuthorship } from '../../lib/artifactAuthorship';
+import { useArtifactAuthorship } from '../../hooks/useArtifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { fetchAuthenticatedResponse } from '../../lib/authenticatedResource';
 import {
@@ -74,12 +74,13 @@ import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
-import { usePreviewView } from './usePreviewView';
+import { normalizePreviewView, usePreviewView } from './usePreviewView';
+import { usePreviewFit } from './usePreviewFit';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
 import { useViewerLayout } from './useViewerLayout';
-import { ViewerLayerToggle, ViewerLayerToggles } from './ViewerLayerToggle';
+import { ViewerModeRail } from './ViewerModeRail';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
 import { countUserPrompts } from '../../lib/quickEditPrompt';
@@ -89,7 +90,6 @@ import { useModelPickerContext } from '../../lib/modelPickerContext';
 import { ModelEffortPicker, pickedEffort } from '../ModelEffortPicker';
 import { MODEL_ROUTER } from '../../lib/modelCatalog';
 import { useArtifactStats } from './stats/useArtifactStats';
-import { useStatsUiEnabled } from './stats/statsUiAccess';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import { useTranslation } from '../../../lib/i18n';
@@ -246,9 +246,14 @@ export function ArtifactViewer({
   const inboxOpen = sidePanel === 'comments';
   // The inbox controls keep their boolean interface. Opening the inbox
   // replaces Stats; closing it leaves Stats alone.
+  const sidePanelRef = useRef(sidePanel);
+  sidePanelRef.current = sidePanel;
+  const setLayerRef = useRef(null);
   const setInboxOpen = useCallback((next) => {
+    const value = typeof next === 'function' ? next(sidePanelRef.current === 'comments') : next;
+    // The inbox takes the slot from Stats, so the Stats layer goes off too.
+    if (value) setLayerRef.current?.('stats', false);
     setSidePanel((current) => {
-      const value = typeof next === 'function' ? next(current === 'comments') : next;
       if (value) return 'comments';
       return current === 'comments' ? null : current;
     });
@@ -302,9 +307,11 @@ export function ArtifactViewer({
     previewOnly: !!documentType,
   });
   // The viewer's layers over its one preview (ENG-4227): Live edit (the
-  // quick-edit bar), Source (the code editor) and Comments, each a header
-  // toggle, remembered on this device.
+  // editor), Comments and Stats, each a tab on the panel rail with its own
+  // side panel; Live edit and Comments are remembered on this device.
   const { layers, setLayer } = useViewerLayers();
+  setLayerRef.current = setLayer;
+  const sidePanelId = useId();
   const { layout, toggle: toggleLayout } = useViewerLayout();
   // Cmd/Ctrl+Shift+Enter maximizes and restores. Keys typed inside the
   // artifact's own frame never reach this window, so the page keeps its keys.
@@ -374,6 +381,9 @@ export function ArtifactViewer({
   commentLayerRequestedRef.current = commentLayerRequested;
   // Whether the mounted preview was loaded with the bridge.
   const commentLayerMountedRef = useRef(false);
+  // Where the editor was when Live edit went off, for a comment-layer reload
+  // that follows to land there too.
+  const leftEditorViewRef = useRef(null);
   const _akParts = artifactKey.split('/');
   const commentUserDir = _akParts[0] || '';
   const commentReportId = _akParts.slice(1).join('/') || '';
@@ -405,6 +415,11 @@ export function ArtifactViewer({
     enabled: open && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
     scopeKey: open ? `${artifact?.id || ''}:${artifact?.path || ''}` : '',
+  });
+  // A page cut off in the frame with nothing to scroll is fitted to it.
+  const previewFit = usePreviewFit(iframeRef, {
+    enabled: open && !!(previewUrl || previewDoc),
+    resetKey: previewUrl || previewDoc,
   });
   const comments = useArtifactComments(commentUserDir, commentReportId, {
     enabled: open && commentsEnabled,
@@ -501,27 +516,32 @@ export function ArtifactViewer({
   // Comments and Live edit are exclusive (useViewerLayers): Comments on turns
   // Live edit off, so unsaved editor text is asked about first, and Comments
   // opens once the user agrees to drop it.
-  const commentsAfterSourceOffRef = useRef(false);
+  // The layer to turn on once the user agrees to drop unsaved Live edit text.
+  const layerAfterSourceOffRef = useRef(null);
+  // Comments opened from its tab starts in Comment mode, ready to place one,
+  // not Navigate. Restored on open, it starts in Navigate as before.
+  const commentModeOnOpenRef = useRef(false);
   const toggleComments = () => {
     const on = !(layers.comments && commentsEnabled);
     if (on && layers.source && workspace.dirty) {
-      commentsAfterSourceOffRef.current = true;
+      layerAfterSourceOffRef.current = 'comments';
       setSourceOffPrompt(true);
       return;
     }
+    commentModeOnOpenRef.current = on;
     setLayer('comments', on);
   };
 
-  // Stats turns comment mode off, so no markers are drawn beside it and at
-  // most one header switch is on.
-  const toggleStats = () => {
-    if (sidePanel === 'stats') {
-      setSidePanel(null);
+  // Stats is the third layer (ENG-4455): on, it turns Live edit and Comments
+  // off (comment mode included, so no markers are drawn beside it), asking
+  // first about unsaved Live edit text, as Comments does.
+  const toggleStats = (on) => {
+    if (on && layers.source && workspace.dirty) {
+      layerAfterSourceOffRef.current = 'stats';
+      setSourceOffPrompt(true);
       return;
     }
-    layer.exitMode();
-    setLayer('comments', false);
-    setSidePanel('stats');
+    setLayer('stats', on);
   };
 
   // The Comments layer drives the comments chrome. Turned on (or restored on
@@ -533,13 +553,18 @@ export function ArtifactViewer({
       setMarkersShown(true);
       setCommentsOpen(true);
       setSidePanel('comments');
+      if (commentModeOnOpenRef.current) {
+        commentModeOnOpenRef.current = false;
+        layer.enterModeWhenReady?.();
+      }
       return;
     }
+    commentModeOnOpenRef.current = false;
     layer.exitMode();
     setCommentsOpen(false);
     setSidePanel((current) => (current === 'comments' ? null : current));
     setTextSelection(null);
-  }, [open, layers.comments, commentsEnabled, layer.exitMode]);
+  }, [open, layers.comments, commentsEnabled, layer.exitMode, layer.enterModeWhenReady]);
 
   useEffect(() => {
     if (!open || workspace.repair?.status !== 'queued') return undefined;
@@ -727,22 +752,27 @@ export function ArtifactViewer({
   // server-sent role: a guessed reviewer would hide "Another member" on the
   // user's own artifact, and a guessed owner would hide it on a colleague's.
   // Server-sent workspace capabilities win; otherwise the card's (ENG-2979).
-  const authorship = artifactAuthorship(
+  // The owner is named once MindsHub answers for `ownerUserId` (ENG-4455).
+  const authorship = useArtifactAuthorship(
     (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
   );
 
-  // Stats are for the owner of a published artifact only, and only where the
-  // hidden Stats UI is turned on. The header applies the same rule to its button.
-  const statsUiEnabled = useStatsUiEnabled();
-  const statsAvailable = statsUiEnabled && !!pub.publishedUrl && canManage;
+  // Stats are for the owner of a published artifact only.
+  const statsAvailable = !!pub.publishedUrl && canManage;
   const statsOpen = open && statsAvailable && sidePanel === 'stats';
   const stats = useArtifactStats(artifact, { enabled: statsOpen });
-  // Stats closes when it stops being available and with the viewer, so the
-  // next artifact does not open and report it unasked. The comments inbox
-  // keeps its state across closes.
+  // The Stats layer drives the docked slot. It turns off when Stats stops
+  // being available and with the viewer, so the next artifact does not open
+  // and report it unasked. The comments inbox keeps its state across closes.
   useEffect(() => {
-    if (sidePanel === 'stats' && (!open || !statsAvailable)) setSidePanel(null);
-  }, [open, sidePanel, statsAvailable]);
+    if (open && layers.stats && statsAvailable) {
+      layer.exitMode();
+      setSidePanel('stats');
+      return;
+    }
+    setSidePanel((current) => (current === 'stats' ? null : current));
+    if (layers.stats) setLayer('stats', false);
+  }, [open, layers.stats, statsAvailable, layer.exitMode, setLayer]);
   // One event per open and artifact, after its first successful load. The
   // viewer outlives an artifact switch, so the ref holds which artifact was
   // reported rather than a flag. The hook returns no data for an artifact it
@@ -1040,8 +1070,10 @@ export function ArtifactViewer({
   useEffect(() => {
     if (!open || !commentsOpen || !commentLayerRequested) return;
     if (!(previewUrl || previewDoc) || commentLayerMountedRef.current) return;
-    // The page comes back on the slide the user was commenting on.
-    previewView.keepPlace();
+    // The page comes back on the slide the user was commenting on, or the
+    // one they were editing when they came from Live edit.
+    previewView.keepPlace(leftEditorViewRef.current);
+    leftEditorViewRef.current = null;
     setReloadNonce((n) => n + 1);
   }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc, previewView.keepPlace]);
 
@@ -1225,6 +1257,8 @@ export function ArtifactViewer({
   const resolveArtifactConversation = async () => conversationId
     || (resolveRepairConversation ? await resolveRepairConversation(artifact) : '')
     || '';
+  // Comments the bar resolved by applying their fix, so an Undo reopens them.
+  const resolvedByEditRef = useRef(new Set());
   const quickEdit = useQuickEdit(artifact, {
     enabled: open && canQuickEdit,
     // Without a decisions model every message goes to the chat. An older
@@ -1277,6 +1311,23 @@ export function ArtifactViewer({
       }
     },
     onStale: () => { void workspace.load(); },
+    // A comment sent to the bar (Address with agent) is resolved once the
+    // edit made for it is applied, as the agent's repair resolved it, and
+    // opened again if that edit is undone. Only a comment still open is
+    // resolved, and only one resolved this way is reopened.
+    onThreadAddressed: (threadId) => {
+      const thread = comments.threads.find((item) => item.id === threadId);
+      if (!thread || thread.status === 'resolved' || thread.status === 'dismissed') return;
+      resolvedByEditRef.current.add(threadId);
+      void setCommentStatus(threadId, 'resolved');
+    },
+    onThreadReopened: (threadId) => {
+      if (!resolvedByEditRef.current.delete(threadId)) return;
+      // Dismissed or reopened by hand since: the person's choice stands.
+      const thread = comments.threads.find((item) => item.id === threadId);
+      if (thread?.status !== 'resolved') return;
+      void setCommentStatus(threadId, 'open');
+    },
   });
 
   // The publish review's choices (ENG-4409). Publish this change re-publishes
@@ -1324,6 +1375,35 @@ export function ArtifactViewer({
   const canSource = !!workspace.source && workspace.capabilities?.canEdit !== false;
   const sourceOn = layers.source && canSource;
   sourceOnRef.current = sourceOn;
+  // Leaving Live edit for Comments, Stats or the plain preview (ENG-4455):
+  // the preview goes to where the editor was, so the user stays on the slide
+  // they were working on. The preview can only take a place as it loads, so
+  // it reloads behind the cover, unless the comment layer is about to reload
+  // it anyway, which then lands there. Nothing reloads when the editor is
+  // where the preview already is.
+  const wasSourceOnRef = useRef(sourceOn);
+  useEffect(() => {
+    const was = wasSourceOnRef.current;
+    wasSourceOnRef.current = sourceOn;
+    if (!was || sourceOn || !open || !framedPreview) return;
+    const view = editorViewRef.current;
+    if (!view) return;
+    const editorAt = JSON.stringify(normalizePreviewView({ ...view, type: 'view' }));
+    if (editorAt === JSON.stringify(previewView.view)) return;
+    if (layers.comments && commentLayerRequested && !commentLayerMountedRef.current) {
+      leftEditorViewRef.current = view;
+      return;
+    }
+    // Comments asked for Comment mode on the page this reload replaces.
+    const commentMode = layers.comments;
+    void previewReload.reload(() => {
+      if (commentMode) layer.enterModeOnNextLoad?.();
+      keepPlace(view);
+      reloadPreview();
+    });
+  // Only on Live edit going off; the rest is read as it is then.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceOn]);
   const setSourceLayer = (on) => {
     if (!on && workspace.dirty) {
       setSourceOffPrompt(true);
@@ -1577,30 +1657,41 @@ export function ArtifactViewer({
     onClose?.();
   };
 
-  // The layer toggles on the revision line, before History: Live edit (the
-  // code editor; `source` inside) and Comments, each only where allowed.
-  const layerControls = canSource || commentsEnabled ? (
-    <ViewerLayerToggles label={t('layers.ariaLabel')}>
-      {canSource && (
-        <ViewerLayerToggle
-          icon={Ico.edit(14)}
-          label={t('layers.source')}
-          pressed={sourceOn}
-          onToggle={(on) => setSourceLayer(on)}
-        />
-      )}
-      {commentsEnabled && (
-        <ViewerLayerToggle
-          icon={Ico.chats(14)}
-          label={t('layers.comments')}
-          pressed={!!commentsOpen}
-          onToggle={() => toggleComments()}
-          badge={comments.unreadCount}
-          badgeLabel={t('header.commentsUnread', { count: comments.unreadCount })}
-        />
-      )}
-    </ViewerLayerToggles>
-  ) : null;
+  // The panel rail on the viewer's right edge (ViewerModeRail, ENG-4455): one
+  // tab per layer this person may use, each opening its side panel. Clicking
+  // the open one closes it; the unsaved Live edit prompt guards both ways out.
+  // Comments still to review: open ones, as an inbox counts what is in it.
+  // Resolved and dismissed ones are done with.
+  const openCommentCount = (comments.threads || [])
+    .filter((thread) => thread.status !== 'resolved' && thread.status !== 'dismissed').length;
+  const railTabs = [
+    canSource && {
+      id: 'source',
+      icon: Ico.edit(16),
+      label: t('layers.source'),
+      description: t('rail.sourceHint'),
+      pressed: sourceOn,
+      onSelect: () => setSourceLayer(!sourceOn),
+    },
+    commentsEnabled && {
+      id: 'comments',
+      icon: Ico.chats(16),
+      label: t('layers.comments'),
+      description: t('rail.commentsHint'),
+      pressed: !!commentsOpen,
+      onSelect: () => toggleComments(),
+      badge: openCommentCount,
+      badgeLabel: t('rail.commentsOpen', { count: openCommentCount }),
+    },
+    statsAvailable && {
+      id: 'stats',
+      icon: Ico.chartColumn(16),
+      label: t('layers.stats'),
+      description: t('rail.statsHint'),
+      pressed: statsOpen,
+      onSelect: () => toggleStats(!statsOpen),
+    },
+  ].filter(Boolean);
   // The address pill: where this artifact can be opened. A published page or
   // a running live app has its own address; a draft has the address the
   // browser-tab action opens, or none until a signed link is minted.
@@ -1616,13 +1707,12 @@ export function ArtifactViewer({
     controller: comments,
     onToggle: toggleComments,
   };
-  const headerStats = statsUiEnabled ? { open: sidePanel === 'stats', onToggle: toggleStats } : null;
   const bodyStats = {
     open: statsOpen,
     controller: stats,
     accessMode: pub.accessMode,
     accessLoaded: !!pub.accessLoaded,
-    onClose: () => setSidePanel(null),
+    onClose: () => setLayer('stats', false),
   };
   const publication = {
     canManage,
@@ -1696,6 +1786,7 @@ export function ArtifactViewer({
     kind: previewKind,
     iframeRef,
     view: previewView,
+    fitStyle: previewFit.style,
     // The Live editor's own place, for a save made from it (keepPreviewPlace).
     onEditorView,
     title,
@@ -1729,9 +1820,6 @@ export function ArtifactViewer({
     setTextSelection,
   };
 
-  // The toolbar always shows where there is one; without one (no revision
-  // and no layer toggles), Live edit carries its own way out.
-  const toolbarShown = !!workspace.currentRevision || !!layerControls;
   const headerLayout = {
     ...layout,
     onToggle: toggleLayout,
@@ -1752,7 +1840,6 @@ export function ArtifactViewer({
         authorship={authorship}
         workspace={workspaceView}
         review={headerReview}
-        stats={headerStats}
         publication={publication}
         actions={artifactActions}
         diagnostics={diagnostics}
@@ -1761,9 +1848,8 @@ export function ArtifactViewer({
         onClose={requestClose}
       />
 
-      {toolbarShown && workspace.currentRevision && (
+      {workspace.currentRevision && (
         <ArtifactRevisionBar
-          layerControls={layerControls}
           revision={workspace.currentRevision}
           revisions={workspace.revisions}
           status={workspace.status}
@@ -1774,15 +1860,6 @@ export function ArtifactViewer({
           onCompare={workspace.compareRevision}
           saveInEditor={sourceOn}
         />
-      )}
-      {/* No revision line to sit on (a published page someone reviews, say):
-          the toggles get a line of their own. */}
-      {toolbarShown && !workspace.currentRevision && layerControls && (
-        <div className="artifact-revision-bar is-centered is-layers-only">
-          <span />
-          <div className="artifact-revision-center">{layerControls}</div>
-          <span />
-        </div>
       )}
       {(workspace.error || workspace.conflict) && (
         <div className="artifact-workspace-notice" role="alert">
@@ -1894,27 +1971,32 @@ export function ArtifactViewer({
         </div>
       )}
 
-      <ArtifactViewerBody
-        // With the toolbar hidden, Live edit's own way out is in the editor.
-        layers={{
-          source: sourceOn,
-          onExitSource: toolbarShown ? null : () => setSourceLayer(false),
-          // Save and Discard, in Live edit's own toolbar.
-          editActions: {
-            dirty: !!workspace.dirty,
-            saving: workspace.status === 'saving',
-            canEdit: workspace.capabilities?.canEdit !== false,
-            onSave: () => saveWorkspace(),
-            onDiscard: workspace.discard,
-          },
-        }}
-        workspace={{ ...workspaceView, save: saveWorkspace }}
-        preview={previewModel}
-        review={bodyReview}
-        stats={bodyStats}
-        agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
-        publishReview={publishReview}
-      />
+      {/* The body and, on its right edge, the panel rail. */}
+      <div className="artifact-viewer-workarea">
+        <ArtifactViewerBody
+          layers={{
+            source: sourceOn,
+            // The Live edit panel's close: the same way out as its rail tab.
+            onExitSource: () => setSourceLayer(false),
+            // Save and Discard, in the Live edit panel.
+            editActions: {
+              dirty: !!workspace.dirty,
+              saving: workspace.status === 'saving',
+              canEdit: workspace.capabilities?.canEdit !== false,
+              onSave: () => saveWorkspace(),
+              onDiscard: workspace.discard,
+            },
+          }}
+          workspace={{ ...workspaceView, save: saveWorkspace }}
+          preview={previewModel}
+          review={bodyReview}
+          stats={bodyStats}
+          agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
+          publishReview={publishReview}
+          sidePanelId={sidePanelId}
+        />
+        <ViewerModeRail label={t('rail.ariaLabel')} tabs={railTabs} panelId={sidePanelId} />
+      </div>
 
       {canQuickEdit && (
         <QuickEditBar
@@ -1954,16 +2036,19 @@ export function ArtifactViewer({
         cancelLabel={t('viewer.keepEditing')}
         destructive
         onClose={() => {
-          commentsAfterSourceOffRef.current = false;
+          layerAfterSourceOffRef.current = null;
           setSourceOffPrompt(false);
         }}
         onConfirm={() => {
           setSourceOffPrompt(false);
           workspace.discard();
-          // Asked on the way to Comments: open it, which turns Live edit off.
-          if (commentsAfterSourceOffRef.current) {
-            commentsAfterSourceOffRef.current = false;
-            setLayer('comments', true);
+          // Asked on the way to Comments or Stats: open it, which turns Live
+          // edit off.
+          const next = layerAfterSourceOffRef.current;
+          if (next) {
+            layerAfterSourceOffRef.current = null;
+            if (next === 'comments') commentModeOnOpenRef.current = true;
+            setLayer(next, true);
           } else {
             setLayer('source', false);
           }

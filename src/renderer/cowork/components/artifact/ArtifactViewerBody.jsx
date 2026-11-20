@@ -9,13 +9,14 @@ import { useDraftImageLoader } from './draftImages';
 import { StatsPanel } from './stats/StatsPanel';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
+import { LiveEditPanel } from './workspace/LiveEditPanel';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
 import { LiveAppPreview } from './LiveAppPreview';
 import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
 import { launchLiveAppLabel } from '../../lib/liveAppState';
 import { DocumentPreview } from '../../preview/DocumentPreview';
 import { csvPreviewNotice } from './artifactPreviewUtils';
-import { usePresence } from './usePresence';
+import { ViewerSidePanel } from './ViewerSidePanel';
 import { useTranslation } from '../../../lib/i18n';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
@@ -81,9 +82,12 @@ function LiveAppPanel({ notice, state, reloadKey, onOpen, onLaunch }) {
 
 export function ArtifactViewerBody({
   workspace,
-  // The viewer's Live edit layer (ENG-4227): `{ source }`, the code editor in
-  // the preview's place. Without it the body follows `workspace.mode`.
+  // The viewer's Live edit layer (ENG-4227): `{ source, onExitSource,
+  // editActions }`, the editor in the preview's place, its panel's close and
+  // its Save / Discard. Without it the body follows `workspace.mode`.
   layers = null,
+  // The side panel's element id, for the rail's tabs to point at.
+  sidePanelId,
   preview,
   review,
   stats = null,
@@ -118,6 +122,7 @@ export function ArtifactViewerBody({
     iframeRef,
     view: previewView = null,
     onEditorView = null,
+    fitStyle = null,
     title,
     iframeReady,
     setIframeReady,
@@ -150,10 +155,12 @@ export function ArtifactViewerBody({
   const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
   const showEditor = (layers ? layers.source : workspace.mode === 'edit') && !!workspace.source;
   const [retainedEditorKey, setRetainedEditorKey] = useState('');
-  // The inbox slides out rather than vanishing when Comments turns off.
-  const inboxPresence = usePresence(
-    !!(commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId),
-  );
+  // The one side panel (ViewerSidePanel) holds whichever of Live edit, the
+  // comments inbox and Stats is open; the viewer keeps them exclusive.
+  const inboxShown = !!(commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId);
+  const sideMode = showEditor ? 'source' : inboxShown ? 'comments' : stats?.open ? 'stats' : null;
+  // The Live edit panel's slot, where the editor renders its controls.
+  const [liveEditSlot, setLiveEditSlot] = useState(null);
   // Rejecting restores the pre-agent content over head. Once the artifact has
   // moved on, that also discards the work written since, so the server refuses
   // until the user has been told exactly that and said yes.
@@ -194,8 +201,8 @@ export function ArtifactViewerBody({
       active={showEditor}
       previewView={previewView}
       onViewChange={onEditorView}
-      onExit={layers?.onExitSource || null}
       editActions={layers?.editActions || null}
+      controlsTarget={liveEditSlot}
     />
   ) : null;
 
@@ -282,6 +289,9 @@ export function ArtifactViewerBody({
           style={{
             width: '100%', height: '100%', border: 0, background: '#fff',
             opacity: iframeReady ? 1 : 0, transition: 'opacity var(--dur-layout) ease',
+            // A page cut off with nothing to scroll: as tall as it asks,
+            // scaled to fit (usePreviewFit).
+            ...fitStyle,
           }}
         />
       )}
@@ -302,8 +312,10 @@ export function ArtifactViewerBody({
   return (
     <>
       {/* Text renders inline; other artifacts use a sandboxed iframe. */}
-      <div className={`artifact-viewer-body${inboxPresence.mounted ? ' has-comments-inbox' : ''}`}>
-        <div className="artifact-review-stage">
+      <div className="artifact-viewer-body">
+        {/* With Comments' pill the page ends above a margin, and the pill
+            sits on the edge between them, as Live edit's does. */}
+        <div className={`artifact-review-stage${commentsOpen && commentsEnabled ? ' has-mode-pill' : ''}`}>
           <div className="artifact-viewer-canvas" style={{ overflow: isText ? 'auto' : 'hidden' }}>
             {/* A framed preview sits in its surface from the first render. The
                 workspace source loads separately and, on a slow connection,
@@ -338,47 +350,58 @@ export function ArtifactViewerBody({
             />
           )}
         </div>
-        {/* Review is a docked workspace on desktop and a full panel on compact screens. */}
-        {inboxPresence.mounted && (
-          <CommentsPanel
-            leaving={inboxPresence.leaving}
-            threads={comments.threads}
-            anchorStates={layer.anchorStates}
-            error={comments.error}
-            expired={comments.expired}
-            viewer={comments.viewer}
-            capabilities={comments.capabilities}
-            onStatus={review.onStatus || comments.setStatus}
-            agentBusy={repairBusy}
-            agentWorkingThreadId={review.agentRunningThreadId
-              || (workspace.repair?.status === 'queued' ? workspace.repair.commentThreadId : null)}
-            agentQueuedThreadIds={review.agentQueuedThreadIds}
-            onAddressWithAgent={workspace.capabilities?.canAddressWithAgent !== false
-              ? addressCommentWithAgent
-              : undefined}
-            onDeleteThread={comments.deleteThread}
-            onEditThread={comments.editThread}
-            onCreate={createArtifactComment}
-            loadImage={review.loadCommentImage}
-            onHoverThread={layer.hlOn}
-            onLeaveThread={layer.hlOff}
-            onFocusThread={layer.focus}
-            onClose={toggleComments}
-          />
-        )}
-        {stats?.open && (
-          <StatsPanel
-            data={stats.controller?.data ?? null}
-            loading={!!stats.controller?.loading}
-            error={stats.controller?.error ?? null}
-            trackingBusy={!!stats.controller?.trackingBusy}
-            accessMode={stats.accessMode}
-            accessLoaded={!!stats.accessLoaded}
-            onToggleTracking={stats.controller?.setTracking}
-            onRetry={stats.controller?.reload}
-            onClose={stats.onClose}
-          />
-        )}
+        {/* Docked beside the stage on desktop, over it on compact screens. */}
+        <ViewerSidePanel
+          id={sidePanelId}
+          mode={sideMode}
+          label={sideMode ? t(`layers.${sideMode}`) : undefined}
+        >
+          {(mode) => (mode === 'source' ? (
+            <LiveEditPanel slotRef={setLiveEditSlot} onClose={layers?.onExitSource || null} />
+          ) : mode === 'comments' ? (
+            <CommentsPanel
+              threads={comments.threads}
+              anchorStates={layer.anchorStates}
+              error={comments.error}
+              expired={comments.expired}
+              viewer={comments.viewer}
+              capabilities={comments.capabilities}
+              onStatus={review.onStatus || comments.setStatus}
+              agentBusy={repairBusy}
+              agentWorkingThreadId={review.agentRunningThreadId
+                || (workspace.repair?.status === 'queued' ? workspace.repair.commentThreadId : null)}
+              agentQueuedThreadIds={review.agentQueuedThreadIds}
+              onAddressWithAgent={workspace.capabilities?.canAddressWithAgent !== false
+                ? addressCommentWithAgent
+                : undefined}
+              onDeleteThread={comments.deleteThread}
+              onEditThread={comments.editThread}
+              onCreate={createArtifactComment}
+              loadImage={review.loadCommentImage}
+              onHoverThread={layer.hlOn}
+              onLeaveThread={layer.hlOff}
+              onFocusThread={layer.focus}
+              onClose={toggleComments}
+            />
+          ) : (
+            <StatsPanel
+              data={stats?.controller?.data ?? null}
+              loading={!!stats?.controller?.loading}
+              error={stats?.controller?.error ?? null}
+              trackingBusy={!!stats?.controller?.trackingBusy}
+              deleting={!!stats?.controller?.deleting}
+              viewer={stats?.controller?.viewer ?? null}
+              accessMode={stats?.accessMode}
+              accessLoaded={!!stats?.accessLoaded}
+              onToggleTracking={stats?.controller?.setTracking}
+              onOpenViewer={stats?.controller?.openViewer}
+              onCloseViewer={stats?.controller?.closeViewer}
+              onDeleteAnalytics={stats?.controller?.deleteAnalytics}
+              onRetry={stats?.controller?.reload}
+              onClose={stats?.onClose}
+            />
+          ))}
+        </ViewerSidePanel>
         <ArtifactComparison
           comparison={workspace.comparison}
           busy={repairBusy || workspace.status === 'saving'}

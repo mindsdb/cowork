@@ -356,6 +356,8 @@ describe('CodeView session-list reconciliation', () => {
     expect(opened.searchParams.get('tab')).toBe('budgets');
     expect(opened.searchParams.get('organization')).toBe('org-123');
     expect(opened.searchParams.get('subject')).toBe('user-9');
+    // The lip shows it for a spent budget, so the visit counts as a denial's.
+    expect(opened.searchParams.get('from')).toBe('budget_denial');
   });
 
   it.each([

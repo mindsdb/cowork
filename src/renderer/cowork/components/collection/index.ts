@@ -13,6 +13,8 @@ export { HoverMenu } from './HoverMenu';
 export { useCollectionShortcut } from './useCollectionShortcut';
 export { CardGrid, ItemCard } from './ItemCard';
 export { ListGroup, ListItem, ListNotice } from './ListGroup';
+export { ListSortHeader, LIST_SORT_HEADER_MIN } from './ListSortHeader';
+export type { ListSortColumn, ListSortHeaderProps } from './ListSortHeader';
 export { ItemActions } from './itemParts';
 export type { ItemSlots } from './itemParts';
 export { StatusDot } from './StatusDot';

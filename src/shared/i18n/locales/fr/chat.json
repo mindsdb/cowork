@@ -497,7 +497,8 @@
         "1": "Analyser le paysage concurrentiel et le positionnement",
         "2": "Automatiser le rapport d’avancement hebdomadaire de l’équipe",
         "3": "Étudier l’opportunité de marché pour un lancement de produit",
-        "4": "Rédiger le point de cette semaine à partir de celui de la semaine dernière"
+        "4": "Rédiger le point de cette semaine à partir de celui de la semaine dernière",
+        "5": "Transformer un rapport en présentation"
       }
     },
     "website": {
@@ -542,7 +543,8 @@
         "3": "Comparer les meilleurs modèles VLM avec les données Hugging Face",
         "4": "Calculer le TRI de flux de trésorerie d’investissement",
         "5": "Nettoyer ma feuille de calcul et en faire un graphique",
-        "6": "Extraire les clauses clés d’un contrat"
+        "6": "Extraire les clauses clés d’un contrat",
+        "7": "Transformer un relevé bancaire en feuille de calcul"
       }
     },
     "visualization": {
@@ -573,7 +575,10 @@
         "7": "Faire le point sur ce qui m’attend cette semaine",
         "8": "Se renseigner sur un prospect et rédiger une prise de contact",
         "9": "Me conseiller sur une affaire à partir de la transcription d’un appel",
-        "10": "Transformer des notes de réunion en actions à mener"
+        "10": "Transformer des notes de réunion en actions à mener",
+        "11": "Cartographier la stratégie commerciale d'un concurrent",
+        "12": "Créer un guide d'étude à partir du support de cours",
+        "13": "Dresser une liste de prospects classée"
       }
     },
     "games": {
@@ -594,7 +599,11 @@
       "placeholder": "Choisissez un exemple ou décrivez votre propre tâche"
     },
     "samplePrompts": "Exemples de prompts",
-    "pillsAriaLabel": "Types de tâches"
+    "pillsAriaLabel": "Types de tâches",
+    "own-work": {
+      "chipLabel": "Votre travail",
+      "placeholder": "Collez du texte ou un lien, ou joignez un fichier"
+    }
   },
   "taskRows": {
     "openProject": "Ouvrir {project}",
@@ -796,5 +805,50 @@
     "fallbackName": "image",
     "alt": "Image générée {name}",
     "notShown": "Impossible d'afficher {name}. Le fichier a peut-être été déplacé ou supprimé."
+  },
+  "ownWork": {
+    "needsMaterial": "Ajoutez maintenant ce sur quoi il doit travailler : joignez un fichier, ou collez du texte ou un lien après la tâche.",
+    "waysLabel": "Façons d'apporter votre travail",
+    "attach": "Joindre un fichier",
+    "orPaste": "ou collez du texte ou un lien dans le champ ci-dessus",
+    "jobsHeading": "Choisissez une tâche si vous voulez",
+    "kindsLabel": "Type de travail",
+    "groups": {
+      "finance": "Finance et administration",
+      "sales": "Ventes et marketing",
+      "operations": "Opérations",
+      "legal": "Contrats et recherche"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Regrouper ces relevés bancaires ou factures dans une seule feuille de calcul.",
+        "1": "Préparer le prochain rapport mensuel à partir de ces chiffres.",
+        "2": "Vérifier ces relevés pour repérer les erreurs ou les opérations inhabituelles."
+      },
+      "sales": {
+        "0": "Nettoyer cette liste de clients et signaler les doublons.",
+        "1": "Comparer ces deux listes de prix et montrer ce qui a changé.",
+        "2": "Rédiger des e-mails de suivi à partir de ces notes d'appel."
+      },
+      "operations": {
+        "0": "Transformer ces notes de réunion en décisions et actions à mener.",
+        "1": "Transformer ces notes en une synthèse d'une page.",
+        "2": "Transformer ce document de processus en checklist étape par étape."
+      },
+      "legal": {
+        "0": "Résumer les principales clauses et les risques de ce contrat.",
+        "1": "Résumer ce rapport et faire ressortir les chiffres qui comptent.",
+        "2": "Lire cette page et expliquer ce qui compte pour nous."
+      }
+    }
+  },
+  "reportContent": {
+    "title": "Signaler le contenu",
+    "message": "Signaler ce contenu comme dangereux ou offensant ? Son texte ou sa référence et les identifiants de votre compte seront transmis à l’équipe MindsHub pour examen.",
+    "submit": "Envoyer le signalement",
+    "sent": "Signalement reçu.",
+    "failed": "Impossible d’envoyer le signalement. Veuillez réessayer.",
+    "rateLimited": "Limite quotidienne de signalements atteinte. Réessayez plus tard.",
+    "retryAt": "Limite quotidienne de signalements atteinte. Réessayez le {when, date, short} à {when, time, short}."
   }
 }

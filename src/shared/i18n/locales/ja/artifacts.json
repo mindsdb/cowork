@@ -58,7 +58,9 @@
       "orgRestricted": "制限付きです。リンクを開ける人は「共有」から確認できます。",
       "ownerOnly": "共有済みですが、リンクを開けるのはあなただけです。",
       "chosenPeople": "共有済みです。リンクを開けるのは選択したユーザーのみです。",
-      "unknown": "共有済みです。リンクを開ける人を確認できなかったため、制限付きとして扱われます。"
+      "unknown": "共有済みです。リンクを開ける人を確認できなかったため、制限付きとして扱われます。",
+      "sharedWith": "{names} と共有",
+      "sharedWithMore": "{names} ほか {count} 件と共有"
     },
     "sharingFailed": "共有できませんでした",
     "couldNotShare": "共有できませんでした。",
@@ -161,6 +163,10 @@
       "edit": "編集できませんでした",
       "delete": "削除できませんでした",
       "markRead": "フィードバックを既読にできませんでした"
+    },
+    "guide": {
+      "title": "コメント",
+      "body": "ページのどこにでもメモを残せます。共有した相手もコメントできます。修正したいコメントを選んで、エージェントに解決を依頼しましょう。"
     }
   },
   "export": {
@@ -247,7 +253,7 @@
   "htmlEditor": {
     "blockGone": "選択したテキストブロックは存在しません。",
     "updateFailed": "このテキストを更新できませんでした。",
-    "advancedMode": "詳細モード — 変更は引き続きリビジョンとして保存されます",
+    "advancedMode": "ソースコード — 変更は引き続きリビジョンとして保存されます",
     "selected": "{label}を選択中 — 入力して変更できます",
     "preparing": "編集可能なテキストを準備中…",
     "noEditable": "直接編集できるテキストが見つかりませんでした",
@@ -267,7 +273,6 @@
       "caption": "キャプション",
       "text": "テキスト"
     },
-    "exitLiveEdit": "ライブ編集を終了",
     "mode": {
       "ariaLabel": "ライブ編集のモード",
       "navigate": "操作",
@@ -275,7 +280,8 @@
       "navigateHint": "通常どおりページを操作：スライド、タブ、リンクを移動",
       "editHint": "テキストをクリックして変更",
       "navigateGuidance": "操作モードです。通常どおりページを操作し、変更するときは「テキストを編集」に切り替えてください。"
-    }
+    },
+    "sourceCode": "ソースコード"
   },
   "workspace": {
     "noWorkspace": "このアーティファクトは編集機能の提供開始前に作成されました",
@@ -359,6 +365,16 @@
     "load": {
       "sharingSettings": "共有設定",
       "currentAccess": "現在のアクセス設定"
+    },
+    "editList": "リストを編集",
+    "sharedWith": {
+      "title": "共有先",
+      "hint": "共有先を確認",
+      "triggerLabel": "共有済み: 共有先を確認",
+      "whoCanOpen": "開けるユーザー",
+      "ownerOnlyTitle": "所有者のみ",
+      "ownerOnlyDesc": "他のユーザーは共有リンクを開けません",
+      "listWithheld": "共有されているチームとユーザーのみ"
     }
   },
   "previewErrors": {
@@ -513,7 +529,24 @@
     "search": "アーティファクトを検索",
     "emptyTitle": "アーティファクトはまだありません",
     "emptyBody": "{agent}が作成したドキュメント、ダッシュボード、コードの出力がここに表示されます。",
-    "working": "作業中…"
+    "working": "作業中…",
+    "filter": {
+      "type": "種類",
+      "allTypes": "すべての種類",
+      "owner": "オーナー",
+      "allOwners": "すべてのオーナー",
+      "me": "自分",
+      "unknownOwner": "不明なオーナー",
+      "anotherMember": "別のメンバー",
+      "noMatch": "これらのフィルターに一致するアーティファクトはありません。",
+      "clear": "フィルターをクリア",
+      "status": "状態",
+      "allStatuses": "すべての状態"
+    },
+    "owner": {
+      "you": "あなた",
+      "youHint": "あなたのもので、ほかの人と共有しています。"
+    }
   },
   "compare": {
     "refused": "この側は前のターンをまだ処理中だったため、メッセージを受け取っていません。メッセージは下の入力欄に戻してあります。",
@@ -676,7 +709,8 @@
     "send": "送信",
     "route": {
       "edit": "直接編集しています…",
-      "agent": "エージェントに引き継いでいます…"
+      "agent": "エージェントに引き継いでいます…",
+      "reply": "回答しています…"
     },
     "stage": {
       "routing": "進め方を判断しています…",
@@ -728,28 +762,25 @@
     }
   },
   "stats": {
-    "toggle": {
-      "show": "統計",
-      "hide": "統計を非表示"
-    },
     "title": "統計",
     "close": "統計パネルを閉じる",
     "loading": "統計を読み込み中",
     "retry": "再試行",
-    "trackViews": "閲覧数をカウント",
-    "trackingOff": "カウントはオフです。オンにすると閲覧数のカウントが始まります。",
     "metrics": {
-      "viewsInPeriod": "閲覧数（30日間）",
-      "uniqueViewers": "ユニーク閲覧者（30日間）",
-      "totalViews": "総閲覧数",
-      "lastViewed": "最終閲覧"
+      "views": "閲覧数",
+      "viewers": "ユニーク閲覧者",
+      "avgTime": "平均時間",
+      "completion": "読了率",
+      "lastViewedHint": "最終閲覧 {time}"
     },
     "daysInUtc": "日付は UTC",
     "chartLabel": "1日あたりの閲覧数",
     "viewers": {
       "email": "メール",
       "lastSeen": "最終閲覧",
-      "restrictedOnly": "閲覧者の名前は、共有が制限されている場合にのみ記録されます。"
+      "restrictedOnly": "閲覧者の名前は、共有が制限されている場合にのみ記録されます。",
+      "anonymous": "匿名の閲覧者",
+      "none": "まだ閲覧者は記録されていません。"
     },
     "noViews": "まだ閲覧はありません",
     "errors": {
@@ -758,7 +789,66 @@
       "reconnect": "統計を表示するには MindsHub に再接続してください。",
       "temporarilyUnavailable": "統計は一時的に利用できません。",
       "loadFailed": "統計を読み込めませんでした。"
-    }
+    },
+    "chartTitle": "閲覧数（過去30日間）",
+    "noViewsHint": "誰かがリンクを開くと、ここに閲覧が表示されます。",
+    "off": {
+      "title": "閲覧者分析はオフです",
+      "body": "オンにすると、このページを誰が開き、どれくらい滞在し、どの部分を読んだかがわかります。",
+      "turnOn": "オンにする"
+    },
+    "pages": {
+      "title": "ページごとの時間",
+      "audienceChart": "ページごとの平均時間（全閲覧者）",
+      "position": "ページ {number} / {total}",
+      "untitled": "ページ {number}",
+      "timeSpent": "閲覧時間",
+      "avgTime": "平均時間",
+      "reached": "到達率",
+      "barSpent": "ページ {number} / {total}、{name}：{time}",
+      "barAvg": "ページ {number} / {total}、{name}：平均{time}",
+      "barAvgReach": "ページ {number} / {total}、{name}：平均{time}、訪問の{reach}が到達"
+    },
+    "activity": {
+      "title": "すべての訪問",
+      "viewerCount": "{count, plural, other {閲覧者 #人}}",
+      "summary": "{count, plural, other {#回の訪問}} · {lastSeen}",
+      "totalTime": "合計時間 {time}",
+      "viewed": "閲覧済み：{percent}",
+      "whereabouts": "デバイス、OS、場所",
+      "loading": "訪問を読み込み中",
+      "noVisits": "記録された訪問はありません。",
+      "visit": "訪問",
+      "allVisits": "{count, plural, other {すべての訪問（#回）}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "ページごとの時間、{name}",
+      "visitChart": "ページごとの時間、{name}、{date}の訪問"
+    },
+    "devices": {
+      "desktop": "デスクトップ",
+      "mobile": "モバイル",
+      "tablet": "タブレット",
+      "unknown": "不明なデバイス"
+    },
+    "delete": {
+      "action": "分析データを削除",
+      "title": "閲覧者分析を削除しますか？",
+      "message": "このページで記録されたすべての閲覧、訪問、閲覧者が削除されます。元に戻すことはできません。",
+      "confirm": "削除",
+      "hint": "このアーティファクトで記録されたすべての閲覧と訪問を削除します。元に戻すことはできません。"
+    },
+    "duration": {
+      "seconds": "{s}秒",
+      "minutes": "{m}分",
+      "minutesSeconds": "{m}分{s}秒",
+      "hours": "{h}時間",
+      "hoursMinutes": "{h}時間{m}分"
+    },
+    "guide": {
+      "title": "統計",
+      "body": "過去 30 日間に、共有リンクが毎日何回開かれたかを表示します。ご自身の訪問は数えません。"
+    },
+    "advanced": "詳細設定"
   },
   "refPill": {
     "open": "{title}を開く"
@@ -771,14 +861,14 @@
     "showFewer": "表示を減らす"
   },
   "layers": {
-    "ariaLabel": "ビューアーのレイヤー",
     "source": "ライブ編集",
     "comments": "コメント",
     "sourceOffPrompt": {
       "title": "ライブ編集をオフにしますか？",
       "message": "ライブ編集の未保存の変更は破棄されます。",
       "confirmLabel": "変更を破棄"
-    }
+    },
+    "stats": "統計"
   },
   "address": {
     "draft": "下書き",
@@ -786,8 +876,8 @@
     "copied": "コピーしました"
   },
   "layout": {
-    "maximize": "最大化",
-    "restore": "元のサイズに戻す"
+    "maximize": "全画面表示",
+    "restore": "全画面表示を終了"
   },
   "imageAttachments": {
     "onlyImages": "添付できるのは PNG、JPEG、GIF、WebP 画像のみです。",
@@ -799,5 +889,35 @@
     "enlarge": "画像を拡大",
     "shrink": "画像を縮小",
     "image": "画像"
+  },
+  "analytics": {
+    "title": "閲覧者分析",
+    "collect": "閲覧者分析を収集",
+    "collectHint": "このページを誰が開き、どれくらい滞在し、どの部分を読んだかがわかります。",
+    "loading": "分析設定を読み込み中",
+    "loadFailed": "分析設定を読み込めませんでした。",
+    "addCredits": "クレジットを追加",
+    "errors": {
+      "creditsRequired": "閲覧者分析を収集するにはクレジットを追加してください。",
+      "trackingOff": "先に閲覧者分析をオンにしてください。",
+      "saveFailed": "設定を保存できませんでした。"
+    }
+  },
+  "rail": {
+    "ariaLabel": "ビューアーのパネル",
+    "sourceHint": "ページのテキストとレイアウトを変更",
+    "commentsHint": "フィードバックを残して確認",
+    "statsHint": "誰がどれだけ閲覧したか",
+    "commentsOpen": "コメント（未解決 {count} 件）"
+  },
+  "liveEditPanel": {
+    "close": "ライブ編集パネルを閉じる",
+    "changes": {
+      "title": "未保存の変更",
+      "undo": "この変更を元に戻す",
+      "undoNamed": "{label}の変更を元に戻す: {text}",
+      "was": "変更前: {text}",
+      "emptyText": "（空）"
+    }
   }
 }

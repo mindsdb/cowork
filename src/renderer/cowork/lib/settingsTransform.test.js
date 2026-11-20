@@ -26,6 +26,7 @@ import {
   IMAGE_MODEL_FALLBACK,
   showJevSwitch,
   showRouterRoleRow,
+  jevClassifySwitch,
   SETTINGS_KEY_MAP,
 } from './settingsTransform';
 
@@ -1464,5 +1465,26 @@ describe('jevOffForZdr', () => {
     ['jev', false],
   ])('reads %j as %s', (routing, off) => {
     expect(jevOffForZdr(routing)).toBe(off);
+  });
+});
+
+describe('jev classification setting', () => {
+  it('reads and writes the switch under the server key', () => {
+    expect(transformSettingsRows([{ key: 'jev_classify_enabled', value: 'False' }]))
+      .toMatchObject({ jevClassifyEnabled: false });
+    expect(diffSettingsForWrite({ jevClassifyEnabled: false }, { jevClassifyEnabled: true }))
+      .toEqual({ jev_classify_enabled: 'false' });
+  });
+
+  it.each([
+    [{ jevClassifyEnabled: true }, 'minds-cloud', { shown: true, available: true, checked: true }],
+    [{ jevClassifyEnabled: false }, 'minds-cloud', { shown: true, available: true, checked: false }],
+    // Elsewhere the agent has no classify(): off and locked, whatever is stored.
+    [{ jevClassifyEnabled: true }, 'anthropic', { shown: true, available: false, checked: false }],
+    [{ jevClassifyEnabled: true }, 'openai-compatible', { shown: true, available: false, checked: false }],
+    // A server without the setting: nothing to save.
+    [{}, 'minds-cloud', { shown: false, available: true, checked: true }],
+  ])('for settings %j with coding on %s: %j', (settings, coding, state) => {
+    expect(jevClassifySwitch(settings, coding)).toEqual(state);
   });
 });

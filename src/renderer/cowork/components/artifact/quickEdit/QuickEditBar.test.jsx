@@ -86,5 +86,85 @@ describe('QuickEditBar reply actions', () => {
     view.rerender(<QuickEditBar controller={ctl([user, done('noop')])} />);
     expect(document.querySelector('.artifact-quick-edit-side')).toBeNull();
   });
+
+  // A question answered in the bar (ENG-4455): the answer, set as markdown,
+  // with no Undo and the agent one click away.
+  it('shows an answer as markdown, with "Ask the agent instead" and no Undo', () => {
+    render(<QuickEditBar controller={ctl([user, done('replied', { summary: 'It has **three** slides.' })])} />);
+    const strong = screen.getByText('three');
+    expect(strong.tagName).toBe('STRONG');
+    expect(strong.closest('.artifact-quick-edit-msg')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Ask the agent instead' }).closest('.artifact-quick-edit-side')).not.toBeNull();
+  });
+
+  it('says it is answering while a reply runs', () => {
+    render(<QuickEditBar controller={controller([user, { ...reply(null), route: 'reply' }])} />);
+    expect(screen.getByRole('status')).toHaveTextContent('Answering…');
+  });
 });
 
+
+// The thread floats over the artifact (ENG-4455): open when the pointer comes
+// back over the bar, on a click into it or the focus arriving there, or when
+// a reply settles; folded away, leaving the input, once the pointer goes back
+// to the artifact.
+describe('QuickEditBar thread over the artifact', () => {
+  const thread = () => document.querySelector('.artifact-quick-edit-thread');
+  const bar = () => screen.getByRole('region');
+
+  it('folds away when the pointer leaves for the artifact, and opens when it comes back over the bar', () => {
+    render(<QuickEditBar controller={controller([user, reply('reading')])} />);
+    expect(thread()).toHaveAttribute('data-open');
+
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+    expect(thread()).not.toHaveAttribute('data-open');
+
+    fireEvent.pointerEnter(bar(), { pointerType: 'mouse' });
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('opens on a click into the input that kept the focus', () => {
+    render(<QuickEditBar controller={controller([user, reply('reading')])} />);
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+
+    fireEvent.pointerDown(screen.getByRole('textbox'));
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('opens when the input takes the focus', () => {
+    render(<QuickEditBar controller={controller([user, reply('reading')])} />);
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+
+    fireEvent.focus(screen.getByRole('textbox'));
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('opens again when a reply settles, but not for each stage on the way', () => {
+    const view = render(<QuickEditBar controller={controller([user, reply('reading')])} />);
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+
+    view.rerender(<QuickEditBar controller={controller([user, reply('writing')])} />);
+    expect(thread()).not.toHaveAttribute('data-open');
+
+    view.rerender(<QuickEditBar controller={controller([user, { ...reply(null), state: 'applied', summary: 'Done' }])} />);
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('opens again when an answer arrives', () => {
+    const view = render(<QuickEditBar controller={controller([user, { ...reply(null), route: 'reply' }])} />);
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+
+    view.rerender(<QuickEditBar controller={controller([user, { ...reply(null), state: 'replied', summary: 'Hi there.' }])} />);
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('stays open while the focus is on a button in it', () => {
+    const settled = { id: 'r1', role: 'assistant', state: 'applied', summary: 'Done.', undoable: true };
+    render(<QuickEditBar controller={{ ...controller([user, settled]), running: false, undoableId: 'r1' }} />);
+    screen.getByRole('button', { name: 'Undo' }).focus();
+
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+    expect(thread()).toHaveAttribute('data-open');
+  });
+});

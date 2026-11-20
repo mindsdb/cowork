@@ -103,6 +103,7 @@ import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 import { ChatScroller } from '../components/chat/ChatScroller';
 import { useStickToBottom } from '../components/chat/useStickToBottom';
 import { useDockInset } from '../components/chat/useDockInset';
+import { ReportContentButton } from '../components/chat/ReportContentButton';
 import { TurnActions } from '../components/chat/TurnActions';
 import { NextSteps } from '../components/chat/NextSteps';
 import { nextStepsFor, offersNextSteps, scheduledPromptFor } from '../lib/nextSteps';
@@ -450,7 +451,7 @@ const INCOMPLETE_REASON_KEYS = {
 // No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
 // is the single indicator; once done, a hover-only footer (bottom-right)
 // names the agent that answered and when.
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast, deleting = false }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast, conversationId, messageId, deleting = false }) {
   const { t } = useTranslation('chat');
   return (
     <div
@@ -465,6 +466,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
           {showActions && !deleting && (
             <TurnActions text={copyText || ''} copyLabel={t('chatView.turn.copyResponse')} onDelete={onDelete} isLast={isLast} />
           )}
+          {!deleting && <ReportContentButton conversationId={conversationId} messageId={messageId} />}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
               sends `created_at` and nothing maps it. */}
@@ -1402,7 +1404,7 @@ export function AllowanceExhaustedCard({
       agentLabel={agentLabel}
       // The gate only issues this code when the org has no
       // balance to fall onto, so the turn ended.
-      kind={t('chatView.kinds.billing')}
+      kind={t(offersBilling() ? 'chatView.kinds.billing' : 'chatView.kinds.usage')}
       title={t('chatView.cards.taskStopped')}
       body={allowanceStopCopy({ resetAt, usage })}
       buttons={billingActions([
@@ -1471,6 +1473,12 @@ export function BalanceEmptyCard({
   const { t } = useTranslation('chat');
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const free = freeAllowanceState(usage);
+  if (!offersBilling()) {
+    return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
+      kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}
+      body={free.status === 'spent' ? allowanceStopCopy({ usage }) : t('chatView.cards.providerLimitBody')}
+      buttons={free.status === 'has_room' ? switchToAirButtons(onSwitchToAir) : []} />;
+  }
   const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
   const refill = formatResetTime(free.resetsAt);
   const addFunds = {
@@ -1575,7 +1583,13 @@ export function BudgetExceededCard({
   deleting = false,
 }) {
   const { t } = useTranslation('chat');
-  const budgetsUrl = useBudgetsUrl();
+  const budgetsUrl = useBudgetsUrl({ fromDenial: true });
+  if (!offersBilling()) {
+    return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
+      kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}
+      body={t('chatView.cards.providerLimitBody')}
+      buttons={freeAllowanceState(usage).status === 'has_room' ? switchToAirButtons(onSwitchToAir) : []} />;
+  }
   if (!PLATFORM_UI) {
     return (
       <ActionCard
@@ -1652,7 +1666,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 // click the bar.
 function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
   const { t } = useTranslation('chat');
-  if (!PLATFORM_UI) return null;
+  if (!PLATFORM_UI || (!offersBilling() && kind !== 'free_low')) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert', undefined, kind);
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
@@ -1963,7 +1977,7 @@ export function ModelUnavailableCard({
     // disabled model back on, so that row keeps the plain billing page.
     host.openExternal(denied ? usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }) : MINDS_BILLING_URL);
   };
-  const title = denied
+  const title = denied && offersBilling()
     ? t('chatView.model.needsCreditsTitle', { model: label })
     : t('chatView.model.unavailableTitle', { model: label });
 
@@ -1978,7 +1992,7 @@ export function ModelUnavailableCard({
       kind={t('chatView.kinds.model')}
       title={title}
       body={denied
-        ? t(billingCopyKey('chatView.model.needsCreditsBody'))
+        ? t(offersBilling() ? 'chatView.model.needsCreditsBody' : 'chatView.model.askOperatorBody')
         : t('chatView.model.disabledBody')}
       buttons={denied
         ? [
@@ -3915,7 +3929,11 @@ export default function ChatView({
               if (quickEditGroup) {
                 return (
                   <div key={messageKey(m, i)} className={deletingThisTurn ? 'opacity-60' : undefined}>
-                    <QuickEditGroupCard group={quickEditGroup} onOpenArtifact={handleArtifactOpen} />
+                    <QuickEditGroupCard
+                      group={quickEditGroup}
+                      onOpenArtifact={handleArtifactOpen}
+                      conversationId={deletingThisTurn ? undefined : task.id}
+                    />
                   </div>
                 );
               }
@@ -3934,6 +3952,8 @@ export default function ChatView({
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
+                  conversationId={task.id}
+                  messageId={m.id}
                   // Anchored on this assistant message's own id; hidden, not
                   // disabled, without one. A partial kept after a transport
                   // failure whose recovery also failed has none until reload.

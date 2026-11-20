@@ -1,5 +1,5 @@
-import { OWN_WORK_PREFIX, OWN_WORK_PROMPT, HABIT_TRACKER_PREFIX, ONBOARDING_STEPS } from './steps';
-import { TASK_MODES } from '../taskmodes/taskModes';
+import { HABIT_TRACKER_PREFIX, ONBOARDING_STEPS } from './steps';
+import { TASK_MODES, OWN_WORK_MODE, OWN_WORK_LEAD, OWN_WORK_START_NOW } from '../taskmodes/taskModes';
 import { sampleId } from '../../lib/consoleHandoff';
 
 // Which onboarding steps a message sent from the home composer completes, no
@@ -15,12 +15,26 @@ export function stepsCompletedBySend(text) {
   const sent = text.trim();
   if (!sent) return [];
   const ids = [];
-  if (sent.startsWith(OWN_WORK_PREFIX)) ids.push('bring-your-work');
+  if (ownWorkStart(sent)) ids.push('bring-your-work');
   const isExample = TASK_MODES.some((mode) =>
     mode.samples.some((s) => sent.startsWith(s.prompt))
   );
   if (isExample || sent.startsWith(HABIT_TRACKER_PREFIX)) ids.push('see-it-work');
   return ids;
+}
+
+// A message the own-work mode composed: the job (or the generic first step),
+// the start-now line, then the person's material. Answers the job, if any,
+// and how much material follows, or null for any other message.
+function ownWorkStart(sent) {
+  for (const lead of [OWN_WORK_LEAD, ...OWN_WORK_MODE.samples.map((j) => j.prompt)]) {
+    const head = `${lead} ${OWN_WORK_START_NOW}`;
+    if (sent.startsWith(head)) {
+      const job = lead === OWN_WORK_LEAD ? null : OWN_WORK_MODE.samples.find((j) => j.prompt === lead);
+      return { job, added_chars: sent.slice(head.length).trim().length };
+    }
+  }
+  return null;
 }
 
 // The instruction line a selected mode pill appends to an edited message is
@@ -39,10 +53,13 @@ function withoutModeInstruction(sent) {
 // message as sent, so an example the person edited still counts as that example.
 export function classifyStart(text) {
   const sent = withoutModeInstruction(typeof text === 'string' ? text.trim() : '');
-  if (sent.startsWith(OWN_WORK_PREFIX)) {
-    return { start_kind: 'own_work', added_chars: Math.max(0, sent.length - OWN_WORK_PROMPT.length) };
+  const own = ownWorkStart(sent);
+  if (own) {
+    const start = { start_kind: 'own_work', added_chars: own.added_chars };
+    if (own.job) start.example_id = sampleId(own.job.label);
+    return start;
   }
-  const step = ONBOARDING_STEPS.find((s) => s.prompt && s.id !== 'bring-your-work' && s.prompt === sent);
+  const step = ONBOARDING_STEPS.find((s) => s.prompt && s.prompt === sent);
   if (step) return { start_kind: 'onboarding_step', example_id: step.id };
   for (const mode of TASK_MODES) {
     for (const sample of mode.samples) {

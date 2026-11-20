@@ -48,7 +48,7 @@ import { isActiveStatus, promptHistory } from './presentation';
 import { useComposerNotice } from './useComposerNotice';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
 import { trackBillingOpened } from '../lib/analytics';
-import { MINDS_BUDGETS_URL, consoleUrlFor } from '../../lib/mindsUrls';
+import { MINDS_BUDGETS_DENIAL_URL, consoleUrlFor } from '../../lib/mindsUrls';
 import { USAGE_ACTIONS, usageActionUrl } from '../lib/usageWarnings';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { openCodeExternalUrl } from './shellLinks';
@@ -558,7 +558,7 @@ export default function CodeView({
                       onViewBudgets={() => {
                         trackBillingOpened('budget_exceeded', 'code');
                         // The session's organization, so the console opens its Budgets tab.
-                        void openCodeExternalUrl(consoleUrlFor(MINDS_BUDGETS_URL, {
+                        void openCodeExternalUrl(consoleUrlFor(MINDS_BUDGETS_DENIAL_URL, {
                           organizationId: account?.orgId ?? null,
                           subject: account?.sub ?? null,
                         }));

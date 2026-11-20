@@ -497,7 +497,8 @@
         "1": "Analizar competidores y posicionamiento",
         "2": "Automatizar el informe semanal del equipo",
         "3": "Investigar la oportunidad de mercado para un lanzamiento",
-        "4": "Redactar la actualización de esta semana a partir de la anterior"
+        "4": "Redactar la actualización de esta semana a partir de la anterior",
+        "5": "Convertir un informe en una presentación"
       }
     },
     "website": {
@@ -542,7 +543,8 @@
         "3": "Comparar los mejores modelos VLM con datos de Hugging Face",
         "4": "Calcular la TIR de flujos de caja de inversión",
         "5": "Limpiar mi hoja de cálculo y graficarla",
-        "6": "Extraer los términos clave de un contrato"
+        "6": "Extraer los términos clave de un contrato",
+        "7": "Convertir un extracto bancario en una hoja de cálculo"
       }
     },
     "visualization": {
@@ -573,7 +575,10 @@
         "7": "Revisar mis pendientes de esta semana",
         "8": "Investigar un prospecto y redactar el primer contacto",
         "9": "Asesorarme sobre una venta a partir de la transcripción de una llamada",
-        "10": "Convertir notas de reunión en tareas pendientes"
+        "10": "Convertir notas de reunión en tareas pendientes",
+        "11": "Mapear la estrategia comercial de un competidor",
+        "12": "Crear una guía de estudio a partir del material del curso",
+        "13": "Crear una lista priorizada de clientes potenciales"
       }
     },
     "games": {
@@ -594,7 +599,11 @@
       "placeholder": "Elige un ejemplo o describe tu propia tarea"
     },
     "samplePrompts": "Ejemplos de instrucciones",
-    "pillsAriaLabel": "Tipos de tarea"
+    "pillsAriaLabel": "Tipos de tarea",
+    "own-work": {
+      "chipLabel": "Tu trabajo",
+      "placeholder": "Pega texto o un enlace, o adjunta un archivo"
+    }
   },
   "taskRows": {
     "openProject": "Abrir {project}",
@@ -796,5 +805,50 @@
     "fallbackName": "imagen",
     "alt": "Imagen generada {name}",
     "notShown": "No se puede mostrar {name}. Es posible que se haya movido o eliminado."
+  },
+  "ownWork": {
+    "needsMaterial": "Ahora agrega con qué debe trabajar: adjunta un archivo, o pega texto o un enlace después de la tarea.",
+    "waysLabel": "Formas de traer tu trabajo",
+    "attach": "Adjuntar un archivo",
+    "orPaste": "o pega texto o un enlace en el cuadro de arriba",
+    "jobsHeading": "Elige una tarea si quieres",
+    "kindsLabel": "Tipo de trabajo",
+    "groups": {
+      "finance": "Finanzas y administración",
+      "sales": "Ventas y marketing",
+      "operations": "Operaciones",
+      "legal": "Contratos e investigación"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Convertir estos extractos bancarios o facturas en una sola hoja de cálculo.",
+        "1": "Preparar el próximo informe mensual con estas cifras.",
+        "2": "Revisar estos extractos en busca de errores o partidas inusuales."
+      },
+      "sales": {
+        "0": "Limpiar esta lista de clientes y marcar los duplicados.",
+        "1": "Comparar estas dos listas de precios y mostrar qué cambió.",
+        "2": "Redactar correos de seguimiento a partir de estas notas de llamadas."
+      },
+      "operations": {
+        "0": "Convertir estas notas de reunión en decisiones y pendientes.",
+        "1": "Convertir estas notas en un resumen de una página.",
+        "2": "Convertir este documento de proceso en una lista de verificación paso a paso."
+      },
+      "legal": {
+        "0": "Resumir los términos clave y los riesgos de este contrato.",
+        "1": "Resumir este informe y destacar las cifras importantes.",
+        "2": "Leer esta página y explicar qué nos importa."
+      }
+    }
+  },
+  "reportContent": {
+    "title": "Denunciar contenido",
+    "message": "¿Denunciar este contenido como peligroso u ofensivo? Se enviará su texto o referencia y los identificadores de tu cuenta al equipo de MindsHub para su revisión.",
+    "submit": "Enviar denuncia",
+    "sent": "Denuncia recibida.",
+    "failed": "No se pudo enviar la denuncia. Inténtalo de nuevo.",
+    "rateLimited": "Has alcanzado el límite diario de denuncias. Inténtalo más tarde.",
+    "retryAt": "Has alcanzado el límite diario de denuncias. Inténtalo el {when, date, short} a las {when, time, short}."
   }
 }

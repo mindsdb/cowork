@@ -61,29 +61,34 @@ describe('ArtifactRevisionBar history picker', () => {
   });
 });
 
-// The viewer's layer toggles (ENG-4227) sit on this line, right-aligned just
-// before History.
-describe('ArtifactRevisionBar layer controls', () => {
-  it('centres the layer controls between the revision and History', () => {
+// History sits on the left with the revision it compares against (ENG-4455);
+// the panels moved to the viewer's rail, so the line has no centre.
+describe('ArtifactRevisionBar layout', () => {
+  const REVISIONS = [{ id: 'rev-2', number: 2, summary: 'x' }, { id: 'rev-1', number: 1, summary: 'y' }];
+
+  it('puts History beside the revision and its status, on the left', () => {
     render(
-      <ArtifactRevisionBar
-        revision={{ id: 'rev-2', number: 2, summary: 'x' }}
-        revisions={[{ id: 'rev-2', number: 2, summary: 'x' }, { id: 'rev-1', number: 1, summary: 'y' }]}
-        status="ready"
-        canEdit
-        layerControls={<div data-testid="layers" />}
-      />,
+      <ArtifactRevisionBar revision={REVISIONS[0]} revisions={REVISIONS} status="ready" canEdit />,
     );
 
-    const layers = screen.getByTestId('layers');
     const history = screen.getByRole('combobox', { name: /Compare/ });
-    const bar = layers.closest('.artifact-revision-bar');
-    expect(bar).toHaveClass('is-centered');
-    // Three columns: revision, toggles (centre), History.
-    const columns = [...bar.children].map((child) => child.className);
-    expect(columns).toEqual(['artifact-revision-identity', 'artifact-revision-center', 'artifact-revision-actions']);
-    expect(layers.parentElement).toHaveClass('artifact-revision-center');
-    expect(bar.lastElementChild).toContainElement(history);
+    const identity = history.closest('.artifact-revision-identity');
+    expect(identity).not.toBeNull();
+    expect(identity).toHaveTextContent('Draft · Revision 2');
+    expect(identity.firstElementChild).toHaveClass('artifact-draft-dot');
+    expect(document.querySelector('.artifact-revision-center')).toBeNull();
+    expect(document.querySelector('.artifact-revision-actions')).toBeNull();
+  });
+
+  it('keeps Save and Discard on the right, apart from History', () => {
+    render(
+      <ArtifactRevisionBar revision={REVISIONS[0]} revisions={REVISIONS} status="ready" dirty canEdit onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+
+    const actions = document.querySelector('.artifact-revision-actions');
+    expect(actions).toContainElement(screen.getByRole('button', { name: 'Discard' }));
+    expect(actions).not.toContainElement(screen.getByRole('combobox', { name: /Compare/ }));
+    expect(actions.previousElementSibling).toHaveClass('artifact-revision-identity');
   });
 });
 
@@ -108,7 +113,7 @@ describe('ArtifactRevisionBar save and discard', () => {
     expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
   });
 
-  it("leaves them to Live edit's own toolbar while it is on", () => {
+  it("leaves them to the Live edit panel while it is on", () => {
     render(bar(true));
     expect(screen.queryByRole('button', { name: /Save/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull();

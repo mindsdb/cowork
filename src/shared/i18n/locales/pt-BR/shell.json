@@ -33,6 +33,18 @@
     },
     "field": {
       "optional": "(opcional)"
+    },
+    "sortHeader": {
+      "label": "Ordenar a lista",
+      "sortBy": "Ordenar por {column}",
+      "columns": {
+        "name": "Nome",
+        "project": "Projeto",
+        "updated": "Atualizado",
+        "activity": "Atividade",
+        "type": "Tipo",
+        "status": "Status"
+      }
     }
   },
   "rail": {
@@ -135,6 +147,27 @@
       "haveCopyTitle": "Você já tem uma cópia. Exclua-a para duplicar o app novamente.",
       "duplicateAriaLabel": "Duplicar {name}",
       "duplicatedToast": "Duplicado neste projeto."
+    },
+    "workingFolders": {
+      "title": "Pastas de trabalho",
+      "add": "Adicionar uma pasta a este chat",
+      "adding": "Adicionando…",
+      "emptyHint": "Adicione uma pasta para o agente trabalhar nela.",
+      "loadingFiles": "Carregando arquivos…",
+      "emptyFolder": "Não há arquivos nesta pasta.",
+      "showFiles": "Mostrar arquivos em {name}",
+      "hideFiles": "Ocultar arquivos em {name}",
+      "unavailable": "Pasta indisponível",
+      "removeTooltip": "Remover deste chat",
+      "removeAriaLabel": "Remover {name} deste chat",
+      "removeTitle": "Remover \"{name}\" deste chat?",
+      "fallbackName": "pasta",
+      "removeMessage": "O agente não vai mais trabalhar nesta pasta. A pasta e os arquivos dela continuam no seu computador.",
+      "loadFailed": "Não foi possível carregar as pastas de trabalho.",
+      "listFailed": "Não foi possível listar esta pasta.",
+      "pickerFailed": "Não foi possível abrir o seletor de pastas.",
+      "addFailed": "Não foi possível adicionar esta pasta.",
+      "removeFailed": "Não foi possível remover esta pasta."
     }
   },
   "confirm": {
@@ -187,6 +220,8 @@
     "loading": "Carregando {what}…"
   },
   "upToDate": "Atualizado",
+  "upToDateSaving": "Salvando…",
+  "upToDateSaved": "Salvo",
   "usageBar": {
     "hideAllowance": "Ocultar franquia",
     "hide": "Ocultar"
@@ -414,7 +449,8 @@
     "signupWelcome": {
       "fromDesktop": "Sua conta está pronta. Você pode começar aqui mesmo ou voltar ao app {product} e entrar.",
       "dismiss": "Dispensar"
-    }
+    },
+    "ownWorkHeading": "No que o {product} deve trabalhar?"
   },
   "logout": {
     "title": "Sair do {product}?",

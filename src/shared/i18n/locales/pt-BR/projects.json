@@ -361,6 +361,7 @@
     "artifactAuthorship": {
       "unknownOwner": "Proprietário desconhecido",
       "otherMemberDescription": "Criado por outro membro deste projeto. Você pode revisar, mas não alterar.",
+      "namedOwnerDescription": "Criado por {name}, outro membro deste projeto. Você pode revisar, mas não alterar.",
       "unknownOwnerDescription": "Nenhum proprietário está registrado para este artefato."
     },
     "artifactExport": {
@@ -414,7 +415,8 @@
       "andMore": "{source} e mais {count}"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "Conector não reconhecido"
+      "unrecognizedConnector": "Conector não reconhecido",
+      "mcpServer": "Servidor MCP"
     },
     "datasourceSubmission": {
       "errors": {
