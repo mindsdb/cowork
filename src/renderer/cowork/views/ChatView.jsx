@@ -71,6 +71,7 @@ import { BROWSER_HANDOVER_BADGE, finishedHandOverStep, isHandOverCard } from '..
 import { BrowserHandOverContext } from '../lib/browserHandOverContext';
 import { dropHandBack } from '../lib/browserHandBack';
 import { useBrowserPrefs } from '../lib/browserPrefs';
+import { pendingQuestionFor } from '../lib/pendingQuestion';
 import Button from '../components/ui/Button';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { useNativeOverlay } from '../lib/nativeOverlay';
@@ -2429,9 +2430,15 @@ export default function ChatView({
   // Bumped by closing the pane and by a task change, so a browser still
   // opening doesn't show after it, or in another task.
   const openSeqRef = useRef(0);
+  // A pane closed for a waiting chat card, to restore once it's resolved;
+  // the ref marks a card id decided, so it's never closed twice.
+  const closedForCardRef = useRef(new Set());
+  const [pendingRestore, setPendingRestore] = useState(null);
   useEffect(() => {
     openSeqRef.current += 1;
     setShownBrowserId(null);
+    closedForCardRef.current = new Set();
+    setPendingRestore(null);
     /* A task change takes the pane off this browser, so a hand-back still
        waiting for its viewer ends, whoever asked for it (the hand-over card,
        or a voice call's browser_done), and a later hand-over never gets it
@@ -2446,19 +2453,43 @@ export default function ChatView({
      sign-in, a CAPTCHA or another hand-over), keyed by that card so each
      new one opens it again. The browser button opens it at any time. */
   const { onlyWhenNeeded } = useBrowserPrefs();
-  const personsTurnId = (streamingMsg?.steps || []).find(isPersonsBrowserTurn)?.data?.question_id || null;
+  // Below the inline layout, the pane floats over the chat as a full-screen
+  // modal; on a phone it docks to the top instead, so it isn't this mode.
+  const overlayMode = paneFloats && !isMobile;
+  const personsTurnStep = (streamingMsg?.steps || []).find(isPersonsBrowserTurn) || null;
+  const personsTurnId = personsTurnStep?.data?.question_id || null;
   const personsTurnBrowserId = personsTurnId
     ? (liveBrowserId || latestBrowserSessionIdIn(visibleMessages, streamingMsg))
     : null;
+  // Any question the person answers in the chat (lib/pendingQuestion, same
+  // filter the composer uses), minus a hand-over: that one still needs the
+  // pane, since the person has to act inside the browser itself.
+  const chatPendingQuestion = pendingQuestionFor(streamingMsg?.steps);
+  const chatPendingStep = chatPendingQuestion
+    ? (streamingMsg?.steps || []).find((s) => s.data?.question_id === chatPendingQuestion.question_id)
+    : null;
+  const liveHandOver = (streamingMsg?.steps || []).some((s) => s.badge === 'AskUser' && !s.data?.answer && isHandOverCard(s.data));
+  // In overlay mode that question owns the screen, so the pane steps aside.
+  const waitingChatCard = overlayMode && !!chatPendingQuestion && !isHandOverCard(chatPendingStep?.data) && !liveHandOver;
+  // Read as a guard inside the two effects below, never as a dependency:
+  // the card being answered must not itself re-open a pane someone closed.
+  const waitingChatCardRef = useRef(waitingChatCard);
+  waitingChatCardRef.current = waitingChatCard;
   useEffect(() => {
-    if (browserOn && liveBrowserId && !onlyWhenNeeded) setShownBrowserId(liveBrowserId);
-  }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded]);
+    if (browserOn && liveBrowserId && !onlyWhenNeeded && !waitingChatCardRef.current) {
+      setPendingRestore(null);
+      setShownBrowserId(liveBrowserId);
+    }
+    // overlayMode: re-offered on leaving overlay, in case the gate blocked
+    // it while narrow and nothing else about the browser session changed.
+  }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded, overlayMode]);
   useEffect(() => {
-    if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId) return;
+    if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId || waitingChatCardRef.current) return;
     // A phone push notification is the natural follow-up here once the iPhone app lands.
+    setPendingRestore(null);
     setShownBrowserId(personsTurnBrowserId);
     setBrowserMinimized(false);
-  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, task.id]);
+  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, task.id, overlayMode]);
   const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
   // A request (a voice call's show_browser or browser_done) applies once:
   // coming back to the task later doesn't open the pane again. Like the
@@ -2468,6 +2499,7 @@ export default function ChatView({
     if (browserRequest?.taskId !== task.id || !browserRequest.sessionId) return;
     if (appliedBrowserRequestRef.current === browserRequest.at) return;
     appliedBrowserRequestRef.current = browserRequest.at;
+    setPendingRestore(null);
     setShownBrowserId(browserRequest.sessionId);
     setBrowserRetry((n) => n + 1);
   }, [browserRequest, task.id]);
@@ -2487,6 +2519,59 @@ export default function ChatView({
   useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
   const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
   const browserPaneOpen = browserOpen || blankBrowserOpen || openingBrowserOpen;
+  // Leaving overlay mode removes the reason the pane was hidden, so a debt
+  // still owed is paid at once rather than dropped unpaid. Unmarks the
+  // card too: if overlay mode comes back while it's still waiting, that's
+  // the same closing decision again, not a fresh one the person made.
+  useEffect(() => {
+    if (overlayMode || !pendingRestore) return;
+    const { sessionId, questionId } = pendingRestore;
+    closedForCardRef.current.delete(questionId);
+    setPendingRestore(null);
+    if (viewable(sessionId)) setShownBrowserId(sessionId);
+  }, [overlayMode, pendingRestore]);
+  const waitingChatQuestionId = chatPendingQuestion?.question_id || null;
+  /* Steps aside for a card the gate above didn't reach (a pane already open
+     by hand, or "always show the browser"). Only the real browser is booked
+     to restore; the start page and the opening state are closed but not kept. */
+  const closeEffectTaskRef = useRef(task.id);
+  useEffect(() => {
+    const taskJustChanged = closeEffectTaskRef.current !== task.id;
+    closeEffectTaskRef.current = task.id;
+    if (!waitingChatCard || !waitingChatQuestionId) return;
+    if (closedForCardRef.current.has(waitingChatQuestionId)) return;
+    closedForCardRef.current.add(waitingChatQuestionId);
+    // browserOpen/shownBrowserId still describe the task just left on this
+    // render (ChatView isn't keyed by task): decide, but don't act on it.
+    if (taskJustChanged) return;
+    if (browserOpen) {
+      const sessionId = shownBrowserId;
+      dropHandBack(sessionId);
+      openSeqRef.current += 1;
+      setShownBrowserId(null);
+      setPendingRestore({ questionId: waitingChatQuestionId, sessionId });
+    } else if (blankBrowserOpen) {
+      openSeqRef.current += 1;
+      setBlankBrowser(false);
+    } else if (openingBrowserOpen) {
+      openSeqRef.current += 1;
+      setOpeningBrowser(false);
+    }
+  }, [waitingChatCard, waitingChatQuestionId, browserOpen, blankBrowserOpen, openingBrowserOpen, shownBrowserId, task.id]);
+  // Restores once resolved and nothing else is waiting; looks in the last
+  // completed message too, since a turn can end in the same update as the
+  // answer. Drops outright once the card is nowhere to be found.
+  useEffect(() => {
+    if (!pendingRestore) return;
+    const lastMessage = visibleMessages[visibleMessages.length - 1];
+    const card = (streamingMsg?.steps || []).find((s) => s.data?.question_id === pendingRestore.questionId)
+      || (lastMessage?.steps || []).find((s) => s.data?.question_id === pendingRestore.questionId);
+    if (!card) { setPendingRestore(null); return; }
+    if (!card.data?.answer || waitingChatCard) return;
+    const { sessionId } = pendingRestore;
+    setPendingRestore(null);
+    if (viewable(sessionId)) setShownBrowserId(sessionId);
+  }, [pendingRestore, streamingMsg, waitingChatCard, visibleMessages]);
   /* On a phone the pane docks at the top of the chat (no taller than half
      the screen) and minimizes to its header instead of closing. It expands
      when Anton starts using the browser, and minimizes when the turn ends so
@@ -2621,6 +2706,8 @@ export default function ChatView({
     />
   ) : null;
   const openBrowserFromShortcut = () => {
+    // The person's own open: any debt a waiting card still holds is dropped unpaid.
+    setPendingRestore(null);
     setBrowserMinimized(false);
     if (viewable(latestBrowserId)) {
       setShownBrowserId(latestBrowserId);
@@ -2656,6 +2743,8 @@ export default function ChatView({
             openSeqRef.current += 1;
             setOpeningBrowser(false);
             setShownBrowserId(null);
+            // The person's own close: any debt a waiting card still holds is dropped unpaid.
+            setPendingRestore(null);
           }}
           extraActions={projectBrowsers}
           dock={browserDock}
@@ -2746,6 +2835,8 @@ export default function ChatView({
     if (step?.badge === BROWSER_BADGE || step?.badge === BROWSER_ACTION_BADGE || step?.badge === BROWSER_APPROVAL_BADGE || step?.badge === BROWSER_HANDOVER_BADGE) {
       const sessionId = step.data?.sessionId || latestBrowserId;
       if (viewable(sessionId)) {
+        // The person's own open: any debt a waiting card still holds is dropped unpaid.
+        setPendingRestore(null);
         setShownBrowserId(sessionId);
         setBrowserMinimized(false);
       }
@@ -2970,6 +3061,8 @@ export default function ChatView({
     openBrowser: () => {
       setBrowserMinimized(false);
       if (viewable(handOverBrowserId)) {
+        // The person's own open: any debt a waiting card still holds is dropped unpaid.
+        setPendingRestore(null);
         setShownBrowserId(handOverBrowserId);
         // A pane that already gave up on its viewer asks again, so the hand-back gets one or ends.
         setBrowserRetry((n) => n + 1);
