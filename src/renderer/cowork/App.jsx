@@ -1,4 +1,5 @@
 import { diagnostic } from '../../shared/diagnostics';
+import { planFailureFields } from './lib/subscriptionPlan';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
@@ -2064,6 +2065,7 @@ function AppCore() {
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
+            ...planFailureFields(event),
             budgetScope: typeof event?.budget_scope === 'string' ? event.budget_scope : null,
             budgetPeriod: typeof event?.budget_period === 'string' ? event.budget_period : null,
             budgetModel: typeof event?.budget_model === 'string' && event.budget_model ? event.budget_model : null,
@@ -2145,6 +2147,8 @@ function AppCore() {
     // "Restricted" instead of "Needs credits" (mergeRecommendedModels keeps it
     // in step with modelEnabled).
     modelDisabledReasons: settings.modelDisabledReasons,
+    // Which plan covers each model (ENG-4186), for the picker's tier tags.
+    modelCoveredByTier: settings.modelCoveredByTier,
     // Which models advertise reasoning-effort levels (ENG-1940) — same
     // settings key SettingsView's per-role effort picker reads, so
     // Composer's EffortSelect stays in lockstep with it.
@@ -2155,7 +2159,7 @@ function AppCore() {
     // composer's effort pill reads it to show the level that will run.
     planningReasoningEffort: settings.planningReasoningEffort,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelCoveredByTier, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
   // The composer's catalog and picker metadata for the artifact viewer's chat
   // bar (ENG-4227), the same ones the composer gets.
   const modelPickerCtx = useMemo(() => ({ models, modelMeta }), [models, modelMeta]);
@@ -3891,13 +3895,18 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => {
       if (t.id !== streamingId) return t;
       // The task's own pick decides which resource it spends, same as the
-      // composer: a task on an explicit paid model never hears about free tokens.
-      const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
+      // composer: a task on an explicit paid model never hears about free
+      // tokens, and one outside its plan never hears about the plan's windows.
+      const changes = usageTransitions(before, hubUsage, {
+        model: t.model,
+        providerType,
+        coveredByTier: settings.modelCoveredByTier?.[t.model] ?? null,
+      });
       if (!changes.length) return t;
       const anchorId = currentTurnAnchorId(t.messages);
       return { ...t, usageNotices: withUsageNotices(t.usageNotices, changes.map((c) => ({ ...c, createdAt, anchorId }))) };
     }));
-  }, [hubUsage, hubUsageCtx.providerType]);
+  }, [hubUsage, hubUsageCtx.providerType, settings.modelCoveredByTier]);
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its

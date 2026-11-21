@@ -114,13 +114,23 @@
       "viewBudgets": "Visualizza budget",
       "balanceRanOutMobile": "Il saldo si è esaurito prima del completamento dell’attività.",
       "autoTopUpFailedBodyMobile": "Non è stato possibile addebitare la tua carta.",
-      "connectProviderBodyMobile": "Collega il tuo provider in Impostazioni."
+      "connectProviderBodyMobile": "Collega il tuo provider in Impostazioni.",
+      "windowUsedUpTitle": "Quota del piano esaurita",
+      "windowPausedUntil": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}} e il tuo saldo è a zero. In pausa fino alle {time}. Aggiungi fondi per continuare.",
+      "windowPaused": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}} e il tuo saldo è a zero. In pausa fino al rinnovo. Aggiungi fondi per continuare.",
+      "windowPausedUntilMobile": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}}. In pausa fino alle {time}.",
+      "windowPausedMobile": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}}. In pausa fino al rinnovo."
     },
     "usageAlert": {
       "freeLow": "Quota gratuita di Air rimanente: {percent}",
       "freeLowRefills": "Quota gratuita di Air rimanente: {percent} · si ricarica alle {time}",
       "freeUsed": "Quota gratuita di Air esaurita · ora usi il tuo saldo",
-      "freeUsedUntil": "Quota gratuita di Air esaurita · usi il tuo saldo fino alle {time}"
+      "freeUsedUntil": "Quota gratuita di Air esaurita · usi il tuo saldo fino alle {time}",
+      "windowLow": "Hai usato il {percent} della quota {window, select, 7d {settimanale} other {di 5 ore}}",
+      "windowLowResets": "Hai usato il {percent} della quota {window, select, 7d {settimanale} other {di 5 ore}} · si rinnova alle {time}",
+      "windowUsed": "{window, select, 7d {Quota settimanale esaurita} other {Quota di 5 ore esaurita}}",
+      "windowUsedUntil": "{window, select, 7d {Quota settimanale esaurita} other {Quota di 5 ore esaurita}} · in pausa fino alle {time}",
+      "windowOnWallet": "{window, select, 7d {Quota settimanale esaurita} other {Quota di 5 ore esaurita}} · usi il tuo saldo a tariffe API"
     },
     "reconnect": {
       "couldNotReconnect": "Impossibile riconnettersi. Prova a uscire e ad accedere di nuovo.",
@@ -149,7 +159,9 @@
       "needsCreditsBody": "Non hai crediti sufficienti per questo modello. Ricarica il saldo per usarlo.",
       "disabledBody": "Questo modello è disattivato per la tua area di lavoro. Scegline un altro in Impostazioni.",
       "topUpBalance": "Ricarica saldo",
-      "needsCreditsBodyMobile": "Non hai crediti sufficienti per questo modello."
+      "needsCreditsBodyMobile": "Non hai crediti sufficienti per questo modello.",
+      "notInTierTitle": "{model} non è incluso nel tuo piano",
+      "notInTierBody": "{tier, select, plus {{model} è incluso in Plus.} pro {{model} è incluso in Pro.} other {Il tuo piano non include {model}.}} Cambia piano o aggiungi fondi per usarlo a tariffe API."
     },
     "overloaded": {
       "theModelProvider": "Il provider del modello",

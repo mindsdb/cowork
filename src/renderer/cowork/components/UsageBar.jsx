@@ -7,6 +7,7 @@ import { usageActionUrl } from '../lib/usageWarnings';
 import { billingActions } from '../lib/billingLinks';
 import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDismiss';
 import { useTranslation } from '../../lib/i18n';
+import { useUsageActions } from '../hooks/useUpgradeOffer';
 
 // The usage bar above the chat input (ENG-1782): a tab tucked behind the
 // composer's top edge, so it reads as part of the input rather than a system
@@ -48,6 +49,8 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
   // above must never bring it back, and neither may the bar emptying for some
   // other reason (a BYOK provider, an uncapped grant, a top-up).
   const [figureHidden, hideFigure] = useStandingFigureHidden();
+  // A plan upgrade on the bar (ENG-4186) shows only where one can be bought.
+  const usageActions = useUsageActions();
   // What the bar can show, outermost first: the warning, then what it steps
   // down to when closed (a free warning steps down to the standing figure for
   // someone with no balance to fall through to; see usageWarnings.js). The
@@ -72,7 +75,7 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
   // Separated from `usage_notice` so the standing figure can be graded as a
   // conversion surface on its own rather than inside the warning's number.
   const clickTrigger = shown.resting ? 'usage_at_rest' : trigger;
-  const actions = billingActions(shown.actions);
+  const actions = usageActions.visible(billingActions(shown.actions));
   return (
     <>
       {live}
@@ -91,6 +94,10 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
                 key={a.key}
                 type="button"
                 onClick={() => {
+                  if (usageActions.isUpgrade(a)) {
+                    usageActions.openUpgrade(a, 'usage_bar');
+                    return;
+                  }
                   trackBillingOpened(clickTrigger);
                   host.openExternal(usageActionUrl(a, { isBillingOwner }));
                 }}

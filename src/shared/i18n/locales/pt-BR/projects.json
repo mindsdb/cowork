@@ -6,7 +6,8 @@
         "addFunds": "Adicionar fundos",
         "setUpAutoTopUp": "Configurar recarga automática",
         "manageAutoTopUp": "Gerenciar recarga automática",
-        "updatePaymentMethod": "Atualizar forma de pagamento"
+        "updatePaymentMethod": "Atualizar forma de pagamento",
+        "upgrade": "{tier, select, plus {Assinar Plus} pro {Mudar para Pro} other {Fazer upgrade}}"
       },
       "noFreeGrant": "Esta conta não inclui tokens gratuitos do MindsHub Air. O MindsHub Air usa seu saldo, como qualquer outro modelo.",
       "allowanceStop": {
@@ -68,6 +69,20 @@
       "budgetExceeded": {
         "raise": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.}}} other {{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos.}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.}}} other {{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita.}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {Cota semanal esgotada} other {Cota de 5 horas esgotada}}",
+        "onWallet": "Continuando com seu saldo a preços de API até a renovação.",
+        "onWalletWithTime": "Continuando com seu saldo a preços de API até a renovação às {time}.",
+        "paused": "As tarefas do seu plano estão pausadas até a renovação. Adicione fundos para continuar.",
+        "pausedWithTime": "As tarefas do seu plano estão pausadas até {time}. Adicione fundos para continuar.",
+        "pausedMobile": "As tarefas do seu plano estão pausadas até a renovação.",
+        "pausedWithTimeMobile": "As tarefas do seu plano estão pausadas até {time}.",
+        "lowTitle": "{percent} da sua cota {window, select, 7d {semanal} other {de 5 horas}} usados",
+        "lowThenWallet": "Depois disso, as tarefas usam seu saldo a preços de API até a renovação.",
+        "lowThenWalletWithTime": "Depois disso, as tarefas usam seu saldo a preços de API até a renovação às {time}.",
+        "lowThenPause": "Depois disso, as tarefas ficam pausadas até a renovação.",
+        "lowThenPauseWithTime": "Depois disso, as tarefas ficam pausadas até {time}."
       }
     },
     "scheduleWhen": {
@@ -478,6 +493,10 @@
       "budgetReached": {
         "tag": "Orçamento esgotado",
         "title": "Um orçamento que cobre este modelo acabou. Um administrador pode aumentá-lo em Orçamentos."
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Requer Plus} pro {Requer Pro} other {Requer upgrade}}",
+        "title": "A cota do seu plano não cobre este modelo. Faça upgrade ou adicione créditos para usá-lo a preços de API."
       }
     },
     "settingsTransform": {

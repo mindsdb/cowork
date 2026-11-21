@@ -94,10 +94,12 @@ import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
+import { useUpgradeOffer } from '../hooks/useUpgradeOffer';
+import { cleanRequiredTier } from '../lib/subscriptionPlan';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { budgetPeriodOf, budgetScopeOf, budgetModelName } from '../lib/budgetScope';
-import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, upgradeAction, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 import { ChatScroller } from '../components/chat/ChatScroller';
@@ -1392,6 +1394,11 @@ export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
 }) {
   const { t } = useTranslation('chat');
+  /* ENG-4186: on a Free plan the highest-intent moment offers Plus first.
+     No plan (gate off, older server) or no right to buy: no button, and the
+     card reads exactly as before. */
+  const upgrade = useUpgradeOffer();
+  const getPlus = upgrade.plan?.tier === 'free' && upgrade.canOffer('plus');
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   /* A desktop or hosted turn carries the gate's reset_at. A hosted turn from a
      cowork-server that predates it arrives with none, and the hub usage read
@@ -1408,6 +1415,11 @@ export function AllowanceExhaustedCard({
       title={t('chatView.cards.taskStopped')}
       body={allowanceStopCopy({ resetAt, usage })}
       buttons={billingActions([
+        ...(getPlus ? [{
+          label: upgradeAction('plus').label,
+          onClick: () => upgrade.open('plus', 'allowance_card'),
+          primary: true,
+        }] : []),
         {
           label: t('chatView.cards.addFunds'),
           // The click, not an impression — same rule as
@@ -1419,7 +1431,7 @@ export function AllowanceExhaustedCard({
             trackBillingOpened('included_allowance_exhausted');
             host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
           },
-          primary: true,
+          primary: !getPlus,
         },
         // Only offer auto top up when it isn't already on.
         ...(usage?.autoTopUp?.enabled ? [] : [{
@@ -1429,6 +1441,54 @@ export function AllowanceExhaustedCard({
             host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
           },
         }]),
+      ])}
+    />
+  );
+}
+
+/*
+ * A Plus or Pro window is used up (`window_allowance_exhausted`, ENG-4186):
+ * the model is one the plan covers, one of its two rolling windows (5 hours
+ * or 7 days) is spent, and the wallet cannot carry the task past it. The gate
+ * sends when that window frees up (`resetAt`) and which window it was. The
+ * card says the task is paused until then, and offers the two ways to keep
+ * going now: funds, and on Plus, Pro. Never a dollar or token figure.
+ */
+export function WindowAllowanceExhaustedCard({
+  time, agentLabel, resetAt, allowanceWindow, isBillingOwner, deleting = false,
+}) {
+  const { t } = useTranslation('chat');
+  const upgrade = useUpgradeOffer();
+  if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
+  const until = formatResetTime(resetAt);
+  const windowKey = allowanceWindow === '7d' || allowanceWindow === '5h' ? allowanceWindow : 'other';
+  // The mobile copy names the window and when it frees up, and nothing about the balance.
+  const body = until
+    ? t(billingCopyKey('chatView.cards.windowPausedUntil'), { window: windowKey, time: until })
+    : t(billingCopyKey('chatView.cards.windowPaused'), { window: windowKey });
+  const offerPro = upgrade.plan?.tier === 'plus' && upgrade.canOffer('pro');
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      kind={t(offersBilling() ? 'chatView.kinds.billing' : 'chatView.kinds.usage')}
+      title={t('chatView.cards.windowUsedUpTitle')}
+      body={body}
+      buttons={billingActions([
+        {
+          label: t('chatView.cards.addFunds'),
+          // The click only; token_cap_hit counted the impression on receipt.
+          onClick: () => {
+            trackBillingOpened('window_allowance_exhausted');
+            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+          },
+          primary: true,
+        },
+        ...(offerPro ? [{
+          label: upgradeAction('pro').label,
+          onClick: () => upgrade.open('pro', 'window_card'),
+        }] : []),
       ])}
     />
   );
@@ -1664,9 +1724,16 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 // allowance changed, and still reads true after the bar moves on or is closed.
 // It keeps its own link: most people who reach billing from a chat notice never
 // click the bar.
-function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
+function UsageAlertCard({
+  time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner,
+  allowanceWindow = null, percentUsed = null, onWallet = false,
+}) {
   const { t } = useTranslation('chat');
-  if (!PLATFORM_UI || (!offersBilling() && kind !== 'free_low')) return null;
+  // Inside the mobile app only the lines that name no wallet show: the free
+  // allowance or a plan window running low, and a plan window used up that
+  // paused the task. A window that put the task on the wallet stays hidden.
+  const namesNoWallet = kind === 'free_low' || kind === 'window_low' || (kind === 'window_exhausted' && !onWallet);
+  if (!PLATFORM_UI || (!offersBilling() && !namesNoWallet)) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert', undefined, kind);
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
@@ -1692,13 +1759,24 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
   // the router resolves per turn and can land on a paid model.
   // No usable refill time drops the clause rather than leaving "refills".
   const refillsAt = formatResetTime(resetsAt);
-  const text = kind === 'free_low'
-    ? (refillsAt
+  // A Plus or Pro window (ENG-4186): its share used, or that it filled up,
+  // and when it frees up. Never a dollar or token figure.
+  const windowVars = { window: allowanceWindow === '7d' ? '7d' : '5h', time: refillsAt || '', percent: `${Math.round(Number(percentUsed) || 0)}%` };
+  let text;
+  if (kind === 'window_low') {
+    text = refillsAt ? t('chatView.usageAlert.windowLowResets', windowVars) : t('chatView.usageAlert.windowLow', windowVars);
+  } else if (kind === 'window_exhausted') {
+    if (onWallet) text = t('chatView.usageAlert.windowOnWallet', windowVars);
+    else text = refillsAt ? t('chatView.usageAlert.windowUsedUntil', windowVars) : t('chatView.usageAlert.windowUsed', windowVars);
+  } else if (kind === 'free_low') {
+    text = refillsAt
       ? t('chatView.usageAlert.freeLowRefills', { percent: formatPercentShort(fractionLeft), time: refillsAt })
-      : t('chatView.usageAlert.freeLow', { percent: formatPercentShort(fractionLeft) }))
-    : (refillsAt
+      : t('chatView.usageAlert.freeLow', { percent: formatPercentShort(fractionLeft) });
+  } else {
+    text = refillsAt
       ? t('chatView.usageAlert.freeUsedUntil', { time: refillsAt })
-      : t('chatView.usageAlert.freeUsed'));
+      : t('chatView.usageAlert.freeUsed');
+  }
   return (
     <div className="my-3 flex flex-wrap items-center gap-x-1.5 font-body text-xs text-ink-3">
       <Icon of={CircleAlert} size={14} />
@@ -1933,9 +2011,10 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  */
 export function ModelUnavailableCard({
   time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
-  isBillingOwner = false, deleting = false,
+  isBillingOwner = false, requiredTier = null, deleting = false,
 }) {
   const { t } = useTranslation('chat');
+  const upgrade = useUpgradeOffer();
   // Same naming rule as the picker (ENG-1638): MindsHub's catalog label when we
   // hold one, else the id-derived form. This card used to call the bare
   // prettifier, so the row the user had just picked as "MindsHub Air" came back
@@ -1961,6 +2040,50 @@ export function ModelUnavailableCard({
         buttons={PLATFORM_UI ? [
           { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: true },
         ] : []}
+      />
+    );
+  }
+  /* A model outside the plan (`model_not_in_tier`, ENG-4186): the plan's
+     allowance does not cover it and the wallet cannot pay for it. Both ways
+     out work: a plan that covers it (the tier the gate named), or funds, which
+     pay for any model at API rates on any plan. */
+  if (code === 'model_not_in_tier') {
+    const tier = cleanRequiredTier(requiredTier);
+    const offerTier = tier || upgrade.tier;
+    const canUpgrade = !!offerTier && upgrade.canOffer(offerTier);
+    // Inside the mobile app it reads like the credit denial below: the model
+    // is unavailable, with no plan to buy and no word about the balance.
+    const billing = offersBilling();
+    return (
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        kind={t('chatView.kinds.model')}
+        title={billing
+          ? t('chatView.model.notInTierTitle', { model: label })
+          : t('chatView.model.unavailableTitle', { model: label })}
+        body={billing
+          ? t('chatView.model.notInTierBody', { model: label, tier: tier || 'other' })
+          : t('chatView.model.askOperatorBody')}
+        buttons={[
+          ...billingActions([
+            ...(canUpgrade ? [{
+              label: upgradeAction(offerTier).label,
+              onClick: () => upgrade.open(offerTier, 'model_card'),
+              primary: true,
+            }] : []),
+            {
+              label: t('chatView.cards.addFunds'),
+              onClick: () => {
+                trackBillingOpened('model_not_in_tier');
+                host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+              },
+              primary: !canUpgrade,
+            },
+          ]),
+          ...switchToAirButtons(onSwitchToAir),
+        ]}
       />
     );
   }
@@ -2372,12 +2495,15 @@ export default function ChatView({
   const usageBuckets = usageNoticeBuckets(visibleMessages, task.usageNotices);
   const usageCard = (n) => (
     <UsageAlertCard
-      key={`usage-${n.createdAt}-${n.kind}-${n.fractionLeft ?? ''}`}
+      key={`usage-${n.createdAt}-${n.kind}-${n.fractionLeft ?? ''}-${n.window ?? ''}`}
       time={formatMetaTime(n.createdAt)}
       agentLabel={agentLabel}
       kind={n.kind}
       resetsAt={n.resetsAt}
       fractionLeft={n.fractionLeft}
+      allowanceWindow={n.window ?? null}
+      percentUsed={n.percentUsed ?? null}
+      onWallet={!!n.onWallet}
       isBillingOwner={isBillingOwner}
     />
   );
@@ -3511,7 +3637,8 @@ export default function ChatView({
                  *
                  * `model_restricted` shares the card: an org admin's model
                  * rule, which the card answers with Open Settings only. */
-                if (m.code === 'model_access_denied' || m.code === 'model_disabled' || m.code === 'model_restricted') {
+                if (m.code === 'model_access_denied' || m.code === 'model_disabled' || m.code === 'model_restricted'
+                  || m.code === 'model_not_in_tier') {
                   const deniedResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
@@ -3524,6 +3651,7 @@ export default function ChatView({
                       failedModel={m.failedModel}
                       modelLabels={modelLabels}
                       isBillingOwner={isBillingOwner}
+                      requiredTier={m.requiredTier ?? null}
                       onSwitchToAir={
                         onSwitchToAirAndResend && deniedResend
                           ? () => onSwitchToAirAndResend(deniedResend.text, deniedResend.attachments)
@@ -3805,6 +3933,22 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       resetAt={m.resetAt}
                       usage={hubUsage?.usage}
+                      isBillingOwner={isBillingOwner}
+                    />
+                  );
+                }
+                // A Plus or Pro window used up with an empty wallet (gateway
+                // 429 `window_allowance_exhausted`, ENG-4186): paused until
+                // the window frees up, with funds and Pro as ways on.
+                if (m.code === 'window_allowance_exhausted') {
+                  return (
+                    <WindowAllowanceExhaustedCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      resetAt={m.resetAt}
+                      allowanceWindow={m.allowanceWindow ?? null}
                       isBillingOwner={isBillingOwner}
                     />
                   );

@@ -1292,6 +1292,10 @@ const WIRE_CODES = [
   'server_busy',
   // The server stopped while the turn ran; the question itself was fine, so it can be sent again.
   'turn_lost',
+  // ENG-4186 — a Plus or Pro window used up with an empty wallet.
+  'window_allowance_exhausted',
+  // ENG-4186 — a model outside the plan with an empty wallet.
+  'model_not_in_tier',
   'anton_error',
 ];
 
