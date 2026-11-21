@@ -66,6 +66,8 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.port');
     case 'listing_too_large':
       return t('customMcp.error.listingTooLarge');
+    case 'invalid_response':
+      return t('customMcp.error.invalidResponse');
     case 'insecure_login_url':
       return t('customMcp.error.insecureLoginUrl');
     case 'popup_blocked':
@@ -119,6 +121,8 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
   const [error, setError] = useState(null);
   const [loginHosts, setLoginHosts] = useState(null);
   const [connected, setConnected] = useState(null);
+  // On the web only a call with confirmed login hosts has a sign-in for Cancel to end.
+  const [cancellable, setCancellable] = useState(false);
   // The web app's redirect is auth's own callback, which only the server knows.
   const [redirectUri, setRedirectUri] = useState(host.isWeb ? null : CUSTOM_MCP_REDIRECT_URI);
 
@@ -136,6 +140,7 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
   const complete = Boolean(values.label.trim() && values.url.trim() && (!values.clientSecret || values.clientId.trim()));
 
   async function connect(confirmedLoginHosts) {
+    setCancellable(!host.isWeb || Boolean(confirmedLoginHosts));
     setBusy(true);
     setError(null);
     try {
@@ -233,7 +238,7 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
       <ModalFooter>
         {busy ? (
           // The browser login can wait minutes; cancelling ends it, and the connect reports it.
-          <Button type="button" variant="subtle" onClick={() => void host.oauthCancel()}>{t('skillModal.cancel')}</Button>
+          cancellable && <Button type="button" variant="subtle" onClick={() => void host.oauthCancel()}>{t('skillModal.cancel')}</Button>
         ) : loginHosts ? (
           <Button type="button" variant="subtle" onClick={() => setLoginHosts(null)}>{t('customMcp.back')}</Button>
         ) : (

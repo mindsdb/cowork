@@ -148,6 +148,40 @@ describe('CustomMcpConnectModal', () => {
     expect(await screen.findByText("The login didn't finish: cancelled")).toBeTruthy();
   });
 
+  it('on the web offers Cancel only once the login hosts are confirmed', async () => {
+    const user = userEvent.setup();
+    shell.isWeb = true;
+    customMcpRedirectUri.mockResolvedValue(null);
+    let finish = () => {};
+    customMcpConnect
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        finish = () => resolve({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] });
+      }))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(screen.getByRole('button', { name: 'Connecting…' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    finish();
+    await screen.findByRole('group', { name: 'Your login and its code will go to:' });
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('button', { name: 'Cancel' })).toBeTruthy();
+  });
+
+  it('says an unreadable answer could not be read, without the parser\'s text', async () => {
+    const user = userEvent.setup();
+    customMcpConnect.mockResolvedValue({ ok: false, code: 'invalid_response', reason: '' });
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(await screen.findByText("The server sent an answer Anton couldn't read. Try again.")).toBeTruthy();
+  });
+
   it('warns when the server could not list its tools', async () => {
     const user = userEvent.setup();
     customMcpConnect.mockResolvedValue({ ok: true, id: 'cm-1', label: 'Tracker', serverUrl: URL, toolsOn: 0, toolsUnavailable: true });

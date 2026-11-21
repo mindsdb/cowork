@@ -40,6 +40,7 @@ import {
   customMcpFailure,
   endCustomMcpSignIn,
   openLoginPage,
+  unlessCancelled,
   pollCustomMcpSignIn,
   toolsFrom,
   type CustomMcpSignIn,
@@ -1284,7 +1285,7 @@ async function customMcpRequest(
         data = await res.json();
       } catch (err) {
         // A success is only as good as its body; a refusal still has its status.
-        if (res.ok) return { ok: false, code: controller.signal.aborted ? 'timeout' : 'invalid_response', reason: (err as Error)?.message || '' };
+        if (res.ok) return { ok: false, code: controller.signal.aborted ? 'timeout' : 'invalid_response', reason: '' };
       }
     }
     return res.ok ? { ok: true, data } : customMcpFailure(res.status, data);
@@ -1331,16 +1332,22 @@ export async function customMcpConnect(opts: CustomMcpConnectOpts): Promise<Cust
   if (isElectron && typeof bridge.customMcpConnect === 'function') return bridge.customMcpConnect(opts);
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
   // Continue is the call that can open a login page: the pop-up opens here, inside the click.
-  // Cancel does not end this request: a server needing no login may be added by it,
-  // and that is reported. A Cancel pressed meanwhile stops before the login page.
+  // Cancel is offered only once this sign-in exists and ends the wait at once. The request
+  // runs on; a server it still adds is announced, so the connections list shows it.
   const signIn = opts.confirmedLoginHosts ? beginCustomMcpSignIn() : null;
-  const started = await customMcpRequest('POST', '/connect', CUSTOM_MCP_LISTING_TIMEOUT_MS, {
+  const request = customMcpRequest('POST', '/connect', CUSTOM_MCP_LISTING_TIMEOUT_MS, {
     label: opts.label,
     server_url: opts.url,
     ...(opts.clientId ? { client_id: opts.clientId } : {}),
     ...(opts.clientSecret ? { client_secret: opts.clientSecret } : {}),
     ...(opts.confirmedLoginHosts ? { confirmed_login_hosts: opts.confirmedLoginHosts } : {}),
   });
+  const started = signIn ? await unlessCancelled(signIn, request) : await request;
+  if (signIn?.cancelled) {
+    void request.then((late) => {
+      if (late.ok && late.data?.status === 'connected') window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+    });
+  }
   if (!started.ok || started.data?.status !== 'pending' || !signIn) endCustomMcpSignIn(signIn);
   if (!started.ok) return started;
   const status = started.data?.status;
@@ -1379,12 +1386,10 @@ export async function customMcpSetTools(id: string, tools: string[], revision?: 
   const answer = await customMcpRequest('PUT', `${connectionPath(id)}/tools`, CUSTOM_MCP_REQUEST_TIMEOUT_MS, { tools, tools_revision: revision });
   if (!answer.ok) return answer;
   const saved = toolsFrom(answer.data);
-  return {
-    ok: true,
-    tools: saved.tools.filter((tool) => tool.allowed).map((tool) => tool.name),
-    saved: saved.tools,
-    ...(saved.revision === null ? {} : { revision: saved.revision }),
-  };
+  const allowed = saved.tools.filter((tool) => tool.allowed).map((tool) => tool.name);
+  // Only a whole stored list replaces the one on screen.
+  if (!Array.isArray(answer.data?.tools) || saved.revision === null) return { ok: true, tools: allowed };
+  return { ok: true, tools: allowed, saved: saved.tools, revision: saved.revision };
 }
 
 export async function customMcpReconnect(id: string, confirmedLoginHosts?: string[]): Promise<CustomMcpReconnectResult> {
@@ -1392,7 +1397,7 @@ export async function customMcpReconnect(id: string, confirmedLoginHosts?: strin
     return bridge.customMcpReconnect({ id, ...(confirmedLoginHosts ? { confirmedLoginHosts } : {}) });
   }
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
-  // As in connect, Cancel stops before the login page, never this request.
+  // No Cancel is offered during this request; one pressed elsewhere stops before the login page.
   const signIn = confirmedLoginHosts ? beginCustomMcpSignIn() : null;
   const started = await customMcpRequest('POST', `${connectionPath(id)}/reconnect`, CUSTOM_MCP_RELAY_TIMEOUT_MS,
     confirmedLoginHosts ? { confirmed_login_hosts: confirmedLoginHosts } : {});

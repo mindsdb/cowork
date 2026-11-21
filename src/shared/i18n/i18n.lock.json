@@ -97851,6 +97851,40 @@
       "text": "7f30f08917f1"
     }
   },
+  "library:customMcp.error.invalidResponse": {
+    "de": {
+      "from": "391ce1c8bfe4",
+      "text": "f8b7276c1c21"
+    },
+    "es": {
+      "from": "391ce1c8bfe4",
+      "text": "c25dfa1c4a91"
+    },
+    "fr": {
+      "from": "391ce1c8bfe4",
+      "text": "ea56d16d5c71"
+    },
+    "it": {
+      "from": "391ce1c8bfe4",
+      "text": "8fca000c92bb"
+    },
+    "ja": {
+      "from": "391ce1c8bfe4",
+      "text": "89ce3dea563f"
+    },
+    "ko": {
+      "from": "391ce1c8bfe4",
+      "text": "bc1b65384be6"
+    },
+    "pt-BR": {
+      "from": "391ce1c8bfe4",
+      "text": "ac883d496b53"
+    },
+    "zh-CN": {
+      "from": "391ce1c8bfe4",
+      "text": "ade7adc16ae0"
+    }
+  },
   "library:customMcp.error.invalidUrl": {
     "de": {
       "from": "bccc7b6440e9",

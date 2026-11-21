@@ -713,6 +713,7 @@
       "unreadable": "暂时无法读取此连接的记录。请稍后重试。",
       "port": "Anton 云端只通过标准 https 端口连接。请从 URL 中删除端口。",
       "listingTooLarge": "此服务器的工具列表太大，无法读取。",
+      "invalidResponse": "服务器返回了 Anton 无法读取的响应。请重试。",
       "insecureLoginUrl": "服务器的登录页面不是 https 地址，因此未打开。",
       "popupBlocked": "浏览器阻止了登录窗口，或窗口已被关闭。请允许此网站的弹出窗口，然后重试。",
       "staleRevision": "工具列表已更改，已重新加载；请再次尝试开关。",

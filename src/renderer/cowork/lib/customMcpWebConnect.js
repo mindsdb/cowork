@@ -49,7 +49,7 @@ export function beginCustomMcpSignIn(win = window) {
 }
 
 /** Cancels the sign-in running now: closes its pop-up and ends its wait. The
- *  request in flight is not aborted; its answer is ignored when it comes. */
+ *  request in flight is not aborted; the caller decides what its answer means. */
 export function cancelCustomMcpSignIn() {
   const signIn = active;
   if (!signIn) return;
@@ -114,12 +114,12 @@ export function openLoginPage(signIn, authUrl) {
  * the sign-in is cancelled; the request itself runs on.
  *
  * @template T
- * @param {{whenCancelled: Promise<typeof CANCELLED>} | null} signIn
+ * @param {{whenCancelled: Promise<typeof CANCELLED>}} signIn
  * @param {Promise<T>} request
  * @returns {Promise<T | typeof CANCELLED>}
  */
-function unlessCancelled(signIn, request) {
-  return signIn ? Promise.race([request, signIn.whenCancelled]) : request;
+export function unlessCancelled(signIn, request) {
+  return Promise.race([request, signIn.whenCancelled]);
 }
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

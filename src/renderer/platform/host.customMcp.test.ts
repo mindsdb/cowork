@@ -207,12 +207,19 @@ describe('custom MCP on web', () => {
     expect(calls[2].body).toMatchObject({ tools_revision: 5 });
   });
 
+  it('keeps the list on screen when a save answer carries no whole list', async () => {
+    answer = () => ({ status: 200, body: { tools_revision: 6 } });
+    expect(await host.customMcpSetTools(NAME, ['search'], 5)).toEqual({ ok: true, tools: [] });
+    answer = () => ({ status: 200, body: { tools: [{ name: 'search', allowed: true }] } });
+    expect(await host.customMcpSetTools(NAME, ['search'], 5)).toEqual({ ok: true, tools: ['search'] });
+  });
+
   it('refuses a save with no revision read, without asking the server', async () => {
     expect(await host.customMcpSetTools(NAME, ['search'])).toEqual({ ok: false, code: 'stale_revision', reason: '' });
     expect(calls).toHaveLength(0);
   });
 
-  it('reports a server added during the first request even when Cancel was pressed', async () => {
+  it('ends at Cancel during the first request, and announces a server it still added', async () => {
     const popup = fakePopup();
     vi.spyOn(window, 'open').mockImplementation(() => popup as unknown as Window);
     let finishConnect: (value: Answer) => void = () => {};
@@ -226,12 +233,20 @@ describe('custom MCP on web', () => {
       });
     }) as typeof fetch;
 
-    const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
-    await untilSent(1);
-    await host.oauthCancel();
-    finishConnect({ status: 200, body: { status: 'connected', name: NAME, label: 'Tracker', server_url: URL_, tools_on: 1, tools_unavailable: false } });
+    const changed = vi.fn();
+    window.addEventListener('anton:connections-changed', changed);
+    try {
+      const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
+      await untilSent(1);
+      await host.oauthCancel();
+      expect(await connecting).toMatchObject({ ok: false, code: 'login_failed' });
+      expect(changed).not.toHaveBeenCalled();
 
-    expect(await connecting).toEqual({ ok: true, id: NAME, label: 'Tracker', serverUrl: URL_, toolsOn: 1, toolsUnavailable: false });
+      finishConnect({ status: 200, body: { status: 'connected', name: NAME, label: 'Tracker', server_url: URL_, tools_on: 1, tools_unavailable: false } });
+      await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+    } finally {
+      window.removeEventListener('anton:connections-changed', changed);
+    }
   });
 
   it('opens no login page when Cancel was pressed during the first request', async () => {
@@ -269,8 +284,8 @@ describe('custom MCP on web', () => {
   it('does not read a success whose body cannot be read as an empty answer', async () => {
     globalThis.fetch = vi.fn(async () => new Response('{"tools_revision": 3, "tools": [', { status: 200 })) as typeof fetch;
 
-    expect(await host.customMcpTools(NAME)).toMatchObject({ ok: false, code: 'invalid_response' });
-    expect(await host.customMcpFinish('c'.repeat(43))).toMatchObject({ ok: false, code: 'invalid_response' });
+    expect(await host.customMcpTools(NAME)).toEqual({ ok: false, code: 'invalid_response', reason: '' });
+    expect(await host.customMcpFinish('c'.repeat(43))).toEqual({ ok: false, code: 'invalid_response', reason: '' });
   });
 
   it('passes the port refusal on with its code', async () => {
