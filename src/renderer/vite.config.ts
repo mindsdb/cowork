@@ -5,6 +5,7 @@ import path from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { isSpaNavigation } from './web-spa-fallback';
+import { addDevProxyCredentials, devProxyCredentials } from './dev-api-proxy';
 import { platformUiEnabled } from '../shared/ui-capabilities';
 import { withDeploymentBrand } from '../shared/deployment-brand';
 import { withDraftLinkFrameSources } from '../shared/draft-link-origins';
@@ -53,6 +54,13 @@ const IS_WEB = process.env.BUILD_TARGET === 'web';
 const WEB_ENTRY = 'index-web.html';
 
 const SERVER_PORT = Number(process.env.COWORK_SERVER_PORT || 26866);
+const VITE_PORT = Number(process.env.VITE_RENDERER_PORT || 5173);
+
+// Set only under `npm run dev:web` (scripts/dev-web.mjs): the server's bearer
+// token and window proof, which the /api proxy adds to requests from Vite's
+// own pages (dev-api-proxy.ts). Read from process.env under names without the
+// VITE_ prefix, so neither value reaches the client bundle.
+const devCredentials = devProxyCredentials(process.env);
 
 // `npm run dev` boots vite before Electron spawns the sidecar, so downgrade the expected startup ECONNREFUSED proxy noise to a calm line.
 const logger = createLogger();
@@ -173,10 +181,17 @@ export default defineConfig(({ mode }) => ({
       : undefined,
   },
   server: {
-    port: Number(process.env.VITE_RENDERER_PORT || 5173),
+    port: VITE_PORT,
     strictPort: true,
     proxy: {
-      '/api': `http://127.0.0.1:${SERVER_PORT}`,
+      // changeOrigin: true is what Vite gives the plain string form.
+      '/api': {
+        target: `http://127.0.0.1:${SERVER_PORT}`,
+        changeOrigin: true,
+        ...(devCredentials
+          ? { configure: (proxy) => addDevProxyCredentials(proxy, VITE_PORT, devCredentials) }
+          : {}),
+      },
     },
   },
   resolve: {

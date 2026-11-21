@@ -550,6 +550,17 @@ function formatElapsed(ms: number): string {
   return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
 }
 
+/* The prefix cowork-server puts on the one line it prints when it refuses to
+   start, for example a launch hand-off that is missing, late or incomplete. */
+const SERVER_REFUSAL_PREFIX = 'cowork-server: ';
+
+/** The last line in one start attempt's output that carries cowork-server's
+ *  refusal prefix, trimmed, or null when it printed none. */
+export function serverStartRefusal(output: string): string | null {
+  const refusals = output.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith(SERVER_REFUSAL_PREFIX));
+  return refusals.at(-1) ?? null;
+}
+
 /** The one-line failure the diagnostics panel shows.
  *
  *  Each kind gets its own sentence. They all used to collapse into "Server did
@@ -561,13 +572,16 @@ export function startFailureMessage(input: {
   exitCode: number | null;
   spawnError: string | null;
   elapsedMs: number;
+  /* The server's own refusal line (serverStartRefusal), shown after an exit. */
+  refusal?: string | null;
 }): string {
   switch (input.kind) {
     case 'spawn-error':
       return `The backend could not be launched: ${input.spawnError || 'unknown spawn error'}.`;
     case 'exited': {
       const code = typeof input.exitCode === 'number' ? `code ${input.exitCode}` : 'no exit code';
-      return `The backend exited while starting up (${code}) after ${formatElapsed(input.elapsedMs)}.`;
+      const exited = `The backend exited while starting up (${code}) after ${formatElapsed(input.elapsedMs)}.`;
+      return input.refusal ? `${exited} ${input.refusal}` : exited;
     }
     case 'timeout':
       return `The backend was still starting after ${formatElapsed(input.elapsedMs)} and never answered /health.`;

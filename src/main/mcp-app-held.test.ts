@@ -211,9 +211,9 @@ describe('hand-over on server start', () => {
     expect(keychain.modes.size).toBe(0);
   });
 
-  it('makes no request at all in legacy mode', async () => {
+  it('makes no request at all to a server that did not prove the secret', async () => {
     newAppSecret();
-    setServerTrust('legacy');
+    setServerTrust('untrusted');
     const requests = fakeServer([{ engine: 'hubspot', name: 'acme', method: 'mcp' }]);
 
     await syncAppHeldMcpConnections();
@@ -514,9 +514,9 @@ describe('access-mode change from the desktop UI', () => {
     expect(keychain.modes.get('hubspot:acme')).toBe('read');
   });
 
-  it('sends no secret in legacy mode but still records the mode in the keychain', async () => {
+  it('sends no secret to a server that did not prove it, but still records the mode in the keychain', async () => {
     newAppSecret();
-    setServerTrust('legacy');
+    setServerTrust('untrusted');
     const requests = fakeServer([]);
 
     expect((await setConnectionAccessMode('hubspot', 'acme', 'none')).ok).toBe(true);

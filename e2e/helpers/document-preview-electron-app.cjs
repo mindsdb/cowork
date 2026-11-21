@@ -1,9 +1,10 @@
 /*
  * Isolated Electron host for e2e/document-preview-electron.spec.ts. It opens
  * one window with the main window's own webPreferences and preload, registers
- * the production document preview guard, and adds the server token to
- * loopback requests with app.ts's own listener (server-token-listener.ts),
- * given no Minds gate and no Vite dev port. No backend, credentials,
+ * the production document preview guard, and adds the server token and the
+ * window proof to loopback requests with app.ts's own listener
+ * (server-token-listener.ts), given this window as the main window, no Minds
+ * gate and no Vite dev port. No backend, credentials,
  * onboarding or access to the user's normal app profile. Needs
  * `npm run build` first, for dist/main.
  */
@@ -16,6 +17,7 @@ const { IPC } = require('../../dist/main/shared/ipc-channels.js');
 
 const serverPort = process.env.PREVIEW_HOST_SERVER_PORT;
 const token = process.env.PREVIEW_HOST_TOKEN;
+const windowProof = process.env.PREVIEW_HOST_WINDOW_PROOF;
 
 /* What the spec reads back through electronApp.evaluate (HostRecord in document-preview-electron.ts). */
 globalThis.previewHost = { navigations: [], initiated: [], openedExternally: [], windowsCreated: 0, framesCreated: [], listenerCalls: [] };
@@ -55,6 +57,8 @@ app.whenReady().then(async () => {
     guard,
     serverPort: () => Number(serverPort),
     token: () => token,
+    windowProof: () => windowProof,
+    mainWindow: () => (win.isDestroyed() ? null : win.webContents),
     viteDevPort: null,
     gate: () => false,
   });

@@ -1,7 +1,7 @@
-// Standalone cowork-server spawn — used by `npm run dev:web` to boot
-// the FastAPI backend alongside Vite. Uses `uv run python -m cowork`
-// from the cowork-server sibling directory, which lets uv manage the
-// virtualenv and dependencies automatically.
+// Standalone cowork-server spawn, used by `npm run dev:web` (dev-web.mjs,
+// its only caller) to boot the FastAPI backend alongside Vite. Uses
+// `uv run cowork-server` from the cowork-server sibling directory, which lets
+// uv manage the virtualenv and dependencies automatically.
 //
 // Mirrors src/main/server-process.ts intentionally. We accept the small
 // duplication: server-process.ts is electron-coupled (uses app.isPackaged,
@@ -13,6 +13,7 @@
 // Stdlib only — no electron, no npm deps.
 
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as os from 'node:os';
@@ -23,6 +24,33 @@ const SERVER_HOST = '127.0.0.1';
 
 let serverProcess = null;
 let serverStarted = false;
+/** The running server's hand-off (newLaunchHandoff), or null before a start. */
+let launch = null;
+
+/* The launch contract, as src/shared/server-launch.ts holds it for desktop
+   main. This script cannot import TypeScript, so it keeps a copy, and
+   src/shared/server-launch.test.ts pins the two equal. cowork-server's
+   cowork/app_secret.py mirrors the same values. */
+export const STDIN_FLAG = 'COWORK_APP_SECRET_STDIN';
+export const HANDOFF_PROTOCOL = 2;
+export const DEV_PROXY_AUTH_TOKEN_ENV = 'COWORK_DEV_PROXY_AUTH_TOKEN';
+export const DEV_PROXY_WINDOW_PROOF_ENV = 'COWORK_DEV_PROXY_WINDOW_PROOF';
+
+/** Fresh values for one launch, as desktop main makes them: the app secret,
+ *  the bearer token and the window proof, each 32 random bytes in hex. */
+export function newLaunchHandoff() {
+  const hex = () => randomBytes(32).toString('hex');
+  return { appSecret: hex(), authToken: hex(), windowProof: hex() };
+}
+
+/** The one stdin line the server reads at startup. */
+export function launchStdinLine(handoff) {
+  return `${JSON.stringify({
+    app_secret: handoff.appSecret,
+    auth_token: handoff.authToken,
+    window_proof: handoff.windowProof,
+  })}\n`;
+}
 
 // The non-production PostHog project (NON_PROD_POSTHOG_KEY in
 // src/main/analytics-env.ts; a test keeps the two equal). Without these, anton
@@ -117,30 +145,43 @@ function getEnvPath() {
   return parts.join(path.delimiter);
 }
 
+/** Polls /health until the server answers. Resolves 'ready' when it reports
+ *  HANDOFF_PROTOCOL, 'too-old' when it answers without it, and 'down' when
+ *  nothing answers within `timeoutMs`. */
 async function probeHealth(port, timeoutMs) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    const ok = await new Promise((resolve) => {
+    const state = await new Promise((resolve) => {
       const req = http.get(
         { hostname: SERVER_HOST, port, path: '/api/v1/health/', timeout: 1000 },
         (res) => {
-          res.resume();
-          resolve(res.statusCode === 200);
+          if (res.statusCode !== 200) { res.resume(); resolve('down'); return; }
+          let body = '';
+          res.on('data', (chunk) => { body += chunk; });
+          res.on('end', () => {
+            try {
+              resolve(JSON.parse(body)?.app_secret_protocol === HANDOFF_PROTOCOL ? 'ready' : 'too-old');
+            } catch {
+              resolve('too-old');
+            }
+          });
         },
       );
-      req.on('error', () => resolve(false));
-      req.on('timeout', () => { req.destroy(); resolve(false); });
+      req.on('error', () => resolve('down'));
+      req.on('timeout', () => { req.destroy(); resolve('down'); });
     });
-    if (ok) return true;
+    if (state !== 'down') return state;
     await new Promise((r) => setTimeout(r, 250));
   }
-  return false;
+  return 'down';
 }
 
 export const SERVER_PORT = DEFAULT_PORT;
 
+/** Starts the server and resolves with its port and the bearer token and
+ *  window proof it was handed, which dev-web.mjs passes to Vite's /api proxy. */
 export async function start({ readyTimeoutMs = 15000 } = {}) {
-  if (serverStarted) return { port: DEFAULT_PORT };
+  if (serverStarted) return { port: DEFAULT_PORT, authToken: launch.authToken, windowProof: launch.windowProof };
 
   const serverDir = getServerDir();
   if (!fs.existsSync(path.join(serverDir, 'pyproject.toml'))) {
@@ -153,8 +194,11 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
 
   const uvCmd = getUvPath();
 
+  // The bearer token reaches the server on stdin only, as server-process.ts
+  // hands it over, so an inherited COWORK_AUTH_TOKEN stays out of its env.
+  const { COWORK_AUTH_TOKEN: _inheritedToken, ...inheritedEnv } = process.env;
   const env = {
-    ...process.env,
+    ...inheritedEnv,
     ...devAnalyticsEnv(process.env, antonDotenvNames(serverDir)),
     PATH: getEnvPath(),
     PYTHONUNBUFFERED: '1',
@@ -165,7 +209,10 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
     COWORK_SERVER_PORT: String(DEFAULT_PORT),
     COWORK_LISTEN_PORT: String(DEFAULT_PORT),
     COWORK_SERVER_HOST: SERVER_HOST,
+    // The hand-off itself goes over stdin below; only the flag goes here.
+    [STDIN_FLAG]: String(HANDOFF_PROTOCOL),
   };
+  const handoff = newLaunchHandoff();
 
   // detached:true puts the python in its own process group so the
   // terminal's SIGINT (from Ctrl-C) doesn't reach it directly. dev-web.mjs
@@ -175,9 +222,14 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
   const child = spawn(uvCmd, ['run', 'cowork-server'], {
     cwd: serverDir,
     env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
     detached: true,
   });
+  // One line, then EOF, so processes the server starts inherit a closed stdin.
+  child.stdin.on('error', (err) => {
+    console.error(`[cowork-server] could not write the launch hand-off: ${err.message}`);
+  });
+  child.stdin.end(launchStdinLine(handoff));
 
   child.stdout.on('data', (d) => {
     process.stdout.write(`[cowork-server] ${d.toString()}`);
@@ -195,13 +247,16 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
 
   serverProcess = child;
 
-  const ready = await probeHealth(DEFAULT_PORT, readyTimeoutMs);
-  if (!ready) {
-    try { child.kill('SIGTERM'); } catch {}
-    throw new Error(`Server did not respond on /health within ${readyTimeoutMs}ms.`);
+  const health = await probeHealth(DEFAULT_PORT, readyTimeoutMs);
+  if (health !== 'ready') {
+    stop();
+    throw new Error(health === 'too-old'
+      ? `The server on :${DEFAULT_PORT} does not report app_secret_protocol ${HANDOFF_PROTOCOL}, so it never read this launch's bearer token. Update ${serverDir} to a cowork-server that reads the launch hand-off.`
+      : `Server did not respond on /health within ${readyTimeoutMs}ms.`);
   }
+  launch = handoff;
   serverStarted = true;
-  return { port: DEFAULT_PORT };
+  return { port: DEFAULT_PORT, authToken: handoff.authToken, windowProof: handoff.windowProof };
 }
 
 export function stop() {
@@ -214,6 +269,7 @@ export function stop() {
     try { serverProcess.kill('SIGTERM'); } catch {}
     serverProcess = null;
     serverStarted = false;
+    launch = null;
   }
 }
 
