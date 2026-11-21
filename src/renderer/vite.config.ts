@@ -188,6 +188,12 @@ export default defineConfig(({ mode }) => ({
       '/api': {
         target: `http://127.0.0.1:${SERVER_PORT}`,
         changeOrigin: true,
+        // cowork-server answers a path without its trailing slash, such as
+        // POST /api/v1/responses, with a 307 to an absolute URL on its own
+        // port. Rewritten back to Vite's host, the browser follows it through
+        // this proxy, which adds the bearer and the proof, instead of going
+        // straight to the server without them.
+        autoRewrite: true,
         ...(devCredentials
           ? { configure: (proxy) => addDevProxyCredentials(proxy, VITE_PORT, devCredentials) }
           : {}),

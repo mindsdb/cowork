@@ -37,6 +37,12 @@ function close(server: http.Server | undefined): Promise<void> {
 beforeAll(async () => {
   backend = http.createServer((req, res) => {
     received.push(req.headers);
+    if (req.url === '/api/v1/responses') {
+      /* What cowork-server does for a path without its trailing slash: a 307
+         to an absolute URL built from the Host it received. */
+      res.writeHead(307, { location: `http://${req.headers.host}${req.url}/` }).end();
+      return;
+    }
     res.writeHead(200, { 'content-type': 'application/json' }).end('{}');
   });
   backendPort = await listen(backend);
@@ -124,6 +130,24 @@ describe("Vite's /api proxy under dev:web", () => {
 
     expect(headers.authorization).toBeUndefined();
     expect(headers['x-cowork-window-proof']).toBeUndefined();
+  });
+
+  it("points the server's trailing-slash redirect back at Vite, so the follow-up gets both headers too", async () => {
+    const port = await startVite(true);
+
+    const location = await new Promise<string | undefined>((resolve, reject) => {
+      const req = http.request(
+        { host: '127.0.0.1', port, path: '/api/v1/responses', method: 'POST', headers: { host: 'localhost:5173', origin: 'http://localhost:5173' } },
+        (res) => {
+          res.resume();
+          res.on('end', () => resolve(res.headers.location));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+    expect(location).toBe('http://localhost:5173/api/v1/responses/');
   });
 
   it('keeps both values out of what Vite hands the client bundle', async () => {
