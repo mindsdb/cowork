@@ -288,6 +288,16 @@ describe('custom MCP on web', () => {
     expect(await host.customMcpFinish('c'.repeat(43))).toEqual({ ok: false, code: 'unreadable_response', reason: '' });
   });
 
+  it('names an answer it cannot use as unreadable on connect and reconnect', async () => {
+    vi.spyOn(window, 'open').mockImplementation(() => fakePopup() as unknown as Window);
+    answer = () => ({ status: 200, body: { status: 'weird' } });
+    expect(await host.customMcpConnect({ label: 'T', url: URL_ })).toEqual({ ok: false, code: 'unreadable_response', reason: '' });
+    expect(await host.customMcpReconnect(NAME)).toEqual({ ok: false, code: 'unreadable_response', reason: '' });
+
+    answer = () => ({ status: 200, body: { status: 'pending', auth_url: 'https://auth.example.com/a', name: NAME } });
+    expect(await host.customMcpConnect({ label: 'T', url: URL_, confirmedLoginHosts: ['auth.example.com'] })).toEqual({ ok: false, code: 'unreadable_response', reason: '' });
+  });
+
   it('passes the port refusal on with its code', async () => {
     answer = () => ({ status: 400, body: { detail: { error: 'port', detail: 'The URL names a port.' } } });
     expect(await host.customMcpConnect({ label: 'T', url: 'https://mcp.example.com:8443/mcp' })).toEqual({ ok: false, code: 'port', reason: 'The URL names a port.' });

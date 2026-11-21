@@ -1304,7 +1304,7 @@ function connectionPath(id: string): string {
  *  in the pop-up, then the status poll. Closes the pop-up whatever the end. */
 async function customMcpWebSignIn(signIn: CustomMcpSignIn, started: { auth_url?: unknown; state?: unknown }): Promise<CustomMcpWebAnswer> {
   try {
-    if (typeof started.state !== 'string' || !started.state) return { ok: false, code: 'invalid_response', reason: '' };
+    if (typeof started.state !== 'string' || !started.state) return { ok: false, code: 'unreadable_response', reason: '' };
     const opened = openLoginPage(signIn, started.auth_url);
     if (!opened.ok) return opened;
     const query = `/status?state=${encodeURIComponent(started.state)}`;
@@ -1357,7 +1357,7 @@ export async function customMcpConnect(opts: CustomMcpConnectOpts): Promise<Cust
   }
   const name = typeof started.data?.name === 'string' ? started.data.name : '';
   if (status === 'connected') return connectedFrom(started.data, name);
-  if (status !== 'pending' || !signIn) return { ok: false, code: 'invalid_response', reason: '' };
+  if (status !== 'pending' || !signIn) return { ok: false, code: 'unreadable_response', reason: '' };
   const finished = await customMcpWebSignIn(signIn, started.data);
   return finished.ok ? connectedFrom(finished.data, name) : finished;
 }
@@ -1409,7 +1409,7 @@ export async function customMcpReconnect(id: string, confirmedLoginHosts?: strin
     return { ok: false, code: 'confirm_login_hosts', loginHosts };
   }
   if (status === 'connected') return { ok: true };
-  if (status !== 'pending' || !signIn) return { ok: false, code: 'invalid_response', reason: '' };
+  if (status !== 'pending' || !signIn) return { ok: false, code: 'unreadable_response', reason: '' };
   const finished = await customMcpWebSignIn(signIn, started.data);
   return finished.ok ? { ok: true } : finished;
 }
