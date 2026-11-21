@@ -59,12 +59,51 @@ describe('ScheduleTaskModal — what, then when', () => {
     expect(options).toEqual({ runOnce: false });
   });
 
-  it('offers a day of the week only for weekly', async () => {
-    renderModal();
-    expect(screen.queryByRole('combobox', { name: 'Day of the week' })).toBeNull();
+  it('offers days of the week only for weekly, and sends the chosen ones', async () => {
+    const { onSubmit } = renderModal();
+    prompt('weekly report');
+    expect(screen.queryByRole('group', { name: 'Days of the week' })).toBeNull();
     await pick('How often', 'Every week');
-    await pick('Day of the week', 'Monday');
-    expect(screen.getByText(/^Every Monday at/)).toBeInTheDocument();
+    const days = screen.getByRole('group', { name: 'Days of the week' });
+    // Today's weekday starts on; turn every day off, then pick Mon and Thu.
+    for (const button of days.querySelectorAll('button[aria-pressed="true"]')) fireEvent.click(button);
+    fireEvent.click(screen.getByRole('button', { name: /^Schedule$/ }));
+    expect(await screen.findByText(/Pick at least one day of the week/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Thursday' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Monday' }));
+    expect(screen.getByText(/^Every Monday and Thursday at/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Schedule$/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const [payload] = onSubmit.mock.calls[0];
+    expect(payload).toMatchObject({ cadence: 'weekly', recurrence: { days: ['mon', 'thu'] } });
+    expect([1, 4]).toContain(new Date(payload.next_run_at).getUTCDay());
+  });
+
+  it('sends a monthly weekday of the month', async () => {
+    const { onSubmit } = renderModal();
+    prompt('month-end close');
+    await pick('How often', 'Every month');
+    await pick('Which day of the month', 'Last');
+    await pick('Day of the week', 'Friday');
+    expect(screen.getByText(/^Every month on the last Friday at/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Schedule$/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const [payload] = onSubmit.mock.calls[0];
+    expect(payload).toMatchObject({ cadence: 'monthly', recurrence: { week: -1, weekday: 'fri' } });
+    const first = new Date(payload.next_run_at);
+    expect(first.getUTCDay()).toBe(5);
+    expect(first.getUTCDate() + 7).toBeGreaterThan(new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate());
+  });
+
+  it('opens a saved monthly task on its day of the month', async () => {
+    renderModal({
+      task: {
+        id: 's1', title: 'Rent', prompt: 'pay rent', cadence: 'monthly', timezone: 'UTC',
+        nextRunAt: '2030-01-01T09:00:00Z', recurrence: { monthDay: 1 },
+      },
+    });
+    expect(screen.getByText(/^Every month on day 1 at 9:00/)).toBeInTheDocument();
   });
 
   it('refuses a one-off time that has passed', async () => {
