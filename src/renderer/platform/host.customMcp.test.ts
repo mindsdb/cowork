@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../lib/keycloak', () => ({ getAccessToken: vi.fn(async () => 'member-token') }));
 
+import { getAccessToken } from '../lib/keycloak';
 import { host, isWeb } from './host';
 
 type Call = { method: string; path: string; body: unknown; signal: AbortSignal; headers: Record<string, string> };
@@ -188,16 +189,88 @@ describe('custom MCP on web', () => {
       ok: true,
       stale: true,
       staleCode: 'listing_too_large',
+      revision: 4,
       tools: [{ name: 'search', description: 'Find', readOnly: true, allowed: false, usable: true, reason: 'read_only_removed' }],
     });
 
     answer = () => ({ status: 200, body: { tools_revision: 5, tools: [{ name: 'search', allowed: true, usable: true, read_only: true }] } });
-    expect(await host.customMcpSetTools(NAME, ['search'])).toEqual({ ok: true, tools: ['search'] });
+    expect(await host.customMcpSetTools(NAME, ['search'], 4)).toEqual({
+      ok: true,
+      tools: ['search'],
+      saved: [{ name: 'search', description: '', readOnly: true, allowed: true, usable: true, reason: null }],
+      revision: 5,
+    });
     expect(calls[1]).toMatchObject({ method: 'PUT', path: `/connections/${NAME}/tools`, body: { tools: ['search'], tools_revision: 4 } });
 
     answer = () => ({ status: 409, body: { error: 'stale_revision', detail: 'The tool list changed.' } });
-    expect(await host.customMcpSetTools(NAME, [])).toEqual({ ok: false, code: 'stale_revision', reason: 'The tool list changed.' });
+    expect(await host.customMcpSetTools(NAME, [], 5)).toEqual({ ok: false, code: 'stale_revision', reason: 'The tool list changed.' });
     expect(calls[2].body).toMatchObject({ tools_revision: 5 });
+  });
+
+  it('refuses a save with no revision read, without asking the server', async () => {
+    expect(await host.customMcpSetTools(NAME, ['search'])).toEqual({ ok: false, code: 'stale_revision', reason: '' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('reports a server added during the first request even when Cancel was pressed', async () => {
+    const popup = fakePopup();
+    vi.spyOn(window, 'open').mockImplementation(() => popup as unknown as Window);
+    let finishConnect: (value: Answer) => void = () => {};
+    answer = () => 'hang';
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ method: init?.method || 'GET', path: new URL(String(input)).pathname.replace(ROUTES, ''), body: undefined, signal: init?.signal as AbortSignal, headers: {} });
+      return new Promise<Response>((resolve) => {
+        finishConnect = (value) => {
+          if (value !== 'hang') resolve(new Response(JSON.stringify(value.body), { status: value.status }));
+        };
+      });
+    }) as typeof fetch;
+
+    const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
+    await untilSent(1);
+    await host.oauthCancel();
+    finishConnect({ status: 200, body: { status: 'connected', name: NAME, label: 'Tracker', server_url: URL_, tools_on: 1, tools_unavailable: false } });
+
+    expect(await connecting).toEqual({ ok: true, id: NAME, label: 'Tracker', serverUrl: URL_, toolsOn: 1, toolsUnavailable: false });
+  });
+
+  it('opens no login page when Cancel was pressed during the first request', async () => {
+    const popup = fakePopup();
+    vi.spyOn(window, 'open').mockImplementation(() => popup as unknown as Window);
+    let finishConnect: () => void = () => {};
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ method: init?.method || 'GET', path: new URL(String(input)).pathname.replace(ROUTES, ''), body: undefined, signal: init?.signal as AbortSignal, headers: {} });
+      return new Promise<Response>((resolve) => {
+        finishConnect = () => resolve(new Response(JSON.stringify({ status: 'pending', auth_url: 'https://auth.example.com/a', state: 'st', name: NAME }), { status: 200 }));
+      });
+    }) as typeof fetch;
+
+    const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
+    await untilSent(1);
+    await host.oauthCancel();
+    finishConnect();
+
+    expect(await connecting).toMatchObject({ ok: false, code: 'login_failed' });
+    expect(popup.location.href).toBe('');
+    expect(calls.map((call) => call.path)).toEqual(['/connect']);
+  });
+
+  it('ends at the deadline when the token refresh never settles', async () => {
+    vi.useFakeTimers();
+    vi.mocked(getAccessToken).mockImplementationOnce(() => new Promise(() => {}));
+
+    const listing = host.customMcpTools(NAME);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(await listing).toMatchObject({ ok: false, code: 'timeout' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does not read a success whose body cannot be read as an empty answer', async () => {
+    globalThis.fetch = vi.fn(async () => new Response('{"tools_revision": 3, "tools": [', { status: 200 })) as typeof fetch;
+
+    expect(await host.customMcpTools(NAME)).toMatchObject({ ok: false, code: 'invalid_response' });
+    expect(await host.customMcpFinish('c'.repeat(43))).toMatchObject({ ok: false, code: 'invalid_response' });
   });
 
   it('passes the port refusal on with its code', async () => {

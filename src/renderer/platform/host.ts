@@ -42,7 +42,6 @@ import {
   openLoginPage,
   pollCustomMcpSignIn,
   toolsFrom,
-  unlessCancelled,
   type CustomMcpSignIn,
   type CustomMcpWebAnswer,
 } from '../cowork/lib/customMcpWebConnect';
@@ -1227,16 +1226,32 @@ export interface CustomMcpTool {
   reason?: string | null;
 }
 export type CustomMcpSummaryResult = { ok: true; label: string; serverUrl: string } | CustomMcpFailure;
-export type CustomMcpToolsResult = { ok: true; tools: CustomMcpTool[]; stale?: boolean; staleCode?: string } | CustomMcpFailure;
-export type CustomMcpSetToolsResult = { ok: true; tools: string[] } | CustomMcpFailure;
+// `revision` (web only) names the list these tools came from; a switch save sends it back.
+export type CustomMcpToolsResult =
+  | { ok: true; tools: CustomMcpTool[]; stale?: boolean; staleCode?: string; revision?: number }
+  | CustomMcpFailure;
+// `saved` and `revision` (web only) are the list as the server stored it.
+export type CustomMcpSetToolsResult = { ok: true; tools: string[]; saved?: CustomMcpTool[]; revision?: number } | CustomMcpFailure;
 export type CustomMcpReconnectResult = { ok: true } | CustomMcpHostsToConfirm | CustomMcpFailure;
 export type CustomMcpDisconnectResult = { ok: true; revoked: boolean } | CustomMcpFailure;
 export type CustomMcpFinishResult = { ok: true; name: string } | CustomMcpFailure;
 
 const CUSTOM_MCP_UNAVAILABLE: CustomMcpFailure = { ok: false, code: 'unavailable', reason: 'Custom MCP servers need the desktop app.' };
 const CUSTOM_MCP_ROUTES = '/api/v1/connectors/custom-mcp';
-// A switch save sends back the revision of the list it changed; auth refuses a stale one.
-const customMcpRevisions = new Map<string, number>();
+
+/** Settles as `promise` does, or rejects once `signal` aborts, so a wait that
+ *  never settles still ends at the request's deadline. */
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new DOMException('aborted', 'AbortError'));
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
 
 /** One request to cowork-server's custom MCP routes with the member's token.
  *  Bounded by its own timer and given no other abort signal, so Cancel never
@@ -1248,7 +1263,8 @@ async function customMcpRequest(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const token = await getAccessToken();
+    // A Keycloak refresh can hang; the request's deadline covers it too.
+    const token = await untilAborted(getAccessToken(), controller.signal);
     if (token) {
       const { expectedOrganizationHeaders } = await import('../cowork/lib/organizationRequestBoundary');
       headers.Authorization = `Bearer ${token}`;
@@ -1264,7 +1280,12 @@ async function customMcpRequest(
     if (handleOrganizationBoundaryResponse(res)) return { ok: false, code: 'organization_changed', reason: '' };
     let data: unknown = null;
     if (res.status !== 204) {
-      try { data = await res.json(); } catch { data = null; }
+      try {
+        data = await res.json();
+      } catch (err) {
+        // A success is only as good as its body; a refusal still has its status.
+        if (res.ok) return { ok: false, code: controller.signal.aborted ? 'timeout' : 'invalid_response', reason: (err as Error)?.message || '' };
+      }
     }
     return res.ok ? { ok: true, data } : customMcpFailure(res.status, data);
   } catch (err) {
@@ -1310,14 +1331,16 @@ export async function customMcpConnect(opts: CustomMcpConnectOpts): Promise<Cust
   if (isElectron && typeof bridge.customMcpConnect === 'function') return bridge.customMcpConnect(opts);
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
   // Continue is the call that can open a login page: the pop-up opens here, inside the click.
+  // Cancel does not end this request: a server needing no login may be added by it,
+  // and that is reported. A Cancel pressed meanwhile stops before the login page.
   const signIn = opts.confirmedLoginHosts ? beginCustomMcpSignIn() : null;
-  const started = await unlessCancelled(signIn, customMcpRequest('POST', '/connect', CUSTOM_MCP_LISTING_TIMEOUT_MS, {
+  const started = await customMcpRequest('POST', '/connect', CUSTOM_MCP_LISTING_TIMEOUT_MS, {
     label: opts.label,
     server_url: opts.url,
     ...(opts.clientId ? { client_id: opts.clientId } : {}),
     ...(opts.clientSecret ? { client_secret: opts.clientSecret } : {}),
     ...(opts.confirmedLoginHosts ? { confirmed_login_hosts: opts.confirmedLoginHosts } : {}),
-  }));
+  });
   if (!started.ok || started.data?.status !== 'pending' || !signIn) endCustomMcpSignIn(signIn);
   if (!started.ok) return started;
   const status = started.data?.status;
@@ -1344,20 +1367,24 @@ export async function customMcpTools(id: string): Promise<CustomMcpToolsResult> 
   const answer = await customMcpRequest('GET', `${connectionPath(id)}/tools`, CUSTOM_MCP_LISTING_TIMEOUT_MS);
   if (!answer.ok) return answer;
   const { revision, ...result } = toolsFrom(answer.data);
-  if (revision !== null) customMcpRevisions.set(id, revision);
-  return result;
+  return revision === null ? result : { ...result, revision };
 }
 
-export async function customMcpSetTools(id: string, tools: string[]): Promise<CustomMcpSetToolsResult> {
+/** Saves which tools are on. On the web, `revision` is the one read with the
+ *  list on screen; auth refuses it as `stale_revision` once the list changed. */
+export async function customMcpSetTools(id: string, tools: string[], revision?: number): Promise<CustomMcpSetToolsResult> {
   if (isElectron && typeof bridge.customMcpSetTools === 'function') return bridge.customMcpSetTools({ id, tools });
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
-  const revision = customMcpRevisions.get(id);
   if (revision === undefined) return { ok: false, code: 'stale_revision', reason: '' };
   const answer = await customMcpRequest('PUT', `${connectionPath(id)}/tools`, CUSTOM_MCP_REQUEST_TIMEOUT_MS, { tools, tools_revision: revision });
   if (!answer.ok) return answer;
   const saved = toolsFrom(answer.data);
-  if (saved.revision !== null) customMcpRevisions.set(id, saved.revision);
-  return { ok: true, tools: saved.tools.filter((tool) => tool.allowed).map((tool) => tool.name) };
+  return {
+    ok: true,
+    tools: saved.tools.filter((tool) => tool.allowed).map((tool) => tool.name),
+    saved: saved.tools,
+    ...(saved.revision === null ? {} : { revision: saved.revision }),
+  };
 }
 
 export async function customMcpReconnect(id: string, confirmedLoginHosts?: string[]): Promise<CustomMcpReconnectResult> {
@@ -1365,9 +1392,10 @@ export async function customMcpReconnect(id: string, confirmedLoginHosts?: strin
     return bridge.customMcpReconnect({ id, ...(confirmedLoginHosts ? { confirmedLoginHosts } : {}) });
   }
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
+  // As in connect, Cancel stops before the login page, never this request.
   const signIn = confirmedLoginHosts ? beginCustomMcpSignIn() : null;
-  const started = await unlessCancelled(signIn, customMcpRequest('POST', `${connectionPath(id)}/reconnect`, CUSTOM_MCP_RELAY_TIMEOUT_MS,
-    confirmedLoginHosts ? { confirmed_login_hosts: confirmedLoginHosts } : {}));
+  const started = await customMcpRequest('POST', `${connectionPath(id)}/reconnect`, CUSTOM_MCP_RELAY_TIMEOUT_MS,
+    confirmedLoginHosts ? { confirmed_login_hosts: confirmedLoginHosts } : {});
   if (!started.ok || started.data?.status !== 'pending' || !signIn) endCustomMcpSignIn(signIn);
   if (!started.ok) return started;
   const status = started.data?.status;
@@ -1386,7 +1414,6 @@ export async function customMcpDisconnect(id: string): Promise<CustomMcpDisconne
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
   const answer = await customMcpRequest('DELETE', connectionPath(id), CUSTOM_MCP_REQUEST_TIMEOUT_MS);
   if (!answer.ok) return answer;
-  customMcpRevisions.delete(id);
   // auth revokes at the server when it can and deletes the row either way; it does not say which.
   return { ok: true, revoked: false };
 }

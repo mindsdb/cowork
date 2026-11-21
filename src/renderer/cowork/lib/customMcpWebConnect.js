@@ -83,8 +83,8 @@ export function httpsLoginUrl(raw) {
 }
 
 /**
- * Sends the pop-up to the login page. Anything but https closes the pop-up and
- * opens nothing. A blocked or vanished pop-up is refused: any other window
+ * Sends the pop-up to the login page, unless the sign-in was cancelled. Anything
+ * but https closes the pop-up and opens nothing. A blocked or vanished pop-up is refused: any other window
  * opened now, outside the click, would be blocked too.
  *
  * @param {{popup: Window | null}} signIn
@@ -92,6 +92,7 @@ export function httpsLoginUrl(raw) {
  * @returns {{ok: true} | {ok: false, code: string, reason: string}}
  */
 export function openLoginPage(signIn, authUrl) {
+  if (signIn.cancelled) return CANCELLED;
   const url = httpsLoginUrl(authUrl);
   if (!url) {
     endCustomMcpSignIn(signIn);
@@ -117,7 +118,7 @@ export function openLoginPage(signIn, authUrl) {
  * @param {Promise<T>} request
  * @returns {Promise<T | typeof CANCELLED>}
  */
-export function unlessCancelled(signIn, request) {
+function unlessCancelled(signIn, request) {
   return signIn ? Promise.race([request, signIn.whenCancelled]) : request;
 }
 

@@ -59,6 +59,8 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
   // showing the old switch. While one saves, reloads wait and run once it's saved.
   const savingRef = useRef(false);
   const reloadDueRef = useRef(false);
+  // The revision of the list on screen, so a save never pairs it with another read's.
+  const revisionRef = useRef(undefined);
 
   async function load() {
     if (savingRef.current) {
@@ -79,6 +81,7 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     await summaryShown;
     if (!toolsResult || !current()) return;
     loadingRef.current = false;
+    revisionRef.current = toolsResult.ok ? toolsResult.revision : undefined;
     if (toolsResult.ok) {
       setTools(toolsResult.tools);
       if (toolsResult.stale) setStaleCode(toolsResult.staleCode || 'failed');
@@ -111,7 +114,7 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     setSaving(true);
     setSwitchError(null);
     // A save that throws is a refused switch; nothing waiting on it throws either.
-    const saved = host.customMcpSetTools(connection.name, next.filter((tool) => tool.allowed).map((tool) => tool.name))
+    const saved = host.customMcpSetTools(connection.name, next.filter((tool) => tool.allowed).map((tool) => tool.name), revisionRef.current)
       .catch(() => ({ ok: false, code: 'failed', reason: 'the app did not answer' }));
     pendingSaves.set(connection.name, saved);
     const result = await saved;
@@ -119,7 +122,11 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
     if (!liveRef.current) return;
     savingRef.current = false;
     setSaving(false);
-    if (!result.ok) {
+    if (result.ok) {
+      if (result.revision !== undefined) revisionRef.current = result.revision;
+      // The server clears a reason a switch settled, such as a changed definition.
+      if (result.saved) setTools(result.saved);
+    } else {
       setTools(previous);
       setSwitchError(connectErrorMessage(t, result));
       // Every later switch would be refused the same way until the list is read again.

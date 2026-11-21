@@ -53,7 +53,7 @@ describe('CustomMcpDetailSection', () => {
 
     await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
 
-    expect(bridge.customMcpSetTools).toHaveBeenCalledWith(CONNECTION.name, ['search', 'delete_issue']);
+    expect(bridge.customMcpSetTools).toHaveBeenCalledWith(CONNECTION.name, ['search', 'delete_issue'], undefined);
     expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true');
   });
 
@@ -106,7 +106,7 @@ describe('CustomMcpDetailSection', () => {
     expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
 
     await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
-    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search', 'delete_issue']);
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search', 'delete_issue'], undefined);
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true'));
   });
 
@@ -121,6 +121,40 @@ describe('CustomMcpDetailSection', () => {
 
     expect(await screen.findByText("The server couldn't be reached. Try again later.")).toBeTruthy();
     expect(screen.queryByText("The tool list changed. It's been reloaded; try the switch again.")).toBeNull();
+  });
+
+  it('saves with the revision of the list on screen, not a closed panel\'s later read', async () => {
+    let finishOldRead;
+    bridge.customMcpTools
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOldRead = resolve; }))
+      .mockResolvedValueOnce({ ok: true, tools: TOOLS, revision: 7 });
+    bridge.customMcpSetTools.mockResolvedValue({ ok: true, tools: ['search', 'delete_issue'], revision: 8 });
+    const first = render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={vi.fn()} confirm={vi.fn()} />);
+    await waitFor(() => expect(bridge.customMcpTools).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={vi.fn()} confirm={vi.fn()} />);
+    const toolSwitch = await screen.findByRole('switch', { name: 'Let Anton use delete_issue' });
+    finishOldRead({ ok: true, tools: TOOLS.map((tool) => ({ ...tool, allowed: true })), revision: 9 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await userEvent.click(toolSwitch);
+
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search', 'delete_issue'], 7);
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use search' }));
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['delete_issue'], 8);
+  });
+
+  it('shows the list as saved, so a switched-on tool loses its old note', async () => {
+    const changed = { name: 'changed', description: '', readOnly: true, allowed: false, usable: true, reason: 'definition_changed' };
+    bridge.customMcpTools.mockResolvedValue({ ok: true, tools: [changed], revision: 3 });
+    bridge.customMcpSetTools.mockResolvedValue({ ok: true, tools: ['changed'], saved: [{ ...changed, allowed: true, reason: null }], revision: 4 });
+    renderSection();
+
+    const note = await screen.findByText(/description or inputs/);
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use changed' }));
+
+    await waitFor(() => expect(note.isConnected).toBe(false));
+    expect(screen.getByRole('switch', { name: 'Let Anton use changed' }).getAttribute('aria-checked')).toBe('true');
   });
 
   it('says so when the server cannot list its tools', async () => {
@@ -140,7 +174,7 @@ describe('CustomMcpDetailSection', () => {
     expect(screen.queryByText("This server's tool list is too large to read.")).toBeNull();
     await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
 
-    expect(bridge.customMcpSetTools).toHaveBeenCalledWith(CONNECTION.name, ['search', 'delete_issue']);
+    expect(bridge.customMcpSetTools).toHaveBeenCalledWith(CONNECTION.name, ['search', 'delete_issue'], undefined);
   });
 
   it('says the tool list is too large to read', async () => {
@@ -220,7 +254,7 @@ describe('CustomMcpDetailSection', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Reconnect' }));
     await screen.findByText('Reconnected. Your tool choices are kept.');
     await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
-    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search']);
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search'], undefined);
     // The reload read the switches before the user's change.
     finishReload({ ok: true, tools: both });
 
@@ -228,7 +262,7 @@ describe('CustomMcpDetailSection', () => {
     expect(await screen.findByRole('switch', { name: 'Let Anton use new_tool' })).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
     await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use search' }));
-    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, []);
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, [], undefined);
   });
 
   it('holds a reload that starts while a switch is saving until it is saved', async () => {
@@ -253,7 +287,7 @@ describe('CustomMcpDetailSection', () => {
     await waitFor(() => expect(bridge.customMcpTools).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true'));
     await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use search' }));
-    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['delete_issue']);
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['delete_issue'], undefined);
   });
 
   it('a panel opened again while a switch still saves reads after the switch lands', async () => {
