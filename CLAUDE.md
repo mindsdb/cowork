@@ -43,6 +43,8 @@ npm run dev:web
 npm run build:web   # → dist/renderer-web/
 ```
 
+`dev:web` hands the server its launch values the way desktop main does (`scripts/start-server.mjs`, which only `scripts/dev-web.mjs` uses), and Vite's `/api` proxy adds the bearer token and the window proof to requests from Vite's own pages (`src/renderer/dev-api-proxy.ts`). The sibling cowork-server checkout must report `app_secret_protocol: 2` at `/api/v1/health/`, or `dev:web` stops with an error naming it.
+
 ### Type checking
 
 ```sh
@@ -105,14 +107,13 @@ uv run cowork-server
 
 FastAPI runs loopback-only at `127.0.0.1:26866`. CORS defaults to localhost origins only; override with `COWORK_ALLOWED_ORIGINS='["*"]'` for cloud/VPC deployments or an ingress-controlled environment.
 
-**Bearer-token authentication** — on by default in local/desktop tenancy. Off by default in org mode, where `COWORK_REQUIRE_AUTH=true` isn't supported at all — the token would be mirrored into shared storage every org can read; org's own ingress is the auth boundary there. To pin a fixed token or opt out in local mode, set in `~/.cowork/.env`:
+**Bearer-token authentication** is always on for a server the desktop app launches, which holds the launch hand-off below. For a server started any other way, `COWORK_REQUIRE_AUTH` decides: on by default in local tenancy, and not supported at all in org mode, where org's own ingress is the auth boundary.
 
-```
-COWORK_REQUIRE_AUTH=false        # opt out (not recommended)
-COWORK_AUTH_TOKEN=<your-token>   # omit to auto-generate on first startup
-```
+**The launch hand-off.** Desktop main makes three values fresh for every server launch: the app secret (`src/main/app-secret.ts`), the bearer token and the window proof (`src/main/server-auth.ts`). It sets `COWORK_APP_SECRET_STDIN=2` in the server's spawn environment and writes the three values as one JSON line to the server's stdin (`launchStdinLine` in `src/shared/server-launch.ts`, which holds the flag, the protocol number and the header name that cowork-server's `cowork/app_secret.py` mirrors). It keeps them in memory only: nothing writes them to disk or into any process environment, and cowork-server takes its token from the hand-off alone and removes any `COWORK_AUTH_TOKEN` line from `~/.cowork/.env`, so a token set there has no effect. A restart makes fresh values. The app treats a server whose `/api/v1/health/` lacks `app_secret_protocol: 2` as incompatible, as it treats one without the `coding` capability.
 
-When `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. It leaves the token off requests from the document preview frame, from frames inside it, and requests with no frame (`src/main/document-preview-guard.ts`). The `/api/v1/health/` endpoint is always exempt.
+The session's one `onBeforeSendHeaders` listener (`src/main/server-token-listener.ts`, registered in `app.ts`) adds `Authorization: Bearer <token>` to the renderer's loopback requests. It leaves the token off requests from the document preview frame, from frames inside it, and requests with no frame (`src/main/document-preview-guard.ts`). It adds `X-Cowork-Window-Proof` only to a fetch or XMLHttpRequest (Electron's `xhr` resource type) from the main window's own top-level frame, and removes that header from every other request to the local server. Desktop main's own requests spread `authHeader()`, which carries both headers. The `/api/v1/health/` endpoint is always exempt. `settings:read` never returns a `COWORK_AUTH_TOKEN` line.
+
+The embedded Claude Code terminal and the git calls in a task's repository run with this app's environment minus `CLAUDE_CODE_*`, `CLAUDECODE`, `ANTHROPIC_*`, `COWORK_*`, `MINDSHUB_*` and `OPENAI_*` (`src/main/agent-env.ts`).
 
 #### Install source & channel
 

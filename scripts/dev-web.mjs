@@ -8,7 +8,14 @@
 // Stdlib + ./start-server.mjs only. No `concurrently`, no new deps.
 
 import { spawn } from 'node:child_process';
-import { start, stop, onUnexpectedExit, SERVER_PORT } from './start-server.mjs';
+import {
+  start,
+  stop,
+  onUnexpectedExit,
+  SERVER_PORT,
+  DEV_PROXY_AUTH_TOKEN_ENV,
+  DEV_PROXY_WINDOW_PROOF_ENV,
+} from './start-server.mjs';
 
 const READY_TIMEOUT_MS = 15000;
 
@@ -23,8 +30,9 @@ async function main() {
   // per two probes keeps the output calm.
   const heartbeat = setInterval(() => process.stdout.write('.'), 500);
 
+  let launch;
   try {
-    await start({ readyTimeoutMs: READY_TIMEOUT_MS });
+    launch = await start({ readyTimeoutMs: READY_TIMEOUT_MS });
   } catch (err) {
     clearInterval(heartbeat);
     process.stdout.write('\n');
@@ -49,12 +57,22 @@ async function main() {
   // BUILD_TARGET=web activates the cowork-web-root-rewrite middleware
   // in vite.config.ts which maps `/` to `/index-web.html` — so the
   // bare URL is the canonical one.
+  //
+  // There is no desktop main here to add the server's bearer token and window
+  // proof, so Vite's /api proxy adds them to requests from its own pages
+  // (src/renderer/dev-api-proxy.ts). They reach Vite under names without the
+  // VITE_ prefix, so Vite never copies them into the client bundle.
   viteChild = spawn(
     'npx',
     ['vite', 'dev', 'src/renderer', '--open', '/'],
     {
       stdio: 'inherit',
-      env: { ...process.env, BUILD_TARGET: 'web' },
+      env: {
+        ...process.env,
+        BUILD_TARGET: 'web',
+        [DEV_PROXY_AUTH_TOKEN_ENV]: launch.authToken,
+        [DEV_PROXY_WINDOW_PROOF_ENV]: launch.windowProof,
+      },
     },
   );
 

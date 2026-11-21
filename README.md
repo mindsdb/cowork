@@ -253,13 +253,16 @@ Web development defaults to MindsHub UI off. In this build, Settings hides LLM P
 
 This boots both processes:
 
-1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory).
-2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`.
+1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory). `scripts/start-server.mjs` hands it a fresh bearer token, window proof and app secret on stdin, as desktop main does (see [Loopback authentication](#loopback-authentication)), and stops with an error if the checkout does not report `app_secret_protocol: 2`.
+2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`. `scripts/dev-web.mjs` passes it the bearer token and the window proof in `COWORK_DEV_PROXY_AUTH_TOKEN` and `COWORK_DEV_PROXY_WINDOW_PROOF`. Neither name starts with `VITE_`, so Vite never copies the values into the client bundle.
 
 The dev server opens at `http://localhost:5173/` (a small Vite
 middleware rewrites `/` → `/index-web.html` so the bare URL is
 canonical). API calls hit the FastAPI sidecar via Vite's
-`/api` proxy. Press `Ctrl-C` once for a clean
+`/api` proxy, which adds the bearer token and the window proof to a request
+whose `Origin` (or, without one, whose `Host` and `Referer`) is Vite's own
+page, and removes a window proof from any other request
+(`src/renderer/dev-api-proxy.ts`). Press `Ctrl-C` once for a clean
 shutdown — vite quiesces first, then the python child.
 
 ### Build a production bundle
@@ -408,6 +411,16 @@ assets/
 - **Minds integration**: The GUI replicates the `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), and writes non-credential config to `~/.cowork/.env`. The MindsHub credential itself is never written there; see [MindsHub credentials](#mindshub-credentials).
 
 - **OTA updates**: The React UI and the Python backend update over-the-air (coupled, auto-applied at boot) without a new installer; the Electron shell auto-updates on stable/prod via `electron-updater`, installing on relaunch. See [Over-the-Air Updates](#over-the-air-updates).
+
+### Loopback authentication
+
+Desktop main makes three values fresh for every launch of the sidecar, each 32 random bytes in hex: the bearer token, the window proof and the app secret. It sets `COWORK_APP_SECRET_STDIN=2` in the sidecar's environment and writes the three as one JSON line to its stdin, `{"app_secret": …, "auth_token": …, "window_proof": …}`, then closes stdin. The values live only in desktop main's memory (`src/main/server-auth.ts`, `src/main/app-secret.ts`) and in the sidecar's: nothing writes them to disk or into a process environment, which the agent's code would inherit. cowork-server takes its bearer token from this line alone and removes any `COWORK_AUTH_TOKEN` line from `~/.cowork/.env`. A sidecar whose `/api/v1/health/` does not report `app_secret_protocol: 2` is incompatible, and the start fails, with no legacy fallback. A sidecar that refuses the hand-off exits with one line, `cowork-server: <problem>`, which the start error in the backend help panel repeats. A sidecar left running by an earlier app process is replaced, never adopted, since this process never handed it its token. `src/shared/server-launch.ts` holds the flag, the protocol number and the header name, which cowork-server's `cowork/app_secret.py` mirrors.
+
+- **Bearer token**: the session's one `onBeforeSendHeaders` listener (`src/main/server-token-listener.ts`) adds it to every renderer request to the sidecar, except from the document preview frame, a frame inside it, or a request with no frame.
+- **Window proof** (`X-Cowork-Window-Proof`): the same listener adds it only to a fetch or XMLHttpRequest from the main window's own top-level frame, and removes it from every other request to the sidecar. A frame inside the window, an image, a navigation, a download, another window and a request with no frame go without it. Desktop main's own requests carry both values through `authHeader()`.
+- **App secret** (`X-Cowork-App-Secret`): only desktop main's requests on the routes that hold MCP access tokens carry it, once the sidecar has proved over `/health` that it holds the secret.
+
+The Claude Code terminal and the git calls in a task's repository run with this app's environment minus `CLAUDE_CODE_*`, `CLAUDECODE`, `ANTHROPIC_*`, `COWORK_*`, `MINDSHUB_*` and `OPENAI_*` (`src/main/agent-env.ts`).
 
 ---
 

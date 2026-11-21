@@ -70,6 +70,32 @@ describe('coding-workspace', () => {
       expect(execFileMock).not.toHaveBeenCalled();
     });
 
+    it("runs git, and so the repository's hooks, without this app's server or provider settings", async () => {
+      process.env.COWORK_AUTH_TOKEN = 'ab'.repeat(32);
+      process.env.MINDSHUB_API_KEY = 'mdb_should_not_leak';
+      process.env.OPENAI_API_KEY = 'sk-should-not-leak';
+      try {
+        const { ensureTaskWorktree } = await import('./coding-workspace');
+        failOnce();
+
+        await ensureTaskWorktree('/proj', 'task-env');
+
+        expect(execFileMock).toHaveBeenCalled();
+        for (const [, , opts] of execFileMock.mock.calls as [string, string[], { cwd: string; env: NodeJS.ProcessEnv }][]) {
+          expect(opts.cwd).toBe('/proj');
+          expect(opts.env).toBeDefined();
+          expect(opts.env).not.toHaveProperty('COWORK_AUTH_TOKEN');
+          expect(opts.env).not.toHaveProperty('MINDSHUB_API_KEY');
+          expect(opts.env).not.toHaveProperty('OPENAI_API_KEY');
+          expect(opts.env.PATH).toBe(process.env.PATH);
+        }
+      } finally {
+        delete process.env.COWORK_AUTH_TOKEN;
+        delete process.env.MINDSHUB_API_KEY;
+        delete process.env.OPENAI_API_KEY;
+      }
+    });
+
     it('bootstraps a fresh git repo (init, .gitignore, initial commit) before creating the worktree', async () => {
       const { ensureTaskWorktree } = await import('./coding-workspace');
       // First git call (`rev-parse --is-inside-work-tree`) fails: not a repo yet.

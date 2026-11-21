@@ -85,7 +85,7 @@ import { loadDesktopBrandImages, loadOrgIconDataUris } from './org-branding';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
-import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
+import { getServerAuthToken, getWindowProof, authHeader, envForRenderer } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
@@ -479,6 +479,10 @@ function createWindow() {
   // anything, so no frame is created unseen.
   const previewGuard = guardDocumentPreviewFrames(mainWindow.webContents);
 
+  // The window the listener below gives the window proof to. Captured here, so
+  // a listener registered for this window never proves a later one's requests.
+  const proofWindow = mainWindow;
+
   // Inject the server's bearer token into every request the renderer makes to
   // the loopback API — including browser-initiated loads (images, iframes and
   // their relative sub-resources, downloads) that can't carry an Authorization
@@ -486,17 +490,21 @@ function createWindow() {
   // redirect (Chromium strips the header on those; this re-adds it on the
   // redirected request). Done at the network layer so it's uniform and the
   // token never reaches the renderer. Scoped to our loopback server's origin
-  // so it can't leak elsewhere. No-op when the server runs without auth.
+  // so it can't leak elsewhere. The window proof goes only on this window's
+  // own top-level fetches, the same way.
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
     // The document preview frame, any frame inside it and a request with no
     // frame get no token (server-token-listener.ts, document-preview-guard.ts).
-    // The Minds gate holds response-creation requests until the resumed
+    // Only a fetch from this window's top-level frame gets the proof. The
+    // Minds gate holds response-creation requests until the resumed
     // credential is ready, and cancels them when it never is.
     serverTokenListener({
       guard: previewGuard,
       serverPort: getServerPort,
       token: getServerAuthToken,
+      windowProof: getWindowProof,
+      mainWindow: () => (proofWindow.isDestroyed() ? null : proofWindow.webContents),
       viteDevPort,
       gate: (details, settle) => gateMindsResponseCreationRequest(
         details,
@@ -1470,8 +1478,7 @@ function setupIPC() {
     // The stores are process environment, so the sidecar must restart to read
     // the root it now owns. Through the same helper as the decline branch:
     // adopting moves this account's dotenv from its own subtree to the shared
-    // home, and the cached bearer token has to be dropped with it or every
-    // request from the reloaded renderer carries one the new sidecar refuses.
+    // home, and the restarted sidecar is a new launch with its own bearer token.
     await ensureSidecarOnCurrentAccountRoot();
     return { ok: true, keptExisting: true };
   });
@@ -1485,16 +1492,14 @@ function setupIPC() {
   ipcMain.handle(IPC.SETTINGS_READ, async () => {
     // No account gate: readEnvFile now resolves to the signed-in account's own
     // dotenv, so there is nothing here belonging to anyone else. Redacting would
-    // strip this account's own keys from its own file.
-    return readEnvFile();
+    // strip this account's own keys from its own file. The one exception is a
+    // COWORK_AUTH_TOKEN line, which is the server's and never the renderer's.
+    return envForRenderer(readEnvFile());
   });
 
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
     diagnostic("main.app", "INFO", "server_restart_requested", '[server] restart requested');
     await stopServer();
-    // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
-    // the cache so the webRequest hook re-reads it on the next request.
-    resetServerAuthTokenCache();
     const result = await startServer({});
     if (result.ok) {
       diagnostic("main.app", "INFO", "server_restarted_on_http_127_0_0_1", `[server] restarted on http://127.0.0.1:${result.port}`);

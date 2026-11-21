@@ -26,6 +26,8 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { sanitizedParentEnv } from './agent-env';
+
 export const MINDSHUB_DIRNAME = '.claude-mindshub';
 const TASKS_SUBDIR = 'tasks';
 
@@ -43,9 +45,11 @@ function platformConfigArgs(): string[] {
   return process.platform === 'win32' ? ['-c', 'core.longpaths=true'] : [];
 }
 
+// The repository's hooks run with this environment, and the agent can write
+// them, so it is the scrubbed one (agent-env.ts).
 function git(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile('git', [...platformConfigArgs(), ...args], { cwd }, (err, stdout, stderr) => {
+    execFile('git', [...platformConfigArgs(), ...args], { cwd, env: sanitizedParentEnv() }, (err, stdout, stderr) => {
       if (err) reject(Object.assign(err, { stdout, stderr }));
       else resolve({ stdout, stderr });
     });
