@@ -15,8 +15,7 @@ const PROJECTS = [
   { name: 'ops', display_name: 'Ops' },
 ];
 
-// Two runs of one schedule: r1 carries its scheduledId, r2 is only known
-// through the runs index (older records saved before the field existed).
+// Two runs of one schedule, each carrying its scheduledId.
 const TASKS = [
   { id: 't1', title: 'Alpha report', projectName: 'metrics', updatedAt: '2026-09-28T10:00:00Z' },
   { id: 't2', title: 'Beta notes', projectName: 'ops', updatedAt: '2026-09-30T10:00:00Z' },
@@ -152,3 +151,31 @@ describe('TasksView', () => {
     expect(screen.queryByRole('button', { name: /^Sort/ })).not.toBeInTheDocument();
   });
 });
+
+
+// A long list sorts from its header too, in step with the pill (ENG-4455).
+describe('TasksView sort header', () => {
+  const many = (n) => Array.from({ length: n }, (_, i) => ({
+    id: `m${i}`, title: `Task ${String.fromCharCode(97 + (i % 26))}${i}`, projectName: 'metrics',
+    updatedAt: `2026-09-${String(10 + (i % 18)).padStart(2, '0')}T10:00:00Z`,
+  }));
+
+  it('appears past 15 rows and not before', () => {
+    setup({ tasks: many(15), schedules: [] });
+    expect(screen.queryByRole('toolbar', { name: 'Sort the list' })).toBeNull();
+  });
+
+  it('sorts the list by name from its header', async () => {
+    const { user } = setup({ tasks: many(16), schedules: [] });
+    const header = screen.getByRole('toolbar', { name: 'Sort the list' });
+    expect(screen.getByRole('button', { name: 'Sort by Updated' })).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByRole('button', { name: 'Sort by Name' }));
+
+    expect(screen.getByRole('button', { name: 'Sort by Name' })).toHaveAttribute('aria-pressed', 'true');
+    expect(header).toBeInTheDocument();
+    const titles = orderOf(many(16).map((t) => t.title));
+    expect(titles).toEqual([...titles].sort((a, b) => a.localeCompare(b)));
+  });
+});
+

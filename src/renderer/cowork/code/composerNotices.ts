@@ -1,11 +1,13 @@
 import type { CodingEvent, CodingSession } from './api';
 import { isActiveStatus } from './presentation';
 import i18n from '../../lib/i18n';
+import { budgetPeriodOf, budgetScopeOf, type BudgetPeriod, type BudgetScope } from '../lib/budgetScope';
 
 
 export interface FailureRecovery {
-  title: (modelName: string) => string;
-  body: () => string;
+  // `budgetScope` is only read by budget_exceeded, which names whose budget is spent and who can raise it.
+  title: (modelName: string, budgetScope: BudgetScope, budgetPeriod: BudgetPeriod) => string;
+  body: (budgetScope: BudgetScope, budgetModelLabel: string | null) => string;
   addCredits?: boolean;
   // A spent budget: credits do not lift it, so the action opens Budgets instead.
   viewBudgets?: boolean;
@@ -19,7 +21,12 @@ export interface FailureRecovery {
   billingTrigger?: BillingTrigger;
 }
 
-export type BillingTrigger = 'token_limit' | 'included_allowance_exhausted' | 'free_serving_paused';
+export type BillingTrigger =
+  | 'token_limit'
+  | 'included_allowance_exhausted'
+  | 'free_serving_paused'
+  | 'window_allowance_exhausted'
+  | 'model_not_in_tier';
 
 export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
   insufficient_credits: {
@@ -54,10 +61,29 @@ export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
     addCredits: true,
     billingTrigger: 'free_serving_paused',
   },
-  // Org-wide and credits do not lift it, but MindsHub Air may still run free.
+  // A Plus or Pro window is used up and the wallet is empty: the window is
+  // the plan's included allowance, so it reads like the free one running out.
+  window_allowance_exhausted: {
+    title: () => i18n.t('composerNotices.allowanceExhausted.title', { ns: 'code' }),
+    body: () => i18n.t('composerNotices.allowanceExhausted.body', { ns: 'code' }),
+    addCredits: true,
+    billingTrigger: 'window_allowance_exhausted',
+  },
+  // The plan does not cover this model and the wallet is empty: credits pay
+  // for it at API rates, or a model the plan covers runs now.
+  model_not_in_tier: {
+    title: (modelName) => i18n.t('composerNotices.insufficientCredits.title', { ns: 'code', model: modelName }),
+    body: () => i18n.t('composerNotices.insufficientCredits.body', { ns: 'code' }),
+    addCredits: true,
+    billingTrigger: 'model_not_in_tier',
+  },
+  // Credits do not lift it, but MindsHub Air may still run free.
   budget_exceeded: {
-    title: () => i18n.t('composerNotices.budgetExceeded.title', { ns: 'code' }),
-    body: () => i18n.t('composerNotices.budgetExceeded.body', { ns: 'code' }),
+    title: (_modelName, budgetScope, budgetPeriod) =>
+      i18n.t('composerNotices.budgetExceeded.title', { ns: 'code', scope: budgetScope, period: budgetPeriod }),
+    body: (budgetScope, budgetModelLabel) => i18n.t('composerNotices.budgetExceeded.body', {
+      ns: 'code', scope: budgetScope, hasModel: budgetModelLabel ? 'true' : 'other', model: budgetModelLabel || '',
+    }),
     viewBudgets: true,
   },
 };
@@ -87,6 +113,10 @@ export interface TurnFailure {
   code: string;
   recovery: FailureRecovery;
   detail: string;
+  budgetScope: BudgetScope;
+  budgetPeriod: BudgetPeriod;
+  // A per-model budget's alias; null for a budget on every model.
+  budgetModel: string | null;
 }
 
 
@@ -105,7 +135,14 @@ export function accountFailure(
   const code = failure?.data.code;
   const recovery = typeof code === 'string' ? FAILURE_RECOVERY[code] : undefined;
   if (typeof code !== 'string' || !recovery) return null;
-  return { code, recovery, detail: failureDetail(session, failure) };
+  return {
+    code,
+    recovery,
+    detail: failureDetail(session, failure),
+    budgetScope: budgetScopeOf(failure?.data.budget_scope),
+    budgetPeriod: budgetPeriodOf(failure?.data.budget_period),
+    budgetModel: typeof failure?.data.budget_model === 'string' && failure.data.budget_model ? failure.data.budget_model : null,
+  };
 }
 
 
@@ -136,6 +173,10 @@ export interface ComposerNotice {
   /** The remote run stopped but kept its work; Reopen task restores it. */
   reopen?: boolean;
   reopening?: boolean;
+  /** The task reads only until the user lets it change the folder. */
+  allowWrites?: boolean;
+  /** Task controls cannot change while a turn runs. */
+  actionDisabled?: boolean;
   /** Queued follow-ups take the lip's place instead of a line of text. */
   queue?: boolean;
   dismissible?: boolean;
@@ -154,15 +195,20 @@ function sentenceCase(text: string): string {
 }
 
 
-export function failureNotice(failure: TurnFailure | null, modelName: string): ComposerNotice | null {
+export function failureNotice(
+  failure: TurnFailure | null,
+  modelName: string,
+  // Catalog label for a model alias; the alias itself when the catalog has none.
+  labelFor: (id: string) => string = (id) => id,
+): ComposerNotice | null {
   if (!failure) return null;
   const { recovery } = failure;
   return {
     key: `failure:${failure.code}`,
     tone: recovery.temporary ? 'warning' : 'danger',
     icon: recovery.temporary ? 'clock' : 'warning',
-    title: sentenceCase(recovery.title(modelName || i18n.t('composerNotices.thisModel', { ns: 'code' }))),
-    body: recovery.body(),
+    title: sentenceCase(recovery.title(modelName || i18n.t('composerNotices.thisModel', { ns: 'code' }), failure.budgetScope, failure.budgetPeriod)),
+    body: recovery.body(failure.budgetScope, failure.budgetModel ? labelFor(failure.budgetModel) : null),
     detail: failure.detail,
     chooseModel: !recovery.hideModelChoice,
     addCredits: recovery.addCredits,
@@ -214,6 +260,25 @@ export function recoveryNotice(
 
 export function queueNotice(session: CodingSession): ComposerNotice | null {
   return session.queued_instructions?.length ? { key: 'queue', tone: 'neutral', icon: 'clock', title: '', queue: true } : null;
+}
+
+
+/**
+ * A task on a folder with no commit to review or undo against starts with a
+ * read-only sandbox. Full access never had one, and older servers omit the flag.
+ */
+export function writesNotice(session: CodingSession): ComposerNotice | null {
+  if (session.writes_allowed !== false || session.permission_mode === 'full_access') return null;
+  return {
+    key: 'writes-held',
+    tone: 'warning',
+    icon: 'warning',
+    title: '',
+    body: i18n.t('composerNotices.writesHeld.body', { ns: 'code' }),
+    allowWrites: true,
+    actionDisabled: isActiveStatus(session.status),
+    dismissible: true,
+  };
 }
 
 

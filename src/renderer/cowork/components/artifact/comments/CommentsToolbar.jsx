@@ -1,120 +1,31 @@
-// Floating comments toolbar — 1:1 with the published-viewer glass toolbar
-// (Figma 604-1423): a 32px light glass pill floating 34px off the bottom,
-// centered over the artifact.
-//
-//   [ 💬 comment-mode ] [ 🗄 inbox ] │ Hide/Show comment │ [ ✕ ]
-//
-// The viewer top bar only ACTIVATES this chrome; everything else — entering
-// comment-placement mode, opening the inbox panel, hiding markers, leaving —
-// happens here. Built on Base UI's Toolbar (arrow-key navigation, toolbar
-// semantics) + Tooltip; the skin is the reference's fixed light palette so
-// the pill reads identically over any artifact, in either app theme.
+// Comments' Navigate / Comment switch (ENG-4383), Live edit's twin: a pill
+// floating at the bottom centre of the artifact. Navigate leaves the page
+// working, with the pins on it; Comment turns a click on the page into a
+// new comment there (⌥ picks the container). It stays on the artifact, not
+// in the inbox (ENG-4455): it is about the page, and the inbox covers the page
+// on narrow screens. Comments are left with the Comments tab on the panel rail
+// or the inbox's close, so the pill has nothing else.
 
-import { Toolbar } from '@base-ui/react/toolbar';
-import { Tooltip } from '../../ui';
-import { CommentIcon, InboxIcon, XIcon } from './icons';
+import Ico from '../../Icons';
+import { ModeSwitch } from '../ModeSwitch';
 import { useTranslation } from '../../../../lib/i18n';
 
-// Reference shadows (Figma "NewShadow"): outer stack + glass insets.
-const SHADOW_TOOLBAR =
-  '0 0 0 0.5px rgba(0,0,0,0.12),0 2px 2px -1px rgba(0,0,0,0.04),'
-  + '0 4px 4px -2px rgba(0,0,0,0.04),'
-  + 'inset 0 0 0 0.5px rgba(255,255,255,0.24),'
-  + 'inset 0 -0.5px 0 rgba(255,255,255,0.16),'
-  + 'inset 0 0.5px 0 rgba(255,255,255,0.24)';
-
-// Entrance animation — the `cw-act-bar-in` keyframe lives in globals.css
-// alongside every other keyframe in the app. `motion-reduce:!animate-none`
-// (Tailwind's built-in variant) honors reduced-motion; the `!` is required
-// to beat the inline `animation` style.
-
-/**
- * 32px hit-target wrapping a 24px circle — the circle carries the hover /
- * active-press / ON states so the pill keeps its tight visual rhythm
- * (.act-tb-btn / .act-tb-c in the reference).
- */
-function ToolButton({ label, on = false, dim = false, onClick, children }) {
-  return (
-    <Tooltip content={label}>
-      <Toolbar.Button
-        aria-label={label}
-        aria-pressed={on}
-        onClick={onClick}
-        className="group/tb w-[32px] h-[32px] flex items-center justify-center bg-transparent border-0 cursor-pointer p-0"
-      >
-        <span
-          className={[
-            'w-[24px] h-[24px] rounded-full flex items-center justify-center',
-            'transition-[background,color,transform] duration-hover',
-            'group-active/tb:scale-90',
-            on
-              ? 'bg-ink text-surface'
-              : dim
-                ? 'text-ink-3 group-hover/tb:text-ink group-hover/tb:bg-surface-2'
-                : 'text-ink group-hover/tb:bg-surface-2',
-          ].join(' ')}
-        >
-          {children}
-        </span>
-      </Toolbar.Button>
-    </Tooltip>
-  );
-}
-
-const Divider = () => (
-  <Toolbar.Separator className="w-px h-[12px] bg-line shrink-0" />
-);
-
 export function CommentsToolbar({
-  mode,            // comment-placement mode active in the iframe (layer echo)
-  onToggleMode,
-  inboxOpen,
-  onToggleInbox,
-  markersShown,
-  onToggleMarkers,
-  onClose,         // leaves the comments chrome (reopen from the top bar)
+  mode,           // comment-placement mode active in the iframe (layer echo)
+  onChangeMode,   // (on: boolean) => void
 }) {
   const { t } = useTranslation('artifacts');
   return (
-    <Toolbar.Root
-      aria-label={t('comments.toolbar.ariaLabel')}
-      className="absolute left-1/2 bottom-[34px] z-40 h-[32px]
-        flex items-center gap-[2px] px-1 rounded-[46px]
-        motion-reduce:!animate-none"
-      style={{
-        transform: 'translateX(-50%)',
-        background: 'color-mix(in srgb, var(--surface) 92%, transparent)',
-        backdropFilter: 'blur(5.6px)',
-        WebkitBackdropFilter: 'blur(5.6px)',
-        boxShadow: SHADOW_TOOLBAR,
-        fontFamily: 'var(--font-body)',
-        animation: 'cw-act-bar-in var(--dur-layout) var(--ease-out)',
-      }}
-    >
-      <ToolButton
-        label={t('comments.toolbar.comment')}
-        on={mode}
-        onClick={onToggleMode}
-      >
-        <CommentIcon />
-      </ToolButton>
-      <ToolButton label={t('comments.toolbar.inbox')} on={inboxOpen} onClick={onToggleInbox}>
-        <InboxIcon />
-      </ToolButton>
-      <Divider />
-      <Toolbar.Button
-        onClick={onToggleMarkers}
-        className="h-[24px] px-2 flex items-center bg-transparent border-0 rounded-card
-          cursor-pointer text-[12px] font-medium text-ink whitespace-nowrap font-[inherit]
-          transition-colors hover:bg-surface-2"
-      >
-        {markersShown ? t('comments.toolbar.hideComment') : t('comments.toolbar.showComment')}
-      </Toolbar.Button>
-      <Divider />
-      <ToolButton label={t('comments.toolbar.close')} dim onClick={onClose}>
-        <XIcon />
-      </ToolButton>
-    </Toolbar.Root>
+    <ModeSwitch
+      ariaLabel={t('comments.toolbar.ariaLabel')}
+      className="artifact-comments-mode-switch"
+      value={mode ? 'comment' : 'navigate'}
+      onChange={(value) => onChangeMode(value === 'comment')}
+      options={[
+        { value: 'navigate', icon: Ico.pointer(14), label: t('comments.toolbar.navigate'), hint: t('comments.toolbar.navigateHint') },
+        { value: 'comment', icon: Ico.chats(14), label: t('comments.toolbar.commentLabel'), hint: t('comments.toolbar.comment') },
+      ]}
+    />
   );
 }
 

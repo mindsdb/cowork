@@ -10,6 +10,7 @@ const inAppBrowser: InAppBrowserBridge = {
   show: (sessionId: string, bounds: StageBounds) => ipcRenderer.invoke(IPC.BROWSER_SHOW, sessionId, bounds),
   hide: () => ipcRenderer.invoke(IPC.BROWSER_HIDE),
   setBounds: (bounds: StageBounds) => ipcRenderer.invoke(IPC.BROWSER_SET_BOUNDS, bounds),
+  open: (sessionId: string, url: string | null) => ipcRenderer.invoke(IPC.BROWSER_OPEN, sessionId, url),
   back: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, sessionId, 'back'),
   forward: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, sessionId, 'forward'),
   reload: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, sessionId, 'reload'),
@@ -105,6 +106,21 @@ contextBridge.exposeInMainWorld('antontron', {
   // removes the keychain entry, and deletes the vault record.
   keychainRevoke: (opts: { engine: string; name: string; accountEmail: string }) =>
     ipcRenderer.invoke(IPC.KEYCHAIN_REVOKE, opts),
+  setConnectionAccessMode: (opts: { engine: string; name: string; accessMode: string }) =>
+    ipcRenderer.invoke(IPC.CONNECTIONS_SET_ACCESS_MODE, opts),
+  customMcpConnect: (opts: { label: string; url: string; clientId?: string; clientSecret?: string; confirmedLoginHosts?: string[] }) =>
+    ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_CONNECT, opts),
+  customMcpTools: (opts: { id: string }) => ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_TOOLS, opts),
+  customMcpSetTools: (opts: { id: string; tools: string[] }) => ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_SET_TOOLS, opts),
+  customMcpReconnect: (opts: { id: string; confirmedLoginHosts?: string[] }) =>
+    ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_RECONNECT, opts),
+  customMcpDisconnect: (opts: { id: string }) => ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_DISCONNECT, opts),
+  customMcpAvailable: () => ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_AVAILABLE),
+  customMcpSummary: (opts: { id: string }) => ipcRenderer.invoke(IPC.CONNECTIONS_CUSTOM_MCP_SUMMARY, opts),
+  notionSearchPages: (opts: { name: string; query: string }) =>
+    ipcRenderer.invoke(IPC.NOTION_SEARCH_PAGES, opts),
+  notionFetchPage: (opts: { name: string; page: string }) =>
+    ipcRenderer.invoke(IPC.NOTION_FETCH_PAGE, opts),
   // Fires when the background token-refresh loop encounters a failure.
   // Returns an unsubscribe function.
   onOAuthRefreshError: (cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void) => {

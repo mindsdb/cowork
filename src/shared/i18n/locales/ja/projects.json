@@ -6,17 +6,23 @@
         "addFunds": "残高を追加",
         "setUpAutoTopUp": "自動チャージを設定",
         "manageAutoTopUp": "自動チャージを管理",
-        "updatePaymentMethod": "支払い方法を更新"
+        "updatePaymentMethod": "支払い方法を更新",
+        "upgrade": "{tier, select, plus {Plusにする} pro {Proにアップグレード} other {アップグレード}}"
       },
       "noFreeGrant": "このアカウントにはMindsHub Airの無料トークンが含まれていません。MindsHub Airも他のモデルと同様に残高を使用します。",
       "allowanceStop": {
         "noGrant": "{noGrant}残高がないため、続けるには残高を追加してください。",
         "withTime": "MindsHub Airの無料枠を使い切り、残高もありません。作業を続けるには残高を追加するか、{time}の補充までお待ちください。",
-        "noTime": "MindsHub Airの無料枠を使い切り、残高もありません。作業を続けるには残高を追加してください。"
+        "noTime": "MindsHub Airの無料枠を使い切り、残高もありません。作業を続けるには残高を追加してください。",
+        "noTimeMobile": "MindsHub Airの無料枠を使い切り、残高もありません。",
+        "noGrantMobile": "{noGrant} 残高がありません。",
+        "withTimeMobile": "MindsHub Airの無料枠を使い切り、残高もありません。 {time}にリセットされます。"
       },
       "freeServingPaused": {
         "until": "無料のMindsHub Airは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
-        "dailyReset": "無料のMindsHub Airは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。"
+        "dailyReset": "無料のMindsHub Airは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
+        "untilMobile": "無料のMindsHub Airは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。",
+        "dailyResetMobile": "無料のMindsHub Airは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。"
       },
       "resting": {
         "resetsAt": "{time}にリセットされます。",
@@ -26,13 +32,17 @@
       "percentLeft": "無料枠の残り：{percent}",
       "autoTopUpFailed": {
         "title": "自動チャージに失敗しました",
-        "body": "カードに請求できませんでした。残高を追加するか、支払い方法を更新してください。"
+        "body": "カードに請求できませんでした。残高を追加するか、支払い方法を更新してください。",
+        "bodyMobile": "カードに請求できませんでした。"
       },
       "balanceEmpty": {
         "title": "残高がありません",
         "body": "新しいタスクを開始するには残高を追加してください。",
         "freeUsedToo": "無料枠も使い切りました。残高を追加するか、無料枠の補充をお待ちください。",
-        "freeUsedTooWithTime": "無料枠も使い切りました。残高を追加するか、{time}の補充までお待ちください。"
+        "freeUsedTooWithTime": "無料枠も使い切りました。残高を追加するか、{time}の補充までお待ちください。",
+        "freeUsedTooMobile": "無料枠も使い切りました。",
+        "freeUsedTooWithTimeMobile": "無料枠も使い切りました。 {time}にリセットされます。",
+        "bodyMobile": "残高がありません。有料モデルは利用できません。"
       },
       "balanceLow": {
         "title": "残高が少なくなっています",
@@ -40,7 +50,9 @@
         "autoCovers": "残り{usd}です。自動チャージで補充されます。",
         "autoPending": "残り{usd}です。自動チャージは銀行の処理を待っています。",
         "autoCapReached": "残り{usd}です。月間上限を超えないよう、自動チャージは一時停止しています。続けるには残高を追加してください。",
-        "body": "残り{usd}です。残高を追加するか、自動チャージをオンにしてください。"
+        "body": "残り{usd}です。残高を追加するか、自動チャージをオンにしてください。",
+        "bodyMobile": "残り{usd}です。",
+        "autoCapReachedMobile": "残り{usd}です。月間上限を超えないよう、自動チャージは一時停止しています。"
       },
       "freeUsed": {
         "title": "無料枠を使い切りました",
@@ -55,8 +67,22 @@
         "balanceLowToo": "残高も少なくなっています（{usd}）。"
       },
       "budgetExceeded": {
-        "raise": "オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。",
-        "airHasRoom": "オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。"
+        "raise": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {週間の利用枠を使い切りました} other {5時間の利用枠を使い切りました}}",
+        "onWallet": "リセットされるまで、残高からAPI料金で支払います。",
+        "onWalletWithTime": "{time}にリセットされるまで、残高からAPI料金で支払います。",
+        "paused": "リセットされるまで、プランでのタスクは一時停止します。続けるには残高を追加してください。",
+        "pausedWithTime": "{time}まで、プランでのタスクは一時停止します。続けるには残高を追加してください。",
+        "pausedMobile": "リセットされるまで、プランでのタスクは一時停止します。",
+        "pausedWithTimeMobile": "{time}まで、プランでのタスクは一時停止します。",
+        "lowTitle": "{window, select, 7d {週間} other {5時間}}の利用枠の{percent}を使用済み",
+        "lowThenWallet": "その後は、リセットされるまで残高からAPI料金で支払います。",
+        "lowThenWalletWithTime": "その後は、{time}にリセットされるまで残高からAPI料金で支払います。",
+        "lowThenPause": "その後は、リセットされるまでタスクが一時停止します。",
+        "lowThenPauseWithTime": "その後は、{time}までタスクが一時停止します。"
       }
     },
     "scheduleWhen": {
@@ -95,7 +121,8 @@
         "walletEmpty": "利用できるクレジットがありません。MindsHubを使用するには残高を追加してください。",
         "allowanceExhausted": "MindsHub Airの無料トークンがなく、残高もありません。",
         "freeAirPaused": "無料のMindsHub Airは現在一時停止しています。",
-        "budgetExceeded": "組織の予算を使い切りました。"
+        "budgetExceeded": "予算を使い切りました。",
+        "walletEmptyMobile": "利用できるクレジットがありません。"
       },
       "missingApiKey": "右側でAPIキーを追加してください。",
       "missingBaseUrl": "右側でベースURLを追加してください。",
@@ -192,8 +219,8 @@
       "unjudgeable": {
         "both": "両方のモデルが完了前にクレジットを使い切ったため、このターンは評価できません。",
         "one": "{name}が完了前にクレジットを使い切ったため、このターンは評価できません。",
-        "bothBudget": "両方のモデルが完了前に組織の予算上限に達したため、このターンは評価できません。",
-        "oneBudget": "{name}が完了前に組織の予算上限に達したため、このターンは評価できません。"
+        "bothBudget": "{scope, select, org {両方のモデルが完了前に組織の予算上限に達したため} workspace {両方のモデルが完了前にこのワークスペースの予算上限に達したため} api_key {両方のモデルが完了前にこのAPIキーの予算上限に達したため} team {両方のモデルが完了前にチームの予算上限に達したため} member {両方のモデルが完了前にあなたの予算上限に達したため} other {両方のモデルが完了前に予算上限に達したため}}、このターンは評価できません。",
+        "oneBudget": "{scope, select, org {{name}が完了前に組織の予算上限に達したため} workspace {{name}が完了前にこのワークスペースの予算上限に達したため} api_key {{name}が完了前にこのAPIキーの予算上限に達したため} team {{name}が完了前にチームの予算上限に達したため} member {{name}が完了前にあなたの予算上限に達したため} other {{name}が完了前に予算上限に達したため}}、このターンは評価できません。"
       },
       "verdict": {
         "tie": "ほぼ同等",
@@ -223,7 +250,9 @@
         "oneWorking": "{name}が完了すると、続けて送信できます。",
         "bothContinued": "両方ともタスクとして継続されたため、この比較にはこれ以上メッセージを送信できません。",
         "sideContinued": "{name}はタスクとして継続されました。{other}にのみ送信できます。",
-        "sideWorking": "{name}はまだ作業中です。{other}にのみ送信するか、完了をお待ちください。"
+        "sideWorking": "{name}はまだ作業中です。{other}にのみ送信するか、完了をお待ちください。",
+        "outOfCreditsBothMobile": "残高がなくなったため、両方のモデルが停止しました。",
+        "outOfCreditsOneMobile": "残高がなくなったため、{name}が停止しました。"
       },
       "twiceTheCredits": "比較では2つのモデルを実行するため、1つのタスクの約2倍のクレジットを使用します。",
       "turnsTitle": "{nameA}：{countA, plural, other {#ターン}} · {nameB}：{countB, plural, other {#ターン}}",
@@ -347,6 +376,7 @@
     "artifactAuthorship": {
       "unknownOwner": "不明なオーナー",
       "otherMemberDescription": "このプロジェクトの別のメンバーが作成しました。確認はできますが、変更はできません。",
+      "namedOwnerDescription": "このプロジェクトの別のメンバーである{name}が作成しました。確認はできますが、変更はできません。",
       "unknownOwnerDescription": "このアーティファクトのオーナーは記録されていません。"
     },
     "artifactExport": {
@@ -377,6 +407,14 @@
     "browserSession": {
       "opened": "ブラウザを開きました"
     },
+    "browserSteps": {
+      "open": "{site}を開いています",
+      "read": "ページを読んでいます",
+      "look": "ページを確認しています",
+      "act": "ページで作業しています",
+      "handOver": "ブラウザであなたを待っています",
+      "generic": "ブラウザを使用しています"
+    },
     "figureSources": {
       "noSource": "出典なし：この回答のどのステップもこの数値を返していません。利用する前に確認してください。",
       "repeated": "以前の回答からの再掲",
@@ -392,7 +430,8 @@
       "andMore": "{source}ほか{count}件"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "不明なコネクタ"
+      "unrecognizedConnector": "不明なコネクタ",
+      "mcpServer": "MCP サーバー"
     },
     "datasourceSubmission": {
       "errors": {
@@ -453,7 +492,11 @@
       "needsCredits": "クレジットが必要",
       "budgetReached": {
         "tag": "予算上限に到達",
-        "title": "組織の予算を使い切りました。オーナーまたは管理者が「予算」で上限を引き上げられます。"
+        "title": "このモデルを対象とする予算を使い切りました。管理者が「予算」で上限を引き上げられます。"
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Plusが必要} pro {Proが必要} other {アップグレードが必要}}",
+        "title": "このモデルはプランの利用枠の対象外です。アップグレードするか、クレジットを追加するとAPI料金で使用できます。"
       }
     },
     "settingsTransform": {
@@ -494,7 +537,8 @@
     },
     "antonErrors": {
       "noProvider": "このアカウントにはLLMプロバイダーが接続されていません。MindsHubで無料で始めるか、「設定」で独自のプロバイダーを追加してください。",
-      "couldNotComplete": "このタスクを完了できませんでした。"
+      "couldNotComplete": "このタスクを完了できませんでした。",
+      "noProviderMobile": "設定で自分のプロバイダーを接続してください。"
     },
     "displayToggle": {
       "switchStyle": "{style}スタイルに切り替え"
@@ -543,6 +587,7 @@
     "missed": "未実行",
     "lastFailed": "前回失敗",
     "lastRunFailed": "前回の実行に失敗",
+    "stoppedAtLimit": "上限で停止",
     "done": "完了",
     "active": "有効"
   },
@@ -572,11 +617,30 @@
     "autoPausedNote": "「再開」を押すとスケジュールが再び有効になり、保留中の実行が行われる場合があります。「今すぐ実行」を押すと、今すぐ1回だけ実行します。",
     "partialTitle": "前回の実行は途中で停止しました",
     "partialNote": "一部の操作は完了している可能性があります。再実行する前に実行内容を確認してください。",
+    "limitTitle": "前回の実行は上限に達して停止しました",
+    "limitNote": "作業の一部は完了している可能性があります。再実行する前に実行内容を確認してください。",
     "failedTitle": "前回の実行に失敗しました",
     "resume": "再開",
     "runNow": "今すぐ実行",
     "reviewRun": "実行を確認",
-    "runAgain": "再実行"
+    "runAgain": "再実行",
+    "openSettings": "設定を開く"
+  },
+  "scheduleRunNotice": {
+    "untitled": "スケジュールされたタスク",
+    "failedTitle": "スケジュールされたタスクが失敗しました",
+    "failedBody": "「{title}」の前回の実行は完了しませんでした。クリックして確認してください。",
+    "failedToast": "スケジュールされたタスク「{title}」の前回の実行は完了しませんでした。",
+    "succeededTitle": "スケジュールされたタスクが完了しました",
+    "succeededBody": "「{title}」の実行が完了しました。クリックして開きます。",
+    "succeededToast": "スケジュールされたタスク「{title}」の実行が完了しました。",
+    "openAction": "タスクを開く"
+  },
+  "scheduleNotifyMenu": {
+    "label": "通知",
+    "heading": "通知する対象",
+    "failed": "失敗した実行",
+    "succeeded": "成功した実行"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -606,6 +670,7 @@
     "atMinute": "分：",
     "at": "時刻：",
     "time": "時刻",
+    "timeZone": "タイムゾーン",
     "nextRuns": "{count, plural, other {次回の実行：{runs}}}",
     "timePassed": "その時刻はすでに過ぎています。",
     "name": "名前",
@@ -652,7 +717,8 @@
       "running": "実行中",
       "success": "成功",
       "failed": "失敗",
-      "cancelled": "停止"
+      "cancelled": "停止",
+      "stoppedAtLimit": "上限で停止"
     },
     "sentence": "{when}（{zone}）",
     "runningNow": "現在実行中",

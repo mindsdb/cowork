@@ -248,6 +248,36 @@ function BuildCustomTile({ onBuildCustom }) {
   );
 }
 
+// Desktop only, beside the build tile: a remote MCP server the user names by URL.
+function AddMcpUrlTile({ onAddMcpUrl }) {
+  const { t } = useTranslation('library');
+  return (
+    <Card
+      as="button"
+      interactive
+      padding="cozy"
+      onClick={() => onAddMcpUrl()}
+      className="flex items-start gap-3"
+    >
+      <span className="inline-grid place-items-center w-[40px] h-[40px] rounded-card-row bg-surface-2 shrink-0 text-ink-3">
+        {Ico.plus(20)}
+      </span>
+      <div className="min-w-0 flex flex-col gap-1">
+        <span className="font-[family-name:var(--font-display)] font-semibold text-base text-ink tracking-[0]">{t('connectorPicker.addMcpUrl')}</span>
+        <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 leading-[1.4]">{t('connectorPicker.addMcpUrlDescription')}</span>
+      </div>
+    </Card>
+  );
+}
+
+// The member's own template for a connector cloud doesn't offer: cowork-server
+// gives it the built-in's id plus `_custom` (custom_id_for).
+export function customMatchFor(connectors, connector) {
+  if (!connector?.id) return null;
+  const id = `${connector.id}_custom`;
+  return (connectors || []).find((c) => c?.custom && c.id === id) || null;
+}
+
 // Substring match across the metadata a user sees: label, description,
 // category and aliases. `q` is already lowercased.
 function matchesSearch(connector, q) {
@@ -264,7 +294,7 @@ function matchesSearch(connector, q) {
 // `onBuildCustom(query)` starts an Anton task that builds a connector. The
 // entry points show only where the server says one would be kept (one
 // person's own scope), and never in org mode.
-export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, onBuildCustom }) {
+export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, onBuildCustom, onAddMcpUrl }) {
   const { t } = useTranslation('library');
   const orgMode = useOrgMode();
   const [connectors, setConnectors] = useState([]);
@@ -297,14 +327,14 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
       .finally(() => setLoading(false));
   }, [open, orgMode]);
 
-  // The server says whether a custom connector built here would be kept: only
-  // in one person's own scope. Hidden until it answers, so it never flashes,
-  // and asked again on each open. Org mode skips the ask; canBuildCustom also
-  // checks it, so either guard alone keeps the entries out of org mode.
+  // The server says whether a custom connector built here would be kept: in
+  // one person's own scope, and in org mode while members may build their own
+  // templates. Hidden until it answers, so it never flashes, and asked again
+  // on each open.
   const offersBuild = Boolean(onBuildCustom);
   const [buildAllowed, setBuildAllowed] = useState(false);
   useEffect(() => {
-    if (!open || orgMode || !offersBuild) return undefined;
+    if (!open || !offersBuild) return undefined;
     let live = true;
     setBuildAllowed(false);
     fetchCanBuildCustomConnector().then((allowed) => {
@@ -315,7 +345,25 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
       // The picker stays mounted while closed; the next open starts hidden.
       setBuildAllowed(false);
     };
-  }, [open, orgMode, offersBuild]);
+  }, [open, offersBuild]);
+
+  // Main says whether this desktop server keeps custom MCP settings; asked on
+  // each open and hidden until it answers. Never in org mode.
+  const offersMcpUrl = Boolean(onAddMcpUrl);
+  const [mcpUrlAllowed, setMcpUrlAllowed] = useState(false);
+  useEffect(() => {
+    if (!open || orgMode || !offersMcpUrl || typeof host.customMcpAvailable !== 'function') return undefined;
+    let live = true;
+    host.customMcpAvailable().then((available) => {
+      if (live) setMcpUrlAllowed(available === true);
+    }).catch(() => {
+      if (live) setMcpUrlAllowed(false);
+    });
+    return () => {
+      live = false;
+      setMcpUrlAllowed(false);
+    };
+  }, [open, orgMode, offersMcpUrl]);
 
   // Auto-focus the search input when the picker opens.
   useEffect(() => {
@@ -363,7 +411,8 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
     return { available: a, desktopOnly: d };
   }, [filtered]);
 
-  const canBuildCustom = offersBuild && !orgMode && buildAllowed;
+  const canBuildCustom = offersBuild && buildAllowed;
+  const canAddMcpUrl = offersMcpUrl && !orgMode && mcpUrlAllowed;
   const trimmedQuery = query.trim();
   const offerBuildForQuery = canBuildCustom && Boolean(trimmedQuery) && !queryMatchesAny;
 
@@ -490,6 +539,13 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
                   : t('connectorPicker.noneAvailable')}
             </div>
           ))}
+          {/* First, so a member who doesn't find their system sees the way to add it without scrolling. */}
+          {(canBuildCustom || canAddMcpUrl) && !loading && !error && !(trimmedQuery && filtered.length === 0) && (
+            <div className={`${GRID} mb-6`}>
+              {canBuildCustom && <BuildCustomTile onBuildCustom={onBuildCustom} />}
+              {canAddMcpUrl && <AddMcpUrlTile onAddMcpUrl={onAddMcpUrl} />}
+            </div>
+          )}
           {/* Body — two modes:
                 • sortBy=default → Featured section first (when not
                   searching/filtering), then category sections.
@@ -550,16 +606,15 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
               ))}
             </>
           )}
-          {canBuildCustom && !loading && !error && !(trimmedQuery && filtered.length === 0) && (
-            <div className={GRID}>
-              <BuildCustomTile onBuildCustom={onBuildCustom} />
-            </div>
-          )}
           {PLATFORM_UI && <ConnectorSection
             title={t('connectorPicker.desktopOnly')}
             count={desktopOnly.length}
             connectors={desktopOnly}
-            onPick={onDesktopOnly}
+            onPick={(connector) => onDesktopOnly?.(connector, {
+              customMatch: customMatchFor(connectors, connector),
+              // Only a key or token API can be stood in for by a custom connector.
+              canBuild: canBuildCustom && Boolean(connector?.api_key),
+            })}
           />}
         </ModalBody>
     </Modal>

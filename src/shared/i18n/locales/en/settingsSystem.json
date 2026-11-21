@@ -142,6 +142,16 @@
     "cancel": "Cancel",
     "signingOut": "Signing out…",
     "signOut": "Sign out",
+    "delete": {
+      "title": "Delete account",
+      "subtitle": "Request permanent deletion of your MindsHub account.",
+      "button": "Delete account",
+      "confirmTitle": "Delete your MindsHub account?",
+      "confirmBody": "Support will verify your request and arrange deletion of your account and personal data within 30 days. Some account, billing, and support records may be retained. If you own an organization with other members, support will help you transfer ownership first. The organization and its shared data stay with the remaining members. Deletion can't be undone.",
+      "sending": "Sending…",
+      "requested": "Requested on {requestedOn}. Target deletion date: {deleteBy}.",
+      "error": "We couldn’t confirm your request. You can safely try again."
+    },
     "web": {
       "title": "Managed via MindsHub",
       "body": "Account management is handled through MindsHub for the web version."
@@ -177,13 +187,17 @@
       "pendingAction": "{rule} Waiting on your bank to confirm the latest charge.",
       "badgeOn": "Auto top up on",
       "badgeFailed": "Auto top up failed",
-      "badgePaused": "Auto top up paused"
+      "badgePaused": "Auto top up paused",
+      "offMobile": "Auto top up is off.",
+      "paymentFailedMobile": "Auto top up failed: we couldn't charge your card."
     },
     "low": {
       "off": "Running low. Add funds or turn on auto top up to keep tasks running.",
       "ok": "Running low. Auto top up will refill it.",
       "pending": "Running low. Auto top up is waiting on your bank.",
-      "other": "Running low. Add funds to keep tasks running."
+      "other": "Running low. Add funds to keep tasks running.",
+      "offMobile": "Running low.",
+      "otherMobile": "Running low."
     },
     "balance": {
       "title": "Balance",
@@ -192,7 +206,8 @@
       "spentRange": "credit spent {start} to {end}",
       "spentDate": "credit spent {date}",
       "spentThisPeriod": "credit spent this period",
-      "notOwner": "Only your organization's billing owner can add funds or change auto top up."
+      "notOwner": "Only your organization's billing owner can add funds or change auto top up.",
+      "emptyMobile": "Your balance is empty. Paid models are unavailable."
     },
     "signIn": {
       "title": "Sign in to see your usage",
@@ -203,8 +218,24 @@
     "error": {
       "title": "Couldn't load usage",
       "body": "MindsHub didn't answer. Try again, or check your usage in the console.",
-      "tryAgain": "Try again"
+      "tryAgain": "Try again",
+      "bodyMobile": "MindsHub didn't answer."
     },
-    "empty": "No usage to show for this account yet."
+    "empty": "No usage to show for this account yet.",
+    "plan": {
+      "title": "{tier, select, plus {Plus plan} pro {Pro plan} other {Plan}}",
+      "renewsOn": "Renews on {date}",
+      "endsOn": "Ends on {date}",
+      "ending": "Ending",
+      "pastDue": "Payment failed",
+      "pastDueBody": "We couldn't renew your plan. Update your card under Manage to keep it.",
+      "windowName": "{window, select, 7d {Weekly allowance} other {5-hour allowance}}",
+      "windowUsed": "{percent} used",
+      "windowUsedResets": "{percent} used · resets at {time}",
+      "windowMeterLabel": "{window, select, 7d {Weekly allowance used} other {5-hour allowance used}}",
+      "afterCap": "Past either allowance, tasks continue from your wallet at API rates, or pause until it resets.",
+      "upgrade": "{tier, select, plus {Get Plus} pro {Upgrade to Pro} other {Upgrade}}",
+      "manage": "Manage"
+    }
   }
 }

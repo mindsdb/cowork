@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeftRight, Server, Cloud, Sparkle, LogIn, LogOut } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowLeftRight, Server, Cloud, Sparkle, LogIn, LogOut, Trash2 } from 'lucide-react';
 import { Icon } from '../../components/ui/Icon';
 import { Alert, Button, Tooltip } from '../../components/ui';
 import { ConfirmModal } from '../../components/ConfirmModal';
@@ -9,12 +9,105 @@ import { useLogout, LOGOUT_CONFIRM_COPY } from '../../hooks/useLogout';
 import { useMindsOrgs } from '../../hooks/useMindsOrgs';
 import { organizationLabel, orgDisplayName } from '../../../../shared/minds-orgs';
 import { accountInitials } from '../../lib/accountUser';
-import { MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
+import { MINDS_CONSOLE_HOME_URL, consoleUrlFor } from '../../../lib/mindsUrls';
 import { Section, SettingsSectionPanel } from './settingsLayout';
-import { sharedTranslator, useTranslation } from '../../../lib/i18n';
+import { currentLocale, sharedTranslator, useTranslation } from '../../../lib/i18n';
+import { getDeletionRequest, requestAccountDeletion } from '../../api';
+
+// A request date as the person reads dates. Falls back to the raw value so a
+// malformed answer still says something rather than throwing mid-render.
+function formatDay(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return String(iso ?? '');
+  return new Intl.DateTimeFormat(currentLocale(), { dateStyle: 'long' }).format(date);
+}
+
+// Asking for the account to be deleted. The app stores require that anyone who
+// can sign up here can also start deleting their account here. Confirming
+// records a request that support carries out, so once one is open the row
+// says when rather than offering the button again.
+//
+// Only inside the mobile app, where the stores require it; the website and
+// desktop don't offer it. The app is a web build, so its server always speaks
+// for a MindsHub account.
+function DeleteAccountRow({ card }) {
+  const { t } = useTranslation('settingsSystem');
+  // undefined while the first read is in flight, null when there is no open
+  // request, else `{ requestedAt, deleteBy }`.
+  const [request, setRequest] = useState(undefined);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDeletionRequest()
+      .then((open) => { if (!cancelled) setRequest(open ?? null); })
+      // A failed read leaves the button available: asking again is harmless,
+      // since the server answers an open request rather than opening another.
+      .catch(() => { if (!cancelled) setRequest(null); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const confirm = async () => {
+    setSending(true);
+    setError(false);
+    try {
+      const open = await requestAccountDeletion();
+      setRequest(open);
+    } catch {
+      setError(true);
+    } finally {
+      setSending(false);
+      setConfirmOpen(false);
+    }
+  };
+
+  return (
+    <div className={`${card} pt-0 px-[18px] pb-2`}>
+      <Section
+        title={t('account.delete.title')}
+        subtitle={t('account.delete.subtitle')}
+        notice={error && <Alert variant="danger">{t('account.delete.error')}</Alert>}
+      >
+        {request ? (
+          <div className="text-[13px] text-ink-2" role="status">
+            {t('account.delete.requested', {
+              requestedOn: formatDay(request.requestedAt),
+              deleteBy: formatDay(request.deleteBy),
+            })}
+          </div>
+        ) : (
+          <div className="flex justify-end">
+            <Button
+              variant="danger"
+              onClick={() => setConfirmOpen(true)}
+              disabled={request === undefined || sending}
+            >
+              <Icon of={Trash2} size={14} />
+              {t('account.delete.button')}
+            </Button>
+          </div>
+        )}
+      </Section>
+      <ConfirmModal
+        open={confirmOpen}
+        title={t('account.delete.confirmTitle')}
+        message={t('account.delete.confirmBody')}
+        confirmLabel={t('account.delete.button')}
+        cancelLabel={t('account.cancel')}
+        destructive
+        busy={sending}
+        busyLabel={t('account.delete.sending')}
+        onConfirm={confirm}
+        onClose={() => setConfirmOpen(false)}
+      />
+    </div>
+  );
+}
 
 // The Account settings section: the signed-in user card, the MindsHub sign-in
-// pitch when signed out, and sign-out. The account identity and the sign-out
+// pitch when signed out, sign-out, and asking for the account to be deleted. The account identity and the sign-out
 // sequence live in shared hooks (useAccountUser / useLogout) since the sidebar
 // user menu (ENG-1408) runs the same flows; this section owns only its confirm
 // modal and layout.
@@ -42,6 +135,15 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
   // swap to auth's long generated label once the listing lands (ENG-2109).
   const orgName = organizationLabel(activeOrg, sharedTranslator('app')) || orgDisplayName(accountUser?.org, sharedTranslator('app'));
 
+  // Names the organization and account, as the account menu's console links do
+  // (ENG-3274), so the console opens on the organization shown here rather
+  // than whichever one the browser's own session has active. The listing's id
+  // first, the token's claim before it lands.
+  const consoleHomeUrl = consoleUrlFor(MINDS_CONSOLE_HOME_URL, {
+    organizationId: activeOrg?.id ?? accountUser?.orgId ?? null,
+    subject: accountUser?.sub ?? null,
+  });
+
   // User info card — shown on both Electron and web if we have a token
   const userCard = accountUser && (
     <div className={CARD}>
@@ -68,7 +170,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
           )}
         </div>
         <a
-          href={MINDS_CONSOLE_URL}
+          href={consoleHomeUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 text-[12px] font-medium text-accent no-underline py-[5px] px-2.5 rounded-md border border-solid border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]"
@@ -175,6 +277,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
               <div className="max-w-[320px]">{t('account.web.body')}</div>
             </div>
           )}
+          {accountUser && host.isMobileShell && <DeleteAccountRow card={CARD} />}
         </SettingsSectionPanel>
         {logoutConfirm}
       </>

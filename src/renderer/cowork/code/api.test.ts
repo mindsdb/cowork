@@ -21,6 +21,15 @@ afterEach(() => vi.unstubAllGlobals());
 
 
 describe('coding API boundary', () => {
+  it('initializes Git only through the explicit folder action and returns its modes', async () => {
+    const options = { supported: ['in_place'], default: 'in_place', can_initialize_git: false };
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => options }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(codingApi.initializeGit('/notes & drafts')).resolves.toEqual(options);
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:26866/api/v1/coding/workspace/initialize-git', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ path: '/notes & drafts' }),
+    }));
+  });
   it('encodes repository connection names and pages without leaking URL structure', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ items: [], next_page: null }) }));
     vi.stubGlobal('fetch', fetchMock);
@@ -188,6 +197,29 @@ describe('coding API boundary', () => {
     expect(failure).toMatchObject({ status: 409, code: 'git_identity_missing' });
     expect(codingErrorCode(failure)).toBe('git_identity_missing');
     expect(codingErrorCode(new Error('plain'))).toBeUndefined();
+  });
+
+  it('words a refused workspace mode from its code and folder, keeping unknown codes as sent', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      headers: new Headers({ 'X-MindsHub-Error-Code': 'not_a_repository', 'X-MindsHub-Error-Folder': 'Caf%C3%A9' }),
+      json: async () => ({ detail: 'Café: This folder isn\'t a Git repository. Initialize Git to use a Worktree' }),
+    })));
+    await expect(codingApi.create({ project_id: 'p1', prompt: 'Go' })).rejects.toMatchObject({
+      message: 'Café isn’t a Git repository. Initialize Git to use a Worktree.',
+      code: 'not_a_repository',
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      headers: new Headers({ 'X-MindsHub-Error-Code': 'some_future_reason' }),
+      json: async () => ({ detail: 'A reason this UI predates' }),
+    })));
+    await expect(codingApi.create({ project_id: 'p1', prompt: 'Go' })).rejects.toMatchObject({
+      message: 'A reason this UI predates',
+    });
   });
 
   it('explains the generic 404 produced by an incompatible backend', async () => {

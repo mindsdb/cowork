@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button, Tooltip } from '../ui';
 import { ConnectorTestPrompt } from './ConnectorTestPrompt';
-import { clearPendingTest, dropPendingTest, getPendingTest, pendingTestFromAnswer, setPendingTest, setPendingTestCanceller, subscribePendingTest } from './connectorTestStore';
+import { TEST_DECLINED, TEST_ENDED, clearPendingTest, dropPendingTest, getPendingTest, pendingTestFromAnswer, setPendingTest, setPendingTestCanceller, subscribePendingTest } from './connectorTestStore';
 import { DataVaultForm } from './DataVaultForm';
 import { providerNameFromSpec } from './methodHero';
 import {
@@ -26,7 +26,8 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { allowConnectorTestHost, cancelConnectorTest, confirmConnectorTest, createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, fetchSubmissionReplaces, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { allowConnectorTestHost, cancelConnectorTest, confirmConnectorTest, connectCustomConnector, createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, fetchSubmissionReplaces, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { connectSuccessSubtitle, customConnectPayload, describeConnectFailure } from '../../lib/customConnect';
 import { buildDatasourcePayload, describeConnectionState } from '../../lib/datasourceSubmission';
 import { host } from '../../../platform/host';
 import { PLATFORM_UI } from '../../../lib/deployment';
@@ -38,8 +39,9 @@ import { productName } from '../../../lib/deploymentBrand';
 
 // Ends a waiting connection test on the server, which otherwise keeps the
 // typed values until its timeout. Registered so every drop path uses it.
-function cancelPendingTestOnServer(pending) {
-  cancelConnectorTest(pending.kind === 'approval' ? { approvalId: pending.id } : { confirmId: pending.id })
+function cancelPendingTestOnServer(pending, reason) {
+  const id = pending.kind === 'approval' ? { approvalId: pending.id } : { confirmId: pending.id };
+  cancelConnectorTest({ ...id, reason })
     .catch((err) => console.warn('Could not cancel a connection test', err));
 }
 setPendingTestCanceller(cancelPendingTestOnServer);
@@ -58,7 +60,7 @@ function getOAuthMethod(spec, methodId) {
 
 const FONT_BODY = 'var(--font-body)';
 
-export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose, highlighted = false }) {
+export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose, highlighted = false, onUseBrowser }) {
   const { t } = useTranslation('library');
   const [spec, setSpec] = useState(() => getForm(conversationId));
   const [busy, setBusy] = useState(false);
@@ -242,6 +244,38 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         onNavigateToConnectors?.();
       }
       handleClose();
+      return;
+    }
+
+    // A custom connector connects through its own check, never through the
+    // chat: Cancel only closes the panel and nothing reaches the turn.
+    if (spec._custom_connect) {
+      if (kind === 'cancel') {
+        handleClose();
+        return;
+      }
+      setBusy(true);
+      try {
+        const connection = await connectCustomConnector(
+          spec._custom_connect.connectorId,
+          customConnectPayload(values, userLabel.trim() || spec._custom_connect.label),
+        );
+        patchForm(conversationId, {
+          form_id: spec.form_id,
+          _is_probing: false,
+          form_error: '',
+          _is_success: true,
+          // The form's Connect and Cancel would override the success screen's own buttons.
+          actions: null,
+          title: `Connected ${connection?.name || spec._custom_connect.label}`,
+          subtitle: connectSuccessSubtitle(spec, values, skipped),
+        });
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      } catch (e) {
+        patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: describeConnectFailure(e) });
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 
@@ -810,7 +844,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       }
       // A new form or test replaced this one while the server answered.
       if (getPendingTest(conversationId) !== pending) {
-        if (next) cancelPendingTestOnServer(next);
+        if (next) cancelPendingTestOnServer(next, TEST_ENDED);
         return;
       }
       if (next) {
@@ -947,7 +981,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             onAllow={() => answerPendingTest((p) => allowConnectorTestHost(p.id))}
             onConfirm={() => answerPendingTest((p) => confirmConnectorTest(p.id), { saved: true })}
             onCancel={() => {
-              dropPendingTest(conversationId);
+              dropPendingTest(conversationId, TEST_DECLINED);
               patchForm(conversationId, { form_id: spec.form_id, _awaiting_confirmation: false, _awaiting_private_approval: false, status_text: null });
             }}
           />
@@ -1061,6 +1095,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               spec={spec}
               busy={busy}
               onAction={handleAction}
+              onUseBrowser={onUseBrowser}
               conversationId={conversationId}
               userLabel={!spec._is_success ? userLabel : undefined}
               onUserLabelChange={(label) => {

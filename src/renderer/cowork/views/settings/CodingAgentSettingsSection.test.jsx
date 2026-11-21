@@ -10,8 +10,12 @@ vi.mock('../../../platform/host', async (importOriginal) => {
   // Web: the section skips its engine and shell reads, which need the desktop.
   return { ...actual, host: { ...actual.host, isWeb: true, isElectron: false, openExternal: vi.fn() } };
 });
+vi.mock('../../hooks/useAccountUser', () => ({
+  useAccountUser: () => ({ orgIsPersonal: true, orgId: 'org-1', sub: 'u-1' }),
+}));
 
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
+import { HubUsageContext } from '../../lib/hubUsageContext';
 
 const settings = {
   codingAgentEngine: 'codex',
@@ -43,6 +47,37 @@ describe('CodingAgentSettingsSection model picker', () => {
     const walletRow = screen.getByRole('option', { name: /Claude Fable 5/ });
     expect(walletRow).toHaveTextContent('Needs credits');
     expect(within(walletRow).getByRole('button', { name: 'Add credits' })).toBeInTheDocument();
+  });
+
+  it('on Plus, names the plan a locked row needs and the plan an open row is covered by', async () => {
+    const user = userEvent.setup();
+    const onPlus = {
+      ...settings,
+      modelEnabled: { 'gpt-codex': true, opus: false, fable: true },
+      modelDisabledReasons: { opus: 'model_not_in_tier' },
+      modelCoveredByTier: { 'gpt-codex': 'plus', opus: 'pro', fable: 'pro' },
+    };
+    const usage = {
+      reachable: true,
+      isBillingOwner: true,
+      plan: { tier: 'plus', status: 'active', renewsAt: null, cancelAtPeriodEnd: false, windows: [] },
+    };
+    render(
+      <HubUsageContext.Provider value={{ usage, providerType: 'minds-cloud' }}>
+        <CodingAgentSettingsSection
+          settings={onPlus}
+          setSetting={vi.fn()}
+          available
+          enabled
+          onEnabledChange={vi.fn()}
+        />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Coding agent model' }));
+    const locked = await screen.findByRole('option', { name: /Claude Opus 5/ });
+    expect(locked).toHaveTextContent('Needs Pro');
+    expect(screen.getByRole('option', { name: /GPT 5\.3 Codex/ })).toHaveTextContent('Plus');
   });
 
   it('asks for a model availability re-check when the picker opens', async () => {

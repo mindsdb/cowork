@@ -7,7 +7,10 @@
 // Hover highlights the anchored element in the iframe (onHover/onLeave).
 // Owner actions remain visible so they are usable from touch and keyboard.
 
+import { useEffect, useRef, useState } from 'react';
 import Ico from '../../Icons';
+import { composeCommentText, parseCommentText } from '../../../lib/commentImages';
+import { CommentImages } from './CommentImages';
 import { threadAuthorEmail, threadReplies, threadText, viewerCanEdit, isoToEpoch }
   from '../../../lib/commentsReducer';
 import { Tooltip } from '../../ui';
@@ -63,6 +66,54 @@ function inboxTimeAgo(epochSeconds) {
 }
 
 
+// Editing your own comment in its card (ENG-4383): the words only, in a box
+// that grows with them. Enter or focus leaving saves, Shift+Enter breaks the
+// line, Escape cancels. Clicks inside don't reach the card (which would go to
+// the comment on the page).
+function InlineCommentEdit({ words, onSave, onCancel }) {
+  const { t } = useTranslation('artifacts');
+  const [value, setValue] = useState(words);
+  const ref = useRef(null);
+  const doneRef = useRef(false);
+  const finish = (save) => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    if (save) onSave(value.trim());
+    else onCancel();
+  };
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    node.focus();
+    node.setSelectionRange(node.value.length, node.value.length);
+  }, []);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    node.style.height = 'auto';
+    node.style.height = `${Math.min(160, node.scrollHeight)}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      className="artifact-inline-comment-edit"
+      aria-label={t('comments.card.editAriaLabel')}
+      value={value}
+      rows={1}
+      onClick={(event) => event.stopPropagation()}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={() => finish(true)}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
+        else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent?.isComposing) {
+          event.preventDefault();
+          finish(true);
+        }
+      }}
+    />
+  );
+}
+
 export function InboxCard({
   thread,
   state,      // layer anchor state: 'hidden' | 'orphan' | undefined
@@ -73,13 +124,22 @@ export function InboxCard({
   // thread is the one an agent is currently working on.
   agentBusy = false,
   agentWorking = false,
+  // Waiting its turn in the "Ask for a change" bar's queue.
+  agentQueued = false,
   onStatus,
   onAddressWithAgent,
   onRequestDelete, // ({ threadId }) → panel confirms + dispatches
   onHover,
   onLeave,
   onFocus,
+  // Reads a comment image by id (CommentImages); absent: images aren't shown.
+  loadImage = null,
+  // `(threadId, text) => Promise<boolean>`: saves an edit of your own comment
+  // made right here (ENG-4383); absent, the card offers none.
+  onEditThread = null,
 }) {
+  // The text's image markers become thumbnails under the words (ENG-4410).
+  const { body, images } = parseCommentText(threadText(thread));
   const { t } = useTranslation('artifacts');
   const resolved = thread.status === 'resolved';
   const done = resolved || thread.status === 'dismissed';
@@ -91,6 +151,10 @@ export function InboxCard({
   // a selector that stopped resolving = version drift — different tooltips.
   const general = !thread.selector;
   const mine = viewerCanEdit(thread.payload, viewer);
+  // Pinned to a part of the artifact that is on the page: clicking the card
+  // goes there (the layer's focus reveals it first).
+  const pinned = !!thread.selector && !unanchored && !hidden;
+  const [editing, setEditing] = useState(false);
   const nReplies = threadReplies(thread).length;
   const repliesTxt = nReplies ? t('comments.card.replies', { count: nReplies }) : '';
   const email = threadAuthorEmail(thread);
@@ -120,15 +184,42 @@ export function InboxCard({
             <span className="text-xs text-ink-4"> {t('comments.card.edited')}</span>
           )}
         </span>
+        {mine && onEditThread && !editing && (
+          <Tooltip content={t('comments.card.edit')}>
+            <button
+              type="button"
+              className="mini-icon-btn ml-auto shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+              aria-label={t('comments.card.edit')}
+              onClick={(event) => { event.stopPropagation(); setEditing(true); }}
+            >
+              {Ico.edit(12)}
+            </button>
+          </Tooltip>
+        )}
       </div>
 
-      {/* Text — clamped to 4 lines; the full text lives in the thread popover. */}
-      <div className="text-base leading-[20px] text-ink whitespace-pre-wrap break-words line-clamp-4">
-        {threadText(thread)}
-      </div>
+      {/* Text — clamped to 4 lines; the full text lives in the thread popover.
+          Your own comment edits right here: Enter or clicking away saves,
+          Escape cancels, and its images stay as they are. */}
+      {editing ? (
+        <InlineCommentEdit
+          words={body}
+          onCancel={() => setEditing(false)}
+          onSave={async (words) => {
+            setEditing(false);
+            if (words === body.trim() || (!words && !images.length)) return;
+            await onEditThread(thread.id, composeCommentText(words, images));
+          }}
+        />
+      ) : (
+        <div className="text-base leading-[20px] text-ink whitespace-pre-wrap break-words line-clamp-4">
+          {body}
+        </div>
+      )}
+      <CommentImages images={images} loadImage={loadImage} />
 
       {/* Foot: reply count and plain-language location context. */}
-      {(repliesTxt || unanchored || hidden) && (
+      {(repliesTxt || unanchored || hidden || pinned) && (
         <div className="flex items-center justify-between min-h-[16px]">
           <span className="text-[12px] leading-[16px] text-ink-4">{repliesTxt}</span>
           {hidden ? (
@@ -145,6 +236,14 @@ export function InboxCard({
                 bg-surface-2 text-ink-3 text-[12px] leading-[16px] cursor-default">
                 <InfoIcon />
                 <span>{general ? t('comments.card.general') : t('comments.card.notAttached')}</span>
+              </span>
+            </Tooltip>
+          ) : pinned ? (
+            <Tooltip content={t('comments.card.pinnedTip')}>
+              <span className="inline-flex items-center gap-1 px-[2px] rounded-[4px]
+                bg-surface-2 text-ink-3 text-[12px] leading-[16px] cursor-default">
+                {Ico.pin(12)}
+                <span>{t('comments.card.pinned')}</span>
               </span>
             </Tooltip>
           ) : null}
@@ -168,12 +267,16 @@ export function InboxCard({
           <button
             type="button"
             className="artifact-comment-agent-action"
-            disabled={agentBusy || agentWorking}
+            disabled={agentBusy || agentWorking || agentQueued}
             aria-busy={agentBusy || agentWorking}
             onClick={() => onAddressWithAgent(thread)}
           >
             {Ico.sparkle(14)}
-            {agentWorking ? t('comments.card.agentWorking') : agentBusy ? t('comments.card.starting') : t('comments.card.addressWithAgent')}
+            {agentWorking
+              ? t('comments.card.agentWorking')
+              : agentQueued
+                ? t('comments.card.agentQueued')
+                : agentBusy ? t('comments.card.starting') : t('comments.card.addressWithAgent')}
           </button>
         )}
         {canResolve && (

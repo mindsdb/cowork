@@ -180,6 +180,38 @@ describe('fetchAccountIdentity — HubSpot MCP identity bridge', () => {
   });
 });
 
+describe('fetchAccountIdentity — Notion MCP identity bridge', () => {
+  it('forwards the workspace from the token response to the identity bridge', async () => {
+    let calledUrl = '';
+    let calledBody: unknown;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calledUrl = typeof url === 'string' ? url : url.toString();
+      calledBody = init?.body ? JSON.parse(init.body as string) : undefined;
+      return new Response(
+        JSON.stringify({ account_email: 'user@acme.com:ws-1', account_name: 'Acme Wiki' }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const identity = await fetchAccountIdentity('notion', 'tok-123', {
+      workspace_id: 'ws-1', workspace_name: 'Acme Wiki', bot_id: 'ignored',
+    });
+
+    expect(new URL(calledUrl).pathname).toBe('/api/v1/connectors/oauth/notion/mcp/identity');
+    expect(calledBody).toEqual({ access_token: 'tok-123', workspace_id: 'ws-1', workspace_name: 'Acme Wiki' });
+    expect(identity).toEqual({ email: 'user@acme.com:ws-1', name: 'Acme Wiki' });
+  });
+
+  it('surfaces the bridge error detail, e.g. an admin-restricted workspace', async () => {
+    const detail = 'Your Notion workspace only allows AI apps your admin has approved. Ask your Notion admin to approve MindsHub Cowork, then connect again.';
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ detail }), { status: 403 })) as unknown as typeof fetch;
+
+    const identity = await fetchAccountIdentity('notion', 'tok-123', { workspace_id: 'ws-1' });
+    expect(identity.email).toBe('');
+    expect(identity.reason).toBe(detail);
+  });
+});
+
 describe('buildRevokeRequest', () => {
   it('builds the generic RFC-7009 form-encoded shape by default', () => {
     const req = buildRevokeRequest('linear', 'refresh-tok', 'cid', 'secret');
@@ -194,6 +226,15 @@ describe('buildRevokeRequest', () => {
       client_id: 'cid',
       client_secret: 'secret',
       refresh_token: 'refresh-tok',
+    });
+  });
+
+  it('sends client_id without a secret for Notion', () => {
+    const req = buildRevokeRequest('notion', 'refresh-tok', 'https://mindshub.ai/.well-known/notion-oauth-client.json', '');
+    expect(req.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+    expect(Object.fromEntries(new URLSearchParams(req.body))).toEqual({
+      token: 'refresh-tok',
+      client_id: 'https://mindshub.ai/.well-known/notion-oauth-client.json',
     });
   });
 });
@@ -316,5 +357,67 @@ describe('fetchAccountIdentity — Linear workspace-aware identity', () => {
     globalThis.fetch = vi.fn(async () => new Response('', { status: 401 })) as unknown as typeof fetch;
 
     await expect(fetchAccountIdentity('linear', 'tok')).resolves.toEqual({ email: '' });
+  });
+});
+
+describe('fetchAccountIdentity — Slack', () => {
+  function stubSlack(authTest: object, usersInfo: object) {
+    const calls: Array<{ url: string; auth: string | null }> = [];
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = typeof url === 'string' ? url : url.toString();
+      calls.push({ url: href, auth: new Headers(init?.headers).get('Authorization') });
+      const body = new URL(href).pathname === '/api/auth.test' ? authTest : usersInfo;
+      return new Response(JSON.stringify(body), { status: 200 });
+    }) as unknown as typeof fetch;
+    return calls;
+  }
+
+  it('builds <email>:<team_id> named after the workspace', async () => {
+    const calls = stubSlack(
+      { ok: true, user_id: 'U1', team_id: 'T1', team: 'Acme' },
+      { ok: true, user: { profile: { email: 'ann@acme.com' } } },
+    );
+
+    expect(await fetchAccountIdentity('slack', 'xoxp-1')).toEqual({ email: 'ann@acme.com:T1', name: 'Acme' });
+    expect(calls.map((c) => c.url)).toEqual([
+      'https://slack.com/api/auth.test',
+      'https://slack.com/api/users.info?user=U1',
+    ]);
+    expect(calls.every((c) => c.auth === 'Bearer xoxp-1')).toBe(true);
+  });
+
+  it('falls back to the user id when the profile has no email', async () => {
+    stubSlack(
+      { ok: true, user_id: 'U1', team_id: 'T1', team: 'Acme' },
+      { ok: true, user: { profile: {} } },
+    );
+
+    expect(await fetchAccountIdentity('slack', 'xoxp-1')).toEqual({ email: 'U1:T1', name: 'Acme' });
+  });
+
+  it('uses the bare email when Slack returns no team id', async () => {
+    stubSlack(
+      { ok: true, user_id: 'U1' },
+      { ok: true, user: { profile: { email: 'ann@acme.com' } } },
+    );
+
+    expect(await fetchAccountIdentity('slack', 'xoxp-1')).toEqual({ email: 'ann@acme.com', name: 'ann@acme.com' });
+  });
+
+  it('stops with a clear reason when Slack names no user, without calling users.info', async () => {
+    const calls = stubSlack({ ok: true, team_id: 'T1', team: 'Acme' }, { ok: true, user: { profile: {} } });
+
+    const identity = await fetchAccountIdentity('slack', 'xoxp-1');
+    expect(identity.email).toBe('');
+    expect(identity.reason).toBe('Slack returned no user for this token.');
+    expect(calls.map((c) => c.url)).toEqual(['https://slack.com/api/auth.test']);
+  });
+
+  it('fails with Slack\'s error when a call answers 200 with ok: false', async () => {
+    stubSlack({ ok: false, error: 'invalid_auth' }, {});
+
+    const identity = await fetchAccountIdentity('slack', 'xoxp-1');
+    expect(identity.email).toBe('');
+    expect(identity.reason).toBe('Slack auth.test failed: invalid_auth');
   });
 });

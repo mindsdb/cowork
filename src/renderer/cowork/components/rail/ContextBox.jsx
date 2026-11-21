@@ -19,6 +19,9 @@ export function ContextBox({
   onAddSharePointFiles,
   onFetchGoogleDriveFiles,
   onRemoveGoogleDriveFile,
+  onAddNotionPages,
+  onFetchNotionPages,
+  onRemoveNotionPage,
 }) {
   const { t } = useTranslation('shell');
   return (
@@ -32,6 +35,9 @@ export function ContextBox({
         onAddSharePointFiles={onAddSharePointFiles}
         onFetchGoogleDriveFiles={onFetchGoogleDriveFiles}
         onRemoveGoogleDriveFile={onRemoveGoogleDriveFile}
+        onAddNotionPages={onAddNotionPages}
+        onFetchNotionPages={onFetchNotionPages}
+        onRemoveNotionPage={onRemoveNotionPage}
       />
     </RailCard>
   );

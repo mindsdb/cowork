@@ -2,6 +2,7 @@ import { authFetch, BASE } from '../api';
 import { iterateSSE } from './responseStreamAdapter';
 import { host } from '../../platform/host';
 import { artifactIdentity } from './artifactIdentity';
+import { trackingSettingsBody } from './trackingSettings';
 import i18n from '../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(`messages.artifactWorkspaceApi.${key}`, { ns: 'projects', ...vars });
@@ -253,7 +254,8 @@ export function loadArtifactRevision(artifact, revisionId) {
  * throws before any event, in the same error shape as every request here.
  * Resolves when the stream ends; aborting `signal` ends it early.
  *
- * body: { message, history, expectedRevisionId, conversationId, forceRoute }
+ * body: { message, history, expectedRevisionId, conversationId, forceRoute,
+ *         images?: [{ name, data (base64) }] }
  */
 export async function streamQuickEdit(artifact, body, { signal, onEvent } = {}) {
   const ref = artifactRef(artifact);
@@ -286,6 +288,37 @@ export function undoQuickEdit(artifact, editId, { expectedRevisionId = null } = 
     method: 'POST',
     body: JSON.stringify({ expectedRevisionId }),
   });
+}
+
+/*
+ * Images in comments (ENG-4410): one image stored with the artifact, answered
+ * as `{ id, mediaType, size }`; its id goes in the comment's text
+ * (lib/commentImages). Whoever may review the artifact may add one.
+ */
+export async function uploadCommentImage(artifact, file) {
+  const ref = artifactRef(artifact);
+  if (!ref) throw new Error('Artifact has no full identity');
+  const form = new FormData();
+  form.append('file', file);
+  const response = await authFetch(`${BASE}${ref.base}/comment-images`, { method: 'POST', body: form });
+  if (!response.ok) throw await failure(response);
+  return response.json();
+}
+
+/** Where a comment's image is read, or null. Fetch it with authentication. */
+export function commentImageUrl(artifact, imageId) {
+  const ref = artifactRef(artifact);
+  if (!ref || !imageId) return null;
+  return `${BASE}${ref.base}/comment-images/${encodeURIComponent(imageId)}`;
+}
+
+/** A comment's image as a Blob, read with the viewer's credential. */
+export async function loadCommentImage(artifact, imageId, { signal } = {}) {
+  const url = commentImageUrl(artifact, imageId);
+  if (!url) throw new Error('Artifact has no full identity');
+  const response = await authFetch(url, { signal });
+  if (!response.ok) throw await failure(response);
+  return response.blob();
 }
 
 export function restoreArtifactRevision(artifact, revisionId, expectedRevisionId) {
@@ -329,6 +362,17 @@ export function loadArtifactAccess(artifact) {
   return request(`${ref.base}/access`);
 }
 
+// Who a published artifact reaches, for anyone who may preview it, not only
+// its owner (ENG-4455): `{ accessMode, ownerOnly, orgAllowed, allowedTeamIds,
+// allowedUserIds, accessEmails, names }`. Never the password. `names` false
+// means the caller is outside the artifact's org and is told only how it is
+// shared: the lists come back empty.
+export function loadArtifactAudience(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/audience`);
+}
+
 // Setting an audience is a re-publish server-side: the target stores access
 // alongside the bundle and reuses the existing report_id, so the shared URL
 // survives the change and nothing has to be unpublished first. `access` goes
@@ -351,13 +395,30 @@ export function loadArtifactStats(artifact) {
   return request(`${ref.base}/stats`);
 }
 
-export function setArtifactTracking(artifact, enabled) {
+// `settings`: the analytics switch as a boolean, or `{ tracking,
+// require_email }` with omitted fields left unchanged (trackingSettingsBody).
+export function setArtifactTracking(artifact, settings) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/stats/tracking`, {
     method: 'PUT',
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify(trackingSettingsBody(settings)),
   });
+}
+
+// One viewer's visits, each with its time per section. Owner-only.
+export function loadArtifactStatsViewer(artifact, viewerId) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  if (!viewerId) return Promise.reject(new Error('No viewer'));
+  return request(`${ref.base}/stats/viewers/${encodeURIComponent(viewerId)}`);
+}
+
+// Deletes every view, visit and viewer recorded for the artifact. Owner-only.
+export function deleteArtifactStats(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/stats`, { method: 'DELETE' });
 }
 
 export function requestAgentRepair(artifact, payload) {

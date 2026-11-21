@@ -16,6 +16,8 @@ import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from '.
 import { CodeProjectPicker } from './CodeProjectPicker';
 import { ExecutionTargetSelect } from './ExecutionTargetSelect';
 import { PermissionSelect } from './PermissionSelect';
+import { WorkspaceModeSelect } from './WorkspaceModeSelect';
+import { worktreeUnavailableText } from './workspaceMode';
 import { PromptReferenceChips } from './PromptReferences';
 import { SkillDetailModal } from './SkillDetailModal';
 import { TaskSourceLinks } from './TaskSourceLinks';
@@ -83,7 +85,7 @@ export function NewTaskPanel({
   const draft = useNewTaskDraft({
     busy: busy || sourceLoading, defaultEngineId, defaultModel, models, modelMeta,
     projects, selectedProjectId, onProjectChange, onOpenProjectSettings,
-    onCreate: input => onCreate({ ...input, ...(taskMode === 'plan' ? { taskMode } : {}) }), catalog,
+    onCreate: input => onCreate({ ...input, ...(taskMode === 'plan' ? { taskMode } : {}) }), startKey: taskMode, catalog,
   });
   const {
     prompt, setPrompt, catalogError,
@@ -96,6 +98,7 @@ export function NewTaskPanel({
     projectResources, resourceIds, setResourceIds, resourceStates,
     computers, allComputers, computerId, setComputerId, executionLoading, refreshComputers,
   } = draft;
+  const worktreeUnavailable = worktreeUnavailableText(draft.workspaceModeOptions);
   const localTarget = !computerId || allComputers.find(computer => computer.id === computerId)?.is_local === true;
   const canPlan = localTarget && draft.supportsPlanning;
   const planUnavailable = taskMode === 'plan' && !canPlan;
@@ -216,11 +219,22 @@ export function NewTaskPanel({
                   setup={draft.repositorySetup}
                   local={localTarget}
                   disabled={busy || executionLoading}
+                  onRefresh={draft.recheckProjectFolders}
                   onApply={(ids, setup) => {
                     setResourceIds(ids);
                     draft.setRepositorySetup(setup);
                   }}
                 />
+                {draft.workspaceModeChoice && draft.workspaceMode && (
+                  <WorkspaceModeSelect
+                    value={draft.workspaceMode}
+                    onValueChange={draft.setWorkspaceMode}
+                    disabled={busy || executionLoading || draft.workspaceModesLoading}
+                  />
+                )}
+                {!draft.workspaceModesLoading && !draft.workspaceModeChoice && draft.workspaceMode === 'in_place' && (
+                  <span className="meta-pill" title={t('workspaceMode.local.title')}>{t('taskBar.localFolder', { count: selectedProject ? resourceIds.length : 1 })}</span>
+                )}
                 <ExecutionTargetSelect
                   computers={allComputers}
                   computerId={computerId}
@@ -234,6 +248,16 @@ export function NewTaskPanel({
             )}
             {!selectedProject && (
               <div className="code-task-execution-controls">
+                {draft.workspaceModeChoice && draft.workspaceMode && (
+                  <WorkspaceModeSelect
+                    value={draft.workspaceMode}
+                    onValueChange={draft.setWorkspaceMode}
+                    disabled={busy}
+                  />
+                )}
+                {!draft.workspaceModesLoading && !draft.workspaceModeChoice && draft.workspaceMode === 'in_place' && (
+                  <span className="meta-pill" title={t('workspaceMode.local.title')}>{t('taskBar.localFolder', { count: selectedProject ? resourceIds.length : 1 })}</span>
+                )}
                 <ExecutionTargetSelect
                   computers={allComputers}
                   computerId={computerId}
@@ -246,6 +270,17 @@ export function NewTaskPanel({
               </div>
             )}
           </div>
+          {worktreeUnavailable && !draft.workspaceModesLoading && (
+            <div className="flex flex-wrap items-center gap-x-2 px-2 py-2 text-xs text-ink-2">
+              <span>{worktreeUnavailable}</span>
+              {!selectedProject && draft.workspaceModeOptions.can_initialize_git && (
+                <Button size="sm" variant="subtle" disabled={busy || draft.initializingGit} onClick={() => void draft.initializeGit()}>
+                  {t('workspaceMode.initializeGit')}
+                </Button>
+              )}
+            </div>
+          )}
+          {draft.initializeGitError && <Alert variant="danger">{draft.initializeGitError}</Alert>}
           {commandQuery != null && (
             <CodeCommandPalette
               items={paletteItems}

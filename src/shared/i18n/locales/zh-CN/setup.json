@@ -191,11 +191,7 @@
     "steps": {
       "bring-your-work": {
         "title": "从你自己的工作开始",
-        "description": "告诉 Cowork 你正在做什么，再交给它一个文件或一些笔记。"
-      },
-      "customize-role": {
-        "title": "按你的角色定制 Cowork",
-        "description": "添加现成的工具和工作流。"
+        "description": "把文件、笔记或链接交给 Cowork，它就会开始。"
       },
       "connect-app": {
         "title": "连接应用",

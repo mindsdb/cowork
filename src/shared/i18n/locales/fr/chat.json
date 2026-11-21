@@ -31,6 +31,7 @@
       "retryExhausted": "Arrêt anticipé : la tâche échouait à chaque tentative.",
       "questionUnanswered": "Arrêt anticipé : une question est restée sans réponse.",
       "contentFilter": "Arrêt anticipé : le filtre de contenu du modèle a bloqué une réponse.",
+      "userStopped": "Arrêté.",
       "fallback": "Arrêté avant la fin."
     },
     "figureFile": {
@@ -71,7 +72,9 @@
       "thumbnailAlt": "Miniature de l’artefact",
       "deletedTitle": "Cet artefact a été supprimé",
       "liveArtifact": "artefact en direct",
-      "deletedBadge": "Supprimé"
+      "deletedBadge": "Supprimé",
+      "share": "Partager",
+      "shareTooltip": "Choisir qui peut l'ouvrir"
     },
     "kinds": {
       "provider": "Fournisseur",
@@ -107,14 +110,27 @@
       "tryAgainIn": "Réessayer dans {seconds} s",
       "tryAgain": "Réessayer",
       "adminSpendingLimitBody": "La limite de dépenses fixée par votre administrateur a été atteinte. Contactez votre administrateur.",
-      "budgetUsedUpTitle": "Le budget de votre organisation est épuisé",
-      "viewBudgets": "Voir les budgets"
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {Le budget quotidien de votre organisation est épuisé} month {Le budget mensuel de votre organisation est épuisé} year {Le budget annuel de votre organisation est épuisé} other {Le budget de votre organisation est épuisé}}} workspace {{period, select, day {Le budget quotidien de cet espace de travail est épuisé} month {Le budget mensuel de cet espace de travail est épuisé} year {Le budget annuel de cet espace de travail est épuisé} other {Le budget de cet espace de travail est épuisé}}} api_key {{period, select, day {Le budget quotidien de cette clé API est épuisé} month {Le budget mensuel de cette clé API est épuisé} year {Le budget annuel de cette clé API est épuisé} other {Le budget de cette clé API est épuisé}}} team {{period, select, day {Le budget quotidien de votre équipe est épuisé} month {Le budget mensuel de votre équipe est épuisé} year {Le budget annuel de votre équipe est épuisé} other {Le budget de votre équipe est épuisé}}} member {{period, select, day {Votre budget quotidien est épuisé} month {Votre budget mensuel est épuisé} year {Votre budget annuel est épuisé} other {Votre budget est épuisé}}} other {{period, select, day {Un budget quotidien est épuisé} month {Un budget mensuel est épuisé} year {Un budget annuel est épuisé} other {Un budget est épuisé}}}}",
+      "viewBudgets": "Voir les budgets",
+      "balanceRanOutMobile": "Votre solde a été épuisé avant la fin de cette tâche.",
+      "autoTopUpFailedBodyMobile": "Nous n’avons pas pu débiter votre carte.",
+      "connectProviderBodyMobile": "Connectez votre propre fournisseur dans les paramètres.",
+      "windowUsedUpTitle": "Quota du forfait épuisé",
+      "windowPausedUntil": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}} et votre solde est épuisé. En pause jusqu’à {time}. Ajoutez des fonds pour continuer.",
+      "windowPaused": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}} et votre solde est épuisé. En pause jusqu’à la réinitialisation. Ajoutez des fonds pour continuer.",
+      "windowPausedUntilMobile": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}}. En pause jusqu’à {time}.",
+      "windowPausedMobile": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}}. En pause jusqu’à la réinitialisation."
     },
     "usageAlert": {
       "freeLow": "Quota gratuit Air restant : {percent}",
       "freeLowRefills": "Quota gratuit Air restant : {percent} · renouvelé à {time}",
       "freeUsed": "Quota gratuit Air épuisé · votre solde est désormais utilisé",
-      "freeUsedUntil": "Quota gratuit Air épuisé · votre solde est utilisé jusqu’à {time}"
+      "freeUsedUntil": "Quota gratuit Air épuisé · votre solde est utilisé jusqu’à {time}",
+      "windowLow": "{percent} de votre quota {window, select, 7d {hebdomadaire} other {de 5 heures}} utilisé",
+      "windowLowResets": "{percent} de votre quota {window, select, 7d {hebdomadaire} other {de 5 heures}} utilisé · réinitialisation à {time}",
+      "windowUsed": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}}",
+      "windowUsedUntil": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}} · en pause jusqu’à {time}",
+      "windowOnWallet": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}} · votre solde est utilisé aux tarifs API"
     },
     "reconnect": {
       "couldNotReconnect": "Impossible de se reconnecter. Essayez de vous déconnecter, puis de vous reconnecter.",
@@ -142,7 +158,10 @@
       "needsCreditsTitle": "{model} nécessite des crédits",
       "needsCreditsBody": "Vous n’avez pas assez de crédits pour ce modèle. Rechargez votre solde pour l’utiliser.",
       "disabledBody": "Ce modèle est désactivé pour votre espace de travail. Choisissez un autre modèle dans les paramètres.",
-      "topUpBalance": "Recharger le solde"
+      "topUpBalance": "Recharger le solde",
+      "needsCreditsBodyMobile": "Vous n’avez pas assez de crédits pour ce modèle.",
+      "notInTierTitle": "{model} n’est pas inclus dans votre forfait",
+      "notInTierBody": "{tier, select, plus {{model} est inclus dans Plus.} pro {{model} est inclus dans Pro.} other {Votre forfait n’inclut pas {model}.}} Changez de forfait ou ajoutez des fonds pour l’utiliser aux tarifs API."
     },
     "overloaded": {
       "theModelProvider": "Le fournisseur de modèles",
@@ -221,6 +240,16 @@
         "files": "En file d’attente : les messages avec des fichiers sont traités après la tâche en cours.",
         "notRead": "En file d’attente : la tâche s’est terminée avant de pouvoir lire ceci."
       }
+    },
+    "reconnecting": "Tentative de reconnexion",
+    "nextSteps": {
+      "groupLabel": "Étapes suivantes",
+      "ownData": "Le faire avec mes propres données",
+      "anotherFile": "Faire de même avec un autre fichier",
+      "makePage": "En faire une page",
+      "schedule": "Exécuter selon un planning",
+      "scheduled": "« {title} » planifiée",
+      "scheduledDone": "Planifié ✓"
     }
   },
   "composer": {
@@ -262,7 +291,7 @@
       "openingGoogleDrive": "Ouverture de Google Drive…",
       "addFromGoogleDrive": "Ajouter des fichiers depuis Google Drive",
       "addFromSharePoint": "Ajouter des fichiers depuis SharePoint",
-      "browserTitle": "{agent} peut utiliser votre navigateur partagé dans cette tâche. La désactivation s’applique à partir de votre prochain message.",
+      "browserTitle": "{agent} peut utiliser le mode navigateur dans cette tâche. La désactivation s’applique à partir de votre prochain message.",
       "browser": "Navigateur",
       "browserOff": "Désactiver le navigateur pour cette tâche",
       "browserOn": "Activer le navigateur pour cette tâche",
@@ -279,7 +308,8 @@
       "fixed": "Le projet est fixé pour cette tâche",
       "none": "Aucun projet"
     },
-    "chooseHarness": "Choisir l’environnement d’exécution"
+    "chooseHarness": "Choisir l’environnement d’exécution",
+    "voiceCall": "Appel vocal"
   },
   "attachmentThumbnail": {
     "open": "Ouvrir l’image",
@@ -290,11 +320,35 @@
     "hintCustom": "…ou saisissez votre propre réponse ci-dessous.",
     "hintSelectOnly": "Choisissez une option ci-dessus : une réponse saisie ne sera pas acceptée. Passez la question pour écrire autre chose.",
     "skip": "Passer",
+    "skipApprovals": "Ignorer les approbations pour les étapes suivantes",
     "send": "Envoyer",
     "skipped": "Question passée.",
     "timedOut": "Aucune réponse : délai dépassé.",
     "answered": "Réponse :",
-    "noLongerActive": "Cette question n’est plus active."
+    "noLongerActive": "Cette question n’est plus active.",
+    "browserStep": {
+      "title": "Approuver cette étape dans le navigateur ?",
+      "intro": "Elle peut acheter, envoyer, supprimer ou valider quelque chose, et ne s’exécute que si vous l’approuvez.",
+      "approved": "Action du navigateur approuvée",
+      "cancelled": "Action du navigateur annulée",
+      "typedText": "Texte saisi",
+      "typedTextKeys": "Texte saisi (⏎ marque un saut de ligne, qui peut l’envoyer ; ⇥ marque une tabulation ; ⟦U+…⟧ désigne un caractère invisible)"
+    },
+    "handOver": {
+      "title": "À vous dans le navigateur",
+      "watching": "Faites-le dans le navigateur et {agent} reprend de lui-même quelques secondes après, ou cliquez sur Terminé, continuer.",
+      "manual": "Quand vous avez fini dans le navigateur, cliquez sur Terminé, continuer.",
+      "stillYours": "Le navigateur est toujours à vous. Quand vous avez fini, cliquez sur Terminé, continuer et {agent} reprend à partir de là.",
+      "doneContinue": "Terminé, continuer",
+      "openBrowser": "Ouvrir le navigateur",
+      "finishLater": "Finir plus tard",
+      "stop": "Arrêter",
+      "noBrowser": "Il n’y a aucun navigateur à rendre ici.",
+      "notOpened": "Le navigateur ne s’est pas ouvert. Ouvrez-le et cliquez à nouveau sur Terminé, continuer.",
+      "handedBack": "Rendu, reprise",
+      "stopped": "Passage de main arrêté",
+      "ended": "Passage de main terminé"
+    }
   },
   "codingTerminal": {
     "unavailable": "Le terminal intégré n’est pas disponible dans cette version.",
@@ -455,7 +509,8 @@
         "1": "Analyser le paysage concurrentiel et le positionnement",
         "2": "Automatiser le rapport d’avancement hebdomadaire de l’équipe",
         "3": "Étudier l’opportunité de marché pour un lancement de produit",
-        "4": "Rédiger le point de cette semaine à partir de celui de la semaine dernière"
+        "4": "Rédiger le point de cette semaine à partir de celui de la semaine dernière",
+        "5": "Transformer un rapport en présentation"
       }
     },
     "website": {
@@ -500,7 +555,8 @@
         "3": "Comparer les meilleurs modèles VLM avec les données Hugging Face",
         "4": "Calculer le TRI de flux de trésorerie d’investissement",
         "5": "Nettoyer ma feuille de calcul et en faire un graphique",
-        "6": "Extraire les clauses clés d’un contrat"
+        "6": "Extraire les clauses clés d’un contrat",
+        "7": "Transformer un relevé bancaire en feuille de calcul"
       }
     },
     "visualization": {
@@ -531,7 +587,10 @@
         "7": "Faire le point sur ce qui m’attend cette semaine",
         "8": "Se renseigner sur un prospect et rédiger une prise de contact",
         "9": "Me conseiller sur une affaire à partir de la transcription d’un appel",
-        "10": "Transformer des notes de réunion en actions à mener"
+        "10": "Transformer des notes de réunion en actions à mener",
+        "11": "Cartographier la stratégie commerciale d'un concurrent",
+        "12": "Créer un guide d'étude à partir du support de cours",
+        "13": "Dresser une liste de prospects classée"
       }
     },
     "games": {
@@ -552,7 +611,11 @@
       "placeholder": "Choisissez un exemple ou décrivez votre propre tâche"
     },
     "samplePrompts": "Exemples de prompts",
-    "pillsAriaLabel": "Types de tâches"
+    "pillsAriaLabel": "Types de tâches",
+    "own-work": {
+      "chipLabel": "Votre travail",
+      "placeholder": "Collez du texte ou un lien, ou joignez un fichier"
+    }
   },
   "taskRows": {
     "openProject": "Ouvrir {project}",
@@ -573,7 +636,7 @@
   },
   "browser": {
     "close": "Fermer le navigateur",
-    "shared": "Navigateur partagé",
+    "shared": "Mode navigateur",
     "title": "Navigateur",
     "unreachable": "Le navigateur est injoignable",
     "stopped": {
@@ -613,6 +676,7 @@
     "aNewTab": "un nouvel onglet",
     "yourTurn": "À vous de jouer sur {site}. Cliquez sur Terminé pour rendre la main à {agent}.",
     "yourTurnReason": "À vous de jouer sur {site} : {reason}. Cliquez sur Terminé pour rendre la main à {agent}.",
+    "yourTurnWatching": "À vous sur {site} : {reason}. {agent} reprend de lui-même une fois que c’est fait, ou cliquez sur Terminé.",
     "agentUsing": "{agent} l’utilise. Prenez la main pour l’utiliser vous-même.",
     "pageReadsNote": "Les lectures de page et captures d’écran de {agent} sont envoyées au fournisseur de modèles qui traite votre tour.",
     "back": "Précédent",
@@ -623,6 +687,180 @@
     "newTab": "Nouvel onglet",
     "closedTitle": "Le navigateur de cette tâche est fermé",
     "closedDescription": "{agent} le rouvrira quand il en aura besoin.",
-    "squeezed": "Agrandissez la fenêtre pour voir la page"
+    "squeezed": "Agrandissez la fenêtre pour voir la page",
+    "minimize": "Réduire le navigateur",
+    "expand": "Agrandir le navigateur",
+    "learnWhat": "Ce que voit {agent}",
+    "opening": "Ouverture de votre navigateur",
+    "askOrTypeUrl": "Posez une question ou saisissez une URL",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Page blanche. De grands projets ?",
+          "subtitle": "Saisissez une adresse, ou dites-moi quoi chercher."
+        },
+        "wholeInternet": {
+          "title": "Tout Internet, et nulle part où aller.",
+          "subtitle": "Indiquez-moi un endroit qui vaut le détour."
+        },
+        "freshTab": {
+          "title": "Un nouvel onglet, une nouvelle énergie.",
+          "subtitle": "Où allons-nous ?"
+        },
+        "quiet": {
+          "title": "C’est calme ici. Étrangement calme.",
+          "subtitle": "Donnez-moi un site ou une recherche, et je m’y mets."
+        }
+      },
+      "off": "Le navigateur est désactivé pour cette tâche. Activez-le depuis le menu + et {agent} pourra naviguer.",
+      "searchPlaceholder": "Recherchez ou collez un lien",
+      "searchLabel": "Quoi chercher",
+      "onIt": "C’est parti…",
+      "go": "Aller",
+      "addressPlaceholder": "Saisissez une URL ou recherchez",
+      "address": "Adresse",
+      "nothingOpen": "Rien d’ouvert pour l’instant",
+      "openingUrl": "Ouverture de {url}…",
+      "slow": "Cette page met du temps. Réessayez, ou saisissez-la dans la barre d’adresse.",
+      "couldNotOpen": "Impossible d’ouvrir cette page.",
+      "agentOpening": "{agent} ouvre le navigateur…"
+    },
+    "projectBrowsers": {
+      "title": "Navigateurs de ce projet",
+      "listFailed": "Impossible de lister les navigateurs.",
+      "failed": "Cela n’a pas fonctionné.",
+      "looking": "Recherche…",
+      "thisTask": "Cette tâche",
+      "held": "Vous avez ce navigateur : ses onglets s’affichent quand vous le rendez.",
+      "showing": "Affiché",
+      "closeOthers": "{count, plural, one {Fermer l’autre onglet (enregistré pour plus tard)} other {Fermer les # autres onglets (enregistrés pour plus tard)}}",
+      "noneMine": "Aucun navigateur ouvert pour cette tâche.",
+      "reopen": "Rouvrir {tab}",
+      "saved": "Enregistré",
+      "otherTasks": "Autres tâches de ce projet",
+      "tabCount": "{count, plural, one {# onglet} other {# onglets}}",
+      "goTo": "Aller à son navigateur",
+      "closeIts": "Fermer son navigateur (onglets enregistrés)",
+      "watching": "Quelqu’un le regarde"
+    },
+    "phoneYourTurnWatching": "À vous : {reason}. {agent} reprend de lui-même une fois que c’est fait, ou touchez Terminé dans le navigateur.",
+    "handOverFallback": "{agent} a besoin de vous dans le navigateur",
+    "phoneYourTurn": "À vous : {reason}. Touchez Terminé dans le navigateur quand vous avez fini, puis réduisez pour continuer.",
+    "phoneQuestion": "{agent} a une question pour vous. Réduisez pour y répondre.",
+    "phoneWorking": "En cours…",
+    "phoneDone": "Terminé. Réduisez pour voir la réponse.",
+    "phoneMinimize": "Réduire",
+    "talkTo": "Parler à {agent}"
+  },
+  "voiceCall": {
+    "dialogLabel": "Appel vocal avec {agent}",
+    "connecting": "Connexion…",
+    "ending": "Fin de l’appel…",
+    "working": "En cours…",
+    "listening": "À l’écoute",
+    "talkSoon": "À bientôt",
+    "analyzing": "Analyse des résultats…",
+    "trying": "Essai de {voice}",
+    "connectingVoice": "Connexion de la voix…",
+    "voice": "Voix",
+    "voiceAriaLabel": "Voix : {voice}",
+    "changeVoice": "Changer de voix",
+    "muteAndEnd": "Couper le micro et terminer l’appel",
+    "ended": "L’appel est terminé.",
+    "close": "Fermer",
+    "endCall": "Terminer l’appel",
+    "mute": "Couper le micro",
+    "orbLabel": "{state, select, starting {Connexion de la voix} working {En cours} other {En appel}}",
+    "orbShow": "{state, select, starting {Connexion de la voix. Afficher l’appel} working {En cours. Afficher l’appel} other {En appel. Afficher l’appel}}",
+    "allowMicrophone": "Autorisez le micro dans votre navigateur pour lancer un appel vocal.",
+    "noMicrophone": "Aucun micro trouvé.",
+    "couldNotStart": "Impossible de lancer l’appel vocal.",
+    "endedReason": "L’appel est terminé ({reason})."
+  },
+  "connectorDraft": {
+    "notSaved": "Modèle de connecteur · non enregistré",
+    "kept": "Vous avez déjà un connecteur avec cet id. L’enregistrer à nouveau le remplace.",
+    "saved": "Enregistré. Ajoutez vos identifiants dans Connecter des applications et des données.",
+    "savedConnect": "Enregistré. Connectez-le pour ajouter vos identifiants.",
+    "saveFailed": "Impossible d’enregistrer le connecteur.",
+    "button": {
+      "save": "Enregistrer le connecteur",
+      "saveAgain": "Enregistrer à nouveau",
+      "saving": "Enregistrement…",
+      "done": "Enregistré",
+      "connect": "Connecter"
+    },
+    "modal": {
+      "fieldsTitle": "Ce que vous allez saisir",
+      "usageTitle": "Comment Anton l’utilisera",
+      "helpUrl": "Où les trouver : {url}"
+    },
+    "field": {
+      "secret": "secret",
+      "required": "obligatoire",
+      "optional": "facultatif",
+      "example": "Exemple : {value}"
+    }
+  },
+  "notionPicker": {
+    "title": "Ajouter des pages depuis Notion",
+    "subtitle": "Recherchez dans votre Notion et choisissez des pages pour ce message.",
+    "searchPlaceholder": "Rechercher des pages Notion…",
+    "searchAriaLabel": "Rechercher des pages Notion",
+    "minQuery": "{count, plural, one {Saisissez au moins # caractère pour rechercher.} other {Saisissez au moins # caractères pour rechercher.}}",
+    "noResults": "Aucune page trouvée.",
+    "database": "Base de données",
+    "cancel": "Annuler",
+    "add": "{count, plural, =0 {Ajouter la page} one {Ajouter la page} other {Ajouter # pages}}"
+  },
+  "generatedImage": {
+    "fallbackName": "image",
+    "alt": "Image générée {name}",
+    "notShown": "Impossible d'afficher {name}. Le fichier a peut-être été déplacé ou supprimé."
+  },
+  "ownWork": {
+    "needsMaterial": "Ajoutez maintenant ce sur quoi il doit travailler : joignez un fichier, ou collez du texte ou un lien après la tâche.",
+    "waysLabel": "Façons d'apporter votre travail",
+    "attach": "Joindre un fichier",
+    "orPaste": "ou collez du texte ou un lien dans le champ ci-dessus",
+    "jobsHeading": "Choisissez une tâche si vous voulez",
+    "kindsLabel": "Type de travail",
+    "groups": {
+      "finance": "Finance et administration",
+      "sales": "Ventes et marketing",
+      "operations": "Opérations",
+      "legal": "Contrats et recherche"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Regrouper ces relevés bancaires ou factures dans une seule feuille de calcul.",
+        "1": "Préparer le prochain rapport mensuel à partir de ces chiffres.",
+        "2": "Vérifier ces relevés pour repérer les erreurs ou les opérations inhabituelles."
+      },
+      "sales": {
+        "0": "Nettoyer cette liste de clients et signaler les doublons.",
+        "1": "Comparer ces deux listes de prix et montrer ce qui a changé.",
+        "2": "Rédiger des e-mails de suivi à partir de ces notes d'appel."
+      },
+      "operations": {
+        "0": "Transformer ces notes de réunion en décisions et actions à mener.",
+        "1": "Transformer ces notes en une synthèse d'une page.",
+        "2": "Transformer ce document de processus en checklist étape par étape."
+      },
+      "legal": {
+        "0": "Résumer les principales clauses et les risques de ce contrat.",
+        "1": "Résumer ce rapport et faire ressortir les chiffres qui comptent.",
+        "2": "Lire cette page et expliquer ce qui compte pour nous."
+      }
+    }
+  },
+  "reportContent": {
+    "title": "Signaler le contenu",
+    "message": "Signaler ce contenu comme dangereux ou offensant ? Son texte ou sa référence et les identifiants de votre compte seront transmis à l’équipe MindsHub pour examen.",
+    "submit": "Envoyer le signalement",
+    "sent": "Signalement reçu.",
+    "failed": "Impossible d’envoyer le signalement. Veuillez réessayer.",
+    "rateLimited": "Limite quotidienne de signalements atteinte. Réessayez plus tard.",
+    "retryAt": "Limite quotidienne de signalements atteinte. Réessayez le {when, date, short} à {when, time, short}."
   }
 }

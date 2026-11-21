@@ -4,15 +4,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../../api', () => ({
   fetchPublishStats: vi.fn(),
   setPublishTracking: vi.fn(),
+  fetchPublishStatsViewer: vi.fn(),
+  deletePublishStats: vi.fn(),
   publishTargetPath: vi.fn((artifact) => artifact?.folder || artifact?.path || ''),
 }));
 vi.mock('../../../lib/artifactWorkspaceApi', () => ({
   loadArtifactStats: vi.fn(),
   setArtifactTracking: vi.fn(),
+  loadArtifactStatsViewer: vi.fn(),
+  deleteArtifactStats: vi.fn(),
 }));
 
-import { fetchPublishStats, setPublishTracking } from '../../../api';
-import { loadArtifactStats, setArtifactTracking } from '../../../lib/artifactWorkspaceApi';
+import { deletePublishStats, fetchPublishStats, fetchPublishStatsViewer, setPublishTracking } from '../../../api';
+import {
+  deleteArtifactStats,
+  loadArtifactStats,
+  loadArtifactStatsViewer,
+  setArtifactTracking,
+} from '../../../lib/artifactWorkspaceApi';
 import { setOrgMode } from '../../../../lib/orgMode';
 import { useArtifactStats } from './useArtifactStats';
 
@@ -332,5 +341,165 @@ describe('useArtifactStats tracking switch', () => {
     expect(setArtifactTracking).toHaveBeenCalledWith(ARTIFACT, false);
     expect(setPublishTracking).not.toHaveBeenCalled();
     expect(result.current.data.tracking).toBe(false);
+  });
+});
+
+// ENG-4455: viewer analytics.
+describe('useArtifactStats analytics settings', () => {
+  it('saves the email gate alone and keeps what the server answered', async () => {
+    fetchPublishStats.mockResolvedValue({ ...STATS, require_email: false });
+    setPublishTracking.mockResolvedValue({ tracking: true, require_email: true });
+    const { result } = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+
+    await act(async () => { await result.current.setRequireEmail(true); });
+
+    expect(setPublishTracking).toHaveBeenCalledWith('/work/.anton/artifacts/sales', { require_email: true });
+    expect(result.current.data.require_email).toBe(true);
+  });
+
+  it('puts the switch back and keeps the credits code when turning on is refused', async () => {
+    fetchPublishStats.mockResolvedValue({ ...STATS, tracking: false });
+    setPublishTracking.mockRejectedValue(refusal(402, 'credits_required', 'Add credits to collect viewer analytics.'));
+    const { result } = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+
+    let saved;
+    await act(async () => { saved = await result.current.setTracking(true); });
+
+    expect(saved).toBe(false);
+    expect(result.current.data.tracking).toBe(false);
+    expect(result.current.error).toMatchObject({ status: 402, code: 'credits_required' });
+  });
+
+  it('tells the other open panel for the same artifact about a saved change', async () => {
+    fetchPublishStats.mockResolvedValue({ ...STATS, tracking: false });
+    setPublishTracking.mockResolvedValue({ tracking: true, require_email: false });
+    const share = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    const panel = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    const other = renderHook(() => useArtifactStats(OTHER, { enabled: true }));
+    await waitFor(() => expect(panel.result.current.data).not.toBeNull());
+    await waitFor(() => expect(other.result.current.data).not.toBeNull());
+
+    await act(async () => { await share.result.current.setTracking(true); });
+
+    expect(panel.result.current.data.tracking).toBe(true);
+    expect(other.result.current.data.tracking).toBe(false);
+  });
+
+  it('saves settings through the org route in org mode', async () => {
+    setOrgMode(true);
+    loadArtifactStats.mockResolvedValue(STATS);
+    setArtifactTracking.mockResolvedValue({ tracking: true, require_email: true });
+    const { result } = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+
+    await act(async () => { await result.current.setRequireEmail(true); });
+
+    expect(setArtifactTracking).toHaveBeenCalledWith(ARTIFACT, { require_email: true });
+  });
+});
+
+describe('useArtifactStats viewer detail', () => {
+  const DETAIL = { viewer: { id: 'v_1', email: 'a@example.com' }, visits: [{ id: 'x', seconds: 9, sections: [] }] };
+
+  it('loads one viewer, then goes back to the overview', async () => {
+    fetchPublishStats.mockResolvedValue(STATS);
+    const pending = deferred();
+    fetchPublishStatsViewer.mockReturnValue(pending.promise);
+    const { result } = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+
+    act(() => { result.current.openViewer('v_1'); });
+    expect(result.current.viewer).toMatchObject({ id: 'v_1', loading: true, data: null });
+    expect(fetchPublishStatsViewer).toHaveBeenCalledWith('/work/.anton/artifacts/sales', 'v_1');
+
+    await act(async () => { pending.resolve(DETAIL); });
+    expect(result.current.viewer).toMatchObject({ id: 'v_1', loading: false, data: DETAIL });
+
+    act(() => result.current.closeViewer());
+    expect(result.current.viewer).toBeNull();
+  });
+
+  it('drops a viewer answer that arrives after going back', async () => {
+    fetchPublishStats.mockResolvedValue(STATS);
+    const pending = deferred();
+    fetchPublishStatsViewer.mockReturnValue(pending.promise);
+    const { result } = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+
+    act(() => { result.current.openViewer('v_1'); });
+    act(() => result.current.closeViewer());
+    await act(async () => { pending.resolve(DETAIL); });
+
+    expect(result.current.viewer).toBeNull();
+  });
+
+  it('keeps a failed viewer load with its error', async () => {
+    fetchPublishStats.mockResolvedValue(STATS);
+    fetchPublishStatsViewer.mockRejectedValue(refusal(404, null, 'Not found'));
+    const { result } = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+
+    await act(async () => { await result.current.openViewer('v_9'); });
+
+    expect(result.current.viewer).toMatchObject({ id: 'v_9', loading: false, error: { status: 404 } });
+  });
+
+  it('reads a viewer through the org route in org mode', async () => {
+    setOrgMode(true);
+    loadArtifactStats.mockResolvedValue(STATS);
+    loadArtifactStatsViewer.mockResolvedValue(DETAIL);
+    const { result } = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+
+    await act(async () => { await result.current.openViewer('v_1'); });
+
+    expect(loadArtifactStatsViewer).toHaveBeenCalledWith(ARTIFACT, 'v_1');
+    expect(result.current.viewer.data).toEqual(DETAIL);
+  });
+});
+
+describe('useArtifactStats delete', () => {
+  it('deletes the analytics and reads the stats again', async () => {
+    fetchPublishStats
+      .mockResolvedValueOnce(STATS)
+      .mockResolvedValueOnce({ ...STATS, total_views: 0, analytics: null });
+    deletePublishStats.mockResolvedValue({ ok: true });
+    const { result } = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+
+    let deleted;
+    await act(async () => { deleted = await result.current.deleteAnalytics(); });
+
+    expect(deleted).toBe(true);
+    expect(deletePublishStats).toHaveBeenCalledWith('/work/.anton/artifacts/sales');
+    expect(fetchPublishStats).toHaveBeenCalledTimes(2);
+    expect(result.current.data.total_views).toBe(0);
+    expect(result.current.deleting).toBe(false);
+  });
+
+  it('keeps the stats and reports a failed delete', async () => {
+    fetchPublishStats.mockResolvedValue(STATS);
+    deletePublishStats.mockRejectedValue(refusal(503, null, 'Publishing is busy right now.'));
+    const { result } = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+
+    await act(async () => { await result.current.deleteAnalytics(); });
+
+    expect(result.current.data).toEqual(STATS);
+    expect(result.current.error).toMatchObject({ status: 503, message: 'Publishing is busy right now.' });
+  });
+
+  it('deletes through the org route in org mode', async () => {
+    setOrgMode(true);
+    loadArtifactStats.mockResolvedValue(STATS);
+    deleteArtifactStats.mockResolvedValue({ ok: true });
+    const { result } = renderHook(() => useArtifactStats(ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+
+    await act(async () => { await result.current.deleteAnalytics(); });
+
+    expect(deleteArtifactStats).toHaveBeenCalledWith(ARTIFACT);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { act, render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
 
@@ -18,21 +19,24 @@ function makeController(overrides = {}) {
   };
 }
 
-function openChange() {
-  fireEvent.click(screen.getByText('Shared'));
-  fireEvent.click(screen.getByText('Change'));
+// Opens the access view: picking another access from the dropdown starts the
+// change, with Update and Stop sharing in the footer.
+async function openChange(user) {
+  await user.click(screen.getByText('Shared'));
+  await user.click(screen.getByTestId('access-dropdown'));
+  await user.click(screen.getByRole('radio', { name: /^Password protected/ }));
 }
 
 describe('PublishMenu when a link has no owner on record', () => {
-  it('warns before Update, Stop sharing or delete that the link stays live', () => {
+  it('warns before Update, Stop sharing or delete that the link stays live', async () => {
     render(<PublishMenu controller={makeController({ publishedUrl: 'https://view.example/r/a', linkOwnerRecorded: false })} />);
-    openChange();
+    await openChange(userEvent.setup());
     expect(screen.getByText(UNRECORDED_LINK_WARNING)).toBeInTheDocument();
   });
 
-  it('shows no warning for a link on record', () => {
+  it('shows no warning for a link on record', async () => {
     render(<PublishMenu controller={makeController({ publishedUrl: 'https://view.example/r/a', linkOwnerRecorded: true })} />);
-    openChange();
+    await openChange(userEvent.setup());
     expect(screen.queryByText(UNRECORDED_LINK_WARNING)).toBeNull();
   });
 
@@ -42,7 +46,7 @@ describe('PublishMenu when a link has no owner on record', () => {
       unpublish: vi.fn().mockResolvedValue({ ok: true, notice: NOTICE }),
     });
     const { rerender } = render(<PublishMenu controller={published} />);
-    openChange();
+    await openChange(userEvent.setup());
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Stop sharing' }));
     });
@@ -57,7 +61,7 @@ describe('PublishMenu when a link has no owner on record', () => {
       unpublish: vi.fn().mockResolvedValue({ ok: true, notice: '' }),
     });
     render(<PublishMenu controller={published} />);
-    openChange();
+    await openChange(userEvent.setup());
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Stop sharing' }));
     });

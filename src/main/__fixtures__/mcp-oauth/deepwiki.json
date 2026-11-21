@@ -1,0 +1,61 @@
+{
+  "_source": "Recorded 2026-11-17 from https://mcp.deepwiki.com/mcp (public discovery documents only, no login).",
+  "server_url": "https://mcp.deepwiki.com/mcp",
+  "steps": [
+    {
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "json": null,
+      "method": "POST",
+      "status": 200,
+      "step": "initialize_without_token",
+      "text": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"logging\":{},\"prompts\":{\"listChanged\":true},\"resources\":{\"subscribe\":false,\"listChanged\":true},\"tools\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"DeepWiki\",\"version\":\"4.0.2\"},\"instructions\":\"DeepWiki MCP provides AI-powered documentation for GitHub repositories.\\n\\nWith a user OAuth token, all devin_* tools act in one organization: without an X-Org-Id header, the first one the user joined. Not",
+      "url": "https://mcp.deepwiki.com/mcp"
+    },
+    {
+      "headers": {
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "json": null,
+      "method": "GET",
+      "status": 404,
+      "step": "protected_resource_metadata",
+      "text": "Not Found",
+      "url": "https://mcp.deepwiki.com/.well-known/oauth-protected-resource/mcp"
+    },
+    {
+      "headers": {
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "json": null,
+      "method": "GET",
+      "status": 404,
+      "step": "protected_resource_metadata",
+      "text": "Not Found",
+      "url": "https://mcp.deepwiki.com/.well-known/oauth-protected-resource"
+    },
+    {
+      "headers": {
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "json": null,
+      "method": "GET",
+      "status": 404,
+      "step": "authorization_server_metadata",
+      "text": "Not Found",
+      "url": "https://mcp.deepwiki.com/.well-known/oauth-authorization-server"
+    },
+    {
+      "headers": {
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "json": null,
+      "method": "GET",
+      "status": 404,
+      "step": "authorization_server_metadata",
+      "text": "Not Found",
+      "url": "https://mcp.deepwiki.com/.well-known/openid-configuration"
+    }
+  ]
+}

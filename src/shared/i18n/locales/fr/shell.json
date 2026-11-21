@@ -33,6 +33,18 @@
     },
     "field": {
       "optional": "(facultatif)"
+    },
+    "sortHeader": {
+      "label": "Trier la liste",
+      "sortBy": "Trier par {column}",
+      "columns": {
+        "name": "Nom",
+        "project": "Projet",
+        "updated": "Mis à jour",
+        "activity": "Activité",
+        "type": "Type",
+        "status": "Statut"
+      }
     }
   },
   "rail": {
@@ -53,6 +65,8 @@
       "openNamedInDrive": "Ouvrir « {name} » dans Google Drive",
       "untitled": "sans titre",
       "openInDrive": "Ouvrir dans Google Drive",
+      "openNamedInNotion": "Ouvrir « {name} » dans Notion",
+      "openInNotion": "Ouvrir dans Notion",
       "removeFromProjectFiles": "Retirer des fichiers du projet",
       "removeFromProjectFilesAriaLabel": "Retirer {name} des fichiers du projet",
       "loadAttachmentsFailed": "Impossible de charger les pièces jointes",
@@ -133,6 +147,27 @@
       "haveCopyTitle": "Vous en avez déjà une copie. Supprimez-la pour dupliquer à nouveau l’app.",
       "duplicateAriaLabel": "Dupliquer {name}",
       "duplicatedToast": "Dupliquée dans ce projet."
+    },
+    "workingFolders": {
+      "title": "Dossiers de travail",
+      "add": "Ajouter un dossier à ce chat",
+      "adding": "Ajout…",
+      "emptyHint": "Ajoutez un dossier dans lequel l’agent pourra travailler.",
+      "loadingFiles": "Chargement des fichiers…",
+      "emptyFolder": "Aucun fichier dans ce dossier.",
+      "showFiles": "Afficher les fichiers de {name}",
+      "hideFiles": "Masquer les fichiers de {name}",
+      "unavailable": "Dossier indisponible",
+      "removeTooltip": "Retirer de ce chat",
+      "removeAriaLabel": "Retirer {name} de ce chat",
+      "removeTitle": "Retirer « {name} » de ce chat ?",
+      "fallbackName": "dossier",
+      "removeMessage": "L’agent ne travaillera plus dans ce dossier. Le dossier et ses fichiers restent sur votre ordinateur.",
+      "loadFailed": "Impossible de charger les dossiers de travail.",
+      "listFailed": "Impossible de lister ce dossier.",
+      "pickerFailed": "Impossible d’ouvrir le sélecteur de dossiers.",
+      "addFailed": "Impossible d’ajouter ce dossier.",
+      "removeFailed": "Impossible de retirer ce dossier."
     }
   },
   "confirm": {
@@ -171,10 +206,13 @@
     "unavailableTitle": "Fonctionnalité indisponible",
     "cloudBodyNamed": "{feature} n’est pas encore disponible dans le Cloud. En attendant, vous pouvez l’utiliser dans l’application de bureau.",
     "cloudBody": "Cette fonctionnalité n’est pas encore disponible dans le Cloud. En attendant, vous pouvez l’utiliser dans l’application de bureau.",
+    "cloudBodyCustom": "{feature} n’est pas encore disponible dans le Cloud. Vous pouvez dès maintenant le connecter comme connecteur personnalisé.",
     "unavailableBodyNamed": "{feature} n’est pas disponible dans ce déploiement.",
     "unavailableBody": "Cette fonctionnalité n’est pas disponible dans ce déploiement.",
     "notNow": "Plus tard",
-    "download": "Télécharger l’app"
+    "download": "Télécharger l’app",
+    "connectCustom": "Connecter votre connecteur personnalisé {feature}",
+    "buildCustom": "Créer un connecteur personnalisé"
   },
   "loadStatus": {
     "retry": "Réessayer",
@@ -182,6 +220,8 @@
     "loading": "Chargement : {what}…"
   },
   "upToDate": "À jour",
+  "upToDateSaving": "Enregistrement…",
+  "upToDateSaved": "Enregistré",
   "usageBar": {
     "hideAllowance": "Masquer le quota",
     "hide": "Masquer"
@@ -278,6 +318,8 @@
     "settings": "Paramètres",
     "billing": "Facturation et utilisation",
     "members": "Membres",
+    "apiKeys": "Clés API",
+    "apiDocs": "Documentation de l’API",
     "help": "Aide et commentaires",
     "manageOrg": "Gérer l’organisation",
     "logout": "Se déconnecter",
@@ -360,7 +402,12 @@
     "total": "{count} au total",
     "noTasks": "Aucune tâche pour l’instant.",
     "untitledTask": "Tâche sans titre",
-    "seeAllTasks": "Voir toutes les tâches"
+    "seeAllTasks": "Voir toutes les tâches",
+    "recents": "Récents",
+    "showFewer": "Afficher moins",
+    "seeAllCount": "Tout voir ({count})",
+    "signedIn": "Connecté",
+    "logOut": "Se déconnecter"
   },
   "dispatch": {
     "qrAriaLabel": "Code d’association décoratif",
@@ -395,9 +442,15 @@
       "operatorTitle": "Un fournisseur doit être configuré",
       "body": "Commencez avec MindsHub et profitez d’un quota gratuit sur MindsHub Air, puis payez à l’usage. Ou ajoutez votre propre clé API (Anthropic, OpenAI ou tout point de terminaison compatible OpenAI) dans les paramètres.",
       "operatorBody": "Demandez à votre opérateur de configurer le fournisseur de modèles avant de lancer une tâche.",
-      "startFree": "Commencer gratuitement"
+      "startFree": "Commencer gratuitement",
+      "bodyMobile": "Connectez votre propre fournisseur dans les paramètres."
     },
-    "handoffHint": "Modifiez ce prompt, puis envoyez-le quand vous êtes prêt."
+    "handoffHint": "Modifiez ce prompt, puis envoyez-le quand vous êtes prêt.",
+    "signupWelcome": {
+      "fromDesktop": "Votre compte est prêt. Vous pouvez commencer ici, ou revenir dans l’app {product} et vous connecter.",
+      "dismiss": "Fermer"
+    },
+    "ownWorkHeading": "Sur quoi {product} doit-il travailler ?"
   },
   "logout": {
     "title": "Se déconnecter de {product} ?",
@@ -409,5 +462,8 @@
     "confirm": "Se déconnecter",
     "failed": "Impossible de terminer la déconnexion. Veuillez réessayer.",
     "waitNote": "Déconnexion en cours. Vous pouvez fermer cette fenêtre, l’opération se terminera d’elle-même."
+  },
+  "shortcuts": {
+    "showBrowser": "Afficher le navigateur"
   }
 }

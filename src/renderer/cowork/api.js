@@ -1,4 +1,5 @@
 import { diagnostic } from '../../shared/diagnostics';
+import { planFailureFields } from './lib/subscriptionPlan';
 import { PLATFORM_UI } from '../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../lib/modelPicker';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
@@ -16,12 +17,15 @@ import { isAntonConfigError } from './lib/antonErrors';
 import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
+import { withoutNotionPageNotes, stripNotionPageNoteFromTitle } from './lib/notionPageNote';
 import { currentServerLocale } from '../lib/i18n';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
+import { approvalsOffAtOf } from './lib/browserPrefs';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
+import { trackingSettingsBody } from './lib/trackingSettings';
 import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
@@ -243,6 +247,9 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
  * @property {string|null} [retry_at] When that wait ends, as an offset-bearing
  *   ISO 8601 instant.
  * @property {string} [reset_at] When a spent allowance refills.
+ * @property {string} [budget_scope] Whose budget a budget_exceeded stop spent.
+ * @property {string} [budget_period] That budget's period: day, month or year.
+ * @property {string} [budget_model] The model a per-model budget caps (its alias).
  * @property {string} [request_id] The server's id for the failed request.
  * @property {boolean} [reconnectable] The credential is MindsHub's, so
  *   signing in again fixes it.
@@ -344,6 +351,13 @@ function _failedEventMeta(events) {
        render time: the server deliberately doesn't parse it, since only the
        client knows the viewer's timezone (ENG-1537). */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // window_allowance_exhausted / model_not_in_tier (ENG-4186): which plan
+    // window filled, and which tier covers the model.
+    ...planFailureFields(ev),
+    // budget_exceeded: whose budget is spent (org, workspace, api_key); absent from an older server.
+    budgetScope: typeof ev.budget_scope === 'string' ? ev.budget_scope : null,
+    budgetPeriod: typeof ev.budget_period === 'string' ? ev.budget_period : null,
+    budgetModel: typeof ev.budget_model === 'string' && ev.budget_model ? ev.budget_model : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads
     // it as local time — the gate would last hours west of UTC and no-op east
@@ -363,7 +377,7 @@ function _failedEventMeta(events) {
 function _hydrateAssistantEvents(messages) {
   if (!Array.isArray(messages)) return messages || [];
   const out = [];
-  for (const m of messages) {
+  for (const m of withoutNotionPageNotes(messages)) {
     if (m?.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
       out.push(m);
       continue;
@@ -412,6 +426,9 @@ function _hydrateAssistantEvents(messages) {
           providerLabel: failed?.providerLabel ?? null,
           retryAfter: failed?.retryAfter ?? null,
           resetAt: failed?.resetAt ?? null,
+          budgetScope: failed?.budgetScope ?? null,
+          budgetPeriod: failed?.budgetPeriod ?? null,
+          budgetModel: failed?.budgetModel ?? null,
           retryAt: failed?.retryAt ?? null,
           failedModel: failed?.failedModel ?? null,
           requestId: failed?.requestId ?? null,
@@ -450,7 +467,7 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
      names. */
   return {
     id: conv.id,
-    title: conv.title || conv.preview || conv.id || 'Untitled task',
+    title: stripNotionPageNoteFromTitle(conv.title || conv.preview) || conv.id || 'Untitled task',
     // The server sends no subtitle. A row ages from updatedAt when it renders;
     // an age stamped here goes stale, and chatTaskRow shows it as a second line.
     subtitle: '',
@@ -674,7 +691,7 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
   try {
     const raw = await req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }), { timeoutMs });
     const page = _pageFromItemsResponse(raw);
-    return { messages: page.items, hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
+    return { messages: withoutNotionPageNotes(page.items), hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
   } catch {
     return null;
   }
@@ -1930,6 +1947,33 @@ export async function updateOrgAppearance(payload) {
   });
 }
 
+/**
+ * The signed-in account's open deletion request, `{ requestedAt, deleteBy }`,
+ * or null. The server answers 404 both when there is no open request and when
+ * there is no MindsHub account behind it (a desktop on its local server), so
+ * callers only ask where a MindsHub account is certain: the mobile app. Anything
+ * else rejects, so a failed read is never mistaken for "no request".
+ */
+export async function getDeletionRequest() {
+  try {
+    // Bounded: the Delete account button stays disabled until this settles.
+    return await req('/hub/deletion-request/', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+  } catch (err) {
+    if (err?.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Ask MindsHub to delete the signed-in account. Idempotent: a second call
+ * answers the open request rather than opening another. Resolves to the same
+ * shape as getDeletionRequest; rejects with `err.status` on failure (404 when
+ * there is no MindsHub account behind the server).
+ */
+export async function requestAccountDeletion() {
+  return req('/hub/deletion-request/', { method: 'POST', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
 // The lock-owning wrappers decide how to handle failure. A save must never
 // publish offline/mock defaults as if they were the canonical persisted values.
 async function readSettings({ validate = true } = {}) {
@@ -1948,6 +1992,32 @@ async function readSettings({ validate = true } = {}) {
   _lastFetchedSettings = result;
   cacheSettings(result);
   return result;
+}
+
+/**
+ * @typedef {{ asks: boolean, offAtMs: number | null }} BrowserApprovalSetting
+ */
+
+/* The person's Approve browser steps setting as the server holds it now
+   (browser_approve_steps), with when they last turned it off
+   (browser_approve_steps_off_at, the server's clock), read just before the
+   app approves a held browser step for them, so a choice made on another
+   device counts at once: `asks` false when they turned approvals off,
+   `offAtMs` null when the server doesn't say, and null when it can't be
+   read. Under the settings lock, like fetchSettings, so it reads after a
+   save that started before it (a card's Skip approvals). */
+/** @returns {Promise<BrowserApprovalSetting | null>} */
+export async function readBrowserApproveSteps() {
+  const op = _settingsLock.then(async () => {
+    try {
+      const settings = transformSettingsRows(await req('/settings/'));
+      return { asks: settings.browserApproveSteps !== false, offAtMs: approvalsOffAtOf(settings) };
+    } catch {
+      return null;
+    }
+  });
+  _settingsLock = op.catch(() => {});
+  return op;
 }
 
 export async function fetchSettings() {
@@ -2098,6 +2168,24 @@ export async function testProviders(providers) {
   } catch (err) {
     return { providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {}, error: err?.message || 'Test failed' };
   }
+}
+
+/**
+ * The organization's own decision model, tested with one minimal decision:
+ * the endpoint and key typed in Settings, or the stored ones where left out
+ * (a key of '***' is the stored one). cowork-server only lets an
+ * organization admin (anyone on a desktop) ask, and sends the stored key
+ * only to the stored endpoint.
+ *
+ * @param {{ url?: string, apiKey?: string, model?: string }} target
+ * @returns {Promise<{ ok: boolean, error: string | null, ms?: number }>}
+ */
+export async function testDecisionModel({ url, apiKey, model } = {}) {
+  return req('/settings/test-decision-model', {
+    method: 'POST',
+    body: JSON.stringify({ url: url || null, apiKey: apiKey || null, model: model || null }),
+    timeoutMs: 20_000,
+  });
 }
 
 export async function revealSettingKey(name) {
@@ -2441,6 +2529,17 @@ export async function deleteDatasource(engine, name) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
+// Merges entries into a connection's persisted `_picked_files` list and
+// returns the merged list. Drive saves through host.pickDriveFiles; Notion
+// pages call this directly, since there is no picker grant to record.
+export async function savePickedFiles(engine, name, files) {
+  const data = await req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files`, {
+    method: 'PATCH',
+    body: JSON.stringify({ files }),
+  });
+  return Array.isArray(data?.files) ? data.files : [];
+}
+
 // Untags one file from `project` in a connection's persisted
 // `_picked_files` grant — the "un-pick" counterpart to the PATCH the
 // Google Picker flow calls. Used by the Project files rail to remove a
@@ -2449,6 +2548,56 @@ export async function deleteDatasource(engine, name) {
 export async function deletePickedFile(engine, name, fileId, project) {
   const qs = new URLSearchParams({ project });
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
+}
+
+// On the desktop the server requires the app secret for Notion page search and
+// fetch, so they go through the main process; org mode, the web SPA and a
+// shell without the bridge call the route directly. Resolves to `{ data }`
+// with the server's JSON, or null to make the direct request.
+async function notionViaMain(path, call, signal) {
+  if (!host.isElectron || getOrgMode()) return null;
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  // IPC cannot be cancelled; an abort only stops waiting for it.
+  const result = await new Promise((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+    signal?.addEventListener('abort', onAbort, { once: true });
+    call().then(resolve, reject).finally(() => signal?.removeEventListener('abort', onAbort));
+  });
+  if (!result) return null;
+  if (result.ok) return { data: result.data };
+  if ('status' in result) {
+    // The same error a direct request raises for this response.
+    throw await responseError({
+      status: result.status,
+      text: async () => result.text,
+      headers: { get: (h) => (h.toLowerCase() === 'retry-after' ? result.retryAfter : null) },
+    }, `API ${path} returned ${result.status}`);
+  }
+  throw new Error(result.reason);
+}
+
+// Pages and databases matching `query` in one Notion connection's workspace,
+// for the chat's "Add pages from Notion" picker.
+export async function searchNotionPages(name, query, { signal } = {}) {
+  const viaMain = await notionViaMain('/connectors/notion/search', () => host.notionSearchPages(name, query), signal);
+  const data = viaMain ? viaMain.data : await req('/connectors/notion/search', {
+    method: 'POST',
+    body: JSON.stringify({ name, query }),
+    signal,
+  });
+  return Array.isArray(data?.results) ? data.results : [];
+}
+
+// A picked page's title and text (capped server-side; `truncated` says so),
+// sent with the chat message so the agent doesn't have to fetch it itself.
+export async function fetchNotionPage(name, page, { signal } = {}) {
+  const viaMain = await notionViaMain('/connectors/notion/fetch', () => host.notionFetchPage(name, page), signal);
+  if (viaMain) return viaMain.data;
+  return req('/connectors/notion/fetch', {
+    method: 'POST',
+    body: JSON.stringify({ name, page }),
+    signal,
+  });
 }
 
 // Modify-flow read: returns the saved connection as
@@ -2468,11 +2617,18 @@ export async function fetchSavedConnection(engine, name) {
 }
 
 // Changes an MCP-based connection's read/write/none tool-access mode after
-// it's already connected (ENG-487 — HubSpot's connector is the first with
-// an editable-after-connect setting). No PKCE, no reconnect — a purely
-// local write on cowork-server's side (or a proxy to auth in org mode),
-// works identically from Electron and the web SPA.
+// it's already connected. No PKCE, no reconnect. On the desktop
+// it goes through the main process, which holds the mode in the keychain and
+// the secret the local server requires; org mode (and the web SPA) calls the
+// route directly.
 export async function patchConnectionAccessMode(engine, name, accessMode) {
+  if (host.isElectron && !getOrgMode()) {
+    const result = await host.setConnectionAccessMode(engine, name, accessMode);
+    if (result) {
+      if (!result.ok) throw new Error(result.reason || 'Could not change tool access.');
+      return result;
+    }
+  }
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/access-mode`, {
     method: 'PATCH',
     body: JSON.stringify({ access_mode: accessMode }),
@@ -2623,6 +2779,32 @@ export async function retryDatasourceValidation(connectionId) {
   return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
 }
 
+// ── Custom API connections ───────────────────────────────────────────────
+//
+// A member's own custom connector, connected in the cloud only: the server
+// checks the credentials at the address the member typed, then auth stores
+// them. List and delete relay to auth on the member's own credential.
+
+const CUSTOM_CONNECTIONS = '/connectors/custom-connections/';
+
+export async function connectCustomConnector(connectorId, payload) {
+  requireOrgMode('Connecting a custom connector');
+  return req(`/connectors/custom/${encodeURIComponent(connectorId)}/connect`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listCustomConnections() {
+  requireOrgMode('Custom connections');
+  return req(CUSTOM_CONNECTIONS);
+}
+
+export async function deleteCustomConnection(connectionId) {
+  requireOrgMode('Removing a custom connection');
+  return req(`${CUSTOM_CONNECTIONS}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
 // Predefined JSON specs in server/connectors/. Three calls:
 //   list()         → lightweight summaries for the picker UI
 //   get(id)        → the full spec (literal-retrieval, no LLM)
@@ -2661,6 +2843,24 @@ export async function fetchCanBuildCustomConnector() {
     return data?.can_build !== false;
   } catch (err) {
     return err?.status === 404;
+  }
+}
+
+// Save a connector template from its chat card as the caller's own custom
+// connector. The server checks the template again; only org mode has the route.
+export async function saveConnectorDraft(draft) {
+  return req('/connectors/custom', { method: 'POST', body: JSON.stringify(draft) });
+}
+
+// Whether the caller already keeps a custom connector under `id`, which may be
+// an earlier template: true when the spec lookup returns a custom one, false
+// on a 404, null when it can't tell.
+export async function fetchConnectorDraftSaved(id) {
+  try {
+    const spec = await req(`/connectors/specs/${encodeURIComponent(id)}`);
+    return spec?.custom === true;
+  } catch (err) {
+    return err?.status === 404 ? false : null;
   }
 }
 
@@ -2885,9 +3085,12 @@ export function confirmConnectorTest(confirmId) {
   });
 }
 
-export function cancelConnectorTest({ approvalId, confirmId } = {}) {
+// The reason rides in the query string: a server that predates it ignores an
+// unknown query parameter but refuses an unknown body field.
+export function cancelConnectorTest({ approvalId, confirmId, reason } = {}) {
   const body = approvalId ? { approval_id: approvalId } : { confirm_id: confirmId };
-  return req('/connectors/submissions/cancel', { method: 'POST', body: JSON.stringify(body) });
+  const query = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+  return req(`/connectors/submissions/cancel${query}`, { method: 'POST', body: JSON.stringify(body) });
 }
 
 // Backwards-compatible non-streaming wrapper — kept so callers that
@@ -2956,12 +3159,25 @@ export async function fetchPublishStats(path) {
   return req(`/publish/stats?path=${encodeURIComponent(path)}`);
 }
 
-export async function setPublishTracking(path, enabled) {
+export async function setPublishTracking(path, settings) {
   if (!path) throw new Error('Artifact has no path');
   return req('/publish/stats/tracking', {
     method: 'PUT',
-    body: JSON.stringify({ path, enabled }),
+    body: JSON.stringify({ path, ...trackingSettingsBody(settings) }),
   });
+}
+
+// One viewer's visits, each with its time per section.
+export async function fetchPublishStatsViewer(path, viewerId) {
+  if (!path) throw new Error('Artifact has no path');
+  if (!viewerId) throw new Error('No viewer');
+  return req(`/publish/stats/viewers/${encodeURIComponent(viewerId)}?path=${encodeURIComponent(path)}`);
+}
+
+// Deletes every view, visit and viewer recorded for the published artifact.
+export async function deletePublishStats(path) {
+  if (!path) throw new Error('Artifact has no path');
+  return req(`/publish/stats?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the
@@ -3085,10 +3301,17 @@ export async function duplicateLiveApp({ shareId, projectId }) {
  * with `status: 'organization_off'`. On the desktop it means the app's own
  * browser has registered with the local server.
  *
+ * `decisions_model` says what picks the browser's steps: Jev on MindsHub, a
+ * decision model of the organization's own, or nothing (null), and then the
+ * browser doesn't run. A server that predates it sends neither field.
+ *
  * @typedef {Object} BrowseStatus
- * @property {boolean} enabled  The person's own switch (Settings), on by default.
+ * @property {boolean} enabled  The person's own switch (Settings), read as off without a decisions model.
  * @property {boolean} available
  * @property {'none' | 'starting' | 'running' | 'unavailable' | 'not_entitled' | 'organization_off'} status
+ * @property {'mindshub' | 'own' | null} [decisions_model]
+ * @property {boolean} [can_set_decisions_model]  Whether the caller may set one up: an organization admin, or anyone on a desktop.
+ * @property {boolean} [own_decisions_unused]  The organization set up its own decision model, but this deployment's browser can't ask it.
  */
 
 /**
@@ -3136,6 +3359,93 @@ export function browserClientHints() {
  *
  * @returns {Promise<BrowseStatus>}
  */
+// ─── Voice calls (prototype) ─────────────────────────────────────────────────
+/* Whether this deployment's MindsHub Inference serves live voice. A failed
+   read reads as no, with `failed: true`, so the caller can ask again. */
+export async function fetchVoiceStatus() {
+  try {
+    const status = await req('/voice/status', { timeoutMs: 15_000, headers: await hubHeaders() });
+    return { available: !!status?.available };
+  } catch {
+    return { available: false, failed: true };
+  }
+}
+
+/* The browser's SDP offer in, GPT-Live's answer out ({session: {id},
+   transport: {sdp}}), through the server and MindsHub as the caller. */
+function localTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function startVoiceSession(sdp, voice) {
+  return req('/voice/session', {
+    method: 'POST',
+    timeoutMs: 40_000,
+    headers: await hubHeaders(),
+    // The person's time zone, so the call knows their date and time.
+    body: JSON.stringify({ sdp, ...(voice ? { voice } : {}), ...(localTimeZone() ? { timezone: localTimeZone() } : {}) }),
+  });
+}
+
+/* One step of the voice call's operator: the call's history and what is on
+   screen in, the model's next turn ({content, tool_calls: [{id, name,
+   arguments}]}) out. The app runs the calls (lib/voice/operator.js). */
+export async function voiceOperate(messages, snapshot) {
+  return req('/voice/operate', {
+    method: 'POST',
+    timeoutMs: 40_000,
+    headers: await hubHeaders(),
+    // The time zone, so the operator counts dates from the person's today.
+    body: JSON.stringify({ messages, snapshot, timezone: localTimeZone() || undefined }),
+  });
+}
+
+/* The person typed an address in a task's browser pane: the server opens the
+   task's own session at it, as them, with no agent. Web only; the desktop
+   opens its own browser (host.inAppBrowser.open). Resolves {session_id}. */
+export async function openBrowserAt(conversationId, url) {
+  return req('/browse/open', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ conversation_id: conversationId, url }),
+  });
+}
+
+/* The project's browsers (ENG-4138, prototype): which of these tasks have an
+   open browser, each with its tabs and the tabs it saved. Web only. Resolves
+   {browsers: [{conversation_id, session_id, url, viewers, holder, tabs, parked_tabs}]}. */
+export async function fetchTaskBrowsers(conversationIds) {
+  return req('/browse/browsers', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ conversation_ids: conversationIds.slice(0, 100) }),
+  });
+}
+
+export async function switchTaskTab(conversationId, tabId) {
+  return req('/browse/tabs/switch', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId, tab_id: tabId }),
+  });
+}
+
+/* Closes a tab; `park` keeps a note of it, to reopen when the task needs it. */
+export async function closeTaskTab(conversationId, tabId, { park = true } = {}) {
+  return req('/browse/tabs/close', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId, tab_id: tabId, park }),
+  });
+}
+
+/* Closes a task's browser; its tabs are noted and reopen when the task needs them. */
+export async function closeTaskBrowser(conversationId) {
+  return req('/browse/close', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId }),
+  });
+}
+
 export async function provisionBrowser() {
   return req('/browse/provision', {
     method: 'POST',
@@ -3463,6 +3773,29 @@ export async function patchConversation(id, body) {
     method: 'PATCH',
     body: JSON.stringify(body),
   });
+}
+
+/** GET /conversations/{id}/folders: `{ folders: [{ id, path, name, available }] }`, oldest first. */
+export async function listConversationFolders(conversationId) {
+  return req(`/conversations/${enc(conversationId)}/folders`);
+}
+
+/** POST /conversations/{id}/folders. A refusal throws with the server's user-facing reason. */
+export async function addConversationFolder(conversationId, path) {
+  return req(`/conversations/${enc(conversationId)}/folders`, {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  });
+}
+
+/** DELETE /conversations/{id}/folders/{folderId}. Detaches only; nothing on disk changes. */
+export async function removeConversationFolder(conversationId, folderId) {
+  return req(`/conversations/${enc(conversationId)}/folders/${enc(folderId)}`, { method: 'DELETE' });
+}
+
+/** GET /conversations/{id}/folders/{folderId}/files: `{ files, truncated? }`, like the project listing. */
+export async function listConversationFolderFiles(conversationId, folderId) {
+  return req(`/conversations/${enc(conversationId)}/folders/${enc(folderId)}/files`);
 }
 
 const DELETE_TURN_TIMEOUT_MS = 30000;
@@ -3901,4 +4234,19 @@ export async function unregisterPushDevice(token, { timeoutMs = 3_000 } = {}) {
     body: JSON.stringify({ token }),
     timeoutMs,
   });
+}
+
+// A durable in-app receipt, never a mailto link or an optimistic success.
+export function reportContent(conversationId, messageId) {
+  return req('/content-reports/', {
+    method: 'POST',
+    body: JSON.stringify({ conversation_id: conversationId, message_id: messageId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export function reportArtifactContent(projectId, artifactId) {
+  return req('/content-reports/artifact', { method: 'POST',
+    body: JSON.stringify({ project_id: projectId, artifact_id: artifactId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
 }

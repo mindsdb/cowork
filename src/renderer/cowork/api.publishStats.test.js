@@ -14,7 +14,12 @@ vi.mock('../platform/host', async (importOriginal) => ({
 }));
 vi.mock('./lib/analytics', () => ({ setAntonInstallId: vi.fn() }));
 
-import { fetchPublishStats, setPublishTracking } from './api';
+import {
+  deletePublishStats,
+  fetchPublishStats,
+  fetchPublishStatsViewer,
+  setPublishTracking,
+} from './api';
 
 const json = (status, body) => new Response(JSON.stringify(body), {
   status,
@@ -69,6 +74,53 @@ describe('desktop publish stats', () => {
 
     await expect(fetchPublishStats('')).rejects.toThrow('Artifact has no path');
     await expect(setPublishTracking('', true)).rejects.toThrow('Artifact has no path');
+    await expect(fetchPublishStatsViewer('', 'v_1')).rejects.toThrow('Artifact has no path');
+    await expect(deletePublishStats('')).rejects.toThrow('Artifact has no path');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // ENG-4455: viewer analytics.
+  it('sends the email gate with the analytics switch, each only when given', async () => {
+    const fetchMock = vi.fn(async () => json(200, { tracking: true, require_email: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await setPublishTracking('/work/a', { tracking: true, require_email: true });
+    await setPublishTracking('/work/a', { require_email: false });
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ path: '/work/a', enabled: true, require_email: true });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ path: '/work/a', require_email: false });
+  });
+
+  it('keeps the credits refusal code', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json(402, {
+      detail: { code: 'credits_required', message: 'Add credits to collect viewer analytics.' },
+    })));
+
+    const err = await setPublishTracking('/work/a', true).catch((e) => e);
+
+    expect(err.status).toBe(402);
+    expect(err.code).toBe('credits_required');
+  });
+
+  it('reads one viewer by id and path', async () => {
+    const fetchMock = vi.fn(async () => json(200, { viewer: { id: 'v 1' }, visits: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchPublishStatsViewer('/work/sales dash', 'v 1');
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'http://127.0.0.1:26866/api/v1/publish/stats/viewers/v%201?path=%2Fwork%2Fsales%20dash',
+    );
+  });
+
+  it('deletes analytics by path', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(deletePublishStats('/work/sales')).resolves.toEqual({ ok: true });
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe('http://127.0.0.1:26866/api/v1/publish/stats?path=%2Fwork%2Fsales');
+    expect(options.method).toBe('DELETE');
   });
 });

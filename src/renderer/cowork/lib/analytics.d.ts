@@ -31,6 +31,9 @@ export function trackKeyProvisioningRefused(outcome: string): void;
  */
 export function trackBillingOpened(trigger: string, workspaceMode?: 'code'): void;
 
+/** A plan upgrade was clicked (ENG-4186): where, which plan, and from which. */
+export function trackUpgradeClicked(surface: string, tier?: string | null, fromTier?: string | null): void;
+
 /** Cost properties for a comparison event, from lib/compareSides comparisonCostProps. */
 export interface ComparisonCostProps {
   cost_a_usd?: number;
@@ -61,6 +64,12 @@ export function trackComparisonContinued(
   comparisonId: string,
   details: { side: 'a' | 'b'; models?: { a?: string; b?: string }; turns: number; carriedAll: boolean; verdict?: string | null; cost?: ComparisonCostProps },
 ): void;
+
+/** The user menu's API keys link was clicked (ENG-4288). Never throws. */
+export function trackMenuApiKeysClicked(): void;
+
+/** The user menu's API docs link was clicked (ENG-4288). Never throws. */
+export function trackMenuApiDocsClicked(): void;
 
 /** First switch into the Code workspace per launch. Never throws. */
 export function trackCodeViewOpened(): void;

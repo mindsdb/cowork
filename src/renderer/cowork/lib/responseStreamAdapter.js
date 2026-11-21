@@ -2,11 +2,23 @@ import { applyAddonEvent } from './addons';
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
 import { artifactIdentity } from './artifactIdentity';
 import { browserStep, withBrowserStep } from './browserSession';
+import { BROWSER_ACTION_BADGE, BROWSER_TOOL, browserActionLabel, browserActionStep } from './browserSteps';
 import { parseFigureSources } from './figureSources';
+import { GENERATE_IMAGE_TOOL, generatedImagesFromEvent } from './generatedImage';
 import i18n from '../../lib/i18n';
 
 /* User-facing copy, translated when the event is reduced (never at import). */
 const tr = (key, vars) => i18n.t(`messages.responseStream.${key}`, { ns: 'projects', ...vars });
+
+/* The turn-failure codes that count as a paywall impression (token_cap_hit);
+   see the `response.failed` branch for why each is in or out. */
+const TOKEN_CAP_CODES = new Set([
+  'token_limit',
+  'included_allowance_exhausted',
+  'model_access_denied',
+  'window_allowance_exhausted',
+  'model_not_in_tier',
+]);
 
 // Anton /v1/responses → ThinkingStep adapter.
 //
@@ -37,6 +49,9 @@ const tr = (key, vars) => i18n.t(`messages.responseStream.${key}`, { ns: 'projec
 //                                 carries an `artifact` payload → one card
 //   response.figure_sources     — where each figure in the final answer came
 //                                 from; sent once, before response.completed
+//   thought.tool_call.result    — (under response.in_progress) a tool's own
+//                                 result, today only generate_image's: the
+//                                 image it wrote → one inline `Image` step
 //   response.artifact_check     — the agent asks the open preview to check an
 //                                 artifact; answered by lib/artifactCheck,
 //                                 never a step
@@ -203,7 +218,7 @@ function closeOpenInspectableSteps(steps, completedAt) {
   return closeOpenSteps(
     steps,
     completedAt,
-    (step) => step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress',
+    (step) => step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress' || step.badge === BROWSER_ACTION_BADGE,
   );
 }
 
@@ -587,6 +602,22 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     };
   }
 
+  if (type === 'response.cancelled') {
+    // Someone pressed Stop. The live stream ends this way, and the server saves
+    // the same event with the turn, so a reload reads it as stopped too and
+    // ends its time at the Stop (ENG-4345). What it wrote so far is its answer.
+    state = promoteToAnswer(state);
+    return {
+      ...state,
+      steps: closeOpenInspectableSteps(state.steps, eventTs),
+      status: 'done',
+      endedAt: eventTs,
+      currentThought: null,
+      firstTake: CLEARED_TAKE,
+      incompleteReason: 'user_stopped',
+    };
+  }
+
   if (type === 'response.failed') {
     // Key upgrade-intent signal: the turn was blocked on credits. Fire once
     // here, on receipt — not in the render path (ChatView), which re-runs every
@@ -615,13 +646,19 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // counting it would inflate the signal with users who already pay.
     // `free_serving_paused`: a fleet-wide pause of free Air, not this user's cap.
     // `model_restricted`: an org admin's model rule, which credits do not lift.
-    // `budget_exceeded`: the org's spent budget, which credits do not lift either.
+    // `budget_exceeded`: a spent budget, which credits do not lift either.
+    //
+    // ENG-4186 adds the two paid-plan stops, each a paywall impression too:
+    //   window_allowance_exhausted    a Plus or Pro window is used up and the
+    //                                 wallet cannot carry the task past it
+    //   model_not_in_tier             the plan does not cover the model and
+    //                                 the wallet cannot pay for it
     //
     // One event carrying `reason` rather than three events, so the impression
     // stays a single series and keeps this once-per-receipt guarantee.
     // A failed turn keeps the text it got as its (partial) answer.
     state = promoteToAnswer(state);
-    if (!replay && (event.code === 'token_limit' || event.code === 'included_allowance_exhausted' || event.code === 'model_access_denied')) {
+    if (!replay && TOKEN_CAP_CODES.has(event.code)) {
       try { _trackTokenCapHit(event.code); }
       catch { /* analytics must never break streaming */ }
     }
@@ -828,6 +865,35 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, steps: [...state.steps, step] };
   }
 
+  // Inline connector template card. A cloud turn built the template for an API
+  // connector; the server checked it again and stored nothing. The member saves
+  // it from the card. Deduped by connector id within a turn so a replay can't
+  // double a card.
+  if (type === 'response.connector_drafted') {
+    const c = (event.connector && typeof event.connector === 'object') ? event.connector : null;
+    const key = typeof c?.connector_id === 'string' ? c.connector_id : '';
+    if (!key) return state;
+    if (state.steps.some((s) => s.badge === 'Connector' && s._connectorKey === key)) {
+      return state;
+    }
+    const step = {
+      id: `connector-${key}`,
+      label: typeof c.label === 'string' ? c.label : key,
+      badge: 'Connector',
+      icon: 'link',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: c,
+      output: null,
+      result: null,
+      _connectorKey: key,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
   // Inline ask_user card. The harness pauses mid-turn to ask the user a
   // multiple-choice question; the payload is self-contained so the card
   // renders from this event alone, including on replay. Deduped by
@@ -868,6 +934,11 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         select: event.select === 'many' ? 'many' : 'one',
         allow_custom: event.allow_custom !== false,
         timeout_s: event.timeout_s ?? null,
+        // When the server held it (its clock, also on a replay), or null for
+        // an event without one: the app approves a held browser step for the
+        // person only if it was held after they turned approvals off
+        // (lib/browserPrefs.js), never by this tab's clock.
+        held_at_ms: Number.isFinite(event.at_ms) ? event.at_ms : null,
         answer: null,
       },
       output: null,
@@ -960,6 +1031,45 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         data: { markdown },
       }],
     };
+  }
+
+  // Images Anton's generate_image tool wrote (ENG-4024). The result carries
+  // file paths, never bytes; the chat shows each file inline where the tool
+  // finished, like a tool's message, one step per image (see
+  // generatedImagesFromEvent for which path each is read by). Its own role
+  // (`thought.tool_call.result`), and also accepted on the scratchpad result's
+  // role, which is where a server with no branch for this tool relays a tool
+  // result: matched by tool name ahead of the scratchpad handlers below, so an
+  // image is never filed into the last scratchpad cell. Deduped by
+  // tool_use_id + path so a replayed event can't double a picture.
+  if ((role === 'thought.tool_call.result' || role === 'thought.scratchpad.result')
+    && event.tool_name === GENERATE_IMAGE_TOOL) {
+    const toolUseId = event.tool_use_id || null;
+    const shown = (path) => state.steps.some((s) => s.badge === 'Image' && s._toolUseId === toolUseId && s.data?.path === path);
+    const images = generatedImagesFromEvent(event).filter((image) => !shown(image.path));
+    if (images.length === 0) return state;
+    // The tool's progress row is done once its pictures show. A copy either
+    // way: closeOpenToolProgress hands back the state's own array when it
+    // closed nothing.
+    const steps = [...(toolUseId ? closeOpenToolProgress(state.steps, eventTs, toolUseId) : state.steps)];
+    for (const image of images) {
+      steps.push({
+        id: `step-${steps.length + 1}`,
+        label: image.name,
+        badge: 'Image',
+        icon: 'image',
+        status: 'completed',
+        startedAt: eventTs,
+        completedAt: eventTs,
+        data: image,
+        output: null,
+        result: null,
+        _isScratchpad: false,
+        _isToolCall: false,
+        _toolUseId: toolUseId,
+      });
+    }
+    return { ...state, steps };
   }
 
   // New scratchpad cell starts. We push a placeholder step now so the
@@ -1220,6 +1330,30 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // the two rounds makes it look like an answer (ENG-3554).
     if (startsTool(event) && state.bodyText.trim()) {
       state = { ...state, ...sealRoundOnToolStart(state, eventTs) };
+    }
+
+    /* The agent's browser tool (lib/browserSteps.js): each call is a step.
+       Its start names the tool, the next line for the same call carries its
+       arguments, which label it (the arguments themselves are not kept: a
+       step can type a password), and its tool_done ends it. */
+    const browserCallId = event.tool_use_id || '';
+    if (browserCallId) {
+      const idx = state.steps.findIndex((s) => s.badge === BROWSER_ACTION_BADGE && s._toolUseId === browserCallId);
+      if (!phase && !event.subtype && idx === -1 && event.content === BROWSER_TOOL) {
+        // A call whose tool_done never came (it can be throttled away) ends where the next starts.
+        const steps = closeOpenSteps(state.steps, eventTs, (s) => s.badge === BROWSER_ACTION_BADGE);
+        return { ...state, steps: [...steps, browserActionStep({ id: `step-${steps.length + 1}`, toolUseId: browserCallId, at: eventTs })] };
+      }
+      if (idx !== -1 && (phase === 'tool_done' || (!phase && !event.subtype))) {
+        const steps = state.steps.slice();
+        if (phase === 'tool_done') {
+          steps[idx] = { ...steps[idx], status: 'completed', completedAt: eventTs };
+        } else {
+          const args = safeJsonParse(event.content || '');
+          if (args && typeof args === 'object') steps[idx] = { ...steps[idx], label: browserActionLabel(args) };
+        }
+        return { ...state, steps };
+      }
     }
 
     // anton is deliberately idle, waiting out a velocity rate-limit before

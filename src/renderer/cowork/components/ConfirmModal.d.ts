@@ -6,6 +6,7 @@ export interface ConfirmModalProps {
   cancelLabel?: string;
   destructive?: boolean;
   busy?: boolean;
+  confirmDisabled?: boolean;
   dismissableWhileBusy?: boolean;
   note?: string;
   busyLabel?: string;

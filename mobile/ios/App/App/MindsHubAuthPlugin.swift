@@ -1,6 +1,7 @@
 import AuthenticationServices
 import Capacitor
 import Foundation
+import Security
 
 /// `window.Capacitor.Plugins.MindsHubAuth` (ENG-4023).
 ///
@@ -12,12 +13,19 @@ import Foundation
 ///
 /// Rejection codes: `CANCELLED` (user closed the sheet), `IN_PROGRESS`,
 /// `INVALID_ARGUMENT`, `FAILED`.
+///
+/// `loadSession()`, `saveSession({ session })` and `clearSession()` keep the
+/// signed-in session (an opaque string from the web app) in the Keychain, so
+/// the next launch can restore it. See `SessionKeychain`.
 @objc(MindsHubAuthPlugin)
 public class MindsHubAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationPresentationContextProviding {
     public let identifier = "MindsHubAuthPlugin"
     public let jsName = "MindsHubAuth"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "authenticate", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "authenticate", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "loadSession", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "saveSession", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearSession", returnType: CAPPluginReturnPromise)
     ]
 
     /// Held for the session's lifetime: ASWebAuthenticationSession is torn
@@ -69,6 +77,38 @@ public class MindsHubAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
         }
     }
 
+    private var sessionKeychain: SessionKeychain? {
+        bridge?.config.serverURL.host.map { SessionKeychain(account: $0) }
+    }
+
+    @objc func loadSession(_ call: CAPPluginCall) {
+        if let session = sessionKeychain?.load() {
+            call.resolve(["session": session])
+        } else {
+            call.resolve()
+        }
+    }
+
+    @objc func saveSession(_ call: CAPPluginCall) {
+        guard let session = call.getString("session"), !session.isEmpty else {
+            call.reject("saveSession needs a `session`", "INVALID_ARGUMENT")
+            return
+        }
+        if sessionKeychain?.save(session) == true {
+            call.resolve()
+        } else {
+            call.reject("Could not save the session", "FAILED")
+        }
+    }
+
+    @objc func clearSession(_ call: CAPPluginCall) {
+        if sessionKeychain?.clear() == true {
+            call.resolve()
+        } else {
+            call.reject("Could not clear the session", "FAILED")
+        }
+    }
+
     /// Only MindsHub's own sign-in pages, over https. The page asks for this
     /// sheet, and a page can be made to ask (script in an embedded frame), so
     /// the sheet must never open on a host that is not ours.
@@ -84,5 +124,69 @@ public class MindsHubAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
             return window
         }
         return ASPresentationAnchor()
+    }
+}
+
+/// The saved session, as one generic-password Keychain item.
+///
+/// It is readable only while the device has been unlocked since boot, and
+/// never leaves this device (no iCloud Keychain, no backup restore onto
+/// another phone). Keychain items outlive an uninstall, so the first read
+/// after a fresh install deletes any item left by an earlier install: a
+/// reinstalled app starts signed out.
+struct SessionKeychain {
+    private static let service = "ai.mindshub.cowork.session"
+    let account: String
+    private var installMarker: String { "ai.mindshub.cowork.sessionStoreReady.\(account)" }
+
+    private var query: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.service,
+            kSecAttrAccount as String: account,
+        ]
+    }
+
+    func load() -> String? {
+        guard forgetPreviousInstall() else { return nil }
+        var request = query
+        request[kSecReturnData as String] = true
+        request[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(request as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func save(_ session: String) -> Bool {
+        guard forgetPreviousInstall() else { return false }
+        let data = Data(session.utf8)
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecSuccess { return true }
+        guard status == errSecItemNotFound else { return false }
+        var item = query
+        item.merge(attributes) { _, new in new }
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    func clear() -> Bool {
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    /// UserDefaults are removed on uninstall and Keychain items are not, so a
+    /// missing marker means this is the first launch of a fresh install.
+    private func forgetPreviousInstall() -> Bool {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: installMarker) { return true }
+        guard clear() else { return false }
+        defaults.set(true, forKey: installMarker)
+        return true
     }
 }

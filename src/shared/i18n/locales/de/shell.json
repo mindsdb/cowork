@@ -33,6 +33,18 @@
     },
     "field": {
       "optional": "(optional)"
+    },
+    "sortHeader": {
+      "label": "Liste sortieren",
+      "sortBy": "Nach {column} sortieren",
+      "columns": {
+        "name": "Name",
+        "project": "Projekt",
+        "updated": "Aktualisiert",
+        "activity": "Aktivität",
+        "type": "Typ",
+        "status": "Status"
+      }
     }
   },
   "rail": {
@@ -53,6 +65,8 @@
       "openNamedInDrive": "„{name}“ in Google Drive öffnen",
       "untitled": "Unbenannt",
       "openInDrive": "In Google Drive öffnen",
+      "openNamedInNotion": "„{name}“ in Notion öffnen",
+      "openInNotion": "In Notion öffnen",
       "removeFromProjectFiles": "Aus Projektdateien entfernen",
       "removeFromProjectFilesAriaLabel": "{name} aus Projektdateien entfernen",
       "loadAttachmentsFailed": "Anhänge konnten nicht geladen werden",
@@ -133,6 +147,27 @@
       "haveCopyTitle": "Sie haben bereits eine Kopie. Löschen Sie sie, um die App erneut zu duplizieren.",
       "duplicateAriaLabel": "{name} duplizieren",
       "duplicatedToast": "In dieses Projekt dupliziert."
+    },
+    "workingFolders": {
+      "title": "Arbeitsordner",
+      "add": "Diesem Chat einen Ordner hinzufügen",
+      "adding": "Wird hinzugefügt…",
+      "emptyHint": "Fügen Sie einen Ordner hinzu, in dem der Agent arbeiten kann.",
+      "loadingFiles": "Dateien werden geladen…",
+      "emptyFolder": "Dieser Ordner enthält keine Dateien.",
+      "showFiles": "Dateien in {name} anzeigen",
+      "hideFiles": "Dateien in {name} ausblenden",
+      "unavailable": "Ordner nicht verfügbar",
+      "removeTooltip": "Aus diesem Chat entfernen",
+      "removeAriaLabel": "{name} aus diesem Chat entfernen",
+      "removeTitle": "„{name}“ aus diesem Chat entfernen?",
+      "fallbackName": "Ordner",
+      "removeMessage": "Der Agent arbeitet nicht mehr in diesem Ordner. Der Ordner und seine Dateien bleiben auf Ihrem Computer.",
+      "loadFailed": "Arbeitsordner konnten nicht geladen werden.",
+      "listFailed": "Dieser Ordner konnte nicht aufgelistet werden.",
+      "pickerFailed": "Die Ordnerauswahl konnte nicht geöffnet werden.",
+      "addFailed": "Dieser Ordner konnte nicht hinzugefügt werden.",
+      "removeFailed": "Dieser Ordner konnte nicht entfernt werden."
     }
   },
   "confirm": {
@@ -171,10 +206,13 @@
     "unavailableTitle": "Funktion nicht verfügbar",
     "cloudBodyNamed": "{feature} ist in der Cloud noch nicht verfügbar. Bis dahin können Sie die Funktion in der Desktop-App nutzen.",
     "cloudBody": "Diese Funktion ist in der Cloud noch nicht verfügbar. Bis dahin können Sie sie in der Desktop-App nutzen.",
+    "cloudBodyCustom": "{feature} ist in der Cloud noch nicht verfügbar. Sie können es jetzt als benutzerdefinierten Connector verbinden.",
     "unavailableBodyNamed": "{feature} ist in dieser Bereitstellung nicht verfügbar.",
     "unavailableBody": "Diese Funktion ist in dieser Bereitstellung nicht verfügbar.",
     "notNow": "Nicht jetzt",
-    "download": "App herunterladen"
+    "download": "App herunterladen",
+    "connectCustom": "Ihren benutzerdefinierten {feature}-Connector verbinden",
+    "buildCustom": "Benutzerdefinierten Connector erstellen"
   },
   "loadStatus": {
     "retry": "Erneut versuchen",
@@ -182,6 +220,8 @@
     "loading": "Wird geladen: {what}…"
   },
   "upToDate": "Auf dem neuesten Stand",
+  "upToDateSaving": "Wird gespeichert…",
+  "upToDateSaved": "Gespeichert",
   "usageBar": {
     "hideAllowance": "Kontingent ausblenden",
     "hide": "Ausblenden"
@@ -278,6 +318,8 @@
     "settings": "Einstellungen",
     "billing": "Abrechnung und Nutzung",
     "members": "Mitglieder",
+    "apiKeys": "API-Schlüssel",
+    "apiDocs": "API-Dokumentation",
     "help": "Hilfe und Feedback",
     "manageOrg": "Organisation verwalten",
     "logout": "Abmelden",
@@ -360,7 +402,12 @@
     "total": "{count} insgesamt",
     "noTasks": "Noch keine Aufgaben.",
     "untitledTask": "Unbenannte Aufgabe",
-    "seeAllTasks": "Alle Aufgaben anzeigen"
+    "seeAllTasks": "Alle Aufgaben anzeigen",
+    "recents": "Zuletzt verwendet",
+    "showFewer": "Weniger anzeigen",
+    "seeAllCount": "Alle {count} anzeigen",
+    "signedIn": "Angemeldet",
+    "logOut": "Abmelden"
   },
   "dispatch": {
     "qrAriaLabel": "Dekorativer Kopplungscode",
@@ -395,9 +442,15 @@
       "operatorTitle": "Anbieter muss eingerichtet werden",
       "body": "Starten Sie mit MindsHub und erhalten Sie ein Gratiskontingent für MindsHub Air, danach zahlen Sie nach Nutzung. Oder fügen Sie in den Einstellungen Ihren eigenen API-Schlüssel hinzu (Anthropic, OpenAI oder ein beliebiger OpenAI-kompatibler Endpunkt).",
       "operatorBody": "Bitten Sie Ihren Betreiber, den Modellanbieter zu konfigurieren, bevor Sie eine Aufgabe starten.",
-      "startFree": "Kostenlos starten"
+      "startFree": "Kostenlos starten",
+      "bodyMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen."
     },
-    "handoffHint": "Bearbeiten Sie diesen Prompt und senden Sie ihn, wenn Sie bereit sind."
+    "handoffHint": "Bearbeiten Sie diesen Prompt und senden Sie ihn, wenn Sie bereit sind.",
+    "signupWelcome": {
+      "fromDesktop": "Ihr Konto ist bereit. Sie können direkt hier loslegen oder zur {product}-App zurückkehren und sich anmelden.",
+      "dismiss": "Schließen"
+    },
+    "ownWorkHeading": "Woran soll {product} arbeiten?"
   },
   "logout": {
     "title": "Von {product} abmelden?",
@@ -409,5 +462,8 @@
     "confirm": "Abmelden",
     "failed": "Die Abmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
     "waitNote": "Die Abmeldung läuft noch. Sie können dieses Fenster schließen, der Vorgang wird automatisch abgeschlossen."
+  },
+  "shortcuts": {
+    "showBrowser": "Browser anzeigen"
   }
 }

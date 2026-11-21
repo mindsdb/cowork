@@ -5,7 +5,10 @@
     "searchAriaLabel": "搜索模型",
     "unavailable": "不可用",
     "addCredits": "充值积分",
-    "addCreditsTooltip": "充值积分后即可使用此模型"
+    "addCreditsTooltip": "充值积分后即可使用此模型",
+    "upgrade": "升级",
+    "upgradeTooltip": "{tier, select, plus {开通 Plus 即可包含此模型} pro {升级到 Pro 即可包含此模型} other {升级即可包含此模型}}",
+    "tierTag": "{tier, select, plus {Plus} pro {Pro} other {套餐}}"
   },
   "groups": {
     "openWeight": "开放权重",

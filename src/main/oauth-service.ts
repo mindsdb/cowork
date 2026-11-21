@@ -36,6 +36,9 @@ export interface OAuthConnectOpts {
   clientSecret?: string;
   /** Scopes to request, e.g. ["https://www.googleapis.com/auth/gmail.compose"] */
   scopes: string[];
+  /** Joins `scopes` in the authorize URL. Defaults to a space (RFC 6749);
+   *  Slack's v2 flow documents a comma. */
+  scopeSeparator?: string;
   /** Client authentication style at the token endpoint. */
   tokenAuthStyle?: 'body' | 'basic';
   /**
@@ -72,7 +75,14 @@ export interface OAuthConnectResult {
   expires_in?: number;
   scope?: string;
   token_type?: string;
+  /** The exchange response's remaining fields, for providers that return
+   * identity data there (Notion's workspace_id) rather than from an API. */
+  extra?: Record<string, unknown>;
 }
+
+const TOKEN_RESPONSE_FIELDS = new Set([
+  'access_token', 'refresh_token', 'expires_in', 'scope', 'token_type', 'id_token',
+]);
 
 // Long enough to type credentials (or sign up), short enough that a
 // lost callback — e.g. the user authorized a STALE tab from an earlier
@@ -84,7 +94,7 @@ const CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
 // default, so a black-holed connection would hang forever — the browser
 // already shows "You're authorized!" by then, and the app would just
 // never sign in with zero feedback (ENG-761).
-const TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
+export const TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
 
 // Tracks the in-flight OAuth attempt so cancelCurrentOAuth() can tear
 // the loopback server down without waiting for the timeout.
@@ -100,6 +110,96 @@ export function cancelCurrentOAuth(): void {
   attempt?.cancel();
 }
 
+export { CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI } from '../shared/custom-mcp';
+
+export interface BrowserAuthorizeOpts {
+  /** The authorization server's authorize endpoint; must be https. */
+  authUrl: string;
+  clientId: string;
+  scopes: string[];
+  /** Joins `scopes` in the authorize URL. Defaults to a space (RFC 6749);
+   *  Slack's v2 flow documents a comma. */
+  scopeSeparator?: string;
+  /** Extra params merged into the authorize URL (`resource`, provider flags). */
+  extraAuthParams?: Record<string, string>;
+  redirectPort?: number;
+  redirectHost?: '127.0.0.1' | 'localhost' | '::1';
+  callbackTimeoutMs?: number;
+}
+
+export type BrowserAuthorizeResult =
+  | { ok: true; code: string; codeVerifier: string; redirectUri: string }
+  | { ok: false; reason: string };
+
+/* One live OAuth attempt. `cancel` runs every hook the attempt's steps added,
+   so a cancel reaches whichever step is running: the loopback wait or the
+   token exchange. */
+interface Attempt {
+  cancelled: boolean;
+  hooks: Array<() => void>;
+  cancel: () => void;
+}
+
+/* Cancels any earlier attempt and makes a new one the active attempt. Done
+   before the first await, so two calls that are both finding a port cannot
+   each miss the other and create two live attempts. */
+function beginAttempt(): Attempt {
+  // Only one attempt at a time. A dangling previous attempt (double-
+  // click, retry after a hung exchange) would otherwise keep its own
+  // loopback server alive — two live callback ports and whichever tab
+  // the user completes decides which promise wins (ENG-761).
+  cancelCurrentOAuth();
+  const attempt: Attempt = {
+    cancelled: false,
+    hooks: [],
+    cancel: () => {
+      attempt.cancelled = true;
+      for (const hook of attempt.hooks) {
+        try { hook(); } catch {}
+      }
+    },
+  };
+  _activeAttempt = attempt;
+  return attempt;
+}
+
+function endAttempt(attempt: Attempt): void {
+  if (_activeAttempt === attempt) _activeAttempt = null;
+}
+
+/* Why `value` cannot be opened as an authorize endpoint, or null: it must be
+   an https URL, and may carry a query but never a fragment (RFC 6749 3.1). */
+function authorizeUrlProblem(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return 'OAuth authorize URL must use https.';
+  }
+  if (url.protocol !== 'https:') return 'OAuth authorize URL must use https.';
+  if (url.hash || value.includes('#')) return 'OAuth authorize URL must not have a fragment.';
+  return null;
+}
+
+/**
+ * Opens the authorize URL in the user's browser and waits on a loopback
+ * server for the redirect. Returns the authorization code, the PKCE verifier
+ * and the redirect URI the token exchange needs, or why it failed. Does not
+ * exchange the code: callers whose token endpoint must go through the
+ * guarded fetch do that themselves. Cancelled by `cancelCurrentOAuth`.
+ */
+export async function authorizeInBrowser(opts: BrowserAuthorizeOpts): Promise<BrowserAuthorizeResult> {
+  if (!opts?.authUrl || !opts?.clientId) return { ok: false, reason: 'OAuth opts missing authUrl or clientId.' };
+  const problem = authorizeUrlProblem(opts.authUrl);
+  if (problem) return { ok: false, reason: problem };
+  const attempt = beginAttempt();
+  try {
+    return await browserStep(opts, attempt);
+  } finally {
+    endAttempt(attempt);
+  }
+}
+
 export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnectResult> {
   if (!opts?.authUrl || !opts?.tokenUrl || !opts?.clientId) {
     return { ok: false, reason: 'OAuth opts missing authUrl, tokenUrl, or clientId.' };
@@ -108,33 +208,28 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   // The authorize URL goes to shell.openExternal, which hands any scheme to the
   // OS (file:, custom app handlers). Only an https provider page may open, and
   // the check runs before cancelling, so a refused call leaves a live flow alone.
-  let authProtocol = '';
-  try { authProtocol = new URL(opts.authUrl).protocol; } catch {}
-  if (authProtocol !== 'https:') {
-    return { ok: false, reason: 'OAuth authorize URL must use https.' };
+  const problem = authorizeUrlProblem(opts.authUrl);
+  if (problem) return { ok: false, reason: problem };
+
+  const attempt = beginAttempt();
+  const exchangeController = new AbortController();
+  attempt.hooks.push(() => exchangeController.abort());
+  try {
+    const step = await browserStep(opts, attempt);
+    if (!step.ok) return step;
+    return await exchangeCode(opts, step, exchangeController.signal, () => attempt.cancelled);
+  } finally {
+    endAttempt(attempt);
   }
+}
 
-  // Only one attempt at a time. A dangling previous attempt (double-
-  // click, retry after a hung exchange) would otherwise keep its own
-  // loopback server alive — two live callback ports and whichever tab
-  // the user completes decides which promise wins (ENG-761).
-  cancelCurrentOAuth();
-
+async function browserStep(opts: BrowserAuthorizeOpts, attempt: Attempt): Promise<BrowserAuthorizeResult> {
   let server: http.Server | null = null;
   let rejectCode: ((err: Error) => void) | null = null;
-  let cancelled = false;
-  const exchangeController = new AbortController();
-  const attempt = {
-    cancel: () => {
-      cancelled = true;
-      try { rejectCode?.(new Error('cancelled')); } catch {}
-      exchangeController.abort();
-      closeServer(server);
-    },
-  };
-  // Reserve ownership before the first await. Otherwise two calls that are
-  // both finding a port can each miss the other and create live attempts.
-  _activeAttempt = attempt;
+  attempt.hooks.push(() => {
+    rejectCode?.(new Error('cancelled'));
+    closeServer(server);
+  });
 
   // PKCE: random verifier (43-128 chars), SHA-256 challenge. The
   // verifier is held in this process and only sent during the token
@@ -151,8 +246,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   try {
     port = opts.redirectPort ? await bindFixedPort(opts.redirectPort) : await findFreePort();
   } catch (e: any) {
-    if (_activeAttempt === attempt) _activeAttempt = null;
-    if (cancelled) return { ok: false, reason: 'cancelled' };
+    if (attempt.cancelled) return { ok: false, reason: 'cancelled' };
     return {
       ok: false,
       reason: opts.redirectPort
@@ -160,7 +254,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
         : `Could not bind a loopback port: ${e?.message || e}`,
     };
   }
-  if (cancelled) return { ok: false, reason: 'cancelled' };
+  if (attempt.cancelled) return { ok: false, reason: 'cancelled' };
 
   const redirectHost = opts.redirectHost || '127.0.0.1';
   const redirectUri = `http://${redirectHost.includes(':') ? `[${redirectHost}]` : redirectHost}:${port}/callback`;
@@ -170,13 +264,16 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     response_type: 'code',
     client_id: opts.clientId,
     redirect_uri: redirectUri,
-    ...(opts.scopes.length ? { scope: opts.scopes.join(' ') } : {}),
+    ...(opts.scopes.length ? { scope: opts.scopes.join(opts.scopeSeparator ?? ' ') } : {}),
     state,
     code_challenge: challenge,
     code_challenge_method: 'S256',
     ...(opts.extraAuthParams || {}),
   });
-  const authUrl = `${opts.authUrl}?${authParams.toString()}`;
+  // Added to the endpoint's own query (RFC 6749 3.1), not appended after it.
+  const authorizeUrl = new URL(opts.authUrl);
+  authParams.forEach((value, name) => authorizeUrl.searchParams.set(name, value));
+  const authUrl = authorizeUrl.href;
 
   // Wait for the redirect — server stays up until either the
   // callback fires, the safety timeout elapses, or the renderer
@@ -272,7 +369,6 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     code = await Promise.race([codePromise, timeoutPromise]);
   } catch (e: any) {
     closeServer(server);
-    if (_activeAttempt === attempt) _activeAttempt = null;
     return { ok: false, reason: e?.message || 'OAuth flow failed.' };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
@@ -280,13 +376,21 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     // browser before we tear the server down.
     setTimeout(() => closeServer(server), 300);
   }
+  return { ok: true, code, codeVerifier: verifier, redirectUri };
+}
 
-  // Exchange the code for tokens.
+/* The code-for-tokens exchange of `oauthConnect`, through `electron.net`. */
+async function exchangeCode(
+  opts: OAuthConnectOpts,
+  step: { code: string; codeVerifier: string; redirectUri: string },
+  signal: AbortSignal,
+  isCancelled: () => boolean,
+): Promise<OAuthConnectResult> {
   const tokenBody = new URLSearchParams({
     grant_type: 'authorization_code',
-    code,
-    redirect_uri: redirectUri,
-    code_verifier: verifier,
+    code: step.code,
+    redirect_uri: step.redirectUri,
+    code_verifier: step.codeVerifier,
   });
   const tokenHeaders: Record<string, string> = {
     'Content-Type': 'application/x-www-form-urlencoded',
@@ -315,17 +419,21 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
       body: tokenBody.toString(),
       signal: AbortSignal.any([
         AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
-        exchangeController.signal,
+        signal,
       ]),
     });
-    if (cancelled) return { ok: false, reason: 'cancelled' };
+    if (isCancelled()) return { ok: false, reason: 'cancelled' };
     if (!res.ok) {
       const text = await safeReadText(res);
-      if (cancelled) return { ok: false, reason: 'cancelled' };
+      if (isCancelled()) return { ok: false, reason: 'cancelled' };
       return { ok: false, reason: `Token exchange failed (${res.status}): ${text || 'no body'}` };
     }
     const data = (await res.json()) as Record<string, unknown>;
-    if (cancelled) return { ok: false, reason: 'cancelled' };
+    if (isCancelled()) return { ok: false, reason: 'cancelled' };
+    // Slack reports a failed exchange as HTTP 200 with {"ok": false, "error": ...}.
+    if (data.ok === false) {
+      return { ok: false, reason: `Token exchange failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}` };
+    }
     if (typeof data.access_token !== 'string' || !data.access_token) {
       return { ok: false, reason: 'Token exchange response did not include an access token.' };
     }
@@ -336,15 +444,14 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
       expires_in: typeof data.expires_in === 'number' ? data.expires_in : undefined,
       scope: typeof data.scope === 'string' ? data.scope : undefined,
       token_type: typeof data.token_type === 'string' ? data.token_type : undefined,
+      extra: Object.fromEntries(Object.entries(data).filter(([k]) => !TOKEN_RESPONSE_FIELDS.has(k))),
     };
   } catch (e: any) {
-    if (cancelled) return { ok: false, reason: 'cancelled' };
+    if (isCancelled()) return { ok: false, reason: 'cancelled' };
     if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
       return { ok: false, reason: 'Token exchange timed out — check your network connection and try signing in again.' };
     }
     return { ok: false, reason: `Token exchange request failed: ${describeFetchError(e)}` };
-  } finally {
-    if (_activeAttempt === attempt) _activeAttempt = null;
   }
 }
 

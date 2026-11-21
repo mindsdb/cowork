@@ -46,9 +46,11 @@ describe('HTML visual editor document', () => {
       baseUrl: 'https://draft.example/deck.html',
     });
 
-    expect(result.changes).toEqual([{ before: 'Quarterly review', after: 'Launch review' }]);
-    expect(result.before).toContain('<h1 data-cowork-comparison-change="">Quarterly review</h1>');
-    expect(result.after).toContain('<h1 data-cowork-comparison-change="">Launch review</h1>');
+    expect(result.changes).toEqual([
+      { before: 'Quarterly review', after: 'Launch review', inBefore: true, inAfter: true },
+    ]);
+    expect(result.before).toContain('<h1 data-cowork-comparison-change="0">Quarterly review</h1>');
+    expect(result.after).toContain('<h1 data-cowork-comparison-change="0">Launch review</h1>');
     expect(result.before).toContain('<base href="https://draft.example/deck.html">');
     expect(result.before).not.toContain('data-cowork-editable-id');
   });
@@ -60,8 +62,39 @@ describe('HTML visual editor document', () => {
     );
 
     expect(result.changes).toEqual([
-      { before: 'Clear and warm.', after: 'Current conditions.' },
+      { before: 'Clear and warm.', after: 'Current conditions.', inBefore: true, inAfter: true },
     ]);
+  });
+
+  it('numbers changes in reading order, on whichever side has the element', () => {
+    const result = createHtmlVisualComparisonDocuments(
+      '<main><h1 id="t">Title</h1><p id="a">Gone</p><p id="k">Keep</p></main>',
+      '<main><p id="n">Added</p><h1 id="t">New title</h1><p id="k">Keep</p></main>',
+    );
+
+    expect(result.changes).toEqual([
+      { before: '', after: 'Added', inBefore: false, inAfter: true },
+      { before: 'Title', after: 'New title', inBefore: true, inAfter: true },
+      { before: 'Gone', after: '', inBefore: true, inAfter: false },
+    ]);
+    expect(result.after).toContain('<p id="n" data-cowork-comparison-change="0">Added</p>');
+    expect(result.before).toContain('<h1 id="t" data-cowork-comparison-change="1">Title</h1>');
+    expect(result.after).toContain('<h1 id="t" data-cowork-comparison-change="1">New title</h1>');
+    expect(result.before).toContain('<p id="a" data-cowork-comparison-change="2">Gone</p>');
+    expect(result.before).toContain('<p id="k">Keep</p>');
+  });
+
+  it('injects the comparison runtime ahead of the artifact\'s own scripts', () => {
+    const page = '<html><head><script>window.page = 1</script></head><body><h1>Before</h1></body></html>';
+    const result = createHtmlVisualComparisonDocuments(page, page.replace('Before', 'After'), {
+      token: 'compare-token',
+    });
+
+    for (const document of [result.before, result.after]) {
+      expect(document).toContain('"compare-token"');
+      expect(document.indexOf('compare-token')).toBeLessThan(document.indexOf('window.page'));
+    }
+    expect(createHtmlVisualComparisonDocuments(page, page).before).not.toContain('<script>(() =>');
   });
 
   it('keeps embedded comparison documents free of invalid base elements', () => {

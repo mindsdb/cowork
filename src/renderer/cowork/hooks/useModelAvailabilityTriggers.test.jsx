@@ -32,7 +32,7 @@ describe('hasCreditLock', () => {
     ['an exhausted free allowance', { a: 'included_allowance_exhausted' }, true],
     ['no reason (older sidecar)', {}, true],
     ['an admin restriction', { a: 'model_restricted' }, false],
-    ['a spent org budget', { a: 'budget_exceeded' }, false],
+    ['a spent budget', { a: 'budget_exceeded' }, false],
   ])('counts a model locked by %s as %s', (_label, reasons, expected) => {
     expect(hasCreditLock({ a: false }, reasons)).toBe(expected);
   });

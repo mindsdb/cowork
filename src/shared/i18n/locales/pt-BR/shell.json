@@ -33,6 +33,18 @@
     },
     "field": {
       "optional": "(opcional)"
+    },
+    "sortHeader": {
+      "label": "Ordenar a lista",
+      "sortBy": "Ordenar por {column}",
+      "columns": {
+        "name": "Nome",
+        "project": "Projeto",
+        "updated": "Atualizado",
+        "activity": "Atividade",
+        "type": "Tipo",
+        "status": "Status"
+      }
     }
   },
   "rail": {
@@ -53,6 +65,8 @@
       "openNamedInDrive": "Abrir \"{name}\" no Google Drive",
       "untitled": "sem título",
       "openInDrive": "Abrir no Google Drive",
+      "openNamedInNotion": "Abrir \"{name}\" no Notion",
+      "openInNotion": "Abrir no Notion",
       "removeFromProjectFiles": "Remover dos arquivos do projeto",
       "removeFromProjectFilesAriaLabel": "Remover {name} dos arquivos do projeto",
       "loadAttachmentsFailed": "Não foi possível carregar os anexos",
@@ -133,6 +147,27 @@
       "haveCopyTitle": "Você já tem uma cópia. Exclua-a para duplicar o app novamente.",
       "duplicateAriaLabel": "Duplicar {name}",
       "duplicatedToast": "Duplicado neste projeto."
+    },
+    "workingFolders": {
+      "title": "Pastas de trabalho",
+      "add": "Adicionar uma pasta a este chat",
+      "adding": "Adicionando…",
+      "emptyHint": "Adicione uma pasta para o agente trabalhar nela.",
+      "loadingFiles": "Carregando arquivos…",
+      "emptyFolder": "Não há arquivos nesta pasta.",
+      "showFiles": "Mostrar arquivos em {name}",
+      "hideFiles": "Ocultar arquivos em {name}",
+      "unavailable": "Pasta indisponível",
+      "removeTooltip": "Remover deste chat",
+      "removeAriaLabel": "Remover {name} deste chat",
+      "removeTitle": "Remover \"{name}\" deste chat?",
+      "fallbackName": "pasta",
+      "removeMessage": "O agente não vai mais trabalhar nesta pasta. A pasta e os arquivos dela continuam no seu computador.",
+      "loadFailed": "Não foi possível carregar as pastas de trabalho.",
+      "listFailed": "Não foi possível listar esta pasta.",
+      "pickerFailed": "Não foi possível abrir o seletor de pastas.",
+      "addFailed": "Não foi possível adicionar esta pasta.",
+      "removeFailed": "Não foi possível remover esta pasta."
     }
   },
   "confirm": {
@@ -171,10 +206,13 @@
     "unavailableTitle": "Recurso indisponível",
     "cloudBodyNamed": "{feature} ainda não está disponível no Cloud. Enquanto isso, você pode usá-lo no app para desktop.",
     "cloudBody": "Este recurso ainda não está disponível no Cloud. Enquanto isso, você pode usá-lo no app para desktop.",
+    "cloudBodyCustom": "{feature} ainda não está disponível no Cloud. Você já pode conectá-lo como um conector personalizado.",
     "unavailableBodyNamed": "{feature} não está disponível nesta implantação.",
     "unavailableBody": "Este recurso não está disponível nesta implantação.",
     "notNow": "Agora não",
-    "download": "Baixar o app"
+    "download": "Baixar o app",
+    "connectCustom": "Conectar seu conector personalizado de {feature}",
+    "buildCustom": "Criar um conector personalizado"
   },
   "loadStatus": {
     "retry": "Tentar novamente",
@@ -182,6 +220,8 @@
     "loading": "Carregando {what}…"
   },
   "upToDate": "Atualizado",
+  "upToDateSaving": "Salvando…",
+  "upToDateSaved": "Salvo",
   "usageBar": {
     "hideAllowance": "Ocultar franquia",
     "hide": "Ocultar"
@@ -278,6 +318,8 @@
     "settings": "Configurações",
     "billing": "Faturamento e uso",
     "members": "Membros",
+    "apiKeys": "Chaves de API",
+    "apiDocs": "Documentação da API",
     "help": "Ajuda e feedback",
     "manageOrg": "Gerenciar organização",
     "logout": "Sair",
@@ -360,7 +402,12 @@
     "total": "{count} no total",
     "noTasks": "Ainda não há tarefas.",
     "untitledTask": "Tarefa sem título",
-    "seeAllTasks": "Ver todas as tarefas"
+    "seeAllTasks": "Ver todas as tarefas",
+    "recents": "Recentes",
+    "showFewer": "Mostrar menos",
+    "seeAllCount": "Ver todos ({count})",
+    "signedIn": "Conectado",
+    "logOut": "Sair"
   },
   "dispatch": {
     "qrAriaLabel": "Código de pareamento decorativo",
@@ -395,9 +442,15 @@
       "operatorTitle": "É preciso configurar um provedor",
       "body": "Comece com o MindsHub e ganhe uma franquia gratuita no MindsHub Air; depois, pague conforme o uso. Ou adicione sua própria chave de API (Anthropic, OpenAI ou qualquer endpoint compatível com OpenAI) em Configurações.",
       "operatorBody": "Peça ao seu operador para configurar o provedor de modelos antes de iniciar uma tarefa.",
-      "startFree": "Começar grátis"
+      "startFree": "Começar grátis",
+      "bodyMobile": "Conecte seu próprio provedor em Configurações."
     },
-    "handoffHint": "Edite este prompt e envie quando estiver pronto."
+    "handoffHint": "Edite este prompt e envie quando estiver pronto.",
+    "signupWelcome": {
+      "fromDesktop": "Sua conta está pronta. Você pode começar aqui mesmo ou voltar ao app {product} e entrar.",
+      "dismiss": "Dispensar"
+    },
+    "ownWorkHeading": "No que o {product} deve trabalhar?"
   },
   "logout": {
     "title": "Sair do {product}?",
@@ -409,5 +462,8 @@
     "confirm": "Sair",
     "failed": "Não foi possível concluir a saída. Tente novamente.",
     "waitNote": "Ainda estamos encerrando sua sessão. Você pode fechar isto: termina sozinho."
+  },
+  "shortcuts": {
+    "showBrowser": "Mostrar navegador"
   }
 }

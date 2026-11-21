@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 
 import MobileShell from './MobileShell';
 
@@ -43,5 +43,45 @@ describe('MobileShell — top-bar theme toggle', () => {
   it('never renders a coding-mode toggle in the mobile chrome', () => {
     render(<MobileShell {...baseProps}>content</MobileShell>);
     expect(screen.queryByRole('button', { name: /coding mode/i })).toBeNull();
+  });
+});
+
+describe('MobileShell — call button and recent chats', () => {
+  it('puts the browser and call buttons left of the theme toggle', () => {
+    const onClick = vi.fn();
+    const onShowBrowser = vi.fn();
+    render(<MobileShell {...baseProps} onShowBrowser={onShowBrowser} callShortcut={{ label: 'Call Anton', onClick }}>content</MobileShell>);
+    const order = [...document.querySelectorAll('.mshell__top button')].map((b) => b.getAttribute('aria-label'));
+    expect(order.slice(-3)).toEqual(['Show browser', 'Call Anton', 'Switch to light mode']);
+    screen.getByRole('button', { name: 'Call Anton' }).click();
+    screen.getByRole('button', { name: 'Show browser' }).click();
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onShowBrowser).toHaveBeenCalledTimes(1);
+  });
+
+  it('lists the 4 newest chats under Chat, and See all opens the rest in place', async () => {
+    const tasks = Array.from({ length: 6 }, (_, i) => ({ id: `t${i}`, title: `Chat ${i}` }));
+    render(<MobileShell {...baseProps} tasks={tasks}>content</MobileShell>);
+    await act(async () => { screen.getByRole('button', { name: /open menu/i }).click(); });
+    const chats = () => [...document.querySelectorAll('.mshell-recent-chat')];
+    expect(chats().map((n) => n.textContent)).toEqual(['Chat 0', 'Chat 1', 'Chat 2', 'Chat 3']);
+    await act(async () => { screen.getByRole('button', { name: 'See all 6' }).click(); });
+    expect(chats()).toHaveLength(6);
+    expect(screen.getByRole('button', { name: 'Show fewer' })).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
+describe('MobileShell — account footer', () => {
+  it('shows who is signed in and asks before logging out', async () => {
+    render(<MobileShell {...baseProps} accountUser={{ email: 'jorge@mindsdb.com' }}>content</MobileShell>);
+    await act(async () => { screen.getByRole('button', { name: /open menu/i }).click(); });
+    expect(screen.getByText('jorge@mindsdb.com')).toBeInTheDocument();
+    await act(async () => { screen.getByRole('button', { name: 'Log out' }).click(); });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('has no footer when nobody is signed in', () => {
+    render(<MobileShell {...baseProps}>content</MobileShell>);
+    expect(screen.queryByRole('button', { name: 'Log out' })).toBeNull();
   });
 });
