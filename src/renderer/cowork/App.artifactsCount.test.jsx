@@ -1,16 +1,22 @@
 // The sidebar's Live Artifacts count comes from App's artifact list. Every
 // delete surface goes through deleteArtifactAndSync, so these tests delete
 // through it directly instead of driving a particular view.
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const spies = vi.hoisted(() => ({
+  setNavigator: vi.fn(),
   deleteArtifact: vi.fn(),
   deleteProject: vi.fn(),
   fetchArtifacts: vi.fn(),
   fetchArtifactsStrict: vi.fn(),
   fetchProjects: vi.fn(),
+}));
+
+vi.mock('../lib/mobilePush', async (importOriginal) => ({
+  ...(await importOriginal()),
+  setMobilePushNavigator: (navigate) => spies.setNavigator(navigate),
 }));
 
 vi.mock('./api', async (importOriginal) => ({
@@ -78,6 +84,11 @@ vi.mock('../platform/host', async (importOriginal) => {
     isElectron: false,
   };
 });
+
+vi.mock('./components/artifact', async (importOriginal) => ({
+  ...(await importOriginal()),
+  ArtifactViewer: ({ open, artifact }) => open ? <div role="dialog">{artifact.title}</div> : null,
+}));
 
 import App from './App';
 import { __resetForTests, deleteArtifactAndSync } from './lib/artifactsStore';
@@ -156,5 +167,52 @@ describe('Live Artifacts sidebar count', () => {
 
     await waitFor(() => expect(spies.deleteProject).toHaveBeenCalledWith(project));
     await expectCount(2);
+  });
+});
+
+describe('shared artifact navigation', () => {
+  let previousUrl;
+  let previousState;
+  beforeEach(() => {
+    previousUrl = location.href;
+    previousState = window.history.state;
+  });
+  afterEach(() => window.history.replaceState(previousState, '', previousUrl));
+
+  const sharePath = (url) => '/artifacts#' + new URLSearchParams({ shared: url });
+
+  it('opens a queued tap after a cold start loads the signed-in collection', async () => {
+    const url = 'https://view.example/r/weekly';
+    window.history.replaceState(null, '', '/');
+    spies.setNavigator.mockImplementationOnce((navigate) => { navigate(sharePath(url)); });
+    spies.fetchArtifactsStrict.mockResolvedValue([{ ...alpha, publishedUrl: url, title: 'Weekly review' }]);
+    render(<App />);
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Weekly review');
+    await waitFor(() => expect(window.history.state?.usr?.sharedArtifactUrl).toBeFalsy());
+  });
+
+  it('waits for the navigation refresh when a newly shared artifact arrives', async () => {
+    const { host } = await import('../platform/host');
+    const url = 'https://view.example/r/newly-shared';
+    window.history.replaceState(null, '', '/artifacts');
+    render(<App />);
+    await expectCount(3);
+    const refresh = deferred();
+    spies.fetchArtifactsStrict.mockReturnValue(refresh.promise);
+    const [navigate] = spies.setNavigator.mock.lastCall;
+    await act(async () => navigate(sharePath(url)));
+    expect(host.openExternal).not.toHaveBeenCalled();
+    await act(async () => refresh.resolve([{ ...alpha, publishedUrl: url, title: 'New share' }]));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('New share');
+    expect(host.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('treats an ordinary artifacts link as a collection visit', async () => {
+    const { host } = await import('../platform/host');
+    window.history.replaceState(null, '', sharePath('https://example.org/elsewhere'));
+    render(<App />);
+    await expectCount(3);
+    expect(host.openExternal).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

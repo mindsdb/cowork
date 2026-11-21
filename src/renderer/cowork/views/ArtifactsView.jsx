@@ -492,6 +492,26 @@ async function openUrl(url) {
   try { await host.openExternal(url); } catch {}
 }
 
+// Stored and notified URLs can differ in case, default port or encoding.
+function sameUrl(a, b) {
+  if (!a || !b) return false;
+  try { return new URL(a).href === new URL(b).href; } catch { return a === b; }
+}
+
+function cardOpenTarget(artifact, orgMode) {
+  const hasBridge = host.isElectron;
+  const canPreviewDoc = canPreviewDocument(artifact, host);
+  return artifactOpenTarget({
+    orgMode,
+    published: !!artifact.publishedUrl,
+    canPreviewInline: (hasBridge ? isInlinePreviewable(artifact) : canPreviewLocally(artifact)) || canPreviewDoc,
+    canPreviewDraft: canPreviewOrgDraft(artifact) || canPreviewDoc,
+    hasBridge,
+    hasDraft: canDownloadOrgDraft(artifact),
+    canDownload: canDownloadArtifact(artifact),
+  });
+}
+
 // How a row or a grid card opens. `liveAppAddress` is where an unpublished
 // live app runs (liveAppOpenAddress), '' while it isn't running.
 function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppAddress = '' } = {}) {
@@ -510,17 +530,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
    * document types join both previews wherever the shared document gate
    * allows them.
    */
-  const hasBridge = host.isElectron;
-  const canPreviewDoc = canPreviewDocument(artifact, host);
-  const target = artifactOpenTarget({
-    orgMode,
-    published,
-    canPreviewInline: (hasBridge ? isInlinePreviewable(artifact) : canPreviewLocally(artifact)) || canPreviewDoc,
-    canPreviewDraft: canPreviewOrgDraft(artifact) || canPreviewDoc,
-    hasBridge,
-    hasDraft: canDownloadOrgDraft(artifact),
-    canDownload: canDownloadArtifact(artifact),
-  });
+  const target = cardOpenTarget(artifact, orgMode);
 
   /*
    * Open the live thing: the viewer, else a download that says why, else the
@@ -828,6 +838,9 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openCom
 
 export default function ArtifactsView({
   artifacts: cards = EMPTY_ARTIFACTS,
+  // From the push controller, after this navigation refreshed the collection.
+  sharedUrl = null,
+  onSharedUrlHandled,
   // App owns the list (it also feeds the sidebar count), so publish-state
   // changes go up rather than into a local copy that the next prop would reset.
   // Deletes reach App on their own through artifactsStore.onArtifactDeleted.
@@ -888,6 +901,19 @@ export default function ArtifactsView({
     setCommentsRequest(null);
     setCommentsRefresh((n) => n + 1);
   };
+  // The router supplies the share after its list refresh succeeds. Use the
+  // same preview decision as a card click and consume the tap once.
+  const handledShareRef = useRef(null);
+  useEffect(() => {
+    if (!sharedUrl) { handledShareRef.current = null; return; }
+    if (loading || handledShareRef.current === sharedUrl) return;
+    handledShareRef.current = sharedUrl;
+    const match = list.find((a) => sameUrl(a.publishedUrl, sharedUrl));
+    if (match && cardOpenTarget(match, orgMode) === 'preview') openViewer(match);
+    else openUrl(sharedUrl);
+    onSharedUrlHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedUrl, loading, list]);
   // Phones always get the grid (list rows are 5 columns); see ViewToggle.
   const { view, setView, effectiveView } = useCollectionView('anton:artifacts-view');
   const [search, setSearch] = useState('');

@@ -214,8 +214,8 @@ artifact's page in the system browser.
 1. The web app (`src/renderer/lib/mobilePush.ts`) talks to
    `@capacitor/push-notifications` through the bridge. It never fires the OS
    permission prompt at launch. If notifications are already allowed, it
-   registers right after sign-in. Otherwise it waits until the user starts
-   their first task and shows a small in-app card ("Get notified when your
+   registers right after sign-in. Otherwise it waits until the user begins composing
+   their first task (or sends one without typing) and shows a small in-app card ("Get notified when your
    tasks finish", **Turn on** / **Not now**). **Turn on** fires the OS prompt.
    **Not now** hides the card for 14 days.
 2. The plugin hands back a token: the **APNs device token** on iOS (not an
@@ -231,8 +231,10 @@ artifact's page in the system browser.
    beside `aps`. On Android they are the FCM `data` map, next to a
    `notification` block. Without the `notification` block, Android shows
    nothing while the app is in the background.
-4. **A tap** opens `path` with the app's router. If there is no `path`, it
-   opens `url` in the system browser (a host outside `server.allowNavigation`
+4. **A tap** opens `path` with the app's router. For a shared artifact, the app matches the published
+   URL against a fresh copy of the signed-in user’s artifact list. It opens the viewer for a
+   previewable match and the shared HTTPS page otherwise. For other
+   notifications without a path it opens `url` in the system browser (a host outside `server.allowNavigation`
    always leaves the webview). A tap that launches the app arrives before
    the router exists, and often before sign-in, which reloads the page. The
    web app keeps the tap in `sessionStorage` for 10 minutes and applies it

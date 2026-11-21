@@ -221,10 +221,13 @@ function ConversationRoute() {
 // renders. v2 promotes these to real loader-backed routes.
 function ViewRoute({ name }) {
   const { enterRoute } = useCowork();
+  const location = useLocation();
+  // A second share can arrive while Live Artifacts is already open.
+  const shareTap = name === 'artifacts' && location.state?.sharedArtifactUrl ? location.key : null;
   useEffect(() => {
     enterRoute(name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name]);
+  }, [name, shareTap]);
   return null;
 }
 
