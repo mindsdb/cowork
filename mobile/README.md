@@ -232,7 +232,8 @@ artifact's page in the system browser.
    `notification` block. Without the `notification` block, Android shows
    nothing while the app is in the background.
 4. **A tap** opens `path` with the app's router. For a shared artifact, the app matches the published
-   URL to the signed-in user’s artifact list and opens its viewer. For other
+   URL against a fresh copy of the signed-in user’s artifact list. It opens the viewer for a
+   previewable match and the shared HTTPS page otherwise. For other
    notifications without a path it opens `url` in the system browser (a host outside `server.allowNavigation`
    always leaves the webview). A tap that launches the app arrives before
    the router exists, and often before sign-in, which reloads the page. The

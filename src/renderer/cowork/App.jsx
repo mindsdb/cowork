@@ -157,7 +157,7 @@ import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
 import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
 import { PLATFORM_UI } from '../lib/deployment';
-import { offerMobileTaskNotifications, setMobilePushNavigator } from '../lib/mobilePush';
+import { offerMobileTaskNotifications, safeExternalUrl, setMobilePushNavigator } from '../lib/mobilePush';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -699,11 +699,11 @@ export function searchRecents(tasks, projects) {
   ];
 }
 
-function RoutedArtifactsView(props) {
+function RoutedArtifactsView({ loadedLocationKey, ...props }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const sharedUrl = new URLSearchParams(location.hash.slice(1)).get('shared');
-  // Drop the fragment once handled, so a reload or Back/Forward doesn't reopen it.
+  const sharedUrl = loadedLocationKey === location.key ? location.state?.sharedArtifactUrl : null;
+  // Clear the notification once handled, so a reload or Back/Forward doesn't reopen it.
   const clearShared = useCallback(
     () => navigate({ pathname: location.pathname, search: location.search }, { replace: true }),
     [navigate, location.pathname, location.search],
@@ -933,6 +933,7 @@ function AppCore() {
   const runnableProjects = useMemo(() => projects.filter(canRunProject), [projects]);
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
+  const [artifactsLocationKey, setArtifactsLocationKey] = useState(null);
   // False until the first artifacts fetch settles, so Live Artifacts shows
   // skeletons instead of a premature "No artifacts yet".
   const [artifactsLoaded, setArtifactsLoaded] = useState(false);
@@ -961,7 +962,12 @@ function AppCore() {
   useEffect(() => { artifactsRef.current = artifacts; }, [artifacts]);
   // Every load of `artifacts` goes through this loader. Strict: a failed load
   // must not read as an empty list.
-  const [artifactsLoader] = useState(() => createLatestLoader(fetchArtifactsStrict, (data) => {
+  const [artifactsLoader] = useState(() => createLatestLoader(async () => {
+    // Only a successful listing started on this navigation can settle its tap.
+    const locationKey = routerRef.current.state.location.key;
+    return { locationKey, data: await fetchArtifactsStrict() };
+  }, ({ locationKey, data }) => {
+    setArtifactsLocationKey(locationKey);
     // One-time arm/disarm decision for the first-artifact tip, taken on
     // the session's first successful fetch: empty list = fresh account
     // (watch for the first artifact); anything else = existing account
@@ -2452,7 +2458,16 @@ function AppCore() {
   if (!routerRef.current) routerRef.current = createCoworkRouter();
   // Mobile app (ENG-4023): a tapped push notification opens its route here,
   // including one tapped before the router existed (cold start). No-op elsewhere.
-  useEffect(() => setMobilePushNavigator((path) => { routerRef.current?.navigate(path); }), []);
+  useEffect(() => setMobilePushNavigator((path) => {
+    // Only the push controller delivers a pending tap. An address-bar fragment
+    // must never instruct the app to open an external destination.
+    if (path.startsWith('/artifacts#shared=')) {
+      const sharedArtifactUrl = safeExternalUrl(new URLSearchParams(path.split('#')[1]).get('shared'));
+      routerRef.current.navigate('/artifacts', { state: { sharedArtifactUrl } });
+    } else {
+      routerRef.current.navigate(path);
+    }
+  }), []);
   const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
@@ -7624,6 +7639,7 @@ function AppCore() {
           // this page, and follows the reply from that chat's task (ENG-4560).
           <ConversationTranscriptsContext.Provider value={artifactTranscripts}>
           <RoutedArtifactsView
+            loadedLocationKey={artifactsLocationKey}
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
             onRefreshArtifacts={reloadArtifacts}

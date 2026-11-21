@@ -223,7 +223,7 @@ function ViewRoute({ name }) {
   const { enterRoute } = useCowork();
   const location = useLocation();
   // A second share can arrive while Live Artifacts is already open.
-  const shareTap = name === 'artifacts' && location.hash.startsWith('#shared=') ? location.key : null;
+  const shareTap = name === 'artifacts' && location.state?.sharedArtifactUrl ? location.key : null;
   useEffect(() => {
     enterRoute(name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
