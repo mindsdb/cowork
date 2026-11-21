@@ -713,7 +713,7 @@
       "unreadable": "Der Eintrag dieser Verbindung kann gerade nicht gelesen werden. Versuche es später erneut.",
       "port": "Die Cloud von Anton verbindet sich nur über den Standard-https-Port. Entferne den Port aus der URL.",
       "listingTooLarge": "Die Tool-Liste dieses Servers ist zu groß zum Lesen.",
-      "invalidResponse": "Der Server hat eine Antwort gesendet, die Anton nicht lesen konnte. Versuche es erneut.",
+      "unreadableResponse": "Der Server hat eine Antwort gesendet, die Anton nicht lesen konnte. Versuche es erneut.",
       "insecureLoginUrl": "Die Anmeldeseite des Servers ist keine https-Adresse und wurde daher nicht geöffnet.",
       "popupBlocked": "Dein Browser hat das Anmeldefenster blockiert, oder es wurde geschlossen. Erlaube Pop-ups für diese Website und versuche es erneut.",
       "staleRevision": "Die Tool-Liste hat sich geändert. Sie wurde neu geladen; versuche den Schalter erneut.",

@@ -284,8 +284,8 @@ describe('custom MCP on web', () => {
   it('does not read a success whose body cannot be read as an empty answer', async () => {
     globalThis.fetch = vi.fn(async () => new Response('{"tools_revision": 3, "tools": [', { status: 200 })) as typeof fetch;
 
-    expect(await host.customMcpTools(NAME)).toEqual({ ok: false, code: 'invalid_response', reason: '' });
-    expect(await host.customMcpFinish('c'.repeat(43))).toEqual({ ok: false, code: 'invalid_response', reason: '' });
+    expect(await host.customMcpTools(NAME)).toEqual({ ok: false, code: 'unreadable_response', reason: '' });
+    expect(await host.customMcpFinish('c'.repeat(43))).toEqual({ ok: false, code: 'unreadable_response', reason: '' });
   });
 
   it('passes the port refusal on with its code', async () => {

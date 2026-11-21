@@ -173,13 +173,24 @@ describe('CustomMcpConnectModal', () => {
 
   it('says an unreadable answer could not be read, without the parser\'s text', async () => {
     const user = userEvent.setup();
-    customMcpConnect.mockResolvedValue({ ok: false, code: 'invalid_response', reason: '' });
+    customMcpConnect.mockResolvedValue({ ok: false, code: 'unreadable_response', reason: '' });
     renderModal();
 
     await fill(user);
     await user.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByText("The server sent an answer Anton couldn't read. Try again.")).toBeTruthy();
+  });
+
+  it('keeps the reason a refused login metadata carries', async () => {
+    const user = userEvent.setup();
+    customMcpConnect.mockResolvedValue({ ok: false, code: 'invalid_response', reason: 'the authorization server metadata is missing an endpoint' });
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(await screen.findByText("Couldn't connect the server: the authorization server metadata is missing an endpoint")).toBeTruthy();
   });
 
   it('warns when the server could not list its tools', async () => {

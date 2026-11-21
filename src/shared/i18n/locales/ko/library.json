@@ -713,7 +713,7 @@
       "unreadable": "지금은 이 연결의 기록을 읽을 수 없습니다. 나중에 다시 시도하세요.",
       "port": "Anton 클라우드는 표준 https 포트로만 연결합니다. URL에서 포트를 제거하세요.",
       "listingTooLarge": "이 서버의 도구 목록이 너무 커서 읽을 수 없습니다.",
-      "invalidResponse": "서버가 Anton이 읽을 수 없는 응답을 보냈습니다. 다시 시도하세요.",
+      "unreadableResponse": "서버가 Anton이 읽을 수 없는 응답을 보냈습니다. 다시 시도하세요.",
       "insecureLoginUrl": "서버의 로그인 페이지가 https 주소가 아니어서 열지 않았습니다.",
       "popupBlocked": "브라우저가 로그인 창을 차단했거나 창이 닫혔습니다. 이 사이트의 팝업을 허용한 후 다시 시도하세요.",
       "staleRevision": "도구 목록이 바뀌었습니다. 목록을 다시 불러왔으니 스위치를 다시 시도하세요.",

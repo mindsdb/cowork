@@ -713,7 +713,7 @@
       "unreadable": "El registro de esta conexión no se puede leer ahora. Inténtalo más tarde.",
       "port": "La nube de Anton solo se conecta por el puerto https estándar. Quita el puerto de la URL.",
       "listingTooLarge": "La lista de herramientas de este servidor es demasiado grande para leerla.",
-      "invalidResponse": "El servidor envió una respuesta que Anton no pudo leer. Inténtalo de nuevo.",
+      "unreadableResponse": "El servidor envió una respuesta que Anton no pudo leer. Inténtalo de nuevo.",
       "insecureLoginUrl": "La página de inicio de sesión del servidor no es una dirección https, así que no se abrió.",
       "popupBlocked": "Tu navegador bloqueó la ventana de inicio de sesión, o se cerró. Permite las ventanas emergentes para este sitio e inténtalo de nuevo.",
       "staleRevision": "La lista de herramientas cambió. Se volvió a cargar; prueba el interruptor de nuevo.",

@@ -713,7 +713,7 @@
       "unreadable": "This connection's record can't be read right now. Try again later.",
       "port": "Anton's cloud connects only on the standard https port. Remove the port from the URL.",
       "listingTooLarge": "This server's tool list is too large to read.",
-      "invalidResponse": "The server sent an answer Anton couldn't read. Try again.",
+      "unreadableResponse": "The server sent an answer Anton couldn't read. Try again.",
       "insecureLoginUrl": "The server's login page isn't an https address, so it wasn't opened.",
       "popupBlocked": "Your browser blocked the sign-in window, or it was closed. Allow pop-ups for this site and try again.",
       "staleRevision": "The tool list changed. It's been reloaded; try the switch again.",

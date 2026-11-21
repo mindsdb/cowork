@@ -713,7 +713,7 @@
       "unreadable": "L'enregistrement de cette connexion est illisible pour le moment. Réessayez plus tard.",
       "port": "Le cloud d'Anton se connecte uniquement sur le port https standard. Retirez le port de l'URL.",
       "listingTooLarge": "La liste d'outils de ce serveur est trop volumineuse pour être lue.",
-      "invalidResponse": "Le serveur a envoyé une réponse qu'Anton n'a pas pu lire. Réessayez.",
+      "unreadableResponse": "Le serveur a envoyé une réponse qu'Anton n'a pas pu lire. Réessayez.",
       "insecureLoginUrl": "La page de connexion du serveur n'est pas une adresse https, elle n'a donc pas été ouverte.",
       "popupBlocked": "Votre navigateur a bloqué la fenêtre de connexion, ou elle a été fermée. Autorisez les fenêtres pop-up pour ce site et réessayez.",
       "staleRevision": "La liste des outils a changé. Elle a été rechargée ; réessayez l'interrupteur.",

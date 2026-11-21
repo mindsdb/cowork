@@ -66,8 +66,8 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.port');
     case 'listing_too_large':
       return t('customMcp.error.listingTooLarge');
-    case 'invalid_response':
-      return t('customMcp.error.invalidResponse');
+    case 'unreadable_response':
+      return t('customMcp.error.unreadableResponse');
     case 'insecure_login_url':
       return t('customMcp.error.insecureLoginUrl');
     case 'popup_blocked':

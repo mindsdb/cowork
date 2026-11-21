@@ -1285,7 +1285,7 @@ async function customMcpRequest(
         data = await res.json();
       } catch (err) {
         // A success is only as good as its body; a refusal still has its status.
-        if (res.ok) return { ok: false, code: controller.signal.aborted ? 'timeout' : 'invalid_response', reason: '' };
+        if (res.ok) return { ok: false, code: controller.signal.aborted ? 'timeout' : 'unreadable_response', reason: '' };
       }
     }
     return res.ok ? { ok: true, data } : customMcpFailure(res.status, data);
