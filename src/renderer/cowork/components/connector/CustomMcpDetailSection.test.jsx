@@ -8,7 +8,8 @@ const bridge = vi.hoisted(() => ({
   customMcpSetTools: vi.fn(),
   customMcpReconnect: vi.fn(),
 }));
-vi.mock('../../../platform/host', () => ({ host: bridge }));
+const shell = vi.hoisted(() => ({ isWeb: false }));
+vi.mock('../../../platform/host', () => ({ host: { ...bridge, get isWeb() { return shell.isWeb; } } }));
 
 import CustomMcpDetailSection from './CustomMcpDetailSection';
 
@@ -32,6 +33,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const fn of Object.values(bridge)) fn.mockReset();
+  shell.isWeb = false;
 });
 
 describe('CustomMcpDetailSection', () => {
@@ -81,12 +83,79 @@ describe('CustomMcpDetailSection', () => {
     expect(await screen.findByText("That request isn't valid: Tools must be a list of at most 500 names.")).toBeTruthy();
   });
 
+  it('puts a switch back and names the tool limit when too many tools would be on', async () => {
+    bridge.customMcpSetTools.mockResolvedValue({ ok: false, code: 'too_many_tools', reason: 'auth text' });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(await screen.findByText('You can have at most 100 tools switched on across your MCP servers. Switch some off first.')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
+  });
+
   it('says so when the server cannot list its tools', async () => {
     bridge.customMcpTools.mockResolvedValue({ ok: false, code: 'unreachable', reason: 'the server answered 502' });
     renderSection();
 
     expect(await screen.findByText("The server couldn't be reached. Try again later.")).toBeTruthy();
     expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('shows the stored tools when the list could not be refreshed, and their switches still work', async () => {
+    bridge.customMcpTools.mockResolvedValue({ ok: true, tools: TOOLS, stale: true, staleCode: 'upstream_unavailable' });
+    bridge.customMcpSetTools.mockResolvedValue({ ok: true, tools: ['search', 'delete_issue'] });
+    renderSection();
+
+    expect(await screen.findByText("The tool list couldn't be refreshed. These are the tools last listed, and their switches still work.")).toBeTruthy();
+    expect(screen.queryByText("This server's tool list is too large to read.")).toBeNull();
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(bridge.customMcpSetTools).toHaveBeenCalledWith(CONNECTION.name, ['search', 'delete_issue']);
+  });
+
+  it('says the tool list is too large to read', async () => {
+    bridge.customMcpTools.mockResolvedValue({ ok: true, tools: TOOLS, stale: true, staleCode: 'listing_too_large' });
+    renderSection();
+
+    expect(await screen.findByText("This server's tool list is too large to read.")).toBeTruthy();
+  });
+
+  it('says why a tool was switched off, and keeps a tool Anton cannot use off', async () => {
+    bridge.customMcpTools.mockResolvedValue({
+      ok: true,
+      tools: [
+        { name: 'edit', description: '', readOnly: false, allowed: false, usable: true, reason: 'read_only_removed' },
+        { name: 'big', description: '', readOnly: true, allowed: false, usable: true, reason: 'size_ceiling' },
+        { name: 'changed', description: '', readOnly: true, allowed: false, usable: true, reason: 'definition_changed' },
+        { name: 'extra', description: '', readOnly: true, allowed: false, usable: true, reason: 'count_ceiling' },
+        { name: 'odd', description: '', readOnly: true, allowed: false, usable: false, reason: 'schema' },
+      ],
+    });
+    renderSection();
+
+    expect(await screen.findByText('Switched off: the server no longer marks this tool as read-only.')).toBeTruthy();
+    expect(screen.getByText('Switched off: the tools you have on reached their size limit.')).toBeTruthy();
+    expect(screen.getByText("Switched off: the server changed this tool's description or inputs. Review it and switch it back on.")).toBeTruthy();
+    expect(screen.getByText('Switched off: you can have at most 100 tools switched on across your MCP servers.')).toBeTruthy();
+    expect(screen.getByText("Anton can't use this tool.")).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Let Anton use odd' }).getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('switch', { name: 'Let Anton use edit' }).getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('names the server by its label when the host holds no summary', async () => {
+    bridge.customMcpSummary.mockResolvedValue({ ok: false, code: 'unavailable', reason: 'x' });
+    renderSection({ connection: { ...CONNECTION, user_label: 'Tracker on the web' } });
+
+    expect(await screen.findByText('Tracker on the web')).toBeTruthy();
+  });
+
+  it('shows the connection\'s server URL when the host holds no summary', async () => {
+    shell.isWeb = true;
+    bridge.customMcpSummary.mockResolvedValue({ ok: false, code: 'unavailable', reason: 'x' });
+    renderSection({ connection: { ...CONNECTION, user_label: 'Tracker on the web', server_url: 'https://mcp.example.com/web' } });
+
+    expect(await screen.findByText('Tracker on the web')).toBeTruthy();
+    expect(screen.getByText('https://mcp.example.com/web')).toBeTruthy();
   });
 
   it('shows the login hosts before reconnecting, then reconnects with them', async () => {
@@ -249,6 +318,17 @@ describe('CustomMcpDetailSection', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
     expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Disconnect Tracker?', destructive: true }));
+    expect(confirm.mock.lastCall[0].message).toContain('removed from this computer');
     expect(onDisconnect).toHaveBeenCalledWith(CONNECTION);
+  });
+
+  it('does not say the web disconnect removes anything from this computer', async () => {
+    shell.isWeb = true;
+    const { confirm } = renderSection();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({
+      message: 'Anton stops using this server, its login is revoked where the server allows it, and its settings are deleted.',
+    }));
   });
 });

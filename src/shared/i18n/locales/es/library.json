@@ -710,7 +710,16 @@
       "unreachable": "No se pudo contactar con el servidor. Inténtalo más tarde.",
       "notHandedOver": "La app aún no le ha pasado su configuración a este servidor. Reinicia la app e inténtalo de nuevo.",
       "missing": "Esta conexión ya no existe.",
-      "unreadable": "El registro de esta conexión no se puede leer ahora. Inténtalo más tarde."
+      "unreadable": "El registro de esta conexión no se puede leer ahora. Inténtalo más tarde.",
+      "port": "La nube de Anton solo se conecta por el puerto https estándar. Quita el puerto de la URL.",
+      "listingTooLarge": "La lista de herramientas de este servidor es demasiado grande para leerla.",
+      "insecureLoginUrl": "La página de inicio de sesión del servidor no es una dirección https, así que no se abrió.",
+      "refused": "Este inicio de sesión se completó en la cuenta de otra persona, así que no se usó. Vuelve a añadir el servidor.",
+      "loginNotYours": "Este enlace de inicio de sesión lo inició otra persona, así que no se usó. Completa solo los inicios de sesión que hayas iniciado tú.",
+      "wrongOrganization": "Este inicio de sesión se inició en otra organización. Vuelve a la organización en la que añadiste el servidor y añádelo de nuevo.",
+      "expired": "Este inicio de sesión caducó o ya se usó. Vuelve a añadir el servidor.",
+      "moved": "El servidor respondió desde otra dirección. Revisa la URL, incluido si debe terminar con una barra.",
+      "tooManyTools": "Puedes tener como máximo {limit} herramientas activadas entre todos tus servidores MCP. Desactiva algunas primero."
     },
     "detail": {
       "server": "Servidor",
@@ -722,7 +731,20 @@
       "reconnected": "Reconectado. Tus herramientas elegidas se mantienen.",
       "disconnect": "Desconectar",
       "disconnectTitle": "¿Desconectar {name}?",
-      "disconnectMessage": "Anton deja de usar este servidor, su inicio de sesión se revoca cuando el servidor lo permite y su configuración se elimina de esta computadora."
+      "disconnectMessage": "Anton deja de usar este servidor, su inicio de sesión se revoca cuando el servidor lo permite y su configuración se elimina de esta computadora.",
+      "disconnectMessageWeb": "Anton deja de usar este servidor, su inicio de sesión se revoca cuando el servidor lo permite y su configuración se elimina.",
+      "stale": "No se pudo actualizar la lista de herramientas. Estas son las últimas herramientas listadas y sus interruptores siguen funcionando.",
+      "reasonReadOnlyRemoved": "Desactivada: el servidor ya no marca esta herramienta como de solo lectura.",
+      "reasonSizeCeiling": "Desactivada: las herramientas que tienes activadas alcanzaron su límite de tamaño.",
+      "reasonDefinitionChanged": "Desactivada: el servidor cambió la descripción o las entradas de esta herramienta. Revísala y vuelve a activarla.",
+      "reasonCountCeiling": "Desactivada: puedes tener como máximo {limit} herramientas activadas entre todos tus servidores MCP.",
+      "reasonUnusable": "Anton no puede usar esta herramienta."
+    },
+    "finish": {
+      "title": "Inicio de sesión del servidor MCP",
+      "working": "Completando el inicio de sesión…",
+      "done": "Sesión iniciada. Puedes cerrar esta ventana.",
+      "close": "Cerrar ventana"
     }
   }
 }

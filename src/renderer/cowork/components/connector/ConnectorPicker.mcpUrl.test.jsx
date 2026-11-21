@@ -1,9 +1,9 @@
-// Adding an MCP server by URL from the directory: offered only when the
-// desktop app's main process says the server keeps custom MCP settings, and
-// never in org mode.
+// Adding an MCP server by URL from the directory: offered only when the host
+// says custom MCP servers can be added. On desktop that is main, never in org
+// mode; on the web it is cowork-server's config, which only org mode offers.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { setOrgMode } from '../../../lib/orgMode';
 
@@ -14,8 +14,13 @@ vi.mock('../../api', () => ({
   fetchCanBuildCustomConnector: (...args) => fetchCanBuildCustomConnector(...args),
 }));
 const customMcpAvailable = vi.hoisted(() => vi.fn());
+const shell = vi.hoisted(() => ({ isWeb: false }));
 vi.mock('../../../platform/host', () => ({
-  host: { openExternal: vi.fn(), customMcpAvailable },
+  host: {
+    openExternal: vi.fn(),
+    customMcpAvailable,
+    get isWeb() { return shell.isWeb; },
+  },
 }));
 
 import ConnectorPicker from './ConnectorPicker';
@@ -38,6 +43,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setOrgMode(false);
+  shell.isWeb = false;
   fetchConnectors.mockReset();
   fetchCanBuildCustomConnector.mockReset();
   customMcpAvailable.mockReset();
@@ -74,6 +80,27 @@ describe('ConnectorPicker add an MCP server by URL', () => {
     await openWith();
 
     expect(customMcpAvailable).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: TILE })).toBeNull();
+  });
+
+  it('offers the tile on the web in org mode when the server says it is available', async () => {
+    shell.isWeb = true;
+    setOrgMode(true);
+    const onAddMcpUrl = await openWith();
+
+    await userEvent.click(await screen.findByRole('button', { name: TILE }));
+
+    expect(customMcpAvailable).toHaveBeenCalledTimes(1);
+    expect(onAddMcpUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the tile on the web in org mode when the server says it is not available', async () => {
+    shell.isWeb = true;
+    setOrgMode(true);
+    customMcpAvailable.mockResolvedValue(false);
+    await openWith();
+
+    await waitFor(() => expect(customMcpAvailable).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('button', { name: TILE })).toBeNull();
   });
 
