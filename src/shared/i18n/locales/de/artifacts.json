@@ -246,8 +246,12 @@
     "changeNavigation": "Durch Änderungen blättern",
     "publishedArtifact": "Veröffentlichtes Artefakt",
     "reviewBeforePublishing": "Änderung vor dem Veröffentlichen prüfen",
+    "reviewUnshared": "Noch nicht geteilte Änderungen",
     "keepDraft": "Als Entwurf behalten",
     "publishChange": "Diese Änderung veröffentlichen",
+    "publishChanges": "Änderungen veröffentlichen",
+    "sharedVersion": "Geteilte Version",
+    "draftVersion": "Entwurf",
     "publishing": "Wird veröffentlicht…"
   },
   "htmlEditor": {
@@ -426,7 +430,8 @@
     "moreActions": "Weitere Aktionen",
     "reloadPreview": "Vorschau neu laden",
     "close": "Schließen",
-    "unsharedChangesHint": "Der geteilte Link zeigt eine frühere Version. Veröffentliche die Änderungen mit „Aktualisieren“ unter „Teilen“."
+    "unsharedChangesHint": "Der geteilte Link zeigt eine frühere Version. Veröffentliche die Änderungen mit „Aktualisieren“ unter „Teilen“.",
+    "reviewUnsharedHint": "Änderungen prüfen und veröffentlichen, die der geteilte Link noch nicht zeigt"
   },
   "body": {
     "previewWatermark": "Vorschau",

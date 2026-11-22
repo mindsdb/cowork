@@ -246,8 +246,12 @@
     "changeNavigation": "逐处查看更改",
     "publishedArtifact": "已发布的产物",
     "reviewBeforePublishing": "发布前检查此更改",
+    "reviewUnshared": "尚未共享的更改",
     "keepDraft": "保留为草稿",
     "publishChange": "发布此更改",
+    "publishChanges": "发布更改",
+    "sharedVersion": "共享版本",
+    "draftVersion": "草稿",
     "publishing": "正在发布…"
   },
   "htmlEditor": {
@@ -426,7 +430,8 @@
     "moreActions": "更多操作",
     "reloadPreview": "重新加载预览",
     "close": "关闭",
-    "unsharedChangesHint": "分享链接显示的是较早的版本。请在“分享”中使用“更新”来发布这些更改。"
+    "unsharedChangesHint": "分享链接显示的是较早的版本。请在“分享”中使用“更新”来发布这些更改。",
+    "reviewUnsharedHint": "查看并发布共享链接中尚未显示的更改"
   },
   "body": {
     "previewWatermark": "预览",

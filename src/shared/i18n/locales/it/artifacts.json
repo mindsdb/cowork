@@ -246,8 +246,12 @@
     "changeNavigation": "Scorri le modifiche",
     "publishedArtifact": "Artefatto pubblicato",
     "reviewBeforePublishing": "Controlla la modifica prima di pubblicarla",
+    "reviewUnshared": "Modifiche non ancora condivise",
     "keepDraft": "Mantieni come bozza",
     "publishChange": "Pubblica questa modifica",
+    "publishChanges": "Pubblica modifiche",
+    "sharedVersion": "Versione condivisa",
+    "draftVersion": "Bozza",
     "publishing": "Pubblicazione…"
   },
   "htmlEditor": {
@@ -426,7 +430,8 @@
     "moreActions": "Altre azioni",
     "reloadPreview": "Ricarica anteprima",
     "close": "Chiudi",
-    "unsharedChangesHint": "Il link condiviso mostra una versione precedente. Usa Aggiorna in Condividi per pubblicare le modifiche."
+    "unsharedChangesHint": "Il link condiviso mostra una versione precedente. Usa Aggiorna in Condividi per pubblicare le modifiche.",
+    "reviewUnsharedHint": "Rivedi e pubblica le modifiche che il link condiviso non mostra ancora"
   },
   "body": {
     "previewWatermark": "Anteprima",

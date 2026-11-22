@@ -780,7 +780,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                       ) : (
                         <UpToDateTag />
                       )
-                    ) : (pub.modified && !orgMode) ? (
+                    ) : pub.modified ? (
                       <FooterButton primary onClick={pub.update} disabled={pub.busy}
                         busy={pub.phase === 'updating'} busyLabel={t('status.updating')}>
                         {t('publish.update')}

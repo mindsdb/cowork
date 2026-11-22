@@ -1431,6 +1431,34 @@ export function ArtifactViewer({
       : undefined,
   } : null;
 
+  // Changes not shared yet (ENG-4595): the draft has moved past the live
+  // page. Opening the artifact shows them against the shared version, with
+  // Publish changes and Keep as draft, once per open; the header's "Unshared
+  // changes" opens the same review again. The shared version is the one the
+  // workspace load names (`publishedRevision`).
+  const unsharedFrom = workspace.publishedRevision?.id || null;
+  const unsharedTo = workspace.currentRevision?.id || null;
+  const canReviewUnshared = open && canManage && publishable && !!pub.publishedUrl && !!pub.modified
+    && !!unsharedFrom && !!unsharedTo && unsharedFrom !== unsharedTo;
+  const reviewUnshared = useCallback(() => {
+    if (!canReviewUnshared || workspace.comparison) return;
+    void workspace.reviewPublish(unsharedFrom, unsharedTo, { unshared: true });
+  }, [canReviewUnshared, unsharedFrom, unsharedTo, workspace]);
+  // The artifact whose review has shown this open: once per open, so keeping
+  // the draft (or a quick edit's own review) never brings it back by itself.
+  const unsharedShownRef = useRef('');
+  const unsharedKey = open ? (artifactIdentity(artifact) || artifact?.path || '') : '';
+  useEffect(() => {
+    if (!unsharedKey) unsharedShownRef.current = '';
+  }, [unsharedKey]);
+  useEffect(() => {
+    if (!canReviewUnshared || !unsharedKey || unsharedShownRef.current === unsharedKey) return;
+    // Not over something already on screen, a running edit or unsaved text.
+    if (workspace.comparison || quickEdit.running || workspace.dirty) return;
+    unsharedShownRef.current = unsharedKey;
+    reviewUnshared();
+  }, [canReviewUnshared, unsharedKey, workspace.comparison, workspace.dirty, quickEdit.running, reviewUnshared]);
+
   // Live edit (`source`): the code editor, in the preview's place at any
   // width. Turning it off with unsaved text asks first.
   const canSource = !!workspace.source && workspace.capabilities?.canEdit !== false;
@@ -1784,6 +1812,7 @@ export function ArtifactViewer({
     disabledReason,
     shareRequest,
     onShareRequestClosed: () => setClosedShareRequest(shareRequest),
+    onReviewUnshared: canReviewUnshared && !workspace.comparison ? reviewUnshared : null,
   };
   const artifactActions = {
     canOpenInBrowserTab: !!browserTabUrl,
