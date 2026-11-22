@@ -30,7 +30,7 @@ import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
-import { signedInAccountId, refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { signedInAccountId, refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, mindsAuthConnectOpts, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
 import {
@@ -1098,15 +1098,12 @@ function setupIPC() {
   // is the only Keycloak client in the realm that allows loopback
   // (127.0.0.1) redirect URIs — `public-client` returns HTTP 400 for
   // those. Pulling org context into the token is handled post-auth by
-  // ensureActiveOrg() in minds-auth.ts.
+  // ensureActiveOrg() in minds-auth.ts. `prompt=login` keeps desktop from
+  // silently attaching to the browser's (console's) SSO session, so desktop
+  // sign-out can revoke only its own token and leave the console intact
+  // (ENG-4571).
   const runMindsAuthFlow = async (authUrl: string, callbackTimeoutMs?: number) => {
-    const result = await oauthConnect({
-      clientId: 'anton-desktop',
-      authUrl,
-      tokenUrl: KEYCLOAK_TOKEN_URL,
-      scopes: ['openid', 'profile', 'email', 'organization', 'offline_access'],
-      callbackTimeoutMs,
-    });
+    const result = await oauthConnect(mindsAuthConnectOpts(authUrl, callbackTimeoutMs));
     if (result.ok && result.access_token) {
       if (!result.refresh_token) {
         // Session won't survive a restart without it — loud so a failing

@@ -111,8 +111,21 @@ function installRoutedFetch(routes: Route[]): RoutedCall[] {
 }
 
 const DEVICE_KEY_NAME = 'hub:anton:deadbeef00000000';
+const REVOKE_PATH = '/protocol/openid-connect/revoke';
+const LOGOUT_PATH = '/protocol/openid-connect/logout';
 
-import { revokeDeviceKeyAndEndSession, getRevokeToken } from './minds-auth';
+import {
+  revokeDeviceKeyAndEndSession,
+  endKeycloakSession,
+  getRevokeToken,
+  mindsAuthConnectOpts,
+  KEYCLOAK_AUTH_URL,
+  KEYCLOAK_REGISTRATION_URL,
+  KEYCLOAK_TOKEN_URL,
+  SIGNUP_CALLBACK_TIMEOUT_MS,
+} from './minds-auth';
+import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
+import { shell } from 'electron';
 
 // ─── ENG-498: revoke this device's key on logout ─────────────────────
 describe('revokeDeviceKeyAndEndSession', () => {
@@ -145,7 +158,7 @@ describe('revokeDeviceKeyAndEndSession', () => {
         }),
       },
       { method: 'DELETE', match: '/api-keys/', reply: () => ({ status: 204, body: {} }) },
-      { method: 'POST', match: '/protocol/openid-connect/logout', reply: () => ({ status: 204, body: {} }) },
+      { method: 'POST', match: REVOKE_PATH, reply: () => ({ status: 204, body: {} }) },
     ]);
 
     await revokeDeviceKeyAndEndSession(TOKEN_A, 'rt-snapshot');
@@ -157,13 +170,15 @@ describe('revokeDeviceKeyAndEndSession', () => {
     expect(deletes.join()).not.toContain('pfx-legacy');
     expect(deletes.join()).not.toContain('pfx-other');
 
-    // Ordering: the revoke needs a live session, so end-session comes last.
-    const endSession = calls.findIndex((c) => c.url.includes('/protocol/openid-connect/logout'));
+    // Ordering: the key revoke needs a live grant, so the token revoke comes last.
+    const endSession = calls.findIndex((c) => c.url.includes(REVOKE_PATH));
     const lastDelete = calls.map((c) => c.method).lastIndexOf('DELETE');
     expect(endSession).toBeGreaterThan(lastDelete);
     // The snapshotted refresh token is used — clearTokens() has already
     // wiped the store by the time this detached chain runs.
-    expect(calls[endSession].body).toContain('rt-snapshot');
+    expect(new URLSearchParams(calls[endSession].body).get('token')).toBe('rt-snapshot');
+    // ENG-4571: only this client's token — never the shared SSO session.
+    expect(calls.some((c) => c.url.includes(LOGOUT_PATH))).toBe(false);
     // Visibility (ENG-498 review): a matched revoke logs how many keys it got.
     expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toMatchObject({ event: 'logout_revoked_d_device_key_s', count: 2 });
   });
@@ -186,7 +201,7 @@ describe('revokeDeviceKeyAndEndSession', () => {
         }),
       },
       { method: 'DELETE', match: '/api-keys/', reply: () => ({ status: 204, body: {} }) },
-      { method: 'POST', match: '/protocol/openid-connect/logout', reply: () => ({ status: 204, body: {} }) },
+      { method: 'POST', match: REVOKE_PATH, reply: () => ({ status: 204, body: {} }) },
     ]);
 
     await revokeDeviceKeyAndEndSession(TOKEN_A, 'rt-snapshot');
@@ -196,7 +211,7 @@ describe('revokeDeviceKeyAndEndSession', () => {
     expect(deletes[0]).toContain('pfx-live');
   });
 
-  it('still ends the session when the key list returns nothing', async () => {
+  it('still revokes the refresh token when the key list returns nothing', async () => {
     // Nothing in this chain actually throws — listExistingKeys/
     // deleteKeyByPrefix both swallow their own failures by design, so a
     // failed list just resolves to zero matches. The try/catch around the
@@ -205,10 +220,10 @@ describe('revokeDeviceKeyAndEndSession', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const calls = installRoutedFetch([
       // /api-keys/ list gets the default 500 → revoke matches zero keys.
-      { method: 'POST', match: '/protocol/openid-connect/logout', reply: () => ({ status: 204, body: {} }) },
+      { method: 'POST', match: REVOKE_PATH, reply: () => ({ status: 204, body: {} }) },
     ]);
     await revokeDeviceKeyAndEndSession(TOKEN_A, 'rt-snapshot');
-    expect(calls.some((c) => c.url.includes('/protocol/openid-connect/logout'))).toBe(true);
+    expect(calls.some((c) => c.url.includes(REVOKE_PATH))).toBe(true);
     // Visibility (ENG-498 review): a zero-match revoke logs why it's
     // ambiguous (list failure vs. already-gone vs. wrong org) rather than
     // silently deleting nothing forever.
@@ -217,16 +232,16 @@ describe('revokeDeviceKeyAndEndSession', () => {
     });
   });
 
-  it('skips the revoke without a token but still ends the session', async () => {
+  it('skips the key revoke without an access token but still revokes the refresh token', async () => {
     const calls = installRoutedFetch([
-      { method: 'POST', match: '/protocol/openid-connect/logout', reply: () => ({ status: 204, body: {} }) },
+      { method: 'POST', match: REVOKE_PATH, reply: () => ({ status: 204, body: {} }) },
     ]);
     await revokeDeviceKeyAndEndSession(null, 'rt-snapshot');
     expect(calls.filter((c) => c.url.includes('/api-keys/'))).toHaveLength(0);
-    expect(calls.some((c) => c.url.includes('/protocol/openid-connect/logout'))).toBe(true);
+    expect(calls.some((c) => c.url.includes(REVOKE_PATH))).toBe(true);
   });
 
-  it('bounds the revoke phase — end-session still fires when the key list hangs', async () => {
+  it('bounds the key revoke phase — the token revoke still fires when the key list hangs', async () => {
     // Black-holed auth-service: the /api-keys/ GET never resolves. Without
     // the LOGOUT_REVOKE_TIMEOUT_MS bound this would delay end-session
     // indefinitely, leaving the IdP SSO session alive long after the user
@@ -236,7 +251,7 @@ describe('revokeDeviceKeyAndEndSession', () => {
     globalThis.fetch = vi.fn((input: unknown, init?: RequestInit) => {
       const call = { method: (init?.method || 'GET').toUpperCase(), url: String(input) };
       calls.push(call);
-      if (call.url.includes('/protocol/openid-connect/logout')) {
+      if (call.url.includes(REVOKE_PATH)) {
         return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
       }
       return new Promise(() => {}); // /api-keys/ list — black-holed
@@ -246,7 +261,172 @@ describe('revokeDeviceKeyAndEndSession', () => {
     await vi.advanceTimersByTimeAsync(5001);
     await pending;
 
-    expect(calls.some((c) => c.url.includes('/protocol/openid-connect/logout'))).toBe(true);
+    expect(calls.some((c) => c.url.includes(REVOKE_PATH))).toBe(true);
+  });
+});
+
+// ─── ENG-4571: desktop sign-out leaves a concurrent console session intact ──
+// RP-initiated /logout ends the whole Keycloak user session, which the web
+// console shares when the same account is signed in to both. Desktop must
+// revoke only its own refresh token.
+describe('endKeycloakSession', () => {
+  beforeEach(() => {
+    vi.stubEnv("LOG_LEVEL", "INFO");
+    (getRefreshToken as Mock).mockReturnValue(null);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('revokes only the refresh token (RFC 7009) and never calls RP-initiated logout', async () => {
+    const calls = installRoutedFetch([
+      { method: 'POST', match: REVOKE_PATH, reply: () => ({ status: 200, body: {} }) },
+    ]);
+
+    await endKeycloakSession('rt-desktop');
+
+    expect(calls).toHaveLength(1);
+    const [call] = calls;
+    expect(call.method).toBe('POST');
+    expect(call.url).toMatch(/\/realms\/mindsdb\/protocol\/openid-connect\/revoke$/);
+    const form = new URLSearchParams(call.body);
+    expect(Object.fromEntries(form)).toEqual({
+      token: 'rt-desktop',
+      token_type_hint: 'refresh_token',
+      client_id: 'anton-desktop',
+    });
+    expect(calls.some((c) => c.url.includes(LOGOUT_PATH))).toBe(false);
+  });
+
+  it('falls back to the stored refresh token when none is passed', async () => {
+    (getRefreshToken as Mock).mockReturnValue('rt-stored');
+    const calls = installRoutedFetch([
+      { method: 'POST', match: REVOKE_PATH, reply: () => ({ status: 200, body: {} }) },
+    ]);
+
+    await endKeycloakSession();
+
+    expect(new URLSearchParams(calls[0].body).get('token')).toBe('rt-stored');
+  });
+
+  it.each([null, ''])('makes no network call without a refresh token (%j)', async (token) => {
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(endKeycloakSession(token)).resolves.toBeUndefined();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('resolves without throwing when the IdP rejects the revoke', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    installRoutedFetch([
+      { method: 'POST', match: REVOKE_PATH, reply: () => ({ status: 400, body: { error: 'invalid_client' } }) },
+    ]);
+
+    await expect(endKeycloakSession('rt-desktop')).resolves.toBeUndefined();
+
+    expect(JSON.parse(String(warnSpy.mock.calls[0][0]))).toMatchObject({
+      event: 'logout_keycloak_token_revoke_rejected', log_level: 'WARNING',
+    });
+  });
+
+  it('resolves without throwing when the network fails', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    globalThis.fetch = vi.fn(async () => { throw new TypeError('fetch failed'); }) as unknown as typeof fetch;
+
+    await expect(endKeycloakSession('rt-desktop')).resolves.toBeUndefined();
+
+    expect(JSON.parse(String(warnSpy.mock.calls[0][0]))).toMatchObject({
+      event: 'logout_keycloak_token_revoke_failed_or_timed_out',
+    });
+  });
+
+  it('gives up after 3s on a black-holed IdP instead of hanging sign-out', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let aborted = false;
+    globalThis.fetch = vi.fn((_input: unknown, init?: RequestInit) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        aborted = true;
+        reject(new DOMException('aborted', 'AbortError'));
+      });
+    })) as unknown as typeof fetch;
+
+    let settled = false;
+    const pending = endKeycloakSession('rt-desktop').then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(2);
+    await pending;
+
+    expect(aborted).toBe(true);
+    expect(settled).toBe(true);
+  });
+
+  it('a failing token revoke does not reject the detached sign-out chain', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const calls = installRoutedFetch([
+      {
+        method: 'GET', match: '/api-keys/',
+        reply: () => ({ status: 200, body: [{ name: DEVICE_KEY_NAME, prefix: 'pfx-1' }] }),
+      },
+      { method: 'DELETE', match: '/api-keys/', reply: () => ({ status: 204, body: {} }) },
+      { method: 'POST', match: REVOKE_PATH, reply: () => ({ status: 503, body: {} }) },
+    ]);
+
+    await expect(revokeDeviceKeyAndEndSession(TOKEN_A, 'rt-snapshot')).resolves.toBeUndefined();
+
+    // This device's key was still revoked before the token revoke failed.
+    expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url)).toEqual([
+      expect.stringContaining('pfx-1'),
+    ]);
+    expect(calls.some((c) => c.url.includes(LOGOUT_PATH))).toBe(false);
+  });
+});
+
+describe('mindsAuthConnectOpts', () => {
+  it.each([
+    ['sign-in', KEYCLOAK_AUTH_URL, undefined],
+    ['sign-up', KEYCLOAK_REGISTRATION_URL, SIGNUP_CALLBACK_TIMEOUT_MS],
+  ])('asks Keycloak for credentials on %s instead of reusing the browser SSO session', (_label, authUrl, timeout) => {
+    const opts = mindsAuthConnectOpts(authUrl, timeout);
+
+    expect(opts).toEqual({
+      clientId: 'anton-desktop',
+      authUrl,
+      tokenUrl: KEYCLOAK_TOKEN_URL,
+      scopes: ['openid', 'profile', 'email', 'organization', 'offline_access'],
+      extraAuthParams: { prompt: 'login' },
+      callbackTimeoutMs: timeout,
+    });
+  });
+
+  it('puts prompt=login on the authorize URL the browser opens', async () => {
+    const openExternal = shell.openExternal as Mock;
+    openExternal.mockReset();
+    openExternal.mockResolvedValue(undefined);
+
+    const flow = oauthConnect(mindsAuthConnectOpts(KEYCLOAK_AUTH_URL));
+    for (let i = 0; i < 200 && openExternal.mock.calls.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    cancelCurrentOAuth();
+    await expect(flow).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
+
+    expect(openExternal).toHaveBeenCalledTimes(1);
+    const url = new URL(String(openExternal.mock.calls[0][0]));
+    expect(`${url.origin}${url.pathname}`).toBe(KEYCLOAK_AUTH_URL);
+    expect(url.searchParams.get('prompt')).toBe('login');
+    expect(url.searchParams.get('client_id')).toBe('anton-desktop');
+  });
+
+  it('hands each flow its own params object', () => {
+    const a = mindsAuthConnectOpts(KEYCLOAK_AUTH_URL);
+    a.extraAuthParams!.prompt = 'none';
+    expect(mindsAuthConnectOpts(KEYCLOAK_AUTH_URL).extraAuthParams).toEqual({ prompt: 'login' });
   });
 });
 
