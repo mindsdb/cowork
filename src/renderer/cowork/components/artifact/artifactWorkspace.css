@@ -356,9 +356,13 @@
 /* The thread floats over the artifact, above the input, instead of taking
    height from it (ENG-4455). Open while the bar has the pointer or the focus,
    or a message just arrived; folded away otherwise, the input alone. */
-.artifact-quick-edit-thread { position: absolute; left: 0; right: 0; bottom: 100%; max-height: 168px; box-sizing: content-box; padding: 8px 12px 4px; overflow-y: auto; overflow-x: hidden; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 96%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 -10px 28px rgba(15, 20, 30, .16); opacity: 0; visibility: hidden; transform: translateY(8px); pointer-events: none; transition: height var(--dur-layout) var(--ease-out), opacity var(--dur-layout) var(--ease-out), transform var(--dur-layout) var(--ease-out), visibility 0s linear var(--dur-layout); }
-.artifact-quick-edit-thread[data-open] { opacity: 1; visibility: visible; transform: none; pointer-events: auto; transition: height var(--dur-layout) var(--ease-out), opacity var(--dur-layout) var(--ease-out), transform var(--dur-layout) var(--ease-out), visibility 0s; }
-@media (prefers-reduced-motion: reduce) { .artifact-quick-edit-thread { transition: none; } }
+/* Folding and opening (ENG-4594): it rises out of the input, revealed from
+   the bottom with a short fade, and sinks back into it a little faster.
+   The clip reaches past the sides and top when open, so the shadow shows;
+   the height animates only while open, as messages arrive. */
+.artifact-quick-edit-thread { position: absolute; left: 0; right: 0; bottom: 100%; max-height: 168px; box-sizing: content-box; padding: 8px 12px 4px; overflow-y: auto; overflow-x: hidden; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 96%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 -10px 28px rgba(15, 20, 30, .16); opacity: 0; visibility: hidden; transform: translateY(6px); clip-path: inset(100% -48px 0 -48px); pointer-events: none; transition: opacity 160ms var(--ease-in), transform 180ms var(--ease-in), clip-path 180ms var(--ease-in), visibility 0s linear 180ms; }
+.artifact-quick-edit-thread[data-open] { opacity: 1; visibility: visible; transform: none; clip-path: inset(-48px -48px 0 -48px); pointer-events: auto; transition: height var(--dur-layout) var(--ease-out), opacity 200ms var(--ease-out), transform 260ms var(--ease-out), clip-path 260ms var(--ease-out), visibility 0s; }
+@media (prefers-reduced-motion: reduce) { .artifact-quick-edit-thread, .artifact-quick-edit-thread[data-open] { transition: none; } }
 .artifact-quick-edit-thread-inner { display: flex; flex-direction: column; gap: 6px; padding: 2px 26px 4px 2px; }
 /* The thread's Hide button (ENG-4594): top-right, staying there as the
    thread scrolls, in the right margin the messages leave it. */

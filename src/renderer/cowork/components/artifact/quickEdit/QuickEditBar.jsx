@@ -374,14 +374,48 @@ export function QuickEditBar({
   // or a reply settles (applied, failed, answered, handed to the chat); it
   // folds away when the pointer goes back to the artifact, leaving the input,
   // or at once from its Hide button, for anyone who doesn't think to move
-  // away (ENG-4594).
+  // away, or on a click anywhere else once nothing is on its way, the
+  // artifact included (ENG-4594).
   const [threadOpen, setThreadOpen] = useState(true);
+  const barRef = useRef(null);
   // A change on its way: an edit running here, or a message the agent is
   // answering in the chat (its live row). The thread stays open meanwhile.
   const lastReply = [...messages].reverse().find((m) => m.role === 'assistant') || null;
   const working = running
     || lastReply?.state === 'running' || lastReply?.state === 'handing-off'
     || (lastReply?.state === 'chat' && !!chatMessages?.some((m) => m?.role === '_streaming'));
+  // A click elsewhere folds it, once nothing is on its way (ENG-4594). A
+  // click in the artifact never reaches this document, as the preview is
+  // its own frame: the focus moving into a frame stands for it. Menus the
+  // bar opens (the model picker) are portaled out of it and don't count.
+  useEffect(() => {
+    if (!threadOpen || working || messages.length === 0) return undefined;
+    const fold = () => {
+      // Folding would hide the focused Undo or Ask the agent instead.
+      if (threadRef.current?.contains(document.activeElement)) return;
+      setThreadOpen(false);
+    };
+    const onPointerDown = (e) => {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      if (barRef.current?.contains(target)) return;
+      if (target.closest('[role="menu"], [role="listbox"], [role="option"], [role="tooltip"]')) return;
+      fold();
+    };
+    const onWindowBlur = () => {
+      // After the focus has moved: into a frame (the artifact), not to
+      // another app.
+      setTimeout(() => {
+        if (document.activeElement?.tagName === 'IFRAME') fold();
+      }, 0);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('blur', onWindowBlur);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('blur', onWindowBlur);
+    };
+  }, [threadOpen, working, messages.length]);
   const lastStageRef = useRef('');
   useEffect(() => {
     const last = messages[messages.length - 1];
@@ -467,6 +501,7 @@ export function QuickEditBar({
 
   return (
     <div
+      ref={barRef}
       className="artifact-quick-edit"
       aria-label={t('quickEdit.ariaLabel')}
       role="region"

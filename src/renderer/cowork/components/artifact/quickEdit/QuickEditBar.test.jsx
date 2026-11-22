@@ -1,7 +1,7 @@
 // The bar's motion (ENG-4227): a message gets its entrance once, never again
 // as its reply streams or changes stage.
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QuickEditBar } from './QuickEditBar';
 
 const controller = (messages) => ({
@@ -184,6 +184,47 @@ describe('QuickEditBar thread over the artifact', () => {
 
     view.rerender(<QuickEditBar controller={idle([user, settled])} />);
     expect(thread()).toHaveAttribute('data-open');
+  });
+
+  // Once done, a click anywhere else folds it, the artifact included (ENG-4594).
+  it('folds on a click elsewhere once nothing is on its way', () => {
+    render(<QuickEditBar controller={idle([user, settled])} />);
+    fireEvent.pointerDown(document.body);
+    expect(thread()).not.toHaveAttribute('data-open');
+  });
+
+  it('stays open on a click elsewhere while a change is on its way', () => {
+    render(<QuickEditBar controller={{ ...controller([user, reply('writing')]), running: true }} />);
+    fireEvent.pointerDown(document.body);
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('stays open on a click inside the bar, or in a menu it opened', () => {
+    render(<QuickEditBar controller={idle([user, settled])} />);
+    fireEvent.pointerDown(screen.getByRole('textbox'));
+    expect(thread()).toHaveAttribute('data-open');
+
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'listbox');
+    const option = document.createElement('div');
+    option.setAttribute('role', 'option');
+    menu.appendChild(option);
+    document.body.appendChild(menu);
+    fireEvent.pointerDown(option);
+    expect(thread()).toHaveAttribute('data-open');
+    menu.remove();
+  });
+
+  it('folds when the focus moves into the artifact frame', async () => {
+    render(<QuickEditBar controller={idle([user, settled])} />);
+    const frame = document.createElement('iframe');
+    document.body.appendChild(frame);
+    frame.focus();
+    expect(document.activeElement).toBe(frame);
+
+    fireEvent.blur(window);
+    await waitFor(() => expect(thread()).not.toHaveAttribute('data-open'));
+    frame.remove();
   });
 
   it('stays open while the focus is on a button in it', () => {
