@@ -15979,6 +15979,40 @@
       "text": "cb62ebd689ee"
     }
   },
+  "artifacts:comparison.draftVersion": {
+    "de": {
+      "from": "ebf12ef47cf5",
+      "text": "2ba46e35bdfb"
+    },
+    "es": {
+      "from": "ebf12ef47cf5",
+      "text": "9b73881b69ec"
+    },
+    "fr": {
+      "from": "ebf12ef47cf5",
+      "text": "8c6460cf71af"
+    },
+    "it": {
+      "from": "ebf12ef47cf5",
+      "text": "1e542a6e60c6"
+    },
+    "ja": {
+      "from": "ebf12ef47cf5",
+      "text": "11082165a9e9"
+    },
+    "ko": {
+      "from": "ebf12ef47cf5",
+      "text": "145b2413ae27"
+    },
+    "pt-BR": {
+      "from": "ebf12ef47cf5",
+      "text": "d7dbc9c5f24f"
+    },
+    "zh-CN": {
+      "from": "ebf12ef47cf5",
+      "text": "2a2fd29bd27a"
+    }
+  },
   "artifacts:comparison.earlier": {
     "de": {
       "from": "e10ae9907401",
@@ -16285,6 +16319,40 @@
       "text": "d7b6ec3be4d3"
     }
   },
+  "artifacts:comparison.publishChanges": {
+    "de": {
+      "from": "defa65f6991a",
+      "text": "ca7624ef6976"
+    },
+    "es": {
+      "from": "defa65f6991a",
+      "text": "0ad38cfa0084"
+    },
+    "fr": {
+      "from": "defa65f6991a",
+      "text": "5a0ff2bcb5ce"
+    },
+    "it": {
+      "from": "defa65f6991a",
+      "text": "a7ac8e412465"
+    },
+    "ja": {
+      "from": "defa65f6991a",
+      "text": "062d8de0a9ef"
+    },
+    "ko": {
+      "from": "defa65f6991a",
+      "text": "2de6b6d6ea47"
+    },
+    "pt-BR": {
+      "from": "defa65f6991a",
+      "text": "1b0d4bfe588d"
+    },
+    "zh-CN": {
+      "from": "defa65f6991a",
+      "text": "95e99e105521"
+    }
+  },
   "artifacts:comparison.publishedArtifact": {
     "de": {
       "from": "5465d760d099",
@@ -16489,6 +16557,40 @@
       "text": "ec0716222838"
     }
   },
+  "artifacts:comparison.reviewUnshared": {
+    "de": {
+      "from": "fc536fb06349",
+      "text": "cd7afd772487"
+    },
+    "es": {
+      "from": "fc536fb06349",
+      "text": "bc6f2c70734f"
+    },
+    "fr": {
+      "from": "fc536fb06349",
+      "text": "d93f213c2793"
+    },
+    "it": {
+      "from": "fc536fb06349",
+      "text": "e1378fcad9ea"
+    },
+    "ja": {
+      "from": "fc536fb06349",
+      "text": "8dfd53ab073c"
+    },
+    "ko": {
+      "from": "fc536fb06349",
+      "text": "48a30303e484"
+    },
+    "pt-BR": {
+      "from": "fc536fb06349",
+      "text": "30b65a542cf6"
+    },
+    "zh-CN": {
+      "from": "fc536fb06349",
+      "text": "b8f307d02381"
+    }
+  },
   "artifacts:comparison.revision": {
     "de": {
       "from": "98c71b667959",
@@ -16555,6 +16657,40 @@
     "zh-CN": {
       "from": "5ae0d3d186c7",
       "text": "b11590c91f53"
+    }
+  },
+  "artifacts:comparison.sharedVersion": {
+    "de": {
+      "from": "7e8b58402953",
+      "text": "a241912eaff5"
+    },
+    "es": {
+      "from": "7e8b58402953",
+      "text": "cf480d2bcae6"
+    },
+    "fr": {
+      "from": "7e8b58402953",
+      "text": "bc7fa41fc69e"
+    },
+    "it": {
+      "from": "7e8b58402953",
+      "text": "73c5b94970e3"
+    },
+    "ja": {
+      "from": "7e8b58402953",
+      "text": "f905ab9a505b"
+    },
+    "ko": {
+      "from": "7e8b58402953",
+      "text": "bdecb691040b"
+    },
+    "pt-BR": {
+      "from": "7e8b58402953",
+      "text": "3ec0ebedb840"
+    },
+    "zh-CN": {
+      "from": "7e8b58402953",
+      "text": "f2da840edfdd"
     }
   },
   "artifacts:comparison.side": {
@@ -18221,6 +18357,40 @@
     "zh-CN": {
       "from": "63168fcc0e98",
       "text": "2b4d78b18e58"
+    }
+  },
+  "artifacts:header.reviewUnsharedHint": {
+    "de": {
+      "from": "dde90b25a187",
+      "text": "14b956def9db"
+    },
+    "es": {
+      "from": "dde90b25a187",
+      "text": "051a8e0b3f6a"
+    },
+    "fr": {
+      "from": "dde90b25a187",
+      "text": "570a9eba5269"
+    },
+    "it": {
+      "from": "dde90b25a187",
+      "text": "f9cc0fb87f72"
+    },
+    "ja": {
+      "from": "dde90b25a187",
+      "text": "d7fc2e4d6725"
+    },
+    "ko": {
+      "from": "dde90b25a187",
+      "text": "9b9521e880c1"
+    },
+    "pt-BR": {
+      "from": "dde90b25a187",
+      "text": "9186aafe0fa8"
+    },
+    "zh-CN": {
+      "from": "dde90b25a187",
+      "text": "c153ec34974b"
     }
   },
   "artifacts:header.showInFinder": {

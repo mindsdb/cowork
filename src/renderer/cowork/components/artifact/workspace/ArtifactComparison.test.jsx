@@ -317,6 +317,27 @@ describe('ArtifactComparison publish review', () => {
     return { onClose };
   }
 
+  // Changes not shared yet, opened with the artifact (ENG-4595).
+  it('names the shared version and the draft, and offers Publish changes', () => {
+    const onPublish = vi.fn();
+    render(
+      <ArtifactComparison
+        comparison={{ ...PUBLISH_COMPARISON, review: { unshared: true } }}
+        contentType="md"
+        busy={false}
+        onClose={vi.fn()}
+        publishReview={{ onPublish, onKeepDraft: vi.fn() }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Changes not shared yet' })).toBeInTheDocument();
+    expect(screen.getByText('Before · Shared version')).toBeInTheDocument();
+    expect(screen.getByText('After · Draft')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Keep as draft' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Publish changes' }));
+    expect(onPublish).toHaveBeenCalledTimes(1);
+  });
+
   it('offers Publish this change, Keep as draft and Undo instead of Restore', () => {
     const review = { onPublish: vi.fn(), onKeepDraft: vi.fn(), onUndo: vi.fn() };
     renderReview(review);

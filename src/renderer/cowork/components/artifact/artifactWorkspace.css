@@ -468,3 +468,9 @@
 .artifact-quick-edit-queued-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
 /* Editing your own comment right in its inbox card (ENG-4383). */
 .artifact-inline-comment-edit { width: 100%; resize: none; overflow-y: auto; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 8px; outline: 0; padding: 6px 8px; color: var(--ink); background: var(--surface); font: 14px/20px var(--font-body); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* The header's "Unshared changes" as a button (ENG-4595): the badge itself,
+   opening the review of those changes. */
+.artifact-unshared-button { display: inline-flex; padding: 0; border: 0; background: transparent; border-radius: 999px; cursor: pointer; }
+.artifact-unshared-button:hover .badge, .artifact-unshared-button:hover > * { filter: brightness(.97); }
+.artifact-unshared-button:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }

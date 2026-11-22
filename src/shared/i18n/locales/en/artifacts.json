@@ -246,8 +246,12 @@
     "changeNavigation": "Step through changes",
     "publishedArtifact": "Published artifact",
     "reviewBeforePublishing": "Review the change before publishing",
+    "reviewUnshared": "Changes not shared yet",
     "keepDraft": "Keep as draft",
     "publishChange": "Publish this change",
+    "publishChanges": "Publish changes",
+    "sharedVersion": "Shared version",
+    "draftVersion": "Draft",
     "publishing": "Publishing…"
   },
   "htmlEditor": {
@@ -426,7 +430,8 @@
     "moreActions": "More actions",
     "reloadPreview": "Reload preview",
     "close": "Close",
-    "unsharedChangesHint": "The shared link shows an earlier version. Use Update in Share to publish the changes."
+    "unsharedChangesHint": "The shared link shows an earlier version. Use Update in Share to publish the changes.",
+    "reviewUnsharedHint": "Review and publish the changes the shared link doesn't show yet"
   },
   "body": {
     "previewWatermark": "Preview",
