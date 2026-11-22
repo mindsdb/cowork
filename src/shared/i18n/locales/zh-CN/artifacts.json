@@ -764,6 +764,7 @@
     "queued": "排队中",
     "queueLabel": "等待执行",
     "removeQueued": "从队列中移除",
+    "hide": "隐藏消息",
     "comment": {
       "onArtifact": "处理关于此产物的这条评论：",
       "onText": "处理关于文本“{quote}”的这条评论：",

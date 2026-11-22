@@ -764,6 +764,7 @@
     "queued": "대기 중",
     "queueLabel": "실행 대기",
     "removeQueued": "대기열에서 제거",
+    "hide": "메시지 숨기기",
     "comment": {
       "onArtifact": "아티팩트에 대한 이 댓글을 처리하세요:",
       "onText": "텍스트 “{quote}”에 대한 이 댓글을 처리하세요:",

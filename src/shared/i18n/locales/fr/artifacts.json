@@ -764,6 +764,7 @@
     "queued": "En file d'attente",
     "queueLabel": "En attente",
     "removeQueued": "Retirer de la file d'attente",
+    "hide": "Masquer les messages",
     "comment": {
       "onArtifact": "Traite ce commentaire sur l'artefact :",
       "onText": "Traite ce commentaire sur le texte « {quote} » :",
