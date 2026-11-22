@@ -964,6 +964,13 @@ function AppCore() {
       }
     }
     setArtifacts(data);
+    // Loaded once a list is actually in, whichever reload brought it: a
+    // superseded first load must not end the skeleton on an empty list,
+    // which read as "No artifacts yet" for a moment (ENG-4585).
+    setArtifactsLoaded(true);
+  }, {
+    // A failed load ends the skeleton too, rather than loading forever.
+    onFailed: () => setArtifactsLoaded(true),
   }));
   const reloadArtifacts = artifactsLoader.reload;
   // A delete from any surface (the artifacts page, a chat's viewer or working
@@ -2647,7 +2654,7 @@ function AppCore() {
       setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).finally(() => setProjectsLoaded(true));
-    reloadArtifacts().finally(() => setArtifactsLoaded(true));
+    reloadArtifacts();
     fetchPins().then((data) => setPins(data.pins || []));
     refreshSchedules().catch(() => {});
     fetchDatasources()

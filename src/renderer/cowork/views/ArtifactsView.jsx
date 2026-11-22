@@ -54,10 +54,10 @@ import {
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
 import { AUDIENCE_CHOICE, groupArtifactsBySection, isOrgSharingOn } from '../lib/orgSharing';
-import { useArtifactAudiences } from '../hooks/useArtifactAudiences';
+import { useArtifactAudiencesState } from '../hooks/useArtifactAudiences';
 import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
 import { artifactOwnerUserId } from '../lib/artifactAuthorship';
-import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
+import { LOAD_STATUS, readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
 import { publishFailureReason, publishRefusalMessage } from '../components/artifact/publish/publishErrors';
 import {
   publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal,
@@ -78,8 +78,6 @@ import {
   ViewToggle,
   CollectionState,
   ListGroup,
-  ListSortHeader,
-  LIST_SORT_HEADER_MIN,
   ListItem,
   ItemActions,
   useCollectionShortcut,
@@ -99,6 +97,11 @@ const EMPTY_ARTIFACTS = [];
 // Page padding of the row group, shared with its loading skeleton so loading
 // does not shift the layout.
 const LIST_CLASS = 'mx-8 mb-[60px]';
+
+// How long the page waits for what decides its sections (sharing, teams, who
+// restricted artifacts reach) before showing anyway, so a slow or failing read
+// never leaves it loading (ENG-4585).
+export const GROUPING_WAIT_MS = 4000;
 
 // With sharing in the org, artifacts are grouped as skills are (Mine, Shared
 // with me, a team, everyone at the org), with the Skills page's icons.
@@ -849,7 +852,7 @@ export default function ArtifactsView({
   const orgMode = useOrgMode();
   // In MindsHub mode a restricted card doesn't say who it reaches; read it,
   // so its section, badge and hover say (useArtifactAudiences).
-  const list = useArtifactAudiences(cards, { enabled: orgMode });
+  const { list, settled: audiencesSettled } = useArtifactAudiencesState(cards, { enabled: orgMode });
   const liveApps = useLiveApps();
   // App hands down a new list after each turn, so the states re-read with it.
   const liveAppStates = useLiveAppStates(liveApps, list);
@@ -913,7 +916,6 @@ export default function ArtifactsView({
   // descendant to the card itself instead of the viewport.
   const [menuFor, setMenuFor] = useState(null); // { artifact, rect }
   const { t } = useTranslation('artifacts');
-  const { t: ts } = useTranslation('shell');
   const sortOptions = SORT_IDS.map((id) => ({ id, label: t(`artifactsView.sort.${id}`) }));
   const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   // Toast surfaces publish/unpublish results — primarily so failures
@@ -1237,22 +1239,30 @@ export default function ArtifactsView({
   const { artifactsNote } = surfaceCopy(host.isWeb);
 
   // Sections, where the org shares (as on the Skills page); one list elsewhere.
-  const sharingCapabilities = useSharingCapabilities().capabilities;
+  const sharingState = useSharingCapabilities();
+  const sharingCapabilities = sharingState.capabilities;
   const sectionsOn = isOrgSharingOn(sharingCapabilities);
   const orgName = useSharingOrgName(sectionsOn);
   const teamsState = useMindsHubTeams(sectionsOn);
-  // A long list sorts from its header too, in step with the pill: atop the
-  // one list, or each section.
-  const sortHeader = visible.length > LIST_SORT_HEADER_MIN ? (
-    <ListSortHeader
-      value={sort}
-      onChange={setSort}
-      columns={[
-        { id: 'name', label: ts('ui.sortHeader.columns.name'), sorts: ['title'] },
-        { id: 'updated', label: ts('ui.sortHeader.columns.updated'), sorts: ['recent', 'oldest'] },
-      ]}
-    />
-  ) : null;
+  // The page shows once, in its final sections (ENG-4585): the skeleton stays
+  // until, in MindsHub mode, sharing is known (off draws one list, on draws
+  // sections) and restricted artifacts' audiences are read (unknown files
+  // under Yours), and, wherever sections are on, the teams are in (a default
+  // team counts as the org). Once shown it never goes back to the skeleton,
+  // so a list that changes after a turn just updates in place.
+  const groupingSettled = (!orgMode || sharingState.status !== LOAD_STATUS.LOADING)
+    && (!sectionsOn || teamsState.status === LOAD_STATUS.READY)
+    && audiencesSettled;
+  const [shownOnce, setShownOnce] = useState(false);
+  const bodyReady = !loading && (shownOnce || groupingSettled);
+  useEffect(() => {
+    if (bodyReady && !shownOnce) setShownOnce(true);
+  }, [bodyReady, shownOnce]);
+  useEffect(() => {
+    if (loading || shownOnce) return undefined;
+    const timer = setTimeout(() => setShownOnce(true), GROUPING_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [loading, shownOnce]);
   const sections = useMemo(
     () => (sectionsOn ? groupArtifactsBySection(visible, { orgName, teams: teamsState?.teams || [] }) : null),
     [sectionsOn, visible, orgName, teamsState?.teams],
@@ -1367,7 +1377,7 @@ export default function ArtifactsView({
       <ArtifactStatusOrgName.Provider value={orgName}>
       <ArtifactOwnerNamesProvider capabilitiesList={visible.map((a) => a.capabilities)}>
       <CollectionState
-        loading={loading}
+        loading={!bodyReady}
         total={total}
         shown={visible.length}
         query={search}
@@ -1427,14 +1437,12 @@ export default function ArtifactsView({
                   title={<SectionTitle section={section} />}
                   description={<span data-testid="section-count">{section.artifacts.length}</span>}
                 >
-                  {sortHeader}
                   {section.artifacts.map((a) => renderRow(a, section.id))}
                 </ListGroup>
               ))}
             </div>
           ) : (
             <ListGroup className={LIST_CLASS}>
-              {sortHeader}
               {visible.map(renderRow)}
             </ListGroup>
           )
