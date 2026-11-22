@@ -15,8 +15,13 @@
 // on every visit; a card is read again once its publish changes. A caller
 // outside the artifact's org (`names: false`) is told only how it's shared,
 // which says nothing about who: such a card stays unknown.
+//
+// `useArtifactAudiencesState` also says whether every card has had its answer
+// (`settled`), so the page can wait for it before grouping instead of
+// filing cards under Yours and moving them a moment later (ENG-4585). A read
+// that fails isn't asked again while the page stays open, so it settles.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadArtifactAudience } from '../lib/artifactWorkspaceApi';
 import { readArtifactAudience } from '../lib/sharingContract';
 
@@ -72,15 +77,22 @@ export function resetArtifactAudiences() {
 }
 
 /**
- * `list` with each restricted card's audience filled in, once read.
+ * `{ list, settled }`: `list` with each restricted card's audience filled in,
+ * once read; `settled` once every card that needs one has its answer (or its
+ * read failed).
  * @param {object[]} list
  * @param {{ enabled?: boolean }} [options]
  */
-export function useArtifactAudiences(list, { enabled = true } = {}) {
+export function useArtifactAudiencesState(list, { enabled = true } = {}) {
   const [version, setVersion] = useState(0);
+  // Reads that failed while this page is open: asked again on the next visit,
+  // not in a loop now.
+  const failedRef = useRef(new Set());
   if (enabled) restore();
   const wanted = useMemo(
-    () => (enabled ? (list || []).filter((a) => needsAudience(a) && !memory.has(keyOf(a))) : []),
+    () => (enabled
+      ? (list || []).filter((a) => needsAudience(a) && !memory.has(keyOf(a)) && !failedRef.current.has(keyOf(a)))
+      : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [enabled, list, version],
   );
@@ -99,6 +111,7 @@ export function useArtifactAudiences(list, { enabled = true } = {}) {
           memory.set(key, fields || { unknown: true });
         } catch {
           // Not remembered: read again next time the list is shown.
+          failedRef.current.add(key);
         }
       }
     };
@@ -109,7 +122,7 @@ export function useArtifactAudiences(list, { enabled = true } = {}) {
     return () => { live = false; };
   }, [wanted]);
 
-  return useMemo(() => {
+  const filled = useMemo(() => {
     if (!enabled) return list;
     return (list || []).map((artifact) => {
       if (!needsAudience(artifact)) return artifact;
@@ -120,6 +133,12 @@ export function useArtifactAudiences(list, { enabled = true } = {}) {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, list, version]);
+  return { list: filled, settled: wanted.length === 0 };
+}
+
+/** `list` with each restricted card's audience filled in, once read. */
+export function useArtifactAudiences(list, options) {
+  return useArtifactAudiencesState(list, options).list;
 }
 
 export default useArtifactAudiences;

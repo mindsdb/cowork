@@ -29,6 +29,10 @@ export function withArtifactChange(list, updated) {
  * Latest-wins reloads. A response is applied only if no reload started after
  * it, so an older listing cannot bring back an artifact a newer one dropped.
  * A failed load leaves the list alone: an error is not an empty list.
+ *
+ * `reload()` resolves to what became of it: 'applied', 'failed', or
+ * 'superseded' when a newer reload took over (that one settles the list, so a
+ * caller waiting for the first list keeps waiting; ENG-4585).
  */
 export function createLatestLoader(load, apply) {
   let gen = 0;
@@ -38,8 +42,14 @@ export function createLatestLoader(load, apply) {
     pending = true;
     return Promise.resolve()
       .then(() => load())
-      .then((data) => { if (ticket === gen) apply(data); })
-      .catch(() => {})
+      .then(
+        (data) => {
+          if (ticket !== gen) return 'superseded';
+          apply(data);
+          return 'applied';
+        },
+        () => (ticket === gen ? 'failed' : 'superseded'),
+      )
       .finally(() => { if (ticket === gen) pending = false; });
   };
   return {
