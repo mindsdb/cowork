@@ -764,6 +764,7 @@
     "queued": "En cola",
     "queueLabel": "Esperando turno",
     "removeQueued": "Quitar de la cola",
+    "hide": "Ocultar mensajes",
     "comment": {
       "onArtifact": "Atiende este comentario sobre el artefacto:",
       "onText": "Atiende este comentario sobre el texto «{quote}»:",

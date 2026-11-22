@@ -764,6 +764,7 @@
     "queued": "In Warteschlange",
     "queueLabel": "Wartet auf Ausführung",
     "removeQueued": "Aus der Warteschlange entfernen",
+    "hide": "Nachrichten ausblenden",
     "comment": {
       "onArtifact": "Bearbeite diesen Kommentar zum Artefakt:",
       "onText": "Bearbeite diesen Kommentar zum Text „{quote}“:",

@@ -764,6 +764,7 @@
     "queued": "待機中",
     "queueLabel": "実行待ち",
     "removeQueued": "キューから削除",
+    "hide": "メッセージを非表示",
     "comment": {
       "onArtifact": "アーティファクトへのこのコメントに対応してください：",
       "onText": "テキスト「{quote}」へのこのコメントに対応してください：",

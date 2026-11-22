@@ -372,7 +372,9 @@ export function QuickEditBar({
   // (even into an input that kept the focus) or the focus arriving there,
   // and when a message arrives
   // or a reply settles (applied, failed, answered, handed to the chat); it
-  // folds away when the pointer goes back to the artifact, leaving the input.
+  // folds away when the pointer goes back to the artifact, leaving the input,
+  // or at once from its Hide button, for anyone who doesn't think to move
+  // away (ENG-4594).
   const [threadOpen, setThreadOpen] = useState(true);
   // A change on its way: an edit running here, or a message the agent is
   // answering in the chat (its live row). The thread stays open meanwhile.
@@ -488,6 +490,25 @@ export function QuickEditBar({
           data-open={threadOpen || undefined}
           style={{ height: threadHeight }}
         >
+          {/* Pinned to the thread's top-right corner as it scrolls. The bar's
+              own pointer and focus handlers open the thread on the way in;
+              the click, which comes last, folds it. Its focus is dropped so
+              the folded thread doesn't hold a hidden focused button. */}
+          <div className="artifact-quick-edit-thread-head">
+            <Tooltip content={t('quickEdit.hide')}>
+              <button
+                type="button"
+                className="mini-icon-btn artifact-quick-edit-hide"
+                aria-label={t('quickEdit.hide')}
+                onClick={(e) => {
+                  setThreadOpen(false);
+                  e.currentTarget.blur();
+                }}
+              >
+                {Ico.chevDown(14)}
+              </button>
+            </Tooltip>
+          </div>
           <div className="artifact-quick-edit-thread-inner" ref={threadInnerRef}>
           {messages.map((m) => (m.role === 'user' ? (
             <div

@@ -24513,6 +24513,40 @@
       "text": "a438e399a171"
     }
   },
+  "artifacts:quickEdit.hide": {
+    "de": {
+      "from": "19e6d24090b3",
+      "text": "24fc4af2ea67"
+    },
+    "es": {
+      "from": "19e6d24090b3",
+      "text": "9350a20ff617"
+    },
+    "fr": {
+      "from": "19e6d24090b3",
+      "text": "aeaa510c2348"
+    },
+    "it": {
+      "from": "19e6d24090b3",
+      "text": "c3a292cfb149"
+    },
+    "ja": {
+      "from": "19e6d24090b3",
+      "text": "64582e75aab5"
+    },
+    "ko": {
+      "from": "19e6d24090b3",
+      "text": "00002992c33b"
+    },
+    "pt-BR": {
+      "from": "19e6d24090b3",
+      "text": "7accac6cb7f3"
+    },
+    "zh-CN": {
+      "from": "19e6d24090b3",
+      "text": "51dbf8591407"
+    }
+  },
   "artifacts:quickEdit.inputLabel": {
     "de": {
       "from": "f445fc4ffc97",

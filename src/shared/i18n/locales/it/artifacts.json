@@ -764,6 +764,7 @@
     "queued": "In coda",
     "queueLabel": "In attesa",
     "removeQueued": "Rimuovi dalla coda",
+    "hide": "Nascondi messaggi",
     "comment": {
       "onArtifact": "Gestisci questo commento sull'artefatto:",
       "onText": "Gestisci questo commento sul testo «{quote}»:",

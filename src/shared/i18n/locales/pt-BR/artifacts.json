@@ -764,6 +764,7 @@
     "queued": "Na fila",
     "queueLabel": "Aguardando a vez",
     "removeQueued": "Remover da fila",
+    "hide": "Ocultar mensagens",
     "comment": {
       "onArtifact": "Resolva este comentário sobre o artefato:",
       "onText": "Resolva este comentário sobre o texto “{quote}”:",

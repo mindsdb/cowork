@@ -764,6 +764,7 @@
     "queued": "Queued",
     "queueLabel": "Waiting to run",
     "removeQueued": "Remove from queue",
+    "hide": "Hide messages",
     "comment": {
       "onArtifact": "Address this comment on the artifact:",
       "onText": "Address this comment on the text “{quote}”:",

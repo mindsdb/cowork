@@ -161,6 +161,31 @@ describe('QuickEditBar thread over the artifact', () => {
     expect(thread()).toHaveAttribute('data-open');
   });
 
+  // For anyone who doesn't think to move the pointer away (ENG-4594).
+  it('folds at once from its Hide button, with the pointer still over the bar', () => {
+    render(<QuickEditBar controller={idle([user, settled])} />);
+    const hide = screen.getByRole('button', { name: 'Hide messages' });
+    // The press reaches the bar first, as a real click does.
+    fireEvent.pointerDown(hide);
+    fireEvent.focus(hide);
+    fireEvent.click(hide);
+    expect(thread()).not.toHaveAttribute('data-open');
+    expect(document.activeElement).not.toBe(hide);
+
+    // Clicking into the input brings it back.
+    fireEvent.pointerDown(screen.getByRole('textbox'));
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('folds from Hide even while a change is on its way, and opens again when it settles', () => {
+    const view = render(<QuickEditBar controller={{ ...controller([user, reply('writing')]), running: true }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide messages' }));
+    expect(thread()).not.toHaveAttribute('data-open');
+
+    view.rerender(<QuickEditBar controller={idle([user, settled])} />);
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
   it('stays open while the focus is on a button in it', () => {
     const settled = { id: 'r1', role: 'assistant', state: 'applied', summary: 'Done.', undoable: true };
     render(<QuickEditBar controller={{ ...controller([user, settled]), running: false, undoableId: 'r1' }} />);
