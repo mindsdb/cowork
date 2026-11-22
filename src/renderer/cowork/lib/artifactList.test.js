@@ -106,6 +106,27 @@ describe('createLatestLoader', () => {
     await expect(r2).resolves.toBe('applied');
   });
 
+  it('tells onFailed when the latest reload fails, whichever caller started it', async () => {
+    const first = deferred();
+    const second = deferred();
+    const load = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const onFailed = vi.fn();
+    const loader = createLatestLoader(load, vi.fn(), { onFailed });
+    const r1 = loader.reload();
+    const r2 = loader.reload();
+    first.resolve([a]);
+    await r1;
+    expect(onFailed).not.toHaveBeenCalled();
+    second.reject(new Error('offline'));
+    await expect(r2).resolves.toBe('failed');
+    expect(onFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it('never rejects, even when applying the list throws', async () => {
+    const loader = createLatestLoader(async () => [a], () => { throw new Error('boom'); });
+    await expect(loader.reload()).resolves.toBe('failed');
+  });
+
   it('supersedes a reload in flight when a local change runs', async () => {
     const stale = deferred();
     const fresh = deferred();
