@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within, act, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, consoleUrlFor } from '../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 import { __resetDraftsForTests } from '../lib/draftStore';
 
 vi.mock('../api', async (importOriginal) => {
@@ -28,6 +31,8 @@ vi.mock('../api', async (importOriginal) => {
 // Spread the real modules and override only what these tests assert on, so a
 // new export never has to be added here to keep the file importable.
 const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1' } }));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 vi.mock('../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -221,7 +226,7 @@ describe('Composer — model picker (ENG-1656)', () => {
     const locked = screen.getByRole('option', { name: /Claude Sonnet 5/ });
     await user.click(within(locked).getByRole('button', { name: 'Add credits' }));
 
-    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
     expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
     // The row is disabled, so Base UI never reaches its select handler. This
     // pins that the button did not somehow route around that, not the
