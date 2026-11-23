@@ -252,7 +252,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
 
 
 export default function HomeView({
-  greeting, showDots,
+  greeting, showDots, onComposeTask,
   activeTasks, onSelectTask, onClearActive,
   onSend, project, onProjectChange, model, onModelChange, effort, onEffortChange, projects, models, modelMeta,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
@@ -847,7 +847,10 @@ export default function HomeView({
               onStartVoiceCall={onStartVoiceCall}
               browserSwitch={browserSwitch}
               onCreateProject={onCreateProject}
-              onTypingChange={setIsTyping}
+              onTypingChange={(typing) => {
+                setIsTyping(typing);
+                if (typing) onComposeTask?.();
+              }}
               codingModeEnabled={codingModeEnabled}
               onOpenSettings={onOpenSettings}
               codingModelDefault={codingModelDefault}

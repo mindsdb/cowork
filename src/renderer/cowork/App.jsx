@@ -158,7 +158,7 @@ import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
 import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
 import { PLATFORM_UI } from '../lib/deployment';
-import { noteMobilePushTaskStarted, setMobilePushNavigator } from '../lib/mobilePush';
+import { offerMobileTaskNotifications, setMobilePushNavigator } from '../lib/mobilePush';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -201,7 +201,8 @@ import {
 } from './lib/browserApproval';
 import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
-import { Outlet } from 'react-router-dom';
+import { SharedArtifactPreview } from './components/artifact/SharedArtifactPreview';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
  * created. Reads as a friendly nudge after the connect-intro card —
@@ -698,6 +699,17 @@ export function searchRecents(tasks, projects) {
       .map((task) => ({ type: 'task', id: task.id, title: task.title || tApp('common.untitledTask'), subtitle: labelFor(task) })),
     ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.id || project.name, title: projectLabel(project) })),
   ];
+}
+
+function RoutedArtifactsView(props) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const target = location.state?.sharedArtifact;
+  return <>
+    <ArtifactsView {...props} />
+    {target && <SharedArtifactPreview key={location.key} target={target}
+      onClose={() => navigate({ pathname: location.pathname, search: location.search }, { replace: true })} />}
+  </>;
 }
 
 function AppCore() {
@@ -2451,7 +2463,19 @@ function AppCore() {
   if (!routerRef.current) routerRef.current = createCoworkRouter();
   // Mobile app (ENG-4023): a tapped push notification opens its route here,
   // including one tapped before the router existed (cold start). No-op elsewhere.
-  useEffect(() => setMobilePushNavigator((path) => { routerRef.current?.navigate(path); }), []);
+  useEffect(() => setMobilePushNavigator((path) => {
+    // Only the push controller delivers a pending tap. An address-bar fragment
+    // must never instruct the app to open an external destination.
+    if (path.startsWith('/artifacts#shared=')) {
+      const params = new URLSearchParams(path.split('#')[1]);
+      const ref = params.get('ref');
+      const [project_id, artifact_id] = ref?.split('/') ?? [];
+      const sharedArtifact = ref ? { project_id, artifact_id } : {};
+      routerRef.current.navigate('/artifacts', { state: { sharedArtifact } });
+    } else {
+      routerRef.current.navigate(path);
+    }
+  }), []);
   const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
@@ -4376,9 +4400,8 @@ function AppCore() {
       setActiveTaskId(taskId);
       setRoute('task');
     }
-    // Mobile app (ENG-4023): the first task started is when the app offers
-    // "notify me when tasks finish" (once; no-op outside the app).
-    noteMobilePushTaskStarted();
+    // Also offer for tasks sent without typing in the home composer.
+    offerMobileTaskNotifications();
 
     let resolvedId = taskId;
     /*
@@ -7268,6 +7291,7 @@ function AppCore() {
         >
         {route === 'home' && besideOffTask(
           <HomeView
+            onComposeTask={offerMobileTaskNotifications}
             greeting={look.greeting}
             showDots={showDots}
             activeTasks={activeTasks}
@@ -7627,7 +7651,7 @@ function AppCore() {
           // The viewer hands a message to an artifact's chat without leaving
           // this page, and follows the reply from that chat's task (ENG-4560).
           <ConversationTranscriptsContext.Provider value={artifactTranscripts}>
-          <ArtifactsView
+          <RoutedArtifactsView
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
             onRefreshArtifacts={reloadArtifacts}
