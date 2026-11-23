@@ -82,6 +82,31 @@ describe('DraftPullRequestSection', () => {
     ));
   });
 
+  it.each([
+    ['its commit and destination change', { ...readyItems[1], head_revision: 'b'.repeat(40), task_branch: 'other', remote_url: 'https://github.com/mindsdb/other.git' }],
+    ['the selected folder disappears', readyItems[0]],
+  ] as const)('preserves the open confirmation when %s during refresh', async (_case, refreshedItem) => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => []);
+    const view = render(<DraftPullRequestSection {...defaults} onCreate={onCreate} />);
+    await user.click(await screen.findByText('Repositories'));
+    await user.click(screen.getByRole('checkbox', { name: /Frontend/ }));
+    await user.click(screen.getByRole('button', { name: 'Create 1 draft pull request' }));
+
+    mocks.deliveryPlan.mockResolvedValue({
+      items: [{ ...refreshedItem, folder_name: 'Refreshed folder' }],
+      integrations: [integration],
+    });
+    view.rerender(<DraftPullRequestSection {...defaults} refreshKey="updated" onCreate={onCreate} />);
+    await screen.findByText('Refreshed folder');
+    await user.click(screen.getByRole('button', { name: 'Create drafts' }));
+
+    expect(onCreate).toHaveBeenCalledWith(defaults.taskTitle, '', 'work', [{
+      folder_id: 'server', title: defaults.taskTitle, body: '', head_revision: 'a'.repeat(40),
+      task_branch: 'cowork/task/server', remote_url: 'https://github.com/mindsdb/server.git',
+    }]);
+  });
+
   it('resolves all uncommitted project repositories in one explicit action', async () => {
     const user = userEvent.setup();
     const onCommit = vi.fn(async () => {});
