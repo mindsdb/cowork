@@ -21,13 +21,11 @@ import { InboxCard } from './InboxCard';
 import { UnanchoredComposer } from './UnanchoredComposer';
 import { XIcon } from './icons';
 import { Tooltip } from '../../ui';
+import { PanelGuide } from '../PanelGuide';
 import { useTranslation } from '../../../../lib/i18n';
 
-// Slide-in entrance (mirrors the reference #act-panel: translateX(16px)→0 +
-// fade, same easing as the toolbar) — the `cw-comments-panel-in` keyframe
-// lives in globals.css alongside every other keyframe in the app.
-// `motion-reduce:!animate-none` (Tailwind's built-in variant) honors
-// reduced-motion; the `!` is required to beat the inline `animation` style.
+// It sits in the viewer's shared side panel (ViewerSidePanel), which plays
+// the slide in and out, so the inbox has no entrance of its own.
 
 const isClosed = (t) => t.status === 'resolved' || t.status === 'dismissed';
 
@@ -45,12 +43,16 @@ export function CommentsPanel({
   onAddressWithAgent,
   agentBusy = false,
   agentWorkingThreadId = null,
+  agentQueuedThreadIds = [],
   onDeleteThread,
+  // Saves an edit of your own comment made right in its card.
+  onEditThread,
   onCreate,
   onClose,
   onHoverThread,
   onLeaveThread,
   onFocusThread,
+  loadImage = null,
 }) {
   const { t: tr } = useTranslation('artifacts');
   const [tab, setTab] = useState('open');
@@ -85,8 +87,7 @@ export function CommentsPanel({
   return (
     <div
       className="artifact-comments-panel flex flex-col gap-[10px] bg-surface px-3 py-2
-        font-[family-name:var(--font-body)] motion-reduce:!animate-none"
-      style={{ animation: 'cw-comments-panel-in var(--dur-layout) var(--ease-out)' }}
+        font-[family-name:var(--font-body)]"
     >
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
@@ -111,8 +112,14 @@ export function CommentsPanel({
           {tr('comments.panel.expired')}
         </div>
       )}
+      {/* A warning, not a state: it fades and clears on its own
+          (useArtifactComments), and loading keeps retrying underneath. */}
       {error && (
-        <div className="shrink-0 rounded-[6px] px-2 py-[6px] text-[12px] leading-[16px] bg-[#FEE2E2] text-[#8F321A]">
+        <div
+          key={error}
+          role="status"
+          className="artifact-comments-warning shrink-0 rounded-[6px] px-2 py-[6px] text-[12px] leading-[16px] bg-[#FEF3C7] text-[#B45309]"
+        >
           {error}
         </div>
       )}
@@ -156,10 +163,9 @@ export function CommentsPanel({
       {/* Card list — scrollbar hugs the panel edge instead of stealing card width. */}
       <div ref={listRef}
         className="flex-1 overflow-y-auto flex flex-col gap-[10px] -mr-[10px] pr-1 overscroll-contain">
+        {/* Nothing in this tab: the guide, in the middle of the list. */}
         {visible.length === 0 && (
-          <div className="text-center text-[12px] leading-[16px] text-ink-4 py-6">
-            {tr(`comments.panel.empty.${tab}`)}
-          </div>
+          <PanelGuide title={tr(`comments.panel.empty.${tab}`)} text={tr('comments.guide.body')} />
         )}
         {visible.map((t) => (
           <InboxCard
@@ -171,8 +177,11 @@ export function CommentsPanel({
             canAddressWithAgent={capabilities?.canAddressWithAgent === true}
             agentBusy={agentBusy}
             agentWorking={agentWorkingThreadId === t.id}
+            agentQueued={(agentQueuedThreadIds || []).includes(t.id)}
             onStatus={onStatus}
             onAddressWithAgent={onAddressWithAgent}
+            loadImage={loadImage}
+            onEditThread={onEditThread}
             onRequestDelete={setPendingDelete}
             onHover={onHoverThread}
             onLeave={onLeaveThread}
@@ -180,6 +189,11 @@ export function CommentsPanel({
           />
         ))}
       </div>
+
+      {/* With comments to show, the guide waits under them. */}
+      {visible.length > 0 && (
+        <PanelGuide placement="bottom" title={tr('comments.guide.title')} text={tr('comments.guide.body')} />
+      )}
 
       {/* Pinned composer — general (unanchored) comments, selector: null.
           New threads are open and sort newest-first, so scroll to top. */}

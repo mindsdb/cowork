@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "无法移除已删除任务的部分文件。请重试清理以释放磁盘空间。",
+    "retry": "重试清理",
+    "retrying": "正在重试清理…",
+    "retryFailed": "无法重试清理。请再试一次。"
+  },
   "reviewPanel": {
     "ariaLabel": "审查更改",
     "closeAriaLabel": "关闭审查面板",
@@ -27,11 +33,14 @@
       "branch": "分支",
       "openOriginalFolder": "打开原始文件夹",
       "openIsolatedCopy": "打开隔离副本",
-      "openOriginal": "打开原始版本"
+      "openOriginal": "打开原始版本",
+      "openYourFolder": "打开你的文件夹"
     },
     "sourceChanged": {
       "title": "此任务开始时，源文件夹中已有本地更改",
-      "body": "这些更改保留在源文件夹中。{product} 会在应用前检查冲突。"
+      "body": "这些更改保留在源文件夹中。{product} 会在应用前检查冲突。",
+      "inPlaceTitle": "文件夹中已有未提交的更改",
+      "inPlaceBody": "这些更改会与智能体的更改一起显示在此审查中，在此提交时会一并包含。"
     },
     "reconcile": {
       "title": "协调原始更改",
@@ -61,13 +70,20 @@
       "create": "创建",
       "commitLabel": "提交所有任务更改",
       "commitPlaceholder": "描述此更改",
-      "commit": "提交"
+      "commit": "提交",
+      "branchLabelInPlace": "在你的文件夹中创建并切换到分支",
+      "commitLabelInPlace": "提交你文件夹中的所有更改"
     },
     "applyConfirm": {
       "title": "将更改应用到源文件夹？",
       "message": "要用审查后的任务更改更新 {target} 吗？如果发现冲突，{product} 会在更改任何文件夹前停止。",
       "confirm": "应用更改",
       "error": "无法应用更改，请重试。"
+    },
+    "inPlace": {
+      "title": "{count, plural, other {此任务直接编辑你的文件夹}}",
+      "body": "{count, plural, other {更改已在你的文件夹中，无需应用。}}本地任务暂不支持草稿拉取请求：请在此提交，然后用你常用的工具推送并创建拉取请求。",
+      "bodyWithoutGit": "{count, plural, other {更改已在你的文件夹中，无需应用。}}"
     }
   },
   "fileReview": {
@@ -86,7 +102,8 @@
     "discardConfirm": {
       "title": "放弃此文件的更改？",
       "message": "{path} 将恢复为当前任务版本。此操作无法撤销。",
-      "confirm": "放弃更改"
+      "confirm": "放弃更改",
+      "messageInPlace": "{path} 将恢复到你文件夹中最后一次提交的版本，包括此任务开始前所做的编辑。此操作无法撤销。"
     }
   },
   "reviewFileCard": {
@@ -449,7 +466,9 @@
       "reasoning": "推理",
       "reasoningAriaLabel": "默认推理强度",
       "permissions": "权限",
-      "permissionsAriaLabel": "默认编码权限"
+      "permissionsAriaLabel": "默认编码权限",
+      "workspace": "工作区",
+      "workspaceAriaLabel": "任务的默认工作区"
     },
     "environment": {
       "title": "环境",
@@ -1009,7 +1028,7 @@
       "noModels": "没有可用的编程模型。",
       "chooseModel": "选择模型以继续。",
       "chooseFolder": "选择文件夹以继续。",
-      "budgetReached": "你的组织预算已用完。请选择可用的模型，或请所有者或管理员提高预算。"
+      "budgetReached": "适用于此模型的预算已用完。请选择可用的模型，或请管理员提高预算。"
     }
   },
   "executionTarget": {
@@ -1037,16 +1056,16 @@
       "title": "只检查和解释，不更改文件。"
     },
     "supervised": {
-      "label": "先询问",
-      "title": "执行需要你批准的命令前先暂停。"
+      "label": "请求批准",
+      "title": "编辑任务之外的文件或使用互联网前，始终先询问。"
     },
     "workspace": {
-      "label": "工作区内自动",
-      "title": "在此任务的隔离副本中自主工作。"
+      "label": "替我批准",
+      "title": "审核者会批准常规请求，并阻止有风险的请求。"
     },
     "fullAccess": {
       "label": "完全访问",
-      "title": "自主工作，不受文件系统限制。"
+      "title": "不受限制地访问互联网和你电脑上的所有文件。"
     }
   },
   "branchSelect": {
@@ -1295,6 +1314,7 @@
     "record": {
       "approvalDenied": "已拒绝批准",
       "approvalResolved": "已处理批准请求",
+      "folderBusy": "另一个任务正在此文件夹中工作，因此此任务在工作树中工作。",
       "followUpDelivered": "已送达追加指令",
       "requestRejected": "请求被拒绝",
       "taskStatus": "任务状态"
@@ -1399,7 +1419,8 @@
     "details": "详情",
     "moreOptions": "更多选项",
     "dismiss": "忽略",
-    "viewBudgets": "查看预算"
+    "viewBudgets": "查看预算",
+    "allowWrites": "允许编辑"
   },
   "composerNotices": {
     "thisModel": "此模型",
@@ -1451,8 +1472,11 @@
       "body": "{reason}，因此它仍占用磁盘空间。"
     },
     "budgetExceeded": {
-      "title": "你的组织预算已用完",
-      "body": "所有者或管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。"
+      "title": "{scope, select, org {{period, select, day {你的组织每日预算已用完} month {你的组织每月预算已用完} year {你的组织每年预算已用完} other {你的组织预算已用完}}} workspace {{period, select, day {此工作区的每日预算已用完} month {此工作区的每月预算已用完} year {此工作区的每年预算已用完} other {此工作区的预算已用完}}} api_key {{period, select, day {此 API 密钥的每日预算已用完} month {此 API 密钥的每月预算已用完} year {此 API 密钥的每年预算已用完} other {此 API 密钥的预算已用完}}} team {{period, select, day {你所在团队的每日预算已用完} month {你所在团队的每月预算已用完} year {你所在团队的每年预算已用完} other {你所在团队的预算已用完}}} member {{period, select, day {你的每日预算已用完} month {你的每月预算已用完} year {你的每年预算已用完} other {你的预算已用完}}} other {{period, select, day {每日预算已用完} month {每月预算已用完} year {每年预算已用完} other {预算已用完}}}}",
+      "body": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。请选择其他模型，在此任务中继续。} other {在管理员于“预算”中提高上限前，{model} 无法运行。请选择其他模型，在此任务中继续。}}} other {{scope, select, org {所有者或管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。} other {管理员可以在“预算”中提高预算，你也可以选择可用的模型，在此任务中继续。}}}}"
+    },
+    "writesHeld": {
+      "body": "此文件夹没有可用于审阅或撤销更改的 Git 历史记录，因此智能体每次编辑前都会先询问。"
     }
   },
   "planModeCommand": {
@@ -1497,7 +1521,9 @@
     "terminal": "终端",
     "reviewChanges": "审阅更改",
     "review": "审阅",
-    "taskActionsAriaLabel": "编程任务操作"
+    "taskActionsAriaLabel": "编程任务操作",
+    "localFolder": "{count, plural, =1 {本地 · 你的文件夹} other {本地 · 你的 # 个文件夹}}",
+    "openYourFolder": "打开你的文件夹"
   },
   "terminal": {
     "status": {
@@ -1591,5 +1617,34 @@
     "desktopOnly": "桌面应用支持附加本地文件。",
     "ariaLabel": "附加的上下文",
     "removeAriaLabel": "移除 {name}"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "本地",
+      "title": "直接在文件夹中工作。一个仓库中一次只运行一个本地任务。"
+    },
+    "worktree": {
+      "label": "工作树",
+      "title": "在隔离的 Git 工作树中工作，以便多个任务可以并行运行。"
+    },
+    "selectAriaLabel": "任务的工作位置",
+    "menuLabel": "工作区",
+    "default": {
+      "label": "默认",
+      "title": "由 {product} 根据每个任务的文件夹和计算机来选择。"
+    },
+    "initializeGit": "初始化 Git",
+    "initializeFailed": "无法初始化 Git。请重试。",
+    "unavailable": "此文件夹没有可用的工作区模式。",
+    "reason": {
+      "notARepository": "此文件夹不是 Git 仓库。要使用工作树，请初始化 Git。",
+      "notARepositoryInFolder": "{folder} 不是 Git 仓库。要使用工作树，请初始化 Git。",
+      "noCommits": "此仓库还没有提交。要使用工作树，请先进行首次提交。",
+      "noCommitsInFolder": "{folder} 还没有提交。要使用工作树，请先进行首次提交。",
+      "noLocalCheckout": "{folder} 在此计算机上没有可用于工作的检出副本。请选择工作树。",
+      "inPlaceUnsupportedPlatform": "此平台暂不支持在原始文件夹中工作。请选择工作树。",
+      "inPlaceOtherComputer": "其他计算机上的任务在隔离的工作树中运行。请选择工作树。",
+      "sharedRepository": "两个项目文件夹位于同一个仓库中，因此不能都直接在文件夹中工作。请选择工作树。"
+    }
   }
 }

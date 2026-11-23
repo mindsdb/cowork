@@ -53,6 +53,8 @@
       "openNamedInDrive": "Apri «{name}» in Google Drive",
       "untitled": "senza titolo",
       "openInDrive": "Apri in Google Drive",
+      "openNamedInNotion": "Apri «{name}» in Notion",
+      "openInNotion": "Apri in Notion",
       "removeFromProjectFiles": "Rimuovi dai file del progetto",
       "removeFromProjectFilesAriaLabel": "Rimuovi {name} dai file del progetto",
       "loadAttachmentsFailed": "Impossibile caricare gli allegati",
@@ -133,6 +135,27 @@
       "haveCopyTitle": "Hai già una copia. Eliminala per duplicare di nuovo l’app.",
       "duplicateAriaLabel": "Duplica {name}",
       "duplicatedToast": "Duplicata in questo progetto."
+    },
+    "workingFolders": {
+      "title": "Cartelle di lavoro",
+      "add": "Aggiungi una cartella a questa chat",
+      "adding": "Aggiunta in corso…",
+      "emptyHint": "Aggiungi una cartella in cui l’agente possa lavorare.",
+      "loadingFiles": "Caricamento dei file…",
+      "emptyFolder": "Nessun file in questa cartella.",
+      "showFiles": "Mostra i file in {name}",
+      "hideFiles": "Nascondi i file in {name}",
+      "unavailable": "Cartella non disponibile",
+      "removeTooltip": "Rimuovi da questa chat",
+      "removeAriaLabel": "Rimuovi {name} da questa chat",
+      "removeTitle": "Rimuovere «{name}» da questa chat?",
+      "fallbackName": "cartella",
+      "removeMessage": "L’agente non lavorerà più in questa cartella. La cartella e i suoi file restano sul tuo computer.",
+      "loadFailed": "Impossibile caricare le cartelle di lavoro.",
+      "listFailed": "Impossibile elencare questa cartella.",
+      "pickerFailed": "Impossibile aprire il selettore di cartelle.",
+      "addFailed": "Impossibile aggiungere questa cartella.",
+      "removeFailed": "Impossibile rimuovere questa cartella."
     }
   },
   "confirm": {
@@ -171,10 +194,13 @@
     "unavailableTitle": "Funzione non disponibile",
     "cloudBodyNamed": "{feature} non è ancora disponibile su Cloud. Nel frattempo puoi usarla nell’app desktop.",
     "cloudBody": "Questa funzione non è ancora disponibile su Cloud. Nel frattempo puoi usarla nell’app desktop.",
+    "cloudBodyCustom": "{feature} non è ancora disponibile su Cloud. Puoi collegarlo subito come connettore personalizzato.",
     "unavailableBodyNamed": "{feature} non è disponibile in questa installazione.",
     "unavailableBody": "Questa funzione non è disponibile in questa installazione.",
     "notNow": "Non ora",
-    "download": "Scarica l’app"
+    "download": "Scarica l’app",
+    "connectCustom": "Collega il tuo connettore personalizzato {feature}",
+    "buildCustom": "Crea un connettore personalizzato"
   },
   "loadStatus": {
     "retry": "Riprova",
@@ -182,6 +208,8 @@
     "loading": "Caricamento: {what}…"
   },
   "upToDate": "Aggiornato",
+  "upToDateSaving": "Salvataggio…",
+  "upToDateSaved": "Salvato",
   "usageBar": {
     "hideAllowance": "Nascondi quota",
     "hide": "Nascondi"
@@ -278,6 +306,8 @@
     "settings": "Impostazioni",
     "billing": "Fatturazione e utilizzo",
     "members": "Membri",
+    "apiKeys": "Chiavi API",
+    "apiDocs": "Documentazione API",
     "help": "Guida e feedback",
     "manageOrg": "Gestisci organizzazione",
     "logout": "Esci",
@@ -360,7 +390,12 @@
     "total": "{count} in totale",
     "noTasks": "Ancora nessuna attività.",
     "untitledTask": "Attività senza titolo",
-    "seeAllTasks": "Vedi tutte le attività"
+    "seeAllTasks": "Vedi tutte le attività",
+    "recents": "Recenti",
+    "showFewer": "Mostra meno",
+    "seeAllCount": "Vedi tutti ({count})",
+    "signedIn": "Accesso effettuato",
+    "logOut": "Esci"
   },
   "dispatch": {
     "qrAriaLabel": "Codice di abbinamento decorativo",
@@ -395,9 +430,15 @@
       "operatorTitle": "È necessario configurare un provider",
       "body": "Inizia con MindsHub e ottieni una quota gratuita su MindsHub Air, poi paghi solo quello che usi. Oppure aggiungi la tua chiave API (Anthropic, OpenAI o qualsiasi endpoint compatibile con OpenAI) in Impostazioni.",
       "operatorBody": "Chiedi all’operatore di configurare il provider del modello prima di avviare un’attività.",
-      "startFree": "Inizia gratis"
+      "startFree": "Inizia gratis",
+      "bodyMobile": "Collega il tuo provider in Impostazioni."
     },
-    "handoffHint": "Modifica questo prompt, poi invialo quando sei pronto."
+    "handoffHint": "Modifica questo prompt, poi invialo quando sei pronto.",
+    "signupWelcome": {
+      "fromDesktop": "Il tuo account è pronto. Puoi iniziare subito qui, oppure tornare all’app {product} e accedere.",
+      "dismiss": "Chiudi"
+    },
+    "ownWorkHeading": "Su cosa deve lavorare {product}?"
   },
   "logout": {
     "title": "Uscire da {product}?",
@@ -409,5 +450,8 @@
     "confirm": "Esci",
     "failed": "Impossibile completare la disconnessione. Riprova.",
     "waitNote": "Disconnessione ancora in corso. Puoi chiudere questa finestra: terminerà da sola."
+  },
+  "shortcuts": {
+    "showBrowser": "Mostra il browser"
   }
 }

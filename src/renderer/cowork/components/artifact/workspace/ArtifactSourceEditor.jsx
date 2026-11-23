@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { MarkdownContent } from '../../markdown/MarkdownContent';
 import { ArtifactHtmlVisualEditor } from './ArtifactHtmlVisualEditor';
+import { LiveEditControls } from './LiveEditPanel';
 import { useTranslation } from '../../../../lib/i18n';
 
 function extensionOf(path) {
@@ -16,6 +17,16 @@ export function ArtifactSourceEditor({
   draftUrl,
   loadImage = null,
   onTextSelection,
+  active = true,
+  previewView = null,
+  // Where the user is in the HTML editor's canvas (ArtifactHtmlVisualEditor).
+  onViewChange = null,
+  // `{ dirty, saving, canEdit, onSave, onDiscard }`: Save and Discard, shown
+  // in the Live edit panel while there is unsaved text.
+  editActions = null,
+  // The Live edit panel's slot (LiveEditPanel), where the editor's status and
+  // Save / Discard render.
+  controlsTarget = null,
 }) {
   const { t } = useTranslation('artifacts');
   const editorRef = useRef(null);
@@ -44,6 +55,11 @@ export function ArtifactSourceEditor({
         onSave={onSave}
         draftUrl={draftUrl}
         onTextSelection={onTextSelection}
+        active={active}
+        previewView={previewView}
+        onViewChange={onViewChange}
+        editActions={editActions}
+        controlsTarget={controlsTarget}
       />
     );
   }
@@ -62,6 +78,14 @@ export function ArtifactSourceEditor({
 
   return (
     <div className={`artifact-source-workbench ${isMarkdown ? 'is-split' : ''}`}>
+      {active && (
+        <LiveEditControls
+          target={controlsTarget}
+          heading={t('htmlEditor.editing')}
+          guidance={source.path}
+          editActions={editActions}
+        />
+      )}
       <section className="artifact-source-pane" aria-label={t('sourceEditor.source')}>
         <div className="artifact-pane-label section-label">
           <span>{t('sourceEditor.sourceLabel')}</span>

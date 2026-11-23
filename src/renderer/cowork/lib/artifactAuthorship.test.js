@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { artifactAuthorship, UNKNOWN_OWNER_LABEL } from './artifactAuthorship';
+import { artifactAuthorship, artifactOwnerUserId, UNKNOWN_OWNER_LABEL } from './artifactAuthorship';
 import { OTHER_ACTOR_LABEL } from './sharedResourceAccess';
 
 describe('artifactAuthorship', () => {
@@ -43,5 +43,48 @@ describe('artifactAuthorship', () => {
 
   it('labels the unknown owner verbatim', () => {
     expect(UNKNOWN_OWNER_LABEL).toBe('Unknown owner');
+  });
+
+  // ENG-4455: in MindsHub mode a reviewer's capabilities carry the owner's id,
+  // and the caller passes the name MindsHub gave it.
+  it('names the owner once the caller has their name', () => {
+    expect(artifactAuthorship({ role: 'reviewer', ownerUserId: 'u-ana' }, { ownerName: 'Ana Ruiz' })).toEqual({
+      kind: 'other',
+      label: 'Ana Ruiz',
+      description: 'Created by Ana Ruiz, another member of this project. You can review it but not change it.',
+    });
+  });
+
+  it.each([
+    ['no name yet', { role: 'reviewer', ownerUserId: 'u-ana' }, null],
+    ['a blank name', { role: 'reviewer', ownerUserId: 'u-ana' }, '  '],
+    ['a name but no owner id', { role: 'reviewer' }, 'Ana Ruiz'],
+  ])('keeps "Another member" with %s', (_label, caps, ownerName) => {
+    expect(artifactAuthorship(caps, { ownerName }).label).toBe(OTHER_ACTOR_LABEL);
+  });
+
+  it('never names an unknown owner', () => {
+    expect(artifactAuthorship({ role: 'reviewer', ownerUnknown: true, ownerUserId: 'u-ana' }, { ownerName: 'Ana Ruiz' }).kind).toBe('unknown');
+  });
+
+  it('never names anyone on the viewer\'s own artifact', () => {
+    expect(artifactAuthorship({ role: 'owner', ownerUserId: 'u-me' }, { ownerName: 'Me' })).toBeNull();
+  });
+});
+
+describe('artifactOwnerUserId', () => {
+  it('is the owner id of a reviewer\'s artifact', () => {
+    expect(artifactOwnerUserId({ role: 'reviewer', ownerUserId: 'u-ana' })).toBe('u-ana');
+  });
+
+  it.each([
+    [null],
+    [{ role: 'owner', ownerUserId: 'u-me' }],
+    [{ role: 'reviewer', ownerUnknown: true, ownerUserId: 'u-ana' }],
+    [{ role: 'reviewer' }],
+    [{ role: 'reviewer', ownerUserId: '' }],
+    [{ role: 'reviewer', ownerUserId: 42 }],
+  ])('is null for %j', (caps) => {
+    expect(artifactOwnerUserId(caps)).toBeNull();
   });
 });

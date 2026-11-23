@@ -15,8 +15,7 @@ const PROJECTS = [
   { name: 'ops', display_name: 'Ops' },
 ];
 
-// Two runs of one schedule: r1 carries its scheduledId, r2 is only known
-// through the runs index (older records saved before the field existed).
+// Two runs of one schedule, each carrying its scheduledId.
 const TASKS = [
   { id: 't1', title: 'Alpha report', projectName: 'metrics', updatedAt: '2026-09-28T10:00:00Z' },
   { id: 't2', title: 'Beta notes', projectName: 'ops', updatedAt: '2026-09-30T10:00:00Z' },
@@ -150,5 +149,21 @@ describe('TasksView', () => {
     expect(screen.getByText('No tasks yet')).toBeInTheDocument();
     expect(screen.queryByLabelText('Search tasks')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Sort/ })).not.toBeInTheDocument();
+  });
+});
+
+
+// The Sort pill and filters above the list do the sorting; a long list has
+// no header row of its own (ENG-4585).
+describe('TasksView long list', () => {
+  const many = (n) => Array.from({ length: n }, (_, i) => ({
+    id: `m${i}`, title: `Task ${String.fromCharCode(97 + (i % 26))}${i}`, projectName: 'metrics',
+    updatedAt: `2026-09-${String(10 + (i % 18)).padStart(2, '0')}T10:00:00Z`,
+  }));
+
+  it('has no sort header row, and still sorts from the pill', () => {
+    setup({ tasks: many(40), schedules: [] });
+    expect(screen.queryByRole('toolbar')).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'Sort' })).toBeInTheDocument();
   });
 });

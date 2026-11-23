@@ -456,6 +456,8 @@
     },
     "buildCustom": "构建自定义连接器",
     "buildCustomDescription": "连接未列出的系统。Anton 会和你一起完成设置。",
+    "addMcpUrl": "通过 URL 添加 MCP 服务器",
+    "addMcpUrlDescription": "连接远程 MCP 服务器，并选择 Anton 可以使用哪些工具。",
     "loadFailed": "无法加载连接器",
     "title": "连接器目录",
     "searchPlaceholder": "搜索连接器 — gmail、postgres、slack…",
@@ -636,6 +638,10 @@
       "working": "正在处理…",
       "allow": "在本次测试中允许",
       "confirm": "确认并保存"
+    },
+    "browserInstead": {
+      "title": "改用浏览器",
+      "help": "无需连接：你在浏览器模式中登录 {name}，工作在那里完成。比连接更慢。"
     }
   },
   "legacyConnect": {
@@ -665,5 +671,58 @@
     "checkFields": "检查字段",
     "saving": "正在保存",
     "saveConnection": "保存连接"
+  },
+  "customMcp": {
+    "title": "添加 MCP 服务器",
+    "subtitle": "当服务器要求登录时，你会在它自己的登录页面上登录。",
+    "name": "名称",
+    "nameHelp": "此连接在 Anton 中显示的名称。",
+    "url": "服务器 URL",
+    "urlHelp": "服务器的 https 地址。",
+    "advanced": "高级",
+    "clientId": "客户端 ID",
+    "clientIdHelp": "仅适用于不会自行注册应用的服务器。",
+    "clientSecret": "客户端密钥",
+    "redirectUri": "需要在服务器上注册的重定向 URI：",
+    "connect": "连接",
+    "connecting": "正在连接…",
+    "continue": "继续",
+    "back": "返回",
+    "confirmHosts": "你的登录信息及其代码将发送到：",
+    "confirmHostsHelp": "只有在你信任这些地址时才继续。",
+    "connected": "{count, plural, =0 {已连接。服务器没有将任何工具标记为只读，因此所有工具都已关闭。} other {已连接。已开启 # 个只读工具。}}",
+    "toolsUnavailable": "已连接，但无法列出服务器的工具。在你开启之前，所有工具都保持关闭。",
+    "done": "完成",
+    "error": {
+      "invalidUrl": "此 URL 无法使用。请输入服务器的 https 地址。",
+      "notPublic": "此地址不在公共互联网上，因此 Anton 不会连接它。",
+      "unresolved": "无法解析服务器名称。请检查 URL。",
+      "proxyNetwork": "此网络只允许通过代理连接，而通过 URL 添加的 MCP 服务器无法使用代理。",
+      "needsClientId": "此服务器需要客户端 ID。请在“高级”中添加。",
+      "timeout": "服务器响应时间过长。请重试。",
+      "loginFailed": "登录未完成：{reason}",
+      "unavailable": "目前无法使用通过 URL 添加的 MCP 服务器。请重启应用后重试。",
+      "keychain": "系统钥匙串不可用，因此无法安全地保存此连接。",
+      "serverChanged": "登录期间应用切换了账户或重新启动。请重试。",
+      "generic": "无法连接服务器：{reason}",
+      "invalidRequest": "该请求无效：{reason}",
+      "tokenRejected": "服务器不再接受此登录。请重新连接以再次登录。",
+      "unreachable": "无法访问服务器。请稍后重试。",
+      "notHandedOver": "应用尚未将设置交给此服务器。请重启应用后重试。",
+      "missing": "此连接已不存在。",
+      "unreadable": "暂时无法读取此连接的记录。请稍后重试。"
+    },
+    "detail": {
+      "server": "服务器",
+      "tools": "工具",
+      "toolsIntro": "Anton 只使用在这里开启的工具。服务器之后添加的工具在你开启之前保持关闭。",
+      "noTools": "此服务器没有列出任何工具。",
+      "toolSwitch": "允许 Anton 使用 {name}",
+      "reconnect": "重新连接",
+      "reconnected": "已重新连接。你的工具选择已保留。",
+      "disconnect": "断开连接",
+      "disconnectTitle": "断开 {name} 的连接？",
+      "disconnectMessage": "Anton 将停止使用此服务器，在服务器允许时撤销其登录，并从这台电脑上删除其设置。"
+    }
   }
 }

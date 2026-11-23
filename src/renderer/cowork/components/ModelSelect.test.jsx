@@ -16,6 +16,7 @@ vi.mock('../lib/analytics', async (importOriginal) => {
 });
 
 import { ModelSelect } from './ModelSelect';
+import { host } from '../../platform/host';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { buildModelPickerOptions } from '../lib/modelPickerOptions';
@@ -302,6 +303,21 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
 
+  it('inside the mobile app, shows a locked model as unavailable without a billing action', async () => {
+    const user = userEvent.setup();
+    host.isMobileShell = true;
+    try {
+      render(<Harness options={LOCKED} />);
+
+      await user.click(screen.getByRole('combobox'));
+      const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+      expect(within(row).getByText('Unavailable')).toBeInTheDocument();
+      expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
+    } finally {
+      host.isMobileShell = false;
+    }
+  });
+
   it('leaves an affordable row without one', async () => {
     const user = userEvent.setup();
     render(<Harness options={LOCKED} />);
@@ -328,7 +344,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
 });
 
 /* A budget-stopped row is closed off too, and credits do not lift a budget. */
-describe('ModelSelect: a row the org budget stops offers no credits', () => {
+describe('ModelSelect: a row a spent budget stops offers no credits', () => {
   const OPTIONS = buildModelPickerOptions([
     { id: 'mindshub_air', name: 'MindsHub Air' },
     { id: 'opus', name: 'Claude Opus 5' },
@@ -345,7 +361,7 @@ describe('ModelSelect: a row the org budget stops offers no credits', () => {
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     expect(row).toHaveTextContent('Budget reached');
     expect(row).not.toHaveTextContent('Needs credits');
-    expect(row).toHaveAttribute('title', "Your organization's budget is used up. An owner or admin can raise it in Budgets.");
+    expect(row).toHaveAttribute('title', "A budget covering this model is used up. An administrator can raise it in Budgets.");
     expect(row).toHaveAttribute('aria-disabled', 'true');
     expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
   });

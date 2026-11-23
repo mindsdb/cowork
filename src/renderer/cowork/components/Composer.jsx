@@ -25,7 +25,7 @@ import {
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { renameClipboardImages } from '../lib/clipboardImageName';
-import { AttachmentThumbnail } from './AttachmentThumbnail';
+import { AttachmentChip } from './AttachmentChip';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
 import { host } from '../../platform/host';
@@ -82,43 +82,6 @@ function TaskModeChip({ mode, onClear }) {
   );
 }
 
-function AttachmentChip({ attachment, onRemove }) {
-  const { t } = useTranslation('chat');
-  const src = attachment.source || attachment.kind || 'file';
-  const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
-  const label = src === 'connector' ? t('composer.attachment.connector') : src === 'gdrive' ? 'Google Drive' : isImage ? t('composer.attachment.image') : t('composer.attachment.file');
-  const status = attachment.pendingFile
-    ? t('composer.attachment.queued')
-    : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
-      ? attachment.extractionStatus.replace('_', ' ')
-      : null);
-  // Pending image uploads carry the original File, so preview it straight
-  // from a local object URL (no fetch). Other attachments keep the glyph.
-  const showThumb = isImage && attachment.pendingFile;
-  return (
-    <div className="attachment-chip" title={attachment.note || attachment.textPreview || attachment.name}>
-      <span className="attachment-chip-icon">
-        {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || t('composer.attachment.image')} />
-          : src === 'connector' ? Ico.link(14)
-            : src === 'gdrive' ? Ico.googleDrive(14)
-              : isImage ? Ico.image(14)
-                : Ico.doc(14)}
-      </span>
-      <span className="attachment-chip-body">
-        <span className="attachment-chip-name">{attachment.name || label}</span>
-        <span className="attachment-chip-meta">{status || label}</span>
-      </span>
-      {onRemove && (
-        <Tooltip content={t('composer.attachment.remove')}>
-          <button className="attachment-chip-remove" aria-label={t('composer.attachment.remove')} onClick={() => onRemove(attachment.id)}>
-            x
-          </button>
-        </Tooltip>
-      )}
-    </div>
-  );
-}
-
 export default function Composer({
   onSend,
   project,
@@ -148,11 +111,14 @@ export default function Composer({
   onNavigateToConnectors,
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddNotionPages,
   onAddSharePointFiles,
   /** When set with `onUpdateConnectorMute`, Connectors submenu toggles mute (applied when you send). */
   conversationId = null,
   disabledConnections = [],
   onUpdateConnectorMute,
+  /** Starts a voice call with the agent (prototype); null hides it from the + menu. */
+  onStartVoiceCall = null,
   /**
    * The shared browser for this task or the next one, shown as a Browser
    * switch in the + menu. Null hides it.
@@ -162,6 +128,13 @@ export default function Composer({
   onRemoveAttachment,
   placeholder: placeholderProp,
   disabled = false,
+  /** Whether the draft can be sent. Defaults to "has text"; a mode that
+      sends an attachment alone, or needs more than its own starter text,
+      passes its own rule. */
+  canSend = null,
+  /** Told the text after each change, typed, pasted or placed, for a caller
+      whose guidance depends on it (the own-work mode's "Now add…" hint). */
+  onValueChange,
   metaReadOnly = false,
   // Whether the model pill is a fixed label rather than a picker. Defaults
   // to metaReadOnly (ChatView's prior behavior: "model is fixed once a task
@@ -265,6 +238,7 @@ export default function Composer({
   const [attachMenuBelow, setAttachMenuBelow] = useState(false);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const [gdrivePickerBusy, setGdrivePickerBusy] = useState(false);
+  const [notionPickerBusy, setNotionPickerBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
@@ -859,6 +833,20 @@ export default function Composer({
     }
   }
 
+  async function handleAddNotionPages() {
+    if (!onAddNotionPages || notionPickerBusy) return;
+    setError('');
+    setNotionPickerBusy(true);
+    setOpenMenu(null);
+    try {
+      await Promise.resolve(onAddNotionPages(project?.name));
+    } catch (err) {
+      setError(err.message || 'Could not add Notion pages.');
+    } finally {
+      setNotionPickerBusy(false);
+    }
+  }
+
   // Drag OS files onto the composer to attach them to the message.
   const { isDragging: filesDragging, dropHandlers: fileDropHandlers } = useFileDrop({
     onFiles: handleAttachFiles,
@@ -902,8 +890,13 @@ export default function Composer({
     }
   }
 
+  const sendable = canSend ? canSend(value) : Boolean(value.trim());
+  useEffect(() => {
+    onValueChange?.(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
   const handleSend = async () => {
-    if (disabled || !value.trim()) return;
+    if (disabled || !sendable) return;
     setBusy(true);
     try {
       // Model selection always rides along (it applies to Anton too, not
@@ -940,9 +933,14 @@ export default function Composer({
   // polled usage; the pick decides whether free Air tokens or the paid
   // balance is what the next turn spends.
   const hubUsage = useContext(HubUsageContext);
+  // On Plus or Pro, a pick the plan does not cover runs on the wallet, so its
+  // bar speaks of the wallet rather than the plan's windows (ENG-4186).
+  const pickCoveredByTier = modelMeta?.modelCoveredByTier?.[model?.id ?? model] ?? null;
   const usageWarning = useMemo(
-    () => (hubUsage ? deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model }) : null),
-    [hubUsage, model],
+    () => (hubUsage ? deriveComposerWarning(hubUsage.usage, {
+      providerType: hubUsage.providerType, model, coveredByTier: pickCoveredByTier,
+    }) : null),
+    [hubUsage, model, pickCoveredByTier],
   );
   // What the bar would say for ANY pick, not just the current one. Two things
   // read it: "healthy" for forgetting closed bars, and the height reservation
@@ -1269,6 +1267,15 @@ export default function Composer({
                       {Ico.googleDrive(14)} {gdrivePickerBusy ? t('composer.menu.openingGoogleDrive') : t('composer.menu.addFromGoogleDrive')}
                     </button>
                   )}
+                  {onAddNotionPages && (
+                    <button
+                      className="menu-item"
+                      onClick={handleAddNotionPages}
+                      disabled={notionPickerBusy}
+                    >
+                      {Ico.notion(14)} {notionPickerBusy ? 'Opening Notion…' : 'Add pages from Notion'}
+                    </button>
+                  )}
                   {onAddSharePointFiles && project?.name && (
                     <button
                       className="menu-item"
@@ -1307,6 +1314,17 @@ export default function Composer({
                         <span className="toggle-thumb" />
                       </button>
                     </div>
+                  )}
+                  {onStartVoiceCall && (
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        onStartVoiceCall();
+                      }}
+                    >
+                      {Ico.call(14)} {t('composer.voiceCall')}
+                    </button>
                   )}
                   <button
                     className="menu-item"
@@ -1542,10 +1560,10 @@ export default function Composer({
               <Tooltip content={t('composer.send')}>
                 <button
                   className="send-btn"
-                  disabled={disabled || !value.trim() || busy}
+                  disabled={disabled || !sendable || busy}
                   onClick={handleSend}
                   aria-label={t('composer.send')}
-                  title={(disabled || !value.trim() || busy) ? t('composer.send') : undefined}
+                  title={(disabled || !sendable || busy) ? t('composer.send') : undefined}
                 >
                   {Ico.send(16)}
                 </button>

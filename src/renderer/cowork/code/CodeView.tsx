@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { budgetModelName } from '../lib/budgetScope';
 import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
@@ -7,6 +8,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { QuestionCard } from './QuestionCard';
 import { PlanDecision } from './PlanDecision';
 import { TaskAttentionBar } from './TaskAttentionBar';
+import { WorkspaceCleanupNotice } from './WorkspaceCleanupNotice';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
 import { CodeProjectsView } from './CodeProjectsView';
@@ -17,7 +19,7 @@ import { EventTimeline } from './EventTimeline';
 import { useDockInset } from '../components/chat/useDockInset';
 import { ComposerLip } from './ComposerLip';
 import { PromptQueue } from './ComposerMenus';
-import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice, releaseNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice, releaseNotice, writesNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -46,7 +48,7 @@ import { isActiveStatus, promptHistory } from './presentation';
 import { useComposerNotice } from './useComposerNotice';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
 import { trackBillingOpened } from '../lib/analytics';
-import { MINDS_BUDGETS_URL, consoleUrlFor } from '../../lib/mindsUrls';
+import { MINDS_BUDGETS_DENIAL_URL, consoleUrlFor } from '../../lib/mindsUrls';
 import { USAGE_ACTIONS, usageActionUrl } from '../lib/usageWarnings';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { openCodeExternalUrl } from './shellLinks';
@@ -68,6 +70,7 @@ export default function CodeView({
   defaultEngineId,
   defaultModel,
   models,
+  modelLabels,
   modelMeta,
   account = null,
   skillScopeKey = 'signed-out',
@@ -96,6 +99,8 @@ export default function CodeView({
   defaultEngineId: string;
   defaultModel: string;
   models: ModelPickerSource[];
+  /** The catalog's display labels by model id, from settings. */
+  modelLabels?: Record<string, string>;
   modelMeta: ModelPickerMeta;
   /** The signed-in account, used to prefill a Git identity when a commit needs one. */
   account?: { name?: string | null; email?: string | null; orgId?: string | null; sub?: string | null } | null;
@@ -287,11 +292,13 @@ export default function CodeView({
     failureNotice(
       accountFailure(session, latestSessionEvent, latestErrorEvent, taskRecovering),
       models.find((model) => model.id === session.model)?.name || session.model,
+      (id) => budgetModelName(id, modelLabels, (alias) => models.find((model) => model.id === alias)?.name),
     ),
     recoveryNotice(session, latestSessionEvent, latestErrorEvent, taskRecovering),
     releaseNotice(session),
     messageNotice('error', conversationError),
     messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
+    writesNotice(session),
     queueNotice(session),
   ] : [], selectedId);
   const approval = session?.pending_approval?.id === resolvingApprovalId
@@ -350,6 +357,7 @@ export default function CodeView({
   return (
     <SkillScopeContext.Provider value={skillScopeKey}>
       <div className="code-page">
+        <WorkspaceCleanupNotice key={skillScopeKey} active={active} taskCount={sessions.length} />
         <TaskAttentionBar sessions={sessions} selectedId={newTask ? null : selectedId} active={active} scopeKey={skillScopeKey} onSelect={id => onAttentionSelect ? onAttentionSelect(id) : onSelectionChange(id, false)} />
         <DeliveryAutomationMonitor
           sessions={sessions}
@@ -550,12 +558,16 @@ export default function CodeView({
                       onViewBudgets={() => {
                         trackBillingOpened('budget_exceeded', 'code');
                         // The session's organization, so the console opens its Budgets tab.
-                        void openCodeExternalUrl(consoleUrlFor(MINDS_BUDGETS_URL, {
+                        void openCodeExternalUrl(consoleUrlFor(MINDS_BUDGETS_DENIAL_URL, {
                           organizationId: account?.orgId ?? null,
                           subject: account?.sub ?? null,
                         }));
                       }}
                       onReopen={() => void recoverTask(session.id)}
+                      onAllowWrites={() => runAction(
+                        () => codingApi.updateSession(session.id, { writes_allowed: true }),
+                        true,
+                      )}
                       onDismiss={lip.dismiss}
                     />
                   )}

@@ -47,9 +47,11 @@ import {
   requireWebOrganizationCacheIdentity,
 } from './cowork/lib/organizationCacheIdentity';
 import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
+import { noteAccountVisit } from './cowork/lib/accountVisit';
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
-import { keycloak, mobileShellAdapter } from './lib/keycloak';
+import { captureSignupWelcome } from './cowork/lib/signupWelcome';
+import { keycloak, mobileSession, mobileShellAdapter } from './lib/keycloak';
 import { keycloakInitOptions } from './lib/mobileAuth';
 import { applyMobileShellDocument, mobileShell } from './lib/mobileShell';
 import { startMobilePush } from './lib/mobilePush';
@@ -88,6 +90,8 @@ if (mobileShell) startMobilePush();
 captureConsoleHandoff();
 // Same for a link into Settings (?settings=appearance&section=branding).
 captureSettingsDeepLink();
+// And a brand-new account's landing (?welcome=1&from=desktop, ENG-4288).
+captureSignupWelcome();
 
 // Base URL without query params. Keycloak validates redirect URIs strictly.
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
@@ -105,6 +109,9 @@ const codeFixture = import.meta.env.DEV && new URLSearchParams(window.location.s
 if (!legacyTenant && !codeFixture) requireWebOrganizationCacheIdentity();
 
 function bindOrganizationCacheTokens(tokens: { token?: string }) {
+  // Before the pin below lets the app write this account's caches, which are
+  // part of what says the account has been here before.
+  noteAccountVisit(tokens.token);
   if (pinWebOrganizationCacheIdentity(tokens.token) === 'changed') {
     prepareForOrganizationReload();
   }
@@ -124,6 +131,7 @@ void whenI18nReady().then(() => {
           authClient={keycloak}
           initOptions={initOptions}
           onTokens={bindOrganizationCacheTokens}
+          session={mobileSession}
         >
           <App />
         </MobileShellRoot>

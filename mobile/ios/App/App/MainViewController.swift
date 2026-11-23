@@ -18,13 +18,13 @@ class MainViewController: CAPBridgeViewController {
     /// plugins, so the handler is replaced by one that only forwards calls
     /// from the main frame.
     private func restrictBridgeToMainFrame() {
-        guard let webView = webView,
-              let capacitorHandler = webView.navigationDelegate as? WKScriptMessageHandler else {
-            return
-        }
-        let filter = MainFrameBridgeFilter(target: capacitorHandler)
+        guard let webView else { return }
         let controller = webView.configuration.userContentController
         controller.removeScriptMessageHandler(forName: MainFrameBridgeFilter.handlerName)
+        guard let capacitorHandler = webView.navigationDelegate as? WKScriptMessageHandler,
+              let serverURL = bridge?.config.serverURL, serverURL.scheme == "https",
+              let host = serverURL.host else { return }
+        let filter = MainFrameBridgeFilter(target: capacitorHandler, host: host, port: serverURL.port ?? 443)
         controller.add(filter, name: MainFrameBridgeFilter.handlerName)
         mainFrameBridgeFilter = filter
     }
@@ -37,12 +37,19 @@ final class MainFrameBridgeFilter: NSObject, WKScriptMessageHandler {
 
     private weak var target: WKScriptMessageHandler?
 
-    init(target: WKScriptMessageHandler) {
+    private let host: String
+    private let port: Int
+
+    init(target: WKScriptMessageHandler, host: String, port: Int) {
+        self.host = host.lowercased()
+        self.port = port
         self.target = target
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame else { return }
+        let origin = message.frameInfo.securityOrigin
+        guard message.frameInfo.isMainFrame, origin.protocol == "https",
+              origin.host.lowercased() == host, (origin.port == 0 ? 443 : origin.port) == port else { return }
         target?.userContentController(userContentController, didReceive: message)
     }
 }

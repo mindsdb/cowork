@@ -7,13 +7,19 @@
 // Manus (it shows a category flow instead), so those prompts are authored in
 // the same style from Manus's website categories.
 // The samples that start from the person's own file, notes or inbox, the
-// habit tracker, and the work samples that write their own realistic sample
-// to work on (a contract, a call transcript, a project plan) are ours, not
-// Manus's. Those lead with the sample on purpose: asked for a file first, the
-// free-tier model stops and waits, and a first click must still produce
-// something. A sample with `plain: true` sits in a mode its instruction does
+// habit tracker, the prospect, competitor and lead-list research, and the
+// work samples that write their own realistic sample to work on (a contract,
+// a call transcript, a project plan, a report, a bank statement, lecture
+// notes) are ours, not Manus's. The work samples lead with the sample on
+// purpose: asked for a file first, the free-tier model stops and waits, and a
+// first click must still produce something. A sample with `plain: true` sits in a mode its instruction does
 // not fit (a weekly update is not a slide deck), and the person is expected to
 // add to it, so it is sent as written even then.
+//
+// `ownData: true` marks a mode whose examples work on sample data or a
+// document, so the finished example offers "Do this with my own data". A
+// sample can set its own `ownData` to differ from its mode. Games, websites
+// and apps make something new and have nothing of the person's to swap in.
 //
 // `icon` is an Icons.jsx key (resolved dynamically — keep keys in sync with
 // that file). `samplesVariant` mirrors Manus: slides + visualization render
@@ -28,6 +34,7 @@ import i18n from '../../../lib/i18n';
 export const TASK_MODES = [
   {
     id: 'slides',
+    ownData: true,
     pillLabel: 'Create slides',
     chipLabel: 'Slides',
     icon: 'presentation',
@@ -55,6 +62,10 @@ export const TASK_MODES = [
         label: "Draft this week's update from last week's",
         prompt: "I'm going to paste last week's update and my rough notes for this week. Draft this week's update in the same format, highlight what changed, and ask me if anything is unclear.",
         plain: true,
+      },
+      {
+        label: 'Turn a report into a presentation',
+        prompt: 'Write a realistic sample four-page project report, then turn it into a 10-slide presentation for a 10-minute talk, with a consistent color theme, speaker notes, and a time per slide. Afterwards I\'ll attach my own document.',
       },
     ],
   },
@@ -148,6 +159,7 @@ export const TASK_MODES = [
   },
   {
     id: 'spreadsheet',
+    ownData: true,
     pillLabel: 'Spreadsheet',
     chipLabel: 'Spreadsheet',
     icon: 'table',
@@ -184,10 +196,15 @@ export const TASK_MODES = [
         prompt: 'Write a realistic sample vendor services contract, then extract its key terms into a table: parties, start and end dates, renewal and notice period, payment terms, liability cap, termination rights. Flag anything unusual or one-sided. Afterwards I\'ll attach my own contract for the same treatment.',
         plain: true,
       },
+      {
+        label: 'Turn a bank statement into a spreadsheet',
+        prompt: 'Create a realistic sample one-month bank statement, then convert it into an Excel workbook with one transaction per row (date, description, money in, money out, running balance). Check that the totals match the statement and list anything that doesn\'t reconcile. Afterwards I\'ll attach my real statement.',
+      },
     ],
   },
   {
     id: 'visualization',
+    ownData: true,
     pillLabel: 'Visualization',
     chipLabel: 'Visualization',
     icon: 'chartColumn',
@@ -223,6 +240,7 @@ export const TASK_MODES = [
   },
   {
     id: 'wide-research',
+    ownData: true,
     pillLabel: 'Wide Research',
     chipLabel: 'Wide Research',
     icon: 'telescope',
@@ -279,6 +297,19 @@ export const TASK_MODES = [
         prompt: "I'm going to paste a meeting transcript or rough notes (if I don't, use a realistic sample). Pull out decisions, action items with owners and due dates, and open questions, then draft a short recap email I can send to attendees.",
         plain: true,
       },
+      {
+        label: 'Map a competitor\'s go-to-market',
+        prompt: 'Build a one-page competitor snapshot of Clay from public sources: what it sells and to whom, its top three competitors and how it positions against each, and the signals that someone is ready to buy. Cite a source for each part and save it as a Word document. Then tell me where a newer competitor could win against Clay and where Clay is hard to beat. Afterwards I\'ll describe my company so you can compare us.',
+      },
+      {
+        label: 'Make a study guide from course material',
+        prompt: 'Write a realistic sample set of lecture notes on the basics of contract law, then turn them into a study guide: key concepts, definitions in the exact wording from the notes, a glossary, and a 10-question practice quiz with answers. Save it as a document. Afterwards I\'ll attach my own slides.',
+        plain: true,
+      },
+      {
+        label: 'Build a ranked lead list',
+        prompt: 'Find 15 mid-sized companies in Germany that make industrial machinery and could need 3D-printed prototypes. Return a ranked spreadsheet with company, what they make, size, a fit score from 0 to 100, why they fit, and a source link. Don\'t invent contact details.',
+      },
     ],
   },
   {
@@ -330,17 +361,38 @@ export function resemblesSample(sample, text) {
   return want.length > 0 && want.filter((w) => have.has(w)).length / want.length >= 0.5;
 }
 
-export function composeModeMessage(mode, text, pickedSample) {
-  if (!mode || !mode.instruction) return text;
+/** The outgoing message for a selected mode, and what happened to the mode's
+    instruction line: `appended`, `replaced_example` (an example was placed and
+    the person sent something else instead, so the line would describe a
+    request they did not make), or `example` (the text is an example, which
+    already says what it wants). `modeLine` is null when no mode applies. */
+export function modeMessage(mode, text, pickedSample) {
+  if (!mode || !mode.instruction) return { text, modeLine: null };
+  // A placed example takes the line only while it is all still there: the
+  // person added text before or after it, nothing else. An edit inside it, a
+  // paste over it or clearing it makes the text their own request, which can
+  // share most of the example's words and still ask for something else. When
+  // in doubt it counts as replaced: a request left without the line still
+  // says what it wants, while a line under a different request contradicts it.
+  if (pickedSample && !pickedSample.plain && !text.includes(pickedSample.prompt)) {
+    return { text, modeLine: 'replaced_example' };
+  }
+  if (pickedSample?.plain && !resemblesSample(pickedSample, text)) {
+    return { text, modeLine: 'replaced_example' };
+  }
   // A plain example the person picked keeps its own wording however they edit it.
-  if (pickedSample?.plain && mode.samples.includes(pickedSample) && resemblesSample(pickedSample, text)) return text;
+  if (pickedSample?.plain && mode.samples.includes(pickedSample)) return { text, modeLine: 'example' };
   const sent = text.trim();
   // A picked sample is already a full prompt — appending the instruction
   // would send a doubled signal ("…zen garden.\n\nCreate a playable game.").
-  if (mode.samples.some((s) => s.prompt === sent)) return text;
+  if (mode.samples.some((s) => s.prompt === sent)) return { text, modeLine: 'example' };
   // A plain sample keeps its own wording once the person adds to it.
-  if (mode.samples.some((s) => s.plain && sent.startsWith(s.prompt))) return text;
-  return `${text}\n\n${mode.instruction}`;
+  if (mode.samples.some((s) => s.plain && sent.startsWith(s.prompt))) return { text, modeLine: 'example' };
+  return { text: `${text}\n\n${mode.instruction}`, modeLine: 'appended' };
+}
+
+export function composeModeMessage(mode, text, pickedSample) {
+  return modeMessage(mode, text, pickedSample).text;
 }
 
 // What the checklist's "Try an example" row opens on Home: one short list that
@@ -367,6 +419,95 @@ export const FEATURED_EXAMPLES_MODE = {
   samples: FEATURED_LABELS.map((label) => ALL_SAMPLES.find((s) => s.label === label)).filter(Boolean),
 };
 
+// What the checklist's "Start with your own work" row opens on Home. Nothing
+// is sent until the person gives Cowork something of theirs: a file, pasted
+// text or a link. A job is optional. Whatever is sent asks Cowork to start on
+// stated assumptions, because a reply that opens with a question is where
+// people left.
+export const OWN_WORK_START_NOW =
+  "Start right away with sensible assumptions and tell me what you assumed. Don't ask me questions first.";
+export const OWN_WORK_LEAD =
+  "Here's something from my work. Take a useful first step with it and tell me what you did, then suggest two or three things you could do next.";
+
+// A job's label is its message text and, through sampleId, its analytics id;
+// what a person reads comes from the chat catalog (ownWork.jobs.<group>.<n>).
+const job = (label) => ({ label, prompt: label });
+export const OWN_WORK_JOB_GROUPS = [
+  {
+    id: 'finance',
+    jobs: [
+      job('Turn these bank statements or invoices into one spreadsheet.'),
+      job('Build the next monthly report from these numbers.'),
+      job('Check these statements for errors or unusual items.'),
+    ],
+  },
+  {
+    id: 'sales',
+    jobs: [
+      job('Clean up this customer list and flag duplicates.'),
+      job('Compare these two price lists and show what changed.'),
+      job('Draft follow-up emails from these call notes.'),
+    ],
+  },
+  {
+    id: 'operations',
+    jobs: [
+      job('Turn these meeting notes into decisions and action items.'),
+      job('Turn these notes into a one-page brief.'),
+      job('Turn this process document into a step-by-step checklist.'),
+    ],
+  },
+  {
+    id: 'legal',
+    jobs: [
+      job('Summarize the key terms and risks in this contract.'),
+      job('Summarize this report and pull out the numbers that matter.'),
+      job('Read this page and tell me what matters for us.'),
+    ],
+  },
+];
+
+export const OWN_WORK_MODE = {
+  id: 'own-work',
+  chipLabel: 'Your work',
+  icon: 'attach',
+  placeholder: 'Paste text or a link, or attach a file',
+  instruction: OWN_WORK_START_NOW,
+  samplesVariant: 'own-work',
+  samples: OWN_WORK_JOB_GROUPS.flatMap((g) => g.jobs),
+};
+
+/** The job a draft starts with, or null. */
+export function ownWorkJobIn(text) {
+  const sent = String(text || '').trim();
+  return OWN_WORK_MODE.samples.find((j) => sent.startsWith(j.prompt)) ?? null;
+}
+
+// Material has to say something: a letter, a number or a symbol such as an
+// emoji (survey answers can be "👍 👎 👍"). Punctuation alone, like a ":" left
+// after a job, is not something to work on.
+const saysSomething = (text) => /[\p{L}\p{N}\p{S}]/u.test(text);
+
+/** Whether a draft in the own-work mode carries something of the person's:
+    an attachment, text after a job left exactly as placed, or, with no such
+    job, any text: an edited job is the person's own request. */
+export function hasOwnMaterial(text, attachmentCount = 0) {
+  if (attachmentCount > 0) return true;
+  const sent = String(text || '').trim();
+  const job = ownWorkJobIn(sent);
+  return saysSomething(job ? sent.slice(job.prompt.length) : sent);
+}
+
+/** The message the own-work mode sends: the job, or a generic first step when
+    there is none, the start-now instruction, then the person's material. */
+export function composeOwnWorkMessage(text) {
+  const sent = String(text || '').trim();
+  const picked = ownWorkJobIn(sent);
+  const lead = picked ? picked.prompt : OWN_WORK_LEAD;
+  const material = (picked ? sent.slice(picked.prompt.length) : sent).trim();
+  return `${lead} ${OWN_WORK_START_NOW}${material ? `\n\n${material}` : ''}`;
+}
+
 /* What a person reads is translated when it is read; the English above stays
    the data. A mode's pill, chip and placeholder text are getters onto the
    chat catalog (taskModes.<mode id>.<field>), so every surface that shows
@@ -375,7 +516,7 @@ export const FEATURED_EXAMPLES_MODE = {
    and `sampleLabel` translates it for display. `instruction` and `prompt` are
    message text the agent reads, and are never translated. */
 const DISPLAY_FIELDS = ['pillLabel', 'chipLabel', 'chipNoun', 'placeholder'];
-for (const mode of [...TASK_MODES, FEATURED_EXAMPLES_MODE]) {
+for (const mode of [...TASK_MODES, FEATURED_EXAMPLES_MODE, OWN_WORK_MODE]) {
   for (const field of DISPLAY_FIELDS) {
     if (!(field in mode)) continue;
     const english = mode[field];
@@ -394,6 +535,26 @@ export function sampleLabel(sample) {
     if (index >= 0) return i18n.t(`taskModes.${mode.id}.samples.${index}`, { ns: 'chat', defaultValue: sample.label });
   }
   return sample?.label;
+}
+
+/** Whether a finished example invites the person's own data in place of
+    the sample it made up. The cross-mode Examples list holds the same sample
+    objects, so each of its entries answers by the mode it comes from. */
+export function exampleTakesOwnData(sample) {
+  const mode = TASK_MODES.find((m) => m.samples.includes(sample));
+  return Boolean(sample?.ownData ?? mode?.ownData);
+}
+
+/** The example a sent message starts from, or null. The message may carry
+    the person's additions or the mode's instruction after the prompt. */
+export function exampleForMessage(text) {
+  const sent = typeof text === 'string' ? text.trim() : '';
+  if (!sent) return null;
+  for (const mode of TASK_MODES) {
+    const sample = mode.samples.find((s) => sent.startsWith(s.prompt));
+    if (sample) return sample;
+  }
+  return null;
 }
 
 /** The mode and sample whose prompt is exactly `prompt`, or null. */

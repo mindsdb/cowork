@@ -4,6 +4,11 @@ import {
   createHtmlVisualEditorRuntime,
   HTML_VISUAL_EDITOR_ATTRIBUTE,
 } from './htmlVisualEditorRuntime';
+import {
+  createHtmlComparisonRuntime,
+  HTML_COMPARISON_ACTIVE_ATTRIBUTE,
+  HTML_COMPARISON_ATTRIBUTE,
+} from './htmlComparisonRuntime';
 
 const PRIMARY_TEXT_TAGS = new Set([
   'address', 'blockquote', 'button', 'caption', 'dd', 'dt', 'figcaption',
@@ -23,14 +28,19 @@ const INLINE_TAGS = new Set([
 ]);
 
 const DROP_FRAGMENT_TAGS = new Set(['base', 'embed', 'iframe', 'object', 'script', 'style']);
-const HTML_COMPARISON_ATTRIBUTE = 'data-cowork-comparison-change';
+// Edit mode only (the runtime's Navigate / Edit switch sets the attribute):
+// editable text shows a text cursor and an outline, and everything else an
+// arrow, since a click there no longer does what the page would do. In
+// Navigate mode the page keeps its own cursors and shows no outlines.
+const EDIT_MODE = 'html[data-cowork-editor-mode="edit"]';
 const EDITOR_STYLE = `
-[${HTML_VISUAL_EDITOR_ATTRIBUTE}] { cursor: text !important; }
-[${HTML_VISUAL_EDITOR_ATTRIBUTE}]:hover {
+${EDIT_MODE} body, ${EDIT_MODE} body * { cursor: default !important; }
+${EDIT_MODE} [${HTML_VISUAL_EDITOR_ATTRIBUTE}], ${EDIT_MODE} [${HTML_VISUAL_EDITOR_ATTRIBUTE}] * { cursor: text !important; }
+${EDIT_MODE} [${HTML_VISUAL_EDITOR_ATTRIBUTE}]:hover {
   outline: 1px dashed rgba(52, 195, 222, .92) !important;
   outline-offset: 4px !important;
 }
-[${HTML_VISUAL_EDITOR_ATTRIBUTE}][data-cowork-editor-selected] {
+${EDIT_MODE} [${HTML_VISUAL_EDITOR_ATTRIBUTE}][data-cowork-editor-selected] {
   outline: 2px solid rgb(52, 195, 222) !important;
   outline-offset: 4px !important;
   box-shadow: 0 0 0 5px rgba(52, 195, 222, .16) !important;
@@ -43,6 +53,11 @@ const COMPARISON_STYLE = `
   outline: 2px solid rgb(38, 181, 207) !important;
   outline-offset: 5px !important;
   box-shadow: 0 0 0 5px rgba(38, 181, 207, .16) !important;
+}
+[${HTML_COMPARISON_ATTRIBUTE}][${HTML_COMPARISON_ACTIVE_ATTRIBUTE}] {
+  outline-width: 3px !important;
+  box-shadow: 0 0 0 9px rgba(38, 181, 207, .32) !important;
+  transition: box-shadow .2s ease-out !important;
 }
 `;
 
@@ -168,12 +183,13 @@ export function createHtmlVisualEditorDocument(content, { baseUrl = '', token })
 export function createHtmlVisualComparisonDocuments(
   beforeContent,
   afterContent,
-  { baseUrl = '' } = {},
+  { baseUrl = '', token = '' } = {},
 ) {
   const beforeDocument = parse(String(beforeContent || ''), { sourceCodeLocationInfo: true });
   const afterDocument = parse(String(afterContent || ''), { sourceCodeLocationInfo: true });
   const beforeNodes = collectEditableNodes(beforeDocument);
   const afterNodes = collectEditableNodes(afterDocument);
+  const afterIndex = new Map(afterNodes.map((node, index) => [node, index]));
   const afterById = new Map(
     afterNodes.flatMap((node) => {
       const id = getAttribute(node, 'id');
@@ -182,15 +198,16 @@ export function createHtmlVisualComparisonDocuments(
   );
   const afterByPath = new Map(afterNodes.map((node) => [nodePath(node), node]));
   const matchedAfter = new Set();
-  const changes = [];
+  const found = [];
+  // Where the last matched element sits in the after document, so a removal
+  // is ordered right after the text it used to follow.
+  let lastAfterIndex = -1;
 
-  const recordChange = (beforeNode, afterNode) => {
+  const recordChange = (beforeNode, afterNode, order) => {
     const before = beforeNode ? normalizedText(beforeNode) : '';
     const after = afterNode ? normalizedText(afterNode) : '';
     if (before === after) return;
-    if (beforeNode) setAttribute(beforeNode, HTML_COMPARISON_ATTRIBUTE, '');
-    if (afterNode) setAttribute(afterNode, HTML_COMPARISON_ATTRIBUTE, '');
-    changes.push({ before, after });
+    found.push({ beforeNode, afterNode, before, after, order });
   };
 
   for (const beforeNode of beforeNodes) {
@@ -207,17 +224,31 @@ export function createHtmlVisualComparisonDocuments(
       }
     }
     if (afterNode && matchedAfter.has(afterNode)) afterNode = null;
-    if (afterNode) matchedAfter.add(afterNode);
-    recordChange(beforeNode, afterNode);
+    if (afterNode) {
+      matchedAfter.add(afterNode);
+      lastAfterIndex = afterIndex.get(afterNode);
+    }
+    recordChange(beforeNode, afterNode, afterNode ? lastAfterIndex : lastAfterIndex + 0.5);
   }
 
   for (const afterNode of afterNodes) {
-    if (!matchedAfter.has(afterNode)) recordChange(null, afterNode);
+    if (!matchedAfter.has(afterNode)) recordChange(null, afterNode, afterIndex.get(afterNode));
   }
 
+  // Changes are numbered in reading order of the updated page, so stepping
+  // through them moves down the page. The number is written on whichever
+  // side(s) have the element, which is how both frames find the same change.
+  found.sort((a, b) => a.order - b.order);
+  const changes = found.map(({ beforeNode, afterNode, before, after }, index) => {
+    if (beforeNode) setAttribute(beforeNode, HTML_COMPARISON_ATTRIBUTE, String(index));
+    if (afterNode) setAttribute(afterNode, HTML_COMPARISON_ATTRIBUTE, String(index));
+    return { before, after, inBefore: !!beforeNode, inAfter: !!afterNode };
+  });
+
+  const runtime = token ? `<script>${createHtmlComparisonRuntime(token)}</script>` : '';
   const decorate = (document) => insertIntoHead(
     serialize(document),
-    headMarkup(baseUrl, `<style>${COMPARISON_STYLE}</style>`),
+    headMarkup(baseUrl, `${runtime}<style>${COMPARISON_STYLE}</style>`),
   );
 
   return {
@@ -273,33 +304,45 @@ export function sanitizeHtmlVisualEdit(html) {
   return serialize(fragment);
 }
 
-export function applyHtmlVisualEditAtRanges(content, elements, elementId, html) {
+/** The HTML inside an editable element, as the source has it now; null when
+    the element's range is gone. */
+export function htmlVisualElementHtml(content, elements, elementId) {
   const range = elements?.find((element) => element.id === elementId);
-  const start = range?.start;
-  const end = range?.end;
-  if (
-    !range
-    || !Number.isInteger(start)
-    || !Number.isInteger(end)
-    || start < 0
-    || start > end
-    || end > content.length
-  ) {
+  if (!range || !Number.isInteger(range.start) || !Number.isInteger(range.end)) return null;
+  if (range.start < 0 || range.start > range.end || range.end > content.length) return null;
+  return content.slice(range.start, range.end);
+}
+
+/* Puts `html` inside the element as is, and moves the ranges after it. */
+function replaceElementHtml(content, elements, elementId, html) {
+  if (htmlVisualElementHtml(content, elements, elementId) == null) {
     throw new Error(i18n.t('htmlEditor.blockGone', { ns: 'artifacts' }));
   }
-
-  const nextHtml = sanitizeHtmlVisualEdit(html);
-  const delta = nextHtml.length - (end - start);
+  const { start, end } = elements.find((element) => element.id === elementId);
+  const delta = html.length - (end - start);
   return {
-    content: `${content.slice(0, start)}${nextHtml}${content.slice(end)}`,
+    content: `${content.slice(0, start)}${html}${content.slice(end)}`,
     elements: elements.map((element) => {
-      if (element.id === elementId) return { ...element, end: start + nextHtml.length };
+      if (element.id === elementId) return { ...element, end: start + html.length };
       if (element.start >= end) {
         return { ...element, start: element.start + delta, end: element.end + delta };
       }
       return element;
     }),
   };
+}
+
+export function applyHtmlVisualEditAtRanges(content, elements, elementId, html) {
+  if (htmlVisualElementHtml(content, elements, elementId) == null) {
+    throw new Error(i18n.t('htmlEditor.blockGone', { ns: 'artifacts' }));
+  }
+  return replaceElementHtml(content, elements, elementId, sanitizeHtmlVisualEdit(html));
+}
+
+/** Undoes one element's edit: puts back the HTML it had in the source. Not
+    sanitized, as that HTML came from the artifact itself, not the canvas. */
+export function restoreHtmlVisualElementAtRanges(content, elements, elementId, html) {
+  return replaceElementHtml(content, elements, elementId, String(html ?? ''));
 }
 
 export function applyHtmlVisualEdit(content, elementId, html) {

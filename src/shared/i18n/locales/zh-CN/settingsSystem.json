@@ -142,6 +142,16 @@
     "cancel": "取消",
     "signingOut": "正在退出登录…",
     "signOut": "退出登录",
+    "delete": {
+      "title": "删除账户",
+      "subtitle": "申请永久删除你的 MindsHub 账户。",
+      "button": "删除账户",
+      "confirmTitle": "删除你的 MindsHub 账户？",
+      "confirmBody": "支持团队会核实你的申请，并在 30 天内安排删除你的账户和个人数据。部分账户、账单和客服记录可能会保留。如果你拥有的组织还有其他成员，支持团队会先协助你转移所有权。其他成员将继续使用该组织及其共享数据。删除操作无法撤销。",
+      "sending": "正在发送…",
+      "requested": "申请日期：{requestedOn}。预计删除日期：{deleteBy}。",
+      "error": "未能确认你的申请。你可以放心重试。"
+    },
     "web": {
       "title": "通过 MindsHub 管理",
       "body": "网页版的账户通过 MindsHub 管理。"
@@ -177,13 +187,17 @@
       "pendingAction": "{rule}正在等待银行确认最近一笔扣款。",
       "badgeOn": "自动充值已开启",
       "badgeFailed": "自动充值失败",
-      "badgePaused": "自动充值已暂停"
+      "badgePaused": "自动充值已暂停",
+      "offMobile": "自动充值已关闭。",
+      "paymentFailedMobile": "自动充值失败：无法从你的卡中扣款。"
     },
     "low": {
       "off": "余额不足。请充值或开启自动充值，以便任务继续运行。",
       "ok": "余额不足。自动充值将为你补足余额。",
       "pending": "余额不足。自动充值正在等待银行确认。",
-      "other": "余额不足。请充值以便任务继续运行。"
+      "other": "余额不足。请充值以便任务继续运行。",
+      "offMobile": "余额不足。",
+      "otherMobile": "余额不足。"
     },
     "balance": {
       "title": "余额",
@@ -192,7 +206,8 @@
       "spentRange": "积分已用（{start} 至 {end}）",
       "spentDate": "积分已用（{date}）",
       "spentThisPeriod": "积分本期已用",
-      "notOwner": "只有组织的账单所有者才能充值或更改自动充值设置。"
+      "notOwner": "只有组织的账单所有者才能充值或更改自动充值设置。",
+      "emptyMobile": "你的余额已用完。付费模型不可用。"
     },
     "signIn": {
       "title": "登录以查看用量",
@@ -203,8 +218,24 @@
     "error": {
       "title": "无法加载用量",
       "body": "MindsHub 没有响应。请重试，或在控制台中查看用量。",
-      "tryAgain": "重试"
+      "tryAgain": "重试",
+      "bodyMobile": "MindsHub 没有响应。"
     },
-    "empty": "此账户暂无用量数据。"
+    "empty": "此账户暂无用量数据。",
+    "plan": {
+      "title": "{tier, select, plus {Plus 套餐} pro {Pro 套餐} other {套餐}}",
+      "renewsOn": "{date} 续订",
+      "endsOn": "{date} 结束",
+      "ending": "即将结束",
+      "pastDue": "付款失败",
+      "pastDueBody": "我们无法续订你的套餐。请在“管理”中更新银行卡以保留套餐。",
+      "windowName": "{window, select, 7d {每周额度} other {5 小时额度}}",
+      "windowUsed": "已使用 {percent}",
+      "windowUsedResets": "已使用 {percent} · {time} 重置",
+      "windowMeterLabel": "{window, select, 7d {每周额度用量} other {5 小时额度用量}}",
+      "afterCap": "超出任一额度后，任务将按 API 价格使用你的余额，或暂停至额度重置。",
+      "upgrade": "{tier, select, plus {开通 Plus} pro {升级到 Pro} other {升级}}",
+      "manage": "管理"
+    }
   }
 }

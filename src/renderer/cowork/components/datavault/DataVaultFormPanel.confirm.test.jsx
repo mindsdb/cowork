@@ -83,7 +83,7 @@ describe('confirming a test result', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: preview.confirm_id });
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: preview.confirm_id, reason: 'declined' });
     expect(api.confirmConnectorTest).not.toHaveBeenCalled();
     expect(getPendingTest(CID)).toBeNull();
     expect(getForm(CID)._is_success).toBeFalsy();
@@ -96,7 +96,35 @@ describe('confirming a test result', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /close/i }));
 
-    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: preview.confirm_id });
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: preview.confirm_id, reason: 'ended' });
+  });
+
+  it('a host that owns closing still ends the test without a decline', async () => {
+    const preview = streamEvent(fixture.stream, 'connector.test_preview');
+    applyConnectorTestEvent(CID, preview);
+    const onClose = vi.fn();
+    render(<DataVaultFormPanel conversationId={CID} onClose={onClose} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /close/i }));
+
+    expect(onClose).toHaveBeenCalledWith(CID);
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: preview.confirm_id, reason: 'ended' });
+  });
+
+  it('closing while Allow is answered ends the next test without a decline', async () => {
+    const ask = streamEvent(fixture.private.stream, 'connector.private_host_request');
+    applyConnectorTestEvent(CID, ask);
+    let answer;
+    api.allowConnectorTestHost.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    render(<DataVaultFormPanel conversationId={CID} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Allow for this test' }));
+    await userEvent.click(screen.getByRole('button', { name: /close/i }));
+    await act(async () => answer(fixture.private.allow));
+
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ approvalId: ask.approval_id, reason: 'ended' });
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: fixture.private.allow.confirm_id, reason: 'ended' });
+    expect(api.cancelConnectorTest).not.toHaveBeenCalledWith(expect.objectContaining({ reason: 'declined' }));
   });
 
   it('a test dropped outside the panel is cancelled on the server', () => {
@@ -104,12 +132,12 @@ describe('confirming a test result', () => {
     applyConnectorTestEvent(CID, preview);
     render(<DataVaultFormPanel conversationId={CID} />);
     act(() => setForm(CID, { ...SPEC, form_id: 'fm_cccccccccc' }));
-    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: preview.confirm_id });
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: preview.confirm_id, reason: 'ended' });
 
     const ask = streamEvent(fixture.private.stream, 'connector.private_host_request');
     act(() => { applyConnectorTestEvent(CID, ask); });
     act(() => clearForm(CID));
-    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ approvalId: ask.approval_id });
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ approvalId: ask.approval_id, reason: 'ended' });
   });
 
   it('a spec key alone never shows Confirm', () => {
@@ -145,7 +173,7 @@ describe('confirming a test result', () => {
 
     expect(getPendingTest(CID)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Confirm and save' })).toBeNull();
-    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: fixture.private.allow.confirm_id });
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: fixture.private.allow.confirm_id, reason: 'ended' });
   });
 
   it('an answer that arrives after a new test for the same form is dropped', async () => {
@@ -159,7 +187,7 @@ describe('confirming a test result', () => {
     await act(async () => answer({ ...fixture.private.allow, confirm_id: 'cf_old_next' }));
 
     expect(getPendingTest(CID).id).toBe('cf_new');
-    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: 'cf_old_next' });
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: 'cf_old_next', reason: 'ended' });
   });
 
   it('a save that completes after the form was replaced still refreshes the connections', async () => {
@@ -253,7 +281,7 @@ describe('allowing a private address', () => {
 
     await userEvent.click(screen.getByRole('button', { name: "Don't allow" }));
 
-    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ approvalId: ask.approval_id });
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ approvalId: ask.approval_id, reason: 'declined' });
   });
 });
 

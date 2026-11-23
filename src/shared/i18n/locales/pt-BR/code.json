@@ -1,4 +1,10 @@
 {
+  "workspaceCleanup": {
+    "failed": "Não foi possível remover alguns arquivos de tarefas excluídas. Tente a limpeza novamente para liberar espaço em disco.",
+    "retry": "Tentar limpeza novamente",
+    "retrying": "Tentando limpar novamente…",
+    "retryFailed": "Não foi possível tentar a limpeza novamente. Tente de novo."
+  },
   "reviewPanel": {
     "ariaLabel": "Revisar alterações",
     "closeAriaLabel": "Fechar painel de revisão",
@@ -27,11 +33,14 @@
       "branch": "Branch",
       "openOriginalFolder": "Abrir pasta original",
       "openIsolatedCopy": "Abrir cópia isolada",
-      "openOriginal": "Abrir original"
+      "openOriginal": "Abrir original",
+      "openYourFolder": "Abrir sua pasta"
     },
     "sourceChanged": {
       "title": "A origem tinha alterações locais quando esta tarefa começou",
-      "body": "Essas alterações ficaram na pasta de origem. O {product} verifica conflitos antes de aplicar."
+      "body": "Essas alterações ficaram na pasta de origem. O {product} verifica conflitos antes de aplicar.",
+      "inPlaceTitle": "A pasta já tinha alterações sem commit",
+      "inPlaceBody": "Elas aparecem nesta revisão junto com as do agente, e o commit feito aqui as inclui."
     },
     "reconcile": {
       "title": "Conciliar as alterações originais",
@@ -61,13 +70,20 @@
       "create": "Criar",
       "commitLabel": "Fazer commit de todas as alterações da tarefa",
       "commitPlaceholder": "Descreva a alteração",
-      "commit": "Commit"
+      "commit": "Commit",
+      "branchLabelInPlace": "Criar uma branch na sua pasta e mudar para ela",
+      "commitLabelInPlace": "Fazer commit de todas as alterações da sua pasta"
     },
     "applyConfirm": {
       "title": "Aplicar as alterações à pasta de origem?",
       "message": "Atualizar {target} com as alterações revisadas da tarefa? O {product} vai parar antes de alterar qualquer pasta se encontrar um conflito.",
       "confirm": "Aplicar alterações",
       "error": "Não foi possível aplicar as alterações. Tente novamente."
+    },
+    "inPlace": {
+      "title": "{count, plural, one {Esta tarefa edita sua pasta diretamente} other {Esta tarefa edita suas pastas diretamente}}",
+      "body": "{count, plural, one {As alterações já estão na sua pasta, então não há nada para aplicar.} other {As alterações já estão nas suas pastas, então não há nada para aplicar.}} Pull requests em rascunho ainda não estão disponíveis para tarefas locais: faça commit aqui e depois faça push e abra uma pull request com suas ferramentas de sempre.",
+      "bodyWithoutGit": "{count, plural, one {As alterações já estão na sua pasta, então não há nada para aplicar.} other {As alterações já estão nas suas pastas, então não há nada para aplicar.}}"
     }
   },
   "fileReview": {
@@ -86,7 +102,8 @@
     "discardConfirm": {
       "title": "Descartar as alterações deste arquivo?",
       "message": "{path} voltará para a versão atual da tarefa. Isso não pode ser desfeito.",
-      "confirm": "Descartar alterações"
+      "confirm": "Descartar alterações",
+      "messageInPlace": "{path} voltará para a última versão com commit na sua pasta, incluindo as edições feitas antes do início desta tarefa. Isso não pode ser desfeito."
     }
   },
   "reviewFileCard": {
@@ -449,7 +466,9 @@
       "reasoning": "Raciocínio",
       "reasoningAriaLabel": "Esforço de raciocínio padrão",
       "permissions": "Permissões",
-      "permissionsAriaLabel": "Permissões de código padrão"
+      "permissionsAriaLabel": "Permissões de código padrão",
+      "workspace": "Espaço de trabalho",
+      "workspaceAriaLabel": "Espaço de trabalho padrão das tarefas"
     },
     "environment": {
       "title": "Ambiente",
@@ -1009,7 +1028,7 @@
       "noModels": "Nenhum modelo de código está disponível.",
       "chooseModel": "Escolha um modelo para continuar.",
       "chooseFolder": "Escolha uma pasta para continuar.",
-      "budgetReached": "O orçamento da sua organização acabou. Escolha um modelo disponível ou peça a um proprietário ou administrador para aumentá-lo."
+      "budgetReached": "Um orçamento que cobre este modelo acabou. Escolha um modelo disponível ou peça a um administrador para aumentá-lo."
     }
   },
   "executionTarget": {
@@ -1037,16 +1056,16 @@
       "title": "Inspecionar e explicar sem alterar arquivos."
     },
     "supervised": {
-      "label": "Perguntar antes",
-      "title": "Pausar antes de comandos que precisam da sua aprovação."
+      "label": "Pedir aprovação",
+      "title": "Perguntar sempre antes de editar arquivos fora da tarefa ou usar a internet."
     },
     "workspace": {
-      "label": "Auto no espaço de trabalho",
-      "title": "Trabalhar de forma autônoma dentro da cópia isolada desta tarefa."
+      "label": "Aprovar por mim",
+      "title": "Um revisor aprova os pedidos de rotina e bloqueia os arriscados."
     },
     "fullAccess": {
       "label": "Acesso total",
-      "title": "Trabalhar de forma autônoma sem restrições do sistema de arquivos."
+      "title": "Acesso irrestrito à internet e a todos os arquivos do seu computador."
     }
   },
   "branchSelect": {
@@ -1295,6 +1314,7 @@
     "record": {
       "approvalDenied": "Aprovação negada",
       "approvalResolved": "Aprovação resolvida",
+      "folderBusy": "Outra tarefa está trabalhando nesta pasta, então esta trabalha em uma worktree.",
       "followUpDelivered": "Mensagem de acompanhamento entregue",
       "requestRejected": "Solicitação rejeitada",
       "taskStatus": "Status da tarefa"
@@ -1399,7 +1419,8 @@
     "details": "Detalhes",
     "moreOptions": "Mais opções",
     "dismiss": "Dispensar",
-    "viewBudgets": "Ver orçamentos"
+    "viewBudgets": "Ver orçamentos",
+    "allowWrites": "Permitir edições"
   },
   "composerNotices": {
     "thisModel": "Este modelo",
@@ -1451,8 +1472,11 @@
       "body": "{reason}, então ainda usa disco."
     },
     "budgetExceeded": {
-      "title": "O orçamento da sua organização acabou",
-      "body": "Um proprietário ou administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa."
+      "title": "{scope, select, org {{period, select, day {O orçamento diário da sua organização acabou} month {O orçamento mensal da sua organização acabou} year {O orçamento anual da sua organização acabou} other {O orçamento da sua organização acabou}}} workspace {{period, select, day {O orçamento diário deste espaço de trabalho acabou} month {O orçamento mensal deste espaço de trabalho acabou} year {O orçamento anual deste espaço de trabalho acabou} other {O orçamento deste espaço de trabalho acabou}}} api_key {{period, select, day {O orçamento diário desta chave de API acabou} month {O orçamento mensal desta chave de API acabou} year {O orçamento anual desta chave de API acabou} other {O orçamento desta chave de API acabou}}} team {{period, select, day {O orçamento diário da sua equipe acabou} month {O orçamento mensal da sua equipe acabou} year {O orçamento anual da sua equipe acabou} other {O orçamento da sua equipe acabou}}} member {{period, select, day {Seu orçamento diário acabou} month {Seu orçamento mensal acabou} year {Seu orçamento anual acabou} other {Seu orçamento acabou}}} other {{period, select, day {Um orçamento diário acabou} month {Um orçamento mensal acabou} year {Um orçamento anual acabou} other {Um orçamento acabou}}}}",
+      "body": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Escolha outro modelo para continuar nesta tarefa.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Escolha outro modelo para continuar nesta tarefa.}}} other {{scope, select, org {Um proprietário ou administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa.} other {Um administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa.}}}}"
+    },
+    "writesHeld": {
+      "body": "Esta pasta não tem histórico do Git para revisar ou desfazer alterações, então o agente pergunta antes de cada edição."
     }
   },
   "planModeCommand": {
@@ -1497,7 +1521,9 @@
     "terminal": "Terminal",
     "reviewChanges": "Revisar alterações",
     "review": "Revisar",
-    "taskActionsAriaLabel": "Ações da tarefa de código"
+    "taskActionsAriaLabel": "Ações da tarefa de código",
+    "localFolder": "{count, plural, one {Local · sua pasta} other {Local · suas # pastas}}",
+    "openYourFolder": "Abrir sua pasta"
   },
   "terminal": {
     "status": {
@@ -1591,5 +1617,34 @@
     "desktopOnly": "Anexos de arquivos locais estão disponíveis no app para desktop.",
     "ariaLabel": "Contexto anexado",
     "removeAriaLabel": "Remover {name}"
+  },
+  "workspaceMode": {
+    "local": {
+      "label": "Local",
+      "title": "Trabalhar na própria pasta. Só uma tarefa local é executada por vez em um repositório."
+    },
+    "worktree": {
+      "label": "Worktree",
+      "title": "Trabalhar em uma worktree Git isolada, para que as tarefas possam ser executadas lado a lado."
+    },
+    "selectAriaLabel": "Onde a tarefa trabalha",
+    "menuLabel": "Espaço de trabalho",
+    "default": {
+      "label": "Padrão",
+      "title": "Deixe o {product} escolher de acordo com a pasta e o computador de cada tarefa."
+    },
+    "initializeGit": "Inicializar Git",
+    "initializeFailed": "Não foi possível inicializar o Git. Tente novamente.",
+    "unavailable": "Nenhum modo de espaço de trabalho está disponível para esta pasta.",
+    "reason": {
+      "notARepository": "Esta pasta não é um repositório Git. Inicialize o Git para usar uma Worktree.",
+      "notARepositoryInFolder": "{folder} não é um repositório Git. Inicialize o Git para usar uma Worktree.",
+      "noCommits": "Este repositório ainda não tem commits. Faça um primeiro commit para usar uma Worktree.",
+      "noCommitsInFolder": "{folder} ainda não tem commits. Faça um primeiro commit para usar uma Worktree.",
+      "noLocalCheckout": "{folder} não tem uma cópia local neste computador para trabalhar. Escolha Worktree.",
+      "inPlaceUnsupportedPlatform": "Trabalhar na pasta original ainda não está disponível nesta plataforma. Escolha Worktree.",
+      "inPlaceOtherComputer": "Tarefas em outro computador são executadas em uma worktree isolada. Escolha Worktree.",
+      "sharedRepository": "Duas pastas do projeto estão no mesmo repositório, então não podem trabalhar as duas diretamente na pasta. Escolha Worktree."
+    }
   }
 }

@@ -54,7 +54,6 @@ const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...optio
 
 import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
-import { OWN_WORK_PROMPT } from './onboarding/steps';
 import { reset as resetOnboarding } from './onboarding/onboardingStore';
 
 const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
@@ -634,18 +633,19 @@ describe('Sidebar — onboarding checklist rows', () => {
     hostMock.isWeb = true;
   });
 
-  it('starts a chat from the first step and opens Home from the example row', async () => {
+  it('opens Home from both rows without starting a chat', async () => {
     const onStartChat = vi.fn().mockResolvedValue(true);
     const onOpenExamples = vi.fn();
+    const onOpenOwnWork = vi.fn();
     const user = userEvent.setup();
-    render(<Sidebar {...baseProps} onStartChat={onStartChat} onOpenExamples={onOpenExamples} />);
+    render(<Sidebar {...baseProps} onStartChat={onStartChat} onOpenExamples={onOpenExamples} onOpenOwnWork={onOpenOwnWork} />);
 
     await user.click(screen.getByText('Try an example'));
     expect(onOpenExamples).toHaveBeenCalledTimes(1);
-    expect(onStartChat).not.toHaveBeenCalled();
 
     await user.click(screen.getByText('Start with your own work'));
-    expect(onStartChat).toHaveBeenCalledWith(OWN_WORK_PROMPT);
+    expect(onOpenOwnWork).toHaveBeenCalledTimes(1);
+    expect(onStartChat).not.toHaveBeenCalled();
   });
 });
 
@@ -707,5 +707,29 @@ describe('Sidebar — Compare models', () => {
     render(<Sidebar {...baseProps} showCompare onNavigate={onNavigate} />);
     screen.getByRole('button', { name: 'Compare Models' }).click();
     expect(onNavigate).toHaveBeenCalledWith('compare');
+  });
+});
+
+describe('Sidebar — a schedule’s runs fold into one Recents row', () => {
+  const schedules = [{
+    id: 's1', title: 'Daily digest', projectId: 'p1',
+    createdAt: '2026-10-01T00:00:00Z', lastResultConversationId: 'r3',
+  }];
+  const run = (id, day) => ({
+    id, title: 'Daily digest', projectId: 'p1', projectName: 'general', messages: [],
+    createdAt: `2026-10-0${day}T08:00:00Z`, updatedAt: `2026-10-0${day}T08:05:00Z`,
+  });
+
+  it('folds runs the server sent without a scheduledId', () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        schedules={schedules}
+        tasks={[run('r3', 4), run('r2', 3), run('r1', 2), { id: 't1', title: 'Chat', messages: [] }]}
+      />
+    );
+    expect(screen.getAllByText('Daily digest')).toHaveLength(1);
+    expect(screen.getByText('3 runs')).toBeInTheDocument();
+    expect(screen.getByText('Chat')).toBeInTheDocument();
   });
 });

@@ -4,12 +4,13 @@ import { diagnostic } from '../shared/diagnostics';
 // then starts the crash reporter so a native crash while the rest loads leaves
 // a minidump.
 import './app-identity';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
+import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as https from 'https';
 import * as http from 'http';
+import { installHideOnClose, shouldQuitWhenAllWindowsClosed } from './window-close';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, activeAccountDataRoot, runningServerPort, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
@@ -23,8 +24,16 @@ import { installQuitSignalHandlers } from './quit-signals';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { filterExtraFields } from './oauth-extra-fields';
+import { hasRequiredTokens } from './oauth-connect-result';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
-import { OAUTH_CREDENTIALS } from './credentials';
+import { serverMayReceiveTokens, serverTrust } from './app-secret';
+import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNotionPagesInMain } from './notion-pages';
+import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
+import { cancelCustomMcpConnects, connectCustomMcp } from './custom-mcp-connect';
+import { customMcpAvailable, customSummary, disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
+import { stopAllCustomRefreshLoops } from './custom-mcp-refresh';
+import { CUSTOM_MCP_ENGINE } from './custom-mcp-routes';
+import { OAUTH_CREDENTIALS, SCOPE_SEPARATORS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
@@ -141,6 +150,7 @@ const inAppBrowser = new InAppBrowserHost({
 setServerStartedHook(composeStartedHook(
   handOffMindsCredentialToStartedSidecar,
   () => inAppBrowser.serverStarted(),
+  async () => { void syncAppHeldMcpConnections(); },
 ));
 
 function getAntonEnvPath(): string {
@@ -371,6 +381,10 @@ function getIconPath(): string {
 }
 
 let mainWindow: BrowserWindow | null = null;
+// Set once the app has started to quit, so closing the window on macOS stops
+// meaning "hide it" (see window-close.ts).
+let appQuitting = false;
+let reopenMainWindow: (() => boolean) | null = null;
 let activeInstall: { cancelled: boolean } | null = null;
 
 // Pulls the desktop app back to the foreground after a browser-based
@@ -607,6 +621,7 @@ function createWindow() {
     mainWindow = null;
     killAllCodingTerminals();
   });
+  reopenMainWindow = installHideOnClose(mainWindow, process.platform, () => appQuitting).reopen;
 }
 
 // How long boot routing waits for the sidecar to be handed its credential.
@@ -792,6 +807,8 @@ function setupIPC() {
   // env file only gets touched once the user picks an LLM path.
   ipcMain.handle(IPC.OAUTH_CANCEL, () => {
     cancelCurrentOAuth();
+    // The add-server form's Cancel sends this too, before the browser opens.
+    cancelCustomMcpConnects();
     return true;
   });
 
@@ -884,12 +901,13 @@ function setupIPC() {
         clientId,
         clientSecret,
         scopes: oauthBlock.scopes,
+        scopeSeparator: SCOPE_SEPARATORS[engine],
         extraAuthParams: oauthBlock.extra_auth_params,
         redirectPort: oauthBlock.redirect_port,
         redirectHost: oauthBlock.redirect_host,
         tokenAuthStyle: oauthBlock.token_auth_style,
       });
-      if (!pkceResult.ok || !pkceResult.access_token || (supportsRefresh && !pkceResult.refresh_token)) {
+      if (!hasRequiredTokens(pkceResult, oauthBlock) || !pkceResult.access_token) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
       }
       focusMainWindow();
@@ -901,7 +919,7 @@ function setupIPC() {
       let accountIdentity: Awaited<ReturnType<typeof fetchAccountIdentity>> = { email: '' };
       for (let attempt = 0; attempt < 2 && !accountIdentity.email; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
-        accountIdentity = await fetchAccountIdentity(engine, pkceResult.access_token);
+        accountIdentity = await fetchAccountIdentity(engine, pkceResult.access_token, pkceResult.extra);
       }
       const accountEmail = accountIdentity.email;
       if (!accountEmail) return { ok: false, reason: accountIdentity.reason || 'Could not retrieve account email.' };
@@ -910,10 +928,25 @@ function setupIPC() {
       // Absent entirely for a supports_refresh: false connector.
       if (pkceResult.refresh_token) {
         await setRefreshToken(engine, accountEmail, pkceResult.refresh_token);
+      } else {
+        // A reconnect that issued none would otherwise leave the previous
+        // grant's token here, and the refresh loop would post that one.
+        try { await deleteRefreshToken(engine, accountEmail); } catch {}
       }
 
       const expiresAt = new Date(Date.now() + (pkceResult.expires_in ?? 3600) * 1000).toISOString();
       const tokenUrl: string = oauthBlock.token_url;
+
+      // A server that has not proved the app secret gets no token.
+      if (!serverMayReceiveTokens()) {
+        try { await deleteRefreshToken(engine, accountEmail); } catch {}
+        return {
+          ok: false,
+          reason: serverTrust() === 'untrusted'
+            ? 'The backend could not be verified. Restart Cowork and try again.'
+            : 'The backend is not running.',
+        };
+      }
 
       // Persist to vault — refresh_token intentionally excluded.
       const saveRes = await fetch(
@@ -956,7 +989,19 @@ function setupIPC() {
       const saved = await saveRes.json() as { ok: boolean; name?: string };
       const vaultSlug = saved.name || labelName;
 
-      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style);
+      // Same rule as startOrphanRefreshLoops: a connector that never
+      // refreshes (GitHub) gets no loop, which would otherwise mark it
+      // needs_reconnect once its nominal expiry passes.
+      if (supportsRefresh) {
+        startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style, oauthBlock.refresh_token_optional === true);
+      }
+      if (oauthMethodId === 'mcp') {
+        try {
+          await handOverAfterConnect(engine, vaultSlug, pkceResult.access_token, expiresAt);
+        } catch (err) {
+          diagnostic("main.app", "WARNING", "oauth_mcp_app_held_hand_over_failed", `[oauth] could not hand over ${engine}/${vaultSlug} to the server:`, err);
+        }
+      }
       return { ok: true, name: vaultSlug, account_email: accountEmail };
     }
 
@@ -1026,6 +1071,7 @@ function setupIPC() {
   ipcMain.handle(IPC.KEYCHAIN_REVOKE, async (_event, opts) => {
     const { engine, name, accountEmail } = opts || {};
     if (!engine || !name || !accountEmail) return { ok: false, reason: 'engine, name, and accountEmail are required.' };
+    if (engine === CUSTOM_MCP_ENGINE) return { ok: false, reason: 'Custom MCP servers are disconnected through their own channel.' };
     const key = `${engine}:${accountEmail}`;
     revokedConnections.add(key);
     stopRefreshLoop(engine, accountEmail);
@@ -1076,6 +1122,7 @@ function setupIPC() {
       }
     } catch {}
     try { await deleteRefreshToken(engine, accountEmail); } catch {}
+    try { await forgetAccessMode(engine, name); } catch {}
     try {
       await fetch(
         `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}`,
@@ -1084,6 +1131,33 @@ function setupIPC() {
     } catch {}
     return { ok: true };
   });
+
+  // Desktop only: the renderer cannot hold the app secret this route needs.
+  ipcMain.handle(IPC.CONNECTIONS_SET_ACCESS_MODE, async (_event, opts) => {
+    const { engine, name, accessMode } = opts || {};
+    if (typeof engine !== 'string' || !engine || typeof name !== 'string' || !name) {
+      return { ok: false, reason: 'engine and name are required.' };
+    }
+    if (!isAccessMode(accessMode)) return { ok: false, reason: 'accessMode must be read, write or none.' };
+    try {
+      return await setConnectionAccessMode(engine, name, accessMode);
+    } catch (err) {
+      diagnostic("main.app", "WARNING", "connections_set_access_mode_failed", `[connections] access-mode change failed for ${engine}/${name}:`, err);
+      return { ok: false, reason: 'Could not change tool access.' };
+    }
+  });
+
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_CONNECT, (_event, opts) => connectCustomMcp(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_TOOLS, (_event, opts) => listCustomTools(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_SET_TOOLS, (_event, opts) => setCustomTools(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_RECONNECT, (_event, opts) => reconnectCustom(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_DISCONNECT, (_event, opts) => disconnectCustom(opts));
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_AVAILABLE, () => customMcpAvailable());
+  ipcMain.handle(IPC.CONNECTIONS_CUSTOM_MCP_SUMMARY, (_event, opts) => customSummary(opts));
+
+  // Desktop only, for the same reason: these read pages with the app-held token.
+  ipcMain.handle(IPC.NOTION_SEARCH_PAGES, (_event, opts) => searchNotionPagesInMain(opts?.name, opts?.query));
+  ipcMain.handle(IPC.NOTION_FETCH_PAGE, (_event, opts) => fetchNotionPageInMain(opts?.name, opts?.page));
 
   // ── MindsHub onboarding ──────────────────────────────────────
   // Logging in via Keycloak doesn't yet decide the user's LLM —
@@ -1739,6 +1813,10 @@ app.whenReady().then(async () => {
   if (isMac) {
     const dockIcon = nativeImage.createFromPath(getIconPath());
     app.dock?.setIcon(dockIcon);
+    // Squirrel.Mac closes every window before it quits to install an update,
+    // and emits this first. Without it the hidden-on-close window would refuse
+    // to close and the install would stall.
+    autoUpdater.on('before-quit-for-update', () => { appQuitting = true; });
   }
 
   /* Wording matches each platform's file manager so the label isn't a
@@ -1802,7 +1880,9 @@ app.whenReady().then(async () => {
             { type: 'separator' },
             { role: 'quit' },
           ],
-        } as Electron.MenuItemConstructorOptions]
+        } as Electron.MenuItemConstructorOptions,
+        // On macOS the File menu is just Close Window, which binds Cmd+W.
+        { role: 'fileMenu' } as Electron.MenuItemConstructorOptions]
       : [{ role: 'fileMenu' } as Electron.MenuItemConstructorOptions]),
     { role: 'editMenu', id: EDIT_MENU_ID },
     {
@@ -2085,8 +2165,12 @@ app.whenReady().then(async () => {
     bootUpdateDone();     // ...or the loading gate awaiting a boot that never ran
   });
 
+  // Clicking the Dock icon brings back the window that closing hid, or
+  // creates one if it is gone.
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      reopenMainWindow?.();
+    } else {
       createWindow();
     }
   });
@@ -2133,8 +2217,10 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const tokenUrl = oauthBlock?.token_url;
         if (!tokenUrl) continue;
         const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
-        if (!refreshToken) continue;
-        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style);
+        // Without a refresh token the loop only marks the connection
+        // needs_reconnect at expiry, which matters for refresh_token_optional.
+        if (!refreshToken && oauthBlock?.refresh_token_optional !== true) continue;
+        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style, oauthBlock?.refresh_token_optional === true);
         diagnostic("main.app", "INFO", "token_refresh_resumed_loop_for", `[token-refresh] resumed loop for ${engine}:${accountEmail}`);
       } catch (err) {
         diagnostic("main.app", "WARNING", "token_refresh_could_not_resume_loop_for", `[token-refresh] could not resume loop for ${engine}/${name}:`, err);
@@ -2155,6 +2241,7 @@ async function drainServerForQuit(): Promise<void> {
   // Stop all OAuth refresh loops before the server shuts down so no
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
+  stopAllCustomRefreshLoops();
   // An auto-mode shell update installs itself as the app goes down, outside
   // the update-maintenance gate that the in-app "Restart now" install enters.
   // The download only stages the payload (Windows: the NSIS installer on disk;
@@ -2198,6 +2285,9 @@ async function drainServerForQuit(): Promise<void> {
 }
 
 app.on('window-all-closed', async () => {
+  // On macOS the app stays in the Dock with its sidecar running; quitting
+  // goes through before-quit, which drains it.
+  if (!shouldQuitWhenAllWindowsClosed(process.platform)) return;
   await drainServerForQuit();
   app.quit();
 });
@@ -2215,6 +2305,7 @@ app.on('window-all-closed', async () => {
 // after the drain finishes. Guarded by `_quitDrained` so the second
 // invocation skips the deferral and the app exits cleanly.
 app.on('before-quit', (event) => {
+  appQuitting = true;
   if (_quitDrained) return;
   event.preventDefault();
   drainServerForQuit().finally(() => {

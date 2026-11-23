@@ -37,6 +37,17 @@ describe('token_cap_hit impression on a credit block', () => {
     expect(trackTokenCapHit).toHaveBeenCalledWith('included_allowance_exhausted');
   });
 
+  it.each(['window_allowance_exhausted', 'model_not_in_tier'])('fires for the paid-plan stop %s (ENG-4186)', (code) => {
+    fire(code);
+    expect(trackTokenCapHit).toHaveBeenCalledTimes(1);
+    expect(trackTokenCapHit).toHaveBeenCalledWith(code);
+  });
+
+  it('does not fire for a paid-plan stop on replay', () => {
+    fire('window_allowance_exhausted', { replay: true });
+    expect(trackTokenCapHit).not.toHaveBeenCalled();
+  });
+
   it('fires for model_access_denied too — its card was an impression with no event (ENG-1533)', () => {
     fire('model_access_denied');
     expect(trackTokenCapHit).toHaveBeenCalledTimes(1);

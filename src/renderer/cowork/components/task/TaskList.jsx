@@ -15,8 +15,8 @@ export function TaskList({
 }) {
   const { t } = useTranslation('chat');
   const rows = useMemo(
-    () => groupScheduleRuns(tasks),
-    [tasks],
+    () => groupScheduleRuns(tasks, schedules),
+    [tasks, schedules],
   );
   const schedulesById = useMemo(
     () => new Map((schedules || []).map((s) => [s?.id, s])),

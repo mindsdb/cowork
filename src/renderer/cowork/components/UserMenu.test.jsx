@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const hostMock = vi.hoisted(() => ({
   host: {
@@ -14,6 +14,8 @@ vi.mock('../../platform/host', () => hostMock);
 const analyticsMock = vi.hoisted(() => ({
   resetDeviceIdentity: vi.fn(),
   trackBillingOpened: vi.fn(),
+  trackMenuApiKeysClicked: vi.fn(),
+  trackMenuApiDocsClicked: vi.fn(),
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
@@ -38,6 +40,8 @@ import { setOrgIcons } from '../lib/orgIcons';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { readLastOrgId } from '../lib/orgLanding';
 import {
+  MINDS_API_DOCS_URL,
+  MINDS_API_KEY_URL,
   MINDS_BILLING_URL,
   MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
@@ -75,6 +79,8 @@ beforeEach(() => {
   hostMock.openExternal.mockClear();
   hostMock.host.logout.mockClear();
   analyticsMock.trackBillingOpened.mockClear();
+  analyticsMock.trackMenuApiKeysClicked.mockClear();
+  analyticsMock.trackMenuApiDocsClicked.mockClear();
   hostMock.host.isElectron = true;
   hostMock.host.isWeb = false;
   orgsMock.state = { orgs: [], activeOrg: null, activeOrgId: null, switching: false };
@@ -131,7 +137,7 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
     expect(screen.getByText('Organization')).toBeInTheDocument();
     expect(screen.getByText('Account')).toBeInTheDocument();
     expect(screen.getAllByText('MindsDB').length).toBeGreaterThan(0);
-    for (const label of ['Settings', 'Billing & Usage', 'Members', 'Help & Feedback', 'Logout']) {
+    for (const label of ['Settings', 'Billing & Usage', 'Members', 'API keys', 'API docs', 'Help & Feedback', 'Logout']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
   });
@@ -159,6 +165,8 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
   it.each([
     ['Billing & Usage', consoleUrlFor(MINDS_BILLING_URL, { subject: 'user-1' })],
     ['Members', consoleUrlFor(MINDS_MEMBERS_URL, { subject: 'user-1' })],
+    ['API keys', consoleUrlFor(MINDS_API_KEY_URL, { subject: 'user-1' })],
+    ['API docs', MINDS_API_DOCS_URL],
     ['Help & Feedback', MINDS_SUPPORT_URL],
   ])('opens %s in the OS browser', (label, url) => {
     renderMenu(<UserMenu user={user} />);
@@ -193,14 +201,25 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
   });
 
   it('asks for confirmation before logging out, then runs the logout flow', async () => {
-    renderMenu(<UserMenu user={user} />);
-    openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
-    // Confirm modal — nothing signed out yet.
-    expect(screen.getByText(LOGOUT_CONFIRM_COPY.title)).toBeInTheDocument();
-    expect(hostMock.host.logout).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: LOGOUT_CONFIRM_COPY.confirmLabel }));
-    expect(hostMock.host.logout).toHaveBeenCalled();
+    // A desktop sign-out arms a 2.5-second reload watchdog. On a real clock it
+    // outlives this file and fires once `window` is gone, which fails the run
+    // with an unhandled error. Hold it on a fake clock and drop it.
+    vi.useFakeTimers();
+    try {
+      renderMenu(<UserMenu user={user} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
+      // Confirm modal — nothing signed out yet.
+      expect(screen.getByText(LOGOUT_CONFIRM_COPY.title)).toBeInTheDocument();
+      expect(hostMock.host.logout).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: LOGOUT_CONFIRM_COPY.confirmLabel }));
+      expect(hostMock.host.logout).toHaveBeenCalled();
+      // Let the sign-out settle, so the watchdog is armed while the fake clock holds it.
+      await act(async () => { await Promise.resolve(); });
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -219,6 +238,19 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
     );
   });
 
+  it('inside the mobile app, leaves Billing & Usage out and keeps the rest', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      renderMenu(<UserMenu user={user} onOpenSettings={vi.fn()} />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: /Billing & Usage/ })).toBeNull();
+      expect(screen.getByRole('menuitem', { name: /Members/ })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /Settings/ })).toBeInTheDocument();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
   it.each([['Members'], ['Help & Feedback'], ['Settings']])(
     'records nothing for %s — it is not a billing route',
     (label) => {
@@ -226,6 +258,67 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
       openMenu();
       fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
       expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+    },
+  );
+});
+
+// ENG-4288: sign-in lands in Cowork, so the menu is where a developer finds
+// API keys and docs. Each link has its own event, and neither borrows another's.
+describe('UserMenu — API keys and API docs (ENG-4288)', () => {
+  it('sits with the console links, after Members and before Help & Feedback', () => {
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    const labels = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    const at = (label) => labels.findIndex((text) => text.includes(label));
+    expect(at('Members')).toBeLessThan(at('API keys'));
+    expect(at('API keys')).toBeLessThan(at('API docs'));
+    expect(at('API docs')).toBeLessThan(at('Help & Feedback'));
+  });
+
+  it('opens the console API keys page for this account and organization, and records the click', () => {
+    orgsMock.state = { orgs: [ACME, PERSONAL], activeOrg: ACME, activeOrgId: ACME.id, switching: false };
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /API keys/ }));
+    expect(hostMock.openExternal).toHaveBeenCalledWith(
+      consoleUrlFor(MINDS_API_KEY_URL, { organizationId: ACME.id, subject: 'user-1' }),
+    );
+    expect(analyticsMock.trackMenuApiKeysClicked).toHaveBeenCalledOnce();
+    expect(analyticsMock.trackMenuApiDocsClicked).not.toHaveBeenCalled();
+    expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+  });
+
+  /* Before the organization listing lands, the token's claim names the
+     organization, so the API keys page still opens on it rather than on
+     whichever organization the browser has active. */
+  it('names the organization from the token when the listing has not landed', () => {
+    renderMenu(<UserMenu user={{ ...user, orgId: 'org-from-token' }} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /API keys/ }));
+    const opened = new URL(hostMock.openExternal.mock.calls[0][0]);
+    expect(`${opened.origin}${opened.pathname}`).toBe(MINDS_API_KEY_URL);
+    expect(opened.searchParams.get('organization')).toBe('org-from-token');
+    expect(opened.searchParams.get('subject')).toBe('user-1');
+  });
+
+  it('opens the API docs and records the click', () => {
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /API docs/ }));
+    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_API_DOCS_URL);
+    expect(analyticsMock.trackMenuApiDocsClicked).toHaveBeenCalledOnce();
+    expect(analyticsMock.trackMenuApiKeysClicked).not.toHaveBeenCalled();
+    expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+  });
+
+  it.each([['Billing & Usage'], ['Members'], ['Help & Feedback'], ['Settings']])(
+    'records neither developer event for %s',
+    (label) => {
+      renderMenu(<UserMenu user={user} onOpenSettings={vi.fn()} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
+      expect(analyticsMock.trackMenuApiKeysClicked).not.toHaveBeenCalled();
+      expect(analyticsMock.trackMenuApiDocsClicked).not.toHaveBeenCalled();
     },
   );
 });

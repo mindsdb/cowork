@@ -36,3 +36,16 @@ export async function readBrowseStatus() {
     throw error;
   }
 }
+
+/**
+ * Whether the answer leaves the browser a decisions model to pick its steps:
+ * Jev on MindsHub, or a decision model of the organization's own. Without one
+ * the browser doesn't run (it reads as off), so nothing offers it. A server
+ * that predates the field sends none, and its browser runs as before.
+ *
+ * @param {BrowseStatus | null | undefined} status
+ * @returns {boolean}
+ */
+export function hasDecisionsModel(status) {
+  return status?.decisions_model !== null;
+}

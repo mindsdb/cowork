@@ -7,6 +7,7 @@
 // (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
 // (async, hits the API) — the latter just calls `applySessionMessages` here.
 import { withQuickEditGroup } from './quickEditGroup';
+import { planFailureFields } from './subscriptionPlan';
 import { answerBody, initialStreamState, reduceStream } from './responseStreamAdapter';
 import { foldAddonMessages } from './addons';
 import { rebaseFigureSources } from './figureSources';
@@ -30,6 +31,18 @@ export function stripStreaming(messages) {
 const RUNNING_STEP_STATUSES = new Set([
   'pending', 'thinking', 'streaming', 'in_progress', 'running',
 ]);
+
+// The latest time an assistant turn recorded, including a step's execution
+// boundaries when Stop left its lifecycle unfinished. Null when none exist.
+function lastRecordedTime(message) {
+  let latest = Number.isFinite(message.endedAt) ? message.endedAt : null;
+  for (const s of message.steps) {
+    for (const t of [s?.startedAt, s?.completedAt, s?.executionStartedAt, s?.executionCompletedAt]) {
+      if (Number.isFinite(t) && (latest == null || t > latest)) latest = t;
+    }
+  }
+  return latest;
+}
 
 // Reconcile a task's stored streaming/running state against whether
 // a real SSE stream is alive for it RIGHT NOW. Called when the user
@@ -64,11 +77,16 @@ export function reconcileTaskMessages(messages, isLive, isServerInFlight = false
     .map((m) => {
       if (m.role !== 'assistant') return m;
       if (!Array.isArray(m.steps) || m.steps.length === 0) return m;
+      // A step still running here ended when the turn did, for example on a
+      // Stop, which saves no terminal event. End it at the last time the turn
+      // recorded, never at the moment the task was opened: that time would
+      // grow on every visit (ENG-4345).
+      const endedAt = lastRecordedTime(m);
       let dirty = false;
       const nextSteps = m.steps.map((s) => {
         if (s && RUNNING_STEP_STATUSES.has(s.status)) {
           dirty = true;
-          return { ...s, status: 'completed', completedAt: s.completedAt || Date.now() };
+          return { ...s, status: 'completed', completedAt: s.completedAt || endedAt };
         }
         return s;
       });
@@ -333,6 +351,13 @@ export function failedEventMeta(events) {
        render time: the server deliberately doesn't parse it, since only the
        client knows the viewer's timezone. */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // window_allowance_exhausted / model_not_in_tier (ENG-4186): which plan
+    // window filled, and which tier covers the model.
+    ...planFailureFields(ev),
+    // budget_exceeded: whose budget is spent (org, workspace, api_key); absent from an older server.
+    budgetScope: typeof ev.budget_scope === 'string' ? ev.budget_scope : null,
+    budgetPeriod: typeof ev.budget_period === 'string' ? ev.budget_period : null,
+    budgetModel: typeof ev.budget_model === 'string' && ev.budget_model ? ev.budget_model : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads
     // it as local time — the gate would last hours west of UTC and no-op east
@@ -400,6 +425,9 @@ export function hydrateMessagesFromServerEvents(messages) {
           failedModel: failed?.failedModel ?? null,
           retryAfter: failed?.retryAfter ?? null,
           resetAt: failed?.resetAt ?? null,
+          budgetScope: failed?.budgetScope ?? null,
+          budgetPeriod: failed?.budgetPeriod ?? null,
+          budgetModel: failed?.budgetModel ?? null,
           retryAt: failed?.retryAt ?? null,
           requestId: failed?.requestId ?? null,
         });

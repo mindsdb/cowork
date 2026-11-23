@@ -8,6 +8,7 @@
 // older one-edit note). It updates when the chat refetches the message.
 
 import { useState } from 'react';
+import { ReportContentButton } from './ReportContentButton';
 import { ArtifactRefPill } from '../artifacts/ArtifactRefPill';
 import { useTranslation } from '../../../lib/i18n';
 
@@ -20,13 +21,16 @@ function timeOf(at) {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-export function QuickEditGroupCard({ group, onOpenArtifact }) {
+export function QuickEditGroupCard({ group, onOpenArtifact, conversationId }) {
   const { t } = useTranslation('artifacts');
   const [expanded, setExpanded] = useState(false);
   const edits = group?.edits || [];
   if (edits.length === 0) return null;
   const hidden = expanded ? 0 : Math.max(0, edits.length - SHOWN);
   const shown = edits.slice(hidden);
+  // The server accepts one report per saved reply. Several edit rows can
+  // belong to that reply, even when adjacent replies share this card.
+  const lastRowForMessage = new Map(shown.map((edit, index) => [edit.messageId, index]));
   return (
     <section className="quick-edit-card" aria-label={t('quickEditCard.title')}>
       <header className="quick-edit-card-head">
@@ -37,8 +41,8 @@ export function QuickEditGroupCard({ group, onOpenArtifact }) {
         <span className="quick-edit-card-count">{t('quickEditCard.count', { count: edits.length })}</span>
       </header>
       <ol className="quick-edit-card-list">
-        {shown.map((edit) => (
-          <li key={edit.editId} className={`quick-edit-card-row${edit.undone ? ' is-undone' : ''}`}>
+        {shown.map((edit, index) => (
+          <li key={JSON.stringify([edit.messageId, edit.editId])} className={`quick-edit-card-row${edit.undone ? ' is-undone' : ''}`}>
             <div className="quick-edit-card-text">
               {edit.request && <div className="quick-edit-card-request">{edit.request}</div>}
               <div className="quick-edit-card-summary">
@@ -46,6 +50,9 @@ export function QuickEditGroupCard({ group, onOpenArtifact }) {
                 {edit.undone && <span className="quick-edit-card-tag">{t('quickEditCard.undone')}</span>}
               </div>
             </div>
+            {conversationId && edit.messageId && lastRowForMessage.get(edit.messageId) === index && (
+              <ReportContentButton conversationId={conversationId} messageId={edit.messageId} />
+            )}
             {timeOf(edit.at) && <time className="quick-edit-card-time" dateTime={edit.at}>{timeOf(edit.at)}</time>}
           </li>
         ))}

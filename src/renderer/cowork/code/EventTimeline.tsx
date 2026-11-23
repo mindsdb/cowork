@@ -65,6 +65,12 @@ function isCommandAnswer(event: CodingEvent): boolean {
 }
 
 
+// The server moved a task whose folder was busy into a worktree; the task bar
+// shows the mode but not why it differs from what the composer showed.
+function isFolderBusyNotice(event: CodingEvent): boolean {
+  return event.type === 'session' && event.data.reason === 'folder_busy';
+}
+
 function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // Pending queue entries stay actionable beside the composer. When they
   // start, the server emits the ordinary completed user message, so showing
@@ -72,7 +78,7 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   if (event.type === 'user_message' && event.phase === 'pending' && event.data.queueId) return;
   // Workspace setup and terminal state live in the task bar/outcome. Keeping
   // raw session notifications here creates contradictory duplicate statuses.
-  if (event.type === 'session' && !isCommandAnswer(event)) return;
+  if (event.type === 'session' && !isCommandAnswer(event) && !isFolderBusyNotice(event)) return;
   // A late-confirmed follow-up is the one success worth a line: it tells the
   // user their unconfirmed instruction did reach the agent.
   if (event.type === 'command_result' && event.phase !== 'failed' && event.data.delivery !== 'confirmed') return;
@@ -673,6 +679,7 @@ function TimelineEvent({ event, copyable = false, changes }: { event: CodingEven
   if (event.type === 'approval') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || t('timeline.record.approvalResolved')}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   if (event.type === 'command_result' && event.data.delivery === 'confirmed') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || t('timeline.record.followUpDelivered')}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   if (event.type === 'command_result') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>{event.title || t('timeline.record.requestRejected')}</strong>{event.text && <p>{event.text}</p>}</div></div>;
+  if (isFolderBusyNotice(event)) return <div className="code-decision-record is-info"><span>{Ico.list(12)}</span><div><strong>{t('timeline.record.folderBusy')}</strong></div></div>;
   if (event.type === 'session') return <div className="code-decision-record is-info"><span>{Ico.list(12)}</span><div><strong>{event.title || t('timeline.record.taskStatus')}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   return null;
 }

@@ -95,6 +95,22 @@ describe('Card', () => {
     expect(onActivate).toHaveBeenCalledTimes(3);
   });
 
+  it('leaves Enter and Space to a button nested inside the card', async () => {
+    const user = userEvent.setup();
+    const onActivate = vi.fn();
+    const onInner = vi.fn((e) => e.stopPropagation());
+    render(
+      <Card interactive onActivate={onActivate}>
+        <button type="button" onClick={onInner}>Inner</button>
+      </Card>,
+    );
+    screen.getByText('Inner').focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+    expect(onInner).toHaveBeenCalledTimes(2);
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
   it('passes className through alongside the card tokens', () => {
     render(<Card interactive className="cw-artifact-card">x</Card>);
     const el = screen.getByText('x');

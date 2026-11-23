@@ -9,6 +9,7 @@ import { codingSessionStatus, compactPath, diffStats, repositoryLabel } from './
 import { openCodeExternalUrl, openCodePath } from './shellLinks';
 import { supportsTaskCapability, type TaskCapabilityName } from './taskCapabilities';
 import { diskUsageExplanation, diskUsageRows, type TaskDiskUsage } from './workspaceUsage';
+import { worksInPlace } from './taskWorkspace';
 
 
 export function TaskBar({
@@ -61,7 +62,10 @@ export function TaskBar({
   const worktreeLabel = compactPath(session.workspace_path);
   const folderCount = session.workspaces?.length || 1;
   const usesOriginalFolder = session.workspace_kind === 'direct_folder';
-  const workingCopyLabel = usesOriginalFolder
+  const inPlace = worksInPlace(session);
+  const workingCopyLabel = inPlace
+    ? t('taskBar.localFolder', { count: folderCount })
+    : usesOriginalFolder
     ? t('taskBar.originalFolder')
     : folderCount > 1
       ? t('taskBar.isolatedFolders', { count: folderCount })
@@ -80,7 +84,7 @@ export function TaskBar({
   // on the task's sidebar row, and agent commands such as /compact in the composer.
   const workspaceActions = [
     ...(can('open_workspace') ? [{
-      label: usesOriginalFolder ? t('taskBar.openOriginalFolder') : t('taskBar.openIsolatedCopy'),
+      label: inPlace ? t('taskBar.openYourFolder') : usesOriginalFolder ? t('taskBar.openOriginalFolder') : t('taskBar.openIsolatedCopy'),
       icon: Ico.openFolder(14),
       onClick: () => void openCodePath(session.workspace_path),
       title: worktreeLabel,
@@ -146,7 +150,7 @@ export function TaskBar({
                       <strong>{t('taskBar.details.title')}</strong>
                     </div>
                     <div><span>{t('taskBar.details.files')}</span><strong title={scopeLabel}>{scopeLabel}</strong></div>
-                    {git?.branch && !usesOriginalFolder && <div><span>{t('taskBar.details.branch')}</span><strong>{git.branch}</strong></div>}
+                    {git?.branch && (!usesOriginalFolder || inPlace) && <div><span>{t('taskBar.details.branch')}</span><strong>{git.branch}</strong></div>}
                     {session.computer_name && <div><span>{t('taskBar.details.computer')}</span><strong>{session.computer_name}</strong></div>}
                     <div><span>{t('taskBar.details.agent')}</span><strong>{engineLabel}</strong></div>
                     <div><span>{t('taskBar.details.model')}</span><strong>{modelLabel || session.model}</strong></div>

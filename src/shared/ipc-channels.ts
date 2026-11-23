@@ -78,6 +78,21 @@ export const IPC = {
   // Disconnect a builtin OAuth connection: stops the refresh loop,
   // deletes the keychain entry, and removes the vault record.
   KEYCHAIN_REVOKE: 'keychain:revoke',
+  // Changes an MCP connection's tool access on the desktop: main writes the
+  // keychain and calls the server with the app secret.
+  CONNECTIONS_SET_ACCESS_MODE: 'connections:set-access-mode',
+  // Custom MCP servers added by URL (desktop, protected mode): main logs in,
+  // holds the keychain entries and calls the server with the app secret.
+  CONNECTIONS_CUSTOM_MCP_CONNECT: 'connections:custom-mcp-connect',
+  CONNECTIONS_CUSTOM_MCP_TOOLS: 'connections:custom-mcp-tools',
+  CONNECTIONS_CUSTOM_MCP_SET_TOOLS: 'connections:custom-mcp-set-tools',
+  CONNECTIONS_CUSTOM_MCP_RECONNECT: 'connections:custom-mcp-reconnect',
+  CONNECTIONS_CUSTOM_MCP_DISCONNECT: 'connections:custom-mcp-disconnect',
+  CONNECTIONS_CUSTOM_MCP_AVAILABLE: 'connections:custom-mcp-available',
+  CONNECTIONS_CUSTOM_MCP_SUMMARY: 'connections:custom-mcp-summary',
+  // The chat's Notion page picker: main calls the server with the app secret.
+  NOTION_SEARCH_PAGES: 'notion:search-pages',
+  NOTION_FETCH_PAGE: 'notion:fetch-page',
   // Fired by the background token-refresh loop when consecutive failures hit
   // threshold (transient) or a 401 makes the refresh token permanently invalid.
   OAUTH_REFRESH_ERROR: 'oauth:refresh-error',
@@ -168,6 +183,7 @@ export const IPC = {
   BROWSER_HIDE: 'browser:hide',
   BROWSER_SET_BOUNDS: 'browser:set-bounds',
   BROWSER_NAVIGATE: 'browser:navigate',
+  BROWSER_OPEN: 'browser:open',
   BROWSER_ACTIVATE_TAB: 'browser:activate-tab',
   BROWSER_TAKE_OVER: 'browser:take-over',
   BROWSER_HAND_BACK: 'browser:hand-back',
