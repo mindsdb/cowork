@@ -174,6 +174,7 @@ describe('mindsProbeNotice', () => {
 
   it.each([
     ['wallet_empty', 'no_credits', null],
+    ['window_allowance_exhausted', 'no_credits', RESET],
     ['included_allowance_exhausted', 'allowance_used', RESET],
     ['free_air_daily_spend_fuse_exceeded', 'paused', RESET],
     ['budget_exceeded', 'budget_reached', null],
@@ -258,6 +259,7 @@ describe('friendlyProviderError', () => {
       ['rate_limited', 'Too many requests too quickly. Wait a moment, then test again.'],
       ['policy_unavailable', 'Billing is temporarily unavailable. Try again in a moment.'],
       ['wallet_empty', 'No credits available. Add funds to use MindsHub.'],
+      ['window_allowance_exhausted', 'No credits available. Add funds to use MindsHub.'],
     ])('names the %s stop instead of the bare status code', (code, copy) => {
       const status = code === 'wallet_empty' || code === 'budget_exceeded' ? 'HTTP 402' : code === 'policy_unavailable' ? 'HTTP 503' : 'HTTP 429';
       expect(friendlyProviderError(status, { code, resetAt: null })).toBe(copy);
@@ -273,7 +275,7 @@ describe('friendlyProviderError', () => {
     });
 
     it('uses no em-dash in any reason copy', () => {
-      for (const code of ['wallet_empty', 'included_allowance_exhausted', 'free_air_daily_spend_fuse_exceeded', 'budget_exceeded', 'rate_limited', 'policy_unavailable']) {
+      for (const code of ['wallet_empty', 'window_allowance_exhausted', 'included_allowance_exhausted', 'free_air_daily_spend_fuse_exceeded', 'budget_exceeded', 'rate_limited', 'policy_unavailable']) {
         expect(friendlyProviderError('HTTP 429', { code, resetAt: null })).not.toContain('\u2014');
       }
     });

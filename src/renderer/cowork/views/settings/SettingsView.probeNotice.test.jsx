@@ -37,7 +37,7 @@ vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-st
 import SettingsView, { MindsProbeNotice, UnavailableModelHint } from './SettingsView';
 import { HubUsageContext } from '../../lib/hubUsageContext';
 import { formatResetTime, NO_FREE_GRANT_SENTENCE } from '../../lib/usageWarnings';
-import { MINDS_BILLING_URL, MINDS_BUDGETS_URL, MINDS_ADD_FUNDS_URL } from '../../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_BUDGETS_DENIAL_URL, MINDS_ADD_FUNDS_URL } from '../../../lib/mindsUrls';
 
 function Harness({ initialSettings, usage = null }) {
   const [settings, setSettings] = useState(initialSettings);
@@ -176,7 +176,8 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
 
     await user.click(screen.getAllByRole('button', { name: /View budgets/ })[0]);
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('budget_notice');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BUDGETS_URL);
+    // The test call was refused, so the console counts the visit as a denial's.
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(new URL(MINDS_BUDGETS_DENIAL_URL).toString());
   });
 
   it('a spent budget does not name Air when the org has no free grant', async () => {

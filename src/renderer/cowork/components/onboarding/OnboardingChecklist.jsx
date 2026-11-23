@@ -20,7 +20,7 @@ import { useTranslation } from '../../../lib/i18n';
 const COLLAPSE_KEY = 'anton.onboarding.sidebarCollapsed';
 const STEPS_ID = 'onboarding-sidebar-steps';
 
-export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
+export default function OnboardingChecklist({ onStartChat, onOpenExamples, onOpenOwnWork }) {
   const { steps, isComplete, completedCount, total, allDone, dismissed, dismiss } = useOnboarding();
   const toastManager = useToastManager();
   const { t } = useTranslation('setup');
@@ -42,12 +42,18 @@ export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
   // card by then, so the still-unticked step is signal enough. A throw is
   // the silent case, so that one gets a toast.
   const start = async (step) => {
-    if (isComplete(step.id) || startingSteps.current.has(step.id)) return;
+    // One start at a time: a second row clicked while one is still starting
+    // would open a second chat the person never reads.
+    if (isComplete(step.id) || startingSteps.current.size > 0) return;
     trackOnboardingRowClicked(step.id);
     // The examples live on Home. Nothing is sent here, so the step is not
     // completed by the click: Home completes it when an example goes out.
     if (step.opensExamples) {
       onOpenExamples?.();
+      return;
+    }
+    if (step.opensOwnWork) {
+      onOpenOwnWork?.();
       return;
     }
     startingSteps.current.add(step.id);

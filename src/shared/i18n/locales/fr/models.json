@@ -5,7 +5,10 @@
     "searchAriaLabel": "Rechercher des modèles",
     "unavailable": "Indisponible",
     "addCredits": "Ajouter des crédits",
-    "addCreditsTooltip": "Ajoutez des crédits pour utiliser ce modèle"
+    "addCreditsTooltip": "Ajoutez des crédits pour utiliser ce modèle",
+    "upgrade": "Changer",
+    "upgradeTooltip": "{tier, select, plus {Passez à Plus pour inclure ce modèle} pro {Passez à Pro pour inclure ce modèle} other {Changez de forfait pour inclure ce modèle}}",
+    "tierTag": "{tier, select, plus {Plus} pro {Pro} other {Forfait}}"
   },
   "groups": {
     "openWeight": "Poids ouverts",

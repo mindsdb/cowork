@@ -30,6 +30,7 @@ const wsMock = vi.hoisted(() => ({
   canUseArtifactWorkspace: vi.fn(() => true),
   loadArtifactAccess: vi.fn(),
   setArtifactAccess: vi.fn(),
+  republishArtifact: vi.fn(),
 }));
 vi.mock('../../../lib/artifactWorkspaceApi', () => wsMock);
 
@@ -485,13 +486,42 @@ describe('usePublish on Cloud', () => {
     expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(1);
   });
 
-  it('does not offer update, stop-sharing or version history', async () => {
+  // Publish changes (ENG-4595): the draft goes live through the workspace
+  // route, with the access it has; never the desktop path.
+  it('publishes changes through the workspace route and clears Unshared changes', async () => {
+    wsMock.republishArtifact.mockResolvedValue({ url: 'https://share/abc' });
+    const onChange = vi.fn();
+    const { result } = renderHook(() => usePublish({ ...ORG_ARTIFACT, modified: true }, { enabled: false, onChange }));
+    expect(result.current.modified).toBe(true);
+
+    await act(async () => {
+      expect(await result.current.update()).toBe(true);
+    });
+
+    expect(wsMock.republishArtifact).toHaveBeenCalledWith(expect.objectContaining({ id: ORG_ARTIFACT.id }));
+    expect(apiMock.updateArtifact).not.toHaveBeenCalled();
+    expect(result.current.modified).toBe(false);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ modified: false, publishedUrl: 'https://share/abc' }));
+  });
+
+  it('says why when publishing changes fails, and keeps Unshared changes', async () => {
+    wsMock.republishArtifact.mockRejectedValue(Object.assign(new Error('Publishing failed. Try again in a moment.'), { status: 502 }));
+    const { result } = renderHook(() => usePublish({ ...ORG_ARTIFACT, modified: true }, { enabled: false }));
+
+    await act(async () => {
+      expect(await result.current.update()).toBe(false);
+    });
+
+    expect(result.current.modified).toBe(true);
+    expect(result.current.error).toMatch(/Publishing failed/);
+  });
+
+  it('does not offer stop-sharing or version history', async () => {
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
 
     expect(result.current.orgMode).toBe(true);
 
     await act(async () => {
-      expect(await result.current.update()).toBe(false);
       expect(await result.current.unpublish()).toEqual({ ok: false, notice: '' });
       await result.current.loadVersions();
     });

@@ -138,14 +138,14 @@ describe('comments on a live app', () => {
   it("accept no frame's comment intents while the pane shows the app", () => {
     setLiveApps(true);
     render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText('Comments'));
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
     expect(layer.options.enabled).toBe(false);
   });
 
   it('still open for a static page', () => {
     setLiveApps(true);
     render(<ArtifactViewer open artifact={page} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText('Comments'));
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
     expect(layer.options.enabled).toBe(true);
   });
 });

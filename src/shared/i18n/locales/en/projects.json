@@ -6,7 +6,8 @@
         "addFunds": "Add funds",
         "setUpAutoTopUp": "Set up auto top up",
         "manageAutoTopUp": "Manage auto top up",
-        "updatePaymentMethod": "Update payment method"
+        "updatePaymentMethod": "Update payment method",
+        "upgrade": "{tier, select, plus {Get Plus} pro {Upgrade to Pro} other {Upgrade}}"
       },
       "noFreeGrant": "This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.",
       "allowanceStop": {
@@ -68,6 +69,20 @@
       "budgetExceeded": {
         "raise": "{hasModel, select, true {{scope, select, org {{model} can't run until an owner or admin raises it in Budgets. Other models still work.} other {{model} can't run until an administrator raises it in Budgets. Other models still work.}}} other {{scope, select, org {Paid models can't run until an owner or admin raises it in Budgets.} other {Paid models can't run until an administrator raises it in Budgets.}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} can't run until an owner or admin raises it in Budgets. Other models still work.} other {{model} can't run until an administrator raises it in Budgets. Other models still work.}}} other {{scope, select, org {Paid models can't run until an owner or admin raises it in Budgets. MindsHub Air still works while its free allowance lasts.} other {Paid models can't run until an administrator raises it in Budgets. MindsHub Air still works while its free allowance lasts.}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {Weekly allowance used up} other {5-hour allowance used up}}",
+        "onWallet": "Continuing from your wallet at API rates until it resets.",
+        "onWalletWithTime": "Continuing from your wallet at API rates until it resets at {time}.",
+        "paused": "Tasks on your plan are paused until it resets. Add funds to keep going.",
+        "pausedWithTime": "Tasks on your plan are paused until {time}. Add funds to keep going.",
+        "pausedMobile": "Tasks on your plan are paused until it resets.",
+        "pausedWithTimeMobile": "Tasks on your plan are paused until {time}.",
+        "lowTitle": "{percent} of your {window, select, 7d {weekly} other {5-hour}} allowance used",
+        "lowThenWallet": "After that, tasks continue from your wallet at API rates until it resets.",
+        "lowThenWalletWithTime": "After that, tasks continue from your wallet at API rates until it resets at {time}.",
+        "lowThenPause": "After that, tasks pause until it resets.",
+        "lowThenPauseWithTime": "After that, tasks pause until {time}."
       }
     },
     "scheduleWhen": {
@@ -361,6 +376,7 @@
     "artifactAuthorship": {
       "unknownOwner": "Unknown owner",
       "otherMemberDescription": "Created by another member of this project. You can review it but not change it.",
+      "namedOwnerDescription": "Created by {name}, another member of this project. You can review it but not change it.",
       "unknownOwnerDescription": "Nobody is recorded as this artifact's owner."
     },
     "artifactExport": {
@@ -477,6 +493,10 @@
       "budgetReached": {
         "tag": "Budget reached",
         "title": "A budget covering this model is used up. An administrator can raise it in Budgets."
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Needs Plus} pro {Needs Pro} other {Needs upgrade}}",
+        "title": "Your plan's allowance doesn't cover this model. Upgrade, or add credits to use it at API rates."
       }
     },
     "settingsTransform": {

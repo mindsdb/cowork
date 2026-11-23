@@ -27,6 +27,12 @@ const mocks = vi.hoisted(() => ({
   toastAdd: vi.fn(),
 }));
 
+// Sharing off and already known, so the page doesn't hold its skeleton
+// waiting for it (ENG-4585); these tests aren't about sections.
+vi.mock('../hooks/useOrgSharing', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useSharingCapabilities: () => ({ status: 'ready', capabilities: null, retry: () => {} }),
+}));
 vi.mock('../api', () => ({
   revealArtifact: vi.fn(),
   publishArtifact: vi.fn(),
@@ -44,7 +50,8 @@ vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: mocks.
 vi.mock('../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => mocks.downloadArtifactFile(...a),
 }));
-vi.mock('../preview/kinds', () => ({
+vi.mock('../preview/kinds', async (importOriginal) => ({
+  ...(await importOriginal()),
   canPreviewDocument: (...a) => mocks.canPreviewDocument(...a),
 }));
 vi.mock('../components/artifact', () => ({

@@ -22,6 +22,7 @@ import {
   handleOrganizationBoundaryResponse,
 } from '../cowork/lib/organizationRequestBoundary';
 import { MINDS_KEYCLOAK_URL } from './mindsUrls';
+import { endViewSession } from './viewSession';
 import { isMobileShell } from './mobileShell';
 import { MOBILE_KEYCLOAK_CLIENT_ID, createMobileShellAdapter } from './mobileAuth';
 import { clearMobileSession, getMobileSessionStore, restoreMobileSession, saveMobileSession, serializedMobileSessionStore } from './mobileSession';
@@ -549,7 +550,8 @@ export function __resetOrganizationTransitionForTests(): void {
 export const logout = async (): Promise<void> => {
   if (!keycloak.authenticated) return;
   // Never blocked by the preview revoke: a stuck sign-out would keep this
-  // browser's session for the next person at the machine.
-  await closeLiveAppPreviewsForSignOut();
+  // browser's session for the next person at the machine. Both settle before
+  // Keycloak, whose redirect leaves this page.
+  await Promise.allSettled([closeLiveAppPreviewsForSignOut(), endViewSession()]);
   await keycloak.logout({ redirectUri });
 };

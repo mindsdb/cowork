@@ -11,6 +11,8 @@
 //   escalate  → the message is sent to the artifact's chat (`continueInChat`)
 //   failed    → the summary, and "Ask the agent instead" (forceRoute "agent")
 //   noop      → nothing changed
+//   reply     → a short answer to a question or a hello, shown in the bar;
+//               nothing changed, so no Undo (ENG-4455)
 // A check the server asks for mid-edit is answered by the open preview, the
 // same way an agent turn's check is (lib/artifactCheck).
 //
@@ -67,6 +69,15 @@ export function quickEditErrorMessage(error) {
   return error?.message || tr('errors.failed');
 }
 
+// The head a stale 409 names (the draft PUT's shape: the revision, or its id),
+// or null for any other error.
+function staleRevisionId(error) {
+  if (error?.status !== 409) return null;
+  const current = error?.detail?.currentRevision;
+  if (typeof current === 'string') return current || null;
+  return typeof current?.id === 'string' && current.id ? current.id : null;
+}
+
 function undoErrorMessage(error) {
   // Only the last few undos are kept; an older one answers 404.
   if (error?.status === 404) return tr('errors.undoGone');
@@ -82,9 +93,10 @@ function undoErrorMessage(error) {
  * @param {string | null} opts.headRevisionId  The draft revision on screen.
  * @param {() => Promise<string | null>} opts.resolveConversation  The chat the
  *   artifact belongs to, or null; the server notes an applied edit there.
- * @param {(prompt: string, images: object[]) => Promise<boolean>} opts.continueInChat
+ * @param {(prompt: string, images: object[], extra: { recount: (count: number) => void }) => Promise<boolean>} opts.continueInChat
  *   Send the prompt (quickEditChatPrompt) to that chat as a normal turn, with
  *   the message's images as pending attachments; false when no turn started.
+ *   `recount` corrects countInChat's answer once the chat is known.
  * @param {(prompt: string) => number} [opts.countInChat]  How many user
  *   messages in that chat already read `prompt`, so the reply can be found
  *   after it (lib/quickEditPrompt chatReplyFor).
@@ -97,6 +109,8 @@ function undoErrorMessage(error) {
  *   `edit` names the applied edit (absent after an undo): its reply and the
  *   revisions before and after it.
  * @param {() => void} [opts.onStale]  The server refused a stale revision.
+ * @param {(threadId: string) => void} [opts.onThreadAddressed]  An edit made for a comment was applied.
+ * @param {(threadId: string) => void} [opts.onThreadReopened]  That edit was undone.
  */
 export function useQuickEdit(artifact, {
   enabled,
@@ -108,6 +122,8 @@ export function useQuickEdit(artifact, {
   picks,
   onApplied,
   onStale,
+  onThreadAddressed,
+  onThreadReopened,
 }) {
   const [messages, setMessages] = useState([]);
   const [running, setRunning] = useState(false);
@@ -125,7 +141,9 @@ export function useQuickEdit(artifact, {
   const headRef = useRef(headRevisionId || null);
   useEffect(() => { headRef.current = headRevisionId || null; }, [headRevisionId]);
   const depsRef = useRef({});
-  depsRef.current = { resolveConversation, continueInChat, countInChat, picks, onApplied, onStale };
+  depsRef.current = {
+    resolveConversation, continueInChat, countInChat, picks, onApplied, onStale, onThreadAddressed, onThreadReopened,
+  };
 
   // A closed viewer or another artifact ends the edit and the thread with it.
   // Aborting the request closes the stream; the server keeps or undoes the
@@ -187,7 +205,11 @@ export function useQuickEdit(artifact, {
       patchReply(replyId, { state: 'handing-off', summary, chatPrompt, chatBefore });
       let started = false;
       try {
-        started = await depsRef.current.continueInChat?.(chatPrompt, images);
+        started = await depsRef.current.continueInChat?.(chatPrompt, images, {
+          // The chat it goes to may hold earlier copies the count above did
+          // not see (a chat not on screen, ENG-4560).
+          recount: (count) => patchReply(replyId, { chatBefore: Number(count) || 0 }),
+        });
       } catch {
         started = false;
       }
@@ -210,6 +232,8 @@ export function useQuickEdit(artifact, {
             undoable: done.undoable === true && !!done.editId,
           });
           if (lastCheck) await lastCheck;
+          // A comment sent here is addressed once its fix is applied.
+          if (threadId) depsRef.current.onThreadAddressed?.(threadId);
           await depsRef.current.onApplied?.({
             previewFresh,
             edit: { replyId, revisionId: done.revisionId || null, previousRevisionId: done.previousRevisionId || null },
@@ -220,6 +244,11 @@ export function useQuickEdit(artifact, {
           break;
         case 'failed':
           patchReply(replyId, { state: 'failed', summary });
+          break;
+        case 'reply':
+          // An answer with no text is no answer: the chat takes the message.
+          if (summary.trim()) patchReply(replyId, { state: 'replied', summary });
+          else await handOff('');
           break;
         case 'agent':
         case 'escalate':
@@ -243,6 +272,8 @@ export function useQuickEdit(artifact, {
       }
       return true;
     }
+    // Set once the request was resent after a stale refusal (and a reload).
+    let reloadedForStale = false;
     try {
       let conversationId = null;
       try {
@@ -255,24 +286,29 @@ export function useQuickEdit(artifact, {
         data: await fileToBase64(image.pendingFile),
       })));
       if (!live()) return false;
-      await streamQuickEdit(artifact, {
+      const body = {
         message,
         ...(encoded.length ? { images: encoded } : {}),
         history,
-        expectedRevisionId: headRef.current,
         conversationId,
         forceRoute,
+        // The bar shows an answer (done status `reply`); a server only routes
+        // a message to one when the app says so.
+        allowReply: true,
         // Only what the picker holds, by the rule every turn sends picks by;
         // the server falls back to the account's own model and effort.
         ...pickFields(depsRef.current.picks),
-      }, {
+      };
+      let streamed = false;
+      const handlers = {
         signal: controller.signal,
         onEvent: (event) => {
           if (!live()) return;
+          streamed = true;
           switch (event?.type) {
             case 'route':
               patchReply(replyId, {
-                route: event.route === 'agent' ? 'agent' : 'edit',
+                route: event.route === 'agent' || event.route === 'reply' ? event.route : 'edit',
                 routeReason: typeof event.reason === 'string' ? event.reason : null,
               });
               break;
@@ -302,14 +338,30 @@ export function useQuickEdit(artifact, {
               break;
           }
         },
-      });
+      };
+      const stream = () => streamQuickEdit(artifact, { ...body, expectedRevisionId: headRef.current }, handlers);
+      try {
+        await stream();
+      } catch (error) {
+        // Sent against a revision that is no longer the head (another tab, an
+        // agent turn, a save): refused before anything ran. Reload, take the
+        // server's head, and send the same request once more; a second
+        // refusal is shown as before.
+        const current = staleRevisionId(error);
+        if (!current || streamed || !live()) throw error;
+        depsRef.current.onStale?.();
+        reloadedForStale = true;
+        headRef.current = current;
+        await stream();
+      }
       // A hand-off to the chat and the reload after an applied edit both
       // finish before the bar takes the next message.
       if (settling) await settling;
       if (live() && !finished) patchReply(replyId, { state: 'error', error: tr('errors.stopped') });
     } catch (error) {
       if (controller.signal.aborted || error?.name === 'AbortError') return false;
-      if (error?.status === 409 && error?.detail?.currentRevision) depsRef.current.onStale?.();
+      // Reloaded already when the request was resent.
+      if (error?.status === 409 && error?.detail?.currentRevision && !reloadedForStale) depsRef.current.onStale?.();
       patchReply(replyId, { state: 'error', error: quickEditErrorMessage(error) });
     } finally {
       if (controllerRef.current === controller) {
@@ -361,7 +413,8 @@ export function useQuickEdit(artifact, {
   const askAgent = useCallback((replyId) => {
     const reply = messagesRef.current.find((m) => m.id === replyId);
     if (!reply?.request) return Promise.resolve(false);
-    return run(reply.request, { forceRoute: 'agent', images: reply.images || [] });
+    // Still the comment's message: the chat's answer can resolve it.
+    return run(reply.request, { forceRoute: 'agent', images: reply.images || [], threadId: reply.threadId || null });
   }, [run]);
 
   // Undo puts back every file the edit changed and removes those it created
@@ -377,9 +430,13 @@ export function useQuickEdit(artifact, {
       });
       if (undone?.revision?.id) headRef.current = undone.revision.id;
       patchReply(replyId, { undoing: false, undone: true });
+      // Its comment is open again: the fix it got is gone.
+      if (reply.threadId) depsRef.current.onThreadReopened?.(reply.threadId);
       await depsRef.current.onApplied?.();
       return true;
     } catch (error) {
+      // Not retried when stale, unlike a request: the head moved past the
+      // revision this edit made, so it is no longer the newest edit.
       if (error?.status === 409 && error?.detail?.currentRevision) depsRef.current.onStale?.();
       // Nothing left to undo here: say why and stop offering it.
       const settled = error?.status === 404 || error?.detail?.reason === 'already_undone';

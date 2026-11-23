@@ -48,4 +48,14 @@ export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
   notion: {
     clientIdVar: 'NOTION_CLIENT_ID',
   },
+  slack: {
+    clientIdVar: 'SLACK_CLIENT_ID',
+    clientSecretVar: 'SLACK_CLIENT_SECRET',
+  },
+};
+
+/** Authorize-URL scope separators for providers that don't take RFC 6749's
+ * space; Slack's v2 flow documents a comma. */
+export const SCOPE_SEPARATORS: Record<string, string> = {
+  slack: ',',
 };

@@ -191,11 +191,7 @@
     "steps": {
       "bring-your-work": {
         "title": "自分の仕事から始める",
-        "description": "取り組んでいることをCoworkに伝えて、ファイルやメモを渡しましょう。"
-      },
-      "customize-role": {
-        "title": "役割に合わせてCoworkをカスタマイズ",
-        "description": "すぐに使えるツールやワークフローを追加できます。"
+        "description": "ファイル、メモ、リンクを渡すと、Coworkがすぐに始めます。"
       },
       "connect-app": {
         "title": "アプリを接続",
